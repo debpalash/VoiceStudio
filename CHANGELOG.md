@@ -40,6 +40,7 @@ The bundled TTS model package (`pyproject.toml`) is versioned independently.
 
 ### Fixed
 
+- Sidecar engines no longer break when a library they load prints to the console. Those bytes landed in the middle of the engine's data stream, failing the generation and leaving the connection scrambled for every request after it. (#1428) — thanks @1335-Group!
 - A generation abandoned while stuck on an internal lock now says so, instead of blaming your hardware and suggesting shorter text. Nothing had been computed, so none of that advice applied. (#1416, #1419)
 - A slow machine is no longer told its IndexTTS-2 install isn't there. The check that confirms an engine's virtualenv gave up after 10 seconds and counted that as a broken install, so a cold first run 500'd; it now waits longer and treats slow as unproven, not broken. (#1414) — thanks @OracleNightmare!
 - A broken Python environment now says so, instead of blaming the app's own install. A missing or mismatched torch/transformers surfaced as "omnivoice not importable" and sent people reinstalling the wrong thing. (#1415)

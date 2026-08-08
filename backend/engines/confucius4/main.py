@@ -176,7 +176,24 @@ def _handle_synthesize(msg: dict, stdout) -> None:
 
 def main() -> int:
     stdin = sys.stdin.buffer
-    stdout = sys.stdout.buffer
+    # Frames go down a PRIVATE fd, and fd 1 is pointed at stderr (#1428).
+    #
+    # This sidecar's protocol is length-prefixed binary on stdout, but it is
+    # not the only thing writing there: the libraries it loads print freely to
+    # fd 1 — wetextprocessing's FST logs, tqdm bars, native prints from torch
+    # and ONNX runtime. Those bytes interleave with frames, and the parent
+    # then reads four bytes of log text as a length prefix, which is how a
+    # generation dies with `OSError: frame too large: 1044258881` (that number
+    # is ASCII). Worse, it desyncs the stream, so every later request on the
+    # same sidecar reads stale bytes and no retry can recover.
+    #
+    # Duplicating fd 1 first keeps a clean channel only this module can write
+    # to; redirecting fd 1 to fd 2 sends the library noise to stderr, which
+    # the parent already drains into its own log (through the HF-token
+    # redactor). Nothing is lost and the frame stream cannot be corrupted.
+    _frame_fd = os.dup(1)
+    os.dup2(2, 1)
+    stdout = os.fdopen(_frame_fd, "wb")
 
     _send(stdout, {
         "op": "ready",
