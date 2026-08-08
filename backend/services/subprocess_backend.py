@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import atexit
 import base64
+import contextlib
 import json
 import logging
 import os
@@ -263,6 +264,88 @@ def _ensure_reaper_running() -> None:
 # ── Base class ─────────────────────────────────────────────────────────────
 
 
+#: How often to prove liveness while an engine's venv is being resolved.
+#: Matches the sidecar's own cold-load cadence (#1367) so the guarded waiter
+#: sees the same rhythm from both steps.
+_RESOLVE_HEARTBEAT_S = 5.0
+
+
+@contextlib.contextmanager
+def _heartbeat_while_resolving(engine_id: str):
+    """Report progress while a slow engine-venv resolution runs (#1414).
+
+    A probe that spawns interpreters, or a bootstrap that installs torch, can
+    outlast the generate budget on its own. Both are demonstrably *working*
+    the whole time, so the deadline should extend rather than expire — which
+    is what the execution clock's load heartbeat is for.
+
+    Two details that are easy to get wrong:
+
+    * **Pool jobs only.** An off-pool caller never runs on a thread the clock
+      tracks, and heartbeating from one would credit an ident a pool worker
+      might later reuse — up to a grace period of unearned extension, which
+      is the #1379 lesson.
+    * **The resolving thread's ident, not the beater's.** The heartbeat runs
+      on a helper thread so it can tick while resolution blocks, but the job
+      the clock is watching is the caller's. Capturing the ident up front is
+      what makes the extension land on the right job.
+
+    Never raises: a failed heartbeat must not fail a generation.
+    """
+    try:
+        from services.model_manager import running_on_gpu_pool
+
+        on_pool = running_on_gpu_pool()
+    except Exception:  # noqa: BLE001 — best-effort by construction
+        on_pool = False
+    if not on_pool:
+        yield
+        return
+
+    ident = threading.get_ident()
+    stop = threading.Event()
+
+    def _beat():
+        try:
+            from services.model_manager import (
+                MODEL_LOAD_HEARTBEAT_GRACE_S, _MODEL_LOAD_ACTIVITY,
+            )
+        except Exception:  # noqa: BLE001
+            return
+        while not stop.wait(_RESOLVE_HEARTBEAT_S):
+            try:
+                _MODEL_LOAD_ACTIVITY[ident] = (
+                    time.monotonic(), MODEL_LOAD_HEARTBEAT_GRACE_S,
+                )
+            except Exception:  # noqa: BLE001
+                return
+
+    t = threading.Thread(
+        target=_beat, name=f"{engine_id}-resolve-heartbeat", daemon=True,
+    )
+    t.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        # Join, don't just signal. `_beat()` can be past its `stop.wait()` and
+        # already committed to a write at the moment the flag is set, so
+        # signalling alone lets that write land at an arbitrary later point.
+        #
+        # That matters because of what runs next: `_run_on_gpu_pool`'s `_job`
+        # pops this ident from `_MODEL_LOAD_ACTIVITY` in its `finally`
+        # (model_manager.py) precisely so a stale beat cannot vouch for a
+        # future job — GPU-pool idents are reused. A write arriving after that
+        # pop resurrects the entry, and the next job scheduled onto this
+        # worker inherits a heartbeat it never emitted: the wedge detector
+        # reads it as live progress and keeps extending a job that is stuck.
+        #
+        # Joining orders the last write BEFORE the pop, so the pop clears it.
+        # Bounded, so a wedged writer degrades to the old behaviour rather
+        # than blocking the caller forever.
+        t.join(timeout=_RESOLVE_HEARTBEAT_S)
+
+
 class SubprocessBackend(TTSBackend):
     """Long-lived sidecar-process TTS backend. Subclasses provide
     ``venv_python()`` and ``sidecar_script()``; the base class owns
@@ -379,7 +462,20 @@ class SubprocessBackend(TTSBackend):
         else:
             kwargs["start_new_session"] = True
 
-        python_path = str(self.venv_python())
+        # `venv_python()` resolves the engine's interpreter, and on a cold
+        # first run that is not cheap: it spawns each candidate to import the
+        # engine (bounded, but tens of seconds on a slow disk), and if none is
+        # installed it can run the whole `uv venv` + `uv pip install`
+        # bootstrap — minutes, by design.
+        #
+        # All of that happens on a GPU-pool worker, inside a generate request
+        # whose execution budget is 300s by default. Nothing along the way
+        # reported progress, so the budget expired mid-install and the job was
+        # abandoned and blamed on the machine's compute (#1414). The sidecar's
+        # own cold load already heartbeats for exactly this reason (#1367);
+        # resolution is the step before it that never did.
+        with _heartbeat_while_resolving(self.id):
+            python_path = str(self.venv_python())
         script_path = str(self.sidecar_script())
         # #1172 class: validate the interpreter before exec so a broken /
         # half-installed engine venv (0-byte or truncated python, dangling
