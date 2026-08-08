@@ -1491,6 +1491,30 @@ def _is_incomplete_cache_error(exc: BaseException) -> bool:
     return is_incomplete_cache_message(str(exc))
 
 
+def _is_corrupt_weights_error(exc: BaseException) -> bool:
+    """True when the weight file is present but its bytes cannot be parsed.
+
+    The other half of the interrupted-download class (#1406). transformers
+    only raises the "does not appear to have a file named …" signature when
+    the shard is *absent*; a shard that stops mid-file, gets truncated by
+    antivirus, or is actually a saved HTML error page opens fine and then
+    fails inside safetensors:
+
+        Error while deserializing header: header too large
+
+    That is a ``SafetensorError`` from a Rust extension — not an ``OSError``,
+    so it never reached the recovery ladder and surfaced as a raw 500 on every
+    generation (the reporter hit it from voice design *and* from a gallery
+    preview, which is what a shared broken shard looks like).
+
+    The whole exception chain is checked, not just the outermost message:
+    transformers wraps the tensor library's error in its own before it gets
+    here, and matching only the surface would miss every wrapped case."""
+    from core.failure import is_corrupt_weights_message
+
+    return any(is_corrupt_weights_message(str(e)) for e in _exception_chain(exc))
+
+
 def _hf_offline() -> bool:
     """Respect HF's offline switches so repair never makes a network call the
     user opted out of. `snapshot_download` would itself raise offline, but
@@ -1515,6 +1539,13 @@ def _hf_offline() -> bool:
 # after a repair may only happen ONCE per repo per process, so a cache that
 # stays broken can't loop repair↔retry.
 _LINK_REPAIR_ATTEMPTED: set[str] = set()
+
+#: Repos whose weights we have already force-re-downloaded this process
+#: (#1406). Without it, a shard that stays unparseable after a full re-fetch
+#: would pull the whole model again on EVERY generate request — one bad file
+#: turning into unbounded traffic. Same once-per-repo-per-process contract as
+#: the snapshot-link repair above (CodeRabbit).
+_FORCED_REDOWNLOAD_ATTEMPTED: set[str] = set()
 
 
 def _selfheal_broken_snapshot_links(checkpoint: str) -> bool:
@@ -1887,6 +1918,74 @@ def _load_model_sync():
                 checkpoint, device_map=device, dtype=torch.float16, load_asr=preload_asr,
             )
 
+        def _recover_corrupt_weights(exc: BaseException):
+            """Re-fetch weights that are on disk but unparseable (#1406).
+
+            Deliberately a FORCED re-download rather than the resume ladder
+            below: a resume trusts a blob that is already the expected size
+            and would never re-fetch the one that is actually wrong.
+            """
+            if preload_asr:
+                # `_load()` also pulls the Whisper ASR checkpoint — a DIFFERENT
+                # repo. An unparseable shard there would arrive here looking
+                # identical, and re-downloading `checkpoint` would pull
+                # gigabytes, fix nothing, and blame the wrong model
+                # (CodeRabbit). One local load without ASR settles it: if the
+                # TTS weights read fine, they were never the problem.
+                try:
+                    VoiceStudio.from_pretrained(
+                        checkpoint, device_map=device, dtype=torch.float16,
+                        load_asr=False,
+                    )
+                except Exception:
+                    pass  # TTS weights are bad too — fall through and repair
+                else:
+                    raise RuntimeError(
+                        "The transcription model's files are damaged — the "
+                        "TTS model itself reads fine. Open Settings → Models, "
+                        "delete the transcription (ASR) model, and install it "
+                        "again; or set OMNIVOICE_PRELOAD_TTS_ASR=0 to stop "
+                        "loading it alongside TTS."
+                    ) from exc
+            if checkpoint in _FORCED_REDOWNLOAD_ATTEMPTED:
+                # Already re-fetched this repo once this process and it is
+                # still unparseable. Re-downloading again would be the same
+                # gigabytes for the same result, once per generate request.
+                raise RuntimeError(
+                    f"The TTS model files for {checkpoint} are damaged and a "
+                    "re-download did not fix them. Open Settings → Models, "
+                    "delete the VoiceStudio TTS model, and install it again."
+                    f"{_manual_cache_delete_hint(checkpoint)}"
+                ) from exc
+            _FORCED_REDOWNLOAD_ATTEMPTED.add(checkpoint)
+            logger.warning(
+                "TTS weights for %s are present but unparseable (%s) — a "
+                "download that stopped mid-file, or a file altered on disk "
+                "after it arrived. Re-fetching them.", checkpoint, exc,
+            )
+            _set_loading("loading_weights", "Model files are damaged — re-downloading…")
+            if not _repair_model_cache(checkpoint, force=True):
+                raise RuntimeError(
+                    f"The TTS model files for {checkpoint} are damaged — a "
+                    "download that stopped part-way, or a file changed on "
+                    "disk after it arrived — and could not be re-downloaded "
+                    f"automatically.{_repair_failure_detail()} Open Settings "
+                    "→ Models, delete the VoiceStudio TTS model, and install "
+                    f"it again.{_manual_cache_delete_hint(checkpoint)}"
+                ) from exc
+            _set_loading("loading_weights", f"Loading TTS weights on {device}…")
+            try:
+                return _load()
+            except Exception as exc2:
+                if not _is_corrupt_weights_error(exc2):
+                    raise
+                raise RuntimeError(
+                    f"The TTS model files for {checkpoint} are still damaged "
+                    "after being re-downloaded. Open Settings → Models, "
+                    "delete the VoiceStudio TTS model, and install it again."
+                    f"{_manual_cache_delete_hint(checkpoint)}"
+                ) from exc2
+
         try:
             _model = _load()
         except OSError as e:
@@ -1897,78 +1996,96 @@ def _load_model_sync():
             # interrupted download leaves the cache missing only some files,
             # and snapshot_download() resumes/fills exactly those (a complete
             # cache never reaches this branch, so the fast path is untouched).
-            if not _is_incomplete_cache_error(e):
+            if _is_corrupt_weights_error(e):
+                # Present-but-unparseable wearing an OSError (#1406) —
+                # transformers wraps a tensor-library failure in one. The
+                # resume ladder below is the wrong repair (it would trust the
+                # bad blob), so divert before the missing-shard check drops
+                # this as unrecognised and 500s.
+                _model = _recover_corrupt_weights(e)
+            elif not _is_incomplete_cache_error(e):
                 raise
-            # Rung 0: broken snapshot links — the blobs are on disk but the
-            # snapshot entries don't resolve (dangling symlinks / zero-byte
-            # stand-ins). Delete exactly the broken entries, restore, and
-            # retry the load ONCE (guarded per repo per process). A cache
-            # without broken links falls straight through to the resume
-            # ladder below.
-            _model = None
-            if _selfheal_broken_snapshot_links(checkpoint):
-                _set_loading(
-                    "loading_weights",
-                    "Model cache had broken file links — repaired "
-                    "automatically, retrying…",
-                )
-                try:
-                    _model = _load()
-                except OSError as e_link:
-                    if not _is_incomplete_cache_error(e_link):
-                        raise
-                    logger.warning(
-                        "Load still failing after snapshot-link repair of %s — "
-                        "falling back to resume repair.", checkpoint,
+            else:
+                # Rung 0: broken snapshot links — the blobs are on disk but the
+                # snapshot entries don't resolve (dangling symlinks / zero-byte
+                # stand-ins). Delete exactly the broken entries, restore, and
+                # retry the load ONCE (guarded per repo per process). A cache
+                # without broken links falls straight through to the resume
+                # ladder below.
+                _model = None
+                if _selfheal_broken_snapshot_links(checkpoint):
+                    _set_loading(
+                        "loading_weights",
+                        "Model cache had broken file links — repaired "
+                        "automatically, retrying…",
                     )
-                    e = e_link
-                    _model = None
-            if _model is None:
-                _set_loading("loading_weights", "Repairing incomplete model cache…")
-                if not _repair_model_cache(checkpoint):
-                    raise RuntimeError(
-                        f"The TTS model cache for {checkpoint} is incomplete "
-                        "(weights missing — usually an interrupted download)."
-                        f"{_repair_failure_detail()} "
-                        "Open Settings → Models, delete the VoiceStudio TTS model, "
-                        f"and install it again.{_manual_cache_delete_hint(checkpoint)}"
-                    ) from e
-                _set_loading("loading_weights", f"Loading TTS weights on {device}…")
-                try:
-                    _model = _load()
-                except OSError as e2:
-                    # Resume-repair ran but the cache is still unusable. The usual
-                    # cause beyond "repo genuinely lacks weights" is a blob that's
-                    # present with the right size but corrupt — snapshot_download's
-                    # resume trusts it and never re-fetches it (#739). Force a full
-                    # re-download (replaces corrupt blobs) and retry once more before
-                    # falling back to the manual delete-and-reinstall message.
-                    if _is_incomplete_cache_error(e2):
-                        _set_loading("loading_weights", "Re-downloading model files…")
-                        if _repair_model_cache(checkpoint, force=True):
-                            try:
-                                _model = _load()
-                            except OSError as e3:
+                    try:
+                        _model = _load()
+                    except OSError as e_link:
+                        if not _is_incomplete_cache_error(e_link):
+                            raise
+                        logger.warning(
+                            "Load still failing after snapshot-link repair of %s — "
+                            "falling back to resume repair.", checkpoint,
+                        )
+                        e = e_link
+                        _model = None
+                if _model is None:
+                    _set_loading("loading_weights", "Repairing incomplete model cache…")
+                    if not _repair_model_cache(checkpoint):
+                        raise RuntimeError(
+                            f"The TTS model cache for {checkpoint} is incomplete "
+                            "(weights missing — usually an interrupted download)."
+                            f"{_repair_failure_detail()} "
+                            "Open Settings → Models, delete the VoiceStudio TTS model, "
+                            f"and install it again.{_manual_cache_delete_hint(checkpoint)}"
+                        ) from e
+                    _set_loading("loading_weights", f"Loading TTS weights on {device}…")
+                    try:
+                        _model = _load()
+                    except OSError as e2:
+                        # Resume-repair ran but the cache is still unusable. The usual
+                        # cause beyond "repo genuinely lacks weights" is a blob that's
+                        # present with the right size but corrupt — snapshot_download's
+                        # resume trusts it and never re-fetches it (#739). Force a full
+                        # re-download (replaces corrupt blobs) and retry once more before
+                        # falling back to the manual delete-and-reinstall message.
+                        if _is_incomplete_cache_error(e2):
+                            _set_loading("loading_weights", "Re-downloading model files…")
+                            if _repair_model_cache(checkpoint, force=True):
+                                try:
+                                    _model = _load()
+                                except OSError as e3:
+                                    raise RuntimeError(
+                                        f"The TTS model cache for {checkpoint} is incomplete "
+                                        "and could not be auto-repaired. Open Settings → "
+                                        "Models, delete the VoiceStudio TTS model, and install "
+                                        f"it again.{_manual_cache_delete_hint(checkpoint)}"
+                                    ) from e3
+                            else:
                                 raise RuntimeError(
-                                    f"The TTS model cache for {checkpoint} is incomplete "
-                                    "and could not be auto-repaired. Open Settings → "
-                                    "Models, delete the VoiceStudio TTS model, and install "
-                                    f"it again.{_manual_cache_delete_hint(checkpoint)}"
-                                ) from e3
+                                    f"The TTS model cache for {checkpoint} is incomplete and "
+                                    f"could not be auto-repaired.{_repair_failure_detail()} "
+                                    "Open Settings → Models, delete the VoiceStudio TTS model, "
+                                    f"and install it again.{_manual_cache_delete_hint(checkpoint)}"
+                                ) from e2
                         else:
                             raise RuntimeError(
                                 f"The TTS model cache for {checkpoint} is incomplete and "
-                                f"could not be auto-repaired.{_repair_failure_detail()} "
-                                "Open Settings → Models, delete the VoiceStudio TTS model, "
-                                f"and install it again.{_manual_cache_delete_hint(checkpoint)}"
+                                "could not be auto-repaired. Open Settings → Models, delete "
+                                "the VoiceStudio TTS model, and install it again."
+                                f"{_manual_cache_delete_hint(checkpoint)}"
                             ) from e2
-                    else:
-                        raise RuntimeError(
-                            f"The TTS model cache for {checkpoint} is incomplete and "
-                            "could not be auto-repaired. Open Settings → Models, delete "
-                            "the VoiceStudio TTS model, and install it again."
-                            f"{_manual_cache_delete_hint(checkpoint)}"
-                        ) from e2
+        except Exception as e_corrupt:
+            # safetensors raises SafetensorError from a Rust extension and
+            # torch raises UnpicklingError — neither is an OSError, so the
+            # ladder above never saw them and the load 500'd with a raw
+            # "Error while deserializing header: header too large" (#1406).
+            # Anything that is not this class re-raises untouched, so no
+            # unrelated failure is swallowed by the broad clause.
+            if not _is_corrupt_weights_error(e_corrupt):
+                raise
+            _model = _recover_corrupt_weights(e_corrupt)
 
         try:
             # plan-02 (#65): gate on Triton availability (+ user setting), not

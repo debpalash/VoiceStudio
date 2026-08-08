@@ -72,7 +72,7 @@ _HINTS: dict[str, str] = {
     # wins over the symptom.
     "MODEL_DOWNLOAD_INTERRUPTED": "A model download was cut off mid-request, and the component it was fetching then failed to load. Nothing is wrong with your install — reinstalling won't help, and the partial download is resumed rather than restarted. Just retry. If it keeps happening, check your connection (and any VPN, proxy or HF mirror setting); if only transcription is affected, switching ASR to faster-whisper in Settings → Models avoids the pipeline that downloads this component.",
     "BROKEN_VENV": "The Python backend environment was moved or damaged. VoiceStudio rebuilds it automatically on the next launch; if it keeps failing, use Clean & Retry on the setup screen.",
-    "MODEL_CACHE_CORRUPT": "The model cache had broken file links — snapshot entries that no longer point at their downloaded data (interrupted renames or antivirus interference can cause this). VoiceStudio repairs this automatically and retries the load once. If the error persists, quit VoiceStudio, delete the model's models--<org>--<name> folder inside the Hugging Face cache, and restart — the model re-downloads automatically.",
+    "MODEL_CACHE_CORRUPT": "A model file is missing or damaged — a download that stopped part-way, a broken link to downloaded data, or a file changed on disk after it arrived (interrupted renames and antivirus interference both cause this). VoiceStudio repairs it automatically and retries the load once, re-downloading the damaged file where a resume would not have replaced it. If the error persists, quit VoiceStudio, delete the model's models--<org>--<name> folder inside the Hugging Face cache, and restart — the model re-downloads automatically.",
     # HF_MIRROR_UNREACHABLE has a DYNAMIC hint (it names the configured mirror)
     # — see hf_mirror_hint(); build_failure special-cases it.
 }
@@ -333,7 +333,16 @@ def classify(reason: str) -> str:
     # load surface can leak them) and VoiceStudio's own repair messages, so the
     # user-facing error and the auto bug report name the class and its
     # automatic repair.
-    if is_incomplete_cache_message(low) or "broken file link" in low:
+    # Same class, both halves of it: a shard that is MISSING and a shard that
+    # is PRESENT but unparseable are the same problem (an interrupted or
+    # mangled download) with the same remedy, and only the first half was ever
+    # matched — so "Error while deserializing header: header too large" fell
+    # through to "" and shipped as a raw 500 with no repair (#1406).
+    if (
+        is_incomplete_cache_message(low)
+        or is_corrupt_weights_message(low)
+        or "broken file link" in low
+    ):
         return "MODEL_CACHE_CORRUPT"
     # #1347: an import that failed because its DOWNLOAD died is a network
     # problem wearing an import problem's clothes. The reporter's message named
@@ -696,6 +705,64 @@ def is_incomplete_cache_message(text: str) -> bool:
     """
     low = str(text).lower()
     for phrase in _INCOMPLETE_CACHE_PHRASES:
+        if isinstance(phrase, tuple):
+            if all(part in low for part in phrase):
+                return True
+        elif phrase in low:
+            return True
+    return False
+
+
+#: The weight file is PRESENT but its bytes are not a valid tensor file.
+#:
+#: The sibling of ``_INCOMPLETE_CACHE_PHRASES`` above, and the half that had no
+#: handling at all (#1406). An interrupted download that stops mid-file, an
+#: antivirus that truncates a shard, or a proxy that saved an HTML error page
+#: under the shard's name all leave a file transformers is happy to open — so
+#: the "does not appear to have a file named …" check passes — and safetensors
+#: then fails parsing its 8-byte header-length prefix. The user got a raw 500
+#: ("Error while deserializing header: header too large") on every generation,
+#: from voice design and gallery previews alike, with nothing actionable in it
+#: and no repair attempted, because the recovery ladder is reached only through
+#: the *missing*-weights signature.
+#:
+#: Matched on wording rather than exception type on purpose: safetensors raises
+#: ``SafetensorError`` from a Rust extension, torch raises ``UnpicklingError``
+#: or a bare ``RuntimeError`` for the same condition in a ``.bin``, and none of
+#: them are ``OSError`` — the type is the least stable thing about this class.
+_CORRUPT_WEIGHTS_PHRASES = (
+    # safetensors (Rust): header length prefix is larger than the file, or the
+    # declared metadata runs past the end of the buffer.
+    "error while deserializing header",
+    "headertoolarge",
+    "metadataincompletebuffer",
+    "invalidheaderdeserialization",
+    "deserializing header",
+    # torch.load on a truncated / non-pickle .bin shard. "invalid load key" is
+    # unambiguous — only the pickle reader says it. "unexpected end of file" is
+    # not: zipfile, tarfile, gzip and several parsers share the wording, and any
+    # of them can surface inside a model-load chain, where a false positive
+    # would force a multi-GB re-download of an undamaged cache (CodeRabbit). It
+    # therefore needs a weight-file co-marker, like the entry below.
+    "invalid load key",
+    ("unexpected end of file", "safetensors"),
+    ("unexpected end of file", "pytorch_model"),
+    ("unexpected end of file", "checkpoint"),
+    ("failed to load", "checkpoint", "corrupt"),
+)
+
+
+def is_corrupt_weights_message(text: str) -> bool:
+    """True when *text* is a tensor library refusing to parse a weight file.
+
+    Distinct from :func:`is_incomplete_cache_message`, which means the file is
+    absent. Here it exists and its bytes are wrong — a different repair (force
+    a re-download; a resume would trust the bad blob) and a different thing to
+    tell the user. Shared by :func:`classify` and model_manager's self-heal so
+    the healer and the message can never disagree.
+    """
+    low = str(text).lower()
+    for phrase in _CORRUPT_WEIGHTS_PHRASES:
         if isinstance(phrase, tuple):
             if all(part in low for part in phrase):
                 return True

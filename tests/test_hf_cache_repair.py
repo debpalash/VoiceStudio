@@ -489,8 +489,13 @@ def test_classify_missing_weights_signature():
     evt = failure.build_failure(_SIGNATURE, stage="model-load",
                                 include_diagnostic=False)
     assert evt["docs_topic"] == "MODEL_CACHE_CORRUPT"
-    assert "broken file links" in evt["hint"]
-    assert "repairs this automatically" in evt["hint"]
+    # The hint covers both halves of the class since #1406 — a file that is
+    # missing and one that arrived damaged — so it no longer names only the
+    # broken-link cause. What must survive is that it promises the automatic
+    # repair and names the manual fallback.
+    assert "missing or damaged" in evt["hint"]
+    assert "repairs it automatically" in evt["hint"]
+    assert "models--<org>--<name>" in evt["hint"]
 
 
 def test_classify_repair_messages():
@@ -526,7 +531,7 @@ def test_classify_local_directory_missing_weights_signature():
     evt = failure.build_failure(_SIGNATURE_LOCAL_DIR, stage="model-load",
                                 include_diagnostic=False)
     assert evt["docs_topic"] == "MODEL_CACHE_CORRUPT"
-    assert "repairs this automatically" in evt["hint"]
+    assert "repairs it automatically" in evt["hint"]
 
 
 def test_self_heal_recognises_both_wordings():
