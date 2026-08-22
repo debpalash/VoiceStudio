@@ -74,6 +74,48 @@ def stream_failure(code: str) -> dict[str, object]:
     return dict(failures.get(code, failures["generation_failed"]))
 
 
+def stream_generation_failure(error: BaseException | object) -> dict[str, object]:
+    """``generation_failed`` stream metadata, enriched with the actual cause.
+
+    The bare "Generation failed. Check the selected engine and try again." is
+    the floor for an *unrecognized* failure. When the private exception DOES
+    classify to a known failure class — a corrupt model cache, an unreachable
+    Hugging Face mirror, a missing ffmpeg/ffprobe, a Windows paging-file limit,
+    a SOCKS/TLS proxy problem, … — the stable VoiceStudio-owned remediation for
+    that class is appended so the user can self-diagnose instead of guessing
+    which engine or which failure. This is the same enrichment the classic
+    (non-streaming) ``/generate`` 500 already gets via
+    :func:`public_exception_response`; the in-band streaming error frame
+    replaces the global 500 handler for a streaming request and used to bypass
+    it entirely (#1607).
+
+    Only VoiceStudio-owned constants are copied — never a substring of
+    ``error`` (Constitution I). Never raises: a diagnosis failure must not
+    replace the failure being diagnosed.
+    """
+    payload = stream_failure("generation_failed")
+    try:
+        enriched = public_exception_response(error, fallback=str(payload["detail"]))
+    except Exception:
+        return payload
+    hint = enriched.get("hint")
+    if hint:
+        payload["detail"] = enriched["detail"]
+        payload["hint"] = hint
+        topic = enriched.get("docs_topic")
+        if topic:
+            payload["docs_topic"] = topic
+            try:
+                from core import error_docs_map
+
+                url = error_docs_map.ERROR_DOCS.get(topic, "")
+            except Exception:
+                url = ""
+            if url:
+                payload["docs_url"] = url
+    return payload
+
+
 def public_failure(
     logger: logging.Logger,
     log_message: str,

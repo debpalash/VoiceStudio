@@ -84,11 +84,13 @@ def _tts_mod():
 
 
 def _make_deterministic_engine(engine_id="stream-fake", *, delay_s=0.0,
-                               fail_on_call=None):
+                               fail_on_call=None, fail_message=None):
     """TTSBackend stub whose output is a pure function of the input text, so
     the streamed per-chunk renders and the classic whole-request render can be
     compared bit-for-bit. Optional per-call delay (to observe incrementality)
-    and fail-on-Nth-call (to drive the mid-stream error path)."""
+    and fail-on-Nth-call (to drive the mid-stream error path). ``fail_message``
+    overrides the default secret-bearing failure text, e.g. to raise an error
+    that classifies to a known failure class (#1607)."""
 
     class _Engine(_tts_mod().TTSBackend):
         id = engine_id
@@ -112,7 +114,8 @@ def _make_deterministic_engine(engine_id="stream-fake", *, delay_s=0.0,
             type(self).calls.append((text, time.monotonic()))
             if fail_on_call is not None and len(type(self).calls) == fail_on_call:
                 raise RuntimeError(
-                    "TOKEN=stream-secret /home/alice/private-reference.wav"
+                    fail_message
+                    or "TOKEN=stream-secret /home/alice/private-reference.wav"
                 )
             if delay_s:
                 time.sleep(delay_s)
@@ -307,6 +310,53 @@ def test_stream_midstream_error_yields_error_event(
 
     after_ids = {h["id"] for h in client.get("/history").json()}
     assert after_ids == before_ids     # nothing was recorded for the failure
+
+
+def test_stream_error_names_recognized_cause_and_journals(
+    client, monkeypatch, no_omnivoice_model
+):
+    """#1607: a streaming request answers 200 and carries its failure as an
+    in-band error frame, so it bypasses the global 500 handler. That used to
+    mean two regressions vs the classic /generate path: the failure never
+    reached the error journal (so it was absent from Diagnostics / the bug
+    bundle the maintainer asks reporters for), and the frame carried only the
+    opaque "Generation failed. Check the selected engine and try again." even
+    when the cause was recognizable. Both are now reproduced in-band."""
+    from core import error_journal
+
+    error_journal.clear()
+
+    # A corrupt-weights error classifies to MODEL_CACHE_CORRUPT — one of the
+    # classes with a stable, actionable remediation.
+    fake = _make_deterministic_engine(
+        fail_on_call=1,
+        fail_message="model.safetensors: Error while deserializing header: HeaderTooLarge",
+    )
+    monkeypatch.setitem(_tts_mod()._REGISTRY, "stream-fake", fake)
+
+    events = _stream_events(client, {"text": "Hello there.", "engine": "stream-fake"})
+    error = events[-1][0]
+    assert error["type"] == "error"
+    assert error["code"] == "generation_failed"
+    assert error["retryable"] is True
+
+    # The cause is NAMED, not swallowed into the bare generic string.
+    assert error["docs_topic"] == "MODEL_CACHE_CORRUPT"
+    assert error["hint"]
+    assert error["detail"] != (
+        "Generation failed. Check the selected engine and try again."
+    )
+    assert error["detail"].startswith(
+        "Generation failed. Check the selected engine and try again."
+    )
+    assert error["hint"] in error["detail"]
+    # Still no raw exception text copied into the public frame.
+    assert "HeaderTooLarge" not in repr(error)
+
+    # The failure now lands in the journal that feeds Diagnostics / the bundle.
+    recent = error_journal.recent()
+    assert recent, "streaming generation failure must reach the error journal"
+    assert any((e.get("route") or "").startswith("/generate") for e in recent)
 
 
 def test_stream_short_text_single_chunk(client, monkeypatch, no_omnivoice_model):

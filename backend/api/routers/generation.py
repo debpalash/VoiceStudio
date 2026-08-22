@@ -1662,13 +1662,22 @@ async def generate_speech(
                     "target_label": e.worker_label or _target_label,
                     "hint": e.hint,
                 })
-            except Exception:
+            except Exception as exc:
                 # Mid-job remote failure is NOT quietly redone here: the client
                 # treats a retryable error as "surface it", so the user decides
-                # whether to spend the same minutes again on this machine.
+                # whether to spend the same minutes again on this machine. Like
+                # the local streaming path, this in-band frame stands in for the
+                # global 500 handler, so it journals the scrubbed failure and
+                # names a recognized cause instead of the bare generic string
+                # (#1607).
                 logger.error("Remote generation failed", exc_info=True)
-                from core.public_errors import stream_failure
-                yield _line({"type": "error", **stream_failure("generation_failed")})
+                from core.public_errors import stream_generation_failure
+                from core import error_journal
+
+                error_journal.record(
+                    exc, route="/generate", trace=traceback.format_exc()
+                )
+                yield _line({"type": "error", **stream_generation_failure(exc)})
             finally:
                 if not render.done():
                     render.cancel()
@@ -1915,10 +1924,27 @@ async def generate_speech(
                 logger.error("Streaming generation request rejected")
                 from core.public_errors import stream_failure
                 yield _line({"type": "error", **stream_failure("invalid_request")})
-            except Exception:
-                logger.error("Streaming generation failed unexpectedly")
-                from core.public_errors import stream_failure
-                yield _line({"type": "error", **stream_failure("generation_failed")})
+            except Exception as exc:
+                # A streaming request answers 200 and carries its failure as an
+                # in-band error frame, so it never reaches the global 500
+                # handler — which is where a classic /generate failure gets its
+                # scrubbed journal entry (Diagnostics / recent errors) AND its
+                # classified, actionable message. Both have to be reproduced
+                # here or a streaming generation failure is invisible in the
+                # diagnostic bundle and opaque to the user (#1607). The raw
+                # exception is NOT logged: it can carry a reference-clip path or
+                # a provider secret, and only the journal scrubs before storing.
+                logger.error(
+                    "Streaming generation failed unexpectedly (class=%s)",
+                    type(exc).__name__,
+                )
+                from core.public_errors import stream_generation_failure
+                from core import error_journal
+
+                error_journal.record(
+                    exc, route="/generate", trace=traceback.format_exc()
+                )
+                yield _line({"type": "error", **stream_generation_failure(exc)})
             finally:
                 # Ownership of the temp reference clip moves to this generator
                 # in stream mode (the route returns before rendering starts).
