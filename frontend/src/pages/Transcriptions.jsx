@@ -26,6 +26,23 @@ function saveTranscriptions(list) {
   localStorage.setItem(TRANSCRIPTIONS_KEY, JSON.stringify(list));
 }
 
+/** A segment's "12.0s – 15.5s" label, tolerant of missing timings (#1798).
+ *
+ * Not every ASR path produces a timed segment: an OpenAI-compatible backend
+ * answering in `json`/`text` format has no timings at all, and
+ * `services/asr_backend.py` records that honestly as `end: None` rather than
+ * inventing a number. Calling `.toFixed()` on it threw during render and took
+ * the whole Transcriptions view down, so a transcript that merely lacked
+ * timings became one the user could not read at all. Render whichever half is
+ * known, and nothing when neither is. */
+export function segTimeRange(seg) {
+  const known = (v) => typeof v === 'number' && Number.isFinite(v);
+  const start = known(seg?.start) ? `${seg.start.toFixed(1)}s` : null;
+  const end = known(seg?.end) ? `${seg.end.toFixed(1)}s` : null;
+  if (start && end) return `${start} – ${end}`;
+  return start || end || '';
+}
+
 export function addTranscription(entry) {
   const list = loadTranscriptions();
   const newEntry = {
@@ -288,7 +305,7 @@ export default function TranscriptionsPage() {
                     className="txn-detail__seg flex gap-[8px] py-[3px] text-[var(--text-xs)]"
                   >
                     <span className="txn-detail__seg-time shrink-0 font-mono text-fg-subtle min-w-[80px]">
-                      {seg.start.toFixed(1)}s – {seg.end.toFixed(1)}s
+                      {segTimeRange(seg)}
                     </span>
                     <span className="txn-detail__seg-text text-fg">{seg.text}</span>
                   </div>

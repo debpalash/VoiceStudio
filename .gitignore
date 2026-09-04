@@ -170,3 +170,10 @@ bin/omnivoice-tts-linux-aarch64
 # committed (they ship with the app); the per-language source WAVs are just the
 # inputs scripts/render_dub_demo_audio.py hands to scripts/build_dub_demo.sh.
 backend/assets/samples/demo/dubbing/*.src.wav
+
+# Stray sqlite session artifacts (`<db-path>.ses`). An in-memory DB yields the
+# literal name `:memory:.ses`, and a path containing `:` cannot be checked out
+# on Windows at all — committing one fails every Windows CI job at the git
+# checkout step, before a single test runs. Guarded by
+# tests/test_no_windows_hostile_paths.py.
+*.ses
