@@ -14,6 +14,7 @@ import { Button } from '../ui';
 import EngineQuickSwitch from '../components/EngineQuickSwitch';
 import { toast } from 'react-hot-toast';
 import { toMillis } from '../utils/relativeTime';
+import { copyText as copyToClipboard } from '../utils/copyText';
 import { useEffectiveDictationShortcut } from '../hooks/useEffectiveDictationShortcut';
 import { requestDictationCapture } from '../utils/dictationCapture';
 import {
@@ -84,9 +85,9 @@ export default function TranscriptionsPage() {
     [transcriptions, selectedId],
   );
 
-  const copyText = useCallback(
+  const copyTextToClipboard = useCallback(
     (text) => {
-      copyText(text).then(
+      copyToClipboard(text).then(
         () => toast.success(t('transcriptions.copied')),
         () => toast.error(t('transcriptions.copy_failed')),
       );
@@ -264,7 +265,7 @@ export default function TranscriptionsPage() {
                 {new Date(selected.timestamp).toLocaleString()}
               </span>
               <div className="txn-detail__actions flex gap-[4px]">
-                <Button size="sm" variant="ghost" onClick={() => copyText(selected.text)}>
+                <Button size="sm" variant="ghost" onClick={() => copyTextToClipboard(selected.text)}>
                   <Copy size={12} /> {t('transcriptions.copy')}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => deleteEntry(selected.id)}>
@@ -288,7 +289,9 @@ export default function TranscriptionsPage() {
                     className="txn-detail__seg flex gap-[8px] py-[3px] text-[var(--text-xs)]"
                   >
                     <span className="txn-detail__seg-time shrink-0 font-mono text-fg-subtle min-w-[80px]">
-                      {seg.start.toFixed(1)}s – {seg.end.toFixed(1)}s
+                      {seg.start != null && seg.end != null
+                        ? `${seg.start.toFixed(1)}s – ${seg.end.toFixed(1)}s`
+                        : '—'}
                     </span>
                     <span className="txn-detail__seg-text text-fg">{seg.text}</span>
                   </div>
