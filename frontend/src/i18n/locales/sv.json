@@ -337,7 +337,18 @@
     "device_family_mps": "Apple GPU (MPS)",
     "device_family_cpu": "CPU",
     "device_load_failed": "Kunde inte läsa in enhetsinställningen",
-    "perf_save_failed": "Kunde inte spara inställningen"
+    "perf_save_failed": "Kunde inte spara inställningen",
+    "generate_budget_title": "Beräkningstidsbudget",
+    "generate_budget_desc": "Hur länge en generering får köras innan den avbryts som för tung för den här hårdvaran. CPU-rendering är naturligt långsammare än accelererad rendering, så den har sin egen, högre nedre gräns.",
+    "generate_timeout_gpu": "Accelererad (GPU-)budget",
+    "generate_timeout_gpu_note": "Används när genereringen körs på CUDA, ROCm, MPS eller en annan accelerator. Används även för CPU-generering om ingen CPU-budget anges nedan.",
+    "generate_timeout_cpu": "CPU-budget",
+    "generate_timeout_cpu_note": "Används när genereringen körs på CPU:n. När den väl sparats här styr detta värde alltid CPU-generering — oberoende av den accelererade budgeten ovan.",
+    "generate_timeout_invalid": "Ange ett antal sekunder större än 0 och högst {{max}}.",
+    "generate_timeout_saved": "Sparat. Starta om VoiceStudio för att den nya budgeten ska gälla.",
+    "generate_timeout_shadowed_badge": "Åsidosatt externt",
+    "generate_timeout_shadowed_note": "En miljövariabel utanför VoiceStudio (skal, .env-fil eller container) anger just nu detta värde — värdet som sparats här ignoreras tills den variabeln tas bort.",
+    "generate_timeout_shadowed_toast": "Sparat, men en miljövariabel utanför VoiceStudio anger just nu detta värde — det kommer fortsätta användas tills den variabeln tas bort."
   },
   "bootstrap": {
     "title": "VoiceStudio",
@@ -580,6 +591,7 @@
     "cat_Style": "Stil",
     "cat_EnglishAccent": "Engelsk accent",
     "cat_ChineseDialect": "Kinesisk dialekt",
+    "vd_exclusive_cleared": "{{cleared}} rensades — en kinesisk dialekt och en engelsk brytning kan inte kombineras.",
     "opt_Auto": "✨ Auto",
     "opt_male": "manlig",
     "opt_female": "kvinnlig",
@@ -598,7 +610,7 @@
     "stop_playback": "Stoppa uppspelning",
     "describe_label": "Beskriv din röst",
     "describe_placeholder": "t.ex. a warm elderly British storyteller, slightly raspy",
-    "describe_hint": "Din beskrivning (på engelska) ställer in kontrollerna nedan — du kan finjustera dem efteråt.",
+    "describe_hint": "Beskriv rösten, eller välj en utgångspunkt. Endera fyller i detaljerna nedan.",
     "describe_unmatched": "Kunde inte mappa: {{items}}",
     "describe_no_match": "Inga röstdrag har känts igen ännu — prova ord som deep, elderly eller British.",
     "define_by_design": "Via design",
@@ -619,7 +631,13 @@
     "script": "Manus",
     "starting_points": "Utgångspunkter",
     "voice_kicker": "Röst",
-    "define_convert": "Konvertera"
+    "define_convert": "Konvertera",
+    "details": "Detaljer",
+    "edit": "Redigera",
+    "cat_AccentDialect": "Accent eller dialekt",
+    "accent_dialect_hint": "det ena eller det andra, aldrig båda",
+    "reset_to_description": "Återställ till beskrivning",
+    "chips_more": "{{count}} till…"
   },
   "about": {
     "app": "App",
@@ -798,7 +816,8 @@
     "familyMatrixTitle": "{{family}}-motorer",
     "familyDesc_tts": "Gör om manus till tal. Studio, Dubbning och Batch använder den aktiva motorn.",
     "familyDesc_asr": "Gör om ljud till text för transkribering, dubbning, undertexter och diktering.",
-    "familyDesc_llm": "Valfri texthjälp för översättning och omskrivning. ”Av” hoppar över dessa steg."
+    "familyDesc_llm": "Valfri texthjälp för översättning och omskrivning. ”Av” hoppar över dessa steg.",
+    "mpsLongText": "{{engine}} körs på Apple Silicon (MPS) här och den här texten är lång — genereringen kan överskrida tidsbudgeten. Kortare text, eller uppdelad i flera tagningar, går betydligt snabbare."
   },
   "capture": {
     "desc": "Globala snabbtangenter fungerar bara i skrivbordsappen. Webbgränssnittet använder en genväg <1>Ctrl+Skift+Mellanslag</1> på sidan medan fönstret har fokus.",
@@ -2132,6 +2151,9 @@
     "error_prefix": "Fel: {{message}}",
     "ignored_unsupported": "Ignorerad instruktion som inte stöds: {{items}}",
     "ignored_duplicate": "Ignorerad (kategori redan inställd): {{items}}",
+    "ignored_conflict": "{{items}} ignorerades — en kinesisk dialekt och en engelsk brytning kan inte kombineras.",
+    "dialect_accent_conflict": "En kinesisk dialekt och en engelsk brytning kan inte användas tillsammans. Rensa en av dem innan du genererar igen.",
+    "instruct_category_conflict": "Två motstridiga röstdesignalternativ valdes i samma kategori (t.ex. två kön). Rensa ett av dem innan du genererar igen.",
     "ref_audio_unusable": "Inget tal kunde höras i referensljudet — klippet är tyst eller nästan tyst, så det finns ingen röst att klona. Spela in igen närmare mikrofonen (kontrollera att rätt ingångsenhet är vald och att nivån rör sig) eller välj ett annat klipp.",
     "ref_audio_too_long": "En referens får vara högst 20 sekunder med transkription eller 75 sekunder utan. Klipp den till ett tydligt talavsnitt på 3–10 sekunder; om du anger text ska transkriptionen klippas till samma avsnitt.",
     "ref_audio_no_speech": "Den automatiska taldetekteringen hittade inga talade ord. Klipp referensen till ett tydligt talavsnitt på 3–10 sekunder eller ange en matchande transkription."

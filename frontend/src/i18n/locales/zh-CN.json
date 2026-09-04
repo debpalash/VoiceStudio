@@ -239,6 +239,7 @@
     "cat_Style": "风格",
     "cat_EnglishAccent": "英语口音",
     "cat_ChineseDialect": "中文方言",
+    "vd_exclusive_cleared": "已清除{{cleared}} — 中文方言和英文口音不能同时使用。",
     "opt_Auto": "✨ 自动",
     "opt_male": "男声",
     "opt_female": "女声",
@@ -257,7 +258,7 @@
     "stop_playback": "停止播放",
     "describe_label": "描述你想要的声音",
     "describe_placeholder": "例如：中年男性，低音调，四川话",
-    "describe_hint": "你的描述会自动设置下方的控件，之后仍可手动微调。（也支持英文描述）",
+    "describe_hint": "描述这个声音，或选择一个起点——两者都会自动填好下方的详情。",
     "describe_unmatched": "无法识别：{{items}}",
     "describe_no_match": "尚未识别出声音特征——试试 deep、elderly、British 或「中年」「低音调」等词。",
     "define_by_design": "通过设计",
@@ -278,7 +279,13 @@
     "seed_keep": "保留这个种子",
     "seed_reroll": "新种子",
     "seed_reroll_hint": "滚动一个新的随机种子并保留它",
-    "define_convert": "转换"
+    "define_convert": "转换",
+    "details": "详情",
+    "edit": "编辑",
+    "cat_AccentDialect": "口音或方言",
+    "accent_dialect_hint": "二选一，不能同时选择",
+    "reset_to_description": "按描述重置",
+    "chips_more": "还有 {{count}} 个…"
   },
   "settings": {
     "remote_backend_test": "测试连接",
@@ -576,7 +583,18 @@
     "device_family_mps": "Apple GPU (MPS)",
     "device_family_cpu": "CPU",
     "device_load_failed": "无法加载设备设置",
-    "perf_save_failed": "无法保存设置"
+    "perf_save_failed": "无法保存设置",
+    "generate_budget_title": "计算时长预算",
+    "generate_budget_desc": "一次生成在被判定为对该硬件负担过重而放弃之前，最长可以运行多久。CPU 渲染本身就比加速渲染慢，因此它有自己更高的下限。",
+    "generate_timeout_gpu": "加速（GPU）预算",
+    "generate_timeout_gpu_note": "当生成运行在 CUDA、ROCm、MPS 或其他加速器上时使用。如果下面未设置 CPU 预算，也会用于 CPU 生成。",
+    "generate_timeout_cpu": "CPU 预算",
+    "generate_timeout_cpu_note": "当生成运行在 CPU 上时使用。一旦在此处保存，该值将始终控制 CPU 生成——与上面的加速预算无关。",
+    "generate_timeout_invalid": "请输入大于 0 且不超过 {{max}} 的秒数。",
+    "generate_timeout_saved": "已保存。重启 VoiceStudio 以使新预算生效。",
+    "generate_timeout_shadowed_badge": "已被外部覆盖",
+    "generate_timeout_shadowed_note": "VoiceStudio 之外的一个环境变量（终端、.env 文件或容器）当前正在设置此值——在移除该变量之前，此处保存的值会被忽略。",
+    "generate_timeout_shadowed_toast": "已保存，但 VoiceStudio 之外的一个环境变量当前正在设置此值——在移除该变量之前，将继续使用该值。"
   },
   "about": {
     "app": "应用",
@@ -757,7 +775,8 @@
     "familyMatrixTitle": "{{family}} 引擎",
     "familyDesc_tts": "将脚本转换为语音。标记为启用的引擎供工作室、配音和批处理使用。",
     "familyDesc_asr": "将音频转换为文本，用于转录、配音、字幕和听写。",
-    "familyDesc_llm": "用于翻译和改写的可选文本助手。“关闭”会跳过这些步骤。"
+    "familyDesc_llm": "用于翻译和改写的可选文本助手。“关闭”会跳过这些步骤。",
+    "mpsLongText": "{{engine}} 在本机上使用 Apple Silicon（MPS）运行，而这段文本较长——生成可能超出时间预算。缩短文本，或分成几次生成会快得多。"
   },
   "capture": {
     "desc": "全局热键仅在桌面应用中有效。网页界面使用页面内快捷键 <1>Ctrl+Shift+Space</1>（窗口聚焦时可用）。",
@@ -2139,6 +2158,9 @@
     "error_prefix": "错误：{{message}}",
     "ignored_unsupported": "忽略不支持的指令：{{items}}",
     "ignored_duplicate": "忽略（类别已设置）：{{items}}",
+    "ignored_conflict": "已忽略{{items}} — 中文方言和英文口音不能同时使用。",
+    "dialect_accent_conflict": "中文方言和英文口音不能同时使用。请先清除其中一项，然后再重新生成。",
+    "instruct_category_conflict": "同一类别中选择了两个相互冲突的语音设计选项（例如两种性别）。请先清除其中一项，然后再重新生成。",
     "ref_audio_unusable": "参考音频中听不到任何语音——片段是静音或几乎静音的，因此没有可克隆的声音。请靠近麦克风重新录制（检查是否选择了正确的输入设备、电平是否有跳动），或换一段其他音频。",
     "ref_audio_too_long": "参考音频在提供文字稿时最长20秒，未提供时最长75秒。请裁剪为含清晰语音的3–10秒片段；若提供文字稿，请将其裁剪到同一片段。",
     "ref_audio_no_speech": "自动语音检测未在参考音频中发现口语。请裁剪为含清晰语音的3–10秒片段，或提供匹配的文字稿。"

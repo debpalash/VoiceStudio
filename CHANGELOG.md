@@ -18,6 +18,7 @@ the frozen-backend fallback mirror it for their toolchains.
 
 ### Fixed
 
+
 ## [0.5.2] — 2026-09-02
 
 **Highlights**
@@ -34,6 +35,8 @@ the frozen-backend fallback mirror it for their toolchains.
 - The dub editor gains a casting board: drag voice chips onto speakers, dropdowns stay in sync (#1767) — thanks @mvanhorn!
 
 ### Changed
+
+- Voice Design simplified: the 12-row fine-grained block collapses to one summary line with a five-field editor, English accent and Chinese dialect merge into a single field, and the starting-point chips now show 5 with an overflow toggle (#1793)
 
 ### Added
 
@@ -55,6 +58,13 @@ the frozen-backend fallback mirror it for their toolchains.
 
 ### Fixed
 
+- The generation compute-time budget is now a Settings control (Performance & Device) instead of an env-var-only setting the timeout error recommended with no UI path — the error copy points there too, and long CPU/MPS renders get an upfront heads-up before they start (#1787)
+- Windows: the backend can now start when the install path contains non-English characters (e.g. a CJK username) on a non-UTF-8 system code page — a new or broken Python environment now builds at an ASCII-safe path automatically (a healthy existing one is never relocated), and a specific error message names the cause and a working fix if the interpreter still crashes in `site` (#1783)
+- Exports and other native-picker actions no longer 403 with "Invalid or expired desktop authorization" when the desktop app and backend resolve different data directories, e.g. dev mode or a custom data folder (#1781)
+- Voice Design no longer lets you pick a Chinese dialect and an English accent together — the picker keeps them mutually exclusive instead of round-tripping a 400 (#1771)
+- The desktop app no longer attaches to an already-running backend on version string alone: it now verifies the backend's actual code fingerprint too, so an orphaned or manually started backend reporting the current version but running older code (e.g. a stale `destination_path` export 422) gets replaced instead of adopted (#1770)
+- Korean locale overhauled: 231 mistranslations corrected and all 493 missing keys translated (#1776) — thanks @j30231!
+- Japanese "Cleaning…" clone status now reads as denoising instead of housekeeping (#1775) — thanks @j30231!
 - The batch dubbing queue now has a UI entry point — a quiet link on the Dub landing (it was previously unreachable: the app switched on a mode nothing ever set) (#1768) — thanks @mvanhorn!
 - OpenAI-compatible ASR now requires HTTPS outside loopback and refuses redirects so audio stays on the configured origin (#1736)
 - Windows isolated engines now retain direct Job ownership without an extra Python supervisor process that can deadlock the child loader (#1734)

@@ -32,11 +32,36 @@ const USER_FIXABLE_MARKERS = {
   '[shutting_down]': 'errors.backend_shutting_down',
 };
 
+// #1771: the voice-design instruct validator (omnivoice/models/omnivoice.py::
+// _resolve_instruct, #664) rejects a couple of user-fixable combinations with
+// a fixed English message and no [marker]. voiceInstruct.js's client-side
+// guards already stop the picker from building these — this is the backstop
+// for anything that still reaches the engine (an imported project, a
+// hand-edited/legacy profile, a free-text instruct) so the user sees "here's
+// what to fix" instead of the raw 400. Matched on the engine's exact message
+// text — keep in sync with omnivoice/models/omnivoice.py::_resolve_instruct.
+const INSTRUCT_VALIDATION_MESSAGES = [
+  {
+    match: /cannot mix chinese dialect and english accent/i,
+    i18nKey: 'tts_errors.dialect_accent_conflict',
+  },
+  {
+    match: /conflicting instruct items within the same category/i,
+    i18nKey: 'tts_errors.instruct_category_conflict',
+  },
+];
+
 export function toastErrorWithReport(message, error) {
   const err = error instanceof Error ? error : new Error(String(error ?? message));
   const raw = `${err.message ?? ''} ${message ?? ''}`;
   for (const [marker, i18nKey] of Object.entries(USER_FIXABLE_MARKERS)) {
     if (raw.includes(marker)) {
+      toast.error(i18next.t(i18nKey), { duration: 8000 });
+      return;
+    }
+  }
+  for (const { match, i18nKey } of INSTRUCT_VALIDATION_MESSAGES) {
+    if (match.test(raw)) {
       toast.error(i18next.t(i18nKey), { duration: 8000 });
       return;
     }

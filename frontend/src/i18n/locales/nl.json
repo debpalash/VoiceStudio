@@ -337,7 +337,18 @@
     "device_family_mps": "Apple GPU (MPS)",
     "device_family_cpu": "CPU",
     "device_load_failed": "Apparaatinstelling kon niet worden geladen",
-    "perf_save_failed": "Instelling kon niet worden opgeslagen"
+    "perf_save_failed": "Instelling kon niet worden opgeslagen",
+    "generate_budget_title": "Rekentijdbudget",
+    "generate_budget_desc": "Hoe lang één generatie mag lopen voordat deze wordt afgebroken als te zwaar voor deze hardware. CPU-renders zijn van nature trager dan versnelde renders, dus die krijgen hun eigen, hogere ondergrens.",
+    "generate_timeout_gpu": "Versneld (GPU-)budget",
+    "generate_timeout_gpu_note": "Gebruikt wanneer de generatie draait op CUDA, ROCm, MPS of een andere versneller. Wordt ook gebruikt voor CPU-generatie als hieronder geen CPU-budget is ingesteld.",
+    "generate_timeout_cpu": "CPU-budget",
+    "generate_timeout_cpu_note": "Gebruikt wanneer de generatie op de CPU draait. Eenmaal hier opgeslagen, bepaalt deze waarde altijd de CPU-generatie — onafhankelijk van het versnelde budget hierboven.",
+    "generate_timeout_invalid": "Voer een aantal seconden groter dan 0 en maximaal {{max}} in.",
+    "generate_timeout_saved": "Opgeslagen. Herstart VoiceStudio om het nieuwe budget toe te passen.",
+    "generate_timeout_shadowed_badge": "Extern overschreven",
+    "generate_timeout_shadowed_note": "Een omgevingsvariabele buiten VoiceStudio (shell, .env-bestand of container) stelt deze waarde momenteel in — de hier opgeslagen waarde wordt genegeerd totdat die variabele wordt verwijderd.",
+    "generate_timeout_shadowed_toast": "Opgeslagen, maar een omgevingsvariabele buiten VoiceStudio stelt deze waarde momenteel in — die blijft gebruikt worden totdat die variabele wordt verwijderd."
   },
   "bootstrap": {
     "title": "VoiceStudio",
@@ -580,6 +591,7 @@
     "cat_Style": "Stijl",
     "cat_EnglishAccent": "Engels accent",
     "cat_ChineseDialect": "Chinees dialect",
+    "vd_exclusive_cleared": "{{cleared}} gewist — een Chinees dialect en een Engels accent kunnen niet worden gecombineerd.",
     "opt_Auto": "✨ Automatisch",
     "opt_male": "mannetje",
     "opt_female": "vrouwelijk",
@@ -598,7 +610,7 @@
     "stop_playback": "Afspelen stoppen",
     "describe_label": "Beschrijf je stem",
     "describe_placeholder": "bijv. a warm elderly British storyteller, slightly raspy",
-    "describe_hint": "Je beschrijving (in het Engels) stelt de regelaars hieronder in — je kunt ze daarna bijstellen.",
+    "describe_hint": "Beschrijf de stem, of kies een startpunt. Beide vullen de details hieronder in.",
     "describe_unmatched": "Kon niet toewijzen: {{items}}",
     "describe_no_match": "Nog geen stemkenmerken herkend — probeer woorden als deep, elderly of British.",
     "define_by_design": "Via ontwerp",
@@ -619,7 +631,13 @@
     "script": "Script",
     "starting_points": "Startpunten",
     "voice_kicker": "Stem",
-    "define_convert": "Converteren"
+    "define_convert": "Converteren",
+    "details": "Details",
+    "edit": "Bewerken",
+    "cat_AccentDialect": "Accent of dialect",
+    "accent_dialect_hint": "het een of het ander, nooit beide",
+    "reset_to_description": "Terugzetten naar beschrijving",
+    "chips_more": "nog {{count}}…"
   },
   "about": {
     "app": "App",
@@ -798,7 +816,8 @@
     "familyMatrixTitle": "{{family}}-engines",
     "familyDesc_tts": "Zet je script om in spraak. Studio, Nasynchronisatie en Batch gebruiken de actieve engine.",
     "familyDesc_asr": "Zet audio om in tekst voor transcriptie, nasynchronisatie, ondertiteling en dicteren.",
-    "familyDesc_llm": "Optionele teksthulp voor vertalen en herschrijven. ‘Uit’ slaat deze stappen over."
+    "familyDesc_llm": "Optionele teksthulp voor vertalen en herschrijven. ‘Uit’ slaat deze stappen over.",
+    "mpsLongText": "{{engine}} draait hier op Apple Silicon (MPS) en deze tekst is lang — de generatie overschrijdt mogelijk het tijdsbudget. Kortere tekst, of opsplitsen in meerdere takes, is veel sneller."
   },
   "capture": {
     "desc": "Globale sneltoetsen werken alleen in de desktop-app. De webinterface gebruikt een sneltoets <1>Ctrl+Shift+Spatie</1> op de pagina terwijl het venster focus heeft.",
@@ -2132,6 +2151,9 @@
     "error_prefix": "Fout: {{message}}",
     "ignored_unsupported": "Genegeerde niet-ondersteunde instructie: {{items}}",
     "ignored_duplicate": "Genegeerd (categorie al ingesteld): {{items}}",
+    "ignored_conflict": "{{items}} genegeerd — een Chinees dialect en een Engels accent kunnen niet worden gecombineerd.",
+    "dialect_accent_conflict": "Een Chinees dialect en een Engels accent kunnen niet samen worden gebruikt. Wis er een voordat u opnieuw genereert.",
+    "instruct_category_conflict": "Er zijn twee tegenstrijdige spraakontwerpopties in dezelfde categorie geselecteerd (bijv. twee geslachten). Wis er een voordat u opnieuw genereert.",
     "ref_audio_unusable": "Er is geen spraak gehoord in de referentie-audio — de clip is stil of bijna stil, dus er is geen stem om te klonen. Neem opnieuw op dichter bij de microfoon (controleer of het juiste invoerapparaat is geselecteerd en het niveau beweegt) of kies een andere clip.",
     "ref_audio_too_long": "Een referentie mag maximaal 20 seconden duren met transcript, of 75 seconden zonder transcript. Knip deze tot een duidelijke gesproken passage van 3–10 seconden; knip een meegeleverd transcript tot dezelfde passage.",
     "ref_audio_no_speech": "De automatische spraakdetectie vond geen gesproken woorden in de referentie. Knip deze tot een duidelijke gesproken passage van 3–10 seconden of geef een passend transcript op."

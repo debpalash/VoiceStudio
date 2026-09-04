@@ -228,7 +228,7 @@ def test_phase_a_preserves_the_963_ordering_invariant():
     seg = ast.get_source_segment(src, fn)
     order = [
         seg.index("migrate_legacy_translate_prefs()"),
-        seg.index('startswith("env.")'),
+        seg.index("restore_env("),
         seg.index("activate_ytdlp_overlay()"),
         seg.index("ensure_media_tools_on_path()"),
         seg.index("_preload_cudnn8()"),

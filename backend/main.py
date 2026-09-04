@@ -585,13 +585,14 @@ def _phase_a_build_inner() -> None:
         pass  # never block startup on the migration; it retries next launch
     # Restore persisted env vars from prefs.json (Settings UI writes them
     # there so they survive backend restarts) — before any user code reads
-    # os.environ, and never overriding an explicitly-set env var.
+    # os.environ, and never overriding an explicitly-set env var. Also
+    # snapshots which keys an external source (shell, `.env`, Docker, …)
+    # already provided, so a Settings control can tell the user their saved
+    # value is being shadowed instead of silently promising it will apply
+    # (core.prefs.is_env_shadowed — #1787 review fix).
     try:
-        from core.prefs import _load as _load_all_prefs
-        _prefs = _load_all_prefs()
-        for _k, _v in _prefs.items():
-            if _k.startswith("env.") and _v:
-                os.environ.setdefault(_k[len("env."):], str(_v))
+        from core.prefs import _load as _load_all_prefs, restore_env
+        restore_env(_load_all_prefs())
     except Exception:
         pass  # prefs.json missing or broken — fine on first run
     # yt-dlp user-update overlay: must run before anything imports yt_dlp so

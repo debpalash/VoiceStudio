@@ -68,6 +68,7 @@ describe('restart flag ↔ RestartBadge lockstep', () => {
     'AudioToolsPanel.jsx': 'audio-tools',
     'PerformancePanel.jsx': 'performance',
     'ComputeDevicePanel.jsx': 'performance',
+    'GenerateBudgetPanel.jsx': 'performance',
   };
 
   const panelsUsingRestartBadge = fs

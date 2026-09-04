@@ -26,6 +26,21 @@ class SystemInfoResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     app_version: str = ""
+    # Effective compute-time budgets (seconds) for one synthesis job — the
+    # values services/model_manager.py's GPU_JOB_TIMEOUT_S / CPU_JOB_TIMEOUT_S
+    # captured at backend import time (#1787). A value just saved via
+    # /system/set-env is NOT reflected here until the next restart.
+    generate_timeout_s: float = 300.0
+    cpu_generate_timeout_s: float = 600.0
+    # True when an external env var (shell, `.env`, Docker, …) is currently
+    # shadowing a prefs.json save for this key — see core.prefs.is_env_shadowed.
+    generate_timeout_shadowed: bool = False
+    cpu_generate_timeout_shadowed: bool = False
+    # #1770: the desktop attach handshake's code fingerprint — whatever
+    # Tauri set OMNIVOICE_BUILD_FINGERPRINT to when it spawned this process,
+    # echoed back verbatim. Blank when unset (dev mode, a manually started
+    # backend). See frontend/src-tauri/src/backend.rs::code_fingerprint_is_current.
+    code_fingerprint: str = ""
     data_dir: str
     outputs_dir: str
     crash_log_path: str

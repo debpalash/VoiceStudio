@@ -557,8 +557,21 @@ them to fail faster on a small machine.
 
 CPU-only hosts use a bounded 600-second generation floor because correct CPU
 synthesis can take longer than the accelerated five-minute budget. Override it
-with `OMNIVOICE_CPU_GENERATE_TIMEOUT_S`; an explicit higher
-or lower `OMNIVOICE_GENERATE_TIMEOUT_S` always wins.
+with `OMNIVOICE_CPU_GENERATE_TIMEOUT_S` — an explicit value here always
+governs CPU-family generation, independent of `OMNIVOICE_GENERATE_TIMEOUT_S`.
+Setting *only* `OMNIVOICE_GENERATE_TIMEOUT_S` still governs CPU hosts too, the
+same as it always has (a quick way to lower the watchdog everywhere with one
+var); it only stops doing so once you also set an explicit
+`OMNIVOICE_CPU_GENERATE_TIMEOUT_S`, which then takes precedence for CPU jobs.
+
+Both budgets are also editable from **Settings → Performance & Device →
+Compute-time budget** — no env var or config file needed. A value saved there
+persists across restarts but only takes effect on the *next* backend restart
+(the running process already read the old value at startup), which the panel
+states — and if an external env var (shell profile, `.env`, Docker `-e`,
+systemd unit, …) is already providing the same key, the panel says so instead,
+since that external value keeps winning on every future restart too, not just
+this one.
 
 **Two things changed here** ([#1190](https://github.com/debpalash/VoiceStudio/issues/1190)):
 
@@ -828,6 +841,73 @@ unaffected and works normally.
 > granted, denied, or not asked yet, with an **Open Settings** button that
 > deep-links the exact OS pane described above. The dictation blocker rechecks
 > Accessibility while it is visible and closes as soon as macOS reports the grant.
+
+## 17. Windows: backend won't start with a non-English (CJK) username — `UnicodeDecodeError` in `site`
+
+**Symptom:** the app never gets past first-run setup / "starting_backend", and
+the backend log shows the interpreter dying before any VoiceStudio code runs:
+
+```
+Fatal Python error: init_import_site: Failed to import the site module
+  File "<frozen site>", line 188, in addpackage
+UnicodeDecodeError: 'gbk' codec can't decode byte 0x80 in position 11: illegal multibyte sequence
+```
+
+**Cause:** Python 3.11's `site` module opens every `.pth` file in
+`site-packages` using the ANSI code page — even with `PYTHONUTF8=1` set. When
+the managed environment lives under a Windows user profile whose account name
+contains non-ASCII characters (most commonly CJK), `uv sync`'s editable
+install `.pth` embeds that path in UTF-8, which is rarely a valid byte
+sequence in the active ANSI code page (`gbk`, `shift_jis`, etc.), and the
+interpreter can never start (#1783).
+
+**Fix:** current builds resolve the managed environment through Windows' 8.3
+short filename for any path containing non-ASCII bytes (the same trick
+already used for the HuggingFace cache — see
+[`backend/core/config.py`](../../backend/core/config.py)) whenever there is
+no usable environment yet, or an existing one shows exactly this crash — so
+a first-time install, and an install already broken by this bug, both land
+at an ASCII-safe path automatically with no user action needed. The old
+broken environment (if any) is left in place, not deleted, in case manual
+recovery is ever needed. An existing environment that already works — ASCII
+path or not — is never touched or relocated.
+
+**Prevention, on a brand new install:** on the first-run setup screen (before
+clicking through it), the **Change…** button on the "App environment" row
+(or "Portable folder" in portable mode) lets you pick an ASCII-only path up
+front — nothing below is needed if you do this before setup completes.
+
+If it still happens — most likely because Windows' 8.3 short filenames are
+off on the system drive, or the affected folder already existed before this
+fix shipped — the app names this cause specifically rather than the generic
+"backend never reported ready." By the time this message can appear, setup
+has already been confirmed (it's only reached after the first-run screen
+hands off to the installer), so the error screen you're actually looking at
+offers only **Retry** and **Clean & Retry** — neither changes where the
+environment is stored, so both fail identically, and the first-run picker
+above is no longer reachable either. The right fix depends on which install
+mode you're in:
+
+- **Standard (non-portable) install:** quit VoiceStudio, open (creating it
+  if it doesn't exist) `%LOCALAPPDATA%\com.debpalash.omnivoice-studio\config.json`
+  in a text editor, add `"env_dir": "C:/VoiceStudio/env"` (any path using
+  only English letters/numbers — forward slashes are fine on Windows), save,
+  and relaunch.
+- **Portable install:** the `env_dir` config key above does **not** apply —
+  portable mode resolves its own environment folder from the portable
+  location and never consults it. Quit VoiceStudio, then either move the
+  whole VoiceStudio folder (the app plus its `OmniVoiceStudio-Data` folder)
+  to an ASCII-only path and run it from there, or create a `portable.path`
+  text file beside the app containing one line — an absolute ASCII-only path
+  for the data folder (e.g. `C:\VoiceStudio\Data`) — and relaunch.
+
+Re-enabling 8.3 short filenames (`fsutil 8dot3name`) is deliberately **not**
+recommended here: the setting is per-volume and only affects directories
+created *after* it's changed, so toggling it does nothing for a folder that
+already exists — it would not actually fix this without also recreating the
+folder, which the ASCII-path options above already do more reliably.
+
+**Linked issue:** [#1783](https://github.com/debpalash/VoiceStudio/issues/1783) (auto-captured from [#1771](https://github.com/debpalash/VoiceStudio/issues/1771))
 
 ## Dub: "translation engine needs the optional … package"
 

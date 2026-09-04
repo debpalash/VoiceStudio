@@ -202,6 +202,15 @@ export const GROUPS = [
           'cpu',
           'xpu',
           'intel',
+          'timeout',
+          'generation timeout',
+          'compute budget',
+          'compute-time budget',
+        ],
+        keywordKeys: [
+          'settings.generate_budget_title',
+          'settings.generate_timeout_gpu',
+          'settings.generate_timeout_cpu',
         ],
       },
       {

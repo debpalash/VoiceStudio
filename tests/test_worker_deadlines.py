@@ -70,13 +70,32 @@ def test_execution_budget_uses_target_worker_device(monkeypatch):
 
 
 def test_universal_timeout_override_wins_on_cpu_worker(monkeypatch):
+    """Operators can still lower the watchdog everywhere with ONE var — but
+    only when they have NOT also set an explicit CPU-specific override; see
+    test_cpu_specific_override_wins_over_universal_on_cpu_worker below
+    (#1787 review fix, CodeRabbit/Greptile P1)."""
     from services import model_manager
 
     monkeypatch.setattr(model_manager, "GPU_JOB_TIMEOUT_S", 444.0)
-    monkeypatch.setattr(model_manager, "CPU_JOB_TIMEOUT_S", 777.0)
     monkeypatch.setattr(model_manager, "_GENERATE_TIMEOUT_EXPLICIT", True)
 
     assert for_task("tts", text="short", execution_device="cpu").execution_seconds == 444
+
+
+def test_cpu_specific_override_wins_over_universal_on_cpu_worker(monkeypatch):
+    """#1787 review fix: an explicit CPU-specific budget must win over the
+    legacy universal override on the worker-deadlines path too (not just the
+    local generate_timeout_s() call tested directly in
+    test_generate_timeout_730.py) — otherwise a Settings save into the CPU
+    row is silently ignored whenever the accelerated row is also set, which
+    is the exact defect #1787 exists to remove."""
+    from services import model_manager
+
+    monkeypatch.setattr(model_manager, "GPU_JOB_TIMEOUT_S", 444.0)
+    monkeypatch.setattr(model_manager, "_GENERATE_TIMEOUT_EXPLICIT", True)
+    monkeypatch.setattr(model_manager, "CPU_JOB_TIMEOUT_S", 777.0)
+
+    assert for_task("tts", text="short", execution_device="cpu").execution_seconds == 777
 
 
 def test_accept_is_generous_enough_for_a_busy_worker():

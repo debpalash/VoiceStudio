@@ -404,7 +404,23 @@ _CONFIGURED_GPU_JOB_TIMEOUT_S = GPU_JOB_TIMEOUT_S
 # CPU synthesis is healthy but substantially slower than accelerated inference.
 # Keep a separate, bounded floor so a short render on CPU is not abandoned at
 # the GPU-oriented five-minute deadline (#1588).
+#
+# #1787 review fix: an explicit OMNIVOICE_CPU_GENERATE_TIMEOUT_S must ALWAYS
+# govern CPU dispatches, even when OMNIVOICE_GENERATE_TIMEOUT_S is ALSO
+# explicit. Before this flag existed, `universal_override` below treated any
+# explicit GENERATE_TIMEOUT_S as authoritative for CPU too, so the Settings
+# panel's "CPU budget" row could be saved and silently never apply whenever
+# the "Accelerated" row was also set — the exact defect (a control that looks
+# like it works and doesn't) issue #1787 exists to remove. Setting ONLY
+# OMNIVOICE_GENERATE_TIMEOUT_S keeps its historical "universal" behavior
+# unchanged (test_explicit_universal_generate_timeout_wins_on_cpu) — nobody
+# who already relies on that single-var override loses it. The only case that
+# changes is the previously-undocumented, previously-broken combination of
+# setting BOTH: the more specific (CPU) value now wins for CPU jobs, matching
+# what a user who filled in both Settings rows was told would happen.
+_CPU_GENERATE_TIMEOUT_EXPLICIT = "OMNIVOICE_CPU_GENERATE_TIMEOUT_S" in os.environ
 CPU_JOB_TIMEOUT_S = float(os.environ.get("OMNIVOICE_CPU_GENERATE_TIMEOUT_S", "600.0"))
+_CONFIGURED_CPU_JOB_TIMEOUT_S = CPU_JOB_TIMEOUT_S
 
 # Queue-wait budget — a SEPARATE, deliberately generous clock (#1190/#1202).
 # The execution bound above must never be spent waiting in line: a job queued
@@ -520,8 +536,11 @@ def generate_timeout_s(
     on long inputs. Lives here (not in a router) so every router shares it
     without importing generation.py.
 
-    Policy: floor at the configured OMNIVOICE_GENERATE_TIMEOUT_S, plus 1s per
-    40 characters past a 1200-character free allowance — generous enough for
+    Policy: floor at the configured OMNIVOICE_GENERATE_TIMEOUT_S (accelerated
+    hosts) or OMNIVOICE_CPU_GENERATE_TIMEOUT_S (CPU hosts — the latter wins
+    for CPU whenever it is itself explicit, even if the former also is; see
+    the #1787 comment on the module-level constants), plus 1s per 40
+    characters past a 1200-character free allowance — generous enough for
     CPU-class hardware, still bounded (a wedged job is caught in minutes, not
     hours).
     """
@@ -545,7 +564,14 @@ def generate_timeout_s(
             _GENERATE_TIMEOUT_EXPLICIT
             or GPU_JOB_TIMEOUT_S != _CONFIGURED_GPU_JOB_TIMEOUT_S
         )
-        if family == "cpu" and not universal_override:
+        # An explicit (env-set, or runtime-changed the same way tests do)
+        # CPU budget is more specific than the universal override and always
+        # wins for CPU dispatches — see the #1787 comment above.
+        cpu_explicit = (
+            _CPU_GENERATE_TIMEOUT_EXPLICIT
+            or CPU_JOB_TIMEOUT_S != _CONFIGURED_CPU_JOB_TIMEOUT_S
+        )
+        if family == "cpu" and (cpu_explicit or not universal_override):
             base = CPU_JOB_TIMEOUT_S
     except Exception:
         # Device probing is advisory here; the configured universal bound is

@@ -12,7 +12,11 @@ import {
 } from '../utils/streamingTts';
 import { probeAudioDuration } from '../utils/format';
 import { CLONE_MAX_SECONDS, PRESETS } from '../utils/constants';
-import { buildDesignInstruct, designModeProfileId } from '../utils/voiceInstruct';
+import {
+  buildDesignInstruct,
+  designModeProfileId,
+  mergeDescribedAttrs,
+} from '../utils/voiceInstruct';
 import { toast } from 'react-hot-toast';
 import { toastErrorWithReport } from '../utils/errorToast';
 import { modelNotDownloadedPayload, toastModelNotDownloaded } from '../utils/modelNotDownloaded';
@@ -104,7 +108,12 @@ export default function useTTS({ selectedProfile, setSelectedProfile, loadHistor
 
   const applyPreset = useCallback(
     (preset) => {
-      useAppStore.getState().setVdStates(preset.attrs);
+      // #1771: run every "replace the whole vdStates" entry point through the
+      // same accent/dialect exclusivity guard the live picker uses — today's
+      // hardcoded PRESETS never set both, but a future one (or a hand-edited
+      // constants.js) shouldn't be able to rebuild the conflict the engine
+      // rejects.
+      useAppStore.getState().setVdStates(mergeDescribedAttrs(preset.attrs));
       if (preset.tags && !text.includes(preset.tags.trim())) insertTag(preset.tags);
     },
     [text, insertTag],
@@ -161,6 +170,7 @@ export default function useTTS({ selectedProfile, setSelectedProfile, loadHistor
             instruct: safeInstruct,
             unsupported,
             duplicates,
+            conflicts,
           } = buildDesignInstruct({}, instruct);
           if (unsupported.length) {
             toast(t('tts_errors.ignored_unsupported', { items: unsupported.join(', ') }), {
@@ -169,6 +179,15 @@ export default function useTTS({ selectedProfile, setSelectedProfile, loadHistor
           }
           if (duplicates.length) {
             toast(t('tts_errors.ignored_duplicate', { items: duplicates.join(', ') }), {
+              icon: '⚠️',
+            });
+          }
+          // #1771: a Chinese dialect and an English accent typed together
+          // (e.g. into a clone's free-text style field) — the engine rejects
+          // the combination outright, so drop the loser client-side instead of
+          // round-tripping a 400.
+          if (conflicts.length) {
+            toast(t('tts_errors.ignored_conflict', { items: conflicts.join(', ') }), {
               icon: '⚠️',
             });
           }
@@ -187,6 +206,7 @@ export default function useTTS({ selectedProfile, setSelectedProfile, loadHistor
           instruct: finalInstruct,
           unsupported,
           duplicates,
+          conflicts,
         } = buildDesignInstruct(vdStates, instruct);
         if (unsupported.length) {
           toast(t('tts_errors.ignored_unsupported', { items: unsupported.join(', ') }), {
@@ -195,6 +215,14 @@ export default function useTTS({ selectedProfile, setSelectedProfile, loadHistor
         }
         if (duplicates.length) {
           toast(t('tts_errors.ignored_duplicate', { items: duplicates.join(', ') }), {
+            icon: '⚠️',
+          });
+        }
+        // #1771: backstop for a dialect+accent pick that reached here anyway
+        // (the picker and vdStates-restore paths already prevent this) — drop
+        // the loser instead of letting the engine 400 on it.
+        if (conflicts.length) {
+          toast(t('tts_errors.ignored_conflict', { items: conflicts.join(', ') }), {
             icon: '⚠️',
           });
         }

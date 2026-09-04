@@ -1824,10 +1824,13 @@ select.input-base:focus-visible,
 }
 /* .tag-btn → Tailwind utilities inline in clone/ScriptPanel.jsx (P4). */
 
-/* .chip-group / .chip-group .chip → Tailwind utilities inline in
-   clone/DesignMethodPanel.jsx (P4). The `chip-group` class name is kept on the
-   container purely as a JS hook (CloneDesignTab's roving-tabindex keyboard nav
-   does `closest('.chip-group')`); its layout is now flex utilities on the div. */
+/* Chip strips → Tailwind utilities inline in clone/DesignMethodPanel.jsx
+   (P4). The Gender/Age/Pitch/Style/Accent-or-Dialect chip radiogroups moved
+   to native <select>s in the #1771 voice-design redesign; the "Starting
+   points" personality row is the only chip strip left. Its buttons carry a
+   `data-chip-nav` attribute purely as a JS hook — CloneDesignTab's
+   roving-tabindex keyboard nav does `closest('[role="group"]')
+   .querySelectorAll('[data-chip-nav]')`; layout is flex utilities on the div. */
 
 /* Textarea — flat chrome surface for design/clone prompt box */
 textarea.input-base {

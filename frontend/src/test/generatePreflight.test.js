@@ -267,6 +267,67 @@ describe('CPU-only host with long text', () => {
   });
 });
 
+// #1787/#1778: an M3/MPS host that hits the flat GPU-family budget on long
+// text got no warning at all — `effective_device: 'mps'` is neither
+// `routing_status: 'cpu_only'` (the CPU branch) nor a benign accelerated
+// verdict with a reason, so both existing checks stayed silent.
+describe('MPS host with long text', () => {
+  beforeEach(() => {
+    toastFn.mockClear();
+    listEnginesMock.mockReset();
+    _resetPreflight();
+  });
+
+  const LONG = 'a'.repeat(1500);
+  const SHORT = 'a'.repeat(200);
+  const mpsHost = () =>
+    engines('omnivoice', [
+      {
+        id: 'omnivoice',
+        routing_status: 'accelerated',
+        routing_reason: null,
+        effective_device: 'mps',
+      },
+    ]);
+
+  it('warns on long text when the host runs on MPS', async () => {
+    listEnginesMock.mockResolvedValue(mpsHost());
+    await warnIfEngineUnderProvisioned(LONG);
+
+    expect(toastFn).toHaveBeenCalledTimes(1);
+    expect(toastFn.mock.calls[0][0]).toContain('engines.mpsLongText');
+    expect(toastFn.mock.calls[0][0]).toContain('omnivoice');
+  });
+
+  it('stays quiet for ordinary short text on the same MPS host', async () => {
+    listEnginesMock.mockResolvedValue(mpsHost());
+    await warnIfEngineUnderProvisioned(SHORT);
+    expect(toastFn).not.toHaveBeenCalled();
+  });
+
+  it('warns once, not on every long synth', async () => {
+    listEnginesMock.mockResolvedValue(mpsHost());
+    await warnIfEngineUnderProvisioned(LONG);
+    await warnIfEngineUnderProvisioned(LONG);
+    expect(toastFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('stays quiet for long text on a CUDA host', async () => {
+    listEnginesMock.mockResolvedValue(
+      engines('omnivoice', [
+        {
+          id: 'omnivoice',
+          routing_status: 'accelerated',
+          routing_reason: null,
+          effective_device: 'cuda',
+        },
+      ]),
+    );
+    await warnIfEngineUnderProvisioned(LONG);
+    expect(toastFn).not.toHaveBeenCalled();
+  });
+});
+
 describe('CPU-tuned engines do not recommend themselves', () => {
   beforeEach(() => {
     toastFn.mockClear();

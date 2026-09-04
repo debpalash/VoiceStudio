@@ -337,7 +337,18 @@
     "device_family_mps": "Apple GPU (MPS)",
     "device_family_cpu": "CPU",
     "device_load_failed": "Impossibile caricare l'impostazione del dispositivo",
-    "perf_save_failed": "Impossibile salvare l'impostazione"
+    "perf_save_failed": "Impossibile salvare l'impostazione",
+    "generate_budget_title": "Budget di tempo di calcolo",
+    "generate_budget_desc": "Per quanto tempo una generazione può essere eseguita prima di essere abbandonata perché troppo pesante per questo hardware. I rendering su CPU sono legittimamente più lenti di quelli accelerati, quindi hanno un proprio limite, più alto.",
+    "generate_timeout_gpu": "Budget accelerato (GPU)",
+    "generate_timeout_gpu_note": "Usato quando la generazione viene eseguita su CUDA, ROCm, MPS o un altro acceleratore. Usato anche per la generazione su CPU se non è impostato alcun budget CPU qui sotto.",
+    "generate_timeout_cpu": "Budget CPU",
+    "generate_timeout_cpu_note": "Usato quando la generazione viene eseguita sulla CPU. Una volta salvato qui, questo valore governa sempre la generazione su CPU, indipendentemente dal budget accelerato sopra.",
+    "generate_timeout_invalid": "Inserisci un numero di secondi maggiore di 0 e al massimo {{max}}.",
+    "generate_timeout_saved": "Salvato. Riavvia VoiceStudio affinché il nuovo budget abbia effetto.",
+    "generate_timeout_shadowed_badge": "Sovrascritto esternamente",
+    "generate_timeout_shadowed_note": "Una variabile d'ambiente esterna a VoiceStudio (shell, file .env o container) sta attualmente impostando questo valore — il valore salvato qui viene ignorato finché quella variabile non viene rimossa.",
+    "generate_timeout_shadowed_toast": "Salvato, ma una variabile d'ambiente esterna a VoiceStudio sta attualmente impostando questo valore — continuerà a essere usato finché quella variabile non viene rimossa."
   },
   "bootstrap": {
     "title": "VoiceStudio",
@@ -580,6 +591,7 @@
     "cat_Style": "Stile",
     "cat_EnglishAccent": "Accento inglese",
     "cat_ChineseDialect": "Dialetto cinese",
+    "vd_exclusive_cleared": "{{cleared}} rimosso — un dialetto cinese e un accento inglese non possono essere combinati.",
     "opt_Auto": "✨ Automatico",
     "opt_male": "maschio",
     "opt_female": "femmina",
@@ -598,7 +610,7 @@
     "stop_playback": "Interrompi riproduzione",
     "describe_label": "Descrivi la tua voce",
     "describe_placeholder": "es. a warm elderly British storyteller, slightly raspy",
-    "describe_hint": "La tua descrizione (in inglese) imposta i controlli qui sotto — puoi comunque regolarli dopo.",
+    "describe_hint": "Descrivi la voce, oppure scegli un punto di partenza. In entrambi i casi i dettagli qui sotto si compilano automaticamente.",
     "describe_unmatched": "Impossibile mappare: {{items}}",
     "describe_no_match": "Nessun tratto vocale riconosciuto — prova parole come deep, elderly o British.",
     "define_by_design": "Tramite progettazione",
@@ -619,7 +631,13 @@
     "seed_keep": "Conserva questo seme",
     "seed_reroll": "Nuovo seme",
     "seed_reroll_hint": "Lancia un nuovo seme casuale e conservalo",
-    "define_convert": "Converti"
+    "define_convert": "Converti",
+    "details": "Dettagli",
+    "edit": "Modifica",
+    "cat_AccentDialect": "Accento o dialetto",
+    "accent_dialect_hint": "uno o l'altro, mai entrambi",
+    "reset_to_description": "Reimposta in base alla descrizione",
+    "chips_more": "altri {{count}}…"
   },
   "about": {
     "app": "App",
@@ -798,7 +816,8 @@
     "familyMatrixTitle": "Motori {{family}}",
     "familyDesc_tts": "Trasforma il copione in voce. Studio, Doppiaggio e Batch usano il motore attivo.",
     "familyDesc_asr": "Trasforma l’audio in testo per trascrizione, doppiaggio, sottotitoli e dettatura.",
-    "familyDesc_llm": "Assistente di testo opzionale per traduzioni e riscritture. “Disattivato” salta questi passaggi."
+    "familyDesc_llm": "Assistente di testo opzionale per traduzioni e riscritture. “Disattivato” salta questi passaggi.",
+    "mpsLongText": "{{engine}} qui viene eseguito su Apple Silicon (MPS) e questo testo è lungo: la generazione potrebbe superare il limite di tempo. Un testo più breve, o diviso in più riprese, sarà molto più veloce."
   },
   "capture": {
     "desc": "I tasti di scelta rapida globali funzionano solo nell'app desktop. L'interfaccia utente Web utilizza una scorciatoia <1>Ctrl+Shift+Spazio</1> nella pagina mentre la finestra è attiva.",
@@ -2132,6 +2151,9 @@
     "error_prefix": "Errore: {{message}}",
     "ignored_unsupported": "Istruzione non supportata ignorata: {{items}}",
     "ignored_duplicate": "Ignorato (categoria già impostata): {{items}}",
+    "ignored_conflict": "{{items}} ignorato — un dialetto cinese e un accento inglese non possono essere combinati.",
+    "dialect_accent_conflict": "Un dialetto cinese e un accento inglese non possono essere usati insieme. Rimuovine uno prima di generare di nuovo.",
+    "instruct_category_conflict": "Sono state selezionate due opzioni di progettazione vocale in conflitto nella stessa categoria (ad es. due generi). Rimuovine una prima di generare di nuovo.",
     "ref_audio_unusable": "Nessuna voce rilevata nell'audio di riferimento: la clip è silenziosa o quasi, quindi non c'è alcuna voce da clonare. Registra di nuovo più vicino al microfono (verifica che sia selezionato il dispositivo di ingresso corretto e che il livello si muova) oppure scegli un'altra clip.",
     "ref_audio_too_long": "Un riferimento può durare al massimo 20 secondi con trascrizione o 75 secondi senza. Taglialo a un passaggio parlato chiaro di 3–10 secondi; se fornisci il testo, taglia la trascrizione sullo stesso passaggio.",
     "ref_audio_no_speech": "Il rilevamento automatico non ha trovato parole pronunciate nel riferimento. Taglialo a un passaggio parlato chiaro di 3–10 secondi o fornisci una trascrizione corrispondente."

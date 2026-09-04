@@ -82,6 +82,78 @@ describe('toastErrorWithReport user-fixable marker mapping (#1188)', () => {
   });
 });
 
+// #1771: the voice-design instruct validator (omnivoice/models/omnivoice.py::
+// _resolve_instruct, #664) rejects a dialect+accent mix and a same-category
+// conflict with a fixed English message and no [marker]. The client-side
+// guards in voiceInstruct.js already stop the picker from building these —
+// this is the backstop for a conflict that reaches the engine by any other
+// route (an imported project, a hand-edited/legacy profile).
+describe('toastErrorWithReport voice-design instruct guidance (#1771)', () => {
+  beforeEach(() => {
+    toastErrorMock.mockClear();
+  });
+
+  it('shows actionable guidance for the dialect/accent 400, not the raw detail', () => {
+    const detail =
+      '400 Bad Request: Cannot mix Chinese dialect and English accent in a single instruct. ' +
+      'Dialects are for Chinese speech, accents for English speech.';
+    toastErrorWithReport(`Error: ${detail}`, new Error(detail));
+    expect(toastErrorMock).toHaveBeenCalledWith('t:tts_errors.dialect_accent_conflict', {
+      duration: 8000,
+    });
+  });
+
+  it('shows actionable guidance for a same-category conflict 400', () => {
+    const detail =
+      "400 Bad Request: Conflicting instruct items within the same category: 'male' vs " +
+      "'female'. Each category (gender, age, pitch, style, accent, dialect) allows at most " +
+      'one item.';
+    toastErrorWithReport(`Error: ${detail}`, new Error(detail));
+    expect(toastErrorMock).toHaveBeenCalledWith('t:tts_errors.instruct_category_conflict', {
+      duration: 8000,
+    });
+  });
+
+  // Enumerated rather than globbed: a `>= 21` count over readdir() passes
+  // even when a supported locale is missing, as long as some other .json
+  // makes up the number. Naming the files means dropping one fails here.
+  const SUPPORTED_LOCALES = [
+    'ar',
+    'de',
+    'en',
+    'es',
+    'fr',
+    'hi',
+    'id',
+    'it',
+    'ja',
+    'ko',
+    'nl',
+    'pl',
+    'pt',
+    'ru',
+    'sv',
+    'th',
+    'tr',
+    'uk',
+    'vi',
+    'zh-CN',
+    'zh-TW',
+  ];
+
+  it('every new i18n key added for #1771 exists in all 21 locales', () => {
+    const localesDir = path.resolve(__dirname, '../i18n/locales');
+    expect(SUPPORTED_LOCALES).toHaveLength(21);
+    for (const code of SUPPORTED_LOCALES) {
+      const locale = JSON.parse(fs.readFileSync(path.join(localesDir, `${code}.json`), 'utf8'));
+      expect(locale.tts_errors?.dialect_accent_conflict, `${code} missing key`).toBeTruthy();
+      expect(locale.tts_errors?.instruct_category_conflict, `${code} missing key`).toBeTruthy();
+      expect(locale.tts_errors?.ignored_conflict, `${code} missing key`).toBeTruthy();
+      expect(locale.clone?.vd_exclusive_cleared, `${code} missing key`).toBeTruthy();
+    }
+  });
+});
+
 // #1276: a shutdown is not a fault and must not offer a bug report. Matched on
 // the [shutting_down] MARKER, never on the bare 503 status — 503 is also how a
 // real engine-load timeout and an unavailable engine are reported (#1246,

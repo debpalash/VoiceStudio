@@ -591,7 +591,10 @@ def test_set_env_allows_loopback():
             json={"key": "HF_TOKEN", "value": "hf_loopback_ok"},
         )
         assert res.status_code == 200
-        assert res.json() == {"key": "HF_TOKEN", "set": True}
+        # `shadowed` (#1787) is additive — HF_TOKEN is never persisted via
+        # prefs.json (it goes through huggingface_hub.login() instead), so it
+        # is never shadow-tracked and always reports False here.
+        assert res.json() == {"key": "HF_TOKEN", "set": True, "shadowed": False}
         assert os.environ.get("HF_TOKEN") == "hf_loopback_ok"
     finally:
         if original is None:

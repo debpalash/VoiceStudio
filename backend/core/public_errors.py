@@ -32,8 +32,8 @@ def stream_failure(code: str) -> dict[str, object]:
             "code": "generation_timeout",
             "detail": (
                 "Generation exceeded the compute-time limit. The backend is "
-                "still running; try a shorter passage or raise the generation "
-                "timeout."
+                "still running; try a shorter passage, or raise the "
+                "compute-time budget in Settings → Performance & Device."
             ),
             "retryable": True,
         },

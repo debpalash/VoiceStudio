@@ -93,22 +93,30 @@ const CPU_TUNED_ENGINES = new Set(['omnivoice-gguf', 'supertonic3']);
  * the 300s budget on long text and got no warning at all, because the
  * under-provisioned-GPU check does not apply to them.
  *
+ * MPS (Apple Silicon) gets its own branch for the same reason (#1787/#1778):
+ * `generate_timeout_s()` in model_manager.py gives MPS the GPU-family budget,
+ * not the CPU one, so a long render there can legitimately exceed it too —
+ * the class of report is identical to the CPU case, just a different device.
+ *
  * Only fires past the backend's own long-text threshold, so ordinary sentences
- * on a CPU laptop stay quiet.
+ * on a slower device stay quiet.
  */
-function warnIfLongTextOnCpu(active, entry, text) {
+function warnIfLongTextOnSlowDevice(active, entry, text) {
   const onCpu = entry?.routing_status === 'cpu_only' || entry?.effective_device === 'cpu';
-  if (!onCpu || (text || '').length <= LONG_TEXT_CHARS) return;
+  const onMps = !onCpu && entry?.effective_device === 'mps';
+  if ((!onCpu && !onMps) || (text || '').length <= LONG_TEXT_CHARS) return;
 
-  const key = `${active}|cpu-long-text`;
+  const key = `${active}|${onCpu ? 'cpu' : 'mps'}-long-text`;
   if (warned.has(key)) return;
   warned.add(key);
 
-  const i18nKey = CPU_TUNED_ENGINES.has(active)
-    ? 'engines.cpuLongTextTuned'
-    : 'engines.cpuLongText';
+  const i18nKey = onMps
+    ? 'engines.mpsLongText'
+    : CPU_TUNED_ENGINES.has(active)
+      ? 'engines.cpuLongTextTuned'
+      : 'engines.cpuLongText';
   toast(i18next.t(i18nKey, { engine: active }), {
-    id: `cpu-long-text-${active}`,
+    id: `${onCpu ? 'cpu' : 'mps'}-long-text-${active}`,
     icon: '⏳',
     duration: 12000,
   });
@@ -127,7 +135,7 @@ export async function warnIfEngineUnderProvisioned(text = '') {
     const entry = (tts.backends || []).find((b) => b.id === active);
     const notice = routingNotice(entry);
     if (!notice) {
-      warnIfLongTextOnCpu(active, entry, text);
+      warnIfLongTextOnSlowDevice(active, entry, text);
       return;
     }
 

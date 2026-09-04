@@ -62,6 +62,24 @@ def test_system_info_smoke(client):
     assert body["arch"] == _pf.machine()
 
 
+def test_system_info_reports_code_fingerprint(client, monkeypatch):
+    """#1770: the desktop attach handshake compares this against its own
+    build's fingerprint (frontend/src-tauri/src/backend.rs::
+    code_fingerprint_is_current) to tell "this build's code" apart from "a
+    same-version backend running older code" — a plain version match isn't
+    enough because `main` holds one version string for an entire release
+    cycle. Blank by default (no OMNIVOICE_BUILD_FINGERPRINT set, e.g. a
+    manually started backend); echoed back verbatim when Tauri sets it.
+    """
+    monkeypatch.delenv("OMNIVOICE_BUILD_FINGERPRINT", raising=False)
+    body = client.get("/system/info").json()
+    assert body["code_fingerprint"] == ""
+
+    monkeypatch.setenv("OMNIVOICE_BUILD_FINGERPRINT", "deadbeef1234")
+    body = client.get("/system/info").json()
+    assert body["code_fingerprint"] == "deadbeef1234"
+
+
 def test_health_exposes_version(client):
     """`/health` is the zero-auth way to confirm the running version (#249)."""
     from core.version import APP_VERSION

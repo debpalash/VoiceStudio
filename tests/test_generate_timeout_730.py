@@ -158,6 +158,99 @@ def test_explicit_universal_generate_timeout_wins_on_cpu(model_manager, monkeypa
         importlib.reload(mm)
 
 
+# ── #1787 review fix: the two Settings rows must be genuinely independent ──
+# CodeRabbit/Greptile P1: the Settings panel presents "Accelerated (GPU)
+# budget" and "CPU budget" as two independent rows, but the legacy
+# `universal_override` logic above let an explicit OMNIVOICE_GENERATE_TIMEOUT_S
+# silently govern CPU jobs too — so a user who saved BOTH rows had their CPU
+# save ignored with no indication anything was wrong. An explicit CPU value
+# must always win for CPU dispatches, while the single-var "universal"
+# behavior (only OMNIVOICE_GENERATE_TIMEOUT_S set) stays byte-for-byte
+# unchanged for backward compatibility (see test above).
+
+def test_explicit_cpu_budget_wins_even_with_explicit_universal_override(
+    model_manager, monkeypatch,
+):
+    """The bug this fix removes: saving BOTH Settings rows must make the CPU
+    row actually govern CPU dispatches, not silently lose to the GPU row."""
+    import importlib
+    import types
+    import core.device_caps as caps
+
+    monkeypatch.setenv("OMNIVOICE_GENERATE_TIMEOUT_S", "123.5")
+    monkeypatch.setenv("OMNIVOICE_CPU_GENERATE_TIMEOUT_S", "999.0")
+    mm = importlib.reload(model_manager)
+    monkeypatch.setattr(
+        caps, "detect_host_caps", lambda: types.SimpleNamespace(family="cpu")
+    )
+    try:
+        assert mm.generate_timeout_s("A short CPU render") == 999.0
+    finally:
+        monkeypatch.delenv("OMNIVOICE_GENERATE_TIMEOUT_S", raising=False)
+        monkeypatch.delenv("OMNIVOICE_CPU_GENERATE_TIMEOUT_S", raising=False)
+        importlib.reload(mm)
+
+
+def test_explicit_cpu_budget_does_not_affect_gpu_dispatches(model_manager, monkeypatch):
+    """The CPU row governs CPU jobs only — an accelerated host still uses the
+    GPU-family budget even when a CPU-specific value is also set."""
+    import importlib
+    import types
+    import core.device_caps as caps
+
+    monkeypatch.setenv("OMNIVOICE_GENERATE_TIMEOUT_S", "123.5")
+    monkeypatch.setenv("OMNIVOICE_CPU_GENERATE_TIMEOUT_S", "999.0")
+    mm = importlib.reload(model_manager)
+    monkeypatch.setattr(
+        caps, "detect_host_caps", lambda: types.SimpleNamespace(family="cuda")
+    )
+    try:
+        assert mm.generate_timeout_s("A short CUDA render") == 123.5
+    finally:
+        monkeypatch.delenv("OMNIVOICE_GENERATE_TIMEOUT_S", raising=False)
+        monkeypatch.delenv("OMNIVOICE_CPU_GENERATE_TIMEOUT_S", raising=False)
+        importlib.reload(mm)
+
+
+def test_cpu_budget_alone_still_wins_without_universal_override(model_manager, monkeypatch):
+    """Unchanged pre-existing case: only the CPU var set, no universal
+    override in play — already worked, must keep working."""
+    import importlib
+    import types
+    import core.device_caps as caps
+
+    monkeypatch.setenv("OMNIVOICE_CPU_GENERATE_TIMEOUT_S", "999.0")
+    mm = importlib.reload(model_manager)
+    monkeypatch.setattr(
+        caps, "detect_host_caps", lambda: types.SimpleNamespace(family="cpu")
+    )
+    try:
+        assert mm.generate_timeout_s("A short CPU render") == 999.0
+    finally:
+        monkeypatch.delenv("OMNIVOICE_CPU_GENERATE_TIMEOUT_S", raising=False)
+        importlib.reload(mm)
+
+
+def test_runtime_changed_cpu_budget_is_treated_as_explicit(model_manager, monkeypatch):
+    """Mirrors the existing GPU-side contract: a test (or future in-process
+    caller) that mutates CPU_JOB_TIMEOUT_S directly — not via the env var —
+    is also treated as an explicit override, same as GPU_JOB_TIMEOUT_S !=
+    _CONFIGURED_GPU_JOB_TIMEOUT_S already is above."""
+    monkeypatch.setattr(model_manager, "GPU_JOB_TIMEOUT_S", 300.0)
+    monkeypatch.setattr(model_manager, "CPU_JOB_TIMEOUT_S", 999.0)
+    import types
+    import core.device_caps as caps
+
+    monkeypatch.setattr(
+        caps, "detect_host_caps", lambda: types.SimpleNamespace(family="cpu")
+    )
+    # GPU_JOB_TIMEOUT_S itself was NOT changed relative to its configured
+    # baseline, so universal_override is False here — this proves the
+    # CPU-explicit branch is reached via the "!=" check, not just via
+    # universal_override being absent.
+    assert model_manager.generate_timeout_s("A short CPU render") == 999.0
+
+
 def test_guard_without_reset_still_bounds(model_manager):
     """A plain executor (no `reset`, e.g. in other call sites/tests) still gets
     the wall-clock bound + actionable error — reset is best-effort, not required.

@@ -337,7 +337,18 @@
     "device_family_mps": "Apple GPU (MPS)",
     "device_family_cpu": "CPU",
     "device_load_failed": "Không tải được cài đặt thiết bị",
-    "perf_save_failed": "Không lưu được cài đặt"
+    "perf_save_failed": "Không lưu được cài đặt",
+    "generate_budget_title": "Ngân sách thời gian tính toán",
+    "generate_budget_desc": "Một lượt tạo được phép chạy bao lâu trước khi bị hủy vì quá nặng đối với phần cứng này. Việc kết xuất trên CPU vốn chậm hơn kết xuất tăng tốc, nên nó có ngưỡng riêng, cao hơn.",
+    "generate_timeout_gpu": "Ngân sách tăng tốc (GPU)",
+    "generate_timeout_gpu_note": "Dùng khi quá trình tạo chạy trên CUDA, ROCm, MPS hoặc bộ tăng tốc khác. Cũng dùng cho việc tạo trên CPU nếu chưa đặt ngân sách CPU bên dưới.",
+    "generate_timeout_cpu": "Ngân sách CPU",
+    "generate_timeout_cpu_note": "Dùng khi quá trình tạo chạy trên CPU. Sau khi lưu ở đây, giá trị này luôn chi phối việc tạo trên CPU — không phụ thuộc vào ngân sách tăng tốc ở trên.",
+    "generate_timeout_invalid": "Nhập số giây lớn hơn 0 và tối đa {{max}}.",
+    "generate_timeout_saved": "Đã lưu. Khởi động lại VoiceStudio để ngân sách mới có hiệu lực.",
+    "generate_timeout_shadowed_badge": "Bị ghi đè từ bên ngoài",
+    "generate_timeout_shadowed_note": "Một biến môi trường bên ngoài VoiceStudio (shell, tệp .env hoặc container) hiện đang đặt giá trị này — giá trị đã lưu ở đây sẽ bị bỏ qua cho đến khi biến đó được gỡ bỏ.",
+    "generate_timeout_shadowed_toast": "Đã lưu, nhưng một biến môi trường bên ngoài VoiceStudio hiện đang đặt giá trị này — giá trị đó sẽ tiếp tục được dùng cho đến khi biến đó được gỡ bỏ."
   },
   "bootstrap": {
     "title": "VoiceStudio",
@@ -580,6 +591,7 @@
     "cat_Style": "phong cách",
     "cat_EnglishAccent": "Giọng Anh",
     "cat_ChineseDialect": "Phương ngữ Trung Quốc",
+    "vd_exclusive_cleared": "Đã xóa {{cleared}} — không thể kết hợp giọng địa phương Trung Quốc và giọng Anh.",
     "opt_Auto": "✨ Ô tô",
     "opt_male": "nam giới",
     "opt_female": "nữ",
@@ -598,7 +610,7 @@
     "stop_playback": "Dừng phát",
     "describe_label": "Mô tả giọng nói của bạn",
     "describe_placeholder": "vd. a warm elderly British storyteller, slightly raspy",
-    "describe_hint": "Mô tả của bạn (bằng tiếng Anh) sẽ thiết lập các điều khiển bên dưới — bạn vẫn có thể tinh chỉnh sau.",
+    "describe_hint": "Mô tả giọng nói, hoặc chọn một điểm khởi đầu. Cả hai cách đều tự điền chi tiết bên dưới.",
     "describe_unmatched": "Không thể ánh xạ: {{items}}",
     "describe_no_match": "Chưa nhận ra đặc điểm giọng nói nào — hãy thử các từ như deep, elderly hoặc British.",
     "define_by_design": "Theo thiết kế",
@@ -619,7 +631,13 @@
     "seed_keep": "Giữ hạt giống này",
     "seed_reroll": "Hạt giống mới",
     "seed_reroll_hint": "Cuộn một hạt giống ngẫu nhiên mới và giữ nó",
-    "define_convert": "Chuyển đổi"
+    "define_convert": "Chuyển đổi",
+    "details": "Chi tiết",
+    "edit": "Chỉnh sửa",
+    "cat_AccentDialect": "Giọng hoặc phương ngữ",
+    "accent_dialect_hint": "chỉ một trong hai, không cả hai",
+    "reset_to_description": "Đặt lại theo mô tả",
+    "chips_more": "{{count}} mục khác…"
   },
   "about": {
     "app": "ứng dụng",
@@ -798,7 +816,8 @@
     "familyMatrixTitle": "Công cụ {{family}}",
     "familyDesc_tts": "Chuyển kịch bản thành giọng nói. Studio, Lồng tiếng và Hàng loạt dùng công cụ đang hoạt động.",
     "familyDesc_asr": "Chuyển âm thanh thành văn bản để phiên âm, lồng tiếng, tạo phụ đề và đọc chính tả.",
-    "familyDesc_llm": "Trợ lý văn bản tùy chọn cho dịch thuật và viết lại. “Tắt” sẽ bỏ qua các bước này."
+    "familyDesc_llm": "Trợ lý văn bản tùy chọn cho dịch thuật và viết lại. “Tắt” sẽ bỏ qua các bước này.",
+    "mpsLongText": "{{engine}} chạy trên Apple Silicon (MPS) ở đây và văn bản này dài — quá trình tạo có thể vượt quá giới hạn thời gian. Văn bản ngắn hơn, hoặc chia thành vài phần, sẽ nhanh hơn nhiều."
   },
   "capture": {
     "desc": "Phím nóng chung chỉ hoạt động trong ứng dụng máy tính để bàn. Giao diện người dùng web sử dụng phím tắt <1>Ctrl+Shift+Space</1> trong trang trong khi cửa sổ đang có tiêu điểm.",
@@ -2132,6 +2151,9 @@
     "error_prefix": "Lỗi: {{message}}",
     "ignored_unsupported": "Đã bỏ qua hướng dẫn không được hỗ trợ: {{items}}",
     "ignored_duplicate": "Đã bỏ qua (danh mục đã được đặt): {{items}}",
+    "ignored_conflict": "Đã bỏ qua {{items}} — không thể kết hợp giọng địa phương Trung Quốc và giọng Anh.",
+    "dialect_accent_conflict": "Không thể dùng giọng địa phương Trung Quốc và giọng Anh cùng lúc. Hãy xóa một trong hai trước khi tạo lại.",
+    "instruct_category_conflict": "Đã chọn hai tùy chọn thiết kế giọng nói xung đột trong cùng một danh mục (ví dụ: hai giới tính). Hãy xóa một trong hai trước khi tạo lại.",
     "ref_audio_unusable": "Không nghe thấy giọng nói trong âm thanh tham chiếu — đoạn clip im lặng hoặc gần như im lặng nên không có giọng để nhân bản. Hãy thu âm lại gần micro hơn (kiểm tra đã chọn đúng thiết bị đầu vào và mức âm có dao động) hoặc chọn một clip khác.",
     "ref_audio_too_long": "Âm thanh tham chiếu dài tối đa 20 giây khi có bản chép lời hoặc 75 giây khi không có. Hãy cắt thành đoạn lời nói rõ dài 3–10 giây; nếu cung cấp văn bản, hãy cắt bản chép lời theo đúng đoạn đó.",
     "ref_audio_no_speech": "Tính năng phát hiện tự động không tìm thấy lời nói trong âm thanh tham chiếu. Hãy cắt thành đoạn lời nói rõ dài 3–10 giây hoặc cung cấp bản chép lời khớp."

@@ -19,6 +19,7 @@ import { SettingsSection } from './primitives';
 import Row from './Row';
 import PerformancePanel from './PerformancePanel';
 import ComputeDevicePanel from './ComputeDevicePanel';
+import GenerateBudgetPanel from './GenerateBudgetPanel';
 
 export default function PerformanceDeviceTab() {
   const { t } = useTranslation();
@@ -31,6 +32,8 @@ export default function PerformanceDeviceTab() {
       <PerformancePanel />
 
       <ComputeDevicePanel />
+
+      <GenerateBudgetPanel />
 
       <SettingsSection
         icon={Gauge}

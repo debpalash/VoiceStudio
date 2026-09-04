@@ -337,7 +337,18 @@
     "device_family_mps": "Apple GPU (MPS)",
     "device_family_cpu": "CPU",
     "device_load_failed": "Aygıt ayarı yüklenemedi",
-    "perf_save_failed": "Ayar kaydedilemedi"
+    "perf_save_failed": "Ayar kaydedilemedi",
+    "generate_budget_title": "Hesaplama süresi bütçesi",
+    "generate_budget_desc": "Bir üretimin, bu donanım için çok ağır olduğu gerekçesiyle durdurulmadan önce ne kadar süre çalışabileceği. CPU render'ları hızlandırılmışlara göre doğal olarak daha yavaştır, bu yüzden kendi, daha yüksek alt sınırına sahiptirler.",
+    "generate_timeout_gpu": "Hızlandırılmış (GPU) bütçesi",
+    "generate_timeout_gpu_note": "Üretim CUDA, ROCm, MPS veya başka bir hızlandırıcı üzerinde çalıştığında kullanılır. Aşağıda CPU bütçesi ayarlanmamışsa CPU üretimi için de kullanılır.",
+    "generate_timeout_cpu": "CPU bütçesi",
+    "generate_timeout_cpu_note": "Üretim CPU üzerinde çalıştığında kullanılır. Burada kaydedildikten sonra bu değer, yukarıdaki hızlandırılmış bütçeden bağımsız olarak her zaman CPU üretimini yönetir.",
+    "generate_timeout_invalid": "0'dan büyük ve en fazla {{max}} saniye girin.",
+    "generate_timeout_saved": "Kaydedildi. Yeni bütçenin geçerli olması için VoiceStudio'yu yeniden başlatın.",
+    "generate_timeout_shadowed_badge": "Dışarıdan geçersiz kılındı",
+    "generate_timeout_shadowed_note": "VoiceStudio dışındaki bir ortam değişkeni (kabuk, .env dosyası veya konteyner) şu anda bu değeri ayarlıyor — o değişken kaldırılana kadar burada kaydedilen değer yok sayılır.",
+    "generate_timeout_shadowed_toast": "Kaydedildi, ancak VoiceStudio dışındaki bir ortam değişkeni şu anda bu değeri ayarlıyor — o değişken kaldırılana kadar kullanılmaya devam edecek."
   },
   "bootstrap": {
     "title": "VoiceStudio",
@@ -580,6 +591,7 @@
     "cat_Style": "Stil",
     "cat_EnglishAccent": "İngilizce Aksanı",
     "cat_ChineseDialect": "Çin Lehçesi",
+    "vd_exclusive_cleared": "{{cleared}} temizlendi — bir Çince lehçe ile bir İngilizce aksan birlikte kullanılamaz.",
     "opt_Auto": "✨ Otomatik",
     "opt_male": "erkek",
     "opt_female": "kadın",
@@ -598,7 +610,7 @@
     "stop_playback": "Oynatmayı durdur",
     "describe_label": "Sesinizi tarif edin",
     "describe_placeholder": "örn. a warm elderly British storyteller, slightly raspy",
-    "describe_hint": "Açıklamanız (İngilizce) aşağıdaki denetimleri ayarlar — sonradan ince ayar yapabilirsiniz.",
+    "describe_hint": "Sesi tanımlayın veya bir başlangıç noktası seçin. Her ikisi de aşağıdaki ayrıntıları doldurur.",
     "describe_unmatched": "Eşlenemedi: {{items}}",
     "describe_no_match": "Henüz ses özelliği tanınmadı — deep, elderly veya British gibi kelimeler deneyin.",
     "define_by_design": "Tasarımla",
@@ -619,7 +631,13 @@
     "seed_keep": "Bu tohumu sakla",
     "seed_reroll": "Yeni tohum",
     "seed_reroll_hint": "Yeni bir rastgele tohum yuvarlayın ve saklayın",
-    "define_convert": "Dönüştür"
+    "define_convert": "Dönüştür",
+    "details": "Ayrıntılar",
+    "edit": "Düzenle",
+    "cat_AccentDialect": "Aksan veya lehçe",
+    "accent_dialect_hint": "yalnızca biri, asla ikisi birden",
+    "reset_to_description": "Açıklamaya göre sıfırla",
+    "chips_more": "{{count}} tane daha…"
   },
   "about": {
     "app": "Uygulama",
@@ -798,7 +816,8 @@
     "familyMatrixTitle": "{{family}} Motorları",
     "familyDesc_tts": "Metni konuşmaya dönüştürür. Stüdyo, Dublaj ve Toplu İşlem etkin motoru kullanır.",
     "familyDesc_asr": "Sesi; transkripsiyon, dublaj, altyazı ve dikte için metne dönüştürür.",
-    "familyDesc_llm": "Çeviri ve yeniden yazma için isteğe bağlı metin yardımcısıdır. “Kapalı” bu adımları atlar."
+    "familyDesc_llm": "Çeviri ve yeniden yazma için isteğe bağlı metin yardımcısıdır. “Kapalı” bu adımları atlar.",
+    "mpsLongText": "{{engine}} burada Apple Silicon (MPS) üzerinde çalışıyor ve bu metin uzun — üretim süre bütçesini aşabilir. Daha kısa bir metin ya da birkaç parçaya bölmek çok daha hızlı olacaktır."
   },
   "capture": {
     "desc": "Genel kısayol tuşları yalnızca masaüstü uygulamasında çalışır. Web kullanıcı arayüzü, pencere odaktayken sayfa içi <1>Ctrl+Shift+Space</1> kısayolunu kullanır.",
@@ -2132,6 +2151,9 @@
     "error_prefix": "Hata: {{message}}",
     "ignored_unsupported": "Desteklenmeyen talimat göz ardı edildi: {{items}}",
     "ignored_duplicate": "Yoksayıldı (kategori zaten ayarlandı): {{items}}",
+    "ignored_conflict": "{{items}} yok sayıldı — bir Çince lehçe ile bir İngilizce aksan birlikte kullanılamaz.",
+    "dialect_accent_conflict": "Bir Çince lehçe ile bir İngilizce aksan birlikte kullanılamaz. Yeniden oluşturmadan önce birini temizleyin.",
+    "instruct_category_conflict": "Aynı kategoride birbiriyle çelişen iki ses tasarımı seçeneği seçildi (ör. iki cinsiyet). Yeniden oluşturmadan önce birini temizleyin.",
     "ref_audio_unusable": "Referans seste konuşma duyulamadı — klip sessiz ya da neredeyse sessiz, bu yüzden klonlanacak bir ses yok. Mikrofona daha yakın şekilde yeniden kayıt yapın (doğru giriş aygıtının seçili olduğundan ve seviyenin hareket ettiğinden emin olun) veya başka bir klip seçin.",
     "ref_audio_too_long": "Bir referans, transkriptle en fazla 20 saniye; transkriptsiz en fazla 75 saniye olabilir. Sesi 3–10 saniyelik net bir konuşma bölümüne kırpın; metin sağlıyorsanız transkripti de aynı bölüme kırpın.",
     "ref_audio_no_speech": "Otomatik konuşma algılama referansta söylenmiş kelime bulamadı. Sesi 3–10 saniyelik net bir konuşma bölümüne kırpın veya eşleşen bir transkript sağlayın."

@@ -222,10 +222,29 @@ fn scenario_child() {
                     } else if progress_only {
                         "HTTP/1.1 503 X\r\nContent-Length: 0\r\n\r\n".to_string()
                     } else if req.starts_with("GET /system/info") {
-                        let body = format!(
-                            r#"{{"data_dir": "/x", "app_version": "{}"}}"#,
-                            env!("CARGO_PKG_VERSION")
-                        );
+                        // #1770: this scenario child is a genuine, current
+                        // build of this binary — but launched via the
+                        // OMNIVOICE_BACKEND_CMD fault-injection seam (or as
+                        // a hand-spawned "external" process in the attach
+                        // tests below), never through spawn_backend's normal
+                        // path, so it never receives OMNIVOICE_BUILD_FINGERPRINT.
+                        // That's exactly the "current schema, no env var"
+                        // shape a legitimate external/manually-started
+                        // backend has, so it serves `code_fingerprint: ""`
+                        // by default — the one case OMNIVOICE_SCENARIO_NO_CODE_FINGERPRINT
+                        // opts out of, to model a backend that predates the
+                        // fingerprinting mechanism outright.
+                        let body = if get("OMNIVOICE_SCENARIO_NO_CODE_FINGERPRINT") == "1" {
+                            format!(
+                                r#"{{"data_dir": "/x", "app_version": "{}"}}"#,
+                                env!("CARGO_PKG_VERSION")
+                            )
+                        } else {
+                            format!(
+                                r#"{{"data_dir": "/x", "app_version": "{}", "code_fingerprint": ""}}"#,
+                                env!("CARGO_PKG_VERSION")
+                            )
+                        };
                         format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}", body.len(), body)
                     } else if req.starts_with("GET /profiles")
                         && std::env::var_os("OMNIVOICE_SCENARIO_HEALTH_FAIL_FILE")
@@ -279,6 +298,13 @@ struct Scenario<'a> {
     serve_ms: Option<u64>,
     progress_only: bool,
     foreign: bool,
+    /// #1770: serve `/system/info` with NO `code_fingerprint` key at all —
+    /// the pre-fingerprinting shape a same-version backend from before this
+    /// fix has. Default (false) serves `code_fingerprint: ""`, modeling a
+    /// current-build backend that just wasn't launched with
+    /// `OMNIVOICE_BUILD_FINGERPRINT` set (every scenario child here, since
+    /// none go through spawn_backend's normal path).
+    no_code_fingerprint: bool,
 }
 
 impl Default for Scenario<'_> {
@@ -290,6 +316,7 @@ impl Default for Scenario<'_> {
             serve_ms: None,
             progress_only: false,
             foreign: false,
+            no_code_fingerprint: false,
         }
     }
 }
@@ -302,6 +329,7 @@ const SCENARIO_ENV: &[&str] = &[
     "OMNIVOICE_SCENARIO_SERVE_MS",
     "OMNIVOICE_SCENARIO_PROGRESS_ONLY",
     "OMNIVOICE_SCENARIO_FOREIGN",
+    "OMNIVOICE_SCENARIO_NO_CODE_FINGERPRINT",
     "OMNIVOICE_SCENARIO_START_DELAY_MS",
     "OMNIVOICE_SCENARIO_SPAWN_LOG",
     "OMNIVOICE_SCENARIO_DESCENDANT",
@@ -388,6 +416,9 @@ impl TestApp {
         }
         if scenario.foreign {
             std::env::set_var("OMNIVOICE_SCENARIO_FOREIGN", "1");
+        }
+        if scenario.no_code_fingerprint {
+            std::env::set_var("OMNIVOICE_SCENARIO_NO_CODE_FINGERPRINT", "1");
         }
 
         let app = tauri::test::mock_builder()
@@ -659,6 +690,186 @@ fn healthy_external_backend_is_attached_with_supervision_and_replaced_after_deat
     shutdown_backend_for_exit(&t.handle());
     join_with_timeout(bootstrap, Duration::from_secs(10), "attached-backend shutdown");
     assert!(!app_lib::backend::port_in_use(port));
+}
+
+/// #1770 at the integration level: a same-version external backend whose
+/// `/system/info` has NO `code_fingerprint` key at all — the shape a
+/// backend from before this fix has, since a present field always
+/// serializes even blank — must NOT be silently attached to. This is the
+/// actual bug two independent reports traced to a stale `destination_path`
+/// 422: an already-running same-version backend running weeks-old code was
+/// attached to instead of refused.
+///
+/// The outcome is a REFUSAL, not a kill-and-replace: this backend was never
+/// tracked or attached (it's a plain external process on the port), and
+/// `kill_orphan_on_port` deliberately never signals a PID discovered only
+/// through the port — the exact "reuse race" guard
+/// `orphan_cleanup_refuses_a_foreign_listener` covers for the pre-existing
+/// version-mismatch case. So a stale-fingerprint match takes the SAME path
+/// a stale-version match already does: `stop_backend_locked` cannot free
+/// the port, and the launch fails with a diagnosis rather than adopting
+/// stale code OR terminating an unowned process.
+#[test]
+fn stale_code_fingerprint_external_backend_is_refused_not_attached() {
+    let t = TestApp::new(&Scenario {
+        serve_ms: Some(0),
+        no_code_fingerprint: true,
+        ..Default::default()
+    });
+    let spawn_log = t._logdir.path().join("scenario-stale-fingerprint-spawns.log");
+    std::env::set_var("OMNIVOICE_SCENARIO_SPAWN_LOG", &spawn_log);
+    let exe = std::env::current_exe().expect("current test executable");
+    let mut external = std::process::Command::new(exe)
+        .args(["scenario_child", "--exact", "--nocapture"])
+        .spawn()
+        .expect("spawn external stale-fingerprint backend");
+    let external_pid = external.id();
+    let port = std::env::var("OMNIVOICE_PORT").unwrap().parse().unwrap();
+    assert!(
+        wait_until(Duration::from_secs(10), || {
+            app_lib::backend::backend_ready(port) && recorded_spawn_count(&spawn_log) == 1
+        }),
+        "external stale-fingerprint backend never became healthy"
+    );
+
+    let bootstrap = t.run_bootstrap();
+    assert!(
+        wait_until(Duration::from_secs(10), || {
+            matches!(t.stage_snapshot(), BootstrapStage::Failed { .. })
+        }),
+        "a same-version backend with no code_fingerprint field must be refused (the same outcome \
+         a version mismatch already gets), not silently attached — got {:?} / {:?}",
+        t.stage_snapshot(),
+        t.failed_message()
+    );
+    assert!(
+        !t.app.state::<BackendState>().attached.load(std::sync::atomic::Ordering::SeqCst),
+        "a refused attach must never mark the backend attached"
+    );
+    assert_eq!(
+        recorded_spawn_count(&spawn_log),
+        1,
+        "an unowned, untracked process must never be killed by PID — no replacement child may spawn"
+    );
+    assert!(
+        process_is_alive(external_pid),
+        "the stale-fingerprint external backend must be left running untouched, not killed"
+    );
+
+    join_with_timeout(bootstrap, Duration::from_secs(10), "stale-fingerprint refusal");
+    external.kill().expect("kill external stale-fingerprint backend");
+    let _ = external.wait();
+}
+
+/// Greptile P1 on #1796: `backend_deep_healthy` (GET /profiles) and
+/// `running_backend_identity` (GET /system/info) are two independent
+/// requests — never atomic. If the process on the port changed between
+/// them, an identity-THEN-health ordering could pair one process's
+/// (already stale) identity with a DIFFERENT process's health and attach
+/// without ever validating that second process — exactly what this
+/// fingerprint check exists to prevent, reached by a different route.
+/// `prepare_backend_launch` closes most of that window by probing health
+/// FIRST and identity LAST, immediately before the attach decision, so the
+/// identity that governs the decision is always the freshest read of
+/// whatever currently answers the port.
+///
+/// A genuine multi-process bind-swap race is non-deterministic to trigger
+/// on demand (the second process must win the port back inside a
+/// microsecond gap), so this models the same OBSERVABLE property with a
+/// single deterministic stub: it serves a MATCHING identity right up until
+/// it answers the health probe, then flips to a body with no
+/// `code_fingerprint` key at all — "the port changed hands" from the
+/// launcher's point of view is indistinguishable from "the same process
+/// changed what it reports". With identity probed last, the launcher must
+/// read the post-flip (stale) state and refuse. Had identity still been
+/// probed FIRST (the pre-fix ordering), it would have captured the
+/// pre-flip (matching) identity and attached despite the divergence.
+#[test]
+fn identity_probed_after_health_reflects_the_port_at_decision_time() {
+    let t = TestApp::new(&Scenario {
+        serve_ms: Some(0),
+        ..Default::default()
+    });
+    let port: u16 = std::env::var("OMNIVOICE_PORT").unwrap().parse().unwrap();
+    let flipped = Arc::new(AtomicBool::new(false));
+    let stop = Arc::new(AtomicBool::new(false));
+    let listener = std::net::TcpListener::bind(("127.0.0.1", port)).expect("bind identity-flip stub");
+    listener.set_nonblocking(true).unwrap();
+    let stub = {
+        let flipped = flipped.clone();
+        let stop = stop.clone();
+        std::thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                if stop.load(std::sync::atomic::Ordering::SeqCst) || Instant::now() >= deadline {
+                    return;
+                }
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        // Whether an accepted socket inherits the listening
+                        // socket's non-blocking flag is OS-dependent (Linux,
+                        // macOS, and Windows disagree) — this job runs on all
+                        // three, so leave nothing to inheritance. Force
+                        // blocking mode explicitly; the read timeout below
+                        // then bounds it deterministically everywhere.
+                        stream.set_nonblocking(false).expect("accepted stream to blocking mode");
+                        let mut buf = [0u8; 512];
+                        let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+                        let n = stream.read(&mut buf).unwrap_or(0);
+                        let req = String::from_utf8_lossy(&buf[..n]);
+                        let resp = if req.starts_with("GET /profiles") {
+                            // Answering the health probe is the trigger:
+                            // flip identity for whatever comes next,
+                            // modeling the port changing hands right after
+                            // this response.
+                            flipped.store(true, std::sync::atomic::Ordering::SeqCst);
+                            "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]".to_string()
+                        } else if req.starts_with("GET /system/info") {
+                            let body = if flipped.load(std::sync::atomic::Ordering::SeqCst) {
+                                // Post-flip: same version, but no
+                                // code_fingerprint key at all — the
+                                // pre-fingerprinting shape, as if a
+                                // different (stale) process now answers.
+                                format!(
+                                    r#"{{"data_dir": "/x", "app_version": "{}"}}"#,
+                                    env!("CARGO_PKG_VERSION")
+                                )
+                            } else {
+                                format!(
+                                    r#"{{"data_dir": "/x", "app_version": "{}", "code_fingerprint": ""}}"#,
+                                    env!("CARGO_PKG_VERSION")
+                                )
+                            };
+                            format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}", body.len(), body)
+                        } else {
+                            "HTTP/1.1 404 X\r\nContent-Length: 0\r\n\r\n".to_string()
+                        };
+                        let _ = stream.write_all(resp.as_bytes());
+                    }
+                    Err(_) => std::thread::sleep(Duration::from_millis(10)),
+                }
+            }
+        })
+    };
+
+    let bootstrap = t.run_bootstrap();
+    assert!(
+        wait_until(Duration::from_secs(10), || {
+            flipped.load(std::sync::atomic::Ordering::SeqCst)
+                && matches!(t.stage_snapshot(), BootstrapStage::Failed { .. })
+        }),
+        "identity read AFTER the health probe must reflect the post-flip (stale) state and \
+         refuse the attach — got stage {:?}",
+        t.stage_snapshot()
+    );
+    assert!(
+        !t.app.state::<BackendState>().attached.load(std::sync::atomic::Ordering::SeqCst),
+        "a post-flip identity mismatch must never be attached to"
+    );
+
+    stop.store(true, std::sync::atomic::Ordering::SeqCst);
+    join_with_timeout(bootstrap, Duration::from_secs(10), "identity-after-health refusal");
+    let _ = stub.join();
 }
 
 #[test]

@@ -337,7 +337,18 @@
     "device_family_mps": "Apple GPU (MPS)",
     "device_family_cpu": "CPU",
     "device_load_failed": "Gagal memuat pengaturan perangkat",
-    "perf_save_failed": "Gagal menyimpan pengaturan"
+    "perf_save_failed": "Gagal menyimpan pengaturan",
+    "generate_budget_title": "Anggaran waktu komputasi",
+    "generate_budget_desc": "Berapa lama satu proses generasi boleh berjalan sebelum dianggap terlalu berat untuk perangkat keras ini dan dihentikan. Proses di CPU memang lebih lambat daripada yang dipercepat, jadi keduanya punya batas sendiri — dan batas CPU lebih tinggi.",
+    "generate_timeout_gpu": "Anggaran yang dipercepat (GPU)",
+    "generate_timeout_gpu_note": "Digunakan saat proses generasi berjalan di CUDA, ROCm, MPS, atau akselerator lainnya. Juga digunakan untuk generasi CPU jika tidak ada anggaran CPU yang diatur di bawah.",
+    "generate_timeout_cpu": "Anggaran CPU",
+    "generate_timeout_cpu_note": "Digunakan saat proses generasi berjalan di CPU. Setelah disimpan di sini, nilai ini selalu mengatur generasi CPU — terlepas dari anggaran yang dipercepat di atas.",
+    "generate_timeout_invalid": "Masukkan angka detik lebih besar dari 0 dan paling banyak {{max}}.",
+    "generate_timeout_saved": "Tersimpan. Mulai ulang VoiceStudio agar anggaran baru berlaku.",
+    "generate_timeout_shadowed_badge": "Ditimpa secara eksternal",
+    "generate_timeout_shadowed_note": "Variabel lingkungan di luar VoiceStudio (shell, file .env, atau kontainer) saat ini sedang mengatur nilai ini — nilai yang disimpan di sini diabaikan sampai variabel tersebut dihapus.",
+    "generate_timeout_shadowed_toast": "Tersimpan, tetapi variabel lingkungan di luar VoiceStudio saat ini sedang mengatur nilai ini — nilai itu akan terus digunakan sampai variabel tersebut dihapus."
   },
   "bootstrap": {
     "title": "VoiceStudio",
@@ -580,6 +591,7 @@
     "cat_Style": "Gaya",
     "cat_EnglishAccent": "Aksen Bahasa Inggris",
     "cat_ChineseDialect": "Dialek Cina",
+    "vd_exclusive_cleared": "{{cleared}} dihapus — dialek Tionghoa dan aksen Inggris tidak dapat digabungkan.",
     "opt_Auto": "✨ Otomatis",
     "opt_male": "laki-laki",
     "opt_female": "perempuan",
@@ -598,7 +610,7 @@
     "stop_playback": "Hentikan pemutaran",
     "describe_label": "Deskripsikan suara Anda",
     "describe_placeholder": "mis. a warm elderly British storyteller, slightly raspy",
-    "describe_hint": "Deskripsi Anda (dalam bahasa Inggris) mengatur kontrol di bawah — Anda tetap bisa menyetelnya setelahnya.",
+    "describe_hint": "Deskripsikan suaranya, atau pilih titik awal. Keduanya akan mengisi detail di bawah.",
     "describe_unmatched": "Tidak dapat dipetakan: {{items}}",
     "describe_no_match": "Belum ada ciri suara yang dikenali — coba kata seperti deep, elderly, atau British.",
     "define_by_design": "Lewat desain",
@@ -619,7 +631,13 @@
     "seed_keep": "Simpan benih ini",
     "seed_reroll": "Benih baru",
     "seed_reroll_hint": "Gulung benih acak baru dan simpan",
-    "define_convert": "Konversi"
+    "define_convert": "Konversi",
+    "details": "Detail",
+    "edit": "Edit",
+    "cat_AccentDialect": "Aksen atau dialek",
+    "accent_dialect_hint": "salah satu saja, tidak keduanya",
+    "reset_to_description": "Setel ulang sesuai deskripsi",
+    "chips_more": "{{count}} lainnya…"
   },
   "about": {
     "app": "Aplikasi",
@@ -798,7 +816,8 @@
     "familyMatrixTitle": "Mesin {{family}}",
     "familyDesc_tts": "Mengubah naskah menjadi suara. Studio, Dubbing, dan Batch menggunakan mesin yang aktif.",
     "familyDesc_asr": "Mengubah audio menjadi teks untuk transkripsi, sulih suara, teks layar, dan dikte.",
-    "familyDesc_llm": "Pembantu teks opsional untuk terjemahan dan penulisan ulang. “Nonaktif” akan melewati langkah tersebut."
+    "familyDesc_llm": "Pembantu teks opsional untuk terjemahan dan penulisan ulang. “Nonaktif” akan melewati langkah tersebut.",
+    "mpsLongText": "{{engine}} berjalan di Apple Silicon (MPS) di sini dan teks ini panjang — proses mungkin melampaui batas waktu. Teks lebih pendek, atau membaginya menjadi beberapa bagian, akan jauh lebih cepat."
   },
   "capture": {
     "desc": "Tombol pintas global hanya berfungsi di aplikasi desktop. UI web menggunakan pintasan <1>Ctrl+Shift+Space</1> dalam halaman saat jendela memiliki fokus.",
@@ -2132,6 +2151,9 @@
     "error_prefix": "Kesalahan: {{message}}",
     "ignored_unsupported": "Mengabaikan instruksi yang tidak didukung: {{items}}",
     "ignored_duplicate": "Diabaikan (kategori sudah ditetapkan): {{items}}",
+    "ignored_conflict": "{{items}} diabaikan — dialek Tionghoa dan aksen Inggris tidak dapat digabungkan.",
+    "dialect_accent_conflict": "Dialek Tionghoa dan aksen Inggris tidak dapat digunakan bersamaan. Hapus salah satu sebelum membuat ulang.",
+    "instruct_category_conflict": "Dua opsi desain suara yang bertentangan dipilih dalam kategori yang sama (mis. dua gender). Hapus salah satu sebelum membuat ulang.",
     "ref_audio_unusable": "Tidak ada suara yang terdengar di audio referensi — klipnya senyap atau hampir senyap, jadi tidak ada suara untuk dikloning. Rekam ulang lebih dekat ke mikrofon (pastikan perangkat input yang benar dipilih dan meterannya bergerak), atau pilih klip lain.",
     "ref_audio_too_long": "Referensi maksimal 20 detik dengan transkrip atau 75 detik tanpa transkrip. Potong menjadi bagian ucapan jelas sepanjang 3–10 detik; jika menyertakan teks, potong transkrip ke bagian yang sama.",
     "ref_audio_no_speech": "Deteksi otomatis tidak menemukan kata yang diucapkan dalam referensi. Potong menjadi bagian ucapan jelas sepanjang 3–10 detik atau sertakan transkrip yang cocok."

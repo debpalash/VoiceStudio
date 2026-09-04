@@ -4,6 +4,8 @@ import {
   instructToFormValue,
   instructToVdStates,
   designModeProfileId,
+  applyVdState,
+  mergeDescribedAttrs,
 } from './voiceInstruct';
 
 // plan-05 (#132): the Voice Design payload must be a validator-safe instruct —
@@ -105,6 +107,54 @@ describe('buildDesignInstruct', () => {
     expect(instruct).toBe('');
     expect(unsupported).toEqual([]);
   });
+
+  // #1771: the engine (omnivoice/models/omnivoice.py::_resolve_instruct)
+  // rejects an instruct that sets both an English accent and a Chinese
+  // dialect: "Cannot mix Chinese dialect and English accent in a single
+  // instruct." Before this fix, EnglishAccent and ChineseDialect were
+  // independent CATEGORIES entries with no cross-check, so the picker could
+  // (and did, per the bug report) build exactly that payload.
+  describe('dialect/accent exclusivity (#1771)', () => {
+    it('drops a dropdown-set dialect when a dropdown-set accent already claimed the group', () => {
+      const { instruct, conflicts } = buildDesignInstruct(
+        { EnglishAccent: 'indian accent', ChineseDialect: '四川话' },
+        '',
+      );
+      expect(instruct).toBe('indian accent');
+      expect(conflicts).toEqual(['四川话']);
+    });
+
+    it('drops a free-text dialect when a dropdown accent already claimed the group', () => {
+      const { instruct, conflicts } = buildDesignInstruct(
+        { EnglishAccent: 'british accent' },
+        '四川话',
+      );
+      expect(instruct).toBe('british accent');
+      expect(conflicts).toContain('四川话');
+    });
+
+    it('drops a free-text accent when a dropdown dialect already claimed the group', () => {
+      const { instruct, conflicts } = buildDesignInstruct(
+        { ChineseDialect: '东北话' },
+        'american accent',
+      );
+      expect(instruct).toBe('东北话');
+      expect(conflicts).toContain('american accent');
+    });
+
+    it('drops the second of two free-text conflicting items, keeping the first', () => {
+      const { instruct, conflicts, unsupported } = buildDesignInstruct({}, 'indian accent, 四川话');
+      expect(instruct).toBe('indian accent');
+      expect(conflicts).toEqual(['四川话']);
+      expect(unsupported).toEqual([]);
+    });
+
+    it('does not conflict with itself when only one of the pair is set', () => {
+      const { instruct, conflicts } = buildDesignInstruct({ ChineseDialect: '四川话' }, '');
+      expect(instruct).toBe('四川话');
+      expect(conflicts).toEqual([]);
+    });
+  });
 });
 
 describe('instructToVdStates', () => {
@@ -160,6 +210,81 @@ describe('instructToVdStates', () => {
     expect(instructToVdStates('')).toEqual(allAuto);
     expect(instructToVdStates('unknown prose')).toEqual(allAuto);
     expect(instructToVdStates(null)).toEqual(allAuto);
+  });
+
+  // #1771: a legacy/imported/hand-edited instruct string can carry both an
+  // accent and a dialect — restoring it must not resurrect a picker state the
+  // engine will reject on next Synthesize.
+  it('keeps only the first-seen of a conflicting accent/dialect pair (#1771)', () => {
+    expect(instructToVdStates('indian accent, 四川话')).toEqual({
+      ...allAuto,
+      EnglishAccent: 'indian accent',
+    });
+    expect(instructToVdStates('四川话, indian accent')).toEqual({
+      ...allAuto,
+      ChineseDialect: '四川话',
+    });
+  });
+});
+
+describe('applyVdState (#1771 — live picker guard)', () => {
+  const allAuto = {
+    Gender: 'Auto',
+    Age: 'Auto',
+    Pitch: 'Auto',
+    Style: 'Auto',
+    EnglishAccent: 'Auto',
+    ChineseDialect: 'Auto',
+  };
+
+  it('picking a dialect clears an already-set accent and reports it', () => {
+    const { vdStates, clearedCategory } = applyVdState(
+      { ...allAuto, EnglishAccent: 'british accent' },
+      'ChineseDialect',
+      '四川话',
+    );
+    expect(vdStates).toEqual({ ...allAuto, ChineseDialect: '四川话', EnglishAccent: 'Auto' });
+    expect(clearedCategory).toBe('EnglishAccent');
+  });
+
+  it('picking an accent clears an already-set dialect and reports it', () => {
+    const { vdStates, clearedCategory } = applyVdState(
+      { ...allAuto, ChineseDialect: '东北话' },
+      'EnglishAccent',
+      'korean accent',
+    );
+    expect(vdStates).toEqual({
+      ...allAuto,
+      EnglishAccent: 'korean accent',
+      ChineseDialect: 'Auto',
+    });
+    expect(clearedCategory).toBe('ChineseDialect');
+  });
+
+  it('does not clear anything for non-exclusive categories or Auto', () => {
+    expect(applyVdState(allAuto, 'Gender', 'male').clearedCategory).toBeNull();
+    expect(
+      applyVdState({ ...allAuto, EnglishAccent: 'british accent' }, 'ChineseDialect', 'Auto')
+        .clearedCategory,
+    ).toBeNull();
+  });
+});
+
+describe('mergeDescribedAttrs dialect/accent exclusivity (#1771)', () => {
+  // Covers the "restored preset" / "saved profile" / "imported project"
+  // routes: hooks/useProfiles.js and hooks/useAppData.js both feed raw,
+  // externally-sourced attrs through mergeDescribedAttrs to rebuild vdStates.
+  it('keeps only the first CATEGORIES-order pick when external attrs carry both', () => {
+    expect(
+      mergeDescribedAttrs({ EnglishAccent: 'russian accent', ChineseDialect: '甘肃话' }),
+    ).toEqual({
+      Gender: 'Auto',
+      Age: 'Auto',
+      Pitch: 'Auto',
+      Style: 'Auto',
+      EnglishAccent: 'russian accent',
+      ChineseDialect: 'Auto',
+    });
   });
 });
 

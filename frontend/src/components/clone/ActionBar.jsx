@@ -198,11 +198,19 @@ export default function ActionBar({
             onChange={setLanguage}
           />
         </div>
+        {/* Inference/sampling steps (#1771 follow-up): this slider used to
+            carry only a hover title, so its value ("16") read as an
+            unlabelled control sitting between the language picker and
+            Production Overrides — give it the same visible label treatment
+            as everything else in the bar. */}
         <label
           className="flex items-center gap-[6px] flex-[1_1_160px] min-w-[120px] [&_input]:flex-1 [&_input]:min-w-[60px]"
           title={t('clone.steps')}
         >
           <SlidersHorizontal size={12} className="label-icon" />
+          <span className="text-[0.7rem] text-[var(--chrome-fg-muted)] whitespace-nowrap">
+            {t('clone.steps')}
+          </span>
           <input
             type="range"
             min="8"

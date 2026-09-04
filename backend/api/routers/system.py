@@ -203,8 +203,22 @@ def system_info():
     """
     try:
         _ffmpeg = find_ffmpeg()
+        from services import model_manager as _mm
+        from core import prefs as _prefs_mod
         return {
             "app_version": APP_VERSION,
+            "generate_timeout_s": _mm.GPU_JOB_TIMEOUT_S,
+            "cpu_generate_timeout_s": _mm.CPU_JOB_TIMEOUT_S,
+            # #1787 review fix: a saved prefs.json value for either key can be
+            # silently shadowed by an external env var (os.environ.setdefault
+            # in core.prefs.restore_env is a no-op when one is already
+            # present) — the Settings panel must say so rather than promise a
+            # restart will apply a value that never will.
+            "generate_timeout_shadowed": _prefs_mod.is_env_shadowed(
+                "OMNIVOICE_GENERATE_TIMEOUT_S"),
+            "cpu_generate_timeout_shadowed": _prefs_mod.is_env_shadowed(
+                "OMNIVOICE_CPU_GENERATE_TIMEOUT_S"),
+            "code_fingerprint": os.environ.get("OMNIVOICE_BUILD_FINGERPRINT", ""),
             "data_dir": DATA_DIR,
             "outputs_dir": OUTPUTS_DIR,
             "crash_log_path": CRASH_LOG_PATH,
@@ -240,6 +254,11 @@ def system_info():
         logger.exception("system_info failed — returning safe defaults")
         return {
             "app_version": APP_VERSION,
+            "generate_timeout_s": 300.0,
+            "cpu_generate_timeout_s": 600.0,
+            "generate_timeout_shadowed": False,
+            "cpu_generate_timeout_shadowed": False,
+            "code_fingerprint": os.environ.get("OMNIVOICE_BUILD_FINGERPRINT", ""),
             "data_dir": DATA_DIR,
             "outputs_dir": OUTPUTS_DIR,
             "crash_log_path": str(CRASH_LOG_PATH),
@@ -848,6 +867,14 @@ PERSISTENT_KEYS = {
     # the Rust sidecar reads OMNIVOICE_PORT at startup and the backend derives
     # the LAN-share/UI ports from the others.
     "OMNIVOICE_PORT", "OMNIVOICE_SHARE_PORT", "OMNIVOICE_UI_PORT",
+    # Per-job compute-time budgets (#1787). Both are captured at import time
+    # by services/model_manager.py (GPU_JOB_TIMEOUT_S / CPU_JOB_TIMEOUT_S), so
+    # a value saved here takes effect on the NEXT backend restart — same
+    # contract as OMNIVOICE_PORT above. Restored into os.environ during the
+    # "env_prefs" startup step (main.py), which runs before model_manager is
+    # first imported ("ml_imports"), so the restored value is what the module
+    # captures. The Settings UI must say so (RestartBadge).
+    "OMNIVOICE_GENERATE_TIMEOUT_S", "OMNIVOICE_CPU_GENERATE_TIMEOUT_S",
 }
 
 # Sidecar-engine install dirs (OMNIVOICE_INDEXTTS_DIR, …). The one-click
@@ -864,6 +891,16 @@ except Exception:  # pragma: no cover — defensive: env panel > installer wirin
 # Keys whose value must be a valid TCP port (1024–65535). Validated before
 # being set so a bad value never reaches uvicorn / the share listener.
 _PORT_KEYS = {"OMNIVOICE_PORT", "OMNIVOICE_SHARE_PORT", "OMNIVOICE_UI_PORT"}
+
+# Keys whose value is a wall-clock compute-time budget in seconds (#1787).
+# Validated the same way as _PORT_KEYS: reject anything that isn't a
+# positive number before it reaches services/model_manager.py. Upper bound is
+# generous — long enough that a legitimate multi-hour, audiobook-length CPU
+# render is never blocked — but still bounded, so a fat-fingered extra digit
+# (300 -> 3000000) can't turn a wedged job into one that silently occupies a
+# worker for days before the guard ever fires.
+_TIMEOUT_KEYS = {"OMNIVOICE_GENERATE_TIMEOUT_S", "OMNIVOICE_CPU_GENERATE_TIMEOUT_S"}
+_MAX_GENERATE_TIMEOUT_S = 21600.0  # 6 hours
 
 
 @router.post("/system/set-env")
@@ -908,6 +945,22 @@ async def set_env_var(body: dict):
                     status_code=400,
                     detail=f"Invalid port for {key}: must be between 1024 and 65535.",
                 )
+        if key in _TIMEOUT_KEYS:
+            try:
+                timeout_n = float(value)
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid timeout for {key}: '{value}' is not a number.",
+                )
+            if not (0 < timeout_n <= _MAX_GENERATE_TIMEOUT_S):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Invalid timeout for {key}: must be greater than 0 "
+                        f"and at most {_MAX_GENERATE_TIMEOUT_S:.0f} seconds."
+                    ),
+                )
         os.environ[key] = value
         logger.info("Environment variable set (length=%d)", len(value))
 
@@ -950,7 +1003,13 @@ async def set_env_var(body: dict):
         else:
             prefs_delete(prefs_key)
 
-    return {"key": key, "set": bool(value)}
+    # #1787 review fix: tell the caller up front when the value just saved is
+    # being shadowed by an external env var — set at THIS process's startup,
+    # before our own prefs restore ran, so it predicts the next restart too.
+    # A response that just said {"set": True} let the Settings panel promise
+    # a restart would apply a value that never will.
+    from core.prefs import is_env_shadowed
+    return {"key": key, "set": bool(value), "shadowed": is_env_shadowed(key)}
 
 
 @router.post("/clean-audio")
