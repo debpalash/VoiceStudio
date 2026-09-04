@@ -152,3 +152,80 @@ def test_single_use_flood_does_not_evict_reused_prompts(tmp_path):
     assert m.calls == before, (
         "the speaker prompt was evicted by single-use segment refs and re-encoded"
     )
+
+
+# ── A device OOM is not a fallback-able failure (#1790/#1777) ───────────────
+#
+# `generate()`'s inline ref path runs the SAME encode on the SAME device — the
+# whole point of the precompute is that its output is identical — so returning
+# None after an OOM guarantees a second OOM moments later, on a device with
+# even less headroom than the first attempt found. Two reporters' backends died
+# with a Windows access violation (exit code -1073741819) seconds after this
+# fallback logged, mid-generation on a GPU that had just refused an 86 MiB
+# allocation. Drop the allocator's reserved-but-unallocated blocks and retry
+# once; if it still will not fit, raise so the failure layer can say
+# "close other GPU-heavy apps or unload models" instead of walking into a
+# native fault.
+
+
+class _OomModel:
+    """Raises a torch-shaped OOM for the first `fails` calls, then succeeds."""
+
+    class OutOfMemoryError(RuntimeError):
+        pass
+
+    def __init__(self, fails=1):
+        self.calls = 0
+        self.fails = fails
+
+    def create_voice_clone_prompt(self, ref_audio, ref_text=None, preprocess_prompt=True):
+        self.calls += 1
+        if self.calls <= self.fails:
+            raise self.OutOfMemoryError(
+                "CUDA out of memory. Tried to allocate 86.00 MiB. GPU 0 has a "
+                "total capacity of 11.91 GiB of which 1.98 GiB is free."
+            )
+        return f"PROMPT::{ref_audio}"
+
+
+def test_oom_frees_vram_and_retries_once(tmp_path, monkeypatch):
+    freed = []
+    monkeypatch.setattr(
+        "services.model_manager.free_vram", lambda: freed.append(True), raising=False
+    )
+    m = _OomModel(fails=1)
+    got = tb._get_clone_prompt(m, _wav(tmp_path), "hello")
+    assert got == f"PROMPT::{_wav(tmp_path)}"
+    assert m.calls == 2, "the OOM must be retried, not fallen back from"
+    assert freed, "allocator caches must be dropped before the retry"
+
+
+def test_oom_that_survives_the_retry_raises_instead_of_falling_back(tmp_path, monkeypatch):
+    monkeypatch.setattr("services.model_manager.free_vram", lambda: None, raising=False)
+    m = _OomModel(fails=2)
+    with pytest.raises(Exception) as excinfo:
+        tb._get_clone_prompt(m, _wav(tmp_path), "hello")
+    from core.failure import is_gpu_oom
+
+    assert is_gpu_oom(excinfo.value), "the OOM must reach the failure layer intact"
+    assert m.calls == 2, "exactly one retry — not an unbounded loop"
+
+
+def test_a_reclaim_failure_does_not_mask_the_retry(tmp_path, monkeypatch):
+    # Making room is best-effort: if it throws, the retry still happens, because
+    # the reason we are here is that falling back cannot work.
+    def _boom():
+        raise RuntimeError("no allocator")
+
+    monkeypatch.setattr("services.model_manager.free_vram", _boom, raising=False)
+    m = _OomModel(fails=1)
+    assert tb._get_clone_prompt(m, _wav(tmp_path), "hi") is not None
+    assert m.calls == 2
+
+
+def test_non_oom_failures_still_fall_back_silently(tmp_path):
+    # The existing contract for every other error is unchanged: None, so the
+    # caller uses the inline ref — which for a non-memory fault may well work.
+    m = _StubModel(fail=True)
+    assert tb._get_clone_prompt(m, _wav(tmp_path), "hello") is None
+    assert m.calls == 1
