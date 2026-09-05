@@ -288,7 +288,7 @@ export default function TranscriptionsPage() {
                     className="txn-detail__seg flex gap-[8px] py-[3px] text-[var(--text-xs)]"
                   >
                     <span className="txn-detail__seg-time shrink-0 font-mono text-fg-subtle min-w-[80px]">
-                      {seg.start.toFixed(1)}s – {seg.end.toFixed(1)}s
+                      {seg.start != null ? `${seg.start.toFixed(1)}s` : '-'} – {seg.end != null ? `${seg.end.toFixed(1)}s` : '-'}
                     </span>
                     <span className="txn-detail__seg-text text-fg">{seg.text}</span>
                   </div>
