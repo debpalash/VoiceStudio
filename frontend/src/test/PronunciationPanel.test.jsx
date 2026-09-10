@@ -68,6 +68,31 @@ describe('PronunciationPanel', () => {
     expect(screen.getAllByText('Global').some((el) => el.tagName !== 'OPTION')).toBe(true);
   });
 
+  it('badges an IPA/CMU entry as not yet applied', async () => {
+    apiJson.mockResolvedValueOnce([
+      {
+        id: 'e3',
+        term: 'Nevada',
+        replacement: 'N AH0 V AE1 D AH0',
+        type: 'cmu',
+        language: 'en',
+        scope: 'en',
+        enabled: true,
+      },
+    ]);
+    render(withI18n(<PronunciationPanel />));
+    expect(await screen.findByText('Nevada')).toBeInTheDocument();
+    expect(screen.getByTestId('pron-not-applied-e3')).toBeInTheDocument();
+  });
+
+  it('does not badge a respelling entry as not yet applied', async () => {
+    apiJson.mockResolvedValueOnce(ENTRIES);
+    render(withI18n(<PronunciationPanel />));
+    await screen.findByText('GIF');
+    expect(screen.queryByTestId('pron-not-applied-e1')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('pron-not-applied-e2')).not.toBeInTheDocument();
+  });
+
   it('shows the empty hint when there are no entries', async () => {
     apiJson.mockResolvedValueOnce([]);
     render(withI18n(<PronunciationPanel />));
@@ -163,6 +188,39 @@ describe('PronunciationPanel', () => {
     await screen.findByTestId('pron-test-input');
     fireEvent.change(screen.getByTestId('pron-test-input'), { target: { value: 'a GIF' } });
     expect(await screen.findByTestId('pron-test-out')).toHaveTextContent('a jiff');
+  });
+
+  it('surfaces skipped IPA/CMU terms from the test preview', async () => {
+    apiJson.mockImplementation((path) => {
+      if (path === '/pronunciation/test') {
+        return Promise.resolve({
+          input: 'Nevada',
+          substituted: 'Nevada',
+          changed: false,
+          applied_terms: [],
+          skipped_terms: [{ term: 'Nevada', type: 'cmu', language: 'en' }],
+        });
+      }
+      return Promise.resolve(ENTRIES);
+    });
+    render(withI18n(<PronunciationPanel />));
+    await screen.findByTestId('pron-test-input');
+    fireEvent.change(screen.getByTestId('pron-test-input'), { target: { value: 'Nevada' } });
+    expect(await screen.findByTestId('pron-test-skipped')).toHaveTextContent('Nevada');
+  });
+
+  it('shows no skipped-terms note when nothing was skipped', async () => {
+    apiJson.mockImplementation((path) => {
+      if (path === '/pronunciation/test') {
+        return Promise.resolve({ substituted: 'a jiff', changed: true, skipped_terms: [] });
+      }
+      return Promise.resolve(ENTRIES);
+    });
+    render(withI18n(<PronunciationPanel />));
+    await screen.findByTestId('pron-test-input');
+    fireEvent.change(screen.getByTestId('pron-test-input'), { target: { value: 'a GIF' } });
+    await screen.findByTestId('pron-test-out');
+    expect(screen.queryByTestId('pron-test-skipped')).not.toBeInTheDocument();
   });
 
   it('sends the selected preview language so language-scoped entries apply', async () => {

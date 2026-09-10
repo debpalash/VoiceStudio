@@ -26,6 +26,8 @@
     "test_placeholder": "Type a sentence to preview the substitution…",
     "test_result": "Will be spoken as:",
     "test_nochange": "No entries match — spoken as written.",
+    "test_skipped": "Note: {{terms}} matched an IPA/CMU entry, but those aren't applied yet — only Respelling entries take effect.",
+    "not_applied_badge": "Not yet applied",
     "load_error": "Couldn't load the pronunciation dictionary.",
     "save_error": "Couldn't save that entry.",
     "lang_label": "Language code (e.g. en, de) or leave blank for Global",

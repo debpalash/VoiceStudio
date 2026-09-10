@@ -249,12 +249,13 @@ def test_substitution(req: PronTestRequest):
             "FROM pronunciation_entries"
         ).fetchall()
     substituted = apply_pronunciation(req.text, rows, req.language)
-    applied = entries_for_language(rows, req.language)
+    applied, skipped = entries_for_language(rows, req.language, include_skipped=True)
     return {
         "input": req.text,
         "substituted": substituted,
         "changed": substituted != req.text,
         "applied_terms": sorted(applied.keys(), key=len, reverse=True),
+        "skipped_terms": skipped,
     }
 
 

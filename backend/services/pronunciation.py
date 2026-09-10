@@ -176,7 +176,9 @@ def _lang_prefix(language: Optional[str]) -> Optional[str]:
     return s[:2]
 
 
-def entries_for_language(entries, language: Optional[str]) -> dict[str, str]:
+def entries_for_language(
+    entries, language: Optional[str], *, include_skipped: bool = False
+):
     """Collapse DB rows into a ``{term: replacement}`` map for ``apply_lexicon``.
 
     Filters to ``enabled`` rows whose scope is global (``*``) OR whose language
@@ -189,12 +191,18 @@ def entries_for_language(entries, language: Optional[str]) -> dict[str, str]:
 
     ``entries`` is any iterable of mappings/rows with ``term``, ``replacement``,
     ``type``, ``language``, ``enabled`` keys (a ``sqlite3.Row`` works directly).
+
+    If ``include_skipped`` is True, also returns a list of in-scope entries that
+    were dropped because their type isn't ``respelling`` yet (Phase 1 has no
+    substitution for them) — used by ``/pronunciation/test`` to report a
+    matching-but-inert entry instead of silently reporting no match at all.
     """
     req_prefix = _lang_prefix(language)
     # Two passes so language rows win over global rows on the same term: collect
     # global first, then overlay matching-language rows.
     glob: dict[str, str] = {}
     lang: dict[str, str] = {}
+    skipped: list[dict] = []
     for e in entries:
         try:
             if not int(e["enabled"]):
@@ -206,19 +214,26 @@ def entries_for_language(entries, language: Optional[str]) -> dict[str, str]:
             continue
         etype = (e["type"] or "respelling").strip().lower()
         replacement = e["replacement"] if e["replacement"] is not None else ""
+        scope = (e["language"] or _ALL_LANG).strip() or _ALL_LANG
+        scope_matches = scope == _ALL_LANG or (
+            req_prefix is not None and scope[:2].lower() == req_prefix
+        )
         # Phase 1: only respelling rows substitute text. IPA/CMU rows without a
         # respelling fall through (Phase 2 lowers them to engine markup); we do
-        # NOT feed a raw IPA string into the grapheme stream.
+        # NOT feed a raw IPA string into the grapheme stream. If the caller wants
+        # to know, record the skip instead of silently dropping it.
         if etype != "respelling":
+            if include_skipped and scope_matches:
+                skipped.append({"term": term, "type": etype, "language": scope})
             continue
-        scope = (e["language"] or _ALL_LANG).strip() or _ALL_LANG
         if scope == _ALL_LANG:
             glob[term] = str(replacement)
-        else:
-            if req_prefix is not None and scope[:2].lower() == req_prefix:
-                lang[term] = str(replacement)
+        elif scope_matches:
+            lang[term] = str(replacement)
     merged = dict(glob)
     merged.update(lang)  # language rows override global on the same term
+    if include_skipped:
+        return merged, skipped
     return merged
 
 

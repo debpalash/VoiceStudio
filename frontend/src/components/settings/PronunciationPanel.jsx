@@ -304,8 +304,13 @@ export default function PronunciationPanel() {
                 aria-label={t('pronunciation.enable_entry', { term: e.term })}
                 data-testid={`pron-toggle-${e.id}`}
               />
-              <Badge tone="neutral">{typeLabel(e.type)}</Badge>
+                            <Badge tone="neutral">{typeLabel(e.type)}</Badge>
               <Badge tone="neutral">{scopeLabel(e.scope || e.language)}</Badge>
+              {e.type !== 'respelling' && (
+                <Badge tone="warning" data-testid={`pron-not-applied-${e.id}`}>
+                  {t('pronunciation.not_applied_badge')}
+                </Badge>
+              )}
               <Button
                 variant="danger"
                 size="sm"
@@ -414,7 +419,7 @@ export default function PronunciationPanel() {
           </>
         }
       />
-      {testOut && (
+            {testOut && (
         <p className="perfpanel__help" data-testid="pron-test-out">
           {testOut.changed ? (
             <>
@@ -423,6 +428,13 @@ export default function PronunciationPanel() {
           ) : (
             t('pronunciation.test_nochange')
           )}
+        </p>
+      )}
+      {testOut?.skipped_terms?.length > 0 && (
+        <p className="perfpanel__help" data-testid="pron-test-skipped">
+          {t('pronunciation.test_skipped', {
+            terms: testOut.skipped_terms.map((s) => s.term).join(', '),
+          })}
         </p>
       )}
       {testError && (
