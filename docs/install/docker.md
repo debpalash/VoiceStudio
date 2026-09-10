@@ -256,6 +256,20 @@ docker compose -f deploy/docker-compose.yml --profile gpu up -d
 docker compose -f deploy/docker-compose.yml --profile rocm up -d
 ```
 
+On an ARM64 host with AMD64 emulation available, use these **CPU-only**
+commands instead. Set `DOCKER_DEFAULT_PLATFORM` for both pulling and starting
+the service:
+
+```bash
+DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose \
+  -f deploy/docker-compose.yml --profile cpu pull
+DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose \
+  -f deploy/docker-compose.yml --profile cpu up -d
+```
+
+The override applies only to each command. The [architecture limitations](#architecture)
+still apply; emulation does not enable GPU acceleration.
+
 The `docker-compose.yml` shipped in `deploy/` defaults to `127.0.0.1:3900`
 on the host. The backend inside the container binds to `0.0.0.0` so the
 host port mapping can forward — the host-side `127.0.0.1` binding is what
