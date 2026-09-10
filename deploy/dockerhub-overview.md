@@ -54,7 +54,7 @@ the entire pipeline runs on CPU, just slower. Pull size: ~5 GB compressed
 ```bash
 export OMNIVOICE_API_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
 
-docker run -d --name omnivoice \
+docker run -d --name omnivoice --platform linux/amd64 \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
   -v omnivoice-data:/app/omnivoice_data \

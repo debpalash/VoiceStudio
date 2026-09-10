@@ -60,9 +60,9 @@ master key.
 ## Pull and run (CPU)
 
 ```bash
-docker pull ghcr.io/debpalash/omnivoice-studio:latest
+docker pull --platform linux/amd64 ghcr.io/debpalash/omnivoice-studio:latest
 
-docker run -d --name omnivoice \
+docker run -d --name omnivoice --platform linux/amd64 \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
   -v omnivoice-data:/app/omnivoice_data \
@@ -267,7 +267,20 @@ DOCKER_DEFAULT_PLATFORM=linux/amd64 docker compose \
   -f deploy/docker-compose.yml --profile cpu up -d
 ```
 
-The override applies only to each command. The [architecture limitations](#architecture)
+In Bash, the override applies only to each command.
+
+For PowerShell, open a separate session in the repository root and set the
+administrator key and platform before running the same CPU profile:
+
+```powershell
+$env:OMNIVOICE_API_KEY = python -c "import secrets; print(secrets.token_urlsafe(32))"
+$env:DOCKER_DEFAULT_PLATFORM = 'linux/amd64'
+docker compose -f deploy/docker-compose.yml --profile cpu pull
+docker compose -f deploy/docker-compose.yml --profile cpu up -d
+```
+
+These environment settings apply only to that PowerShell session and its
+child processes; close the session when finished. The [architecture limitations](#architecture)
 still apply; emulation does not enable GPU acceleration.
 
 The `docker-compose.yml` shipped in `deploy/` defaults to `127.0.0.1:3900`

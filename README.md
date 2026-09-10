@@ -93,7 +93,7 @@ should read the [architecture requirements](docs/install/docker.md#architecture)
 before pulling an image.
 
 ```bash
-docker run -d -p 127.0.0.1:3900:3900 -v omnivoice-data:/app/omnivoice_data --name voicestudio palashdeb/omnivoice-studio:stable
+docker run -d --platform linux/amd64 -p 127.0.0.1:3900:3900 -v omnivoice-data:/app/omnivoice_data --name voicestudio palashdeb/omnivoice-studio:stable
 ```
 
 ### First voice
