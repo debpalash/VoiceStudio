@@ -171,6 +171,29 @@ warn_installed_instance() {
 
 kill_running_instances() {
   local pids=""
+  # Windows has no working path below: Git Bash ships neither pgrep nor lsof,
+  # and MSYS `kill` cannot signal a native Win32 pid. Every lookup is
+  # `|| true`-guarded, so the whole function degraded to a silent no-op — the
+  # stale exe kept a lock on its own image and the next build died with
+  # "failed to remove file ... Access is denied. (os error 5)", while a wipe run
+  # deleted the data out from under a still-live app. The helper is Win32-aware,
+  # scopes ownership to this checkout's build output, binds each kill to the
+  # process instance (pids are reusable), and fails rather than returning while
+  # a process survives — matching desktop_prod_processes.py on Linux.
+  if [ "$PLATFORM" = "windows" ]; then
+    local win_pids
+    if ! win_pids="$(bun "$REPO_ROOT/scripts/desktop-prod-windows-processes.mjs" "$TAURI_BUILD_ROOT")"; then
+      echo "❌ A running VoiceStudio from this checkout could not be stopped."
+      echo "   Close it (or end omnivoice-studio.exe in Task Manager) and retry."
+      exit 1
+    fi
+    if [ -n "$win_pids" ]; then
+      echo "🔪 Terminating running VoiceStudio processes: $(echo "$win_pids" | tr '\n' ' ')"
+      echo "   All stopped."
+      echo ""
+    fi
+    return 0
+  fi
   # One pattern covers both launch shapes: the raw binary and the .app bundle
   # both live under `${TAURI_DIR}/target/debug/`, and `pgrep -f` sees the
   # absolute path, of which that is a substring.
