@@ -64,6 +64,7 @@ def backend(monkeypatch, tts_backend):
     """An MLXAudioBackend with the model pre-loaded, so no mlx import happens."""
     be = tts_backend.MLXAudioBackend.__new__(tts_backend.MLXAudioBackend)
     be._model_id = "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-4bit"
+    be._sr = 24000
     be._model = _FakeModel()
     monkeypatch.setattr(be, "_ensure_loaded", lambda: None)
     return be

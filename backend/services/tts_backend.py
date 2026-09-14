@@ -1846,7 +1846,14 @@ class MLXAudioBackend(TTSBackend):
                 audio = getattr(result, "audio", result)
                 if hasattr(audio, "numpy"):
                     audio = audio.numpy()
-                pieces.append(np.asarray(audio, dtype=np.float32))
+                audio = np.asarray(audio, dtype=np.float32)
+                sr = getattr(result, "sample_rate", self.sample_rate)
+                if sr != self.sample_rate:
+                    import torchaudio
+                    audio = torchaudio.functional.resample(
+                        torch.from_numpy(audio), sr, self.sample_rate,
+                    ).numpy()
+                pieces.append(audio)
         except TypeError:
             # Some engines don't accept lang_code / ref_audio. Retry with
             # only the universal kwargs.
@@ -1855,7 +1862,14 @@ class MLXAudioBackend(TTSBackend):
                 audio = getattr(result, "audio", result)
                 if hasattr(audio, "numpy"):
                     audio = audio.numpy()
-                pieces.append(np.asarray(audio, dtype=np.float32))
+                audio = np.asarray(audio, dtype=np.float32)
+                sr = getattr(result, "sample_rate", self.sample_rate)
+                if sr != self.sample_rate:
+                    import torchaudio
+                    audio = torchaudio.functional.resample(
+                        torch.from_numpy(audio), sr, self.sample_rate,
+                    ).numpy()
+                pieces.append(audio)
 
         if not pieces:
             raise RuntimeError(f"mlx-audio ({self._model_id}) produced no audio")

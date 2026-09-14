@@ -43,7 +43,8 @@ HF repo id. The env var overrides the persisted UI choice.
 
 ## Behaviour notes
 
-- Output is 24 kHz mono for most hosted models.
+- Output is 24 kHz mono. Results from models with a different native rate
+  (such as Dia at 44.1 kHz) are resampled before stitching and export.
 - **Cloning works only with the `csm` model** — it is the only curated model
   confirmed to accept a reference clip. Other models silently ignore
   reference audio, so the engine reports cloning support only when CSM is
