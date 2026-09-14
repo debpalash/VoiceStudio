@@ -255,15 +255,29 @@ ready. The desktop app sits on "starting backend", `/health` returns 503, and
 `/startup/progress` shows `ml_imports` active. From source you see `import
 torch` die with a native access violation rather than a Python traceback.
 
-**Cause:** VoiceStudio pins `torch 2.8.0`. That build carries no `sm_120`
-kernels, so on a Blackwell card the CUDA initializer faults inside the native
-library. This is not a VoiceStudio bug and no setting works around it — the
-wheel does not contain code for the GPU.
+**Cause:** not established. The pinned build is not missing Blackwell code:
+`torch 2.8.0+cu128` lists `sm_120` in `torch.cuda.get_arch_list()`, and that
+build imports and runs CUDA normally on some Blackwell cards. What is confirmed
+is that on the Windows setups in
+[#1931](https://github.com/debpalash/VoiceStudio/issues/1931) `import torch`
+faults inside the native library before Python can raise an error, and moving
+the torch trio to 2.9.x clears it.
 
-**Fix:** move the whole torch trio to a build with `sm_120` kernels. They must
-move together — upgrading one past the ABI the others were built against gives
-you `RuntimeError: operator torchvision::nms does not exist`, which is the
-next section's problem instead.
+If `import torch` crashes for you, that crash *is* the symptom — skip straight
+to the fix below. Where torch does import, this shows what the build actually
+contains:
+
+```bash
+uv run python -c "import torch; print(torch.__version__, torch.cuda.get_arch_list())"
+```
+
+`sm_120` in that list means the kernels are present and the crash is elsewhere
+in the native init path. Either way the upgrade below is the known workaround.
+
+**Fix:** move the whole torch trio to 2.9.x. They must move together —
+upgrading one past the ABI the others were built against gives you
+`RuntimeError: operator torchvision::nms does not exist`, which is the next
+section's problem instead.
 
 Edit **both** pin lists, keeping them identical:
 
@@ -305,8 +319,10 @@ guarded now, so the upgrade path above is clean on a current checkout.
 **Keeping the change:** these are the repo's own pins, so a `git pull` that
 touches them will conflict or overwrite. Re-apply after updating until the
 default pin moves — the default cannot move for everyone until the newer torch
-is verified across the older GPUs VoiceStudio supports, since a build that adds
-`sm_120` can drop older architectures.
+is verified across the older GPUs VoiceStudio supports, since a newer build can
+drop older architectures. Which ones varies by torch release, not by the CUDA
+variant alone: the pinned 2.8.0+cu128 build reports `sm_70` first, while the
+cu128 arch list captured in #1285 still carried `sm_61`.
 
 **Linked issue:** [#1931](https://github.com/debpalash/VoiceStudio/issues/1931)
 — thanks to the reporter for the full diagnosis, including the verification
@@ -1055,14 +1071,16 @@ retrying.
 and the backend log ends inside the `ml_imports` phase — often with a native
 crash (exit code `0xffffffff` / `-1073741819`) rather than a Python traceback.
 
-**Cause.** VoiceStudio pins `torch 2.8.0+cu128`, which ships no `sm_120`
-kernels. On an RTX 50-series card `import torch` dies natively, before any
-VoiceStudio code can classify it — which is why the app can only say the
-backend did not start. This is a property of the pinned build, not of your
-driver or your install.
+**Cause.** Not established. `torch 2.8.0+cu128` does contain Blackwell code:
+`sm_120` is in `torch.cuda.get_arch_list()`, and that build imports and runs
+CUDA normally on some Blackwell cards, so this is not simply a wheel without
+kernels for your GPU. What is confirmed is that on the Windows setups in
+[#1931](https://github.com/debpalash/VoiceStudio/issues/1931) `import torch`
+dies natively before any VoiceStudio code can classify it, which is why the app
+can only say the backend did not start. Moving to torch 2.9.x clears it for the
+users who hit it.
 
-**Fix.** Move to a torch build that has Blackwell kernels. From a source
-checkout, in the project folder:
+**Fix.** Move to torch 2.9.x. From a source checkout, in the project folder:
 
 1. Edit `pyproject.toml` → `[tool.uv] constraint-dependencies` and raise the
    torch constraint to `torch==2.9.1+cu128` (matching `torchaudio` /

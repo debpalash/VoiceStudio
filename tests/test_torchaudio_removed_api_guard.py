@@ -6,14 +6,19 @@ unguarded it raises `AttributeError` inside the `ml_imports` startup phase, and
 a failure there takes the whole backend down: the desktop app sits on "starting
 backend" forever and `/health` stays 503.
 
-That is not hypothetical. RTX 50-series (Blackwell, sm_120) owners have no
-choice but to move off the pinned torch 2.8.0, which carries no sm_120 kernels,
-and the torch 2.9.x they land on brings torchaudio 2.9 with it. The one group
-forced to upgrade met a hard startup crash for a line that does nothing.
+That is not hypothetical. #1931 came from an sm_120 (Blackwell) user whose
+torch import crashed on Windows and who fixed it by moving to torch 2.9.1,
+which brings torchaudio 2.9 with it. Someone already working around one
+problem then met a hard startup crash on a line that does nothing.
+
+The pin is not missing sm_120 kernels: torch 2.8.0 from the cu128 index lists
+sm_120 in get_arch_list(). CU128_ARCHS in tests/test_cuda_arch_compat.py
+records the same list, captured verbatim from a real cu128 build in #1285.
 
 The guard is one `hasattr`. This test is what keeps it: a cleanup pass that
 sees a no-op call and "simplifies" it by deleting the condition would restore
-the crash for every Blackwell user, and no test in the suite would notice —
+the crash for every user on torchaudio 2.9, and no test in the suite would
+notice —
 CI runs the pinned torch, where the attribute still exists.
 """
 
@@ -86,6 +91,6 @@ def test_no_unguarded_removed_torchaudio_api():
         f"These reach a torchaudio API that torchaudio 2.9 removed, with "
         f"nothing proving it exists: {offenders}. Wrap it in "
         '`if hasattr(torchaudio, "..."):` — unguarded it is an AttributeError '
-        "inside ml_imports, which takes the backend down on every RTX "
-        "50-series machine (#1931)."
+        "inside ml_imports, which takes the backend down on any machine "
+        "running torchaudio 2.9 (#1931)."
     )
