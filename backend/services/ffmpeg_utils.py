@@ -308,7 +308,10 @@ def find_ffprobe():
     try:
         ffmpeg_path = find_ffmpeg()
         if ffmpeg_path:
-            candidate = ffmpeg_path.replace("ffmpeg", "ffprobe")
+            candidate = os.path.join(
+                os.path.dirname(ffmpeg_path),
+                os.path.basename(ffmpeg_path).replace("ffmpeg", "ffprobe"),
+            )
             if os.path.isfile(candidate):
                 return candidate
     except Exception:

@@ -131,6 +131,21 @@ def test_resolve_ffprobe_env_var_with_command_name_resolves_via_which(
     assert ffmpeg_utils.resolve_ffprobe() == str(fake)
 
 
+@pytest.mark.parametrize("binary_name", ["ffmpeg", "ffmpeg.exe"])
+def test_find_ffprobe_preserves_ffmpeg_parent_directory(monkeypatch, tmp_path, binary_name):
+    from services import ffmpeg_utils
+
+    bindir = tmp_path / "ffmpeg" / "bin"
+    bindir.mkdir(parents=True)
+    ffmpeg = bindir / binary_name
+    ffprobe = bindir / binary_name.replace("ffmpeg", "ffprobe")
+    ffprobe.touch()
+    monkeypatch.setattr(ffmpeg_utils, "resolve_ffprobe", lambda: None)
+    monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: str(ffmpeg))
+
+    assert ffmpeg_utils.find_ffprobe() == str(ffprobe)
+
+
 class _ShutilStub:
     """A tiny shim that mimics the parts of shutil ffmpeg_utils touches.
 
