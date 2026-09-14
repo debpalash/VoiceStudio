@@ -1,10 +1,17 @@
 """#278 — torch.compile failures must fall back to eager, never fail generation.
 
-On GPU architectures Triton/Inductor doesn't support yet (e.g. RTX 50-series
-Blackwell, sm_120), `torch.compile` succeeds at load time but the *first
-generation* dies inside the Dynamo/FX/Inductor stack ("Detected that you are
-using FX to symbolically trace a dynamo-optimized function", AssertionError in
+On a GPU architecture missing from the running torch build's arch list,
+`torch.compile` succeeds at load time but the *first generation* dies inside
+the Dynamo/FX/Inductor stack (an AssertionError out of
 torch/_inductor/cudagraph_trees.py) and was mislabeled as an OOM.
+
+Blackwell sm_120 was the reported case and is no longer an example: the pinned
+torch 2.8.0+cu128 lists sm_120, and compile, Triton 3.4.0 and the
+cudagraph_trees path all run correctly there (checked on an sm_120 device,
+compiled output matching eager). #278 also quotes "Detected that you are using
+FX to symbolically trace a dynamo-optimized function" — that one is not an arch
+symptom at all; Dynamo raises it whenever FX traces a compiled function, CPU
+included.
 
 These tests pin the contract: compile is an optimization, never a point of
 failure — a compile-stack error during generation triggers a one-shot eager
