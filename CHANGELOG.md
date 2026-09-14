@@ -31,6 +31,7 @@ the frozen-backend fallback mirror it for their toolchains.
 - Transcribing an M4A file with PyTorch Whisper works, instead of failing with "Format not recognised" (#2042, #2039)
 - PyTorch Whisper runs on 6 GB NVIDIA cards instead of falling back to CPU, because its memory check now fits the model it loads (#2044, #2041)
 - MCP tools wait as long as the backend does, so a long transcription no longer fails at 120 s with an empty error (#2043, #2040)
+- A UTF-16 or Windows-1252 subtitle or manuscript imports with its text intact, instead of finding no cues or dropping accents and punctuation (#2073)
 
 ### CI
 

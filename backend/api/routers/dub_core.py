@@ -272,12 +272,10 @@ async def dub_import_srt(job_id: str, file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=f"Could not read uploaded file: {e}") from e
     if not raw_bytes:
         raise HTTPException(status_code=400, detail="Uploaded SRT file is empty.")
-    # Most SRT files are UTF-8 (with or without BOM); fall back to latin-1
-    # so legacy Windows-encoded subs don't blow up the import.
-    try:
-        text = raw_bytes.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = raw_bytes.decode("latin-1", errors="replace")
+    # Most SRT files are UTF-8, but Windows subtitle tools also save UTF-16
+    # (with a BOM) and Windows-1252; decode those instead of finding no cues.
+    from services.text_upload import decode_text_upload
+    text = decode_text_upload(raw_bytes)
 
     from services.srt_parser import parse_srt
     result = parse_srt(text)

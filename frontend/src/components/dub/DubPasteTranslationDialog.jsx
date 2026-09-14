@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Dialog, Button, Textarea, Badge } from '../../ui';
 import { buildPastePlan, detectPasteMode } from '../../utils/pasteTranslations';
 import { dubParseSubtitleText } from '../../api/dub';
+import { readTextFile } from '../../utils/readTextFile';
 
 /**
  * DubPasteTranslationDialog — paste a translation produced somewhere else
@@ -88,9 +89,8 @@ export default function DubPasteTranslationDialog({ open, segments = [], onApply
 
   const readFile = useCallback((file) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setText(String(reader.result || ''));
-    reader.readAsText(file);
+    // As before, a file that cannot be read leaves the text as it was.
+    readTextFile(file).then(setText, () => {});
   }, []);
 
   const apply = () => {

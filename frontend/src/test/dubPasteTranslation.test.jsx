@@ -7,6 +7,7 @@ import {
   buildPastePlan,
   matchByOverlap,
 } from '../utils/pasteTranslations';
+import { ENCODED, SAMPLE } from './encodedText';
 
 // "Paste translation from an external source": the user transcribes once,
 // translates elsewhere (ChatGPT / DeepL / a human), and pastes the result
@@ -404,6 +405,20 @@ describe('DubPasteTranslationDialog', () => {
     await waitFor(() => expect(dubApi.dubParseSubtitleText).toHaveBeenCalled());
     const rows = await screen.findAllByTestId('paste-translation-row');
     expect(rows.every((r) => r.getAttribute('data-matched') === 'true')).toBe(true);
+  });
+
+  // Windows tools save subtitle files as UTF-16 (Notepad's "Unicode") or in
+  // the Windows-1252 code page; a loaded file must read as the text it holds.
+  it.each(Object.keys(ENCODED))('loads a %s file with its text intact', async (encoding) => {
+    render(
+      <DubPasteTranslationDialog open segments={SEGMENTS} onApply={vi.fn()} onClose={vi.fn()} />,
+    );
+    const input = document.querySelector('input[type="file"]');
+    fireEvent.change(input, {
+      target: { files: [new File([ENCODED[encoding](SAMPLE)], 'translation.txt')] },
+    });
+
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue(SAMPLE));
   });
 
   it('surfaces a backend parse failure instead of applying a silent no-op', async () => {

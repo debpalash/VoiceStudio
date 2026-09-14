@@ -56,6 +56,7 @@ import {
 } from '../utils/storyTokens';
 import { parseScript } from '../utils/parseScript';
 import { importToText } from '../utils/importStory';
+import { readTextFile } from '../utils/readTextFile';
 import { generateSpeech, audioUrl } from '../api/generate';
 import { playBlobAudio } from '../utils/media';
 import { downloadMedia } from '../utils/mediaDownload';
@@ -312,7 +313,7 @@ export default function StoriesEditor({ profiles = [] }) {
       e.target.value = '';
       if (!file) return;
       try {
-        const text = importToText(file.name, await file.text());
+        const text = importToText(file.name, await readTextFile(file));
         setSplitText(text);
         setSplitOpen(true);
       } catch (err) {

@@ -186,7 +186,8 @@ async def audiobook_import(file: UploadFile = File(...)) -> dict:
         except ValueError as e:
             raise HTTPException(status_code=400, detail=f"couldn't parse PDF: {e}")
     else:
-        script = chapterize_plaintext(data.decode("utf-8", "ignore"))
+        from services.text_upload import decode_text_upload
+        script = chapterize_plaintext(decode_text_upload(data))
     if not script.strip():
         raise HTTPException(status_code=400, detail="no text found in the file")
     plan = parse_audiobook_script(script)
