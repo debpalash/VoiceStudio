@@ -197,6 +197,40 @@ def _safe_torchaudio_save(
                     fmt, e,
                 )
                 torchaudio.save(path_or_buf, tensor, sample_rate, format=fmt)
+    except ImportError as e:
+        # torchaudio >= 2.9 routes save() through TorchCodec, which needs
+        # FFmpeg *shared libraries* on the system. Where those are absent the
+        # write raises ImportError and every generation fails. #1931 guarded
+        # set_audio_backend() against that torchaudio but left save() itself
+        # unprotected; arm64 CUDA hosts reach it unavoidably, since torch
+        # 2.8.0 publishes no aarch64 wheel. soundfile is already a locked
+        # dependency and the tensor is normalized by this point, so hand it to
+        # the audited sibling helper rather than failing the request.
+        logger.warning(
+            "torchaudio.save needs TorchCodec (%s); writing via soundfile", e
+        )
+        if hasattr(path_or_buf, "seek") and hasattr(path_or_buf, "truncate"):
+            try:
+                path_or_buf.seek(0)
+                path_or_buf.truncate(0)
+            except (OSError, io.UnsupportedOperation):
+                pass
+        _subtype = {
+            "wav": "FLOAT" if bits_per_sample == 32 else "PCM_16",
+            "flac": "PCM_16",
+            "ogg": "VORBIS",
+            "mp3": "MPEG_LAYER_III",
+        }.get(fmt, "PCM_16")
+        try:
+            _safe_soundfile_write(
+                path_or_buf,
+                tensor.transpose(0, 1).contiguous().numpy(),
+                sample_rate,
+                subtype=_subtype,
+                format=fmt.upper(),
+            )
+        except Exception as e2:
+            raise _describe_write_failure(e2, path_or_buf) from e2
     except Exception as e:
         # #1221: libsndfile reports OS-level write failures as a bare
         # "LibsndfileError: System error." — no path, no errno, nothing the
@@ -260,6 +294,7 @@ def _safe_soundfile_write(
     sample_rate: int,
     *,
     subtype: str = "PCM_16",
+    format: str | None = None,
 ) -> None:
     """Sibling helper for the one in-tree ``sf.write`` site.
 
@@ -277,6 +312,10 @@ def _safe_soundfile_write(
         subtype: Soundfile subtype string. ``"PCM_16"`` (default) for
             standard 16-bit PCM WAV; ``"PCM_24"``, ``"FLOAT"`` etc.
             also work.
+        format: Container format (``"WAV"``, ``"FLAC"``, ``"OGG"``,
+            ``"MP3"``). ``None`` lets soundfile infer it from the path's
+            extension — which it cannot do for a file-like object, so
+            callers passing a buffer must name it.
 
     Raises:
         ValueError: if the array is empty.
@@ -313,7 +352,7 @@ def _safe_soundfile_write(
     else:
         samples = np.ascontiguousarray(samples)
 
-    sf.write(path, samples, sample_rate, subtype=subtype)
+    sf.write(path, samples, sample_rate, subtype=subtype, format=format)
 
 
 def atomic_save_wav(

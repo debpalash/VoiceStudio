@@ -360,3 +360,71 @@ def test_atomic_save_wav_delegates_to_safe_helper(tmp_path):
     decoded, _ = sf.read(str(target))
     assert abs(decoded).max() <= 1.0 + 1e-3
     assert abs(decoded).max() > 0.5
+
+
+# ── torchaudio 2.9 + no TorchCodec (#1931 follow-up) ───────────────────────
+#
+# torchaudio >= 2.9 routes save() through TorchCodec, which needs FFmpeg
+# *shared libraries* on the system. Where those are absent every write raises
+# ImportError. #1931 guarded set_audio_backend() against that torchaudio but
+# left save() unprotected; arm64 CUDA hosts reach it unavoidably, since torch
+# 2.8.0 publishes no aarch64 wheel. Without the soundfile fallback these three
+# tests raise instead of producing a file.
+
+
+def _torchcodec_missing(*_a, **_kw):
+    raise ImportError(
+        "TorchCodec is required for save_with_torchcodec. "
+        "Please install torchcodec to use this function."
+    )
+
+
+def test_safe_save_falls_back_to_soundfile_when_torchcodec_missing(
+    tmp_path, monkeypatch
+):
+    import torchaudio
+
+    monkeypatch.setattr(torchaudio, "save", _torchcodec_missing)
+
+    target = tmp_path / "fallback.wav"
+    _safe_torchaudio_save(str(target), _sine_tensor(), 24000)
+
+    info = sf.info(str(target))
+    assert info.subtype == "PCM_16"
+    assert info.frames == 24000
+    decoded, sr = sf.read(str(target))
+    assert sr == 24000
+    assert abs(decoded).max() > 0.1
+
+
+def test_safe_save_buffer_falls_back_when_torchcodec_missing(monkeypatch):
+    """The OpenAI-compatible /v1/audio/speech path writes to a BytesIO."""
+    import torchaudio
+
+    monkeypatch.setattr(torchaudio, "save", _torchcodec_missing)
+
+    buf = io.BytesIO()
+    _safe_torchaudio_save(buf, _sine_tensor(), 24000, format="wav")
+
+    assert buf.getvalue()[:4] == b"RIFF"
+    buf.seek(0)
+    decoded, sr = sf.read(buf)
+    assert sr == 24000
+    assert len(decoded) == 24000
+
+
+def test_safe_save_flac_buffer_fallback_names_the_format(monkeypatch):
+    """soundfile cannot infer a container from a file-like object, so the
+    fallback must pass ``format=`` explicitly — otherwise this raises."""
+    import torchaudio
+
+    monkeypatch.setattr(torchaudio, "save", _torchcodec_missing)
+
+    buf = io.BytesIO()
+    _safe_torchaudio_save(buf, _sine_tensor(), 24000, format="flac")
+
+    assert buf.getvalue()[:4] == b"fLaC"
+    buf.seek(0)
+    decoded, sr = sf.read(buf)
+    assert sr == 24000
+    assert len(decoded) == 24000
