@@ -126,3 +126,19 @@ def parse_srt(content: str) -> SrtParseResult:
         for i, seg in enumerate(out)
     ]
     return SrtParseResult(segments=segments, skipped_cues=skipped, dropped_overlaps=dropped)
+
+
+def format_cue_timestamp(seconds: float, ms_separator: str) -> str:
+    """`HH:MM:SS<sep>mmm` for `seconds`, rounded to the millisecond.
+
+    Rounds the whole value once, then splits it, so a time that is not exact
+    in binary (2.3 is 2.29999...) stays 2.300 instead of truncating to 2.299,
+    which moved every such cue a millisecond early on export, and 59.9996
+    carries to the next second instead of printing `,1000`. SRT separates
+    the milliseconds with `,`; WebVTT with `.`.
+    """
+    total_ms = int(round(seconds * 1000))
+    h, rem = divmod(total_ms, 3_600_000)
+    m, rem = divmod(rem, 60_000)
+    s, ms = divmod(rem, 1000)
+    return f"{h:02d}:{m:02d}:{s:02d}{ms_separator}{ms:03d}"

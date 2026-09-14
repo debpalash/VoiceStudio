@@ -1697,11 +1697,8 @@ async def dub_download_audio(
 
 
 def _format_srt_time(seconds):
-    h = int(seconds // 3600)
-    m = int((seconds % 3600) // 60)
-    s = int(seconds % 60)
-    ms = int((seconds % 1) * 1000)
-    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+    from services.srt_parser import format_cue_timestamp
+    return format_cue_timestamp(seconds, ",")
 
 def _pick_subtitle_text(seg: dict, dual: bool) -> str:
     """One line per subtitle cue, unless dual=true and an original exists.
@@ -1785,11 +1782,8 @@ async def dub_export_srt(
     )
 
 def _format_vtt_time(seconds):
-    h = int(seconds // 3600)
-    m = int((seconds % 3600) // 60)
-    s = int(seconds % 60)
-    ms = int((seconds % 1) * 1000)
-    return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
+    from services.srt_parser import format_cue_timestamp
+    return format_cue_timestamp(seconds, ".")
 
 @router.get("/dub/vtt/{job_id}")
 @router.get("/dub/vtt/{job_id}/{filename}")

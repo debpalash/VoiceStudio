@@ -721,17 +721,11 @@ def list_voices():
 
 def _format_ts_srt(seconds: float) -> str:
     """Format seconds as SRT timestamp: HH:MM:SS,mmm"""
-    h = int(seconds // 3600)
-    m = int((seconds % 3600) // 60)
-    s = int(seconds % 60)
-    ms = int((seconds % 1) * 1000)
-    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+    from services.srt_parser import format_cue_timestamp
+    return format_cue_timestamp(seconds, ",")
 
 
 def _format_ts_vtt(seconds: float) -> str:
     """Format seconds as VTT timestamp: HH:MM:SS.mmm"""
-    h = int(seconds // 3600)
-    m = int((seconds % 3600) // 60)
-    s = int(seconds % 60)
-    ms = int((seconds % 1) * 1000)
-    return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
+    from services.srt_parser import format_cue_timestamp
+    return format_cue_timestamp(seconds, ".")
