@@ -25,6 +25,8 @@ runs under the Confucius4 venv — never imported by the parent), and
 from __future__ import annotations
 
 import logging
+import math
+import os
 from typing import TYPE_CHECKING
 
 from services.subprocess_backend import SubprocessBackend
@@ -98,6 +100,19 @@ class Confucius4Backend(SubprocessBackend):
     def sidecar_script(cls):
         from engines.confucius4.bootstrap import CONFUCIUS4_SIDECAR_SCRIPT
         return CONFUCIUS4_SIDECAR_SCRIPT
+
+    @property
+    def recv_timeout_s(self) -> float:
+        """Receive timeout in seconds for the Confucius4 sidecar process (#2103)."""
+        # Confucius4 is an LLM-based TTS (~17x realtime on CPU); synthesis legitimately
+        # outruns the 60s class default. OMNIVOICE_CONFUCIUS4_RECV_TIMEOUT_S tunes it (#2103).
+        try:
+            v = float(os.environ.get("OMNIVOICE_CONFUCIUS4_RECV_TIMEOUT_S", "900"))
+        except (ValueError, TypeError):
+            return 900.0
+        if not math.isfinite(v):
+            return 900.0
+        return max(30.0, v)
 
     @property
     def sample_rate(self) -> int:

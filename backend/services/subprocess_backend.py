@@ -760,6 +760,7 @@ class SubprocessBackend(TTSBackend):
                 try:
                     self._send(msg)
                     reply = self._recv_with_timeout(self.recv_timeout_s)
+                    timed_out = self._last_recv_timed_out
                 except (RuntimeError, OSError):
                     # A broken or malformed protocol stream cannot be reused.
                     # Reap it before releasing the request lock so an immediate
@@ -791,11 +792,19 @@ class SubprocessBackend(TTSBackend):
                         pass  # the heartbeat is best-effort; never fail a synth over it
                     try:
                         reply = self._recv_with_timeout(self.recv_timeout_s)
+                        timed_out = self._last_recv_timed_out
                     except (RuntimeError, OSError):
                         self._reap_unusable_process(proc)
                         raise
                 if not reply:
                     self._reap_unusable_process(proc)
+                    if timed_out:
+                        env_key = f"OMNIVOICE_{self.id.upper().replace('-', '_')}_RECV_TIMEOUT_S"
+                        raise RuntimeError(
+                            f"{self.id} sidecar exceeded receive timeout "
+                            f"({self.recv_timeout_s:g}s); killed mid-generate "
+                            f"— retry or raise {env_key}."
+                        )
                     raise RuntimeError(f"{self.id} sidecar closed pipe mid-generate")
             if reply.get("op") == "error":
                 stage = str(reply.get("stage") or "unknown")

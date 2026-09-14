@@ -1,11 +1,12 @@
-import os
-import re
-import sys
-import time
 import asyncio
 import logging
+import math
+import os
 import queue
+import re
+import sys
 import threading
+import time
 from concurrent.futures import Executor, Future, ThreadPoolExecutor
 
 from utils.containment import contain_system_exit
@@ -610,6 +611,20 @@ def generate_timeout_s(
         # Device probing is advisory here; the configured universal bound is
         # still safe when a platform probe is unavailable during startup.
         pass
+
+    # If the engine specifies its own sidecar receive timeout (e.g. SubprocessBackend
+    # engines like Confucius, Dots, Moss, Supertonic), the outer execution budget
+    # must not cut the sidecar off early (#2103). A bounded 5s grace period ensures
+    # the sidecar's watchdog timer fires and surfaces its actionable timeout error
+    # before the outer pool cancellation cuts it off.
+    if engine is not None and hasattr(engine, "recv_timeout_s"):
+        try:
+            sidecar_timeout = float(engine.recv_timeout_s)
+            if math.isfinite(sidecar_timeout) and sidecar_timeout > 0:
+                base = max(base, sidecar_timeout + 5.0)
+        except (TypeError, ValueError):
+            pass
+
     return base + (max(0, len(text or "") - 1200) / 40.0)
 
 

@@ -31,6 +31,8 @@ by the parent), and ``bootstrap.py`` (venv probe + lazy bootstrap).
 from __future__ import annotations
 
 import logging
+import math
+import os
 import sys
 from typing import TYPE_CHECKING
 
@@ -120,6 +122,19 @@ class DotsTTSBackend(SubprocessBackend):
     def sidecar_script(cls):
         from engines.dots_tts.bootstrap import DOTS_TTS_SIDECAR_SCRIPT
         return DOTS_TTS_SIDECAR_SCRIPT
+
+    @property
+    def recv_timeout_s(self) -> float:
+        """Receive timeout in seconds for the dots.tts sidecar process (#2103)."""
+        # dots.tts is a 2B autoregressive model; synthesis on CPU legitimately
+        # outruns the 60s class default. OMNIVOICE_DOTS_TTS_RECV_TIMEOUT_S tunes it (#2103).
+        try:
+            v = float(os.environ.get("OMNIVOICE_DOTS_TTS_RECV_TIMEOUT_S", "900"))
+        except (ValueError, TypeError):
+            return 900.0
+        if not math.isfinite(v):
+            return 900.0
+        return max(30.0, v)
 
     # ── TTSBackend protocol ────────────────────────────────────────────────
 

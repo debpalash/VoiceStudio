@@ -807,6 +807,7 @@ def _oom_friendly_reraise(e):
 def _generate_timeout_s(
     text: str,
     *,
+    engine: object = None,
     execution_device=None,
     min_vram_gb=0.0,
     hardware_family=None,
@@ -827,6 +828,7 @@ def _generate_timeout_s(
     from services.model_manager import generate_timeout_s
     return generate_timeout_s(
         text,
+        engine=engine,
         execution_device=execution_device,
         min_vram_gb=min_vram_gb,
         hardware_family=hardware_family,
@@ -1752,6 +1754,7 @@ async def generate_speech(
                 what="TTS generate",
                 timeout=_generate_timeout_s(
                     text,
+                    engine=_backend,
                     execution_device=_routing["effective_device"],
                     min_vram_gb=_engine_min_vram_gb,
                     hardware_family=_routing_hardware_family,
@@ -2052,6 +2055,7 @@ async def generate_speech(
                                 min_vram_gb=_engine_min_vram_gb,
                                 timeout=_generate_timeout_s(
                                     text,
+                                    engine=_backend,
                                     execution_device=_routing["effective_device"],
                                     min_vram_gb=_engine_min_vram_gb,
                                     hardware_family=_routing_hardware_family,
@@ -2078,6 +2082,7 @@ async def generate_speech(
                                 min_vram_gb=_engine_min_vram_gb,
                                 timeout=_generate_timeout_s(
                                     text,
+                                    engine=_backend,
                                     execution_device=_routing["effective_device"],
                                     min_vram_gb=_engine_min_vram_gb,
                                     hardware_family=_routing_hardware_family,
@@ -2124,6 +2129,7 @@ async def generate_speech(
                                 # even after the v0.3.22 scaled budget shipped.
                                 timeout=_generate_timeout_s(
                                     chunk_text,
+                                    engine=_backend,
                                     execution_device=_routing["effective_device"],
                                     min_vram_gb=_engine_min_vram_gb,
                                     hardware_family=_routing_hardware_family,
@@ -2290,6 +2296,7 @@ async def generate_speech(
                         _local_render, what="TTS generate",
                         timeout=_generate_timeout_s(
                             text,
+                            engine=_backend,
                             execution_device=_routing["effective_device"],
                             min_vram_gb=_engine_min_vram_gb,
                             hardware_family=_routing_hardware_family,

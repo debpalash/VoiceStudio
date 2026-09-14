@@ -35,6 +35,7 @@ Threat model (per Plan 03-01 frontmatter):
 from __future__ import annotations
 
 import logging
+import math
 import os
 import sys
 from pathlib import Path
@@ -98,6 +99,19 @@ class Supertonic3Backend(SubprocessBackend):
     @classmethod
     def sidecar_script(cls) -> Path:
         return SUPERTONIC3_SIDECAR_SCRIPT
+
+    @property
+    def recv_timeout_s(self) -> float:
+        """Receive timeout in seconds for the Supertonic-3 sidecar process (#2103)."""
+        # Supertonic-3 runs ONNX on CPU; cold load downloads ~400MB and long
+        # synthesis benefits from more headroom than 60s. OMNIVOICE_SUPERTONIC3_RECV_TIMEOUT_S (#2103).
+        try:
+            v = float(os.environ.get("OMNIVOICE_SUPERTONIC3_RECV_TIMEOUT_S", "300"))
+        except (ValueError, TypeError):
+            return 300.0
+        if not math.isfinite(v):
+            return 300.0
+        return max(30.0, v)
 
     # ── availability ───────────────────────────────────────────────────
 

@@ -38,6 +38,8 @@ isolated engine venv.
 from __future__ import annotations
 
 import logging
+import math
+import os
 from typing import TYPE_CHECKING
 
 from services.subprocess_backend import SubprocessBackend
@@ -126,6 +128,19 @@ class MossTTSV15Backend(SubprocessBackend):
     def sidecar_script(cls):
         from engines.moss_tts_v15.bootstrap import MOSS_TTS_V15_SIDECAR_SCRIPT
         return MOSS_TTS_V15_SIDECAR_SCRIPT
+
+    @property
+    def recv_timeout_s(self) -> float:
+        """Receive timeout in seconds for the MOSS-TTS-v1.5 sidecar process (#2103)."""
+        # MOSS-TTS-v1.5 is an 8B model; synthesis legitimately outruns the
+        # 60s class default. OMNIVOICE_MOSS_TTS_V15_RECV_TIMEOUT_S tunes it (#2103).
+        try:
+            v = float(os.environ.get("OMNIVOICE_MOSS_TTS_V15_RECV_TIMEOUT_S", "900"))
+        except (ValueError, TypeError):
+            return 900.0
+        if not math.isfinite(v):
+            return 900.0
+        return max(30.0, v)
 
     # ── TTSBackend protocol ────────────────────────────────────────────────
 
