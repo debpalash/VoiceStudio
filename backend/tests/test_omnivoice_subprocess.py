@@ -29,6 +29,7 @@ import pytest
 
 from services.subprocess_backend import (
     RECV_TIMEOUT_S,
+    GENERATE_RECV_TIMEOUT_S,
     SubprocessBackend,
 )
 from services.tts_backend import OmniVoiceBackend, get_backend_class, list_backends
@@ -321,11 +322,17 @@ class _PlainBackend(SubprocessBackend):
         return ["multi"]
 
 
-def test_base_default_recv_timeout_is_60s():
-    # A subclass that does NOT override keeps the conservative default, so the
-    # existing subprocess engines (IndexTTS, dots.tts, ...) are byte-identical.
-    assert SubprocessBackend.recv_timeout_s == RECV_TIMEOUT_S == 60.0
-    assert _PlainBackend().recv_timeout_s == 60.0
+def test_base_default_recv_timeout_covers_a_generation():
+    # Was: "a subclass that does NOT override keeps the conservative default".
+    # That default was the 60s health-check ping budget, and four engines
+    # (confucius4, dots.tts, moss_tts_v15, supertonic3) inherited it as their
+    # *generation* deadline and were killed mid-sentence (#2103). A sidecar
+    # that does not choose now gets a deadline that outlasts the wall-clock
+    # budget its own job was granted.
+    assert SubprocessBackend.recv_timeout_s == GENERATE_RECV_TIMEOUT_S == 600.0
+    assert _PlainBackend().recv_timeout_s == 600.0
+    # The ping budget itself is unchanged: health_check() still wants 60s.
+    assert RECV_TIMEOUT_S == 60.0
 
 
 def test_sidecar_spawn_delegates_all_containment_to_nested_owner(monkeypatch, tmp_path):

@@ -31,6 +31,7 @@ the frozen-backend fallback mirror it for their toolchains.
 - Transcribing an M4A file with PyTorch Whisper works, instead of failing with "Format not recognised" (#2042, #2039)
 - PyTorch Whisper runs on 6 GB NVIDIA cards instead of falling back to CPU, because its memory check now fits the model it loads (#2044, #2041)
 - MCP tools wait as long as the backend does, so a long transcription no longer fails at 120 s with an empty error (#2043, #2040)
+- Confucius4-TTS, dots.tts, MOSS-TTS-v1.5 and Supertonic-3 are no longer killed at 60 seconds mid-sentence: a sidecar that sets no deadline of its own now gets one that outlasts its job's own time budget, and a sidecar stopped by that deadline says so instead of reporting a closed pipe (#2109, #2103) — thanks @martinezpl!
 
 ### CI
 
