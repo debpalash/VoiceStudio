@@ -60,6 +60,11 @@ describe('detectPasteMode', () => {
     expect(detectPasteMode('WEBVTT\n\n00:00:01.000 --> 00:00:04.500\nHola.\n')).toBe('timestamped');
   });
 
+  it('detects a VTT paste whose cues have no hours field', () => {
+    // WebVTT allows `mm:ss.ttt`; without this the lines were mapped as plain text.
+    expect(detectPasteMode('WEBVTT\n\n00:01.000 --> 00:04.500\nHola.\n')).toBe('timestamped');
+  });
+
   it('detects numbered lines in every common prefix style', () => {
     expect(detectPasteMode('1. Hola\n2. Que tal\n3. Adios')).toBe('numbered');
     expect(detectPasteMode('1) Hola\n2) Que tal')).toBe('numbered');

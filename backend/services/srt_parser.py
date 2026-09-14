@@ -23,8 +23,10 @@ import re
 from dataclasses import dataclass
 
 
-# Captures: HH MM SS sep(`,` or `.`) ms (1-3 digits)
-_TS = r"(\d{1,2}):([0-5]?\d):([0-5]?\d)[,.](\d{1,3})"
+# Captures: HH MM SS sep(`,` or `.`) ms (1-3 digits). The hours are optional:
+# WebVTT allows `mm:ss.ttt`, and .vtt files reach this parser from the paste
+# dialog (the yt-dlp caption parser in dub_pipeline already accepts them).
+_TS = r"(?:(\d{1,2}):)?([0-5]?\d):([0-5]?\d)[,.](\d{1,3})"
 # Horizontal whitespace only — NEVER plain `\s`, which matches newlines.
 # A timing line lives on ONE line, so `\s*` bought nothing but catastrophic
 # backtracking: under re.MULTILINE the engine restarts at every line start,
@@ -36,12 +38,16 @@ _H = r"[^\S\n]*"
 # Whole timing line: `00:00:01,000 --> 00:00:04,500` plus optional trailing
 # cue style hints (X1: Y1: ... ) we just throw away.
 _TIMING_RE = re.compile(rf"^{_H}{_TS}{_H}-->{_H}{_TS}.*$", re.MULTILINE)
+# A WebVTT file starts with this signature line.
+_WEBVTT_RE = re.compile(r"WEBVTT(?:[ \t]|\n|$)")
+# A blank (or whitespace-only) line.
+_BLANK_LINE_RE = re.compile(r"\n[^\S\n]*\n")
 
 
-def _ts_to_seconds(h: str, m: str, s: str, ms: str) -> float:
+def _ts_to_seconds(h: "str | None", m: str, s: str, ms: str) -> float:
     # Pad ms to 3 digits so "5" -> 0.005, "50" -> 0.050.
     ms_padded = (ms + "000")[:3]
-    return int(h) * 3600 + int(m) * 60 + int(s) + int(ms_padded) / 1000.0
+    return int(h or 0) * 3600 + int(m) * 60 + int(s) + int(ms_padded) / 1000.0
 
 
 @dataclass
@@ -68,6 +74,11 @@ def parse_srt(content: str) -> SrtParseResult:
     # Strip BOM and normalise line endings; many editors save SRTs as CRLF.
     text = content.lstrip("﻿").replace("\r\n", "\n").replace("\r", "\n")
 
+    # In WebVTT a cue's text ends at the first blank line; what follows before
+    # the next timing line is that cue's identifier or a NOTE/STYLE block, not
+    # dialogue. SRT keeps its lenient handling of blank lines inside a cue.
+    is_webvtt = bool(_WEBVTT_RE.match(text.lstrip()))
+
     raw: list[dict] = []
     skipped = 0
     # Find every timing line, slice the cue text from there to the next
@@ -87,6 +98,8 @@ def parse_srt(content: str) -> SrtParseResult:
         body_start = m.end()
         body_end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
         body = text[body_start:body_end].strip("\n")
+        if is_webvtt:
+            body = _BLANK_LINE_RE.split(body, maxsplit=1)[0]
         # Drop the trailing index number of the NEXT cue (which got eaten
         # into our body) by trimming trailing digit-only lines.
         lines = body.split("\n")

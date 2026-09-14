@@ -189,3 +189,47 @@ B
         assert seg["id"] == i
         assert seg["text"] == seg["text_original"]
         assert seg["speaker_id"] == "Speaker 1"
+
+
+# -- WebVTT through the same parser (Dub -> Paste translation -> Load file) ---
+
+
+def test_webvtt_cues_without_an_hours_field_are_parsed():
+    # WebVTT allows `mm:ss.ttt`; the paste dialog accepts .vtt files.
+    vtt = "WEBVTT\n\n00:01.000 --> 00:02.500\nHola\n\n01:03.000 --> 01:04.000\nQue tal\n"
+    result = parse_srt(vtt)
+    assert [(s["start"], s["end"], s["text"]) for s in result.segments] == [
+        (1.0, 2.5, "Hola"),
+        (63.0, 64.0, "Que tal"),
+    ]
+
+
+def test_webvtt_identifiers_and_note_blocks_stay_out_of_cue_text():
+    vtt = (
+        "WEBVTT\n\nNOTE made by a translator\n\n"
+        "intro\n00:00:01.000 --> 00:00:02.500 align:start\nHola\n\n"
+        "NOTE check this line\n\n"
+        "cue-2\n00:00:03.000 --> 00:00:04.000\nQue tal\n"
+    )
+    result = parse_srt(vtt)
+    assert [s["text"] for s in result.segments] == ["Hola", "Que tal"]
+
+
+def test_srt_text_after_a_blank_line_inside_a_cue_is_still_kept():
+    # SRT keeps its lenient blank-line handling; only WebVTT has identifiers.
+    srt = "1\n00:00:01,000 --> 00:00:02,000\nFirst\n\nstill first\n2\n00:00:03,000 --> 00:00:04,000\nSecond\n"
+    result = parse_srt(srt)
+    assert [s["text"] for s in result.segments] == ["First\nstill first", "Second"]
+
+
+def test_paste_endpoint_returns_webvtt_cues():
+    from fastapi.testclient import TestClient
+    from main import app
+
+    client = TestClient(app, client=("127.0.0.1", 50000))
+    res = client.post(
+        "/dub/parse-subtitle-text",
+        json={"text": "WEBVTT\n\nintro\n00:01.000 --> 00:02.000\nHola\n\nNOTE x\n\n00:03.000 --> 00:04.000\nAdios\n"},
+    )
+    assert res.status_code == 200, res.text
+    assert [(c["start"], c["text"]) for c in res.json()["segments"]] == [(1.0, "Hola"), (3.0, "Adios")]

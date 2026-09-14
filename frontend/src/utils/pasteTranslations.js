@@ -23,9 +23,10 @@
  * the SAME plan from the same inputs.
  */
 
-// A timing line, e.g. `00:00:01,000 --> 00:00:04,500` (`.` ms separator and
-// missing leading zeros allowed — mirrors backend/services/srt_parser.py).
-const TIMING_RE = /\d{1,2}:[0-5]?\d:[0-5]?\d[,.]\d{1,3}\s*-->/;
+// A timing line, e.g. `00:00:01,000 --> 00:00:04,500` (`.` ms separator,
+// missing leading zeros and WebVTT's hourless `00:01.000` allowed — mirrors
+// backend/services/srt_parser.py).
+const TIMING_RE = /(?:\d{1,2}:)?[0-5]?\d:[0-5]?\d[,.]\d{1,3}\s*-->/;
 
 // `1. text` / `2) text` / `[3] text` / `4 - text` / `5: text`.
 const NUMBERED_RE = /^\s*(?:\[\s*(\d{1,5})\s*\]|\(\s*(\d{1,5})\s*\)|(\d{1,5}))\s*[.):\-—]?\s+(.*)$/;
