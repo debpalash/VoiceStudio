@@ -64,7 +64,12 @@ dependencies = [
     # Directly used by video_context; 12.1 adds get_flattened_data(), the
     # replacement for getdata() ahead of its Pillow 14 removal.
     "pillow>=12.1.0",
-    "pedalboard>=0.9.14",
+    # 0.9.21+ Linux x86_64 wheels are built with -march=native
+    # (spotify/pedalboard#454), so importing pedalboard SIGILLs on CPUs
+    # that lack the builder's SIMD set. 0.9.20 is the last known-good
+    # wheel. Cap below 0.9.21; revisit when upstream ships portable
+    # wheels (USE_PORTABLE_SIMD / pedalboard PR #466). VoiceStudio #2052.
+    "pedalboard>=0.9.14,<0.9.21",
     # Primary ASR — cross-platform, CTranslate2-based under the hood. WhisperX
     # adds wav2vec2 forced alignment (±10-30 ms word timing vs Whisper's own
     # ±100-300 ms) which directly improves lip-sync on the dub pipeline.
