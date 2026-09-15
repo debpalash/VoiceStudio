@@ -42,6 +42,11 @@ def app_client(tmp_path, monkeypatch):
     import main as _main
     importlib.reload(_main)
 
+    import services.dub_background as background
+    async def fake_background(source, separated, *args):
+        return separated
+    monkeypatch.setattr(background, "surgical_background", fake_background)
+
     from fastapi.testclient import TestClient
     with TestClient(_main.app) as client:
         yield client, _dc, _dx, tmp_path
@@ -68,7 +73,7 @@ def _seed_job_with_tracks(dc, tmp_path: Path):
         "no_vocals_path": str(bg_wav),
         "duration": 1.0,
         "filename": "clip.mp4",
-        "segments": [],
+        "segments": [{"start": 0.1, "end": 0.8}],
         "dubbed_tracks": {"es": {"path": str(track_wav), "language": "Spanish", "language_code": "es"}},
         "scene_cuts": [],
     }
@@ -127,7 +132,7 @@ class TestDubExportUniqueness:
         assert response.headers["accept-ranges"] == "bytes"
         assert response.content == b""
         run_ffmpeg.assert_not_called()
-        assert not (job_dir / "exports" / "preview_v2_es_bg.mp4").exists()
+        assert not (job_dir / "exports" / "preview_v2_es_surgical_v2_no_vocals.mp4").exists()
 
     def test_preview_is_faststart_and_reuses_immutable_cache(self, app_client):
         client, dc, dx, tmp = app_client
@@ -152,7 +157,7 @@ class TestDubExportUniqueness:
         assert commands[0][commands[0].index("-movflags") + 1] == "+faststart"
         assert first.headers["cache-control"] == "private, max-age=31536000, immutable"
         assert first.headers["accept-ranges"] == "bytes"
-        assert (job_dir / "exports" / "preview_v2_es_bg.mp4").is_file()
+        assert (job_dir / "exports" / "preview_v2_es_surgical_v2_no_vocals.mp4").is_file()
 
     def test_original_only_resolves_stale_default_before_retime(self, app_client):
         client, dc, dx, tmp = app_client

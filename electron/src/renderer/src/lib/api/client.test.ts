@@ -23,6 +23,13 @@ afterEach(() => {
 });
 
 describe('errorFromResponse', () => {
+  it('localizes background preservation errors and retains diagnostics', async () => {
+    const detail = { code: 'dub_background_unavailable', message: 'Raw diagnostic' };
+    const err = await errorFromResponse(new Response(JSON.stringify({ detail }), { status: 409 }));
+    expect(err.detail).not.toBe('Raw diagnostic');
+    expect(err.detail).not.toContain('Raw diagnostic');
+    expect(err.payload?.detail).toEqual(detail);
+  });
   it('uses a string detail verbatim and keeps the payload', async () => {
     const res = new Response(JSON.stringify({ detail: 'Unsupported instruct items' }), {
       status: 400,

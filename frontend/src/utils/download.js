@@ -5,6 +5,7 @@
 // native save dialog instead; calling that dialog when no Tauri runtime is
 // present throws "Cannot read properties of undefined (reading 'invoke')"
 // (issue #256), so callers must guard on isTauri and route here otherwise.
+import i18next from 'i18next';
 import { apiFetch } from '../api/client';
 
 /**
@@ -40,7 +41,12 @@ export async function browserDownload(url, fallbackName, deps = {}) {
   const urlApi = deps.url ?? globalThis.URL;
 
   const response = await _fetch(url);
-  if (!response.ok) throw new Error('Download failed');
+  if (!response.ok) {
+    const body = typeof response.json === 'function' ? await response.json().catch(() => null) : null;
+    if (body?.detail?.code === 'dub_background_unavailable')
+      throw new Error(i18next.t('dubIntegrity.backgroundUnavailable'));
+    throw new Error('Download failed');
+  }
 
   const serverName = parseFilenameFromContentDisposition(
     response.headers?.get?.('content-disposition'),

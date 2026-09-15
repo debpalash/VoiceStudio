@@ -1980,6 +1980,7 @@
     "dictation_lede_hotkey_only": "Halte das Tastenkürzel oben überall auf dem Desktop gedrückt, sprich und lass los — der Text landet in der fokussierten App. Drücke es jetzt zum Verifizieren."
   },
   "setup": {
+    "ready_desc": "Du kannst jetzt deine erste Stimme erstellen. Die Diktierfunktion kannst du jetzt oder später in den Einstellungen einrichten.",
     "system_preflight": "System-Preflight",
     "system_check_desc": "Prüfen Sie RAM, Festplatte, GPU, ffmpeg und Netzwerk. Blocker werden im Voraus gekennzeichnet, sodass Sie vor dem Herunterladen Bescheid wissen.",
     "probing": "Sondierungssystem…",
@@ -2569,5 +2570,21 @@
     "captured": "{{count}} problematische Protokollzeilen erfasst",
     "contextNotice": "Der ausgewählte Agent erhält diesen Bericht, die aktuelle Ansicht, aktuelle App- und Backend-Protokolle sowie Systemdiagnosen.",
     "complete": "Abgeschlossen"
+  },
+  "dubIntegrity": {
+    "missingSpeech": "Sprache fehlt oder ist nicht lesbar. Erzeuge das betroffene Segment vor dem Export erneut.",
+    "timingOverflow": "Die Sprache überschreitet ihr Zeitfenster. Kürze die Übersetzung oder wähle ein festes Zeitfenster oder die Videostreckung.",
+    "backgroundUnavailable": "Der Originalton konnte nicht erhalten werden. Prüfe Hintergrundtrennung und Dialogzeiten und versuche es erneut, oder exportiere ausdrücklich nur Sprache."
+  },
+  "dubStyle": {
+    "label": "Vorgabe für den Übersetzungsstil",
+    "help": "Beschreibe Ton, Zielgruppe und Anpassung, etwa Witze erhalten und Redewendungen natürlich übertragen. Wird im Projekt gespeichert und für Übersetzung und Zeitanpassung verwendet. Leer lassen für den Standardstil."
+  },
+  "dubActivity": {
+    "output": "Übersetzungen",
+    "waiting": "Noch keine Ausgabe empfangen.",
+    "progress": "{{done}} / {{total}} Segmente geprüft",
+    "cancelled": "Abgebrochen",
+    "fitting": "Timing anpassen"
   }
 }

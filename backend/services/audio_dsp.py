@@ -186,6 +186,26 @@ def trim_trailing_silence(
     return audio_tensor[..., :end]
 
 
+
+def trim_speech_padding(audio_tensor: torch.Tensor, sample_rate: int) -> torch.Tensor:
+    """Remove generated edge silence before timing, retaining 50 ms of context.
+
+    Never compress silence into the spoken slot or delete internal pauses.
+    Silent/invalid outputs remain intact for the generation integrity guard.
+    """
+    if audio_tensor.numel() == 0 or sample_rate <= 0:
+        return audio_tensor
+    envelope = audio_tensor.abs()
+    if envelope.ndim > 1:
+        envelope = envelope.amax(dim=tuple(range(envelope.ndim - 1)))
+    voiced = torch.nonzero(envelope > 10 ** (-50 / 20))
+    if voiced.numel() == 0:
+        return audio_tensor
+    margin = int(sample_rate * 0.05)
+    start = max(0, int(voiced[0].item()) - margin)
+    end = min(audio_tensor.shape[-1], int(voiced[-1].item()) + 1 + margin)
+    return audio_tensor[..., start:end]
+
 def apply_effects_chain(audio_tensor, sample_rate: int, chain: list[dict]) -> torch.Tensor:
     """Apply a chain of named effects to an audio tensor.
 

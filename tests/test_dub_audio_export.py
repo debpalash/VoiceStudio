@@ -78,7 +78,7 @@ def test_background_mix_preserves_bed_level_and_bandwidth(monkeypatch):
     s = _flat(cmd)
     assert f"aresample={fu.BED_MIX_SAMPLE_RATE}" in s, "bed bandwidth collapses to the 24kHz voice rate"
     assert "normalize=0" in s, "amix normalization not disabled — bed level depends on stream lifetimes"
-    assert f"volume={fu.BED_GAIN:g}" in s and f"volume={fu.VOICE_GAIN:g}" in s
+    assert "volume=1[" in s and f"volume={fu.VOICE_GAIN:g}" in s
     assert fu.BED_GAIN >= 0.85, "bed gain drifted away from 'almost like the original'"
     assert "alimiter" in s  # full-scale mixing needs the peak guard
 

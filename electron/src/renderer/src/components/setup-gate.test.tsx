@@ -1,4 +1,4 @@
-﻿import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const mock = vi.hoisted(() => ({ ready: true, preflight: { ok: false } }));
@@ -19,7 +19,7 @@ vi.mock('@/features/settings/system-preflight', () => ({
 }));
 vi.mock('@/features/settings/model-library', () => ({
   ModelLibrary: () => <div>Models</div>,
-  SystemRecommendations: () => null,
+  PerformanceModelPacks: () => <div>Model packs</div>,
 }));
 vi.mock('@/features/settings/model-settings', () => ({
   ModelSettings: () => <div>Engine settings</div>,
@@ -73,13 +73,17 @@ it('requires passing preflight and installed models before completion', async ()
   // without blanking the entire first-run experience.
   await waitFor(() => expect(client.getQueryData(['setup-preflight'])).toEqual({ ok: false }));
   expect(screen.getByRole('button', { name: 'setup.continue_ok' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: '4.engineSidebar.dictation' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: '4.setup.enter_studio' })).toBeDisabled();
   client.setQueryData(['setup-preflight'], { ok: true, checks: [] });
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'setup.continue_ok' })).toBeEnabled(),
   );
   fireEvent.click(screen.getByRole('button', { name: 'setup.continue_ok' }));
-  await screen.findByText('Models');
+  await screen.findByText('Model packs');
+  expect(screen.queryByText('Models')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'dub.advanced' }));
+  expect(screen.getByText('Models')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'dub.advanced' }));
   expect(screen.getByRole('button', { name: 'setup.continue_ok' })).toBeDisabled();
   mock.ready = true;
   await client.invalidateQueries({ queryKey: ['setup-status'] });
@@ -87,13 +91,19 @@ it('requires passing preflight and installed models before completion', async ()
     expect(screen.getByRole('button', { name: 'setup.continue_ok' })).toBeEnabled(),
   );
   fireEvent.click(screen.getByRole('button', { name: 'setup.continue_ok' }));
-  await screen.findByText('Privacy');
+  await screen.findByRole('button', { name: 'Choose privacy' });
+  expect(screen.queryByText('Privacy')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Choose privacy' }));
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'setup.continue_ok' })).toBeEnabled(),
   );
   fireEvent.click(screen.getByRole('button', { name: 'setup.continue_ok' }));
-  await screen.findByText('Shortcuts');
+  await screen.findByText('setup.ready_desc');
+  expect(screen.queryByText('Shortcuts')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /demo.dictation_title/ }));
+  expect(screen.getByText('Shortcuts')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /demo.dictation_title/ }));
+  expect(screen.queryByText('Shortcuts')).not.toBeInTheDocument();
   let finishCatalogue!: () => void;
   const catalogueReady = new Promise<void>((resolve) => {
     finishCatalogue = resolve;

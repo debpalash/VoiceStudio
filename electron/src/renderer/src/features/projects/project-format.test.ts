@@ -27,6 +27,7 @@ it('opens legacy projects and preserves unexposed options when saving edits', ()
       dubFilename: 'clip.mp4',
       dubLang: 'French',
       translateQuality: 'cinematic',
+      translationInstructions: 'Preserve humor.',
       fitOptions: { allow_video_retime: false, audio_rate_cap: 1.3 },
       dubStep: 'generating',
       dubSegments: [{ id: 7, start: 0, end: 2, text: 'Bonjour', translations: { fr: 'Bonjour' } }],
@@ -37,12 +38,14 @@ it('opens legacy projects and preserves unexposed options when saving edits', ()
   };
   const session = projectSession(project, defaults);
   expect(session.quality).toBe('cinematic');
+  expect(session.translationInstructions).toBe('Preserve humor.');
   expect(session.exportOptions).toMatchObject({ preserveBg: false, excluded: ['original'] });
   expect(session.fitOptions).toEqual({ allow_video_retime: false, audio_rate_cap: 1.3 });
   expect(session.phase).toBe('editing');
   expect(session.taskId).toBeNull();
   expect(session.segments[0]).toMatchObject({ id: '7', text_original: 'Bonjour' });
   const payload = projectPayload({ ...session, target: 'Spanish' }, ' Renamed ');
+  expect(payload.state.translationInstructions).toBe('Preserve humor.');
   expect(payload).toMatchObject({
     name: 'Renamed',
     audio_path: '/audio.wav',

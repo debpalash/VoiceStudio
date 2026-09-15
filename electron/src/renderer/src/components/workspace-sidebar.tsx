@@ -6,9 +6,9 @@ import { usePaneResize } from '@/hooks/use-pane-resize';
 import { cn } from '@/lib/utils';
 
 const WIDTHS = {
-  default: { minimum: 248, initial: 280, maximum: 368, reserve: 480 },
-  wide: { minimum: 296, initial: 344, maximum: 440, reserve: 520 },
-  spacious: { minimum: 352, initial: 416, maximum: 536, reserve: 560 },
+  default: { minimum: 248, initial: 280, maximum: 515, reserve: 480 },
+  wide: { minimum: 296, initial: 344, maximum: 616, reserve: 520 },
+  spacious: { minimum: 352, initial: 416, maximum: 750, reserve: 560 },
 } as const;
 
 const VARIANT_STYLES = {
@@ -61,7 +61,7 @@ export function SecondarySidebar({
         } as CSSProperties
       }
       className={cn(
-        'secondary-sidebar relative flex min-h-0 shrink-0 flex-col border-r border-border/55 bg-[color-mix(in_oklab,var(--muted)_13%,var(--background))] shadow-[inset_-1px_0_0_color-mix(in_oklab,var(--foreground)_2%,transparent)] [container-type:inline-size]',
+        'secondary-sidebar relative [--pane-resize-display:flex] @max-[40rem]:[--pane-resize-display:none] flex min-h-0 shrink-0 flex-col border-r border-border/55 bg-[color-mix(in_oklab,var(--muted)_13%,var(--background))] shadow-[inset_-1px_0_0_color-mix(in_oklab,var(--foreground)_2%,transparent)] [container-type:inline-size]',
         collapsed
           ? 'w-11'
           : 'w-[var(--secondary-sidebar-width)] @max-[40rem]:max-h-[40%] @max-[40rem]:w-full @max-[40rem]:border-r-0 @max-[40rem]:border-b',
@@ -71,7 +71,7 @@ export function SecondarySidebar({
         <div
           {...resize.separatorProps}
           aria-label={title}
-          className="group/resize absolute inset-y-0 -right-1 z-20 flex w-2 cursor-col-resize touch-none items-center justify-center outline-none @max-[40rem]:hidden"
+          className="group/resize absolute inset-y-0 -right-1 z-20 [display:var(--pane-resize-display)] w-2 cursor-col-resize touch-none items-center justify-center outline-none"
         >
           <span className="h-10 w-px rounded-full bg-border/0 transition-[height,background-color,box-shadow] duration-150 group-hover/resize:h-16 group-hover/resize:bg-primary/45 group-hover/resize:shadow-[0_0_8px_var(--primary)] group-focus-visible/resize:h-16 group-focus-visible/resize:bg-primary" />
         </div>
@@ -117,7 +117,7 @@ export function SecondarySidebar({
         hidden={collapsed}
         data-slot="secondary-sidebar-content"
         className={cn(
-          'studio-scrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain p-3.5 text-[13px] [scroll-padding-block:0.875rem] [scrollbar-gutter:stable] [&>*]:min-w-0 [&_button]:max-w-full [&_h2]:tracking-[-0.012em] [&_h3]:tracking-[-0.01em] [&_input]:max-w-full [&_label]:leading-5 [&_p]:leading-[1.55] [&_summary]:rounded-lg [&_summary]:outline-none [&_summary]:transition-[color,background-color] [&_summary]:duration-150 [&_summary:hover]:text-foreground [&_summary:focus-visible]:ring-2 [&_summary:focus-visible]:ring-ring/35 [&_textarea]:max-w-full',
+          'studio-scrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain p-3.5 text-[13px] [scroll-padding-block:0.875rem] [scrollbar-gutter:stable] [&>*]:min-w-0 [&>section]:w-full [&>section]:shrink-0 [&_button]:max-w-full [&_h2]:tracking-[-0.012em] [&_h3]:tracking-[-0.01em] [&_input]:max-w-full [&_label]:leading-5 [&_p]:leading-[1.55] [&_summary]:rounded-lg [&_summary]:outline-none [&_summary]:transition-[color,background-color] [&_summary]:duration-150 [&_summary:hover]:text-foreground [&_summary:focus-visible]:ring-2 [&_summary:focus-visible]:ring-ring/35 [&_textarea]:max-w-full',
           VARIANT_STYLES[variant],
           collapsed && 'hidden',
           className,

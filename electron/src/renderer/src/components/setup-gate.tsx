@@ -1,4 +1,4 @@
-import { ModelLibrary, SystemRecommendations } from '@/features/settings/model-library';
+import { ModelLibrary, PerformanceModelPacks } from '@/features/settings/model-library';
 import { AnalyticsConsent } from './analytics-consent';
 import { SetupRecovery } from './setup-recovery';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -24,7 +24,7 @@ import {
   setupWasCompleted,
   setupWasStarted,
 } from '@/lib/setup-progress';
-import { AudioLinesIcon, CpuIcon, MicIcon, ShieldCheckIcon } from 'lucide-react';
+import { AudioLinesIcon, CpuIcon, SparklesIcon, ShieldCheckIcon } from 'lucide-react';
 
 interface SetupStatus {
   models_ready: boolean;
@@ -32,9 +32,9 @@ interface SetupStatus {
 }
 const steps = [
   { label: 'setup.system_check', icon: CpuIcon },
-  { label: 'setup.install_models', icon: AudioLinesIcon },
+  { label: 'models.pack_title', icon: AudioLinesIcon },
   { label: 'settings.privacy', icon: ShieldCheckIcon },
-  { label: 'engineSidebar.dictation', icon: MicIcon },
+  { label: 'setup.enter_studio', icon: SparklesIcon },
 ] as const;
 
 export function SetupGate({ children }: { children: ReactNode }) {
@@ -44,6 +44,8 @@ export function SetupGate({ children }: { children: ReactNode }) {
   const [needed, setNeeded] = useState<boolean | null>(null);
   const [setupInProgress, setSetupInProgress] = useState(setupWasStarted);
   const [step, setStep] = useState(0);
+  const [advanced, setAdvanced] = useState(false);
+  const [dictationSetup, setDictationSetup] = useState(false);
   const [family, setFamily] = useState<ModelFamily>('tts');
   const [consentRequired, setConsentRequired] = useState(true);
   const [enteringStudio, setEnteringStudio] = useState(false);
@@ -98,28 +100,31 @@ export function SetupGate({ children }: { children: ReactNode }) {
       <header className="workspace-titlebar flex shrink-0 items-center gap-2 border-b border-border/50 px-5">
         <img src={brandIcon} alt="" className="size-6" />
         <h1 className="text-sm font-medium">{t('app.name')}</h1>
-        <div className="ml-auto flex items-center gap-1" aria-label={t('preferences.ui_scale')}>
-          <span className="mr-1 text-xs text-muted-foreground">{t('preferences.ui_scale')}</span>
-          {appearanceScales.map((scale) => (
-            <Button
-              key={scale}
-              size="sm"
-              variant={appearance.scale === scale ? 'secondary' : 'ghost'}
-              className="h-7 px-2 text-xs tabular-nums"
-              aria-pressed={appearance.scale === scale}
-              onClick={() => appearance.update({ scale })}
-            >
-              {scale}%
-            </Button>
-          ))}
-        </div>
+        {advanced && (
+          <div className="ml-auto flex items-center gap-1" aria-label={t('preferences.ui_scale')}>
+            <span className="mr-1 text-xs text-muted-foreground">{t('preferences.ui_scale')}</span>
+            {appearanceScales.map((scale) => (
+              <Button
+                key={scale}
+                size="sm"
+                variant={appearance.scale === scale ? 'secondary' : 'ghost'}
+                className="h-7 px-2 text-xs tabular-nums"
+                aria-pressed={appearance.scale === scale}
+                onClick={() => appearance.update({ scale })}
+              >
+                {scale}%
+              </Button>
+            ))}
+          </div>
+        )}
       </header>
-      <div className="flex min-h-0 flex-1">
-        <nav className="w-52 shrink-0 space-y-1 border-r border-border/50 bg-sidebar p-3">
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <nav className="grid shrink-0 grid-cols-2 gap-1 border-b border-border/50 bg-sidebar p-3 md:flex md:w-48 md:flex-col md:border-r md:border-b-0">
           {steps.map(({ label, icon: Icon }, index) => (
             <Button
               key={label}
-              className="w-full justify-start"
+              className="h-auto min-h-11 w-full justify-start whitespace-normal text-left"
+              aria-current={index === step ? 'step' : undefined}
               variant={index === step ? 'secondary' : 'ghost'}
               disabled={index > step}
               onClick={() => setStep(index)}
@@ -130,13 +135,22 @@ export function SetupGate({ children }: { children: ReactNode }) {
             </Button>
           ))}
         </nav>
-        <div className="flex min-w-0 flex-1 flex-col">
-          <main className="min-h-0 flex-1 overflow-y-auto p-6">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <main key={step} className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
             <div className="mx-auto max-w-3xl space-y-6">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold">{t(steps[step].label)}</h2>
+                <Button
+                  variant={advanced ? 'secondary' : 'outline'}
+                  aria-pressed={advanced}
+                  onClick={() => setAdvanced((value) => !value)}
+                >
+                  {t('dub.advanced')}
+                </Button>
+              </div>
               {step === 0 && (
                 <>
                   <SystemPreflight />
-                  <PermissionsSettings />
                   <SetupMediaEngine />
                   {preflight.data?.checks?.some(
                     (check) => check.id === 'network' && check.status !== 'pass',
@@ -145,26 +159,25 @@ export function SetupGate({ children }: { children: ReactNode }) {
               )}
               {step === 1 && (
                 <>
-                  <SystemRecommendations />
-                  <ModelLibrary setup />
-                  <details className="space-y-4">
-                    <summary className="cursor-pointer text-sm text-muted-foreground">
-                      {t('firstrun.stage_models')}
-                    </summary>
-                    <div className="flex flex-wrap gap-1">
-                      {modelFamilies.map((value) => (
-                        <Button
-                          key={value}
-                          variant={family === value ? 'secondary' : 'ghost'}
-                          size="sm"
-                          onClick={() => setFamily(value)}
-                        >
-                          {t('engineSidebar.' + value)}
-                        </Button>
-                      ))}
+                  <PerformanceModelPacks compact={!advanced} />
+                  {advanced && (
+                    <div className="space-y-4">
+                      <ModelLibrary setup />
+                      <div className="flex flex-wrap gap-1">
+                        {modelFamilies.map((value) => (
+                          <Button
+                            key={value}
+                            variant={family === value ? 'secondary' : 'ghost'}
+                            size="sm"
+                            onClick={() => setFamily(value)}
+                          >
+                            {t('engineSidebar.' + value)}
+                          </Button>
+                        ))}
+                      </div>
+                      <ModelSettings family={family} showLibrary={false} />
                     </div>
-                    <ModelSettings family={family} showLibrary={false} />
-                  </details>
+                  )}
                   {Boolean(status.data?.missing?.length) && (
                     <p role="status" className="text-sm text-muted-foreground">
                       {t('setup.still_needed')}{' '}
@@ -173,14 +186,37 @@ export function SetupGate({ children }: { children: ReactNode }) {
                   )}
                 </>
               )}
-              {step < 2 && <SetupRecovery />}
+              {step < 2 &&
+                (advanced ||
+                  preflight.isError ||
+                  preflight.data?.ok === false ||
+                  status.isError) && <SetupRecovery />}
               {step === 2 && (
                 <>
                   <AnalyticsConsent onRequirementChange={setConsentRequired} />
-                  <PrivacySettings showAnalytics={false} />
+                  {advanced && <PrivacySettings showAnalytics={false} />}
                 </>
               )}
-              {step === 3 && <ShortcutSettings />}
+              {step === 3 && (
+                <div className="space-y-6">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {t('setup.ready_desc')}
+                  </p>
+                  <Button
+                    variant="outline"
+                    aria-expanded={dictationSetup}
+                    onClick={() => setDictationSetup((value) => !value)}
+                  >
+                    {t('demo.dictation_title')} · {t('firstrun.chip_optional')}
+                  </Button>
+                  {(dictationSetup || advanced) && (
+                    <>
+                      <PermissionsSettings />
+                      <ShortcutSettings />
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </main>
           <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border/50 p-4">

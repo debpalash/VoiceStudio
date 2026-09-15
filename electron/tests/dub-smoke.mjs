@@ -3,7 +3,9 @@ import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { wave } from './test-wave.mjs';
 const browser = await chromium.launch({
-  channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge',
+  ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH
+    ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH }
+    : { channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge' }),
   headless: true,
 });
 try {
@@ -79,6 +81,8 @@ try {
   const errors = [];
   const vidstackWarnings = [];
   let mediaHeadRequests = 0;
+  let releaseVideo;
+  const videoReady = new Promise((resolve) => { releaseVideo = resolve; });
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => {
     if (message.type() === 'warning' && message.text().includes('[vidstack]'))
@@ -176,7 +180,11 @@ try {
     });
   });
   if (video) {
-    await page.route('**/api/dub/media/fixture', (route) => {
+    await page.route('**/api/dub/thumb/fixture', (route) =>
+      route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="teal"/></svg>' }),
+    );
+    await page.route('**/api/dub/media/fixture', async (route) => {
+      await videoReady;
       if (route.request().method() === 'HEAD') mediaHeadRequests++;
       return route.fulfill({ contentType: 'video/mp4', body: video });
     });
@@ -256,7 +264,19 @@ try {
   assert.match(await translateWithAgent.getAttribute('title'), /Codex/);
   let script = await editSegment(0);
   if (video) {
+    const poster = page.locator('[data-media-player] img[src*="/dub/thumb/fixture"]');
+    await poster.waitFor({ state: 'visible', timeout: 5000 });
+    await page.waitForFunction(() => {
+      const image = document.querySelector('[data-media-player] img[src*="/dub/thumb/fixture"]');
+      return image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0;
+    });
     await page.getByRole('button', { name: 'Play', exact: true }).click();
+    await page.waitForTimeout(100);
+    releaseVideo();
+    await page.waitForFunction(() => {
+      const image = document.querySelector('[data-media-player] img[src*="/dub/thumb/fixture"]');
+      return image && getComputedStyle(image).opacity === '0';
+    });
     await page.waitForFunction(() => {
       const video = document.querySelector('video');
       return video && !video.paused && video.currentTime > 0.1;
@@ -274,6 +294,7 @@ try {
     await page.getByRole('button', { name: 'Exit full screen', exact: true }).click();
     await page.waitForFunction(() => !document.fullscreenElement);
   }
+  script = await editSegment(0);
   assert.equal(await script.inputValue(), 'Hello there');
   await editSegment(1);
   const timeline = page.getByRole('region', { name: 'Segment timeline', exact: true });

@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 type Layout = {
+  expandedLibraryContext?: string | null;
   editingProfileId?: string | null;
   panel: 'voice' | 'settings' | null;
   libraryOpen: boolean;

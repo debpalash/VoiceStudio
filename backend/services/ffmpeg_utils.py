@@ -89,6 +89,7 @@ def bed_mix_filter(
     duration: str = "longest",
     tail: str = "",
     uniq: str = "",
+    bed_gain: float = BED_GAIN,
 ) -> str:
     """One ffmpeg filter chain mixing `voice_in` over `bed_in` at original level.
 
@@ -110,22 +111,22 @@ def bed_mix_filter(
         # Gains applied per input, amix reduced to a plain sum: levels are
         # exact for the whole timeline, including after either stream ends.
         return (
-            f"[{bed_in}]aresample={BED_MIX_SAMPLE_RATE},{stereo},volume={BED_GAIN:g}[{b}];"
+            f"[{bed_in}]aresample={BED_MIX_SAMPLE_RATE},{stereo},volume={bed_gain:g}[{b}];"
             f"[{voice_in}]aresample={BED_MIX_SAMPLE_RATE},{stereo},volume={VOICE_GAIN:g}[{v}];"
             f"[{b}][{v}]amix=inputs=2:duration={duration}:dropout_transition=2:"
-            f"normalize=0,alimiter=level=false:limit=0.98{tail}[{out}]"
+            f"normalize=0,alimiter=level=false:limit=0.98:latency=1{tail}[{out}]"
         )
     # Legacy ffmpeg (<5, no `normalize`): cancel amix's normalization with a
     # compensating multiply. Exact while both streams run; if one ends early
     # the tail is over-boosted into the limiter until the graph ends — a known
     # quirk accepted only on old ffmpeg, where the alternative is no export.
-    total = BED_GAIN + VOICE_GAIN
+    total = bed_gain + VOICE_GAIN
     return (
         f"[{bed_in}]aresample={BED_MIX_SAMPLE_RATE},{stereo}[{b}];"
         f"[{voice_in}]aresample={BED_MIX_SAMPLE_RATE},{stereo}[{v}];"
         f"[{b}][{v}]amix=inputs=2:duration={duration}:dropout_transition=2:"
-        f"weights={BED_GAIN:g} {VOICE_GAIN:g},volume={total:g},"
-        f"alimiter=level=false:limit=0.98{tail}[{out}]"
+        f"weights={bed_gain:g} {VOICE_GAIN:g},volume={total:g},"
+        f"alimiter=level=false:limit=0.98:latency=1{tail}[{out}]"
     )
 
 

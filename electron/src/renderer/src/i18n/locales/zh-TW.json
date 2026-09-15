@@ -1980,6 +1980,7 @@
     "dictation_lede_hotkey_only": "在桌面任意位置按住上方快速鍵說話，放開後文字會輸入到目前聚焦的應用程式。現在按一下即可驗證是否生效。"
   },
   "setup": {
+    "ready_desc": "現在可以建立你的第一個聲音了。你可以立即設定語音輸入，也可以稍後在設定中完成。",
     "system_preflight": "系統預檢",
     "system_check_desc": "探測 RAM、磁碟、GPU、ffmpeg 和網路。攔截器會預先標記，以便您在下載前知道。",
     "probing": "探測系統...",
@@ -2569,5 +2570,21 @@
     "captured": "已擷取 {{count}} 行問題日誌",
     "contextNotice": "所選代理將收到此報告、目前畫面、最近的應用程式與後端記錄以及系統診斷資訊。",
     "complete": "已完成"
+  },
+  "dubIntegrity": {
+    "missingSpeech": "語音缺失或無法讀取。請在匯出前重新產生受影響的片段。",
+    "timingOverflow": "語音超出分配的時長。請縮短譯文，或選擇嚴格時間區段或延展影片。",
+    "backgroundUnavailable": "無法保留原始聲音。請檢查背景音分離和對白時間後重試，或明確選擇僅匯出語音。"
+  },
+  "dubStyle": {
+    "label": "翻譯風格提示詞",
+    "help": "描述語氣、受眾和改編方式，例如保留笑點、自然轉換慣用語。隨專案儲存，用於翻譯和時長調整。留空使用預設風格。"
+  },
+  "dubActivity": {
+    "output": "翻譯結果",
+    "waiting": "尚未收到輸出。",
+    "progress": "已驗證 {{done}} / {{total}} 個片段",
+    "cancelled": "已取消",
+    "fitting": "正在調整時間"
   }
 }

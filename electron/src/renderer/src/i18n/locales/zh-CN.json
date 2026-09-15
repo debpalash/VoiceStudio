@@ -1984,6 +1984,7 @@
     "dictation_lede_hotkey_only": "在桌面任意位置按住上方快捷键说话，松开后文字会输入到当前聚焦的应用中。现在按一下即可验证是否生效。"
   },
   "setup": {
+    "ready_desc": "现在可以创建你的第一个声音了。你可以立即设置语音输入，也可以稍后在设置中完成。",
     "system_preflight": "系统预检",
     "system_check_desc": "检查内存、磁盘、GPU、ffmpeg 和网络。提前发现阻塞项。",
     "probing": "正在检测系统…",
@@ -2573,5 +2574,21 @@
     "captured": "已捕获 {{count}} 行问题日志",
     "contextNotice": "所选代理将收到此报告、当前界面、最近的应用与后端日志以及系统诊断信息。",
     "complete": "已完成"
+  },
+  "dubIntegrity": {
+    "missingSpeech": "语音缺失或无法读取。请在导出前重新生成受影响的片段。",
+    "timingOverflow": "语音超出分配的时长。请缩短译文，或选择严格时间段或拉伸视频。",
+    "backgroundUnavailable": "无法保留原始声音。请检查背景音分离和对白时间后重试，或明确选择仅导出语音。"
+  },
+  "dubStyle": {
+    "label": "翻译风格提示词",
+    "help": "描述语气、受众和改编方式，例如保留笑点、自然转换习语。随项目保存，用于翻译和时长调整。留空使用默认风格。"
+  },
+  "dubActivity": {
+    "output": "翻译结果",
+    "waiting": "尚未收到输出。",
+    "progress": "已验证 {{done}} / {{total}} 个片段",
+    "cancelled": "已取消",
+    "fitting": "正在调整时间"
   }
 }

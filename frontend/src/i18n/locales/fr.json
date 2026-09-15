@@ -1552,6 +1552,7 @@
     "h_ago": "Il y a {{count}}h"
   },
   "setup": {
+    "ready_desc": "Vous pouvez créer votre première voix. Configurez la dictée maintenant ou plus tard dans les paramètres.",
     "welcome": "Bienvenue",
     "system_check": "Vérification du système",
     "install_models": "Installer des modèles",
@@ -2831,5 +2832,21 @@
   "player": {
     "pause": "Mettre en pause",
     "play": "Lire"
+  },
+  "dubIntegrity": {
+    "missingSpeech": "La parole est absente ou illisible. Régénérez le segment concerné avant l’exportation.",
+    "timingOverflow": "La parole dépasse son créneau. Raccourcissez la traduction ou choisissez un créneau strict ou l’étirement vidéo.",
+    "backgroundUnavailable": "Le son original n’a pas pu être préservé. Vérifiez la séparation du fond et les temps du dialogue, puis réessayez, ou exportez explicitement la voix seule."
+  },
+  "dubStyle": {
+    "label": "Consignes de style de traduction",
+    "help": "Décrivez le ton, le public et l’adaptation, par exemple préserver les blagues et adapter naturellement les expressions. Enregistré dans le projet et utilisé pour la traduction et les ajustements de durée. Laissez vide pour le style par défaut."
+  },
+  "dubActivity": {
+    "output": "Traductions",
+    "waiting": "Aucune sortie reçue pour le moment.",
+    "progress": "{{done}} / {{total}} segments validés",
+    "cancelled": "Annulé",
+    "fitting": "Ajustement du minutage"
   }
 }

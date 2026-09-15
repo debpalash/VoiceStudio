@@ -318,3 +318,11 @@ describe('REGION_COLORS — opaque JS-pre-blended paint guard (#373, #963)', () 
     expect(blendRegionColor([255, 255, 255], [0, 0, 0])).toBe('rgb(115, 115, 115)'); // 0.45·255 = 114.75
   });
 });
+
+it('flags every nested overlap, not just consecutive intervals', () => {
+  expect([...detectOverlaps([
+    { id: 'long', start: 0, end: 10 },
+    { id: 'a', start: 1, end: 2 },
+    { id: 'b', start: 3, end: 4 },
+  ])].sort()).toEqual(['a', 'b', 'long']);
+});

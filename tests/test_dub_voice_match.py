@@ -449,3 +449,13 @@ def test_consistent_explicit_cross_auto_seg_binding_is_honoured(patched_generate
     model = patched_generate(_HEURISTIC_JOB, body)
     assert model.refs[0] == ("/v/seg3.wav", "seg3 ref", False)  # explicit wins
     assert [r[0] for r in model.refs[1:]] == ["/v/seg1.wav"] * 3  # rest unified
+
+
+def test_consistent_pick_rejects_oversized_fallback_reference():
+    from api.routers.dub_generate import resolve_consistent_ref
+    job = _job(
+        [{'id': 'too-long', 'speaker_id': 'Speaker 1'}, {'id': 'usable', 'speaker_id': 'Speaker 1'}],
+        {'too-long': {'ref_audio': '/v/long.wav', 'ref_text': 'long', 'duration': 20.92},
+         'usable': {'ref_audio': '/v/usable.wav', 'ref_text': 'usable', 'duration': 9.0}},
+    )
+    assert resolve_consistent_ref(job, 'speaker_1')['ref_audio'] == '/v/usable.wav'

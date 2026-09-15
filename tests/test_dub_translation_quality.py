@@ -470,3 +470,16 @@ async def test_mt_engine_unaffected_by_quality_flags(monkeypatch):
     row = resp["translated"][0]
     assert row["text"] == "[es]Hello"
     assert "literal" not in row  # response shape unchanged for MT engines
+
+
+@pytest.mark.asyncio
+async def test_custom_style_reaches_direct_translation(monkeypatch):
+    from api.routers import dub_translate
+    client = _ScriptedLLMClient(lambda _: "hola")
+    _wire_skill_client(monkeypatch, client)
+    req = _req(_segs("Hello there."), auto_glossary=False, reflect=False,
+               translation_instructions="Keep it warm and conversational; preserve jokes.")
+    await dub_translate.dub_translate(req)
+    direct = [c for c in client.calls if _is_direct_call(client, c)]
+    assert direct
+    assert all("Keep it warm and conversational; preserve jokes." in client.system_of(c) for c in direct)

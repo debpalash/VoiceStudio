@@ -38,6 +38,31 @@ router = APIRouter()
 logger = logging.getLogger("omnivoice.api")
 
 
+async def _preserved_background(job: dict, job_id: str, lang: str, *, prepare: bool = True) -> str:
+    """All mixed preview/download paths share the same dialogue-only bed."""
+    from services.dub_background import surgical_background
+
+    bed = _optional_dub_artifact(job.get("no_vocals_path"), job_id)
+    source = _optional_dub_artifact(job.get("video_path"), job_id) or _optional_dub_artifact(job.get("audio_path"), job_id)
+    if not bed or not source:
+        raise HTTPException(status_code=409, detail={"code": "dub_background_unavailable", "message": "Original audio and background separation are required"})
+    track = (job.get("dubbed_tracks") or {}).get(lang) or {}
+    segments = track.get("source_segments") or job.get("segments") or []
+    if not segments:
+        raise HTTPException(status_code=409, detail={"code": "dub_background_unavailable", "message": "Dialogue timing is required"})
+    if not prepare:
+        return bed
+    strategy = track.get("timing_strategy") or job.get("timing_strategy")
+    plans = job.get("fit_plans" if strategy == "smart_fit" else "video_stretch_plans") or {}
+    entry = (plans.get(lang) or {}) if strategy in {"smart_fit", "stretch_video"} else {}
+    directory = os.path.join(_existing_job_dir_or_404(job_id), "exports")
+    os.makedirs(directory, exist_ok=True)
+    try:
+        return await surgical_background(source, bed, directory, segments, entry.get("plan") or [], float(entry.get("orig_duration") or job.get("duration") or 0))
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail={"code": "dub_background_unavailable", "message": str(exc)}) from exc
+
+
 def _unique_stamp() -> str:
     """Return a short unique suffix like '20260415T142301-ab12cd34' for export files."""
     return f"{time.strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:8]}"
@@ -596,7 +621,7 @@ def _build_audio_export_cmd(
         # Mix the dubbed voice over the original background bed (same weights
         # as the video mux path) so ambience/music is preserved.
         cmd += ["-i", bg_path, "-filter_complex",
-                bed_mix_filter("1:a", "0:a"),
+                bed_mix_filter("1:a", "0:a", bed_gain=1.0),
                 "-map", "[aout]"]
     cmd += codec
     cmd.append(out_path)
@@ -691,7 +716,7 @@ async def dub_download(
         else:
             output_name = f"dubbed_audio_{stamp}.m4a"
         out_path = os.path.join(exports_dir, output_name)
-        bg = _optional_dub_artifact(job.get("no_vocals_path"), job_id) if preserve_bg else None
+        bg = await _preserved_background(job, job_id, lang_code) if preserve_bg else None
         cmd = _build_audio_export_cmd(ffmpeg, track_info["path"], bg, out_path, fmt)
         try:
             rc, _, stderr = await run_ffmpeg(cmd, timeout=1800.0)
@@ -839,17 +864,16 @@ async def dub_download(
         retimed_idx = input_idx
         input_idx += 1
 
-    bg_audio = _optional_dub_artifact(job.get("no_vocals_path"), job_id) if preserve_bg else None
     bg_idx = None
-    if bg_audio and filtered_tracks:
-        cmd += ["-i", bg_audio]
-        bg_idx = input_idx
-        input_idx += 1
-
     tracks_to_process = []
     for lang_code, track_info in filtered_tracks.items():
+        if preserve_bg:
+            bg_audio = await _preserved_background(job, job_id, lang_code)
+            cmd += ["-i", bg_audio]
+            bg_idx = input_idx
+            input_idx += 1
         cmd += ["-i", track_info["path"]]
-        tracks_to_process.append({"lang_code": lang_code, "idx": input_idx, "info": track_info})
+        tracks_to_process.append({"lang_code": lang_code, "idx": input_idx, "bg_idx": bg_idx, "info": track_info})
         input_idx += 1
 
     filter_parts: list[str] = []
@@ -918,7 +942,7 @@ async def dub_download(
         for i, t in enumerate(tracks_to_process):
             tail = f",apad=whole_dur={apad_dur:.4f}" if apad_dur else ""
             filter_parts.append(bed_mix_filter(
-                f"{bg_idx}:a", f"{t['idx']}:a", out=f"aout{i}", tail=tail, uniq=str(i),
+                f"{t['bg_idx']}:a", f"{t['idx']}:a", out=f"aout{i}", tail=tail, uniq=str(i), bed_gain=1.0,
             ))
             t["out_label"] = f"[aout{i}]"
         for t in tracks_to_process:
@@ -1119,7 +1143,7 @@ async def dub_preview_video(
 
     video_path = _dub_artifact(job.get("video_path"), job_id, missing_detail="Source video missing")
 
-    bg_audio = _optional_dub_artifact(job.get("no_vocals_path"), job_id) if preserve_bg else None
+    bg_audio = await _preserved_background(job, job_id, lang, prepare=request.method != "HEAD") if preserve_bg else None
     has_bg = bool(bg_audio)
 
     # realpath-normalised + containment-checked inline BEFORE any filesystem
@@ -1131,7 +1155,7 @@ async def dub_preview_video(
     if not exports_dir.startswith(_base + os.sep):
         raise HTTPException(status_code=400, detail="Invalid job id")
     os.makedirs(exports_dir, exist_ok=True)
-    bg_suffix = "bg" if (preserve_bg and has_bg) else "nobg"
+    bg_suffix = "surgical_v2_" + Path(bg_audio).stem if (preserve_bg and has_bg) else "nobg"
     preview_path = os.path.realpath(
         os.path.join(exports_dir, f"preview_v2_{lang}_{bg_suffix}.mp4")
     )
@@ -1270,7 +1294,7 @@ async def dub_preview_video(
         audio_map = f"{track_idx}:a:0"
         if bg_idx is not None:
             tail = f",apad=whole_dur={apad_dur:.4f}" if apad_dur else ""
-            filter_parts.append(bed_mix_filter(f"{bg_idx}:a", f"{track_idx}:a", tail=tail))
+            filter_parts.append(bed_mix_filter(f"{bg_idx}:a", f"{track_idx}:a", tail=tail, bed_gain=1.0))
             audio_map = "[aout]"
         elif apad_dur:
             filter_parts.append(f"[{track_idx}:a]apad=whole_dur={apad_dur:.4f}[aout]")
@@ -1661,13 +1685,13 @@ async def dub_download_audio(
     exports_dir = os.path.join(job_dir, "exports")
     os.makedirs(exports_dir, exist_ok=True)
 
-    bg_audio = _optional_dub_artifact(job.get("no_vocals_path"), job_id) if preserve_bg else None
+    bg_audio = await _preserved_background(job, job_id, lang_label) if preserve_bg else None
     if bg_audio:
         ffmpeg = find_ffmpeg()
         final_audio_path = os.path.join(exports_dir, f"mixed_dub_{stamp}.wav")
         cmd = [
             ffmpeg, "-i", bg_audio, "-i", wav_path,
-            "-filter_complex", bed_mix_filter("0:a", "1:a"),
+            "-filter_complex", bed_mix_filter("0:a", "1:a", bed_gain=1.0),
             "-map", "[aout]", "-c:a", "pcm_s16le", "-y", final_audio_path
         ]
         try:
@@ -1678,8 +1702,9 @@ async def dub_download_audio(
                 raise Exception("ffmpeg mix produced no output file")
             wav_path = final_audio_path
             logger.info("Dub audio mix completed")
-        except Exception:
+        except Exception as exc:
             logger.exception("Failed to mix audio")
+            raise HTTPException(status_code=500, detail={"code": "dub_background_unavailable", "message": "Could not preserve background audio"}) from exc
 
     base_name = os.path.splitext(job.get('filename', 'audio'))[0]
     safe_name = ''.join(c for c in base_name if c.isalnum() or c in '-_ ').strip() or 'audio'
@@ -1947,20 +1972,23 @@ async def dub_download_mp3(
     os.makedirs(exports_dir, exist_ok=True)
 
     source_path = wav_path
-    bg_audio = _optional_dub_artifact(job.get("no_vocals_path"), job_id) if preserve_bg else None
+    bg_audio = await _preserved_background(job, job_id, lang_label) if preserve_bg else None
     if bg_audio:
         mixed_path = os.path.join(exports_dir, f"mixed_mp3_{stamp}.wav")
         cmd_mix = [
             ffmpeg, "-i", bg_audio, "-i", wav_path,
-            "-filter_complex", bed_mix_filter("0:a", "1:a"),
+            "-filter_complex", bed_mix_filter("0:a", "1:a", bed_gain=1.0),
             "-map", "[aout]", "-c:a", "pcm_s16le", "-y", mixed_path
         ]
         try:
             rc, _, _ = await run_ffmpeg(cmd_mix, timeout=900.0)
             if rc == 0 and os.path.exists(mixed_path) and os.path.getsize(mixed_path) > 0:
                 source_path = mixed_path
-        except Exception:
+            else:
+                raise RuntimeError("Background mixing failed")
+        except Exception as exc:
             logger.exception("Failed to mix audio for MP3")
+            raise HTTPException(status_code=500, detail={"code": "dub_background_unavailable", "message": "Could not preserve background audio"}) from exc
 
     mp3_path = os.path.join(exports_dir, f"dubbed_{stamp}.mp3")
     # Accept '128', '192k' etc. — normalize to ffmpeg's 'Nk' form and clamp

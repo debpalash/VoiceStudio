@@ -199,3 +199,92 @@ Below 40rem of workspace width, Dubbing stacks its controls above the editor wit
 Global speed/quality changes preserve explicit Dubbing production steps, including settings restored from projects. Unset steps continue to follow the backend's current preset.
 
 NLLB resolves explicit FLORES language/script codes, unambiguous ISO-639-3 codes and common short aliases, including Traditional Chinese. Unsupported or script-ambiguous source, target or per-segment languages are rejected before model loading instead of silently translating to English.
+
+### Speech integrity and timing
+
+A failed, empty or unreadable speech segment stops generation before a new track
+replaces the previous output. Partial regeneration repairs missing or corrupt
+segment caches, including missing clips outside the requested changed-line list;
+it does not substitute silence and report completion. Auto speaker references
+exclude oversized clips when selecting a shared fallback, so short lines reuse a
+usable reference from their own speaker.
+
+New segment caches retain the full generated speech in every timing mode. Strict
+Slot removes edge silence and fits the complete clip to its original start/end
+with pitch-preserving speed adjustment. Very long or short translations can still
+sound unnaturally fast or slow; shorten or expand the translation for natural
+pacing. Legacy clipped caches require regeneration once, because fitting cannot
+recover discarded words. Explicit legacy Trim and Off options retain their
+respective clipping and overlap behavior.
+
+Concise and Smart Fit stop on unresolved overflow rather than publishing cut-off
+words. Shorten the translation, choose Strict Slot, or allow Stretch Video before
+retrying. Camera-cut segmentation uses nearby timed word boundaries when available
+and skips cuts inside speech that cannot be assigned safely. This improves phrase
+timing; it does not promise phoneme-level lip sync or correct inaccurate source
+transcripts automatically.
+
+### Preserve sound outside dialogue
+
+Background-preserving previews and audio/video exports keep the original stereo
+sound outside dialogue intervals, including audience reactions, music and ambience.
+Inside those intervals, they mix dubbed speech over the separated background, with
+10 ms transitions contained within the dialogue boundaries. Each generated language
+stores its source intervals; older tracks use their saved project intervals.
+Retimed modes also retime this background to follow the video. Ordinary Strict Slot
+and Concise modes keep the original background timeline.
+
+Original media and a complete separated background are required. A missing or failed
+background mix stops export rather than silently exporting speech alone. Explicit
+speech-only export remains available. The preserved bed is cached locally and rebuilt
+when source files, dialogue intervals or the language's retiming plan change.
+Separation can still affect sounds overlapping dialogue; exact isolation from a
+single mixed recording is not guaranteed. Correct dialogue boundaries matter.
+
+### Custom translation style
+
+Select **Translate with agent**, then fill in **Translation style prompt** beside
+the translator controls. Describe tone, audience, formality, humor, idiom handling
+and how freely the dialogue should be adapted. For example: “Conversational Bengali
+for a young adult audience. Preserve jokes, adapt idioms naturally, keep names and
+numbers unchanged, and avoid stiff literal phrasing.”
+
+The optional brief is saved with the project and restored after reopening. It applies
+to every selected target language and subsequent agent timing rewrites, using either
+a local CLI agent or the configured LLM. Meaning, timing, glossary and structured
+output requirements remain in effect. Clear the field to restore the default style;
+changing the brief does not retranslate existing segments until you run translation.
+The field accepts up to 5,000 characters and is locked while work is running.
+
+### Translation activity footer
+
+Translation and timing rewrites use the same footer area as Repair Agent. It opens
+with live CLI stdout/stderr in **Logs**; **Translations** shows original text beside
+validated translated output. Collapse **Details** to keep the status, language,
+elapsed time and Cancel action visible. Output from each language stays available
+until dismissed, the app reloads, or translation starts in another project. Logs are bounded to the
+latest 250,000 characters per run and are not saved into project files.
+
+The counter tracks validated returned segments, not estimated progress. A CLI may
+stream logs while withholding its translation JSON until completion; API-backed
+translation currently returns one response, so its count updates when that response
+arrives. No fabricated percentage is shown. Errors remain visible, with Retry for
+failed translation work in the same project. API retries use failed segments when
+available; an incomplete CLI response requires retrying that language. Cancel stops
+the active translation and prevents late results from applying.
+
+### Long timelines and duplicate ASR context
+
+The timeline draws segments at their actual duration. Use Zoom in/out and Fit all
+above it to inspect short lines in long recordings; the zoomed view scrolls
+horizontally. Tiny overview bars cannot be accidentally dragged or resized. Click
+an overlap warning to zoom to the first affected segment. Nested overlaps are
+included in detection; simultaneous speakers are not automatically shifted apart.
+
+After transcription, repeated chunk context is removed only when at least three
+matching words form a substantial prefix at matching timestamps for the same
+speaker. New words beyond that context remain. Stale segment boundaries are aligned
+to their own word timestamps only when those prove that the speech is disjoint.
+Existing translations/renders do not become correct merely by editing source text:
+changed lines must be translated and regenerated. Preserve the prior project when
+repairing an older transcript.

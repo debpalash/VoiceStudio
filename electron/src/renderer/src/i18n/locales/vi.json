@@ -1980,6 +1980,7 @@
     "dictation_lede_hotkey_only": "Giữ phím tắt ở trên tại bất kỳ đâu trên màn hình, nói rồi thả — văn bản sẽ vào ứng dụng đang được chọn. Nhấn ngay để kiểm tra."
   },
   "setup": {
+    "ready_desc": "Bạn đã sẵn sàng tạo giọng nói đầu tiên. Có thể thiết lập nhập liệu bằng giọng nói ngay hoặc sau này trong Cài đặt.",
     "system_preflight": "Đèn chiếu trước hệ thống",
     "system_check_desc": "Thăm dò RAM, đĩa, GPU, ffmpeg và mạng. Trình chặn được gắn cờ trước để bạn biết trước khi tải xuống.",
     "probing": "Hệ thống thăm dò…",
@@ -2569,5 +2570,21 @@
     "captured": "Đã thu thập {{count}} dòng nhật ký có vấn đề",
     "contextNotice": "Tác nhân đã chọn nhận báo cáo này, màn hình hiện tại, nhật ký ứng dụng và backend gần đây cùng thông tin chẩn đoán hệ thống.",
     "complete": "Hoàn thành"
+  },
+  "dubIntegrity": {
+    "missingSpeech": "Lời nói bị thiếu hoặc không đọc được. Hãy tạo lại đoạn bị ảnh hưởng trước khi xuất.",
+    "timingOverflow": "Lời nói vượt quá thời gian được phân bổ. Hãy rút ngắn bản dịch hoặc chọn khung thời gian nghiêm ngặt hay kéo dài video.",
+    "backgroundUnavailable": "Không thể giữ âm thanh gốc. Hãy kiểm tra việc tách âm nền và thời gian hội thoại rồi thử lại, hoặc chọn chỉ xuất giọng nói."
+  },
+  "dubStyle": {
+    "label": "Hướng dẫn phong cách dịch",
+    "help": "Mô tả giọng điệu, đối tượng và cách chuyển thể, ví dụ giữ câu đùa và dịch thành ngữ tự nhiên. Được lưu trong dự án, dùng cho dịch và chỉnh thời lượng. Để trống để dùng phong cách mặc định."
+  },
+  "dubActivity": {
+    "output": "Bản dịch",
+    "waiting": "Chưa nhận được đầu ra.",
+    "progress": "Đã xác thực {{done}} / {{total}} đoạn",
+    "cancelled": "Đã hủy",
+    "fitting": "Đang điều chỉnh thời gian"
   }
 }

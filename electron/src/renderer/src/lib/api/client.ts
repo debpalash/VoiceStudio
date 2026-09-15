@@ -44,6 +44,8 @@ export function describeError(err: unknown): string {
 }
 
 function detailToString(detail: unknown): string {
+  if (detail && typeof detail === 'object' && 'code' in detail && detail.code === 'dub_background_unavailable')
+    return tr('dubIntegrity.backgroundUnavailable');
   if (typeof detail === 'string') return detail;
   if (detail == null) return '';
   if (

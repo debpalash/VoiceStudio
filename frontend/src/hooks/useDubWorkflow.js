@@ -1185,6 +1185,7 @@ export default function useDubWorkflow({
         const decoder = new TextDecoder();
         let buffer = '';
         let wasCancelled = false;
+        let generationError = null;
         let sawDone = false;
         while (true) {
           const { done, value } = await reader.read();
@@ -1261,8 +1262,14 @@ export default function useDubWorkflow({
                   setDubStep('editing');
                   setDubError(t('dub_workflow.generation_aborted'));
                   toast(t('dub_workflow.dubbing_aborted'), { icon: '⏹' });
-                } else if (evt.type === 'error')
-                  setDubError((p) => p + `\nSeg ${evt.segment}: ${evt.error}`);
+                } else if (evt.type === 'error') {
+                  generationError = evt.error_code === 'dub_speech_missing'
+                    ? t('dubIntegrity.missingSpeech')
+                    : evt.error_code === 'dub_timing_overflow'
+                      ? t('dubIntegrity.timingOverflow')
+                      : evt.reason || evt.error || t('dub_workflow.generation_stream_ended');
+                  setDubError(generationError);
+                }
               } catch (err) {
                 console.warn('Dub generate SSE handler failed:', err);
               }
@@ -1271,7 +1278,7 @@ export default function useDubWorkflow({
         }
         setDubTaskId(null);
         if (!wasCancelled) {
-          if (!sawDone) throw new Error(t('dub_workflow.generation_stream_ended'));
+          if (!sawDone || generationError) throw new Error(generationError || t('dub_workflow.generation_stream_ended'));
           if (dubStep !== 'done') setDubStep('done');
           loadDubHistory();
           loadProjects();

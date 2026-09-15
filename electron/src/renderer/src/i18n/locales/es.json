@@ -1982,6 +1982,7 @@
     "dictation_lede_hotkey_only": "Mantén pulsado el atajo de arriba en cualquier lugar del escritorio, habla y suéltalo: el texto aparecerá en la app con foco. Púlsalo ahora para verificarlo."
   },
   "setup": {
+    "ready_desc": "Ya puedes crear tu primera voz. Puedes configurar el dictado ahora o más tarde en Ajustes.",
     "system_preflight": "verificación previa del sistema",
     "system_check_desc": "Sondee RAM, disco, GPU, ffmpeg y red. Los bloqueadores se marcan por adelantado para que sepas antes de descargarlos.",
     "probing": "Sistema de sondeo…",
@@ -2571,5 +2572,21 @@
     "captured": "Se capturaron {{count}} líneas de registro con problemas",
     "contextNotice": "El agente seleccionado recibe este informe, la pantalla actual, los registros recientes de la aplicación y del backend, y los diagnósticos del sistema.",
     "complete": "Completado"
+  },
+  "dubIntegrity": {
+    "missingSpeech": "Falta audio de voz o no se puede leer. Regenera el segmento afectado antes de exportar.",
+    "timingOverflow": "La voz supera su intervalo de tiempo. Acorta la traducción o elige un intervalo estricto o alargar el vídeo.",
+    "backgroundUnavailable": "No se pudo conservar el sonido original. Revisa la separación del fondo y los tiempos del diálogo e inténtalo de nuevo, o exporta solo la voz explícitamente."
+  },
+  "dubStyle": {
+    "label": "Instrucciones de estilo de traducción",
+    "help": "Describe el tono, el público y la adaptación, por ejemplo conservar los chistes y adaptar los modismos con naturalidad. Se guarda en el proyecto y se aplica a la traducción y los ajustes de duración. Déjalo vacío para el estilo predeterminado."
+  },
+  "dubActivity": {
+    "output": "Traducciones",
+    "waiting": "Aún no se ha recibido ninguna salida.",
+    "progress": "{{done}} / {{total}} segmentos validados",
+    "cancelled": "Cancelado",
+    "fitting": "Ajustando tiempos"
   }
 }

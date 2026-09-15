@@ -103,7 +103,7 @@ function packModelFamily(model: CatalogueModel): ModelFamily {
   return role === 'translation' ? 'translation' : role === 'tts' ? 'tts' : 'asr';
 }
 
-export function PerformanceModelPacks() {
+export function PerformanceModelPacks({ compact = false }: { compact?: boolean } = {}) {
   const { t } = useTranslation();
   const client = useQueryClient();
   const catalogue = useModelCatalogue();
@@ -135,12 +135,9 @@ export function PerformanceModelPacks() {
 
   const refresh = () =>
     Promise.all(
-      [
-        'model-install-jobs',
-        'model-catalogue',
-        'model-recommendations',
-        'performance-profile',
-      ].map((key) => client.invalidateQueries({ queryKey: [key] })),
+      ['model-install-jobs', 'model-catalogue', 'model-recommendations', 'performance-profile'].map(
+        (key) => client.invalidateQueries({ queryKey: [key] }),
+      ),
     );
 
   const installPack = async () => {
@@ -175,7 +172,18 @@ export function PerformanceModelPacks() {
     }
   };
 
-  if (!catalogue.data || !profile.data || pack.models.length === 0) return null;
+  if (!catalogue.data || !profile.data)
+    return (
+      <div role="status" className="space-y-3 p-4">
+        <p>{t(catalogue.isError || profile.isError ? 'common.error' : 'common.loading')}</p>
+        {(catalogue.isError || profile.isError) && (
+          <Button variant="outline" onClick={() => void refresh()}>
+            {t('common.retry')}
+          </Button>
+        )}
+      </div>
+    );
+  if (pack.models.length === 0) return null;
 
   return (
     <SettingsSection icon={SparklesIcon} title={t('models.pack_title')}>
@@ -214,10 +222,13 @@ export function PerformanceModelPacks() {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-xs font-medium" title={model.label}>
-                    {model.label}
+                    {compact ? t('engineSidebar.' + family) : model.label}
                   </span>
                   <span className="text-[11px] text-muted-foreground">
-                    {t('engineSidebar.' + family)} · {model.size_gb} GB
+                    {t(
+                      model.installed ? 'modelMaintenance.installed' : 'modelMaintenance.download',
+                    )}{' '}
+                    · {model.size_gb} GB
                   </span>
                 </span>
                 {active ? (
@@ -259,7 +270,13 @@ export function PerformanceModelPacks() {
             {t('models.pack_total', { count: pack.models.length, size: pack.totalGb.toFixed(1) })}
           </p>
           <Button disabled={busy || lowDisk} onClick={() => void installPack()}>
-            {busy ? <LoaderCircleIcon className="animate-spin" /> : pack.missing.length ? <DownloadIcon /> : <CheckIcon />}
+            {busy ? (
+              <LoaderCircleIcon className="animate-spin" />
+            ) : pack.missing.length ? (
+              <DownloadIcon />
+            ) : (
+              <CheckIcon />
+            )}
             {t(pack.missing.length ? 'models.pack_install' : 'models.pack_use', {
               tier: t('performanceProfile.' + tier),
               size: pack.downloadGb.toFixed(1),
@@ -302,9 +319,7 @@ export function SystemRecommendations() {
     [
       engineFamilyState(engines.data, 'tts')?.active_model,
       engineFamilyState(engines.data, 'asr')?.active_model,
-    ].filter(
-      (model): model is string => Boolean(model),
-    ),
+    ].filter((model): model is string => Boolean(model)),
   );
   const missing = data.models.filter((model) => !model.installed);
   const requiredMissing = missing.filter((model) => model.required);
@@ -575,9 +590,8 @@ export function ModelLibrary({
         )
     : visibleModels?.filter((model) => model.supported !== false);
   const optional = setup
-    ? (visibleModels?.filter(
-        (model) => !model.required && !model.installed && !model.curated,
-      ) ?? [])
+    ? (visibleModels?.filter((model) => !model.required && !model.installed && !model.curated) ??
+      [])
     : [];
   const incompatible = setup
     ? []

@@ -405,9 +405,9 @@ def test_legacy_cache_ignored_once_job_has_another_language(patched_generate):
 
     model.calls.clear()
     run(_body(_ES_SEGS, regen_only=[]))
-    assert model.calls == []  # not in the regen list → still no TTS…
-    # …but the ambiguous legacy audio was NOT spliced in: the slot is silence.
-    assert abs(_track_sample(job_dir, "es", 1.25)) < 0.005
+    # Missing unambiguous speech must be regenerated, never padded with silence.
+    assert model.calls == ["Buenos dias", "Hasta luego"]
+    assert abs(_track_sample(job_dir, "es", 1.25) - _amp_for("Hasta luego")) < 0.01
 
 
 def test_seg_hashes_stored_per_language_with_flat_mirror(patched_generate):

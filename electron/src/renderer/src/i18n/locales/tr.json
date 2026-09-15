@@ -1980,6 +1980,7 @@
     "dictation_lede_hotkey_only": "Yukarıdaki kısayolu masaüstünde herhangi bir yerde basılı tutun, konuşun, bırakın — metin odaktaki uygulamaya düşer. Şimdi basıp doğrulayın."
   },
   "setup": {
+    "ready_desc": "İlk sesinizi oluşturmaya hazırsınız. Dikteyi şimdi veya daha sonra Ayarlar’dan yapılandırabilirsiniz.",
     "system_preflight": "Sistem ön kontrolü",
     "system_check_desc": "RAM, disk, GPU, ffmpeg ve ağı araştırın. Engelleyiciler önceden işaretlenir, böylece indirmeden önce bilgi sahibi olursunuz.",
     "probing": "Sondalama sistemi…",
@@ -2569,5 +2570,21 @@
     "captured": "{{count}} sorunlu günlük satırı yakalandı",
     "contextNotice": "Seçilen aracı bu raporu, mevcut ekranı, son uygulama ve arka uç günlüklerini ve sistem tanılamasını alır.",
     "complete": "Tamamlandı"
+  },
+  "dubIntegrity": {
+    "missingSpeech": "Konuşma eksik veya okunamıyor. Dışa aktarmadan önce ilgili bölümü yeniden oluşturun.",
+    "timingOverflow": "Konuşma ayrılan süreyi aşıyor. Çeviriyi kısaltın veya kesin zaman aralığını ya da videoyu uzatmayı seçin.",
+    "backgroundUnavailable": "Özgün ses korunamadı. Arka plan ayrımını ve diyalog zamanlarını kontrol edip yeniden deneyin veya yalnızca konuşmayı dışa aktarmayı seçin."
+  },
+  "dubStyle": {
+    "label": "Çeviri üslubu talimatları",
+    "help": "Tonu, hedef kitleyi ve uyarlamayı açıklayın; örneğin şakaları koruyun ve deyimleri doğal biçimde aktarın. Projeye kaydedilir, çeviri ve süre düzenlemelerinde kullanılır. Varsayılan üslup için boş bırakın."
+  },
+  "dubActivity": {
+    "output": "Çeviriler",
+    "waiting": "Henüz çıktı alınmadı.",
+    "progress": "{{done}} / {{total}} bölüm doğrulandı",
+    "cancelled": "İptal edildi",
+    "fitting": "Zamanlama ayarlanıyor"
   }
 }

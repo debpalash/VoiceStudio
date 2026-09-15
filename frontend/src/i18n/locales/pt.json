@@ -1552,6 +1552,7 @@
     "h_ago": "{{count}}h atrás"
   },
   "setup": {
+    "ready_desc": "Você já pode criar sua primeira voz. Configure o ditado agora ou depois nas Configurações.",
     "welcome": "Bem vindo",
     "system_check": "Verificação do sistema",
     "install_models": "Instalar modelos",
@@ -2831,5 +2832,21 @@
   "player": {
     "pause": "Pausar",
     "play": "Reproduzir"
+  },
+  "dubIntegrity": {
+    "missingSpeech": "A fala está ausente ou ilegível. Gere novamente o segmento afetado antes de exportar.",
+    "timingOverflow": "A fala excede o intervalo de tempo. Encurte a tradução ou escolha um intervalo estrito ou estique o vídeo.",
+    "backgroundUnavailable": "Não foi possível preservar o som original. Verifique a separação do fundo e os tempos do diálogo e tente novamente, ou escolha exportar apenas a fala."
+  },
+  "dubStyle": {
+    "label": "Instruções de estilo de tradução",
+    "help": "Descreva o tom, o público e a adaptação, como preservar piadas e adaptar expressões naturalmente. Salvas no projeto para tradução e ajustes de duração. Deixe em branco para usar o estilo padrão."
+  },
+  "dubActivity": {
+    "output": "Traduções",
+    "waiting": "Nenhum resultado recebido ainda.",
+    "progress": "{{done}} / {{total}} segmentos validados",
+    "cancelled": "Cancelado",
+    "fitting": "Ajustando o tempo"
   }
 }

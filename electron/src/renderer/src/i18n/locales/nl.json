@@ -1980,6 +1980,7 @@
     "dictation_lede_hotkey_only": "Houd de sneltoets hierboven overal op je bureaublad ingedrukt, spreek, laat los — de tekst belandt in de app met focus. Druk nu om te verifiëren."
   },
   "setup": {
+    "ready_desc": "Je kunt je eerste stem maken. Stel dicteren nu in of later via Instellingen.",
     "system_preflight": "Systeem preflight",
     "system_check_desc": "Onderzoek RAM, schijf, GPU, ffmpeg en netwerk. Blokkers worden vooraf gemarkeerd, zodat u het weet voordat u gaat downloaden.",
     "probing": "Sondeersysteem…",
@@ -2569,5 +2570,21 @@
     "captured": "{{count}} problematische logregels vastgelegd",
     "contextNotice": "De geselecteerde agent ontvangt dit rapport, het huidige scherm, recente app- en backendlogboeken en systeemdiagnostiek.",
     "complete": "Voltooid"
+  },
+  "dubIntegrity": {
+    "missingSpeech": "Spraak ontbreekt of is onleesbaar. Genereer het betreffende segment opnieuw voordat je exporteert.",
+    "timingOverflow": "De spraak overschrijdt het tijdvak. Verkort de vertaling of kies een strikt tijdvak of het uitrekken van de video.",
+    "backgroundUnavailable": "Het oorspronkelijke geluid kon niet behouden blijven. Controleer de achtergrondscheiding en dialoogtijden en probeer opnieuw, of kies expliciet voor alleen spraak exporteren."
+  },
+  "dubStyle": {
+    "label": "Instructies voor vertaalstijl",
+    "help": "Beschrijf toon, doelgroep en aanpassing, zoals grappen behouden en uitdrukkingen natuurlijk vertalen. Opgeslagen in dit project voor vertaling en herschrijven op tijdsduur. Laat leeg voor de standaardstijl."
+  },
+  "dubActivity": {
+    "output": "Vertalingen",
+    "waiting": "Nog geen uitvoer ontvangen.",
+    "progress": "{{done}} / {{total}} segmenten gevalideerd",
+    "cancelled": "Geannuleerd",
+    "fitting": "Timing aanpassen"
   }
 }

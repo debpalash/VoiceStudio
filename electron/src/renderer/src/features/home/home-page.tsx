@@ -1,3 +1,4 @@
+import { isMac } from '@/components/bridge';
 import { WorkspaceHeader } from '@/components/app-shell/workspace-header';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { Button } from '@/components/ui/button';
@@ -181,18 +182,19 @@ export function HomePage() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <WorkspaceHeader>
-        {libraryOpen ? (
-          <img src={brandIcon} alt="" className="size-4" />
-        ) : (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t('clone.toggle_sidebar')}
-            onClick={() => setWorkspace({ libraryOpen: true })}
-          >
-            <PanelLeftOpenIcon />
-          </Button>
-        )}
+        {isMac() &&
+          (libraryOpen ? (
+            <img src={brandIcon} alt="" className="size-4" />
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t('clone.toggle_sidebar')}
+              onClick={() => setWorkspace({ libraryOpen: true })}
+            >
+              <PanelLeftOpenIcon />
+            </Button>
+          ))}
         <h1 className="text-sm font-medium">{t('app.name')}</h1>
         <Link
           to="/projects"

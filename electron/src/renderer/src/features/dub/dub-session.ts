@@ -1,3 +1,4 @@
+import { startTranslationRun, appendTranslationLog, updateTranslationRun, finishTranslationRun } from './translation-activity';
 import type { DubExportPreferences } from './dub-export';
 import {
   MAX_COOKIE_EXPORT_BYTES,
@@ -135,6 +136,7 @@ export interface DubSession {
   reflectPass?: boolean;
   condenseSuggest?: boolean;
   dialect?: string;
+  translationInstructions?: string;
   jobId: string | null;
   taskId: string | null;
   filename: string;
@@ -251,6 +253,7 @@ const unsubscribeDraft = dubSession.subscribe(() => {
     current.reflectPass !== previousDraft.reflectPass ||
     current.condenseSuggest !== previousDraft.condenseSuggest ||
     current.dialect !== previousDraft.dialect ||
+    current.translationInstructions !== previousDraft.translationInstructions ||
     current.exportOptions !== previousDraft.exportOptions ||
     current.timingStrategy !== previousDraft.timingStrategy ||
     current.voiceMatch !== previousDraft.voiceMatch ||
@@ -300,7 +303,7 @@ export const setDubQuality = (quality: DubSession['quality']) => {
     patch({ quality, ...(quality === 'agent' ? {} : { agentCli: undefined }) });
 };
 export const setDubTranslationOptions = (
-  value: Pick<Partial<DubSession>, 'autoGlossary' | 'reflectPass' | 'condenseSuggest' | 'dialect'>,
+  value: Pick<Partial<DubSession>, 'autoGlossary' | 'reflectPass' | 'condenseSuggest' | 'dialect' | 'translationInstructions'>,
 ) => {
   if (['idle', 'editing', 'done'].includes(dubSession.state.phase) && !dubSession.state.recovery)
     patch(value);
@@ -953,6 +956,7 @@ export async function uploadDub(file: File) {
     reflectPass: current.reflectPass,
     condenseSuggest: current.condenseSuggest,
     dialect: current.dialect,
+    translationInstructions: current.translationInstructions,
     timingStrategy: current.timingStrategy,
     voiceMatch: current.voiceMatch,
     sourceLanguage: current.sourceLanguage,
@@ -1007,6 +1011,7 @@ export async function ingestDubUrl(value: string, cookieFile?: File, fetchSubs =
     reflectPass: current.reflectPass,
     condenseSuggest: current.condenseSuggest,
     dialect: current.dialect,
+    translationInstructions: current.translationInstructions,
     timingStrategy: current.timingStrategy,
     voiceMatch: current.voiceMatch,
     sourceLanguage: current.sourceLanguage,
@@ -1049,6 +1054,7 @@ export async function ingestDubUrl(value: string, cookieFile?: File, fetchSubs =
 async function runLocalTranslationAgent(
   request: DubAgentTranslationRequest,
   signal: AbortSignal,
+  retry?: () => Promise<unknown>,
 ): Promise<DubAgentTranslationResult> {
   const bridge = window.voicestudio?.repair;
   if (!bridge?.translate) throw new Error('LOCAL_TRANSLATION_AGENT_UNAVAILABLE');
@@ -1057,10 +1063,30 @@ async function runLocalTranslationAgent(
     stop();
     throw new DOMException('Cancelled', 'AbortError');
   }
+  const id = startTranslationRun({
+    jobId: dubSession.state.jobId || '', agent: request.agent,
+    target: request.targetLanguage, purpose: request.purpose, retry,
+    rows: request.segments.map((segment) => ({ id: segment.id, source: segment.sourceText })),
+  });
+  const unsubscribe = bridge.onTranslationEvent?.((event) => {
+    if (event.requestId === id) appendTranslationLog(id, event.text);
+  });
   signal.addEventListener('abort', stop, { once: true });
   try {
-    return await bridge.translate(request);
+    const result = await bridge.translate({ ...request, requestId: id });
+    if (signal.aborted) throw new DOMException('Cancelled', 'AbortError');
+    const texts = new Map(result.translations.map((row) => [row.id, row.text]));
+    updateTranslationRun(id, {
+      rows: request.segments.map((segment) => ({ id: segment.id, source: segment.sourceText, text: texts.get(segment.id) })),
+    });
+    finishTranslationRun(id, 'complete');
+    return result;
+  } catch (error) {
+    finishTranslationRun(id, signal.aborted ? 'cancelled' : 'failed',
+      signal.aborted ? undefined : (error instanceof Error ? error.message : String(error)));
+    throw error;
   } finally {
+    unsubscribe?.();
     signal.removeEventListener('abort', stop);
   }
 }
@@ -1086,6 +1112,7 @@ export async function translateDubWithAgent(
           sourceLanguage: snapshot.sourceLang || snapshot.sourceLanguage || undefined,
           targetLanguage: targetLabel,
           dialect: snapshot.dialect,
+          translationInstructions: snapshot.translationInstructions,
           glossary,
           segments: snapshot.segments.map((segment) => ({
             id: segment.id,
@@ -1095,6 +1122,7 @@ export async function translateDubWithAgent(
           })),
         },
         signal,
+        () => translateDubWithAgent(target, agent, targetLabel),
       );
       const rows = new Map(translated.translations.map((row) => [row.id, row.text]));
       clearDubEditHistory();
@@ -1150,8 +1178,17 @@ export async function translateDub(
   if (!requestedSegments.length) return false;
   const finishActivity = beginAppActivity('translation');
   let agentFallback = false;
+  let activityId: string | undefined;
+  let activityAborted = false;
   try {
     const completed = await run('translating', async (signal) => {
+      activityId = startTranslationRun({
+        jobId: snapshot.jobId!, agent: provider, target, purpose: 'translate',
+        rows: requestedSegments.map((segment) => ({ id: segment.id, source: segment.text_original || segment.text })),
+        retry: () => translateDub(target, provider, { retryFailed: Boolean(dubSession.state.segments.some((s) => s.translate_errors?.[target])) }),
+      });
+      signal.addEventListener('abort', () => { activityAborted = true; }, { once: true });
+
       const glossary = await apiJson<Array<{ source: string; target: string; note?: string }>>(
         `/glossary/${encodeURIComponent(snapshot.jobId!)}`,
         { signal },
@@ -1181,6 +1218,7 @@ export async function translateDub(
           target_lang: target,
           provider,
           quality: snapshot.quality,
+          translation_instructions: snapshot.translationInstructions,
           auto_glossary: snapshot.autoGlossary ?? true,
           reflect: snapshot.reflectPass ?? true,
           condense: snapshot.condenseSuggest ?? false,
@@ -1203,6 +1241,13 @@ export async function translateDub(
             end: segment.end,
             slot_seconds: segment.end - segment.start,
           })),
+        }),
+      });
+      if (signal.aborted) throw new DOMException('Cancelled', 'AbortError');
+      updateTranslationRun(activityId!, {
+        rows: requestedSegments.map((segment) => {
+          const row = translated.translated.find((r) => String(r.id) === segment.id);
+          return { id: segment.id, source: segment.text_original || segment.text, text: row?.error ? undefined : row?.text, error: row?.error };
         }),
       });
       const fallback = translated.cinematic_skipped === 'no-llm-configured';
@@ -1248,6 +1293,9 @@ export async function translateDub(
       if (translated.translated.some((row) => row.error))
         throw new Error('Some translation segments failed');
     });
+    if (activityId) finishTranslationRun(activityId,
+      activityAborted ? 'cancelled' : completed && !agentFallback ? 'complete' : 'failed',
+      completed && !agentFallback ? undefined : dubSession.state.error || undefined);
     return completed && !agentFallback;
   } finally {
     finishActivity();
@@ -1416,6 +1464,7 @@ export async function generateDub(
                 sourceLanguage: current.sourceLang || current.sourceLanguage || undefined,
                 targetLanguage: language,
                 dialect: current.dialect,
+                translationInstructions: current.translationInstructions,
                 segments: misses.map((segment) => ({
                   id: segment.id,
                   sourceText: segment.source_text || segment.text,
@@ -1439,7 +1488,7 @@ export async function generateDub(
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               signal,
-              body: JSON.stringify({ target_lang: languageCode, segments: misses }),
+              body: JSON.stringify({ target_lang: languageCode, segments: misses, translation_instructions: current.translationInstructions }),
             });
         if (fitted.segments.some((row) => AGENT_FIT_BLOCKING_ERRORS.has(row.error || '')))
           throw new Error(DUB_AGENT_UNAVAILABLE);
@@ -1710,6 +1759,7 @@ export function discardDubRecovery(): void {
     reflectPass: current.reflectPass,
     condenseSuggest: current.condenseSuggest,
     dialect: current.dialect,
+    translationInstructions: current.translationInstructions,
     timingStrategy: current.timingStrategy,
     voiceMatch: current.voiceMatch,
     sourceLanguage: current.sourceLanguage,

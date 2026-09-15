@@ -1984,6 +1984,7 @@
     "dictation_lede_hotkey_only": "Przytrzymaj powyższy skrót w dowolnym miejscu pulpitu, mów i puść — tekst trafi do aktywnej aplikacji. Naciśnij teraz, aby zweryfikować."
   },
   "setup": {
+    "ready_desc": "Możesz już utworzyć swój pierwszy głos. Dyktowanie skonfigurujesz teraz lub później w Ustawieniach.",
     "system_preflight": "Wstępna inspekcja systemu",
     "system_check_desc": "Sprawdź pamięć RAM, dysk, procesor graficzny, ffmpeg i sieć. Blokery są oznaczone od razu, więc wiesz o tym przed pobraniem.",
     "probing": "System sondujący…",
@@ -2573,5 +2574,21 @@
     "captured": "Przechwycono {{count}} problematycznych wierszy dziennika",
     "contextNotice": "Wybrany agent otrzyma to zgłoszenie, bieżący ekran, ostatnie dzienniki aplikacji i backendu oraz diagnostykę systemu.",
     "complete": "Zakończono"
+  },
+  "dubIntegrity": {
+    "missingSpeech": "Brak mowy lub nie można jej odczytać. Przed eksportem wygeneruj ponownie dany segment.",
+    "timingOverflow": "Mowa przekracza przydzielony czas. Skróć tłumaczenie albo wybierz ścisły przedział czasu lub wydłużenie filmu.",
+    "backgroundUnavailable": "Nie udało się zachować oryginalnego dźwięku. Sprawdź oddzielenie tła i czasy dialogów, a następnie spróbuj ponownie lub wybierz eksport samej mowy."
+  },
+  "dubStyle": {
+    "label": "Instrukcje stylu tłumaczenia",
+    "help": "Opisz ton, odbiorców i sposób adaptacji, np. zachowanie żartów i naturalne tłumaczenie idiomów. Zapisywane w projekcie i stosowane przy tłumaczeniu oraz dopasowaniu czasu. Pozostaw puste dla stylu domyślnego."
+  },
+  "dubActivity": {
+    "output": "Tłumaczenia",
+    "waiting": "Nie otrzymano jeszcze żadnych wyników.",
+    "progress": "Zweryfikowano {{done}} / {{total}} segmentów",
+    "cancelled": "Anulowano",
+    "fitting": "Dostosowywanie czasu"
   }
 }

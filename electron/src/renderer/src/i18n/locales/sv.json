@@ -1980,6 +1980,7 @@
     "dictation_lede_hotkey_only": "Håll ner kortkommandot ovan var som helst på skrivbordet, tala, släpp — texten hamnar i appen med fokus. Tryck nu för att verifiera."
   },
   "setup": {
+    "ready_desc": "Du kan nu skapa din första röst. Ställ in diktering nu eller senare i Inställningar.",
     "system_preflight": "System preflight",
     "system_check_desc": "Probe RAM, disk, GPU, ffmpeg och nätverk. Blockerare flaggas i förväg så att du vet innan du laddar ner.",
     "probing": "Undersökningssystem...",
@@ -2569,5 +2570,21 @@
     "captured": "{{count}} problemrader i loggen samlades in",
     "contextNotice": "Den valda agenten får den här rapporten, den aktuella vyn, aktuella app- och backendloggar samt systemdiagnostik.",
     "complete": "Klart"
+  },
+  "dubIntegrity": {
+    "missingSpeech": "Tal saknas eller kan inte läsas. Generera det berörda segmentet på nytt före export.",
+    "timingOverflow": "Talet överskrider sin tidslucka. Korta översättningen eller välj strikt tidslucka eller sträck ut videon.",
+    "backgroundUnavailable": "Originalljudet kunde inte bevaras. Kontrollera bakgrundssepareringen och dialogens tider och försök igen, eller välj att endast exportera tal."
+  },
+  "dubStyle": {
+    "label": "Instruktioner för översättningsstil",
+    "help": "Beskriv ton, målgrupp och anpassning, till exempel bevara skämt och översätta idiom naturligt. Sparas i projektet för översättning och tidsanpassning. Lämna tomt för standardstilen."
+  },
+  "dubActivity": {
+    "output": "Översättningar",
+    "waiting": "Ingen utdata har tagits emot ännu.",
+    "progress": "{{done}} / {{total}} segment validerade",
+    "cancelled": "Avbruten",
+    "fitting": "Justerar tidsplacering"
   }
 }

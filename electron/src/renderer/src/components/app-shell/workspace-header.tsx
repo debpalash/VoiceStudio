@@ -1,3 +1,4 @@
+import { SidebarToggle } from './sidebar-toggle';
 import type { ReactNode } from 'react';
 import { SearchIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -14,6 +15,7 @@ export function WorkspaceHeader({ children }: { children: ReactNode }) {
         !isMac() && 'native-controls-right',
       )}
     >
+      {!isMac() && <SidebarToggle />}
       {children}
       <Button
         variant="ghost"

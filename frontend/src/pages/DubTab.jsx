@@ -552,7 +552,7 @@ export default function DubTab(props) {
   // previewMode is 'original' or a dubbed language code (multi-language switcher).
   const previewIsDub = previewMode !== 'original' && hasDubbedTrack;
   const videoSrc = previewIsDub
-    ? `${API}/dub/preview-video/${dubJobId}?lang=${encodeURIComponent(previewMode)}&preserve_bg=${preserveBg ? 1 : 0}&v=${dubGenNonce}`
+    ? `${API}/dub/preview-video/${dubJobId}?mix=surgical2&lang=${encodeURIComponent(previewMode)}&preserve_bg=${preserveBg ? 1 : 0}&v=${dubGenNonce}`
     : `${API}/dub/media/${dubJobId}`;
   // The video is the normal transport, but WaveSurfer can fall back to a
   // companion audio element when a WebView decodes the picture without its

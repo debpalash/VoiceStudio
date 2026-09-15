@@ -1882,6 +1882,8 @@ async def dub_transcribe_stream(
                 payload["speaker_hint"] = diar_warning["speaker_hint"]
             yield _sse_event("warning", payload)
 
+        from services.segmentation import deduplicate_chunk_segments
+        final_segs = deduplicate_chunk_segments(final_segs)
         job["segments"] = final_segs
 
         # Auto-speaker-clone: sample each detected speaker's voice from the
@@ -2294,6 +2296,8 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
             raise
         if job.get("aborted"):
             raise HTTPException(status_code=499, detail="Transcription aborted")
+        from services.segmentation import deduplicate_chunk_segments
+        segments_result = deduplicate_chunk_segments(segments_result)
         job["segments"] = segments_result
         source_lang = job.get("source_lang")
         _save_job(job_id, job)

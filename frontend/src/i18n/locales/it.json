@@ -1552,6 +1552,7 @@
     "h_ago": "{{count}}h fa"
   },
   "setup": {
+    "ready_desc": "Puoi creare la tua prima voce. Configura la dettatura ora o più tardi nelle Impostazioni.",
     "welcome": "Benvenuto",
     "system_check": "Controllo del sistema",
     "install_models": "Installa modelli",
@@ -2831,5 +2832,21 @@
   "player": {
     "pause": "Pausa",
     "play": "Riproduci"
+  },
+  "dubIntegrity": {
+    "missingSpeech": "Il parlato manca o non è leggibile. Rigenera il segmento interessato prima di esportare.",
+    "timingOverflow": "Il parlato supera il tempo disponibile. Accorcia la traduzione oppure scegli uno slot rigoroso o estendi il video.",
+    "backgroundUnavailable": "Impossibile preservare il suono originale. Controlla la separazione del sottofondo e i tempi del dialogo, poi riprova, oppure esporta esplicitamente solo la voce."
+  },
+  "dubStyle": {
+    "label": "Istruzioni sullo stile di traduzione",
+    "help": "Descrivi tono, pubblico e adattamento, ad esempio mantenere le battute e adattare gli idiomi in modo naturale. Salvate nel progetto e usate per traduzione e riscritture temporali. Lascia vuoto per lo stile predefinito."
+  },
+  "dubActivity": {
+    "output": "Traduzioni",
+    "waiting": "Nessun risultato ricevuto finora.",
+    "progress": "{{done}} / {{total}} segmenti convalidati",
+    "cancelled": "Annullato",
+    "fitting": "Regolazione dei tempi"
   }
 }

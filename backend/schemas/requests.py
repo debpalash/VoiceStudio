@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Literal, Optional
 
 from services.audio_dsp import EFFECT_PRESETS
@@ -89,9 +89,9 @@ class DubRequest(BaseModel):
     # (Bengali, Hindi, Arabic…). Three modes:
     #   "concise"       — never compress TTS audio. Trim text up-front via
     #                     speech_rate so it fits naturally; if it still
-    #                     overflows, hard-trim at slot with a short fade and
-    #                     surface fit_status="overflows" so the UI can prompt
-    #                     the user to shorten the segment. DEFAULT.
+    #                     overflows, fail without replacing the current track;
+    #                     the user must shorten it or choose another fit mode.
+    #                     DEFAULT.
     #   "stretch_video" — never compress TTS audio. Re-lay the timeline so
     #                     each segment's video portion is stretched (via
     #                     ffmpeg setpts) to fit the natural-rate dub audio.
@@ -100,13 +100,13 @@ class DubRequest(BaseModel):
     #                     mild pitch-preserving audio speed-up (≤1.2× alone,
     #                     ≤1.5× in hybrid) and a mild per-segment video
     #                     slow-down (≤2.0×), per services/fit_planner.py.
-    #                     Residual overflow is trimmed and surfaced.
-    #   "strict_slot"   — legacy: keep `slot_fit` semantics (atempo squeeze
-    #                     when audio > slot). Kept for back-compat.
+    #                     Residual overflow fails without discarding words.
+    #   "strict_slot"   — pitch-preserving fit of the complete speech to
+    #                     the original start/end; may sound faster or slower.
     timing_strategy: Optional[Literal["concise", "stretch_video", "strict_slot", "smart_fit"]] = "concise"
 
-    # Per-job slip budget for "concise" mode. Hard-trim only kicks in once
-    # gap absorption + this much extra time has been consumed.
+    # Per-job slip budget for "concise" mode. Overflow fails once gap
+    # absorption + this much extra time has been consumed.
     overflow_budget_s: Optional[float] = 0.0
 
     # Knob overrides for `smart_fit` (ignored by other strategies). Omitted
@@ -161,6 +161,7 @@ class TranslateRequest(BaseModel):
     # voseo: "vos sos" instead of "tú eres"). Non-LLM providers (Argos, NLLB,
     # Google) can't honor it; the response then carries dialect_applied=false.
     dialect: Optional[str] = None
+    translation_instructions: Optional[str] = Field(default=None, max_length=5000)
     # Two-stage LLM translation quality (provider="openai" only; MT engines
     # ignore both). None = default ON for the LLM engine.
     #   auto_glossary — one up-front LLM pass over the full transcript extracts
@@ -194,6 +195,7 @@ class AgentFitSegment(BaseModel):
 class AgentFitRequest(BaseModel):
     """Revise only rendered lines that missed their exact timeline slot."""
 
+    translation_instructions: Optional[str] = Field(default=None, max_length=5000)
     segments: List[AgentFitSegment]
     target_lang: str
 

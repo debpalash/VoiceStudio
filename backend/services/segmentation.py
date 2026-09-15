@@ -491,6 +491,35 @@ def _apply_scene_cuts(segments: List[Segment], scene_cuts: Iterable[float]) -> L
             dur_total = remaining.duration
             if dur_total <= 0:
                 break
+            words = remaining.extra.get("words")
+            if isinstance(words, list) and words:
+                # A camera cut is not a word boundary. Character-proportional
+                # splitting assigned words seconds away from their real speech.
+                candidates = [
+                    i for i in range(1, len(words))
+                    if float(words[i - 1]["end"]) <= float(words[i]["start"])
+                    and abs(float(words[i]["start"]) - cut) <= 0.25
+                ]
+                if not candidates:
+                    continue
+                split = min(candidates, key=lambda i: abs(float(words[i]["start"]) - cut))
+                left, right = words[:split], words[split:]
+                left_text = _clean(" ".join(str(w.get("text", w.get("word", ""))) for w in left))
+                right_text = _clean(" ".join(str(w.get("text", w.get("word", ""))) for w in right))
+                left_end, right_start = float(left[-1]["end"]), float(right[0]["start"])
+                if (len(left_text) < MIN_CHARS or len(right_text) < MIN_CHARS
+                        or left_end - remaining.start < MIN_DUR
+                        or remaining.end - right_start < MIN_DUR):
+                    continue
+                out.append(Segment(
+                    start=remaining.start, end=left_end, text=left_text,
+                    speaker_id=remaining.speaker_id, extra={**remaining.extra, "words": left},
+                ))
+                remaining = Segment(
+                    start=right_start, end=remaining.end, text=right_text,
+                    speaker_id=remaining.speaker_id, extra={**remaining.extra, "words": right},
+                )
+                continue
             ratio = (cut - remaining.start) / dur_total
             tentative_split = int(len(remaining.text) * ratio)
             pos = _best_boundary(remaining.text, tentative_split)
@@ -805,3 +834,74 @@ def resplit_segments_by_turns(
         and t.get("end") is not None
     ]
     return _resplit_core(segments, words, norm)
+
+
+def deduplicate_chunk_segments(segments: list[dict]) -> list[dict]:
+    """Remove repeated ASR context only when matching words share timestamps.
+
+    Preserve different speakers and genuine repeated speech at different times.
+    Input order retains chunk provenance even when a later chunk starts earlier.
+    """
+    import re
+
+    def token(word):
+        return re.sub(r'[^\w]', '', str(word.get('text', word.get('word', ''))).casefold())
+
+    def timed_words(segment):
+        words = segment.get('words') or []
+        return words if words and all(isinstance(w, dict) and isinstance(w.get('start'), (int, float))
+                                     and isinstance(w.get('end'), (int, float)) for w in words) else []
+
+    result = []
+    for segment in segments:
+        words = timed_words(segment)
+        matches = []
+        if words and segment.get("speaker_id"):
+            prior_words = [w for previous in result
+                           if previous.get('speaker_id') == segment.get('speaker_id')
+                           for w in timed_words(previous)
+                           if w['end'] >= words[0]['start'] - .35 and w['start'] <= words[-1]['end'] + .35]
+            for index, word in enumerate(words):
+                if token(word) and any(token(word) == token(prior)
+                                      and abs((word['start'] + word['end']) / 2 - (prior['start'] + prior['end']) / 2) <= .35
+                                      for prior in prior_words):
+                    matches.append(index)
+        # Require a substantial matching prefix; isolated common words cannot
+        # authorize deleting speech. No timing-only truncation is performed.
+        if len(matches) >= 3 and len(matches) / (matches[-1] + 1) >= .6:
+            cutoff = max((w['end'] for w in prior_words), default=0)
+            remaining = [w for w in words[matches[-1] + 1:] if w['start'] >= cutoff - .05]
+            if not remaining:
+                continue
+            text = _clean(' '.join(str(w.get('text', w.get('word', ''))) for w in remaining))
+            segment = {**segment, 'start': remaining[0]['start'], 'end': remaining[-1]['end'],
+                       'text': text, 'text_original': text, 'words': remaining}
+        result.append(segment)
+    def bounds(row):
+        words = timed_words(row)
+        if not words:
+            return None
+        if any(a['start'] > b['start'] for a, b in zip(words, words[1:])):
+            # Older chunk stitching can attach an earlier word to a later
+            # line. Never invert an interval or move it backwards over speech.
+            inside = [w for w in words if row['start'] <= w['start'] <= w['end'] <= row['end']]
+            if len(inside) < .6 * len(words):
+                return None
+            words = inside
+        start, end = min(w['start'] for w in words), max(w['end'] for w in words)
+        return (start, end) if end > start else None
+
+    # Repair stale camera-cut bounds only when timed words prove the two
+    # spoken intervals are disjoint. Genuine overlapping speech stays intact.
+    adjust = set()
+    ordered = sorted(enumerate(result), key=lambda item: item[1]['start'])
+    for position, (left_index, left) in enumerate(ordered):
+        for right_index, right in ordered[position + 1:]:
+            if right['start'] >= left['end']:
+                break
+            a, b = bounds(left), bounds(right)
+            if a and b and (a[1] <= b[0] or b[1] <= a[0]):
+                adjust.update((left_index, right_index))
+    result = [{**row, 'start': bounds(row)[0], 'end': bounds(row)[1]}
+              if index in adjust else row for index, row in enumerate(result)]
+    return result

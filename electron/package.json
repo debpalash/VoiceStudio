@@ -13,6 +13,7 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
+    "dev:software-compositing": "electron-vite dev -- --disable-gpu-compositing",
     "locale:check": "node tests/locale-encoding.mjs && node tests/locale-source-keys.mjs && node tests/locale-coverage.mjs",
     "build": "bun run locale:check && electron-vite build",
     "preview": "electron-vite preview",

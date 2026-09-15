@@ -1,4 +1,4 @@
-import { HeadphonesIcon, LoaderCircleIcon, PlayIcon, TriangleAlertIcon } from 'lucide-react';
+import { HeadphonesIcon, LoaderCircleIcon, PlayIcon, TriangleAlertIcon, ZoomInIcon, ZoomOutIcon, MaximizeIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -8,6 +8,7 @@ import {
   snapCandidates,
   snapTime,
 } from '../../../../../../frontend/src/utils/timeline';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
   requestPlaybackRange,
@@ -58,6 +59,9 @@ export function DubTimeline({
   const { t } = useTranslation();
   const playback = usePlaybackClock(playbackSource);
   const host = useRef<HTMLDivElement>(null);
+  const viewport = useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState(1);
+  const [timelineWidth, setTimelineWidth] = useState(1000);
   const onsetCanvas = useRef<HTMLCanvasElement>(null);
   const segmentRefs = useRef(new Map<string, HTMLDivElement>());
   const gesture = useRef<Gesture | null>(null);
@@ -94,8 +98,9 @@ export function DubTimeline({
     const draw = () => {
       const width = container.clientWidth;
       const height = container.clientHeight;
+      setTimelineWidth(width);
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.max(1, Math.round(width * dpr));
+      canvas.width = Math.min(8192, Math.max(1, Math.round(width * dpr)));
       canvas.height = Math.max(1, Math.round(height * dpr));
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
@@ -124,7 +129,7 @@ export function DubTimeline({
       context.beginPath();
       for (const onset of onsets) {
         if (onset < 0 || onset > duration) continue;
-        const x = Math.round((onset / duration) * width * dpr) + 0.5;
+        const x = Math.round((onset / duration) * canvas.width) + 0.5;
         context.moveTo(x, canvas.height * 0.62);
         context.lineTo(x, canvas.height);
       }
@@ -146,6 +151,7 @@ export function DubTimeline({
 
   const begin = (event: React.PointerEvent<HTMLDivElement>, index: number) => {
     if (disabled || event.button !== 0) return;
+    if (((effective[index].end - effective[index].start) / duration) * timelineWidth < 16) return;
     const segment = effective[index];
     const mode =
       (event.target as HTMLElement).dataset.edge === 'start'
@@ -304,8 +310,15 @@ export function DubTimeline({
       aria-label={t('segmentEditing.timeline')}
       className="rounded-xl border border-border/60 bg-card/35 p-3 shadow-sm"
     >
+      <div className="mb-2 flex justify-end gap-1">
+        <Button size="icon-sm" variant="ghost" aria-label={t('trimmer.zoom_out')} disabled={zoom <= 1} onClick={() => setZoom((z) => Math.max(1, z / 2))}><ZoomOutIcon /></Button>
+        <Button size="icon-sm" variant="ghost" aria-label={t('trimmer.zoom_in')} disabled={zoom >= 16} onClick={() => setZoom((z) => Math.min(16, z * 2))}><ZoomInIcon /></Button>
+        <Button size="icon-sm" variant="ghost" aria-label={t('trimmer.fit_all')} onClick={() => setZoom(1)}><MaximizeIcon /></Button>
+      </div>
+      <div ref={viewport} className="overflow-x-auto rounded-lg [scrollbar-width:thin]">
       <div
         ref={host}
+        style={{ width: `${zoom * 100}%` }}
         role="listbox"
         aria-orientation="horizontal"
         onClick={(event) => {
@@ -356,7 +369,7 @@ export function DubTimeline({
             onPointerUp={finish}
             onPointerCancel={(event) => finish(event, false)}
             className={cn(
-              'absolute top-2 flex h-10 min-w-2 cursor-grab items-center overflow-hidden rounded-md border border-primary/30 bg-primary/20 px-2 text-[10px] font-medium text-foreground outline-none transition-[box-shadow,background-color] active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-ring',
+              'absolute top-2 flex h-10 min-w-0 cursor-grab items-center overflow-hidden rounded-sm bg-primary/30 px-0 text-[10px] font-medium text-foreground outline-none transition-[box-shadow,background-color] active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-ring',
               selectedId === segment.id && 'border-primary/70 bg-primary/35 shadow-sm',
               focusId === segment.id &&
                 editMode &&
@@ -365,16 +378,16 @@ export function DubTimeline({
             )}
             style={{
               left: `${(segment.start / duration) * 100}%`,
-              width: `${Math.max(0.6, ((segment.end - segment.start) / duration) * 100)}%`,
+              width: `${((segment.end - segment.start) / duration) * 100}%`,
             }}
           >
-            <span
+            {((segment.end - segment.start) / duration) * timelineWidth >= 24 && <span
               data-edge="start"
               aria-hidden="true"
               className="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize bg-foreground/15"
-            />
-            <span className="pointer-events-none truncate">{index + 1}</span>
-            {selectedId === segment.id && ((segment.end - segment.start) / duration) * 100 > 6 && (
+            />}
+            {((segment.end - segment.start) / duration) * timelineWidth >= 18 && <span className="pointer-events-none truncate px-1">{index + 1}</span>}
+            {selectedId === segment.id && ((segment.end - segment.start) / duration) * timelineWidth > 60 && (
               <span className="ml-auto flex shrink-0 gap-0.5">
                 <button
                   type="button"
@@ -389,7 +402,7 @@ export function DubTimeline({
                 >
                   <PlayIcon className="size-3 fill-current" />
                 </button>
-                {onPreviewSegment && ((segment.end - segment.start) / duration) * 100 > 10 && (
+                {onPreviewSegment && ((segment.end - segment.start) / duration) * timelineWidth > 100 && (
                   <button
                     type="button"
                     aria-label={t('dub.live_preview')}
@@ -411,21 +424,27 @@ export function DubTimeline({
                 )}
               </span>
             )}
-            <span
+            {((segment.end - segment.start) / duration) * timelineWidth >= 24 && <span
               data-edge="end"
               aria-hidden="true"
               className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize bg-foreground/15"
-            />
+            />}
           </div>
         ))}
+      </div>
       </div>
       <div className="mt-1 flex items-center justify-between font-mono text-[10px] text-muted-foreground tabular-nums">
         <span>0:00.0</span>
         {overlaps.size > 0 && (
-          <span role="status" className="flex items-center gap-1 text-destructive">
+          <button type="button" className="flex items-center gap-1 text-destructive text-left" onClick={() => {
+            const id = [...overlaps][0];
+            setZoom(16);
+            selectAndFocus(id);
+            requestAnimationFrame(() => segmentRefs.current.get(id)?.scrollIntoView({ block: 'nearest', inline: 'center' }));
+          }}>
             <TriangleAlertIcon className="size-3" />
             {t('segmentEditing.overlap')}
-          </span>
+          </button>
         )}
         <span>{formatTime(duration)}</span>
       </div>

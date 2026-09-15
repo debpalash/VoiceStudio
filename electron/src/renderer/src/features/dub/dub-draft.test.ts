@@ -181,3 +181,9 @@ it('recovers provider error pages saved as translated dialogue', () => {
   });
   expect(restored.segments[0].translations).toBeUndefined();
 });
+
+it('restores the project translation brief without changing its wording', () => {
+  const translationInstructions = 'Conversational Bengali. Preserve jokes and adapt idioms.';
+  const result = restoreDubDraft(JSON.stringify({ ...defaults, translationInstructions }), defaults);
+  expect(result?.translationInstructions).toBe(translationInstructions);
+});

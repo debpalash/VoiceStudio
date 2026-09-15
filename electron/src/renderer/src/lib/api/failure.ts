@@ -1,3 +1,4 @@
+import i18next from 'i18next';
 export interface PublicFailure {
   reason: string;
   errorClass?: string;
@@ -16,6 +17,8 @@ export function publicFailureFromEvent(
 ): PublicFailure {
   return {
     reason:
+      (event.error_code === 'dub_speech_missing' ? i18next.t('dubIntegrity.missingSpeech') :
+        event.error_code === 'dub_timing_overflow' ? i18next.t('dubIntegrity.timingOverflow') : undefined) ||
       text(event.reason) ||
       text(event.detail) ||
       text(event.error) ||

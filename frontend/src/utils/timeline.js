@@ -282,13 +282,14 @@ export function detectOverlaps(segments, epsilon = 1e-6) {
   const flagged = new Set();
   if (segments.length < 2) return flagged;
   const sorted = [...segments].sort((x, y) => x.start - y.start || x.end - y.end);
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1];
-    const cur = sorted[i];
-    if (cur.start < prev.end - epsilon) {
-      flagged.add(String(prev.id));
+  let active = [];
+  for (const cur of sorted) {
+    active = active.filter((previous) => previous.end > cur.start + epsilon);
+    for (const previous of active) {
+      flagged.add(String(previous.id));
       flagged.add(String(cur.id));
     }
+    active.push(cur);
   }
   return flagged;
 }

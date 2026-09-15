@@ -191,6 +191,8 @@ export function restoreDubDraft(raw: string | null, defaults: DubSession): DubSe
         typeof value.condenseSuggest === 'boolean'
           ? value.condenseSuggest
           : defaults.condenseSuggest,
+      translationInstructions: typeof value.translationInstructions === 'string'
+        ? value.translationInstructions.slice(0, 5000) : undefined,
       dialect:
         typeof value.dialect === 'string' && /^[a-zA-Z]{2,3}-[a-zA-Z]{2,4}$/.test(value.dialect)
           ? value.dialect

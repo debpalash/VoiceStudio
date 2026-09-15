@@ -1552,6 +1552,7 @@
     "h_ago": "Vor {{count}}h"
   },
   "setup": {
+    "ready_desc": "Du kannst jetzt deine erste Stimme erstellen. Die Diktierfunktion kannst du jetzt oder später in den Einstellungen einrichten.",
     "welcome": "Willkommen",
     "system_check": "Systemprüfung",
     "install_models": "Modelle installieren",
@@ -2831,5 +2832,21 @@
   "player": {
     "pause": "Pausieren",
     "play": "Abspielen"
+  },
+  "dubIntegrity": {
+    "missingSpeech": "Sprache fehlt oder ist nicht lesbar. Erzeuge das betroffene Segment vor dem Export erneut.",
+    "timingOverflow": "Die Sprache überschreitet ihr Zeitfenster. Kürze die Übersetzung oder wähle ein festes Zeitfenster oder die Videostreckung.",
+    "backgroundUnavailable": "Der Originalton konnte nicht erhalten werden. Prüfe Hintergrundtrennung und Dialogzeiten und versuche es erneut, oder exportiere ausdrücklich nur Sprache."
+  },
+  "dubStyle": {
+    "label": "Vorgabe für den Übersetzungsstil",
+    "help": "Beschreibe Ton, Zielgruppe und Anpassung, etwa Witze erhalten und Redewendungen natürlich übertragen. Wird im Projekt gespeichert und für Übersetzung und Zeitanpassung verwendet. Leer lassen für den Standardstil."
+  },
+  "dubActivity": {
+    "output": "Übersetzungen",
+    "waiting": "Noch keine Ausgabe empfangen.",
+    "progress": "{{done}} / {{total}} Segmente geprüft",
+    "cancelled": "Abgebrochen",
+    "fitting": "Timing anpassen"
   }
 }

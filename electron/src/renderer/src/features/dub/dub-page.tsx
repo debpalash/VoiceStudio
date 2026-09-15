@@ -452,7 +452,7 @@ export function DubPage() {
             const revision = fingerprintRevision(session.fingerprintsByLang?.[track]);
             return {
               track,
-              path: `/dub/preview-video/${job}?lang=${encodeURIComponent(track)}${revision ? `&v=${revision}` : ''}`,
+              path: `/dub/preview-video/${job}?mix=surgical2&lang=${encodeURIComponent(track)}${revision ? `&v=${revision}` : ''}`,
             };
           })
         : [],
@@ -469,7 +469,7 @@ export function DubPage() {
         : apiPath(
             preview === 'original'
               ? `/dub/media/${job}`
-              : `/dub/preview-video/${job}?lang=${encodeURIComponent(preview)}${previewRevision ? `&v=${previewRevision}` : ''}`,
+              : `/dub/preview-video/${job}?mix=surgical2&lang=${encodeURIComponent(preview)}${previewRevision ? `&v=${previewRevision}` : ''}`,
           ),
     [job, preview, previewRevision, session.inputType],
   );
@@ -1293,6 +1293,26 @@ export function DubPage() {
                 </p>
               )}
             </div>
+            {session.quality === 'agent' && (
+              <div className="space-y-2 border-t border-border/50 pt-3">
+                <label htmlFor="dub-translation-instructions" className="text-xs font-medium">
+                  {t('dubStyle.label')}
+                </label>
+                <textarea
+                  id="dub-translation-instructions"
+                  aria-describedby="dub-translation-instructions-help"
+                  rows={4}
+                  maxLength={5000}
+                  value={session.translationInstructions || ''}
+                  disabled={busy || Boolean(session.recovery)}
+                  onChange={(event) => setDubTranslationOptions({ translationInstructions: event.target.value })}
+                  className="w-full resize-y rounded-lg border border-input bg-background/40 px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                />
+                <p id="dub-translation-instructions-help" className="text-xs leading-5 text-muted-foreground">
+                  {t('dubStyle.help')}
+                </p>
+              </div>
+            )}
             {session.quality !== 'agent' && (
               <details className="group space-y-2 border-t border-border/50 pt-2">
                 <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-medium text-muted-foreground">

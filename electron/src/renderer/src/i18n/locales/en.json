@@ -2029,6 +2029,7 @@
     "dictation_lede_hotkey_only": "Hold the shortcut above anywhere on your desktop, speak, release — the text lands in whatever app has focus. Press it now to verify it works."
   },
   "setup": {
+    "ready_desc": "You’re ready to create your first voice. You can set up dictation now or later in Settings.",
     "system_preflight": "System preflight",
     "system_check_desc": "Probe RAM, disk, GPU, and network. Blockers are flagged upfront so you know before downloading.",
     "probing": "Probing system…",
@@ -2569,5 +2570,21 @@
     "captured": "Captured {{count}} problem log lines",
     "contextNotice": "The selected agent receives this report, the current screen, recent app and backend logs, and system diagnostics.",
     "complete": "Complete"
+  },
+  "dubIntegrity": {
+    "missingSpeech": "Speech is missing or unreadable. Regenerate the affected segment before exporting.",
+    "timingOverflow": "Speech exceeds its time slot. Shorten the translation or choose Strict Slot or Stretch Video.",
+    "backgroundUnavailable": "Original sound could not be preserved. Check background separation and dialogue timing, then retry, or explicitly export speech only."
+  },
+  "dubStyle": {
+    "label": "Translation style prompt",
+    "help": "Describe tone, audience and adaptation style—for example: conversational Bengali, preserve jokes, adapt idioms naturally. Saved with this project; used for translation and timing rewrites. Leave blank for the default style."
+  },
+  "dubActivity": {
+    "output": "Translations",
+    "waiting": "No output received yet.",
+    "progress": "{{done}} / {{total}} segments validated",
+    "cancelled": "Cancelled",
+    "fitting": "Adjusting timing"
   }
 }

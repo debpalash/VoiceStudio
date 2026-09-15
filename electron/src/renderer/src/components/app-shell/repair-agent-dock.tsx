@@ -1,3 +1,7 @@
+import { useStore } from '@tanstack/react-store';
+import { translationActivity } from '@/features/dub/translation-activity';
+import { TranslationAgentDock } from './translation-agent-dock';
+import { AgentDockFrame } from './agent-dock-frame';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouterState } from '@tanstack/react-router';
@@ -72,6 +76,7 @@ function RepairGlyph({ className }: { className?: string }) {
 
 export function RepairAgentDock() {
   const { t } = useTranslation();
+  const translation = useStore(translationActivity);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const backend = useBackendStatus();
   const bridge = getBridge();
@@ -90,6 +95,10 @@ export function RepairAgentDock() {
   const [autoFixReport, setAutoFixReport] = useState('');
   const [chooseDefault, setChooseDefault] = useState(false);
   const terminal = useRef<HTMLPreElement>(null);
+  const translationRunId = translation.runs.at(-1)?.id;
+  useEffect(() => {
+    if (translationRunId) setOpen(false);
+  }, [translationRunId]);
 
   useEffect(() => {
     if (!bridge) return;
@@ -249,6 +258,8 @@ export function RepairAgentDock() {
     }
   };
 
+  if (!open && status !== 'running' && translation.runs.length) return <TranslationAgentDock />;
+
   if (!open) {
     return createPortal(
       <Button
@@ -270,10 +281,7 @@ export function RepairAgentDock() {
   }
 
   return (
-    <section
-      aria-label={t('repairAgent.title')}
-      className="relative z-40 flex h-[clamp(20rem,42vh,28rem)] min-h-0 shrink-0 flex-col border-t border-sidebar-border bg-sidebar text-sidebar-foreground shadow-[0_-8px_24px_rgb(0_0_0/12%)]"
-    >
+    <AgentDockFrame label={t('repairAgent.title')}>
       <header className="flex min-h-12 shrink-0 items-center gap-2 border-b border-sidebar-border px-3">
         <RepairGlyph className="text-foreground" />
         <div className="w-72 min-w-0 shrink-0">
@@ -474,6 +482,6 @@ export function RepairAgentDock() {
           )}
         </div>
       </div>
-    </section>
+    </AgentDockFrame>
   );
 }

@@ -10,6 +10,27 @@ from core import run_sentinel
 logger = logging.getLogger("omnivoice.tasks")
 
 
+def _stream_failure(update):
+    """Recognize terminal SSE failures, including generators that do not raise."""
+    if isinstance(update, bytes):
+        update = update.decode("utf-8", errors="replace")
+    if not isinstance(update, str):
+        return None
+    lines = update.splitlines()
+    try:
+        payload = json.loads("\n".join(line[5:].strip() for line in lines if line.startswith("data:")))
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("type") != "error" and not any(line.strip() == "event: error" for line in lines):
+        return None
+    detail = payload.get("reason") or payload.get("error") or payload.get("detail")
+    if isinstance(detail, dict):
+        detail = detail.get("message") or detail.get("reason")
+    return detail if isinstance(detail, str) and detail else "Task failed"
+
+
 class TaskManager:
     """In-memory task dispatcher with SQLite-backed metadata.
 
@@ -125,9 +146,19 @@ class TaskManager:
                             except Exception: logger.exception("job_store.mark_cancelled failed")
                             break
                         await self._push_event(task_id, update)
+                        stream_error = _stream_failure(update)
+                        if stream_error is not None:
+                            t["status"] = "failed"
+                            t["error"] = stream_error
+                            try:
+                                job_store.mark_failed(task_id, stream_error)
+                            except Exception:
+                                logger.exception("job_store.mark_failed failed")
+                            await res.aclose()
+                            break
                 elif inspect.iscoroutine(res):
                     await res
-                if t["status"] != "cancelled":
+                if t["status"] not in {"cancelled", "failed"}:
                     t["status"] = "done"
                     try: job_store.mark_done(task_id)
                     except Exception: logger.exception("job_store.mark_done failed")

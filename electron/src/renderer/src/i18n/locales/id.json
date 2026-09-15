@@ -1980,6 +1980,7 @@
     "dictation_lede_hotkey_only": "Tahan pintasan di atas di mana saja di desktop, bicara, lepaskan — teks masuk ke aplikasi yang sedang fokus. Tekan sekarang untuk memverifikasi."
   },
   "setup": {
+    "ready_desc": "Anda siap membuat suara pertama. Atur dikte sekarang atau nanti di Pengaturan.",
     "system_preflight": "Pra-penerbangan sistem",
     "system_check_desc": "Selidiki RAM, disk, GPU, ffmpeg, dan jaringan. Pemblokir ditandai terlebih dahulu sehingga Anda mengetahuinya sebelum mengunduh.",
     "probing": "Sistem penyelidikan…",
@@ -2569,5 +2570,21 @@
     "captured": "{{count}} baris log bermasalah ditangkap",
     "contextNotice": "Agen yang dipilih menerima laporan ini, layar saat ini, log aplikasi dan backend terbaru, serta diagnostik sistem.",
     "complete": "Selesai"
+  },
+  "dubIntegrity": {
+    "missingSpeech": "Audio ucapan hilang atau tidak dapat dibaca. Buat ulang segmen terkait sebelum mengekspor.",
+    "timingOverflow": "Ucapan melebihi jatah waktunya. Persingkat terjemahan atau pilih slot ketat atau rentangkan video.",
+    "backgroundUnavailable": "Suara asli tidak dapat dipertahankan. Periksa pemisahan latar dan waktu dialog, lalu coba lagi, atau pilih ekspor suara saja."
+  },
+  "dubStyle": {
+    "label": "Instruksi gaya terjemahan",
+    "help": "Jelaskan nada, audiens, dan gaya adaptasi, misalnya pertahankan lelucon dan sesuaikan idiom secara alami. Disimpan dalam proyek untuk terjemahan dan penyesuaian durasi. Kosongkan untuk gaya bawaan."
+  },
+  "dubActivity": {
+    "output": "Terjemahan",
+    "waiting": "Belum ada keluaran yang diterima.",
+    "progress": "{{done}} / {{total}} segmen divalidasi",
+    "cancelled": "Dibatalkan",
+    "fitting": "Menyesuaikan waktu"
   }
 }

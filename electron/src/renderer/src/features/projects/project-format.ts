@@ -33,6 +33,7 @@ export function projectSession(project: DubProject, defaults: DubSession): DubSe
       reflectPass: s.reflectPass,
       condenseSuggest: s.condenseSuggest,
       dialect: s.dubDialect,
+      translationInstructions: s.translationInstructions,
       exportOptions: {
         ...(typeof s.exportOptions === 'object' && s.exportOptions ? s.exportOptions : {}),
         preserveBg: s.preserveBg,
@@ -86,6 +87,7 @@ export function projectPayload(session: DubSession, name: string) {
       reflectPass: session.reflectPass,
       condenseSuggest: session.condenseSuggest,
       dubDialect: session.dialect,
+      translationInstructions: session.translationInstructions,
       exportOptions: session.exportOptions,
       ...(session.exportOptions
         ? {

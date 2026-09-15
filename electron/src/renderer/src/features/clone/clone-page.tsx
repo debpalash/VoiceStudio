@@ -1,3 +1,4 @@
+import { SidebarToggle } from '@/components/app-shell/sidebar-toggle';
 import { EditProfile } from './edit-profile';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { VoiceSetup } from './voice-setup';
@@ -12,8 +13,6 @@ import {
   HistoryIcon,
   AudioLinesIcon,
   ChevronDownIcon,
-  PanelLeftCloseIcon,
-  PanelLeftOpenIcon,
   PencilIcon,
   SearchIcon,
   SlidersHorizontalIcon,
@@ -43,9 +42,8 @@ export function ClonePage() {
   const selectedTake = useSelectedTake();
   const { generate, isGenerating } = useGenerateClone();
   const demo = useCloneDemo();
-  const { panel, editingProfileId, libraryOpen } = useWorkspace();
+  const { panel, editingProfileId } = useWorkspace();
   const setPanel = (panel: 'voice' | 'settings' | null) => setWorkspace({ panel });
-  const setLibraryOpen = (libraryOpen: boolean) => setWorkspace({ libraryOpen });
   const setLibraryTab = (libraryTab: 'voices' | 'takes') => setWorkspace({ libraryTab });
   useEffect(() => {
     if (selectedTake) setWorkspace({ panel: null });
@@ -152,17 +150,7 @@ export function ClonePage() {
             )}
           >
             <div className="flex min-w-0 items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="text-foreground/70 hover:text-foreground"
-                aria-label={t('clone.toggle_sidebar')}
-                aria-expanded={libraryOpen}
-                title={t('clone.toggle_sidebar')}
-                onClick={() => setLibraryOpen(!libraryOpen)}
-              >
-                {libraryOpen ? <PanelLeftCloseIcon /> : <PanelLeftOpenIcon />}
-              </Button>
+              <SidebarToggle />
               <h1 className="truncate text-sm font-medium">{t('clone.title')}</h1>
             </div>
             <div className="flex shrink-0 items-center gap-1">
@@ -180,7 +168,7 @@ export function ClonePage() {
                 size="sm"
                 onClick={() => {
                   setLibraryTab('takes');
-                  setLibraryOpen(true);
+                  setWorkspace({ libraryOpen: true });
                 }}
               >
                 <HistoryIcon data-icon="inline-start" />

@@ -1,6 +1,11 @@
-﻿import { chromium } from 'playwright';
+import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await chromium.launch({
+  ...(process.env.CHROME_PATH
+    ? { executablePath: process.env.CHROME_PATH }
+    : { channel: 'msedge' }),
+  headless: true,
+});
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 let models = false;
 let preflight = false;
@@ -8,6 +13,17 @@ let partialPreflight = true;
 let installs = 0;
 const consentWrites = [];
 try {
+  await page.route('**/api/api/settings/performance-profile', (route) =>
+    route.fulfill({
+      json: {
+        global: 'balanced',
+        effective: {},
+        applicable_families: ['tts'],
+        targets: {},
+        selections: {},
+      },
+    }),
+  );
   await page.route('**/api/models', (route) =>
     route.fulfill({
       json: {
@@ -30,7 +46,7 @@ try {
             size_gb: 1,
           },
           {
-            repo_id: 'fixture/model',
+            repo_id: 'k2-fsa/OmniVoice',
             label: 'Required model',
             role: 'TTS',
             required: true,
@@ -52,7 +68,7 @@ try {
     route.fulfill({
       json: {
         models_ready: models,
-        missing: models ? [] : [{ repo_id: 'fixture/model', label: 'Required model' }],
+        missing: models ? [] : [{ repo_id: 'k2-fsa/OmniVoice', label: 'Required model' }],
       },
     }),
   );
@@ -94,6 +110,12 @@ try {
   await page.getByRole('button', { name: 'Re-check', exact: true }).click();
   await next.click();
   assert.ok(await next.isDisabled());
+  await page.getByRole('button', { name: /Install Balanced pack/i }).waitFor();
+  assert.equal(await page.getByRole('heading', { name: 'Required model', exact: true }).count(), 0);
+  await page.setViewportSize({ width: 640, height: 800 });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+  await page.screenshot({ path: '/tmp/voicestudio-onboarding-packs.png' });
+  await page.getByRole('button', { name: 'Advanced', exact: true }).click();
   await page.getByRole('heading', { name: 'Required model', exact: true }).waitFor();
   assert.ok(
     await page.getByRole('heading', { name: 'Recommended model', exact: true }).isVisible(),
@@ -104,6 +126,7 @@ try {
   await page.locator('summary', { hasText: 'Show 1 more models' }).click();
   await page.getByRole('heading', { name: 'Optional model', exact: true }).waitFor();
   await page.locator('summary', { hasText: 'Show 1 more models' }).click();
+  await page.getByRole('button', { name: 'Advanced', exact: true }).click();
   models = true;
   await page.evaluate(async () => {
     const { queryClient } = await import('/src/lib/query.ts');
@@ -118,7 +141,13 @@ try {
   assert.deepEqual(consentWrites, [{ enabled: false }]);
   await next.click();
   await page.getByRole('button', { name: 'Enter studio', exact: true }).click();
-  await page.getByRole('heading', { name: 'Design', exact: true }).waitFor();
+  await page
+    .getByRole('button', { name: 'Enter studio', exact: true })
+    .waitFor({ state: 'hidden' });
+  assert.equal(
+    await page.evaluate(() => localStorage.getItem('voicestudio.setup.complete.v1')),
+    '1',
+  );
   assert.equal(installs, 0);
   console.log(
     'First-run preflight/model gates, privacy/dictation steps and completion passed without downloads.',

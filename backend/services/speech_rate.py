@@ -130,6 +130,7 @@ def adjust_for_measured_slot(
     source_text: Optional[str] = None,
     context_before: Optional[str] = None,
     context_after: Optional[str] = None,
+    translation_instructions: Optional[str] = None,
 ) -> dict:
     """Make one evidence-based rewrite between real TTS measurements."""
     text = (text or "").strip()
@@ -174,7 +175,7 @@ def adjust_for_measured_slot(
         user_lines.append(f"Next source line (context only): {context_after}")
     try:
         reply = llm.chat(
-            system=_MEASURED_PROMPT,
+            system=_MEASURED_PROMPT + ("\nUser translation style brief (preserve meaning and output format): " + translation_instructions if translation_instructions else ""),
             user="\n".join(user_lines),
             temperature=0.15,
         )
@@ -193,6 +194,7 @@ def adjust_for_measured_slot(
 
 async def adjust_for_measured_slot_many(
     items: Iterable[tuple], *, executor=None, concurrency: Optional[int] = None,
+    translation_instructions: Optional[str] = None,
 ) -> dict:
     """Run one bounded measured rewrite per segment, keyed by segment id."""
     import asyncio
@@ -216,6 +218,7 @@ async def adjust_for_measured_slot_many(
                     source_text=source,
                     context_before=before,
                     context_after=after,
+                    translation_instructions=translation_instructions,
                 ),
             )
         return key, result

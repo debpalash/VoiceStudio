@@ -1552,6 +1552,7 @@
     "h_ago": "{{count}}h temu"
   },
   "setup": {
+    "ready_desc": "Możesz już utworzyć swój pierwszy głos. Dyktowanie skonfigurujesz teraz lub później w Ustawieniach.",
     "welcome": "Witamy",
     "system_check": "Kontrola systemu",
     "install_models": "Zainstaluj modele",
@@ -2831,5 +2832,21 @@
   "player": {
     "pause": "Wstrzymaj",
     "play": "Odtwórz"
+  },
+  "dubIntegrity": {
+    "missingSpeech": "Brak mowy lub nie można jej odczytać. Przed eksportem wygeneruj ponownie dany segment.",
+    "timingOverflow": "Mowa przekracza przydzielony czas. Skróć tłumaczenie albo wybierz ścisły przedział czasu lub wydłużenie filmu.",
+    "backgroundUnavailable": "Nie udało się zachować oryginalnego dźwięku. Sprawdź oddzielenie tła i czasy dialogów, a następnie spróbuj ponownie lub wybierz eksport samej mowy."
+  },
+  "dubStyle": {
+    "label": "Instrukcje stylu tłumaczenia",
+    "help": "Opisz ton, odbiorców i sposób adaptacji, np. zachowanie żartów i naturalne tłumaczenie idiomów. Zapisywane w projekcie i stosowane przy tłumaczeniu oraz dopasowaniu czasu. Pozostaw puste dla stylu domyślnego."
+  },
+  "dubActivity": {
+    "output": "Tłumaczenia",
+    "waiting": "Nie otrzymano jeszcze żadnych wyników.",
+    "progress": "Zweryfikowano {{done}} / {{total}} segmentów",
+    "cancelled": "Anulowano",
+    "fitting": "Dostosowywanie czasu"
   }
 }

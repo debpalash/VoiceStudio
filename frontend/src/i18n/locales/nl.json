@@ -1552,6 +1552,7 @@
     "h_ago": "{{count}}u geleden"
   },
   "setup": {
+    "ready_desc": "Je kunt je eerste stem maken. Stel dicteren nu in of later via Instellingen.",
     "welcome": "Welkom",
     "system_check": "Systeemcontrole",
     "install_models": "Modellen installeren",
@@ -2831,5 +2832,21 @@
   "player": {
     "pause": "Pauzeren",
     "play": "Afspelen"
+  },
+  "dubIntegrity": {
+    "missingSpeech": "Spraak ontbreekt of is onleesbaar. Genereer het betreffende segment opnieuw voordat je exporteert.",
+    "timingOverflow": "De spraak overschrijdt het tijdvak. Verkort de vertaling of kies een strikt tijdvak of het uitrekken van de video.",
+    "backgroundUnavailable": "Het oorspronkelijke geluid kon niet behouden blijven. Controleer de achtergrondscheiding en dialoogtijden en probeer opnieuw, of kies expliciet voor alleen spraak exporteren."
+  },
+  "dubStyle": {
+    "label": "Instructies voor vertaalstijl",
+    "help": "Beschrijf toon, doelgroep en aanpassing, zoals grappen behouden en uitdrukkingen natuurlijk vertalen. Opgeslagen in dit project voor vertaling en herschrijven op tijdsduur. Laat leeg voor de standaardstijl."
+  },
+  "dubActivity": {
+    "output": "Vertalingen",
+    "waiting": "Nog geen uitvoer ontvangen.",
+    "progress": "{{done}} / {{total}} segmenten gevalideerd",
+    "cancelled": "Geannuleerd",
+    "fitting": "Timing aanpassen"
   }
 }

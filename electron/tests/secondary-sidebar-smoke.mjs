@@ -1,6 +1,11 @@
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
-const browser = await chromium.launch({ channel: "msedge", headless: true });
+const browser = await chromium.launch({
+  ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH
+    ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH }
+    : { channel: "msedge" }),
+  headless: true,
+});
 const page = await browser.newPage();
 const baseUrl = process.env.VOICESTUDIO_SMOKE_URL ?? "http://localhost:3912";
 await page.addInitScript(() => {
@@ -24,6 +29,7 @@ try {
       await page.waitForTimeout(100);
       const sideCandidates = page.locator("[data-slot=secondary-sidebar]");
       await sideCandidates.first().waitFor({ state: "attached" });
+      await sideCandidates.first().getByRole("separator").waitFor({ state: "visible" });
       const compactMain = page.locator("[data-slot=compact-main-sidebar]");
       if (width <= 1680) {
         await compactMain.waitFor();
@@ -97,6 +103,8 @@ try {
         );
       });
       const side = sideCandidates.first();
+      // Let the shell toggle and ResizeObserver settle before recording the width.
+      await page.waitForTimeout(200);
       const expanded = await side.evaluate((element) => {
         const bounds = element.getBoundingClientRect();
         return { width: bounds.width, height: bounds.height };
@@ -122,8 +130,8 @@ try {
         ),
       );
       await toggle.click();
-      assert.equal(
-        await side.evaluate((element) => element.getBoundingClientRect().width),
+      await page.waitForFunction((expected) =>
+        document.querySelector("[data-slot=secondary-sidebar]")?.getBoundingClientRect().width === expected,
         expanded.width,
       );
       assert.ok(
