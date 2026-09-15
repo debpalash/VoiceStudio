@@ -46,7 +46,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' ipc://localhost http://localhost:* ws://localhost:* http://127.0.0.1:* ws://127.0.0.1:* blob: data:; media-src 'self' blob: data: http://localhost:* http://127.0.0.1:* asset: https://asset.localhost; img-src 'self' blob: data: asset: https://asset.localhost http://localhost:* http://127.0.0.1:* https://fonts.gstatic.com; font-src 'self' data: https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;",
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' ipc://localhost http://localhost:* ws://localhost:* http://127.0.0.1:* ws://127.0.0.1:* https://eu.i.posthog.com blob: data:; media-src 'self' blob: data: http://localhost:* http://127.0.0.1:* asset: https://asset.localhost; img-src 'self' blob: data: asset: https://asset.localhost http://localhost:* http://127.0.0.1:* https://fonts.gstatic.com; font-src 'self' data: https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;",
       "assetProtocol": {
         "enable": true,
         "scope": [

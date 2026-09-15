@@ -38,6 +38,7 @@ pub struct DictationOutput {
 
 #[derive(Default)]
 struct Inner {
+    owner_pid: Option<u32>,
     next_session_id: AtomicU64,
     operation: Mutex<()>,
     state: Mutex<OutputState>,
@@ -81,6 +82,21 @@ enum ClipboardSnapshot {
 }
 
 impl DictationOutput {
+    /// Native-helper hosts identify the UI process so tray capture excludes its windows.
+    /// In-process callers retain the existing default (the current process).
+    pub fn for_owner(owner_pid: u32) -> Self {
+        Self {
+            inner: Arc::new(Inner {
+                owner_pid: Some(owner_pid),
+                ..Inner::default()
+            }),
+        }
+    }
+
+    fn owner_pid(&self) -> u32 {
+        self.inner.owner_pid.unwrap_or_else(std::process::id)
+    }
+
     /// Remember focus on tray mouse-down, before the menu itself can become
     /// foreground. Tauri does not emit tray pointer events on Linux; X11 can
     /// still capture `_NET_ACTIVE_WINDOW` at the menu action, while Wayland
@@ -97,7 +113,7 @@ impl DictationOutput {
         // can hold the operation lock while another application becomes
         // foreground, so acquiring it first would capture the wrong target.
         let captured_at = Instant::now();
-        let target = capture().filter(|target| !target.belongs_to_current_process());
+        let target = capture().filter(|target| !target.belongs_to_process(self.owner_pid()));
         if let Ok(mut state) = self.inner.state.lock() {
             state.tray_target = target.map(|target| (target, captured_at));
         }
@@ -124,7 +140,7 @@ impl DictationOutput {
             .then(capture)
             .flatten()
             .filter(|target| {
-                origin == CaptureOrigin::Shortcut || !target.belongs_to_current_process()
+                origin == CaptureOrigin::Shortcut || !target.belongs_to_process(self.owner_pid())
             });
         let mut state = self
             .inner
@@ -278,6 +294,12 @@ impl DictationOutput {
             return Ok(DeliveryOutcome::Copied);
         }
         self.schedule_restore(session_id, generation, text.to_owned());
+        // SendInput/CGEventPost/XTest enqueue keystrokes; success does not mean
+        // the target has consumed its paste. Keep the operation lock through
+        // the same consumption window used by clipboard restoration, so a
+        // second utterance cannot replace the clipboard or reset modifier state
+        // (Windows AttachThreadInput) while the first Ctrl/Cmd+V is queued.
+        thread::sleep(CLIPBOARD_CONSUME_DELAY);
         Ok(DeliveryOutcome::Inserted)
     }
 
@@ -777,8 +799,8 @@ struct PlatformTarget {
 
 #[cfg(target_os = "macos")]
 impl PlatformTarget {
-    fn belongs_to_current_process(&self) -> bool {
-        self.pid == std::process::id() as i32
+    fn belongs_to_process(&self, owner_pid: u32) -> bool {
+        self.pid == owner_pid as i32
     }
 }
 
@@ -818,8 +840,8 @@ struct PlatformTarget {
 
 #[cfg(target_os = "windows")]
 impl PlatformTarget {
-    fn belongs_to_current_process(&self) -> bool {
-        self.pid == std::process::id()
+    fn belongs_to_process(&self, owner_pid: u32) -> bool {
+        self.pid == owner_pid
     }
 }
 
@@ -864,12 +886,23 @@ fn activate_target(target: &PlatformTarget) -> bool {
             return false;
         }
         let current_thread = GetCurrentThreadId();
-        let attached = target_thread != current_thread
-            && AttachThreadInput(current_thread, target_thread, true).as_bool();
+        let foreground = GetForegroundWindow();
+        let foreground_thread = if foreground.0.is_null() {
+            0
+        } else {
+            GetWindowThreadProcessId(foreground, None)
+        };
+        // Windows grants foreground activation through the thread that owns the
+        // current foreground window. The recorder can become foreground when its
+        // Stop button is clicked, so attaching to the destination thread does not
+        // transfer that right and SetForegroundWindow can silently fail.
+        let attached = foreground_thread != 0
+            && foreground_thread != current_thread
+            && AttachThreadInput(current_thread, foreground_thread, true).as_bool();
         let _ = BringWindowToTop(hwnd);
         let requested = SetForegroundWindow(hwnd).as_bool();
         if attached {
-            let _ = AttachThreadInput(current_thread, target_thread, false);
+            let _ = AttachThreadInput(current_thread, foreground_thread, false);
         }
         if !requested {
             return false;
@@ -906,8 +939,8 @@ struct PlatformTarget {
 
 #[cfg(target_os = "linux")]
 impl PlatformTarget {
-    fn belongs_to_current_process(&self) -> bool {
-        self.pid == Some(std::process::id())
+    fn belongs_to_process(&self, owner_pid: u32) -> bool {
+        self.pid == Some(owner_pid)
     }
 }
 
@@ -1049,7 +1082,7 @@ struct PlatformTarget;
 
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 impl PlatformTarget {
-    fn belongs_to_current_process(&self) -> bool {
+    fn belongs_to_process(&self, _owner_pid: u32) -> bool {
         false
     }
 }
@@ -1356,6 +1389,29 @@ mod tests {
     use std::sync::mpsc;
     use std::thread;
     use std::time::{Duration, Instant};
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn helper_tray_capture_excludes_the_owner_window() {
+        let owner = std::process::id().wrapping_add(1);
+        let output = DictationOutput::for_owner(owner);
+        let session = output.begin_session_with(
+            CaptureOrigin::Tray,
+            || {
+                Some(super::PlatformTarget {
+                    hwnd: 1,
+                    pid: owner,
+                })
+            },
+            true,
+        );
+        let state = output.inner.state.lock().unwrap();
+        let active = state.active.as_ref().unwrap();
+        assert_eq!(active.id, session);
+        assert!(active.target.is_none());
+        assert!(active.clipboard_only);
+        assert_eq!(DictationOutput::default().owner_pid(), std::process::id());
+    }
 
     #[test]
     fn clipboard_restore_never_overwrites_a_new_user_copy() {

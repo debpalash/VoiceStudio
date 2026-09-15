@@ -653,7 +653,7 @@ fn assign_job_and_resume(
 // Version of the Astral `uv` binary we download at first run when no system
 // uv is on PATH. Pinned for reproducibility — bump alongside the uv.lock
 // when the toolchain needs a newer uv.
-pub const UV_VERSION: &str = "0.11.7";
+pub const UV_VERSION: &str = "0.12.13";
 
 // Version of BtbN/FFmpeg-Builds we download for Linux/Windows ffmpeg first-
 // run setup. The string appears *twice* in each URL (once as the release tag,

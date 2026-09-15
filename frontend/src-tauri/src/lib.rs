@@ -23,8 +23,11 @@ pub mod tools;
 pub mod uninstall;
 pub mod updater_channel;
 pub mod watch_folder;
+mod watch_folder_core;
 #[cfg(target_os = "linux")]
 pub mod wayland_shortcut;
+#[cfg(target_os = "linux")]
+pub mod wayland_shortcut_core;
 
 use std::collections::{HashMap, VecDeque};
 use std::process::Child;
