@@ -37,6 +37,7 @@ export const VideoPlayer = memo(function VideoPlayer({
   onPause,
   onSeeked,
   onCanPlay,
+  controls = 'full',
 }: {
   src: MediaPlayerProps['src'];
   source?: string;
@@ -48,6 +49,7 @@ export const VideoPlayer = memo(function VideoPlayer({
   onPause?: MediaPlayerProps['onPause'];
   onSeeked?: MediaPlayerProps['onSeeked'];
   onCanPlay?: MediaPlayerProps['onCanPlay'];
+  controls?: 'full' | 'compact';
 }) {
   const localPlayerRef = useRef<MediaPlayerInstance>(null);
   const player = externalPlayerRef ?? localPlayerRef;
@@ -76,7 +78,12 @@ export const VideoPlayer = memo(function VideoPlayer({
         loaders={videoLoaders}
         className="relative aspect-video [&_[data-remotion-canvas]]:h-full [&_[data-remotion-canvas]]:w-full [&_[data-remotion-container]]:h-full [&_[data-remotion-container]]:w-full [&_video]:h-full [&_video]:w-full [&_iframe]:h-full [&_iframe]:w-full"
       />
-      <VideoControls player={player} source={source} sourceIdentity={sourceIdentity} />
+      <VideoControls
+        player={player}
+        source={source}
+        sourceIdentity={sourceIdentity}
+        compact={controls === 'compact'}
+      />
     </StudioMediaPlayer>
   );
 });
@@ -84,10 +91,12 @@ function VideoControls({
   player,
   source,
   sourceIdentity,
+  compact,
 }: {
   player: React.RefObject<MediaPlayerInstance | null>;
   source: string;
   sourceIdentity: string;
+  compact: boolean;
 }) {
   const { t } = useTranslation();
   const rangeEnd = useRef<number | null>(null);
@@ -171,32 +180,36 @@ function VideoControls({
             <PauseIcon />
           )}
         </Button>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          className="hover:bg-white/15 hover:text-white"
-          aria-label={`${t('player.seek')} -10s`}
-          onClick={() => {
-            if (player.current) player.current.currentTime = Math.max(0, time - 10);
-          }}
-        >
-          <RotateCcwIcon />
-        </Button>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          className="hover:bg-white/15 hover:text-white"
-          aria-label={`${t('player.seek')} +10s`}
-          onClick={() => {
-            if (player.current)
-              player.current.currentTime = Math.min(
-                Number.isFinite(duration) ? duration : time + 10,
-                time + 10,
-              );
-          }}
-        >
-          <RotateCwIcon />
-        </Button>
+        {!compact && (
+          <>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              className="hover:bg-white/15 hover:text-white"
+              aria-label={`${t('player.seek')} -10s`}
+              onClick={() => {
+                if (player.current) player.current.currentTime = Math.max(0, time - 10);
+              }}
+            >
+              <RotateCcwIcon />
+            </Button>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              className="hover:bg-white/15 hover:text-white"
+              aria-label={`${t('player.seek')} +10s`}
+              onClick={() => {
+                if (player.current)
+                  player.current.currentTime = Math.min(
+                    Number.isFinite(duration) ? duration : time + 10,
+                    time + 10,
+                  );
+              }}
+            >
+              <RotateCwIcon />
+            </Button>
+          </>
+        )}
         <Button
           size="icon-sm"
           variant="ghost"
@@ -209,53 +222,59 @@ function VideoControls({
         >
           {muted ? <VolumeXIcon /> : <Volume2Icon />}
         </Button>
-        <input
-          type="range"
-          aria-label={t('player.volume')}
-          min={0}
-          max={1}
-          step="0.05"
-          value={muted ? 0 : volume}
-          className="hidden h-1 w-14 shrink-0 cursor-pointer appearance-none rounded-full bg-white/25 accent-primary [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white sm:block"
-          onInput={(event) => {
-            if (player.current) {
-              player.current.muted = false;
-              player.current.volume = Number(event.currentTarget.value);
-            }
-          }}
-        />
-        <Button
-          size="xs"
-          variant="ghost"
-          className="min-w-10 px-1.5 text-[10px] tabular-nums hover:bg-white/15 hover:text-white"
-          aria-label={t('clone.speed')}
-          onClick={() => {
-            const rates = [0.75, 1, 1.25, 1.5, 2];
-            const next = rates[(rates.indexOf(playbackRate) + 1) % rates.length];
-            setPlaybackRate(next);
-            if (player.current) player.current.playbackRate = next;
-          }}
-        >
-          {playbackRate}×
-        </Button>
+        {!compact && (
+          <>
+            <input
+              type="range"
+              aria-label={t('player.volume')}
+              min={0}
+              max={1}
+              step="0.05"
+              value={muted ? 0 : volume}
+              className="hidden h-1 w-14 shrink-0 cursor-pointer appearance-none rounded-full bg-white/25 accent-primary [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white sm:block"
+              onInput={(event) => {
+                if (player.current) {
+                  player.current.muted = false;
+                  player.current.volume = Number(event.currentTarget.value);
+                }
+              }}
+            />
+            <Button
+              size="xs"
+              variant="ghost"
+              className="min-w-10 px-1.5 text-[10px] tabular-nums hover:bg-white/15 hover:text-white"
+              aria-label={t('clone.speed')}
+              onClick={() => {
+                const rates = [0.75, 1, 1.25, 1.5, 2];
+                const next = rates[(rates.indexOf(playbackRate) + 1) % rates.length];
+                setPlaybackRate(next);
+                if (player.current) player.current.playbackRate = next;
+              }}
+            >
+              {playbackRate}×
+            </Button>
+          </>
+        )}
         <span className="ml-auto whitespace-nowrap text-[10px] tabular-nums">
           {formatClock(time)} / {formatClock(duration)}
         </span>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          disabled={!canFullscreen}
-          aria-label={t(fullscreen ? 'player.exit_fullscreen' : 'player.fullscreen')}
-          className="hover:bg-white/15 hover:text-white"
-          onClick={() => {
-            const action = fullscreen
-              ? player.current?.exitFullscreen()
-              : player.current?.enterFullscreen();
-            void action?.catch(() => setFailed(true));
-          }}
-        >
-          {fullscreen ? <MinimizeIcon /> : <MaximizeIcon />}
-        </Button>
+        {!compact && (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            disabled={!canFullscreen}
+            aria-label={t(fullscreen ? 'player.exit_fullscreen' : 'player.fullscreen')}
+            className="hover:bg-white/15 hover:text-white"
+            onClick={() => {
+              const action = fullscreen
+                ? player.current?.exitFullscreen()
+                : player.current?.enterFullscreen();
+              void action?.catch(() => setFailed(true));
+            }}
+          >
+            {fullscreen ? <MinimizeIcon /> : <MaximizeIcon />}
+          </Button>
+        )}
       </div>
     </div>
   );

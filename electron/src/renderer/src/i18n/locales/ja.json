@@ -1964,7 +1964,7 @@
     "dictation_replay": "リプレイ",
     "dictation_transcribing": "文字起こし中…",
     "dubbing_title": "吹き替えの様子をご覧ください",
-    "dubbing_sync": "同期再生",
+    "dubbing_sync": "再生位置を同期",
     "dubbing_picker": "別の言語を試してください:",
     "dubbing_cta": "これを自分のビデオで実行します→",
     "dubbing_loading": "ダビングデモを読み込み中…",

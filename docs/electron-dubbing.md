@@ -1,5 +1,11 @@
 # Electron dubbing workspace
 
+The idle workspace includes an original/dubbed demo comparison with compact
+player controls. Sync playheads aligns positions without starting both videos.
+Sample transcript edits are retained per language while the demo is mounted;
+they do not regenerate the prerecorded audio. Edit on the dubbed card imports
+that sample video into the normal upload/transcription and editing workflow.
+
 Open Dub from the cloning sidebar or command search. Upload or drop audio/video, or explicitly submit a video URL;
 preparation completes before transcription starts. The editor shows source text,
 editable translated text, and per-segment voice/timing controls. Translation uses

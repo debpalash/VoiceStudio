@@ -1964,7 +1964,7 @@
     "dictation_replay": "เล่นซ้ำ",
     "dictation_transcribing": "กำลังถอดเสียง...",
     "dubbing_title": "ดูการดำเนินการพากย์",
-    "dubbing_sync": "การเล่นแบบซิงโครไนซ์",
+    "dubbing_sync": "ซิงค์ตำแหน่งการเล่น",
     "dubbing_picker": "ลองภาษาอื่น:",
     "dubbing_cta": "เรียกใช้สิ่งนี้ในวิดีโอของคุณเอง →",
     "dubbing_loading": "กำลังโหลดการสาธิตการพากย์...",
