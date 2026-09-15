@@ -175,6 +175,9 @@
 .native-controls-right {
   padding-right: 148px;
 }
+.macos-notification-safe-area main .workspace-titlebar {
+  padding-right: 3.5rem;
+}
 
 /* Keep the Lucide family visually consistent across controls and pane headings. */
 @layer base {

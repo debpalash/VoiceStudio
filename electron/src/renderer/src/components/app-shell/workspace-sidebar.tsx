@@ -60,6 +60,7 @@ function useCompactViewport(): boolean {
 export function WorkspaceSidebar() {
   const backend = useBackendStatus();
   const { t } = useTranslation();
+  const mac = isMac();
   const { libraryOpen, libraryTab } = useWorkspace();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const compactViewport = useCompactViewport();
@@ -76,8 +77,8 @@ export function WorkspaceSidebar() {
   const sidebarResize = usePaneResize({
     storageKey: 'voicestudio.library-width',
     side: 'left',
-    minimum: 220,
-    initial: 256,
+    minimum: mac ? 288 : 220,
+    initial: mac ? 288 : 256,
     maximum: 360,
     reserve: compactViewport && secondaryWorkspace && forceExpanded ? 520 : 640,
     enabled: libraryOpen,
@@ -88,36 +89,59 @@ export function WorkspaceSidebar() {
         <aside
           aria-label={t('clone.saved_profiles')}
           data-slot="compact-main-sidebar"
-          className="brand-sidebar relative isolate grid h-dvh min-h-0 w-12 shrink-0 grid-rows-[auto_minmax(0,1fr)_auto_auto] overflow-hidden border-r border-border/50 bg-sidebar"
+          className={cn(
+            'brand-sidebar relative isolate grid h-dvh min-h-0 shrink-0 grid-rows-[auto_minmax(0,1fr)_auto_auto] overflow-hidden bg-sidebar',
+            mac ? 'w-16' : 'w-12 border-r border-border/50',
+          )}
         >
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t('clone.toggle_sidebar')}
-            aria-expanded={false}
-            onClick={() => {
-              setExpandedContext(compactContext);
-              setLibraryOpen(true);
-            }}
+          {mac && (
+            <span
+              aria-hidden="true"
+              data-slot="compact-sidebar-divider"
+              className="pointer-events-none absolute top-[72px] right-0 bottom-0 w-px bg-border/50"
+            />
+          )}
+          <div
             className={cn(
-              'workspace-titlebar h-auto w-full shrink-0 rounded-none outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              isMac() && 'pt-5',
+              'workspace-titlebar flex shrink-0 justify-center',
+              mac ? 'min-h-[72px] items-end pb-1' : 'h-12 items-center',
             )}
           >
-            <PanelLeftOpenIcon className="size-5" aria-hidden="true" />
-          </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t('clone.toggle_sidebar')}
+              aria-expanded={false}
+              onClick={() => {
+                setExpandedContext(compactContext);
+                setLibraryOpen(true);
+              }}
+              className="shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <PanelLeftOpenIcon className="size-5" aria-hidden="true" />
+            </Button>
+          </div>
           <WorkspaceNavigation compact />
-          <StatusBar compact />
-          <div className="flex shrink-0 flex-col items-center gap-1 border-t border-border/50 py-2">
+          {!mac && <StatusBar compact />}
+          <div
+            className={cn(
+              'shrink-0 border-t border-border/50 py-2',
+              mac ? 'grid grid-cols-2 items-center gap-1 px-1' : 'flex flex-col items-center gap-1',
+            )}
+          >
             <Link
               to="/settings"
               aria-label={t('nav.settings')}
               title={t('nav.settings')}
-              className={buttonVariants({ variant: 'ghost', size: 'icon-sm' })}
+              className={buttonVariants({
+                variant: 'ghost',
+                size: mac ? 'icon-xs' : 'icon-sm',
+              })}
             >
               <SettingsIcon />
             </Link>
-            <SystemNotifications enabled={backend.stage === 'ready'} compact />
+            {mac && <StatusBar compact inline />}
+            {!mac && <SystemNotifications enabled={backend.stage === 'ready'} compact />}
           </div>
         </aside>
       )}
@@ -137,7 +161,7 @@ export function WorkspaceSidebar() {
           <header
             className={cn(
               'workspace-titlebar flex shrink-0 items-center gap-2 px-4',
-              isMac() && 'pl-20',
+              mac && 'pl-24',
             )}
           >
             <Link
@@ -168,14 +192,29 @@ export function WorkspaceSidebar() {
           <VoicesSidebar key={libraryTab} initialTab={libraryTab} />
           <div className="flex min-w-0 shrink-0 flex-col border-t border-border/50">
             <WorkspaceNavigation />
-            <StatusBar />
-            <div className="flex items-center justify-between gap-2 border-t border-border/50 px-3 py-2">
-              <Link to="/settings" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
-                <SettingsIcon />
-                {t('nav.settings')}
-              </Link>
-              <SystemNotifications enabled={backend.stage === 'ready'} />
-            </div>
+            <StatusBar
+              footerLeading={
+                mac ? (
+                  <Link
+                    to="/settings"
+                    aria-label={t('nav.settings')}
+                    title={t('nav.settings')}
+                    className={buttonVariants({ variant: 'ghost', size: 'icon-xs' })}
+                  >
+                    <SettingsIcon />
+                  </Link>
+                ) : undefined
+              }
+            />
+            {!mac && (
+              <div className="flex items-center justify-between gap-2 border-t border-border/50 px-3 py-2">
+                <Link to="/settings" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
+                  <SettingsIcon />
+                  {t('nav.settings')}
+                </Link>
+                <SystemNotifications enabled={backend.stage === 'ready'} />
+              </div>
+            )}
           </div>
         </aside>
       )}

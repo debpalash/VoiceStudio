@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { useTranslationEngines } from '@/features/settings/translation-settings';
 import { Link } from '@tanstack/react-router';
@@ -222,7 +222,15 @@ function EngineTip({
   );
 }
 
-export function StatusBar({ compact = false }: { compact?: boolean }) {
+export function StatusBar({
+  compact = false,
+  inline = false,
+  footerLeading,
+}: {
+  compact?: boolean;
+  inline?: boolean;
+  footerLeading?: ReactNode;
+}) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [deviceOpen, setDeviceOpen] = useState(false);
@@ -661,72 +669,88 @@ export function StatusBar({ compact = false }: { compact?: boolean }) {
                   : 'modelSettings.unavailable',
     },
   ];
+  const iconDevicePopover = (
+    <Popover open={deviceOpen} onOpenChange={setDeviceOpen}>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`${deviceLabel}: ${deviceStageText}`}
+            className={cn(engineLinkClass, 'h-7 w-full', !compact && 'justify-start gap-2 px-2')}
+          />
+        }
+      >
+        <CpuIcon className={engineIconClass} aria-hidden="true" />
+        {!compact && <span className="min-w-0 truncate">{deviceLabel}</span>}
+        <span
+          className={cn(
+            compact
+              ? 'absolute inset-x-2 bottom-0.5 h-0.5 rounded-full'
+              : 'ml-auto size-1.5 shrink-0 rounded-full',
+            deviceDot,
+          )}
+          aria-hidden="true"
+        />
+      </PopoverTrigger>
+      {deviceContent}
+    </Popover>
+  );
   if (compact) {
     return (
-      <footer className="shrink-0 border-t border-border/50 px-1.5 py-2 text-muted-foreground">
-        <Popover open={deviceOpen} onOpenChange={setDeviceOpen}>
-          <PopoverTrigger
-            render={
-              <button
-                type="button"
-                aria-label={`${deviceLabel}: ${deviceStageText}`}
-                className={cn(engineLinkClass, 'w-full')}
-              />
-            }
-          >
-            <CpuIcon className={engineIconClass} aria-hidden="true" />
-            <span
-              className={cn('absolute inset-x-2 bottom-0.5 h-0.5 rounded-full', deviceDot)}
-              aria-hidden="true"
-            />
-          </PopoverTrigger>
-          {deviceContent}
-        </Popover>
+      <footer
+        className={cn(
+          'shrink-0 text-muted-foreground',
+          inline ? 'contents' : 'border-t border-border/50 px-1.5 py-2',
+        )}
+      >
+        {iconDevicePopover}
       </footer>
     );
   }
   return (
     <footer className="@container/engines w-full min-w-0 max-w-full border-t border-border/50 px-3 py-1.5 text-[length:var(--text-caption)] text-muted-foreground">
       <div>
-        <div className="flex items-center gap-0.5">
-          <Popover open={deviceOpen} onOpenChange={setDeviceOpen}>
-            <PopoverTrigger
-              render={
-                <button
-                  type="button"
-                  aria-label={`${deviceLabel}: ${deviceStageText}`}
-                  className="group/status flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left outline-none transition-[background-color,box-shadow,backdrop-filter] duration-150 hover:bg-sidebar-accent/65 hover:backdrop-blur-xl hover:shadow-[inset_0_1px_0_rgb(255_255_255/8%),0_5px_14px_rgb(0_0_0/10%)] hover:ring-1 hover:ring-inset hover:ring-sidebar-border/60 focus-visible:ring-2 focus-visible:ring-ring"
+        {!footerLeading && (
+          <div className="flex items-center gap-0.5">
+            <Popover open={deviceOpen} onOpenChange={setDeviceOpen}>
+              <PopoverTrigger
+                render={
+                  <button
+                    type="button"
+                    aria-label={`${deviceLabel}: ${deviceStageText}`}
+                    className="group/status flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left outline-none transition-[background-color,box-shadow,backdrop-filter] duration-150 hover:bg-sidebar-accent/65 hover:backdrop-blur-xl hover:shadow-[inset_0_1px_0_rgb(255_255_255/8%),0_5px_14px_rgb(0_0_0/10%)] hover:ring-1 hover:ring-inset hover:ring-sidebar-border/60 focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                }
+              >
+                <span
+                  className={cn('size-1.5 shrink-0 rounded-full', deviceDot)}
+                  aria-hidden="true"
                 />
-              }
+                <CpuIcon className="size-3.5 shrink-0" aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate" role="status">
+                  {deviceLabel}
+                </span>
+              </PopoverTrigger>
+              {deviceContent}
+            </Popover>
+            <button
+              type="button"
+              aria-label={expanded ? t('paneActions.collapse') : t('modelSettings.models')}
+              aria-expanded={expanded}
+              aria-controls="sidebar-engine-details"
+              onClick={() => setExpanded((value) => !value)}
+              className="flex size-7 shrink-0 items-center justify-center rounded-md outline-none transition-colors hover:bg-sidebar-accent/65 focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <span
-                className={cn('size-1.5 shrink-0 rounded-full', deviceDot)}
+              <ChevronDownIcon
+                className={cn(
+                  'size-3.5 transition-transform duration-150 motion-reduce:transition-none',
+                  expanded && 'rotate-180',
+                )}
                 aria-hidden="true"
               />
-              <CpuIcon className="size-3.5 shrink-0" aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate" role="status">
-                {deviceLabel}
-              </span>
-            </PopoverTrigger>
-            {deviceContent}
-          </Popover>
-          <button
-            type="button"
-            aria-label={expanded ? t('paneActions.collapse') : t('modelSettings.models')}
-            aria-expanded={expanded}
-            aria-controls="sidebar-engine-details"
-            onClick={() => setExpanded((value) => !value)}
-            className="flex size-7 shrink-0 items-center justify-center rounded-md outline-none transition-colors hover:bg-sidebar-accent/65 focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <ChevronDownIcon
-              className={cn(
-                'size-3.5 transition-transform duration-150 motion-reduce:transition-none',
-                expanded && 'rotate-180',
-              )}
-              aria-hidden="true"
-            />
-          </button>
-        </div>
+            </button>
+          </div>
+        )}
         <div
           ref={tipAnchor}
           className="mt-0.5 grid w-full min-w-0 grid-cols-6 gap-1 rounded-lg border border-border/50 bg-sidebar-accent/25 p-1"
@@ -807,6 +831,28 @@ export function StatusBar({ compact = false }: { compact?: boolean }) {
         {status.stage === 'ready' && (
           <div className="mt-1.5">
             <PerformanceProfile tooltipAnchor={tipAnchor} />
+          </div>
+        )}
+        {footerLeading && (
+          <div className="mt-1.5 flex items-center gap-1 border-t border-border/50 pt-1.5">
+            {footerLeading}
+            <div className="min-w-0 flex-1">{iconDevicePopover}</div>
+            <button
+              type="button"
+              aria-label={expanded ? t('paneActions.collapse') : t('modelSettings.models')}
+              aria-expanded={expanded}
+              aria-controls="sidebar-engine-details"
+              onClick={() => setExpanded((value) => !value)}
+              className="ml-auto flex size-7 shrink-0 items-center justify-center rounded-md outline-none transition-colors hover:bg-sidebar-accent/65 focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ChevronDownIcon
+                className={cn(
+                  'size-3.5 transition-transform duration-150 motion-reduce:transition-none',
+                  expanded && 'rotate-180',
+                )}
+                aria-hidden="true"
+              />
+            </button>
           </div>
         )}
       </div>

@@ -25,6 +25,7 @@ the frozen-backend fallback mirror it for their toolchains.
 
 ### Fixed
 
+- macOS desktop sidebar clears the traffic lights, uses a narrower collapsed rail, and places notifications and device controls with more space (#2126)
 - Stopping a process on macOS no longer fails with "Operation not permitted" when it was already exiting (#2032)
 - A YouTube link blocked by its "not a bot" check now says how to attach signed-in cookies in Dub, instead of quoting yt-dlp's command-line flags (#2036, #2034)
 - An engine that fails to start now says whether it timed out, crashed (with its exit code and last output) or answered wrongly, instead of "did not signal ready: None" (#2037, #2026)

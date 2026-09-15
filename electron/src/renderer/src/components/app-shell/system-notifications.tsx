@@ -83,9 +83,11 @@ function LevelIcon({ level }: { level: SystemNotification['level'] }) {
 export function SystemNotifications({
   enabled,
   compact = false,
+  titlebar = false,
 }: {
   enabled: boolean;
   compact?: boolean;
+  titlebar?: boolean;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -120,24 +122,20 @@ export function SystemNotifications({
     return {
       id: `desktop-update-${update.availableVersion}`,
       level: 'info',
-      title: t(
-        update.status === 'downloaded' ? 'update.ready' : 'update.available',
-        { version: update.availableVersion },
-      ),
+      title: t(update.status === 'downloaded' ? 'update.ready' : 'update.available', {
+        version: update.availableVersion,
+      }),
       message: t('update.safety'),
       action: { type: 'navigate', target: '/settings/updates', label: t('common.open') },
       persistent: true,
     };
   }, [t, update]);
-  const visible = useMemo(
-    () => {
-      const backend = (query.data?.notifications ?? []).filter(
-        (note) => note.level === 'error' || !dismissed.includes(note.id),
-      );
-      return updateNotification ? [updateNotification, ...backend] : backend;
-    },
-    [dismissed, query.data?.notifications, updateNotification],
-  );
+  const visible = useMemo(() => {
+    const backend = (query.data?.notifications ?? []).filter(
+      (note) => note.level === 'error' || !dismissed.includes(note.id),
+    );
+    return updateNotification ? [updateNotification, ...backend] : backend;
+  }, [dismissed, query.data?.notifications, updateNotification]);
 
   const dismiss = (id: string) => {
     const next = [...dismissed.filter((item) => item !== id), id].slice(-50);
@@ -186,9 +184,11 @@ export function SystemNotifications({
           <Button
             variant="ghost"
             size="icon-xs"
-            className="relative shrink-0 text-muted-foreground hover:text-foreground"
+            className={cn(
+              'relative shrink-0 text-muted-foreground hover:text-foreground',
+              titlebar && 'app-no-drag',
+            )}
             aria-label={triggerLabel}
-            disabled={!enabled && !updateNotification}
           />
         }
       >
@@ -206,10 +206,15 @@ export function SystemNotifications({
         )}
       </PopoverTrigger>
       <PopoverContent
-        side={compact ? 'right' : 'top'}
-        align="start"
+        side={titlebar ? 'bottom' : compact ? 'right' : 'top'}
+        align={titlebar ? 'end' : 'start'}
         className="max-h-[min(28rem,calc(100vh-2rem))] w-[min(22rem,calc(100vw-2rem))] space-y-1 overflow-y-auto p-1.5"
       >
+        {query.isPending && visible.length === 0 && (
+          <p className="px-3 py-4 text-center text-xs text-muted-foreground">
+            {t('preferences.loading')}
+          </p>
+        )}
         {!query.isPending && !query.isError && visible.length === 0 && (
           <p className="px-3 py-4 text-center text-xs text-muted-foreground">
             {t('logs.all_clear')}
