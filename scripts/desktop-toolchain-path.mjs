@@ -100,7 +100,7 @@ export function cargoMissingMessage(command) {
     `❌ ${command} needs Rust/cargo, and none was found.`,
     "",
     "   Install the Rust toolchain, then reopen your terminal:",
-    "     Windows:      winget install Rust.Rustup",
+    "     Windows:      winget install Rustlang.Rustup",
     "     macOS/Linux:  https://rustup.rs",
     "",
     "   Or download a prebuilt installer from the Releases page (no toolchain needed).",

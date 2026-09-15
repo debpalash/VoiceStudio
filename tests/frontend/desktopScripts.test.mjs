@@ -294,6 +294,6 @@ test('launcher messages name the tag, the permanent remedy, and the install path
   assert.match(note, /Open a new terminal/);
   const msg = cargoMissingMessage('`bun desktop-prod`');
   assert.match(msg, /`bun desktop-prod` needs Rust\/cargo/);
-  assert.match(msg, /winget install Rust\.Rustup/);
+  assert.match(msg, /winget install Rustlang\.Rustup/);
   assert.match(msg, /rustup\.rs/);
 });
