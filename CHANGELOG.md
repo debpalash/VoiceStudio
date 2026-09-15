@@ -16,6 +16,7 @@ the frozen-backend fallback mirror it for their toolchains.
 - VoxCPM2 installs in one click into its own environment, with the CUDA build of PyTorch on NVIDIA GPUs (#2021)
 - MOSS-TTS-Nano installs in one click into its own environment, pinned to a reviewed upstream commit it works with (#2022)
 - CosyVoice 3 installs in one click into its own environment, with a trimmed dependency set that needs no TensorRT, DeepSpeed or third-party package feed (#2025)
+- Dub transcription no longer drops its connection on long CPU runs, and a dropped stream no longer blames a reverse proxy on the desktop (#2108)
 
 ### Changed
 
@@ -31,6 +32,9 @@ the frozen-backend fallback mirror it for their toolchains.
 - Transcribing an M4A file with PyTorch Whisper works, instead of failing with "Format not recognised" (#2042, #2039)
 - PyTorch Whisper runs on 6 GB NVIDIA cards instead of falling back to CPU, because its memory check now fits the model it loads (#2044, #2041)
 - MCP tools wait as long as the backend does, so a long transcription no longer fails at 120 s with an empty error (#2043, #2040)
+- Dub transcription no longer drops its connection while voice references are refined after the transcript: the backend keeps the stream alive through that step, which ran silent for 19 minutes on an M1 Pro CPU (#2108)
+- Task streams (dub prep, generate, audiobook) send a keepalive while a step is busy but quiet, so a long ffmpeg extract or a slow segment no longer gets the connection severed (#2108)
+- A stream that ends while the backend is still running no longer blames a reverse proxy in the desktop app or dev server, where there is none; it says the connection was lost, that the job usually finishes anyway, and where to look (#2108)
 
 ### CI
 

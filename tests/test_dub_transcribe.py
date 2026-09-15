@@ -835,3 +835,134 @@ class TestTranscribeRoute:
         # At least one segment boundary should land at/near the scene cut.
         near_cut = [s for s in segs if abs(s["end"] - 5.5) < 0.2 or abs(s["start"] - 5.5) < 0.2]
         assert near_cut, f"no segment boundary near scene cut 5.5; got {[(s['start'], s['end']) for s in segs]}"
+
+
+def test_transcribe_stream_pings_while_reference_texts_refine(tmp_path, monkeypatch):
+    """#2108: the work after the last chunk — diarization, clone extraction,
+    one ASR pass per segment to refine its reference text — ran for 19 minutes
+    on an M1 Pro CPU with nothing on the wire. The desktop webview severed the
+    idle stream, the UI reported a drop (blaming a reverse proxy), and the
+    backend went on to finish the job unseen. Every long await in that stretch
+    must keep `ping`ing, at the interval POST_ASR_PING_S."""
+    import asyncio
+    import time
+    from api.routers import dub_core as dc
+    from services import speaker_clone as sc
+
+    job_id = "t_refine_ping"
+    audio = tmp_path / "a.wav"
+    _make_wav(audio, seconds=1.0)
+    dc._dub_jobs[job_id] = {
+        "audio_path": str(audio), "vocals_path": None, "scene_cuts": [],
+    }
+
+    fake_model = MagicMock()
+    fake_model._asr_pipe = MagicMock()
+
+    async def _ok_model():
+        return fake_model
+
+    class _FakeASR:
+        id = "fake"
+        def ensure_loaded(self):
+            pass
+        def transcribe(self, *a, **k):
+            return {"chunks": [{"text": "hi", "timestamp": (0.0, 0.5)}],
+                    "segments": [], "language": "en"}
+        def unload(self):
+            pass
+
+    monkeypatch.setattr(dc, "get_model", _ok_model)
+    monkeypatch.setattr(
+        "services.asr_backend.get_active_asr_backend",
+        lambda *a, **k: _FakeASR(),
+    )
+    monkeypatch.setattr(dc, "offload_tts_for_asr", lambda *a, **k: None)
+    # raising=False: without the fix the constant does not exist, and the test
+    # must then fail on the assertion below, not on this line.
+    monkeypatch.setattr(dc, "POST_ASR_PING_S", 0.02, raising=False)
+    monkeypatch.setattr(
+        sc, "extract_segment_refs",
+        lambda *a, **k: {"0": {"ref_audio_path": "ref.wav", "ref_text": "hi"}},
+    )
+
+    def _slow_refine(refs, _backend):
+        time.sleep(0.3)  # many pings' worth, on the executor thread like the real one
+        return refs
+
+    monkeypatch.setattr(sc, "refine_ref_texts", _slow_refine)
+
+    async def _collect():
+        resp = await dc.dub_transcribe_stream(job_id)
+        parts = []
+        async for chunk in resp.body_iterator:
+            parts.append(chunk.decode() if isinstance(chunk, (bytes, bytearray)) else str(chunk))
+        return "".join(parts)
+
+    try:
+        body = asyncio.run(_collect())
+    finally:
+        dc._dub_jobs.pop(job_id, None)
+
+    last_segments = body.rfind("event: segments")
+    final = body.rfind("event: final")
+    assert final > last_segments >= 0, body
+    quiet_stretch = body[last_segments:final]
+    assert "event: ping" in quiet_stretch, quiet_stretch
+    assert body.rfind("event: done") > final, body
+
+
+def test_ping_while_cancels_the_work_when_the_stream_closes_early(monkeypatch):
+    """greptile P1 on #2138: `_ping_while` wraps the work in its own task, so a
+    client disconnect used to cancel only the ping loop — the refine kept
+    running (and run_transcribe_guarded never ran its abandon path) while the
+    stream's finalizer unloaded the ASR model under it. Leaving the helper
+    early must cancel the work, exactly as the bare `await` it replaced did."""
+    import asyncio
+    from api.routers import dub_core as dc
+
+    monkeypatch.setattr(dc, "POST_ASR_PING_S", 0.01)
+
+    async def _scenario():
+        saw_cancel = asyncio.Event()
+
+        async def _work():
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                saw_cancel.set()
+                raise
+
+        task = asyncio.ensure_future(_work())
+        pings = dc._ping_while(task)
+        assert (await pings.__anext__()).startswith(b"event: ping")
+        await pings.aclose()  # the client went away mid-refine
+        await asyncio.sleep(0)  # let the cancellation land in the task
+        assert saw_cancel.is_set()
+        assert task.cancelled()
+
+        # The normal path is untouched: finished work is left alone, result intact.
+        loop = asyncio.get_running_loop()
+        done = loop.create_future()
+        done.set_result("refined")
+        assert [p async for p in dc._ping_while(done)] == []
+        assert done.result() == "refined"
+
+        # A failure that lands after the consumer left must not be reported at
+        # garbage collection as "exception was never retrieved" (CodeRabbit).
+        never_retrieved = []
+        loop.set_exception_handler(
+            lambda _l, ctx: never_retrieved.append(ctx.get("message", ""))
+        )
+        late = loop.create_future()
+        pings = dc._ping_while(late)
+        await pings.__anext__()  # suspended at a ping; nobody will call .result()
+        late.set_exception(RuntimeError("late failure"))
+        await pings.aclose()
+        await asyncio.sleep(0)  # let done-callbacks run
+        del pings, late
+        import gc
+        gc.collect()
+        assert not [m for m in never_retrieved if "never retrieved" in m], never_retrieved
+
+    asyncio.run(_scenario())

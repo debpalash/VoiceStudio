@@ -45,6 +45,13 @@ def _unique_stamp() -> str:
 
 _SAFE_LANG = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 
+#: Seconds of silence on a `/tasks/stream` before a keepalive comment goes out.
+#: A task that is busy but quiet — ffmpeg on a long video, a slow TTS segment,
+#: a job queued behind another — leaves the stream byte-silent, and byte-silent
+#: SSE gets severed by the desktop webview, Chrome's ~5 min cap or a proxy's
+#: idle timeout (#1196, #2108). Comments are invisible to every consumer.
+TASK_STREAM_KEEPALIVE_S = 15.0
+
 
 def _job_dir_or_400(job_id: str) -> str:
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", job_id or ""):
@@ -248,7 +255,11 @@ async def stream_task(task_id: str, after_seq: int = 0):
         await task_manager.add_listener(task_id, q)
         try:
             while True:
-                evt = await q.get()
+                try:
+                    evt = await asyncio.wait_for(q.get(), timeout=TASK_STREAM_KEEPALIVE_S)
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+                    continue
                 if evt is None:
                     break
                 yield evt

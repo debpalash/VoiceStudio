@@ -62,7 +62,10 @@ describe('streamDropError (#1062)', () => {
   });
 
   it('says a live backend was not the crash it looked like (#1242)', async () => {
-    const err = await streamDropError(FALLBACK, async () => null, { probeAlive: ALIVE });
+    const err = await streamDropError(FALLBACK, async () => null, {
+      probeAlive: ALIVE,
+      mode: 'server',
+    });
     // The caller's guess is dropped: the process answered, so it did not die.
     expect(err.message).not.toContain(FALLBACK);
     expect(err.message).toMatch(/still running/i);
@@ -328,6 +331,7 @@ describe('stream drop with no crash marker (#1242)', () => {
     const err = await streamDropError(FB, async () => null, {
       probeAlive: async () => true,
       waitMs: 0,
+      mode: 'server',
     });
     expect(err.message).toMatch(/proxy|buffering/i);
   });
@@ -358,5 +362,38 @@ describe('stream drop with no crash marker (#1242)', () => {
       waitMs: 0,
     });
     expect(err.message).toMatch(/memory \(RAM\)/);
+  });
+});
+
+// #2108 — a desktop (Tauri) user got the reverse-proxy diagnosis for a dub
+// transcribe stream that died on 127.0.0.1, where no proxy can exist. The
+// backend had gone byte-silent for minutes refining voice references, the
+// webview severed the idle connection, and the job itself finished fine.
+describe('stream drop with the backend alive, by deployment mode (#2108)', () => {
+  const FB = 'fallback with no cause asserted';
+  const alive = { probeAlive: async () => true, waitMs: 0 };
+
+  it('does not blame a proxy in the desktop shell — there is none to blame', async () => {
+    const err = await streamDropError(FB, async () => null, { ...alive, mode: 'desktop' });
+    expect(err.message).toMatch(/still running/i);
+    expect(err.message).not.toMatch(/proxy|buffering|nginx/i);
+    // Says where the evidence is, and that the job usually went on without the UI.
+    expect(err.message).toMatch(/Logs/);
+    expect(err.message).toMatch(/finishes/);
+  });
+
+  it('treats the dev server the same — it also talks to 127.0.0.1 directly', async () => {
+    const err = await streamDropError(FB, async () => null, { ...alive, mode: 'dev' });
+    expect(err.message).not.toMatch(/proxy|buffering/i);
+  });
+
+  it('detects the mode itself when the caller does not say (vitest runs as dev)', async () => {
+    const err = await streamDropError(FB, async () => null, alive);
+    expect(err.message).not.toMatch(/proxy|buffering/i);
+  });
+
+  it('keeps the proxy diagnosis for a served deployment', async () => {
+    const err = await streamDropError(FB, async () => null, { ...alive, mode: 'server' });
+    expect(err.message).toMatch(/proxy|buffering/i);
   });
 });
