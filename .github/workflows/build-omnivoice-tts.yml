@@ -63,10 +63,9 @@ jobs:
             experimental: false
           - os: macos-14
             platform: darwin-arm64
-            # Metal build path is unpublished upstream (Pitfall 1 in
-            # 04-RESEARCH.md); experimental so a failed Metal build doesn't
-            # block — the SPIKE-01 ADR records the in-process fallback.
-            experimental: true
+            # Apple Silicon Metal build compiles cleanly with -DGGML_METAL=ON
+            # at the pinned SHA (#2105); non-experimental to catch regressions.
+            experimental: false
     steps:
       - uses: actions/checkout@v4
         with:

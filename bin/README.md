@@ -21,13 +21,11 @@ The pinned commit SHA for `omnivoice.cpp` lives in
 scripts/build-omnivoice-tts.sh --platform <slug> --commit-sha <40hex>
 ```
 
-See `.github/workflows/ci.yml` `build-omnivoice-tts` job for the CI
-matrix that produces these artifacts on every PR. The Apple Silicon
-slot (`macos-14`) is marked `continue-on-error: true` because the
-upstream `omnivoice.cpp` README does not publish a `buildmetal.sh`
-(Pitfall 1 in `04-RESEARCH.md`); a failed Metal build is documented
-and the macOS Apple Silicon cloning default falls back to the
-in-process `VoiceStudioBackend`.
+See `.github/workflows/build-omnivoice-tts.yml` `build-omnivoice-tts` job
+for the CI matrix that produces these artifacts. Apple Silicon (`macos-14`)
+builds cleanly with `-DGGML_METAL=ON` at the pinned SHA (#2105), enabling
+hardware-accelerated Metal inference without falling back to the in-process
+`VoiceStudioBackend`.
 
 ## Placeholder note
 

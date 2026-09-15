@@ -30,7 +30,7 @@ The integration shape is `VoiceStudioGGUFBackend(TTSBackend)` wrapping Phase 2's
 | License compatible with v0.3.x ship? | YES — Apache-2.0 (model) + MIT (runtime) | Both verified via HF model card + GitHub README. Same Apache-2.0 chain as the upstream model already shipping in v0.2.7. |
 | Runtime: llama.cpp / candle / custom? | CUSTOM (`omnivoice.cpp`, MIT) — does NOT load in vanilla llama.cpp | `gguf.architecture = "omnivoice-lm"` from HF API; README states "GGUF weights for omnivoice.cpp, a C++17/GGML port of VoiceStudio". |
 | Quant variants and footprints? | 4 quants × 2 files each (base + tokenizer): Q4_K_M (659 MB), Q8_0 (945 MB), BF16 (1.60 GB), F32 (3.19 GB) | HF `siblings` list confirms all 8 files; sizes from model card table. |
-| Cross-platform runtime fit? | Linux + Windows + macOS Intel YES via documented build scripts; macOS Apple Silicon Metal CONDITIONAL (no `buildmetal.sh` published, only feature mention) | `buildcpu.sh`, `buildcuda.sh`, `buildvulkan.sh`, `buildall.sh` listed; Metal in description only — Wave 1 Task 3 builds and verifies via `cmake -DGGML_METAL=ON` per A1. |
+| Cross-platform runtime fit? | Linux + Windows + macOS Intel YES via documented build scripts; macOS Apple Silicon Metal YES (builds clean via `cmake -DGGML_METAL=ON` at pinned SHA, #2105) | `buildcpu.sh`, `buildcuda.sh`, `buildvulkan.sh`, `buildall.sh` listed; Metal builds cleanly via `cmake -DGGML_METAL=ON` in CI and locally (#2105). |
 | Subprocess CLI fits Phase 2 `SubprocessBackend`? | YES | README shows `echo "Hello world." | ./build/omnivoice-tts --model … --codec … --lang … -o …` — line-oriented stdin + argv + output-file pattern is exactly what `SubprocessBackend` is designed for. |
 
 ### Pinned SHAs (filled in Wave 1 by Task 1)
@@ -52,13 +52,13 @@ Both SHAs are mirrored in `backend/engines/omnivoice_gguf/quant_map.json` `_meta
 - Adds a maintained-by-others C++ runtime to the dependency graph (`omnivoice.cpp`, 42 stars at decision time).
 - Adds ~12-16 MB of platform binaries to the installer (must verify against Phase 3 mirror-timing baseline per Pitfall 6).
 - macOS code signing scope expands by 4 binaries (track via REL-05; same `xattr -cr` workaround as #54 applies in v0.3.x).
-- `omnivoice.cpp` README does not publish a macOS Metal build script — only `buildcpu.sh`, `buildcuda.sh`, `buildvulkan.sh`, `buildall.sh`. Apple Silicon Metal must be verified in Wave 1.
+- `omnivoice.cpp` README does not publish a standalone `buildmetal.sh` script; Apple Silicon Metal is built directly via `cmake -DGGML_METAL=ON` (#2105).
 
 **Mitigations:**
 - Pin `omnivoice.cpp` by commit SHA (`886fc079838ca7400cb2b42b36e2a65aa1daabe8`); rebuild from pinned SHA in CI for all 4 target platforms.
 - Pin every quant file by commit SHA in `quant_map.json` (`361609388ae572a820d085185bbbe2a2aac4b30e`); shippable JSON so the table can update without an app release.
 - In-process `VoiceStudioBackend` remains as fallback if any GGUF step fails (probe, download, load, generate).
-- macOS Apple Silicon Metal build is verified in Wave 1 with explicit acceptance criteria; if blocked, downgrade SPIKE-01 default on macOS to in-process path and document in this ADR's "Status" line.
+- macOS Apple Silicon Metal build is verified via `cmake -DGGML_METAL=ON` (#2105); in-process `VoiceStudioBackend` remains available as general fallback.
 - SHA-256 checksums on bundled binaries (per GATE-05); verify at first launch and on every quant load.
 - Subprocess arg composition uses typed `Path` objects rooted in app directories; quant override UI is a dropdown over `quant_map.json` entries only (no freeform path input — supply-chain control analogous to INST-09).
 

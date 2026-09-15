@@ -113,11 +113,10 @@ This clears the quarantine xattr recursively — including on the bundled
 returns a clear error message pointing at this command rather than
 silently hanging on a Gatekeeper-killed spawn.
 
-If the macOS Apple Silicon Metal build fails to materialize in Wave 1
-(no published `buildmetal.sh` in `omnivoice.cpp` per Pitfall 1), the
-GGUF engine is unavailable on Apple Silicon and the existing in-process
-`VoiceStudioBackend` remains the cloning default on that platform — no
-hard block, no error toast on launch.
+The macOS Apple Silicon Metal build compiles cleanly with `-DGGML_METAL=ON`
+at the pinned `omnivoice.cpp` SHA (#2105), enabling GPU-accelerated GGUF
+voice cloning on Apple Silicon out of the box with `VoiceStudioBackend`
+remaining available as an in-process fallback.
 
 ## Smoke test
 
