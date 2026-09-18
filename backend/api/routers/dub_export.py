@@ -1739,7 +1739,7 @@ def _format_srt_time(seconds):
     from services.srt_parser import format_cue_timestamp
     return format_cue_timestamp(seconds, ",")
 
-def _pick_subtitle_text(seg: dict, dual: bool) -> str:
+def _pick_subtitle_text(seg: dict, dual: bool, escape=lambda text: text) -> str:
     """One line per subtitle cue, unless dual=true and an original exists.
 
     Dual layout stacks translated text on top of the (italicised) original, the
@@ -1747,12 +1747,14 @@ def _pick_subtitle_text(seg: dict, dual: bool) -> str:
 
         Das Spiel wirklich zu verändern.
         <i>Actually change the game.</i>
+
+    ``escape`` applies to the text only, so the ``<i>`` stays markup.
     """
     translated = (seg.get("text") or "").strip()
     original = (seg.get("text_original") or "").strip()
     if not dual or not original or original == translated:
-        return translated or original
-    return f"{translated}\n<i>{original}</i>"
+        return escape(translated or original)
+    return f"{escape(translated)}\n<i>{escape(original)}</i>"
 
 
 # Subtitles deliberately have no ?save_path= variant: they're small text
@@ -1848,12 +1850,14 @@ async def dub_export_vtt(
         segments = _apply_fitted_times(segments, fitted)
     cues = None if fitted else _fitted_cue_times(job, lang)
 
+    from services.srt_parser import escape_webvtt_text
+
     vtt_lines = ["WEBVTT", ""]
     for i, seg in enumerate(segments):
         s, e = cues[i] if cues else (seg["start"], seg["end"])
         vtt_lines.append(str(i + 1))
         vtt_lines.append(f"{_format_vtt_time(s)} --> {_format_vtt_time(e)}")
-        vtt_lines.append(_pick_subtitle_text(seg, dual))
+        vtt_lines.append(_pick_subtitle_text(seg, dual, escape=escape_webvtt_text))
         vtt_lines.append("")
 
     vtt_content = "\n".join(vtt_lines)

@@ -196,3 +196,35 @@ def format_cue_timestamp(seconds: float, ms_separator: str) -> str:
     m, rem = divmod(rem, 60_000)
     s, ms = divmod(rem, 1000)
     return f"{h:02d}:{m:02d}:{s:02d}{ms_separator}{ms:03d}"
+
+
+# Cue markup a segment may carry: WebVTT's tags (`<i>`, `<c.yellow>`,
+# `<v Roger>`), SubRip's `<font>` (players skip it) and timestamp tags.
+_CUE_MARKUP_RE = re.compile(
+    r"</?(?:[biu]|c|v|lang|ruby|rt|font)(?=[\s.>])[^<>\n]*>|<(?:\d+:)?\d{2}:\d{2}\.\d{3}>",
+    re.IGNORECASE,
+)
+# An `&` that does not already start a character reference.
+_BARE_AMPERSAND_RE = re.compile(r"&(?!#\d+;|#[xX][0-9a-fA-F]+;|[A-Za-z][A-Za-z0-9]*;)")
+
+
+def _escape_cue_span(span: str) -> str:
+    return _BARE_AMPERSAND_RE.sub("&amp;", span).replace("<", "&lt;").replace("-->", "--&gt;")
+
+
+def escape_webvtt_text(text: str) -> str:
+    """Make cue text safe for a WebVTT file without touching its markup.
+
+    Any other `<` opens a tag, so a player drops the rest of the cue ("I <3
+    you" shows as "I "), and a line containing `-->` ends the cue, emptying
+    it. A bare `&` becomes `&amp;`; an existing reference is not escaped
+    twice. SubRip has no escaping, so SRT text is written as-is.
+    """
+    parts = []
+    last = 0
+    for markup in _CUE_MARKUP_RE.finditer(text):
+        parts.append(_escape_cue_span(text[last:markup.start()]))
+        parts.append(markup.group(0))
+        last = markup.end()
+    parts.append(_escape_cue_span(text[last:]))
+    return "".join(parts)
