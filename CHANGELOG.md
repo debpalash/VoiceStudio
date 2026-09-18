@@ -14,6 +14,10 @@ the frozen-backend fallback mirror it for their toolchains.
 - Bug reports filed from the desktop app name the backend error class again, so two unrelated failures stop looking identical (#2197)
 - Clearer recovery guidance for known GPU, Windows policy, and audio-file failures (#2195)
 
+### Docs
+
+- Install with prompt targets Electron, and active scripts, CI and contributor guidance treat Tauri as archived (#2220)
+
 ### Added
 
 - Stories and Audiobook: a Clear script button empties the whole script — every line and chapter, imported or typed — in one confirmed step instead of one trash icon at a time; the cast is kept (#2203) — thanks @jaketame!

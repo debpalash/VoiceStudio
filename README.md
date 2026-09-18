@@ -61,12 +61,13 @@ Download from [Releases](https://github.com/debpalash/VoiceStudio/releases/lates
 
 Open **Voice cloning**, choose a voice or add a clean reference recording, enter your text, and generate. Install the required model when prompted. Hardware needs vary by engine; see [performance](docs/performance.md).
 
-### Let your agent set it up
+### Install with prompt
 
 Copy this prompt into your coding agent to install VoiceStudio and configure it for your device:
 
 ```text
-Install and configure VoiceStudio on this device, then verify it works.
+Install and configure the VoiceStudio Electron desktop app on this device,
+then verify it works. Tauri is archived; do not install or launch it.
 Repository: https://github.com/debpalash/VoiceStudio
 
 Read the repository's install guide for my OS, docs/performance.md, and
@@ -77,7 +78,10 @@ otherwise follow that SKILL.md directly.
 Detect my OS, CPU architecture, GPU, available RAM/VRAM, free disk space,
 and any existing VoiceStudio installation, backend, or downloaded models.
 Reuse existing data and models. Prefer the latest stable Electron installer
-for my OS and architecture; use the documented source setup if needed.
+for my OS and architecture; select an asset named VoiceStudio-Electron.
+For source setup, follow electron/README.md: bun install, then bun run dev
+from the repository root. Let Electron supervise the backend; do not start
+a second backend or use legacy tauri scripts.
 If migrating from Tauri, follow docs/electron-migration.md and back up first.
 
 Configure local voice cloning using a supported engine and acceleration
@@ -108,7 +112,7 @@ See [Electron setup](electron/README.md) for prerequisites and backend configura
 
 </details>
 
-> **Electron is the primary desktop app.** Version 0.5.3 introduced Electron and was the final Tauri release. Existing Tauri users must [install Electron separately](docs/electron-migration.md). Bug reports and contributions remain welcome; include the app version and whether you use Electron or Tauri.
+> **Electron is the only maintained desktop app.** Version 0.5.3 was the final Tauri release. Existing Tauri users must [install Electron separately](docs/electron-migration.md). Root development, build, test, and release commands target Electron; Tauri source is archived and receives no further updates.
 
 ## Documentation
 
