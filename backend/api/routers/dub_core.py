@@ -388,12 +388,13 @@ def _prepare_downloaded_caption_segments(cues: list[dict], duration: float) -> l
         except (TypeError, ValueError):
             return 0.0
 
-    def remove_repeated_prefix(previous: str, current: str) -> str:
+    def remove_repeated_prefix(previous: str, current: str, whole: bool = False) -> str:
         previous_words = previous.split()
         current_words = current.split()
         folded_previous = [word.casefold() for word in previous_words]
         folded_current = [word.casefold() for word in current_words]
-        for count in range(min(len(previous_words), len(current_words)), 0, -1):
+        shortest = len(previous_words) if whole else 1
+        for count in range(min(len(previous_words), len(current_words)), shortest - 1, -1):
             if folded_previous[-count:] == folded_current[:count]:
                 return " ".join(current_words[count:])
         return current
@@ -412,8 +413,14 @@ def _prepare_downloaded_caption_segments(cues: list[dict], duration: float) -> l
             if raw_start >= duration:
                 continue
             end = min(end, duration)
-        if prepared and raw_start < previous_end:
-            text = remove_repeated_prefix(prepared[-1]["text"], text)
+        # Rolling tracks (YouTube's automatic captions) restate the whole
+        # previous line in a cue that starts exactly where that line ended.
+        # A touching cue only loses a repeat of the entire previous cue, so a
+        # word that merely recurs across the boundary stays.
+        if prepared and raw_start <= previous_end:
+            text = remove_repeated_prefix(
+                prepared[-1]["text"], text, whole=raw_start == previous_end
+            )
             if not text:
                 prepared[-1]["end"] = round(max(previous_end, end), 3)
                 previous_end = max(previous_end, end)

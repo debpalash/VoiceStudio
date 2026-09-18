@@ -23,6 +23,7 @@ the frozen-backend fallback mirror it for their toolchains.
 - Keep macOS dictation keyboard operations on the main thread to prevent paste-delivery crashes (#2123)
 - Prevent reference voice cloning from silently downloading a second speech recognizer (#2116)
 - Load installed IndexTTS checkpoints when the upstream config names missing training-cluster paths, without rewriting user files (#2097) — thanks @martinezpl!
+- Dubbing from a video's downloaded automatic captions speaks each line once instead of repeating it two or three times (#2222)
 
 - Cloning errors name the active mlx-audio model and recommend CSM while retaining alternative engines as a fallback (#2204, #2201) — thanks @shivsin25!
 - EPUB imports preserve accents and wide-character documents using their declared encoding or byte-order mark (#2191) — thanks @kevin9327!
