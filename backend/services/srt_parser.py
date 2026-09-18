@@ -19,6 +19,7 @@ elsewhere in the backend:
 """
 from __future__ import annotations
 
+import html
 import re
 from dataclasses import dataclass
 
@@ -146,6 +147,10 @@ def parse_srt(content: str) -> SrtParseResult:
             skipped += 1
             continue
         lines = body.strip("\n").split("\n")
+        if is_webvtt:
+            # WebVTT escapes `&`, `<` and `>` in cue text ("Q&amp;A");
+            # SubRip has no escaping, so its text stays as written.
+            lines = [html.unescape(line) for line in lines]
         cue_text = "\n".join(line.strip() for line in lines if line.strip())
         if not cue_text:
             skipped += 1

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import html
 import json
 import logging
 import os
@@ -1224,6 +1225,9 @@ def parse_vtt_segments(vtt_path: str) -> list[dict]:
         text = " ".join(ln.strip() for ln in lines[1:]).strip()
         # Strip inline styling like <c.colorE5E5E5>foo</c> or <00:00:01.200>
         text = re.sub(r"<[^>]+>", "", text)
+        # WebVTT escapes `&`, `<` and `>` in cue text ("Q&amp;A"); decode
+        # them once the markup is gone so the dub gets the words.
+        text = html.unescape(text).strip()
         if text:
             segments.append({"start": start, "end": end, "text": text})
     return segments
