@@ -112,7 +112,7 @@ See [Electron setup](electron/README.md) for prerequisites and backend configura
 
 </details>
 
-> **Electron is the primary desktop app.** Version 0.5.3 introduced Electron and was the final Tauri release. Existing Tauri users must [install Electron separately](docs/electron-migration.md). Bug reports and contributions remain welcome; include the Electron app version. Tauri is archived and receives no further updates.
+> **Electron is the only maintained desktop app.** Version 0.5.3 was the final Tauri release. Existing Tauri users must [install Electron separately](docs/electron-migration.md). Root development, build, test, and release commands target Electron; Tauri source is archived and receives no further updates.
 
 ## Documentation
 

@@ -29,8 +29,9 @@
 
 name: Tauri sunset (manual only)
 
-# Legacy workflow: run once on the final Tauri version tag.
-# Electron releases are owned by electron-release.yml.
+# Archived final-release workflow. It has no automatic trigger and its gate
+# accepts only the immutable TAURI_SUNSET_TAG. Electron releases are owned by
+# electron-release.yml; do not extend or reuse this workflow for new versions.
 on:
   workflow_dispatch:
     inputs:

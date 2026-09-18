@@ -88,6 +88,8 @@ Use Electron for desktop contributions and reproduce desktop bugs there.
 Existing users should follow the [migration guide](../docs/electron-migration.md).
 Archived sources remain for history and migration; shared backend/web code and
 native helpers still used by Electron remain maintained.
+The root package exposes no Tauri launch or build command, and active CI does
+not compile the archived shell.
 
 ---
 

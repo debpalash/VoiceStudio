@@ -1,7 +1,5 @@
-# PR-gated continuous integration — runs backend pytest + frontend node:test
-# + TypeScript typecheck on every pull request and push to main. Keeps the
-# heavy 4-platform Tauri bundle off this path (that's release.yml on tag
-# push) so PRs turn around in a few minutes instead of ~40.
+# PR-gated continuous integration for the maintained Electron desktop,
+# shared backend, web frontend and native bridge.
 
 name: CI
 
@@ -11,11 +9,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      windows_wix_diagnostic:
-        description: Run only the tiny nonpublishing Windows MSI authoring diagnostic
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -26,7 +19,6 @@ env:
 
 jobs:
   test:
-    if: ${{ !inputs.windows_wix_diagnostic }}
     name: Tests (backend + frontend)
     runs-on: ubuntu-22.04
     env:
@@ -102,17 +94,6 @@ jobs:
       - name: Validate install docs against desktop-prod.sh
         run: python scripts/validate-install-docs.py
 
-      # The AppImage launcher decides which WebKitGTK actually runs — the wrong
-      # answer is a permanently blank window on Linux (#56, #961, #1258), and
-      # the only place that logic is exercised is this shell harness. It had
-      # never been wired into CI, so its cases were a regression test nothing
-      # ran. Cheap (pure bash, stubs pkg-config) and it gates the class.
-      - name: AppImage launcher (AppRun) unit tests
-        run: |
-          bash frontend/src-tauri/appimage/AppRun.test.sh
-          bash scripts/inject-apprun.test.sh
-          bash scripts/verify-apprun-bundle.test.sh
-
       # `backend/tests/` mounts routers on bare FastAPI apps (no heavy main
       # import chain) with a hermetic data dir from its conftest.py. It no
       # longer stubs sys.modules, so mixed sessions with tests/ are safe;
@@ -174,7 +155,7 @@ jobs:
 
       # Electron used to be built only after a release started, so renderer,
       # preload and packaging regressions could pass the required PR gate.
-      # Keep this command shared with release.yml through the root script.
+      # Keep this command shared with electron-release.yml through the root script.
       - name: Electron typecheck, tests and production contract
         run: bun run check:electron
 
@@ -216,7 +197,6 @@ jobs:
           node electron/tests/dub-smoke.mjs
 
   linux-native-package:
-    if: ${{ !inputs.windows_wix_diagnostic }}
     name: Linux native package
     runs-on: ubuntu-24.04
     steps:
@@ -240,112 +220,6 @@ jobs:
           cargo build --locked --release --manifest-path native/desktop-bridge/Cargo.toml
           node electron/tests/native-linux-package.mjs
 
-  # ── Cross-platform Tauri shell check ────────────────────────────────────
-  # Catches platform-specific Rust regressions on PR (cfg(target_os=...)
-  # gates, missing Windows/macOS deps, etc.) without spending the 15+ min
-  # per-platform that a full `tauri build` takes. `cargo check` is the
-  # lightest gate that exercises type-checking + linking for each target,
-  # and `cargo test --lib` runs the shell's unit tests natively on each OS.
-  # Full bundling stays in release.yml on tag push.
-  tauri-cross-platform:
-    if: ${{ !inputs.windows_wix_diagnostic }}
-    name: Tauri shell check (${{ matrix.label }})
-    needs: test
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-14
-            label: macOS
-            rust_target: aarch64-apple-darwin
-          - os: windows-2022
-            label: Windows
-            rust_target: x86_64-pc-windows-msvc
-          - os: ubuntu-24.04
-            label: Linux
-            rust_target: x86_64-unknown-linux-gnu
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust_target }}
-
-      # Per-target cache key so we don't conflict with the release matrix.
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: frontend/src-tauri -> target
-          key: ${{ matrix.rust_target }}-check
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-
-      # Linux is the only host with non-trivial Tauri build deps —
-      # webkit2gtk + libayatana-appindicator + xdo. Mirror release.yml.
-      - name: Linux system deps
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential curl wget file libxdo-dev libssl-dev \
-            libayatana-appindicator3-dev librsvg2-dev \
-            libasound2-dev
-
-      - name: Cache bun deps
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('frontend/bun.lock', 'bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install frontend deps
-        working-directory: frontend
-        # --frozen-lockfile so a frontend/package.json change that forgets to
-        # regenerate the root bun.lock fails HERE (fast) instead of only in the
-        # Docker build (deploy/Dockerfile), which is what reddened main on #485.
-        run: bun install --frozen-lockfile
-
-      # tauri-build's setup hook reads tauri.conf.json's `frontendDist`
-      # ("../dist"), which only exists after a frontend build. Without this,
-      # `cargo check` would fail on a fresh checkout because the embedded
-      # asset map can't resolve.
-      - name: Build frontend (for tauri.conf.json frontendDist)
-        working-directory: frontend
-        run: bun run build
-
-      - name: Cargo check (Tauri shell)
-        working-directory: frontend/src-tauri
-        run: cargo check --target ${{ matrix.rust_target }} --message-format=short
-
-      # `cargo check` never compiles #[cfg(test)] code, so without this the
-      # shell's unit tests (crash.rs, reset.rs, commands.rs, …) neither build
-      # nor run anywhere in CI. --lib scopes it to the unit tests; each
-      # matrix target equals its host triple, so the test binary runs
-      # natively. Codegen is warmed by the rust-cache above.
-      - name: Cargo test (Tauri shell unit tests)
-        working-directory: frontend/src-tauri
-        run: cargo test --lib --target ${{ matrix.rust_target }} --message-format=short
-
-      - name: Keyboard thread dispatch regression
-        working-directory: frontend/src-tauri
-        run: cargo test --test keyboard_dispatch --target ${{ matrix.rust_target }} --message-format=short
-
-      # Backend-lifecycle fault-injection harness: real child processes die
-      # scripted deaths through the OMNIVOICE_BACKEND_CMD seam, and each
-      # scenario asserts the user-visible diagnosis names the actual cause
-      # (port conflict / traceback root cause / spawn failure / timeout /
-      # crash-loop exhaustion / signal 9 / deliberate replace / deferred-
-      # startup step). Serial: the scenarios share process-global state
-      # (env vars, crash store, kill-intended flag) by design.
-      - name: Cargo test (backend lifecycle harness)
-        working-directory: frontend/src-tauri
-        run: cargo test --test backend_lifecycle --target ${{ matrix.rust_target }} --message-format=short -- --test-threads=1
-
   # ── Cross-platform Python runtime smoke (Phase 0 GATE-02) ───────────────
   # Loads the frozen tests/fixtures/omnivoice_data/ fixture and boots the
   # FastAPI app in-process via TestClient on macOS/Windows/Linux. Catches
@@ -353,7 +227,6 @@ jobs:
   # job above misses. Narrow scope (tests/smoke/ only) — full pytest stays
   # on Linux until Phase 1's INST-01 lands setuptools for WhisperX.
   smoke-matrix:
-    if: ${{ !inputs.windows_wix_diagnostic }}
     name: Smoke (${{ matrix.label }})
     needs: test
     strategy:
@@ -534,27 +407,3 @@ jobs:
         env:
           HF_HUB_OFFLINE: "1"
           HF_HUB_CACHE: ${{ runner.temp }}/worker-artifact-empty-hf-cache
-
-  windows-wix-diagnostic:
-    name: Windows MSI authoring (no publishing)
-    needs: test
-    if: ${{ !cancelled() && (inputs.windows_wix_diagnostic || needs.test.result == 'success') }}
-    runs-on: windows-2022
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
-      - name: Bundle canonical system and per-user templates with a tiny payload
-        shell: pwsh
-        run: ./scripts/diagnose-windows-wix.ps1
-      - name: Restore hosted Installer policy after failed standard-user installation
-        shell: powershell
-        run: ./scripts/test-msi-policy-cleanup.ps1
-      - name: Preserve verbose linker output and rendered authoring
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-wix-diagnostic
-          path: wix-diagnostic-artifacts/
-          if-no-files-found: warn
-          retention-days: 3
