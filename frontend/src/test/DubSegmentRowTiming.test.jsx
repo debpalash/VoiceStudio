@@ -220,6 +220,34 @@ describe('DubSegmentRow timing fields', () => {
     fireEvent.blur(end);
     expect(props.onMoveResize).not.toHaveBeenCalled();
   });
+
+  it('leaves a time the field rounds for display where it is', () => {
+    // Transcribed times carry hundredths; the field shows tenths. Tabbing
+    // through it must not snap the edge to the shown value.
+    const props = makeProps({ seg: { id: 's1', start: 1.23, end: 3.27, text: 'x' } });
+    render(<DubSegmentRow {...props} />);
+    const [start, end] = timeFields();
+    expect(start.value).toBe('0:01.2');
+    expect(end.value).toBe('0:03.3');
+
+    fireEvent.blur(start);
+    fireEvent.blur(end);
+
+    expect(props.onMoveResize).not.toHaveBeenCalled();
+  });
+
+  it('commits the shown time when it is typed on purpose', () => {
+    const props = makeProps({ seg: { id: 's1', start: 1.23, end: 3.27, text: 'x' } });
+    render(<DubSegmentRow {...props} />);
+    const end = timeFields()[1];
+
+    fireEvent.focus(end);
+    fireEvent.change(end, { target: { value: '' } });
+    fireEvent.change(end, { target: { value: '0:03.3' } });
+    fireEvent.blur(end);
+
+    expect(props.onMoveResize).toHaveBeenCalledWith('s1', { start: 1.23, end: 3.3 });
+  });
 });
 
 describe('DubSegmentRow merge shortcuts', () => {
