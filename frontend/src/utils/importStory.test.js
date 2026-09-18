@@ -21,6 +21,33 @@ describe('parseSrt', () => {
   it('empty → empty', () => {
     expect(parseSrt('')).toBe('');
   });
+  it('keeps a cue whose dialogue is only a number', () => {
+    const s =
+      '1\n00:00:01,000 --> 00:00:02,000\nCount down with me.\n\n' +
+      '2\n00:00:02,000 --> 00:00:03,000\n3\n\n' +
+      '3\n00:00:03,000 --> 00:00:04,000\n2\n1\n';
+    expect(parseSrt(s)).toBe('Count down with me.\n3\n2 1');
+  });
+  it('keeps a numeric cue in a compact file whose next cue has no index', () => {
+    const s =
+      '00:00:01,000 --> 00:00:02,000\nCount down with me.\n' +
+      '00:00:02,000 --> 00:00:03,000\n3\n' +
+      '00:00:03,000 --> 00:00:04,000\n2\n';
+    expect(parseSrt(s)).toBe('Count down with me. 3 2');
+  });
+  it('keeps numeric dialogue at the end of a multi-line cue in a compact file', () => {
+    const s =
+      '00:00:01,000 --> 00:00:02,000\nCount down with me.\n3\n' +
+      '00:00:02,000 --> 00:00:03,000\nNext\n';
+    expect(parseSrt(s)).toBe('Count down with me. 3 Next');
+  });
+  it('still drops the indices of a compact file', () => {
+    const s =
+      '1\n00:00:01,000 --> 00:00:02,000\nCount\n' +
+      '2\n00:00:02,000 --> 00:00:03,000\n3\n' +
+      '3\n00:00:03,000 --> 00:00:04,000\n2\n';
+    expect(parseSrt(s)).toBe('Count 3 2');
+  });
 });
 
 describe('importToText', () => {

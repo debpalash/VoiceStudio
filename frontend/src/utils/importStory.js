@@ -9,18 +9,40 @@ export function parseSrt(content) {
     .replace(/\r\n/g, '\n')
     .split(/\n\s*\n/);
   const out = [];
+  // Cues seen so far, and the index the current cue carried (null if none).
+  let cues = 0;
+  let index = null;
   for (const b of blocks) {
     const lines = b
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean);
-    const text = lines
-      // Drop the cue index line (digits only) and the timestamp line. Use a
-      // plain substring check for the SRT time arrow — a `/-->/` regex trips
-      // CodeQL's js/bad-tag-filter (it mistakes it for HTML-comment filtering).
-      .filter((l) => !/^\d+$/.test(l) && !l.includes('-->'))
-      .join(' ')
-      .trim();
+    const kept = [];
+    let pending = null;
+    lines.forEach((l, i) => {
+      // Use a plain substring check for the SRT time arrow — a `/-->/` regex
+      // trips CodeQL's js/bad-tag-filter (it mistakes it for HTML-comment
+      // filtering).
+      if (l.includes('-->')) {
+        cues += 1;
+        index = pending;
+        pending = null;
+        return;
+      }
+      // Digits right before a timestamp are its cue index when they open the
+      // block. Inside a compact block they are only if they are the number the
+      // sequence expects next; digits right under a timestamp are that cue's
+      // dialogue ("3", "1984"), since a cue needs text.
+      if (/^\d+$/.test(l) && lines[i + 1]?.includes('-->')) {
+        const expected = (index ?? cues) + 1;
+        if (i === 0 || (!lines[i - 1].includes('-->') && Number(l) === expected)) {
+          pending = Number(l);
+          return;
+        }
+      }
+      kept.push(l);
+    });
+    const text = kept.join(' ').trim();
     if (text) out.push(text);
   }
   return out.join('\n');
