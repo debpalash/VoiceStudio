@@ -1,8 +1,7 @@
 # VoiceStudio — Electron desktop app
 
 Electron is the primary desktop app for voice cloning, stories, dubbing,
-transcription, voice design, and workflows. Tauri is retained only for its final
-sunset update; see [migration notes](../docs/electron-migration.md).
+transcription, voice design, and workflows. Tauri is sunset and archived; its final release was v0.5.3. For existing installations, see [migration notes](../docs/electron-migration.md).
 
 The runtime supervisor manages the local FastAPI backend. Network integrations
 and remote workers require configuration; local generation stays on your machine.

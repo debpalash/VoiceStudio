@@ -81,42 +81,13 @@ cause doesn't scroll away with the terminal. The same death is also reported
 as a crash notice in the UI the next time the backend starts (see
 [docs/install/troubleshooting.md §14c](docs/install/troubleshooting.md)).
 
-### Legacy Desktop App (Tauri)
+### Archived desktop (Tauri)
 
-```bash
-bun run tauri            # legacy dev: hot-reload Tauri shell + backend
-bun run tauri:desktop-prod # legacy production: builds, bundles the backend, then launches
-```
-
-Both run `uv sync` first (so the Python backend env is set up) and start the
-backend automatically — you do **not** start it separately. Use the exact script
-names: there is no `desktop=prod` (note the **hyphen** in `tauri:desktop-prod`).
-`tauri:desktop-prod` is Windows-aware (auto-detects bash/git; see `scripts/desktop-prod.mjs`).
-
-Requires [Rust](https://rustup.rs/) and platform-specific Tauri dependencies — see the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
-
-After installing Rust with rustup (or `uv` with its installer), a terminal that
-was already open still has the old `PATH`. The desktop launchers (`bun tauri`,
-`bun tauri:desktop-prod`, `bun tauri:desktop-fresh`) detect this and add `~/.cargo/bin` /
-`~/.local/bin` for that run, printing a one-line note; to make it permanent,
-open a new terminal, or on macOS/Linux load Cargo into the current one:
-
-```bash
-source "$HOME/.cargo/env"
-bun run tauri
-```
-
-If Rust is genuinely not installed, the launchers stop up front with the
-install command instead of failing later inside `cargo metadata`.
-
-On Linux, errors such as `Package gdk-3.0 was not found`, `pango.pc` missing,
-or `javascriptcoregtk-4.1` missing mean the native packages above were not
-installed; changing `PKG_CONFIG_PATH` does not fix libraries that are absent.
-
-If the app opens but stays on the **setup splash with no buttons**, the Python
-backend didn't finish starting — the splash surfaces the stall reason, a log
-panel, and a **Retry** button (and Settings → Logs → Backend has the full trace).
-The most common from-source cause is `uv` or Python not being on your PATH.
+Tauri is sunset after v0.5.3 and receives no further development or backports.
+Use Electron for desktop contributions and reproduce desktop bugs there.
+Existing users should follow the [migration guide](../docs/electron-migration.md).
+Archived sources remain for history and migration; shared backend/web code and
+native helpers still used by Electron remain maintained.
 
 ---
 
@@ -129,13 +100,15 @@ VoiceStudio/
 │   ├── core/                # Config, prefs, constants
 │   └── services/            # TTS engines, ASR, dubbing, audio DSP
 │       └── tts_backend.py   # ← Multi-engine TTS registry
-├── frontend/                # React + Vite
+├── electron/                # Active Electron desktop: main, preload, renderer
+├── native/                  # Desktop helpers used by Electron
+├── frontend/                # Web UI, shared modules, and archived desktop
 │   ├── src/
 │   │   ├── components/      # UI components
 │   │   ├── hooks/           # Custom React hooks
 │   │   ├── stores/          # Zustand state slices
 │   │   └── utils/           # Shared utilities
-│   └── src-tauri/           # Rust/Tauri desktop shell
+│   └── src-tauri/           # Archived Rust/Tauri desktop shell
 ├── deploy/                  # Docker, CI configs
 ├── docs/                    # Screenshots, MCP config
 └── scripts/                 # Build & release scripts
@@ -223,10 +196,10 @@ class MyEngineBackend(TTSBackend):
 - **CSS**: **Utilities-first + shadcn/ui, one stylesheet.** UI is built on the shadcn/ui primitives in `src/components/ui/` (wrapped by the `src/ui/` barrel, themed to the VoiceStudio palette), composed with Tailwind v4 utility classes. **All styling now lives in a single file — `src/index.css`**: the `@theme` / `[data-theme]` token foundation plus the irreducible set utilities can't express (`@keyframes`, glassmorphism/`backdrop-filter`, pseudo-elements, `:has()`, unlayered cascade overrides, and styling hooks on library-generated DOM like virtualized rows / WaveSurfer). The per-component `.css` files were eliminated in the CSS→Tailwind/shadcn migration — **do not create new ones.** Reach for shadcn primitives + utilities; if a rule is genuinely irreducible, add it to `src/index.css` with a provenance comment. (The only other `.css` is the test-only visual harness. See `docs/shadcn-migration.md`.)
 - **Naming**: `PascalCase` for components, `camelCase` for hooks and utils
 
-### Rust (Tauri)
+### Rust (shared native helpers)
 
 - **Format**: `cargo fmt` before committing
-- **Modules**: One concern per file (`bootstrap.rs`, `tools.rs`, `config.rs`, `commands.rs`)
+- **Scope**: `native/desktop-bridge` and modules it imports; do not revive the archived Tauri shell.
 
 ---
 
@@ -284,11 +257,11 @@ uv run pytest backend/ -x -q
 # Run a specific test file
 uv run pytest backend/tests/test_api.py -x -q
 
-# Frontend build validation (no test suite yet)
-cd frontend && npx vite build --mode development
+# Electron desktop validation, from the repository root
+bun run check:electron
 
-# Tauri shell check (requires Rust)
-cd frontend/src-tauri && cargo check
+# Shared native helper, when changed
+cargo check --manifest-path native/desktop-bridge/Cargo.toml
 ```
 
 ---
@@ -350,7 +323,7 @@ hard rules from the first prompt.
   absolute home paths.
 - **Security posture:** the backend serves loopback HTTP — treat every
   query/path/form parameter as hostile. User-chosen filesystem destinations
-  are authorized in the Tauri process (save dialog), never via HTTP params.
+  are authorized in Electron main (native save dialog), never via HTTP params.
 
 ## Contribution licensing
 

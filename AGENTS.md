@@ -1,3 +1,14 @@
+## Active desktop: Electron only
+
+Electron (`electron/`) is the only maintained desktop app. Tauri is sunset and
+archived; do not add features, repair its UI, or backport Electron changes to it.
+Triage Tauri-only reports toward the Electron migration guide; investigate shared
+backend defects only when they affect Electron or the supported API. Keep archived
+source, migration data, and existing compatibility contracts intact. Some code under
+`frontend/` is still shared with Electron or serves the web app: trace consumers
+before editing or removing it. New desktop UI, IPC, setup instructions and tests
+belong in Electron; validate Electron on macOS, Windows and Linux.
+
 # Agent Rules — VoiceStudio
 
 Binding for every AI agent (Claude, Codex, Cursor, review bots, …). CLAUDE.md is the full constitution; this is the operating contract. When they conflict, CLAUDE.md wins.
