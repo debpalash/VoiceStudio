@@ -674,10 +674,16 @@ def _venv_python(venv_dir: Path) -> Path:
 
 
 def _locate_uv() -> Optional[str]:
-    """Find uv: bundled (Tauri-set OMNIVOICE_BUNDLED_UV) first, then PATH.
+    """Find uv: bundled (shell-set OMNIVOICE_BUNDLED_UV) first, then PATH.
 
     Same resolution order as engines.indextts.bootstrap._locate_uv — the
     canonical uv-resolution pattern for sidecar venvs.
+
+    The desktop shell sets OMNIVOICE_BUNDLED_UV because PATH alone cannot find
+    the packaged uv: it ships in the app's own resources directory, which is on
+    nobody's PATH, and a GUI launch does not inherit the shell's PATH additions
+    either (#2215). Without it every sidecar installer fails preflight on a
+    clean install even though the binary is right there in the bundle.
     """
     bundled = os.environ.get("OMNIVOICE_BUNDLED_UV")
     if bundled and Path(bundled).is_file():
