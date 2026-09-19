@@ -1505,6 +1505,8 @@
     "exportFailed": "Dışa aktarma başarısız oldu — arka ucun çalıştığını kontrol edin.",
     "global_speed": "Hız",
     "global_speed_hint": "Kendi hız geçersiz kılma özelliği olmadan tüm satırlar için okuma hızı",
+    "global_speed_overrides": "Kendi hızı olan satırlar: {{count}}",
+    "global_speed_apply": "Tüm satırlarda kullan",
     "deleteProjectConfirm": "Bu proje kalıcı olarak silinsin mi?",
     "moveUp": "Yukarı taşı",
     "moveDown": "Aşağı taşı"

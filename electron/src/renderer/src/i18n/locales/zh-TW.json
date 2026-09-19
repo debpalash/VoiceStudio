@@ -1505,6 +1505,8 @@
     "exportFailed": "匯出失敗 — 檢查後端是否正在運作。",
     "global_speed": "速度",
     "global_speed_hint": "所有線路的讀取速度，沒有自己的速度覆蓋",
+    "global_speed_overrides": "使用自有語速的行：{{count}}",
+    "global_speed_apply": "套用到所有行",
     "deleteProjectConfirm": "要永久刪除此專案嗎？",
     "moveUp": "上移",
     "moveDown": "下移"

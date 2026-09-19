@@ -1505,6 +1505,8 @@
     "exportFailed": "내보내기 실패 - 백엔드가 실행 중인지 확인하세요.",
     "global_speed": "속도",
     "global_speed_hint": "자체 속도 재정의 없이 모든 라인에 대한 읽기 속도",
+    "global_speed_overrides": "자체 속도가 있는 줄: {{count}}",
+    "global_speed_apply": "모든 줄에 적용",
     "deleteProjectConfirm": "이 프로젝트를 영구적으로 삭제할까요?",
     "moveUp": "위로 이동",
     "moveDown": "아래로 이동"

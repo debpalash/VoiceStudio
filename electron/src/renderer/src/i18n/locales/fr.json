@@ -1507,6 +1507,8 @@
     "exportFailed": "Échec de l'exportation : vérifiez que le backend est en cours d'exécution.",
     "global_speed": "Vitesse",
     "global_speed_hint": "Vitesse de lecture pour toutes les lignes sans leur propre priorité de vitesse",
+    "global_speed_overrides": "Lignes avec leur propre vitesse : {{count}}",
+    "global_speed_apply": "Appliquer à toutes les lignes",
     "deleteProjectConfirm": "Supprimer définitivement ce projet ?",
     "moveUp": "Monter",
     "moveDown": "Descendre"

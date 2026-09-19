@@ -1509,6 +1509,8 @@
     "exportFailed": "导出失败 — 请检查后端是否运行。",
     "global_speed": "速度",
     "global_speed_hint": "所有台词的朗读速度（未单独设置语速的台词）",
+    "global_speed_overrides": "使用自有语速的行：{{count}}",
+    "global_speed_apply": "应用到所有行",
     "deleteProjectConfirm": "永久删除此项目？",
     "moveUp": "上移",
     "moveDown": "下移"

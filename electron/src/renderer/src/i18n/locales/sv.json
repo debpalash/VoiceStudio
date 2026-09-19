@@ -1505,6 +1505,8 @@
     "exportFailed": "Exporten misslyckades – kontrollera att backend körs.",
     "global_speed": "Hastighet",
     "global_speed_hint": "Läshastighet för alla linjer utan egen hastighetsöverstyrning",
+    "global_speed_overrides": "Rader med egen hastighet: {{count}}",
+    "global_speed_apply": "Använd för alla rader",
     "deleteProjectConfirm": "Ta bort projektet permanent?",
     "moveUp": "Flytta upp",
     "moveDown": "Flytta ned"

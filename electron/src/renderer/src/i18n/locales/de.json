@@ -1505,6 +1505,8 @@
     "exportFailed": "Der Export ist fehlgeschlagen. Überprüfen Sie, ob das Backend ausgeführt wird.",
     "global_speed": "Geschwindigkeit",
     "global_speed_hint": "Lesegeschwindigkeit für alle Zeilen ohne eigene Geschwindigkeitsüberschreibung",
+    "global_speed_overrides": "Zeilen mit eigener Geschwindigkeit: {{count}}",
+    "global_speed_apply": "Für alle Zeilen verwenden",
     "deleteProjectConfirm": "Dieses Projekt dauerhaft löschen?",
     "moveUp": "Nach oben",
     "moveDown": "Nach unten"

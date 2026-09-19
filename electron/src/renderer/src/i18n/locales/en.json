@@ -1583,6 +1583,8 @@
     "speed": "Speed",
     "global_speed": "Speed",
     "global_speed_hint": "Reading speed for all lines without their own speed override",
+    "global_speed_overrides": "Lines with their own speed: {{count}}",
+    "global_speed_apply": "Use for all lines",
     "reset": "Reset",
     "tones": {
       "laugh": "Laugh",

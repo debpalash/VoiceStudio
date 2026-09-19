@@ -1505,6 +1505,8 @@
     "exportFailed": "Xuất không thành công - kiểm tra xem chương trình phụ trợ có đang chạy không.",
     "global_speed": "Tốc độ",
     "global_speed_hint": "Tốc độ đọc cho tất cả các dòng mà không cần ghi đè tốc độ riêng",
+    "global_speed_overrides": "Số dòng có tốc độ riêng: {{count}}",
+    "global_speed_apply": "Dùng cho mọi dòng",
     "deleteProjectConfirm": "Xóa vĩnh viễn dự án này?",
     "moveUp": "Di chuyển lên",
     "moveDown": "Di chuyển xuống"

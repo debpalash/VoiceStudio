@@ -1509,6 +1509,8 @@
     "exportFailed": "Eksport nie powiódł się — sprawdź, czy backend działa.",
     "global_speed": "Prędkość",
     "global_speed_hint": "Prędkość odczytu dla wszystkich linii bez własnego sterowania prędkością",
+    "global_speed_overrides": "Wiersze z własną prędkością: {{count}}",
+    "global_speed_apply": "Użyj dla wszystkich wierszy",
     "deleteProjectConfirm": "Usunąć ten projekt na stałe?",
     "moveUp": "Przenieś w górę",
     "moveDown": "Przenieś w dół"

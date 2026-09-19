@@ -1513,6 +1513,8 @@
     "exportFailed": "فشل التصدير — تحقق من تشغيل الواجهة الخلفية.",
     "global_speed": "السرعة",
     "global_speed_hint": "سرعة القراءة لجميع الخطوط دون تجاوز السرعة الخاصة بها",
+    "global_speed_overrides": "الأسطر ذات السرعة الخاصة: {{count}}",
+    "global_speed_apply": "استخدمها لكل الأسطر",
     "deleteProjectConfirm": "هل تريد حذف هذا المشروع نهائيًا؟",
     "moveUp": "نقل لأعلى",
     "moveDown": "نقل لأسفل"

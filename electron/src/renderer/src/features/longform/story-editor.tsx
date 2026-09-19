@@ -156,20 +156,6 @@ export function StoryCast({ draft, profiles, disabled, onChange }: Props) {
         <PlusIcon />
         {t('stories.addCharacter')}
       </Button>
-      <label className="block space-y-2 text-xs">
-        {t('stories.global_speed')} · {draft.globalSpeed.toFixed(2)}×
-        <input
-          aria-label={t('stories.global_speed')}
-          type="range"
-          min="0.5"
-          max="2"
-          step="0.05"
-          className="w-full accent-primary"
-          disabled={disabled}
-          value={draft.globalSpeed}
-          onChange={(e) => onChange({ globalSpeed: Number(e.target.value) })}
-        />
-      </label>
     </details>
   );
 }

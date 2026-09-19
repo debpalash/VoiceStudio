@@ -1505,6 +1505,8 @@
     "exportFailed": "エクスポートに失敗しました — バックエンドが実行中であることを確認してください。",
     "global_speed": "速度",
     "global_speed_hint": "独自の速度オーバーライドを行わないすべての行の読み取り速度",
+    "global_speed_overrides": "独自の速度を持つ行: {{count}}",
+    "global_speed_apply": "すべての行に適用",
     "deleteProjectConfirm": "このプロジェクトを完全に削除しますか？",
     "moveUp": "上に移動",
     "moveDown": "下に移動"

@@ -1505,6 +1505,8 @@
     "exportFailed": "Ekspor gagal — periksa apakah backend sedang berjalan.",
     "global_speed": "Kecepatan",
     "global_speed_hint": "Kecepatan membaca untuk semua lini tanpa mengesampingkan kecepatannya sendiri",
+    "global_speed_overrides": "Baris dengan kecepatan sendiri: {{count}}",
+    "global_speed_apply": "Gunakan untuk semua baris",
     "deleteProjectConfirm": "Hapus proyek ini secara permanen?",
     "moveUp": "Pindah ke atas",
     "moveDown": "Pindah ke bawah"

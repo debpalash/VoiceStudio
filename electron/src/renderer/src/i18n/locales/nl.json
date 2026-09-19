@@ -1505,6 +1505,8 @@
     "exportFailed": "Exporteren mislukt. Controleer of de backend actief is.",
     "global_speed": "Snelheid",
     "global_speed_hint": "Leessnelheid voor alle lijnen zonder hun eigen snelheidsoverschrijving",
+    "global_speed_overrides": "Regels met eigen snelheid: {{count}}",
+    "global_speed_apply": "Voor alle regels gebruiken",
     "deleteProjectConfirm": "Dit project permanent verwijderen?",
     "moveUp": "Omhoog",
     "moveDown": "Omlaag"

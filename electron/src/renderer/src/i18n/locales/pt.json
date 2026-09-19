@@ -1507,6 +1507,8 @@
     "exportFailed": "Falha na exportação – verifique se o back-end está em execução.",
     "global_speed": "Velocidade",
     "global_speed_hint": "Velocidade de leitura para todas as linhas sem sua própria substituição de velocidade",
+    "global_speed_overrides": "Linhas com velocidade própria: {{count}}",
+    "global_speed_apply": "Usar em todas as linhas",
     "deleteProjectConfirm": "Excluir este projeto permanentemente?",
     "moveUp": "Mover para cima",
     "moveDown": "Mover para baixo"
