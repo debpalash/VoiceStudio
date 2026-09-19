@@ -14,8 +14,18 @@ afterEach(() => {
 
 it('allows a 40% wider spacious pane and restores the saved width on remount', () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
-  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
-  const pane = <SecondarySidebar title="Dub" icon={FilmIcon} size="spacious"><section>Preview</section></SecondarySidebar>;
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  const pane = (
+    <SecondarySidebar title="Dub" icon={FilmIcon} size="spacious">
+      <section>Preview</section>
+    </SecondarySidebar>
+  );
   const first = render(pane);
   const separator = screen.getByRole('separator');
   expect(separator).toHaveAttribute('aria-valuemax', '750');
@@ -25,4 +35,27 @@ it('allows a 40% wider spacious pane and restores the saved width on remount', (
   first.unmount();
   render(pane);
   expect(screen.getByRole('separator')).toHaveAttribute('aria-valuenow', '436');
+});
+
+it('pins a footer outside the scrolling content and reports collapse so a page can re-home it', () => {
+  const onCollapsedChange = vi.fn();
+  render(
+    <SecondarySidebar
+      title="Stories"
+      icon={FilmIcon}
+      footer={<button type="button">Generate</button>}
+      onCollapsedChange={onCollapsedChange}
+    >
+      <section>Setup</section>
+    </SecondarySidebar>,
+  );
+  const footer = document.querySelector('[data-slot="secondary-sidebar-footer"]');
+  const content = document.querySelector('[data-slot="secondary-sidebar-content"]');
+  expect(footer).not.toBeNull();
+  expect(content?.contains(footer)).toBe(false); // never scrolls away with the setup cards
+  expect(screen.getByRole('button', { name: 'Generate' })).toBeVisible();
+
+  fireEvent.click(screen.getByRole('button', { name: /collapse/i }));
+  expect(onCollapsedChange).toHaveBeenLastCalledWith(true);
+  expect(document.querySelector('[data-slot="secondary-sidebar-footer"]')).toBeNull();
 });

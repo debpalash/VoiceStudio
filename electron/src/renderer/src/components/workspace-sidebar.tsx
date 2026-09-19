@@ -29,6 +29,8 @@ export function SecondarySidebar({
   size = 'default',
   variant = 'controls',
   meta,
+  footer,
+  onCollapsedChange,
 }: {
   title: string;
   icon: LucideIcon;
@@ -37,9 +39,19 @@ export function SecondarySidebar({
   size?: 'default' | 'wide' | 'spacious';
   variant?: 'controls' | 'navigation' | 'library';
   meta?: ReactNode;
+  /** Pinned below the scrolling content — never scrolls out of view. */
+  footer?: ReactNode;
+  /** Lets the page re-home the footer's content while the pane is collapsed. */
+  onCollapsedChange?: (collapsed: boolean) => void;
 }) {
   const { t } = useTranslation();
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsedState] = useState(false);
+  const setCollapsed = (next: boolean | ((value: boolean) => boolean)) =>
+    setCollapsedState((value) => {
+      const resolved = typeof next === 'function' ? next(value) : next;
+      if (resolved !== value) onCollapsedChange?.(resolved);
+      return resolved;
+    });
   const dimensions = WIDTHS[size];
   const resize = usePaneResize({
     storageKey: `voicestudio.secondary-sidebar.${size}`,
@@ -125,6 +137,14 @@ export function SecondarySidebar({
       >
         {children}
       </div>
+      {footer !== undefined && footer !== null && !collapsed && (
+        <div
+          data-slot="secondary-sidebar-footer"
+          className="shrink-0 space-y-3 border-t border-border/55 bg-background/40 p-3.5 text-[13px] backdrop-blur-xl"
+        >
+          {footer}
+        </div>
+      )}
       {collapsed && (
         <button
           type="button"

@@ -38,7 +38,7 @@ EPUB decompression limits include required metadata as well as navigation and ch
 
 ### Long-script layout
 
-The Stories editor grows with the manuscript inside the page scroll container. Long scripts push generation progress and Generate/Stop controls below their content, so lines do not paint over those controls during rendering.
+The Stories editor grows with the manuscript inside the page scroll container. Generate/Stop, the chapter tracker and the render status live in a footer pinned to the setup pane, so the primary action and its progress stay visible however long the script is; with the setup pane collapsed the same panel sticks to the bottom of the editor instead. When Generate is unavailable the panel states the one reason (import running, engine not ready, no spoken lines or script, a line with no voice and no default voice, a duplicated pronunciation word) rather than only greying the button.
 
 ### Clear a script
 
