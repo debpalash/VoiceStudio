@@ -1543,6 +1543,7 @@
     "stop": "Dừng",
     "stopped_note": "Đã dừng — các chương đã xong được lưu trong bộ nhớ đệm; nhấn Tạo lại để tiếp tục.",
     "blocked": {
+      "busy": "Một cuốn sách khác đang được kết xuất. Hãy chờ hoặc dừng nó trước.",
       "importing": "Đang nhập… Tạo sẽ mở khi hoàn tất.",
       "engine_loading": "Đang kiểm tra engine giọng nói…",
       "engine": "Engine giọng nói chưa sẵn sàng. Kiểm tra Cài đặt → Engine.",

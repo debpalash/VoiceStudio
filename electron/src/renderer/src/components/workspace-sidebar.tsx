@@ -46,12 +46,14 @@ export function SecondarySidebar({
 }) {
   const { t } = useTranslation();
   const [collapsed, setCollapsedState] = useState(false);
-  const setCollapsed = (next: boolean | ((value: boolean) => boolean)) =>
-    setCollapsedState((value) => {
-      const resolved = typeof next === 'function' ? next(value) : next;
-      if (resolved !== value) onCollapsedChange?.(resolved);
-      return resolved;
-    });
+  // Notify from the event handler, never from inside a state updater: updaters
+  // must stay pure (StrictMode runs them twice, which would double-fire this).
+  const setCollapsed = (next: boolean | ((value: boolean) => boolean)) => {
+    const resolved = typeof next === 'function' ? next(collapsed) : next;
+    if (resolved === collapsed) return;
+    setCollapsedState(resolved);
+    onCollapsedChange?.(resolved);
+  };
   const dimensions = WIDTHS[size];
   const resize = usePaneResize({
     storageKey: `voicestudio.secondary-sidebar.${size}`,

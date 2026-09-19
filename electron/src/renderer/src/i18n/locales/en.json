@@ -1641,6 +1641,7 @@
     "stop": "Stop",
     "stopped_note": "Stopped — finished chapters are cached; Create again to resume.",
     "blocked": {
+      "busy": "Another book is already rendering. Wait for it, or stop it first.",
       "importing": "Importing… Generate unlocks when it finishes.",
       "engine_loading": "Checking the voice engine…",
       "engine": "The voice engine is not ready. Check Settings → Engines.",

@@ -1543,6 +1543,7 @@
     "stop": "Stoppa",
     "stopped_note": "Stoppad — färdiga kapitel är cachade; klicka på Skapa igen för att fortsätta.",
     "blocked": {
+      "busy": "En annan bok renderas redan. Vänta på den eller stoppa den först.",
       "importing": "Importerar… Generera låses upp när det är klart.",
       "engine_loading": "Kontrollerar röstmotorn…",
       "engine": "Röstmotorn är inte redo. Kontrollera Inställningar → Motorer.",

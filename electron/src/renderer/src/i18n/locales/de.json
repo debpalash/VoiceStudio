@@ -1543,6 +1543,7 @@
     "stop": "Stopp",
     "stopped_note": "Gestoppt — fertige Kapitel sind zwischengespeichert; erneut „Erstellen“ zum Fortsetzen.",
     "blocked": {
+      "busy": "Ein anderes Buch wird bereits gerendert. Warten Sie oder stoppen Sie es zuerst.",
       "importing": "Import läuft … Generieren wird danach freigegeben.",
       "engine_loading": "Sprach-Engine wird geprüft …",
       "engine": "Die Sprach-Engine ist nicht bereit. Prüfen Sie Einstellungen → Engines.",

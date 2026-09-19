@@ -3,6 +3,7 @@ import { generateBlocker } from './generate-blocker';
 
 const ready = {
   mode: 'stories' as const,
+  busyElsewhere: false,
   importing: false,
   tts: null,
   usable: true,
@@ -21,6 +22,7 @@ it('names the most fundamental reason first', () => {
   expect(generateBlocker({ ...ready, tts: 'engine', voicesReady: false })).toBe('engine');
   expect(generateBlocker({ ...ready, tts: 'loading' })).toBe('engine_loading');
   expect(generateBlocker({ ...ready, importing: true, tts: 'engine' })).toBe('importing');
+  expect(generateBlocker({ ...ready, busyElsewhere: true, importing: true })).toBe('busy');
 });
 
 it('a duplicated pronunciation word only blocks the audiobook', () => {

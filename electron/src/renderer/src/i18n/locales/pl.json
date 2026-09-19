@@ -1547,6 +1547,7 @@
     "stop": "Zatrzymaj",
     "stopped_note": "Zatrzymano — ukończone rozdziały są w pamięci podręcznej; kliknij Utwórz ponownie, aby wznowić.",
     "blocked": {
+      "busy": "Inna książka jest już renderowana. Poczekaj lub najpierw ją zatrzymaj.",
       "importing": "Importowanie… Generowanie odblokuje się po zakończeniu.",
       "engine_loading": "Sprawdzanie silnika głosu…",
       "engine": "Silnik głosu nie jest gotowy. Sprawdź Ustawienia → Silniki.",

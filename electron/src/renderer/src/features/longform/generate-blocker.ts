@@ -1,4 +1,5 @@
 export type GenerateBlocker =
+  | 'busy'
   | 'importing'
   | 'engine_loading'
   | 'engine'
@@ -15,12 +16,15 @@ export type GenerateBlocker =
  */
 export function generateBlocker(input: {
   mode: 'stories' | 'audiobook';
+  /** The OTHER longform mode is rendering; one render runs at a time. */
+  busyElsewhere: boolean;
   importing: boolean;
   tts: 'engine' | 'loading' | null;
   usable: boolean;
   voicesReady: boolean;
   duplicateLexicon: boolean;
 }): GenerateBlocker | null {
+  if (input.busyElsewhere) return 'busy';
   if (input.importing) return 'importing';
   if (input.tts === 'loading') return 'engine_loading';
   if (input.tts === 'engine') return 'engine';

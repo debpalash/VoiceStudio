@@ -123,6 +123,7 @@ export function LongformPage({ mode }: { mode: Mode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const blocker = generateBlocker({
     mode,
+    busyElsewhere: Boolean(session.active) && session.active !== mode,
     importing,
     tts: ttsBlocker,
     usable,

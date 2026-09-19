@@ -35,7 +35,6 @@ export function GeneratePanel({
 }) {
   const { t } = useTranslation();
   const active = session.active === mode;
-  const busyElsewhere = Boolean(session.active) && !active;
   const status = active
     ? session.stage === 'assembling'
       ? t('audiobook.assembling')
@@ -80,7 +79,7 @@ export function GeneratePanel({
       ) : (
         <Button
           className="w-full"
-          disabled={busyElsewhere || blocker !== null}
+          disabled={blocker !== null}
           aria-describedby={status ? 'generate-status' : undefined}
           onClick={onGenerate}
         >

@@ -1543,6 +1543,7 @@
     "stop": "Hentikan",
     "stopped_note": "Dihentikan — bab yang selesai tersimpan di cache; tekan Buat lagi untuk melanjutkan.",
     "blocked": {
+      "busy": "Buku lain sedang dirender. Tunggu atau hentikan dulu.",
       "importing": "Mengimpor… Buat akan tersedia setelah selesai.",
       "engine_loading": "Memeriksa mesin suara…",
       "engine": "Mesin suara belum siap. Periksa Pengaturan → Mesin.",

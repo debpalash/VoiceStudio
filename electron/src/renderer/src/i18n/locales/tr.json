@@ -1543,6 +1543,7 @@
     "stop": "Durdur",
     "stopped_note": "Durduruldu — tamamlanan bölümler önbellekte; devam etmek için tekrar Oluştur'a basın.",
     "blocked": {
+      "busy": "Başka bir kitap zaten işleniyor. Bitmesini bekleyin veya önce durdurun.",
       "importing": "İçe aktarılıyor… Bitince Oluştur açılır.",
       "engine_loading": "Ses motoru denetleniyor…",
       "engine": "Ses motoru hazır değil. Ayarlar → Motorlar bölümünü denetleyin.",

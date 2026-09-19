@@ -68,15 +68,16 @@ it('generates when nothing blocks it and swaps to Stop with the tracker while re
   expect(screen.getByText('Two')).toBeVisible();
 });
 
-it('stays disabled while the other longform mode is rendering', () => {
+it('explains that the other longform mode is rendering', () => {
   render(
     <GeneratePanel
       mode="stories"
       session={{ ...idle, active: 'audiobook', stage: 'rendering' }}
-      blocker={null}
+      blocker="busy"
       onGenerate={vi.fn()}
       onStop={vi.fn()}
     />,
   );
   expect(screen.getByRole('button', { name: 'Generate' })).toBeDisabled();
+  expect(screen.getByText(/already rendering/i)).toBeVisible();
 });

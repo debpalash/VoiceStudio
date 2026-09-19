@@ -1543,6 +1543,7 @@
     "stop": "Stoppen",
     "stopped_note": "Gestopt — voltooide hoofdstukken staan in de cache; klik opnieuw op Maken om te hervatten.",
     "blocked": {
+      "busy": "Er wordt al een ander boek gerenderd. Wacht daarop of stop het eerst.",
       "importing": "Bezig met importeren… Genereren komt daarna beschikbaar.",
       "engine_loading": "Spraakengine wordt gecontroleerd…",
       "engine": "De spraakengine is niet gereed. Controleer Instellingen → Engines.",

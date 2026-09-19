@@ -1545,6 +1545,7 @@
     "stop": "Ferma",
     "stopped_note": "Interrotto — i capitoli completati sono in cache; premi di nuovo Crea per riprendere.",
     "blocked": {
+      "busy": "Un altro libro è già in fase di rendering. Attendi o fermalo prima.",
       "importing": "Importazione in corso… Genera si sblocca al termine.",
       "engine_loading": "Verifica del motore vocale…",
       "engine": "Il motore vocale non è pronto. Controlla Impostazioni → Motori.",
