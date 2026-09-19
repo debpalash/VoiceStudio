@@ -1404,7 +1404,17 @@
     "story_voices_plural": "{{count}} เสียง",
     "audiobooks": "หนังสือเสียง",
     "audiobook": "หนังสือเสียง",
-    "story": "เรื่องราว"
+    "story": "เรื่องราว",
+    "render_details": "วิธีที่สร้าง",
+    "render_voice": "เสียง",
+    "render_speed": "ความเร็ว",
+    "render_engine": "เอนจิน",
+    "render_language": "ภาษา",
+    "render_format": "รูปแบบ",
+    "render_size_label": "ขนาด",
+    "render_size": "{{chapters}} บท · {{lines}} บรรทัด · {{words}} คำ",
+    "render_settings": "การตั้งค่า",
+    "render_no_details": "สร้างก่อนที่จะเริ่มบันทึกรายละเอียด"
   },
   "projectActions": {
     "delete": "ลบ “{{name}}” หรือไม่? การดำเนินการนี้ไม่สามารถย้อนกลับได้",

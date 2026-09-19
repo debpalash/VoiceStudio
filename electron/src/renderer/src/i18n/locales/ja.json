@@ -1404,7 +1404,17 @@
     "story_voices_plural": "{{count}} の声",
     "audiobooks": "オーディオブック",
     "audiobook": "オーディオブック",
-    "story": "ストーリー"
+    "story": "ストーリー",
+    "render_details": "作成方法",
+    "render_voice": "音声",
+    "render_speed": "速度",
+    "render_engine": "エンジン",
+    "render_language": "言語",
+    "render_format": "形式",
+    "render_size_label": "規模",
+    "render_size": "{{chapters}} 章 · {{lines}} 行 · {{words}} 語",
+    "render_settings": "設定",
+    "render_no_details": "詳細の記録が始まる前に作成されました。"
   },
   "projectActions": {
     "delete": "「{{name}}」を削除しますか？この操作は元に戻せません。",

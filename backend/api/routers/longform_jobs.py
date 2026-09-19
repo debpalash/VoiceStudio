@@ -66,6 +66,44 @@ def _coerce_float(value, default: float = 0.0) -> float:
         return default
 
 
+def _clean_summary(raw) -> Optional[dict]:
+    """Coerce a persisted render summary to exactly the shape clients read.
+
+    The summary is recovered from a stored event, so it is untrusted input: a
+    hand-edited or older row with ``voices: "v1"`` must degrade to fewer details,
+    never reach a client as a value its list code will crash on.
+    """
+    if not isinstance(raw, dict):
+        return None
+    voices = [
+        {"id": str(v.get("id") or ""), "name": str(v.get("name") or "")}
+        for v in (raw.get("voices") if isinstance(raw.get("voices"), list) else [])
+        if isinstance(v, dict)
+    ]
+    speeds = [
+        round(float(x), 2)
+        for x in (raw.get("speeds") if isinstance(raw.get("speeds"), list) else [])
+        if isinstance(x, (int, float)) and not isinstance(x, bool)
+    ]
+    titles = [str(t) for t in (raw.get("chapter_titles") if isinstance(raw.get("chapter_titles"), list) else [])
+              if isinstance(t, str)]
+    options = {
+        str(k): v for k, v in (raw.get("options") if isinstance(raw.get("options"), dict) else {}).items()
+        if isinstance(v, (str, int, float, bool))
+    }
+    return {
+        "engine": str(raw.get("engine") or ""),
+        "voices": voices,
+        "language": str(raw.get("language") or ""),
+        "format": str(raw.get("format") or ""),
+        "lines": _coerce_int(raw.get("lines")),
+        "words": _coerce_int(raw.get("words")),
+        "speeds": speeds,
+        "options": options,
+        "chapter_titles": titles,
+    }
+
+
 def build_longform_library(
     list_jobs: Callable[..., list[dict]],
     events_since: Callable[..., list[dict]],
@@ -79,7 +117,7 @@ def build_longform_library(
     * ``list_jobs(status="done", limit=...)`` → all done jobs, newest-first.
     * ``events_since(job_id)`` → that job's persisted SSE events.
 
-    Returns ``[{job_id, type, title?, output, duration_s, chapters,
+    Returns ``[{job_id, type, title?, summary?, output, duration_s, chapters,
     created_at}]``. Jobs that aren't a longform type, or whose ``done`` event /
     output filename can't be recovered, are silently skipped — the library only
     ever lists things the user can actually re-download.
@@ -142,6 +180,11 @@ def build_longform_library(
                         title = None
             if title:
                 item["title"] = title
+            # How it was made (voice, speed, engine, joins) — renders finished
+            # before this existed simply have none.
+            summary = _clean_summary(done.get("summary"))
+            if summary:
+                item["summary"] = summary
             out.append(item)
         except Exception:
             # Per-row isolation: one bad row never sinks the whole list.

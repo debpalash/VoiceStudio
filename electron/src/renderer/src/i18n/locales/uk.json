@@ -1408,7 +1408,17 @@
     "story_voices_plural": "{{count}} голосів",
     "audiobooks": "Аудіокниги",
     "audiobook": "Аудіокнига",
-    "story": "Розповідь"
+    "story": "Розповідь",
+    "render_details": "Як це створено",
+    "render_voice": "Голос",
+    "render_speed": "Швидкість",
+    "render_engine": "Рушій",
+    "render_language": "Мова",
+    "render_format": "Формат",
+    "render_size_label": "Обсяг",
+    "render_size": "Розділів: {{chapters}} · рядків: {{lines}} · слів: {{words}}",
+    "render_settings": "Налаштування",
+    "render_no_details": "Створено до того, як почали зберігатися відомості."
   },
   "projectActions": {
     "delete": "Видалити «{{name}}»? Цю дію неможливо скасувати.",

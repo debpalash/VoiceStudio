@@ -1404,7 +1404,17 @@
     "story_voices_plural": "{{count}} sesler",
     "audiobooks": "Sesli kitaplar",
     "audiobook": "Sesli kitap",
-    "story": "Hikaye"
+    "story": "Hikaye",
+    "render_details": "Nasıl oluşturuldu",
+    "render_voice": "Ses",
+    "render_speed": "Hız",
+    "render_engine": "Motor",
+    "render_language": "Dil",
+    "render_format": "Biçim",
+    "render_size_label": "Boyut",
+    "render_size": "{{chapters}} bölüm · {{lines}} satır · {{words}} sözcük",
+    "render_settings": "Ayarlar",
+    "render_no_details": "Ayrıntılar kaydedilmeye başlamadan önce oluşturuldu."
   },
   "projectActions": {
     "delete": "“{{name}}” silinsin mi? Bu işlem geri alınamaz.",

@@ -1404,7 +1404,17 @@
     "story_voices_plural": "{{count}} Stimmen",
     "audiobooks": "Hörbücher",
     "audiobook": "Hörbuch",
-    "story": "Geschichte"
+    "story": "Geschichte",
+    "render_details": "So wurde es erstellt",
+    "render_voice": "Stimme",
+    "render_speed": "Geschwindigkeit",
+    "render_engine": "Engine",
+    "render_language": "Sprache",
+    "render_format": "Format",
+    "render_size_label": "Umfang",
+    "render_size": "{{chapters}} Kapitel · {{lines}} Zeilen · {{words}} Wörter",
+    "render_settings": "Einstellungen",
+    "render_no_details": "Erstellt, bevor Details aufgezeichnet wurden."
   },
   "projectActions": {
     "delete": "„{{name}}“ löschen? Dies kann nicht rückgängig gemacht werden.",

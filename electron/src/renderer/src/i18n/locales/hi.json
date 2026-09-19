@@ -1404,7 +1404,17 @@
     "story_voices_plural": "{{count}} आवाजें",
     "audiobooks": "ऑडियोबुक",
     "audiobook": "ऑडियोबुक",
-    "story": "कहानी"
+    "story": "कहानी",
+    "render_details": "यह कैसे बना",
+    "render_voice": "आवाज़",
+    "render_speed": "गति",
+    "render_engine": "इंजन",
+    "render_language": "भाषा",
+    "render_format": "फ़ॉर्मैट",
+    "render_size_label": "आकार",
+    "render_size": "{{chapters}} अध्याय · {{lines}} पंक्तियाँ · {{words}} शब्द",
+    "render_settings": "सेटिंग्स",
+    "render_no_details": "विवरण दर्ज होना शुरू होने से पहले बनाया गया।"
   },
   "projectActions": {
     "delete": "“{{name}}” हटाएँ? इसे वापस नहीं किया जा सकता।",

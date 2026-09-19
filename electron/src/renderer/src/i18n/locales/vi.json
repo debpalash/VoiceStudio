@@ -1404,7 +1404,17 @@
     "story_voices_plural": "{{count}} giọng nói",
     "audiobooks": "Sách nói",
     "audiobook": "Sách nói",
-    "story": "Câu chuyện"
+    "story": "Câu chuyện",
+    "render_details": "Cách tạo",
+    "render_voice": "Giọng",
+    "render_speed": "Tốc độ",
+    "render_engine": "Engine",
+    "render_language": "Ngôn ngữ",
+    "render_format": "Định dạng",
+    "render_size_label": "Quy mô",
+    "render_size": "{{chapters}} chương · {{lines}} dòng · {{words}} từ",
+    "render_settings": "Cài đặt",
+    "render_no_details": "Được tạo trước khi chi tiết được ghi lại."
   },
   "projectActions": {
     "delete": "Xóa “{{name}}”? Không thể hoàn tác thao tác này.",

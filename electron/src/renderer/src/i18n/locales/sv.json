@@ -1404,7 +1404,17 @@
     "story_voices_plural": "{{count}} röster",
     "audiobooks": "Ljudböcker",
     "audiobook": "Ljudbok",
-    "story": "Berättelse"
+    "story": "Berättelse",
+    "render_details": "Så skapades den",
+    "render_voice": "Röst",
+    "render_speed": "Hastighet",
+    "render_engine": "Motor",
+    "render_language": "Språk",
+    "render_format": "Format",
+    "render_size_label": "Omfång",
+    "render_size": "{{chapters}} kapitel · {{lines}} rader · {{words}} ord",
+    "render_settings": "Inställningar",
+    "render_no_details": "Skapad innan detaljer började sparas."
   },
   "projectActions": {
     "delete": "Ta bort ”{{name}}”? Detta kan inte ångras.",

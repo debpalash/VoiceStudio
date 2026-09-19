@@ -1408,7 +1408,17 @@
     "story_voices_plural": "{{count}} 声音",
     "audiobooks": "有声读物",
     "audiobook": "有声读物",
-    "story": "故事"
+    "story": "故事",
+    "render_details": "生成方式",
+    "render_voice": "声音",
+    "render_speed": "语速",
+    "render_engine": "引擎",
+    "render_language": "语言",
+    "render_format": "格式",
+    "render_size_label": "规模",
+    "render_size": "{{chapters}} 章 · {{lines}} 行 · {{words}} 词",
+    "render_settings": "设置",
+    "render_no_details": "生成于开始记录详情之前。"
   },
   "projectActions": {
     "delete": "删除“{{name}}”？此操作无法撤销。",

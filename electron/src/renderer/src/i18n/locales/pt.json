@@ -1406,7 +1406,17 @@
     "story_voices_plural": "{{count}} vozes",
     "audiobooks": "Audiolivros",
     "audiobook": "Audiolivro",
-    "story": "História"
+    "story": "História",
+    "render_details": "Como foi feito",
+    "render_voice": "Voz",
+    "render_speed": "Velocidade",
+    "render_engine": "Motor",
+    "render_language": "Idioma",
+    "render_format": "Formato",
+    "render_size_label": "Tamanho",
+    "render_size": "{{chapters}} capítulos · {{lines}} linhas · {{words}} palavras",
+    "render_settings": "Configurações",
+    "render_no_details": "Gerado antes de os detalhes serem registrados."
   },
   "projectActions": {
     "delete": "Excluir “{{name}}”? Esta ação não pode ser desfeita.",

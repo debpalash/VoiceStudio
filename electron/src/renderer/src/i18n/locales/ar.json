@@ -1412,7 +1412,17 @@
     "story_voices_plural": "{{count}} الأصوات",
     "audiobooks": "كتب صوتية",
     "audiobook": "كتاب مسموع",
-    "story": "قصة"
+    "story": "قصة",
+    "render_details": "كيف أُنشئ",
+    "render_voice": "الصوت",
+    "render_speed": "السرعة",
+    "render_engine": "المحرك",
+    "render_language": "اللغة",
+    "render_format": "التنسيق",
+    "render_size_label": "الحجم",
+    "render_size": "الفصول: {{chapters}} · الأسطر: {{lines}} · الكلمات: {{words}}",
+    "render_settings": "الإعدادات",
+    "render_no_details": "أُنشئ قبل بدء تسجيل التفاصيل."
   },
   "projectActions": {
     "delete": "هل تريد حذف «{{name}}»؟ لا يمكن التراجع عن ذلك.",

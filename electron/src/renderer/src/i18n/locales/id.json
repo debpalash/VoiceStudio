@@ -1404,7 +1404,17 @@
     "story_voices_plural": "{{count}} suara",
     "audiobooks": "Buku audio",
     "audiobook": "Buku Audio",
-    "story": "Cerita"
+    "story": "Cerita",
+    "render_details": "Cara pembuatannya",
+    "render_voice": "Suara",
+    "render_speed": "Kecepatan",
+    "render_engine": "Mesin",
+    "render_language": "Bahasa",
+    "render_format": "Format",
+    "render_size_label": "Ukuran",
+    "render_size": "{{chapters}} bab · {{lines}} baris · {{words}} kata",
+    "render_settings": "Pengaturan",
+    "render_no_details": "Dibuat sebelum detail mulai dicatat."
   },
   "projectActions": {
     "delete": "Hapus “{{name}}”? Tindakan ini tidak dapat dibatalkan.",

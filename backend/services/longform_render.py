@@ -530,3 +530,48 @@ def build_render_cmd(
             cmd += ["-c:v", "copy"]
         cmd += ["-movflags", "+faststart", "-f", "mp4", str(out_path)]
     return cmd
+
+
+# ── Render summary (what a finished render WAS) ─────────────────────────────
+
+#: Cap on chapter titles kept in a summary — the library is a list, not a TOC.
+_SUMMARY_MAX_TITLES = 60
+
+
+def render_summary(
+    chapters: list,
+    *,
+    voices: list[dict],
+    engine_id: str = "",
+    language: Optional[str] = None,
+    fmt: str = "",
+    options: Optional[dict] = None,
+) -> dict:
+    """How a render was made, small enough to ride on its ``done`` event.
+
+    A finished file in a library is only useful if it says what it is: which
+    voice, how fast, which engine, how it was joined. ``chapters`` is the plan
+    (objects with ``title`` and ``spans`` carrying ``text``/``speed``);
+    ``voices`` is the already-resolved ``[{"id", "name"}]`` actually used;
+    ``options`` is the render's non-default expressive options, already filtered
+    by the caller (any new knob — join gaps included — shows up here without
+    touching this function).
+    Content-free by design: counts and settings, never the script text.
+    """
+    spans = [s for c in chapters for s in getattr(c, "spans", [])]
+    spoken = [s for s in spans if (getattr(s, "text", "") or "").strip()]
+    speeds = sorted({round(float(getattr(s, "speed", None) or 1.0), 2) for s in spoken})
+    titles = [str(getattr(c, "title", "") or "") for c in chapters][:_SUMMARY_MAX_TITLES]
+    return {
+        "engine": engine_id or "",
+        "voices": [{"id": str(v.get("id") or ""), "name": str(v.get("name") or "")} for v in voices],
+        "language": language or "",
+        "format": fmt or "",
+        "lines": len(spoken),
+        "words": sum(len(s.text.split()) for s in spoken),
+        "speeds": speeds,
+        # The caller passes only non-default options; keep explicit falsy values
+        # (seed 0, postprocess off) — they are settings, not absences.
+        "options": {str(k): v for k, v in (options or {}).items() if v is not None},
+        "chapter_titles": titles,
+    }

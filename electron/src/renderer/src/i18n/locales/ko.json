@@ -1404,7 +1404,17 @@
     "story_voices_plural": "{{count}} 목소리",
     "audiobooks": "오디오북",
     "audiobook": "오디오북",
-    "story": "스토리"
+    "story": "스토리",
+    "render_details": "만든 방법",
+    "render_voice": "음성",
+    "render_speed": "속도",
+    "render_engine": "엔진",
+    "render_language": "언어",
+    "render_format": "형식",
+    "render_size_label": "분량",
+    "render_size": "{{chapters}}개 장 · {{lines}}줄 · {{words}}단어",
+    "render_settings": "설정",
+    "render_no_details": "세부 정보 기록이 시작되기 전에 만들어졌습니다."
   },
   "projectActions": {
     "delete": "“{{name}}”을(를) 삭제할까요? 되돌릴 수 없습니다.",

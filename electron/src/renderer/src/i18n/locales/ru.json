@@ -1408,7 +1408,17 @@
     "story_voices_plural": "{{count}} голосов",
     "audiobooks": "Аудиокниги",
     "audiobook": "Аудиокнига",
-    "story": "История"
+    "story": "История",
+    "render_details": "Как это создано",
+    "render_voice": "Голос",
+    "render_speed": "Скорость",
+    "render_engine": "Движок",
+    "render_language": "Язык",
+    "render_format": "Формат",
+    "render_size_label": "Объём",
+    "render_size": "Глав: {{chapters}} · строк: {{lines}} · слов: {{words}}",
+    "render_settings": "Настройки",
+    "render_no_details": "Создано до того, как начали сохраняться сведения."
   },
   "projectActions": {
     "delete": "Удалить «{{name}}»? Это действие нельзя отменить.",

@@ -1404,7 +1404,17 @@
     "story_voices_plural": "{{count}} stemmen",
     "audiobooks": "Audioboeken",
     "audiobook": "Audioboek",
-    "story": "Verhaal"
+    "story": "Verhaal",
+    "render_details": "Hoe het is gemaakt",
+    "render_voice": "Stem",
+    "render_speed": "Snelheid",
+    "render_engine": "Engine",
+    "render_language": "Taal",
+    "render_format": "Formaat",
+    "render_size_label": "Omvang",
+    "render_size": "{{chapters}} hoofdstukken · {{lines}} regels · {{words}} woorden",
+    "render_settings": "Instellingen",
+    "render_no_details": "Gemaakt voordat details werden vastgelegd."
   },
   "projectActions": {
     "delete": "‘{{name}}’ verwijderen? Dit kan niet ongedaan worden gemaakt.",
