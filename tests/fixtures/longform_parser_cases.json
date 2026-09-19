@@ -1166,7 +1166,8 @@
             "voice_id": "v1",
             "text": "x",
             "pause_ms_after": 0,
-            "speed": 1.15
+            "speed": 1.15,
+            "join": "continue"
           },
           {
             "voice_id": "v1",
@@ -1473,5 +1474,132 @@
     "input": "   ",
     "default_voice": "v1",
     "expected": []
+  },
+  {
+    "name": "inline_markup_marks_continuation_not_line_end",
+    "input": "He was [slow]very[/slow] tired.\nNext line. [pause 1s] After.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "He was",
+            "pause_ms_after": 0,
+            "speed": null,
+            "join": "continue"
+          },
+          {
+            "voice_id": "v1",
+            "text": "very",
+            "pause_ms_after": 0,
+            "speed": 0.85,
+            "join": "continue"
+          },
+          {
+            "voice_id": "v1",
+            "text": "tired.\nNext line.",
+            "pause_ms_after": 1000,
+            "speed": null
+          },
+          {
+            "voice_id": "v1",
+            "text": "After.",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "blank_line_on_markup_boundary_ends_the_line",
+    "input": "Intro [slow]slowly[/slow]\n\nNew paragraph.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "Intro",
+            "pause_ms_after": 0,
+            "speed": null,
+            "join": "continue"
+          },
+          {
+            "voice_id": "v1",
+            "text": "slowly",
+            "pause_ms_after": 0,
+            "speed": 0.85,
+            "join": "paragraph"
+          },
+          {
+            "voice_id": "v1",
+            "text": "New paragraph.",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "single_newline_on_markup_boundary_continues",
+    "input": "Intro [slow]slowly[/slow]\nsame paragraph.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "Intro",
+            "pause_ms_after": 0,
+            "speed": null,
+            "join": "continue"
+          },
+          {
+            "voice_id": "v1",
+            "text": "slowly",
+            "pause_ms_after": 0,
+            "speed": 0.85,
+            "join": "continue"
+          },
+          {
+            "voice_id": "v1",
+            "text": "same paragraph.",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "blank_line_inside_dropped_segment_ends_the_line",
+    "input": "One [slow] \n\n [/slow]Two.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "One",
+            "pause_ms_after": 0,
+            "speed": null,
+            "join": "paragraph"
+          },
+          {
+            "voice_id": "v1",
+            "text": "Two.",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
   }
 ]

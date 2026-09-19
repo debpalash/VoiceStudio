@@ -89,6 +89,9 @@ function parseVoiceRuns(body, defaultVoice) {
   return runs;
 }
 
+// A blank line (paragraph break) — mirrors _BLANK_LINE_RE in longform_parser.py.
+const BLANK_LINE_RE = /\n[ \t\r]*\n/;
+
 /**
  * Voice→pause→SSML layering for ONE chapter body (no chapter split). The
  * storyToSpans adapter calls this per spoken track. Mirrors Python
@@ -100,13 +103,22 @@ export function parseChapterBody(body, { defaultVoice = null, defaultSpeed = nul
     for (const [spanText, pauseMs] of parsePauseMarkers(runText)) {
       const t = (spanText || '').trim();
       if (!t && pauseMs === 0) continue;
+      // [text, speed, paragraphBreakBefore]. The whitespace BETWEEN two kept
+      // segments is tracked so a blank line sitting on a markup boundary still
+      // ends the line instead of being swallowed (py parity).
       const rendered = [];
+      let between = '';
       for (const seg of t ? parseSsmlLite(t) : []) {
-        const st = (seg.spell ? spellOut(seg.text) : seg.text).trim();
-        if (st) {
-          const sp = seg.speed != null ? seg.speed : defaultSpeed;
-          rendered.push([st, sp]);
+        const raw = seg.text;
+        const st = (seg.spell ? spellOut(raw) : raw).trim();
+        if (!st) {
+          between += raw;
+          continue;
         }
+        const sp = seg.speed != null ? seg.speed : defaultSpeed;
+        const lead = raw.slice(0, raw.length - raw.trimStart().length);
+        rendered.push([st, sp, BLANK_LINE_RE.test(between + lead)]);
+        between = raw.slice(raw.trimEnd().length);
       }
       if (!rendered.length) {
         if (pauseMs > 0) {
@@ -115,12 +127,16 @@ export function parseChapterBody(body, { defaultVoice = null, defaultSpeed = nul
         continue;
       }
       rendered.forEach(([st, sp], j) => {
-        spans.push({
+        const span = {
           voice_id: voice,
           text: st,
           pause_ms_after: j === rendered.length - 1 ? pauseMs : 0,
           speed: sp,
-        });
+        };
+        // Inline markup split one run of text: say how this span joins the next —
+        // straight on, or across a blank line. Key present only here (py parity).
+        if (j < rendered.length - 1) span.join = rendered[j + 1][2] ? 'paragraph' : 'continue';
+        spans.push(span);
       });
     }
   }

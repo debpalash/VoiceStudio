@@ -8,6 +8,10 @@ export const DEFAULT_OVERRIDES = {
   varyRepeats: false,
   emoText: '',
   emoAlpha: null,
+  // Seamless joins: null = the server default (250 ms / 350 ms / trim on).
+  lineGapMs: null,
+  paragraphGapMs: null,
+  trimEdges: null,
 };
 
 /**
@@ -32,5 +36,8 @@ export function overridesToRequest(overrides, language) {
     body.emo_text = emo;
     if (o.emoAlpha != null) body.emo_alpha = o.emoAlpha;
   }
+  if (o.lineGapMs != null) body.line_gap_ms = o.lineGapMs;
+  if (o.paragraphGapMs != null) body.paragraph_gap_ms = o.paragraphGapMs;
+  if (o.trimEdges != null) body.trim_edges = o.trimEdges;
   return body;
 }

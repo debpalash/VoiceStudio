@@ -64,6 +64,9 @@ export interface LongformOverrides {
   varyRepeats: boolean;
   emoText: string;
   emoAlpha: number | null;
+  lineGapMs: number | null;
+  paragraphGapMs: number | null;
+  trimEdges: boolean | null;
 }
 
 export const DEFAULT_OVERRIDES: LongformOverrides = {
@@ -76,6 +79,9 @@ export const DEFAULT_OVERRIDES: LongformOverrides = {
   varyRepeats: false,
   emoText: '',
   emoAlpha: null,
+  lineGapMs: null,
+  paragraphGapMs: null,
+  trimEdges: null,
 };
 
 /** A re-uploadable cover reference. localStorage can't hold the File/blob, so

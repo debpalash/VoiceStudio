@@ -471,7 +471,8 @@ class TaskExecutor:
         language = params.get("language")
         extra = {
             key: value for key, value in opts.to_manifest().items()
-            if value is not None and key not in ("seed", "vary_repeats")
+            if value is not None
+            and key not in ("seed", "vary_repeats", *ExpressiveOptions.JOIN_KEYS)
         }
         native_proxy = bool(
             getattr(backend, "supports_native_omnivoice_controls", False)
@@ -506,10 +507,13 @@ class TaskExecutor:
 
         spans = [Span(voice_id=str(i), text=row.get("text", ""),
                       pause_ms_after=int(row.get("pause_ms_after") or 0),
-                      speed=row.get("speed")) for i, row in enumerate(rows)]
+                      speed=row.get("speed"),
+                      join=row.get("join") if row.get("join") in ("continue", "paragraph") else None)
+                 for i, row in enumerate(rows)]
         sample_rate = int(getattr(backend, "sample_rate", 0) or 24_000)
         audio, _duration = synthesize_chapter(
-            spans, synth, sample_rate, lexicon=params.get("lexicon")
+            spans, synth, sample_rate, lexicon=params.get("lexicon"),
+            **opts.join_kwargs(),
         )
         return _mark(audio, sample_rate, params)
 

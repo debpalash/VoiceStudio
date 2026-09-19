@@ -83,6 +83,51 @@ def _effective_max_chars(text: str, max_chars: int) -> int:
     return max_chars
 
 
+#: Edge-silence trim defaults: engines pad each render with their own lead-in
+#: and tail (GPT-SoVITS ~70 ms / ~300 ms, others similar). Left in, every
+#: chunk or line boundary becomes a hole; trimmed, the join is decided by the
+#: deliberate gaps the caller asks for. -40 dBFS is well below speech and above
+#: the noise floor of a clean render; 40 ms keeps a natural onset/decay.
+DEFAULT_TRIM_THRESHOLD_DB = -40.0
+DEFAULT_TRIM_KEEP_MS = 40
+
+
+def trim_edge_silence(audio, sample_rate: int, *, threshold_db: float = DEFAULT_TRIM_THRESHOLD_DB,
+                      keep_ms: int = DEFAULT_TRIM_KEEP_MS):
+    """Strip near-silent lead-in and tail from one rendered chunk.
+
+    Works on the last axis of a 1-D or (channels, samples) tensor. Keeps
+    ``keep_ms`` of the quiet edge on both sides so onsets and decays are not
+    clipped. A chunk that is silent throughout is returned unchanged (its
+    caller decides what an empty render means).
+    """
+    import torch
+
+    if audio is None or audio.shape[-1] == 0:
+        return audio
+    level = audio.abs()
+    if level.dim() > 1:
+        level = level.reshape(-1, level.shape[-1]).amax(dim=0)
+    threshold = 10.0 ** (threshold_db / 20.0)
+    loud = torch.nonzero(level > threshold).flatten()
+    if loud.numel() == 0:
+        return audio
+    keep = int(sample_rate * keep_ms / 1000)
+    start = max(0, int(loud[0]) - keep)
+    end = min(audio.shape[-1], int(loud[-1]) + 1 + keep)
+    if start == 0 and end == audio.shape[-1]:
+        return audio
+    return audio[..., start:end]
+
+
+_PARAGRAPH_BREAK = re.compile(r"\n[ \t]*\n+")
+
+
+def split_paragraphs(text: str) -> List[str]:
+    """Paragraphs of *text* (blank-line separated), each stripped, empties dropped."""
+    return [p.strip() for p in _PARAGRAPH_BREAK.split(text or "") if p and p.strip()]
+
+
 def split_text_into_chunks(text: str, max_chars: int = DEFAULT_MAX_CHUNK_CHARS) -> List[str]:
     """Split *text* at natural boundaries into chunks of at most *max_chars*.
 
@@ -337,7 +382,7 @@ def report_dropped_chunks(dropped: list, total: int, texts=None, sink=None) -> N
 
 def join_rendered_chunks(rendered: list, sample_rate: int, *,
                          crossfade_ms: int = DEFAULT_CROSSFADE_MS,
-                         texts=None, sink=None):
+                         texts=None, sink=None, trim_edges: bool = False):
     """Join what a multi-chunk render produced, reporting whatever it lost.
 
     ``None`` when nothing rendered — the caller's dead-render handling owns
@@ -353,6 +398,10 @@ def join_rendered_chunks(rendered: list, sample_rate: int, *,
     dropped = [i for i, r in enumerate(rendered)
                if r is None or getattr(r, "shape", (0,))[-1] == 0]
     kept = [r for i, r in enumerate(rendered) if i not in set(dropped)]
+    if trim_edges:
+        # The engine's own lead-in/tail would otherwise become a hole at every
+        # chunk boundary; the caller adds the gaps it actually wants.
+        kept = [trim_edge_silence(r, sample_rate) for r in kept]
     if not kept:
         if dropped:
             report_dropped_chunks(dropped, len(rendered), texts, sink)

@@ -8,6 +8,9 @@ export interface Overrides {
   varyRepeats: boolean;
   emoText: string;
   emoAlpha: number | null;
+  lineGapMs: number | null;
+  paragraphGapMs: number | null;
+  trimEdges: boolean | null;
 }
 export const DEFAULT_OVERRIDES: Overrides;
 export function overridesToRequest(

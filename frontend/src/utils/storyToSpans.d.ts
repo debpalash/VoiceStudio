@@ -4,5 +4,11 @@ export function storyToSpans(
   globalSpeed?: number | null,
 ): {
   title: string;
-  spans: { voice_id: string | null; text: string; pause_ms_after: number; speed?: number | null }[];
+  spans: {
+    voice_id: string | null;
+    text: string;
+    pause_ms_after: number;
+    speed?: number | null;
+    join?: 'continue' | 'paragraph';
+  }[];
 }[];

@@ -121,8 +121,8 @@ def chapter_cache_key(
 ) -> str:
     """Deterministic content hash for a chapter's rendered audio.
 
-    ``spans`` is an ordered list of ``(voice_id, text, pause_ms_after[, speed])``
-    (speed optional, defaults to None). Same inputs → same key → reuse the
+    ``spans`` is an ordered list of ``(voice_id, text, pause_ms_after[, speed[, join]])``
+    (speed optional, defaults to None; join only where inline markup split a line). Same inputs → same key → reuse the
     cached chapter WAV on a re-run (resume); any change (text, voice, order,
     pauses, speed, sample rate, engine, or a voice's resolved signature) → new
     key → re-render. ``voice_sig`` maps each voice id to a stable signature
@@ -132,7 +132,11 @@ def chapter_cache_key(
     payload = {
         "sr": int(sample_rate),
         "engine": engine_id or "",
-        "spans": [[s[0], s[1], int(s[2]), (s[3] if len(s) > 3 else None)] for s in spans],
+        # A 5th element is the span's ``join`` ("continue"/"paragraph") — it picks
+        # the silence after the span, so it must move the key. Appended only when
+        # present: a plan without one hashes exactly as it always has.
+        "spans": [[s[0], s[1], int(s[2]), (s[3] if len(s) > 3 else None)]
+                  + ([s[4]] if len(s) > 4 and s[4] else []) for s in spans],
         "voices": {k: voice_sig[k] for k in sorted(voice_sig)} if voice_sig else {},
     }
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False)

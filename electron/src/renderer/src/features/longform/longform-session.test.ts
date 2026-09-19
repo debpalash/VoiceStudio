@@ -154,6 +154,21 @@ it('sends identical explicit production overrides to preview and full render', (
   }
 });
 
+it('seamless-join gaps reach preview and full render only once touched', () => {
+  const base = longformSession.state.drafts.audiobook;
+  for (const body of [renderBody('audiobook', base), chapterPreviewBody(base, 0)]) {
+    expect(body).not.toHaveProperty('line_gap_ms');
+    expect(body).not.toHaveProperty('trim_edges');
+  }
+  const draft = {
+    ...base,
+    overrides: { ...base.overrides, lineGapMs: 0, paragraphGapMs: 900, trimEdges: false },
+  };
+  for (const body of [renderBody('audiobook', draft), chapterPreviewBody(draft, 0)]) {
+    expect(body).toMatchObject({ line_gap_ms: 0, paragraph_gap_ms: 900, trim_edges: false });
+  }
+});
+
 it('does not recreate a cleared draft during pagehide persistence', async () => {
   editLongform('stories', { script: 'Must stay deleted' });
   localStorage.setItem('voicestudio.longform.v1', 'old');
