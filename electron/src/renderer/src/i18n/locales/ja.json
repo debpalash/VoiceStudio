@@ -67,6 +67,8 @@
     "theme": "テーマ",
     "font": "フォント",
     "ui_scale": "UIスケール",
+    "sidebar_expanded": "サイドバーを展開したままにする",
+    "sidebar_expanded_hint": "プロジェクト、文字起こし、ツールなどのワークスペースが狭いウィンドウで独自のパネルを開いても、サイドバーを細いレールに縮小しません。",
     "autoplay_preview": "自動再生プレビュー",
     "autoplay_preview_label": "レンダリングが終了したらすぐに出力を再生します",
     "back": "戻る",

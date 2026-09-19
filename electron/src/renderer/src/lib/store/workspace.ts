@@ -5,9 +5,16 @@ type Layout = {
   panel: 'voice' | 'settings' | null;
   libraryOpen: boolean;
   libraryTab: 'voices' | 'takes';
+  /** Shrink the sidebar to a rail when a workspace opens its own side panel on a narrow window. */
+  autoCollapseSidebar: boolean;
 };
 const key = 'voicestudio.workspace-layout';
-const defaults: Layout = { panel: null, libraryOpen: true, libraryTab: 'voices' };
+const defaults: Layout = {
+  panel: null,
+  libraryOpen: true,
+  libraryTab: 'voices',
+  autoCollapseSidebar: true,
+};
 function read(): Layout {
   try {
     const value = JSON.parse(localStorage.getItem(key) ?? '{}');
@@ -15,6 +22,8 @@ function read(): Layout {
       panel: value?.panel === 'voice' || value?.panel === 'settings' ? value.panel : null,
       libraryOpen: typeof value?.libraryOpen === 'boolean' ? value.libraryOpen : true,
       libraryTab: value?.libraryTab === 'takes' ? 'takes' : 'voices',
+      autoCollapseSidebar:
+        typeof value?.autoCollapseSidebar === 'boolean' ? value.autoCollapseSidebar : true,
     };
   } catch {
     return defaults;

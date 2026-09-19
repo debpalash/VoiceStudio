@@ -110,6 +110,9 @@ bun run dev
 
 See [Electron setup](electron/README.md) for prerequisites and backend configuration.
 
+Use `bun run smoke-test` to build and launch an isolated packaged Electron app.
+Add `-- --install` for the networked managed-runtime installation check.
+
 </details>
 
 > **Electron is the only maintained desktop app.** Version 0.5.3 was the final Tauri release. Existing Tauri users must [install Electron separately](docs/electron-migration.md). Root development, build, test, and release commands target Electron; Tauri source is archived and receives no further updates.

@@ -382,6 +382,8 @@
     "theme": "Theme",
     "font": "Font",
     "ui_scale": "UI scale",
+    "sidebar_expanded": "Keep sidebar expanded",
+    "sidebar_expanded_hint": "Don't shrink the sidebar to a rail when a workspace such as Projects, Transcribe or Tools opens its own panel on a narrower window.",
     "autoplay_preview": "Auto-play preview",
     "autoplay_preview_label": "Play the output as soon as a render finishes",
     "audio_tools_origin_system": "System",

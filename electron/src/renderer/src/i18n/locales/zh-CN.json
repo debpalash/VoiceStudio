@@ -67,6 +67,8 @@
     "theme": "主题",
     "font": "字体",
     "ui_scale": "UI 缩放",
+    "sidebar_expanded": "保持侧边栏展开",
+    "sidebar_expanded_hint": "当“项目”“转写”或“工具”等工作区在较窄窗口中打开自己的面板时，不将侧边栏收缩为窄栏。",
     "autoplay_preview": "自动播放预览",
     "autoplay_preview_label": "渲染完成后立即播放输出",
     "audio_tools_origin_system": "系统",

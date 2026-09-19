@@ -67,6 +67,8 @@
     "theme": "Giao diện",
     "font": "Phông chữ",
     "ui_scale": "Quy mô giao diện người dùng",
+    "sidebar_expanded": "Giữ thanh bên mở rộng",
+    "sidebar_expanded_hint": "Không thu thanh bên thành thanh hẹp khi một không gian như Dự án, Phiên âm hoặc Công cụ mở bảng riêng trong cửa sổ hẹp hơn.",
     "autoplay_preview": "Tự động phát bản xem trước",
     "autoplay_preview_label": "Phát đầu ra ngay khi kết xuất kết thúc",
     "back": "Quay lại",

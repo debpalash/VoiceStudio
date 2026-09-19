@@ -69,6 +69,8 @@
     "theme": "Tema",
     "font": "Fonte",
     "ui_scale": "Escala da IU",
+    "sidebar_expanded": "Manter a barra lateral expandida",
+    "sidebar_expanded_hint": "Não reduzir a barra lateral a uma faixa estreita quando um espaço como Projetos, Transcrever ou Ferramentas abre o próprio painel numa janela mais estreita.",
     "autoplay_preview": "Pré-visualização da reprodução automática",
     "autoplay_preview_label": "Reproduza a saída assim que a renderização terminar",
     "back": "Voltar",

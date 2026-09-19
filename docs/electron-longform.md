@@ -22,7 +22,7 @@ Stories now includes named characters with saved voice assignments, character se
 
 Stories Auto-cast accepts tagged dialogue, screenplay text and attributed prose. The shared local parser appends lines, reuses existing characters/voices, and assigns available profiles to new speakers. Distinct names that normalize to the same identifier remain separate characters. No network or LLM call is involved.
 
-Stories imports TXT, Markdown and SRT locally; EPUB/PDF still use the shared backend importer. Imported text goes into a persisted review buffer, then Auto-cast or Split into lines appends to existing work. The sentence-aware splitter is shared with Tauri and offers the same 40-2000 character limit.
+Stories imports TXT, Markdown and SRT locally; EPUB/PDF still use the shared backend importer. The EPUB importer skips marked pagination and ancillary sections such as cover, title, dedication, contents and copyright pages. Unmarked numeric paragraphs and page-break layout classes remain narration. Chapter titles prefer the EPUB 3 table of contents, then NCX labels and headings; namespace aliases and declared encodings are supported. Malformed optional navigation falls back to headings, while malformed package/container XML reports an import error. Imported text goes into a persisted review buffer, then Auto-cast or Split into lines appends to existing work. The sentence-aware splitter is shared with Tauri and offers the same 40-2000 character limit.
 
 The Electron workspace keeps title, default voice, language and output format together in a fixed setup card. Advanced cast, project, production and book controls use separate collapsed cards. The editor keeps its full working width; an empty Story shows one Add First Line action, while an empty Audiobook shows the supported chapter and voice markup directly in the script field.
 
@@ -33,6 +33,12 @@ The optional Stories Stems section renders one WAV per character with the shared
 EPUB chapters honor byte-order marks and XML/HTML encoding declarations, including
 legacy Latin and CJK encodings. Unsupported or invalid declarations use the shared
 text-import fallback so one bad declaration does not abort the book.
+
+EPUB decompression limits include required metadata as well as navigation and chapter content. A navigation document without a navigation element falls back to chapter headings.
+
+### Long-script layout
+
+The Stories editor grows with the manuscript inside the page scroll container. Long scripts push generation progress and Generate/Stop controls below their content, so lines do not paint over those controls during rendering.
 
 ### Clear a script
 

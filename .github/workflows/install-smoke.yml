@@ -3,7 +3,7 @@
 #
 # Gated by `paths` because a cold run downloads multi-GB wheels (torch) and
 # takes ~15-30 min per OS; it only needs to fire when an installer or this
-# workflow changes. The heavy Tauri bundles stay in release.yml (tag push).
+# workflow changes. Desktop packaging is owned by Electron workflows.
 
 name: Install smoke
 

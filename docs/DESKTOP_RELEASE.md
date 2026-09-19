@@ -1,5 +1,8 @@
 # Desktop release plan — VoiceStudio
 
+> **Archived Tauri plan.** Electron is the only maintained desktop app. Follow
+> [RELEASING.md](RELEASING.md) for current builds and publication.
+
 A shippable macOS (and eventually cross-platform) desktop release where the user drags the `.app` to `Applications`, double-clicks once, and does **everything else from the UI** — dependency runtime, model weights, first-run consent, all inside the app.
 
 Stack: Tauri v2 + FastAPI sidecar + PyInstaller. Target: ~500 MB signed + notarized arm64 DMG, with matching Windows `.msi`/`.nsis` later. Large optional payloads (CUDA libs, extra model packs) ship as separate lazy-download tarballs, not in the base DMG.

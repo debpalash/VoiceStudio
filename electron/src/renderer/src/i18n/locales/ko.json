@@ -67,6 +67,8 @@
     "theme": "테마",
     "font": "글꼴",
     "ui_scale": "UI 배율",
+    "sidebar_expanded": "사이드바를 펼친 상태로 유지",
+    "sidebar_expanded_hint": "프로젝트, 받아쓰기, 도구 같은 작업 공간이 좁은 창에서 자체 패널을 열어도 사이드바를 좁은 레일로 줄이지 않습니다.",
     "autoplay_preview": "자동재생 미리보기",
     "autoplay_preview_label": "렌더링이 완료되자마자 출력 재생",
     "audio_tools_origin_system": "시스템",

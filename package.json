@@ -19,7 +19,7 @@
     "check:electron": "bun run --cwd electron typecheck && bun run --cwd electron test && bun run --cwd electron build && node electron/tests/packaging-contract.mjs",
     "start": "bun run --cwd electron start",
     "test:frontend": "node --test tests/frontend/*.test.mjs",
-    "smoke-test": "bun run check:electron",
+    "smoke-test": "node scripts/electron-smoke-test.mjs",
     "deps:check": "taze -r --maturity-period 7",
     "dev:web": "bun run setup:api && concurrently -n api,fe -c green,cyan --kill-others-on-fail \"bun run dev:api\" \"bun run dev:frontend\"",
     "predev:web": "bun install && bun scripts/clear-dev-ports.mjs 3900 3901",

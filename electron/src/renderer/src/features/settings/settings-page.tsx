@@ -22,6 +22,7 @@ import { runRendererTask } from '@/lib/global-error-recovery';
 import {
   ArrowLeftIcon,
   ExternalLinkIcon,
+  SettingsIcon,
   WifiIcon,
   Share2Icon,
   CpuIcon,
@@ -65,18 +66,18 @@ import {
 import { PalettePicker } from './palette-picker';
 import { useTheme } from '@/hooks/use-theme';
 import { appearanceScales, useAppearance } from '@/hooks/use-appearance';
-import { brandIcon } from '@/lib/brand';
 import { isMac } from '@/components/bridge';
 import { cn } from '@/lib/utils';
 import { SettingsContent, SettingsRow, SettingsSection } from './settings-layout';
 import i18n, { APP_LANGUAGES, setAppLanguage, type AppLocale } from '@/i18n';
 import { setReviewMode, useReviewMode } from '@/hooks/use-review-mode';
 import { rememberSettingsRoute } from '@/lib/settings-route';
+import { setWorkspace, useWorkspace } from '@/lib/store/workspace';
 
 const sections = ['general', 'appearance'] as const;
 const fields = {
   general: ['language', 'review_mode'],
-  appearance: ['theme', 'font', 'ui_scale', 'glass'],
+  appearance: ['theme', 'font', 'ui_scale', 'glass', 'sidebar_expanded'],
 };
 
 const fieldKey = (key: string) =>
@@ -261,12 +262,14 @@ export function SettingsPage() {
   }, [pathname, target]);
   const { mode, setTheme, updateTheme } = useTheme();
   const appearance = useAppearance();
+  const workspace = useWorkspace();
   const reviewMode = useReviewMode();
   const targetIds: Record<string, string> = {
     theme: 'theme-label',
     font: 'font-label',
     ui_scale: 'scale-label',
     glass: 'glass-label',
+    sidebar_expanded: 'sidebar-expanded-label',
     language: 'language-label',
     review_mode: 'review-mode-label',
   };
@@ -284,17 +287,14 @@ export function SettingsPage() {
   return (
     <div className="flex h-full min-h-0">
       <aside className="flex w-[clamp(11rem,20vw,17rem)] shrink-0 flex-col border-r border-sidebar-border/50 bg-sidebar text-sidebar-foreground shadow-[inset_-1px_0_0_color-mix(in_oklab,var(--foreground)_2%,transparent)]">
-        <header
-          className={cn(
-            'workspace-titlebar flex h-12 shrink-0 items-center gap-2.5 border-b border-sidebar-border/45 bg-background/25 px-3.5 backdrop-blur-xl',
-            isMac() && 'pl-20',
-          )}
-        >
-          <span className="grid size-7 shrink-0 place-items-center rounded-lg border border-sidebar-border/45 bg-background/45 shadow-[inset_0_1px_0_rgb(255_255_255/7%)]">
-            <img src={brandIcon} alt="" className="size-5" />
+        <header className="workspace-titlebar flex h-12 shrink-0 items-center gap-2.5 border-b border-sidebar-border/45 bg-background/25 px-3.5 backdrop-blur-xl">
+          {/* The brand and window controls live in the main sidebar to the
+              left; this column is the Settings section list. */}
+          <span className="grid size-7 shrink-0 place-items-center rounded-lg border border-sidebar-border/45 bg-background/45 text-primary shadow-[inset_0_1px_0_rgb(255_255_255/7%)]">
+            <SettingsIcon aria-hidden="true" className="size-4" />
           </span>
           <span className="truncate text-sm font-semibold tracking-[-0.014em]">
-            {t('app.name')}
+            {t('nav.settings')}
           </span>
         </header>
         <div className="studio-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain p-3 [scrollbar-gutter:stable]">
@@ -365,9 +365,7 @@ export function SettingsPage() {
                         runRendererTask('Open settings search result', () =>
                           navigate({
                             to:
-                              item === 'appearance'
-                                ? '/settings/appearance'
-                                : '/settings/general',
+                              item === 'appearance' ? '/settings/appearance' : '/settings/general',
                           }),
                         );
                       }}
@@ -618,6 +616,17 @@ export function SettingsPage() {
                       aria-labelledby="glass-label"
                       checked={appearance.glass}
                       onCheckedChange={(glass) => appearance.update({ glass })}
+                    />
+                  </SettingsRow>
+                  <SettingsRow
+                    id="sidebar-expanded-label"
+                    title={t('preferences.sidebar_expanded')}
+                    description={t('preferences.sidebar_expanded_hint')}
+                  >
+                    <Switch
+                      aria-labelledby="sidebar-expanded-label"
+                      checked={!workspace.autoCollapseSidebar}
+                      onCheckedChange={(keep) => setWorkspace({ autoCollapseSidebar: !keep })}
                     />
                   </SettingsRow>
                   <PalettePicker appearance="light" />

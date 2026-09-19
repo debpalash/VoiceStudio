@@ -28,20 +28,17 @@ Read it before opening a proposal; the licence check in particular ends most of 
 - [Bun](https://bun.sh/) (frontend package manager)
 - [uv](https://docs.astral.sh/uv/) (Python environment manager)
 - [ffmpeg](https://ffmpeg.org/) (audio/video processing)
-- [Rust / Cargo](https://rustup.rs/) (desktop shell only)
+- [Rust / Cargo](https://rustup.rs/) (`native/desktop-bridge` and its imported Rust modules)
 - Python 3.10+ (managed automatically by `uv`)
 
-Linux desktop development also needs WebKitGTK/GTK development libraries. On
-Debian or Ubuntu, install the same packages used by CI:
+Linux desktop development needs the native helper libraries. On Debian or
+Ubuntu, install the same packages used by CI:
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
-  libwebkit2gtk-4.1-dev libgtk-3-dev libpango1.0-dev libcairo2-dev \
-  libsoup-3.0-dev libgdk-pixbuf-2.0-dev \
-  libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev \
-  gstreamer1.0-plugins-good \
-  libasound2-dev build-essential curl wget file
+  libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev \
+  libwayland-dev libssl-dev pkg-config build-essential curl
 ```
 
 See the [Linux source-build guide](../docs/install/linux.md#building-from-source)
@@ -63,6 +60,7 @@ and startup; do not launch a second backend. See [Electron setup](../electron/RE
 bun run build       # build Electron
 bun run start       # launch the built Electron app
 bun run dist        # package locally without publishing
+bun run smoke-test  # packaged Electron + managed backend readiness
 bun run dev:web     # legacy browser UI + backend
 ```
 
@@ -139,7 +137,7 @@ Open an [issue](https://github.com/debpalash/VoiceStudio/issues/new) with:
    uv run pytest backend/ -x -q
 
    # Frontend build check
-   cd frontend && npx vite build --mode development
+   bun run check:electron
    ```
 4. **Write a clear PR title** — it becomes the squash-merge commit message
 5. **Don't include** local machine stats, file paths, or private system info in PR descriptions

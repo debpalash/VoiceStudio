@@ -71,7 +71,7 @@ def test_archived_tauri_has_no_root_package_entry_points():
     assert tauri_entries == [], f"archived Tauri commands remain active: {tauri_entries}"
     assert scripts["dev"] == "bun run --cwd electron dev"
     assert scripts["build"] == "bun run --cwd electron build"
-    assert scripts["smoke-test"] == "bun run check:electron"
+    assert scripts["smoke-test"] == "node scripts/electron-smoke-test.mjs"
 
 
 def test_skip_build_does_not_imply_keep_data_in_the_script():
