@@ -1544,6 +1544,16 @@
     "preview_plan": "Aperçu du plan",
     "stop": "Arrêter",
     "stopped_note": "Arrêté — les chapitres terminés sont en cache ; relancez Créer pour reprendre.",
+    "blocked": {
+      "busy": "Un autre livre est déjà en cours de rendu. Attendez-le ou arrêtez-le d'abord.",
+      "importing": "Import en cours… Générer sera disponible ensuite.",
+      "engine_loading": "Vérification du moteur vocal…",
+      "engine": "Le moteur vocal n'est pas prêt. Vérifiez Réglages → Moteurs.",
+      "no_lines": "Ajoutez au moins une ligne parlée pour générer.",
+      "no_script": "Écrivez ou importez un script pour générer.",
+      "voice": "Choisissez une voix par défaut ou attribuez une voix à chaque ligne.",
+      "lexicon": "Un mot de prononciation figure deux fois. Supprimez le doublon pour générer."
+    },
     "recovery_title": "Livre audio interrompu",
     "recovery_progress": "{{done}} chapitres sur {{total}} sont mis en cache",
     "recovery_hint": "Reprendre réutilise les chapitres terminés et ne synthétise que ce qui reste.",

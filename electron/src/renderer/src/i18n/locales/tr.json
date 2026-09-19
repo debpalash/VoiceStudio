@@ -1542,6 +1542,16 @@
     "preview_plan": "Önizleme planı",
     "stop": "Durdur",
     "stopped_note": "Durduruldu — tamamlanan bölümler önbellekte; devam etmek için tekrar Oluştur'a basın.",
+    "blocked": {
+      "busy": "Başka bir kitap zaten işleniyor. Bitmesini bekleyin veya önce durdurun.",
+      "importing": "İçe aktarılıyor… Bitince Oluştur açılır.",
+      "engine_loading": "Ses motoru denetleniyor…",
+      "engine": "Ses motoru hazır değil. Ayarlar → Motorlar bölümünü denetleyin.",
+      "no_lines": "Oluşturmak için en az bir konuşma satırı ekleyin.",
+      "no_script": "Oluşturmak için bir metin yazın veya içe aktarın.",
+      "voice": "Varsayılan bir ses seçin veya her satıra bir ses verin.",
+      "lexicon": "Bir telaffuz sözcüğü iki kez listelenmiş. Oluşturmak için yineleneni kaldırın."
+    },
     "recovery_title": "Kesintiye uğrayan sesli kitap",
     "recovery_progress": "{{total}} bölümün {{done}} tanesi önbelleğe alındı",
     "recovery_hint": "Devam et, tamamlanan bölümleri yeniden kullanır ve yalnızca kalanı sentezler.",

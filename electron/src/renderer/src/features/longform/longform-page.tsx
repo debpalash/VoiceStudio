@@ -40,7 +40,8 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { WaveformPlayer } from '@/components/waveform-player';
 import { SyncedAudiobookPlayer } from './synced-audiobook-player';
-import { GenerationProgress } from './generation-progress';
+import { GeneratePanel } from './generate-panel';
+import { generateBlocker } from './generate-blocker';
 import { EngineNotice } from '@/components/engine-notice';
 import { ValidationWarnings, type ScriptWarning } from './validation-warnings';
 import { getBridge } from '@/components/bridge';
@@ -119,6 +120,25 @@ export function LongformPage({ mode }: { mode: Mode }) {
         : [],
     [draft.script, draft.voiceCast, mode, profiles],
   );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const blocker = generateBlocker({
+    mode,
+    busyElsewhere: Boolean(session.active) && session.active !== mode,
+    importing,
+    tts: ttsBlocker,
+    usable,
+    voicesReady,
+    duplicateLexicon: duplicateWords(draft.lexicon),
+  });
+  const generatePanel = (
+    <GeneratePanel
+      mode={mode}
+      session={session}
+      blocker={blocker}
+      onGenerate={() => void renderLongform(mode)}
+      onStop={stopLongform}
+    />
+  );
   const importFile = async (file: File) => {
     setImporting(true);
     setLocalError(null);
@@ -180,6 +200,8 @@ export function LongformPage({ mode }: { mode: Mode }) {
           icon={mode === 'stories' ? AudioLinesIcon : BookOpenTextIcon}
           size="wide"
           variant="controls"
+          footer={generatePanel}
+          onCollapsedChange={setSidebarCollapsed}
           className="space-y-3 [&>details]:rounded-xl [&>details]:border [&>details]:border-border/60 [&>details]:bg-muted/20 [&>details]:p-3 [&>section]:rounded-xl [&>section]:border [&>section]:border-border/60 [&>section]:bg-muted/20 [&>section]:p-3"
         >
           <div className="space-y-4 rounded-xl border border-border/60 bg-muted/20 p-3">
@@ -433,55 +455,12 @@ export function LongformPage({ mode }: { mode: Mode }) {
                 </Link>
               </div>
             )}
-            {session.failed > 0 && (
-              <p role="status" className="text-sm text-muted-foreground">
-                {t('audiobook.failed_note', { count: session.failed })}
-              </p>
+            {sidebarCollapsed && (
+              // The setup pane is collapsed: keep Generate and the tracker in reach.
+              <div className="sticky bottom-0 z-10 -mx-2 shrink-0 rounded-xl border border-border/60 bg-background/90 p-3 backdrop-blur-xl">
+                {generatePanel}
+              </div>
             )}
-            {session.stopped && !session.active && (
-              <p role="status" className="text-sm text-muted-foreground">
-                {t('audiobook.stopped_note')}
-              </p>
-            )}
-            {session.active === mode && session.stage !== 'starting' && (
-              <GenerationProgress
-                chapters={session.chapters}
-                assembling={session.stage === 'assembling'}
-              />
-            )}
-            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border/50 pt-4">
-              <p role="status" className="text-sm text-muted-foreground">
-                {session.active === mode
-                  ? session.stage === 'assembling'
-                    ? t('audiobook.assembling')
-                    : session.stage === 'starting'
-                      ? t('common.loading')
-                      : t('audiobook.progress_summary', {
-                          current: Math.min(session.completed + 1, session.total),
-                          total: session.total,
-                        })
-                  : ''}
-              </p>
-              {session.active === mode ? (
-                <Button variant="outline" onClick={stopLongform}>
-                  {t('common.stop')}
-                </Button>
-              ) : (
-                <Button
-                  className="min-w-44"
-                  disabled={
-                    locked ||
-                    ttsBlocker !== null ||
-                    !usable ||
-                    !voicesReady ||
-                    (mode === 'audiobook' && duplicateWords(draft.lexicon))
-                  }
-                  onClick={() => void renderLongform(mode)}
-                >
-                  {t(mode === 'stories' ? 'stories.generateAll' : 'audiobook.create')}
-                </Button>
-              )}
-            </div>
             {draft.output && (
               <section className="shrink-0 space-y-3 border-t border-border/50 pt-4">
                 <div className="flex items-center justify-between">

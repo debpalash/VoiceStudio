@@ -1542,6 +1542,16 @@
     "preview_plan": "Vorschauplan",
     "stop": "Stopp",
     "stopped_note": "Gestoppt — fertige Kapitel sind zwischengespeichert; erneut „Erstellen“ zum Fortsetzen.",
+    "blocked": {
+      "busy": "Ein anderes Buch wird bereits gerendert. Warten Sie oder stoppen Sie es zuerst.",
+      "importing": "Import läuft … Generieren wird danach freigegeben.",
+      "engine_loading": "Sprach-Engine wird geprüft …",
+      "engine": "Die Sprach-Engine ist nicht bereit. Prüfen Sie Einstellungen → Engines.",
+      "no_lines": "Fügen Sie mindestens eine gesprochene Zeile hinzu.",
+      "no_script": "Schreiben oder importieren Sie ein Skript.",
+      "voice": "Wählen Sie eine Standardstimme oder geben Sie jeder Zeile eine Stimme.",
+      "lexicon": "Ein Aussprachewort ist doppelt eingetragen. Entfernen Sie das Duplikat."
+    },
     "recovery_title": "Unterbrochenes Hörbuch",
     "recovery_progress": "{{done}} von {{total}} Kapiteln sind zwischengespeichert",
     "recovery_hint": "Beim Fortsetzen werden fertige Kapitel wiederverwendet und nur der Rest erzeugt.",

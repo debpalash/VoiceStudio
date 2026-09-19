@@ -1544,6 +1544,16 @@
     "preview_plan": "Vista previa del plan",
     "stop": "Detener",
     "stopped_note": "Detenido — los capítulos terminados están en caché; pulsa Crear de nuevo para continuar.",
+    "blocked": {
+      "busy": "Ya se está generando otro libro. Espera o detenlo primero.",
+      "importing": "Importando… Generar se desbloquea al terminar.",
+      "engine_loading": "Comprobando el motor de voz…",
+      "engine": "El motor de voz no está listo. Revisa Ajustes → Motores.",
+      "no_lines": "Añade al menos una línea hablada para generar.",
+      "no_script": "Escribe o importa un guion para generar.",
+      "voice": "Elige una voz predeterminada o asigna una voz a cada línea.",
+      "lexicon": "Una palabra de pronunciación está repetida. Elimina el duplicado para generar."
+    },
     "recovery_title": "Audiolibro interrumpido",
     "recovery_progress": "{{done}} de {{total}} capítulos están en caché",
     "recovery_hint": "Al reanudar se reutilizan los capítulos terminados y solo se sintetiza lo que falta.",

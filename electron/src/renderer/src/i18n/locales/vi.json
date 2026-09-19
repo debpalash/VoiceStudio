@@ -1542,6 +1542,16 @@
     "preview_plan": "Xem trước kế hoạch",
     "stop": "Dừng",
     "stopped_note": "Đã dừng — các chương đã xong được lưu trong bộ nhớ đệm; nhấn Tạo lại để tiếp tục.",
+    "blocked": {
+      "busy": "Một cuốn sách khác đang được kết xuất. Hãy chờ hoặc dừng nó trước.",
+      "importing": "Đang nhập… Tạo sẽ mở khi hoàn tất.",
+      "engine_loading": "Đang kiểm tra engine giọng nói…",
+      "engine": "Engine giọng nói chưa sẵn sàng. Kiểm tra Cài đặt → Engine.",
+      "no_lines": "Thêm ít nhất một dòng thoại để tạo.",
+      "no_script": "Viết hoặc nhập kịch bản để tạo.",
+      "voice": "Chọn giọng mặc định hoặc gán giọng cho từng dòng.",
+      "lexicon": "Một từ phát âm bị liệt kê hai lần. Xóa mục trùng để tạo."
+    },
     "recovery_title": "Sách nói bị gián đoạn",
     "recovery_progress": "Đã lưu đệm {{done}} trong số {{total}} chương",
     "recovery_hint": "Tiếp tục sẽ dùng lại các chương đã hoàn thành và chỉ tổng hợp phần còn lại.",

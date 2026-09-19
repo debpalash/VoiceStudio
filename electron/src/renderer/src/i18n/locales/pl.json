@@ -1546,6 +1546,16 @@
     "preview_plan": "Podgląd planu",
     "stop": "Zatrzymaj",
     "stopped_note": "Zatrzymano — ukończone rozdziały są w pamięci podręcznej; kliknij Utwórz ponownie, aby wznowić.",
+    "blocked": {
+      "busy": "Inna książka jest już renderowana. Poczekaj lub najpierw ją zatrzymaj.",
+      "importing": "Importowanie… Generowanie odblokuje się po zakończeniu.",
+      "engine_loading": "Sprawdzanie silnika głosu…",
+      "engine": "Silnik głosu nie jest gotowy. Sprawdź Ustawienia → Silniki.",
+      "no_lines": "Dodaj co najmniej jeden mówiony wiersz, aby generować.",
+      "no_script": "Napisz lub zaimportuj skrypt, aby generować.",
+      "voice": "Wybierz głos domyślny lub przypisz głos do każdego wiersza.",
+      "lexicon": "Słowo wymowy występuje dwa razy. Usuń duplikat, aby generować."
+    },
     "recovery_title": "Przerwana książka audio",
     "recovery_progress": "{{done}} z {{total}} rozdziałów jest w pamięci podręcznej",
     "recovery_hint": "Wznowienie wykorzystuje ukończone rozdziały i syntezuje tylko to, co pozostało.",

@@ -1640,6 +1640,16 @@
     "assembling": "Assembling the audiobook…",
     "stop": "Stop",
     "stopped_note": "Stopped — finished chapters are cached; Create again to resume.",
+    "blocked": {
+      "busy": "Another book is already rendering. Wait for it, or stop it first.",
+      "importing": "Importing… Generate unlocks when it finishes.",
+      "engine_loading": "Checking the voice engine…",
+      "engine": "The voice engine is not ready. Check Settings → Engines.",
+      "no_lines": "Add at least one spoken line to generate.",
+      "no_script": "Write or import a script to generate.",
+      "voice": "Choose a default voice, or give every line a voice.",
+      "lexicon": "A pronunciation word is listed twice. Remove the duplicate to generate."
+    },
     "recovery_title": "Interrupted audiobook",
     "recovery_progress": "{{done}} of {{total}} chapters are cached",
     "recovery_hint": "Resume reuses finished chapters and synthesizes only what remains.",

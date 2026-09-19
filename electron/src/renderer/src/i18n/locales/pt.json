@@ -1544,6 +1544,16 @@
     "preview_plan": "Plano de visualização",
     "stop": "Parar",
     "stopped_note": "Parado — os capítulos concluídos estão em cache; clique em Criar novamente para retomar.",
+    "blocked": {
+      "busy": "Outro livro já está sendo renderizado. Aguarde ou interrompa-o primeiro.",
+      "importing": "Importando… Gerar será liberado ao terminar.",
+      "engine_loading": "Verificando o motor de voz…",
+      "engine": "O motor de voz não está pronto. Verifique Configurações → Motores.",
+      "no_lines": "Adicione pelo menos uma linha falada para gerar.",
+      "no_script": "Escreva ou importe um roteiro para gerar.",
+      "voice": "Escolha uma voz padrão ou dê uma voz a cada linha.",
+      "lexicon": "Uma palavra de pronúncia está listada duas vezes. Remova a duplicata para gerar."
+    },
     "recovery_title": "Audiolivro interrompido",
     "recovery_progress": "{{done}} de {{total}} capítulos estão em cache",
     "recovery_hint": "Retomar reutiliza os capítulos concluídos e sintetiza apenas o que falta.",

@@ -1544,6 +1544,16 @@
     "preview_plan": "Piano in anteprima",
     "stop": "Ferma",
     "stopped_note": "Interrotto — i capitoli completati sono in cache; premi di nuovo Crea per riprendere.",
+    "blocked": {
+      "busy": "Un altro libro è già in fase di rendering. Attendi o fermalo prima.",
+      "importing": "Importazione in corso… Genera si sblocca al termine.",
+      "engine_loading": "Verifica del motore vocale…",
+      "engine": "Il motore vocale non è pronto. Controlla Impostazioni → Motori.",
+      "no_lines": "Aggiungi almeno una riga parlata per generare.",
+      "no_script": "Scrivi o importa un copione per generare.",
+      "voice": "Scegli una voce predefinita o assegna una voce a ogni riga.",
+      "lexicon": "Una parola di pronuncia è elencata due volte. Rimuovi il duplicato per generare."
+    },
     "recovery_title": "Audiolibro interrotto",
     "recovery_progress": "{{done}} capitoli su {{total}} sono nella cache",
     "recovery_hint": "La ripresa riutilizza i capitoli completati e sintetizza solo ciò che resta.",

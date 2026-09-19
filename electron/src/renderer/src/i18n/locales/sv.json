@@ -1542,6 +1542,16 @@
     "preview_plan": "Förhandsgranska plan",
     "stop": "Stoppa",
     "stopped_note": "Stoppad — färdiga kapitel är cachade; klicka på Skapa igen för att fortsätta.",
+    "blocked": {
+      "busy": "En annan bok renderas redan. Vänta på den eller stoppa den först.",
+      "importing": "Importerar… Generera låses upp när det är klart.",
+      "engine_loading": "Kontrollerar röstmotorn…",
+      "engine": "Röstmotorn är inte redo. Kontrollera Inställningar → Motorer.",
+      "no_lines": "Lägg till minst en talad rad för att generera.",
+      "no_script": "Skriv eller importera ett manus för att generera.",
+      "voice": "Välj en standardröst eller ge varje rad en röst.",
+      "lexicon": "Ett uttalsord finns med två gånger. Ta bort dubbletten för att generera."
+    },
     "recovery_title": "Avbruten ljudbok",
     "recovery_progress": "{{done}} av {{total}} kapitel är cachade",
     "recovery_hint": "Fortsätt återanvänder färdiga kapitel och syntetiserar bara det som återstår.",

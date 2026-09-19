@@ -1542,6 +1542,16 @@
     "preview_plan": "Voorbeeldplan",
     "stop": "Stoppen",
     "stopped_note": "Gestopt — voltooide hoofdstukken staan in de cache; klik opnieuw op Maken om te hervatten.",
+    "blocked": {
+      "busy": "Er wordt al een ander boek gerenderd. Wacht daarop of stop het eerst.",
+      "importing": "Bezig met importeren… Genereren komt daarna beschikbaar.",
+      "engine_loading": "Spraakengine wordt gecontroleerd…",
+      "engine": "De spraakengine is niet gereed. Controleer Instellingen → Engines.",
+      "no_lines": "Voeg minstens één gesproken regel toe om te genereren.",
+      "no_script": "Schrijf of importeer een script om te genereren.",
+      "voice": "Kies een standaardstem of geef elke regel een stem.",
+      "lexicon": "Een uitspraakwoord staat er dubbel in. Verwijder het duplicaat om te genereren."
+    },
     "recovery_title": "Onderbroken luisterboek",
     "recovery_progress": "{{done}} van {{total}} hoofdstukken zijn gecachet",
     "recovery_hint": "Hervatten gebruikt voltooide hoofdstukken opnieuw en synthetiseert alleen wat resteert.",

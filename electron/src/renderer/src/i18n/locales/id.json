@@ -1542,6 +1542,16 @@
     "preview_plan": "Rencana pratinjau",
     "stop": "Hentikan",
     "stopped_note": "Dihentikan — bab yang selesai tersimpan di cache; tekan Buat lagi untuk melanjutkan.",
+    "blocked": {
+      "busy": "Buku lain sedang dirender. Tunggu atau hentikan dulu.",
+      "importing": "Mengimpor… Buat akan tersedia setelah selesai.",
+      "engine_loading": "Memeriksa mesin suara…",
+      "engine": "Mesin suara belum siap. Periksa Pengaturan → Mesin.",
+      "no_lines": "Tambahkan setidaknya satu baris ucapan untuk membuat.",
+      "no_script": "Tulis atau impor naskah untuk membuat.",
+      "voice": "Pilih suara bawaan atau beri setiap baris sebuah suara.",
+      "lexicon": "Satu kata pelafalan tercantum dua kali. Hapus duplikatnya untuk membuat."
+    },
     "recovery_title": "Buku audio terputus",
     "recovery_progress": "{{done}} dari {{total}} bab telah di-cache",
     "recovery_hint": "Lanjutkan menggunakan kembali bab yang selesai dan hanya menyintesis sisanya.",
