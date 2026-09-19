@@ -1,6 +1,9 @@
 import { expect, it } from 'vitest';
 import { importToText } from '../../../../../../frontend/src/utils/importStory';
-import { splitIntoChunks } from '../../../../../../frontend/src/utils/splitStoryText';
+import {
+  splitIntoChunks,
+  splitStoryText,
+} from '../../../../../../frontend/src/utils/splitStoryText';
 it('removes SRT metadata and retains spoken lines', () => {
   expect(
     importToText(
@@ -15,6 +18,28 @@ it('splits locally with bounded chunks and stable text order', () => {
   expect(chunks.every((chunk) => chunk.length <= 40)).toBe(true);
   expect(chunks.join(' ')).toBe(text);
   expect(splitIntoChunks('', 500)).toEqual([]);
+});
+it('split presets give one line per paragraph or per chapter, headings kept separate', () => {
+  const book = '# One\nFirst para.\n\nSecond para.\n# Two\nLast.';
+  expect(splitStoryText(book, 'paragraphs')).toEqual([
+    '# One',
+    'First para.',
+    'Second para.',
+    '# Two',
+    'Last.',
+  ]);
+  expect(splitStoryText(book, 'chapters')).toEqual([
+    '# One',
+    'First para.\n\nSecond para.',
+    '# Two',
+    'Last.',
+  ]);
+  expect(splitStoryText(book, 'sentences', 500)).toEqual([
+    '# One',
+    'First para.\n\nSecond para.',
+    '# Two',
+    'Last.',
+  ]);
 });
 
 it('decodes a UTF-16 manuscript before extracting subtitle speech', async () => {

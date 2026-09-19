@@ -2,7 +2,12 @@ import { StoryStems } from './story-stems';
 import { WaveformPlayer } from '@/components/waveform-player';
 import { previewStoryLine } from './story-preview';
 import { storyVoicesReady } from './story-inputs';
-import { splitIntoChunks } from '../../../../../../frontend/src/utils/splitStoryText';
+import {
+  DEFAULT_SPLIT_MODE,
+  SPLIT_MODES,
+  splitStoryText,
+  type SplitMode,
+} from '../../../../../../frontend/src/utils/splitStoryText';
 import { useEffect, useRef, useState } from 'react';
 import { buildAutoCast } from '../../../../../../frontend/src/utils/autoCast';
 import {
@@ -32,6 +37,13 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { describeError } from '@/lib/api/client';
 import { reorder } from '../../../../../../frontend/src/utils/storyReorder';
@@ -227,6 +239,8 @@ export function StoryEditor({
   };
   const script = draft.importText;
   const setScript = (importText: string) => onChange({ importText });
+  const [splitMode, setSplitMode] = useState<SplitMode>(DEFAULT_SPLIT_MODE);
+  // Electron's Sentences preset keeps its established 500-char ceiling.
   const [maximum, setMaximum] = useState(500);
   const [inputOpen, setInputOpen] = useState(Boolean(script));
   useEffect(() => {
@@ -353,7 +367,7 @@ export function StoryEditor({
               variant="ghost"
               disabled={disabled || !script.trim()}
               onClick={() => {
-                const parts = splitIntoChunks(script, maximum);
+                const parts = splitStoryText(script, splitMode, maximum);
                 onChange({
                   lines: [
                     ...draft.lines,
@@ -371,21 +385,43 @@ export function StoryEditor({
               {t('stories.splitIntoTracks')}
             </Button>
             <label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-              {t('stories.maxChars')}
-              <Input
-                type="number"
-                min="40"
-                max="2000"
-                step="10"
-                className="h-8 w-20"
+              {t('stories.splitMode')}
+              <Select
+                value={splitMode}
                 disabled={disabled}
-                value={maximum}
-                onChange={(e) =>
-                  setMaximum(Math.max(40, Math.min(2000, Number(e.target.value) || 40)))
-                }
-              />
+                onValueChange={(value) => setSplitMode(value as SplitMode)}
+              >
+                <SelectTrigger aria-label={t('stories.splitMode')} className="h-8 min-w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="end">
+                  {SPLIT_MODES.map((mode) => (
+                    <SelectItem key={mode} value={mode}>
+                      {t(`stories.split_${mode}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
+            {splitMode === 'sentences' && (
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                {t('stories.maxChars')}
+                <Input
+                  type="number"
+                  min="40"
+                  max="2000"
+                  step="10"
+                  className="h-8 w-20"
+                  disabled={disabled}
+                  value={maximum}
+                  onChange={(e) =>
+                    setMaximum(Math.max(40, Math.min(2000, Number(e.target.value) || 40)))
+                  }
+                />
+              </label>
+            )}
           </div>
+          <p className="text-xs text-muted-foreground">{t('stories.splitModeHint')}</p>
           {notice && (
             <p role="status" className="text-xs text-muted-foreground">
               {notice}

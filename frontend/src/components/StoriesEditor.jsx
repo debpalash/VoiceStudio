@@ -56,6 +56,12 @@ import {
 } from '../utils/storyTokens';
 import { parseScript } from '../utils/parseScript';
 import { importToText } from '../utils/importStory';
+import {
+  DEFAULT_SPLIT_MODE,
+  DEFAULT_SPLIT_MAX,
+  SPLIT_MODES,
+  splitStoryText,
+} from '../utils/splitStoryText';
 import { readTextFile } from '../utils/readTextFile';
 import { generateSpeech, audioUrl } from '../api/generate';
 import { playBlobAudio } from '../utils/media';
@@ -107,46 +113,6 @@ function download(blob, filename) {
 // it must stay a chapter while the user edits the title — otherwise clearing the
 // text would flip the bar back into a voiced line card mid-edit.
 const isChapterText = (s) => /^\s*#{1,6}(\s|$)/.test(s || '');
-
-// Sentence-aware splitter for the "Paste & auto-split" panel. Walks the text
-// and breaks at the closest sentence boundary that keeps each chunk under
-// `maxChars`. Falls back to whitespace, then to the hard cap.
-function splitIntoChunks(text, maxChars) {
-  const out = [];
-  const clean = String(text || '')
-    .replace(/\r\n/g, '\n')
-    .trim();
-  if (!clean) return out;
-  const max = Math.max(40, Math.min(2000, maxChars | 0));
-  let i = 0;
-  while (i < clean.length) {
-    const remain = clean.length - i;
-    if (remain <= max) {
-      out.push(clean.slice(i).trim());
-      break;
-    }
-    const window = clean.slice(i, i + max);
-    let cut = -1;
-    for (let j = window.length - 1; j > Math.floor(max * 0.4); j--) {
-      if (/[.!?。！？]/.test(window[j])) {
-        cut = j + 1;
-        break;
-      }
-    }
-    if (cut < 0) {
-      for (let j = window.length - 1; j > Math.floor(max * 0.4); j--) {
-        if (/\s/.test(window[j])) {
-          cut = j;
-          break;
-        }
-      }
-    }
-    if (cut < 0) cut = max;
-    out.push(clean.slice(i, i + cut).trim());
-    i += cut;
-  }
-  return out.filter(Boolean);
-}
 
 let _trackId = 0;
 function makeTrack(character = 'narrator', text = '') {
@@ -222,7 +188,8 @@ export default function StoriesEditor({ profiles = [] }) {
   const [activeTab, setActiveTab] = useState('script');
   const [splitOpen, setSplitOpen] = useState(false);
   const [splitText, setSplitText] = useState('');
-  const [splitMax, setSplitMax] = useState(180);
+  const [splitMode, setSplitMode] = useState(DEFAULT_SPLIT_MODE);
+  const [splitMax, setSplitMax] = useState(DEFAULT_SPLIT_MAX.sentences);
   const [exporting, setExporting] = useState(false);
   const [exportPct, setExportPct] = useState(0);
   const [expandedLine, setExpandedLine] = useState(null);
@@ -458,12 +425,12 @@ export default function StoriesEditor({ profiles = [] }) {
 
   // ── Paste & auto-split ───────────────────────────────────────────────────
   const applySplit = useCallback(() => {
-    const chunks = splitIntoChunks(splitText, splitMax);
+    const chunks = splitStoryText(splitText, splitMode, splitMax);
     if (!chunks.length) return;
     setTracks((prev) => [...prev, ...chunks.map((tx) => makeTrack('narrator', tx))]);
     setSplitText('');
     setSplitOpen(false);
-  }, [splitText, splitMax, setTracks]);
+  }, [splitText, splitMode, splitMax, setTracks]);
 
   const setVoiceForSelection = useCallback(
     (trackId, voiceId) => {
@@ -1086,26 +1053,50 @@ export default function StoriesEditor({ profiles = [] }) {
                 />
                 <div className="flex items-center gap-[12px] flex-wrap">
                   <label className="flex items-center gap-[6px] [font-size:var(--text-xs)] text-fg-muted">
-                    {t('stories.maxChars')}
-                    <input
-                      type="number"
-                      min={60}
-                      max={1000}
-                      step={10}
-                      value={splitMax}
-                      onChange={(e) => setSplitMax(parseInt(e.target.value, 10) || 180)}
-                      name="story-segment-length"
-                      inputMode="numeric"
-                      className="w-[64px] px-[6px] py-[4px] bg-bg-elev-2 border border-border rounded-sm text-fg [font-family:var(--font-mono)] [font-size:var(--text-xs)]"
-                    />
+                    {t('stories.splitMode')}
+                    <select
+                      className="input-base w-auto [font-size:var(--text-xs)] px-[6px] py-[3px]"
+                      value={splitMode}
+                      onChange={(e) => setSplitMode(e.target.value)}
+                      name="story-split-mode"
+                      title={t('stories.splitModeHint')}
+                    >
+                      {SPLIT_MODES.map((mode) => (
+                        <option key={mode} value={mode}>
+                          {t(`stories.split_${mode}`)}
+                        </option>
+                      ))}
+                    </select>
                   </label>
+                  {splitMode === 'sentences' && (
+                    <label className="flex items-center gap-[6px] [font-size:var(--text-xs)] text-fg-muted">
+                      {t('stories.maxChars')}
+                      <input
+                        type="number"
+                        min={60}
+                        max={1000}
+                        step={10}
+                        value={splitMax}
+                        onChange={(e) =>
+                          setSplitMax(parseInt(e.target.value, 10) || DEFAULT_SPLIT_MAX.sentences)
+                        }
+                        name="story-segment-length"
+                        inputMode="numeric"
+                        className="w-[64px] px-[6px] py-[4px] bg-bg-elev-2 border border-border rounded-sm text-fg [font-family:var(--font-mono)] [font-size:var(--text-xs)]"
+                      />
+                    </label>
+                  )}
                   <span className="flex-1 [font-size:var(--text-xs)] text-fg-subtle">
-                    {splitText
-                      ? t('stories.segmentsHint', {
-                          count: splitIntoChunks(splitText, splitMax).length,
-                          max: splitMax,
-                        })
-                      : t('stories.pasteAbove')}
+                    {!splitText
+                      ? t('stories.pasteAbove')
+                      : splitMode === 'sentences'
+                        ? t('stories.segmentsHint', {
+                            count: splitStoryText(splitText, splitMode, splitMax).length,
+                            max: splitMax,
+                          })
+                        : t('stories.lines', {
+                            count: splitStoryText(splitText, splitMode).length,
+                          })}
                   </span>
                   <Button
                     size="sm"
