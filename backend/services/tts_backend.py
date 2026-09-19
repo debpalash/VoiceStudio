@@ -262,6 +262,164 @@ class TTSBackend(ABC):
         if callable(loader):
             loader()
 
+    # ── Language enforcement (#2104) ──────────────────────────────────────
+    #
+    # An engine that declares a finite language set used to receive any
+    # caller-supplied language and synthesize anyway — a 30-second Polish
+    # sample on an English-only engine came back as 55 s of English phonemes
+    # over Polish text, with no error. The picker offers every language the
+    # app supports, so the failure mode was "user picks Polish on KittentTTS,
+    # gets a wrong-accent wav, has no way to know the engine can't do it".
+    #
+    # ``supported_languages`` is the engine's own contract. The base class
+    # enforces it in one place, so engines only have to declare their set
+    # honestly — no per-adapter check, no risk of drift. Engines that
+    # genuinely cover every language declare ``["multi"]`` and the helper
+    # is a no-op for them; engines with a strict set get the same model
+    # mlx-audio / PocketTTS already use ("doesn't support language X;
+    # supported: ..."), enforced centrally.
+
+    #: Class-level allowlist of display names that name the language to the
+    #: user. Keeps the user-facing error free of a brittle per-engine table
+    #: and matches what the Settings picker surfaces. Set on each subclass
+    #: (e.g. ``{"en": "English"}``); an empty dict means the engine falls back
+    #: to the raw ISO / display token as the language picker renders it.
+    language_display_names: dict[str, str] = {}
+
+    def _normalize_language_code(self, language: object) -> Optional[str]:
+        """Return a lowercased language token to compare against the
+        engine's ``supported_languages``, or None if no usable code.
+
+        Accepts ``"en"``, ``"EN"``, ``"english"``, ``"Auto"``, ``None``, and
+        anything else that doesn't look like a language. The frontend
+        sometimes passes the picker label (e.g. ``"Spanish"``); the base
+        engine list is ISO, so we resolve common display names to ISO
+        here so a ``Spanish`` user request doesn't slip past an ``["es"]``
+        engine. Anything unknown falls through as None — the check then
+        considers the request "open-ended" and skips enforcement, which
+        is the same path as Auto.
+
+        Returns the token in a form the engine's set can match: a 2-letter
+        ISO code (``"en"``), a 3-letter ISO 639 code (``"cmn"``, ``"zho"``),
+        or None. Keeps 3-letter codes intact so the engine-side check
+        (``code[:2] in supported``) can apply the prefix rule.
+        """
+        if not language or not isinstance(language, str):
+            return None
+        s = language.strip().lower()
+        if not s or s == "auto":
+            return None
+        # Common display names the picker uses. Conservative exact-match
+        # map — never guess from prefixes (a "Polish" / "Philippines"
+        # prefix collision, etc.). Add new entries only with a real
+        # picker label behind them; one source of truth beats two.
+        _DISPLAY_TO_ISO = {
+            "english": "en", "spanish": "es", "french": "fr", "german": "de",
+            "italian": "it", "portuguese": "pt", "japanese": "ja",
+            "chinese": "zh", "mandarin": "zh", "cantonese": "yue",
+            "korean": "ko", "dutch": "nl", "russian": "ru",
+            "polish": "pl", "turkish": "tr", "arabic": "ar", "hindi": "hi",
+            "indonesian": "id", "vietnamese": "vi", "thai": "th",
+            "swedish": "sv", "danish": "da", "norwegian": "no",
+            "finnish": "fi", "greek": "el", "hebrew": "he", "malay": "ms",
+            "czech": "cs", "hungarian": "hu", "tagalog": "tl", "filipino": "tl",
+        }
+        if s in _DISPLAY_TO_ISO:
+            return _DISPLAY_TO_ISO[s]
+        # BCP-47 ("zh-CN", "cmn-Hans") has a region/script suffix after a
+        # hyphen; the part before the hyphen is the ISO code we want. If
+        # there's no hyphen, the whole input is the code.
+        head = s.split("-", 1)[0]
+        cleaned = "".join(ch for ch in head if ch.isalpha())
+        if not cleaned:
+            return None
+        # Two- or three-letter code: keep as-is so the engine can match a
+        # 3-letter declaration like ["cmn", "yue"] against a 3-letter
+        # request without a stale 2-letter prefix downgrade.
+        if len(cleaned) in (2, 3):
+            return cleaned
+        # Longer than 3 with no hyphen: noise — the picker doesn't emit
+        # 4+ letter bare codes. Returning None here means the engine's
+        # own code gets a chance to interpret it (or raise on its own).
+        return None
+
+    def _check_language(self, language: object) -> None:
+        """Reject caller-supplied languages outside this engine's declared
+        ``supported_languages`` set (#2104).
+
+        Skipped when:
+          - ``language`` is None, empty, or "auto" — the user has no
+            preference and the engine picks its own default.
+          - ``supported_languages`` is ``["multi"]`` — the engine
+            documents itself as open-ended and routes any extra check
+            through its own per-engine logic (mlx-audio's per-model table,
+            PocketTTS' own strict set, OmniVoice's 600-language zero-shot).
+          - ``_normalize_language_code`` returns None — the input is
+            unstructured (e.g. a label the picker doesn't ship) and we'd
+            rather let the engine try than raise on noise.
+
+        Raises ``ValueError`` with the engine display name, the requested
+        language, and the supported set so the rewrite in
+        ``_language_rejection_or`` (api/routers/generation.py:1055) turns
+        it into the standard "Engine X can't speak 'Y' …" message.
+
+        3-letter ISO 639 codes (``cmn``, ``zho``, …) are intentionally
+        NOT mapped to their 2-letter equivalent here: the convention
+        varies per engine (``cmn`` is Mandarin to one, undefined to
+        another) and a wrong fold silently mis-routes. Engines that
+        advertise a 3-letter set must override ``_check_language`` (or
+        accept the 3-letter token as-is and validate themselves); the
+        base class only enforces exact 2-letter matches against the
+        declared set, which covers the common case.
+        """
+        supported = self.supported_languages
+        # open-ended: the engine handles its own checks.
+        if not supported or supported == ["multi"]:
+            return
+        code = self._normalize_language_code(language)
+        if code is None:
+            return  # no preference → caller leaves it to the engine
+        # Exact match is the right contract — anything more lenient would
+        # let "en-gb" past an ["en"] engine, which is the bug class #2104
+        # is closing. 3-letter tokens pass through unmodified; engines
+        # with a 3-letter set handle them.
+        if code in supported:
+            return
+        # Build the user-facing list. ``multi`` is not in here because
+        # ``supported`` already short-circuited above; entries are rendered
+        # in declared order so the message matches ``list_backends()``.
+        # Look up ``display_name`` on the instance, not the class — the
+        # base class declares it as a class attribute (str), but subclasses
+        # override with a ``@property`` that returns the instance value.
+        # ``getattr(type(self), "display_name", ...)`` returns the property
+        # descriptor object itself, not the string.
+        engine_name = (
+            getattr(self, "display_name", None)
+            or getattr(type(self), "id", type(self).__name__)
+        )
+        if not isinstance(engine_name, str):
+            # Property with no instance state — fall back to the class attr.
+            engine_name = getattr(type(self), "id", type(self).__name__)
+        quoted = ", ".join(f"'{c}'" for c in supported)
+        raise ValueError(
+            f"The {engine_name} engine doesn't support language={language!r}. "
+            f"Supported: {quoted}. Pick one of those, leave language as 'Auto', "
+            f"or switch engine in Model Catalogue."
+        )
+
+    def _supported_languages_display(self) -> list[str]:
+        """``supported_languages`` rendered for the UI: ISO codes annotated
+        with their display name when the engine declared one, else bare.
+
+        Used by ``list_backends()`` and any picker that wants to show
+        humans-readable labels instead of raw ISO tokens.
+        """
+        out: list[str] = []
+        for code in self.supported_languages:
+            label = self.language_display_names.get(code)
+            out.append(f"{code} ({label})" if label else code)
+        return out
+
     #: Whether this engine already emits mastered, studio-grade audio and should
     #: therefore skip the shared apply_mastering() chain (highpass + Compressor,
     #: tuned for OmniVoice's 24 kHz output). Studio engines like VoxCPM2 (native
@@ -401,6 +559,13 @@ class TTSBackend(ABC):
 
         def _item(value, index):
             return value[index] if isinstance(value, list) else value
+
+        # #2104 — the batch path is one of the two generate() entry points,
+        # and a language that the engine can't speak used to slip through
+        # here for engines whose own generate() never checks. The base
+        # class enforces the declared ``supported_languages`` set in one
+        # place; the per-item ``language`` matches the single-call contract.
+        self._check_language(language)
 
         return [
             self.generate(
