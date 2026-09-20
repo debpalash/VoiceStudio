@@ -12,7 +12,16 @@ import {
 import { CrashJournal } from './crash-journal';
 import { spawn, spawnSync, type ChildProcess, type StdioOptions } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  accessSync,
+  constants,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
@@ -144,7 +153,9 @@ function usableFile(path: string): boolean {
   try {
     if (!existsSync(path)) return false;
     const stat = statSync(path);
-    return stat.isFile() && stat.size > 0;
+    if (!stat.isFile() || stat.size <= 0) return false;
+    accessSync(path, constants.X_OK);
+    return true;
   } catch {
     return false;
   }

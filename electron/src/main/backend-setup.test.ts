@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const mocks = vi.hoisted(() => ({
@@ -525,6 +525,7 @@ function stubUvOnPath(): string {
   const dir = mkdtempSync(join(tmpdir(), 'vs-uv-'));
   const uv = join(dir, process.platform === 'win32' ? 'uv.exe' : 'uv');
   writeFileSync(uv, '#!/bin/sh\n');
+  chmodSync(uv, 0o700);
   vi.stubEnv('PATH', dir);
   return uv;
 }
@@ -537,6 +538,19 @@ it('hands the located uv to the backend so sidecar preflight can find it', () =>
 
   expect(env.OMNIVOICE_BUNDLED_UV).toBe(uv);
 });
+
+it.runIf(process.platform !== 'win32')(
+  'does not hand a non-executable uv candidate to the backend',
+  () => {
+    vi.stubEnv('OMNIVOICE_BUNDLED_UV', '');
+    const uv = stubUvOnPath();
+    chmodSync(uv, 0o600);
+
+    const { env } = managedBackendSpawnOptions(3900);
+
+    expect(env.OMNIVOICE_BUNDLED_UV).not.toBe(uv);
+  },
+);
 
 it('never overrides a uv the user pinned themselves', () => {
   vi.stubEnv('OMNIVOICE_BUNDLED_UV', '/pinned/uv');
