@@ -32,7 +32,7 @@ const uvExtension = rustTarget?.includes('windows') ? '.exe' : '';
 const uvSource = process.env.VOICESTUDIO_BUNDLED_UV
   ? resolve(process.env.VOICESTUDIO_BUNDLED_UV)
   : rustTarget
-    ? resolve(here, `../frontend/src-tauri/binaries/uv-${rustTarget}${uvExtension}`)
+    ? resolve(here, `build/uv/uv-${rustTarget}${uvExtension}`)
     : null;
 const bundledUvResources =
   uvSource && existsSync(uvSource) && statSync(uvSource).size > 0

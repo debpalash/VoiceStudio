@@ -17,7 +17,6 @@ def test_current_version_is_in_lockstep_everywhere() -> None:
 
     mirrors = {
         "pyproject.toml": r'(?m)^version = "([^"]+)"',
-        "frontend/src-tauri/Cargo.toml": r'(?m)^version = "([^"]+)"',
         "backend/core/version.py": r'(?m)^_FALLBACK_VERSION = "([^"]+)"',
     }
     for path, pattern in mirrors.items():
@@ -27,9 +26,6 @@ def test_current_version_is_in_lockstep_everywhere() -> None:
     lock_contracts = {
         "bun.lock": r'"name": "omnivoice-studio",\s+"version": "([^"]+)"',
         "uv.lock": r'name = "omnivoice"\s+version = "([^"]+)"',
-        "frontend/src-tauri/Cargo.lock": (
-            r'name = "omnivoice-studio"\s+version = "([^"]+)"'
-        ),
     }
     for path, pattern in lock_contracts.items():
         match = re.search(pattern, (ROOT / path).read_text())
@@ -110,12 +106,13 @@ def test_compatibility_identifiers_stay_stable() -> None:
     ).read_text()
 
 
-def test_legacy_source_launch_cleans_idle_ports_quietly() -> None:
+def test_active_source_launch_is_electron_and_web_ports_clean_quietly() -> None:
     scripts = json.loads((ROOT / "package.json").read_text())["scripts"]
-    for name in ("predev:web", "pretauri"):
-        command = scripts[name]
-        assert "bun scripts/clear-dev-ports.mjs 3900 3901" in command
-        assert "|| true" not in command
+    assert scripts["dev"] == "bun run --cwd electron dev"
+    assert not any("tauri" in name for name in scripts)
+    command = scripts["predev:web"]
+    assert "bun scripts/clear-dev-ports.mjs 3900 3901" in command
+    assert "|| true" not in command
 
 
 def test_icon_rail_has_no_static_section_captions_and_keeps_air_between_items() -> None:

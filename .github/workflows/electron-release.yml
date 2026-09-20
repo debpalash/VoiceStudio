@@ -31,7 +31,7 @@ env:
 
 jobs:
   validate:
-    # The transition tag is assembled after the manual Tauri draft succeeds.
+    # The archived sunset tag was assembled separately; future tags are Electron-only.
     if: github.event_name == 'workflow_dispatch' || github.ref_name != vars.TAURI_SUNSET_TAG
     runs-on: ubuntu-latest
     steps:
@@ -130,7 +130,7 @@ jobs:
           const targets = { 'linux-x64': 'x86_64-unknown-linux-gnu', 'win32-x64': 'x86_64-pc-windows-msvc', 'darwin-arm64': 'aarch64-apple-darwin', 'darwin-x64': 'x86_64-apple-darwin' };
           if (targets[`${process.platform}-${process.arch}`] !== expected) throw new Error('Runner architecture does not match package target');
           const source = execFileSync(process.platform === 'win32' ? 'where.exe' : 'which', ['uv'], { encoding: 'utf8' }).trim().split(/\r?\n/)[0];
-          const dir = 'frontend/src-tauri/binaries';
+          const dir = 'electron/build/uv';
           mkdirSync(dir, { recursive: true });
           const destination = join(dir, `uv-${expected}${process.platform === 'win32' ? '.exe' : ''}`);
           copyFileSync(source, destination);
@@ -213,9 +213,9 @@ jobs:
           python3 scripts/prepare_electron_release.py --assets release-assets --tag "$TAG"
       - name: Preserve the final Tauri updater feeds
         run: |
-          test -n "$SUNSET_TAG" || { echo "Set TAURI_SUNSET_TAG before releasing"; exit 1; }
-          # The transition tag already holds its own final Tauri feeds.
-          # Later releases carry copies pointing to the immutable sunset payloads.
+          test "$SUNSET_TAG" = "v0.5.3" || { echo "TAURI_SUNSET_TAG must be v0.5.3 before releasing"; exit 1; }
+          # Every release carries copies pointing to immutable v0.5.3 payloads
+          # so archived Tauri clients never receive Electron installers.
           gh release download "$SUNSET_TAG" --pattern latest.json --dir release-assets
           gh release download "$SUNSET_TAG" --pattern latest-user.json --dir release-assets
           python3 scripts/prepare_electron_release.py --assets release-assets --tag "$TAG" --sunset-tag "$SUNSET_TAG"

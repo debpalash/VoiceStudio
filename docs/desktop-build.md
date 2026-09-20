@@ -1,5 +1,8 @@
 # Desktop build — progress tracker
 
+> **Archived Tauri plan.** This document records the retired v0.5.3 shell.
+> Current desktop work lives in `electron/` and [Electron setup](../electron/README.md).
+
 Working doc for the desktop release effort. Every box maps to a concrete
 deliverable; mark `[x]` when verified end-to-end on a fresh environment,
 not just "code compiles." See `docs/DESKTOP_RELEASE.md` for the full
