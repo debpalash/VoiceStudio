@@ -180,6 +180,8 @@ jobs:
           export OMNIVOICE_PORT=3999
           export VOICESTUDIO_UI_URL=http://localhost:3912
           export PLAYWRIGHT_CHANNEL=chromium
+          export HF_HUB_OFFLINE=1
+          export HF_HUB_CACHE="$(mktemp -d)"
           bun run --cwd electron smoke:server > /tmp/voicestudio-electron-smoke.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
