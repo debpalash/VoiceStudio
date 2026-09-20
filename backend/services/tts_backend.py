@@ -560,12 +560,9 @@ class TTSBackend(ABC):
         def _item(value, index):
             return value[index] if isinstance(value, list) else value
 
-        # #2104 — the batch path is one of the two generate() entry points,
-        # and a language that the engine can't speak used to slip through
-        # here for engines whose own generate() never checks. The base
-        # class enforces the declared ``supported_languages`` set in one
-        # place; the per-item ``language`` matches the single-call contract.
-        self._check_language(language)
+        # Validate the whole request before producing any partial output.
+        for index in range(len(texts)):
+            self._check_language(_item(language, index))
 
         return [
             self.generate(

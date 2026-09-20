@@ -13,57 +13,61 @@ from __future__ import annotations
 
 import pytest
 
-from services.tts_backend import TTSBackend
 
 
 # ── helpers ──────────────────────────────────────────────────────────────
 
 
-class _StubBackend(TTSBackend):
-    """A throwaway backend whose ``supported_languages`` and
-    ``display_name`` are set per-instance for the test.
+@pytest.fixture
+def _StubBackend():
+    from services.tts_backend import TTSBackend
 
-    The base class is abstract (it has three ``@abstractmethod``
-    properties), so any test that touches ``supported_languages`` or
-    ``display_name`` needs a subclass that fills them in. ``generate``
-    is overridden to raise so a bug that lets an unsupported call
-    through never silently succeeds.
-    """
+    class StubBackend(TTSBackend):
+        """A throwaway backend whose ``supported_languages`` and
+        ``display_name`` are set per-instance for the test.
 
-    def __init__(self, supported, *, display_name="Stub Engine", id="stub"):
-        self._supported = list(supported)
-        self._display_name = display_name
-        self._id = id
-        self.calls: list[dict] = []
+        The base class is abstract (it has three ``@abstractmethod``
+        properties), so any test that touches ``supported_languages`` or
+        ``display_name`` needs a subclass that fills them in. ``generate``
+        is overridden to raise so a bug that lets an unsupported call
+        through never silently succeeds.
+        """
 
-    @property
-    def id(self) -> str:  # type: ignore[override]
-        return self._id
+        def __init__(self, supported, *, display_name="Stub Engine", id="stub"):
+            self._supported = list(supported)
+            self._display_name = display_name
+            self._id = id
+            self.calls: list[dict] = []
 
-    @property
-    def display_name(self) -> str:  # type: ignore[override]
-        return self._display_name
+        @property
+        def id(self) -> str:  # type: ignore[override]
+            return self._id
 
-    @property
-    def sample_rate(self) -> int:  # type: ignore[override]
-        return 24000
+        @property
+        def display_name(self) -> str:  # type: ignore[override]
+            return self._display_name
 
-    @property
-    def supported_languages(self) -> list[str]:  # type: ignore[override]
-        return self._supported
+        @property
+        def sample_rate(self) -> int:  # type: ignore[override]
+            return 24000
 
-    @classmethod
-    def is_available(cls):  # type: ignore[override]
-        return True, "ready"
+        @property
+        def supported_languages(self) -> list[str]:  # type: ignore[override]
+            return self._supported
 
-    def generate(self, text, **kw):  # type: ignore[override]
-        self.calls.append({"text": text, **kw})
-        # Caller is asserting a *rejection*; reaching this body is the
-        # regression we are testing for. Returning a 1-sample tensor is
-        # enough to let the batch test distinguish "no raise" from "raise".
-        import torch
-        return torch.zeros(1, 1)
+        @classmethod
+        def is_available(cls):  # type: ignore[override]
+            return True, "ready"
 
+        def generate(self, text, **kw):  # type: ignore[override]
+            self.calls.append({"text": text, **kw})
+            # Caller is asserting a *rejection*; reaching this body is the
+            # regression we are testing for. Returning a 1-sample tensor is
+            # enough to let the batch test distinguish "no raise" from "raise".
+            import torch
+            return torch.zeros(1, 1)
+
+    return StubBackend
 
 # ── _normalize_language_code ────────────────────────────────────────────
 
@@ -97,7 +101,7 @@ class _StubBackend(TTSBackend):
         ("cmn", "cmn"),
     ],
 )
-def test_normalize_language_code(raw, expected):
+def test_normalize_language_code(_StubBackend, raw, expected):
     be = _StubBackend(["en", "zh", "es"])
     assert be._normalize_language_code(raw) == expected
 
@@ -105,7 +109,7 @@ def test_normalize_language_code(raw, expected):
 # ── _check_language: rejection path ─────────────────────────────────────
 
 
-def test_check_language_raises_valueerror_with_engine_name_and_supported_set():
+def test_check_language_raises_valueerror_with_engine_name_and_supported_set(_StubBackend):
     """The reporter's symptom was a 30s Polish sample rendered by an
     English-only engine as 55s of English phonemes. The fix raises
     BEFORE generation, names the engine, lists what it does support, and
@@ -121,7 +125,7 @@ def test_check_language_raises_valueerror_with_engine_name_and_supported_set():
     assert "Model Catalogue" in msg, "...and where to switch engine"
 
 
-def test_check_language_accepts_every_declared_set_member():
+def test_check_language_accepts_every_declared_set_member(_StubBackend):
     be = _StubBackend(["zh", "en", "ja", "ko", "de", "fr", "es", "id", "it",
                        "th", "pt", "ru", "ms", "vi"])
     # Every one of the 14 must pass — Confucius4 case before #2104 had
@@ -131,7 +135,7 @@ def test_check_language_accepts_every_declared_set_member():
         be._check_language(lang)  # no raise
 
 
-def test_check_language_accepts_display_names_that_resolve_to_supported_iso():
+def test_check_language_accepts_display_names_that_resolve_to_supported_iso(_StubBackend):
     """The frontend picker sends the label, not the ISO. ``Spanish`` is
     how the user spells what an ``["es"]`` engine understands; without
     the display-name map, the base check would reject ``Spanish``
@@ -141,7 +145,7 @@ def test_check_language_accepts_display_names_that_resolve_to_supported_iso():
     be._check_language("spanish")  # case-insensitive
 
 
-def test_check_language_accepts_3letter_code_when_engine_advertises_it():
+def test_check_language_accepts_3letter_code_when_engine_advertises_it(_StubBackend):
     """3-letter ISO 639 codes are passed through unmodified. An engine
     that declares ``["cmn", "yue", "zh"]`` (3-letter form) is matched
     exactly by the base class; the engine itself decides whether 3-letter
@@ -156,14 +160,14 @@ def test_check_language_accepts_3letter_code_when_engine_advertises_it():
 
 
 @pytest.mark.parametrize("auto_value", [None, "", "auto", "Auto", "AUTO", "   "])
-def test_check_language_skips_when_no_preference_expressed(auto_value):
+def test_check_language_skips_when_no_preference_expressed(_StubBackend, auto_value):
     """``auto`` / None / empty must NEVER raise — the picker offers
     every language and the engine picks its own default."""
     be = _StubBackend(["en"])
     be._check_language(auto_value)
 
 
-def test_check_language_skips_for_multi_engine():
+def test_check_language_skips_for_multi_engine(_StubBackend):
     """``["multi"]`` is the open-ended contract: OmniVoice's 600-language
     zero-shot, mlx-audio's per-model multiplexer, PocketTTS' own
     per-engine strict check. The base class must NOT clobber their
@@ -173,7 +177,7 @@ def test_check_language_skips_for_multi_engine():
         be._check_language(lang)
 
 
-def test_check_language_skips_for_empty_engine_list():
+def test_check_language_skips_for_empty_engine_list(_StubBackend):
     """An engine that hasn't declared a set yet (``[]``) is a
     configuration error, but the base class must NOT crash the call —
     the engine's own check (or its absence) is the engine's problem."""
@@ -181,7 +185,7 @@ def test_check_language_skips_for_empty_engine_list():
     be._check_language("pl")
 
 
-def test_check_language_skips_for_unrecognized_input():
+def test_check_language_skips_for_unrecognized_input(_StubBackend):
     """Random strings the picker may emit (a new locale, a label without
     a known ISO mapping). Don't make the user's day worse than it was
     by raising on something the engine might have handled."""
@@ -193,7 +197,7 @@ def test_check_language_skips_for_unrecognized_input():
 # ── generate_batch: enforcement wired through ──────────────────────────
 
 
-def test_generate_batch_rejects_off_set_language_before_calling_generate():
+def test_generate_batch_rejects_off_set_language_before_calling_generate(_StubBackend):
     """A bug-shape regression: a caller picks Polish on a single-language
     engine via ``generate_batch``. The base class must raise BEFORE the
     per-item ``generate`` loop runs, so the engine never produces
@@ -213,7 +217,7 @@ def test_generate_batch_rejects_off_set_language_before_calling_generate():
     )
 
 
-def test_generate_batch_passes_supported_language_through_to_generate():
+def test_generate_batch_passes_supported_language_through_to_generate(_StubBackend):
     """Confucius4 case: a caller picks Spanish (in the 14-language set)
     via ``generate_batch`` — must reach the engine, not be rejected."""
     import torch
@@ -226,7 +230,7 @@ def test_generate_batch_passes_supported_language_through_to_generate():
     assert be.calls[0]["language"] == "es"
 
 
-def test_generate_batch_skips_check_when_language_is_auto():
+def test_generate_batch_skips_check_when_language_is_auto(_StubBackend):
     """``auto`` is the picker-default — must reach the engine so its
     own default-language logic runs (VoxCPM2, mlx-audio, OmniVoice
     each pick their own default)."""
@@ -235,7 +239,7 @@ def test_generate_batch_skips_check_when_language_is_auto():
     assert len(out) == 1
 
 
-def test_generate_batch_multi_engine_never_rejects():
+def test_generate_batch_multi_engine_never_rejects(_StubBackend):
     """A ``["multi"]`` engine processes the batch normally — the base
     class skips the check, the engine's own logic decides."""
     be = _StubBackend(["multi"])
@@ -273,3 +277,9 @@ def test_confucius4_declares_its_real_14_languages_not_multi():
         "``[\"multi\"]`` lies about a finite-set engine; the base-class "
         "check is now wired, so the truthful list must be declared."
     )
+
+def test_batch_validates_all_languages_before_first_generation(_StubBackend):
+    backend = _StubBackend(["en"])
+    with pytest.raises(ValueError, match="pl"):
+        backend.generate_batch(["hello", "czesc"], language=["en", "pl"])
+    assert backend.calls == []
