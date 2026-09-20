@@ -142,7 +142,7 @@ export function SecondarySidebar({
       {footer !== undefined && footer !== null && !collapsed && (
         <div
           data-slot="secondary-sidebar-footer"
-          className="shrink-0 space-y-3 border-t border-border/55 bg-background/40 p-3.5 text-[13px] backdrop-blur-xl"
+          className="flex min-h-0 max-h-[70%] flex-col space-y-3 border-t border-border/55 bg-background/40 p-3.5 text-[13px] backdrop-blur-xl"
         >
           {footer}
         </div>

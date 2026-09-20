@@ -48,19 +48,19 @@ export function GeneratePanel({
       ? t('audiobook.blocked.' + blocker)
       : '';
   return (
-    <div data-slot="generate-panel" className="space-y-3">
+    <div data-slot="generate-panel" className="flex min-h-0 flex-col gap-3">
       {session.failed > 0 && (
-        <p role="status" className="text-xs text-muted-foreground">
+        <p role="status" className="shrink-0 text-xs text-muted-foreground">
           {t('audiobook.failed_note', { count: session.failed })}
         </p>
       )}
       {session.stopped && !session.active && (
-        <p role="status" className="text-xs text-muted-foreground">
+        <p role="status" className="shrink-0 text-xs text-muted-foreground">
           {t('audiobook.stopped_note')}
         </p>
       )}
       {active && session.stage !== 'starting' && (
-        <div className="max-h-[38vh] overflow-y-auto">
+        <div className="min-h-0 max-h-[38vh] overflow-y-auto">
           <GenerationProgress
             chapters={session.chapters}
             assembling={session.stage === 'assembling'}
@@ -68,17 +68,17 @@ export function GeneratePanel({
         </div>
       )}
       {status && (
-        <p id="generate-status" role="status" className="text-xs text-muted-foreground">
+        <p id="generate-status" role="status" className="shrink-0 text-xs text-muted-foreground">
           {status}
         </p>
       )}
       {active ? (
-        <Button variant="outline" className="w-full" onClick={onStop}>
+        <Button variant="outline" className="w-full shrink-0" onClick={onStop}>
           {t('common.stop')}
         </Button>
       ) : (
         <Button
-          className="w-full"
+          className="w-full shrink-0"
           disabled={blocker !== null}
           aria-describedby={status ? 'generate-status' : undefined}
           onClick={onGenerate}

@@ -195,6 +195,7 @@ jobs:
           }
           node electron/tests/playback-smoke.mjs
           node electron/tests/dub-smoke.mjs
+          node electron/tests/longform-layout-smoke.mjs
 
   linux-native-package:
     name: Linux native package
