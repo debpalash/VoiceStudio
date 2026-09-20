@@ -120,9 +120,18 @@ class Confucius4Backend(SubprocessBackend):
 
     @property
     def supported_languages(self) -> list[str]:
-        # 14 languages with the caller's language passed through at synthesize
-        # time; "multi" on the protocol surface.
-        return ["multi"]
+        # Upstream README: "14 Languages Supported: Chinese, English,
+        # Japanese, Korean, German, French, Spanish, Indonesian, Italian,
+        # Thai, Portuguese, Russian, Malay and Vietnamese". Declaring this
+        # honestly enables the base-class ``_check_language`` (#2104) to
+        # reject a caller-supplied language outside the set instead of the
+        # sidecar passing it through and producing an accented approximation
+        # — a 14-language engine with ``["multi"]`` on its contract surface
+        # lied about what it can do.
+        return [
+            "zh", "en", "ja", "ko", "de", "fr", "es", "id", "it",
+            "th", "pt", "ru", "ms", "vi",
+        ]
 
     def generate(self, text: str, **kw) -> "torch.Tensor":
         """Synthesize one utterance through the Confucius4 sidecar.
@@ -139,6 +148,7 @@ class Confucius4Backend(SubprocessBackend):
 
         Returns a tensor of shape (1, n_samples) at :attr:`sample_rate`.
         """
+        self._check_language(kw.get("language"))
         forwarded: dict = {}
         ref_audio = kw.get("ref_audio")
         if not ref_audio:

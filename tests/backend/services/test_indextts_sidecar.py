@@ -311,7 +311,7 @@ def test_generate_requires_ref_audio(patched_indextts_backend):
         patched_indextts_backend.generate("hello", ref_audio=None)
 
 
-def test_indextts25_languages_and_unknown_language_fallback(
+def test_indextts25_rejects_unsupported_language_without_synthesizing(
     monkeypatch, patched_indextts_backend, tmp_path,
 ):
     backend = patched_indextts_backend
@@ -330,8 +330,9 @@ def test_indextts25_languages_and_unknown_language_fallback(
         return original_send(self, msg)
 
     monkeypatch.setattr(SubprocessBackend, "_send", spy_send)
-    backend.generate("hello", ref_audio="/tmp/ref.wav", language="fr-FR")
-    assert sent[0]["lang"] == "en"
+    with pytest.raises(ValueError, match="doesn't support language='fr-FR'"):
+        backend.generate("hello", ref_audio="/tmp/ref.wav", language="fr-FR")
+    assert sent == []
 
 
 def test_user_managed_indextts2_keeps_legacy_language_metadata(

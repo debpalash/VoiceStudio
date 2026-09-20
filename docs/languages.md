@@ -2,6 +2,12 @@
 
 VoiceStudio supports **646 languages** with a total of **581k hours** of training data.
 
+This catalog describes the OmniVoice model. Other engines have their own language
+sets: selecting an unsupported language now stops synthesis with the engine name
+and supported choices, rather than producing speech in the wrong language.
+Language names and regional codes are accepted; Auto keeps the engine's default.
+The same validation applies to direct synthesis, dubbing, and batch generation.
+
 The table below lists each language with its VoiceStudio language ID,
 ISO 639-3 code, and training data duration (hours).
 

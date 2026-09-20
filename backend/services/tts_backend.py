@@ -262,6 +262,126 @@ class TTSBackend(ABC):
         if callable(loader):
             loader()
 
+    # ── Language enforcement (#2104) ──────────────────────────────────────
+    #
+    # An engine that declares a finite language set used to receive any
+    # caller-supplied language and synthesize anyway — a 30-second Polish
+    # sample on an English-only engine came back as 55 s of English phonemes
+    # over Polish text, with no error. The picker offers every language the
+    # app supports, so the failure mode was "user picks Polish on KittentTTS,
+    # gets a wrong-accent wav, has no way to know the engine can't do it".
+    #
+    # ``supported_languages`` is the engine's own contract. The base class
+    # enforces it in one place, so engines only have to declare their set
+    # honestly — no per-adapter check, no risk of drift. Engines that
+    # genuinely cover every language declare ``["multi"]`` and the helper
+    # is a no-op for them; engines with a strict set get the same model
+    # mlx-audio / PocketTTS already use ("doesn't support language X;
+    # supported: ..."), enforced centrally.
+
+    #: Class-level allowlist of display names that name the language to the
+    #: user. Keeps the user-facing error free of a brittle per-engine table
+    #: and matches what the Settings picker surfaces. Set on each subclass
+    #: (e.g. ``{"en": "English"}``); an empty dict means the engine falls back
+    #: to the raw ISO / display token as the language picker renders it.
+    language_display_names: dict[str, str] = {}
+
+    def _normalize_language_code(self, language: object) -> Optional[str]:
+        """Resolve picker names and region tags without treating unknown names as Auto."""
+        if language is None:
+            return None
+        if not isinstance(language, str):
+            raise ValueError("Language must be a string or None")
+        value = language.strip().lower()
+        if not value or value == "auto":
+            return None
+        from omnivoice.utils.lang_map import LANG_NAME_TO_ID
+
+        # Reuse the same complete, bundled mapping as the language picker.
+        aliases = {"mandarin": "zh", "arabic": "ar", "tagalog": "tl"}
+        if value in aliases:
+            return aliases[value]
+        if value in LANG_NAME_TO_ID:
+            return LANG_NAME_TO_ID[value]
+        head = value.replace("_", "-").split("-", 1)[0]
+        if head.isascii() and head.isalpha() and len(head) in (2, 3):
+            return head
+        # A supplied but unrecognized language remains explicit, so a finite
+        # engine rejects it instead of silently using its default language.
+        return value
+
+    def _check_language(self, language: object) -> Optional[str]:
+        """Reject caller-supplied languages outside this engine's declared
+        ``supported_languages`` set (#2104).
+
+        Skipped when:
+          - ``language`` is None, empty, or "auto" — the user has no
+            preference and the engine picks its own default.
+          - ``supported_languages`` is ``["multi"]`` — the engine
+            documents itself as open-ended and routes any extra check
+            through its own per-engine logic (mlx-audio's per-model table,
+            PocketTTS' own strict set, OmniVoice's 600-language zero-shot).
+
+        Raises ``ValueError`` with the engine display name, the requested
+        language, and the supported set so the rewrite in
+        ``_language_rejection_or`` (api/routers/generation.py:1055) turns
+        it into the standard "Engine X can't speak 'Y' …" message.
+
+        3-letter ISO 639 codes (``cmn``, ``zho``, …) are intentionally
+        NOT mapped to their 2-letter equivalent here: the convention
+        varies per engine (``cmn`` is Mandarin to one, undefined to
+        another) and a wrong fold silently mis-routes. Engines that
+        advertise a 3-letter set must override ``_check_language`` (or
+        accept the 3-letter token as-is and validate themselves); the
+        base class only enforces exact 2-letter matches against the
+        declared set, which covers the common case.
+        """
+        supported = self.supported_languages
+        # open-ended: the engine handles its own checks.
+        if not supported or supported == ["multi"]:
+            return
+        code = self._normalize_language_code(language)
+        if code is None:
+            return  # no preference → caller leaves it to the engine
+        # Region tags resolve to their base language; three-letter codes
+        # remain exact rather than guessing from their first two letters.
+        if code in supported:
+            return code
+        # Build the user-facing list. ``multi`` is not in here because
+        # ``supported`` already short-circuited above; entries are rendered
+        # in declared order so the message matches ``list_backends()``.
+        # Look up ``display_name`` on the instance, not the class — the
+        # base class declares it as a class attribute (str), but subclasses
+        # override with a ``@property`` that returns the instance value.
+        # ``getattr(type(self), "display_name", ...)`` returns the property
+        # descriptor object itself, not the string.
+        engine_name = (
+            getattr(self, "display_name", None)
+            or getattr(type(self), "id", type(self).__name__)
+        )
+        if not isinstance(engine_name, str):
+            # Property with no instance state — fall back to the class attr.
+            engine_name = getattr(type(self), "id", type(self).__name__)
+        quoted = ", ".join(f"'{c}'" for c in supported)
+        raise ValueError(
+            f"The {engine_name} engine doesn't support language={language!r}. "
+            f"Supported: {quoted}. Pick one of those, leave language as 'Auto', "
+            f"or switch engine in Model Catalogue."
+        )
+
+    def _supported_languages_display(self) -> list[str]:
+        """``supported_languages`` rendered for the UI: ISO codes annotated
+        with their display name when the engine declared one, else bare.
+
+        Used by ``list_backends()`` and any picker that wants to show
+        humans-readable labels instead of raw ISO tokens.
+        """
+        out: list[str] = []
+        for code in self.supported_languages:
+            label = self.language_display_names.get(code)
+            out.append(f"{code} ({label})" if label else code)
+        return out
+
     #: Whether this engine already emits mastered, studio-grade audio and should
     #: therefore skip the shared apply_mastering() chain (highpass + Compressor,
     #: tuned for OmniVoice's 24 kHz output). Studio engines like VoxCPM2 (native
@@ -401,6 +521,10 @@ class TTSBackend(ABC):
 
         def _item(value, index):
             return value[index] if isinstance(value, list) else value
+
+        # Validate the whole request before producing any partial output.
+        for index in range(len(texts)):
+            self._check_language(_item(language, index))
 
         return [
             self.generate(
@@ -1220,6 +1344,7 @@ class VoxCPM2Backend(TTSBackend):
         )
 
     def generate(self, text, **kw) -> torch.Tensor:
+        self._check_language(kw.get("language"))
         self._ensure_loaded()
         import numpy as np
 
@@ -1406,6 +1531,7 @@ class MossTTSNanoBackend(TTSBackend):
         )
 
     def generate(self, text, **kw) -> torch.Tensor:
+        self._check_language(kw.get("language"))
         self._ensure_loaded()
         import numpy as np
         ref_audio = kw.get("ref_audio")
@@ -1509,16 +1635,9 @@ class KittenTTSBackend(TTSBackend):
     _MAX_ONNX_TOKENS = 512
 
     def generate(self, text: str, **kw) -> torch.Tensor:
+        self._check_language(kw.get("language"))
         import numpy as np
         self._ensure_loaded()
-
-        language = kw.get("language")
-        if language and language.lower() not in {"en", "english", "auto"}:
-            logger.info(
-                "KittenTTS is English-only; ignoring language=%r — "
-                "use OmniVoice for multilingual synthesis.",
-                language,
-            )
 
         voice = kw.get("voice") or self.DEFAULT_VOICE
         if voice not in self.PRESET_VOICES:
@@ -2030,13 +2149,13 @@ class CosyVoiceBackend(TTSBackend):
         self._model = AutoModel(model_dir=model_dir)
 
     def generate(self, text: str, **kw) -> torch.Tensor:
+        language = self._check_language(kw.get("language"))
         import numpy as np
         self._ensure_loaded()
 
         ref_audio = kw.get("ref_audio")
         ref_text = kw.get("ref_text")
         instruct = kw.get("instruct")
-        language = kw.get("language")
 
         # Pick the right inference method based on what the caller provides:
         # 1. instruct + ref_audio → inference_instruct2 (emotion/dialect/speed)
@@ -2196,12 +2315,12 @@ class GPTSoVITSBackend(TTSBackend):
         return ["zh", "en", "ja", "yue", "ko"]
 
     def generate(self, text: str, **kw) -> torch.Tensor:
+        language = self._check_language(kw.get("language"))
         import json
         from services.outbound_http import open_trusted_endpoint
 
         ref_audio = kw.get("ref_audio")
         ref_text = kw.get("ref_text", "")
-        language = kw.get("language", "en")
 
         # Map language codes to GPT-SoVITS format
         lang_map = {

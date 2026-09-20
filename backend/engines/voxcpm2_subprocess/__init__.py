@@ -94,6 +94,7 @@ class VoxCPM2SubprocessBackend(SubprocessBackend):
         # The same preparation and finishing as VoxCPM2Backend.generate: the
         # reference clip is trimmed and capped here (the model no longer does
         # it), and the output's long silent tail is cut.
+        self._check_language(kw.get("language"))
         from services.audio_dsp import trim_trailing_silence
         from services.tts_backend import _prepare_voxcpm_ref
 
