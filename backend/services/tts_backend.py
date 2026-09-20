@@ -1344,6 +1344,7 @@ class VoxCPM2Backend(TTSBackend):
         )
 
     def generate(self, text, **kw) -> torch.Tensor:
+        self._check_language(kw.get("language"))
         self._ensure_loaded()
         import numpy as np
 
@@ -1530,6 +1531,7 @@ class MossTTSNanoBackend(TTSBackend):
         )
 
     def generate(self, text, **kw) -> torch.Tensor:
+        self._check_language(kw.get("language"))
         self._ensure_loaded()
         import numpy as np
         ref_audio = kw.get("ref_audio")
@@ -1633,16 +1635,9 @@ class KittenTTSBackend(TTSBackend):
     _MAX_ONNX_TOKENS = 512
 
     def generate(self, text: str, **kw) -> torch.Tensor:
+        self._check_language(kw.get("language"))
         import numpy as np
         self._ensure_loaded()
-
-        language = kw.get("language")
-        if language and language.lower() not in {"en", "english", "auto"}:
-            logger.info(
-                "KittenTTS is English-only; ignoring language=%r — "
-                "use OmniVoice for multilingual synthesis.",
-                language,
-            )
 
         voice = kw.get("voice") or self.DEFAULT_VOICE
         if voice not in self.PRESET_VOICES:
@@ -2154,6 +2149,7 @@ class CosyVoiceBackend(TTSBackend):
         self._model = AutoModel(model_dir=model_dir)
 
     def generate(self, text: str, **kw) -> torch.Tensor:
+        self._check_language(kw.get("language"))
         import numpy as np
         self._ensure_loaded()
 
@@ -2320,6 +2316,7 @@ class GPTSoVITSBackend(TTSBackend):
         return ["zh", "en", "ja", "yue", "ko"]
 
     def generate(self, text: str, **kw) -> torch.Tensor:
+        self._check_language(kw.get("language"))
         import json
         from services.outbound_http import open_trusted_endpoint
 

@@ -295,3 +295,26 @@ def test_batch_validates_all_languages_before_first_generation(_StubBackend):
     with pytest.raises(ValueError, match="pl"):
         backend.generate_batch(["hello", "czesc"], language=["en", "pl"])
     assert backend.calls == []
+
+
+@pytest.mark.parametrize("module,class_name", [
+    ("services.tts_backend", "VoxCPM2Backend"),
+    ("services.tts_backend", "MossTTSNanoBackend"),
+    ("services.tts_backend", "KittenTTSBackend"),
+    ("services.tts_backend", "CosyVoiceBackend"),
+    ("services.tts_backend", "GPTSoVITSBackend"),
+    ("engines.confucius4", "Confucius4Backend"),
+    ("engines.audiocpp", "AudioCPPBackend"),
+    ("engines.indextts", "IndexTTS2Backend"),
+    ("engines.voxcpm2_subprocess", "VoxCPM2SubprocessBackend"),
+    ("engines.cosyvoice_subprocess", "CosyVoiceSubprocessBackend"),
+    ("engines.moss_tts_nano_subprocess", "MossTTSNanoSubprocessBackend"),
+])
+def test_direct_generation_rejects_before_loading_or_starting_sidecar(module, class_name):
+    from importlib import import_module
+    cls = getattr(import_module(module), class_name)
+    # No constructor/model/runtime: unsupported input must fail before any of
+    # those resources are accessed, including override methods forwarding lang.
+    backend = object.__new__(cls)
+    with pytest.raises(ValueError, match="doesn't support"):
+        backend.generate("hello", language="not-a-supported-language")

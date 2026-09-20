@@ -791,6 +791,7 @@ class SubprocessBackend(TTSBackend):
         sample rate. Decodes the int16 PCM the sidecar returns into float32
         in [-1, 1].
         """
+        self._check_language(kw.get("language"))
         # On-pool callers (every HTTP/dub/batch generate, dispatched via
         # run_on_gpu_pool_guarded) already own a pool slot; re-acquiring would
         # self-deadlock on a 1-worker (MPS) pool, so skip it. Off-pool callers

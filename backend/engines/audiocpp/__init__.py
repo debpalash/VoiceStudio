@@ -474,6 +474,7 @@ class AudioCPPBackend(TTSBackend):
     # ── generate ────────────────────────────────────────────────────────
 
     def generate(self, text: str, **kw) -> torch.Tensor:
+        self._check_language(kw.get("language"))
         import torch
         from services.model_manager import (
             GENERATE_PROGRESS_GRACE_S,
