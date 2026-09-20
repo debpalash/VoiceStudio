@@ -287,61 +287,28 @@ class TTSBackend(ABC):
     language_display_names: dict[str, str] = {}
 
     def _normalize_language_code(self, language: object) -> Optional[str]:
-        """Return a lowercased language token to compare against the
-        engine's ``supported_languages``, or None if no usable code.
+        """Resolve picker names and region tags without treating unknown names as Auto."""
+        if language is None:
+            return None
+        if not isinstance(language, str):
+            raise ValueError("Language must be a string or None")
+        value = language.strip().lower()
+        if not value or value == "auto":
+            return None
+        from omnivoice.utils.lang_map import LANG_NAME_TO_ID
 
-        Accepts ``"en"``, ``"EN"``, ``"english"``, ``"Auto"``, ``None``, and
-        anything else that doesn't look like a language. The frontend
-        sometimes passes the picker label (e.g. ``"Spanish"``); the base
-        engine list is ISO, so we resolve common display names to ISO
-        here so a ``Spanish`` user request doesn't slip past an ``["es"]``
-        engine. Anything unknown falls through as None — the check then
-        considers the request "open-ended" and skips enforcement, which
-        is the same path as Auto.
-
-        Returns the token in a form the engine's set can match: a 2-letter
-        ISO code (``"en"``), a 3-letter ISO 639 code (``"cmn"``, ``"zho"``),
-        or None. Keeps 3-letter codes intact so the engine-side check
-        (``code[:2] in supported``) can apply the prefix rule.
-        """
-        if not language or not isinstance(language, str):
-            return None
-        s = language.strip().lower()
-        if not s or s == "auto":
-            return None
-        # Common display names the picker uses. Conservative exact-match
-        # map — never guess from prefixes (a "Polish" / "Philippines"
-        # prefix collision, etc.). Add new entries only with a real
-        # picker label behind them; one source of truth beats two.
-        _DISPLAY_TO_ISO = {
-            "english": "en", "spanish": "es", "french": "fr", "german": "de",
-            "italian": "it", "portuguese": "pt", "japanese": "ja",
-            "chinese": "zh", "mandarin": "zh", "cantonese": "yue",
-            "korean": "ko", "dutch": "nl", "russian": "ru",
-            "polish": "pl", "turkish": "tr", "arabic": "ar", "hindi": "hi",
-            "indonesian": "id", "vietnamese": "vi", "thai": "th",
-            "swedish": "sv", "danish": "da", "norwegian": "no",
-            "finnish": "fi", "greek": "el", "hebrew": "he", "malay": "ms",
-            "czech": "cs", "hungarian": "hu", "tagalog": "tl", "filipino": "tl",
-        }
-        if s in _DISPLAY_TO_ISO:
-            return _DISPLAY_TO_ISO[s]
-        # BCP-47 ("zh-CN", "cmn-Hans") has a region/script suffix after a
-        # hyphen; the part before the hyphen is the ISO code we want. If
-        # there's no hyphen, the whole input is the code.
-        head = s.split("-", 1)[0]
-        cleaned = "".join(ch for ch in head if ch.isalpha())
-        if not cleaned:
-            return None
-        # Two- or three-letter code: keep as-is so the engine can match a
-        # 3-letter declaration like ["cmn", "yue"] against a 3-letter
-        # request without a stale 2-letter prefix downgrade.
-        if len(cleaned) in (2, 3):
-            return cleaned
-        # Longer than 3 with no hyphen: noise — the picker doesn't emit
-        # 4+ letter bare codes. Returning None here means the engine's
-        # own code gets a chance to interpret it (or raise on its own).
-        return None
+        # Reuse the same complete, bundled mapping as the language picker.
+        aliases = {"mandarin": "zh", "arabic": "ar", "tagalog": "tl"}
+        if value in aliases:
+            return aliases[value]
+        if value in LANG_NAME_TO_ID:
+            return LANG_NAME_TO_ID[value]
+        head = value.replace("_", "-").split("-", 1)[0]
+        if head.isascii() and head.isalpha() and len(head) in (2, 3):
+            return head
+        # A supplied but unrecognized language remains explicit, so a finite
+        # engine rejects it instead of silently using its default language.
+        return value
 
     def _check_language(self, language: object) -> None:
         """Reject caller-supplied languages outside this engine's declared
@@ -354,9 +321,6 @@ class TTSBackend(ABC):
             documents itself as open-ended and routes any extra check
             through its own per-engine logic (mlx-audio's per-model table,
             PocketTTS' own strict set, OmniVoice's 600-language zero-shot).
-          - ``_normalize_language_code`` returns None — the input is
-            unstructured (e.g. a label the picker doesn't ship) and we'd
-            rather let the engine try than raise on noise.
 
         Raises ``ValueError`` with the engine display name, the requested
         language, and the supported set so the rewrite in
@@ -379,10 +343,8 @@ class TTSBackend(ABC):
         code = self._normalize_language_code(language)
         if code is None:
             return  # no preference → caller leaves it to the engine
-        # Exact match is the right contract — anything more lenient would
-        # let "en-gb" past an ["en"] engine, which is the bug class #2104
-        # is closing. 3-letter tokens pass through unmodified; engines
-        # with a 3-letter set handle them.
+        # Region tags resolve to their base language; three-letter codes
+        # remain exact rather than guessing from their first two letters.
         if code in supported:
             return
         # Build the user-facing list. ``multi`` is not in here because

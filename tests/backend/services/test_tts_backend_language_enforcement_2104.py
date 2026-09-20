@@ -90,7 +90,7 @@ def _StubBackend():
         # form: language[-region[-script]]; the head is the language).
         ("zh-CN", "zh"),
         ("cmn-Hans", "cmn"),  # 3-letter base — preserved for engine-side match
-        ("ZH_CN", None),       # underscore separator, not BCP-47 — noise
+        ("ZH_CN", "zh"),       # underscore separator, not BCP-47 — noise
         # Display-name → ISO (the picker sometimes sends the label).
         ("English", "en"),
         ("Spanish", "es"),
@@ -185,13 +185,25 @@ def test_check_language_skips_for_empty_engine_list(_StubBackend):
     be._check_language("pl")
 
 
-def test_check_language_skips_for_unrecognized_input(_StubBackend):
-    """Random strings the picker may emit (a new locale, a label without
-    a known ISO mapping). Don't make the user's day worse than it was
-    by raising on something the engine might have handled."""
+@pytest.mark.parametrize("language", ["Klingon", "??", "Ukrainian", "Albanian"])
+def test_check_language_rejects_unavailable_named_language(_StubBackend, language):
     be = _StubBackend(["en"])
-    be._check_language("Klingon")  # not in display map → returns None → skip
-    be._check_language("??")
+    with pytest.raises(ValueError, match="doesn't support"):
+        be._check_language(language)
+
+
+def test_every_picker_label_resolves_to_an_explicit_code(_StubBackend):
+    import json
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[3]
+    be = _StubBackend(["en"])
+    for picker in [root / "frontend/src/languages.json", root / "electron/src/renderer/src/lib/languages.json"]:
+        for label in json.loads(picker.read_text()):
+            code = be._normalize_language_code(label)
+            if label.lower() == "auto":
+                assert code is None
+            else:
+                assert code and code.isascii() and code.isalpha() and len(code) in (2, 3), label
 
 
 # ── generate_batch: enforcement wired through ──────────────────────────
