@@ -1,5 +1,8 @@
 # macOS Build, Signing & Notarization — Requirements & Verification
 
+> **Archived Tauri notes.** Current Electron signing and notarization are
+> documented in [RELEASING.md](RELEASING.md).
+
 The canonical checklist for producing and verifying the VoiceStudio macOS
 desktop bundle. It pairs with two helper scripts and the release workflow:
 

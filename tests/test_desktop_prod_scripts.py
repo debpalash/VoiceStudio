@@ -28,11 +28,6 @@ _PKG = os.path.join(_ROOT, "package.json")
 _SH = os.path.join(_ROOT, "scripts", "desktop-prod.sh")
 _APPIMAGE_PROCESSES = os.path.join(_ROOT, "scripts", "desktop_prod_processes.py")
 
-# Scripts whose NAME promises a re-launch of an existing build rather than a
-# fresh-install emulation. Add new aliases here when they appear.
-_RELAUNCH_SCRIPTS = ("tauri:desktop-prod:run", "tauri:desktop-prod:run:pill")
-
-
 def _supported_bash() -> str | None:
     """Return a native shell capable of executing desktop-prod.sh."""
     if os.name == "nt":
@@ -69,30 +64,14 @@ def _scripts() -> dict:
         return json.load(fh)["scripts"]
 
 
-def test_relaunch_scripts_keep_data():
-    """A re-launch must not wipe ~/.omnivoice."""
+def test_archived_tauri_has_no_root_package_entry_points():
+    """The maintained root commands must never launch the archived shell."""
     scripts = _scripts()
-    for name in _RELAUNCH_SCRIPTS:
-        assert name in scripts, f"{name} disappeared from package.json"
-        cmd = scripts[name]
-        assert "--skip-build" in cmd, f"{name} is meant to skip the build: {cmd}"
-        assert "--keep-data" in cmd, (
-            f"{name} passes --skip-build without --keep-data, so it still runs the "
-            f"wipe block in desktop-prod.sh and deletes the user's voice profiles, "
-            f"SQLite db and outputs on every re-launch (#1333). Command: {cmd}"
-        )
-
-
-def test_fresh_install_emulation_still_wipes():
-    """The other side of the branch: the default must stay a real fresh run,
-    otherwise this test would 'pass' by making every script harmless."""
-    scripts = _scripts()
-    assert "--keep-data" not in scripts["tauri:desktop-prod"], (
-        "desktop-prod is the fresh-install emulation — it must still wipe"
-    )
-    # `desktop-fresh:run` is deliberately NOT in _RELAUNCH_SCRIPTS: that script
-    # is a stricter new-user emulation, so wiping is the point of its name.
-    assert "--keep-data" not in scripts["tauri:desktop-fresh:run"]
+    tauri_entries = [name for name in scripts if "tauri" in name]
+    assert tauri_entries == [], f"archived Tauri commands remain active: {tauri_entries}"
+    assert scripts["dev"] == "bun run --cwd electron dev"
+    assert scripts["build"] == "bun run --cwd electron build"
+    assert scripts["smoke-test"] == "node scripts/electron-smoke-test.mjs"
 
 
 def test_skip_build_does_not_imply_keep_data_in_the_script():

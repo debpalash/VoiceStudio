@@ -126,8 +126,17 @@ original loading error is preserved rather than substituting another model.
 
 ### `uv` not found
 
-Install `uv` from <https://docs.astral.sh/uv/> or configure the bundled binary
-through `OMNIVOICE_BUNDLED_UV`.
+The desktop app ships `uv` and points the backend at it through
+`OMNIVOICE_BUNDLED_UV`, so an installed build needs nothing from you. Before
+v0.5.5 the shell located that binary but never passed it on, and because the
+packaged `uv` sits in the app's own resources directory — on nobody's `PATH`,
+and a GUI launch inherits no shell `PATH` additions either — preflight reported
+it missing while the binary was right there
+([#2215](https://github.com/debpalash/VoiceStudio/issues/2215)).
+
+Running from source, install `uv` from <https://docs.astral.sh/uv/>, or set
+`OMNIVOICE_BUNDLED_UV` to the absolute path of a `uv` binary to pin one
+explicitly — an explicit value always wins over the bundled copy.
 
 ### Import fails after installation
 

@@ -80,8 +80,7 @@ reviews:
         path; flag direct schema edits. The backend serves loopback HTTP: treat
         every query/path/form param as hostile (path traversal, log injection,
         CSRF from a browser tab), and never route user-chosen filesystem
-        destinations through HTTP — that authorization belongs in the Tauri
-        process.
+        destinations through HTTP — that authorization belongs in Electron main.
     - path: "frontend/src/**/*.{js,jsx,ts,tsx}"
       instructions: >-
         Review as a product-minded senior frontend engineer. Check: stale state
@@ -91,18 +90,19 @@ reviews:
         user-facing string must be an i18n t('...') key present in ALL 21
         frontend/src/i18n/locales/*.json files — flag hardcoded UI strings and
         keys missing from any locale.
-    - path: "frontend/src-tauri/**/*.rs"
+    - path: "electron/**/*.{ts,tsx}"
       instructions: >-
-        Review as a desktop-systems engineer. Check: every #[tauri::command] is
-        callable from the webview — validate inputs and scope filesystem/process
-        access accordingly; window and webview lifecycle on all three OSes;
-        child-process spawn/exit-code/stderr handling; no unwrap/expect on
-        user-controlled input; platform cfg blocks keep user-visible defaults
-        identical across macOS/Windows/Linux. The parity rule covers BEHAVIOUR,
-        not PERFORMANCE: hardware acceleration is host-dependent by design
-        (CUDA/MPS/DirectML, Triton availability, torch.compile), so an
-        optimization skipped where it cannot work is NOT a parity violation and
-        must not be reported as one.
+        Electron is the only maintained desktop; Tauri is sunset and archived.
+        Review main/preload IPC authorization, sender validation, narrow bridges,
+        native file dialogs, runtime supervision and renderer lifecycle. Never
+        require a Tauri UI backport. User-facing strings belong in all 21 Electron
+        locale bundles. Validate user-visible behavior on macOS, Windows and Linux.
+    - path: "native/**/*.rs"
+      instructions: >-
+        Review shared Electron native helpers for input validation, process and
+        filesystem scope, thread affinity and cross-platform behavior. Archived
+        Tauri modules imported by these helpers remain shared code; do not require
+        unrelated Tauri shell work.
     - path: "tests/**/*.py"
       instructions: >-
         Review as a test-infrastructure engineer. Check: the test would fail
