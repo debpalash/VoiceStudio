@@ -12,7 +12,16 @@ import {
 import { CrashJournal } from './crash-journal';
 import { spawn, spawnSync, type ChildProcess, type StdioOptions } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  accessSync,
+  constants,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
@@ -144,7 +153,9 @@ function usableFile(path: string): boolean {
   try {
     if (!existsSync(path)) return false;
     const stat = statSync(path);
-    return stat.isFile() && stat.size > 0;
+    if (!stat.isFile() || stat.size <= 0) return false;
+    accessSync(path, constants.X_OK);
+    return true;
   } catch {
     return false;
   }
@@ -313,6 +324,18 @@ function childEnv(
   // Arms backend/core/parent_liveness.py: stdin EOF == "the shell is gone".
   env.OMNIVOICE_DESKTOP_CONTAINED = '1';
   env.OMNIVOICE_PORT = String(port);
+  // #2215: the backend resolves uv as OMNIVOICE_BUNDLED_UV first and
+  // `shutil.which("uv")` second. The packaged uv lives in resources/tools,
+  // which is on nobody's PATH, and a GUI launch does not inherit the shell's
+  // PATH either — so `which` missed a uv the shell had already located, and
+  // every one-click sidecar install died at preflight with "uv was not found"
+  // while the binary sat inside the app bundle. findUv() knows where to look;
+  // hand the answer over instead of keeping it. An explicit override from the
+  // environment still wins.
+  if (!env.OMNIVOICE_BUNDLED_UV) {
+    const uv = findUv();
+    if (uv) env.OMNIVOICE_BUNDLED_UV = uv;
+  }
   if (region === 'china') env.HF_ENDPOINT ??= 'https://hf-mirror.com';
   if (platform === 'win32') {
     env.TORCHDYNAMO_DISABLE = '1';

@@ -1,6 +1,9 @@
 // @vitest-environment node
 import { afterEach, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
+import { chmodSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 const mocks = vi.hoisted(() => ({
   runtimeConfig: null as { root: string; owned: boolean } | null,
   existingProject: false,
@@ -506,4 +509,69 @@ it('reuses a healthy default runtime after explicit setup leaves an unowned envi
   expect(restart).toHaveBeenCalledOnce();
   restart.mockRestore();
   await supervisor.shutdown();
+});
+
+// ── #2215: the packaged uv has to reach the backend ────────────────────────
+//
+// The backend resolves uv as OMNIVOICE_BUNDLED_UV first and `shutil.which`
+// second. The packaged uv lives in resources/tools — on nobody's PATH — and a
+// GUI launch inherits no shell PATH additions either, so `which` found nothing
+// and every one-click sidecar installer (sidecar_install plus the IndexTTS,
+// Confucius4, dots.tts and MOSS-TTS bootstraps, all five reading the same
+// variable) died at preflight with "uv was not found" while the binary sat in
+// the app bundle.
+
+function stubUvOnPath(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'vs-uv-'));
+  const uv = join(dir, process.platform === 'win32' ? 'uv.exe' : 'uv');
+  writeFileSync(uv, '#!/bin/sh\n');
+  chmodSync(uv, 0o700);
+  vi.stubEnv('PATH', dir);
+  return uv;
+}
+
+it('hands the located uv to the backend so sidecar preflight can find it', () => {
+  vi.stubEnv('OMNIVOICE_BUNDLED_UV', '');
+  const uv = stubUvOnPath();
+
+  const { env } = managedBackendSpawnOptions(3900);
+
+  expect(env.OMNIVOICE_BUNDLED_UV).toBe(uv);
+});
+
+it.runIf(process.platform !== 'win32')(
+  'does not hand a non-executable uv candidate to the backend',
+  () => {
+    vi.stubEnv('OMNIVOICE_BUNDLED_UV', '');
+    const uv = stubUvOnPath();
+    chmodSync(uv, 0o600);
+
+    const { env } = managedBackendSpawnOptions(3900);
+
+    expect(env.OMNIVOICE_BUNDLED_UV).not.toBe(uv);
+  },
+);
+
+it('never overrides a uv the user pinned themselves', () => {
+  vi.stubEnv('OMNIVOICE_BUNDLED_UV', '/pinned/uv');
+  stubUvOnPath();
+
+  const { env } = managedBackendSpawnOptions(3900);
+
+  expect(env.OMNIVOICE_BUNDLED_UV).toBe('/pinned/uv');
+});
+
+it('only ever names a uv that is really there', () => {
+  // The backend gates on `if bundled and Path(bundled).is_file()`, so a blank
+  // or stale value reads as "the shell tried and failed" rather than "the
+  // shell had nothing to say". Whether this host has a uv at all is not the
+  // point — that it never names one it cannot stand behind, is.
+  vi.stubEnv('OMNIVOICE_BUNDLED_UV', '');
+
+  const { env } = managedBackendSpawnOptions(3900);
+
+  if (env.OMNIVOICE_BUNDLED_UV !== undefined) {
+    expect(env.OMNIVOICE_BUNDLED_UV).not.toBe('');
+    expect(existsSync(env.OMNIVOICE_BUNDLED_UV)).toBe(true);
+  }
 });
