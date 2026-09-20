@@ -318,3 +318,36 @@ def test_direct_generation_rejects_before_loading_or_starting_sidecar(module, cl
     backend = object.__new__(cls)
     with pytest.raises(ValueError, match="doesn't support"):
         backend.generate("hello", language="not-a-supported-language")
+
+
+@pytest.mark.parametrize('language', ['Spanish', 'es-MX'])
+def test_cosyvoice_uses_canonical_cross_lingual_tag(monkeypatch, language):
+    from services.tts_backend import CosyVoiceBackend
+    from types import SimpleNamespace
+    import torch
+    seen = []
+    def inference(text, *args, **kwargs):
+        seen.append(text)
+        return [{'tts_speech': torch.zeros(1, 10)}]
+    backend = object.__new__(CosyVoiceBackend)
+    backend._model = SimpleNamespace(inference_cross_lingual=inference)
+    monkeypatch.setattr(backend, '_ensure_loaded', lambda: None)
+    backend.generate('hola', ref_audio='voice.wav', language=language)
+    assert seen == [CosyVoiceBackend.LANG_TAGS['es'] + 'hola']
+
+
+@pytest.mark.parametrize('language', ['Korean', 'ko-KR'])
+def test_gptsovits_uses_canonical_target_language(monkeypatch, language):
+    from services.tts_backend import GPTSoVITSBackend
+    from services import outbound_http
+    import json
+    seen = []
+    def capture(*args, **kwargs):
+        seen.append(json.loads(kwargs['body']))
+        raise RuntimeError('captured request')
+    monkeypatch.setattr(outbound_http, 'open_trusted_endpoint', capture)
+    backend = object.__new__(GPTSoVITSBackend)
+    backend._url = 'http://127.0.0.1:9880'
+    with pytest.raises(RuntimeError, match='captured request'):
+        backend.generate('hello', ref_audio='voice.wav', language=language)
+    assert seen[0]['text_lang'] == 'ko'

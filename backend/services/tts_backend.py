@@ -310,7 +310,7 @@ class TTSBackend(ABC):
         # engine rejects it instead of silently using its default language.
         return value
 
-    def _check_language(self, language: object) -> None:
+    def _check_language(self, language: object) -> Optional[str]:
         """Reject caller-supplied languages outside this engine's declared
         ``supported_languages`` set (#2104).
 
@@ -346,7 +346,7 @@ class TTSBackend(ABC):
         # Region tags resolve to their base language; three-letter codes
         # remain exact rather than guessing from their first two letters.
         if code in supported:
-            return
+            return code
         # Build the user-facing list. ``multi`` is not in here because
         # ``supported`` already short-circuited above; entries are rendered
         # in declared order so the message matches ``list_backends()``.
@@ -2149,14 +2149,13 @@ class CosyVoiceBackend(TTSBackend):
         self._model = AutoModel(model_dir=model_dir)
 
     def generate(self, text: str, **kw) -> torch.Tensor:
-        self._check_language(kw.get("language"))
+        language = self._check_language(kw.get("language"))
         import numpy as np
         self._ensure_loaded()
 
         ref_audio = kw.get("ref_audio")
         ref_text = kw.get("ref_text")
         instruct = kw.get("instruct")
-        language = kw.get("language")
 
         # Pick the right inference method based on what the caller provides:
         # 1. instruct + ref_audio → inference_instruct2 (emotion/dialect/speed)
@@ -2316,13 +2315,12 @@ class GPTSoVITSBackend(TTSBackend):
         return ["zh", "en", "ja", "yue", "ko"]
 
     def generate(self, text: str, **kw) -> torch.Tensor:
-        self._check_language(kw.get("language"))
+        language = self._check_language(kw.get("language"))
         import json
         from services.outbound_http import open_trusted_endpoint
 
         ref_audio = kw.get("ref_audio")
         ref_text = kw.get("ref_text", "")
-        language = kw.get("language", "en")
 
         # Map language codes to GPT-SoVITS format
         lang_map = {
