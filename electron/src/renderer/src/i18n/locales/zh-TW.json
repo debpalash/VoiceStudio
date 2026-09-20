@@ -67,6 +67,8 @@
     "theme": "佈景主題",
     "font": "字體",
     "ui_scale": "使用者介面比例",
+    "sidebar_expanded": "保持側邊欄展開",
+    "sidebar_expanded_hint": "當「專案」「轉錄」或「工具」等工作區在較窄視窗中開啟自己的面板時，不將側邊欄收縮為窄欄。",
     "autoplay_preview": "自動播放預覽",
     "autoplay_preview_label": "渲染完成後立即播放輸出",
     "back": "返回",

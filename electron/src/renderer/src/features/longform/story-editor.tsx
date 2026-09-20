@@ -311,7 +311,10 @@ export function StoryEditor({
       })),
     });
   return (
-    <div className="min-h-0 flex-1 space-y-4">
+    // No `min-h-0` here: the page column is the scroll container, and a
+    // shrinkable flex item let a long script paint over the generation
+    // progress panel and the footer instead of pushing them down.
+    <div data-slot="story-editor" className="flex-1 space-y-4">
       {previewError && (
         <PipelineFailure fallback={previewError} onDismiss={() => setPreviewError(null)} />
       )}

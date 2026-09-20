@@ -13,6 +13,7 @@ const SECONDARY_ROUTES = new Set([
   '/dub',
   '/design',
   '/transcriptions',
+  '/settings',
 ]);
 // A local-controls pane needs enough room for the actual workspace. At the
 // default desktop window, preserve navigation as a rail and restore the full
@@ -46,15 +47,19 @@ function useCompactViewport(): boolean {
 }
 
 export function useWorkspaceSidebarState() {
-  const { libraryOpen, expandedLibraryContext } = useWorkspace();
+  const { libraryOpen, expandedLibraryContext, autoCollapseSidebar } = useWorkspace();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const compactViewport = useCompactViewport();
   const compactContext = `${pathname}:${compactViewport}`;
   const forceExpanded = expandedLibraryContext === compactContext;
+  // Auto-collapse is a preference (Settings → Appearance → Keep sidebar
+  // expanded): off means a secondary workspace on a narrow window keeps the
+  // full sidebar. A workspace that shows the voice library itself still
+  // collapses the duplicate.
+  const autoCollapse =
+    autoCollapseSidebar !== false && compactViewport && routeHasSecondarySidebar(pathname);
   const compact =
-    !libraryOpen ||
-    ((routeOwnsVoiceLibrary(pathname) || (compactViewport && routeHasSecondarySidebar(pathname))) &&
-      !forceExpanded);
+    !libraryOpen || ((routeOwnsVoiceLibrary(pathname) || autoCollapse) && !forceExpanded);
   const setOpen = (open: boolean) =>
     setWorkspace({ libraryOpen: open, expandedLibraryContext: open ? compactContext : null });
   return {

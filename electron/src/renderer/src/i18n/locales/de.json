@@ -67,6 +67,8 @@
     "theme": "Theme",
     "font": "Schriftart",
     "ui_scale": "UI-Skala",
+    "sidebar_expanded": "Seitenleiste ausgeklappt lassen",
+    "sidebar_expanded_hint": "Die Seitenleiste nicht auf eine schmale Leiste verkleinern, wenn ein Bereich wie Projekte, Transkribieren oder Werkzeuge in einem schmaleren Fenster sein eigenes Panel öffnet.",
     "autoplay_preview": "Vorschau der automatischen Wiedergabe",
     "autoplay_preview_label": "Spielen Sie die Ausgabe ab, sobald ein Rendervorgang abgeschlossen ist",
     "back": "Zurück",

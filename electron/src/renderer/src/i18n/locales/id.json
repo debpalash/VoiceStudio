@@ -67,6 +67,8 @@
     "theme": "Tema",
     "font": "huruf",
     "ui_scale": "Skala UI",
+    "sidebar_expanded": "Biarkan bilah sisi terbentang",
+    "sidebar_expanded_hint": "Jangan kecilkan bilah sisi menjadi rel saat ruang kerja seperti Proyek, Transkripsi, atau Alat membuka panelnya sendiri di jendela yang lebih sempit.",
     "autoplay_preview": "Pratinjau putar otomatis",
     "autoplay_preview_label": "Putar hasilnya segera setelah render selesai",
     "back": "Kembali",
