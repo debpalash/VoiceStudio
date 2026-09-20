@@ -71,6 +71,8 @@
     "theme": "Motyw",
     "font": "Czcionka",
     "ui_scale": "Skala interfejsu użytkownika",
+    "sidebar_expanded": "Pozostaw pasek boczny rozwinięty",
+    "sidebar_expanded_hint": "Nie zwężaj paska bocznego do wąskiej listwy, gdy obszar taki jak Projekty, Transkrypcja lub Narzędzia otwiera własny panel w węższym oknie.",
     "autoplay_preview": "Podgląd automatycznego odtwarzania",
     "autoplay_preview_label": "Odtwórz wynik natychmiast po zakończeniu renderowania",
     "back": "Powrót",

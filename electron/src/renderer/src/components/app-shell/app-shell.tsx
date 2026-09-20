@@ -28,6 +28,9 @@ export function AppShell() {
         {settings ? (
           <>
             <CommandPalette />
+            {/* The main sidebar (navigation, library, status) stays where it is
+                on Settings too, so the app never swaps its left column. */}
+            <WorkspaceSidebar />
             <SettingsWorkspace
               role={pathname === '/settings/openapi' ? 'main' : undefined}
               className="@container relative flex min-w-0 flex-1 flex-col overflow-hidden"

@@ -69,6 +69,8 @@
     "theme": "Tema",
     "font": "Carattere",
     "ui_scale": "Scala dell'interfaccia utente",
+    "sidebar_expanded": "Mantieni la barra laterale espansa",
+    "sidebar_expanded_hint": "Non ridurre la barra laterale a una barra stretta quando uno spazio come Progetti, Trascrivi o Strumenti apre il proprio pannello in una finestra più stretta.",
     "autoplay_preview": "Anteprima di riproduzione automatica",
     "autoplay_preview_label": "Riproduci l'output non appena termina il rendering",
     "back": "Indietro",

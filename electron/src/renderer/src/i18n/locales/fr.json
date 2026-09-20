@@ -69,6 +69,8 @@
     "theme": "Thème",
     "font": "Police",
     "ui_scale": "Échelle de l'interface utilisateur",
+    "sidebar_expanded": "Garder la barre latérale déployée",
+    "sidebar_expanded_hint": "Ne pas réduire la barre latérale à un rail lorsqu'un espace comme Projets, Transcrire ou Outils ouvre son propre panneau dans une fenêtre plus étroite.",
     "autoplay_preview": "Aperçu de la lecture automatique",
     "autoplay_preview_label": "Lire la sortie dès la fin du rendu",
     "back": "Retour",

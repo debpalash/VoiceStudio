@@ -67,6 +67,8 @@
     "theme": "Tema",
     "font": "Yazı tipi",
     "ui_scale": "Kullanıcı Arayüzü Ölçeği",
+    "sidebar_expanded": "Kenar çubuğunu açık tut",
+    "sidebar_expanded_hint": "Projeler, Deşifre veya Araçlar gibi bir çalışma alanı daha dar bir pencerede kendi panelini açtığında kenar çubuğunu dar bir şeride küçültme.",
     "autoplay_preview": "Otomatik oynatma önizlemesi",
     "autoplay_preview_label": "İşleme biter bitmez çıktıyı oynat",
     "back": "Geri",

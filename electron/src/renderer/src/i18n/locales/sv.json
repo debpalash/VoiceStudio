@@ -67,6 +67,8 @@
     "theme": "Tema",
     "font": "Teckensnitt",
     "ui_scale": "UI-skala",
+    "sidebar_expanded": "Håll sidopanelen utfälld",
+    "sidebar_expanded_hint": "Krymp inte sidopanelen till en smal list när ett arbetsområde som Projekt, Transkribera eller Verktyg öppnar sin egen panel i ett smalare fönster.",
     "autoplay_preview": "Automatisk förhandsvisning",
     "autoplay_preview_label": "Spela utgången så snart en rendering är klar",
     "back": "Tillbaka",

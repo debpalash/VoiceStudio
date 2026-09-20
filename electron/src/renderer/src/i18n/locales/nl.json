@@ -67,6 +67,8 @@
     "theme": "Thema",
     "font": "Lettertype",
     "ui_scale": "UI-schaal",
+    "sidebar_expanded": "Zijbalk uitgeklapt houden",
+    "sidebar_expanded_hint": "De zijbalk niet tot een smalle balk verkleinen wanneer een werkruimte zoals Projecten, Transcriberen of Hulpmiddelen in een smaller venster een eigen paneel opent.",
     "autoplay_preview": "Voorbeeld van automatisch afspelen",
     "autoplay_preview_label": "Speel de uitvoer af zodra een render is voltooid",
     "back": "Terug",

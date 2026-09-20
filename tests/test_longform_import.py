@@ -186,7 +186,9 @@ def test_epub_total_size_cap_truncates():
     # the first is read and the rest skipped. Caps passed directly (no
     # monkeypatch) so the bound holds regardless of module import path.
     data = _make_epub([("One", "x" * 1000), ("Two", "y" * 1000), ("Three", "z" * 1000)])
-    plan = parse_audiobook_script(epub_to_chapter_script(data, max_total_bytes=1500))
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        overhead = sum(info.file_size for info in archive.infolist() if info.filename.endswith(('container.xml', '.opf')))
+    plan = parse_audiobook_script(epub_to_chapter_script(data, max_total_bytes=overhead + 1500))
     assert 1 <= len(plan.chapters) < 3  # capped before reading all three
 
 

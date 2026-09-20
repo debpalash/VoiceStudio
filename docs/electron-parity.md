@@ -65,3 +65,15 @@ path-bound WebSocket URL and reconnect without exposing credentials.
 running hash router and real backend. It fails on an error boundary, missing heading, uncaught
 exception, console error or warning, failed load or HTTP error response. The 2026-09-13 live run passed every
 route with no failures.
+
+## Settings navigation
+
+The main workspace sidebar stays visible on Settings routes, including while the backend is starting or unavailable. Settings keeps its own section list beside it, with a Settings heading instead of a duplicate brand header. Narrow windows use the same compact-rail behavior as other secondary-pane workspaces.
+
+## Navigation order
+
+In the expanded sidebar, workspace navigation sits immediately below the header and above the voice library. The status bar and Settings entry remain at the bottom; voice-library scrolling does not move the navigation.
+
+## Sidebar expansion preference
+
+Settings → Appearance → Keep sidebar expanded persists the choice locally. It disables automatic compaction on narrower secondary-pane workspaces; the default remains automatic. The explicit close control still works, and the Profiles workspace still avoids duplicating its voice library. The header toggle and sidebar share one state. A compact rail can reopen itself on every desktop platform, using the brand icon on Windows/Linux.
