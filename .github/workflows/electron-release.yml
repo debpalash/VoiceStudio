@@ -213,7 +213,7 @@ jobs:
           python3 scripts/prepare_electron_release.py --assets release-assets --tag "$TAG"
       - name: Preserve the final Tauri updater feeds
         run: |
-          test -n "$SUNSET_TAG" || { echo "Set TAURI_SUNSET_TAG before releasing"; exit 1; }
+          test "$SUNSET_TAG" = "v0.5.3" || { echo "TAURI_SUNSET_TAG must be v0.5.3 before releasing"; exit 1; }
           # Every release carries copies pointing to immutable v0.5.3 payloads
           # so archived Tauri clients never receive Electron installers.
           gh release download "$SUNSET_TAG" --pattern latest.json --dir release-assets

@@ -1,7 +1,10 @@
 # Desktop release plan — VoiceStudio
 
-> **Archived Tauri plan.** Electron is the only maintained desktop app. Follow
-> [RELEASING.md](RELEASING.md) for current builds and publication.
+> **Historical/manual-only Tauri plan.** Everything below is retained solely to
+> audit or manually reconstruct the final v0.5.3 Tauri release. Its build,
+> signing, and publication instructions are not maintained and must not be used
+> for a current release. Electron is the only maintained desktop app; follow
+> [RELEASING.md](RELEASING.md) for all current build and publication work.
 
 A shippable macOS (and eventually cross-platform) desktop release where the user drags the `.app` to `Applications`, double-clicks once, and does **everything else from the UI** — dependency runtime, model weights, first-run consent, all inside the app.
 

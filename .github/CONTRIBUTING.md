@@ -60,7 +60,8 @@ and startup; do not launch a second backend. See [Electron setup](../electron/RE
 bun run build       # build Electron
 bun run start       # launch the built Electron app
 bun run dist        # package locally without publishing
-bun run smoke-test  # packaged Electron + managed backend readiness
+bun run smoke-test  # packaged startup, first-run consent, and native bridge
+bun run smoke-test -- --install  # also install and start the managed backend
 bun run dev:web     # legacy browser UI + backend
 ```
 

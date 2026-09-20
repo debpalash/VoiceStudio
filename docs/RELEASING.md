@@ -28,7 +28,10 @@ version. Electron Builder reads it directly. Keep these active mirrors equal:
 
 The archived Tauri manifests stay frozen at their final release. Do not bump or
 rebuild them. `tests/test_app_version.py` enforces the active version contract.
-Never bump a version unless the owner asks.
+Version bumps are manual and require owner approval. Until a bump is requested,
+`main` may remain at the latest released version. For a release, bump the
+canonical version and both maintained mirrors together, then tag that exact
+version only after validation.
 
 ## Before tagging
 
