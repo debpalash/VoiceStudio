@@ -1,8 +1,8 @@
 # VoiceStudio — Electron desktop app
 
-Electron is the primary desktop app for voice cloning, stories, dubbing,
-transcription, voice design, and workflows. Tauri is retained only for its final
-sunset update; see [migration notes](../docs/electron-migration.md).
+Electron is the only maintained desktop app for voice cloning, stories, dubbing,
+transcription, voice design, and workflows. Tauri is archived at v0.5.3. For
+existing installations, see [migration notes](../docs/electron-migration.md).
 
 The runtime supervisor manages the local FastAPI backend. Network integrations
 and remote workers require configuration; local generation stays on your machine.
@@ -50,6 +50,8 @@ app-relative `/api/...`:
 ```sh
 bun run typecheck   # tsgo, both projects
 bun run check:electron # types, tests, build, packaging contract
+bun run smoke-test  # packaged Electron launch + first-run/native bridge checks
+bun run smoke-test -- --install  # also install and start an isolated managed backend
 bun run test        # vitest (jsdom)
 bun run build       # electron-vite build → out/
 bun run dist        # + electron-builder → release/
@@ -84,9 +86,9 @@ Layout references: T3 Code's `AppSidebarLayout`, `PreviewPanelShell`,
 
 The sidebar extends through the native title-bar row. Pane headers provide window
 drag regions and reserve space for native caption controls; engine status and
-theme switching live at the foot of the sidebar. The Electron shell imports the
-canonical Tauri favicon and signal-field artwork directly, and uses the existing
-Tauri platform icons for its window and installer branding.
+theme switching live at the foot of the sidebar. The Electron shell reuses the
+canonical VoiceStudio artwork and platform icons retained with the archived shell;
+its packaged uv tool is staged under `electron/build/uv`.
 
 Typography uses locally bundled Inter Variable with system UI fallbacks with shared roles: 14px/20px interface text,
 13px/20px labels, 12px/16px metadata, and 16px/28px script text. Controls use

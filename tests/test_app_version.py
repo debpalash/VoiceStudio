@@ -16,36 +16,13 @@ def test_app_version_matches_installed_package_metadata():
     assert APP_VERSION == version("omnivoice")
 
 
-def test_tauri_version_derives_from_package_json():
-    """tauri.conf.json must NOT carry its own version literal — it derives from
-    package.json (Tauri v2 ``"version": "../package.json"``). package.json is the
-    single source of truth; a re-hardcoded literal here is exactly the drift that
-    shipped a 0.3.6 bundle calling itself 0.3.5."""
-    import json
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[1]
-    tauri_conf = json.loads(
-        (root / "frontend/src-tauri/tauri.conf.json").read_text(encoding="utf-8")
-    )
-    assert tauri_conf["version"] == "../package.json", (
-        "tauri.conf.json must derive its version from package.json "
-        f'(expected "../package.json", got {tauri_conf["version"]!r})'
-    )
-
-
 def test_all_version_files_in_lockstep():
     """``frontend/package.json`` is the SINGLE SOURCE OF TRUTH for the app
-    version: vite injects ``__APP_VERSION__`` from it (first-run footer + every
-    bug report), and tauri.conf.json reads its bundle version from it
-    (``"version": "../package.json"``).
+    version: Electron's builder reads it and Vite injects ``__APP_VERSION__``.
 
-    The other three declarations are toolchain-required CI-guarded mirrors —
-    Cargo.toml + pyproject.toml (cargo/uv need a literal) and
+    The maintained toolchain-required CI-guarded mirrors are pyproject.toml and
     backend/core/version.py's ``_FALLBACK_VERSION`` (the frozen-backend last
-    resort, whose drift to "0.3.5" is why the v0.3.6 build reported 0.3.5). The
-    release.yml version-bump job bumps the canonical and these mirrors together;
-    catch any drift here in CI.
+    resort). Archived Tauri manifests stay frozen at their final release.
     """
     from pathlib import Path
 
@@ -72,11 +49,23 @@ def test_all_version_files_in_lockstep():
     )["version"]
     mirrors = {
         "pyproject.toml": _toml_version(root / "pyproject.toml"),
-        "Cargo.toml": _toml_version(root / "frontend/src-tauri/Cargo.toml"),
         "core/version.py": _named_literal(root / "backend/core/version.py", "_FALLBACK_VERSION"),
     }
     drifted = {k: v for k, v in mirrors.items() if v != canonical}
     assert not drifted, f"version mirrors drifted from package.json={canonical!r}: {drifted}"
+
+
+def test_release_policy_requires_owner_approved_manual_bumps():
+    """The maintained mirrors follow an owner-approved bump, never an automatic one."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    constitution = (root / "CLAUDE.md").read_text(encoding="utf-8")
+    release_guide = (root / "docs/RELEASING.md").read_text(encoding="utf-8")
+
+    assert "main is always **latest release + 1 patch**" not in constitution
+    assert "Version bumps are manual and happen only when the owner asks" in constitution
+    assert "Version bumps are manual and require owner approval" in release_guide
 
 
 def test_fallback_version_resolves_to_pyproject():

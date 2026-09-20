@@ -1,41 +1,19 @@
-# Desktop release pipeline — self-updating binaries for mac/linux/windows.
+# Archived v0.5.3 Tauri release workflow.
 #
-# Triggers:
-#   - push of a tag matching `v*` (e.g. `v0.2.0`) → full STABLE release,
-#     publishes artifacts + signed updater manifest (`latest.json`) to the
-#     tag's GH Release. This is the default Stable updater channel.
-#   - schedule (nightly, 07:00 UTC) → rolling `preview` PRERELEASE built from
-#     `main` with its own signed `latest.json` at releases/download/preview/.
-#     Feeds the opt-in Preview updater channel (Settings → About → Update
-#     channel). The `preview-gate` job skips the matrix on nights when `main`
-#     didn't move, so an idle day costs only a ~30s gate job — keeping Preview
-#     ≤24h behind `main` at a predictable ~1-matrix/day cost. The stable
-#     `latest` release is untouched.
-#   - workflow_dispatch (publish_preview=true) → the same preview build on
-#     demand from the selected branch (e.g. to preview a feature branch, or to
-#     refresh immediately without waiting for the nightly).
-#   - workflow_dispatch (publish_preview=false) → on-demand build (prior
-#     behavior; draft release named after the branch).
-#
-# Strategy: matrix builds per target. Each runner produces a PyInstaller
-# frozen backend + Tauri bundle. `tauri-apps/tauri-action` signs the updater
-# payloads with TAURI_SIGNING_PRIVATE_KEY and uploads to the GH Release for
-# the tag. The built-in updater plugin polls the release's `latest.json` on
-# client boot.
-#
-# Windows/Linux support: first-pass enabled. Expect the first few runs on
-# each to surface PyInstaller/Tauri issues that never showed up locally on
-# macOS — iterate on CI.
+# There are no automatic triggers. The exact-tag gate prevents this historical
+# workflow from producing a new Tauri version. All maintained desktop builds,
+# drafts and publication run through electron-release.yml.
 
 name: Tauri sunset (manual only)
 
-# Legacy workflow: run once on the final Tauri version tag.
-# Electron releases are owned by electron-release.yml.
+# Archived final-release workflow. It has no automatic trigger and its gate
+# accepts only the immutable TAURI_SUNSET_TAG. Electron releases are owned by
+# electron-release.yml; do not extend or reuse this workflow for new versions.
 on:
   workflow_dispatch:
     inputs:
       draft:
-        description: "Keep the final Tauri release draft until Electron artifacts are ready"
+        description: "Historical v0.5.3 audit/rebuild only"
         default: "true"
       publish_preview:
         description: "Legacy compatibility input; previews are retired"

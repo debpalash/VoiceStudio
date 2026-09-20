@@ -8,7 +8,7 @@ Every folder has a single job. Every file at the root earns its place.
 VoiceStudio/
 │
 ├── README.md / README_CN.md     ⟵ user-facing overview (English / Chinese)
-├── CHANGELOG.md                 ⟵ release history; release.yml extracts the tag's section verbatim
+├── CHANGELOG.md                 ⟵ release history; Electron releases use the tagged section
 ├── CLAUDE.md / AGENTS.md        ⟵ the working contract for AI agents — keep the two in sync
 ├── LICENSE, LICENSE-NOTICE.md, SPONSORS.md
 │
@@ -56,8 +56,17 @@ VoiceStudio/
 │   ├── config/models.yaml       model catalogue
 │   └── tests/                   the isolated pytest session — see "Where tests live"
 │
-├── frontend/                    ⟵ React 19 + Vite + Tauri desktop
-│   ├── package.json             THE app version — every other version file mirrors it
+├── electron/                    ⟵ maintained Electron desktop: main, preload, renderer
+│   ├── src/main/                lifecycle, backend supervisor, updater, native IPC
+│   ├── src/preload/             typed renderer bridge
+│   ├── src/renderer/            React 19 desktop UI
+│   ├── tests/                   packaged and workflow smoke tests
+│   └── electron-builder.config.mjs
+│
+├── native/desktop-bridge/       ⟵ Rust helper used by Electron
+│
+├── frontend/                    ⟵ legacy web UI plus shared app metadata
+│   ├── package.json             THE maintained app version
 │   ├── src/
 │   │   ├── pages/               one file per top-level view
 │   │   ├── components/          reusable UI (+ audiobook/ clone/ dub/ gallery/ settings/ …)
@@ -69,8 +78,7 @@ VoiceStudio/
 │   │   ├── config/, data/, assets/, utils/
 │   │   └── test/                vitest setup + visual-test helpers
 │   ├── e2e/, e2e-perf/, e2e-prod/   Playwright suites: functional, perf, packaged bundle
-│   ├── src-tauri/               Rust desktop shell — backend spawn/bootstrap, updater
-│   │   │                        channel, dictation shortcut, crash/reset/uninstall
+│   ├── src-tauri/               archived v0.5.3 Tauri shell and retained shared assets
 │   │   ├── capabilities/, icons/, wix/, debian/, appimage/   packaging inputs
 │   │   └── tests/
 │   └── public/
@@ -212,7 +220,7 @@ VoiceStudio/
 ├── apps/
 │   ├── api/                 ← was backend/
 │   ├── web/                 ← was frontend/
-│   └── desktop/             ← could extract src-tauri/ here later
+│   └── desktop/             ← was electron/
 ├── packages/
 │   ├── omnivoice-model/     ← was omnivoice/
 │   └── tts-adapters/        ← new; the pluggable TTS interface from ROADMAP phase 3
@@ -228,9 +236,9 @@ VoiceStudio/
 - `package.json` workspaces and scripts
 - `turbo.json`, `Dockerfile`, `docker-compose.yml` paths
 - `backend.spec` (`['backend/main.py']`, `pathex=['.']`)
-- `frontend/src-tauri/tauri.*.conf.json` sidecar paths
+- Electron Builder, native-helper, updater and packaged-smoke paths
 - every import that reads `from backend.main import …` (tests, scripts)
-- `frontend/package.json` as the version source of truth, and the mirrors that track it
+- `frontend/package.json` as the version source of truth and its active mirrors
 
 Migrate when adding the second `apps/*` or the second `packages/*`. Not before.
 

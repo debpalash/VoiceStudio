@@ -4,6 +4,30 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
+@pytest.mark.parametrize("tag,allowed", [("", False), ("v0.5.4", False), ("v0.5.3", True)])
+def test_release_downloads_legacy_feeds_only_from_final_tauri_tag(tmp_path, tag, allowed):
+    import os
+    import subprocess
+    import yaml
+
+    workflow = yaml.load((ROOT / ".github/workflows/electron-release.yml").read_text(), Loader=yaml.BaseLoader)
+    step = next(s for s in workflow["jobs"]["release"]["steps"] if s.get("name") == "Preserve the final Tauri updater feeds")
+    capture = tmp_path / "downloads"
+    for name, body in [("gh", 'printf "%s\\n" "$*" >> "$CAPTURE_PATH"'), ("python3", "exit 0")]:
+        executable = tmp_path / name
+        executable.write_text("#!/bin/sh\n" + body + "\n")
+        executable.chmod(0o755)
+    env = dict(os.environ, SUNSET_TAG=tag, TAG="v0.5.4", CAPTURE_PATH=str(capture))
+    env["PATH"] = str(tmp_path) + os.pathsep + env["PATH"]
+    result = subprocess.run(["bash", "-e", "-c", step["run"]], env=env, capture_output=True)
+    assert (result.returncode == 0) == allowed
+    assert capture.exists() == allowed
+    if allowed:
+        assert capture.read_text().splitlines() == [
+            "release download v0.5.3 --pattern latest.json --dir release-assets",
+            "release download v0.5.3 --pattern latest-user.json --dir release-assets",
+        ]
+
 def test_release_preserves_authored_announcement_and_contributors(monkeypatch, tmp_path):
     """Publishing must not bury the release's introduction under boilerplate."""
     import json

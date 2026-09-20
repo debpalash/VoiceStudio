@@ -1,7 +1,7 @@
 # Moving to Electron
 
-The next desktop release uses Electron. Tauri receives one final sunset update;
-subsequent releases build only Electron. Existing Tauri downloads remain available.
+Electron is the only maintained desktop app. Tauri reached its final release at
+v0.5.3 and is archived; existing Tauri downloads remain available for migration.
 
 1. Find your Tauri data directory in Settings and back up the entire directory
    while the app is closed. Keep reference audio stored outside it too.

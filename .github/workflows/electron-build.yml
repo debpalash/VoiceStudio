@@ -80,7 +80,7 @@ jobs:
           const targets = { 'linux-x64': 'x86_64-unknown-linux-gnu', 'win32-x64': 'x86_64-pc-windows-msvc', 'darwin-arm64': 'aarch64-apple-darwin', 'darwin-x64': 'x86_64-apple-darwin' };
           if (targets[`${process.platform}-${process.arch}`] !== expected) throw new Error('Runner architecture does not match package target');
           const source = execFileSync(process.platform === 'win32' ? 'where.exe' : 'which', ['uv'], { encoding: 'utf8' }).trim().split(/\r?\n/)[0];
-          const dir = 'frontend/src-tauri/binaries';
+          const dir = 'electron/build/uv';
           mkdirSync(dir, { recursive: true });
           const destination = join(dir, `uv-${expected}${process.platform === 'win32' ? '.exe' : ''}`);
           copyFileSync(source, destination);
