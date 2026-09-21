@@ -113,3 +113,39 @@ def test_pytorch_asr_model_overridable_via_env(monkeypatch):
 
     ab.PyTorchWhisperBackend(asr_pipe=None)._ensure_pipe()
     assert captured["kw"]["model"] == "openai/whisper-small"
+
+
+@pytest.mark.parametrize('message', [
+    'PyTorch should be installed.',
+    'CUDA out of memory',
+    'Model file is unreadable',
+])
+def test_pipeline_error_does_not_invent_an_import_or_dependency_mismatch(monkeypatch, message):
+    from core.failure import classify
+    cause = RuntimeError(message)
+    def fail(*args, **kwargs):
+        raise cause
+    fake = types.ModuleType('transformers')
+    fake.pipeline = fail
+    monkeypatch.setitem(sys.modules, 'transformers', fake)
+    monkeypatch.setattr(ab.PyTorchWhisperBackend, '_pick_device', lambda *args: 'cpu')
+    with pytest.raises(RuntimeError) as caught:
+        ab.PyTorchWhisperBackend()._ensure_pipe()
+    assert caught.value.__cause__ is cause
+    assert message in str(caught.value)
+    assert 'AutoFeatureExtractor' not in str(caught.value)
+    assert 'Reinstall' not in str(caught.value)
+    assert classify(str(caught.value)) != 'TRANSFORMERS_IMPORT'
+
+
+def test_actual_transformers_import_failure_remains_classifiable(monkeypatch):
+    from core.failure import classify
+    def fail(*args, **kwargs):
+        raise ImportError("Could not import module 'AutoFeatureExtractor'")
+    fake = types.ModuleType('transformers')
+    fake.pipeline = fail
+    monkeypatch.setitem(sys.modules, 'transformers', fake)
+    monkeypatch.setattr(ab.PyTorchWhisperBackend, '_pick_device', lambda *args: 'cpu')
+    with pytest.raises(RuntimeError) as caught:
+        ab.PyTorchWhisperBackend()._ensure_pipe()
+    assert classify(str(caught.value)) == 'TRANSFORMERS_IMPORT'

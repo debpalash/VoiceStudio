@@ -21,6 +21,8 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ### Fixed
 
+- ASR initialization errors preserve the actual cause instead of inventing a dependency mismatch and unconditional reinstall advice (#2128) — thanks @Sip19!
+
 - Fresh Electron runtime setup uses managed Python and checks SentencePiece before marking setup complete (#2270) — thanks @mamislimen!
 
 - macOS shell installs refresh app registration, block replacement while running, and move uninstalled apps to Trash instead of leaving Launchpad-visible copies (#2269)

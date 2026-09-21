@@ -213,8 +213,6 @@ def test_transformers_import_hint_versions_match_the_constraint_file():
     surfaces = {
         "core/failure.py hint": failure._HINTS["TRANSFORMERS_IMPORT"],
     }
-    with open(os.path.join(root, "backend", "services", "asr_backend.py")) as fh:
-        surfaces["asr_backend.py error"] = fh.read()
     with open(os.path.join(root, "docs", "install", "troubleshooting.md")) as fh:
         surfaces["troubleshooting.md"] = fh.read()
 

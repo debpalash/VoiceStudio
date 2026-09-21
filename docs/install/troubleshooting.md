@@ -1253,3 +1253,13 @@ are also identified as native faults. These failures happen below Python, so a
 Python traceback may not exist; include the captured crash details and system/GPU
 information when reporting them. The name identifies the failure category, not
 its cause: it does not by itself prove a driver, model, or memory problem.
+
+### ASR initialization errors
+
+A PyTorch Whisper initialization failure can come from an import, checkpoint,
+network or memory problem. The error preserves the original exception and the
+backend log contains its traceback. “PyTorch should be installed” alone does not
+prove that torch and torchvision versions are mismatched. Save the diagnostic
+bundle and check package versions in the environment running the backend before
+reinstalling anything. Faster Whisper is an alternative when only transcription
+is affected; it does not diagnose or repair the original environment.

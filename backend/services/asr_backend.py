@@ -1461,29 +1461,12 @@ class PyTorchWhisperBackend(ASRBackend):
                 device=device,
             )
         except Exception as e:
-            # #549: an incomplete transformers install fails to build the ASR
-            # pipeline (e.g. "Could not import module 'AutoFeatureExtractor'").
-            # The raw error is opaque; re-raise with an actionable next step so
-            # the toast tells the user how to recover instead of "no segments".
-            # #1376: "install is incomplete" is only ONE of the causes. A
-            # torch/torchvision version mismatch fails with the same lazy-import
-            # wording (transformers' __getattr__ wraps the real error), and for
-            # that cause reinstalling transformers alone fixes nothing — the
-            # trio has to move together, at the pinned versions, or the
-            # reinstall can itself resolve a drifted pair (#1357).
-            # Literal versions rather than the constraint file: desktop
-            # installs don't ship deploy/ (greptile on #1377); the lockstep
-            # test in tests/test_failure_classify.py keeps them current.
+            # Pipeline construction can fail for OOM, an unreadable checkpoint,
+            # missing packages or networking. Do not inject AutoFeatureExtractor
+            # into every exception: that makes the failure classifier invent a
+            # dependency mismatch and recommend an unrelated reinstall (#2128).
             raise RuntimeError(
-                "transformers ASR pipeline failed to import (AutoFeatureExtractor) "
-                "— either your transformers install is incomplete, or torch and "
-                "torchvision are mismatched (which fails with this exact wording). "
-                "Reinstall them together at the pinned versions: `uv pip install "
-                "--python .venv --reinstall torch==2.8.0 torchaudio==2.8.0 "
-                "torchvision==0.23.0 transformers` in the project folder — or use faster-whisper "
-                "(VoiceStudio's default ASR), which avoids the transformers "
-                "pipeline. "
-                f"Underlying: {e}"
+                f"PyTorch Whisper ASR initialization failed: {type(e).__name__}: {e}"
             ) from e
 
     #: Batch sizes to try on CUDA, largest first. The VRAM preflight only sizes
