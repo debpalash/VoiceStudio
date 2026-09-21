@@ -20,7 +20,7 @@ it.each([null, new Error('No module named uvicorn'), new Error('ETIMEDOUT'), new
     expect(await runtimeDependenciesReady(project)).toBe(error === null);
     expect(execFile).toHaveBeenCalledWith(
       runtimePython(project),
-      ['-c', 'import fastapi, uvicorn, omnivoice, faster_whisper'],
+      ['-c', 'import fastapi, uvicorn, omnivoice, faster_whisper, sentencepiece'],
       expect.objectContaining({
         cwd: project,
         timeout: 30_000,
