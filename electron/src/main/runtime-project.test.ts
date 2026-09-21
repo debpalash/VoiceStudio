@@ -213,6 +213,40 @@ describe('packaged runtime setup', () => {
     expect(sync?.[1]).not.toContain('--managed-python');
     expect(sync?.[1]).toContain(runtimePython(project));
   });
+  it('does not reuse an existing interpreter that fails the version/native probe', async () => {
+    const { bundle, project } = await fixture();
+    await interpreter(project);
+    const run = vi.fn(async (_command: string, args: string[]) => {
+      if (args[1]?.includes('import sys, sentencepiece')) throw new Error('broken interpreter');
+    });
+    await installRuntime(
+      bundle,
+      project,
+      'uv',
+      run,
+      new AbortController().signal,
+      undefined,
+      'global',
+    );
+    const sync = run.mock.calls.find(([, args]) => args[0] === 'sync');
+    expect(sync?.[1]).toContain('--managed-python');
+    expect(sync?.[1]).not.toContain(runtimePython(project));
+  });
+  it('does not continue a cancelled interpreter probe into dependency installation', async () => {
+    const { bundle, project } = await fixture();
+    await interpreter(project);
+    const controller = new AbortController();
+    const run = vi.fn(async (_command: string, args: string[]) => {
+      if (args[1]?.includes('import sys, sentencepiece')) {
+        controller.abort();
+        throw new Error('probe aborted');
+      }
+    });
+    await expect(
+      installRuntime(bundle, project, 'uv', run, controller.signal, undefined, 'global'),
+    ).rejects.toThrow();
+    expect(run.mock.calls.some(([, args]) => args[0] === 'sync')).toBe(false);
+  });
   it('moves legacy in-project caches before a clean retry can remove them', async () => {
     const { project } = await fixture();
     await mkdir(join(project, '.uv-cache'), { recursive: true });

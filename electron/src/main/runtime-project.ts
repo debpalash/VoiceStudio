@@ -426,13 +426,30 @@ export async function installRuntime(
   // New environments must not borrow another application's Python from PATH.
   // Existing compatible environments are kept; Clean & Retry rebuilds explicitly.
   phase('installing_deps');
-  const existingPython = await stat(runtimePython(project)).then(
+  const interpreterExists = await stat(runtimePython(project)).then(
     (info) => info.isFile(),
     () => false,
   );
+  let existingPython = false;
+  if (interpreterExists) {
+    try {
+      await run(
+        runtimePython(project),
+        ['-c', 'import sys, sentencepiece; assert sys.version_info[:2] == (3, 11)'],
+        project,
+      );
+      existingPython = true;
+    } catch {
+      // Retry must not keep a wrong-base or native-crashing interpreter simply
+      // because its executable survived interrupted setup. uv selects the managed
+      // replacement; immutable downloads and user data remain outside the venv.
+      signal.throwIfAborted();
+    }
+  }
   const pythonArgs = existingPython
     ? ['--python', runtimePython(project)]
     : ['--managed-python', '--python', '3.11'];
+  signal.throwIfAborted();
   await run(uv, ['sync', '--frozen', '--no-dev', ...pythonArgs], project, env);
   signal.throwIfAborted();
   await ensureCudnn8Compat(uv, project, run, env, signal);
