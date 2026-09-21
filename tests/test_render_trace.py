@@ -5,10 +5,13 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from core import render_trace as rt
+@pytest.fixture
+def rt():
+    import importlib
+    return importlib.import_module("core.render_trace")
 
 
-def test_stages_accumulate_failures_without_capturing_arguments():
+def test_stages_accumulate_failures_without_capturing_arguments(rt):
     trace = rt.RenderTrace('generate')
     with trace.activate():
         assert rt.call('synthesis', lambda text: 42, 'private script') == 42
@@ -22,7 +25,7 @@ def test_stages_accumulate_failures_without_capturing_arguments():
     assert 'secret' not in json.dumps(record)
 
 
-def test_context_binding_isolated_and_finished_trace_immutable():
+def test_context_binding_isolated_and_finished_trace_immutable(rt):
     a, b = rt.RenderTrace('generate'), rt.RenderTrace('longform')
     with ThreadPoolExecutor(1) as pool:
         with a.activate():
@@ -39,7 +42,7 @@ def test_context_binding_isolated_and_finished_trace_immutable():
     assert a.snapshot() == before
 
 
-def test_bounded_ring_and_no_mutable_aliases(monkeypatch):
+def test_bounded_ring_and_no_mutable_aliases(rt, monkeypatch):
     from collections import deque
     monkeypatch.setattr(rt, '_recent', deque(maxlen=2))
     for _ in range(3):
@@ -50,7 +53,7 @@ def test_bounded_ring_and_no_mutable_aliases(monkeypatch):
     assert 'injected' not in rt.recent()[0]['stages']
 
 
-def test_stream_lifetime_and_concurrent_request_isolation(monkeypatch):
+def test_stream_lifetime_and_concurrent_request_isolation(rt, monkeypatch):
     from collections import deque
     monkeypatch.setattr(rt, '_recent', deque(maxlen=8))
 
@@ -80,7 +83,7 @@ def test_stream_lifetime_and_concurrent_request_isolation(monkeypatch):
         assert r['stages']['join']['calls'] == 1
 
 
-def test_guarded_gpu_pool_propagates_trace():
+def test_guarded_gpu_pool_propagates_trace(rt):
     from services.model_manager import run_on_gpu_pool_guarded
     trace = rt.RenderTrace('generate')
     async def run():
@@ -94,7 +97,7 @@ def test_guarded_gpu_pool_propagates_trace():
 
 
 @pytest.mark.parametrize('mode', ['cancel', 'error', 'http_error', 'disconnect'])
-def test_failed_or_interrupted_stream_keeps_partial_trace(monkeypatch, mode):
+def test_failed_or_interrupted_stream_keeps_partial_trace(rt, monkeypatch, mode):
     from collections import deque
     monkeypatch.setattr(rt, '_recent', deque(maxlen=2))
     async def app(scope, receive, send):
@@ -126,7 +129,7 @@ def test_failed_or_interrupted_stream_keeps_partial_trace(monkeypatch, mode):
 
 @pytest.mark.parametrize('count', [100, 400])
 @pytest.mark.parametrize('surface', ['generate', 'audiobook'])
-def test_longform_stage_and_copy_budgets(monkeypatch, count, surface):
+def test_longform_stage_and_copy_budgets(rt, monkeypatch, count, surface):
     """Real orchestration + joins, fake engine: no hardware-sensitive timing gates."""
     import torch
     from services import chunked_tts
