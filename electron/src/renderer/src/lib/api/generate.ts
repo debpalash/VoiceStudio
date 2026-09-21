@@ -131,7 +131,8 @@ export function toGenerateForm(input: CloneGenerateInput): FormData {
   form.append('text', input.text);
   if (input.seed !== undefined && Number.isInteger(input.seed))
     form.append('seed', String(input.seed));
-  if (input.language && input.language !== 'Auto') form.append('language', input.language);
+  // Auto must be explicit: omission inherits the saved profile's default.
+  if (input.language) form.append('language', input.language);
   form.append('num_step', String(input.steps));
   form.append('guidance_scale', String(input.cfg));
   form.append('speed', String(input.speed));

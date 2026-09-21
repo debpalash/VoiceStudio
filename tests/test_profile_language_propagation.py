@@ -3,7 +3,7 @@ generation, and the longform path must not hardcode language=None.
 
   * #533 — POST /generate with a profile_id but no request language must thread
     the *profile's* language into the engine (German archetype → German output,
-    not English). An explicit non-Auto request language still wins.
+    not English). An explicit request language, including Auto, wins.
   * #505 (B2) — the audiobook/longform synth callable hardcoded language=None,
     so each chunk re-autodetected and a non-English clone drifted. The synth
     must now carry the resolved language.
@@ -132,20 +132,21 @@ def test_generate_explicit_language_overrides_profile(client, monkeypatch, germa
     assert kw.get("language") == "en"  # request wins, not 'German'
 
 
-def test_generate_explicit_auto_falls_back_to_profile(client, monkeypatch, german_profile):
-    """Explicit 'Auto' is request-unset → profile language still wins."""
+@pytest.mark.parametrize("stream", [False, True])
+def test_generate_explicit_auto_overrides_profile(client, monkeypatch, german_profile, stream):
+    """Auto uses the target script, not the saved reference language."""
     fake = _make_fake_engine()
     monkeypatch.setitem(_tts_mod()._REGISTRY, fake.id, fake)
     fake.calls.clear()
 
     res = client.post("/generate", data={
-        "text": "Guten Tag", "profile_id": german_profile, "engine": fake.id,
-        "language": "Auto",
+        "text": "Bonjour", "profile_id": german_profile, "engine": fake.id,
+        "language": "Auto", "stream": str(stream).lower(),
     })
 
     assert res.status_code == 200, res.text
     _, kw = fake.calls[0]
-    assert kw.get("language") == "German"
+    assert kw.get("language") is None
 
 
 # ── #505 (B2): longform synth carries the language, never hardcoded None ──────

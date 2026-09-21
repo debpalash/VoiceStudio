@@ -40,7 +40,7 @@ import { runRendererTask } from '@/lib/global-error-recovery';
 import { useProfiles } from '@/hooks/use-profiles';
 import { useHistory } from '@/hooks/use-history';
 import { patchCloneSettings } from '@/lib/store/clone-settings';
-import { setReferenceFile } from '@/lib/store/reference';
+import { selectCloneProfile } from '@/lib/store/reference';
 import type { HistoryItem, Profile } from '@/lib/api/types';
 import {
   loadTranscriptions,
@@ -391,13 +391,7 @@ export function ProjectsPage() {
     renders.isPending;
 
   const useProfile = async (profile: Profile) => {
-    await setReferenceFile(null);
-    patchCloneSettings({
-      selectedProfileId: profile.id,
-      refText: profile.ref_text ?? '',
-      instruct: profile.instruct ?? '',
-      language: profile.language || 'Auto',
-    });
+    selectCloneProfile(profile);
     await navigate({ to: '/clone' });
   };
   const reuseTake = async (take: HistoryItem) => {

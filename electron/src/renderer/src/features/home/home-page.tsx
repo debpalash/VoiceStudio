@@ -7,7 +7,7 @@ import { useProfiles } from '@/hooks/use-profiles';
 import { brandArtwork, brandIcon } from '@/lib/brand';
 import { patchCloneSettings } from '@/lib/store/clone-settings';
 import { setWorkspace, useWorkspace } from '@/lib/store/workspace';
-import { setReferenceFile } from '@/lib/store/reference';
+import { selectCloneProfile } from '@/lib/store/reference';
 import { openTake } from '@/lib/store/takes';
 import { blankLongformDraft, editLongform } from '@/features/longform/longform-session';
 import { projectLibrary, type LongformProject } from '@/features/longform/project-library';
@@ -55,7 +55,8 @@ export function HomePage() {
   const navigate = useNavigate();
   const openSite = () => {
     const bridge = getBridge();
-    const url = 'https://voicestudio.sh/?utm_source=voicestudio&utm_medium=desktop&utm_campaign=home_banner';
+    const url =
+      'https://voicestudio.sh/?utm_source=voicestudio&utm_medium=desktop&utm_campaign=home_banner';
     if (bridge) void bridge.files.openExternal(url);
     else window.open(url, '_blank', 'noopener,noreferrer');
   };
@@ -176,13 +177,7 @@ export function HomePage() {
       await navigate({ to: '/design' });
       return;
     }
-    await setReferenceFile(null);
-    patchCloneSettings({
-      selectedProfileId: profile.id,
-      refText: profile.ref_text ?? '',
-      instruct: profile.instruct ?? '',
-      language: profile.language || 'Auto',
-    });
+    selectCloneProfile(profile);
     await navigate({ to: '/clone' });
   };
   return (

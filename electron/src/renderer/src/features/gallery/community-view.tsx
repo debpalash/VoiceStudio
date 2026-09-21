@@ -9,6 +9,7 @@ import { PipelineFailure } from '@/components/pipeline-failure';
 import { apiJson, apiPath, describeError } from '@/lib/api/client';
 import { queryKeys } from '@/lib/query';
 import { patchCloneSettings } from '@/lib/store/clone-settings';
+import { selectCloneProfile } from '@/lib/store/reference';
 import { getBridge } from '@/components/bridge';
 import { STORAGE, readDraft } from '@/features/design/design-draft';
 import {
@@ -121,12 +122,7 @@ export function CommunityView({
         });
         await navigate({ to: '/design' });
       } else {
-        patchCloneSettings({
-          selectedProfileId: profile.id,
-          language: profile.language || 'Auto',
-          refText: profile.ref_text || '',
-          instruct: profile.instruct || '',
-        });
+        selectCloneProfile(profile);
         await navigate({ to: '/clone' });
       }
     } catch (cause) {

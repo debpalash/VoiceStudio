@@ -1,3 +1,4 @@
+import type { Profile } from '@/lib/api/types';
 import { Store } from '@tanstack/store';
 import { useStore } from '@tanstack/react-store';
 import { CLONE_MAX_SECONDS, REF_HARD_MAX_SECONDS } from '@/lib/api/generate';
@@ -47,6 +48,18 @@ export function clearReference(): void {
   replaceState(EMPTY);
 }
 
+/** Reference identity is independent of the script's output language. */
+export function selectCloneProfile(
+  profile: Pick<Profile, 'id' | 'ref_text' | 'instruct' | 'language'>,
+): void {
+  clearReference();
+  patchCloneSettings({
+    selectedProfileId: profile.id,
+    refText: profile.ref_text ?? '',
+    instruct: profile.instruct ?? '',
+  });
+}
+
 /**
  * Set (or clear) the reference clip. Probes the duration first: clips over
  * REF_HARD_MAX_SECONDS are rejected outright (the engine cannot use them
@@ -74,13 +87,12 @@ export async function setReferenceFile(file: File | null): Promise<SetReferenceR
   const tooLong = durationSeconds !== null && durationSeconds > CLONE_MAX_SECONDS;
   if (!superseded) {
     // A new raw recording/upload is a new voice identity. Do not silently
-    // carry the previous saved profile's transcript, language or delivery
-    // direction into it.
+    // carry the previous saved profile's transcript or delivery direction into
+    // it. Output language belongs to the script and must survive voice changes.
     patchCloneSettings({
       selectedProfileId: null,
       refText: '',
       instruct: '',
-      language: 'Auto',
     });
     replaceState({ file, durationSeconds, objectUrl: createObjectUrl(file) });
   }

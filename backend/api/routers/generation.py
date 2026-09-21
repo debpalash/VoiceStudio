@@ -202,13 +202,16 @@ def _resolve_profile_conditioning(row, *, ref_text=None, instruct=None,
             out["instruct"] = row["instruct"]
         if out["seed"] is None and row["seed"] is not None:
             out["seed"] = row["seed"]
-    if out["language"] == "Auto":
+    explicit_auto = isinstance(language, str) and language.strip().lower() == "auto"
+    if explicit_auto:
         out["language"] = None
     # #533: a profile's stored language must drive generation when the request
     # didn't pin one. An EXPLICIT non-Auto request language still wins; we
-    # only fill the gap. `row` is a sqlite3.Row, so guard the column lookup
+    # only fill an omitted value. Explicit Auto chooses language-agnostic
+    # synthesis from the target script, even when the reference voice has a
+    # saved language. `row` is a sqlite3.Row, so guard the column lookup
     # for pre-language DBs mid-upgrade.
-    if out["language"] is None:
+    if out["language"] is None and not explicit_auto:
         try:
             prof_lang = row["language"]
         except (KeyError, IndexError):
@@ -216,7 +219,7 @@ def _resolve_profile_conditioning(row, *, ref_text=None, instruct=None,
         if prof_lang and prof_lang != "Auto":
             out["language"] = prof_lang
             # #2156: record that the caller never asked for this language. The
-            # UI omits `language` entirely while its picker reads "Auto", so a
+            # Older clients omit `language` while their picker reads "Auto", so a
             # profile-filled language must not be reported back as if the user
             # had picked it — an engine that can't speak it would otherwise
             # tell them to "leave language as Auto", which is what they did.
@@ -1763,6 +1766,10 @@ async def generate_speech(
     # is still None here, never overwritten.
     if used_seed is None:
         used_seed = random.randint(0, 2**31 - 1)
+
+    # Auto is a UI/API choice, not a language token for engines or workers.
+    if isinstance(language, str) and language.strip().lower() == "auto":
+        language = None
 
     # Engine-agnostic text normalization (junk strip, numbers→words,
     # abbreviations) — AFTER `language` is fully resolved, and BEFORE the

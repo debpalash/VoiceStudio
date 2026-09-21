@@ -22,7 +22,7 @@ import { VideoPlayer } from '@/components/video-player';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { apiJson, apiPath, ApiError, describeError } from '@/lib/api/client';
 import { queryKeys } from '@/lib/query';
-import { patchCloneSettings } from '@/lib/store/clone-settings';
+import { selectCloneProfile } from '@/lib/store/reference';
 import type { Profile } from '@/lib/api/types';
 import { importsApi, type GalleryVoice, type YoutubeSearchResult } from './imports-api';
 export function ImportsView() {
@@ -118,12 +118,7 @@ export function ImportsView() {
         });
         return;
       }
-      patchCloneSettings({
-        selectedProfileId: profile.id,
-        refText: profile.ref_text || '',
-        instruct: profile.instruct || '',
-        language: profile.language || 'Auto',
-      });
+      selectCloneProfile(profile);
       await navigate({ to: '/clone' });
     });
   if (trimming)

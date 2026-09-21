@@ -431,12 +431,12 @@ def test_the_resolver_does_not_flag_when_the_profile_has_no_language():
     assert out["language_from_profile"] is False
 
 
-def test_an_explicit_auto_is_still_filled_from_the_profile():
-    # "Auto" and an absent value mean the same thing to #533; the flag must be
-    # set either way, since neither is the user naming a language.
-    out = _gen_mod()._resolve_profile_conditioning(_row(language="Persian"), language="Auto")
-    assert out["language"] == "Persian"
-    assert out["language_from_profile"] is True
+@pytest.mark.parametrize("language", ["Auto", "auto", " AUTO "])
+def test_explicit_auto_is_not_filled_from_the_profile(language):
+    # Omission preserves the profile default; explicit Auto is a user choice.
+    out = _gen_mod()._resolve_profile_conditioning(_row(language="Persian"), language=language)
+    assert out["language"] is None
+    assert out["language_from_profile"] is False
 
 @pytest.mark.parametrize('remote', [False, True])
 def test_streamed_profile_language_refusal_is_terminal(client, monkeypatch, persian_profile, remote):
@@ -456,3 +456,13 @@ def test_streamed_profile_language_refusal_is_terminal(client, monkeypatch, pers
     assert error['language'] == 'Persian'
     assert error['retryable'] is False
     assert error['terminal'] is True
+
+
+@pytest.mark.parametrize("language, expected", [("French", "French"), ("Auto", None)])
+def test_cross_language_keeps_the_original_reference(language, expected):
+    row = _row(language="German", ref_audio_path="german.wav", ref_text="Guten Tag")
+    out = _gen_mod()._resolve_profile_conditioning(row, language=language)
+    assert out["language"] == expected
+    assert out["ref_text"] == "Guten Tag"
+    assert out["ref_audio_path"].endswith("german.wav")
+    assert out["persist_ref_text"] is False

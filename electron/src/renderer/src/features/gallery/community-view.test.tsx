@@ -70,9 +70,9 @@ it('scopes favorites by source and materializes recorded voices into cloning', a
     expect.objectContaining({
       selectedProfileId: 'saved',
       refText: 'Sample transcript',
-      language: 'French',
     }),
   );
+  expect(mocks.patch.mock.calls.at(-1)?.[0]).not.toHaveProperty('language');
 });
 it('opens the submission form only after an explicit click', async () => {
   show();

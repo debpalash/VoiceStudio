@@ -10,6 +10,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 **Highlights**
 
+- Clone into another language without reference changes resetting the output language (#2272)
 - Install the latest Electron release, a selected version, or build main with one command; uninstall without losing data (#2269)
 - Electron crash details identify native faults instead of showing only numeric exit codes (#2267) — thanks @shivsin25!
 
@@ -24,6 +25,9 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 - ASR initialization errors preserve the actual cause instead of inventing a dependency mismatch and unconditional reinstall advice (#2128) — thanks @Sip19!
 
 - Fresh Electron runtime setup uses managed Python and checks SentencePiece before marking setup complete (#2270) — thanks @mamislimen!
+- Integrations with a shared vendor URL remain distinct when searching and filtering the catalog (#2273)
+
+- Cloning keeps the chosen output language when switching references, and explicit Auto follows the target script instead of the sample language (#2272)
 
 - macOS shell installs refresh app registration, block replacement while running, and move uninstalled apps to Trash instead of leaving Launchpad-visible copies (#2269)
 - Electron upgrades preserve custom and portable storage paths recorded by archived setup (#2269)

@@ -84,10 +84,10 @@ describe('sanitizeInstruct', () => {
 });
 
 describe('toGenerateForm', () => {
-  it('maps the tuning fields to the multipart names and omits Auto language', () => {
+  it('maps tuning fields and explicitly sends Auto to override a saved voice language', () => {
     const form = toGenerateForm({ ...BASE_INPUT, profileId: 'p1' });
     expect(form.get('text')).toBe('Hello there');
-    expect(form.has('language')).toBe(false);
+    expect(form.get('language')).toBe('Auto');
     expect(form.get('num_step')).toBe('16');
     expect(form.get('guidance_scale')).toBe('2');
     expect(form.get('speed')).toBe('1');

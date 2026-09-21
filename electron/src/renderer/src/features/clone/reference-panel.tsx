@@ -32,8 +32,8 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useProfiles, useCreateCloneProfile } from '@/hooks/use-profiles';
 import { useRecording } from '@/hooks/use-recording';
 import { CLONE_MAX_SECONDS, REF_HARD_MAX_SECONDS } from '@/lib/api/generate';
-import { patchCloneSettings, setCloneSetting, useCloneSetting } from '@/lib/store/clone-settings';
-import { clearReference, setReferenceFile, useReference } from '@/lib/store/reference';
+import { setCloneSetting, useCloneSetting } from '@/lib/store/clone-settings';
+import { selectCloneProfile, setReferenceFile, useReference } from '@/lib/store/reference';
 import { cn } from '@/lib/utils';
 
 const ACCEPT = 'audio/*,.mp3,.wav,.m4a,.flac,.ogg,.aac,.webm';
@@ -255,13 +255,7 @@ export function SaveProfileForm({
           // A saved profile becomes the one identity source. Release the raw
           // upload and keep metadata returned by the server, including its
           // best-effort local ASR transcript when the draft was blank.
-          clearReference();
-          patchCloneSettings({
-            selectedProfileId: created.id,
-            refText: created.ref_text ?? '',
-            instruct: created.instruct ?? '',
-            language: created.language || 'Auto',
-          });
+          selectCloneProfile(created);
         }
         onDone();
       } catch {

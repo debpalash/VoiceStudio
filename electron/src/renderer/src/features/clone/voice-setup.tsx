@@ -7,8 +7,7 @@ import { useProfiles } from '@/hooks/use-profiles';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { Profile } from '@/lib/api/types';
-import { patchCloneSettings } from '@/lib/store/clone-settings';
-import { setReferenceFile } from '@/lib/store/reference';
+import { selectCloneProfile } from '@/lib/store/reference';
 import { ReferencePanel } from './reference-panel';
 
 const VIRTUALIZE_ABOVE = 30;
@@ -48,13 +47,7 @@ export function VoiceSetup({ onChosen, onBack }: { onChosen: () => void; onBack:
   }, [query]);
 
   const chooseVoice = async (profile: Profile) => {
-    await setReferenceFile(null);
-    patchCloneSettings({
-      selectedProfileId: profile.id,
-      refText: profile.ref_text ?? '',
-      instruct: profile.instruct ?? '',
-      language: profile.language || 'Auto',
-    });
+    selectCloneProfile(profile);
     onChosen();
   };
 

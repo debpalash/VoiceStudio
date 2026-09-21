@@ -68,6 +68,15 @@ The env var overrides the persisted UI choice.
   bounded transcription passes and selects the passage with detected speech.
   Longer clips must be trimmed first. If no spoken words are detected, trim to
   a clear 3–10 second passage or provide its matching transcript.
+- For cross-language cloning, keep the reference transcript in the sample's
+  original language and write the new script in the desired output language.
+  Choose that output language, or **Auto** for language-agnostic synthesis.
+  Choosing/uploading a different reference voice preserves the script's language
+  setting. The language picker guides synthesis; it does not translate text.
+  In `POST /generate` and shared profile conditioning, an explicit `language=Auto`
+  overrides the saved profile language; omitting `language` retains the profile
+  default for existing API clients. Engine language coverage and accent quality
+  still vary; use a multilingual engine that supports the target language.
 - Encoded voice references persist on disk (`prompt_cache/` in the app data
   dir), so the first generation with a known voice after a restart skips the
   re-encode and any transcription pass. Set `OMNIVOICE_PROMPT_DISK_CACHE=0`

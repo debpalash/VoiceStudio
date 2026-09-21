@@ -32,8 +32,8 @@ import {
 import { useDeleteProfile, useProfiles } from '@/hooks/use-profiles';
 import { audioUrl, profileAudioUrl } from '@/lib/api/client';
 import type { HistoryItem, Profile } from '@/lib/api/types';
-import { patchCloneSettings, setCloneSetting, useCloneSetting } from '@/lib/store/clone-settings';
-import { setReferenceFile } from '@/lib/store/reference';
+import { setCloneSetting, useCloneSetting } from '@/lib/store/clone-settings';
+import { selectCloneProfile } from '@/lib/store/reference';
 import { queryKeys } from '@/lib/query';
 import { cn } from '@/lib/utils';
 import { runRendererTask } from '@/lib/global-error-recovery';
@@ -158,13 +158,7 @@ export function SavedVoices({
       runRendererTask('Reuse take in voice design', () => navigate({ to: '/design' }));
       return;
     }
-    await setReferenceFile(null);
-    patchCloneSettings({
-      selectedProfileId: profile.id,
-      refText: profile.ref_text ?? '',
-      instruct: profile.instruct ?? '',
-      language: profile.language || 'Auto',
-    });
+    selectCloneProfile(profile);
     onSelected?.();
     runRendererTask('Reuse take in voice cloning', () => navigate({ to: '/clone' }));
   };

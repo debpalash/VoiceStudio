@@ -9,7 +9,7 @@ import { useProfiles } from '@/hooks/use-profiles';
 import { useGenerateClone } from '@/hooks/use-generate';
 import { setWorkspace } from '@/lib/store/workspace';
 import { openTake } from '@/lib/store/takes';
-import { setReferenceFile } from '@/lib/store/reference';
+import { selectCloneProfile } from '@/lib/store/reference';
 import { patchCloneSettings } from '@/lib/store/clone-settings';
 import { cn } from '@/lib/utils';
 import { Kbd } from '@/components/ui/kbd';
@@ -256,13 +256,7 @@ export function CommandPalette() {
           await navigate({ to: '/design' });
           return;
         }
-        await setReferenceFile(null);
-        patchCloneSettings({
-          selectedProfileId: profile.id,
-          refText: profile.ref_text ?? '',
-          instruct: profile.instruct ?? '',
-          language: profile.language || 'Auto',
-        });
+        selectCloneProfile(profile);
         await navigate({ to: '/clone' });
       },
     })),

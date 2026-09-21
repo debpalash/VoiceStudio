@@ -6,7 +6,10 @@ import { useNavigate } from '@tanstack/react-router';
 import { WorkspaceHeader } from '@/components/app-shell/workspace-header';
 import { getBridge } from '@/components/bridge';
 import { Input } from '@/components/ui/input';
-import { INTEGRATION_CATALOG, integrationSlug } from '../../../../../../frontend/src/config/integration-catalog';
+import {
+  INTEGRATION_CATALOG,
+  integrationSlug,
+} from '../../../../../../frontend/src/config/integration-catalog';
 import { SPONSORS } from '../../../../../../frontend/src/config/sponsors';
 import './integrations-page.css';
 
@@ -89,7 +92,7 @@ export function IntegrationsPage() {
               {SPONSORS.map((sponsor) => (
                 <button
                   type="button"
-                  key={sponsor.url}
+                  key={integrationSlug(sponsor.name)}
                   onClick={() => openExternal(sponsor.url)}
                   className="integration-featured-card"
                 >
@@ -142,8 +145,15 @@ export function IntegrationsPage() {
           {filtered.map((entry) => (
             <button
               type="button"
-              key={entry.url}
-              onClick={() => runRendererTask('Open integration', () => navigate({ to: '/integrations/$slug', params: { slug: integrationSlug(entry.name) } }))}
+              key={`${entry.featured ? 'sponsor' : 'catalog'}:${integrationSlug(entry.name)}`}
+              onClick={() =>
+                runRendererTask('Open integration', () =>
+                  navigate({
+                    to: '/integrations/$slug',
+                    params: { slug: integrationSlug(entry.name) },
+                  }),
+                )
+              }
               className="integration-card"
             >
               <div className="integration-card-top">
