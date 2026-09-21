@@ -196,6 +196,23 @@ describe('packaged runtime setup', () => {
     expect(await runtimeReady(bundle, project)).toBe(false);
     expect(await runtimeInstallInterrupted(project)).toBe(true);
   });
+  it('keeps the selected interpreter when updating an existing runtime', async () => {
+    const { bundle, project } = await fixture();
+    await interpreter(project);
+    const run = vi.fn(async (_command: string, _args: string[]) => {});
+    await installRuntime(
+      bundle,
+      project,
+      'uv',
+      run,
+      new AbortController().signal,
+      undefined,
+      'global',
+    );
+    const sync = run.mock.calls.find(([, args]) => args[0] === 'sync');
+    expect(sync?.[1]).not.toContain('--managed-python');
+    expect(sync?.[1]).toContain(runtimePython(project));
+  });
   it('moves legacy in-project caches before a clean retry can remove them', async () => {
     const { project } = await fixture();
     await mkdir(join(project, '.uv-cache'), { recursive: true });
