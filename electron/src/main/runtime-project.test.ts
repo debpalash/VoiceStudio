@@ -211,6 +211,7 @@ describe('packaged runtime setup', () => {
     );
     const sync = run.mock.calls.find(([, args]) => args[0] === 'sync');
     expect(sync?.[1]).not.toContain('--managed-python');
+    expect(sync?.[1]).not.toContain('--reinstall-package');
     expect(sync?.[1]).toContain(runtimePython(project));
   });
   it('does not reuse an existing interpreter that fails the version/native probe', async () => {
@@ -231,6 +232,8 @@ describe('packaged runtime setup', () => {
     const sync = run.mock.calls.find(([, args]) => args[0] === 'sync');
     expect(sync?.[1]).toContain('--managed-python');
     expect(sync?.[1]).not.toContain(runtimePython(project));
+    expect(sync?.[1]).toContain('--reinstall-package');
+    expect(sync?.[1]).toContain('sentencepiece');
   });
   it('does not continue a cancelled interpreter probe into dependency installation', async () => {
     const { bundle, project } = await fixture();

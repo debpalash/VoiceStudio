@@ -449,8 +449,12 @@ export async function installRuntime(
   const pythonArgs = existingPython
     ? ['--python', runtimePython(project)]
     : ['--managed-python', '--python', '3.11'];
+  // A failed native import may leave distribution metadata intact, so uv's
+  // ordinary sync would otherwise consider the broken wheel already satisfied.
+  const repairArgs =
+    interpreterExists && !existingPython ? ['--reinstall-package', 'sentencepiece'] : [];
   signal.throwIfAborted();
-  await run(uv, ['sync', '--frozen', '--no-dev', ...pythonArgs], project, env);
+  await run(uv, ['sync', '--frozen', '--no-dev', ...pythonArgs, ...repairArgs], project, env);
   signal.throwIfAborted();
   await ensureCudnn8Compat(uv, project, run, env, signal);
   signal.throwIfAborted();
