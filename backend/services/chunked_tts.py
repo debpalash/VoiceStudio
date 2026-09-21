@@ -19,6 +19,8 @@ callers keep their unchanged single-shot fast path.
 from __future__ import annotations
 
 import logging
+
+from core.render_trace import timed as _render_timed
 import re
 from typing import List
 
@@ -422,6 +424,7 @@ def join_rendered_chunks(rendered: list, sample_rate: int, *,
                                     crossfade_ms=crossfade_ms)
 
 
+@_render_timed('join')
 def concatenate_audio_chunks(chunks: list, sample_rate: int,
                              crossfade_ms: int = DEFAULT_CROSSFADE_MS,
                              texts=None, sink=None):

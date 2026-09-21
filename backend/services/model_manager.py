@@ -802,7 +802,8 @@ async def run_on_gpu_pool_guarded(fn, *, what: str = "GPU job",
             if abandoned:
                 _fire_abandon_callback()
 
-    concurrent_fut = ex.submit(_job)
+    from core.render_trace import bind as bind_render_trace
+    concurrent_fut = ex.submit(bind_render_trace(_job))
     fut = asyncio.wrap_future(concurrent_fut, loop=loop)
 
     def _abandon() -> None:

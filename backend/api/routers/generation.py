@@ -8,6 +8,8 @@ import asyncio
 import tempfile
 import contextlib
 import logging
+
+from core.render_trace import timed as _render_timed
 import threading
 import traceback
 from typing import Optional
@@ -26,6 +28,7 @@ from services.model_manager import (
 from services.audio_io import _safe_torchaudio_save
 from services.binary_preflight import InvalidBinaryError
 from core import event_bus
+from core.render_trace import call as trace_call
 from core.logging_utils import log_safe
 from omnivoice.utils.voice_design import heal_design_instruct
 
@@ -299,6 +302,7 @@ def _sanitize_audio(audio_out):
     return audio_out
 
 
+@_render_timed('effects')
 def _apply_effect_chain(audio_out, sample_rate, effect_preset, *, skip_mastering=False):
     """Shared post-DSP for /generate: preset validation → mastering →
     effect chain → loudness normalization.
@@ -866,7 +870,7 @@ def _run_inference(
 
         def _gen(gen_text, gen_duration):
             """One generate call for this request's voice, reference encoded once."""
-            return generate_with_cached_ref(
+            return trace_call("synthesis", generate_with_cached_ref,
                 model, ref_audio=ref_audio_path, ref_text=ref_text,
                 text=gen_text, language=language, instruct=instruct,
                 duration=gen_duration, num_step=num_step,
@@ -985,7 +989,7 @@ def _run_backend_inference(
                 if native_proxy and first_span and used_seed is not None:
                     span_kwargs["seed"] = used_seed
                 first_span = False
-                return backend.generate(span_text, duration=None, **span_kwargs)
+                return trace_call("synthesis", backend.generate, span_text, duration=None, **span_kwargs)
             audio_out = _render_with_pauses(_gen_span, segments, sr)
         else:
             # Wave 1.2: sentence-boundary chunking for long text (see
@@ -1005,7 +1009,7 @@ def _run_backend_inference(
                     chunk_kwargs = dict(gen_kwargs)
                     if native_proxy and used_seed is not None:
                         chunk_kwargs["seed"] = used_seed + i
-                    parts.append(backend.generate(
+                    parts.append(trace_call("synthesis", backend.generate,
                         chunk_text, duration=None, **chunk_kwargs
                     ))
                     _note_generate_progress()
@@ -1015,7 +1019,7 @@ def _run_backend_inference(
             else:
                 if native_proxy and used_seed is not None:
                     gen_kwargs["seed"] = used_seed
-                audio_out = backend.generate(text, duration=duration, **gen_kwargs)
+                audio_out = trace_call("synthesis", backend.generate, text, duration=duration, **gen_kwargs)
 
         return _apply_effect_chain(
             audio_out, sr, effect_preset,
@@ -2068,7 +2072,7 @@ async def generate_speech(
                     torch.manual_seed(used_seed + i)
                 if _backend is not None:
                     _lang = None if (language and language.lower() == "auto") else language
-                    raw = _backend.generate(
+                    raw = trace_call("synthesis", _backend.generate,
                         chunk_text, duration=None, language=_lang,
                         ref_audio=ref_audio_path, ref_text=ref_text,
                         instruct=instruct, num_step=num_step,
@@ -2097,7 +2101,7 @@ async def generate_speech(
                     # Same cached-reference path as _run_inference: chunk 0 encodes
                     # the reference, chunks 1..N hit the cache instead of re-encoding.
                     from services.tts_backend import generate_with_cached_ref
-                    raw = generate_with_cached_ref(
+                    raw = trace_call("synthesis", generate_with_cached_ref,
                         _model, ref_audio=ref_audio_path, ref_text=ref_text,
                         text=chunk_text, language=language, instruct=instruct,
                         duration=None, num_step=num_step,

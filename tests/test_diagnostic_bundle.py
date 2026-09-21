@@ -14,6 +14,7 @@ EXPECTED_MEMBERS = {
     "self_check.txt",
     "self_check.json",
     "errors.json",
+    "render_traces.json",
     "logs/omnivoice.log.txt",
     "logs/crash_log.txt",
 }

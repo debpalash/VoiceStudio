@@ -36,6 +36,8 @@ Before digging through the entries below, let the app diagnose itself:
   produces a zip (self-check report, recent classified errors, scrubbed log
   tails) you can drag straight onto the GitHub issue. Home paths and
   anything token-shaped are redacted before they leave your machine.
+  Slow renders: include `render_traces.json` from that bundle; it records local
+  stage timings and counts without scripts or audio ([details](../performance.md#local-render-diagnostics)).
 
   The report's `engine_execution` rows distinguish declared compatibility
   from observed runtime state. `evidence_state: not_loaded` means no actual

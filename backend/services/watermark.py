@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import contextlib
 import logging
+
+from core.render_trace import timed as _render_timed
 import math
 import os
 import threading
@@ -368,6 +370,7 @@ def mark_synthetic(
     return marked
 
 
+@_render_timed('watermark')
 async def mark_synthetic_async(
     waveform: torch.Tensor,
     sample_rate: int,

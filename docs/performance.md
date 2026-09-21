@@ -325,3 +325,33 @@ so a slow client cannot inflate it. The backend log records the same values, so 
 - **`OMNIVOICE_PRELOAD_TTS_ASR`** exists for a legacy in-process Whisper
   fallback; enabling it costs memory on every start and speeds up nothing on
   a default install.
+
+## Local render diagnostics
+
+For a slow Studio, Stories or Audiobook render, save a diagnostic bundle from
+**Settings → About → Save diagnostic bundle** before restarting the backend.
+`render_traces.json` contains the last 32 completed or interrupted render
+requests in this backend process. The same compact records appear in the backend
+log. Nothing is uploaded automatically; you choose whether to share the bundle.
+
+Each record has a random correlation ID, render surface, total elapsed seconds,
+transport outcome, and per-stage elapsed seconds, call counts and failure counts:
+`synthesis`, `join`, `effects`, `save`, `watermark`, `cache`, and `mux` where used.
+Scripts, voice names, file paths, audio and exception messages are never recorded.
+The recorder is in-memory, bounded, and behaves the same on every supported OS.
+
+Timings cover the full HTTP response, including streamed work and GPU-pool jobs.
+They are inclusive wall-clock durations: overlapping/nested stages must not be
+added together. Model loading, queueing, network waits and other uninstrumented
+work remain in the total. Remote workers' internal synthesis is not measured by
+the requesting backend. `complete` means the HTTP stream completed; a stream can
+still contain a handled generation error, so check stage failures and the error
+log too. Disconnects preserve partial timings; abandoned worker completions
+cannot rewrite a finished trace. A backend crash loses unfinished in-memory
+traces, so attach the crash log as well.
+
+`tests/test_render_trace.py` protects 100- and 400-chunk Studio/long-form renders
+with hardware-independent budgets: one synthesis per chunk, one assembly,
+one final Studio effects pass, and linear copied sample volume. No model download
+or wall-clock speed threshold is involved. These complement the streaming/dub
+budgets in `tests/test_perf_operation_budgets.py`.

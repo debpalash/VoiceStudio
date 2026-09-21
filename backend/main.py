@@ -1740,6 +1740,8 @@ _allowed = os.environ.get(
 # Registered FIRST → innermost: the startup gate holds every request except
 # the two probe paths until the deferred startup completes (and is a no-op
 # forever after).
+from core.render_trace import RenderTraceMiddleware
+app.add_middleware(RenderTraceMiddleware)
 app.add_middleware(StartupGateMiddleware)
 
 # Inert unless a PIN is set. CORS is registered after both auth gates below so

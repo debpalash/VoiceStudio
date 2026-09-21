@@ -30,6 +30,8 @@ import uuid
 
 from collections.abc import Awaitable, Callable
 
+from core.render_trace import call as trace_call, stage as trace_stage
+
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from typing import Literal
@@ -746,7 +748,7 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
     # intermediate assembly inputs, re-marked here on every chapter render.
     # Already runs in the GPU-pool executor; never raises (degrades to
     # unmarked on failure).
-    audio = mark_synthetic(audio, sr, context="longform.chapter")
+    audio = trace_call("watermark", mark_synthetic, audio, sr, context="longform.chapter")
     atomic_save_wav(wav_path, audio, sr)
     return wav_path, dur, False, {"total": seg_cache.hits + seg_cache.misses,
                                   "cached": seg_cache.hits}
@@ -1159,14 +1161,15 @@ async def _render_longform_sse(
             from services.loudness import measure_loudness
             measured = await measure_loudness(ffmpeg, concat_path, norm, job_id=job_id)
 
-        await run_ffmpeg(
-            build_render_cmd(
-                ffmpeg, concat_path, meta_path, out_path,
-                fmt=ext, bitrate=bitrate, cover_path=_safe_cover_path(cover_path),
-                loudness=loudness, measured=measured,
-            ),
-            job_id=job_id,
-        )
+        with trace_stage("mux"):
+            await run_ffmpeg(
+                build_render_cmd(
+                    ffmpeg, concat_path, meta_path, out_path,
+                    fmt=ext, bitrate=bitrate, cover_path=_safe_cover_path(cover_path),
+                    loudness=loudness, measured=measured,
+                ),
+                job_id=job_id,
+            )
 
         if job_store is not None:
             try:

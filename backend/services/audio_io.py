@@ -49,6 +49,8 @@ from __future__ import annotations
 
 import io
 import logging
+
+from core.render_trace import timed as _render_timed
 import os
 import shutil
 import tempfile
@@ -72,6 +74,7 @@ def _ensure_audio_parent(path_or_buf: PathOrBuf) -> None:
         os.makedirs(os.path.dirname(os.path.abspath(path_or_buf)), exist_ok=True)
 
 
+@_render_timed('save')
 def _safe_torchaudio_save(
     path_or_buf: PathOrBuf,
     tensor: torch.Tensor,

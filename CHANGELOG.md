@@ -15,6 +15,10 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 - Clicking the script editor places the cursor without reopening the expression menu (#2268) — thanks @bipul0525!
 
+### Added
+
+- Local render-stage timings and operation counts in diagnostic bundles, with long-form performance regression budgets (#2266) — thanks @shivsin25!
+
 ### Fixed
 
 - macOS shell installs refresh app registration, block replacement while running, and move uninstalled apps to Trash instead of leaving Launchpad-visible copies (#2269)
