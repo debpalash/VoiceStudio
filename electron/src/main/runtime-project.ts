@@ -426,7 +426,12 @@ export async function installRuntime(
   // New environments must not borrow another application's Python from PATH.
   // Existing compatible environments are kept; Clean & Retry rebuilds explicitly.
   phase('installing_deps');
-  await run(uv, ['sync', '--frozen', '--no-dev', '--managed-python', '--python', '3.11'], project, env);
+  await run(
+    uv,
+    ['sync', '--frozen', '--no-dev', '--managed-python', '--python', '3.11'],
+    project,
+    env,
+  );
   signal.throwIfAborted();
   await ensureCudnn8Compat(uv, project, run, env, signal);
   signal.throwIfAborted();

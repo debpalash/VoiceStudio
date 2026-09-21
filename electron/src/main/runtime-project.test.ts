@@ -166,10 +166,20 @@ describe('packaged runtime setup', () => {
         await interpreter(project);
       },
     );
-    await installRuntime(bundle, project, 'uv', run, new AbortController().signal, undefined, 'global');
+    await installRuntime(
+      bundle,
+      project,
+      'uv',
+      run,
+      new AbortController().signal,
+      undefined,
+      'global',
+    );
     const sync = run.mock.calls.find(([, args]) => args[0] === 'sync');
     expect(sync?.[1]).toContain('--managed-python');
-    const verify = run.mock.calls.find(([, args]) => args[0] === '-c' && args[1]?.includes('import fastapi'));
+    const verify = run.mock.calls.find(
+      ([, args]) => args[0] === '-c' && args[1]?.includes('import fastapi'),
+    );
     expect(verify?.[1][1]).toContain('sentencepiece');
   });
   it('does not mark a runtime ready if the native tokenizer crashes during verification', async () => {
@@ -180,7 +190,9 @@ describe('packaged runtime setup', () => {
         throw new Error('native import failed');
       }
     });
-    await expect(installRuntime(bundle, project, 'uv', run, new AbortController().signal, undefined, 'global')).rejects.toThrow('native import failed');
+    await expect(
+      installRuntime(bundle, project, 'uv', run, new AbortController().signal, undefined, 'global'),
+    ).rejects.toThrow('native import failed');
     expect(await runtimeReady(bundle, project)).toBe(false);
     expect(await runtimeInstallInterrupted(project)).toBe(true);
   });
