@@ -234,6 +234,9 @@ describe('packaged runtime setup', () => {
     expect(sync?.[1]).not.toContain(runtimePython(project));
     expect(sync?.[1]).toContain('--reinstall-package');
     expect(sync?.[1]).toContain('sentencepiece');
+    const cleanIndex = run.mock.calls.findIndex(([, args]) => args[0] === 'cache');
+    expect(run.mock.calls[cleanIndex]?.[1]).toEqual(['cache', 'clean', 'sentencepiece']);
+    expect(cleanIndex).toBeLessThan(run.mock.calls.findIndex(([, args]) => args[0] === 'sync'));
   });
   it('does not continue a cancelled interpreter probe into dependency installation', async () => {
     const { bundle, project } = await fixture();

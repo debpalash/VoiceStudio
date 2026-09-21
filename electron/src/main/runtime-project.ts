@@ -454,6 +454,13 @@ export async function installRuntime(
   const repairArgs =
     interpreterExists && !existingPython ? ['--reinstall-package', 'sentencepiece'] : [];
   signal.throwIfAborted();
+  if (repairArgs.length) {
+    // uv may hardlink installed files to its unpacked wheel cache. A corrupted
+    // native file can therefore poison the cached copy too; evict only this
+    // package from the app-private cache before reinstalling its locked wheel.
+    await run(uv, ['cache', 'clean', 'sentencepiece'], project, env);
+    signal.throwIfAborted();
+  }
   await run(uv, ['sync', '--frozen', '--no-dev', ...pythonArgs, ...repairArgs], project, env);
   signal.throwIfAborted();
   await ensureCudnn8Compat(uv, project, run, env, signal);
