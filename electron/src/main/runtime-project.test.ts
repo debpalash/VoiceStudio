@@ -159,6 +159,31 @@ describe('packaged runtime setup', () => {
     expect(syncEnv?.UV_CACHE_DIR).toBe(join(project, '..', '.uv-cache'));
     expect(syncEnv?.UV_PYTHON_INSTALL_DIR).toBe(join(project, '..', '.python'));
   });
+  it('uses managed Python for new runtime setup and verifies native tokenizer imports', async () => {
+    const { bundle, project } = await fixture();
+    const run = vi.fn(
+      async (_command: string, _args: string[], _cwd: string, _env?: NodeJS.ProcessEnv) => {
+        await interpreter(project);
+      },
+    );
+    await installRuntime(bundle, project, 'uv', run, new AbortController().signal, undefined, 'global');
+    const sync = run.mock.calls.find(([, args]) => args[0] === 'sync');
+    expect(sync?.[1]).toContain('--managed-python');
+    const verify = run.mock.calls.find(([, args]) => args[0] === '-c' && args[1]?.includes('import fastapi'));
+    expect(verify?.[1][1]).toContain('sentencepiece');
+  });
+  it('does not mark a runtime ready if the native tokenizer crashes during verification', async () => {
+    const { bundle, project } = await fixture();
+    const run = vi.fn(async (_command: string, args: string[]) => {
+      await interpreter(project);
+      if (args[0] === '-c' && args[1]?.includes('import fastapi')) {
+        throw new Error('native import failed');
+      }
+    });
+    await expect(installRuntime(bundle, project, 'uv', run, new AbortController().signal, undefined, 'global')).rejects.toThrow('native import failed');
+    expect(await runtimeReady(bundle, project)).toBe(false);
+    expect(await runtimeInstallInterrupted(project)).toBe(true);
+  });
   it('moves legacy in-project caches before a clean retry can remove them', async () => {
     const { project } = await fixture();
     await mkdir(join(project, '.uv-cache'), { recursive: true });

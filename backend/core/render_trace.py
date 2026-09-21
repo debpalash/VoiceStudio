@@ -141,7 +141,7 @@ class RenderTraceMiddleware:
     def __init__(self, app):
         self.app = app
 
-    async def __call__(self, scope, receive, send):
+    async def __call__(self, scope, receive, send) -> None:
         path = scope.get('path', '')
         surface = {
             '/generate': 'generate', '/audiobook': 'audiobook',
@@ -150,7 +150,8 @@ class RenderTraceMiddleware:
         if path.startswith('/audiobook/resume/'):
             surface = 'audiobook'
         if scope['type'] != 'http' or scope.get('method') != 'POST' or surface is None:
-            return await self.app(scope, receive, send)
+            await self.app(scope, receive, send)
+            return
         trace = RenderTrace(surface)
         status = 500
         complete = False

@@ -261,7 +261,7 @@ export async function runtimeDependenciesReady(project: string): Promise<boolean
   return new Promise((resolve) => {
     execFile(
       runtimePython(project),
-      ['-c', 'import fastapi, uvicorn, omnivoice, faster_whisper'],
+      ['-c', 'import fastapi, uvicorn, omnivoice, faster_whisper, sentencepiece'],
       {
         cwd: project,
         windowsHide: true,
@@ -423,16 +423,17 @@ export async function installRuntime(
     uv = join(tools, windows ? 'uv.exe' : 'uv');
   }
   signal.throwIfAborted();
-  // uv owns platform resolution; the same frozen dependency graph is used by Tauri.
+  // New environments must not borrow another application's Python from PATH.
+  // Existing compatible environments are kept; Clean & Retry rebuilds explicitly.
   phase('installing_deps');
-  await run(uv, ['sync', '--frozen', '--no-dev', '--python', '3.11'], project, env);
+  await run(uv, ['sync', '--frozen', '--no-dev', '--managed-python', '--python', '3.11'], project, env);
   signal.throwIfAborted();
   await ensureCudnn8Compat(uv, project, run, env, signal);
   signal.throwIfAborted();
   phase('verifying');
   await run(
     runtimePython(project),
-    ['-c', 'import fastapi, uvicorn, omnivoice, faster_whisper'],
+    ['-c', 'import fastapi, uvicorn, omnivoice, faster_whisper, sentencepiece'],
     project,
   );
   signal.throwIfAborted();
