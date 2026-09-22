@@ -24,6 +24,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 - The OpenAI-compatible API adds `GET /v1/models` and `POST /v1/audio/translations` (multilingual Whisper models; turbo models are refused) (#2290)
 - Speech requests accept `stream_format` (`audio` or `sse`) and OpenAI's `{"id": ...}` voice object (#2290)
 - Transcriptions pass `language`, `prompt` and `temperature` to Whisper engines and return `words` with `timestamp_granularities[]=word` (#2290)
+- Integrations: copyable setup for Codex CLI (`config.toml`), any MCP client (HTTP or stdio), the VoiceStudio API (`curl` and OpenAI SDK), and Docker/GHCR (#2289)
 
 ### Fixed
 
@@ -35,6 +36,9 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 - OpenAI-compatible routes return errors in OpenAI's format, with 400 for invalid requests (#2290)
 - Rendered audiobook chapters stay reusable after the data folder moves, and a power-off no longer empties the resume point or tears chapter audio (#2279) — thanks @castlecreati!
 - An audiobook chapter-cache miss now logs which input changed since the cached render (#2279)
+- MCP clients pointed at `/mcp` connect on Docker and source builds instead of getting HTTP 405 (#2289)
+- MCP tools and `backend.speech_client` follow a backend moved with `OMNIVOICE_PORT` instead of assuming port 3900 (#2289)
+- Integration cards show real capabilities: "Works with VoiceStudio" only where a setup exists, "External link" everywhere else (#2289)
 
 ### Bug reporters
 

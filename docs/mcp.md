@@ -51,8 +51,30 @@ still returning a path the agent can use.
 Point your client at the mounted endpoint:
 
 ```
-http://localhost:3900/mcp
+http://localhost:3900/mcp/
 ```
+
+Keep the trailing slash: `/mcp/` works on every VoiceStudio version. Current
+backends also answer bare `/mcp` directly (every Streamable HTTP method —
+`POST`, `GET` for the event stream, `DELETE` — with no redirect, whether or not
+the backend also serves the web UI); older Docker and source builds returned
+HTTP 405 for bare `/mcp`, so existing configs using it work once you update. Use the backend's real port if you moved it with
+`OMNIVOICE_PORT`.
+
+The desktop app exports ready-made client configurations for the current
+backend address, all using `/mcp/`, under **Integrations**: Claude Code (`.mcp.json`), Cursor
+(`.cursor/mcp.json`), Codex CLI (`~/.codex/config.toml`), and a generic
+Streamable HTTP + stdio card under **Model Context Protocol**. For Codex CLI
+the exported table is:
+
+```toml
+[mcp_servers.voicestudio]
+url = "http://127.0.0.1:3900/mcp/"
+http_headers = { "X-OmniVoice-Client-Id" = "codex-cli" }
+```
+
+This follows the [Codex MCP configuration](https://developers.openai.com/codex/mcp):
+a `url` key selects Streamable HTTP and `http_headers` adds static headers.
 
 To bind this agent to a specific voice, send an
 `X-OmniVoice-Client-Id` header (e.g. `claude-code`). See
@@ -83,6 +105,15 @@ this into your client's MCP config (`docs/mcp.json` is a template):
   }
 }
 ```
+
+For a backend elsewhere, set `OMNIVOICE_HOST` (and `OMNIVOICE_PORT`), or
+`OMNIVOICE_URL` with the full base URL when it uses https or a reverse-proxy
+path prefix (e.g. `https://gpu-box/voicestudio`). Set `OMNIVOICE_API_KEY` when
+that backend requires an [API key](api-auth.md); the shim sends it as a Bearer
+token, and refuses to start if that would send it over plain http to another
+host. The shim
+needs a VoiceStudio source checkout (it runs with that checkout's Python
+environment, e.g. `uv run python -m backend.mcp_shim`).
 
 The shim forwards `OMNIVOICE_CLIENT_ID` as the `X-OmniVoice-Client-Id` header,
 so the per-agent voice binding works the same as the HTTP path. It waits for
@@ -115,6 +146,15 @@ curl -X DELETE localhost:3900/api/mcp/bindings/claude-code
 
 Prefer a [consent-verified](../docs/competitive-analysis.md) voice profile for
 any agent that speaks as you.
+
+## How tools reach the backend
+
+The mounted `/mcp` tools call VoiceStudio's API in-process, as a local
+caller: they work whatever host and port the backend binds, and the share PIN
+and API key never block them. A standalone `python -m backend.mcp_server`
+calls the backend over HTTP at the address it binds (`OMNIVOICE_BIND_HOST`,
+`OMNIVOICE_PORT`). Set `OMNIVOICE_API_URL` only to send tool calls somewhere
+else, such as a reverse proxy.
 
 ## Disabling
 

@@ -16,4 +16,4 @@ The footer chevron opens a searchable sponsor catalog above the strip. Cards sho
 
 The expanded catalog is labeled Integrations. Entries from the sponsored roster display a Featured badge in their catalog card and hover card; the empty booking preview does not.
 
-Ten voice-AI company examples populate the catalog and compact strip using locally bundled official icons. They carry a Directory example label, not Featured. Capabilities and source links are recorded in [the directory notes](integration-directory.md).
+Ten voice-AI company examples populate the catalog and compact strip using locally bundled official icons. The compact strip labels them Directory example, not Featured. On the Integrations page, only entries with a built-in setup show Works with VoiceStudio and capability chips; the rest are marked External link. Setup details and source links are recorded in [the directory notes](integration-directory.md).

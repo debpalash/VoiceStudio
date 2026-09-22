@@ -32,7 +32,7 @@ it('copies the shown live configuration only after the user requests it', async 
   fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
   await waitFor(() => expect(toast.success).toHaveBeenCalled());
   expect(JSON.parse(copy.mock.calls[0][0]).mcpServers.voicestudio.url).toBe(
-    'http://127.0.0.1:3912/mcp',
+    'http://127.0.0.1:3912/mcp/',
   );
 });
 
@@ -54,12 +54,44 @@ it('exports the n8n workflow only on request and handles canceled saves', async 
   );
 });
 
+it('shows the Codex TOML export and one heading per panel', () => {
+  route.slug = 'codex-cli';
+  render(<IntegrationDetailPage />);
+  expect(screen.getByText(/\[mcp_servers\.voicestudio\]/)).toBeInTheDocument();
+  expect(screen.getByText(/Merge this configuration into/)).toHaveTextContent(
+    '~/.codex/config.toml',
+  );
+  expect(screen.getByRole('heading', { name: 'Set up Codex CLI' })).toBeInTheDocument();
+  expect(screen.getByText('Works with VoiceStudio')).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Details' })).toBeNull();
+});
+
+it('presents entries without a setup block as external links with no capability claims', () => {
+  route.slug = 'zapier';
+  render(<IntegrationDetailPage />);
+  expect(screen.queryByRole('button', { name: 'Copy' })).toBeNull();
+  expect(screen.queryByText('Works with VoiceStudio')).toBeNull();
+  expect(screen.getByRole('heading', { name: 'Website' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Capabilities' })).toBeInTheDocument();
+});
+
+it('offers copyable API snippets for the current backend', () => {
+  route.slug = 'voicestudio-api';
+  render(<IntegrationDetailPage />);
+  expect(screen.getAllByRole('button', { name: 'Copy' })).toHaveLength(4);
+  expect(
+    screen.getByText(/curl http:\/\/127\.0\.0\.1:3912\/v1\/audio\/speech/),
+  ).toBeInTheDocument();
+});
+
 it('shows the OpenAI Agents snippet for the live backend', async () => {
   route.slug = 'openai-agents';
   const copy = vi.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator, 'clipboard', { value: { writeText: copy }, configurable: true });
   render(<IntegrationDetailPage />);
   expect(screen.getByText(/OpenAI Agents SDK voice pipeline/)).toBeInTheDocument();
+  expect(screen.getByText('Works with VoiceStudio')).toBeInTheDocument();
+  expect(screen.getByText('Local language model')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
   await waitFor(() => expect(copy).toHaveBeenCalledTimes(1));
   expect(copy.mock.calls[0][0]).toContain('base_url="http://127.0.0.1:3912/v1"');

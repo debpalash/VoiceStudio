@@ -33,9 +33,11 @@ points here. Complete the setup, not just a plan.
    device. Keep working defaults and install required dependencies.
 5. **Verify.** Start the app and check `/health` at the backend address (default
    `http://localhost:3900`); discover the API through `/openapi.json`. If the chosen
-   engine's model is not installed (`GET /models`), state its size and license, get
-   consent, then install it with `POST /models/install` and wait on
-   `GET /models/install/status`. Generate a short clip with a bundled or authorized
+   engine's model shows `"installed": false` in `GET /models`, state its size and
+   license and get consent, then send `POST /models/install` with that entry's
+   `{"repo_id": "…"}`. Poll `GET /models/install/status`: stop on a `failed` state,
+   and treat an empty `jobs` array as finished only once `GET /models` reports
+   `"installed": true`. Then generate a short clip with a bundled or authorized
    voice and confirm the audio file plays.
 6. **Report.** Installed version, engine, actual device, data location, audio output
    path, and how to reopen the app.

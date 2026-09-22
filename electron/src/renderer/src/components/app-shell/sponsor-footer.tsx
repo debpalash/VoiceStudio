@@ -39,13 +39,13 @@ export function SponsorFooter() {
     return () => window.clearInterval(timer);
   }, []);
   const entries = [
-    ...SPONSORS.map((sponsor) => ({ ...sponsor, featured: true, detailKeys: [] as string[] })),
+    ...SPONSORS.map((sponsor) => ({ ...sponsor, featured: true })),
     ...VOICE_AI_DIRECTORY.filter(
       (example) => !SPONSORS.some((sponsor) => sponsor.url === example.url),
     ).map((example) => ({ ...example, tier: '', featured: false })),
   ];
   const visibleSponsors = entries.filter((sponsor) =>
-    `${sponsor.name} ${sponsor.tier} ${sponsor.url} ${sponsor.detailKeys.map((key) => t(key)).join(' ')}`
+    `${sponsor.name} ${sponsor.tier} ${sponsor.url}`
       .toLocaleLowerCase()
       .includes(query.trim().toLocaleLowerCase()),
   );
@@ -134,9 +134,6 @@ export function SponsorFooter() {
                 {SPONSOR_TIERS.includes(sponsor.tier) && (
                   <span>{t('support.sponsors_tier_' + sponsor.tier)}</span>
                 )}
-                {sponsor.detailKeys.length > 0 && (
-                  <p>{sponsor.detailKeys.map((key) => t(key)).join(' · ')}</p>
-                )}
                 <p>{sponsor.url}</p>
               </a>
             ))}
@@ -167,7 +164,9 @@ export function SponsorFooter() {
           type="button"
           className="sponsor-catalog-toggle"
           aria-label={t('integrationCatalog.title')}
-          onClick={() => runRendererTask('Open integrations', () => navigate({ to: '/integrations' }))}
+          onClick={() =>
+            runRendererTask('Open integrations', () => navigate({ to: '/integrations' }))
+          }
           title={t('integrationCatalog.title')}
         >
           <BlocksIcon aria-hidden="true" className="size-4" />
@@ -238,9 +237,7 @@ export function SponsorFooter() {
                   </span>
                 )}
                 <span className="text-xs leading-relaxed text-muted-foreground">
-                  {sponsor.detailKeys.length
-                    ? sponsor.detailKeys.map((key) => t(key)).join(' · ')
-                    : t('integrationCatalog.description')}
+                  {t('integrationCatalog.description')}
                 </span>
                 <span className="flex max-w-full items-center gap-1 text-xs text-primary">
                   <span className="break-all">{sponsor.url}</span>
@@ -288,15 +285,9 @@ export function SponsorFooter() {
               <span>{t('sponsorSlot.partner')}</span>
             </span>
             <strong className="sponsor-book-tooltip-title">{t('sponsorSlot.title')}</strong>
-            <span className="sponsor-book-tooltip-lead">
-              {t('sponsorSlot.description')}
-            </span>
-            <span className="sponsor-book-tooltip-detail">
-              {t('support.sponsors_perk')}
-            </span>
-            <span className="sponsor-book-tooltip-detail">
-              {t('sponsorSlot.preview_detail')}
-            </span>
+            <span className="sponsor-book-tooltip-lead">{t('sponsorSlot.description')}</span>
+            <span className="sponsor-book-tooltip-detail">{t('support.sponsors_perk')}</span>
+            <span className="sponsor-book-tooltip-detail">{t('sponsorSlot.preview_detail')}</span>
             <button
               type="button"
               className="sponsor-book-tooltip-cta"
@@ -315,7 +306,9 @@ export function SponsorFooter() {
                 aria-label={t('supportPlans.remove')}
                 className={linkClass + ' justify-center px-2'}
                 onClick={() =>
-                  runRendererTask('Open support', () => navigate({ to: '/settings/support', search: { compare: true } }))
+                  runRendererTask('Open support', () =>
+                    navigate({ to: '/settings/support', search: { compare: true } }),
+                  )
                 }
               />
             }

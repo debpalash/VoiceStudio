@@ -124,7 +124,7 @@ rejected instead of inserting into a newer target.
 |---|---|---|
 | OpenAI-compatible HTTP | `POST :3900/v1/audio/transcriptions` | Files, scripts, existing SDKs |
 | WebSocket | `:3900/v1/audio/transcriptions/stream` | Partial and final live text |
-| MCP Streamable HTTP | `POST :3900/mcp` | Modern agent clients |
+| MCP Streamable HTTP | `POST :3900/mcp/` (bare `/mcp` on current backends) | Modern agent clients |
 | MCP stdio | `python -m backend.mcp_shim` | Claude Code, Codex, and stdio-only clients |
 | JSON-RPC | `POST :3902/rpc` | Native dictation control |
 | Native CLI | VoiceStudio `--dictate-*` flags | Hooks and plugin actions |
