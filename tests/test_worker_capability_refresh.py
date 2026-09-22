@@ -9,6 +9,7 @@ from worker.protocol.gen import worker_v1_pb2 as pb
 from worker.transport import client as client_module
 from worker.transport.client import WorkerClient, WorkerConfig
 from worker.transport.server import WorkerServicer
+from hang_guard import BARRIER_WATCHDOG_S, HANG_GUARD_S
 
 
 def _client(probe):
@@ -31,20 +32,20 @@ async def test_blocked_telemetry_probe_is_not_restarted(monkeypatch):
         nonlocal calls
         calls += 1
         started.set()
-        release.wait(5)
+        release.wait(BARRIER_WATCHDOG_S)
         return 10.0, 20, 30.0
 
     monkeypatch.setattr(client_module, "_heartbeat_resources", sample)
     client = _client(lambda: [])
     await client._refresh_telemetry()
-    await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=1)
+    await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=HANG_GUARD_S)
 
     for _ in range(3):
         await client._refresh_telemetry()
     assert calls == 1
 
     release.set()
-    await asyncio.wait_for(client._telemetry_task, timeout=1)
+    await asyncio.wait_for(client._telemetry_task, timeout=HANG_GUARD_S)
 
 
 @pytest.mark.asyncio
@@ -56,9 +57,9 @@ async def test_partial_telemetry_failure_retains_other_last_good_values(monkeypa
     client = _client(lambda: [])
 
     await client._refresh_telemetry()
-    await asyncio.wait_for(client._telemetry_task, timeout=1)
+    await asyncio.wait_for(client._telemetry_task, timeout=HANG_GUARD_S)
     await client._refresh_telemetry()
-    await asyncio.wait_for(client._telemetry_task, timeout=1)
+    await asyncio.wait_for(client._telemetry_task, timeout=HANG_GUARD_S)
     await client._refresh_telemetry()
 
     assert client._telemetry == (10.0, 20, 40.0)
@@ -89,7 +90,7 @@ async def test_register_and_refresh_share_one_off_loop_capability_probe():
         assert threading.current_thread() is not main_thread
         calls += 1
         started.set()
-        release.wait(5)
+        release.wait(BARRIER_WATCHDOG_S)
         return [{
             "engine": "omnivoice",
             "model_id": "omnivoice:default",
@@ -101,7 +102,7 @@ async def test_register_and_refresh_share_one_off_loop_capability_probe():
 
     client = _client(probe)
     registering = asyncio.create_task(client.build_register_request())
-    await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=1)
+    await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=HANG_GUARD_S)
     refreshing = asyncio.create_task(client.refresh_capabilities())
     await asyncio.sleep(0)
 
@@ -109,8 +110,8 @@ async def test_register_and_refresh_share_one_off_loop_capability_probe():
         assert calls == 1
     finally:
         release.set()
-    request = await asyncio.wait_for(registering, timeout=1)
-    await asyncio.wait_for(refreshing, timeout=1)
+    request = await asyncio.wait_for(registering, timeout=HANG_GUARD_S)
+    await asyncio.wait_for(refreshing, timeout=HANG_GUARD_S)
 
     assert calls == 1
     assert request.capabilities[0].model_id == "omnivoice:default"
@@ -132,10 +133,10 @@ async def test_cancelled_slow_probe_keeps_control_responsive_and_drains_thread()
 
     client = _client(probe)
     refreshing = asyncio.create_task(client.refresh_capabilities())
-    await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=1)
+    await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=HANG_GUARD_S)
 
     await client._on_server_message(pb.ServerMessage(ping=pb.Ping(nonce=42)))
-    pong = await asyncio.wait_for(client._outbox.get(), timeout=1)
+    pong = await asyncio.wait_for(client._outbox.get(), timeout=HANG_GUARD_S)
     assert pong.pong.nonce == 42
     assert not refreshing.done()
 
@@ -144,7 +145,7 @@ async def test_cancelled_slow_probe_keeps_control_responsive_and_drains_thread()
     assert not refreshing.done(), "probe thread was abandoned on cancellation"
     release.set()
     with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(refreshing, timeout=1)
+        await asyncio.wait_for(refreshing, timeout=HANG_GUARD_S)
 
     assert finished.is_set()
     assert client._outbox.empty(), "cancelled probe published a late capability frame"
@@ -170,7 +171,7 @@ async def test_task_slot_stays_reserved_until_its_capability_probe_finishes():
     )
     await client._on_assignment(first)
     first_task = client._running["first/attempt-1"]
-    await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=1)
+    await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=HANG_GUARD_S)
 
     heartbeat = client.heartbeat_message().heartbeat
     assert heartbeat.active_tasks == 1
@@ -187,7 +188,7 @@ async def test_task_slot_stays_reserved_until_its_capability_probe_finishes():
     assert any(frame.WhichOneof("payload") == "rejected" for frame in frames)
 
     release.set()
-    await asyncio.wait_for(first_task, timeout=1)
+    await asyncio.wait_for(first_task, timeout=HANG_GUARD_S)
     assert client._running == {}
 
 
@@ -244,7 +245,7 @@ async def test_authority_loss_cancels_and_drains_a_blocked_prewarm(monkeypatch):
     await client._on_server_message(pb.ServerMessage(prewarm=pb.PrewarmRequest(
         model_id="omnivoice:default", download_if_missing=True,
     )))
-    await asyncio.wait_for(started.wait(), timeout=1)
+    await asyncio.wait_for(started.wait(), timeout=HANG_GUARD_S)
 
     await client.stop()
 
@@ -286,7 +287,7 @@ async def test_model_install_cancel_stops_only_the_matching_prewarm(monkeypatch)
             )
         )
     )
-    await asyncio.wait_for(started.wait(), timeout=1)
+    await asyncio.wait_for(started.wait(), timeout=HANG_GUARD_S)
 
     await client._on_server_message(
         pb.ServerMessage(
@@ -297,13 +298,13 @@ async def test_model_install_cancel_stops_only_the_matching_prewarm(monkeypatch)
     )
     await asyncio.wait_for(
         asyncio.gather(*tuple(client._maintenance), return_exceptions=True),
-        timeout=1,
+        timeout=HANG_GUARD_S,
     )
     await asyncio.sleep(0)
 
     assert cancelled.is_set()
     assert client._prewarms == {}
-    frame = await asyncio.wait_for(client._outbox.get(), timeout=1)
+    frame = await asyncio.wait_for(client._outbox.get(), timeout=HANG_GUARD_S)
     assert frame.WhichOneof("payload") == "download_progress"
     event = json.loads(frame.download_progress.event_json)
     assert event["repo_id"] == "k2-fsa/OmniVoice"
@@ -340,13 +341,13 @@ async def test_authority_loss_waits_for_a_blocking_prewarm_thread(monkeypatch):
     await client._on_server_message(pb.ServerMessage(prewarm=pb.PrewarmRequest(
         model_id="omnivoice:default",
     )))
-    await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=1)
+    await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=HANG_GUARD_S)
 
     stopping = asyncio.create_task(client.stop())
     await asyncio.sleep(0)
     assert not stopping.done(), "authority returned while the load thread was active"
     release.set()
-    await asyncio.wait_for(stopping, timeout=1)
+    await asyncio.wait_for(stopping, timeout=HANG_GUARD_S)
 
     assert finished.is_set()
     assert probes == 1
@@ -381,12 +382,12 @@ async def test_blocked_prewarm_does_not_delay_active_task_cancellation():
     await asyncio.sleep(0)
 
     stopping = asyncio.create_task(client.stop())
-    await asyncio.wait_for(maintenance_cancelled.wait(), timeout=1)
-    await asyncio.wait_for(task_cancelled.wait(), timeout=1)
+    await asyncio.wait_for(maintenance_cancelled.wait(), timeout=HANG_GUARD_S)
+    await asyncio.wait_for(task_cancelled.wait(), timeout=HANG_GUARD_S)
     assert not stopping.done()
 
     release_maintenance.set()
-    await asyncio.wait_for(stopping, timeout=1)
+    await asyncio.wait_for(stopping, timeout=HANG_GUARD_S)
 
 
 @pytest.mark.asyncio
@@ -416,7 +417,7 @@ async def test_cancelled_remote_install_waits_for_its_background_task(monkeypatc
     monkeypatch.setattr(download_aggregator, "install", lambda: None)
     client = _client(lambda: [])
     installing = asyncio.create_task(client._install_catalog_repo(repo_id))
-    await asyncio.wait_for(started.wait(), timeout=1)
+    await asyncio.wait_for(started.wait(), timeout=HANG_GUARD_S)
 
     installing.cancel()
     await asyncio.sleep(0)
@@ -424,7 +425,7 @@ async def test_cancelled_remote_install_waits_for_its_background_task(monkeypatc
     release.set()
 
     with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(installing, timeout=1)
+        await asyncio.wait_for(installing, timeout=HANG_GUARD_S)
     assert finished.is_set()
     setup_download._install_tasks_by_repo.pop(repo_id, None)
     setup_download._cancelled.discard(repo_id)
@@ -454,12 +455,12 @@ async def test_remote_download_reuses_installer_and_pipes_fake_progress(monkeypa
     client = _client(list)
 
     await asyncio.wait_for(
-        client._install_catalog_repo("k2-fsa/OmniVoice"), timeout=1.0
+        client._install_catalog_repo("k2-fsa/OmniVoice"), timeout=HANG_GUARD_S
     )
 
     assert calls == [("k2-fsa/OmniVoice", "local")]
-    first = await asyncio.wait_for(client._outbox.get(), timeout=1.0)
-    second = await asyncio.wait_for(client._outbox.get(), timeout=1.0)
+    first = await asyncio.wait_for(client._outbox.get(), timeout=HANG_GUARD_S)
+    second = await asyncio.wait_for(client._outbox.get(), timeout=HANG_GUARD_S)
     assert first.WhichOneof("payload") == "download_progress"
     assert '"phase":"aggregate"' in first.download_progress.event_json
     assert second.WhichOneof("payload") == "download_progress"
@@ -552,28 +553,28 @@ async def test_blocked_telemetry_does_not_block_drain_stop_or_duplicate_on_recon
     def sample():
         calls.append(threading.current_thread())
         started.set()
-        release.wait(5)
+        release.wait(BARRIER_WATCHDOG_S)
         return 1.0, 2, 3.0
 
     monkeypatch.setattr(client_module, "_heartbeat_resources", sample)
     client = _client(lambda: [])
     await client._refresh_telemetry()
-    await asyncio.wait_for(asyncio.to_thread(started.wait), 1)
+    await asyncio.wait_for(asyncio.to_thread(started.wait), HANG_GUARD_S)
     probe = client._telemetry_task
     try:
         client._draining = True
         client._maybe_finish_drain()
         assert client._reconnect_requested.is_set()
-        await asyncio.wait_for(client._cancel_active_work(), 0.5)
+        await asyncio.wait_for(client._cancel_active_work(), HANG_GUARD_S)
         client._accepting_assignments = True
         await client._refresh_telemetry()
         assert client._telemetry_task is probe
         assert len(calls) == 1
         assert calls[0].daemon
-        await asyncio.wait_for(client.stop(), 0.5)
+        await asyncio.wait_for(client.stop(), HANG_GUARD_S)
         await client._refresh_telemetry()
         assert client._telemetry_task is probe
         assert not client._maintenance
     finally:
         release.set()
-        await asyncio.wait_for(probe, 1)
+        await asyncio.wait_for(probe, HANG_GUARD_S)

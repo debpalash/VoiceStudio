@@ -42,6 +42,7 @@ from worker.executor import TaskExecutor, TaskFailure
 from worker.lifecycle import Attempt, Task, TaskState
 from worker.protocol.gen import worker_v1_pb2 as pb
 from worker.transport import codec
+from hang_guard import BARRIER_WATCHDOG_S, HANG_GUARD_S
 
 
 # ── Fixtures ───────────────────────────────────────────────────────────────
@@ -595,7 +596,7 @@ async def test_cancelled_hash_waits_for_verifier_before_discarding_partial_file(
         with open(path, "rb"):
             verifying_path.append(path)
             verify_started.set()
-            release_verify.wait(timeout=5)
+            release_verify.wait(timeout=BARRIER_WATCHDOG_S)
 
     async def fetch(_ref, destination):
         with open(destination, "wb") as handle:
@@ -604,7 +605,7 @@ async def test_cancelled_hash_waits_for_verifier_before_discarding_partial_file(
     monkeypatch.setattr(executor_module, "_verify", blocked_verify)
     cache = tmp_path / "inputs"
     task = asyncio.create_task(TaskExecutor(input_dir=str(cache))._fetch_one(ref, fetch))
-    assert await asyncio.to_thread(verify_started.wait, 2)
+    assert await asyncio.to_thread(verify_started.wait, HANG_GUARD_S)
 
     task.cancel()
     await asyncio.sleep(0)
@@ -787,7 +788,7 @@ async def test_execute_leases_materialized_inputs_against_concurrent_pruning(
 
     monkeypatch.setattr(executor, "_run_tts", blocked_handler)
     execution = asyncio.create_task(executor.execute(assignment, fetch_input=fetch))
-    await asyncio.wait_for(handler_started.wait(), timeout=2)
+    await asyncio.wait_for(handler_started.wait(), timeout=HANG_GUARD_S)
     evictable = cache / "older.bin"
     evictable.write_bytes(b"old")
 

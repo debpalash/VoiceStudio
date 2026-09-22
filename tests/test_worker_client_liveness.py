@@ -32,6 +32,7 @@ from worker.transport.client import (
     WorkerConfig,
     keepalive_interval,
 )
+from hang_guard import HANG_GUARD_S
 
 ENGINE, MODEL, OP = "indextts", "indextts:v2", "tts"
 
@@ -142,7 +143,7 @@ async def test_duplicate_assignment_reaffirms_one_running_attempt():
     assignment = _assignment()
     try:
         await client._on_assignment(assignment)
-        await asyncio.wait_for(started.wait(), timeout=1)
+        await asyncio.wait_for(started.wait(), timeout=HANG_GUARD_S)
         await client._on_assignment(assignment)
         await asyncio.sleep(0.05)
 
@@ -215,7 +216,7 @@ async def test_cancel_ack_waits_until_execution_relinquishes_its_slot():
     client = _client(execute)
     assignment = _assignment()
     await client._on_assignment(assignment)
-    await asyncio.wait_for(started.wait(), timeout=1)
+    await asyncio.wait_for(started.wait(), timeout=HANG_GUARD_S)
     # Remove ACCEPTED/STARTED so the assertion below observes only CancelAck.
     while not client._outbox.empty():
         await client._outbox.get()
@@ -225,7 +226,7 @@ async def test_cancel_ack_waits_until_execution_relinquishes_its_slot():
             pb.ServerMessage(cancel=pb.TaskCancel(ref=assignment.ref))
         )
     )
-    await asyncio.wait_for(cancellation_seen.wait(), timeout=1)
+    await asyncio.wait_for(cancellation_seen.wait(), timeout=HANG_GUARD_S)
 
     assert not cancelling.done()
     assert client._key(assignment.ref) in client._running
@@ -237,7 +238,7 @@ async def test_cancel_ack_waits_until_execution_relinquishes_its_slot():
     assert refusal.WhichOneof("payload") == "rejected"
 
     release.set()
-    await asyncio.wait_for(cancelling, timeout=1)
+    await asyncio.wait_for(cancelling, timeout=HANG_GUARD_S)
     ack = await client._outbox.get()
     assert ack.WhichOneof("payload") == "cancel_ack"
 
@@ -273,8 +274,8 @@ async def test_timeout_keeps_capacity_reserved_until_engine_thread_exits():
     first = _assignment()
     try:
         await client._on_assignment(first)
-        await asyncio.wait_for(asyncio.to_thread(synth_started.wait), timeout=1)
-        await asyncio.wait_for(drain_started.wait(), timeout=1)
+        await asyncio.wait_for(asyncio.to_thread(synth_started.wait), timeout=HANG_GUARD_S)
+        await asyncio.wait_for(drain_started.wait(), timeout=HANG_GUARD_S)
 
         assert client._key(first.ref) in client._running
         assert "failed" not in wire.kinds()
@@ -317,22 +318,22 @@ async def test_stop_closes_assignment_admission_before_draining():
     client = _client(execute, max_concurrent_tasks=2)
     first = _assignment()
     await client._on_assignment(first)
-    await asyncio.wait_for(started.wait(), timeout=1)
+    await asyncio.wait_for(started.wait(), timeout=HANG_GUARD_S)
 
     stopping = asyncio.create_task(client.stop())
-    await asyncio.wait_for(cancellation_seen.wait(), timeout=1)
+    await asyncio.wait_for(cancellation_seen.wait(), timeout=HANG_GUARD_S)
     second = _assignment()
     second.ref.attempt_id = "a-2"
     await client._on_assignment(second)
 
     assert second_started.is_set() is False
     assert client._key(second.ref) not in client._running
-    refusal = await asyncio.wait_for(client._outbox.get(), timeout=1)
+    refusal = await asyncio.wait_for(client._outbox.get(), timeout=HANG_GUARD_S)
     while refusal.WhichOneof("payload") != "rejected":
-        refusal = await asyncio.wait_for(client._outbox.get(), timeout=1)
+        refusal = await asyncio.wait_for(client._outbox.get(), timeout=HANG_GUARD_S)
     assert refusal.rejected.error.code == "WORKER_STOPPING"
     release.set()
-    await asyncio.wait_for(stopping, timeout=1)
+    await asyncio.wait_for(stopping, timeout=HANG_GUARD_S)
     assert client._running == {}
 
 
@@ -356,7 +357,7 @@ async def test_graceful_drain_keeps_the_stream_until_the_result_is_acked():
     assignment = _assignment()
     try:
         await client._on_assignment(assignment)
-        await asyncio.wait_for(started.wait(), timeout=1)
+        await asyncio.wait_for(started.wait(), timeout=HANG_GUARD_S)
         await client._on_server_message(
             pb.ServerMessage(
                 drain=pb.Drain(
@@ -413,7 +414,7 @@ async def test_keepalive_renews_a_lease_across_a_task_three_leases_long():
     wire = _Wire(client)
     try:
         await client._on_assignment(_assignment())
-        await asyncio.wait_for(started.wait(), timeout=5)
+        await asyncio.wait_for(started.wait(), timeout=HANG_GUARD_S)
         await wire.until("result", timeout=LEASE_SECONDS * 6)
 
         times = [t for t, _ in wire.frames]
@@ -485,7 +486,7 @@ async def test_keepalive_stops_when_the_server_disowns_the_task():
     try:
         assignment = _assignment()
         await client._on_assignment(assignment)
-        await asyncio.wait_for(entered.wait(), timeout=5)
+        await asyncio.wait_for(entered.wait(), timeout=HANG_GUARD_S)
         await client._abandon("t-1/a-1")
         assert client._keepalives == {}
     finally:
