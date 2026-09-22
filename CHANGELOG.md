@@ -11,7 +11,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 **Highlights**
 
 - Malayalam speech reads numbers in Malayalam (#2280) — thanks @nikhilkilivayil!
-- Stories and Audiobook can save a chapter cue sheet (`.txt`) after a render
+- Stories and Audiobook can save a chapter cue sheet (`.txt`) after a render (#2278) — thanks @shivsin25!
 
 ### Added
 

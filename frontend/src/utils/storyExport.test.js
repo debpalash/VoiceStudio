@@ -179,6 +179,16 @@ describe('cuesFromChapters', () => {
     );
   });
 
+  it('falls back to duration_s when duration_ms is blank', () => {
+    for (const blank of ['', '  ', null, undefined]) {
+      const cues = cuesFromChapters([
+        { title: 'A', duration_s: 12.5, duration_ms: blank },
+        { title: 'B' },
+      ]);
+      expect(cues[1].time).toBe(12.5);
+    }
+  });
+
   it('names a blank title through the caller-supplied fallback', () => {
     expect(cuesFromChapters([{ title: '' }], (n) => `Capítulo ${n}`)[0].title).toBe('Capítulo 1');
   });

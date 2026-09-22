@@ -166,10 +166,19 @@ export function cuesFromChapters(chapters, fallbackTitle = (n) => `Chapter ${n}`
 }
 
 function chapterMs(chapter) {
-  const ms = Number(chapter?.duration_ms);
-  if (chapter?.duration_ms != null && Number.isFinite(ms)) return Math.max(0, Math.round(ms));
-  const seconds = Number(chapter?.duration_s);
-  return Number.isFinite(seconds) ? Math.max(0, Math.round(seconds * 1000)) : 0;
+  const ms = finiteNumber(chapter?.duration_ms);
+  if (ms != null) return Math.max(0, Math.round(ms));
+  const seconds = finiteNumber(chapter?.duration_s);
+  return seconds != null ? Math.max(0, Math.round(seconds * 1000)) : 0;
+}
+
+// `Number('')`, `Number(' ')` and `Number(null)` are 0, so a blank
+// `duration_ms` would shadow a real `duration_s`; only numbers and nonblank
+// numeric strings count.
+function finiteNumber(value) {
+  if (typeof value !== 'number' && !(typeof value === 'string' && value.trim() !== '')) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 /**
