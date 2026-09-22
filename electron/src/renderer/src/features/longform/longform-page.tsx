@@ -13,6 +13,7 @@ import { SecondarySidebar } from '@/components/workspace-sidebar';
 import { WorkspaceHeader } from '@/components/app-shell/workspace-header';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { importToText } from '../../../../../../frontend/src/utils/importStory';
+import { cueSheetFor } from './cue-sheet';
 import { StoryCast, StoryEditor } from './story-editor';
 import { clearedScriptPatch, scriptSize } from './story-clear';
 import { ConfirmDialog } from '../clone/confirm-dialog';
@@ -36,7 +37,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { DownloadIcon, SparklesIcon } from 'lucide-react';
+import { DownloadIcon, ListIcon, SparklesIcon } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { WaveformPlayer } from '@/components/waveform-player';
@@ -180,6 +181,24 @@ export function LongformPage({ mode }: { mode: Mode }) {
       setLocalError(describeError(cause));
     } finally {
       setExporting(false);
+    }
+  };
+  // The m4b embeds its chapters, but mp3 has no portable way to carry them, and
+  // players, podcast hosts and show-notes want the timestamps as text. What
+  // belongs in the sheet is decided in cue-sheet.ts; this only saves it.
+  const cueSheet = cueSheetFor(draft.outputChapters, draft.output);
+  const downloadCueSheet = () => {
+    if (!cueSheet) return;
+    const url = URL.createObjectURL(
+      new Blob([cueSheet.body], { type: 'text/plain;charset=utf-8' }),
+    );
+    try {
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = cueSheet.filename;
+      link.click();
+    } finally {
+      URL.revokeObjectURL(url);
     }
   };
   return (
@@ -483,15 +502,23 @@ export function LongformPage({ mode }: { mode: Mode }) {
                       </p>
                     )}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={exporting}
-                    onClick={() => void download()}
-                  >
-                    <DownloadIcon />
-                    {t('audiobook.download')}
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    {cueSheet && (
+                      <Button variant="ghost" size="sm" onClick={downloadCueSheet}>
+                        <ListIcon />
+                        {t('audiobook.download_cues')}
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={exporting}
+                      onClick={() => void download()}
+                    >
+                      <DownloadIcon />
+                      {t('audiobook.download')}
+                    </Button>
+                  </div>
                 </div>
                 {mode === 'audiobook' ? (
                   <SyncedAudiobookPlayer

@@ -8,6 +8,8 @@ import {
   formatTimecode,
   tracksByCharacter,
   buildCueSheet,
+  cuesFromChapters,
+  cueSheetFilename,
 } from './storyExport';
 
 function fakeBuffer(samples, sampleRate = 24000) {
@@ -80,7 +82,7 @@ describe('chapter helpers', () => {
         { time: 0, title: 'Intro' },
         { time: 65, title: 'Two' },
       ]),
-    ).toBe('00:00:00 Intro\n00:01:05 Two');
+    ).toBe('00:00:00\tIntro\n00:01:05\tTwo');
   });
 });
 
@@ -95,5 +97,109 @@ describe('tracksByCharacter', () => {
     expect(groups.map((g) => g.character)).toEqual(['narrator', 'fox']);
     expect(groups[0].tracks).toHaveLength(2);
     expect(groups[1].tracks).toHaveLength(1);
+  });
+});
+
+describe('cuesFromChapters', () => {
+  it('starts at zero and accumulates each chapter duration', () => {
+    expect(
+      cuesFromChapters([
+        { title: 'Intro', duration_s: 65 },
+        { title: 'Two', duration_s: 120.5 },
+        { title: 'Three', duration_s: 10 },
+      ]),
+    ).toEqual([
+      { time: 0, title: 'Intro' },
+      { time: 65, title: 'Two' },
+      { time: 185.5, title: 'Three' },
+    ]);
+  });
+
+  it('never goes backwards, whatever the durations say', () => {
+    // A missing, negative, NaN or non-numeric duration contributes zero rather
+    // than shifting every later chapter out of step with the audio.
+    const cues = cuesFromChapters([
+      { title: 'A', duration_s: 10 },
+      { title: 'B', duration_s: -5 },
+      { title: 'C' },
+      { title: 'D', duration_s: Number.NaN },
+      { title: 'E', duration_s: 'nonsense' },
+      { title: 'F', duration_s: 7 },
+    ]);
+    expect(cues.map((c) => c.time)).toEqual([0, 10, 10, 10, 10, 10]);
+    for (let i = 1; i < cues.length; i += 1) {
+      expect(cues[i].time).toBeGreaterThanOrEqual(cues[i - 1].time);
+      expect(Number.isFinite(cues[i].time)).toBe(true);
+    }
+  });
+
+  it('accepts a numeric string duration', () => {
+    expect(cuesFromChapters([{ title: 'A', duration_s: '12.5' }, { title: 'B' }])[1].time).toBe(
+      12.5,
+    );
+  });
+
+  it('falls back to the chapter position when the title is blank', () => {
+    expect(
+      cuesFromChapters([{ title: '   ', duration_s: 1 }, { duration_s: 1 }, { title: null }]).map(
+        (c) => c.title,
+      ),
+    ).toEqual(['Chapter 1', 'Chapter 2', 'Chapter 3']);
+  });
+
+  it('trims a padded title', () => {
+    expect(cuesFromChapters([{ title: '  Prologue  ' }])[0].title).toBe('Prologue');
+  });
+
+  it('is total — empty, null and undefined all give no cues', () => {
+    expect(cuesFromChapters([])).toEqual([]);
+    expect(cuesFromChapters(null)).toEqual([]);
+    expect(cuesFromChapters(undefined)).toEqual([]);
+    expect(buildCueSheet(cuesFromChapters([]))).toBe('');
+  });
+
+  it('matches the embedded chapter offsets when a chapter is left out', () => {
+    // The backend appends to chapters_meta — the source of the m4b's embedded
+    // chapters — only on success, so a failed chapter must never contribute a
+    // cue. Filtering happens at the call site; this pins what the helper does
+    // with the filtered list: the following chapters keep the earlier offsets.
+    const all = [
+      { title: 'A', duration_s: 10, status: 'done' },
+      { title: 'B', duration_s: 999, status: 'failed' },
+      { title: 'C', duration_s: 20, status: 'done' },
+    ];
+    const rendered = all.filter((c) => c.status !== 'failed');
+    expect(cuesFromChapters(rendered)).toEqual([
+      { time: 0, title: 'A' },
+      { time: 10, title: 'C' },
+    ]);
+  });
+});
+
+describe('cueSheetFilename', () => {
+  it.each([
+    ['audiobook_abc.m4b', 'audiobook_abc.txt'],
+    ['story_abc.mp3', 'story_abc.txt'],
+    ['/outputs/story_abc.m4b', 'story_abc.txt'],
+    ['X.M4B', 'X.txt'],
+  ])('%s -> %s', (output, expected) => {
+    expect(cueSheetFilename(output)).toBe(expected);
+  });
+
+  it.each(['weird.wav', 'report.tar.gz', 'noextension', '', null, undefined])(
+    'falls back to cuesheet.txt for %s',
+    (output) => {
+      // Deliberately not "strip whatever extension is there" — that would turn
+      // report.tar.gz into report.tar.txt.
+      expect(cueSheetFilename(output)).toBe('cuesheet.txt');
+    },
+  );
+
+  it('returns promptly on a hostile length', () => {
+    // Both patterns are anchored with fixed alternations, so a long input
+    // cannot make them backtrack.
+    const started = performance.now();
+    expect(cueSheetFilename('a'.repeat(100000) + '.m4b')).toMatch(/^a+\.txt$/);
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 });

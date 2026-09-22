@@ -1590,6 +1590,7 @@
     "assembling": "正在組裝有聲書...",
     "ready": "有聲書準備就緒",
     "download": "下載",
+    "download_cues": "下載章節列表 (.txt)",
     "lyrics": "跟隨文字",
     "format": "格式",
     "format_m4b": "M4B（章節）",

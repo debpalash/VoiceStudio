@@ -1590,6 +1590,7 @@
     "assembling": "오디오북을 조립하는 중…",
     "ready": "오디오북 준비 완료",
     "download": "다운로드",
+    "download_cues": "챕터 목록 다운로드 (.txt)",
     "lyrics": "따라 읽기",
     "format": "형식",
     "format_m4b": "M4B(챕터)",

@@ -102,9 +102,66 @@ export function tracksByCharacter(tracks) {
   return groups;
 }
 
-/** Build a chapter cue sheet string from {time,title} cues. */
+/**
+ * Build a chapter cue sheet string from {time,title} cues.
+ *
+ * `HH:MM:SS<TAB>Title`, one line per chapter, no trailing newline — the shape
+ * spreadsheets and chapter-aware editors split on without guessing where the
+ * timestamp ends (spec 33).
+ */
 export function buildCueSheet(chapters) {
-  return (chapters || []).map((c) => `${formatTimecode(c.time)} ${c.title}`).join('\n');
+  return (chapters || []).map((c) => `${formatTimecode(c.time)}\t${c.title}`).join('\n');
+}
+
+/**
+ * Accumulate `{time, title}` cues from the ordered SUCCESSFUL chapters of a
+ * render. Cue k starts at the summed duration of chapters 0..k-1, so cue 0 is
+ * always 00:00:00.
+ *
+ * Callers must pass only chapters that actually rendered. The backend appends
+ * to `chapters_meta` — the source of the m4b's embedded FFMETADATA chapters —
+ * only on success, so including a failed chapter here would shift every
+ * following cue out of step with the audio it describes.
+ *
+ * Total by construction: a missing, NaN, or negative `duration_s` contributes
+ * zero rather than poisoning every later start time, and a blank title falls
+ * back to its position.
+ *
+ * @param {{title?: string, duration_s?: number|string}[]|null|undefined} chapters
+ * @returns {{time: number, title: string}[]}
+ */
+export function cuesFromChapters(chapters) {
+  const cues = [];
+  let elapsed = 0;
+  for (const chapter of chapters || []) {
+    const title = String(chapter?.title ?? '').trim();
+    cues.push({ time: elapsed, title: title || `Chapter ${cues.length + 1}` });
+    elapsed += Math.max(0, Number(chapter?.duration_s) || 0);
+  }
+  return cues;
+}
+
+/**
+ * Cue-sheet filename for a render output: `audiobook_ab12.m4b` ->
+ * `audiobook_ab12.txt`.
+ *
+ * Any path prefix is dropped, then a trailing `.m4b`/`.mp3` becomes `.txt`.
+ * Only those two are swapped — the formats the renderer actually produces — so
+ * an unexpected name falls back to `cuesheet.txt` instead of turning
+ * `report.tar.gz` into `report.tar.txt`.
+ *
+ * Both patterns are anchored with fixed alternations and no unbounded
+ * repetition, so a hostile `output` cannot make them backtrack.
+ *
+ * @param {string|null|undefined} output
+ * @returns {string}
+ */
+export function cueSheetFilename(output) {
+  const base = String(output || '')
+    .split('/')
+    .pop();
+  const named = base.replace(/\.(m4b|mp3)$/i, '.txt');
+  return /\.txt$/i.test(named) ? named : 'cuesheet.txt';
 }
 
 /**

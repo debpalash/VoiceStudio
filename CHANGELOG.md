@@ -8,6 +8,14 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ## [Unreleased]
 
+**Highlights**
+
+- Stories and Audiobook can save a chapter cue sheet — timestamps and titles as a `.txt` — for show notes, podcast platforms and players that don't read embedded chapters (#2277)
+
+### Added
+
+- Download cue sheet (.txt) after a Stories or Audiobook render: one `HH:MM:SS` line per chapter, taken from the chapters that actually rendered so the timestamps match the chapters embedded in an M4B. MP3 has no portable way to carry chapters, so this is how they travel with it (#2277)
+
 ## [0.5.5] — 2026-09-22
 
 **Your voice, another language.** The Clone workspace now keeps your chosen output language when changing voice samples. For example, an English reference can read a French script with a multilingual engine; Auto in Clone follows the script instead of inheriting the reference profile's language.

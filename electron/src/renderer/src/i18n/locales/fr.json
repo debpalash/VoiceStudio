@@ -1592,6 +1592,7 @@
     "assembling": "Assemblage du livre audio…",
     "ready": "Livre audio prêt",
     "download": "Télécharger",
+    "download_cues": "Télécharger la liste des chapitres (.txt)",
     "lyrics": "Suivez le texte",
     "format": "Formater",
     "format_m4b": "M4B (chapitres)",
