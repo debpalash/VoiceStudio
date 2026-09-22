@@ -4,8 +4,6 @@ import re
 
 import pytest
 
-from services.network_share import backend_self_url
-
 
 @pytest.mark.parametrize("env,expected", [
     ({}, "http://127.0.0.1:3900"),
@@ -17,6 +15,8 @@ from services.network_share import backend_self_url
      "https://proxy.example/vs"),
 ])
 def test_backend_self_url(monkeypatch, env, expected):
+    from services.network_share import backend_self_url
+
     for name in ("OMNIVOICE_PORT", "OMNIVOICE_BIND_HOST", "OMNIVOICE_API_URL"):
         monkeypatch.delenv(name, raising=False)
     for name, value in env.items():
@@ -54,3 +54,21 @@ def test_no_backend_module_hard_codes_the_default_port():
         and pattern.search(p.read_text(encoding="utf-8", errors="ignore"))
     ]
     assert offenders == []
+
+
+@pytest.mark.parametrize("url,sent", [
+    ("http://127.0.0.1:3912", True),
+    ("http://[::1]:3900", True),
+    ("https://gpu.example/voicestudio", True),
+    ("http://192.168.1.5:3900", False),  # plain http off-host: never leak the key
+])
+def test_api_key_only_travels_over_https_or_loopback(monkeypatch, url, sent):
+    from mcp_shim.__main__ import _credentials_allowed
+    from services.network_share import backend_auth_headers
+
+    monkeypatch.setenv("OMNIVOICE_API_KEY", "k" * 40)
+    expected = {"Authorization": "Bearer " + "k" * 40} if sent else {}
+    assert backend_auth_headers(url) == expected
+    assert _credentials_allowed(url) is sent
+    monkeypatch.delenv("OMNIVOICE_API_KEY")
+    assert backend_auth_headers(url) == {}

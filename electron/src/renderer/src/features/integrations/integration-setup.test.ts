@@ -12,7 +12,7 @@ it('gives every directory entry one stable route and its actual category', () =>
   expect(getIntegrationBySlug('claude-code')?.category).toBe('agents');
 });
 
-import { mcpSetup } from './mcp-setup';
+import { mcpSetup, remoteAuth } from './mcp-setup';
 it('exports client-specific HTTP configuration for the actual backend and port', () => {
   const claude = mcpSetup('claude-code', 'http://127.0.0.1:3912');
   const cursor = mcpSetup('cursor', 'https://voice.example/backend/');
@@ -25,7 +25,10 @@ it('exports client-specific HTTP configuration for the actual backend and port',
   expect(cursor?.file).toBe('.cursor/mcp.json');
   expect(JSON.parse(cursor!.text).mcpServers.voicestudio).toEqual({
     url: 'https://voice.example/backend/mcp/',
-    headers: { 'X-OmniVoice-Client-Id': 'cursor' },
+    headers: {
+      'X-OmniVoice-Client-Id': 'cursor',
+      Authorization: 'Bearer ${env:OMNIVOICE_API_KEY}',
+    },
   });
 });
 it('never exports credentials, unsafe URLs, or unsupported client configurations', () => {
@@ -164,6 +167,33 @@ it('keeps remote scheme, path prefix and credential placeholders without exporti
       '-H "Authorization: Bearer $OMNIVOICE_API_KEY"',
     );
   expect(api.find((block) => block.id === 'python')!.text).toContain(
-    'api_key=os.environ.get("OMNIVOICE_API_KEY", "voicestudio")',
+    'api_key=os.environ["OMNIVOICE_API_KEY"]',
   );
+  // Each MCP client references the key through its own env interpolation.
+  const header = (slug: string) =>
+    JSON.parse(mcpSetup(slug, remote)!.text).mcpServers.voicestudio.headers;
+  expect(header('claude-code')).toEqual({
+    'X-OmniVoice-Client-Id': 'claude-code',
+    Authorization: 'Bearer ${OMNIVOICE_API_KEY}',
+  });
+  expect(header('cursor').Authorization).toBe('Bearer ${env:OMNIVOICE_API_KEY}');
+  expect(mcpSetup('codex-cli', remote)!.text).toContain(
+    'bearer_token_env_var = "OMNIVOICE_API_KEY"',
+  );
+});
+it('never sends an API key to a remote plain-http backend', () => {
+  const insecure = 'http://192.168.1.5:3900';
+  for (const slug of ['claude-code', 'cursor', 'codex-cli'])
+    expect(mcpSetup(slug, insecure)!.text).not.toMatch(/Authorization|bearer_token/);
+  const stdio = INTEGRATION_SETUPS['model-context-protocol'].blocks(insecure)![1];
+  expect(JSON.parse(stdio.text).mcpServers.voicestudio.env.OMNIVOICE_API_KEY).toBeUndefined();
+  const api = INTEGRATION_SETUPS['voicestudio-api']
+    .blocks(insecure)!
+    .map((block) => block.text)
+    .join('\n');
+  expect(api).not.toContain('Authorization');
+  expect(api).not.toContain('os.environ');
+  expect(api).toContain('https://');
+  expect(remoteAuth('http://localhost:3900')).toBe('none');
+  expect(remoteAuth('http://[::1]:3900')).toBe('none');
 });

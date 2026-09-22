@@ -110,7 +110,8 @@ For a backend elsewhere, set `OMNIVOICE_HOST` (and `OMNIVOICE_PORT`), or
 `OMNIVOICE_URL` with the full base URL when it uses https or a reverse-proxy
 path prefix (e.g. `https://gpu-box/voicestudio`). Set `OMNIVOICE_API_KEY` when
 that backend requires an [API key](api-auth.md); the shim sends it as a Bearer
-token. The shim
+token, and refuses to start if that would send it over plain http to another
+host. The shim
 needs a VoiceStudio source checkout (it runs with that checkout's Python
 environment, e.g. `uv run python -m backend.mcp_shim`).
 

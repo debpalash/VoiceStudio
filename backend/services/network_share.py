@@ -67,6 +67,34 @@ def backend_self_url() -> str:
     return f"http://{host}:{backend_port()}"
 
 
+def backend_auth_headers(base_url: str) -> dict:
+    """Bearer header for an HTTP caller of this backend, if one is warranted.
+
+    ``OMNIVOICE_API_KEY`` is sent only over https or to a loopback host: a
+    remote plain-http target would expose the master key on the wire (the
+    same rule ``backend.speech_client`` enforces). Loopback never needs it,
+    but sending it there is harmless.
+    """
+    from urllib.parse import urlsplit
+
+    key = os.environ.get("OMNIVOICE_API_KEY", "").strip()
+    if not key:
+        return {}
+    target = urlsplit(base_url)
+    host = (target.hostname or "").strip("[]")
+    try:
+        loopback = host == "localhost" or ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        loopback = False
+    if target.scheme.lower() != "https" and not loopback:
+        logger.warning(
+            "OMNIVOICE_API_KEY not sent to %s: remote API keys require https://",
+            f"{target.scheme}://{target.hostname}",
+        )
+        return {}
+    return {"Authorization": f"Bearer {key}"}
+
+
 def share_port_base() -> int:
     """The first port LAN sharing tries to bind on 0.0.0.0.
 

@@ -35,9 +35,13 @@ bundled `python -m backend.mcp_shim` proxy (needs a source checkout; see
 [MCP](mcp.md)).
 
 These configurations use Streamable HTTP and the client-ID header; they do not
-install another backend or read/write agent configuration files. For a remote
-backend, configure its required credentials in the client. Exported configurations
-never contain stored credentials. Copying configuration does not prove the client
+install another backend or read/write agent configuration files. Exported
+configurations never contain a key: for a remote **https** backend they reference
+`OMNIVOICE_API_KEY` from your environment (`${OMNIVOICE_API_KEY}` in Claude Code,
+`${env:OMNIVOICE_API_KEY}` in Cursor, `bearer_token_env_var` in Codex, and
+`$OMNIVOICE_API_KEY` in the `curl`/Python snippets). A remote plain-http backend
+gets no key at all, because it would cross the network in clear text; put it
+behind https first (see [API authentication](api-auth.md)). Copying configuration does not prove the client
 is connected; use its MCP tools/status view to confirm the connection.
 
 The schemas follow the official [Claude Code MCP guide](https://code.claude.com/docs/en/mcp),

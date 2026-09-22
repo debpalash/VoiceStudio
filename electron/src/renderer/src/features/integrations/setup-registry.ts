@@ -4,6 +4,7 @@ import {
   MCP_CLIENTS,
   MCP_ENDPOINT,
   mcpSetup,
+  remoteAuth,
 } from './mcp-setup';
 import { n8nSetup } from './n8n-setup';
 
@@ -48,12 +49,6 @@ export interface IntegrationSetup {
 const REPO_DOCS = 'https://github.com/debpalash/VoiceStudio/blob/main/docs';
 const DOCKER_HUB_IMAGE = 'palashdeb/omnivoice-studio';
 const GHCR_IMAGE = 'ghcr.io/debpalash/omnivoice-studio';
-
-/** Loopback callers are never challenged; anything else may need the API key. */
-function isLoopbackUrl(baseUrl: string) {
-  const host = new URL(baseUrl).hostname.replace(/^\[|\]$/g, '');
-  return host === 'localhost' || host === '::1' || /^127\./.test(host);
-}
 
 function mcpClient(slug: keyof typeof MCP_CLIENTS): IntegrationSetup {
   return {
@@ -148,7 +143,7 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
       const url = backendEndpoint(baseUrl, MCP_ENDPOINT);
       const base = backendEndpoint(baseUrl, '');
       if (!url || !base) return null;
-      const remote = !isLoopbackUrl(baseUrl);
+      const bearer = remoteAuth(baseUrl) === 'bearer';
       return [
         {
           id: 'http',
@@ -174,7 +169,7 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
                   env: {
                     OMNIVOICE_URL: base,
                     OMNIVOICE_CLIENT_ID: '<your-client-id>',
-                    ...(remote ? { OMNIVOICE_API_KEY: '<backend API key>' } : {}),
+                    ...(bearer ? { OMNIVOICE_API_KEY: '<backend API key>' } : {}),
                   },
                 },
               },
@@ -192,11 +187,14 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
     blocks: (baseUrl) => {
       const base = backendEndpoint(baseUrl, '');
       if (!base) return null;
-      // A remote backend may require its API key; read it from the caller's
-      // environment so no credential is ever exported.
-      const auth = isLoopbackUrl(baseUrl)
-        ? []
-        : ['  -H "Authorization: Bearer $OMNIVOICE_API_KEY" \\'];
+      // A remote https backend may require its API key: read it from the
+      // caller's environment so no credential is ever exported. Plain-http
+      // remotes get no key at all (it would cross the network in clear text).
+      const policy = remoteAuth(baseUrl);
+      const auth =
+        policy === 'bearer' ? ['  -H "Authorization: Bearer $OMNIVOICE_API_KEY" \\'] : [];
+      const warn =
+        policy === 'insecure' ? ['# Remote API keys need https:// (see docs/api-auth.md).'] : [];
       return [
         {
           id: 'base',
@@ -210,6 +208,7 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
           titleKey: 'integrationCatalog.block.speechCurl',
           language: 'shell',
           text: [
+            ...warn,
             `curl ${base}/v1/audio/speech \\`,
             ...auth,
             '  -H "Content-Type: application/json" \\',
@@ -223,6 +222,7 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
           titleKey: 'integrationCatalog.block.transcriptionCurl',
           language: 'shell',
           text: [
+            ...warn,
             `curl ${base}/v1/audio/transcriptions \\`,
             ...auth,
             '  -F file=@speech.wav \\',
@@ -235,14 +235,19 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
           titleKey: 'integrationCatalog.block.openaiPython',
           language: 'python',
           text: [
-            'import os',
-            '',
+            ...(policy === 'bearer' ? ['import os', ''] : []),
             'from openai import OpenAI',
             '',
-            '# Loopback accepts any key; a remote backend needs its OMNIVOICE_API_KEY.',
+            policy === 'bearer'
+              ? '# This backend is remote: export its OMNIVOICE_API_KEY first.'
+              : policy === 'insecure'
+                ? '# Remote API keys need https:// (see docs/api-auth.md).'
+                : '# Loopback needs no key; the SDK only requires a placeholder.',
             'client = OpenAI(',
             `    base_url="${base}/v1",`,
-            '    api_key=os.environ.get("OMNIVOICE_API_KEY", "voicestudio"),',
+            policy === 'bearer'
+              ? '    api_key=os.environ["OMNIVOICE_API_KEY"],'
+              : '    api_key="voicestudio",',
             ')',
             '',
             'with client.audio.speech.with_streaming_response.create(',

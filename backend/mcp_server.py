@@ -452,7 +452,11 @@ def create_mcp_server(app=None):
                 base_url="http://127.0.0.1",
                 timeout=timeout,
             )
-        return httpx.AsyncClient(base_url=_api_base(), timeout=timeout)
+        from services.network_share import backend_auth_headers
+        base = _api_base()
+        return httpx.AsyncClient(
+            base_url=base, timeout=timeout, headers=backend_auth_headers(base)
+        )
 
     async def _api_get(path: str):
         async with _client(30) as c:

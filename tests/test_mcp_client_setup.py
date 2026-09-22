@@ -100,3 +100,25 @@ def test_standalone_server_calls_the_backend_on_its_real_port(monkeypatch):
     server = mcp_server.create_mcp_server()
     asyncio.run(server.call_tool('check_health', {}))
     assert [(u.host, u.port, u.path) for u in seen] == [('127.0.0.1', 3912, '/health')]
+
+
+def test_standalone_server_authenticates_to_a_keyed_https_backend(monkeypatch):
+    import asyncio
+    import httpx
+    import mcp_server
+
+    seen = []
+
+    def health(request):
+        seen.append((str(request.url), request.headers.get('authorization')))
+        return httpx.Response(200, json={'status': 'ok'})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kwargs: real_client(
+        **{**kwargs, 'transport': httpx.MockTransport(health)}
+    ))
+    monkeypatch.setenv('OMNIVOICE_API_URL', 'https://gpu.example/voicestudio')
+    monkeypatch.setenv('OMNIVOICE_API_KEY', 'k' * 40)
+    server = mcp_server.create_mcp_server()
+    asyncio.run(server.call_tool('check_health', {}))
+    assert seen == [('https://gpu.example/voicestudio/health', 'Bearer ' + 'k' * 40)]
