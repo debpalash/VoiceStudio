@@ -36,7 +36,7 @@ points here. Complete the setup, not just a plan.
    engine's model shows `"installed": false` in `GET /models`, state its size and
    license and get consent, then send `POST /models/install` with that entry's
    `{"repo_id": "…"}`. Poll `GET /models/install/status`: stop on a `failed` state,
-   and treat an empty response as finished only once `GET /models` reports
+   and treat an empty `jobs` array as finished only once `GET /models` reports
    `"installed": true`. Then generate a short clip with a bundled or authorized
    voice and confirm the audio file plays.
 6. **Report.** Installed version, engine, actual device, data location, audio output
