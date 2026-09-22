@@ -2689,7 +2689,38 @@
     "title": "Integracje",
     "featured": "Wyróżnione",
     "description": "Odkryj integracje i wyróżnionych partnerów.",
-    "n8nHint": "Zaimportuj ten przepływ do n8n, edytuj żądanie i uruchom go. Pozostaw VoiceStudio uruchomione. Docker i zdalne n8n wymagają dostępnego adresu backendu oraz wymaganych danych uwierzytelniających."
+    "n8nHint": "Zaimportuj ten przepływ do n8n, edytuj żądanie i uruchom go. Pozostaw VoiceStudio uruchomione. Docker i zdalne n8n wymagają dostępnego adresu backendu oraz wymaganych danych uwierzytelniających.",
+    "worksWith": "Działa z VoiceStudio",
+    "worksWithHint": "Skopiuj gotową konfigurację dla bieżącego backendu VoiceStudio.",
+    "externalLink": "Link zewnętrzny",
+    "externalHint": "Otwiera stronę dostawcy. VoiceStudio nie ma wbudowanej konfiguracji dla tej pozycji.",
+    "setupTitle": "Skonfiguruj {{name}}",
+    "setupUnavailable": "Konfiguracja jest niedostępna dla bieżącego adresu backendu. Sprawdź adres URL backendu w Ustawieniach.",
+    "capabilitiesTitle": "Możliwości",
+    "websiteTitle": "Strona internetowa",
+    "mcpHttpHint": "Skieruj dowolnego klienta MCP Streamable HTTP na ten adres URL. Wyślij nagłówek {{header}}, aby nadać klientowi własny głos.",
+    "mcpStdioHint": "Dla klientów obsługujących tylko stdio uruchom dołączony shim z kopii kodu źródłowego VoiceStudio. Zastąp cwd ścieżką do swojej kopii.",
+    "apiHint": "Punkty końcowe zgodne z OpenAI w tym backendzie. Żądania lokalne nie wymagają klucza; zdalne wymagają klucza API backendu.",
+    "dockerHint": "Używaj :stable dla wydań; :latest to bieżący podgląd z main. Zachowaj wygenerowany klucz API: aplikacja o niego poprosi, ponieważ Docker ukrywa adres loopback.",
+    "capability": {
+      "mcp": "Serwer MCP",
+      "speechApi": "API mowy",
+      "transcriptionApi": "API transkrypcji",
+      "workflow": "Szablon przepływu",
+      "selfHost": "Własny hosting"
+    },
+    "block": {
+      "clientConfig": "Konfiguracja klienta",
+      "streamableHttp": "Streamable HTTP",
+      "stdio": "Shim stdio",
+      "baseUrl": "Bazowy URL",
+      "speechCurl": "Tekst na mowę (curl)",
+      "transcriptionCurl": "Transkrypcja (curl)",
+      "openaiPython": "Python (OpenAI SDK)",
+      "dockerRun": "Uruchom kontener",
+      "dockerCompose": "Docker Compose",
+      "workflow": "Przepływ n8n"
+    }
   },
   "directoryExamples": {
     "example": "Przykład katalogowy",

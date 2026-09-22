@@ -2685,7 +2685,38 @@
     "title": "การเชื่อมต่อ",
     "featured": "แนะนำ",
     "description": "ค้นพบการเชื่อมต่อและพันธมิตรแนะนำ",
-    "n8nHint": "นำเข้าเวิร์กโฟลว์นี้ใน n8n แก้ไขคำขอแล้วเรียกใช้ เปิด VoiceStudio ไว้ Docker และ n8n ระยะไกลต้องใช้ที่อยู่แบ็กเอนด์ที่เข้าถึงได้และข้อมูลรับรองที่จำเป็น"
+    "n8nHint": "นำเข้าเวิร์กโฟลว์นี้ใน n8n แก้ไขคำขอแล้วเรียกใช้ เปิด VoiceStudio ไว้ Docker และ n8n ระยะไกลต้องใช้ที่อยู่แบ็กเอนด์ที่เข้าถึงได้และข้อมูลรับรองที่จำเป็น",
+    "worksWith": "ใช้งานร่วมกับ VoiceStudio ได้",
+    "worksWithHint": "คัดลอกการตั้งค่าสำเร็จรูปสำหรับแบ็กเอนด์ VoiceStudio ปัจจุบันของคุณ",
+    "externalLink": "ลิงก์ภายนอก",
+    "externalHint": "เปิดเว็บไซต์ของผู้ให้บริการ VoiceStudio ไม่มีการตั้งค่าในตัวสำหรับรายการนี้",
+    "setupTitle": "ตั้งค่า {{name}}",
+    "setupUnavailable": "ไม่มีการตั้งค่าสำหรับที่อยู่แบ็กเอนด์ปัจจุบัน โปรดตรวจสอบ URL แบ็กเอนด์ในการตั้งค่า",
+    "capabilitiesTitle": "ความสามารถ",
+    "websiteTitle": "เว็บไซต์",
+    "mcpHttpHint": "ชี้ไคลเอนต์ MCP แบบ Streamable HTTP ใดก็ได้มาที่ URL นี้ ส่งส่วนหัว {{header}} เพื่อให้ไคลเอนต์มีเสียงของตัวเอง",
+    "mcpStdioHint": "สำหรับไคลเอนต์ที่รองรับเฉพาะ stdio ให้รัน shim ที่มาพร้อมกันจากสำเนาซอร์สโค้ด VoiceStudio แทนที่ cwd ด้วยพาธของสำเนาของคุณ",
+    "apiHint": "เอนด์พอยต์ที่เข้ากันได้กับ OpenAI บนแบ็กเอนด์นี้ คำขอในเครื่องไม่ต้องใช้คีย์ ส่วนคำขอระยะไกลต้องใช้คีย์ API ของแบ็กเอนด์",
+    "dockerHint": "ใช้ :stable สำหรับรุ่นเผยแพร่ ส่วน :latest คือรุ่นพรีวิวต่อเนื่องจาก main เก็บคีย์ API ที่สร้างไว้ แอปจะขอคีย์นี้เพราะ Docker ซ่อนที่อยู่ loopback",
+    "capability": {
+      "mcp": "เซิร์ฟเวอร์ MCP",
+      "speechApi": "API เสียงพูด",
+      "transcriptionApi": "API ถอดความ",
+      "workflow": "เทมเพลตเวิร์กโฟลว์",
+      "selfHost": "โฮสต์เอง"
+    },
+    "block": {
+      "clientConfig": "การกำหนดค่าไคลเอนต์",
+      "streamableHttp": "Streamable HTTP",
+      "stdio": "shim แบบ stdio",
+      "baseUrl": "URL หลัก",
+      "speechCurl": "แปลงข้อความเป็นเสียง (curl)",
+      "transcriptionCurl": "ถอดความ (curl)",
+      "openaiPython": "Python (OpenAI SDK)",
+      "dockerRun": "รันคอนเทนเนอร์",
+      "dockerCompose": "Docker Compose",
+      "workflow": "เวิร์กโฟลว์ n8n"
+    }
   },
   "directoryExamples": {
     "example": "ตัวอย่างในไดเรกทอรี",

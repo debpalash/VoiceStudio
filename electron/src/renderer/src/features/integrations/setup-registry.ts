@@ -1,0 +1,261 @@
+import { backendEndpoint, MCP_CLIENT_ID_HEADER, MCP_CLIENTS, mcpSetup } from './mcp-setup';
+import { n8nSetup } from './n8n-setup';
+
+/**
+ * Directory entries VoiceStudio actually works with, keyed by catalog slug.
+ *
+ * An entry here is the only thing that earns a card the "Works with
+ * VoiceStudio" badge and capability chips; every other catalog entry is an
+ * external link. Add a connector by adding one entry: its capabilities and
+ * its copyable setup blocks for the current backend address.
+ */
+export type IntegrationCapability =
+  | 'mcp'
+  | 'speechApi'
+  | 'transcriptionApi'
+  | 'workflow'
+  | 'selfHost';
+
+export interface SetupBlock {
+  id: string;
+  /** i18n key for the block heading. */
+  titleKey: string;
+  /** i18n key (and interpolation values) for the block's instructions. */
+  hintKey?: string;
+  hintValues?: Record<string, string>;
+  /** Code-block language, shown to screen readers and used as a CSS hook. */
+  language: 'json' | 'toml' | 'shell' | 'python' | 'yaml' | 'text';
+  text: string;
+  /** Offer "Save as…" with this file name (and MIME type). */
+  download?: { file: string; type: string };
+}
+
+export interface IntegrationSetup {
+  capabilities: readonly IntegrationCapability[];
+  docs: string;
+  /** Link to Settings → Sharing for per-client MCP voice bindings. */
+  voiceBindings?: boolean;
+  /** Blocks for this backend, or null when the backend URL is unusable for export. */
+  blocks: (baseUrl: string) => SetupBlock[] | null;
+}
+
+const REPO_DOCS = 'https://github.com/debpalash/VoiceStudio/blob/main/docs';
+const DOCKER_HUB_IMAGE = 'palashdeb/omnivoice-studio';
+const GHCR_IMAGE = 'ghcr.io/debpalash/omnivoice-studio';
+
+function mcpClient(slug: keyof typeof MCP_CLIENTS): IntegrationSetup {
+  return {
+    capabilities: ['mcp'],
+    docs: MCP_CLIENTS[slug].docs,
+    voiceBindings: true,
+    blocks: (baseUrl) => {
+      const setup = mcpSetup(slug, baseUrl);
+      if (!setup) return null;
+      return [
+        {
+          id: 'config',
+          titleKey: 'integrationCatalog.block.clientConfig',
+          hintKey: 'integrationCatalog.setupHint',
+          hintValues: { file: setup.file },
+          language: setup.format,
+          text: setup.text,
+        },
+      ];
+    },
+  };
+}
+
+function dockerRun(image: string) {
+  return [
+    'export OMNIVOICE_API_KEY="$(python3 -c \'import secrets; print(secrets.token_urlsafe(32))\')"',
+    '',
+    'docker run -d --name omnivoice \\',
+    '  -p 127.0.0.1:3900:3900 \\',
+    '  -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \\',
+    '  -v omnivoice-data:/app/omnivoice_data \\',
+    '  -v ~/.cache/huggingface:/root/.cache/huggingface \\',
+    `  ${image}:stable`,
+    '',
+    '# NVIDIA GPU: add --gpus all. AMD GPU: use the :stable-rocm tag with',
+    '# --device /dev/kfd --device /dev/dri.',
+  ].join('\n');
+}
+
+function dockerCompose(image: string) {
+  return [
+    'services:',
+    '  omnivoice:',
+    `    image: ${image}:stable`,
+    '    ports:',
+    '      - "127.0.0.1:3900:3900"',
+    '    environment:',
+    '      - OMNIVOICE_BIND_HOST=0.0.0.0',
+    '      - OMNIVOICE_API_KEY=${OMNIVOICE_API_KEY:?set a long random key}',
+    '      - OMNIVOICE_DATA_DIR=/app/omnivoice_data',
+    '      - HF_HOME=/app/omnivoice_data/huggingface',
+    '    volumes:',
+    '      - omnivoice-data:/app/omnivoice_data',
+    '    restart: unless-stopped',
+    'volumes:',
+    '  omnivoice-data:',
+    '',
+  ].join('\n');
+}
+
+function container(image: string, docs: string): IntegrationSetup {
+  return {
+    capabilities: ['selfHost', 'speechApi', 'transcriptionApi', 'mcp'],
+    docs,
+    blocks: () => [
+      {
+        id: 'run',
+        titleKey: 'integrationCatalog.block.dockerRun',
+        hintKey: 'integrationCatalog.dockerHint',
+        language: 'shell',
+        text: dockerRun(image),
+      },
+      {
+        id: 'compose',
+        titleKey: 'integrationCatalog.block.dockerCompose',
+        language: 'yaml',
+        text: dockerCompose(image),
+      },
+    ],
+  };
+}
+
+export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
+  'claude-code': mcpClient('claude-code'),
+  cursor: mcpClient('cursor'),
+  'codex-cli': mcpClient('codex-cli'),
+  'model-context-protocol': {
+    capabilities: ['mcp'],
+    docs: `${REPO_DOCS}/mcp.md`,
+    voiceBindings: true,
+    blocks: (baseUrl) => {
+      const url = backendEndpoint(baseUrl, '/mcp');
+      if (!url) return null;
+      const backend = new URL(baseUrl);
+      const port = backend.port || (backend.protocol === 'https:' ? '443' : '80');
+      return [
+        {
+          id: 'http',
+          titleKey: 'integrationCatalog.block.streamableHttp',
+          hintKey: 'integrationCatalog.mcpHttpHint',
+          hintValues: { header: MCP_CLIENT_ID_HEADER },
+          language: 'text',
+          text: `URL: ${url}\nTransport: Streamable HTTP\nHeader: ${MCP_CLIENT_ID_HEADER}: <your-client-id>\n`,
+        },
+        {
+          id: 'stdio',
+          titleKey: 'integrationCatalog.block.stdio',
+          hintKey: 'integrationCatalog.mcpStdioHint',
+          language: 'json',
+          text: JSON.stringify(
+            {
+              mcpServers: {
+                voicestudio: {
+                  command: 'python',
+                  args: ['-m', 'backend.mcp_shim'],
+                  cwd: '/path/to/VoiceStudio',
+                  env: {
+                    OMNIVOICE_HOST: backend.hostname,
+                    OMNIVOICE_PORT: port,
+                    OMNIVOICE_CLIENT_ID: '<your-client-id>',
+                  },
+                },
+              },
+            },
+            null,
+            2,
+          ),
+        },
+      ];
+    },
+  },
+  'voicestudio-api': {
+    capabilities: ['speechApi', 'transcriptionApi'],
+    docs: `${REPO_DOCS}/api-auth.md`,
+    blocks: (baseUrl) => {
+      const base = backendEndpoint(baseUrl, '');
+      if (!base) return null;
+      return [
+        {
+          id: 'base',
+          titleKey: 'integrationCatalog.block.baseUrl',
+          hintKey: 'integrationCatalog.apiHint',
+          language: 'text',
+          text: `${base}/v1\n`,
+        },
+        {
+          id: 'speech',
+          titleKey: 'integrationCatalog.block.speechCurl',
+          language: 'shell',
+          text: [
+            `curl ${base}/v1/audio/speech \\`,
+            '  -H "Content-Type: application/json" \\',
+            '  -d \'{"model":"tts-1","voice":"default","input":"Hello from VoiceStudio.","response_format":"wav"}\' \\',
+            '  --output speech.wav',
+            '',
+          ].join('\n'),
+        },
+        {
+          id: 'transcription',
+          titleKey: 'integrationCatalog.block.transcriptionCurl',
+          language: 'shell',
+          text: [
+            `curl ${base}/v1/audio/transcriptions \\`,
+            '  -F file=@speech.wav \\',
+            '  -F model=whisper-1',
+            '',
+          ].join('\n'),
+        },
+        {
+          id: 'python',
+          titleKey: 'integrationCatalog.block.openaiPython',
+          language: 'python',
+          text: [
+            'from openai import OpenAI',
+            '',
+            '# Any key works on loopback; a remote backend needs its OMNIVOICE_API_KEY.',
+            `client = OpenAI(base_url="${base}/v1", api_key="voicestudio")`,
+            '',
+            'with client.audio.speech.with_streaming_response.create(',
+            '    model="tts-1", voice="default", input="Hello from VoiceStudio.",',
+            '    response_format="wav",',
+            ') as response:',
+            '    response.stream_to_file("speech.wav")',
+            '',
+            'with open("speech.wav", "rb") as audio:',
+            '    print(client.audio.transcriptions.create(model="whisper-1", file=audio).text)',
+            '',
+          ].join('\n'),
+        },
+      ];
+    },
+  },
+  docker: container(DOCKER_HUB_IMAGE, `${REPO_DOCS}/install/docker.md`),
+  'github-container-registry': container(GHCR_IMAGE, `${REPO_DOCS}/install/docker.md`),
+  n8n: {
+    capabilities: ['workflow', 'speechApi'],
+    docs: `${REPO_DOCS}/integrations/n8n.md`,
+    blocks: (baseUrl) => {
+      const setup = n8nSetup('n8n', baseUrl);
+      if (!setup) return null;
+      return [
+        {
+          id: 'workflow',
+          titleKey: 'integrationCatalog.block.workflow',
+          hintKey: 'integrationCatalog.n8nHint',
+          language: 'json',
+          text: setup.text,
+          download: { file: setup.file, type: 'application/json' },
+        },
+      ];
+    },
+  },
+};
+
+export function integrationSetup(slug: string): IntegrationSetup | undefined {
+  return Object.hasOwn(INTEGRATION_SETUPS, slug) ? INTEGRATION_SETUPS[slug] : undefined;
+}

@@ -2685,7 +2685,38 @@
     "title": "連携",
     "featured": "注目",
     "description": "連携機能と注目のパートナーを見つけましょう。",
-    "n8nHint": "このワークフローをn8nにインポートし、リクエストを編集して実行します。VoiceStudioは起動したままにしてください。Dockerやリモートのn8nには、接続可能なバックエンドのアドレスと必要な認証情報を設定してください。"
+    "n8nHint": "このワークフローをn8nにインポートし、リクエストを編集して実行します。VoiceStudioは起動したままにしてください。Dockerやリモートのn8nには、接続可能なバックエンドのアドレスと必要な認証情報を設定してください。",
+    "worksWith": "VoiceStudio と連携",
+    "worksWithHint": "現在の VoiceStudio バックエンド用の設定をそのままコピーできます。",
+    "externalLink": "外部リンク",
+    "externalHint": "提供元のウェブサイトを開きます。この項目には VoiceStudio の組み込み設定はありません。",
+    "setupTitle": "{{name}} を設定",
+    "setupUnavailable": "現在のバックエンドアドレスでは設定を利用できません。設定でバックエンド URL を確認してください。",
+    "capabilitiesTitle": "機能",
+    "websiteTitle": "ウェブサイト",
+    "mcpHttpHint": "Streamable HTTP 対応の MCP クライアントをこの URL に向けてください。{{header}} ヘッダーを送ると、クライアントごとに声を割り当てられます。",
+    "mcpStdioHint": "stdio のみのクライアントでは、VoiceStudio のソースチェックアウトから同梱の shim を実行します。cwd をチェックアウトのパスに置き換えてください。",
+    "apiHint": "このバックエンドの OpenAI 互換エンドポイントです。ローカルからのリクエストにキーは不要で、リモートからはバックエンドの API キーが必要です。",
+    "dockerHint": "リリース版には :stable を使います。:latest は main の継続的なプレビューです。生成した API キーは保管してください。Docker がループバックアドレスを隠すため、アプリから入力を求められます。",
+    "capability": {
+      "mcp": "MCP サーバー",
+      "speechApi": "音声合成 API",
+      "transcriptionApi": "文字起こし API",
+      "workflow": "ワークフローテンプレート",
+      "selfHost": "セルフホスト"
+    },
+    "block": {
+      "clientConfig": "クライアント設定",
+      "streamableHttp": "Streamable HTTP",
+      "stdio": "stdio shim",
+      "baseUrl": "ベース URL",
+      "speechCurl": "音声合成 (curl)",
+      "transcriptionCurl": "文字起こし (curl)",
+      "openaiPython": "Python (OpenAI SDK)",
+      "dockerRun": "コンテナを実行",
+      "dockerCompose": "Docker Compose",
+      "workflow": "n8n ワークフロー"
+    }
   },
   "directoryExamples": {
     "example": "掲載例",

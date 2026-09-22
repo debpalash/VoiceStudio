@@ -54,6 +54,27 @@ Point your client at the mounted endpoint:
 http://localhost:3900/mcp
 ```
 
+`/mcp` and `/mcp/` are the same endpoint: both answer every Streamable HTTP
+method (`POST`, `GET` for the event stream, `DELETE`) directly, with no
+redirect, whether or not the backend also serves the web UI (Docker and
+source builds). Use the backend's real port if you moved it with
+`OMNIVOICE_PORT`.
+
+The desktop app exports ready-made client configurations for the current
+backend address under **Integrations**: Claude Code (`.mcp.json`), Cursor
+(`.cursor/mcp.json`), Codex CLI (`~/.codex/config.toml`), and a generic
+Streamable HTTP + stdio card under **Model Context Protocol**. For Codex CLI
+the exported table is:
+
+```toml
+[mcp_servers.voicestudio]
+url = "http://127.0.0.1:3900/mcp/"
+http_headers = { "X-OmniVoice-Client-Id" = "codex-cli" }
+```
+
+This follows the [Codex MCP configuration](https://developers.openai.com/codex/mcp):
+a `url` key selects Streamable HTTP and `http_headers` adds static headers.
+
 To bind this agent to a specific voice, send an
 `X-OmniVoice-Client-Id` header (e.g. `claude-code`). See
 [per-agent voices](#per-agent-voices).
@@ -83,6 +104,10 @@ this into your client's MCP config (`docs/mcp.json` is a template):
   }
 }
 ```
+
+Set `OMNIVOICE_HOST` too when the backend is not on `127.0.0.1`. The shim
+needs a VoiceStudio source checkout (it runs with that checkout's Python
+environment, e.g. `uv run python -m backend.mcp_shim`).
 
 The shim forwards `OMNIVOICE_CLIENT_ID` as the `X-OmniVoice-Client-Id` header,
 so the per-agent voice binding works the same as the HTTP path. It waits for
@@ -115,6 +140,14 @@ curl -X DELETE localhost:3900/api/mcp/bindings/claude-code
 
 Prefer a [consent-verified](../docs/competitive-analysis.md) voice profile for
 any agent that speaks as you.
+
+## How tools reach the backend
+
+The MCP tools call VoiceStudio's HTTP API in the same process. They follow
+the address the backend actually binds — `OMNIVOICE_PORT` and
+`OMNIVOICE_BIND_HOST` (a wildcard bind is reached over loopback) — so a
+backend moved off port 3900 keeps working. Set `OMNIVOICE_API_URL` only to
+send tool calls somewhere else, such as a reverse proxy.
 
 ## Disabling
 

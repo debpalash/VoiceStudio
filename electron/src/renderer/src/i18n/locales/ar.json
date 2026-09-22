@@ -2693,7 +2693,38 @@
     "title": "التكاملات",
     "featured": "مميّز",
     "description": "اكتشف التكاملات والشركاء المميّزين.",
-    "n8nHint": "استورد سير العمل هذا إلى n8n، وعدّل الطلب ثم شغّله. أبقِ VoiceStudio قيد التشغيل. يحتاج Docker وn8n البعيد إلى عنوان خلفية يمكن الوصول إليه وبيانات الاعتماد المطلوبة."
+    "n8nHint": "استورد سير العمل هذا إلى n8n، وعدّل الطلب ثم شغّله. أبقِ VoiceStudio قيد التشغيل. يحتاج Docker وn8n البعيد إلى عنوان خلفية يمكن الوصول إليه وبيانات الاعتماد المطلوبة.",
+    "worksWith": "يعمل مع VoiceStudio",
+    "worksWithHint": "انسخ إعدادًا جاهزًا للواجهة الخلفية الحالية لـ VoiceStudio.",
+    "externalLink": "رابط خارجي",
+    "externalHint": "يفتح موقع المزوّد. لا يوفّر VoiceStudio إعدادًا مدمجًا لهذا الإدخال.",
+    "setupTitle": "إعداد {{name}}",
+    "setupUnavailable": "الإعداد غير متاح لعنوان الواجهة الخلفية الحالي. تحقّق من عنوان URL للواجهة الخلفية في الإعدادات.",
+    "capabilitiesTitle": "الإمكانات",
+    "websiteTitle": "الموقع الإلكتروني",
+    "mcpHttpHint": "وجّه أي عميل MCP يدعم Streamable HTTP إلى هذا العنوان. أرسل الترويسة {{header}} لمنح العميل صوته الخاص.",
+    "mcpStdioHint": "للعملاء الذين يدعمون stdio فقط، شغّل الـ shim المرفق من نسخة الشيفرة المصدرية لـ VoiceStudio. استبدل cwd بمسار نسختك.",
+    "apiHint": "نقاط نهاية متوافقة مع OpenAI على هذه الواجهة الخلفية. الطلبات المحلية لا تحتاج مفتاحًا؛ الطلبات البعيدة تحتاج مفتاح API الخاص بالواجهة الخلفية.",
+    "dockerHint": "استخدم :stable للإصدارات؛ و:latest هو المعاينة المستمرة من main. احتفظ بمفتاح API المُنشأ: سيطلبه التطبيق لأن Docker يخفي عنوان loopback.",
+    "capability": {
+      "mcp": "خادم MCP",
+      "speechApi": "واجهة API للكلام",
+      "transcriptionApi": "واجهة API للنسخ",
+      "workflow": "قالب سير عمل",
+      "selfHost": "استضافة ذاتية"
+    },
+    "block": {
+      "clientConfig": "إعداد العميل",
+      "streamableHttp": "Streamable HTTP",
+      "stdio": "shim عبر stdio",
+      "baseUrl": "عنوان URL الأساسي",
+      "speechCurl": "تحويل النص إلى كلام (curl)",
+      "transcriptionCurl": "النسخ (curl)",
+      "openaiPython": "Python (OpenAI SDK)",
+      "dockerRun": "تشغيل الحاوية",
+      "dockerCompose": "Docker Compose",
+      "workflow": "سير عمل n8n"
+    }
   },
   "directoryExamples": {
     "example": "مثال في الدليل",

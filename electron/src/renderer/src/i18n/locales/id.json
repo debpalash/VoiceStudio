@@ -2685,7 +2685,38 @@
     "title": "Integrasi",
     "featured": "Unggulan",
     "description": "Temukan integrasi dan mitra unggulan.",
-    "n8nHint": "Impor alur kerja ini ke n8n, edit permintaan, lalu jalankan. Biarkan VoiceStudio berjalan. Docker dan n8n jarak jauh memerlukan alamat backend yang dapat dijangkau serta kredensial yang diperlukan."
+    "n8nHint": "Impor alur kerja ini ke n8n, edit permintaan, lalu jalankan. Biarkan VoiceStudio berjalan. Docker dan n8n jarak jauh memerlukan alamat backend yang dapat dijangkau serta kredensial yang diperlukan.",
+    "worksWith": "Berfungsi dengan VoiceStudio",
+    "worksWithHint": "Salin penyiapan siap pakai untuk backend VoiceStudio Anda saat ini.",
+    "externalLink": "Tautan eksternal",
+    "externalHint": "Membuka situs penyedia. VoiceStudio tidak memiliki penyiapan bawaan untuk entri ini.",
+    "setupTitle": "Siapkan {{name}}",
+    "setupUnavailable": "Penyiapan tidak tersedia untuk alamat backend saat ini. Periksa URL backend di Pengaturan.",
+    "capabilitiesTitle": "Kemampuan",
+    "websiteTitle": "Situs web",
+    "mcpHttpHint": "Arahkan klien MCP Streamable HTTP apa pun ke URL ini. Kirim header {{header}} agar klien memiliki suaranya sendiri.",
+    "mcpStdioHint": "Untuk klien yang hanya mendukung stdio, jalankan shim bawaan dari salinan kode sumber VoiceStudio. Ganti cwd dengan jalur salinan Anda.",
+    "apiHint": "Endpoint kompatibel OpenAI di backend ini. Permintaan lokal tidak memerlukan kunci; permintaan jarak jauh memerlukan kunci API backend.",
+    "dockerHint": "Gunakan :stable untuk rilis; :latest adalah pratinjau berjalan dari main. Simpan kunci API yang dibuat: aplikasi memintanya karena Docker menyembunyikan alamat loopback.",
+    "capability": {
+      "mcp": "Server MCP",
+      "speechApi": "API ucapan",
+      "transcriptionApi": "API transkripsi",
+      "workflow": "Templat alur kerja",
+      "selfHost": "Hosting mandiri"
+    },
+    "block": {
+      "clientConfig": "Konfigurasi klien",
+      "streamableHttp": "Streamable HTTP",
+      "stdio": "Shim stdio",
+      "baseUrl": "URL dasar",
+      "speechCurl": "Teks ke ucapan (curl)",
+      "transcriptionCurl": "Transkripsi (curl)",
+      "openaiPython": "Python (OpenAI SDK)",
+      "dockerRun": "Jalankan kontainer",
+      "dockerCompose": "Docker Compose",
+      "workflow": "Alur kerja n8n"
+    }
   },
   "directoryExamples": {
     "example": "Contoh direktori",

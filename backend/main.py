@@ -780,11 +780,12 @@ def _phase_a_finalize() -> None:
         app.mount("/demo_audio", StaticFiles(directory=_demo_dir), name="demo_audio")
 
     # SPA shell LAST so the "/" StaticFiles mount can't shadow any router.
-    _frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+    from core.spa_inject import frontend_dist_dir, is_valid_public_api_base, inject_api_base
+
+    _frontend_path = frontend_dist_dir()
     if os.path.exists(_frontend_path):
         # Runtime API-base override (Docker / reverse-proxy): inject
         # OMNIVOICE_PUBLIC_API_BASE into index.html; unset → untouched.
-        from core.spa_inject import is_valid_public_api_base, inject_api_base
 
         _public_api_base = os.environ.get("OMNIVOICE_PUBLIC_API_BASE", "").strip().rstrip("/")
         _index_path = os.path.join(_frontend_path, "index.html")
@@ -815,7 +816,7 @@ def _phase_a_finalize() -> None:
 
         @app.get("/", include_in_schema=False)
         def _dev_fallback():
-            return RedirectResponse(url="http://localhost:3901")
+            return RedirectResponse(url=f"http://localhost:{_ui_port()}")
 
     # An early /docs or /openapi.json hit may have cached a schema without
     # the routers — bust it so the next request rebuilds the full one.

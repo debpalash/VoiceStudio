@@ -2687,7 +2687,38 @@
     "title": "Intégrations",
     "featured": "À la une",
     "description": "Découvrez les intégrations et les partenaires à la une.",
-    "n8nHint": "Importez ce workflow dans n8n, modifiez la requête et exécutez-le. Gardez VoiceStudio ouvert. Docker et les instances n8n distantes nécessitent une adresse de backend accessible et les identifiants requis."
+    "n8nHint": "Importez ce workflow dans n8n, modifiez la requête et exécutez-le. Gardez VoiceStudio ouvert. Docker et les instances n8n distantes nécessitent une adresse de backend accessible et les identifiants requis.",
+    "worksWith": "Fonctionne avec VoiceStudio",
+    "worksWithHint": "Copiez une configuration prête à l'emploi pour votre backend VoiceStudio actuel.",
+    "externalLink": "Lien externe",
+    "externalHint": "Ouvre le site du fournisseur. VoiceStudio n'a pas de configuration intégrée pour cette entrée.",
+    "setupTitle": "Configurer {{name}}",
+    "setupUnavailable": "La configuration n'est pas disponible pour l'adresse actuelle du backend. Vérifiez l'URL du backend dans les réglages.",
+    "capabilitiesTitle": "Fonctionnalités",
+    "websiteTitle": "Site web",
+    "mcpHttpHint": "Pointez n'importe quel client MCP Streamable HTTP vers cette URL. Envoyez l'en-tête {{header}} pour donner au client sa propre voix.",
+    "mcpStdioHint": "Pour les clients stdio uniquement, lancez le shim fourni depuis une copie du code source de VoiceStudio. Remplacez cwd par le chemin de votre copie.",
+    "apiHint": "Points de terminaison compatibles OpenAI sur ce backend. Les requêtes locales n'ont pas besoin de clé ; les requêtes distantes nécessitent la clé API du backend.",
+    "dockerHint": "Utilisez :stable pour les versions publiées ; :latest est l'aperçu continu de main. Conservez la clé API générée : l'application la demande car Docker masque l'adresse de bouclage.",
+    "capability": {
+      "mcp": "Serveur MCP",
+      "speechApi": "API vocale",
+      "transcriptionApi": "API de transcription",
+      "workflow": "Modèle de workflow",
+      "selfHost": "Auto-hébergé"
+    },
+    "block": {
+      "clientConfig": "Configuration du client",
+      "streamableHttp": "Streamable HTTP",
+      "stdio": "Shim stdio",
+      "baseUrl": "URL de base",
+      "speechCurl": "Synthèse vocale (curl)",
+      "transcriptionCurl": "Transcription (curl)",
+      "openaiPython": "Python (SDK OpenAI)",
+      "dockerRun": "Lancer le conteneur",
+      "dockerCompose": "Docker Compose",
+      "workflow": "Workflow n8n"
+    }
   },
   "directoryExamples": {
     "example": "Exemple du répertoire",

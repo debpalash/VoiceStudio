@@ -38,6 +38,29 @@ def backend_port() -> int:
         return _DEFAULT_BACKEND_PORT
 
 
+def backend_self_url() -> str:
+    """Base URL for in-process callers that reach this backend over HTTP.
+
+    ``OMNIVOICE_API_URL`` wins when set (reverse proxy, remote worker).
+    Otherwise the URL follows the host and port the backend actually binds —
+    ``OMNIVOICE_BIND_HOST`` + ``OMNIVOICE_PORT``, the same variables uvicorn
+    and the desktop shells use — so a backend moved off 3900 never calls back
+    into a stale default port. Wildcard binds are reached over loopback,
+    which the auth gates never challenge.
+    """
+    override = os.environ.get("OMNIVOICE_API_URL", "").strip().rstrip("/")
+    if override:
+        return override
+    host = os.environ.get("OMNIVOICE_BIND_HOST", "127.0.0.1").strip()
+    if host in ("", "0.0.0.0", "localhost"):
+        host = "127.0.0.1"
+    elif host == "::":
+        host = "::1"
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    return f"http://{host}:{backend_port()}"
+
+
 def share_port_base() -> int:
     """The first port LAN sharing tries to bind on 0.0.0.0.
 

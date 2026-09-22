@@ -84,3 +84,66 @@ it('does not leak credentials or turn unrelated directory cards into connectors'
   }
   expect(n8nSetup('twilio', 'http://localhost:3900')).toBeNull();
 });
+
+import en from '../../i18n/locales/en.json';
+import { INTEGRATION_SETUPS, integrationSetup } from './setup-registry';
+it('exports Codex CLI as a config.toml Streamable HTTP server table', () => {
+  const codex = mcpSetup('codex-cli', 'http://127.0.0.1:3912');
+  expect(codex?.file).toBe('~/.codex/config.toml');
+  expect(codex?.format).toBe('toml');
+  expect(codex?.text).toBe(
+    [
+      '[mcp_servers.voicestudio]',
+      'url = "http://127.0.0.1:3912/mcp/"',
+      'http_headers = { "X-OmniVoice-Client-Id" = "codex-cli" }',
+      '',
+    ].join('\n'),
+  );
+  expect(mcpSetup('codex-cli', 'https://secret:pw@host')).toBeNull();
+});
+
+function lookup(key: string) {
+  return key
+    .split('.')
+    .reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], en);
+}
+it('backs every "Works with VoiceStudio" entry with a real catalog route, blocks and strings', () => {
+  const base = 'http://127.0.0.1:3912';
+  for (const [slug, setup] of Object.entries(INTEGRATION_SETUPS)) {
+    expect(getIntegrationBySlug(slug), slug).toBeDefined();
+    const blocks = setup.blocks(base);
+    expect(blocks?.length, slug).toBeGreaterThan(0);
+    for (const capability of setup.capabilities)
+      expect(typeof lookup(`integrationCatalog.capability.${capability}`)).toBe('string');
+    for (const block of blocks!) {
+      expect(typeof lookup(block.titleKey), block.titleKey).toBe('string');
+      if (block.hintKey) expect(typeof lookup(block.hintKey), block.hintKey).toBe('string');
+    }
+    expect(setup.docs).toMatch(/^https:\/\//);
+  }
+  expect(integrationSetup('zapier')).toBeUndefined();
+  expect(integrationSetup('constructor')).toBeUndefined();
+});
+it('gives the API and container cards runnable snippets for the right endpoints and images', () => {
+  const api = INTEGRATION_SETUPS['voicestudio-api'].blocks('http://127.0.0.1:3912/')!;
+  const text = api.map((block) => block.text).join('\n');
+  expect(text).toContain('curl http://127.0.0.1:3912/v1/audio/speech');
+  expect(text).toContain('curl http://127.0.0.1:3912/v1/audio/transcriptions');
+  expect(text).toContain('OpenAI(base_url="http://127.0.0.1:3912/v1"');
+  expect(INTEGRATION_SETUPS['voicestudio-api'].blocks('https://u:p@host')).toBeNull();
+  const docker = INTEGRATION_SETUPS.docker
+    .blocks('')!
+    .map((block) => block.text)
+    .join('\n');
+  expect(docker).toContain('palashdeb/omnivoice-studio:stable');
+  const ghcr = INTEGRATION_SETUPS['github-container-registry'].blocks('')!;
+  expect(ghcr.map((block) => block.text).join('\n')).toContain(
+    'ghcr.io/debpalash/omnivoice-studio:stable',
+  );
+  const mcp = INTEGRATION_SETUPS['model-context-protocol'].blocks('http://127.0.0.1:3912')!;
+  expect(mcp[0].text).toContain('http://127.0.0.1:3912/mcp');
+  expect(JSON.parse(mcp[1].text).mcpServers.voicestudio).toMatchObject({
+    args: ['-m', 'backend.mcp_shim'],
+    env: { OMNIVOICE_HOST: '127.0.0.1', OMNIVOICE_PORT: '3912' },
+  });
+});

@@ -2689,7 +2689,38 @@
     "title": "Інтеграції",
     "featured": "Рекомендоване",
     "description": "Відкрийте інтеграції та рекомендованих партнерів.",
-    "n8nHint": "Імпортуйте цей процес у n8n, змініть запит і запустіть його. Залиште VoiceStudio запущеним. Для Docker і віддаленого n8n потрібні доступна адреса бекенду та необхідні облікові дані."
+    "n8nHint": "Імпортуйте цей процес у n8n, змініть запит і запустіть його. Залиште VoiceStudio запущеним. Для Docker і віддаленого n8n потрібні доступна адреса бекенду та необхідні облікові дані.",
+    "worksWith": "Працює з VoiceStudio",
+    "worksWithHint": "Скопіюйте готове налаштування для поточного бекенда VoiceStudio.",
+    "externalLink": "Зовнішнє посилання",
+    "externalHint": "Відкриває сайт постачальника. Для цього запису у VoiceStudio немає вбудованого налаштування.",
+    "setupTitle": "Налаштувати {{name}}",
+    "setupUnavailable": "Налаштування недоступне для поточної адреси бекенда. Перевірте URL бекенда в налаштуваннях.",
+    "capabilitiesTitle": "Можливості",
+    "websiteTitle": "Сайт",
+    "mcpHttpHint": "Вкажіть цю URL-адресу в будь-якому MCP-клієнті Streamable HTTP. Надішліть заголовок {{header}}, щоб клієнт мав власний голос.",
+    "mcpStdioHint": "Для клієнтів лише зі stdio запустіть вбудований shim з копії вихідного коду VoiceStudio. Замініть cwd на шлях до своєї копії.",
+    "apiHint": "OpenAI-сумісні ендпоінти цього бекенда. Локальним запитам ключ не потрібен; віддаленим потрібен API-ключ бекенда.",
+    "dockerHint": "Використовуйте :stable для релізів; :latest — безперервна попередня версія з main. Збережіть створений API-ключ: застосунок попросить його, бо Docker приховує loopback-адресу.",
+    "capability": {
+      "mcp": "MCP-сервер",
+      "speechApi": "API мовлення",
+      "transcriptionApi": "API транскрибування",
+      "workflow": "Шаблон сценарію",
+      "selfHost": "Власний хостинг"
+    },
+    "block": {
+      "clientConfig": "Конфігурація клієнта",
+      "streamableHttp": "Streamable HTTP",
+      "stdio": "stdio-shim",
+      "baseUrl": "Базова URL-адреса",
+      "speechCurl": "Синтез мовлення (curl)",
+      "transcriptionCurl": "Транскрибування (curl)",
+      "openaiPython": "Python (OpenAI SDK)",
+      "dockerRun": "Запуск контейнера",
+      "dockerCompose": "Docker Compose",
+      "workflow": "Сценарій n8n"
+    }
   },
   "directoryExamples": {
     "example": "Приклад у каталозі",

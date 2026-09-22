@@ -2685,7 +2685,38 @@
     "title": "Integraties",
     "featured": "Uitgelicht",
     "description": "Ontdek integraties en uitgelichte partners.",
-    "n8nHint": "Importeer deze workflow in n8n, bewerk het verzoek en voer hem uit. Laat VoiceStudio draaien. Docker en externe n8n-instanties hebben een bereikbaar backendadres en eventuele inloggegevens nodig."
+    "n8nHint": "Importeer deze workflow in n8n, bewerk het verzoek en voer hem uit. Laat VoiceStudio draaien. Docker en externe n8n-instanties hebben een bereikbaar backendadres en eventuele inloggegevens nodig.",
+    "worksWith": "Werkt met VoiceStudio",
+    "worksWithHint": "Kopieer een kant-en-klare configuratie voor je huidige VoiceStudio-backend.",
+    "externalLink": "Externe link",
+    "externalHint": "Opent de website van de aanbieder. VoiceStudio heeft geen ingebouwde configuratie voor dit item.",
+    "setupTitle": "{{name}} instellen",
+    "setupUnavailable": "Configuratie is niet beschikbaar voor het huidige backendadres. Controleer de backend-URL in Instellingen.",
+    "capabilitiesTitle": "Mogelijkheden",
+    "websiteTitle": "Website",
+    "mcpHttpHint": "Richt een willekeurige Streamable HTTP MCP-client op deze URL. Stuur de header {{header}} mee om de client een eigen stem te geven.",
+    "mcpStdioHint": "Voor clients die alleen stdio spreken: start de meegeleverde shim vanuit een VoiceStudio-broncode-checkout. Vervang cwd door het pad van je checkout.",
+    "apiHint": "OpenAI-compatibele endpoints op deze backend. Lokale verzoeken hebben geen sleutel nodig; externe verzoeken hebben de API-sleutel van de backend nodig.",
+    "dockerHint": "Gebruik :stable voor releases; :latest is de doorlopende preview van main. Bewaar de gegenereerde API-sleutel: de app vraagt erom omdat Docker het loopback-adres verbergt.",
+    "capability": {
+      "mcp": "MCP-server",
+      "speechApi": "Spraak-API",
+      "transcriptionApi": "Transcriptie-API",
+      "workflow": "Workflowsjabloon",
+      "selfHost": "Zelf gehost"
+    },
+    "block": {
+      "clientConfig": "Clientconfiguratie",
+      "streamableHttp": "Streamable HTTP",
+      "stdio": "stdio-shim",
+      "baseUrl": "Basis-URL",
+      "speechCurl": "Tekst naar spraak (curl)",
+      "transcriptionCurl": "Transcriptie (curl)",
+      "openaiPython": "Python (OpenAI SDK)",
+      "dockerRun": "Container starten",
+      "dockerCompose": "Docker Compose",
+      "workflow": "n8n-workflow"
+    }
   },
   "directoryExamples": {
     "example": "Directoryvoorbeeld",

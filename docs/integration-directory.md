@@ -1,6 +1,6 @@
 # Integration directory
 
-Directory entries are illustrative, not paid sponsors, endorsements, or verified VoiceStudio integrations. Icons are bundled locally so viewing the catalog sends no logo requests to providers. Brand marks belong to their respective owners.
+Directory entries are not paid sponsors or endorsements. Only entries with a built-in setup block carry the **Works with VoiceStudio** badge and capability chips (MCP server, Speech API, Transcription API, Workflow template, Self-hosted); every other card is marked **External link** and only opens the provider's website. Setup blocks live in one registry keyed by the catalog slug (`electron/src/renderer/src/features/integrations/setup-registry.ts`), so a connector is added in one place. Icons are bundled locally so viewing the catalog sends no logo requests to providers. Brand marks belong to their respective owners.
 
 | Company | Official source | Icon source |
 |---|---|---|
@@ -21,11 +21,18 @@ Directory entries are illustrative, not paid sponsors, endorsements, or verified
 
 ## Connect coding agents
 
-The Claude Code and Cursor detail pages include a copyable MCP configuration for
-VoiceStudio's current backend address and port. Merge the entry into `.mcp.json`
-(Claude Code) or `.cursor/mcp.json` (Cursor), preserving your other servers. Keep
-VoiceStudio running, then enable the server in your client. Use Settings → Sharing
-→ MCP voice bindings to bind `claude-code` or `cursor` to a saved voice.
+The Claude Code, Cursor and Codex CLI detail pages include a copyable MCP
+configuration for VoiceStudio's current backend address and port. Merge the
+entry into `.mcp.json` (Claude Code), `.cursor/mcp.json` (Cursor) or the
+`[mcp_servers.voicestudio]` table into `~/.codex/config.toml` (Codex CLI),
+preserving your other servers. Keep VoiceStudio running, then enable the
+server in your client. Use Settings → Sharing → MCP voice bindings to bind
+`claude-code`, `cursor` or `codex-cli` to a saved voice.
+
+The **Model Context Protocol** page gives the generic Streamable HTTP URL and
+client-ID header for any other MCP client, plus a stdio configuration for the
+bundled `python -m backend.mcp_shim` proxy (needs a source checkout; see
+[MCP](mcp.md)).
 
 These configurations use Streamable HTTP and the client-ID header; they do not
 install another backend or read/write agent configuration files. For a remote
@@ -33,10 +40,24 @@ backend, configure its required credentials in the client. Exported configuratio
 never contain stored credentials. Copying configuration does not prove the client
 is connected; use its MCP tools/status view to confirm the connection.
 
-The schemas follow the official [Claude Code MCP guide](https://code.claude.com/docs/en/mcp)
-and [Cursor MCP guide](https://cursor.com/docs/mcp). Other than the n8n workflow described below, remaining directory entries are
-capability references, not implemented connectors. The catalog has one card per
-route, retaining bundled logos and the correct category when entries overlap.
+The schemas follow the official [Claude Code MCP guide](https://code.claude.com/docs/en/mcp),
+[Cursor MCP guide](https://cursor.com/docs/mcp) and
+[Codex MCP guide](https://developers.openai.com/codex/mcp). The catalog has one
+card per route, retaining bundled logos and the correct category when entries
+overlap.
+
+## Call the API or run the container
+
+The **VoiceStudio API** page shows the current backend's OpenAI-compatible base
+URL with copyable `curl` and OpenAI Python SDK snippets for
+`/v1/audio/speech` and `/v1/audio/transcriptions`. Loopback requests need no
+key; remote ones need the backend's API key (see [API authentication](api-auth.md)).
+
+The **Docker** and **GitHub Container Registry** pages give a `docker run` and a
+Compose snippet for `palashdeb/omnivoice-studio:stable` and
+`ghcr.io/debpalash/omnivoice-studio:stable`. `:stable` is the latest tagged
+release; `:latest` is the rolling preview built from `main`. See the
+[Docker install guide](install/docker.md) for GPU flags and the ROCm tags.
 
 ## Automate speech with n8n
 

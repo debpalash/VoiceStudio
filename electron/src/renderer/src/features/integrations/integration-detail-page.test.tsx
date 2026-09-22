@@ -53,3 +53,33 @@ it('exports the n8n workflow only on request and handles canceled saves', async 
     expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('disk full')),
   );
 });
+
+it('shows the Codex TOML export and one heading per panel', () => {
+  route.slug = 'codex-cli';
+  render(<IntegrationDetailPage />);
+  expect(screen.getByText(/\[mcp_servers\.voicestudio\]/)).toBeInTheDocument();
+  expect(screen.getByText(/Merge this configuration into/)).toHaveTextContent(
+    '~/.codex/config.toml',
+  );
+  expect(screen.getByRole('heading', { name: 'Set up Codex CLI' })).toBeInTheDocument();
+  expect(screen.getByText('Works with VoiceStudio')).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Details' })).toBeNull();
+});
+
+it('presents entries without a setup block as external links with no capability claims', () => {
+  route.slug = 'zapier';
+  render(<IntegrationDetailPage />);
+  expect(screen.queryByRole('button', { name: 'Copy' })).toBeNull();
+  expect(screen.queryByText('Works with VoiceStudio')).toBeNull();
+  expect(screen.getByRole('heading', { name: 'Website' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Capabilities' })).toBeInTheDocument();
+});
+
+it('offers copyable API snippets for the current backend', () => {
+  route.slug = 'voicestudio-api';
+  render(<IntegrationDetailPage />);
+  expect(screen.getAllByRole('button', { name: 'Copy' })).toHaveLength(4);
+  expect(
+    screen.getByText(/curl http:\/\/127\.0\.0\.1:3912\/v1\/audio\/speech/),
+  ).toBeInTheDocument();
+});

@@ -2689,7 +2689,38 @@
     "title": "集成",
     "featured": "精选",
     "description": "探索集成与精选合作伙伴。",
-    "n8nHint": "将此工作流导入 n8n，编辑请求后运行。请保持 VoiceStudio 运行。Docker 和远程 n8n 需要可访问的后端地址及必要的凭据。"
+    "n8nHint": "将此工作流导入 n8n，编辑请求后运行。请保持 VoiceStudio 运行。Docker 和远程 n8n 需要可访问的后端地址及必要的凭据。",
+    "worksWith": "可与 VoiceStudio 配合使用",
+    "worksWithHint": "复制适用于当前 VoiceStudio 后端的现成配置。",
+    "externalLink": "外部链接",
+    "externalHint": "打开提供商网站。VoiceStudio 没有为此条目提供内置配置。",
+    "setupTitle": "设置 {{name}}",
+    "setupUnavailable": "当前后端地址无法生成配置。请在设置中检查后端 URL。",
+    "capabilitiesTitle": "功能",
+    "websiteTitle": "网站",
+    "mcpHttpHint": "将任意 Streamable HTTP MCP 客户端指向此 URL。发送 {{header}} 请求头即可为该客户端指定专属声音。",
+    "mcpStdioHint": "对于仅支持 stdio 的客户端，请在 VoiceStudio 源码检出目录中运行随附的 shim。将 cwd 替换为你的检出路径。",
+    "apiHint": "此后端上的 OpenAI 兼容端点。本地请求无需密钥；远程请求需要后端的 API 密钥。",
+    "dockerHint": "正式版本请使用 :stable；:latest 是来自 main 的滚动预览版。请保存生成的 API 密钥：由于 Docker 隐藏了回环地址，应用会要求输入它。",
+    "capability": {
+      "mcp": "MCP 服务器",
+      "speechApi": "语音 API",
+      "transcriptionApi": "转写 API",
+      "workflow": "工作流模板",
+      "selfHost": "自托管"
+    },
+    "block": {
+      "clientConfig": "客户端配置",
+      "streamableHttp": "Streamable HTTP",
+      "stdio": "stdio shim",
+      "baseUrl": "基础 URL",
+      "speechCurl": "文本转语音（curl）",
+      "transcriptionCurl": "转写（curl）",
+      "openaiPython": "Python（OpenAI SDK）",
+      "dockerRun": "运行容器",
+      "dockerCompose": "Docker Compose",
+      "workflow": "n8n 工作流"
+    }
   },
   "directoryExamples": {
     "example": "目录示例",

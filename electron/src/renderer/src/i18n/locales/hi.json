@@ -2685,7 +2685,38 @@
     "title": "इंटीग्रेशन",
     "featured": "विशेष",
     "description": "इंटीग्रेशन और विशेष साझेदारों को देखें।",
-    "n8nHint": "यह वर्कफ़्लो n8n में आयात करें, अनुरोध संपादित करें और चलाएँ। VoiceStudio चालू रखें। Docker और रिमोट n8n के लिए पहुँच योग्य बैकएंड पता और आवश्यक क्रेडेंशियल चाहिए।"
+    "n8nHint": "यह वर्कफ़्लो n8n में आयात करें, अनुरोध संपादित करें और चलाएँ। VoiceStudio चालू रखें। Docker और रिमोट n8n के लिए पहुँच योग्य बैकएंड पता और आवश्यक क्रेडेंशियल चाहिए।",
+    "worksWith": "VoiceStudio के साथ काम करता है",
+    "worksWithHint": "अपने मौजूदा VoiceStudio बैकएंड के लिए तैयार सेटअप कॉपी करें।",
+    "externalLink": "बाहरी लिंक",
+    "externalHint": "प्रदाता की वेबसाइट खोलता है। इस प्रविष्टि के लिए VoiceStudio में कोई अंतर्निहित सेटअप नहीं है।",
+    "setupTitle": "{{name}} सेट अप करें",
+    "setupUnavailable": "मौजूदा बैकएंड पते के लिए सेटअप उपलब्ध नहीं है। सेटिंग्स में बैकएंड URL जाँचें।",
+    "capabilitiesTitle": "क्षमताएँ",
+    "websiteTitle": "वेबसाइट",
+    "mcpHttpHint": "किसी भी Streamable HTTP MCP क्लाइंट को इस URL पर इंगित करें। क्लाइंट को उसकी अपनी आवाज़ देने के लिए {{header}} हेडर भेजें।",
+    "mcpStdioHint": "केवल stdio वाले क्लाइंट के लिए, VoiceStudio सोर्स चेकआउट से बंडल किया गया shim चलाएँ। cwd को अपने चेकआउट पथ से बदलें।",
+    "apiHint": "इस बैकएंड पर OpenAI-संगत एंडपॉइंट। स्थानीय अनुरोधों को कुंजी नहीं चाहिए; दूरस्थ अनुरोधों को बैकएंड की API कुंजी चाहिए।",
+    "dockerHint": "रिलीज़ के लिए :stable उपयोग करें; :latest main का लगातार प्रीव्यू है। बनाई गई API कुंजी सँभालकर रखें: ऐप इसे माँगेगा क्योंकि Docker loopback पता छिपा देता है।",
+    "capability": {
+      "mcp": "MCP सर्वर",
+      "speechApi": "स्पीच API",
+      "transcriptionApi": "ट्रांसक्रिप्शन API",
+      "workflow": "वर्कफ़्लो टेम्पलेट",
+      "selfHost": "सेल्फ़-होस्टेड"
+    },
+    "block": {
+      "clientConfig": "क्लाइंट कॉन्फ़िगरेशन",
+      "streamableHttp": "Streamable HTTP",
+      "stdio": "stdio shim",
+      "baseUrl": "बेस URL",
+      "speechCurl": "टेक्स्ट से स्पीच (curl)",
+      "transcriptionCurl": "ट्रांसक्रिप्शन (curl)",
+      "openaiPython": "Python (OpenAI SDK)",
+      "dockerRun": "कंटेनर चलाएँ",
+      "dockerCompose": "Docker Compose",
+      "workflow": "n8n वर्कफ़्लो"
+    }
   },
   "directoryExamples": {
     "example": "डायरेक्टरी उदाहरण",

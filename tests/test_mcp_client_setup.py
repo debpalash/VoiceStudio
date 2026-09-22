@@ -8,12 +8,13 @@ pytest.importorskip('mcp')
 
 
 @pytest.mark.parametrize('client_id', ['claude-code', 'cursor'])
-def test_client_setup_initializes_lists_tools_and_preserves_voice_binding(monkeypatch, client_id):
+def test_client_setup_initializes_lists_tools_and_preserves_voice_binding(monkeypatch, tmp_path, client_id):
     import httpx
     import mcp_server
     from services import mcp_bindings
     from starlette.applications import Starlette
     from starlette.routing import Mount
+    from starlette.staticfiles import StaticFiles
     from starlette.testclient import TestClient
 
     resolved = []
@@ -22,7 +23,13 @@ def test_client_setup_initializes_lists_tools_and_preserves_voice_binding(monkey
     ))
     monkeypatch.setattr(mcp_bindings, 'touch_last_seen', lambda client: None)
     from urllib.parse import parse_qs
+    monkeypatch.setenv('OMNIVOICE_PORT', '3912')
+    monkeypatch.delenv('OMNIVOICE_API_URL', raising=False)
+    monkeypatch.delenv('OMNIVOICE_BIND_HOST', raising=False)
     def generate(request):
+        # Tools call back into the backend on its real port (#OMNIVOICE_PORT),
+        # never a hard-coded 3900.
+        assert (request.url.host, request.url.port) == ('127.0.0.1', 3912)
         assert request.url.path == '/generate'
         assert parse_qs(request.content.decode())['profile_id'] == ['test-profile']
         return httpx.Response(200, content=b'test-audio', headers={'X-Audio-Id': 'test'})
@@ -31,20 +38,25 @@ def test_client_setup_initializes_lists_tools_and_preserves_voice_binding(monkey
         **kwargs, transport=httpx.MockTransport(generate)
     ))
     monkeypatch.setenv('OMNIVOICE_MCP_OUTPUT_MODE', 'resources')
-    server = mcp_server.create_mcp_server()
-    transport = server.streamable_http_app()
     @asynccontextmanager
     async def lifespan(app):
-        async with server.session_manager.run():
+        async with app.state.mcp_session_manager.run():
             yield
-    app = Starlette(routes=[Mount('/mcp', app=transport)], lifespan=lifespan)
+    # The production mount path plus an SPA catch-all at "/", as Docker and
+    # source builds serve it: the exported "/mcp" URL must not fall through.
+    spa = tmp_path / 'dist'
+    spa.mkdir()
+    (spa / 'index.html').write_text('<!doctype html>')
+    app = Starlette(lifespan=lifespan)
+    assert mcp_server.mount_mcp(app)
+    app.router.routes.append(Mount('/', app=StaticFiles(directory=spa, html=True)))
     headers = {'Accept': 'application/json, text/event-stream', 'X-OmniVoice-Client-Id': client_id}
     def result(response):
         assert response.status_code == 200, response.text
         if response.headers.get('content-type', '').startswith('text/event-stream'):
             return json.loads(next(line[6:] for line in response.text.splitlines() if line.startswith('data: ')))
         return response.json()
-    with TestClient(app, base_url='http://127.0.0.1:3912') as client:
+    with TestClient(app, base_url='http://127.0.0.1:3912', follow_redirects=False) as client:
         initialized = client.post('/mcp', headers=headers, json={
             'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {
                 'protocolVersion': '2024-11-05', 'capabilities': {},

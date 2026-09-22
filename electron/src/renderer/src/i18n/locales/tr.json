@@ -2685,7 +2685,38 @@
     "title": "Entegrasyonlar",
     "featured": "Öne çıkan",
     "description": "Entegrasyonları ve öne çıkan iş ortaklarını keşfedin.",
-    "n8nHint": "Bu iş akışını n8n içine aktarın, isteği düzenleyip çalıştırın. VoiceStudio açık kalsın. Docker ve uzak n8n için erişilebilir bir arka uç adresi ve gerekli kimlik bilgileri gerekir."
+    "n8nHint": "Bu iş akışını n8n içine aktarın, isteği düzenleyip çalıştırın. VoiceStudio açık kalsın. Docker ve uzak n8n için erişilebilir bir arka uç adresi ve gerekli kimlik bilgileri gerekir.",
+    "worksWith": "VoiceStudio ile çalışır",
+    "worksWithHint": "Mevcut VoiceStudio arka ucunuz için hazır bir kurulumu kopyalayın.",
+    "externalLink": "Harici bağlantı",
+    "externalHint": "Sağlayıcının web sitesini açar. VoiceStudio'da bu giriş için yerleşik kurulum yok.",
+    "setupTitle": "{{name}} kurulumu",
+    "setupUnavailable": "Mevcut arka uç adresi için kurulum kullanılamıyor. Ayarlar'da arka uç URL'sini kontrol edin.",
+    "capabilitiesTitle": "Yetenekler",
+    "websiteTitle": "Web sitesi",
+    "mcpHttpHint": "Herhangi bir Streamable HTTP MCP istemcisini bu URL'ye yönlendirin. İstemciye kendi sesini vermek için {{header}} başlığını gönderin.",
+    "mcpStdioHint": "Yalnızca stdio destekleyen istemciler için, paketlenmiş shim'i VoiceStudio kaynak kodu kopyasından çalıştırın. cwd değerini kopyanızın yoluyla değiştirin.",
+    "apiHint": "Bu arka uçtaki OpenAI uyumlu uç noktalar. Yerel istekler anahtar gerektirmez; uzak istekler arka ucun API anahtarını gerektirir.",
+    "dockerHint": "Sürümler için :stable kullanın; :latest main'den sürekli önizlemedir. Oluşturulan API anahtarını saklayın: Docker loopback adresini gizlediği için uygulama bunu ister.",
+    "capability": {
+      "mcp": "MCP sunucusu",
+      "speechApi": "Konuşma API'si",
+      "transcriptionApi": "Transkripsiyon API'si",
+      "workflow": "İş akışı şablonu",
+      "selfHost": "Kendi sunucunuzda"
+    },
+    "block": {
+      "clientConfig": "İstemci yapılandırması",
+      "streamableHttp": "Streamable HTTP",
+      "stdio": "stdio shim",
+      "baseUrl": "Temel URL",
+      "speechCurl": "Metinden konuşmaya (curl)",
+      "transcriptionCurl": "Transkripsiyon (curl)",
+      "openaiPython": "Python (OpenAI SDK)",
+      "dockerRun": "Konteyneri çalıştır",
+      "dockerCompose": "Docker Compose",
+      "workflow": "n8n iş akışı"
+    }
   },
   "directoryExamples": {
     "example": "Dizin örneği",

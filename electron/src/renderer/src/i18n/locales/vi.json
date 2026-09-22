@@ -2685,7 +2685,38 @@
     "title": "Tích hợp",
     "featured": "Nổi bật",
     "description": "Khám phá các tích hợp và đối tác nổi bật.",
-    "n8nHint": "Nhập quy trình này vào n8n, chỉnh sửa yêu cầu rồi chạy. Giữ VoiceStudio hoạt động. Docker và n8n từ xa cần địa chỉ máy chủ có thể truy cập và thông tin xác thực cần thiết."
+    "n8nHint": "Nhập quy trình này vào n8n, chỉnh sửa yêu cầu rồi chạy. Giữ VoiceStudio hoạt động. Docker và n8n từ xa cần địa chỉ máy chủ có thể truy cập và thông tin xác thực cần thiết.",
+    "worksWith": "Hoạt động với VoiceStudio",
+    "worksWithHint": "Sao chép cấu hình sẵn cho backend VoiceStudio hiện tại của bạn.",
+    "externalLink": "Liên kết ngoài",
+    "externalHint": "Mở trang web của nhà cung cấp. VoiceStudio không có cấu hình tích hợp cho mục này.",
+    "setupTitle": "Thiết lập {{name}}",
+    "setupUnavailable": "Không có cấu hình cho địa chỉ backend hiện tại. Hãy kiểm tra URL backend trong Cài đặt.",
+    "capabilitiesTitle": "Khả năng",
+    "websiteTitle": "Trang web",
+    "mcpHttpHint": "Trỏ bất kỳ máy khách MCP Streamable HTTP nào tới URL này. Gửi header {{header}} để máy khách có giọng riêng.",
+    "mcpStdioHint": "Với máy khách chỉ hỗ trợ stdio, chạy shim đi kèm từ bản sao mã nguồn VoiceStudio. Thay cwd bằng đường dẫn bản sao của bạn.",
+    "apiHint": "Các endpoint tương thích OpenAI trên backend này. Yêu cầu cục bộ không cần khóa; yêu cầu từ xa cần khóa API của backend.",
+    "dockerHint": "Dùng :stable cho bản phát hành; :latest là bản xem trước liên tục từ main. Hãy giữ khóa API đã tạo: ứng dụng sẽ hỏi vì Docker che địa chỉ loopback.",
+    "capability": {
+      "mcp": "Máy chủ MCP",
+      "speechApi": "API giọng nói",
+      "transcriptionApi": "API chép lời",
+      "workflow": "Mẫu quy trình",
+      "selfHost": "Tự lưu trữ"
+    },
+    "block": {
+      "clientConfig": "Cấu hình máy khách",
+      "streamableHttp": "Streamable HTTP",
+      "stdio": "Shim stdio",
+      "baseUrl": "URL cơ sở",
+      "speechCurl": "Chuyển văn bản thành giọng nói (curl)",
+      "transcriptionCurl": "Chép lời (curl)",
+      "openaiPython": "Python (OpenAI SDK)",
+      "dockerRun": "Chạy container",
+      "dockerCompose": "Docker Compose",
+      "workflow": "Quy trình n8n"
+    }
   },
   "directoryExamples": {
     "example": "Ví dụ trong danh mục",

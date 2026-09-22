@@ -430,7 +430,10 @@ def create_mcp_server():
     # ── Helpers ─────────────────────────────────────────────────────────
 
     def _api_base() -> str:
-        return os.environ.get("OMNIVOICE_API_URL", "http://localhost:3900")
+        # Follows the backend's real bind host/port (OMNIVOICE_PORT), not a
+        # hard-coded 3900 — Electron moves the port via OMNIVOICE_PORT only.
+        from services.network_share import backend_self_url
+        return backend_self_url()
 
     async def _api_get(path: str):
         import httpx
@@ -692,6 +695,28 @@ def create_mcp_server():
     return mcp
 
 
+class _BareMcpPath:
+    """ASGI endpoint for exactly ``/mcp``: re-dispatch as ``/mcp/``.
+
+    A class instance (not a function) so Starlette's ``Route`` treats it as a
+    raw ASGI app with no method restriction — GET (SSE), POST and DELETE all
+    reach the Streamable-HTTP transport. Re-entering the router keeps the
+    mount's own path/root_path handling instead of re-implementing it.
+    """
+
+    def __init__(self, router) -> None:
+        self._router = router
+
+    async def __call__(self, scope, receive, send) -> None:
+        scope = dict(scope)
+        scope["path"] = scope["path"] + "/"
+        raw = scope.get("raw_path")
+        if isinstance(raw, (bytes, bytearray)):
+            path, sep, query = bytes(raw).partition(b"?")
+            scope["raw_path"] = path + b"/" + sep + query
+        await self._router(scope, receive, send)
+
+
 def mount_mcp(app) -> bool:
     """Best-effort sub-mount of the MCP Streamable-HTTP app at /mcp.
 
@@ -706,6 +731,14 @@ def mount_mcp(app) -> bool:
         mcp_app = mcp.streamable_http_app()
         app.state.mcp_session_manager = mcp.session_manager
         app.mount("/mcp", mcp_app)
+        # The mount only matches "/mcp/..."; a bare "/mcp" would fall through
+        # to the SPA StaticFiles mount at "/" (405 on POST) or, without a
+        # built SPA, to a 307 that many MCP clients won't re-POST. Serve the
+        # published "/mcp" URL directly, for every method, ahead of "/".
+        from starlette.routing import Route
+        app.router.routes.append(
+            Route("/mcp", endpoint=_BareMcpPath(app.router), include_in_schema=False)
+        )
         logger.info("MCP app mounted at /mcp")
         return True
     except (Exception, SystemExit) as err:  # noqa: BLE001
@@ -726,6 +759,13 @@ def main():
         help="Port for SSE transport (default: 8765)",
     )
     args = parser.parse_args()
+
+    # `python -m backend.mcp_server` runs from the repo root, where the
+    # backend's own packages (services.*, core.*) are not importable; the
+    # embedded mount runs with backend/ on sys.path already.
+    _backend_dir = os.path.dirname(os.path.abspath(__file__))
+    if _backend_dir not in sys.path:
+        sys.path.insert(0, _backend_dir)
 
     try:
         mcp = create_mcp_server()

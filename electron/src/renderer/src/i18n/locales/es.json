@@ -2687,7 +2687,38 @@
     "title": "Integraciones",
     "featured": "Destacado",
     "description": "Descubre integraciones y socios destacados.",
-    "n8nHint": "Importa este flujo en n8n, edita la solicitud y ejecútalo. Mantén VoiceStudio abierto. Docker y n8n remoto necesitan una dirección de backend accesible y las credenciales requeridas."
+    "n8nHint": "Importa este flujo en n8n, edita la solicitud y ejecútalo. Mantén VoiceStudio abierto. Docker y n8n remoto necesitan una dirección de backend accesible y las credenciales requeridas.",
+    "worksWith": "Funciona con VoiceStudio",
+    "worksWithHint": "Copia una configuración lista para tu backend actual de VoiceStudio.",
+    "externalLink": "Enlace externo",
+    "externalHint": "Abre el sitio web del proveedor. VoiceStudio no tiene una configuración integrada para esta entrada.",
+    "setupTitle": "Configurar {{name}}",
+    "setupUnavailable": "La configuración no está disponible para la dirección actual del backend. Revisa la URL del backend en Ajustes.",
+    "capabilitiesTitle": "Capacidades",
+    "websiteTitle": "Sitio web",
+    "mcpHttpHint": "Apunta cualquier cliente MCP Streamable HTTP a esta URL. Envía el encabezado {{header}} para dar al cliente su propia voz.",
+    "mcpStdioHint": "Para clientes solo stdio, ejecuta el shim incluido desde una copia del código fuente de VoiceStudio. Sustituye cwd por la ruta de tu copia.",
+    "apiHint": "Endpoints compatibles con OpenAI en este backend. Las solicitudes locales no necesitan clave; las remotas necesitan la clave API del backend.",
+    "dockerHint": "Usa :stable para versiones publicadas; :latest es la vista previa continua de main. Guarda la clave API generada: la app la pide porque Docker oculta la dirección de loopback.",
+    "capability": {
+      "mcp": "Servidor MCP",
+      "speechApi": "API de voz",
+      "transcriptionApi": "API de transcripción",
+      "workflow": "Plantilla de flujo",
+      "selfHost": "Autoalojado"
+    },
+    "block": {
+      "clientConfig": "Configuración del cliente",
+      "streamableHttp": "Streamable HTTP",
+      "stdio": "Shim stdio",
+      "baseUrl": "URL base",
+      "speechCurl": "Texto a voz (curl)",
+      "transcriptionCurl": "Transcripción (curl)",
+      "openaiPython": "Python (SDK de OpenAI)",
+      "dockerRun": "Ejecutar el contenedor",
+      "dockerCompose": "Docker Compose",
+      "workflow": "Flujo de n8n"
+    }
   },
   "directoryExamples": {
     "example": "Ejemplo del directorio",
