@@ -216,6 +216,85 @@ def explain_chapter_miss(cache_dir: str, content_id: str, inputs: dict) -> Optio
     return sorted(k for k in set(before) | set(now) if before.get(k) != now.get(k))
 
 
+#: Voices-dir roots this cache has been rendered under (#2279). Builds before
+#: the portable key hashed the ABSOLUTE reference path, so an entry they wrote
+#: is only reachable by rebuilding that path under the root it was written
+#: with — which, after a data-dir move, is no longer the current one.
+VOICES_ROOTS_FILE = "voices_roots.json"
+_MAX_VOICES_ROOTS = 8
+
+
+def remember_voices_root(cache_dir: str, root: str) -> list[str]:
+    """Record ``root`` as a voices root of this cache and return the OTHER
+    roots seen before it, newest first. Written only when ``root`` is new, so
+    a render does not rewrite it per chapter. Best-effort: a read or write
+    failure just means fewer legacy roots to probe."""
+    path = os.path.join(cache_dir, VOICES_ROOTS_FILE)
+    try:
+        with open(path, encoding="utf-8") as f:
+            seen = json.load(f)
+        if not isinstance(seen, list):
+            seen = []
+    except (OSError, ValueError):
+        seen = []
+    seen = [r for r in seen if isinstance(r, str) and r]
+    if not root or (seen and seen[0] == root):
+        return [r for r in seen if r != root]
+    others = [r for r in seen if r != root]
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+        tmp = f"{path}.{os.getpid()}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump([root, *others][:_MAX_VOICES_ROOTS], f)
+        os.replace(tmp, path)
+    except OSError:
+        pass
+    return others
+
+
+def rebase_path(path: Optional[str], root: str, old_root: str) -> Optional[str]:
+    """``path`` as it was spelled when its root was ``old_root`` — the
+    absolute reference path a pre-#2279 build keyed its cache with. Paths
+    outside ``root`` (engine defaults, pass-through paths) never moved."""
+    if not path or not root or not path.startswith(root):
+        return path
+    rest = path[len(root):]
+    if rest and rest[0] not in (os.sep, os.altsep or os.sep) and not root.endswith(("/", "\\")):
+        return path  # a sibling that merely shares the prefix ("voices2/…")
+    return old_root + rest
+
+
+def wav_is_complete(path: str) -> bool:
+    """True iff ``path`` is a RIFF/WAVE file whose ``data`` chunk is entirely
+    on disk (#2279).
+
+    A power-off before the data reaches the disk can leave a header that
+    promises more audio than the file holds. ``wave``/``soundfile`` open such a
+    file without complaint and simply return less audio, so a cache hit on it
+    would publish a silently shortened chapter. Walks the chunk headers only —
+    no sample decode — so it is cheap on hour-long chapters.
+    """
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as f:
+            head = f.read(12)
+            if len(head) < 12 or head[:4] != b"RIFF" or head[8:12] != b"WAVE":
+                return False
+            pos = 12
+            while pos + 8 <= size:
+                f.seek(pos)
+                hdr = f.read(8)
+                if len(hdr) < 8:
+                    return False
+                chunk_len = int.from_bytes(hdr[4:8], "little")
+                if hdr[:4] == b"data":
+                    return chunk_len > 0 and pos + 8 + chunk_len <= size
+                pos += 8 + chunk_len + (chunk_len & 1)
+    except OSError:
+        return False
+    return False
+
+
 # ── Segment cache (sub-chapter granularity) ─────────────────────────────────
 
 #: Segment WAVs live in a subdirectory of the chapter cache dir so both layers
@@ -291,17 +370,18 @@ class SegmentCache:
         voice_sig: Optional[dict] = None,
         extra_sig: str = "",
         vary_repeats: bool = False,
-        legacy_voice_sig: Optional[dict] = None,
+        legacy_voice_sigs: Iterable[dict] = (),
     ) -> None:
         self.dir = os.path.join(cache_dir, SEGMENT_SUBDIR)
         self.sample_rate = int(sample_rate)
         self.engine_id = engine_id or ""
         self.voice_sig = dict(voice_sig or {})
         # Signatures an older build keyed segments by (#2279: the absolute
-        # reference-audio path). Looked up after ``voice_sig`` misses, and a
-        # hit is moved to the current key, so segments rendered before the
-        # portable signature keep counting.
-        self.legacy_voice_sig = dict(legacy_voice_sig or {})
+        # reference-audio path, one set per voices root the cache has seen).
+        # Looked up after ``voice_sig`` misses, and a hit is moved to the
+        # current key, so segments rendered before the portable signature
+        # keep counting.
+        self.legacy_voice_sigs = [dict(s) for s in legacy_voice_sigs if s]
         self.extra_sig = extra_sig or ""
         # Cache opt-out (#1208): when on, a per-occurrence nonce enters the key
         # so identical repeated lines no longer share one WAV. Off → the nonce
@@ -330,12 +410,11 @@ class SegmentCache:
         path = self._path(span, nonce)
         if os.path.isfile(path):
             return path
-        if not self.legacy_voice_sig:
-            return None
-        legacy = self._path(span, nonce, sigs=self.legacy_voice_sig)
-        if legacy == path or not os.path.isfile(legacy):
-            return None
-        return adopt_cached_file(legacy, path)
+        for sigs in self.legacy_voice_sigs:
+            legacy = self._path(span, nonce, sigs=sigs)
+            if legacy != path and os.path.isfile(legacy):
+                return adopt_cached_file(legacy, path)
+        return None
 
     def load(self, span, nonce: int = 0):
         """Cached audio tensor for ``span``, or ``None`` (miss). A hit bumps
@@ -352,6 +431,9 @@ class SegmentCache:
         except Exception:
             self.misses += 1
             return None  # unreadable/corrupt entry — clean miss, re-render
+        if not wav_is_complete(path):
+            self.misses += 1
+            return None  # torn by a power-off: decodes short, so re-render (#2279)
         if int(sr) != self.sample_rate or audio.numel() == 0:
             self.misses += 1
             return None  # foreign-rate/empty entry — clean miss, re-render

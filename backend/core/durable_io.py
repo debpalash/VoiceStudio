@@ -31,7 +31,9 @@ def flush_fd(fd: int) -> None:
     try:
         os.fsync(fd)
     except OSError:
-        pass
+        # Best-effort by contract (module docstring): a filesystem that cannot
+        # sync (some network/FUSE mounts) must not fail a write that succeeded.
+        return
 
 
 def flush_file(path: str) -> None:
