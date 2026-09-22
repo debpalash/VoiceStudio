@@ -452,6 +452,8 @@ async def _encode_ffmpeg(ffmpeg: str, wav_tensor, sample_rate: int, fmt: str) ->
         try:
             os.unlink(src)
         except OSError:
+            # Best-effort temp cleanup: a leftover temp WAV must not turn an
+            # encoded response (or the real encode error) into a failure.
             pass
     if rc != 0 or not out:
         from core.failure import strip_ffmpeg_banner
