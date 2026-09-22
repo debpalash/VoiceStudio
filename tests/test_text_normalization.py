@@ -244,7 +244,7 @@ def test_native_verbalizer_covers_full_integer_range():
     without digits and without raising — the ml module has no num2words
     fallback to hide a table gap."""
     from services import number_words_ml as ml
-    for n in range(0, 1_000_000):
+    for n in range(1_000_000):
         word = ml.cardinal(n)
         assert word and not any(ch.isdigit() for ch in word), n
 
