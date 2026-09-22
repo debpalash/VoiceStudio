@@ -19,6 +19,8 @@ import os
 import re
 from typing import Optional
 
+from core.durable_io import flush_dir, flush_fd
+
 MANIFEST_VERSION = 1
 _MANIFEST_NAME = "resume.json"
 # Longform front doors that produce a resumable work dir (job_type → dir prefix).
@@ -102,7 +104,13 @@ def write_manifest(manifest: dict) -> Optional[str]:
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(manifest, f, ensure_ascii=False)
+            # Flushed before the rename: without it a power-off can publish
+            # the name ahead of the data and leave an empty manifest, which is
+            # how an interrupted job stopped being resumable (#2279).
+            f.flush()
+            flush_fd(f.fileno())
         os.replace(tmp, path)  # atomic — a half-written manifest never resumes
+        flush_dir(os.path.dirname(path))
         return path
     except OSError:
         return None

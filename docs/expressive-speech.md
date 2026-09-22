@@ -22,6 +22,8 @@ ignores.
 
 Switching away from the Audiobook tab explicitly interrupts synthesis at a chapter boundary. The Audiobook recovery card lets you resume with its cached chapters, and **Open chapter cache** reveals the chapter audio cache.
 
+Cached chapters are matched by their script, voice and render settings, not by where the data folder lives, so they stay reusable after the folder is moved or the machine loses power. When a chapter you expected to reuse renders again, the backend log names the input that changed (for example a voice's reference text or the pronunciation lexicon); the diagnostic bundle includes that log.
+
 ## Why bracket tags work at all (and when they don't)
 
 Everything you type in the text box reaches the active engine **verbatim** —

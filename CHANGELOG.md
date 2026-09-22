@@ -8,6 +8,19 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ## [Unreleased]
 
+**Highlights**
+
+- Finished audiobook chapters survive a data-folder move or a power-off mid-render (#2279)
+
+### Fixed
+
+- Rendered audiobook chapters stay reusable after the data folder moves, and a power-off no longer empties the resume point or tears chapter audio (#2279)
+- An audiobook chapter-cache miss now logs which input changed since the cached render (#2279)
+
+### Bug reporters
+
+- @castlecreati — audiobook chapter cache lost after a power-off (#2279).
+
 ## [0.5.5] — 2026-09-22
 
 **Your voice, another language.** The Clone workspace now keeps your chosen output language when changing voice samples. For example, an English reference can read a French script with a multilingual engine; Auto in Clone follows the script instead of inheriting the reference profile's language.
