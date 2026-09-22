@@ -386,9 +386,9 @@ jobs:
           PY
 
       - name: Run smoke tests
-        # Exercise credential paths on native Windows as well as POSIX hosts.
+        # Exercise credential paths and the Windows accept guard natively.
         if: matrix.backend_supported
-        run: uv run --no-sync pytest tests/smoke/ tests/test_hf_token_cache_paths.py -q --tb=short
+        run: uv run --no-sync pytest tests/smoke/ tests/test_hf_token_cache_paths.py tests/test_win_accept_guard.py -q --tb=short
         env:
           HF_HUB_OFFLINE: "1"  # same no-silent-downloads guard as the main pytest job
           HF_HUB_CACHE: ${{ runner.temp }}/pockettts-empty-hf-cache
