@@ -75,9 +75,10 @@ background requests are exported.
 
 The OpenAI Agents detail page shows a copyable Python snippet that points the
 OpenAI Agents SDK voice pipeline at the current backend's OpenAI-compatible API
-(`<backend>/v1`) for both speech recognition and speech. The API key is read
-from `OMNIVOICE_API_KEY` when the script runs and is never written into the
-snippet; tracing is switched off so nothing is uploaded. The agent's language
+(`<backend>/v1`) for both speech recognition and speech. For a remote https
+backend the API key is read from `OMNIVOICE_API_KEY` when the script runs and is
+never written into the snippet; loopback needs no key, and a remote plain-http
+backend is never given one (put it behind https first); tracing is switched off so nothing is uploaded. The agent's language
 model must be set explicitly (`AGENT_LLM_BASE_URL`, `AGENT_LLM_MODEL`, for a
 local OpenAI-compatible server); the snippet never falls back to a hosted model. See
 [Agentic voice → OpenAI Agents SDK](agentic-voice.md#openai-agents-sdk).

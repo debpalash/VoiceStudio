@@ -220,7 +220,7 @@ it('points the OpenAI Agents voice pipeline at the current backend without a sto
   const setup = openaiAgentsSetup('openai-agents', 'https://voice.example/backend/');
   expect(setup?.file).toBe('voicestudio_agents.py');
   expect(setup!.text).toContain('base_url="https://voice.example/backend/v1"');
-  expect(setup!.text).toContain('os.environ.get("OMNIVOICE_API_KEY", "not-needed-locally")');
+  expect(setup!.text).toContain('api_key=os.environ["OMNIVOICE_API_KEY"]');
   expect(setup!.text).toContain('tts_model="gpt-4o-mini-tts"');
   expect(setup!.text).toContain('stt_model="gpt-4o-transcribe"');
   expect(setup!.text).toContain('set_tracing_disabled(True)');
@@ -257,11 +257,13 @@ it('gives Windows a PowerShell docker run with a CSPRNG key and backtick continu
     expect(ps.text.trimEnd()).toMatch(/omnivoice-studio:stable$/);
   }
 });
-it('never hands the Agents SDK the API key for a remote plain-http backend', () => {
-  expect(openaiAgentsSetup('openai-agents', 'http://192.168.1.5:3900')!.text).toContain(
-    'api_key="voicestudio"',
-  );
-  expect(openaiAgentsSetup('openai-agents', 'http://127.0.0.1:3900')!.text).toContain(
-    'os.environ.get("OMNIVOICE_API_KEY", "not-needed-locally")',
+it('reads the Agents SDK key only for a remote https backend', () => {
+  for (const url of ['http://192.168.1.5:3900', 'http://127.0.0.1:3900']) {
+    const text = openaiAgentsSetup('openai-agents', url)!.text;
+    expect(text).toContain('api_key="not-needed-locally"');
+    expect(text).not.toContain('OMNIVOICE_API_KEY');
+  }
+  expect(integrationSetup('openai-agents')!.blocks('http://192.168.1.5:3900')![0].hintKey).toBe(
+    'integrationCatalog.apiInsecureHint',
   );
 });

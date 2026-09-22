@@ -8,12 +8,11 @@ export function openaiAgentsSetup(slug: string, baseUrl: string) {
   if (slug !== 'openai-agents') return null;
   const url = backendEndpoint(baseUrl, '/v1');
   if (!url) return null;
-  // The key only travels over https to a remote backend (or to loopback,
-  // which ignores it); a remote plain-http URL never gets it.
+  // Same policy as every other export: the key is read (and required) only
+  // for a remote https backend. Loopback never needs it, and a remote
+  // plain-http backend must not receive it in clear text.
   const apiKey =
-    remoteAuth(baseUrl) === 'insecure'
-      ? '"voicestudio"'
-      : 'os.environ.get("OMNIVOICE_API_KEY", "not-needed-locally")';
+    remoteAuth(baseUrl) === 'bearer' ? 'os.environ["OMNIVOICE_API_KEY"]' : '"not-needed-locally"';
   const text = `# pip install "openai-agents[voice]"
 import os
 

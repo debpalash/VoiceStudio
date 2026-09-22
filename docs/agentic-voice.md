@@ -165,6 +165,8 @@ WebSocket, which VoiceStudio does not implement.
 Running VoiceStudio on a [remote GPU box](remote-gpu.md)? Append `/v1` to that
 backend's service-root URL for the OpenAI client's `base_url`, and pass its
 `OMNIVOICE_API_KEY` as the `api_key` — the same bearer the rest of the app uses.
+Only send the key over https (for example Tailscale Serve); over plain http it
+crosses the network in clear text.
 Keep the unmodified service root for `/.well-known/voicestudio-speech`
 discovery, and keep the backend on your tailnet, not the open internet.
 

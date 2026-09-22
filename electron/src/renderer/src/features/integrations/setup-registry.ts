@@ -306,7 +306,12 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
         {
           id: 'script',
           titleKey: 'integrationCatalog.block.openaiPython',
-          hintKey: 'integrationCatalog.openaiAgentsHint',
+          // A keyed remote plain-http backend cannot be reached safely: say
+          // "use https" instead of implying the key will be sent.
+          hintKey:
+            remoteAuth(baseUrl) === 'insecure'
+              ? 'integrationCatalog.apiInsecureHint'
+              : 'integrationCatalog.openaiAgentsHint',
           language: 'python',
           text: setup.text,
         },
