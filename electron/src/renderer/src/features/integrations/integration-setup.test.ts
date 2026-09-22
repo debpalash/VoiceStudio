@@ -84,3 +84,23 @@ it('does not leak credentials or turn unrelated directory cards into connectors'
   }
   expect(n8nSetup('twilio', 'http://localhost:3900')).toBeNull();
 });
+
+import { openaiAgentsSetup } from './openai-agents-setup';
+it('points the OpenAI Agents voice pipeline at the current backend without a stored key', () => {
+  const setup = openaiAgentsSetup('openai-agents', 'https://voice.example/backend/');
+  expect(setup?.file).toBe('voicestudio_agents.py');
+  expect(setup!.text).toContain('base_url="https://voice.example/backend/v1"');
+  expect(setup!.text).toContain('os.environ.get("OMNIVOICE_API_KEY", "not-needed-locally")');
+  expect(setup!.text).toContain('tts_model="gpt-4o-mini-tts"');
+  expect(setup!.text).toContain('stt_model="gpt-4o-transcribe"');
+  expect(setup!.text).toContain('set_tracing_disabled(True)');
+  for (const url of [
+    '',
+    'file:///tmp/backend',
+    'https://secret:password@host',
+    'https://host?k=1',
+  ]) {
+    expect(openaiAgentsSetup('openai-agents', url)).toBeNull();
+  }
+  expect(openaiAgentsSetup('n8n', 'http://localhost:3900')).toBeNull();
+});

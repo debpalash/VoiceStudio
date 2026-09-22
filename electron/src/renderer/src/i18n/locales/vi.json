@@ -2685,7 +2685,8 @@
     "title": "Tích hợp",
     "featured": "Nổi bật",
     "description": "Khám phá các tích hợp và đối tác nổi bật.",
-    "n8nHint": "Nhập quy trình này vào n8n, chỉnh sửa yêu cầu rồi chạy. Giữ VoiceStudio hoạt động. Docker và n8n từ xa cần địa chỉ máy chủ có thể truy cập và thông tin xác thực cần thiết."
+    "n8nHint": "Nhập quy trình này vào n8n, chỉnh sửa yêu cầu rồi chạy. Giữ VoiceStudio hoạt động. Docker và n8n từ xa cần địa chỉ máy chủ có thể truy cập và thông tin xác thực cần thiết.",
+    "openaiAgentsHint": "Trỏ pipeline giọng nói của OpenAI Agents SDK tới VoiceStudio để chuyển giọng nói thành văn bản và văn bản thành giọng nói. Giữ VoiceStudio đang chạy. Với backend từ xa, hãy đặt OMNIVOICE_API_KEY trước khi chạy. Cấu hình mô hình ngôn ngữ của agent riêng."
   },
   "directoryExamples": {
     "example": "Ví dụ trong danh mục",

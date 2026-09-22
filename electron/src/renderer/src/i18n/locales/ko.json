@@ -2685,7 +2685,8 @@
     "title": "연동",
     "featured": "추천",
     "description": "연동 기능과 추천 파트너를 살펴보세요.",
-    "n8nHint": "이 워크플로를 n8n으로 가져와 요청을 편집한 뒤 실행하세요. VoiceStudio를 실행 상태로 유지하세요. Docker 및 원격 n8n에는 접근 가능한 백엔드 주소와 필요한 인증 정보가 있어야 합니다."
+    "n8nHint": "이 워크플로를 n8n으로 가져와 요청을 편집한 뒤 실행하세요. VoiceStudio를 실행 상태로 유지하세요. Docker 및 원격 n8n에는 접근 가능한 백엔드 주소와 필요한 인증 정보가 있어야 합니다.",
+    "openaiAgentsHint": "음성-텍스트 변환과 텍스트-음성 변환을 위해 OpenAI Agents SDK 음성 파이프라인이 VoiceStudio를 사용하도록 설정하세요. VoiceStudio를 계속 실행해 두세요. 원격 백엔드는 실행 전에 OMNIVOICE_API_KEY를 설정하세요. 에이전트의 언어 모델은 별도로 구성합니다."
   },
   "directoryExamples": {
     "example": "디렉터리 예시",

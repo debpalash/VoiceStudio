@@ -2687,7 +2687,8 @@
     "title": "Intégrations",
     "featured": "À la une",
     "description": "Découvrez les intégrations et les partenaires à la une.",
-    "n8nHint": "Importez ce workflow dans n8n, modifiez la requête et exécutez-le. Gardez VoiceStudio ouvert. Docker et les instances n8n distantes nécessitent une adresse de backend accessible et les identifiants requis."
+    "n8nHint": "Importez ce workflow dans n8n, modifiez la requête et exécutez-le. Gardez VoiceStudio ouvert. Docker et les instances n8n distantes nécessitent une adresse de backend accessible et les identifiants requis.",
+    "openaiAgentsHint": "Dirigez le pipeline vocal du OpenAI Agents SDK vers VoiceStudio pour la reconnaissance et la synthèse vocales. Laissez VoiceStudio en marche. Pour un backend distant, définissez OMNIVOICE_API_KEY avant l'exécution. Configurez séparément le modèle de langage de l'agent."
   },
   "directoryExamples": {
     "example": "Exemple du répertoire",

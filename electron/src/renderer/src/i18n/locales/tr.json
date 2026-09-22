@@ -2685,7 +2685,8 @@
     "title": "Entegrasyonlar",
     "featured": "Öne çıkan",
     "description": "Entegrasyonları ve öne çıkan iş ortaklarını keşfedin.",
-    "n8nHint": "Bu iş akışını n8n içine aktarın, isteği düzenleyip çalıştırın. VoiceStudio açık kalsın. Docker ve uzak n8n için erişilebilir bir arka uç adresi ve gerekli kimlik bilgileri gerekir."
+    "n8nHint": "Bu iş akışını n8n içine aktarın, isteği düzenleyip çalıştırın. VoiceStudio açık kalsın. Docker ve uzak n8n için erişilebilir bir arka uç adresi ve gerekli kimlik bilgileri gerekir.",
+    "openaiAgentsHint": "Konuşmadan metne ve metinden konuşmaya için OpenAI Agents SDK ses hattını VoiceStudio'ya yönlendirin. VoiceStudio'yu açık tutun. Uzak bir arka uç için çalıştırmadan önce OMNIVOICE_API_KEY ayarlayın. Ajanın dil modelini ayrıca yapılandırın."
   },
   "directoryExamples": {
     "example": "Dizin örneği",

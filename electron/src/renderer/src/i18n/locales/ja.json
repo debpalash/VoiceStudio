@@ -2685,7 +2685,8 @@
     "title": "連携",
     "featured": "注目",
     "description": "連携機能と注目のパートナーを見つけましょう。",
-    "n8nHint": "このワークフローをn8nにインポートし、リクエストを編集して実行します。VoiceStudioは起動したままにしてください。Dockerやリモートのn8nには、接続可能なバックエンドのアドレスと必要な認証情報を設定してください。"
+    "n8nHint": "このワークフローをn8nにインポートし、リクエストを編集して実行します。VoiceStudioは起動したままにしてください。Dockerやリモートのn8nには、接続可能なバックエンドのアドレスと必要な認証情報を設定してください。",
+    "openaiAgentsHint": "OpenAI Agents SDK の音声パイプラインを VoiceStudio に向けて、音声認識と音声合成に使います。VoiceStudio を起動したままにしてください。リモートのバックエンドでは、実行前に OMNIVOICE_API_KEY を設定してください。エージェントの言語モデルは別途設定します。"
   },
   "directoryExamples": {
     "example": "掲載例",

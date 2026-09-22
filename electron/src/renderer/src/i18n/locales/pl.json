@@ -2689,7 +2689,8 @@
     "title": "Integracje",
     "featured": "Wyróżnione",
     "description": "Odkryj integracje i wyróżnionych partnerów.",
-    "n8nHint": "Zaimportuj ten przepływ do n8n, edytuj żądanie i uruchom go. Pozostaw VoiceStudio uruchomione. Docker i zdalne n8n wymagają dostępnego adresu backendu oraz wymaganych danych uwierzytelniających."
+    "n8nHint": "Zaimportuj ten przepływ do n8n, edytuj żądanie i uruchom go. Pozostaw VoiceStudio uruchomione. Docker i zdalne n8n wymagają dostępnego adresu backendu oraz wymaganych danych uwierzytelniających.",
+    "openaiAgentsHint": "Skieruj potok głosowy OpenAI Agents SDK na VoiceStudio do zamiany mowy na tekst i tekstu na mowę. Pozostaw VoiceStudio uruchomione. W przypadku zdalnego backendu ustaw OMNIVOICE_API_KEY przed uruchomieniem. Model językowy agenta skonfiguruj osobno."
   },
   "directoryExamples": {
     "example": "Przykład katalogowy",

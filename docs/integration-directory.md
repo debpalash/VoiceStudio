@@ -34,7 +34,8 @@ never contain stored credentials. Copying configuration does not prove the clien
 is connected; use its MCP tools/status view to confirm the connection.
 
 The schemas follow the official [Claude Code MCP guide](https://code.claude.com/docs/en/mcp)
-and [Cursor MCP guide](https://cursor.com/docs/mcp). Other than the n8n workflow described below, remaining directory entries are
+and [Cursor MCP guide](https://cursor.com/docs/mcp). Other than the n8n workflow and
+OpenAI Agents snippet described below, remaining directory entries are
 capability references, not implemented connectors. The catalog has one card per
 route, retaining bundled logos and the correct category when entries overlap.
 
@@ -45,3 +46,13 @@ backend's OpenAI-compatible speech endpoint and returns WAV audio. Edit the text
 and voice in n8n, then run it yourself. See [n8n setup](integrations/n8n.md) for
 container networking, credentials and validation. No credentials or automatic
 background requests are exported.
+
+## Voice for OpenAI Agents
+
+The OpenAI Agents detail page shows a copyable Python snippet that points the
+OpenAI Agents SDK voice pipeline at the current backend's OpenAI-compatible API
+(`<backend>/v1`) for both speech recognition and speech. The API key is read
+from `OMNIVOICE_API_KEY` when the script runs and is never written into the
+snippet; tracing is switched off so nothing is uploaded. The agent's language
+model is configured separately. See
+[Agentic voice → OpenAI Agents SDK](agentic-voice.md#openai-agents-sdk).

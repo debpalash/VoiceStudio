@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { useBackendStatus } from '@/hooks/use-backend-status';
 import { mcpSetup } from './mcp-setup';
 import { n8nSetup } from './n8n-setup';
+import { openaiAgentsSetup } from './openai-agents-setup';
 import { saveLocalFile } from '@/lib/local-export';
 import { describeError } from '@/lib/api/client';
 import { ArrowLeftIcon, ExternalLinkIcon, BlocksIcon } from 'lucide-react';
@@ -30,7 +31,8 @@ export function IntegrationDetailPage() {
   const backend = useBackendStatus();
   const [saving, setSaving] = useState(false);
   const workflow = useMemo(() => n8nSetup(slug ?? '', backend.baseUrl), [slug, backend.baseUrl]);
-  const setup = workflow ?? mcpSetup(slug ?? '', backend.baseUrl);
+  const agents = openaiAgentsSetup(slug ?? '', backend.baseUrl);
+  const setup = workflow ?? agents ?? mcpSetup(slug ?? '', backend.baseUrl);
   const entry = getIntegrationBySlug(slug ?? '');
   if (!entry) {
     return (
@@ -82,11 +84,13 @@ export function IntegrationDetailPage() {
         </section>
         {setup && (
           <section className="integration-detail-panel space-y-3">
-            <h3>{workflow ? entry.name : t('settings.mcp_title')}</h3>
+            <h3>{workflow || agents ? entry.name : t('settings.mcp_title')}</h3>
             <p>
-              {t(workflow ? 'integrationCatalog.n8nHint' : 'integrationCatalog.setupHint', {
-                file: setup.file,
-              })}
+              {agents
+                ? t('integrationCatalog.openaiAgentsHint')
+                : t(workflow ? 'integrationCatalog.n8nHint' : 'integrationCatalog.setupHint', {
+                    file: setup.file,
+                  })}
             </p>
             <pre className="max-h-80 overflow-auto rounded-lg bg-muted/40 p-4 text-xs">
               <code>{setup.text}</code>
@@ -126,7 +130,7 @@ export function IntegrationDetailPage() {
                 >
                   {t('clone.download')}
                 </Button>
-              ) : (
+              ) : agents ? null : (
                 <Link to="/settings/sharing">{t('settings.mcp_title')}</Link>
               )}
               <a href={setup.docs} target="_blank" rel="noopener noreferrer">
