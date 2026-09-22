@@ -92,6 +92,13 @@ class SubprocessASRBackend(SubprocessBackend):
             return ASR_RECV_TIMEOUT_S
         return max(30.0, v)
 
+    def supports_translation(self) -> bool:
+        # Same model resolution as the sidecar (_asr_sidecar/main.py).
+        from services.asr_backend import faster_whisper_model_id, whisper_checkpoint_translates
+        return whisper_checkpoint_translates(
+            os.environ.get("ASR_MODEL_FW") or faster_whisper_model_id()
+        )
+
     def transcribe(self, audio_path: str, *, word_timestamps: bool = True,
                    language: str | None = None, initial_prompt: str | None = None,
                    temperature: float | None = None,

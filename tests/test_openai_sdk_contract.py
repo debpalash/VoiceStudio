@@ -288,9 +288,13 @@ def _asr(monkeypatch, backend):
 class _WhisperLike:
     id = "fake-whisper"
 
-    def __init__(self, language="de"):
+    def __init__(self, language="de", translates=True):
         self.calls = []
         self.language = language
+        self.translates = translates
+
+    def supports_translation(self):
+        return self.translates
 
     def transcribe(self, audio_path, *, word_timestamps=True, language=None,
                    initial_prompt=None, temperature=None, task="transcribe"):
@@ -394,6 +398,36 @@ def test_translation_uses_whisper_translate_task(client, monkeypatch):
     res = client.audio.translations.create(model="whisper-1", file=_AUDIO, response_format="verbose_json")
     assert fake.calls[-1]["task"] == "translate"
     assert res.language == "en"
+
+
+def test_translation_refused_for_transcription_only_checkpoint(client, monkeypatch):
+    """Whisper turbo ignores task=translate and returns the source language;
+    that must be a 400, never source-language text labelled English."""
+    fake = _WhisperLike(translates=False)
+    _asr(monkeypatch, fake)
+    with pytest.raises(openai.BadRequestError) as ei:
+        client.audio.translations.create(model="whisper-1", file=_AUDIO)
+    assert ei.value.body["code"] == "unsupported_task"
+    assert "turbo" in ei.value.body["message"]
+    assert not fake.calls
+
+
+@pytest.mark.parametrize(("name", "ok"), [
+    ("large-v3", True),
+    ("Systran/faster-whisper-large-v3", True),
+    ("openai/whisper-large-v3-turbo", False),
+    ("deepdml/faster-whisper-large-v3-turbo-ct2", False),
+    ("mlx-community/whisper-large-v3-turbo", False),
+    ("distil-large-v3", False),
+    ("small.en", False),
+])
+def test_whisper_checkpoint_translation_capability(name, ok):
+    from services.asr_backend import FasterWhisperBackend, whisper_checkpoint_translates
+
+    assert whisper_checkpoint_translates(name) is ok
+    b = FasterWhisperBackend.__new__(FasterWhisperBackend)
+    b._model_name = name
+    assert b.supports_translation() is ok
 
 
 def test_translation_on_engine_that_cannot_translate_is_clear_400(client, monkeypatch):

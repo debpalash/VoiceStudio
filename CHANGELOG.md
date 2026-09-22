@@ -20,7 +20,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 - Malayalam dubs and audiobooks speak numbers, percentages, and decimals in Malayalam instead of reading raw digits (#2280) — thanks @nikhilkilivayil!
 - Download a chapter cue sheet (`HH:MM:SS<TAB>Title`) after a Stories or Audiobook render; timestamps match the M4B's embedded chapters and give MP3 portable chapters (#2278) — thanks @shivsin25!
 - The OpenAI Agents integration page gives a copyable snippet that runs the Agents SDK voice pipeline on VoiceStudio (#2290)
-- The OpenAI-compatible API adds `GET /v1/models` and `POST /v1/audio/translations` (Whisper engines) (#2290)
+- The OpenAI-compatible API adds `GET /v1/models` and `POST /v1/audio/translations` (multilingual Whisper models; turbo models are refused) (#2290)
 - Speech requests accept `stream_format` (`audio` or `sse`) and OpenAI's `{"id": ...}` voice object (#2290)
 - Transcriptions pass `language`, `prompt` and `temperature` to Whisper engines and return `words` with `timestamp_granularities[]=word` (#2290)
 

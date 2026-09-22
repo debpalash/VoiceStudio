@@ -388,6 +388,18 @@ def whisper_request_options(language, initial_prompt, temperature, task) -> dict
     return opts
 
 
+def whisper_checkpoint_translates(model_name: str | None) -> bool:
+    """Whether a Whisper checkpoint was trained for speech→English translation.
+
+    Turbo (large-v3-turbo) was fine-tuned on transcription data only and
+    returns the source language even with ``task="translate"``; English-only
+    ``*.en`` models and Distil-Whisper checkpoints are English-only too. Those
+    must be refused, not answered with untranslated text labelled English.
+    """
+    name = (model_name or "").lower()
+    return not ("turbo" in name or name.endswith(".en") or "distil" in name)
+
+
 class ASRBackend(ABC):
     id: str = "base"
     display_name: str = "Base ASR"
@@ -420,6 +432,11 @@ class ASRBackend(ABC):
     @abstractmethod
     def is_available(cls) -> tuple[bool, str]:
         ...
+
+    def supports_translation(self) -> bool:
+        """Whether ``transcribe(task="translate")`` really yields English.
+        Default False; Whisper backends answer from their loaded checkpoint."""
+        return False
 
     @abstractmethod
     def transcribe(self, audio_path: str, *, word_timestamps: bool = True) -> dict:
@@ -986,6 +1003,9 @@ class WhisperXBackend(ASRBackend):
         to faster-whisper's native word timestamps (already in result)."""
         return load_align_model(language_code, self._device)
 
+    def supports_translation(self) -> bool:
+        return whisper_checkpoint_translates(self._model_name)
+
     def transcribe(self, audio_path: str, *, word_timestamps: bool = True,
                    language: str | None = None, task: str = "transcribe") -> dict:
         import whisperx  # used for whisperx.align() below
@@ -1173,6 +1193,9 @@ class FasterWhisperBackend(ASRBackend):
             # the last error.
             raise last_err
 
+    def supports_translation(self) -> bool:
+        return whisper_checkpoint_translates(self._model_name)
+
     def transcribe(self, audio_path: str, *, word_timestamps: bool = True,
                    language: str | None = None, initial_prompt: str | None = None,
                    temperature: float | None = None,
@@ -1285,6 +1308,9 @@ class MLXWhisperBackend(ASRBackend):
         # registry scan (Wave 4.4).
         except (ImportError, OSError, RuntimeError) as e:
             return False, f"mlx-whisper unavailable: {e}"
+
+    def supports_translation(self) -> bool:
+        return whisper_checkpoint_translates(self._model_name)
 
     def transcribe(self, audio_path: str, *, word_timestamps: bool = True,
                    language: str | None = None, initial_prompt: str | None = None,
@@ -1539,6 +1565,12 @@ class PyTorchWhisperBackend(ASRBackend):
             torch.cuda.empty_cache()
         except Exception:
             pass  # Some builds have no CUDA cache to release.
+
+    def supports_translation(self) -> bool:
+        # A reused TTS-model ASR head may differ from the env default: ask the
+        # loaded pipeline first.
+        loaded = getattr(getattr(self._pipe, "model", None), "name_or_path", None)
+        return whisper_checkpoint_translates(loaded or self._model_name())
 
     def transcribe(self, audio_path: str, *, word_timestamps: bool = True,
                    language: str | None = None, task: str = "transcribe") -> dict:
@@ -2503,6 +2535,10 @@ class OpenAICompatASRBackend(ASRBackend):
             max_retries=0,
             http_client=DefaultHttpxClient(follow_redirects=False),
         )
+
+    def supports_translation(self) -> bool:
+        # The remote server's own /audio/translations decides (and errors).
+        return True
 
     def transcribe(self, audio_path: str, *, word_timestamps: bool = True,
                    language: str | None = None, initial_prompt: str | None = None,

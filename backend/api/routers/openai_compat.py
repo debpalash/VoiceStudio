@@ -983,7 +983,11 @@ async def _transcribe_request(
             if explicit_engine and getattr(backend, "id", None) != explicit_engine:
                 raise _ModelNotActive(explicit_engine, getattr(backend, "id", "?"))
             extra = _backend_request_kwargs(backend, options)
-            if task == "translate" and "task" not in extra:
+            if task == "translate" and not (
+                "task" in extra and getattr(backend, "supports_translation", lambda: False)()
+            ):
+                # Includes Whisper turbo / English-only checkpoints, which
+                # would return the source language labelled as English.
                 raise _TaskUnsupported(backend.id)
             return backend.transcribe(tmp_path, word_timestamps=word_ts, **extra)
 
@@ -1056,9 +1060,12 @@ async def _transcribe_request(
     except _TaskUnsupported as e:
         raise OpenAIError(
             400,
-            f"The active speech-recognition engine '{e}' cannot translate. Select a "
-            "Whisper engine (faster-whisper, whisperx, mlx-whisper or pytorch-whisper) "
-            "in Model Catalogue, or use /v1/audio/transcriptions.",
+            f"The active speech-recognition engine '{e}' cannot translate with its "
+            "current model. Translation needs a multilingual Whisper checkpoint "
+            "(large-v3, medium, …) on faster-whisper, whisperx, mlx-whisper or "
+            "pytorch-whisper; turbo, distil and English-only (.en) models are "
+            "transcription-only. Change it in Model Catalogue, or use "
+            "/v1/audio/transcriptions.",
             param="model", code="unsupported_task",
         )
     except ASRModelMissingError as e:
