@@ -2686,7 +2686,7 @@
     "featured": "Hervorgehoben",
     "description": "Entdecke Integrationen und hervorgehobene Partner.",
     "n8nHint": "Importiere diesen Workflow in n8n, bearbeite die Anfrage und führe ihn aus. Lass VoiceStudio laufen. Docker und entfernte n8n-Instanzen benötigen eine erreichbare Backend-Adresse und gegebenenfalls Zugangsdaten.",
-    "openaiAgentsHint": "Richte die Voice-Pipeline des OpenAI Agents SDK für Sprache-zu-Text und Text-zu-Sprache auf VoiceStudio aus. Lass VoiceStudio laufen. Setze für ein entferntes Backend vor dem Start OMNIVOICE_API_KEY. Das Sprachmodell des Agenten wird separat konfiguriert."
+    "openaiAgentsHint": "Richte die Voice-Pipeline des OpenAI Agents SDK für Sprache-zu-Text und Text-zu-Sprache auf VoiceStudio aus. Lass VoiceStudio laufen. Setze für ein entferntes Backend vor dem Start OMNIVOICE_API_KEY. Setze AGENT_LLM_BASE_URL und AGENT_LLM_MODEL auf den Sprachmodell-Server, den dein Agent nutzen soll."
   },
   "directoryExamples": {
     "example": "Verzeichnisbeispiel",

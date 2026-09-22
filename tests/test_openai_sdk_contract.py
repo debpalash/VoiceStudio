@@ -363,6 +363,31 @@ def test_transcription_errors_are_openai_shaped(client, monkeypatch):
     assert ei.value.body["param"] == "response_format"
 
 
+def test_asr_engine_id_must_be_the_engine_that_serves(client, monkeypatch):
+    """A concrete VoiceStudio ASR id is never silently served by another engine."""
+    from services import asr_backend
+
+    fake = _WhisperLike()
+    _asr(monkeypatch, fake)
+    monkeypatch.setitem(asr_backend._REGISTRY, "fake-whisper", _WhisperLike)
+    monkeypatch.setitem(asr_backend._REGISTRY, "other-asr", _CtcLike)
+    with pytest.raises(openai.BadRequestError) as ei:
+        client.audio.transcriptions.create(model="other-asr", file=_AUDIO)
+    assert ei.value.body["code"] == "model_not_active"
+    assert "fake-whisper" in ei.value.body["message"]
+    assert client.audio.transcriptions.create(model="fake-whisper", file=_AUDIO).text == "Hallo Welt"
+    # Unregistered names (OpenAI ids, client defaults) still mean "the active engine".
+    assert client.audio.transcriptions.create(model="whisper-large-v3", file=_AUDIO).text == "Hallo Welt"
+
+
+def test_models_list_only_the_active_asr_engine(client, engine, monkeypatch):
+    from services import asr_backend
+
+    monkeypatch.setattr(asr_backend, "active_backend_id", lambda: "faster-whisper")
+    stt = {m.id for m in client.models.list() if m.model_extra["voicestudio"]["kind"] == "stt"}
+    assert stt == {"whisper-1", "gpt-4o-transcribe", "gpt-4o-mini-transcribe", "faster-whisper"}
+
+
 def test_translation_uses_whisper_translate_task(client, monkeypatch):
     fake = _WhisperLike(language="de")
     _asr(monkeypatch, fake)

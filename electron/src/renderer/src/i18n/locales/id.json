@@ -2686,7 +2686,7 @@
     "featured": "Unggulan",
     "description": "Temukan integrasi dan mitra unggulan.",
     "n8nHint": "Impor alur kerja ini ke n8n, edit permintaan, lalu jalankan. Biarkan VoiceStudio berjalan. Docker dan n8n jarak jauh memerlukan alamat backend yang dapat dijangkau serta kredensial yang diperlukan.",
-    "openaiAgentsHint": "Arahkan pipeline suara OpenAI Agents SDK ke VoiceStudio untuk ucapan-ke-teks dan teks-ke-ucapan. Biarkan VoiceStudio tetap berjalan. Untuk backend jarak jauh, atur OMNIVOICE_API_KEY sebelum menjalankan. Konfigurasikan model bahasa agen secara terpisah."
+    "openaiAgentsHint": "Arahkan pipeline suara OpenAI Agents SDK ke VoiceStudio untuk ucapan-ke-teks dan teks-ke-ucapan. Biarkan VoiceStudio tetap berjalan. Untuk backend jarak jauh, atur OMNIVOICE_API_KEY sebelum menjalankan. Atur AGENT_LLM_BASE_URL dan AGENT_LLM_MODEL ke server model bahasa yang harus digunakan agen Anda."
   },
   "directoryExamples": {
     "example": "Contoh direktori",

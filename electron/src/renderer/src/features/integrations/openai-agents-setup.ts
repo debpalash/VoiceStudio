@@ -11,7 +11,7 @@ export function openaiAgentsSetup(slug: string, baseUrl: string) {
   const text = `# pip install "openai-agents[voice]"
 import os
 
-from agents import Agent, set_tracing_disabled
+from agents import Agent, OpenAIChatCompletionsModel, set_tracing_disabled
 from agents.voice import (
     OpenAIVoiceModelProvider,
     SingleAgentVoiceWorkflow,
@@ -29,7 +29,18 @@ voicestudio = AsyncOpenAI(
     api_key=os.environ.get("OMNIVOICE_API_KEY", "not-needed-locally"),
 )
 
-agent = Agent(name="Assistant", instructions="Be brief.")  # configure its LLM separately
+# The agent's language model is yours to choose. Point it at a local
+# OpenAI-compatible server (Ollama, LM Studio, llama.cpp, vLLM, ...); nothing
+# falls back to a hosted model when these are unset.
+llm = AsyncOpenAI(
+    base_url=os.environ["AGENT_LLM_BASE_URL"],  # e.g. http://localhost:11434/v1
+    api_key=os.environ.get("AGENT_LLM_API_KEY", "not-needed-locally"),
+)
+agent = Agent(
+    name="Assistant",
+    instructions="Be brief.",
+    model=OpenAIChatCompletionsModel(model=os.environ["AGENT_LLM_MODEL"], openai_client=llm),
+)
 
 pipeline = VoicePipeline(
     workflow=SingleAgentVoiceWorkflow(agent),

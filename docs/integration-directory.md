@@ -54,5 +54,6 @@ OpenAI Agents SDK voice pipeline at the current backend's OpenAI-compatible API
 (`<backend>/v1`) for both speech recognition and speech. The API key is read
 from `OMNIVOICE_API_KEY` when the script runs and is never written into the
 snippet; tracing is switched off so nothing is uploaded. The agent's language
-model is configured separately. See
+model must be set explicitly (`AGENT_LLM_BASE_URL`, `AGENT_LLM_MODEL`, for a
+local OpenAI-compatible server); the snippet never falls back to a hosted model. See
 [Agentic voice → OpenAI Agents SDK](agentic-voice.md#openai-agents-sdk).

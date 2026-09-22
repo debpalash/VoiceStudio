@@ -28,10 +28,10 @@ service root: `http://localhost:3900/.well-known/voicestudio-speech`.
 | OpenAI route | VoiceStudio support |
 |---|---|
 | `POST /v1/audio/speech` | TTS. `model` = an installed engine id, or an OpenAI model id (`tts-1`, `tts-1-hd`, `gpt-4o-mini-tts` and its dated snapshots) for the active engine. `voice` = a voice-profile id (your clone), an engine preset, or an OpenAI voice name (`alloy`, `ash`, `coral`, … — the engine's default voice). `instructions` becomes the engine's style instruction; OmniVoice keeps only its voice-design tags (such as `female, whisper`) and ignores other prose, and VoiceStudio's own `instruct` wins when both are sent. `speed`, and `stream_format` `audio` (chunked bytes) or `sse` (`speech.audio.delta` events). |
-| `POST /v1/audio/transcriptions` | STT with the active speech-recognition engine; any OpenAI model id works. `language`, `prompt` and `temperature` reach engines that support them (the Whisper family). `response_format` `json`, `text`, `verbose_json` (OpenAI segments, plus `words` with `timestamp_granularities[]=word`), `srt`, `vtt`. `stream=true` is not supported — use the WebSocket below. |
+| `POST /v1/audio/transcriptions` | STT with the active speech-recognition engine; any OpenAI model id works, while a VoiceStudio engine id must name the active engine (400 `model_not_active` otherwise). `language`, `prompt` and `temperature` reach engines that support them (the Whisper family). `response_format` `json`, `text`, `verbose_json` (OpenAI segments, plus `words` with `timestamp_granularities[]=word`), `srt`, `vtt`. `stream=true` is not supported — use the WebSocket below. |
 | `POST /v1/audio/translations` | Speech → English text. Needs a Whisper-family engine (faster-whisper, WhisperX, MLX Whisper, PyTorch Whisper); other engines return a clear 400. |
 | `WS /v1/audio/transcriptions/stream` | Live partial/final STT from PCM or WebM. |
-| `GET /v1/models`, `GET /v1/models/{id}` | OpenAI's model list: the OpenAI aliases above plus every installed TTS and STT engine. |
+| `GET /v1/models`, `GET /v1/models/{id}` | OpenAI's model list: the OpenAI aliases above, every installed TTS engine, and the active STT engine. |
 | `GET /.well-known/voicestudio-speech` | Machine-readable transport discovery. |
 | `GET /v1/audio/voices` | list available voices (VoiceStudio extension). |
 
@@ -113,7 +113,7 @@ Integrations shows this snippet with your backend's address filled in:
 ```python
 import os
 
-from agents import Agent, set_tracing_disabled
+from agents import Agent, OpenAIChatCompletionsModel, set_tracing_disabled
 from agents.voice import (
     OpenAIVoiceModelProvider, SingleAgentVoiceWorkflow, STTModelSettings,
     TTSModelSettings, VoicePipeline, VoicePipelineConfig,
@@ -126,7 +126,16 @@ voicestudio = AsyncOpenAI(
     base_url="http://localhost:3900/v1",
     api_key=os.environ.get("OMNIVOICE_API_KEY", "not-needed-locally"),
 )
-agent = Agent(name="Assistant", instructions="Be brief.")
+# The agent's language model: a local OpenAI-compatible server you choose.
+llm = AsyncOpenAI(
+    base_url=os.environ["AGENT_LLM_BASE_URL"],  # e.g. Ollama: http://localhost:11434/v1
+    api_key=os.environ.get("AGENT_LLM_API_KEY", "not-needed-locally"),
+)
+agent = Agent(
+    name="Assistant",
+    instructions="Be brief.",
+    model=OpenAIChatCompletionsModel(model=os.environ["AGENT_LLM_MODEL"], openai_client=llm),
+)
 
 pipeline = VoicePipeline(
     workflow=SingleAgentVoiceWorkflow(agent),
@@ -144,9 +153,10 @@ The SDK sends a prose default for `TTSModelSettings.instructions`; engines with
 free-text instructions follow it, while OmniVoice ignores it. Set
 `instructions="female, whisper"`-style tags to steer OmniVoice.
 
-Two things stay yours to configure: the agent's **language model** (the
-`Agent` uses OpenAI's hosted models unless you point it at a local
-OpenAI-compatible LLM server), and **input mode** — use `AudioInput` (a
+The agent's **language model** is explicit: set `AGENT_LLM_BASE_URL` and
+`AGENT_LLM_MODEL` to a local OpenAI-compatible server (Ollama, LM Studio,
+llama.cpp, vLLM). The snippet fails fast when they are unset instead of falling
+back to OpenAI's hosted models. **Input mode** stays yours too — use `AudioInput` (a
 recorded turn). `StreamedAudioInput` needs OpenAI's Realtime transcription
 WebSocket, which VoiceStudio does not implement.
 

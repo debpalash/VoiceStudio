@@ -2686,7 +2686,7 @@
     "featured": "Featured",
     "description": "Discover integrations and featured partners.",
     "n8nHint": "Import this workflow into n8n, edit the request, and run it. Keep VoiceStudio running. Docker and remote n8n need a reachable backend address and any required credentials.",
-    "openaiAgentsHint": "Point the OpenAI Agents SDK voice pipeline at VoiceStudio for speech-to-text and text-to-speech. Keep VoiceStudio running. For a remote backend, set OMNIVOICE_API_KEY before running. Configure the agent's language model separately."
+    "openaiAgentsHint": "Point the OpenAI Agents SDK voice pipeline at VoiceStudio for speech-to-text and text-to-speech. Keep VoiceStudio running. For a remote backend, set OMNIVOICE_API_KEY before running. Set AGENT_LLM_BASE_URL and AGENT_LLM_MODEL to the language model server your agent should use."
   },
   "directoryExamples": {
     "example": "Directory example",

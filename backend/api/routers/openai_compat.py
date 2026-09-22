@@ -795,6 +795,25 @@ class _TaskUnsupported(Exception):
     """The active ASR engine cannot perform the requested task (translate)."""
 
 
+class _ModelNotActive(Exception):
+    """``model`` names a VoiceStudio ASR engine that is not the one serving."""
+
+    def __init__(self, requested: str, active: str):
+        super().__init__(requested)
+        self.requested = requested
+        self.active = active
+
+
+def _is_asr_engine_id(model: Optional[str]) -> bool:
+    if not model:
+        return False
+    from services.asr_backend import _REGISTRY
+    try:
+        return model in _REGISTRY
+    except Exception:
+        return False
+
+
 def _backend_request_kwargs(backend, options: dict) -> dict:
     """The subset of OpenAI-derived decode options this backend's
     ``transcribe()`` declares. An engine that can't honour one (e.g. a
@@ -871,7 +890,8 @@ def _openai_words(segments: list[dict]) -> list[dict]:
 
 
 async def _transcribe_request(
-    *, task: str, file: UploadFile, language: Optional[str], prompt: Optional[str],
+    *, task: str, file: UploadFile, model: Optional[str] = None,
+    language: Optional[str], prompt: Optional[str],
     response_format: str, temperature: Optional[float],
     timestamp_granularities: Optional[list[str]] = None, stream: Optional[bool] = None,
 ):
@@ -951,8 +971,15 @@ async def _transcribe_request(
         # The loader does select + ensure_loaded + degrade (#1185). It loads
         # weights, so it belongs inside the pool with the transcribe call —
         # never on the event loop.
+        # OpenAI model ids (and any other name) mean "the active engine". A
+        # VoiceStudio ASR engine id is a concrete choice: serve it only when
+        # it is the engine actually loaded, never silently substitute another.
+        explicit_engine = model if _is_asr_engine_id(model) else None
+
         def _run():
             backend = load_active_asr_backend()
+            if explicit_engine and getattr(backend, "id", None) != explicit_engine:
+                raise _ModelNotActive(explicit_engine, getattr(backend, "id", "?"))
             extra = _backend_request_kwargs(backend, options)
             if task == "translate" and "task" not in extra:
                 raise _TaskUnsupported(backend.id)
@@ -1016,6 +1043,14 @@ async def _transcribe_request(
 
     except HTTPException:
         raise
+    except _ModelNotActive as e:
+        raise OpenAIError(
+            400,
+            f"Speech-recognition engine '{e.requested}' is not the active engine "
+            f"('{e.active}' is). Select it in Model Catalogue, or send an OpenAI model "
+            "id such as 'whisper-1' to use the active engine.",
+            param="model", code="model_not_active",
+        )
     except _TaskUnsupported as e:
         raise OpenAIError(
             400,
@@ -1048,8 +1083,9 @@ async def _transcribe_request(
 
 
 _MODEL_DESC = (
-    "ASR model. Accepts OpenAI ids ('whisper-1', 'gpt-4o-transcribe', "
-    "'gpt-4o-mini-transcribe') — all served by the active engine."
+    "ASR model. OpenAI ids ('whisper-1', 'gpt-4o-transcribe', "
+    "'gpt-4o-mini-transcribe') are served by the active engine; a VoiceStudio "
+    "ASR engine id must name the active engine (400 otherwise)."
 )
 #: The SDK sends list fields as `name[]` in multipart forms; accept both.
 _Granularities = Annotated[
@@ -1086,7 +1122,7 @@ async def create_transcription(
 ):
     """Transcribe audio to text. Compatible with OpenAI's POST /v1/audio/transcriptions."""
     return await _transcribe_request(
-        task="transcribe", file=file, language=language, prompt=prompt,
+        task="transcribe", file=file, model=model, language=language, prompt=prompt,
         response_format=response_format, temperature=temperature,
         timestamp_granularities=(timestamp_granularities or []) + (timestamp_granularities_plain or []),
         stream=stream,
@@ -1104,7 +1140,7 @@ async def create_translation(
     """Translate speech into English text. Compatible with OpenAI's
     POST /v1/audio/translations; needs a Whisper-family ASR engine."""
     return await _transcribe_request(
-        task="translate", file=file, language=None, prompt=prompt,
+        task="translate", file=file, model=model, language=None, prompt=prompt,
         response_format=response_format, temperature=temperature,
     )
 
@@ -1124,20 +1160,27 @@ def _model_entry(model_id: str, kind: str, alias: bool) -> dict:
 
 
 def _model_list() -> list[dict]:
+    """Every id listed here is one the audio routes actually honour: TTS
+    requests route to any installed engine, while transcription always runs
+    on the active ASR engine — so only that one is listed for STT."""
     data = [_model_entry(m, "tts", True) for m in OPENAI_TTS_MODELS]
     data += [_model_entry(m, "stt", True) for m in OPENAI_STT_MODELS]
     seen = {m["id"] for m in data}
-    for kind, module in (("tts", "services.tts_backend"), ("stt", "services.asr_backend")):
-        try:
-            import importlib
-            backends = importlib.import_module(module).list_backends()
-        except Exception:
-            logger.warning("Could not list %s engines for /v1/models", kind, exc_info=True)
-            continue
-        for b in backends:
+    try:
+        from services.tts_backend import list_backends
+        for b in list_backends():
             if b.get("available") and b.get("id") not in seen:
                 seen.add(b["id"])
-                data.append(_model_entry(b["id"], kind, False))
+                data.append(_model_entry(b["id"], "tts", False))
+    except Exception:
+        logger.warning("Could not list TTS engines for /v1/models", exc_info=True)
+    try:
+        from services.asr_backend import active_backend_id
+        active = active_backend_id()
+        if active and active not in seen:
+            data.append(_model_entry(active, "stt", False))
+    except Exception:
+        logger.warning("Could not resolve the active ASR engine for /v1/models", exc_info=True)
     return data
 
 

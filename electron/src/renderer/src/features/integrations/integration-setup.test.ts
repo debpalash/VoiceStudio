@@ -94,6 +94,11 @@ it('points the OpenAI Agents voice pipeline at the current backend without a sto
   expect(setup!.text).toContain('tts_model="gpt-4o-mini-tts"');
   expect(setup!.text).toContain('stt_model="gpt-4o-transcribe"');
   expect(setup!.text).toContain('set_tracing_disabled(True)');
+  // The agent's LLM is explicit and user-chosen: no silent hosted default.
+  expect(setup!.text).toContain(
+    'model=OpenAIChatCompletionsModel(model=os.environ["AGENT_LLM_MODEL"]',
+  );
+  expect(setup!.text).toContain('base_url=os.environ["AGENT_LLM_BASE_URL"]');
   for (const url of [
     '',
     'file:///tmp/backend',
