@@ -2716,7 +2716,8 @@
       "openaiPython": "Python（OpenAI SDK）",
       "dockerRun": "執行容器",
       "dockerCompose": "Docker Compose",
-      "workflow": "n8n 工作流程"
+      "workflow": "n8n 工作流程",
+      "dockerRunPowerShell": "執行容器（Windows PowerShell）"
     },
     "apiBearerHint": "此後端為遠端後端：請在 shell 中將 OMNIVOICE_API_KEY 設為其 API 金鑰。範例會從那裡讀取金鑰，且從不包含金鑰。",
     "apiInsecureHint": "遠端後端的 API 金鑰需要 https://。使用金鑰前，請將此後端置於 https 之後（例如 Tailscale Serve）。",

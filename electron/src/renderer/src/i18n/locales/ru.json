@@ -2720,7 +2720,8 @@
       "openaiPython": "Python (OpenAI SDK)",
       "dockerRun": "Запуск контейнера",
       "dockerCompose": "Docker Compose",
-      "workflow": "Сценарий n8n"
+      "workflow": "Сценарий n8n",
+      "dockerRunPowerShell": "Запуск контейнера (Windows PowerShell)"
     },
     "apiBearerHint": "Этот бэкенд удалённый: задайте в оболочке OMNIVOICE_API_KEY с его API-ключом. Примеры читают ключ оттуда и никогда его не содержат.",
     "apiInsecureHint": "Для удалённого бэкенда API-ключи требуют https://. Разместите бэкенд за https (например, Tailscale Serve), прежде чем использовать ключ.",

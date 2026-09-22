@@ -1,4 +1,4 @@
-import { backendEndpoint } from './mcp-setup';
+import { backendEndpoint, remoteAuth } from './mcp-setup';
 
 /**
  * OpenAI Agents SDK voice pipeline pointed at this backend's OpenAI-compatible
@@ -8,6 +8,12 @@ export function openaiAgentsSetup(slug: string, baseUrl: string) {
   if (slug !== 'openai-agents') return null;
   const url = backendEndpoint(baseUrl, '/v1');
   if (!url) return null;
+  // The key only travels over https to a remote backend (or to loopback,
+  // which ignores it); a remote plain-http URL never gets it.
+  const apiKey =
+    remoteAuth(baseUrl) === 'insecure'
+      ? '"voicestudio"'
+      : 'os.environ.get("OMNIVOICE_API_KEY", "not-needed-locally")';
   const text = `# pip install "openai-agents[voice]"
 import os
 
@@ -26,7 +32,7 @@ set_tracing_disabled(True)  # keep traces on this machine
 
 voicestudio = AsyncOpenAI(
     base_url=${JSON.stringify(url)},
-    api_key=os.environ.get("OMNIVOICE_API_KEY", "not-needed-locally"),
+    api_key=${apiKey},
 )
 
 # The agent's language model is yours to choose. Point it at a local

@@ -2716,7 +2716,8 @@
       "openaiPython": "Python (OpenAI SDK)",
       "dockerRun": "Container starten",
       "dockerCompose": "Docker Compose",
-      "workflow": "n8n-workflow"
+      "workflow": "n8n-workflow",
+      "dockerRunPowerShell": "Container starten (Windows PowerShell)"
     },
     "apiBearerHint": "Deze backend is extern: stel OMNIVOICE_API_KEY in je shell in op de API-sleutel. De voorbeelden lezen hem daaruit en bevatten hem nooit.",
     "apiInsecureHint": "API-sleutels vereisen https:// bij een externe backend. Zet deze backend achter https (bijvoorbeeld Tailscale Serve) voordat je een sleutel gebruikt.",

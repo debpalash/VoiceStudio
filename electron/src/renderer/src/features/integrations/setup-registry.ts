@@ -33,7 +33,7 @@ export interface SetupBlock {
   hintKey?: string;
   hintValues?: Record<string, string>;
   /** Code-block language, shown to screen readers and used as a CSS hook. */
-  language: 'json' | 'toml' | 'shell' | 'python' | 'yaml' | 'text';
+  language: 'json' | 'toml' | 'shell' | 'powershell' | 'python' | 'yaml' | 'text';
   text: string;
   /** Offer "Save as…" with this file name (and MIME type). */
   download?: { file: string; type: string };
@@ -88,6 +88,23 @@ function dockerRun(image: string) {
   ].join('\n');
 }
 
+/** Windows PowerShell (5.1 and 7): backtick continuations, a CSPRNG key. */
+function dockerRunPowerShell(image: string) {
+  return [
+    '$bytes = New-Object byte[] 32',
+    '[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)',
+    "$env:OMNIVOICE_API_KEY = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')",
+    '',
+    'docker run -d --name omnivoice `',
+    '  -p 127.0.0.1:3900:3900 `',
+    '  -e OMNIVOICE_API_KEY="$env:OMNIVOICE_API_KEY" `',
+    '  -v omnivoice-data:/app/omnivoice_data `',
+    '  -v "${HOME}/.cache/huggingface:/root/.cache/huggingface" `',
+    `  ${image}:stable`,
+    '',
+  ].join('\n');
+}
+
 function dockerCompose(image: string) {
   return [
     'services:',
@@ -120,6 +137,12 @@ function container(image: string, docs: string): IntegrationSetup {
         hintKey: 'integrationCatalog.dockerHint',
         language: 'shell',
         text: dockerRun(image),
+      },
+      {
+        id: 'run-powershell',
+        titleKey: 'integrationCatalog.block.dockerRunPowerShell',
+        language: 'powershell',
+        text: dockerRunPowerShell(image),
       },
       {
         id: 'compose',

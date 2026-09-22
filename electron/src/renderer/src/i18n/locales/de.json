@@ -2716,7 +2716,8 @@
       "openaiPython": "Python (OpenAI SDK)",
       "dockerRun": "Container starten",
       "dockerCompose": "Docker Compose",
-      "workflow": "n8n-Workflow"
+      "workflow": "n8n-Workflow",
+      "dockerRunPowerShell": "Container starten (Windows PowerShell)"
     },
     "apiBearerHint": "Dieses Backend ist entfernt: Setze OMNIVOICE_API_KEY in deiner Shell auf seinen API-Schlüssel. Die Beispiele lesen ihn von dort und enthalten ihn nie.",
     "apiInsecureHint": "API-Schlüssel brauchen bei einem entfernten Backend https://. Stelle dieses Backend hinter https (zum Beispiel Tailscale Serve), bevor du einen Schlüssel verwendest.",

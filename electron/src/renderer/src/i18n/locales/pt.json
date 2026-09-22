@@ -2718,7 +2718,8 @@
       "openaiPython": "Python (SDK da OpenAI)",
       "dockerRun": "Executar o contentor",
       "dockerCompose": "Docker Compose",
-      "workflow": "Fluxo do n8n"
+      "workflow": "Fluxo do n8n",
+      "dockerRunPowerShell": "Executar o contentor (Windows PowerShell)"
     },
     "apiBearerHint": "Este backend é remoto: defina OMNIVOICE_API_KEY na shell com a respetiva chave de API. Os exemplos leem-na daí e nunca a contêm.",
     "apiInsecureHint": "As chaves de API exigem https:// num backend remoto. Coloque este backend atrás de https (por exemplo, Tailscale Serve) antes de usar uma chave.",

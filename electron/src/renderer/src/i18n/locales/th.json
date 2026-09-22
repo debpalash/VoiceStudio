@@ -2716,7 +2716,8 @@
       "openaiPython": "Python (OpenAI SDK)",
       "dockerRun": "รันคอนเทนเนอร์",
       "dockerCompose": "Docker Compose",
-      "workflow": "เวิร์กโฟลว์ n8n"
+      "workflow": "เวิร์กโฟลว์ n8n",
+      "dockerRunPowerShell": "รันคอนเทนเนอร์ (Windows PowerShell)"
     },
     "apiBearerHint": "แบ็กเอนด์นี้อยู่ระยะไกล ให้ตั้งค่า OMNIVOICE_API_KEY ในเชลล์เป็นคีย์ API ของแบ็กเอนด์ ตัวอย่างจะอ่านคีย์จากที่นั่นและไม่มีคีย์อยู่ในตัว",
     "apiInsecureHint": "คีย์ API ต้องใช้ https:// กับแบ็กเอนด์ระยะไกล ให้วางแบ็กเอนด์นี้หลัง https (เช่น Tailscale Serve) ก่อนใช้คีย์",

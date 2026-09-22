@@ -57,7 +57,7 @@ URL with copyable `curl` and OpenAI Python SDK snippets for
 `/v1/audio/speech` and `/v1/audio/transcriptions`. Loopback requests need no
 key; remote ones need the backend's API key (see [API authentication](api-auth.md)).
 
-The **Docker** and **GitHub Container Registry** pages give a `docker run` and a
+The **Docker** and **GitHub Container Registry** pages give a `docker run` (POSIX shell and Windows PowerShell) and a
 Compose snippet for `palashdeb/omnivoice-studio:stable` and
 `ghcr.io/debpalash/omnivoice-studio:stable`. `:stable` is the latest tagged
 release; `:latest` is the rolling preview built from `main`. See the

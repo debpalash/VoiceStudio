@@ -2716,7 +2716,8 @@
       "openaiPython": "Python (OpenAI SDK)",
       "dockerRun": "Kör containern",
       "dockerCompose": "Docker Compose",
-      "workflow": "n8n-arbetsflöde"
+      "workflow": "n8n-arbetsflöde",
+      "dockerRunPowerShell": "Kör containern (Windows PowerShell)"
     },
     "apiBearerHint": "Den här backenden är fjärransluten: sätt OMNIVOICE_API_KEY i ditt skal till dess API-nyckel. Exemplen läser den därifrån och innehåller den aldrig.",
     "apiInsecureHint": "API-nycklar kräver https:// för en fjärrbackend. Placera backenden bakom https (till exempel Tailscale Serve) innan du använder en nyckel.",

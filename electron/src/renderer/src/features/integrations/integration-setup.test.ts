@@ -245,3 +245,23 @@ it('points the OpenAI Agents voice pipeline at the current backend without a sto
     'base_url="http://127.0.0.1:3912/v1"',
   );
 });
+
+it('gives Windows a PowerShell docker run with a CSPRNG key and backtick continuations', () => {
+  for (const slug of ['docker', 'github-container-registry']) {
+    const blocks = INTEGRATION_SETUPS[slug].blocks('')!;
+    const ps = blocks.find((block) => block.id === 'run-powershell')!;
+    expect(ps.language).toBe('powershell');
+    expect(ps.text).not.toMatch(/^export |\\$/m);
+    expect(ps.text).toContain('RandomNumberGenerator');
+    expect(ps.text).toContain('-e OMNIVOICE_API_KEY="$env:OMNIVOICE_API_KEY" `');
+    expect(ps.text.trimEnd()).toMatch(/omnivoice-studio:stable$/);
+  }
+});
+it('never hands the Agents SDK the API key for a remote plain-http backend', () => {
+  expect(openaiAgentsSetup('openai-agents', 'http://192.168.1.5:3900')!.text).toContain(
+    'api_key="voicestudio"',
+  );
+  expect(openaiAgentsSetup('openai-agents', 'http://127.0.0.1:3900')!.text).toContain(
+    'os.environ.get("OMNIVOICE_API_KEY", "not-needed-locally")',
+  );
+});

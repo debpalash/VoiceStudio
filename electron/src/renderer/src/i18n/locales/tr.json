@@ -2716,7 +2716,8 @@
       "openaiPython": "Python (OpenAI SDK)",
       "dockerRun": "Konteyneri çalıştır",
       "dockerCompose": "Docker Compose",
-      "workflow": "n8n iş akışı"
+      "workflow": "n8n iş akışı",
+      "dockerRunPowerShell": "Konteyneri çalıştır (Windows PowerShell)"
     },
     "apiBearerHint": "Bu arka uç uzakta: kabuğunuzda OMNIVOICE_API_KEY değerini API anahtarına ayarlayın. Örnekler anahtarı oradan okur ve asla içermez.",
     "apiInsecureHint": "Uzak bir arka uçta API anahtarları https:// gerektirir. Anahtar kullanmadan önce bu arka ucu https arkasına alın (örneğin Tailscale Serve).",
