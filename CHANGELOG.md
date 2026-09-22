@@ -11,6 +11,11 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 **Highlights**
 
 - Finished audiobook chapters survive a data-folder move or a power-off mid-render (#2279)
+- Malayalam speech reads numbers in Malayalam (#2280) — thanks @nikhilkilivayil!
+
+### Added
+
+- Malayalam dubs and audiobooks speak numbers, percentages, and decimals in Malayalam instead of reading raw digits (#2280) — thanks @nikhilkilivayil!
 
 ### Fixed
 
