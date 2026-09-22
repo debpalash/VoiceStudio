@@ -80,6 +80,8 @@ _CHANGE_CASES = [
     ("ml-IN", "25000 രൂപ", "ഇരുപത്തയ്യായിരം രൂപ"),
     # Digits inside bracket grammar are masked; the rest still verbalizes.
     ("Malayalam", "[pause 300ms] 42 [voice:Anu]", "[pause 300ms] നാൽപത്തിരണ്ട് [voice:Anu]"),
+    # Native Malayalam digits are digits too.
+    ("Malayalam", "൪൨ പേർ", "നാൽപത്തിരണ്ട് പേർ"),
     # Digit ranges: the tilde has to be SPOKEN or the engine mashes the two
     # numbers into one ("20~30초" was read as "이십삼"). Spacing is part of the
     # per-language form — a Korean postposition binds to its numeral, Japanese
@@ -157,6 +159,13 @@ _UNCHANGED_CASES = [
     ("Malayalam", "കോഡ് 007"),                    # leading-zero code
     ("Malayalam", "1234567 എന്ന നമ്പർ"),           # 7+ digits: an ID
     ("Malayalam", "[pause 300ms] ശബ്ദം [rate 0.9]"),  # bracket grammar untouched
+    # Python's \w misses combining marks: a number glued to a vowel sign or
+    # virama is part of a word ("10ാം" = 10th), never spliced into it.
+    ("Malayalam", "10ാം ക്ലാസ്"),
+    ("Malayalam", "ക്ലാസ്10 ജയിച്ചു"),
+    ("Malayalam", "കോടി150"),
+    ("Malayalam", "കോഡ് ൦൦൭"),                    # native leading-zero code
+    ("ar", "الرمز ٠٠٧"),                         # same class on the num2words path
     # Digit ranges: only the tilde family is a range mark. Everything else that
     # sits between digits means something other than "to".
     ("Korean", "대략 20-30초"),                   # ASCII hyphen: also dates/phones

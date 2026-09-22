@@ -63,6 +63,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import unicodedata
 from typing import Callable, Optional
 
 logger = logging.getLogger("omnivoice.text_normalization")
@@ -480,6 +481,26 @@ _INTEGER_RE = re.compile(
 _ORDINAL_SUFFIX = {1: "st", 2: "nd", 3: "rd"}
 
 
+def _glued_to_mark(m: re.Match) -> bool:
+    """True when the match touches a combining mark (``ാ``, ``്``, …).
+
+    Python's ``\\w`` excludes Unicode marks, so the regex boundaries above
+    treat "10ാം" or "ക്ലാസ്10" as isolated numbers and splice words into the
+    middle of a syllable. A mark belongs to the word it attaches to: leave it.
+    """
+    s, start, end = m.string, m.start(), m.end()
+    return any(
+        unicodedata.category(ch).startswith("M")
+        for ch in (s[start - 1:start], s[end:end + 1]) if ch
+    )
+
+
+def _leading_zero(raw: str) -> bool:
+    """``(?!0\\d)`` only sees ASCII zero; ``\\d`` also matches native digits
+    (൦൦൭, ٠٠٧), which must stay codes just like "007"."""
+    return len(raw) > 1 and unicodedata.digit(raw[0], -1) == 0
+
+
 def _correct_ordinal_suffix(n: int) -> str:
     if 10 <= n % 100 <= 13:
         return "th"
@@ -494,6 +515,8 @@ def _numbers_to_words(text: str, lang: str) -> str:
 
     def _safe(m: re.Match, render: Callable[[re.Match], str]) -> str:
         # Any num2words hiccup leaves this occurrence untouched.
+        if _glued_to_mark(m):
+            return m.group(0)
         try:
             return render(m)
         except Exception:  # noqa: BLE001 — conservative: never mangle
@@ -551,6 +574,8 @@ def _numbers_to_words(text: str, lang: str) -> str:
 
     def _integer(m: re.Match) -> str:
         raw = m.group(1)
+        if _leading_zero(raw):
+            return m.group(0)
         n = int(raw)
         if len(raw) == 4 and 1500 <= n <= 2099:
             # Bare 4-digit numbers in this range read as years
@@ -594,6 +619,8 @@ def _numbers_to_words_native(text: str, lang: str) -> str:
 
     def _safe(m: re.Match, render: Callable[[re.Match], str]) -> str:
         """Render one match; on any error return the original text."""
+        if _glued_to_mark(m):
+            return m.group(0)
         try:
             return render(m)
         except Exception:  # noqa: BLE001 — conservative: never mangle
@@ -603,7 +630,11 @@ def _numbers_to_words_native(text: str, lang: str) -> str:
     text = _DECIMAL_RE.sub(
         lambda m: _safe(m, lambda m: mod.decimal(int(m.group(1)), m.group(2))), text
     )
-    return _INTEGER_RE.sub(lambda m: _safe(m, lambda m: mod.cardinal(int(m.group(1)))), text)
+    def _integer(m: re.Match) -> str:
+        raw = m.group(1)
+        return m.group(0) if _leading_zero(raw) else mod.cardinal(int(raw))
+
+    return _INTEGER_RE.sub(lambda m: _safe(m, _integer), text)
 
 
 # ── Public API ───────────────────────────────────────────────────────────────
