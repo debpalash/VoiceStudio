@@ -10,7 +10,9 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ## [0.5.5] — 2026-09-22
 
-**Clone your voice into another language without losing your chosen output language.** Switching references now keeps the script's language, and Auto follows the target text. This update also improves Electron installation, runtime checks, and local diagnostics when generation fails.
+**Your voice, another language.** Keep your chosen output language when changing voice samples. For example, an English reference can read a French script with a multilingual engine; Auto follows the script instead of inheriting the reference profile's language.
+
+This release also makes Electron installation easier to recover, fixes script-editor and integration-catalog glitches, and makes failure reports more useful.
 
 **Download**
 
@@ -21,43 +23,44 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 | macOS Intel | [DMG](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.5/VoiceStudio-Electron-0.5.5-mac-x64.dmg) |
 | Linux x64 | [AppImage](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.5/VoiceStudio-Electron-0.5.5-linux-x64.AppImage) · [deb](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.5/VoiceStudio-Electron-0.5.5-linux-x64.deb) |
 
-Already using Electron? Install over your existing app to keep your voices, projects, and models. Moving from Tauri? Close the app, back up your data directory, install Electron, and verify your voices and projects before removing Tauri. Follow the [migration guide](https://github.com/debpalash/VoiceStudio/blob/v0.5.5/docs/electron-migration.md). Tauri v0.5.3 remains its final release; its updater cannot install Electron. Intel Macs retain their UI/remote-backend support.
+**Upgrading:** Install over your existing Electron app to keep voices, projects, and models. If setup asks, choose **Install local runtime** to refresh its dependencies. The 0.5.4 → 0.5.5 upgrade was tested with a saved voice and settings.
+
+**Moving from Tauri:** Close the app, back up its data directory, install Electron, and verify your voices and projects before removing Tauri. Follow the [migration guide](https://github.com/debpalash/VoiceStudio/blob/v0.5.5/docs/electron-migration.md). Tauri v0.5.3 remains the final Tauri release; its updater cannot install Electron. Intel Macs support the UI with a remote backend.
+
+**Installer trust:** Electron installers are unsigned or ad-hoc signed and are not Apple-notarized. Windows/macOS may show trust warnings. macOS automatic updates are unverified; use manual installer updates. See the [installation guide](https://github.com/debpalash/VoiceStudio/blob/v0.5.5/docs/install/troubleshooting.md). Archived Tauri updater signatures are unchanged.
 
 **Highlights**
 
-- Clone into another language without reference changes resetting the output language (#2272)
-- Install the latest Electron release, a selected version, or build main with one command; uninstall without losing data (#2269)
-- Electron crash details identify native faults instead of showing only numeric exit codes (#2267) — thanks @shivsin25!
-- Clicking the script editor places the cursor without reopening the expression menu (#2268) — thanks @bipul0525!
+- Keep the target language when choosing, uploading, or saving a reference voice (#2272)
+- Install an Electron release or build main with one command; uninstall without losing data (#2269)
+- Get clearer crash reports and local render diagnostics when something goes wrong (#2267, #2266) — thanks @shivsin25!
+- Place the script cursor without reopening the expression menu (#2268) — thanks @bipul0525!
 
 ### Added
 
-- Local render-stage timings and operation counts in diagnostic bundles, with long-form performance regression budgets (#2266) — thanks @shivsin25!
+- Diagnostic bundles include local render-stage timings and operation counts without recording script text or audio (#2266) — thanks @shivsin25!
 
 ### Fixed
 
-- ASR initialization errors preserve the actual cause instead of inventing a dependency mismatch and unconditional reinstall advice (#2128) — thanks @Sip19!
-
-- Fresh Electron runtime setup uses managed Python and checks SentencePiece before marking setup complete (#2270) — thanks @mamislimen!
-- Integrations with a shared vendor URL remain distinct when searching and filtering the catalog (#2273)
-
-- Cloning keeps the chosen output language when switching references, and explicit Auto follows the target script instead of the sample language (#2272)
-
-- macOS shell installs refresh app registration, block replacement while running, and move uninstalled apps to Trash instead of leaving Launchpad-visible copies (#2269)
-- Electron upgrades preserve custom and portable storage paths recorded by archived setup (#2269)
-- Bug reports distinguish native faults from Python errors and preserve signed Windows codes and POSIX signals (#2267) — thanks @shivsin25!
+- Explicit Auto follows the target script; changing reference voices no longer resets the output language (#2272)
+- Fresh runtime setup uses managed Python and verifies SentencePiece before reporting success (#2270) — thanks @mamislimen!
+- Speech-recognition startup errors retain their actual cause and avoid unrelated reinstall advice (#2128) — thanks @Sip19!
+- Integration cards stay distinct when vendors share a URL, including after searching and filtering (#2273)
+- macOS shell installs refresh app registration, prevent replacement while running, and move removed apps to Trash (#2269)
+- Upgrades retain custom and portable storage paths recorded by archived setup (#2269)
+- Crash reports distinguish native faults, Python errors, and termination signals (#2267) — thanks @shivsin25!
 
 ### Contributors
 
-- @Shivendra-Coherent and @shivsin25 — native-crash diagnostics, contributed through #2267.
-- @bipul0525 — script-editor cursor interaction, contributed through #2268.
+- @Shivendra-Coherent and @shivsin25 — native-crash diagnostics (#2267).
+- @bipul0525 — script-editor cursor interaction (#2268).
 - @debpalash — cloning, installation, runtime recovery, integrations, and release validation.
 
 ### Bug reporters
 
 - @shivsin25 — long-form rendering diagnostics (#2266).
 - @Sip19 — speech-recognition initialization errors (#2128).
-- @mamislimen and @quan0pek — native backend crashes that informed runtime checks and clearer reporting (#2270, #2250); affected-host confirmation remains pending.
+- @mamislimen and @quan0pek — native backend crash reports (#2270, #2250); affected-host confirmation remains pending.
 
 ## [0.5.4] — 2026-09-20
 
