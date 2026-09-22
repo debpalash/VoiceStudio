@@ -10,7 +10,12 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 **Highlights**
 
+- Malayalam speech reads numbers in Malayalam (#2280) — thanks @nikhilkilivayil!
 - Windows backend keeps answering after antivirus or VPN software resets a connection (#2276)
+
+### Added
+
+- Malayalam dubs and audiobooks speak numbers, percentages, and decimals in Malayalam instead of reading raw digits (#2280) — thanks @nikhilkilivayil!
 
 ### Fixed
 
