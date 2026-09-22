@@ -445,6 +445,25 @@ def test_concurrent_calls_share_one_synthesis(store, fake_engine):
     assert session._inflight == {}
 
 
+def test_shared_synthesis_failure_reaches_every_caller_and_is_not_cached(store, fake_engine, monkeypatch):
+    def boom(self, text, **kw):
+        raise RuntimeError("engine exploded")
+
+    monkeypatch.setattr(fake_engine, "generate", boom)
+
+    async def both():
+        return await asyncio.gather(
+            session.render_ulaw_all("Hello.", engine="fake-phone"),
+            session.render_ulaw_all("Hello.", engine="fake-phone"),
+            return_exceptions=True,
+        )
+
+    results = asyncio.run(both())
+    assert all(isinstance(r, Exception) and "exploded" in str(r) for r in results)
+    assert session._inflight == {}
+    assert session.ulaw_cache.get(session._speech_key("Hello.", "", "fake-phone", "")) is None
+
+
 def test_media_stream_rejects_bad_or_reused_token(store, gw, fake_engine):
     from starlette.websockets import WebSocketDisconnect
 

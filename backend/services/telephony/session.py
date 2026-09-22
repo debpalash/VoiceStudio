@@ -328,7 +328,7 @@ class _Render:
     def __init__(self) -> None:
         self.chunks: list[bytes] = []
         self.done = False
-        self.error: BaseException | None = None
+        self.error: Exception | None = None
         self.cond = asyncio.Condition()
         self.task: asyncio.Task | None = None
 
@@ -353,10 +353,11 @@ async def _produce(key: tuple, render: _Render, text: str, voice: str, engine: s
         ):
             await render.publish(await asyncio.to_thread(to_phone_ulaw, wav, sr))
         ulaw_cache.put(key, b"".join(render.chunks))
-    except BaseException as exc:  # noqa: BLE001 — handed to every consumer
+    except asyncio.CancelledError:
+        render.error = RuntimeError("speech synthesis was cancelled")
+        raise
+    except Exception as exc:  # noqa: BLE001 — handed to every consumer
         render.error = exc
-        if isinstance(exc, asyncio.CancelledError):
-            raise
     finally:
         if _inflight.get(key) is render:
             del _inflight[key]
@@ -396,8 +397,9 @@ async def render_ulaw(
             yield chunk
         sent += len(ready)
         if finished and sent >= len(render.chunks):
-            if render.error is not None:
-                raise render.error
+            error = render.error
+            if isinstance(error, Exception):
+                raise error
             return
 
 
