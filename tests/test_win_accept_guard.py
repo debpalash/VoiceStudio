@@ -134,7 +134,7 @@ def test_outer_cancel_during_backoff_stops_retrying(loop, guarded, monkeypatch, 
     outer = p.accept(_Listener())
     _settle(loop, rounds=5)  # first failure processed, retry now on call_later
     outer.cancel()
-    loop.run_until_complete(asyncio.sleep(0.05))
+    _settle(loop)
     assert p.calls == 1
 
 
