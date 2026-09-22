@@ -179,7 +179,7 @@ it('keeps remote scheme, path prefix and credential placeholders without exporti
       '-H "Authorization: Bearer $OMNIVOICE_API_KEY"',
     );
   expect(api.find((block) => block.id === 'python')!.text).toContain(
-    'api_key=os.environ["OMNIVOICE_API_KEY"]',
+    'api_key=os.environ.get("OMNIVOICE_API_KEY", "not-needed")',
   );
   // Each MCP client references the key through its own env interpolation.
   const header = (slug: string) =>
@@ -220,7 +220,9 @@ it('points the OpenAI Agents voice pipeline at the current backend without a sto
   const setup = openaiAgentsSetup('openai-agents', 'https://voice.example/backend/');
   expect(setup?.file).toBe('voicestudio_agents.py');
   expect(setup!.text).toContain('base_url="https://voice.example/backend/v1"');
-  expect(setup!.text).toContain('api_key=os.environ["OMNIVOICE_API_KEY"]');
+  expect(setup!.text).toContain(
+    'api_key=os.environ.get("OMNIVOICE_API_KEY", "not-needed-locally")',
+  );
   expect(setup!.text).toContain('tts_model="gpt-4o-mini-tts"');
   expect(setup!.text).toContain('stt_model="gpt-4o-transcribe"');
   expect(setup!.text).toContain('set_tracing_disabled(True)');

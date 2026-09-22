@@ -12,7 +12,9 @@ export function openaiAgentsSetup(slug: string, baseUrl: string) {
   // for a remote https backend. Loopback never needs it, and a remote
   // plain-http backend must not receive it in clear text.
   const apiKey =
-    remoteAuth(baseUrl) === 'bearer' ? 'os.environ["OMNIVOICE_API_KEY"]' : '"not-needed-locally"';
+    remoteAuth(baseUrl) === 'bearer'
+      ? 'os.environ.get("OMNIVOICE_API_KEY", "not-needed-locally")'
+      : '"not-needed-locally"';
   const text = `# pip install "openai-agents[voice]"
 import os
 

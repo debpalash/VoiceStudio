@@ -274,7 +274,7 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
             'client = OpenAI(',
             `    base_url="${base}/v1",`,
             policy === 'bearer'
-              ? '    api_key=os.environ["OMNIVOICE_API_KEY"],'
+              ? '    api_key=os.environ.get("OMNIVOICE_API_KEY", "not-needed"),'
               : '    api_key="voicestudio",',
             ')',
             '',
