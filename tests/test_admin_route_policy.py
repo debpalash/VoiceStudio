@@ -90,6 +90,7 @@ def _mutating_route_functions(
         "pronunciation.py",
         "settings.py",
         "system.py",
+        "telephony_twilio.py",
         "workers.py",
     ],
 )

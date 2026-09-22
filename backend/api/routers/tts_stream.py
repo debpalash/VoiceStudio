@@ -76,6 +76,158 @@ class StreamTTSRequest(BaseModel):
     engine: Optional[str] = None
 
 
+def build_stream_kwargs(data: dict) -> dict:
+    """Generation kwargs for one streaming request, voice profile resolved.
+
+    Shared by ``/ws/tts`` and the telephony media stream so both speak a saved
+    voice the same way (locked clip preferred, profile instruct as fallback).
+    """
+    kw: dict = {"speed": data.get("speed", 1.0)}
+    if data.get("language"):
+        kw["language"] = data["language"]
+    if data.get("instruct"):
+        kw["instruct"] = data["instruct"]
+    if data.get("description"):
+        kw["description"] = data["description"]
+    if data.get("emo_vector"):
+        kw["emo_vector"] = data["emo_vector"]
+    if data.get("emo_text"):
+        kw["emo_text"] = data["emo_text"]
+    if data.get("emo_audio"):
+        kw["emo_audio"] = data["emo_audio"]
+    # Default 1.0 when absent: a missing key must not trip the
+    # `!= 1.0` branch into a KeyError (any minimal request that
+    # omitted emo_alpha got an error frame instead of audio).
+    if data.get("emo_alpha", 1.0) != 1.0:
+        kw["emo_alpha"] = data["emo_alpha"]
+
+    # Resolve voice profile
+    voice = data.get("voice")
+    if voice:
+        try:
+            from core.db import db_conn
+            from core.config import VOICES_DIR
+            with db_conn() as conn:
+                row = conn.execute(
+                    "SELECT * FROM voice_profiles WHERE id=?",
+                    (voice,),
+                ).fetchone()
+            if row:
+                if row["is_locked"] and row["locked_audio_path"]:
+                    kw["ref_audio"] = os.path.join(
+                        VOICES_DIR, row["locked_audio_path"]
+                    )
+                elif row["ref_audio_path"]:
+                    kw["ref_audio"] = os.path.join(
+                        VOICES_DIR, row["ref_audio_path"]
+                    )
+                if row["ref_text"]:
+                    kw["ref_text"] = row["ref_text"]
+                if row["instruct"] and not data.get("instruct"):
+                    kw["instruct"] = row["instruct"]
+            else:
+                kw["voice"] = voice
+        except Exception:
+            kw["voice"] = voice
+    return kw
+
+
+def split_stream_sentences(text: str, language: str | None) -> list[str]:
+    """Normalize once, then split into sentences for progressive delivery.
+
+    Engine-agnostic text normalization (junk strip, numbers→words,
+    abbreviations) — the same pre-pass as /generate, applied exactly ONCE per
+    request, on the whole text BEFORE the sentence chunker fans it out (so
+    per-sentence generates never re-normalize, and expanded abbreviations
+    can't confuse the sentence splitter). Pref-gated (default ON), idempotent,
+    never raises.
+
+    Wave 1.4: the first sentence's audio streams while later sentences are
+    still synthesizing — the time-to-first-audio win. The chunker handles
+    abbreviations/acronyms/decimals and CJK / non-Latin terminators; a
+    single-sentence request behaves exactly like a single-shot render.
+    """
+    from services.text_normalization import normalize_for_tts
+    from services.sentence_chunker import SentenceChunker
+
+    text = normalize_for_tts(text, language)
+    chunker = SentenceChunker(language=(language or "en"))
+    sentences = chunker.push(text)
+    sentences.extend(chunker.flush())
+    return sentences or [text]
+
+
+def render_stream_sentence(backend, kw: dict, sentence_text: str):
+    """Synthesize one sentence: mastered, normalized and watermarked.
+
+    Returns ``(wav_tensor, sample_rate, synth_seconds)``. Timed INSIDE the pool
+    worker: the guarded dispatch can queue behind other jobs, and queue wait is
+    not synthesis (review on #1620) — under contention it would inflate rtf
+    without the engine slowing at all.
+    """
+    _synth_t0 = _perf_counter()
+    from services.audio_dsp import apply_mastering, normalize_audio
+    from services.watermark import mark_synthetic
+    wav = backend.generate(sentence_text, **kw)
+    sr_actual = backend.sample_rate
+    # Like _run_tts in openai_compat: studio engines (VoxCPM2) opt out of the
+    # broadcast mastering chain. Loudness normalisation still runs.
+    if not getattr(backend, "applies_own_mastering", False):
+        wav = apply_mastering(wav, sample_rate=sr_actual)
+    wav = normalize_audio(wav, target_dBFS=-2.0)
+    # Invisible provenance mark per sentence, at the tensor stage before PCM16
+    # conversion (#1169) — streaming is a delivery channel, not a watermark
+    # exemption. AudioSeal's 16-bit message repeats through the audio, so
+    # per-sentence embedding keeps whole-stream detection working; embedding
+    # strength does degrade on sub-second sentences (AudioSeal embeds poorly
+    # on very short segments — see watermark._iter_chunks), which is inherent
+    # to marking ultra-short clips, not a coverage gap.
+    wav = mark_synthetic(wav, sr_actual, context="tts_stream.sentence")
+    return wav, sr_actual, _perf_counter() - _synth_t0
+
+
+class StreamUnavailableError(RuntimeError):
+    """The selected engine cannot run on this host (routing gate)."""
+
+
+async def synthesize_stream(
+    text: str,
+    *,
+    voice: str | None = None,
+    engine: str | None = None,
+    language: str | None = None,
+):
+    """Yield ``(wav_tensor, sample_rate)`` per sentence as each finishes.
+
+    The non-WebSocket entry to the pipeline ``/ws/tts`` runs: engine
+    resolution, the no-silent-CPU-fallback routing gate, profile kwargs,
+    normalization + sentence chunking, and the guarded GPU-pool dispatch with
+    a length-scaled timeout. Raises :class:`StreamUnavailableError` when the
+    engine cannot run on this host.
+    """
+    import functools
+
+    from core.device_caps import detect_host_caps
+    from core.scrub import scrub_text
+    from services.engine_routing import runtime_compute_profile_async
+    from services.model_manager import generate_timeout_s, run_on_gpu_pool_guarded
+
+    backend = await _resolve_stream_backend(engine)
+    routing = await runtime_compute_profile_async(backend, detect_host_caps())
+    if routing["routing_status"] == "unavailable":
+        raise StreamUnavailableError(
+            scrub_text(routing["routing_reason"]) or "engine cannot run on this host"
+        )
+    kw = build_stream_kwargs({"voice": voice, "language": language})
+    for sentence in split_stream_sentences(text, language):
+        wav, sr, _synth_s = await run_on_gpu_pool_guarded(
+            functools.partial(render_stream_sentence, backend, kw, sentence),
+            what="TTS generate",
+            timeout=generate_timeout_s(sentence, engine=backend),
+        )
+        yield wav, sr
+
+
 @router.websocket("/ws/tts")
 async def ws_tts(websocket: WebSocket):
     """Stream TTS audio chunks over WebSocket.
@@ -197,112 +349,18 @@ async def ws_tts(websocket: WebSocket):
                         "reason": scrub_text(_notice[1]) if _notice[1] else None,
                     })
 
-                # Build generation kwargs
-                kw: dict = {"speed": data.get("speed", 1.0)}
-                if data.get("language"):
-                    kw["language"] = data["language"]
-                if data.get("instruct"):
-                    kw["instruct"] = data["instruct"]
-                if data.get("description"):
-                    kw["description"] = data["description"]
-                if data.get("emo_vector"):
-                    kw["emo_vector"] = data["emo_vector"]
-                if data.get("emo_text"):
-                    kw["emo_text"] = data["emo_text"]
-                if data.get("emo_audio"):
-                    kw["emo_audio"] = data["emo_audio"]
-                # Default 1.0 when absent: a missing key must not trip the
-                # `!= 1.0` branch into a KeyError (any minimal request that
-                # omitted emo_alpha got an error frame instead of audio).
-                if data.get("emo_alpha", 1.0) != 1.0:
-                    kw["emo_alpha"] = data["emo_alpha"]
+                kw = build_stream_kwargs(data)
 
-                # Resolve voice profile
-                voice = data.get("voice")
-                if voice:
-                    try:
-                        from core.db import db_conn
-                        from core.config import VOICES_DIR
-                        with db_conn() as conn:
-                            row = conn.execute(
-                                "SELECT * FROM voice_profiles WHERE id=?",
-                                (voice,),
-                            ).fetchone()
-                        if row:
-                            if row["is_locked"] and row["locked_audio_path"]:
-                                kw["ref_audio"] = os.path.join(
-                                    VOICES_DIR, row["locked_audio_path"]
-                                )
-                            elif row["ref_audio_path"]:
-                                kw["ref_audio"] = os.path.join(
-                                    VOICES_DIR, row["ref_audio_path"]
-                                )
-                            if row["ref_text"]:
-                                kw["ref_text"] = row["ref_text"]
-                            if row["instruct"] and not data.get("instruct"):
-                                kw["instruct"] = row["instruct"]
-                        else:
-                            kw["voice"] = voice
-                    except Exception:
-                        kw["voice"] = voice
-
-                # Engine-agnostic text normalization (junk strip,
-                # numbers→words, abbreviations) — the same pre-pass as
-                # /generate, applied exactly ONCE per request, on the whole
-                # text BEFORE the sentence chunker fans it out (so per-sentence
-                # generates never re-normalize, and expanded abbreviations
-                # can't confuse the sentence splitter). The request's
-                # `language` is all this route knows (None → universal safety
-                # filters only). Pref-gated (default ON), idempotent, never
-                # raises.
-                from services.text_normalization import normalize_for_tts
-                text = normalize_for_tts(text, data.get("language"))
-
-                # Wave 1.4: split the request into sentences so the first
-                # sentence's audio streams while later sentences are still
-                # synthesizing — this is the time-to-first-audio win. The
-                # chunker handles abbreviations/acronyms/decimals and CJK /
-                # non-Latin terminators; single-sentence requests behave
-                # exactly like the old single-shot path.
-                from services.sentence_chunker import SentenceChunker
-                _chunker = SentenceChunker(language=(data.get("language") or "en"))
-                sentences = _chunker.push(text)
-                sentences.extend(_chunker.flush())
-                if not sentences:
-                    sentences = [text]
+                # Normalized exactly once on the whole text, then chunked
+                # (see split_stream_sentences). The request's `language` is all
+                # this route knows (None → universal safety filters only).
+                sentences = split_stream_sentences(text, data.get("language"))
 
                 # Run generation in the GPU pool
                 import functools
                 from services.model_manager import run_on_gpu_pool_guarded
 
-                def _generate(sentence_text):
-                    # Timed INSIDE the pool worker: the guarded dispatch below
-                    # can queue behind other jobs, and queue wait is not
-                    # synthesis (review on #1620) — under contention it would
-                    # inflate rtf without the engine slowing at all.
-                    _synth_t0 = _perf_counter()
-                    from services.audio_dsp import apply_mastering, normalize_audio
-                    from services.watermark import mark_synthetic
-                    wav = backend.generate(sentence_text, **kw)
-                    sr_actual = backend.sample_rate
-                    # Like _run_tts in openai_compat: studio engines (VoxCPM2)
-                    # opt out of the broadcast mastering chain. This is the
-                    # other route that runs the active backend, so it needs the
-                    # same guard. Loudness normalisation still runs.
-                    if not getattr(backend, "applies_own_mastering", False):
-                        wav = apply_mastering(wav, sample_rate=sr_actual)
-                    wav = normalize_audio(wav, target_dBFS=-2.0)
-                    # Invisible provenance mark per sentence, at the tensor
-                    # stage before PCM16 conversion (#1169) — streaming is a
-                    # delivery channel, not a watermark exemption. AudioSeal's
-                    # 16-bit message repeats through the audio, so per-sentence
-                    # embedding keeps whole-stream detection working; embedding
-                    # strength does degrade on sub-second sentences (AudioSeal
-                    # embeds poorly on very short segments — see
-                    # watermark._iter_chunks), which is inherent to marking
-                    # ultra-short clips, not a coverage gap.
-                    wav = mark_synthetic(wav, sr_actual, context="tts_stream.sentence")
-                    return wav, sr_actual, _perf_counter() - _synth_t0
+                _generate = functools.partial(render_stream_sentence, backend, kw)
 
                 import torch
                 total_samples = 0

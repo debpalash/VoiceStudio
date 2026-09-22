@@ -17,6 +17,8 @@ its TTS/STT at VoiceStudio.
 > separate, deferred milestone (they need a paid carrier — there is no
 > fully-local path to the PSTN) and ship only behind explicit consent
 > guardrails. See the roadmap in `docs/competitive-analysis.md` (§R1).
+> Answering **inbound** calls with a spoken greeting is available as an opt-in
+> integration: see [Twilio](integrations/twilio.md).
 
 ## The endpoints
 

@@ -13,6 +13,7 @@ import { WorkspaceHeader } from '@/components/app-shell/workspace-header';
 import { getBridge } from '@/components/bridge';
 import { getIntegrationBySlug } from '../../../../../../frontend/src/config/integration-catalog';
 import './integrations-page.css';
+import { TwilioSetup } from './twilio-setup';
 
 const categoryLabels: Record<string, [string, string]> = {
   comms: ['nav.dub', 'Calling & voice agents'],
@@ -135,6 +136,7 @@ export function IntegrationDetailPage() {
             </div>
           </section>
         )}
+        {slug === 'twilio' && <TwilioSetup />}
         <div className="integration-detail-grid">
           <section className="integration-detail-panel">
             <h3>{t('common.details')}</h3>

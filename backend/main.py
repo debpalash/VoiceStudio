@@ -725,6 +725,7 @@ def _phase_a_build_inner() -> None:
     )
     from api.routers import mcp_bindings as _mcp_bindings_router  # noqa: E402
     from api.routers import workers as workers_router  # noqa: E402
+    from api.routers import telephony_twilio as _telephony_twilio_router  # noqa: E402
     _router_modules.extend([
         system, profiles, profile_images, exports, generation, voice_convert, dub_core, dub_generate,
         dub_export, dub_translate, projects, glossary, engines, tools,
@@ -733,6 +734,7 @@ def _phase_a_build_inner() -> None:
         openai_compat, tts_stream, marketplace, personas, sonitranslate,
         audiobook, longform_jobs, pronunciation, settings_router,
         media_tools_router, auth_router, _mcp_bindings_router, workers_router,
+        _telephony_twilio_router,
     ])
     # Download-acceleration state, once, for triage-from-logs (FDL-03).
     try:
@@ -1049,6 +1051,14 @@ async def _phase_b(app: FastAPI) -> None:
     except Exception:
         logger.exception("Worker agent startup failed (continuing without it)")
 
+    # Phone calls (opt-in): the separate loopback telephony listener resumes
+    # only when the user left the Twilio integration enabled.
+    try:
+        from services.telephony import gateway as telephony_gateway
+        await telephony_gateway.start_if_enabled()
+    except Exception:
+        logger.exception("Telephony gateway startup failed (continuing without it)")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -1176,6 +1186,11 @@ async def lifespan(app: FastAPI):
         await worker_service.stop()
     except Exception:
         logger.exception("Remote worker shutdown failed")
+    try:
+        from services.telephony import gateway as telephony_gateway
+        await telephony_gateway.stop()
+    except Exception:
+        logger.exception("Telephony gateway shutdown failed")
     logger.info("Shutdown: cleaning up…")
     # Flip model_manager into shutdown mode, so a model load in flight (or
     # still queued) on a GPU-pool thread classifies executor rejections as a
