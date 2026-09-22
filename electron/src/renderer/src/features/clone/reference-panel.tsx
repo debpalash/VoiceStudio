@@ -1,5 +1,4 @@
 import { Link } from '@tanstack/react-router';
-import { RecordingInputs } from '@/components/recording-inputs';
 import { AgentFixButton } from '@/components/agent-fix-button';
 import type { useReferenceTranscript } from '@/hooks/use-reference-transcript';
 import { profileAudioUrl } from '@/lib/api/client';
@@ -12,13 +11,12 @@ import {
   FileAudioIcon,
   LoaderCircleIcon,
   MicIcon,
+  PencilIcon,
   SaveIcon,
-  SparklesIcon,
-  SquareIcon,
   UploadCloudIcon,
   XIcon,
 } from 'lucide-react';
-import { useEffect, useId, useRef, useState, type DragEvent } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { WaveformPlayer } from '@/components/waveform-player';
@@ -30,177 +28,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useProfiles, useCreateCloneProfile } from '@/hooks/use-profiles';
-import { useRecording } from '@/hooks/use-recording';
-import { CLONE_MAX_SECONDS, REF_HARD_MAX_SECONDS } from '@/lib/api/generate';
 import { setCloneSetting, useCloneSetting } from '@/lib/store/clone-settings';
 import { selectCloneProfile, setReferenceFile, useReference } from '@/lib/store/reference';
+import { setWorkspace } from '@/lib/store/workspace';
 import { cn } from '@/lib/utils';
-
-const ACCEPT = 'audio/*,.mp3,.wav,.m4a,.flac,.ogg,.aac,.webm';
-const AUDIO_EXT = /\.(mp3|wav|m4a|flac|ogg|aac|webm)$/i;
-const LEVEL_THRESHOLD = 0.025;
-
-function isAudioFile(file: File): boolean {
-  return file.type.startsWith('audio/') || AUDIO_EXT.test(file.name);
-}
-
-type IngestFn = (file: File | null) => Promise<void>;
-
-/** Validate + load a reference clip, surfacing the length checks as toasts. */
-function useIngest(): IngestFn {
-  const { t } = useTranslation();
-  return async (file) => {
-    if (!file) return;
-    if (!isAudioFile(file)) {
-      toast.error(t('clone.unsupported_audio'));
-      return;
-    }
-    const result = await setReferenceFile(file);
-    const duration = Math.round(result.durationSeconds ?? 0);
-    if (!result.ok) {
-      toast.error(t('tts_errors.too_long', { duration, max: REF_HARD_MAX_SECONDS }));
-    } else if (result.tooLong) {
-      toast.warning(t('tts_errors.trim_hint', { duration, max: CLONE_MAX_SECONDS }));
-    }
-  };
-}
-
-function UploadZone() {
-  const { t } = useTranslation();
-  const ingestFile = useIngest();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [dragging, setDragging] = useState(false);
-  const id = useId();
-
-  const onDrop = (event: DragEvent<HTMLLabelElement>) => {
-    event.preventDefault();
-    setDragging(false);
-    void ingestFile(event.dataTransfer.files[0] ?? null);
-  };
-
-  return (
-    <div>
-      <input
-        ref={inputRef}
-        id={id}
-        type="file"
-        accept={ACCEPT}
-        className="sr-only"
-        onChange={(event) => {
-          void ingestFile(event.target.files?.[0] ?? null);
-          event.target.value = '';
-        }}
-      />
-      <label
-        htmlFor={id}
-        className={cn(
-          'flex min-h-36 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-muted/30 px-4 py-6 text-center transition-colors hover:border-primary/60 hover:bg-muted/50 focus-within:ring-3 focus-within:ring-ring/50',
-          dragging && 'border-primary bg-primary/10',
-        )}
-        onDragOver={(event) => {
-          event.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
-      >
-        <UploadCloudIcon className="size-6 text-muted-foreground" aria-hidden="true" />
-        <span className="text-[length:var(--text-label)] font-medium text-muted-foreground">
-          {t('clone.drop_audio')}
-        </span>
-      </label>
-    </div>
-  );
-}
-
-function RecordZone() {
-  const { t } = useTranslation();
-  const ingestFile = useIngest();
-  const rec = useRecording((file) => void ingestFile(file));
-  const hasSignal = rec.level >= LEVEL_THRESHOLD;
-  let micButton;
-  if (rec.isStarting || rec.isCleaning) {
-    micButton = (
-      <div
-        className="flex size-24 flex-col items-center justify-center gap-1.5 rounded-full bg-muted text-[length:var(--text-label)] font-medium text-muted-foreground"
-        role="status"
-        aria-live="polite"
-      >
-        {rec.isStarting ? (
-          <LoaderCircleIcon className="size-5 animate-spin motion-reduce:animate-none" />
-        ) : (
-          <SparklesIcon className="size-5 animate-pulse motion-reduce:animate-none" />
-        )}
-        {rec.isStarting ? t('clone.starting_recording') : t('clone.cleaning')}
-      </div>
-    );
-  } else if (rec.isRecording) {
-    micButton = (
-      <button
-        type="button"
-        onClick={() => rec.stop()}
-        aria-label={t('clone.stop_recording')}
-        className="relative flex size-24 flex-col items-center justify-center gap-1.5 rounded-full border-2 border-destructive bg-destructive/10 text-[length:var(--text-label)] font-semibold text-destructive outline-none focus-visible:ring-3 focus-visible:ring-destructive/40"
-      >
-        <span
-          className="absolute inset-0 rounded-full border-2 border-destructive/60 animate-ping motion-reduce:animate-none"
-          aria-hidden="true"
-        />
-        <SquareIcon className="size-5 fill-current" />
-        <span className="tabular-nums">{rec.seconds}s</span>
-      </button>
-    );
-  } else {
-    micButton = (
-      <button
-        type="button"
-        onClick={() => void rec.start()}
-        className="flex size-24 flex-col items-center justify-center gap-1.5 rounded-full bg-muted text-[length:var(--text-label)] font-medium text-muted-foreground transition-colors outline-none hover:bg-destructive/10 hover:text-destructive focus-visible:ring-3 focus-visible:ring-ring/50"
-      >
-        <MicIcon className="size-5" />
-        {t('clone.record')}
-      </button>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-4 rounded-lg bg-muted/30 p-4">
-      <div className="flex justify-center py-2">{micButton}</div>
-      <RecordingInputs rec={rec} />
-      {rec.isRecording ? (
-        <div
-          className="flex items-center gap-2 text-[length:var(--text-label)]"
-          role="status"
-          aria-live="polite"
-        >
-          <span
-            className={cn(
-              'size-2 shrink-0 rounded-full',
-              hasSignal ? 'bg-success' : 'bg-muted-foreground',
-            )}
-            aria-hidden="true"
-          />
-          <div
-            className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted"
-            role="meter"
-            aria-label={t('recording.input_level')}
-            aria-valuemin={0}
-            aria-valuemax={1}
-            aria-valuenow={Number(rec.level.toFixed(3))}
-          >
-            <div
-              className="h-full rounded-full bg-success transition-[width] duration-75 motion-reduce:transition-none"
-              style={{ width: `${Math.min(100, Math.round(rec.level * 100))}%` }}
-            />
-          </div>
-          <span className={hasSignal ? 'text-success' : 'text-muted-foreground'}>
-            {hasSignal ? t('recording.input_detected') : t('recording.no_input_detected')}
-          </span>
-        </div>
-      ) : null}
-    </div>
-  );
-}
+import { RecordZone, UploadZone } from './reference-input';
 
 interface SaveProfileFormProps {
   metadata?: { refText: string; instruct: string; language: string; seed: number | null };
@@ -560,12 +392,22 @@ export function ReferencePanel({
             <ProfileImageEditor profile={profile} />
             {profile.ref_audio_path && (
               <WaveformPlayer
-                key={profile.id}
-                src={profileAudioUrl(profile.id)}
+                key={profile.audio_url ?? profile.id}
+                src={profileAudioUrl(profile.id, profile.audio_url)}
                 source="profile-reference"
                 height={56}
               />
             )}
+            <div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setWorkspace({ editingProfileId: profile.id, panel: null })}
+              >
+                <PencilIcon data-icon="inline-start" />
+                {t('clone.edit_voice')}
+              </Button>
+            </div>
           </>
         ) : null}
 

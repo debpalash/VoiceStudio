@@ -74,7 +74,7 @@ function PreviewButton({
     profile.kind === 'design' && !profile.ref_audio_path && !profile.locked_audio_path;
   return (
     <AudioPreviewButton
-      src={profileAudioUrl(profile.id)}
+      src={profileAudioUrl(profile.id, profile.audio_url)}
       source={'profile-' + profile.id}
       activity={pendingIdentity ? 'synthesis' : undefined}
       disabled={pendingIdentity && Boolean(ttsBlocker)}

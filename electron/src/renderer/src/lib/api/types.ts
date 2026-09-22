@@ -11,6 +11,8 @@ export type ProfileKind = 'clone' | 'design';
 
 export interface Profile {
   image_url?: string | null;
+  /** Versioned `GET /profiles/{id}/audio` URL; changes when the clip is replaced. */
+  audio_url?: string | null;
   id: string;
   name: string;
   kind: ProfileKind;

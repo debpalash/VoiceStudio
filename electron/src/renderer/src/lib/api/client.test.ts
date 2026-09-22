@@ -118,6 +118,9 @@ describe('url helpers', () => {
   it('builds same-origin audio URLs', () => {
     expect(audioUrl('take 1.wav')).toBe('/api/audio/take%201.wav');
     expect(profileAudioUrl('abc')).toBe('/api/profiles/abc/audio');
+    expect(profileAudioUrl('abc', null)).toBe('/api/profiles/abc/audio');
+    // The versioned URL changes when the reference is replaced (#2282).
+    expect(profileAudioUrl('abc', '/profiles/abc/audio?v=42')).toBe('/api/profiles/abc/audio?v=42');
   });
 
   it('describes errors for toasts', () => {

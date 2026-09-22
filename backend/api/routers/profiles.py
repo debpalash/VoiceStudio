@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import os
 import re
@@ -30,7 +31,37 @@ def _profile_record(row):
         f"/profiles/{result['id']}/image?v={os.stat(image_path).st_mtime_ns}"
         if image_path and os.path.isfile(image_path) else None
     )
+    # Cache-busting playback URL for the clip GET /profiles/{id}/audio serves.
+    # The stable /audio route is unchanged; the version token changes whenever
+    # the reference is replaced (#2282), so players and HTTP caches never keep
+    # the previous take. None when no sample exists yet (pending design voice).
+    audio_file = result.get("locked_audio_path") or result.get("ref_audio_path")
+    audio_path = _voices_path(str(audio_file)) if audio_file else None
+    result["audio_url"] = (
+        f"/profiles/{result['id']}/audio?v={os.stat(audio_path).st_mtime_ns}"
+        if audio_path and os.path.isfile(audio_path) else None
+    )
     return result
+
+
+async def _auto_transcribe_reference(audio_path: str) -> str:
+    """Best-effort local transcript for a new reference clip, or "".
+
+    A matching transcript defines the boundary between the reference and the
+    requested line. Saving a blank transcript and waiting until the first
+    generation made that first take depend on the TTS model's internal ASR
+    fallback; short lines could then start with stray words from the
+    reference. Resolve it while the reference is saved so every synthesis,
+    including the first, uses stable conditioning. Local-only:
+    transcribe_reference considers only already-installed ASR/dictation models.
+    """
+    try:
+        from services.asr_backend import transcribe_reference
+
+        return (await asyncio.to_thread(transcribe_reference, audio_path) or "").strip()
+    except Exception as exc:  # noqa: BLE001 — profile save remains usable
+        logger.warning("reference transcription during profile save failed: %s", exc)
+        return ""
 
 
 class ProfileUpdate(BaseModel):
@@ -138,25 +169,9 @@ async def create_profile(
         os.makedirs(VOICES_DIR, exist_ok=True)
         with open(audio_path, "wb") as f:
             f.write(await ref_audio.read())
-        # A matching transcript defines the boundary between the reference and
-        # the requested line. Saving a blank transcript and waiting until the
-        # first generation made that first take depend on the TTS model's
-        # internal ASR fallback; short lines could then start with stray words
-        # from the reference. Resolve it while the profile is being created so
-        # every synthesis, including the first, uses stable conditioning. This
-        # remains best-effort and local-only: transcribe_reference considers
-        # only already-installed ASR/dictation models.
+        # Resolve the transcript at save time (see _auto_transcribe_reference).
         if not ref_text.strip():
-            try:
-                from services.asr_backend import transcribe_reference
-
-                ref_text = (
-                    await asyncio.to_thread(transcribe_reference, audio_path) or ""
-                ).strip()
-            except Exception as exc:  # noqa: BLE001 — profile save remains usable
-                logger.warning(
-                    "reference transcription during profile save failed: %s", exc
-                )
+            ref_text = await _auto_transcribe_reference(audio_path)
         used_seed = seed
     else:
         # Saving a design profile is a pure persistence operation — it must not
@@ -315,6 +330,162 @@ def update_profile(profile_id: str, patch: ProfileUpdate):
         ).fetchone()
     event_bus.emit("profiles", {"action": "updated", "id": profile_id})
     return _profile_record(row)
+
+
+# Reference-clip uploads (#2282). Same formats the desktop picker offers plus
+# Opus; anything else is refused so a crafted filename can never choose the
+# on-disk extension (py/path-injection) or store a non-audio payload.
+_REF_AUDIO_EXTS = frozenset({".wav", ".mp3", ".m4a", ".flac", ".ogg", ".oga", ".opus", ".aac", ".webm"})
+_MIN_REF_AUDIO_BYTES = 1000  # same floor as consent recordings
+
+
+async def _ffprobe_has_audio(path: str) -> Optional[bool]:
+    """True/False when ffprobe can judge the file, None when ffprobe is absent.
+
+    Checks for an audio *stream* rather than a container duration: browser
+    MediaRecorder WebM files carry no duration header but decode fine.
+    """
+    from services.ffmpeg_utils import find_ffprobe, spawn_subprocess
+
+    ffprobe = find_ffprobe()
+    if not ffprobe:
+        return None
+    try:
+        proc = await spawn_subprocess(
+            ffprobe, "-v", "error", "-select_streams", "a",
+            "-show_entries", "stream=codec_type", "-of", "csv=p=0", path,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+    except Exception as exc:  # noqa: BLE001 — cannot judge; do not block the save
+        logger.info("ffprobe could not inspect a replacement reference: %s", exc)
+        return None
+    return proc.returncode == 0 and "audio" in stdout.decode(errors="replace")
+
+
+async def _is_decodable_audio(path: str) -> bool:
+    """Reject payloads that are not audio before they replace a voice's clip.
+
+    libsndfile covers WAV/FLAC/OGG/MP3 in-process; compressed browser formats
+    (WebM/M4A/AAC) fall through to ffprobe. When neither can judge (no media
+    engine installed) the clip is accepted, matching POST /profiles, so a
+    missing optional tool never blocks editing a voice.
+    """
+    try:
+        import soundfile as sf
+
+        info = sf.info(path)
+        if info.frames > 0 and info.samplerate > 0:
+            return True
+    except Exception as exc:  # noqa: BLE001 — not a libsndfile format; try ffprobe
+        logger.debug("libsndfile could not read a replacement reference: %s", exc)
+    verdict = await _ffprobe_has_audio(path)
+    return True if verdict is None else verdict
+
+
+def _remove_voice_file(filename: Optional[str], *, keep: str) -> None:
+    """Delete a superseded voices/ file unless it is still referenced."""
+    if not filename or filename == keep:
+        return
+    with db_conn() as conn:
+        shared = conn.execute(
+            "SELECT 1 FROM voice_profiles WHERE ref_audio_path=? OR locked_audio_path=? "
+            "OR consent_audio_path=? LIMIT 1",
+            (filename, filename, filename),
+        ).fetchone()
+    path = None if shared else _voices_path(filename)
+    if path and os.path.isfile(path):
+        try:
+            os.remove(path)
+        except OSError as exc:
+            logger.warning("could not remove superseded voice file: %s", exc)
+
+
+@router.put("/profiles/{profile_id}/audio")
+async def replace_profile_audio(
+    profile_id: str,
+    ref_audio: UploadFile = File(...),
+    ref_text: Optional[str] = Form(None),
+):
+    """Replace a saved clone's reference clip in place (#2282).
+
+    The profile keeps its id, name, portrait, style, language and history. The
+    clip is written under a NEW versioned filename (``{id}-{token}{ext}``)
+    rather than overwritten: engine prompt caches, prepared-reference caches
+    and chapter render caches are keyed by the reference path, so a new name
+    invalidates all of them at once. Because the new clip may be a different
+    speaker, a locked take and own-voice consent no longer describe this voice
+    and are cleared. The previous files are removed only after the database
+    commits; any failure before that removes the new file instead.
+    """
+    not_found = HTTPException(
+        status_code=404,
+        detail="That voice profile doesn't exist. It may have been deleted from another tab.",
+    )
+    if not _PROFILE_ID_RE.fullmatch(profile_id or ""):
+        raise not_found
+    with db_conn() as conn:
+        row = conn.execute(
+            "SELECT kind, ref_audio_path, locked_audio_path, consent_audio_path "
+            "FROM voice_profiles WHERE id=?",
+            (profile_id,),
+        ).fetchone()
+    if not row:
+        raise not_found
+    if (row["kind"] or "clone") != "clone":
+        raise HTTPException(
+            status_code=409,
+            detail="Designed voices are defined by their recipe, not a recorded sample. "
+            "Edit the voice's traits in Voice Design instead.",
+        )
+    ext = os.path.splitext(ref_audio.filename or "")[1].lower()
+    if ext not in _REF_AUDIO_EXTS:
+        raise HTTPException(
+            status_code=415,
+            detail="Choose a supported audio file: WAV, MP3, M4A, FLAC, OGG, Opus, AAC, or WebM.",
+        )
+    data = await ref_audio.read()
+    if len(data) < _MIN_REF_AUDIO_BYTES:
+        raise HTTPException(status_code=422, detail="The reference recording is empty or too short.")
+
+    new_filename = f"{profile_id}-{uuid.uuid4().hex[:8]}{ext}"
+    new_path = _voices_path(new_filename)
+    if new_path is None:  # profile_id is charset-checked above; belt and braces
+        raise not_found
+    os.makedirs(VOICES_DIR, exist_ok=True)
+    tmp_path = f"{new_path}.part"
+    try:
+        with open(tmp_path, "wb") as out:
+            out.write(data)
+        os.replace(tmp_path, new_path)
+        if not await _is_decodable_audio(new_path):
+            raise HTTPException(
+                status_code=422,
+                detail="That file could not be read as audio. Choose another recording.",
+            )
+        text = (ref_text or "").strip() or await _auto_transcribe_reference(new_path)
+        with db_conn() as conn:
+            cur = conn.execute(
+                "UPDATE voice_profiles SET ref_audio_path=?, ref_text=?, "
+                "locked_audio_path='', is_locked=0, seed=NULL, "
+                "verified_own_voice=0, consent_text='', consent_audio_path='', "
+                "consent_recorded_at=NULL WHERE id=? AND kind='clone'",
+                (new_filename, text, profile_id),
+            )
+            if cur.rowcount == 0:  # deleted/converted while the upload ran
+                raise not_found
+            updated = conn.execute(
+                "SELECT * FROM voice_profiles WHERE id=?", (profile_id,),
+            ).fetchone()
+    except BaseException:
+        for leftover in (tmp_path, new_path):
+            with contextlib.suppress(OSError):
+                os.remove(leftover)
+        raise
+    for column in ("ref_audio_path", "locked_audio_path", "consent_audio_path"):
+        _remove_voice_file(row[column], keep=new_filename)
+    event_bus.emit("profiles", {"action": "updated", "id": profile_id})
+    return _profile_record(updated)
 
 
 @router.get("/profiles/{profile_id}/usage")

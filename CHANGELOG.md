@@ -8,6 +8,14 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ## [Unreleased]
 
+**Highlights**
+
+- Replace a saved voice clone's reference sample without creating a duplicate voice (#2282)
+
+### Added
+
+- Edit a saved voice clone's reference sample: play it, replace it by upload or recording, and save back to the same voice — requested by @Cengokill (#2282)
+
 ## [0.5.5] — 2026-09-22
 
 **Your voice, another language.** The Clone workspace now keeps your chosen output language when changing voice samples. For example, an English reference can read a French script with a multilingual engine; Auto in Clone follows the script instead of inheriting the reference profile's language.
