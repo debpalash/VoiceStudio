@@ -4,14 +4,12 @@ export const MCP_CLIENTS = {
     docs: 'https://code.claude.com/docs/en/mcp',
     format: 'json',
     type: 'http',
-    endpoint: '/mcp',
   },
   cursor: {
     file: '.cursor/mcp.json',
     docs: 'https://cursor.com/docs/mcp',
     format: 'json',
     type: undefined,
-    endpoint: '/mcp',
   },
   // Codex reads `[mcp_servers.<name>]` tables from ~/.codex/config.toml; a
   // `url` key selects Streamable HTTP and `http_headers` adds static headers.
@@ -21,17 +19,19 @@ export const MCP_CLIENTS = {
     docs: 'https://developers.openai.com/codex/mcp',
     format: 'toml',
     type: undefined,
-    endpoint: '/mcp/',
   },
 } as const;
 
 export const MCP_CLIENT_ID_HEADER = 'X-OmniVoice-Client-Id';
+/** The trailing-slash form works on every backend version; bare `/mcp` only on
+ * backends that serve it directly (it used to 405 behind the SPA mount). */
+export const MCP_ENDPOINT = '/mcp/';
 
 /** Export configuration, never credentials or commands that overwrite client files. */
 export function mcpSetup(slug: string, baseUrl: string) {
   if (!Object.hasOwn(MCP_CLIENTS, slug)) return null;
   const client = MCP_CLIENTS[slug as keyof typeof MCP_CLIENTS];
-  const url = backendEndpoint(baseUrl, client.endpoint);
+  const url = backendEndpoint(baseUrl, MCP_ENDPOINT);
   if (!url) return null;
   if (client.format === 'toml') {
     return {

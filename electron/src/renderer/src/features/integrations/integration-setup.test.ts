@@ -19,12 +19,12 @@ it('exports client-specific HTTP configuration for the actual backend and port',
   expect(claude?.file).toBe('.mcp.json');
   expect(JSON.parse(claude!.text).mcpServers.voicestudio).toEqual({
     type: 'http',
-    url: 'http://127.0.0.1:3912/mcp',
+    url: 'http://127.0.0.1:3912/mcp/',
     headers: { 'X-OmniVoice-Client-Id': 'claude-code' },
   });
   expect(cursor?.file).toBe('.cursor/mcp.json');
   expect(JSON.parse(cursor!.text).mcpServers.voicestudio).toEqual({
-    url: 'https://voice.example/backend/mcp',
+    url: 'https://voice.example/backend/mcp/',
     headers: { 'X-OmniVoice-Client-Id': 'cursor' },
   });
 });
@@ -141,7 +141,7 @@ it('gives the API and container cards runnable snippets for the right endpoints 
     'ghcr.io/debpalash/omnivoice-studio:stable',
   );
   const mcp = INTEGRATION_SETUPS['model-context-protocol'].blocks('http://127.0.0.1:3912')!;
-  expect(mcp[0].text).toContain('http://127.0.0.1:3912/mcp');
+  expect(mcp[0].text).toContain('URL: http://127.0.0.1:3912/mcp/\n');
   expect(JSON.parse(mcp[1].text).mcpServers.voicestudio).toMatchObject({
     args: ['-m', 'backend.mcp_shim'],
     env: { OMNIVOICE_HOST: '127.0.0.1', OMNIVOICE_PORT: '3912' },

@@ -32,7 +32,7 @@ it('copies the shown live configuration only after the user requests it', async 
   fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
   await waitFor(() => expect(toast.success).toHaveBeenCalled());
   expect(JSON.parse(copy.mock.calls[0][0]).mcpServers.voicestudio.url).toBe(
-    'http://127.0.0.1:3912/mcp',
+    'http://127.0.0.1:3912/mcp/',
   );
 });
 

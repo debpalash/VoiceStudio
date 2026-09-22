@@ -1,4 +1,10 @@
-import { backendEndpoint, MCP_CLIENT_ID_HEADER, MCP_CLIENTS, mcpSetup } from './mcp-setup';
+import {
+  backendEndpoint,
+  MCP_CLIENT_ID_HEADER,
+  MCP_CLIENTS,
+  MCP_ENDPOINT,
+  mcpSetup,
+} from './mcp-setup';
 import { n8nSetup } from './n8n-setup';
 
 /**
@@ -133,7 +139,7 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
     docs: `${REPO_DOCS}/mcp.md`,
     voiceBindings: true,
     blocks: (baseUrl) => {
-      const url = backendEndpoint(baseUrl, '/mcp');
+      const url = backendEndpoint(baseUrl, MCP_ENDPOINT);
       if (!url) return null;
       const backend = new URL(baseUrl);
       const port = backend.port || (backend.protocol === 'https:' ? '443' : '80');

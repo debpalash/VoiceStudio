@@ -51,17 +51,18 @@ still returning a path the agent can use.
 Point your client at the mounted endpoint:
 
 ```
-http://localhost:3900/mcp
+http://localhost:3900/mcp/
 ```
 
-`/mcp` and `/mcp/` are the same endpoint: both answer every Streamable HTTP
-method (`POST`, `GET` for the event stream, `DELETE`) directly, with no
-redirect, whether or not the backend also serves the web UI (Docker and
-source builds). Use the backend's real port if you moved it with
+Keep the trailing slash: `/mcp/` works on every VoiceStudio version. Current
+backends also answer bare `/mcp` directly (every Streamable HTTP method —
+`POST`, `GET` for the event stream, `DELETE` — with no redirect, whether or not
+the backend also serves the web UI); older Docker and source builds returned
+HTTP 405 for bare `/mcp`, so existing configs using it work once you update. Use the backend's real port if you moved it with
 `OMNIVOICE_PORT`.
 
 The desktop app exports ready-made client configurations for the current
-backend address under **Integrations**: Claude Code (`.mcp.json`), Cursor
+backend address, all using `/mcp/`, under **Integrations**: Claude Code (`.mcp.json`), Cursor
 (`.cursor/mcp.json`), Codex CLI (`~/.codex/config.toml`), and a generic
 Streamable HTTP + stdio card under **Model Context Protocol**. For Codex CLI
 the exported table is:
