@@ -1590,6 +1590,7 @@
     "assembling": "Sätter ihop ljudboken...",
     "ready": "Ljudbok klar",
     "download": "Ladda ner",
+    "download_cues": "Ladda ner kapitellista (.txt)",
     "lyrics": "Följ med i texten",
     "format": "Format",
     "format_m4b": "M4B (kapitel)",

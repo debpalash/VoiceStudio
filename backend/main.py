@@ -44,6 +44,17 @@ from core.win_subprocess import install as _install_no_window  # noqa: E402
 
 _install_no_window()
 
+# Windows (#2276): one client resetting its connection mid-accept (WinError 64
+# etc., typical of AV/VPN loopback inspection) makes asyncio's ProactorEventLoop
+# close the LISTENING socket, so the backend lives on but never answers again.
+# Re-arm accept on transient errors instead. Class-level patch, so it covers
+# every launch path (`python main.py`, the Electron `uvicorn main:app` CLI
+# which imports this module before binding) and every server on the loop.
+# No-op off Windows. See core/win_accept_guard.py.
+from core.win_accept_guard import install as _install_accept_guard  # noqa: E402
+
+_install_accept_guard()
+
 # #564: also make the project's OWN `omnivoice` package importable from source
 # when the venv's editable install is missing/broken (interrupted/offline
 # `uv sync`, antivirus-quarantined `_editable_impl_omnivoice.pth`, …). Without

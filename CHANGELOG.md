@@ -12,10 +12,17 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 - Finished audiobook chapters survive a data-folder move or a power-off mid-render (#2279)
 - Malayalam speech reads numbers in Malayalam (#2280) — thanks @nikhilkilivayil!
+- Stories and Audiobook can save a chapter cue sheet (`.txt`) after a render (#2278) — thanks @shivsin25!
+- Windows backend keeps answering after antivirus or VPN software resets a connection (#2276) — thanks @ialexbond!
 
 ### Added
 
 - Malayalam dubs and audiobooks speak numbers, percentages, and decimals in Malayalam instead of reading raw digits (#2280) — thanks @nikhilkilivayil!
+- Download a chapter cue sheet (`HH:MM:SS<TAB>Title`) after a Stories or Audiobook render; timestamps match the M4B's embedded chapters and give MP3 portable chapters (#2278) — thanks @shivsin25!
+
+### Fixed
+
+- On Windows, one reset connection no longer leaves the backend running but unreachable (#2276) — thanks @ialexbond!
 
 ### Fixed
 

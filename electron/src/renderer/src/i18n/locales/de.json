@@ -1590,6 +1590,7 @@
     "assembling": "Das Hörbuch zusammenstellen…",
     "ready": "Hörbuch fertig",
     "download": "Herunterladen",
+    "download_cues": "Kapitelliste herunterladen (.txt)",
     "lyrics": "Mitlesen",
     "format": "Formatieren",
     "format_m4b": "M4B (Kapitel)",

@@ -1594,6 +1594,7 @@
     "assembling": "Składanie audiobooka…",
     "ready": "Audiobook gotowy",
     "download": "Pobierz",
+    "download_cues": "Pobierz listę rozdziałów (.txt)",
     "lyrics": "Śledź tekst",
     "format": "Sformatuj",
     "format_m4b": "M4B (rozdziały)",
