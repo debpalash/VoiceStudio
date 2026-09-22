@@ -1,6 +1,6 @@
 # Integration directory
 
-Directory entries are not paid sponsors or endorsements. Only entries with a built-in setup block carry the **Works with VoiceStudio** badge and capability chips (MCP server, Speech API, Transcription API, Workflow template, Self-hosted, Local language model); every other card is marked **External link** and only opens the provider's website. Setup blocks live in one registry keyed by the catalog slug (`electron/src/renderer/src/features/integrations/setup-registry.ts`), so a connector is added in one place. Icons are bundled locally so viewing the catalog sends no logo requests to providers. Brand marks belong to their respective owners.
+Directory entries are not paid sponsors or endorsements. Only entries with a built-in setup block or setup panel carry the **Works with VoiceStudio** badge and capability chips (MCP server, Speech API, Transcription API, Workflow template, Self-hosted, Local language model, Phone calls); every other card is marked **External link** and only opens the provider's website. Setup blocks and panels live in one registry keyed by the catalog slug (`electron/src/renderer/src/features/integrations/setup-registry.ts`), so a connector is added in one place. Icons are bundled locally so viewing the catalog sends no logo requests to providers. Brand marks belong to their respective owners.
 
 | Company | Official source | Icon source |
 |---|---|---|

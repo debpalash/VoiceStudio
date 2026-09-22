@@ -23,6 +23,10 @@ vi.mock('@/hooks/use-backend-status', () => ({
 }));
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('sonner', () => ({ toast }));
+vi.mock('./twilio-setup', () => ({
+  TWILIO_DOCS: 'https://github.com/debpalash/VoiceStudio/blob/main/docs/integrations/twilio.md',
+  TwilioSetup: () => <div>Twilio phone setup panel</div>,
+}));
 it('copies the shown live configuration only after the user requests it', async () => {
   const copy = vi.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator, 'clipboard', { value: { writeText: copy }, configurable: true });
@@ -96,4 +100,15 @@ it('shows the OpenAI Agents snippet for the live backend', async () => {
   await waitFor(() => expect(copy).toHaveBeenCalledTimes(1));
   expect(copy.mock.calls[0][0]).toContain('base_url="http://127.0.0.1:3912/v1"');
   expect(screen.queryByRole('button', { name: 'Save as…' })).not.toBeInTheDocument();
+});
+
+it('renders Twilio from the registry as a working connector with its setup panel', () => {
+  route.slug = 'twilio';
+  render(<IntegrationDetailPage />);
+  expect(screen.getByRole('heading', { name: 'Set up Twilio' })).toBeInTheDocument();
+  expect(screen.getByText('Twilio phone setup panel')).toBeInTheDocument();
+  expect(screen.getByText('Works with VoiceStudio')).toBeInTheDocument();
+  expect(screen.getByText('Phone calls')).toBeInTheDocument();
+  expect(screen.queryByText(/Directory examples only/)).toBeNull();
+  expect(screen.queryByText(/Setup is unavailable/)).toBeNull();
 });

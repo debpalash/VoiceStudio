@@ -2759,7 +2759,8 @@
       "transcriptionApi": "واجهة API للنسخ",
       "workflow": "قالب سير عمل",
       "selfHost": "استضافة ذاتية",
-      "localLlm": "نموذج لغوي محلي"
+      "localLlm": "نموذج لغوي محلي",
+      "phoneCalls": "مكالمات هاتفية"
     },
     "block": {
       "clientConfig": "إعداد العميل",

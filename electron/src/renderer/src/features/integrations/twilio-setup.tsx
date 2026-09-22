@@ -112,8 +112,8 @@ export function TwilioSetup() {
 
   if (!state.data || !form) {
     return (
-      <section className="integration-detail-panel space-y-3" aria-busy={state.isLoading}>
-        <h3>{t('twilioIntegration.title')}</h3>
+      <section className="twilio-setup space-y-3" aria-busy={state.isLoading}>
+        <h4>{t('twilioIntegration.title')}</h4>
         {state.isError ? (
           <p role="alert" className="text-sm text-destructive">
             {describeError(state.error)}{' '}
@@ -210,13 +210,13 @@ export function TwilioSetup() {
   const time = new Intl.DateTimeFormat(i18n.language, { timeStyle: 'short', dateStyle: 'short' });
 
   return (
-    <section className="integration-detail-panel twilio-setup space-y-4">
+    <section className="twilio-setup space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h3 className="flex items-center gap-2">
+          <h4 className="flex items-center gap-2">
             <PhoneCallIcon className="size-4" aria-hidden />
             {t('twilioIntegration.title')}
-          </h3>
+          </h4>
           <p className="text-sm text-muted-foreground">{t('twilioIntegration.intro')}</p>
         </div>
         <div className="flex items-center gap-2 text-sm">

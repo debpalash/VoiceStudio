@@ -2751,7 +2751,8 @@
       "transcriptionApi": "Transkriptions-API",
       "workflow": "Workflow-Vorlage",
       "selfHost": "Selbst gehostet",
-      "localLlm": "Lokales Sprachmodell"
+      "localLlm": "Lokales Sprachmodell",
+      "phoneCalls": "Telefonanrufe"
     },
     "block": {
       "clientConfig": "Client-Konfiguration",

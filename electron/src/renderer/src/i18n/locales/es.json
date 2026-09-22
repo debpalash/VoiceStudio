@@ -2753,7 +2753,8 @@
       "transcriptionApi": "API de transcripción",
       "workflow": "Plantilla de flujo",
       "selfHost": "Autoalojado",
-      "localLlm": "Modelo de lenguaje local"
+      "localLlm": "Modelo de lenguaje local",
+      "phoneCalls": "Llamadas telefónicas"
     },
     "block": {
       "clientConfig": "Configuración del cliente",

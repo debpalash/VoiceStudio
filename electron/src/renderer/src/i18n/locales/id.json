@@ -2751,7 +2751,8 @@
       "transcriptionApi": "API transkripsi",
       "workflow": "Templat alur kerja",
       "selfHost": "Hosting mandiri",
-      "localLlm": "Model bahasa lokal"
+      "localLlm": "Model bahasa lokal",
+      "phoneCalls": "Panggilan telepon"
     },
     "block": {
       "clientConfig": "Konfigurasi klien",

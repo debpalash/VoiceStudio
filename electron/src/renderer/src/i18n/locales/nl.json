@@ -2751,7 +2751,8 @@
       "transcriptionApi": "Transcriptie-API",
       "workflow": "Workflowsjabloon",
       "selfHost": "Zelf gehost",
-      "localLlm": "Lokaal taalmodel"
+      "localLlm": "Lokaal taalmodel",
+      "phoneCalls": "Telefoongesprekken"
     },
     "block": {
       "clientConfig": "Clientconfiguratie",

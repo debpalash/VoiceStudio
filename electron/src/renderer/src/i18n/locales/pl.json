@@ -2755,7 +2755,8 @@
       "transcriptionApi": "API transkrypcji",
       "workflow": "Szablon przepływu",
       "selfHost": "Własny hosting",
-      "localLlm": "Lokalny model językowy"
+      "localLlm": "Lokalny model językowy",
+      "phoneCalls": "Połączenia telefoniczne"
     },
     "block": {
       "clientConfig": "Konfiguracja klienta",

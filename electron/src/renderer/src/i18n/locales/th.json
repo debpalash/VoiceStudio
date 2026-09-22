@@ -2751,7 +2751,8 @@
       "transcriptionApi": "API ถอดความ",
       "workflow": "เทมเพลตเวิร์กโฟลว์",
       "selfHost": "โฮสต์เอง",
-      "localLlm": "โมเดลภาษาในเครื่อง"
+      "localLlm": "โมเดลภาษาในเครื่อง",
+      "phoneCalls": "โทรศัพท์"
     },
     "block": {
       "clientConfig": "การกำหนดค่าไคลเอนต์",

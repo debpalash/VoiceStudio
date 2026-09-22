@@ -115,7 +115,8 @@ it('backs every "Works with VoiceStudio" entry with a real catalog route, blocks
   for (const [slug, setup] of Object.entries(INTEGRATION_SETUPS)) {
     expect(getIntegrationBySlug(slug), slug).toBeDefined();
     const blocks = setup.blocks(base);
-    expect(blocks?.length, slug).toBeGreaterThan(0);
+    // A connector offers copyable blocks, an interactive panel, or both.
+    expect((blocks?.length ?? 0) > 0 || Boolean(setup.panel), slug).toBe(true);
     for (const capability of setup.capabilities)
       expect(typeof lookup(`integrationCatalog.capability.${capability}`)).toBe('string');
     for (const block of blocks!) {

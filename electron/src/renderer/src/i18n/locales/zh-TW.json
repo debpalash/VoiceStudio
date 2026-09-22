@@ -2751,7 +2751,8 @@
       "transcriptionApi": "轉錄 API",
       "workflow": "工作流程範本",
       "selfHost": "自行託管",
-      "localLlm": "本機語言模型"
+      "localLlm": "本機語言模型",
+      "phoneCalls": "電話通話"
     },
     "block": {
       "clientConfig": "用戶端設定",

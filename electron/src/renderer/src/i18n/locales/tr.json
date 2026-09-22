@@ -2751,7 +2751,8 @@
       "transcriptionApi": "Transkripsiyon API'si",
       "workflow": "İş akışı şablonu",
       "selfHost": "Kendi sunucunuzda",
-      "localLlm": "Yerel dil modeli"
+      "localLlm": "Yerel dil modeli",
+      "phoneCalls": "Telefon aramaları"
     },
     "block": {
       "clientConfig": "İstemci yapılandırması",

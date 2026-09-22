@@ -2751,7 +2751,8 @@
       "transcriptionApi": "API chép lời",
       "workflow": "Mẫu quy trình",
       "selfHost": "Tự lưu trữ",
-      "localLlm": "Mô hình ngôn ngữ cục bộ"
+      "localLlm": "Mô hình ngôn ngữ cục bộ",
+      "phoneCalls": "Cuộc gọi điện thoại"
     },
     "block": {
       "clientConfig": "Cấu hình máy khách",

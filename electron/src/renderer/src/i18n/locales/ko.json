@@ -2751,7 +2751,8 @@
       "transcriptionApi": "전사 API",
       "workflow": "워크플로 템플릿",
       "selfHost": "자체 호스팅",
-      "localLlm": "로컬 언어 모델"
+      "localLlm": "로컬 언어 모델",
+      "phoneCalls": "전화 통화"
     },
     "block": {
       "clientConfig": "클라이언트 구성",

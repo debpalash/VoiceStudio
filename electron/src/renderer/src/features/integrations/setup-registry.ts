@@ -8,6 +8,8 @@ import {
 } from './mcp-setup';
 import { n8nSetup } from './n8n-setup';
 import { openaiAgentsSetup } from './openai-agents-setup';
+import type { ComponentType } from 'react';
+import { TwilioSetup, TWILIO_DOCS } from './twilio-setup';
 
 /**
  * Directory entries VoiceStudio actually works with, keyed by catalog slug.
@@ -23,7 +25,8 @@ export type IntegrationCapability =
   | 'transcriptionApi'
   | 'workflow'
   | 'selfHost'
-  | 'localLlm';
+  | 'localLlm'
+  | 'phoneCalls';
 
 export interface SetupBlock {
   id: string;
@@ -46,6 +49,12 @@ export interface IntegrationSetup {
   voiceBindings?: boolean;
   /** Blocks for this backend, or null when the backend URL is unusable for export. */
   blocks: (baseUrl: string) => SetupBlock[] | null;
+  /**
+   * An interactive setup panel for connectors that are configured and run
+   * inside VoiceStudio rather than exported as snippets (e.g. Twilio). An
+   * entry needs copyable blocks, a panel, or both.
+   */
+  panel?: ComponentType;
 }
 
 const REPO_DOCS = 'https://github.com/debpalash/VoiceStudio/blob/main/docs';
@@ -317,6 +326,12 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
         },
       ];
     },
+  },
+  twilio: {
+    capabilities: ['phoneCalls'],
+    docs: TWILIO_DOCS,
+    blocks: () => [],
+    panel: TwilioSetup,
   },
   n8n: {
     capabilities: ['workflow', 'speechApi'],

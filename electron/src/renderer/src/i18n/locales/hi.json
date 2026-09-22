@@ -2751,7 +2751,8 @@
       "transcriptionApi": "ट्रांसक्रिप्शन API",
       "workflow": "वर्कफ़्लो टेम्पलेट",
       "selfHost": "सेल्फ़-होस्टेड",
-      "localLlm": "लोकल भाषा मॉडल"
+      "localLlm": "लोकल भाषा मॉडल",
+      "phoneCalls": "फ़ोन कॉल"
     },
     "block": {
       "clientConfig": "क्लाइंट कॉन्फ़िगरेशन",

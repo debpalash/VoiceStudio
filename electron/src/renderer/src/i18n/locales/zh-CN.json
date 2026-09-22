@@ -2755,7 +2755,8 @@
       "transcriptionApi": "转写 API",
       "workflow": "工作流模板",
       "selfHost": "自托管",
-      "localLlm": "本地语言模型"
+      "localLlm": "本地语言模型",
+      "phoneCalls": "电话通话"
     },
     "block": {
       "clientConfig": "客户端配置",

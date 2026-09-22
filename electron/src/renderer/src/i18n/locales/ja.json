@@ -2751,7 +2751,8 @@
       "transcriptionApi": "文字起こし API",
       "workflow": "ワークフローテンプレート",
       "selfHost": "セルフホスト",
-      "localLlm": "ローカル言語モデル"
+      "localLlm": "ローカル言語モデル",
+      "phoneCalls": "電話通話"
     },
     "block": {
       "clientConfig": "クライアント設定",

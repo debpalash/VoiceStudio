@@ -2751,7 +2751,8 @@
       "transcriptionApi": "Transkriberings-API",
       "workflow": "Arbetsflödesmall",
       "selfHost": "Egen drift",
-      "localLlm": "Lokal språkmodell"
+      "localLlm": "Lokal språkmodell",
+      "phoneCalls": "Telefonsamtal"
     },
     "block": {
       "clientConfig": "Klientkonfiguration",
