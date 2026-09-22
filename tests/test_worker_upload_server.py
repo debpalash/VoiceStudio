@@ -59,6 +59,15 @@ BARRIER_HOLD_S = 1.5
 LOOP_RESPONSIVE_S = 0.75
 # Long enough that the watchdog, not this, is what releases a barrier.
 BARRIER_ABANDON_S = 5.0
+# Ceiling for awaits that only guard against a hang: "this must finish", not
+# "this must finish fast". An upload's admission and commit are durability
+# barriers — several real fsyncs of the part file and its directories — so a
+# one-second guard measured the disk, not the product: with other suites
+# writing to the same disk, two fsyncs past 0.5 s each timed the commit out
+# and `test_concurrent_uploads_cannot_share_one_attempt_partial` flaked in
+# full local runs. A correct run still returns in milliseconds; only a real
+# hang pays this.
+HANG_GUARD_S = 15.0
 # The waiter's own cap. Above BARRIER_HOLD_S so a genuinely stalled loop is
 # reported by the budget assertion, which names the problem, rather than by a
 # bare TimeoutError that does not.
@@ -360,7 +369,7 @@ async def test_revocation_during_upload_open_cannot_commit_the_first_chunk(
     await entered.wait()
 
     drop_control.set()
-    await asyncio.wait_for(control, timeout=1)
+    await asyncio.wait_for(control, timeout=HANG_GUARD_S)
     assert token not in plane.servicer._by_token
     assert plane.worker_id not in plane.servicer._sessions
     assert plane.servicer.revoke_worker_sessions(plane.worker_id) == 1
@@ -408,16 +417,16 @@ async def test_control_drop_cannot_hide_a_stalled_upload_from_later_revoke(plane
     upload = asyncio.create_task(
         plane.servicer.UploadResult(stalled_upload(), _Context(token))
     )
-    await asyncio.wait_for(upload_waiting.wait(), timeout=1)
+    await asyncio.wait_for(upload_waiting.wait(), timeout=HANG_GUARD_S)
 
     drop_control.set()
-    await asyncio.wait_for(control, timeout=1)
+    await asyncio.wait_for(control, timeout=HANG_GUARD_S)
     assert token not in plane.servicer._by_token
     assert plane.worker_id not in plane.servicer._sessions
 
     assert plane.servicer.revoke_worker_sessions(plane.worker_id) == 1
     with pytest.raises(_Aborted) as exc:
-        await asyncio.wait_for(upload, timeout=1)
+        await asyncio.wait_for(upload, timeout=HANG_GUARD_S)
 
     assert exc.value.code == server_module.grpc.StatusCode.UNAUTHENTICATED
     assert not os.path.exists(plane.final_path(task, attempt))
@@ -461,7 +470,7 @@ async def test_revoke_discards_a_resumable_partial_after_its_rpc_and_control_end
     assert plane.servicer._transfer_sessions == {}
 
     drop_control.set()
-    await asyncio.wait_for(control, timeout=1)
+    await asyncio.wait_for(control, timeout=HANG_GUARD_S)
     assert token not in plane.servicer._by_token
     assert plane.worker_id not in plane.servicer._sessions
 
@@ -514,7 +523,7 @@ async def test_incomplete_upload_expires_when_never_resumed(plane, monkeypatch):
         ):
             await asyncio.sleep(0)
 
-    await asyncio.wait_for(partial_is_expired(), timeout=1)
+    await asyncio.wait_for(partial_is_expired(), timeout=HANG_GUARD_S)
     assert not os.path.exists(partial)
     assert plane.servicer._partial_uploads == {}
     assert plane.servicer._partial_upload_expiries == {}
@@ -820,14 +829,14 @@ async def test_upload_commit_serializes_with_an_inline_result(plane, monkeypatch
     queued = True
     try:
         await asyncio.wait_for(
-            wait_until_inline_queues_behind_upload(), timeout=1
+            wait_until_inline_queues_behind_upload(), timeout=HANG_GUARD_S
         )
     except asyncio.TimeoutError:
         queued = False
     finally:
         release_upload.set()
-    committed = await asyncio.wait_for(uploading, timeout=1)
-    await asyncio.wait_for(inline, timeout=1)
+    committed = await asyncio.wait_for(uploading, timeout=HANG_GUARD_S)
+    await asyncio.wait_for(inline, timeout=HANG_GUARD_S)
 
     assert queued, "inline publication bypassed the active upload gate"
     assert committed.committed is True
@@ -1100,7 +1109,21 @@ async def test_a_refused_resume_restarts_the_partial_expiry_lease(plane):
 
 
 @pytest.mark.asyncio
-async def test_concurrent_uploads_cannot_share_one_attempt_partial(plane):
+@pytest.mark.parametrize("fsync_delay_s", [0.0, 0.55], ids=["fast-disk", "slow-disk"])
+async def test_concurrent_uploads_cannot_share_one_attempt_partial(
+    plane, monkeypatch, fsync_delay_s
+):
+    # slow-disk: every fsync past 0.5 s, as on a disk shared with other busy
+    # suites. The commit alone then takes over a second, which is what the old
+    # one-second hang guards turned into an intermittent TimeoutError.
+    if fsync_delay_s:
+        real_fsync = os.fsync
+
+        def slow_fsync(fd):
+            threading.Event().wait(fsync_delay_s)
+            return real_fsync(fd)
+
+        monkeypatch.setattr(server_module.os, "fsync", slow_fsync)
     task, attempt = plane.running()
     first_payload = b"A" * 20_000
     second_payload = b"B" * 20_000
@@ -1125,14 +1148,14 @@ async def test_concurrent_uploads_cannot_share_one_attempt_partial(plane):
     first = asyncio.create_task(
         plane.servicer.UploadResult(first_chunks(), _Context(plane.token))
     )
-    await asyncio.wait_for(first_owns_path.wait(), timeout=1)
+    await asyncio.wait_for(first_owns_path.wait(), timeout=HANG_GUARD_S)
 
     refused = await plane.upload(_chunks(second_ref, second_payload))
 
     assert refused.committed is False
     assert refused.error.code == "UPLOAD_IN_PROGRESS"
     release_first.set()
-    committed = await asyncio.wait_for(first, timeout=1)
+    committed = await asyncio.wait_for(first, timeout=HANG_GUARD_S)
     assert committed.committed is True
     assert open(plane.final_path(task, attempt), "rb").read() == first_payload
     assert plane.servicer._active_uploads == {}
@@ -1624,7 +1647,7 @@ async def test_revoke_cancels_a_backpressured_download_without_another_poll(
             await hold_consumer.wait()
 
     consumer = asyncio.create_task(consume())
-    await asyncio.wait_for(first_received.wait(), timeout=1)
+    await asyncio.wait_for(first_received.wait(), timeout=HANG_GUARD_S)
     assert received == [b"abcd"]
     await asyncio.sleep(0)
     tracked = session.egress_tasks - tracked_before
@@ -1633,7 +1656,7 @@ async def test_revoke_cancels_a_backpressured_download_without_another_poll(
     assert len(producers) == 1 and not producers[0].done()
 
     drop_control.set()
-    await asyncio.wait_for(control, timeout=1)
+    await asyncio.wait_for(control, timeout=HANG_GUARD_S)
     assert plane.worker_id in plane.servicer._transfer_sessions
     plane.servicer.revoke_worker_sessions(plane.worker_id)
     await asyncio.gather(consumer, *producers, return_exceptions=True)
@@ -1747,7 +1770,7 @@ async def test_revoke_fences_a_final_download_chunk_queued_after_control_drop(
     assert plane.worker_id in plane.servicer._transfer_sessions
 
     drop_control.set()
-    await asyncio.wait_for(control, timeout=1)
+    await asyncio.wait_for(control, timeout=HANG_GUARD_S)
     plane.servicer.revoke_worker_sessions(plane.worker_id)
 
     with pytest.raises(_Aborted) as exc:
