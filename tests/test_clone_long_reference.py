@@ -145,12 +145,12 @@ def test_inline_fallback_drops_whole_clip_transcript(tmp_path, monkeypatch):
 
 def test_sidecar_request_drops_whole_clip_transcript(tmp_path, monkeypatch):
     from engines.omnivoice_subprocess import OmniVoiceSubprocessBackend
-    from services.subprocess_backend import SubprocessBackend
 
     seen = {}
-    monkeypatch.setattr(
-        SubprocessBackend, "generate", lambda self, text, **kw: seen.update(kw)
-    )
+    # The class's own base, not a fresh import: other suites purge
+    # sys.modules["services"], leaving a second SubprocessBackend object.
+    base = OmniVoiceSubprocessBackend.__mro__[1]
+    monkeypatch.setattr(base, "generate", lambda self, text, **kw: seen.update(kw))
     backend = OmniVoiceSubprocessBackend.__new__(OmniVoiceSubprocessBackend)
     long_path = _wav(tmp_path / "long.wav", 25)
     short_path = _wav(tmp_path / "short.wav", 8)
