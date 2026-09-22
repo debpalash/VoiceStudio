@@ -14,6 +14,7 @@ import threading
 import pytest
 
 from worker import capabilities, service
+from hang_guard import HANG_GUARD_S
 
 
 @pytest.fixture
@@ -117,7 +118,7 @@ async def test_concurrent_control_plane_starts_publish_only_one_generation(
 
     monkeypatch.setattr(plane, "_start", staged_start)
     first = asyncio.create_task(plane.start(port=7601))
-    await asyncio.wait_for(entered.wait(), timeout=1)
+    await asyncio.wait_for(entered.wait(), timeout=HANG_GUARD_S)
     second = asyncio.create_task(plane.start(port=7602))
     await asyncio.sleep(0)
 

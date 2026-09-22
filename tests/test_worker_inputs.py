@@ -42,6 +42,7 @@ from worker.executor import TaskExecutor, TaskFailure
 from worker.lifecycle import Attempt, Task, TaskState
 from worker.protocol.gen import worker_v1_pb2 as pb
 from worker.transport import codec
+from hang_guard import HANG_GUARD_S
 
 
 # ── Fixtures ───────────────────────────────────────────────────────────────
@@ -787,7 +788,7 @@ async def test_execute_leases_materialized_inputs_against_concurrent_pruning(
 
     monkeypatch.setattr(executor, "_run_tts", blocked_handler)
     execution = asyncio.create_task(executor.execute(assignment, fetch_input=fetch))
-    await asyncio.wait_for(handler_started.wait(), timeout=2)
+    await asyncio.wait_for(handler_started.wait(), timeout=HANG_GUARD_S)
     evictable = cache / "older.bin"
     evictable.write_bytes(b"old")
 

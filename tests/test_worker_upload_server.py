@@ -34,6 +34,7 @@ from worker.protocol.gen import worker_v1_pb2 as pb
 from worker.scheduler import Scheduler
 from worker.transport import codec, server as server_module
 from worker.transport.server import REQUIRED_FEATURES, SESSION_METADATA_KEY, WorkerServicer
+from hang_guard import HANG_GUARD_S
 
 ENGINE, MODEL, OP = "indextts", "IndexTTS-2", "tts"
 
@@ -59,15 +60,7 @@ BARRIER_HOLD_S = 1.5
 LOOP_RESPONSIVE_S = 0.75
 # Long enough that the watchdog, not this, is what releases a barrier.
 BARRIER_ABANDON_S = 5.0
-# Ceiling for awaits that only guard against a hang: "this must finish", not
-# "this must finish fast". An upload's admission and commit are durability
-# barriers — several real fsyncs of the part file and its directories — so a
-# one-second guard measured the disk, not the product: with other suites
-# writing to the same disk, two fsyncs past 0.5 s each timed the commit out
-# and `test_concurrent_uploads_cannot_share_one_attempt_partial` flaked in
-# full local runs. A correct run still returns in milliseconds; only a real
-# hang pays this.
-HANG_GUARD_S = 15.0
+# Hang-only awaits use hang_guard.HANG_GUARD_S (see tests/hang_guard.py).
 # The waiter's own cap. Above BARRIER_HOLD_S so a genuinely stalled loop is
 # reported by the budget assertion, which names the problem, rather than by a
 # bare TimeoutError that does not.
@@ -882,7 +875,7 @@ async def test_upload_write_does_not_block_revocation_or_publish_after_it(
             await asyncio.sleep(0)
 
     try:
-        await asyncio.wait_for(wait_for_write(), timeout=10)
+        await asyncio.wait_for(wait_for_write(), timeout=HANG_GUARD_S)
         assert plane.servicer.revoke_worker_sessions(plane.worker_id) == 1
         assert not watchdog_fired.is_set(), "upload write stalled the event loop"
         assert not release_write.is_set(), "revocation waited for the upload write"

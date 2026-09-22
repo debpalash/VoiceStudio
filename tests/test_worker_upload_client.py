@@ -40,6 +40,7 @@ from worker.transport.client import (
     _Outbox,
 )
 from worker.transport.server import SESSION_METADATA_KEY
+from hang_guard import HANG_GUARD_S
 
 ENGINE, MODEL, OP = "indextts", "indextts:v2", "tts"
 LEASE_SECONDS = 1
@@ -666,7 +667,7 @@ async def test_the_outbox_blocks_rather_than_spinning_when_empty():
     waiter = asyncio.create_task(outbox.get())
     await asyncio.sleep(0.05)
     await outbox.put(pb.WorkerMessage(pong=pb.Pong(nonce=7)))
-    assert (await asyncio.wait_for(waiter, timeout=1)).WhichOneof("payload") == "pong"
+    assert (await asyncio.wait_for(waiter, timeout=HANG_GUARD_S)).WhichOneof("payload") == "pong"
 
 
 @pytest.mark.asyncio
