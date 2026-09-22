@@ -1590,6 +1590,7 @@
     "assembling": "オーディオブックを組み立てています…",
     "ready": "オーディオブック対応",
     "download": "ダウンロード",
+    "download_cues": "チャプターリストをダウンロード (.txt)",
     "lyrics": "テキストを追う",
     "format": "フォーマット",
     "format_m4b": "M4B (章)",

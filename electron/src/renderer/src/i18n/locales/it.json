@@ -1592,6 +1592,7 @@
     "assembling": "Assemblaggio dell'audiolibro…",
     "ready": "Audiolibro pronto",
     "download": "Scarica",
+    "download_cues": "Scarica l'elenco dei capitoli (.txt)",
     "lyrics": "Segui il testo",
     "format": "Formato",
     "format_m4b": "M4B (capitoli)",

@@ -1590,6 +1590,7 @@
     "assembling": "Đang lắp ráp sách nói…",
     "ready": "Sách nói đã sẵn sàng",
     "download": "Tải xuống",
+    "download_cues": "Tải danh sách chương (.txt)",
     "lyrics": "Đọc theo",
     "format": "định dạng",
     "format_m4b": "M4B (chương)",

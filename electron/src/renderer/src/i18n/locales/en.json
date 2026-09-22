@@ -1684,6 +1684,7 @@
     "empty_hint": "Nothing to narrate yet — Load sample to try a demo script.",
     "ready": "Audiobook ready",
     "download": "Download",
+    "download_cues": "Download cue sheet (.txt)",
     "lyrics": "Follow along",
     "format": "Format",
     "format_m4b": "M4B (chapters)",

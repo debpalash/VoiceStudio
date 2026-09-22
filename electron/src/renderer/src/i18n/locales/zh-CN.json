@@ -1594,6 +1594,7 @@
     "assembling": "正在组装有声书…",
     "ready": "有声书已就绪",
     "download": "下载",
+    "download_cues": "下载章节列表 (.txt)",
     "lyrics": "跟随文本",
     "format": "格式",
     "format_m4b": "M4B（章节）",

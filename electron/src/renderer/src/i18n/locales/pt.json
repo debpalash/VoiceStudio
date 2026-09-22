@@ -1592,6 +1592,7 @@
     "assembling": "Montando o audiolivro…",
     "ready": "Audiolivro pronto",
     "download": "Baixar",
+    "download_cues": "Baixar lista de capítulos (.txt)",
     "lyrics": "Acompanhe o texto",
     "format": "Formato",
     "format_m4b": "M4B (capítulos)",

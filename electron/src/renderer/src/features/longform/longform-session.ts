@@ -31,6 +31,8 @@ export interface AudiobookRenderChapter {
   title: string;
   status: string;
   duration_s?: number;
+  /** Exact length in the embedded m4b chapters; sent by newer backends only. */
+  duration_ms?: number;
   error?: string;
 }
 export interface Draft extends BookOptions {
@@ -284,6 +286,9 @@ export async function renderLongform(mode: Mode, resumeId?: string) {
               status: event.type === 'chapter_error' ? 'failed' : event.cached ? 'cached' : 'done',
               ...(Number.isFinite(Number(event.duration_s))
                 ? { duration_s: Number(event.duration_s) }
+                : {}),
+              ...(event.duration_ms != null && Number.isFinite(Number(event.duration_ms))
+                ? { duration_ms: Number(event.duration_ms) }
                 : {}),
               ...(event.type === 'chapter_error'
                 ? {

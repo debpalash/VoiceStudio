@@ -1592,6 +1592,7 @@
     "assembling": "Armando el audiolibro...",
     "ready": "Audiolibro listo",
     "download": "Descargar",
+    "download_cues": "Descargar lista de capítulos (.txt)",
     "lyrics": "Sigue el texto",
     "format": "Formato",
     "format_m4b": "M4B (capítulos)",
