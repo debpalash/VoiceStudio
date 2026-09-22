@@ -44,6 +44,7 @@ from services.audiobook import (
     synthesize_chapter,
 )
 from services.longform_render import (
+    LONGFORM_CACHE_SUBDIR,
     LOUDNESS_PRESETS,
     build_concat_list,
     build_ffmetadata,
@@ -1020,7 +1021,7 @@ async def audiobook_preview(req: AudiobookPreviewRequest) -> dict:
         raise HTTPException(status_code=400, detail=f"chapter_index out of range (0..{n - 1})")
 
     chapter = plan.chapters[req.chapter_index]
-    cache_dir = os.path.join(OUTPUTS_DIR, "longform_cache")  # shared with _render_longform_sse
+    cache_dir = os.path.join(OUTPUTS_DIR, LONGFORM_CACHE_SUBDIR)  # shared with _render_longform_sse
     os.makedirs(cache_dir, exist_ok=True)
     resolved_lang = _resolve_default_language(req.language, req.default_voice)
     opts = _expressive_opts(req)
@@ -1139,7 +1140,7 @@ async def _render_longform_sse(
     # failure or interruption) reuses what already rendered — only the
     # missing/changed chapters synthesize again (resume). Shared across both
     # front doors: an identical chapter renders once.
-    cache_dir = os.path.join(OUTPUTS_DIR, "longform_cache")
+    cache_dir = os.path.join(OUTPUTS_DIR, LONGFORM_CACHE_SUBDIR)
     os.makedirs(cache_dir, exist_ok=True)
     prune_cache_dir(cache_dir)  # bound disk before this job adds its chapters
     try:

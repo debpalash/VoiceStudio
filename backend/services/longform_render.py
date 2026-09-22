@@ -241,15 +241,44 @@ def remember_voices_root(cache_dir: str, root: str) -> list[str]:
     if not root or (seen and seen[0] == root):
         return [r for r in seen if r != root]
     others = [r for r in seen if r != root]
+    from core.durable_io import flush_dir, flush_fd
+
     try:
         os.makedirs(cache_dir, exist_ok=True)
         tmp = f"{path}.{os.getpid()}.tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump([root, *others][:_MAX_VOICES_ROOTS], f)
+            # Durable like the cache it indexes: a power-off must not leave an
+            # empty history, which would orphan every legacy-keyed entry.
+            f.flush()
+            flush_fd(f.fileno())
         os.replace(tmp, path)
+        flush_dir(cache_dir)
     except OSError:
-        pass
+        # Best-effort by contract: a read-only or full cache dir only means
+        # fewer legacy roots to probe, never a failed render.
+        return others
     return others
+
+
+#: The longform render cache, relative to the data dir's outputs folder —
+#: shared by the audiobook router, startup and the Electron data-dir move.
+LONGFORM_CACHE_SUBDIR = "longform_cache"
+
+
+def record_startup_voices_root() -> None:
+    """Remember the current voices root in an existing longform cache at
+    backend start (#2279), so a data-dir move made before this build renders
+    anything still leaves the old root on record for legacy-key lookups.
+    No cache yet → nothing legacy to find, so nothing is created."""
+    try:
+        from core.config import OUTPUTS_DIR, VOICES_DIR
+
+        cache_dir = os.path.join(OUTPUTS_DIR, LONGFORM_CACHE_SUBDIR)
+        if os.path.isdir(cache_dir):
+            remember_voices_root(cache_dir, VOICES_DIR)
+    except Exception:  # never block startup on a cache index
+        return
 
 
 def rebase_path(path: Optional[str], root: str, old_root: str) -> Optional[str]:

@@ -334,7 +334,7 @@ def _record_durable_events(monkeypatch) -> list[str]:
     real_replace = os.replace
 
     def replace(src, dst):
-        if str(dst).endswith((".wav", "resume.json")):
+        if str(dst).endswith((".wav", "resume.json", "voices_roots.json")):
             events.append("rename")
         return real_replace(src, dst)
 
@@ -342,6 +342,7 @@ def _record_durable_events(monkeypatch) -> list[str]:
     durable_io = _mod("core.durable_io")
     monkeypatch.setattr(durable_io, "flush_file", lambda p: events.append("flush-file"))
     monkeypatch.setattr(durable_io, "flush_dir", lambda p: events.append("flush-dir"))
+    monkeypatch.setattr(durable_io, "flush_fd", lambda fd: events.append("flush-file"))
     resume = _mod("services.longform_resume")
     monkeypatch.setattr(resume, "flush_fd", lambda fd: events.append("flush-file"))
     monkeypatch.setattr(resume, "flush_dir", lambda p: events.append("flush-dir"))
@@ -363,8 +364,8 @@ def test_resume_manifest_and_chapter_wav_are_published_durably(tmp_path, monkeyp
     monkeypatch.setattr(_mod("core.config"), "VOICES_DIR", str(tmp_path / "voices"))
     _render(_chapter("Flush."), _synth([]), _SR, "eng",
             _resolver(tmp_path / "voices"), str(tmp_path / "cache"))
-    # The segment, then the chapter — each in durable order.
-    assert events == ["flush-file", "rename", "flush-dir"] * 2
+    # The voices-roots index, the segment, then the chapter — each durable.
+    assert events == ["flush-file", "rename", "flush-dir"] * 3
 
 
 def test_durable_io_flushes_real_files(tmp_path):
@@ -376,3 +377,49 @@ def test_durable_io_flushes_real_files(tmp_path):
     durable_io.flush_file(str(tmp_path / "missing"))  # best-effort: never raises
     durable_io.flush_dir(str(tmp_path / "missing"))
     assert p.read_bytes() == b"data"
+
+
+def test_voices_roots_index_is_published_durably(tmp_path, monkeypatch):
+    lr = _mod("services.longform_render")
+    durable_io = _mod("core.durable_io")
+    events: list[str] = []
+    real_replace = os.replace
+
+    def replace(src, dst):
+        if str(dst).endswith(lr.VOICES_ROOTS_FILE):
+            events.append("rename")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", replace)
+    monkeypatch.setattr(durable_io, "flush_fd", lambda fd: events.append("flush-file"))
+    monkeypatch.setattr(durable_io, "flush_dir", lambda p: events.append("flush-dir"))
+    assert lr.remember_voices_root(str(tmp_path), "/a/voices") == []
+    assert events == ["flush-file", "rename", "flush-dir"]
+    events.clear()
+    assert lr.remember_voices_root(str(tmp_path), "/a/voices") == []
+    assert events == []  # unchanged root: no rewrite per chapter
+    assert lr.remember_voices_root(str(tmp_path), "/b/voices") == ["/a/voices"]
+
+
+def test_backend_startup_records_the_voices_root(tmp_path, monkeypatch):
+    """Upgrade, launch (nothing rendered), move the data dir: the root the
+    legacy entries were keyed under is already on record."""
+    lr = _mod("services.longform_render")
+    cfg = _mod("core.config")
+    outputs = tmp_path / "outputs"
+    monkeypatch.setattr(cfg, "OUTPUTS_DIR", str(outputs))
+    monkeypatch.setattr(cfg, "VOICES_DIR", str(tmp_path / "voices"))
+    lr.record_startup_voices_root()
+    assert not outputs.exists()  # no cache → nothing legacy, nothing created
+    cache = outputs / lr.LONGFORM_CACHE_SUBDIR
+    cache.mkdir(parents=True)
+    lr.record_startup_voices_root()
+    roots = json.loads((cache / lr.VOICES_ROOTS_FILE).read_text())
+    assert roots == [str(tmp_path / "voices")]
+
+
+def test_phase_b_records_the_voices_root():
+    import inspect
+
+    src = inspect.getsource(_mod("main")._phase_b)
+    assert "record_startup_voices_root()" in src
