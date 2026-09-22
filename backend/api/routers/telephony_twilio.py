@@ -113,6 +113,14 @@ def get_state():
     return _state()
 
 
+async def _go_offline() -> None:
+    """Every path that leaves the integration off: revoke stream tokens
+    already issued (a call told to connect cannot start after a later
+    re-enable), then stop the listener."""
+    session.tokens.reset()
+    await gateway.stop()
+
+
 @router.put("/config")
 async def put_config(body: _ConfigBody):
     current = config.load()
@@ -140,7 +148,7 @@ async def put_config(body: _ConfigBody):
     if updated.enabled and missing:
         # Save the fields, but never switch on a half-configured endpoint.
         config.save(config.TwilioConfig(**{**updated.__dict__, "enabled": False}))
-        await gateway.stop()
+        await _go_offline()
         raise HTTPException(
             status_code=400,
             detail={"code": "incomplete", "missing": missing, "message": "Complete the setup first"},
@@ -153,14 +161,13 @@ async def put_config(body: _ConfigBody):
             await gateway.start(build_gateway_app())
         except Exception as exc:  # noqa: BLE001
             config.save(config.TwilioConfig(**{**updated.__dict__, "enabled": False}))
+            await _go_offline()
             raise HTTPException(
                 status_code=503,
                 detail={"code": "listener_failed", "message": str(exc)},
             ) from exc
     else:
-        # Off means off: calls already told to connect cannot start later.
-        session.tokens.reset()
-        await gateway.stop()
+        await _go_offline()
     return _state()
 
 

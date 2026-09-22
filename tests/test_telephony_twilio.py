@@ -297,7 +297,6 @@ def test_forged_webhook_flood_is_throttled_without_locking_out_twilio(store, gw)
 def test_disabling_revokes_stream_tokens_already_issued(store, gw, monkeypatch):
     from fastapi.testclient import TestClient
     from main import app
-    from starlette.websockets import WebSocketDisconnect
 
     async def _noop(*_a):
         return gateway.state()
@@ -309,6 +308,20 @@ def test_disabling_revokes_stream_tokens_already_issued(store, gw, monkeypatch):
     admin = TestClient(app, client=("127.0.0.1", 50000))
     assert admin.put("/api/integrations/twilio/config", json={"enabled": False}).status_code == 200
     assert admin.put("/api/integrations/twilio/config", json={"enabled": True}).status_code == 200
+    _assert_token_rejected(gw, token)
+
+    # Also when enabling fails as incomplete (e.g. the Auth Token was cleared).
+    token = _stream_token(_post_voice(gw))
+    resp = admin.put("/api/integrations/twilio/config", json={"enabled": True, "auth_token": ""})
+    assert resp.status_code == 400
+    config.set_auth_token(TOKEN)
+    assert admin.put("/api/integrations/twilio/config", json={"enabled": True}).status_code == 200
+    _assert_token_rejected(gw, token)
+
+
+def _assert_token_rejected(gw, token):
+    from starlette.websockets import WebSocketDisconnect
+
     with gw.websocket_connect(tw.STREAM_PATH) as ws:
         ws.send_json(_start_msg(token))
         with pytest.raises(WebSocketDisconnect) as closed:
