@@ -61,6 +61,9 @@ def _blocking_wait_timeout(call: ast.Call):
         and isinstance(call.args[0], ast.Attribute)
         and call.args[0].attr in {"wait", "join"}
     ):
+        for kw in call.keywords:
+            if kw.arg == "timeout":
+                return kw.value
         return call.args[1] if len(call.args) > 1 else None
     return None
 
@@ -171,6 +174,7 @@ async def test_t():
     await asyncio.wait_for(commit(), timeout=1)
     await asyncio.wait_for(commit(), 0.5)
     assert await asyncio.to_thread(started.wait, 1.0)
+    assert await asyncio.to_thread(started.wait, timeout=1.0)
     worker.join(2)
     await asyncio.wait_for(commit(), timeout=HANG_GUARD_S)
     await asyncio.wait_for(asyncio.sleep(0), timeout=0.1)
@@ -186,4 +190,5 @@ async def test_t():
         (8, "HANG_GUARD_S"),
         (9, "HANG_GUARD_S"),
         (10, "HANG_GUARD_S"),
+        (11, "HANG_GUARD_S"),
     ]
