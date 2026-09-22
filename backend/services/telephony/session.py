@@ -339,6 +339,9 @@ class _Render:
         self.error: Exception | None = None
         self.cond = asyncio.Condition()
         self.task: asyncio.Task | None = None
+        #: Callers currently streaming this render. When the last one leaves
+        #: before it finishes (hang-up, time limit), synthesis is cancelled.
+        self.consumers = 0
 
     async def publish(self, chunk: bytes | None = None, *, done: bool = False) -> None:
         async with self.cond:
@@ -395,20 +398,34 @@ async def render_ulaw(
     if render is None:
         render = _inflight[key] = _Render()
         render.task = asyncio.create_task(_produce(key, render, text, voice, engine, language))
+    render.consumers += 1
     sent = 0
-    while True:
-        async with render.cond:
-            await render.cond.wait_for(lambda: sent < len(render.chunks) or render.done)
-            ready = render.chunks[sent:]
-            finished = render.done
-        for chunk in ready:
-            yield chunk
-        sent += len(ready)
-        if finished and sent >= len(render.chunks):
-            error = render.error
-            if isinstance(error, Exception):
-                raise error
-            return
+    try:
+        while True:
+            async with render.cond:
+                await render.cond.wait_for(lambda: sent < len(render.chunks) or render.done)
+                ready = render.chunks[sent:]
+                finished = render.done
+            for chunk in ready:
+                yield chunk
+            sent += len(ready)
+            if finished and sent >= len(render.chunks):
+                error = render.error
+                if isinstance(error, Exception):
+                    raise error
+                return
+    finally:
+        render.consumers -= 1
+        if render.consumers == 0 and not render.done and render.task is not None:
+            # Everyone hung up mid-render: a greeting can be up to
+            # MAX_GREETING_CHARS (1,000) characters — a minute or more of
+            # speech, far longer on CPU — so don't keep holding the GPU pool
+            # for nobody. The partial render is never cached (only a
+            # completed render is), and it leaves the in-flight map now so
+            # the next call starts a fresh render instead of joining this one.
+            if _inflight.get(key) is render:
+                del _inflight[key]
+            render.task.cancel()
 
 
 async def render_ulaw_all(text: str, **kw) -> bytes:

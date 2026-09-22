@@ -467,6 +467,57 @@ def test_concurrent_calls_share_one_synthesis(store, fake_engine):
     assert session._inflight == {}
 
 
+def test_render_is_cancelled_when_every_caller_leaves(store, fake_engine, monkeypatch):
+    """Last caller hangs up mid-greeting: synthesis stops, nothing partial is
+    cached, and the next call renders afresh."""
+    import threading
+
+    release = threading.Event()  # holds sentence 2+ in the GPU worker
+    real = fake_engine.generate
+
+    def gated(self, text, **kw):
+        if fake_engine.calls:
+            release.wait(timeout=10)
+        return real(self, text, **kw)
+
+    monkeypatch.setattr(fake_engine, "generate", gated)
+    text = (
+        "Thank you for calling our office today. "
+        "Our team is currently helping other customers right now. "
+        "Please leave a message after the tone and we will call back."
+    )
+
+    async def scenario():
+        first_audio = asyncio.Event()
+
+        async def caller():
+            async for _chunk in session.render_ulaw(text, engine="fake-phone"):
+                first_audio.set()
+                await asyncio.sleep(3600)  # still on the line
+
+        a = asyncio.create_task(caller())
+        b = asyncio.create_task(caller())
+        await first_audio.wait()
+        render = next(iter(session._inflight.values()))
+        a.cancel()  # one caller leaves: the other still shares the render
+        await asyncio.gather(a, return_exceptions=True)
+        assert not render.task.done() and render.consumers == 1
+        b.cancel()  # last caller leaves
+        await asyncio.gather(b, return_exceptions=True)
+        await asyncio.gather(render.task, return_exceptions=True)
+        assert render.task.cancelled()
+        assert session._inflight == {}
+        release.set()
+        return session._speech_key(text, "", "fake-phone", "")
+
+    key = asyncio.run(scenario())
+    assert session.ulaw_cache.get(key) is None  # partial render never cached
+    fake_engine.calls.clear()
+    audio_ = asyncio.run(session.render_ulaw_all(text, engine="fake-phone"))
+    assert len(fake_engine.calls) >= 2  # fresh, complete render
+    assert session.ulaw_cache.get(key) == audio_
+
+
 def test_shared_synthesis_failure_reaches_every_caller_and_is_not_cached(store, fake_engine, monkeypatch):
     def boom(self, text, **kw):
         raise RuntimeError("engine exploded")
