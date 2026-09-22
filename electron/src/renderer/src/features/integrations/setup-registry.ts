@@ -49,6 +49,12 @@ const REPO_DOCS = 'https://github.com/debpalash/VoiceStudio/blob/main/docs';
 const DOCKER_HUB_IMAGE = 'palashdeb/omnivoice-studio';
 const GHCR_IMAGE = 'ghcr.io/debpalash/omnivoice-studio';
 
+/** Loopback callers are never challenged; anything else may need the API key. */
+function isLoopbackUrl(baseUrl: string) {
+  const host = new URL(baseUrl).hostname.replace(/^\[|\]$/g, '');
+  return host === 'localhost' || host === '::1' || /^127\./.test(host);
+}
+
 function mcpClient(slug: keyof typeof MCP_CLIENTS): IntegrationSetup {
   return {
     capabilities: ['mcp'],
@@ -140,9 +146,9 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
     voiceBindings: true,
     blocks: (baseUrl) => {
       const url = backendEndpoint(baseUrl, MCP_ENDPOINT);
-      if (!url) return null;
-      const backend = new URL(baseUrl);
-      const port = backend.port || (backend.protocol === 'https:' ? '443' : '80');
+      const base = backendEndpoint(baseUrl, '');
+      if (!url || !base) return null;
+      const remote = !isLoopbackUrl(baseUrl);
       return [
         {
           id: 'http',
@@ -164,10 +170,11 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
                   command: 'python',
                   args: ['-m', 'backend.mcp_shim'],
                   cwd: '/path/to/VoiceStudio',
+                  // The full base keeps https and any reverse-proxy path prefix.
                   env: {
-                    OMNIVOICE_HOST: backend.hostname,
-                    OMNIVOICE_PORT: port,
+                    OMNIVOICE_URL: base,
                     OMNIVOICE_CLIENT_ID: '<your-client-id>',
+                    ...(remote ? { OMNIVOICE_API_KEY: '<backend API key>' } : {}),
                   },
                 },
               },
@@ -185,6 +192,11 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
     blocks: (baseUrl) => {
       const base = backendEndpoint(baseUrl, '');
       if (!base) return null;
+      // A remote backend may require its API key; read it from the caller's
+      // environment so no credential is ever exported.
+      const auth = isLoopbackUrl(baseUrl)
+        ? []
+        : ['  -H "Authorization: Bearer $OMNIVOICE_API_KEY" \\'];
       return [
         {
           id: 'base',
@@ -199,6 +211,7 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
           language: 'shell',
           text: [
             `curl ${base}/v1/audio/speech \\`,
+            ...auth,
             '  -H "Content-Type: application/json" \\',
             '  -d \'{"model":"tts-1","voice":"default","input":"Hello from VoiceStudio.","response_format":"wav"}\' \\',
             '  --output speech.wav',
@@ -211,6 +224,7 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
           language: 'shell',
           text: [
             `curl ${base}/v1/audio/transcriptions \\`,
+            ...auth,
             '  -F file=@speech.wav \\',
             '  -F model=whisper-1',
             '',
@@ -221,10 +235,15 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
           titleKey: 'integrationCatalog.block.openaiPython',
           language: 'python',
           text: [
+            'import os',
+            '',
             'from openai import OpenAI',
             '',
-            '# Any key works on loopback; a remote backend needs its OMNIVOICE_API_KEY.',
-            `client = OpenAI(base_url="${base}/v1", api_key="voicestudio")`,
+            '# Loopback accepts any key; a remote backend needs its OMNIVOICE_API_KEY.',
+            'client = OpenAI(',
+            `    base_url="${base}/v1",`,
+            '    api_key=os.environ.get("OMNIVOICE_API_KEY", "voicestudio"),',
+            ')',
             '',
             'with client.audio.speech.with_streaming_response.create(',
             '    model="tts-1", voice="default", input="Hello from VoiceStudio.",',

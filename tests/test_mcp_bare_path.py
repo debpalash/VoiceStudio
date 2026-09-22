@@ -80,3 +80,39 @@ def test_bare_mcp_route_accepts_every_method(app_with_spa):
     assert len(bare) == 1 and bare[0].methods is None
     names = [getattr(r, "path", None) for r in app_with_spa.router.routes]
     assert names.index("/mcp") < names.index("")  # ahead of the SPA mount at "/"
+
+
+def test_tools_reach_the_api_when_bound_to_a_lan_address_behind_a_key(monkeypatch, app_with_spa):
+    """A concrete OMNIVOICE_BIND_HOST plus an API key must not break the tools.
+
+    Tool calls go in-process as a loopback caller, so neither the bind address
+    nor the API-key / share-PIN gates apply to them.
+    """
+    from starlette.testclient import TestClient
+
+    monkeypatch.setenv("OMNIVOICE_BIND_HOST", "192.0.2.10")  # not a local address
+    monkeypatch.setenv("OMNIVOICE_PORT", "1")  # nothing listens here
+    monkeypatch.setenv("OMNIVOICE_API_KEY", "k" * 40)
+    monkeypatch.delenv("OMNIVOICE_API_URL", raising=False)
+    with TestClient(
+        app_with_spa, base_url="http://127.0.0.1:3900", follow_redirects=False,
+        client=("127.0.0.1", 50000),  # the agent itself is local
+    ) as client:
+        headers = dict(HEADERS)
+        init = client.post("/mcp", headers=headers, json={
+            "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+                "protocolVersion": "2025-03-26", "capabilities": {},
+                "clientInfo": {"name": "codex-cli", "version": "test"},
+            },
+        })
+        _result(init)
+        headers["Mcp-Session-Id"] = init.headers["mcp-session-id"]
+        client.post("/mcp", headers=headers, json={
+            "jsonrpc": "2.0", "method": "notifications/initialized",
+        })
+        called = _result(client.post("/mcp", headers=headers, json={
+            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "params": {"name": "check_health", "arguments": {}},
+        }))
+    assert not called["result"].get("isError"), called
+    assert "status" in called["result"]["content"][0]["text"]

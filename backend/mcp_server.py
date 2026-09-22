@@ -389,8 +389,15 @@ def _ensure_mcp():
         raise ImportError(msg) from e
 
 
-def create_mcp_server():
-    """Build and return the FastMCP server instance."""
+def create_mcp_server(app=None):
+    """Build and return the FastMCP server instance.
+
+    ``app`` is the backend ASGI app this server is mounted on. When given,
+    tool calls reach the API in-process as a loopback caller — independent of
+    the bind host/port and never challenged by the share-PIN / API-key gates
+    (which a concrete LAN ``OMNIVOICE_BIND_HOST`` would otherwise trigger).
+    Standalone runs (no app) call the backend over HTTP.
+    """
     FastMCP = _ensure_mcp()
     mcp = FastMCP(
         "VoiceStudio",
@@ -432,12 +439,23 @@ def create_mcp_server():
     def _api_base() -> str:
         # Follows the backend's real bind host/port (OMNIVOICE_PORT), not a
         # hard-coded 3900 — Electron moves the port via OMNIVOICE_PORT only.
+        # Also the public base of the `audio_url` returned in files mode.
         from services.network_share import backend_self_url
         return backend_self_url()
 
-    async def _api_get(path: str):
+    def _client(timeout: float):
         import httpx
-        async with httpx.AsyncClient(base_url=_api_base(), timeout=30) as c:
+        # OMNIVOICE_API_URL is an explicit "send tool calls there" override.
+        if app is not None and not os.environ.get("OMNIVOICE_API_URL", "").strip():
+            return httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app, client=("127.0.0.1", 0)),
+                base_url="http://127.0.0.1",
+                timeout=timeout,
+            )
+        return httpx.AsyncClient(base_url=_api_base(), timeout=timeout)
+
+    async def _api_get(path: str):
+        async with _client(30) as c:
             r = await c.get(path)
             r.raise_for_status()
             return r.json()
@@ -445,9 +463,8 @@ def create_mcp_server():
     async def _api_post_form(
         path: str, data: dict, files: dict | None = None, *, timeout: float | None = None
     ):
-        import httpx
         wait = _post_timeout_s() if timeout is None else timeout
-        async with httpx.AsyncClient(base_url=_api_base(), timeout=wait) as c:
+        async with _client(wait) as c:
             r = await c.post(path, data=data, files=files or {})
             r.raise_for_status()
             return r
@@ -727,7 +744,7 @@ def mount_mcp(app) -> bool:
     boundary, #1143).
     """
     try:
-        mcp = create_mcp_server()
+        mcp = create_mcp_server(app)
         mcp_app = mcp.streamable_http_app()
         app.state.mcp_session_manager = mcp.session_manager
         app.mount("/mcp", mcp_app)

@@ -106,7 +106,11 @@ this into your client's MCP config (`docs/mcp.json` is a template):
 }
 ```
 
-Set `OMNIVOICE_HOST` too when the backend is not on `127.0.0.1`. The shim
+For a backend elsewhere, set `OMNIVOICE_HOST` (and `OMNIVOICE_PORT`), or
+`OMNIVOICE_URL` with the full base URL when it uses https or a reverse-proxy
+path prefix (e.g. `https://gpu-box/voicestudio`). Set `OMNIVOICE_API_KEY` when
+that backend requires an [API key](api-auth.md); the shim sends it as a Bearer
+token. The shim
 needs a VoiceStudio source checkout (it runs with that checkout's Python
 environment, e.g. `uv run python -m backend.mcp_shim`).
 
@@ -144,11 +148,12 @@ any agent that speaks as you.
 
 ## How tools reach the backend
 
-The MCP tools call VoiceStudio's HTTP API in the same process. They follow
-the address the backend actually binds — `OMNIVOICE_PORT` and
-`OMNIVOICE_BIND_HOST` (a wildcard bind is reached over loopback) — so a
-backend moved off port 3900 keeps working. Set `OMNIVOICE_API_URL` only to
-send tool calls somewhere else, such as a reverse proxy.
+The mounted `/mcp` tools call VoiceStudio's API in-process, as a local
+caller: they work whatever host and port the backend binds, and the share PIN
+and API key never block them. A standalone `python -m backend.mcp_server`
+calls the backend over HTTP at the address it binds (`OMNIVOICE_BIND_HOST`,
+`OMNIVOICE_PORT`). Set `OMNIVOICE_API_URL` only to send tool calls somewhere
+else, such as a reverse proxy.
 
 ## Disabling
 

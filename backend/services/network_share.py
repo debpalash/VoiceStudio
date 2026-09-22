@@ -6,6 +6,7 @@ are untouched (no restart). Disabling stops it, closing the 0.0.0.0 socket.
 Loopback-only by default: nothing binds 0.0.0.0 until enable() is called.
 """
 import asyncio
+import ipaddress
 import logging
 import os
 import secrets
@@ -52,10 +53,15 @@ def backend_self_url() -> str:
     if override:
         return override
     host = os.environ.get("OMNIVOICE_BIND_HOST", "127.0.0.1").strip()
-    if host in ("", "0.0.0.0", "localhost"):
+    try:
+        ip = ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        ip = None  # a hostname ("localhost", a LAN name): use it as given
+    if not host or host == "localhost":
         host = "127.0.0.1"
-    elif host == "::":
-        host = "::1"
+    elif ip is not None and ip.is_unspecified:
+        # A wildcard bind also listens on loopback; reach it there.
+        host = "::1" if ip.version == 6 else "127.0.0.1"
     if ":" in host and not host.startswith("["):
         host = f"[{host}]"
     return f"http://{host}:{backend_port()}"

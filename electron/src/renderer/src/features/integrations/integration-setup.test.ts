@@ -129,7 +129,7 @@ it('gives the API and container cards runnable snippets for the right endpoints 
   const text = api.map((block) => block.text).join('\n');
   expect(text).toContain('curl http://127.0.0.1:3912/v1/audio/speech');
   expect(text).toContain('curl http://127.0.0.1:3912/v1/audio/transcriptions');
-  expect(text).toContain('OpenAI(base_url="http://127.0.0.1:3912/v1"');
+  expect(text).toContain('base_url="http://127.0.0.1:3912/v1"');
   expect(INTEGRATION_SETUPS['voicestudio-api'].blocks('https://u:p@host')).toBeNull();
   const docker = INTEGRATION_SETUPS.docker
     .blocks('')!
@@ -142,8 +142,28 @@ it('gives the API and container cards runnable snippets for the right endpoints 
   );
   const mcp = INTEGRATION_SETUPS['model-context-protocol'].blocks('http://127.0.0.1:3912')!;
   expect(mcp[0].text).toContain('URL: http://127.0.0.1:3912/mcp/\n');
-  expect(JSON.parse(mcp[1].text).mcpServers.voicestudio).toMatchObject({
-    args: ['-m', 'backend.mcp_shim'],
-    env: { OMNIVOICE_HOST: '127.0.0.1', OMNIVOICE_PORT: '3912' },
+  const local = JSON.parse(mcp[1].text).mcpServers.voicestudio;
+  expect(local.args).toEqual(['-m', 'backend.mcp_shim']);
+  expect(local.env).toEqual({
+    OMNIVOICE_URL: 'http://127.0.0.1:3912',
+    OMNIVOICE_CLIENT_ID: '<your-client-id>',
   });
+  expect(text).not.toContain('Authorization');
+});
+it('keeps remote scheme, path prefix and credential placeholders without exporting secrets', () => {
+  const remote = 'https://gpu.example/voicestudio/';
+  const stdio = INTEGRATION_SETUPS['model-context-protocol'].blocks(remote)![1];
+  expect(JSON.parse(stdio.text).mcpServers.voicestudio.env).toEqual({
+    OMNIVOICE_URL: 'https://gpu.example/voicestudio',
+    OMNIVOICE_CLIENT_ID: '<your-client-id>',
+    OMNIVOICE_API_KEY: '<backend API key>',
+  });
+  const api = INTEGRATION_SETUPS['voicestudio-api'].blocks(remote)!;
+  for (const id of ['speech', 'transcription'])
+    expect(api.find((block) => block.id === id)!.text).toContain(
+      '-H "Authorization: Bearer $OMNIVOICE_API_KEY"',
+    );
+  expect(api.find((block) => block.id === 'python')!.text).toContain(
+    'api_key=os.environ.get("OMNIVOICE_API_KEY", "voicestudio")',
+  );
 });

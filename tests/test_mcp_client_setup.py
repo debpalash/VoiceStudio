@@ -23,19 +23,17 @@ def test_client_setup_initializes_lists_tools_and_preserves_voice_binding(monkey
     ))
     monkeypatch.setattr(mcp_bindings, 'touch_last_seen', lambda client: None)
     from urllib.parse import parse_qs
-    monkeypatch.setenv('OMNIVOICE_PORT', '3912')
     monkeypatch.delenv('OMNIVOICE_API_URL', raising=False)
-    monkeypatch.delenv('OMNIVOICE_BIND_HOST', raising=False)
     def generate(request):
-        # Tools call back into the backend on its real port (#OMNIVOICE_PORT),
-        # never a hard-coded 3900.
-        assert (request.url.host, request.url.port) == ('127.0.0.1', 3912)
+        # The mounted server calls its own app in-process as a loopback
+        # caller: no bind host/port involved.
+        assert request.url.host == '127.0.0.1'
         assert request.url.path == '/generate'
         assert parse_qs(request.content.decode())['profile_id'] == ['test-profile']
         return httpx.Response(200, content=b'test-audio', headers={'X-Audio-Id': 'test'})
     real_client = httpx.AsyncClient
     monkeypatch.setattr(httpx, 'AsyncClient', lambda **kwargs: real_client(
-        **kwargs, transport=httpx.MockTransport(generate)
+        **{**kwargs, 'transport': httpx.MockTransport(generate)}
     ))
     monkeypatch.setenv('OMNIVOICE_MCP_OUTPUT_MODE', 'resources')
     @asynccontextmanager
@@ -78,3 +76,27 @@ def test_client_setup_initializes_lists_tools_and_preserves_voice_binding(monkey
         }))
         assert not called['result'].get('isError'), called
         assert resolved == [client_id]
+
+
+def test_standalone_server_calls_the_backend_on_its_real_port(monkeypatch):
+    """Without a mounted app the tools go over HTTP to OMNIVOICE_PORT, not :3900."""
+    import asyncio
+    import httpx
+    import mcp_server
+
+    seen = []
+
+    def health(request):
+        seen.append(request.url)
+        return httpx.Response(200, json={'status': 'ok'})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kwargs: real_client(
+        **{**kwargs, 'transport': httpx.MockTransport(health)}
+    ))
+    monkeypatch.setenv('OMNIVOICE_PORT', '3912')
+    for name in ('OMNIVOICE_API_URL', 'OMNIVOICE_BIND_HOST'):
+        monkeypatch.delenv(name, raising=False)
+    server = mcp_server.create_mcp_server()
+    asyncio.run(server.call_tool('check_health', {}))
+    assert [(u.host, u.port, u.path) for u in seen] == [('127.0.0.1', 3912, '/health')]

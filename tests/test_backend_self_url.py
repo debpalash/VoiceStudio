@@ -24,6 +24,24 @@ def test_backend_self_url(monkeypatch, env, expected):
     assert backend_self_url() == expected
 
 
+@pytest.mark.parametrize("env,expected", [
+    ({}, "http://127.0.0.1:3900"),
+    ({"OMNIVOICE_HOST": "10.0.0.2", "OMNIVOICE_PORT": "3912"}, "http://10.0.0.2:3912"),
+    # A remote backend behind a TLS proxy with a path prefix (exported by the
+    # Integrations → Model Context Protocol card) keeps scheme and prefix.
+    ({"OMNIVOICE_URL": "https://gpu.example/voicestudio/", "OMNIVOICE_PORT": "1"},
+     "https://gpu.example/voicestudio"),
+])
+def test_mcp_shim_targets_the_configured_backend(monkeypatch, env, expected):
+    from mcp_shim.__main__ import _base_url
+
+    for name in ("OMNIVOICE_URL", "OMNIVOICE_HOST", "OMNIVOICE_PORT"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    assert _base_url() == (f"{expected}/mcp/", f"{expected}/health")
+
+
 def test_no_backend_module_hard_codes_the_default_port():
     """Class guard: backend code resolves its own URL, never a literal :39xx URL."""
     root = pathlib.Path(__file__).resolve().parents[1] / "backend"
