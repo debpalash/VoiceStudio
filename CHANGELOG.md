@@ -8,6 +8,14 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ## [Unreleased]
 
+**Highlights**
+
+- Windows backend keeps answering after antivirus or VPN software resets a connection (#2276)
+
+### Fixed
+
+- On Windows, one reset connection no longer leaves the backend running but unreachable — reported by @ialexbond (#2276)
+
 ## [0.5.5] — 2026-09-22
 
 **Your voice, another language.** The Clone workspace now keeps your chosen output language when changing voice samples. For example, an English reference can read a French script with a multilingual engine; Auto in Clone follows the script instead of inheriting the reference profile's language.
