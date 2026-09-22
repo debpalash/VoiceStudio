@@ -44,6 +44,7 @@ from services.audiobook import (
     synthesize_chapter,
 )
 from services.longform_render import (
+    LONGFORM_CACHE_SUBDIR,
     LOUDNESS_PRESETS,
     build_concat_list,
     build_ffmetadata,
@@ -290,6 +291,44 @@ def _resolve_voice(profile_id: str | None) -> dict:
     except (KeyError, IndexError):
         pass
     return out
+
+
+def _portable_ref_audio(ref_audio: str | None) -> str | None:
+    """A reference-audio path as the cache keys see it (#2279).
+
+    Inside the voices dir it becomes ``voices:<relative path>`` — the same for
+    any data-dir location or spelling; anything else (engine default, a path a
+    caller passed through) is returned unchanged.
+    """
+    if not ref_audio:
+        return ref_audio
+    from core.config import VOICES_DIR
+
+    try:
+        rel = os.path.relpath(os.path.abspath(ref_audio), os.path.abspath(VOICES_DIR))
+    except ValueError:  # another drive on Windows
+        return ref_audio
+    if rel == os.curdir or rel.startswith(os.pardir) or os.path.isabs(rel):
+        return ref_audio
+    return "voices:" + rel.replace(os.sep, "/")
+
+
+def _voices_dir() -> str:
+    from core.config import VOICES_DIR
+
+    return VOICES_DIR
+
+
+def _legacy_ref_audios(ref_audio: str | None, old_roots: list[str]) -> list[str | None]:
+    """Every absolute spelling a pre-#2279 build could have keyed ``ref_audio``
+    by: the current one, then one per voices root the cache was rendered
+    under before (``remember_voices_root``) — so an entry written before a
+    data-dir move is still found after it. Index-aligned with
+    ``[current, *old_roots]``."""
+    from core.config import VOICES_DIR
+    from services.longform_render import rebase_path
+
+    return [ref_audio, *(rebase_path(ref_audio, VOICES_DIR, r) for r in old_roots)]
 
 
 def _voice_profile_exists(profile_id: str | None) -> bool:
@@ -665,7 +704,18 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
 
     from services.audio_io import atomic_save_wav
     from services.audiobook import ExpressiveOptions, Span, voice_map_signature
-    from services.longform_render import SegmentCache, chapter_cache_key
+    from services.longform_render import (
+        SegmentCache,
+        adopt_cached_file,
+        chapter_cache_key,
+        chapter_content_id,
+        explain_chapter_miss,
+        has_chapter_inputs,
+        record_chapter_inputs,
+        remember_voices_root,
+        wav_is_complete,
+    )
+    from core.config import VOICES_DIR
     from services.pronunciation import normalize_lexicon
     from services.text_normalization import normalize_for_tts
     from services.watermark import mark_synthetic, will_mark
@@ -681,13 +731,28 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
     spans_tuples = [(s.voice_id, s.text, s.pause_ms_after, getattr(s, "speed", None))
                     + ((s.join,) if s.join else ())
                     for s in spans]
+    # A voice's signature names its reference audio by its path INSIDE the
+    # data dir, not the absolute path (#2279): the same profile must key the
+    # same cache after the data dir is moved, remounted or spelled differently
+    # (Settings → storage relocation, a symlink, an env override). Caches keyed
+    # by the absolute path — every one written before this — are still found
+    # through the legacy signatures below — one per voices root this cache has
+    # been rendered under, so a move right after upgrading still finds them —
+    # and moved to the portable key.
+    old_roots = remember_voices_root(cache_dir, VOICES_DIR)
     voice_sigs: dict = {}
+    legacy_voice_sigs: list[dict] = [{} for _ in range(1 + len(old_roots))]
+    resolved: dict = {}
     for s in spans:
         k = s.voice_id or ""
         if k not in voice_sigs:
-            v = resolve(s.voice_id)
-            voice_sigs[k] = f"{v.get('ref_audio')}|{v.get('ref_text')}|{v.get('instruct')}|{v.get('seed')}"
-    sig: dict = dict(voice_sigs)
+            v = resolved[k] = resolve(s.voice_id)
+            tail = f"{v.get('ref_text')}|{v.get('instruct')}|{v.get('seed')}"
+            voice_sigs[k] = f"{_portable_ref_audio(v.get('ref_audio'))}|{tail}"
+            for sigs, ref in zip(legacy_voice_sigs,
+                                 _legacy_ref_audios(v.get("ref_audio"), old_roots)):
+                sigs[k] = f"{ref}|{tail}"
+    sig: dict = {}
     lex_sig = ""
     if lexicon:
         # Fold the lexicon into the cache key so editing pronunciations
@@ -713,7 +778,8 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
     seg_extra_sig = f"{lex_sig}\x00{expr_sig}" if expr_sig else lex_sig
     if vmap_sig:
         seg_extra_sig = f"{seg_extra_sig}\x00{vmap_sig}"
-    if will_mark():
+    marking = will_mark()
+    if marking:
         # Provenance-marked chapters cache under their own key (#1169): a
         # chapter WAV rendered while watermarking was off/unavailable —
         # including every cache entry written before marking existed — must
@@ -723,20 +789,64 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
         # with marking off the key is byte-identical to the released
         # derivation, so those caches keep hitting.
         sig["\x00watermark"] = "1"
-    key = chapter_cache_key(spans_tuples, sample_rate=sr, engine_id=engine_id, voice_sig=sig)
+    key = chapter_cache_key(spans_tuples, sample_rate=sr, engine_id=engine_id,
+                            voice_sig={**voice_sigs, **sig})
     wav_path = os.path.join(cache_dir, f"{key}.wav")
+    legacy_paths = [
+        os.path.join(cache_dir, chapter_cache_key(
+            spans_tuples, sample_rate=sr, engine_id=engine_id,
+            voice_sig={**legacy, **sig}) + ".wav")
+        for legacy in legacy_voice_sigs
+    ]
 
-    if os.path.exists(wav_path):
+    # What a miss is explained against (#2279): every input the key folds in,
+    # by name, so the log says WHICH one changed instead of only "cached:
+    # false". Keyed by the chapter's raw script, which no render input moves.
+    content_id = chapter_content_id(
+        [(s.voice_id, s.text, s.pause_ms_after, getattr(s, "speed", None),
+          getattr(s, "join", None)) for s in chapter.spans])
+    inputs: dict = {
+        "sample rate": sr, "engine": engine_id, "normalized text": spans_tuples,
+        "pronunciation lexicon": lex_sig, "expressive settings": expr_sig,
+        "voice map": vmap_sig, "watermark": marking,
+    }
+    for k, v in resolved.items():
+        label = f"voice {re.sub(r'[^A-Za-z0-9_-]', '', k)[:40] or '(default)'}"
+        inputs[f"{label} reference audio"] = _portable_ref_audio(v.get("ref_audio"))
+        inputs[f"{label} reference text"] = v.get("ref_text")
+        inputs[f"{label} instruct"] = v.get("instruct")
+        inputs[f"{label} seed"] = v.get("seed")
+
+    for candidate in dict.fromkeys((wav_path, *legacy_paths)):
+        if not os.path.exists(candidate):
+            continue
+        # A header that promises more audio than the file holds is a write a
+        # power-off tore; it opens fine and plays short, so it is a miss.
+        if not wav_is_complete(candidate):
+            continue
         try:
-            with wave.open(wav_path, "rb") as w:
+            with wave.open(candidate, "rb") as w:
                 dur = w.getnframes() / float(w.getframerate() or sr)
-            return wav_path, dur, True, None
         except Exception:
-            pass  # corrupt cache entry — fall through and re-render
+            continue  # corrupt cache entry — try the next, else re-render
+        if candidate != wav_path:
+            candidate = adopt_cached_file(candidate, wav_path)
+        if not has_chapter_inputs(cache_dir, content_id):
+            record_chapter_inputs(cache_dir, content_id, inputs)
+        return candidate, dur, True, None
+
+    changed = explain_chapter_miss(cache_dir, content_id, inputs)
+    if changed:
+        logger.info("Chapter cache miss for %r: changed since its cached render: %s",
+                    str(chapter.title)[:80], ", ".join(changed))
+    elif changed == []:
+        logger.info("Chapter cache miss for %r: inputs unchanged, but the cached "
+                    "audio file is gone (evicted or deleted)", str(chapter.title)[:80])
 
     seg_cache = SegmentCache(cache_dir, sample_rate=sr, engine_id=engine_id,
                              voice_sig=voice_sigs, extra_sig=seg_extra_sig,
-                             vary_repeats=opts.vary_repeats)
+                             vary_repeats=opts.vary_repeats,
+                             legacy_voice_sigs=legacy_voice_sigs)
     audio, dur = synthesize_chapter(spans, synth, sr, lexicon=lexicon,
                                     segment_cache=seg_cache, **opts.join_kwargs())
     # Invisible provenance mark on the assembled chapter (#1169), tensor stage,
@@ -749,7 +859,10 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
     # Already runs in the GPU-pool executor; never raises (degrades to
     # unmarked on failure).
     audio = trace_call("watermark", mark_synthetic, audio, sr, context="longform.chapter")
-    atomic_save_wav(wav_path, audio, sr)
+    # Durable: a power-off right after this chapter must not leave a torn
+    # file under its key (#2279).
+    atomic_save_wav(wav_path, audio, sr, durable=True)
+    record_chapter_inputs(cache_dir, content_id, inputs)
     return wav_path, dur, False, {"total": seg_cache.hits + seg_cache.misses,
                                   "cached": seg_cache.hits}
 
@@ -783,19 +896,44 @@ def _remote_chapter_call(chapter, *, engine_id, default_voice, voice_map,
         "language": language, "lexicon": lexicon,
         "expressive": opts.to_manifest(), "watermark": bool(watermark_enabled()),
     }
-    signature = hashlib.sha256(json.dumps(params, sort_keys=True, default=str).encode()).hexdigest()
+    def _signature(ref_audio: list) -> str:
+        payload = {**params, "ref_audio": ref_audio}
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+
+    # Keyed by the data-dir-relative reference path, like the local chapter
+    # key (#2279); an entry cached under an absolute path — the current voices
+    # root or one this cache was rendered under before — is moved over. If the
+    # move fails the legacy file is still a valid hit, so it is used in place.
+    from services.longform_render import adopt_cached_file, remember_voices_root
+
+    signature = _signature([_portable_ref_audio(r) for r in refs])
+    wav_path = os.path.join(cache_dir, f"remote-{signature}.wav")
+    if not os.path.exists(wav_path):
+        old_roots = remember_voices_root(cache_dir, _voices_dir())
+        spellings = [_legacy_ref_audios(r, old_roots) for r in refs]
+        for legacy_refs in zip(*spellings):
+            legacy_path = os.path.join(cache_dir, f"remote-{_signature(list(legacy_refs))}.wav")
+            if legacy_path != wav_path and os.path.exists(legacy_path):
+                wav_path = adopt_cached_file(legacy_path, wav_path)
+                break
     # The worker synthesizes from ``spans``, but the gateway and scheduler read
     # top-level ``text`` to scale the remote execution deadline. Add this after
     # the signature so existing content-addressed remote cache keys still hit.
     params["text"] = "\n".join(row["text"] for row in rows)
-    wav_path = os.path.join(cache_dir, f"remote-{signature}.wav")
 
     def decode(result):
         import soundfile as sf
-        if not os.path.exists(wav_path):
+        from core.durable_io import flush_dir, flush_file
+        from services.longform_render import wav_is_complete
+
+        if not wav_is_complete(wav_path):
+            # Durable like the local chapter write (#2279): a power-off right
+            # after publishing must not leave a torn file under the key.
             partial = f"{wav_path}.part"
             shutil.copyfile(result.path, partial)
+            flush_file(partial)
             os.replace(partial, wav_path)
+            flush_dir(os.path.dirname(wav_path))
         info = sf.info(wav_path)
         return wav_path, float(info.duration), False, None
 
@@ -817,7 +955,9 @@ async def _run_chapter(chapter, *, operation="audiobook", decision, job, default
         voice_map=voice_map, language=language, lexicon=lexicon,
         opts=opts, cache_dir=cache_dir,
     )
-    if decision.remote and os.path.exists(remote_cache):
+    from services.longform_render import wav_is_complete
+
+    if decision.remote and wav_is_complete(remote_cache):
         import soundfile as sf
         info = sf.info(remote_cache)
         return remote_cache, float(info.duration), True, None
@@ -881,7 +1021,7 @@ async def audiobook_preview(req: AudiobookPreviewRequest) -> dict:
         raise HTTPException(status_code=400, detail=f"chapter_index out of range (0..{n - 1})")
 
     chapter = plan.chapters[req.chapter_index]
-    cache_dir = os.path.join(OUTPUTS_DIR, "longform_cache")  # shared with _render_longform_sse
+    cache_dir = os.path.join(OUTPUTS_DIR, LONGFORM_CACHE_SUBDIR)  # shared with _render_longform_sse
     os.makedirs(cache_dir, exist_ok=True)
     resolved_lang = _resolve_default_language(req.language, req.default_voice)
     opts = _expressive_opts(req)
@@ -1000,7 +1140,7 @@ async def _render_longform_sse(
     # failure or interruption) reuses what already rendered — only the
     # missing/changed chapters synthesize again (resume). Shared across both
     # front doors: an identical chapter renders once.
-    cache_dir = os.path.join(OUTPUTS_DIR, "longform_cache")
+    cache_dir = os.path.join(OUTPUTS_DIR, LONGFORM_CACHE_SUBDIR)
     os.makedirs(cache_dir, exist_ok=True)
     prune_cache_dir(cache_dir)  # bound disk before this job adds its chapters
     try:
