@@ -8,6 +8,24 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ## [Unreleased]
 
+**Highlights**
+
+- Long reference clips clone on OmniVoice instead of failing with a 20-second error (#2281)
+- Voice Clone shows how much of a long clip the active engine uses (#2281)
+
+### Changed
+
+- Voice Clone says how much of a long reference the active engine uses instead of asking you to trim to 15 s — requested by @Cengokill (#2281)
+
+### Fixed
+
+- Saved voices and uploads longer than 20 s clone on OmniVoice again; the best passage is picked automatically — requested by @Cengokill (#2281)
+- VoxCPM2 no longer pairs a capped reference with a transcript of the whole clip (#2281)
+
+### Docs
+
+- Per-engine reference clip limits in the engine guide (#2281)
+
 ## [0.5.5] — 2026-09-22
 
 **Your voice, another language.** The Clone workspace now keeps your chosen output language when changing voice samples. For example, an English reference can read a French script with a multilingual engine; Auto in Clone follows the script instead of inheriting the reference profile's language.

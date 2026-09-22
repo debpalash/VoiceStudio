@@ -96,10 +96,9 @@ class VoxCPM2SubprocessBackend(SubprocessBackend):
         # it), and the output's long silent tail is cut.
         self._check_language(kw.get("language"))
         from services.audio_dsp import trim_trailing_silence
-        from services.tts_backend import _prepare_voxcpm_ref
+        from services.tts_backend import prepare_voxcpm_reference
 
-        if kw.get("ref_audio"):
-            kw["ref_audio"] = _prepare_voxcpm_ref(kw["ref_audio"])
+        prepare_voxcpm_reference(kw)
         wav = super().generate(text, **kw)
         return trim_trailing_silence(wav, self.sample_rate)
 

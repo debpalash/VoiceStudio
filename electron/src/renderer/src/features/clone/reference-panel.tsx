@@ -31,7 +31,9 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useProfiles, useCreateCloneProfile } from '@/hooks/use-profiles';
 import { useRecording } from '@/hooks/use-recording';
-import { CLONE_MAX_SECONDS, REF_HARD_MAX_SECONDS } from '@/lib/api/generate';
+import { REF_HARD_MAX_SECONDS } from '@/lib/api/generate';
+import { useEngines } from '@/hooks/use-engines';
+import { referenceUsageNote } from '@/lib/reference-usage';
 import { setCloneSetting, useCloneSetting } from '@/lib/store/clone-settings';
 import { selectCloneProfile, setReferenceFile, useReference } from '@/lib/store/reference';
 import { cn } from '@/lib/utils';
@@ -57,10 +59,10 @@ function useIngest(): IngestFn {
     }
     const result = await setReferenceFile(file);
     const duration = Math.round(result.durationSeconds ?? 0);
+    // Accepted long clips get an engine-aware note next to the clip instead
+    // (ReferenceUsageNote) — how much of it the engine really uses (#2281).
     if (!result.ok) {
       toast.error(t('tts_errors.too_long', { duration, max: REF_HARD_MAX_SECONDS }));
-    } else if (result.tooLong) {
-      toast.warning(t('tts_errors.trim_hint', { duration, max: CLONE_MAX_SECONDS }));
     }
   };
 }
@@ -464,6 +466,23 @@ export function OptionalDetails({
   );
 }
 
+/** How much of a clip longer than the 5–15 s recommendation the active engine uses. */
+function ReferenceUsageNote({ durationSeconds }: { durationSeconds: number | null }) {
+  const { t } = useTranslation();
+  const { activeTts } = useEngines();
+  const note = referenceUsageNote(activeTts, durationSeconds);
+  if (!note) return null;
+  return (
+    <p className="text-[length:var(--text-caption)] text-muted-foreground" role="status">
+      {note.kind === 'best_window'
+        ? t('clone.ref_usage_best_window', { seconds: note.seconds })
+        : note.kind === 'head'
+          ? t('clone.ref_usage_head', { seconds: note.seconds })
+          : t('clone.ref_usage_long', { seconds: note.seconds })}
+    </p>
+  );
+}
+
 export function ReferencePanel({
   setup = false,
   hideSave = false,
@@ -552,6 +571,7 @@ export function ReferencePanel({
                 compact
               />
             ) : null}
+            <ReferenceUsageNote durationSeconds={reference.durationSeconds} />
           </div>
         ) : null}
 

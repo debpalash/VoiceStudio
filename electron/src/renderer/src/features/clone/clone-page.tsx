@@ -4,6 +4,8 @@ import { EditProfile } from './edit-profile';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { VoiceSetup } from './voice-setup';
 import { useReferenceTranscript } from '@/hooks/use-reference-transcript';
+import { useEngines } from '@/hooks/use-engines';
+import { engineTrimsReference } from '@/lib/reference-usage';
 import { setWorkspace, useWorkspace } from '@/lib/store/workspace';
 import { openTake, useSelectedTake } from '@/lib/store/takes';
 import { TakeDetails } from './take-details';
@@ -55,7 +57,10 @@ export function ClonePage() {
   const selectedId = useCloneSetting('selectedProfileId');
   const text = useCloneSetting('text');
   const reference = useReference();
-  const transcription = useReferenceTranscript(selectedId ? null : reference.file);
+  const { activeTts } = useEngines();
+  const transcription = useReferenceTranscript(selectedId ? null : reference.file, {
+    skip: engineTrimsReference(activeTts, reference.durationSeconds),
+  });
   const selectedVoice = profiles.data?.find(
     (profile) => profile.id === selectedId && profile.kind === 'clone' && profile.ref_audio_path,
   );

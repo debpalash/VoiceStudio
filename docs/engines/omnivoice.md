@@ -65,7 +65,11 @@ The env var overrides the persisted UI choice.
   explicitly install and select a speech-to-text model in Model Catalogue. A clip with a supplied transcript is limited
   to 20 seconds so the two stay aligned; trim both to the same passage. Without
   a transcript, VoiceStudio can search up to 75 seconds in five contiguous,
-  bounded transcription passes and selects the passage with detected speech.
+  bounded transcription passes and selects the 15-second passage with the most
+  detected speech. For a clip longer than 20 seconds, VoiceStudio skips
+  whole-clip transcription and ignores a saved profile transcript, so long
+  saved voices use this selection too. A transcript typed on the request for
+  such a clip is rejected with `[clone_ref_too_long]`.
   Longer clips must be trimmed first. If no spoken words are detected, trim to
   a clear 3–10 second passage or provide its matching transcript.
 - For cross-language cloning, keep the reference transcript in the sample's

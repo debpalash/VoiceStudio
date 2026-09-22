@@ -106,3 +106,10 @@ it('does not replace a saved voice transcript when an upload request finishes', 
   await act(async () => finish({ text: 'Previous upload transcript' }));
   expect(cloneSettingsStore.state.refText).toBe('');
 });
+
+it('leaves the transcript to an engine that picks its own passage (#2281)', async () => {
+  const { result } = renderHook(() => useReferenceTranscript(file, { skip: true }));
+  await waitFor(() => expect(result.current.state).toBe('idle'));
+  expect(api).not.toHaveBeenCalled();
+  expect(cloneSettingsStore.state.refText).toBe('');
+});
