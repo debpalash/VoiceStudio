@@ -221,6 +221,23 @@ export async function recordPreviousVoicesRoot(source: string, target: string): 
     await handle.close();
   }
   await rename(temporary, file);
+  await syncDirectory(cacheDir);
+}
+
+// Persist a rename into `dir` (POSIX). Windows has no directory handle to
+// fsync and journals renames itself; failure is best-effort, like the move.
+async function syncDirectory(dir: string): Promise<void> {
+  if (process.platform === 'win32') return;
+  try {
+    const handle = await open(dir, 'r');
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    // The index is advisory; a lost entry only costs one re-render.
+  }
 }
 
 export function userEnvironmentPath(): string {

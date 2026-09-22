@@ -152,11 +152,16 @@ def adopt_cached_file(legacy_path: str, path: str) -> str:
     move, else ``legacy_path`` (still a valid hit — only the migration failed).
     A move, not a copy, so a migrated cache never costs twice its disk.
     """
+    from core.durable_io import flush_dir
+
     try:
         os.replace(legacy_path, path)
-        return path
     except OSError:
         return legacy_path
+    # Persist the new directory entry, or a power-off can undo the move and
+    # the chapter re-renders after all.
+    flush_dir(os.path.dirname(path))
+    return path
 
 
 #: Per-content records of which inputs produced a cached chapter, so a later

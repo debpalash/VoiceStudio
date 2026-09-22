@@ -423,3 +423,27 @@ def test_phase_b_records_the_voices_root():
 
     src = inspect.getsource(_mod("main")._phase_b)
     assert "record_startup_voices_root()" in src
+
+
+def test_adopted_cache_entry_is_published_durably(tmp_path, monkeypatch):
+    """A legacy-key hit moved to its new key flushes the directory after the
+    rename, so a power-off cannot undo the migration (#2279)."""
+    lr = _mod("services.longform_render")
+    durable_io = _mod("core.durable_io")
+    legacy = tmp_path / "old.wav"
+    legacy.write_bytes(b"x")
+    new = tmp_path / "new.wav"
+    events: list[str] = []
+    real_replace = os.replace
+
+    def replace(src, dst):
+        events.append("rename")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", replace)
+    monkeypatch.setattr(durable_io, "flush_dir", lambda p: events.append(f"flush-dir:{p}"))
+    assert lr.adopt_cached_file(str(legacy), str(new)) == str(new)
+    assert events == ["rename", f"flush-dir:{tmp_path}"]
+    events.clear()
+    assert lr.adopt_cached_file(str(tmp_path / "gone.wav"), str(new)) == str(tmp_path / "gone.wav")
+    assert events == ["rename"]  # failed move: nothing to publish
