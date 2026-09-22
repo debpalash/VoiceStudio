@@ -25,7 +25,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ### Docs
 
-- Install with prompt is now a two-line prompt; the full agent steps live in [docs/install/agent.md](docs/install/agent.md)
+- Install with prompt is now a two-line prompt; the full agent steps live in [docs/install/agent.md](docs/install/agent.md) (#2288)
 
 ## [0.5.5] — 2026-09-22
 

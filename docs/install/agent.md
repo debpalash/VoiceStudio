@@ -15,7 +15,7 @@ points here. Complete the setup, not just a plan.
 ## Steps
 
 1. **Load context.** Read the install guide for this OS ([macOS](macos.md) ·
-   [Windows](windows.md) · [Linux](linux.md) · [Docker](docker.md)),
+   [Windows](windows.md) · [Linux](linux.md); [Docker](docker.md) is a headless backend, not the desktop app),
    [performance](../performance.md) and
    [`skills/voicestudio/SKILL.md`](../../skills/voicestudio/SKILL.md). If your agent
    supports skills, install it with `npx skills add debpalash/VoiceStudio`.
@@ -32,7 +32,10 @@ points here. Complete the setup, not just a plan.
 4. **Configure.** Pick a supported voice-cloning engine and acceleration that fit this
    device. Keep working defaults and install required dependencies.
 5. **Verify.** Start the app and check `/health` at the backend address (default
-   `http://localhost:3900`); discover the API through `/openapi.json`. Generate a
-   short clip with a bundled or authorized voice and confirm the audio file plays.
+   `http://localhost:3900`); discover the API through `/openapi.json`. If the chosen
+   engine's model is not installed (`GET /models`), state its size and license, get
+   consent, then install it with `POST /models/install` and wait on
+   `GET /models/install/status`. Generate a short clip with a bundled or authorized
+   voice and confirm the audio file plays.
 6. **Report.** Installed version, engine, actual device, data location, audio output
    path, and how to reopen the app.
