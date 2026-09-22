@@ -87,7 +87,7 @@ rejected.
 | Call length | 300 s, then the call is ended | `OMNIVOICE_TWILIO_MAX_CALL_SECONDS` (30–3600) |
 | Webhooks per minute | 30 (more are rejected as busy) | `OMNIVOICE_TWILIO_WEBHOOKS_PER_MINUTE` |
 | Listener port | 3950, then the next free port | `OMNIVOICE_TWILIO_PORT` |
-| Listener address | `127.0.0.1` | `OMNIVOICE_TWILIO_HOST` |
+| Listener address | `127.0.0.1` | `OMNIVOICE_TWILIO_HOST` (an IP address; anything else falls back to loopback) |
 | Greeting length | 1,000 characters | — |
 
 **Docker:** the listener binds to `127.0.0.1` inside the container. If your tunnel

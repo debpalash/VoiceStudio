@@ -8,11 +8,15 @@ process (so it shares the loaded TTS model) that serves ONLY the telephony
 webhook and media-stream routes, each authenticated by the provider's request
 signature and a per-call token. The tunnel must forward to this port.
 
-Nothing listens unless the user enabled the integration.
+Nothing listens unless the user enabled the integration. This module only
+manages the listener; the app it serves is built by
+``api.routers.telephony_twilio.build_gateway_app`` (keeping services free of
+router imports).
 """
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 import os
 import socket
@@ -25,10 +29,21 @@ _DEFAULT_PORT = 3950
 _PORT_TRIES = 20
 
 
+_LOOPBACK = "127.0.0.1"
+
+
 def gateway_host() -> str:
-    """Loopback by default. Docker deployments, where the tunnel runs in
-    another container, may set OMNIVOICE_TWILIO_HOST=0.0.0.0 deliberately."""
-    return os.environ.get("OMNIVOICE_TWILIO_HOST", "").strip() or "127.0.0.1"
+    """Loopback by default. A Docker deployment whose tunnel runs in another
+    container may set OMNIVOICE_TWILIO_HOST to a specific IP deliberately
+    (docs/integrations/twilio.md). Only IP literals are accepted; anything
+    else — including an empty value — falls back to loopback, never to
+    "all interfaces"."""
+    raw = (os.environ.get("OMNIVOICE_TWILIO_HOST") or _LOOPBACK).strip()
+    try:
+        return str(ipaddress.ip_address(raw))
+    except ValueError:
+        logger.warning("Ignoring invalid OMNIVOICE_TWILIO_HOST; using loopback")
+        return _LOOPBACK
 
 
 def gateway_port_base() -> int:
@@ -38,17 +53,6 @@ def gateway_port_base() -> int:
     except ValueError:
         return _DEFAULT_PORT
     return port if 0 < port < 65536 else _DEFAULT_PORT
-
-
-def build_app():
-    """The gateway ASGI app: telephony routes and nothing else."""
-    from fastapi import FastAPI
-
-    from api.routers.telephony_twilio import webhook_router
-
-    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-    app.include_router(webhook_router)
-    return app
 
 
 @dataclass
@@ -86,7 +90,10 @@ def state() -> dict:
     running = _runtime.server is not None and bool(getattr(_runtime.server, "started", False))
     host = _runtime.host or gateway_host()
     port = _runtime.port if running else None
-    display_host = "127.0.0.1" if host in ("0.0.0.0", "::") else host
+    # A wildcard bind is reachable locally through loopback; show that.
+    display_host = _LOOPBACK if ipaddress.ip_address(host).is_unspecified else host
+    if ":" in display_host:
+        display_host = f"[{display_host}]"
     return {
         "running": running,
         "host": host,
@@ -95,7 +102,8 @@ def state() -> dict:
     }
 
 
-async def start() -> dict:
+async def start(app) -> dict:
+    """Serve ``app`` (the telephony-only ASGI app) on the gateway port."""
     import uvicorn
 
     async with _get_lock():
@@ -104,7 +112,7 @@ async def start() -> dict:
         host = gateway_host()
         port = _free_port(host, gateway_port_base())
         config = uvicorn.Config(
-            build_app(),
+            app,
             host=host,
             port=port,
             log_level="warning",
@@ -149,18 +157,3 @@ async def stop() -> dict:
         _runtime.server = _runtime.task = None
         _runtime.port = None
         return state()
-
-
-async def start_if_enabled() -> None:
-    """Backend startup: resume the listener when the user left it enabled."""
-    from services.telephony import config
-
-    try:
-        cfg = config.load()
-    except Exception:  # noqa: BLE001 — settings unreadable: stay off
-        return
-    if cfg.enabled:
-        try:
-            await start()
-        except Exception as exc:  # noqa: BLE001 — never block startup
-            logger.warning("Telephony gateway not started: %s", exc)

@@ -1054,8 +1054,8 @@ async def _phase_b(app: FastAPI) -> None:
     # Phone calls (opt-in): the separate loopback telephony listener resumes
     # only when the user left the Twilio integration enabled.
     try:
-        from services.telephony import gateway as telephony_gateway
-        await telephony_gateway.start_if_enabled()
+        from api.routers.telephony_twilio import start_gateway_if_enabled
+        await start_gateway_if_enabled()
     except Exception:
         logger.exception("Telephony gateway startup failed (continuing without it)")
 

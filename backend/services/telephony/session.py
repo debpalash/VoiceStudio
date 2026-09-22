@@ -14,6 +14,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import secrets
 import threading
 import time
@@ -45,10 +46,17 @@ class MediaStreamProvider(Protocol):
 
     NAME: str
 
-    def parse_event(self, message: dict) -> StreamEvent | None: ...
-    def media_message(self, stream_id: str, payload: bytes) -> dict: ...
-    def mark_message(self, stream_id: str, name: str) -> dict: ...
-    def clear_message(self, stream_id: str) -> dict: ...
+    def parse_event(self, message: dict) -> StreamEvent | None:
+        """Normalize one inbound provider message; None for unknown events."""
+
+    def media_message(self, stream_id: str, payload: bytes) -> dict:
+        """An outbound frame carrying 8 kHz μ-law ``payload``."""
+
+    def mark_message(self, stream_id: str, name: str) -> dict:
+        """An outbound marker the provider echoes once playback reaches it."""
+
+    def clear_message(self, stream_id: str) -> dict:
+        """Drop audio the provider has buffered but not played (barge-in)."""
 
 
 def mask_call_id(call_id: str) -> str:
@@ -283,7 +291,32 @@ def note_signature_failure() -> None:
 
 
 def _speech_key(text: str, voice: str, engine: str, language: str) -> tuple:
-    return (text, voice or "", engine or "", language or "")
+    """Everything the rendered audio depends on, resolved at call time.
+
+    Keyed on what synthesis would actually use rather than on the saved
+    settings: a blank engine resolves to the *current* active engine, and the
+    voice resolves through the same profile lookup as synthesis (reference
+    clip, lock state, transcript, style) plus the clip's size/mtime — so a
+    re-recorded, locked/unlocked or edited profile, or an engine switch,
+    renders fresh instead of replaying the old voice.
+    """
+    from api.routers.tts_stream import build_stream_kwargs
+    from services.tts_backend import active_backend_id
+
+    kw = build_stream_kwargs({"voice": voice or None, "language": language or None})
+    ref = kw.get("ref_audio")
+    try:
+        stat = os.stat(ref) if ref else None
+        clip = (stat.st_size, stat.st_mtime_ns) if stat else None
+    except OSError:
+        clip = None
+    return (
+        text,
+        engine or f"active:{active_backend_id()}",
+        language or "",
+        repr(sorted(kw.items())),
+        clip,
+    )
 
 
 async def render_ulaw(
@@ -325,8 +358,11 @@ class Responder(Protocol):
     a conversational agent would implement ``on_inbound_audio`` (μ-law 8 kHz
     from the caller) and yield replies from ``speak``."""
 
-    def speak(self) -> AsyncIterator[bytes]: ...
-    async def on_inbound_audio(self, ulaw: bytes) -> None: ...
+    def speak(self) -> AsyncIterator[bytes]:
+        """8 kHz μ-law audio to play to the caller, in order."""
+
+    async def on_inbound_audio(self, ulaw: bytes) -> None:
+        """Caller audio (8 kHz μ-law) as it arrives."""
 
 
 class AnnouncementResponder:

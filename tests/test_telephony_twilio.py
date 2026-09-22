@@ -249,7 +249,8 @@ def _configure(enabled=True, greeting="Hello. Thanks for calling."):
 def gw():
     from fastapi.testclient import TestClient
 
-    return TestClient(gateway.build_app())
+    router = importlib.import_module("api.routers.telephony_twilio")
+    return TestClient(router.build_gateway_app())
 
 
 def _post_voice(client, params=None, token=TOKEN, url=None):
@@ -379,6 +380,31 @@ def test_media_stream_happy_path_streams_20ms_ulaw_then_ends(store, gw, fake_eng
     assert len(fake_engine.calls) == rendered
 
 
+def test_cache_follows_the_resolved_engine_and_voice_not_saved_settings(store, fake_engine, monkeypatch):
+    """A blank engine means "the active engine": switching it, or editing the
+    saved voice behind the same profile id, must re-render — never replay."""
+    stream = importlib.import_module("api.routers.tts_stream")
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "fake-phone")
+    profile = {"ref_text": "first take"}
+    real = stream.build_stream_kwargs
+    monkeypatch.setattr(
+        stream, "build_stream_kwargs", lambda data: {**real(data), **profile}
+    )
+
+    def render():
+        return asyncio.run(session.render_ulaw_all("Hello.", voice="p1"))
+
+    first = render()
+    assert len(fake_engine.calls) == 1
+    assert render() == first and len(fake_engine.calls) == 1  # unchanged → cached
+    profile["ref_text"] = "re-recorded take"  # same profile id, new voice
+    render()
+    assert len(fake_engine.calls) == 2
+    key = session._speech_key("Hello.", "p1", "", "")
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "another-engine")
+    assert session._speech_key("Hello.", "p1", "", "") != key  # engine switch
+
+
 def test_media_stream_rejects_bad_or_reused_token(store, gw, fake_engine):
     from starlette.websockets import WebSocketDisconnect
 
@@ -432,7 +458,7 @@ def api(store, monkeypatch):
 
     started = []
 
-    async def _start():
+    async def _start(_app):
         started.append(True)
         return gateway.state()
 
@@ -510,6 +536,17 @@ def test_admin_api_is_not_reachable_from_remote_clients(store):
 # ── The gateway listener serves telephony routes only ───────────────────────
 
 
+def test_gateway_host_is_loopback_unless_an_ip_literal_is_configured(monkeypatch):
+    for raw in (None, "", "  ", "localhost", "example.com"):
+        if raw is None:
+            monkeypatch.delenv("OMNIVOICE_TWILIO_HOST", raising=False)
+        else:
+            monkeypatch.setenv("OMNIVOICE_TWILIO_HOST", raw)
+        assert gateway.gateway_host() == "127.0.0.1"
+    monkeypatch.setenv("OMNIVOICE_TWILIO_HOST", "0.0.0.0")
+    assert gateway.gateway_host() == "0.0.0.0"
+
+
 def test_main_backend_never_serves_the_public_twilio_routes():
     """The public routes live only on the gateway: a tunnel mistakenly aimed
     at the main port must not find a Twilio endpoint that trusts loopback."""
@@ -533,7 +570,8 @@ def test_gateway_listener_exposes_only_twilio_routes(store, monkeypatch):
     _configure()
 
     async def scenario():
-        state = await gateway.start()
+        router = importlib.import_module("api.routers.telephony_twilio")
+        state = await gateway.start(router.build_gateway_app())
         try:
             assert state["running"] and state["host"] == "127.0.0.1"
             async with httpx.AsyncClient(base_url=state["tunnel_target"]) as client:

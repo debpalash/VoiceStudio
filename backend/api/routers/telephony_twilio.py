@@ -40,6 +40,31 @@ _XML = "text/xml"
 _preview_lock = asyncio.Lock()
 
 
+# ── Gateway app ─────────────────────────────────────────────────────────────
+
+
+def build_gateway_app():
+    """The telephony gateway's ASGI app: the public routes and nothing else."""
+    from fastapi import FastAPI
+
+    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    app.include_router(webhook_router)
+    return app
+
+
+async def start_gateway_if_enabled() -> None:
+    """Backend startup: resume the listener when the user left it enabled."""
+    try:
+        enabled = config.load().enabled
+    except Exception:  # noqa: BLE001 — settings unreadable: stay off
+        return
+    if enabled:
+        try:
+            await gateway.start(build_gateway_app())
+        except Exception as exc:  # noqa: BLE001 — never block startup
+            logger.warning("Telephony gateway not started: %s", exc)
+
+
 # ── Admin API (main backend) ────────────────────────────────────────────────
 
 
@@ -125,7 +150,7 @@ async def put_config(body: _ConfigBody):
         session.ulaw_cache.clear()
     if updated.enabled:
         try:
-            await gateway.start()
+            await gateway.start(build_gateway_app())
         except Exception as exc:  # noqa: BLE001
             config.save(config.TwilioConfig(**{**updated.__dict__, "enabled": False}))
             raise HTTPException(

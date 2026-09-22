@@ -16,7 +16,7 @@ import hashlib
 import hmac
 import re
 from urllib.parse import parse_qsl, urlsplit, urlunsplit
-from xml.sax.saxutils import quoteattr
+from html import escape
 
 from services.telephony.session import StreamEvent
 
@@ -75,6 +75,11 @@ def signature_valid(
     )
 
 
+def _attr(value: str) -> str:
+    """A double-quoted XML attribute value (escapes & < > " ')."""
+    return f'"{escape(value, quote=True)}"'
+
+
 def connect_twiml(stream_url: str, parameters: dict[str, str]) -> str:
     """``<Connect><Stream>`` a bidirectional media stream, then hang up.
 
@@ -82,11 +87,11 @@ def connect_twiml(stream_url: str, parameters: dict[str, str]) -> str:
     trailing ``<Hangup/>`` ends the call when VoiceStudio finishes speaking.
     """
     params = "".join(
-        f"<Parameter name={quoteattr(k)} value={quoteattr(v)}/>" for k, v in parameters.items()
+        f"<Parameter name={_attr(k)} value={_attr(v)}/>" for k, v in parameters.items()
     )
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
-        f"<Response><Connect><Stream url={quoteattr(stream_url)}>{params}</Stream>"
+        f"<Response><Connect><Stream url={_attr(stream_url)}>{params}</Stream>"
         "</Connect><Hangup/></Response>"
     )
 
