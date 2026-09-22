@@ -23,7 +23,7 @@ This release also makes Electron installation easier to recover, fixes script-ed
 | macOS Intel | [DMG](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.5/VoiceStudio-Electron-0.5.5-mac-x64.dmg) |
 | Linux x64 | [AppImage](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.5/VoiceStudio-Electron-0.5.5-linux-x64.AppImage) · [deb](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.5/VoiceStudio-Electron-0.5.5-linux-x64.deb) |
 
-**Upgrading:** Install over your existing Electron app to keep voices, projects, and models. If setup asks, choose **Install local runtime** to refresh its dependencies. The 0.5.4 → 0.5.5 upgrade was tested with a saved voice and settings.
+**Upgrading:** Install over your existing Electron app. If setup asks, choose **Install local runtime** to refresh its dependencies. The 0.5.4 → 0.5.5 upgrade was tested with a saved voice and settings.
 
 **Moving from Tauri:** Close the app, back up its data directory, install Electron, and verify your voices and projects before removing Tauri. Follow the [migration guide](https://github.com/debpalash/VoiceStudio/blob/v0.5.5/docs/electron-migration.md). Tauri v0.5.3 remains the final Tauri release; its updater cannot install Electron. Intel Macs support the UI with a remote backend.
 
