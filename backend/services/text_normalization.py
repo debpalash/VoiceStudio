@@ -20,7 +20,9 @@ Design rules (load-bearing):
   * **Per-language.** Numbers go through ``num2words`` only for languages it
     supports (``_NUM2WORDS_LANGS``; the request's ``language`` is a full
     display name from frontend/src/languages.json or an ISO-ish code — both
-    resolve via :func:`_num2words_lang`). Everything else keeps its digits.
+    resolve via :func:`_num2words_lang`), or through a hand-written native
+    verbalizer for languages num2words lacks (``_NATIVE_VERBALIZERS``, e.g.
+    Malayalam). Everything else keeps its digits.
     Clock times / ordinals / currency are English-only (their spoken form is
     language-specific); decimals only for locales whose num2words rendering
     was vetted. CJK scripts pass through the safety filters untouched — no
@@ -79,6 +81,7 @@ PREF_KEY = "text_normalization_enabled"
 
 _FULL_NAME_TO_CODE = {
     "english": "en",
+    "malayalam": "ml",
     "german": "de",
     "spanish": "es",
     "french": "fr",
@@ -562,6 +565,43 @@ def _numbers_to_words(text: str, lang: str) -> str:
     return _INTEGER_RE.sub(lambda m: _safe(m, _integer), text)
 
 
+# ── Native verbalizers (languages num2words lacks) ──────────────────────────
+#
+# Same conservative regexes and bracket masking as the num2words path, but the
+# rendering is a hand-written module. Malayalam (ml) is the first: num2words
+# ships bn/kn/te but no ml, so Malayalam dubs reached the engine with raw
+# digits. Each module exposes ``cardinal(int)``, ``decimal(int, str)`` and
+# ``percent(str)``; any exception leaves that occurrence untouched.
+
+_NATIVE_VERBALIZERS = {"ml": "services.number_words_ml"}
+
+
+def _native_lang(language: Optional[str]) -> Optional[str]:
+    plain = _plain_lang_code(language)
+    return plain if plain in _NATIVE_VERBALIZERS else None
+
+
+def _numbers_to_words_native(text: str, lang: str) -> str:
+    import importlib
+
+    try:
+        mod = importlib.import_module(_NATIVE_VERBALIZERS[lang])
+    except Exception:  # noqa: BLE001 — never break synthesis
+        return text
+
+    def _safe(m: re.Match, render: Callable[[re.Match], str]) -> str:
+        try:
+            return render(m)
+        except Exception:  # noqa: BLE001 — conservative: never mangle
+            return m.group(0)
+
+    text = _PERCENT_RE.sub(lambda m: _safe(m, lambda m: mod.percent(m.group(1))), text)
+    text = _DECIMAL_RE.sub(
+        lambda m: _safe(m, lambda m: mod.decimal(int(m.group(1)), m.group(2))), text
+    )
+    return _INTEGER_RE.sub(lambda m: _safe(m, lambda m: mod.cardinal(int(m.group(1)))), text)
+
+
 # ── Public API ───────────────────────────────────────────────────────────────
 
 def normalize_text(text: str, language: Optional[str] = None) -> str:
@@ -580,6 +620,10 @@ def normalize_text(text: str, language: Optional[str] = None) -> str:
         if lang in _ABBREV_COMPILED:
             out = _outside_brackets(out, lambda t: _expand_abbreviations(t, lang))
         out = _outside_brackets(out, lambda t: _numbers_to_words(t, lang))
+    else:
+        native = _native_lang(language)
+        if native:
+            out = _outside_brackets(out, lambda t: _numbers_to_words_native(t, native))
     return out
 
 
