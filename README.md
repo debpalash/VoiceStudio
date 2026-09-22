@@ -85,40 +85,16 @@ Open **Voice cloning**, choose a voice or add a clean reference recording, enter
 
 ### Install with prompt
 
-Copy this prompt into your coding agent to install VoiceStudio and configure it for your device:
+Paste into your coding agent (Claude Code, Codex, Cursor, …):
 
 ```text
-Install and configure the VoiceStudio Electron desktop app on this device,
-then verify it works. Tauri is archived; do not install or launch it.
-Repository: https://github.com/debpalash/VoiceStudio
-
-Read the repository's install guide for my OS, docs/performance.md, and
-skills/voicestudio/SKILL.md. Install the voicestudio audio-workflow skill
-with `npx skills add debpalash/VoiceStudio` if your agent supports skills;
-otherwise follow that SKILL.md directly.
-
-Detect my OS, CPU architecture, GPU, available RAM/VRAM, free disk space,
-and any existing VoiceStudio installation, backend, or downloaded models.
-Reuse existing data and models. Prefer the latest stable Electron installer
-for my OS and architecture; select an asset named VoiceStudio-Electron.
-For source setup, follow electron/README.md: bun install, bun run setup:api, then bun run dev
-from the repository root. Let Electron supervise the backend; do not start
-a second backend or use legacy tauri scripts.
-If migrating from Tauri, follow docs/electron-migration.md and back up first.
-
-Configure local voice cloning using a supported engine and acceleration
-that fit this device. Keep working defaults and verify the actual execution
-device rather than assuming GPU support. Install required dependencies;
-reuse a suitable installed model, or explain the download size and license
-and ask before downloading one. Keep cloud services and analytics opt-in.
-
-Start the app, check /health at the configured backend address (default
-http://localhost:3900), and discover its API through /openapi.json. Generate
-a short test with a bundled or authorized voice and verify the audio file.
-Report the installed version, engine, actual device, data location, audio
-output path, and how to reopen the app. Complete the setup, not just a plan;
-identify any permissions or manual steps you cannot perform.
+Install the VoiceStudio Electron app on this device and verify it works, following
+https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 ```
+
+The [agent guide](docs/install/agent.md) covers hardware detection, reusing existing
+data, asking before model downloads, and a test generation. Agents that support skills
+can also run `npx skills add debpalash/VoiceStudio`.
 
 <details>
 <summary><strong>Run the Electron preview from source</strong></summary>

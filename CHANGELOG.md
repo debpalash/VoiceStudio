@@ -23,6 +23,10 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 - On Windows, one reset connection no longer leaves the backend running but unreachable (#2276) — thanks @ialexbond!
 
+### Docs
+
+- Install with prompt is now a two-line prompt; the full agent steps live in [docs/install/agent.md](docs/install/agent.md)
+
 ## [0.5.5] — 2026-09-22
 
 **Your voice, another language.** The Clone workspace now keeps your chosen output language when changing voice samples. For example, an English reference can read a French script with a multilingual engine; Auto in Clone follows the script instead of inheriting the reference profile's language.
