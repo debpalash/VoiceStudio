@@ -148,11 +148,9 @@ def parse_srt(content: str) -> SrtParseResult:
             continue
         lines = body.strip("\n").split("\n")
         source_cue = "\n".join(line.strip() for line in lines if line.strip())
-        if is_webvtt:
-            # WebVTT escapes `&`, `<` and `>` in cue text ("Q&amp;A");
-            # SubRip has no escaping, so its text stays as written.
-            lines = [html.unescape(line) for line in lines]
-        cue_text = "\n".join(line.strip() for line in lines if line.strip())
+        # Markup is not speech. Strip it before WebVTT unescape so a real
+        # `<i>` tag drops and a written `&lt;i&gt;` still reads as `<i>`.
+        cue_text = spoken_cue_text(source_cue, webvtt=is_webvtt)
         if not cue_text:
             skipped += 1
             continue
@@ -212,8 +210,26 @@ _CUE_MARKUP_RE = re.compile(
     r"</?(?:[biu]|c|v|lang|ruby|rt|font)(?=[\s.>])[^<>\n]*>|<(?:\d+:)?\d{2}:\d{2}\.\d{3}>",
     re.IGNORECASE,
 )
+# YouTube karaoke and unknown cue tags (`<c.colorE5E5E5>`, `<00:00:01.200>`).
+_CUE_TAG_RE = re.compile(r"<[^>]+>")
+# SubRip/ASS overrides (`{\an8}`, `{\i1}`). A `{` in dialogue has no backslash.
+_ASS_OVERRIDE_RE = re.compile(r"\{\\[^}]*\}")
 # An `&` that does not already start a character reference.
 _BARE_AMPERSAND_RE = re.compile(r"&(?!#\d+;|#[xX][0-9a-fA-F]+;|[A-Za-z][A-Za-z0-9]*;)")
+
+
+def spoken_cue_text(text: str, *, webvtt: bool = False) -> str:
+    """Return the words a cue should speak, without player markup.
+
+    Tags and alignment overrides are dropped first so a WebVTT entity that
+    decodes to `<i>` stays literal (`&lt;i&gt;` is speech; `<i>Hi</i>` is not).
+    SubRip has no entity escaping, so only SRT/ASS markup is removed there.
+    """
+    out = _ASS_OVERRIDE_RE.sub("", text)
+    out = _CUE_TAG_RE.sub("", out)
+    if webvtt:
+        out = html.unescape(out)
+    return "\n".join(line.strip() for line in out.split("\n") if line.strip())
 
 
 def _escape_cue_span(span: str) -> str:

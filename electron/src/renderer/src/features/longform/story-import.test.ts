@@ -61,3 +61,11 @@ it('retains numeric dialogue through the Electron manuscript importer', () => {
   expect(text).toBe('3\n2\n1');
   expect(splitIntoChunks(text, 100).join(' ')).toMatch(/3\s+2\s+1/);
 });
+it('drops caption markup from an imported story SRT', () => {
+  expect(
+    importToText(
+      'fansub.srt',
+      '1\n00:00:01,000 --> 00:00:02,000\n{\\an8}<i>Hello</i>\n\n2\n00:00:02,000 --> 00:00:03,000\nhey<00:00:00.480><c> everyone</c>\n',
+    ),
+  ).toBe('Hello\nhey everyone');
+});

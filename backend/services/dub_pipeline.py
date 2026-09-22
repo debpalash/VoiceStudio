@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import html
 import json
 import logging
 import os
@@ -46,6 +45,7 @@ import soundfile as sf
 from core.config import DUB_DIR
 from fastapi import HTTPException
 from services.ffmpeg_utils import find_ffmpeg, find_ffprobe, _get_semaphore, _spawn_with_retry
+from services.srt_parser import spoken_cue_text
 from services.model_manager import get_best_device
 # Process lifecycle moved to its own leaf module so ffmpeg_utils can import
 # it at module top (no dub_pipeline ↔ ffmpeg_utils cycle). Re-exported here —
@@ -1222,12 +1222,7 @@ def parse_vtt_segments(vtt_path: str) -> list[dict]:
             end = _ts(right)
         except Exception:
             continue
-        text = " ".join(ln.strip() for ln in lines[1:]).strip()
-        # Strip inline styling like <c.colorE5E5E5>foo</c> or <00:00:01.200>
-        text = re.sub(r"<[^>]+>", "", text)
-        # WebVTT escapes `&`, `<` and `>` in cue text ("Q&amp;A"); decode
-        # them once the markup is gone so the dub gets the words.
-        text = html.unescape(text).strip()
+        text = spoken_cue_text(" ".join(ln.strip() for ln in lines[1:]), webvtt=True)
         if text:
             segments.append({"start": start, "end": end, "text": text})
     return segments

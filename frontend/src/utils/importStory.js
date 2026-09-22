@@ -3,6 +3,18 @@
  * auto-cast or split. Pure + testable; the component handles file reading.
  */
 
+/** Caption markup is not speech: karaoke spans, italics, `{\an8}` alignment. */
+function spokenCueText(text) {
+  // Cue tags are stripped for TTS, never assigned to the DOM. A `/<[^>]+>/`
+  // replace is the same filter parse_vtt_segments already uses in Python;
+  // CodeQL's js/bad-tag-filter is for HTML sanitization, which this is not.
+  return String(text || '')
+    .replace(/\{\\[^}]*\}/g, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/[^\S\n]+/g, ' ')
+    .trim();
+}
+
 /** Strip SRT indices + timestamps, returning one cue's text per line. */
 export function parseSrt(content) {
   const blocks = String(content || '')
@@ -45,7 +57,7 @@ export function parseSrt(content) {
       }
       kept.push(l);
     });
-    const text = kept.join(' ').trim();
+    const text = spokenCueText(kept.join(' '));
     if (text) out.push(text);
   }
   return out.join('\n');

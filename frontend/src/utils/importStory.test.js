@@ -53,6 +53,15 @@ describe('parseSrt', () => {
       '3\n00:00:03,000 --> 00:00:04,000\n2\n';
     expect(parseSrt(s)).toBe('Count 3 2');
   });
+  it('drops karaoke tags and alignment overrides from spoken lines', () => {
+    const s =
+      '1\n00:00:01,000 --> 00:00:02,000\n{\\an8}{\\i1}Hello{\\i0}\n\n' +
+      '2\n00:00:02,000 --> 00:00:03,000\nhey<00:00:00.480><c> everyone</c>\n';
+    expect(parseSrt(s)).toBe('Hello\nhey everyone');
+  });
+  it('keeps a literal less-than that is not a tag', () => {
+    expect(parseSrt('1\n00:00:01,000 --> 00:00:02,000\nI <3 you\n')).toBe('I <3 you');
+  });
 });
 
 describe('importToText', () => {
