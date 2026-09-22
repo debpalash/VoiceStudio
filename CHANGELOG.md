@@ -10,7 +10,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 **Highlights**
 
-- Finished audiobook chapters survive a data-folder move or a power-off mid-render (#2279)
+- Finished audiobook chapters survive a data-folder move or a power-off mid-render (#2279) — thanks @castlecreati!
 - Malayalam speech reads numbers in Malayalam (#2280) — thanks @nikhilkilivayil!
 - Stories and Audiobook can save a chapter cue sheet (`.txt`) after a render (#2278) — thanks @shivsin25!
 - Windows backend keeps answering after antivirus or VPN software resets a connection (#2276) — thanks @ialexbond!
@@ -23,9 +23,6 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 ### Fixed
 
 - On Windows, one reset connection no longer leaves the backend running but unreachable (#2276) — thanks @ialexbond!
-
-### Fixed
-
 - Rendered audiobook chapters stay reusable after the data folder moves, and a power-off no longer empties the resume point or tears chapter audio (#2279) — thanks @castlecreati!
 - An audiobook chapter-cache miss now logs which input changed since the cached render (#2279)
 
