@@ -2732,7 +2732,8 @@
     "title": "Integrationer",
     "featured": "Utvald",
     "description": "Upptäck integrationer och utvalda partner.",
-    "n8nHint": "Importera arbetsflödet till n8n, redigera begäran och kör det. Låt VoiceStudio vara igång. Docker och fjärranslutna n8n behöver en nåbar backendadress och eventuella inloggningsuppgifter."
+    "n8nHint": "Importera arbetsflödet till n8n, redigera begäran och kör det. Låt VoiceStudio vara igång. Docker och fjärranslutna n8n behöver en nåbar backendadress och eventuella inloggningsuppgifter.",
+    "openaiAgentsHint": "Peka OpenAI Agents SDK:s röstpipeline mot VoiceStudio för tal-till-text och text-till-tal. Låt VoiceStudio vara igång. För en fjärrbackend, ange OMNIVOICE_API_KEY innan du kör. Ange AGENT_LLM_BASE_URL och AGENT_LLM_MODEL till den språkmodellserver som agenten ska använda."
   },
   "directoryExamples": {
     "example": "Katalogexempel",

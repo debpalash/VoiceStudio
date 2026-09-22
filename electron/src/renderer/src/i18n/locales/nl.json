@@ -2732,7 +2732,8 @@
     "title": "Integraties",
     "featured": "Uitgelicht",
     "description": "Ontdek integraties en uitgelichte partners.",
-    "n8nHint": "Importeer deze workflow in n8n, bewerk het verzoek en voer hem uit. Laat VoiceStudio draaien. Docker en externe n8n-instanties hebben een bereikbaar backendadres en eventuele inloggegevens nodig."
+    "n8nHint": "Importeer deze workflow in n8n, bewerk het verzoek en voer hem uit. Laat VoiceStudio draaien. Docker en externe n8n-instanties hebben een bereikbaar backendadres en eventuele inloggegevens nodig.",
+    "openaiAgentsHint": "Richt de spraakpijplijn van de OpenAI Agents SDK op VoiceStudio voor spraak-naar-tekst en tekst-naar-spraak. Laat VoiceStudio draaien. Stel voor een externe backend OMNIVOICE_API_KEY in voordat je start. Stel AGENT_LLM_BASE_URL en AGENT_LLM_MODEL in op de taalmodelserver die je agent moet gebruiken."
   },
   "directoryExamples": {
     "example": "Directoryvoorbeeld",

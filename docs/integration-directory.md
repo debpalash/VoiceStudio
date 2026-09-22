@@ -34,7 +34,8 @@ never contain stored credentials. Copying configuration does not prove the clien
 is connected; use its MCP tools/status view to confirm the connection.
 
 The schemas follow the official [Claude Code MCP guide](https://code.claude.com/docs/en/mcp)
-and [Cursor MCP guide](https://cursor.com/docs/mcp). Other than the n8n workflow described below, remaining directory entries are
+and [Cursor MCP guide](https://cursor.com/docs/mcp). Other than the n8n workflow and
+OpenAI Agents snippet described below, remaining directory entries are
 capability references, not implemented connectors. The catalog has one card per
 route, retaining bundled logos and the correct category when entries overlap.
 
@@ -46,6 +47,17 @@ and voice in n8n, then run it yourself. See [n8n setup](integrations/n8n.md) for
 container networking, credentials and validation. No credentials or automatic
 background requests are exported.
 
+## Voice for OpenAI Agents
+
+The OpenAI Agents detail page shows a copyable Python snippet that points the
+OpenAI Agents SDK voice pipeline at the current backend's OpenAI-compatible API
+(`<backend>/v1`) for both speech recognition and speech. The API key is read
+from `OMNIVOICE_API_KEY` when the script runs and is never written into the
+snippet; tracing is switched off so nothing is uploaded. The agent's language
+model must be set explicitly (`AGENT_LLM_BASE_URL`, `AGENT_LLM_MODEL`, for a
+local OpenAI-compatible server); the snippet never falls back to a hosted model. See
+[Agentic voice → OpenAI Agents SDK](agentic-voice.md#openai-agents-sdk).
+
 ## Answer phone calls with Twilio
 
 The Twilio detail page answers calls to your Twilio number with a saved voice:
@@ -53,8 +65,9 @@ VoiceStudio speaks a greeting over a Twilio Media Stream, then hangs up. It is
 off by default. When enabled, a separate loopback listener that your own HTTPS
 tunnel (cloudflared, ngrok) forwards to serves only two endpoints: the voice
 webhook, which must carry a valid Twilio signature, and the Media Stream, which
-must present a single-use per-call token. The main API is never exposed. **Test locally** plays the greeting at phone
-quality without Twilio. See [Twilio setup](integrations/twilio.md) for the
+must present a single-use per-call token. The main API is never exposed.
+**Test locally** plays the greeting at phone quality without Twilio. See
+[Twilio setup](integrations/twilio.md) for the
 tunnel, Twilio Console configuration, security model and limits. Twilio is an
 implemented connector; the other calling entries (Plivo, Telnyx) remain
 capability references.

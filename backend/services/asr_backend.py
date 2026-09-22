@@ -366,6 +366,40 @@ def _decode_audio_16k_mono(audio_path: str):
 # ── Protocol ────────────────────────────────────────────────────────────────
 
 
+#: Per-request decode options a backend may accept as keyword arguments on
+#: ``transcribe()``. Callers exposing OpenAI's transcription parameters
+#: (``/v1/audio/transcriptions`` and ``/translations``) pass only the ones a
+#: backend's signature declares, so an engine that cannot honour one is never
+#: handed it and never fails on an unexpected keyword.
+TRANSCRIBE_REQUEST_OPTIONS = ("language", "initial_prompt", "temperature", "task")
+
+
+def whisper_request_options(language, initial_prompt, temperature, task) -> dict:
+    """Whisper-family decode kwargs for the options that were actually set."""
+    opts: dict = {}
+    if language:
+        opts["language"] = language
+    if initial_prompt:
+        opts["initial_prompt"] = initial_prompt
+    if temperature is not None:
+        opts["temperature"] = float(temperature)
+    if task and task != "transcribe":
+        opts["task"] = task
+    return opts
+
+
+def whisper_checkpoint_translates(model_name: str | None) -> bool:
+    """Whether a Whisper checkpoint was trained for speech→English translation.
+
+    Turbo (large-v3-turbo) was fine-tuned on transcription data only and
+    returns the source language even with ``task="translate"``; English-only
+    ``*.en`` models and Distil-Whisper checkpoints are English-only too. Those
+    must be refused, not answered with untranslated text labelled English.
+    """
+    name = (model_name or "").lower()
+    return not ("turbo" in name or name.endswith(".en") or "distil" in name)
+
+
 class ASRBackend(ABC):
     id: str = "base"
     display_name: str = "Base ASR"
@@ -398,6 +432,11 @@ class ASRBackend(ABC):
     @abstractmethod
     def is_available(cls) -> tuple[bool, str]:
         ...
+
+    def supports_translation(self) -> bool:
+        """Whether ``transcribe(task="translate")`` really yields English.
+        Default False; Whisper backends answer from their loaded checkpoint."""
+        return False
 
     @abstractmethod
     def transcribe(self, audio_path: str, *, word_timestamps: bool = True) -> dict:
@@ -964,7 +1003,11 @@ class WhisperXBackend(ASRBackend):
         to faster-whisper's native word timestamps (already in result)."""
         return load_align_model(language_code, self._device)
 
-    def transcribe(self, audio_path: str, *, word_timestamps: bool = True) -> dict:
+    def supports_translation(self) -> bool:
+        return whisper_checkpoint_translates(self._model_name)
+
+    def transcribe(self, audio_path: str, *, word_timestamps: bool = True,
+                   language: str | None = None, task: str = "transcribe") -> dict:
         import whisperx  # used for whisperx.align() below
         self._ensure_asr()
         logger.info("whisperx transcribing %s (word_timestamps=%s)", audio_path, word_timestamps)
@@ -973,11 +1016,17 @@ class WhisperXBackend(ASRBackend):
         # Windows (#479). Same 16 kHz mono s16le array whisperx expects.
         audio = _decode_audio_16k_mono(audio_path)
         try:
-            result = self._asr.transcribe(audio)
+            # whisperx's pipeline takes language/task per call; prompt and
+            # temperature are fixed load-time asr_options, so this backend
+            # does not advertise them (the OpenAI route passes only what a
+            # backend's signature accepts).
+            result = self._asr.transcribe(
+                audio, **whisper_request_options(language, None, None, task),
+            )
         except IndexError:
             # WhisperX pipeline crashes with IndexError if VAD produces 0 segments
             logger.info("whisperx transcribe threw IndexError (likely 0 VAD segments). Returning empty result.")
-            result = {"segments": [], "language": "en"}
+            result = {"segments": [], "language": language or "en"}
             
         lang = result.get("language", "en")
 
@@ -1144,7 +1193,13 @@ class FasterWhisperBackend(ASRBackend):
             # the last error.
             raise last_err
 
-    def transcribe(self, audio_path: str, *, word_timestamps: bool = True) -> dict:
+    def supports_translation(self) -> bool:
+        return whisper_checkpoint_translates(self._model_name)
+
+    def transcribe(self, audio_path: str, *, word_timestamps: bool = True,
+                   language: str | None = None, initial_prompt: str | None = None,
+                   temperature: float | None = None,
+                   task: str = "transcribe") -> dict:
         self._ensure_model()
         logger.info(
             "faster-whisper transcribing %s (word_timestamps=%s)",
@@ -1160,6 +1215,7 @@ class FasterWhisperBackend(ASRBackend):
             word_timestamps=word_timestamps,
             vad_filter=True,  # built-in Silero VAD — cleaner segment starts
             **asr_decode_defaults(),
+            **whisper_request_options(language, initial_prompt, temperature, task),
         )
         segments = list(segments_iter)
         # Normalise to the shape segment_transcript(...) expects: a dict with
@@ -1253,7 +1309,13 @@ class MLXWhisperBackend(ASRBackend):
         except (ImportError, OSError, RuntimeError) as e:
             return False, f"mlx-whisper unavailable: {e}"
 
-    def transcribe(self, audio_path: str, *, word_timestamps: bool = True) -> dict:
+    def supports_translation(self) -> bool:
+        return whisper_checkpoint_translates(self._model_name)
+
+    def transcribe(self, audio_path: str, *, word_timestamps: bool = True,
+                   language: str | None = None, initial_prompt: str | None = None,
+                   temperature: float | None = None,
+                   task: str = "transcribe") -> dict:
         import mlx_whisper
         logger.info(
             "MLX Whisper transcribing %s (model=%s, word_timestamps=%s)",
@@ -1275,6 +1337,7 @@ class MLXWhisperBackend(ASRBackend):
             audio,
             path_or_hf_repo=self._model_name,
             word_timestamps=word_timestamps,
+            **whisper_request_options(language, initial_prompt, temperature, task),
         )
         # Forced alignment, same as WhisperX (#1127). On Apple Silicon this
         # backend replaces WhisperX for dubbing — CTranslate2 has no Metal
@@ -1503,9 +1566,19 @@ class PyTorchWhisperBackend(ASRBackend):
         except Exception:
             pass  # Some builds have no CUDA cache to release.
 
-    def transcribe(self, audio_path: str, *, word_timestamps: bool = True) -> dict:
+    def supports_translation(self) -> bool:
+        # A reused TTS-model ASR head may differ from the env default: ask the
+        # loaded pipeline first.
+        loaded = getattr(getattr(self._pipe, "model", None), "name_or_path", None)
+        return whisper_checkpoint_translates(loaded or self._model_name())
+
+    def transcribe(self, audio_path: str, *, word_timestamps: bool = True,
+                   language: str | None = None, task: str = "transcribe") -> dict:
         import soundfile as sf
         self._ensure_pipe()
+        # transformers' Whisper generate() takes language/task; a prompt needs
+        # tokenizer-specific prompt_ids, so it is not advertised here.
+        generate_kwargs = whisper_request_options(language, None, None, task)
         # #2039: libsndfile cannot open MP4/M4A (AAC), which /transcribe and
         # the MCP tool both accept. Those decode through the validated ffmpeg
         # path, which resamples to 16 kHz properly. Anything soundfile can
@@ -1524,6 +1597,7 @@ class PyTorchWhisperBackend(ASRBackend):
                 return_timestamps="word" if word_timestamps else True,
                 chunk_length_s=15,
                 batch_size=batch_size,
+                **({"generate_kwargs": generate_kwargs} if generate_kwargs else {}),
             )
 
         if self._on_cuda():
@@ -2462,17 +2536,36 @@ class OpenAICompatASRBackend(ASRBackend):
             http_client=DefaultHttpxClient(follow_redirects=False),
         )
 
-    def transcribe(self, audio_path: str, *, word_timestamps: bool = True) -> dict:
+    def supports_translation(self) -> bool:
+        # The remote server's own /audio/translations decides (and errors).
+        return True
+
+    def transcribe(self, audio_path: str, *, word_timestamps: bool = True,
+                   language: str | None = None, initial_prompt: str | None = None,
+                   temperature: float | None = None,
+                   task: str = "transcribe") -> dict:
         logger.info(
             "OpenAI-compat ASR transcribing %s (base_url=%s, model=%s)",
             audio_path, self._base_url, self._model,
         )
         client = self._client()
+        extra: dict = {}
+        if initial_prompt:
+            extra["prompt"] = initial_prompt
+        if temperature is not None:
+            extra["temperature"] = temperature
+        if task == "translate":
+            endpoint = client.audio.translations
+        else:
+            endpoint = client.audio.transcriptions
+            if language:
+                extra["language"] = language
         try:
             with open(audio_path, "rb") as f:
                 try:
-                    resp = client.audio.transcriptions.create(
+                    resp = endpoint.create(
                         file=f, model=self._model, response_format="verbose_json",
+                        **extra,
                     )
                 except Exception:
                     # Minimal/older compatible servers reject verbose_json
@@ -2480,8 +2573,8 @@ class OpenAICompatASRBackend(ASRBackend):
                     # failure. Re-open: the SDK may have partially consumed
                     # the file handle on the first attempt.
                     f.seek(0)
-                    resp = client.audio.transcriptions.create(
-                        file=f, model=self._model, response_format="json",
+                    resp = endpoint.create(
+                        file=f, model=self._model, response_format="json", **extra,
                     )
         except Exception as exc:
             # Never leak a raw SDK/httpx exception object (auth headers,
@@ -2491,7 +2584,10 @@ class OpenAICompatASRBackend(ASRBackend):
                 f"OpenAI-compatible ASR server at {self._base_url!r} failed: "
                 f"{type(exc).__name__}: {exc}"
             ) from exc
-        return self._adapt_response(resp)
+        out = self._adapt_response(resp)
+        if language and not getattr(resp, "language", None):
+            out["language"] = language
+        return out
 
     @staticmethod
     def _adapt_response(resp) -> dict:

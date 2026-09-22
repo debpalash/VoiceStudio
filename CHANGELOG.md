@@ -10,6 +10,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 **Highlights**
 
+- Finished audiobook chapters survive a data-folder move or a power-off mid-render (#2279) — thanks @castlecreati!
 - Malayalam speech reads numbers in Malayalam (#2280) — thanks @nikhilkilivayil!
 - Stories and Audiobook can save a chapter cue sheet (`.txt`) after a render (#2278) — thanks @shivsin25!
 - Windows backend keeps answering after antivirus or VPN software resets a connection (#2276) — thanks @ialexbond!
@@ -19,10 +20,29 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 - Answer Twilio phone calls in a saved voice: off by default, signed webhooks and single-use stream tokens, with a local phone-quality test (#2291)
 - Malayalam dubs and audiobooks speak numbers, percentages, and decimals in Malayalam instead of reading raw digits (#2280) — thanks @nikhilkilivayil!
 - Download a chapter cue sheet (`HH:MM:SS<TAB>Title`) after a Stories or Audiobook render; timestamps match the M4B's embedded chapters and give MP3 portable chapters (#2278) — thanks @shivsin25!
+- The OpenAI Agents integration page gives a copyable snippet that runs the Agents SDK voice pipeline on VoiceStudio (#2290)
+- The OpenAI-compatible API adds `GET /v1/models` and `POST /v1/audio/translations` (multilingual Whisper models; turbo models are refused) (#2290)
+- Speech requests accept `stream_format` (`audio` or `sse`) and OpenAI's `{"id": ...}` voice object (#2290)
+- Transcriptions pass `language`, `prompt` and `temperature` to Whisper engines and return `words` with `timestamp_granularities[]=word` (#2290)
 
 ### Fixed
 
 - On Windows, one reset connection no longer leaves the backend running but unreachable (#2276) — thanks @ialexbond!
+- The official `openai` SDK and OpenAI Agents SDK work unchanged: `gpt-4o-mini-tts` and current OpenAI voice names no longer fail with "Unknown model" (#2290)
+- OpenAI `instructions` now reaches the voice engine instead of being ignored; OmniVoice uses the voice-design tags in it (#2290)
+- Speech `pcm` is 24 kHz as OpenAI specifies; `aac` and `opus` return real AAC and Opus, and a missing encoder is a clear error instead of a mislabelled WAV (#2290)
+- Transcriptions report the detected language instead of always saying English, and `verbose_json` segments follow OpenAI's schema (#2290)
+- OpenAI-compatible routes return errors in OpenAI's format, with 400 for invalid requests (#2290)
+- Rendered audiobook chapters stay reusable after the data folder moves, and a power-off no longer empties the resume point or tears chapter audio (#2279) — thanks @castlecreati!
+- An audiobook chapter-cache miss now logs which input changed since the cached render (#2279)
+
+### Bug reporters
+
+- @castlecreati — audiobook chapter cache lost after a power-off (#2279).
+
+### Docs
+
+- Install with prompt is now a two-line prompt; the full agent steps live in [docs/install/agent.md](docs/install/agent.md) (#2288)
 
 ## [0.5.5] — 2026-09-22
 

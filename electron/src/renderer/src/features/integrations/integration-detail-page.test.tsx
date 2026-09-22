@@ -53,3 +53,15 @@ it('exports the n8n workflow only on request and handles canceled saves', async 
     expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('disk full')),
   );
 });
+
+it('shows the OpenAI Agents snippet for the live backend', async () => {
+  route.slug = 'openai-agents';
+  const copy = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText: copy }, configurable: true });
+  render(<IntegrationDetailPage />);
+  expect(screen.getByText(/OpenAI Agents SDK voice pipeline/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+  await waitFor(() => expect(copy).toHaveBeenCalledTimes(1));
+  expect(copy.mock.calls[0][0]).toContain('base_url="http://127.0.0.1:3912/v1"');
+  expect(screen.queryByRole('button', { name: 'Save as…' })).not.toBeInTheDocument();
+});

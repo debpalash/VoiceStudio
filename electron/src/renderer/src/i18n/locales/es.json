@@ -2734,7 +2734,8 @@
     "title": "Integraciones",
     "featured": "Destacado",
     "description": "Descubre integraciones y socios destacados.",
-    "n8nHint": "Importa este flujo en n8n, edita la solicitud y ejecútalo. Mantén VoiceStudio abierto. Docker y n8n remoto necesitan una dirección de backend accesible y las credenciales requeridas."
+    "n8nHint": "Importa este flujo en n8n, edita la solicitud y ejecútalo. Mantén VoiceStudio abierto. Docker y n8n remoto necesitan una dirección de backend accesible y las credenciales requeridas.",
+    "openaiAgentsHint": "Apunta la canalización de voz del OpenAI Agents SDK a VoiceStudio para voz a texto y texto a voz. Mantén VoiceStudio en ejecución. Para un backend remoto, define OMNIVOICE_API_KEY antes de ejecutar. Define AGENT_LLM_BASE_URL y AGENT_LLM_MODEL con el servidor de modelo de lenguaje que debe usar tu agente."
   },
   "directoryExamples": {
     "example": "Ejemplo del directorio",

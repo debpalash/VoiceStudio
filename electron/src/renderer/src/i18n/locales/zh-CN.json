@@ -2736,7 +2736,8 @@
     "title": "集成",
     "featured": "精选",
     "description": "探索集成与精选合作伙伴。",
-    "n8nHint": "将此工作流导入 n8n，编辑请求后运行。请保持 VoiceStudio 运行。Docker 和远程 n8n 需要可访问的后端地址及必要的凭据。"
+    "n8nHint": "将此工作流导入 n8n，编辑请求后运行。请保持 VoiceStudio 运行。Docker 和远程 n8n 需要可访问的后端地址及必要的凭据。",
+    "openaiAgentsHint": "将 OpenAI Agents SDK 的语音管道指向 VoiceStudio，用于语音转文字和文字转语音。请保持 VoiceStudio 运行。使用远程后端时，请在运行前设置 OMNIVOICE_API_KEY。将 AGENT_LLM_BASE_URL 和 AGENT_LLM_MODEL 设置为智能体要使用的语言模型服务器。"
   },
   "directoryExamples": {
     "example": "目录示例",

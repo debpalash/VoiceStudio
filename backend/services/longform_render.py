@@ -145,6 +145,190 @@ def chapter_cache_key(
     return hashlib.sha1(raw.encode("utf-8"), usedforsecurity=False).hexdigest()[:20]
 
 
+def adopt_cached_file(legacy_path: str, path: str) -> str:
+    """Move a cache entry found under a legacy key to its current key (#2279).
+
+    Returns the path that now holds the audio: ``path`` after a successful
+    move, else ``legacy_path`` (still a valid hit — only the migration failed).
+    A move, not a copy, so a migrated cache never costs twice its disk.
+    """
+    from core.durable_io import flush_dir
+
+    try:
+        os.replace(legacy_path, path)
+    except OSError:
+        return legacy_path
+    # Persist the new directory entry, or a power-off can undo the move and
+    # the chapter re-renders after all.
+    flush_dir(os.path.dirname(path))
+    return path
+
+
+#: Per-content records of which inputs produced a cached chapter, so a later
+#: chapter-cache miss can say *what* changed instead of silently re-rendering
+#: (#2279). Tiny JSON files under the cache root, so they share its byte cap.
+CHAPTER_INPUTS_SUBDIR = "inputs"
+
+
+def _digest(value) -> str:
+    raw = json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha1(raw.encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
+
+
+def chapter_content_id(spans: Iterable[tuple]) -> str:
+    """Identity of a chapter's *script* (the raw span tuples), independent of
+    every render input — the handle a miss explanation is looked up by."""
+    return _digest([list(s) for s in spans])
+
+
+def _inputs_path(cache_dir: str, content_id: str) -> str:
+    return os.path.join(cache_dir, CHAPTER_INPUTS_SUBDIR, f"{content_id}.json")
+
+
+def record_chapter_inputs(cache_dir: str, content_id: str, inputs: dict) -> None:
+    """Remember digests of the inputs a chapter was rendered with. Values are
+    hashed, so no script text, transcript or lexicon is copied. Best-effort."""
+    path = _inputs_path(cache_dir, content_id)
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = f"{path}.{os.getpid()}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({k: _digest(v) for k, v in inputs.items()}, f, sort_keys=True)
+        os.replace(tmp, path)
+    except OSError:
+        return
+
+
+def has_chapter_inputs(cache_dir: str, content_id: str) -> bool:
+    return os.path.isfile(_inputs_path(cache_dir, content_id))
+
+
+def explain_chapter_miss(cache_dir: str, content_id: str, inputs: dict) -> Optional[list[str]]:
+    """Name the inputs that differ from the last render of this chapter.
+
+    ``None`` when this chapter was never rendered (or its record is gone);
+    ``[]`` when every input matches, i.e. the audio file itself was evicted or
+    deleted; otherwise the sorted names of the inputs that changed.
+    """
+    try:
+        with open(_inputs_path(cache_dir, content_id), encoding="utf-8") as f:
+            before = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(before, dict):
+        return None
+    now = {k: _digest(v) for k, v in inputs.items()}
+    return sorted(k for k in set(before) | set(now) if before.get(k) != now.get(k))
+
+
+#: Voices-dir roots this cache has been rendered under (#2279). Builds before
+#: the portable key hashed the ABSOLUTE reference path, so an entry they wrote
+#: is only reachable by rebuilding that path under the root it was written
+#: with — which, after a data-dir move, is no longer the current one.
+VOICES_ROOTS_FILE = "voices_roots.json"
+_MAX_VOICES_ROOTS = 8
+
+
+def remember_voices_root(cache_dir: str, root: str) -> list[str]:
+    """Record ``root`` as a voices root of this cache and return the OTHER
+    roots seen before it, newest first. Written only when ``root`` is new, so
+    a render does not rewrite it per chapter. Best-effort: a read or write
+    failure just means fewer legacy roots to probe."""
+    path = os.path.join(cache_dir, VOICES_ROOTS_FILE)
+    try:
+        with open(path, encoding="utf-8") as f:
+            seen = json.load(f)
+        if not isinstance(seen, list):
+            seen = []
+    except (OSError, ValueError):
+        seen = []
+    seen = [r for r in seen if isinstance(r, str) and r]
+    if not root or (seen and seen[0] == root):
+        return [r for r in seen if r != root]
+    others = [r for r in seen if r != root]
+    from core.durable_io import flush_dir, flush_fd
+
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+        tmp = f"{path}.{os.getpid()}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump([root, *others][:_MAX_VOICES_ROOTS], f)
+            # Durable like the cache it indexes: a power-off must not leave an
+            # empty history, which would orphan every legacy-keyed entry.
+            f.flush()
+            flush_fd(f.fileno())
+        os.replace(tmp, path)
+        flush_dir(cache_dir)
+    except OSError:
+        # Best-effort by contract: a read-only or full cache dir only means
+        # fewer legacy roots to probe, never a failed render.
+        return others
+    return others
+
+
+#: The longform render cache, relative to the data dir's outputs folder —
+#: shared by the audiobook router, startup and the Electron data-dir move.
+LONGFORM_CACHE_SUBDIR = "longform_cache"
+
+
+def record_startup_voices_root() -> None:
+    """Remember the current voices root in an existing longform cache at
+    backend start (#2279), so a data-dir move made before this build renders
+    anything still leaves the old root on record for legacy-key lookups.
+    No cache yet → nothing legacy to find, so nothing is created."""
+    try:
+        from core.config import OUTPUTS_DIR, VOICES_DIR
+
+        cache_dir = os.path.join(OUTPUTS_DIR, LONGFORM_CACHE_SUBDIR)
+        if os.path.isdir(cache_dir):
+            remember_voices_root(cache_dir, VOICES_DIR)
+    except Exception:  # never block startup on a cache index
+        return
+
+
+def rebase_path(path: Optional[str], root: str, old_root: str) -> Optional[str]:
+    """``path`` as it was spelled when its root was ``old_root`` — the
+    absolute reference path a pre-#2279 build keyed its cache with. Paths
+    outside ``root`` (engine defaults, pass-through paths) never moved."""
+    if not path or not root or not path.startswith(root):
+        return path
+    rest = path[len(root):]
+    if rest and rest[0] not in (os.sep, os.altsep or os.sep) and not root.endswith(("/", "\\")):
+        return path  # a sibling that merely shares the prefix ("voices2/…")
+    return old_root + rest
+
+
+def wav_is_complete(path: str) -> bool:
+    """True iff ``path`` is a RIFF/WAVE file whose ``data`` chunk is entirely
+    on disk (#2279).
+
+    A power-off before the data reaches the disk can leave a header that
+    promises more audio than the file holds. ``wave``/``soundfile`` open such a
+    file without complaint and simply return less audio, so a cache hit on it
+    would publish a silently shortened chapter. Walks the chunk headers only —
+    no sample decode — so it is cheap on hour-long chapters.
+    """
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as f:
+            head = f.read(12)
+            if len(head) < 12 or head[:4] != b"RIFF" or head[8:12] != b"WAVE":
+                return False
+            pos = 12
+            while pos + 8 <= size:
+                f.seek(pos)
+                hdr = f.read(8)
+                if len(hdr) < 8:
+                    return False
+                chunk_len = int.from_bytes(hdr[4:8], "little")
+                if hdr[:4] == b"data":
+                    return chunk_len > 0 and pos + 8 + chunk_len <= size
+                pos += 8 + chunk_len + (chunk_len & 1)
+    except OSError:
+        return False
+    return False
+
+
 # ── Segment cache (sub-chapter granularity) ─────────────────────────────────
 
 #: Segment WAVs live in a subdirectory of the chapter cache dir so both layers
@@ -220,11 +404,18 @@ class SegmentCache:
         voice_sig: Optional[dict] = None,
         extra_sig: str = "",
         vary_repeats: bool = False,
+        legacy_voice_sigs: Iterable[dict] = (),
     ) -> None:
         self.dir = os.path.join(cache_dir, SEGMENT_SUBDIR)
         self.sample_rate = int(sample_rate)
         self.engine_id = engine_id or ""
         self.voice_sig = dict(voice_sig or {})
+        # Signatures an older build keyed segments by (#2279: the absolute
+        # reference-audio path, one set per voices root the cache has seen).
+        # Looked up after ``voice_sig`` misses, and a hit is moved to the
+        # current key, so segments rendered before the portable signature
+        # keep counting.
+        self.legacy_voice_sigs = [dict(s) for s in legacy_voice_sigs if s]
         self.extra_sig = extra_sig or ""
         # Cache opt-out (#1208): when on, a per-occurrence nonce enters the key
         # so identical repeated lines no longer share one WAV. Off → the nonce
@@ -233,26 +424,39 @@ class SegmentCache:
         self.hits = 0
         self.misses = 0
 
-    def _path(self, span, nonce: int = 0) -> str:
+    def _path(self, span, nonce: int = 0, *, sigs: Optional[dict] = None) -> str:
+        sigs = self.voice_sig if sigs is None else sigs
         key = segment_cache_key(
             span.text,
             sample_rate=self.sample_rate,
             engine_id=self.engine_id,
             voice_id=span.voice_id,
-            voice_sig=self.voice_sig.get(span.voice_id or "", ""),
+            voice_sig=sigs.get(span.voice_id or "", ""),
             speed=getattr(span, "speed", None),
             extra_sig=self.extra_sig,
             nonce=nonce if self.vary_repeats else 0,
         )
         return os.path.join(self.dir, f"{key}.wav")
 
+    def _existing_path(self, span, nonce: int = 0) -> Optional[str]:
+        """The file holding ``span``'s audio under the current key, adopting a
+        legacy-keyed file into it when only that one exists."""
+        path = self._path(span, nonce)
+        if os.path.isfile(path):
+            return path
+        for sigs in self.legacy_voice_sigs:
+            legacy = self._path(span, nonce, sigs=sigs)
+            if legacy != path and os.path.isfile(legacy):
+                return adopt_cached_file(legacy, path)
+        return None
+
     def load(self, span, nonce: int = 0):
         """Cached audio tensor for ``span``, or ``None`` (miss). A hit bumps
         the file's mtime so LRU eviction sees the segment as recently used.
         ``nonce`` disambiguates repeated identical lines under the cache
         opt-out (inert otherwise)."""
-        path = self._path(span, nonce)
-        if not os.path.isfile(path):
+        path = self._existing_path(span, nonce)
+        if path is None:
             self.misses += 1
             return None
         try:
@@ -261,6 +465,9 @@ class SegmentCache:
         except Exception:
             self.misses += 1
             return None  # unreadable/corrupt entry — clean miss, re-render
+        if not wav_is_complete(path):
+            self.misses += 1
+            return None  # torn by a power-off: decodes short, so re-render (#2279)
         if int(sr) != self.sample_rate or audio.numel() == 0:
             self.misses += 1
             return None  # foreign-rate/empty entry — clean miss, re-render
@@ -278,7 +485,7 @@ class SegmentCache:
         try:
             from services.audio_io import atomic_save_wav
             os.makedirs(self.dir, exist_ok=True)
-            atomic_save_wav(self._path(span, nonce), audio, self.sample_rate)
+            atomic_save_wav(self._path(span, nonce), audio, self.sample_rate, durable=True)
         except Exception:
             pass
 

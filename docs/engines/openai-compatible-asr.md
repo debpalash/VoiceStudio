@@ -63,6 +63,10 @@ timestamps (OpenAI's API and most compatible servers support it) and falls
 back to plain text automatically if your server rejects that format. Neither
 path returns word-level timestamps — that's not part of this API.
 
+When this engine serves VoiceStudio's own `/v1/audio/transcriptions`, the
+caller's `language`, `prompt` and `temperature` are forwarded to your server,
+and `/v1/audio/translations` calls your server's `/audio/translations`.
+
 ## Privacy note
 
 Audio goes only to the server **you** configure. A loopback URL such as the
