@@ -10,7 +10,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ## [0.5.5] — 2026-09-22
 
-**Your voice, another language.** Keep your chosen output language when changing voice samples. For example, an English reference can read a French script with a multilingual engine; Auto follows the script instead of inheriting the reference profile's language.
+**Your voice, another language.** The Clone workspace now keeps your chosen output language when changing voice samples. For example, an English reference can read a French script with a multilingual engine; Auto in Clone follows the script instead of inheriting the reference profile's language.
 
 This release also makes Electron installation easier to recover, fixes script-editor and integration-catalog glitches, and makes failure reports more useful.
 
@@ -31,7 +31,7 @@ This release also makes Electron installation easier to recover, fixes script-ed
 
 **Highlights**
 
-- Keep the target language when choosing, uploading, or saving a reference voice (#2272)
+- Clone keeps the target language when choosing, uploading, or saving a reference voice (#2272)
 - Install an Electron release or build main with one command; uninstall without losing data (#2269)
 - Get clearer crash reports and local render diagnostics when something goes wrong (#2267, #2266) — thanks @shivsin25!
 - Place the script cursor without reopening the expression menu (#2268) — thanks @bipul0525!
@@ -42,7 +42,7 @@ This release also makes Electron installation easier to recover, fixes script-ed
 
 ### Fixed
 
-- Explicit Auto follows the target script; changing reference voices no longer resets the output language (#2272)
+- In Clone, explicit Auto follows the target script; changing reference voices no longer resets the output language (#2272)
 - Fresh runtime setup uses managed Python and verifies SentencePiece before reporting success (#2270) — thanks @mamislimen!
 - Speech-recognition startup errors retain their actual cause and avoid unrelated reinstall advice (#2128) — thanks @Sip19!
 - Integration cards stay distinct when vendors share a URL, including after searching and filtering (#2273)
