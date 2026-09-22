@@ -2703,7 +2703,8 @@
       "speechApi": "음성 API",
       "transcriptionApi": "전사 API",
       "workflow": "워크플로 템플릿",
-      "selfHost": "자체 호스팅"
+      "selfHost": "자체 호스팅",
+      "localLlm": "로컬 언어 모델"
     },
     "block": {
       "clientConfig": "클라이언트 구성",
@@ -2719,7 +2720,8 @@
     },
     "apiBearerHint": "이 백엔드는 원격입니다. 셸에서 OMNIVOICE_API_KEY를 해당 API 키로 설정하세요. 예제는 거기서 키를 읽으며 키를 포함하지 않습니다.",
     "apiInsecureHint": "원격 백엔드에서 API 키를 쓰려면 https://가 필요합니다. 키를 사용하기 전에 이 백엔드를 https(예: Tailscale Serve) 뒤에 두세요.",
-    "dockerGpuHint": "GPU: NVIDIA는 --gpus all이 필요합니다(Compose에서는 GPU 장치 예약). AMD는 /dev/kfd, /dev/dri와 함께 :stable-rocm 태그를 사용합니다. Docker 설치 가이드를 참고하세요."
+    "dockerGpuHint": "GPU: NVIDIA는 --gpus all이 필요합니다(Compose에서는 GPU 장치 예약). AMD는 /dev/kfd, /dev/dri와 함께 :stable-rocm 태그를 사용합니다. Docker 설치 가이드를 참고하세요.",
+    "openaiAgentsHint": "음성-텍스트 변환과 텍스트-음성 변환을 위해 OpenAI Agents SDK 음성 파이프라인이 VoiceStudio를 사용하도록 설정하세요. VoiceStudio를 계속 실행해 두세요. 원격 백엔드는 실행 전에 OMNIVOICE_API_KEY를 설정하세요. 에이전트가 사용할 언어 모델 서버를 AGENT_LLM_BASE_URL과 AGENT_LLM_MODEL에 설정하세요."
   },
   "directoryExamples": {
     "example": "디렉터리 예시",

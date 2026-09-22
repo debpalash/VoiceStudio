@@ -7,6 +7,7 @@ import {
   remoteAuth,
 } from './mcp-setup';
 import { n8nSetup } from './n8n-setup';
+import { openaiAgentsSetup } from './openai-agents-setup';
 
 /**
  * Directory entries VoiceStudio actually works with, keyed by catalog slug.
@@ -21,7 +22,8 @@ export type IntegrationCapability =
   | 'speechApi'
   | 'transcriptionApi'
   | 'workflow'
-  | 'selfHost';
+  | 'selfHost'
+  | 'localLlm';
 
 export interface SetupBlock {
   id: string;
@@ -269,6 +271,25 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
   },
   docker: container(DOCKER_HUB_IMAGE, `${REPO_DOCS}/install/docker.md`),
   'github-container-registry': container(GHCR_IMAGE, `${REPO_DOCS}/install/docker.md`),
+  'openai-agents': {
+    // VoiceStudio serves the pipeline's speech-to-text and text-to-speech; the
+    // agent's language model is a local OpenAI-compatible server of the user's.
+    capabilities: ['speechApi', 'transcriptionApi', 'localLlm'],
+    docs: `${REPO_DOCS}/agentic-voice.md#openai-agents-sdk`,
+    blocks: (baseUrl) => {
+      const setup = openaiAgentsSetup('openai-agents', baseUrl);
+      if (!setup) return null;
+      return [
+        {
+          id: 'script',
+          titleKey: 'integrationCatalog.block.openaiPython',
+          hintKey: 'integrationCatalog.openaiAgentsHint',
+          language: 'python',
+          text: setup.text,
+        },
+      ];
+    },
+  },
   n8n: {
     capabilities: ['workflow', 'speechApi'],
     docs: `${REPO_DOCS}/integrations/n8n.md`,

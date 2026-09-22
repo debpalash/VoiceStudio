@@ -83,3 +83,17 @@ it('offers copyable API snippets for the current backend', () => {
     screen.getByText(/curl http:\/\/127\.0\.0\.1:3912\/v1\/audio\/speech/),
   ).toBeInTheDocument();
 });
+
+it('shows the OpenAI Agents snippet for the live backend', async () => {
+  route.slug = 'openai-agents';
+  const copy = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', { value: { writeText: copy }, configurable: true });
+  render(<IntegrationDetailPage />);
+  expect(screen.getByText(/OpenAI Agents SDK voice pipeline/)).toBeInTheDocument();
+  expect(screen.getByText('Works with VoiceStudio')).toBeInTheDocument();
+  expect(screen.getByText('Local language model')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+  await waitFor(() => expect(copy).toHaveBeenCalledTimes(1));
+  expect(copy.mock.calls[0][0]).toContain('base_url="http://127.0.0.1:3912/v1"');
+  expect(screen.queryByRole('button', { name: 'Save as…' })).not.toBeInTheDocument();
+});

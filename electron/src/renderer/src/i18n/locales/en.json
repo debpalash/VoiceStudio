@@ -2703,7 +2703,8 @@
       "speechApi": "Speech API",
       "transcriptionApi": "Transcription API",
       "workflow": "Workflow template",
-      "selfHost": "Self-hosted"
+      "selfHost": "Self-hosted",
+      "localLlm": "Local language model"
     },
     "block": {
       "clientConfig": "Client configuration",
@@ -2719,7 +2720,8 @@
     },
     "apiBearerHint": "This backend is remote: set OMNIVOICE_API_KEY in your shell to its API key. The snippets read it from there and never contain it.",
     "apiInsecureHint": "API keys need https:// on a remote backend. Put this backend behind https (for example Tailscale Serve) before using a key.",
-    "dockerGpuHint": "GPU: NVIDIA needs --gpus all (in Compose, a GPU device reservation). AMD uses the :stable-rocm tag with /dev/kfd and /dev/dri. See the Docker install guide."
+    "dockerGpuHint": "GPU: NVIDIA needs --gpus all (in Compose, a GPU device reservation). AMD uses the :stable-rocm tag with /dev/kfd and /dev/dri. See the Docker install guide.",
+    "openaiAgentsHint": "Point the OpenAI Agents SDK voice pipeline at VoiceStudio for speech-to-text and text-to-speech. Keep VoiceStudio running. For a remote backend, set OMNIVOICE_API_KEY before running. Set AGENT_LLM_BASE_URL and AGENT_LLM_MODEL to the language model server your agent should use."
   },
   "directoryExamples": {
     "example": "Directory example",

@@ -154,6 +154,8 @@ GET /tools/effects
 GET /tools/plugins
 GET /v1/audio/capabilities
 GET /v1/audio/voices
+GET /v1/models
+GET /v1/models/{model_id:path}
 GET /watermark/status
 GET /workers
 GET /workers/agent
@@ -277,6 +279,7 @@ POST /tools/video-context/{job_id}
 POST /transcribe
 POST /v1/audio/speech
 POST /v1/audio/transcriptions
+POST /v1/audio/translations
 POST /watermark/detect
 POST /watermark/settings
 POST /workers/agent/enabled

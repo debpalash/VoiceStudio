@@ -124,11 +124,14 @@ it('backs every "Works with VoiceStudio" entry with a real catalog route, blocks
     }
     expect(setup.docs).toMatch(/^https:\/\//);
   }
-  // Prose belongs in translated hints: snippets carry no natural-language comments.
+  // Prose belongs in translated hints: config and API snippets carry no
+  // natural-language comments. The OpenAI Agents entry is a runnable script
+  // whose inline comments document its code, so it is exempt.
   for (const url of [base, 'https://gpu.example/vs', 'http://192.168.1.5:3900'])
-    for (const setup of Object.values(INTEGRATION_SETUPS))
-      for (const block of setup.blocks(url) ?? [])
-        expect(block.text, block.id).not.toMatch(/^\s*(#|\/\/)/m);
+    for (const [slug, setup] of Object.entries(INTEGRATION_SETUPS))
+      if (slug !== 'openai-agents')
+        for (const block of setup.blocks(url) ?? [])
+          expect(block.text, block.id).not.toMatch(/^\s*(#|\/\/)/m);
   expect(integrationSetup('zapier')).toBeUndefined();
   expect(integrationSetup('constructor')).toBeUndefined();
 });
@@ -210,4 +213,35 @@ it('never sends an API key to a remote plain-http backend', () => {
   );
   expect(remoteAuth('http://localhost:3900')).toBe('none');
   expect(remoteAuth('http://[::1]:3900')).toBe('none');
+});
+
+import { openaiAgentsSetup } from './openai-agents-setup';
+it('points the OpenAI Agents voice pipeline at the current backend without a stored key', () => {
+  const setup = openaiAgentsSetup('openai-agents', 'https://voice.example/backend/');
+  expect(setup?.file).toBe('voicestudio_agents.py');
+  expect(setup!.text).toContain('base_url="https://voice.example/backend/v1"');
+  expect(setup!.text).toContain('os.environ.get("OMNIVOICE_API_KEY", "not-needed-locally")');
+  expect(setup!.text).toContain('tts_model="gpt-4o-mini-tts"');
+  expect(setup!.text).toContain('stt_model="gpt-4o-transcribe"');
+  expect(setup!.text).toContain('set_tracing_disabled(True)');
+  // The agent's LLM is explicit and user-chosen: no silent hosted default.
+  expect(setup!.text).toContain(
+    'model=OpenAIChatCompletionsModel(model=os.environ["AGENT_LLM_MODEL"]',
+  );
+  expect(setup!.text).toContain('base_url=os.environ["AGENT_LLM_BASE_URL"]');
+  for (const url of [
+    '',
+    'file:///tmp/backend',
+    'https://secret:password@host',
+    'https://host?k=1',
+  ]) {
+    expect(openaiAgentsSetup('openai-agents', url)).toBeNull();
+  }
+  expect(openaiAgentsSetup('n8n', 'http://localhost:3900')).toBeNull();
+  // Registered like every other connector: badge, real capabilities, one block.
+  const entry = integrationSetup('openai-agents')!;
+  expect(entry.capabilities).toEqual(['speechApi', 'transcriptionApi', 'localLlm']);
+  expect(entry.blocks('http://127.0.0.1:3912')![0].text).toContain(
+    'base_url="http://127.0.0.1:3912/v1"',
+  );
 });

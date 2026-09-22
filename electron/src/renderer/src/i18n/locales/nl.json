@@ -2703,7 +2703,8 @@
       "speechApi": "Spraak-API",
       "transcriptionApi": "Transcriptie-API",
       "workflow": "Workflowsjabloon",
-      "selfHost": "Zelf gehost"
+      "selfHost": "Zelf gehost",
+      "localLlm": "Lokaal taalmodel"
     },
     "block": {
       "clientConfig": "Clientconfiguratie",
@@ -2719,7 +2720,8 @@
     },
     "apiBearerHint": "Deze backend is extern: stel OMNIVOICE_API_KEY in je shell in op de API-sleutel. De voorbeelden lezen hem daaruit en bevatten hem nooit.",
     "apiInsecureHint": "API-sleutels vereisen https:// bij een externe backend. Zet deze backend achter https (bijvoorbeeld Tailscale Serve) voordat je een sleutel gebruikt.",
-    "dockerGpuHint": "GPU: NVIDIA heeft --gpus all nodig (in Compose een GPU-apparaatreservering). AMD gebruikt de tag :stable-rocm met /dev/kfd en /dev/dri. Zie de Docker-installatiegids."
+    "dockerGpuHint": "GPU: NVIDIA heeft --gpus all nodig (in Compose een GPU-apparaatreservering). AMD gebruikt de tag :stable-rocm met /dev/kfd en /dev/dri. Zie de Docker-installatiegids.",
+    "openaiAgentsHint": "Richt de spraakpijplijn van de OpenAI Agents SDK op VoiceStudio voor spraak-naar-tekst en tekst-naar-spraak. Laat VoiceStudio draaien. Stel voor een externe backend OMNIVOICE_API_KEY in voordat je start. Stel AGENT_LLM_BASE_URL en AGENT_LLM_MODEL in op de taalmodelserver die je agent moet gebruiken."
   },
   "directoryExamples": {
     "example": "Directoryvoorbeeld",

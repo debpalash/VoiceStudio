@@ -2703,7 +2703,8 @@
       "speechApi": "Tal-API",
       "transcriptionApi": "Transkriberings-API",
       "workflow": "Arbetsflödesmall",
-      "selfHost": "Egen drift"
+      "selfHost": "Egen drift",
+      "localLlm": "Lokal språkmodell"
     },
     "block": {
       "clientConfig": "Klientkonfiguration",
@@ -2719,7 +2720,8 @@
     },
     "apiBearerHint": "Den här backenden är fjärransluten: sätt OMNIVOICE_API_KEY i ditt skal till dess API-nyckel. Exemplen läser den därifrån och innehåller den aldrig.",
     "apiInsecureHint": "API-nycklar kräver https:// för en fjärrbackend. Placera backenden bakom https (till exempel Tailscale Serve) innan du använder en nyckel.",
-    "dockerGpuHint": "GPU: NVIDIA kräver --gpus all (i Compose en GPU-enhetsreservation). AMD använder taggen :stable-rocm med /dev/kfd och /dev/dri. Se installationsguiden för Docker."
+    "dockerGpuHint": "GPU: NVIDIA kräver --gpus all (i Compose en GPU-enhetsreservation). AMD använder taggen :stable-rocm med /dev/kfd och /dev/dri. Se installationsguiden för Docker.",
+    "openaiAgentsHint": "Peka OpenAI Agents SDK:s röstpipeline mot VoiceStudio för tal-till-text och text-till-tal. Låt VoiceStudio vara igång. För en fjärrbackend, ange OMNIVOICE_API_KEY innan du kör. Ange AGENT_LLM_BASE_URL och AGENT_LLM_MODEL till den språkmodellserver som agenten ska använda."
   },
   "directoryExamples": {
     "example": "Katalogexempel",

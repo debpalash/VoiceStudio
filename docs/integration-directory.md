@@ -1,6 +1,6 @@
 # Integration directory
 
-Directory entries are not paid sponsors or endorsements. Only entries with a built-in setup block carry the **Works with VoiceStudio** badge and capability chips (MCP server, Speech API, Transcription API, Workflow template, Self-hosted); every other card is marked **External link** and only opens the provider's website. Setup blocks live in one registry keyed by the catalog slug (`electron/src/renderer/src/features/integrations/setup-registry.ts`), so a connector is added in one place. Icons are bundled locally so viewing the catalog sends no logo requests to providers. Brand marks belong to their respective owners.
+Directory entries are not paid sponsors or endorsements. Only entries with a built-in setup block carry the **Works with VoiceStudio** badge and capability chips (MCP server, Speech API, Transcription API, Workflow template, Self-hosted, Local language model); every other card is marked **External link** and only opens the provider's website. Setup blocks live in one registry keyed by the catalog slug (`electron/src/renderer/src/features/integrations/setup-registry.ts`), so a connector is added in one place. Icons are bundled locally so viewing the catalog sends no logo requests to providers. Brand marks belong to their respective owners.
 
 | Company | Official source | Icon source |
 |---|---|---|
@@ -70,3 +70,14 @@ backend's OpenAI-compatible speech endpoint and returns WAV audio. Edit the text
 and voice in n8n, then run it yourself. See [n8n setup](integrations/n8n.md) for
 container networking, credentials and validation. No credentials or automatic
 background requests are exported.
+
+## Voice for OpenAI Agents
+
+The OpenAI Agents detail page shows a copyable Python snippet that points the
+OpenAI Agents SDK voice pipeline at the current backend's OpenAI-compatible API
+(`<backend>/v1`) for both speech recognition and speech. The API key is read
+from `OMNIVOICE_API_KEY` when the script runs and is never written into the
+snippet; tracing is switched off so nothing is uploaded. The agent's language
+model must be set explicitly (`AGENT_LLM_BASE_URL`, `AGENT_LLM_MODEL`, for a
+local OpenAI-compatible server); the snippet never falls back to a hosted model. See
+[Agentic voice → OpenAI Agents SDK](agentic-voice.md#openai-agents-sdk).

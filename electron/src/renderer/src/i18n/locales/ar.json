@@ -2711,7 +2711,8 @@
       "speechApi": "واجهة API للكلام",
       "transcriptionApi": "واجهة API للنسخ",
       "workflow": "قالب سير عمل",
-      "selfHost": "استضافة ذاتية"
+      "selfHost": "استضافة ذاتية",
+      "localLlm": "نموذج لغوي محلي"
     },
     "block": {
       "clientConfig": "إعداد العميل",
@@ -2727,7 +2728,8 @@
     },
     "apiBearerHint": "هذه الواجهة الخلفية بعيدة: اضبط OMNIVOICE_API_KEY في الصدفة على مفتاح API الخاص بها. تقرأ الأمثلة المفتاح من هناك ولا تتضمنه أبدًا.",
     "apiInsecureHint": "تتطلب مفاتيح API استخدام https:// مع واجهة خلفية بعيدة. ضع هذه الواجهة خلف https (مثل Tailscale Serve) قبل استخدام مفتاح.",
-    "dockerGpuHint": "GPU: تحتاج NVIDIA إلى --gpus all (في Compose حجز جهاز GPU). تستخدم AMD الوسم :stable-rocm مع /dev/kfd و/dev/dri. راجع دليل تثبيت Docker."
+    "dockerGpuHint": "GPU: تحتاج NVIDIA إلى --gpus all (في Compose حجز جهاز GPU). تستخدم AMD الوسم :stable-rocm مع /dev/kfd و/dev/dri. راجع دليل تثبيت Docker.",
+    "openaiAgentsHint": "وجّه مسار الصوت في OpenAI Agents SDK إلى VoiceStudio لتحويل الكلام إلى نص والنص إلى كلام. أبقِ VoiceStudio قيد التشغيل. للخادم البعيد، اضبط OMNIVOICE_API_KEY قبل التشغيل. اضبط AGENT_LLM_BASE_URL وAGENT_LLM_MODEL على خادم نموذج اللغة الذي يجب أن يستخدمه الوكيل."
   },
   "directoryExamples": {
     "example": "مثال في الدليل",

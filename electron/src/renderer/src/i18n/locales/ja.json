@@ -2703,7 +2703,8 @@
       "speechApi": "音声合成 API",
       "transcriptionApi": "文字起こし API",
       "workflow": "ワークフローテンプレート",
-      "selfHost": "セルフホスト"
+      "selfHost": "セルフホスト",
+      "localLlm": "ローカル言語モデル"
     },
     "block": {
       "clientConfig": "クライアント設定",
@@ -2719,7 +2720,8 @@
     },
     "apiBearerHint": "このバックエンドはリモートです。シェルで OMNIVOICE_API_KEY にその API キーを設定してください。サンプルはそこから読み取り、キー自体は含みません。",
     "apiInsecureHint": "リモートのバックエンドで API キーを使うには https:// が必要です。キーを使う前に、このバックエンドを https（例: Tailscale Serve）の背後に置いてください。",
-    "dockerGpuHint": "GPU: NVIDIA には --gpus all が必要です（Compose では GPU デバイスの予約）。AMD は :stable-rocm タグと /dev/kfd、/dev/dri を使います。Docker のインストールガイドを参照してください。"
+    "dockerGpuHint": "GPU: NVIDIA には --gpus all が必要です（Compose では GPU デバイスの予約）。AMD は :stable-rocm タグと /dev/kfd、/dev/dri を使います。Docker のインストールガイドを参照してください。",
+    "openaiAgentsHint": "OpenAI Agents SDK の音声パイプラインを VoiceStudio に向けて、音声認識と音声合成に使います。VoiceStudio を起動したままにしてください。リモートのバックエンドでは、実行前に OMNIVOICE_API_KEY を設定してください。エージェントが使う言語モデルサーバーを AGENT_LLM_BASE_URL と AGENT_LLM_MODEL に設定してください。"
   },
   "directoryExamples": {
     "example": "掲載例",

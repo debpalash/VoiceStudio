@@ -92,7 +92,17 @@ class SubprocessASRBackend(SubprocessBackend):
             return ASR_RECV_TIMEOUT_S
         return max(30.0, v)
 
-    def transcribe(self, audio_path: str, *, word_timestamps: bool = True) -> dict:
+    def supports_translation(self) -> bool:
+        # Same model resolution as the sidecar (_asr_sidecar/main.py).
+        from services.asr_backend import faster_whisper_model_id, whisper_checkpoint_translates
+        return whisper_checkpoint_translates(
+            os.environ.get("ASR_MODEL_FW") or faster_whisper_model_id()
+        )
+
+    def transcribe(self, audio_path: str, *, word_timestamps: bool = True,
+                   language: str | None = None, initial_prompt: str | None = None,
+                   temperature: float | None = None,
+                   task: str = "transcribe") -> dict:
         """Transcribe ``audio_path`` in the sidecar. Returns the engine's
         result dict ({"segments": [...], "language": ...}).
 
@@ -130,11 +140,17 @@ class SubprocessASRBackend(SubprocessBackend):
             with self._lock:
                 self._spawn()
                 from services.performance_profiles import asr_decode_defaults
+                from services.asr_backend import whisper_request_options
+                request = whisper_request_options(
+                    language, initial_prompt, temperature, task)
                 self._send({
                     "op": "transcribe",
                     "audio_path": str(audio_path),
                     "word_timestamps": bool(word_timestamps),
                     "decode_options": asr_decode_defaults(),
+                    # Sent only when set, so a frame without them is
+                    # byte-identical to before.
+                    **({"request_options": request} if request else {}),
                 })
                 reply = self._recv_with_timeout(timeout_s)
                 timed_out = self._last_recv_timed_out

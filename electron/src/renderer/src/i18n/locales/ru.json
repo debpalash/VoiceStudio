@@ -2707,7 +2707,8 @@
       "speechApi": "API синтеза речи",
       "transcriptionApi": "API транскрибации",
       "workflow": "Шаблон сценария",
-      "selfHost": "Собственный хостинг"
+      "selfHost": "Собственный хостинг",
+      "localLlm": "Локальная языковая модель"
     },
     "block": {
       "clientConfig": "Конфигурация клиента",
@@ -2723,7 +2724,8 @@
     },
     "apiBearerHint": "Этот бэкенд удалённый: задайте в оболочке OMNIVOICE_API_KEY с его API-ключом. Примеры читают ключ оттуда и никогда его не содержат.",
     "apiInsecureHint": "Для удалённого бэкенда API-ключи требуют https://. Разместите бэкенд за https (например, Tailscale Serve), прежде чем использовать ключ.",
-    "dockerGpuHint": "GPU: для NVIDIA нужен --gpus all (в Compose — резервирование GPU-устройства). Для AMD используйте тег :stable-rocm с /dev/kfd и /dev/dri. См. руководство по установке Docker."
+    "dockerGpuHint": "GPU: для NVIDIA нужен --gpus all (в Compose — резервирование GPU-устройства). Для AMD используйте тег :stable-rocm с /dev/kfd и /dev/dri. См. руководство по установке Docker.",
+    "openaiAgentsHint": "Направьте голосовой конвейер OpenAI Agents SDK на VoiceStudio для распознавания и синтеза речи. Не закрывайте VoiceStudio. Для удалённого бэкенда задайте OMNIVOICE_API_KEY перед запуском. Укажите в AGENT_LLM_BASE_URL и AGENT_LLM_MODEL сервер языковой модели, который должен использовать агент."
   },
   "directoryExamples": {
     "example": "Пример в каталоге",

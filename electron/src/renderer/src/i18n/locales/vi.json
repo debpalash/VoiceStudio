@@ -2703,7 +2703,8 @@
       "speechApi": "API giọng nói",
       "transcriptionApi": "API chép lời",
       "workflow": "Mẫu quy trình",
-      "selfHost": "Tự lưu trữ"
+      "selfHost": "Tự lưu trữ",
+      "localLlm": "Mô hình ngôn ngữ cục bộ"
     },
     "block": {
       "clientConfig": "Cấu hình máy khách",
@@ -2719,7 +2720,8 @@
     },
     "apiBearerHint": "Backend này ở xa: đặt OMNIVOICE_API_KEY trong shell thành khóa API của nó. Các ví dụ đọc khóa từ đó và không bao giờ chứa khóa.",
     "apiInsecureHint": "Khóa API cần https:// với backend ở xa. Hãy đặt backend này sau https (ví dụ Tailscale Serve) trước khi dùng khóa.",
-    "dockerGpuHint": "GPU: NVIDIA cần --gpus all (trong Compose là đặt trước thiết bị GPU). AMD dùng thẻ :stable-rocm với /dev/kfd và /dev/dri. Xem hướng dẫn cài đặt Docker."
+    "dockerGpuHint": "GPU: NVIDIA cần --gpus all (trong Compose là đặt trước thiết bị GPU). AMD dùng thẻ :stable-rocm với /dev/kfd và /dev/dri. Xem hướng dẫn cài đặt Docker.",
+    "openaiAgentsHint": "Trỏ pipeline giọng nói của OpenAI Agents SDK tới VoiceStudio để chuyển giọng nói thành văn bản và văn bản thành giọng nói. Giữ VoiceStudio đang chạy. Với backend từ xa, hãy đặt OMNIVOICE_API_KEY trước khi chạy. Đặt AGENT_LLM_BASE_URL và AGENT_LLM_MODEL thành máy chủ mô hình ngôn ngữ mà agent của bạn sẽ dùng."
   },
   "directoryExamples": {
     "example": "Ví dụ trong danh mục",

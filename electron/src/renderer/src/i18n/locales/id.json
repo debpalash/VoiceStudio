@@ -2703,7 +2703,8 @@
       "speechApi": "API ucapan",
       "transcriptionApi": "API transkripsi",
       "workflow": "Templat alur kerja",
-      "selfHost": "Hosting mandiri"
+      "selfHost": "Hosting mandiri",
+      "localLlm": "Model bahasa lokal"
     },
     "block": {
       "clientConfig": "Konfigurasi klien",
@@ -2719,7 +2720,8 @@
     },
     "apiBearerHint": "Backend ini jarak jauh: atur OMNIVOICE_API_KEY di shell Anda ke kunci API-nya. Contoh membacanya dari sana dan tidak pernah memuatnya.",
     "apiInsecureHint": "Kunci API memerlukan https:// pada backend jarak jauh. Tempatkan backend ini di balik https (misalnya Tailscale Serve) sebelum memakai kunci.",
-    "dockerGpuHint": "GPU: NVIDIA memerlukan --gpus all (di Compose, reservasi perangkat GPU). AMD memakai tag :stable-rocm dengan /dev/kfd dan /dev/dri. Lihat panduan instalasi Docker."
+    "dockerGpuHint": "GPU: NVIDIA memerlukan --gpus all (di Compose, reservasi perangkat GPU). AMD memakai tag :stable-rocm dengan /dev/kfd dan /dev/dri. Lihat panduan instalasi Docker.",
+    "openaiAgentsHint": "Arahkan pipeline suara OpenAI Agents SDK ke VoiceStudio untuk ucapan-ke-teks dan teks-ke-ucapan. Biarkan VoiceStudio tetap berjalan. Untuk backend jarak jauh, atur OMNIVOICE_API_KEY sebelum menjalankan. Atur AGENT_LLM_BASE_URL dan AGENT_LLM_MODEL ke server model bahasa yang harus digunakan agen Anda."
   },
   "directoryExamples": {
     "example": "Contoh direktori",

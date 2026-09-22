@@ -2703,7 +2703,8 @@
       "speechApi": "Sprach-API",
       "transcriptionApi": "Transkriptions-API",
       "workflow": "Workflow-Vorlage",
-      "selfHost": "Selbst gehostet"
+      "selfHost": "Selbst gehostet",
+      "localLlm": "Lokales Sprachmodell"
     },
     "block": {
       "clientConfig": "Client-Konfiguration",
@@ -2719,7 +2720,8 @@
     },
     "apiBearerHint": "Dieses Backend ist entfernt: Setze OMNIVOICE_API_KEY in deiner Shell auf seinen API-Schlüssel. Die Beispiele lesen ihn von dort und enthalten ihn nie.",
     "apiInsecureHint": "API-Schlüssel brauchen bei einem entfernten Backend https://. Stelle dieses Backend hinter https (zum Beispiel Tailscale Serve), bevor du einen Schlüssel verwendest.",
-    "dockerGpuHint": "GPU: NVIDIA braucht --gpus all (in Compose eine GPU-Gerätereservierung). AMD nutzt das Tag :stable-rocm mit /dev/kfd und /dev/dri. Siehe die Docker-Installationsanleitung."
+    "dockerGpuHint": "GPU: NVIDIA braucht --gpus all (in Compose eine GPU-Gerätereservierung). AMD nutzt das Tag :stable-rocm mit /dev/kfd und /dev/dri. Siehe die Docker-Installationsanleitung.",
+    "openaiAgentsHint": "Richte die Voice-Pipeline des OpenAI Agents SDK für Sprache-zu-Text und Text-zu-Sprache auf VoiceStudio aus. Lass VoiceStudio laufen. Setze für ein entferntes Backend vor dem Start OMNIVOICE_API_KEY. Setze AGENT_LLM_BASE_URL und AGENT_LLM_MODEL auf den Sprachmodell-Server, den dein Agent nutzen soll."
   },
   "directoryExamples": {
     "example": "Verzeichnisbeispiel",

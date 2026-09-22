@@ -2707,7 +2707,8 @@
       "speechApi": "语音 API",
       "transcriptionApi": "转写 API",
       "workflow": "工作流模板",
-      "selfHost": "自托管"
+      "selfHost": "自托管",
+      "localLlm": "本地语言模型"
     },
     "block": {
       "clientConfig": "客户端配置",
@@ -2723,7 +2724,8 @@
     },
     "apiBearerHint": "此后端为远程后端：请在 shell 中将 OMNIVOICE_API_KEY 设为其 API 密钥。示例会从那里读取密钥，且从不包含密钥。",
     "apiInsecureHint": "远程后端的 API 密钥需要 https://。使用密钥前，请将此后端置于 https 之后（例如 Tailscale Serve）。",
-    "dockerGpuHint": "GPU：NVIDIA 需要 --gpus all（在 Compose 中为 GPU 设备预留）。AMD 使用 :stable-rocm 标签并挂载 /dev/kfd 和 /dev/dri。请参阅 Docker 安装指南。"
+    "dockerGpuHint": "GPU：NVIDIA 需要 --gpus all（在 Compose 中为 GPU 设备预留）。AMD 使用 :stable-rocm 标签并挂载 /dev/kfd 和 /dev/dri。请参阅 Docker 安装指南。",
+    "openaiAgentsHint": "将 OpenAI Agents SDK 的语音管道指向 VoiceStudio，用于语音转文字和文字转语音。请保持 VoiceStudio 运行。使用远程后端时，请在运行前设置 OMNIVOICE_API_KEY。将 AGENT_LLM_BASE_URL 和 AGENT_LLM_MODEL 设置为智能体要使用的语言模型服务器。"
   },
   "directoryExamples": {
     "example": "目录示例",
