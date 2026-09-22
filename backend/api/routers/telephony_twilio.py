@@ -233,6 +233,9 @@ async def _read_limited(request: Request) -> bytes | None:
 
 @webhook_router.post(provider.VOICE_PATH)
 async def twilio_voice_webhook(request: Request):
+    # Captured before any await: a disable while this request is in flight
+    # bumps the epoch, and no token is then issued for it.
+    epoch = session.tokens.epoch
     cfg = config.load()
     auth_token = config.auth_token() if cfg.enabled else ""
     if not cfg.enabled or not auth_token or not cfg.account_sid or not cfg.public_base_url:
@@ -266,7 +269,9 @@ async def twilio_voice_webhook(request: Request):
     ):
         session.registry.note("busy", call_sid)
         return Response(provider.reject_twiml(), media_type=_XML)
-    token = session.tokens.issue(call_sid)
+    token = session.tokens.issue(call_sid, epoch)
+    if token is None:
+        return _forbidden()
     return Response(provider.connect_twiml(cfg.stream_url, {"token": token}), media_type=_XML)
 
 

@@ -294,6 +294,15 @@ def test_forged_webhook_flood_is_throttled_without_locking_out_twilio(store, gw)
     assert _post_voice(gw).status_code == 200
 
 
+def test_webhook_in_flight_during_disable_gets_no_token():
+    tokens = session.CallTokens()
+    epoch = tokens.epoch  # webhook arrives
+    tokens.reset()  # user turns calls off while it reads the body
+    assert tokens.issue(CALL, epoch) is None
+    assert tokens.pending() == 0
+    assert tokens.issue(CALL, tokens.epoch)
+
+
 def test_disabling_revokes_stream_tokens_already_issued(store, gw, monkeypatch):
     from fastapi.testclient import TestClient
     from main import app

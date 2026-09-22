@@ -76,6 +76,9 @@ class CallTokens:
         self._clock = clock
         self._pending: OrderedDict[str, tuple[str, float]] = OrderedDict()
         self._lock = threading.Lock()
+        #: Bumped by reset(). A webhook captures it on arrival and may only
+        #: issue a token if no disable happened while it was in flight.
+        self.epoch = 0
 
     @staticmethod
     def _digest(token: str) -> str:
@@ -87,9 +90,13 @@ class CallTokens:
         while len(self._pending) > self._max:
             self._pending.popitem(last=False)
 
-    def issue(self, call_id: str) -> str:
+    def issue(self, call_id: str, epoch: int | None = None) -> str | None:
+        """New single-use token for ``call_id``; None if ``epoch`` is stale
+        (the integration was turned off after the request arrived)."""
         token = secrets.token_urlsafe(24)
         with self._lock:
+            if epoch is not None and epoch != self.epoch:
+                return None
             now = self._clock()
             self._pending[self._digest(token)] = (call_id, now + self._ttl)
             self._prune(now)
@@ -115,6 +122,7 @@ class CallTokens:
     def reset(self) -> None:
         with self._lock:
             self._pending.clear()
+            self.epoch += 1
 
 
 # ── Limits + recent-call log ────────────────────────────────────────────────
