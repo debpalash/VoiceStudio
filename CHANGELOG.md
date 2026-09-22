@@ -10,6 +10,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 **Highlights**
 
+- Finished audiobook chapters survive a data-folder move or a power-off mid-render (#2279) — thanks @castlecreati!
 - Malayalam speech reads numbers in Malayalam (#2280) — thanks @nikhilkilivayil!
 - Stories and Audiobook can save a chapter cue sheet (`.txt`) after a render (#2278) — thanks @shivsin25!
 - Windows backend keeps answering after antivirus or VPN software resets a connection (#2276) — thanks @ialexbond!
@@ -31,6 +32,12 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 - Speech `pcm` is 24 kHz as OpenAI specifies; `aac` and `opus` return real AAC and Opus, and a missing encoder is a clear error instead of a mislabelled WAV (#2290)
 - Transcriptions report the detected language instead of always saying English, and `verbose_json` segments follow OpenAI's schema (#2290)
 - OpenAI-compatible routes return errors in OpenAI's format, with 400 for invalid requests (#2290)
+- Rendered audiobook chapters stay reusable after the data folder moves, and a power-off no longer empties the resume point or tears chapter audio (#2279) — thanks @castlecreati!
+- An audiobook chapter-cache miss now logs which input changed since the cached render (#2279)
+
+### Bug reporters
+
+- @castlecreati — audiobook chapter cache lost after a power-off (#2279).
 
 ## [0.5.5] — 2026-09-22
 

@@ -898,6 +898,11 @@ async def _phase_b(app: FastAPI) -> None:
             logger.info("Startup: marked %d orphaned job(s) as failed.", swept)
     except Exception:
         logger.exception("Startup job-sweep failed (non-fatal).")
+    # #2279: note the voices root in the longform cache before anything can
+    # move the data dir, so legacy-keyed chapters stay findable after a move.
+    from services.longform_render import record_startup_voices_root
+
+    record_startup_voices_root()
 
     _startup_progress.begin_step("services_start")
     # Reapply an explicitly saved speed/quality profile after the local model
