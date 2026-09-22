@@ -108,9 +108,25 @@ export function tracksByCharacter(tracks) {
  * `HH:MM:SS<TAB>Title`, one line per chapter, no trailing newline — the shape
  * spreadsheets and chapter-aware editors split on without guessing where the
  * timestamp ends (spec 33).
+ *
+ * Titles pass through `cueTitle`, so a tab or line break inside one cannot add
+ * a field or a line and desynchronise every following cue.
  */
 export function buildCueSheet(chapters) {
-  return (chapters || []).map((c) => `${formatTimecode(c.time)}\t${c.title}`).join('\n');
+  return (chapters || [])
+    .map((c) => `${formatTimecode(c.time)}\t${cueTitle(c.title)}`)
+    .join('\n');
+}
+
+// Every character that splits a field (tab) or a line in common readers:
+// CR/LF, vertical tab, form feed, NEL, and the Unicode line/paragraph separators.
+const CUE_BREAKS = /[\t\n\v\f\r\u0085\u2028\u2029]+/g;
+
+/** One-line, single-field title: runs of tabs/line breaks become one space. */
+function cueTitle(title) {
+  return String(title ?? '')
+    .replace(CUE_BREAKS, ' ')
+    .trim();
 }
 
 /**
@@ -133,6 +149,7 @@ export function buildCueSheet(chapters) {
  * Total by construction: a missing, non-finite, or negative duration
  * contributes zero rather than poisoning every later start time, and a blank
  * title falls back to `fallbackTitle(position)` over the rendered chapters.
+ * Tabs and line breaks in a title collapse to a single space.
  *
  * @param {{title?: string, duration_s?: number|string, duration_ms?: number|string}[]|null|undefined} chapters
  * @param {(n: number) => string} [fallbackTitle]
@@ -142,7 +159,8 @@ export function cuesFromChapters(chapters, fallbackTitle = (n) => `Chapter ${n}`
   const cues = [];
   let elapsedMs = 0;
   for (const chapter of chapters || []) {
-    const title = String(chapter?.title ?? '').trim();
+    // Normalised before the blank check so a title of only breaks falls back.
+    const title = cueTitle(chapter?.title);
     cues.push({ time: elapsedMs / 1000, title: title || fallbackTitle(cues.length + 1) });
     elapsedMs += chapterMs(chapter);
   }

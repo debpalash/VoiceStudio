@@ -195,6 +195,24 @@ describe('cuesFromChapters', () => {
     expect(cuesFromChapters([{ title: '  Prologue  ' }])[0].title).toBe('Prologue');
   });
 
+  it('keeps one line and two fields per cue when a title holds tabs or line breaks', () => {
+    const cues = cuesFromChapters([
+      { title: 'Part\tOne', duration_s: 5 },
+      { title: 'Two\r\nlines\u2028here', duration_s: 5 },
+      { title: '\t\n\r' },
+    ]);
+    expect(cues.map((c) => c.title)).toEqual(['Part One', 'Two lines here', 'Chapter 3']);
+    expect(buildCueSheet(cues).split('\n')).toEqual([
+      '00:00:00\tPart One',
+      '00:00:05\tTwo lines here',
+      '00:00:10\tChapter 3',
+    ]);
+    // The format boundary also holds for cues not built by cuesFromChapters.
+    expect(buildCueSheet([{ time: 0, title: 'A\tB\nC\vD\fE\u0085F\u2029G' }])).toBe(
+      '00:00:00\tA B C D E F G',
+    );
+  });
+
   it('is total — empty, null and undefined all give no cues', () => {
     expect(cuesFromChapters([])).toEqual([]);
     expect(cuesFromChapters(null)).toEqual([]);
