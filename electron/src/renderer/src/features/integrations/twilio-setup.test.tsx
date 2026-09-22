@@ -153,3 +153,17 @@ it('plays the phone-quality local test only when asked', async () => {
     expect(document.querySelector('audio')?.getAttribute('src')).toBe('blob:preview'),
   );
 });
+
+it('turns off with only the switch, so an invalid draft cannot block disabling', async () => {
+  renderPage({ ...base, enabled: true, missing: [] });
+  fireEvent.change(await screen.findByPlaceholderText('AC…'), { target: { value: 'not-a-sid' } });
+  api.json.mockResolvedValueOnce({ ...base, enabled: false });
+  fireEvent.click(screen.getByRole('switch', { name: 'Answer calls' }));
+  await waitFor(() =>
+    expect(api.json).toHaveBeenCalledWith('/api/integrations/twilio/config', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled: false }),
+    }),
+  );
+  expect(screen.getByPlaceholderText('AC…')).toHaveValue('not-a-sid');
+});

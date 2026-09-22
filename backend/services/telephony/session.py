@@ -276,6 +276,7 @@ def reset_state() -> None:
     webhook_window.reset()
     failure_window.reset()
     ulaw_cache.clear()
+    _inflight.clear()
 
 
 def signature_failures_exceeded() -> bool:
@@ -319,31 +320,85 @@ def _speech_key(text: str, voice: str, engine: str, language: str) -> tuple:
     )
 
 
+class _Render:
+    """One in-flight synthesis, shared by every concurrent caller of the same
+    greeting (single flight): followers stream the chunks the leader's render
+    has produced so far instead of starting a duplicate synthesis."""
+
+    def __init__(self) -> None:
+        self.chunks: list[bytes] = []
+        self.done = False
+        self.error: BaseException | None = None
+        self.cond = asyncio.Condition()
+        self.task: asyncio.Task | None = None
+
+    async def publish(self, chunk: bytes | None = None, *, done: bool = False) -> None:
+        async with self.cond:
+            if chunk is not None:
+                self.chunks.append(chunk)
+            self.done = self.done or done
+            self.cond.notify_all()
+
+
+_inflight: dict[tuple, _Render] = {}
+
+
+async def _produce(key: tuple, render: _Render, text: str, voice: str, engine: str, language: str) -> None:
+    from api.routers.tts_stream import synthesize_stream
+    from services.telephony.audio import to_phone_ulaw
+
+    try:
+        async for wav, sr in synthesize_stream(
+            text, voice=voice or None, engine=engine or None, language=language or None
+        ):
+            await render.publish(await asyncio.to_thread(to_phone_ulaw, wav, sr))
+        ulaw_cache.put(key, b"".join(render.chunks))
+    except BaseException as exc:  # noqa: BLE001 — handed to every consumer
+        render.error = exc
+        if isinstance(exc, asyncio.CancelledError):
+            raise
+    finally:
+        if _inflight.get(key) is render:
+            del _inflight[key]
+        render.done = True
+        try:
+            await render.publish(done=True)
+        except RuntimeError:  # loop closing; nobody left to wake
+            pass
+
+
 async def render_ulaw(
     text: str, *, voice: str = "", engine: str = "", language: str = ""
 ) -> AsyncIterator[bytes]:
     """Yield 8 kHz μ-law audio per sentence as the TTS pipeline finishes it.
 
     Reuses the streaming-TTS pipeline (``/ws/tts``): the first sentence is on
-    the line while later ones are still synthesizing. A complete render is
-    cached, so later calls with the same greeting start immediately.
+    the line while later ones are still synthesizing. Concurrent calls for the
+    same greeting share one synthesis, and a complete render is cached, so
+    later calls start immediately.
     """
-    from api.routers.tts_stream import synthesize_stream
-    from services.telephony.audio import to_phone_ulaw
-
     key = _speech_key(text, voice, engine, language)
     cached = ulaw_cache.get(key)
     if cached is not None:
         yield cached
         return
-    parts: list[bytes] = []
-    async for wav, sr in synthesize_stream(
-        text, voice=voice or None, engine=engine or None, language=language or None
-    ):
-        chunk = await asyncio.to_thread(to_phone_ulaw, wav, sr)
-        parts.append(chunk)
-        yield chunk
-    ulaw_cache.put(key, b"".join(parts))
+    render = _inflight.get(key)
+    if render is None:
+        render = _inflight[key] = _Render()
+        render.task = asyncio.create_task(_produce(key, render, text, voice, engine, language))
+    sent = 0
+    while True:
+        async with render.cond:
+            await render.cond.wait_for(lambda: sent < len(render.chunks) or render.done)
+            ready = render.chunks[sent:]
+            finished = render.done
+        for chunk in ready:
+            yield chunk
+        sent += len(ready)
+        if finished and sent >= len(render.chunks):
+            if render.error is not None:
+                raise render.error
+            return
 
 
 async def render_ulaw_all(text: str, **kw) -> bytes:

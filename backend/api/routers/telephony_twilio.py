@@ -158,6 +158,8 @@ async def put_config(body: _ConfigBody):
                 detail={"code": "listener_failed", "message": str(exc)},
             ) from exc
     else:
+        # Off means off: calls already told to connect cannot start later.
+        session.tokens.reset()
         await gateway.stop()
     return _state()
 
@@ -228,8 +230,6 @@ async def twilio_voice_webhook(request: Request):
     auth_token = config.auth_token() if cfg.enabled else ""
     if not cfg.enabled or not auth_token or not cfg.account_sid or not cfg.public_base_url:
         return _forbidden()
-    if session.signature_failures_exceeded():
-        return Response("Too Many Requests", status_code=429, headers={"Retry-After": "60"})
     body = await _read_limited(request)
     if body is None:
         return Response("Payload Too Large", status_code=413)
@@ -241,6 +241,10 @@ async def twilio_voice_webhook(request: Request):
     url = cfg.webhook_url + (f"?{request.url.query}" if request.url.query else "")
     signature = request.headers.get(provider.SIGNATURE_HEADER, "")
     if not provider.signature_valid(auth_token, url, params, signature):
+        # Throttle only unsigned traffic, after verifying: a flood of forged
+        # requests must never lock out genuine, correctly signed webhooks.
+        if session.signature_failures_exceeded():
+            return Response("Too Many Requests", status_code=429, headers={"Retry-After": "60"})
         session.note_signature_failure()
         logger.warning("Rejected a Twilio webhook with an invalid signature")
         return _forbidden()

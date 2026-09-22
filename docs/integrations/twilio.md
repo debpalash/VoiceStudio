@@ -28,11 +28,8 @@ computer until you turn it on. It then needs a public HTTPS tunnel that you run.
    to 8 kHz, μ-law encoded and decoded again, exactly as a caller hears it. This
    runs entirely on your computer and also pre-renders the greeting, so the
    first real call starts speaking immediately.
-3. Turn on **Answer calls**. VoiceStudio starts a separate telephony listener on
-   `127.0.0.1` (port 3950 by default, or the next free port). The page shows
-   this address as the **tunnel target**.
-4. Start your tunnel **pointed at the tunnel target**, not at VoiceStudio's main
-   port:
+3. Start your tunnel pointed at the telephony listener's port (**3950** unless
+   you set `OMNIVOICE_TWILIO_PORT`), **not** at VoiceStudio's main port:
 
    ```sh
    cloudflared tunnel --url http://127.0.0.1:3950
@@ -40,9 +37,13 @@ computer until you turn it on. It then needs a public HTTPS tunnel that you run.
    ngrok http 3950
    ```
 
-5. Paste the tunnel's `https://…` address into **Public tunnel URL** and save.
+4. Paste the tunnel's `https://…` address into **Public tunnel URL** and save.
    Use only the origin, without a path. The page then shows the **Voice webhook URL**
    (`https://<your-tunnel>/integrations/twilio/voice`).
+5. Turn on **Answer calls**. VoiceStudio starts the separate telephony listener
+   on `127.0.0.1` and shows its address as the **tunnel target**. If port 3950
+   was taken, the listener uses the next free port; restart the tunnel against
+   the tunnel target shown.
 6. In the Twilio Console, open **Phone Numbers → Manage → Active numbers**, select
    your number, and under **Voice configuration** set **A call comes in** to
    **Webhook**, the Voice webhook URL, and **HTTP POST**. Save.

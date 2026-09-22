@@ -50,9 +50,10 @@ background requests are exported.
 
 The Twilio detail page answers calls to your Twilio number with a saved voice:
 VoiceStudio speaks a greeting over a Twilio Media Stream, then hangs up. It is
-off by default. When enabled, it serves only two signed endpoints on a separate
-loopback listener that your own HTTPS tunnel (cloudflared, ngrok) forwards to;
-the main API is never exposed. **Test locally** plays the greeting at phone
+off by default. When enabled, a separate loopback listener that your own HTTPS
+tunnel (cloudflared, ngrok) forwards to serves only two endpoints: the voice
+webhook, which must carry a valid Twilio signature, and the Media Stream, which
+must present a single-use per-call token. The main API is never exposed. **Test locally** plays the greeting at phone
 quality without Twilio. See [Twilio setup](integrations/twilio.md) for the
 tunnel, Twilio Console configuration, security model and limits. Twilio is an
 implemented connector; the other calling entries (Plivo, Telnyx) remain

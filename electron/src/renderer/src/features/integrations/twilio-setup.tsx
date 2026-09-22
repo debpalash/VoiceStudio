@@ -155,17 +155,17 @@ export function TwilioSetup() {
       ...(form.auth_token ? { auth_token: form.auth_token } : {}),
       ...extra,
     });
-  const submit = async (extra: Record<string, unknown> = {}) => {
+  const submit = async (extra: Record<string, unknown> = {}, onlyExtra = false) => {
     if (busy) return;
     setBusy(true);
     setError('');
     try {
       const next = await apiJson<TwilioState>('/api/integrations/twilio/config', {
         method: 'PUT',
-        body: body(extra),
+        body: onlyExtra ? JSON.stringify(extra) : body(extra),
       });
       queryClient.setQueryData(QUERY_KEY, next);
-      setForm(formFrom(next));
+      if (!onlyExtra) setForm(formFrom(next));
       toast.success(t('nav.saved'));
     } catch (reason) {
       setError(explain(reason));
@@ -225,7 +225,11 @@ export function TwilioSetup() {
             aria-label={t('twilioIntegration.enable')}
             checked={server.enabled}
             disabled={busy}
-            onCheckedChange={(enabled) => void submit({ enabled })}
+            onCheckedChange={(enabled) =>
+              // Turning off must always work, even with an invalid draft: send
+              // only the switch. Turning on saves the form with it.
+              void (enabled ? submit({ enabled }) : submit({ enabled: false }, true))
+            }
           />
         </div>
       </div>

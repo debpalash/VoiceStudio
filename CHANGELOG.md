@@ -16,7 +16,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ### Added
 
-- Answer Twilio phone calls in a saved voice: off by default, signed requests only, with a local phone-quality test (#2291)
+- Answer Twilio phone calls in a saved voice: off by default, signed webhooks and single-use stream tokens, with a local phone-quality test (#2291)
 - Malayalam dubs and audiobooks speak numbers, percentages, and decimals in Malayalam instead of reading raw digits (#2280) — thanks @nikhilkilivayil!
 - Download a chapter cue sheet (`HH:MM:SS<TAB>Title`) after a Stories or Audiobook render; timestamps match the M4B's embedded chapters and give MP3 portable chapters (#2278) — thanks @shivsin25!
 

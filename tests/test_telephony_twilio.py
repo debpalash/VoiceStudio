@@ -285,11 +285,35 @@ def test_webhook_rejects_bad_signature_and_foreign_account(store, gw):
     assert outcomes == ["rejected_signature", "rejected_signature"]
 
 
-def test_webhook_rate_limits_repeated_signature_failures(store, gw):
+def test_forged_webhook_flood_is_throttled_without_locking_out_twilio(store, gw):
     _configure()
     for _ in range(10):
         assert _post_voice(gw, token="nope").status_code == 403
-    assert _post_voice(gw).status_code == 429
+    assert _post_voice(gw, token="nope").status_code == 429
+    # A correctly signed webhook still gets through during the throttle.
+    assert _post_voice(gw).status_code == 200
+
+
+def test_disabling_revokes_stream_tokens_already_issued(store, gw, monkeypatch):
+    from fastapi.testclient import TestClient
+    from main import app
+    from starlette.websockets import WebSocketDisconnect
+
+    async def _noop(*_a):
+        return gateway.state()
+
+    monkeypatch.setattr(gateway, "start", _noop)
+    monkeypatch.setattr(gateway, "stop", _noop)
+    _configure()
+    token = _stream_token(_post_voice(gw))
+    admin = TestClient(app, client=("127.0.0.1", 50000))
+    assert admin.put("/api/integrations/twilio/config", json={"enabled": False}).status_code == 200
+    assert admin.put("/api/integrations/twilio/config", json={"enabled": True}).status_code == 200
+    with gw.websocket_connect(tw.STREAM_PATH) as ws:
+        ws.send_json(_start_msg(token))
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_json()
+    assert closed.value.code == 1008
 
 
 def test_webhook_answers_with_stream_twiml(store, gw):
@@ -405,6 +429,22 @@ def test_cache_follows_the_resolved_engine_and_voice_not_saved_settings(store, f
     assert session._speech_key("Hello.", "p1", "", "") != key  # engine switch
 
 
+def test_concurrent_calls_share_one_synthesis(store, fake_engine):
+    """Two callers ringing at once for an uncached greeting: one render,
+    both get identical audio (single flight), then the cache serves."""
+
+    async def both():
+        return await asyncio.gather(
+            session.render_ulaw_all("Hello.", engine="fake-phone"),
+            session.render_ulaw_all("Hello.", engine="fake-phone"),
+        )
+
+    a, b = asyncio.run(both())
+    assert a == b and len(a) == 4000
+    assert len(fake_engine.calls) == 1
+    assert session._inflight == {}
+
+
 def test_media_stream_rejects_bad_or_reused_token(store, gw, fake_engine):
     from starlette.websockets import WebSocketDisconnect
 
@@ -434,17 +474,25 @@ def test_media_stream_closes_when_disabled(store, gw):
     assert closed.value.code == 1008
 
 
-def test_caller_hang_up_mid_greeting_is_recorded(store, gw, fake_engine):
+def test_caller_hang_up_mid_greeting_is_recorded(store, gw, fake_engine, monkeypatch):
     _configure()
+    import threading
+
+    ended = threading.Event()
+    real_end = session.registry.end
+
+    def _end(record, outcome):
+        real_end(record, outcome)
+        ended.set()
+
+    monkeypatch.setattr(session.registry, "end", _end)
     token = _stream_token(_post_voice(gw))
     with gw.websocket_connect(tw.STREAM_PATH) as ws:
         ws.send_json(_start_msg(token))
         ws.receive_json()
         ws.send_json({"event": "stop", "streamSid": "MZ", "stop": {"callSid": CALL}})
-    for _ in range(50):
-        if session.registry.snapshot()["active"] == 0:
-            break
-        asyncio.run(asyncio.sleep(0.02))
+    assert ended.wait(timeout=10)
+    assert session.registry.snapshot()["active"] == 0
     assert session.registry.snapshot()["recent"][0]["outcome"] == "caller_hung_up"
 
 
