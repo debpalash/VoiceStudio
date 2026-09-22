@@ -2718,7 +2718,10 @@
       "dockerRun": "Lancer le conteneur",
       "dockerCompose": "Docker Compose",
       "workflow": "Workflow n8n"
-    }
+    },
+    "apiBearerHint": "Ce backend est distant : définissez OMNIVOICE_API_KEY dans votre shell avec sa clé API. Les exemples la lisent depuis là et ne la contiennent jamais.",
+    "apiInsecureHint": "Les clés API exigent https:// sur un backend distant. Placez ce backend derrière https (par exemple Tailscale Serve) avant d'utiliser une clé.",
+    "dockerGpuHint": "GPU : NVIDIA nécessite --gpus all (dans Compose, une réservation de périphérique GPU). AMD utilise le tag :stable-rocm avec /dev/kfd et /dev/dri. Voir le guide d'installation Docker."
   },
   "directoryExamples": {
     "example": "Exemple du répertoire",

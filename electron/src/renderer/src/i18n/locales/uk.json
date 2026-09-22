@@ -2720,7 +2720,10 @@
       "dockerRun": "Запуск контейнера",
       "dockerCompose": "Docker Compose",
       "workflow": "Сценарій n8n"
-    }
+    },
+    "apiBearerHint": "Цей бекенд віддалений: задайте в оболонці OMNIVOICE_API_KEY з його API-ключем. Приклади читають ключ звідти й ніколи його не містять.",
+    "apiInsecureHint": "Для віддаленого бекенда API-ключі потребують https://. Розмістіть бекенд за https (наприклад, Tailscale Serve), перш ніж використовувати ключ.",
+    "dockerGpuHint": "GPU: для NVIDIA потрібен --gpus all (у Compose — резервування GPU-пристрою). Для AMD використовуйте тег :stable-rocm з /dev/kfd і /dev/dri. Див. посібник зі встановлення Docker."
   },
   "directoryExamples": {
     "example": "Приклад у каталозі",

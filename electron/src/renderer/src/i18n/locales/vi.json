@@ -2716,7 +2716,10 @@
       "dockerRun": "Chạy container",
       "dockerCompose": "Docker Compose",
       "workflow": "Quy trình n8n"
-    }
+    },
+    "apiBearerHint": "Backend này ở xa: đặt OMNIVOICE_API_KEY trong shell thành khóa API của nó. Các ví dụ đọc khóa từ đó và không bao giờ chứa khóa.",
+    "apiInsecureHint": "Khóa API cần https:// với backend ở xa. Hãy đặt backend này sau https (ví dụ Tailscale Serve) trước khi dùng khóa.",
+    "dockerGpuHint": "GPU: NVIDIA cần --gpus all (trong Compose là đặt trước thiết bị GPU). AMD dùng thẻ :stable-rocm với /dev/kfd và /dev/dri. Xem hướng dẫn cài đặt Docker."
   },
   "directoryExamples": {
     "example": "Ví dụ trong danh mục",

@@ -2716,7 +2716,10 @@
       "dockerRun": "Jalankan kontainer",
       "dockerCompose": "Docker Compose",
       "workflow": "Alur kerja n8n"
-    }
+    },
+    "apiBearerHint": "Backend ini jarak jauh: atur OMNIVOICE_API_KEY di shell Anda ke kunci API-nya. Contoh membacanya dari sana dan tidak pernah memuatnya.",
+    "apiInsecureHint": "Kunci API memerlukan https:// pada backend jarak jauh. Tempatkan backend ini di balik https (misalnya Tailscale Serve) sebelum memakai kunci.",
+    "dockerGpuHint": "GPU: NVIDIA memerlukan --gpus all (di Compose, reservasi perangkat GPU). AMD memakai tag :stable-rocm dengan /dev/kfd dan /dev/dri. Lihat panduan instalasi Docker."
   },
   "directoryExamples": {
     "example": "Contoh direktori",

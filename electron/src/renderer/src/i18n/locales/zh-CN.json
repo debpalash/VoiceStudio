@@ -2720,7 +2720,10 @@
       "dockerRun": "运行容器",
       "dockerCompose": "Docker Compose",
       "workflow": "n8n 工作流"
-    }
+    },
+    "apiBearerHint": "此后端为远程后端：请在 shell 中将 OMNIVOICE_API_KEY 设为其 API 密钥。示例会从那里读取密钥，且从不包含密钥。",
+    "apiInsecureHint": "远程后端的 API 密钥需要 https://。使用密钥前，请将此后端置于 https 之后（例如 Tailscale Serve）。",
+    "dockerGpuHint": "GPU：NVIDIA 需要 --gpus all（在 Compose 中为 GPU 设备预留）。AMD 使用 :stable-rocm 标签并挂载 /dev/kfd 和 /dev/dri。请参阅 Docker 安装指南。"
   },
   "directoryExamples": {
     "example": "目录示例",

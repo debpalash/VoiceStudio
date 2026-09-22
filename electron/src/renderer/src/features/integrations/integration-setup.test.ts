@@ -124,6 +124,11 @@ it('backs every "Works with VoiceStudio" entry with a real catalog route, blocks
     }
     expect(setup.docs).toMatch(/^https:\/\//);
   }
+  // Prose belongs in translated hints: snippets carry no natural-language comments.
+  for (const url of [base, 'https://gpu.example/vs', 'http://192.168.1.5:3900'])
+    for (const setup of Object.values(INTEGRATION_SETUPS))
+      for (const block of setup.blocks(url) ?? [])
+        expect(block.text, block.id).not.toMatch(/^\s*(#|\/\/)/m);
   expect(integrationSetup('zapier')).toBeUndefined();
   expect(integrationSetup('constructor')).toBeUndefined();
 });
@@ -155,7 +160,11 @@ it('gives the API and container cards runnable snippets for the right endpoints 
 });
 it('keeps remote scheme, path prefix and credential placeholders without exporting secrets', () => {
   const remote = 'https://gpu.example/voicestudio/';
-  const stdio = INTEGRATION_SETUPS['model-context-protocol'].blocks(remote)![1];
+  const [http, stdio] = INTEGRATION_SETUPS['model-context-protocol'].blocks(remote)!;
+  expect(http.text).toContain('Header: Authorization: Bearer $OMNIVOICE_API_KEY');
+  expect(INTEGRATION_SETUPS['voicestudio-api'].blocks(remote)![0].hintKey).toBe(
+    'integrationCatalog.apiBearerHint',
+  );
   expect(JSON.parse(stdio.text).mcpServers.voicestudio.env).toEqual({
     OMNIVOICE_URL: 'https://gpu.example/voicestudio',
     OMNIVOICE_CLIENT_ID: '<your-client-id>',
@@ -193,7 +202,12 @@ it('never sends an API key to a remote plain-http backend', () => {
     .join('\n');
   expect(api).not.toContain('Authorization');
   expect(api).not.toContain('os.environ');
-  expect(api).toContain('https://');
+  expect(INTEGRATION_SETUPS['voicestudio-api'].blocks(insecure)![0].hintKey).toBe(
+    'integrationCatalog.apiInsecureHint',
+  );
+  expect(INTEGRATION_SETUPS['model-context-protocol'].blocks(insecure)![0].text).not.toContain(
+    'Authorization',
+  );
   expect(remoteAuth('http://localhost:3900')).toBe('none');
   expect(remoteAuth('http://[::1]:3900')).toBe('none');
 });

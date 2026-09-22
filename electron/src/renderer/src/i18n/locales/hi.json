@@ -2716,7 +2716,10 @@
       "dockerRun": "कंटेनर चलाएँ",
       "dockerCompose": "Docker Compose",
       "workflow": "n8n वर्कफ़्लो"
-    }
+    },
+    "apiBearerHint": "यह बैकएंड दूरस्थ है: अपने शेल में OMNIVOICE_API_KEY को उसकी API कुंजी पर सेट करें। उदाहरण कुंजी वहीं से पढ़ते हैं और उसे कभी शामिल नहीं करते।",
+    "apiInsecureHint": "दूरस्थ बैकएंड पर API कुंजियों के लिए https:// ज़रूरी है। कुंजी उपयोग करने से पहले इस बैकएंड को https (जैसे Tailscale Serve) के पीछे रखें।",
+    "dockerGpuHint": "GPU: NVIDIA के लिए --gpus all चाहिए (Compose में GPU डिवाइस आरक्षण)। AMD, /dev/kfd और /dev/dri के साथ :stable-rocm टैग उपयोग करता है। Docker इंस्टॉल गाइड देखें।"
   },
   "directoryExamples": {
     "example": "डायरेक्टरी उदाहरण",

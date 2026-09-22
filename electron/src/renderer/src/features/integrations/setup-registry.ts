@@ -83,8 +83,6 @@ function dockerRun(image: string) {
     '  -v ~/.cache/huggingface:/root/.cache/huggingface \\',
     `  ${image}:stable`,
     '',
-    '# NVIDIA GPU: add --gpus all. AMD GPU: use the :stable-rocm tag with',
-    '# --device /dev/kfd --device /dev/dri.',
   ].join('\n');
 }
 
@@ -124,6 +122,7 @@ function container(image: string, docs: string): IntegrationSetup {
       {
         id: 'compose',
         titleKey: 'integrationCatalog.block.dockerCompose',
+        hintKey: 'integrationCatalog.dockerGpuHint',
         language: 'yaml',
         text: dockerCompose(image),
       },
@@ -151,7 +150,14 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
           hintKey: 'integrationCatalog.mcpHttpHint',
           hintValues: { header: MCP_CLIENT_ID_HEADER },
           language: 'text',
-          text: `URL: ${url}\nTransport: Streamable HTTP\nHeader: ${MCP_CLIENT_ID_HEADER}: <your-client-id>\n`,
+          text: [
+            `URL: ${url}`,
+            'Transport: Streamable HTTP',
+            `Header: ${MCP_CLIENT_ID_HEADER}: <your-client-id>`,
+            // Remote https: the key comes from the client's environment.
+            ...(bearer ? ['Header: Authorization: Bearer $OMNIVOICE_API_KEY'] : []),
+            '',
+          ].join('\n'),
         },
         {
           id: 'stdio',
@@ -193,13 +199,17 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
       const policy = remoteAuth(baseUrl);
       const auth =
         policy === 'bearer' ? ['  -H "Authorization: Bearer $OMNIVOICE_API_KEY" \\'] : [];
-      const warn =
-        policy === 'insecure' ? ['# Remote API keys need https:// (see docs/api-auth.md).'] : [];
       return [
         {
           id: 'base',
           titleKey: 'integrationCatalog.block.baseUrl',
-          hintKey: 'integrationCatalog.apiHint',
+          // Credential guidance lives in translated hints, not in code comments.
+          hintKey:
+            policy === 'bearer'
+              ? 'integrationCatalog.apiBearerHint'
+              : policy === 'insecure'
+                ? 'integrationCatalog.apiInsecureHint'
+                : 'integrationCatalog.apiHint',
           language: 'text',
           text: `${base}/v1\n`,
         },
@@ -208,7 +218,6 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
           titleKey: 'integrationCatalog.block.speechCurl',
           language: 'shell',
           text: [
-            ...warn,
             `curl ${base}/v1/audio/speech \\`,
             ...auth,
             '  -H "Content-Type: application/json" \\',
@@ -222,7 +231,6 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
           titleKey: 'integrationCatalog.block.transcriptionCurl',
           language: 'shell',
           text: [
-            ...warn,
             `curl ${base}/v1/audio/transcriptions \\`,
             ...auth,
             '  -F file=@speech.wav \\',
@@ -238,11 +246,6 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
             ...(policy === 'bearer' ? ['import os', ''] : []),
             'from openai import OpenAI',
             '',
-            policy === 'bearer'
-              ? '# This backend is remote: export its OMNIVOICE_API_KEY first.'
-              : policy === 'insecure'
-                ? '# Remote API keys need https:// (see docs/api-auth.md).'
-                : '# Loopback needs no key; the SDK only requires a placeholder.',
             'client = OpenAI(',
             `    base_url="${base}/v1",`,
             policy === 'bearer'

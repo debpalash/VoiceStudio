@@ -2716,7 +2716,10 @@
       "dockerRun": "Kör containern",
       "dockerCompose": "Docker Compose",
       "workflow": "n8n-arbetsflöde"
-    }
+    },
+    "apiBearerHint": "Den här backenden är fjärransluten: sätt OMNIVOICE_API_KEY i ditt skal till dess API-nyckel. Exemplen läser den därifrån och innehåller den aldrig.",
+    "apiInsecureHint": "API-nycklar kräver https:// för en fjärrbackend. Placera backenden bakom https (till exempel Tailscale Serve) innan du använder en nyckel.",
+    "dockerGpuHint": "GPU: NVIDIA kräver --gpus all (i Compose en GPU-enhetsreservation). AMD använder taggen :stable-rocm med /dev/kfd och /dev/dri. Se installationsguiden för Docker."
   },
   "directoryExamples": {
     "example": "Katalogexempel",
