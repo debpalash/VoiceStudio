@@ -76,11 +76,6 @@ def test_versioned_stream_has_session_envelope(monkeypatch):
         }
 
     monkeypatch.setattr(capture, "_transcribe_buffer_full", fake_full)
-    # This contract is the capture-ASR envelope. Any earlier test that ran the
-    # real app lifespan applies a performance profile that persists a sherpa
-    # `dictation.model_id` pref, which would route this session to the sherpa
-    # handler (a `status` frame first) — pin the capture path explicitly.
-    monkeypatch.setattr(capture, "_select_sherpa_spec", lambda _ws: None)
     app = FastAPI()
     app.include_router(capture.router)
     client = TestClient(app, client=("127.0.0.1", 50000))
