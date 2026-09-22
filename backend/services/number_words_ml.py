@@ -103,6 +103,7 @@ def _linking(word: str) -> str:
 # ── Building blocks ──────────────────────────────────────────────────────────
 
 def _below_hundred(n: int) -> str:
+    """0-99: units, teens, round tens, or tens-prefix + unit with sandhi."""
     if n < 10:
         return _UNITS[n]
     if n < 20:
@@ -114,6 +115,7 @@ def _below_hundred(n: int) -> str:
 
 
 def _below_thousand(n: int) -> str:
+    """0-999: hundreds joined to the remainder as one word (നൂറ്റിയൻപത്)."""
     if n < 100:
         return _below_hundred(n)
     hundreds, rest = divmod(n, 100)

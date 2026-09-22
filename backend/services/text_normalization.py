@@ -577,11 +577,14 @@ _NATIVE_VERBALIZERS = {"ml": "services.number_words_ml"}
 
 
 def _native_lang(language: Optional[str]) -> Optional[str]:
+    """Resolve a request language to a native-verbalizer code, or ``None``."""
     plain = _plain_lang_code(language)
     return plain if plain in _NATIVE_VERBALIZERS else None
 
 
 def _numbers_to_words_native(text: str, lang: str) -> str:
+    """Verbalize percent, decimal and integer tokens via the native module
+    for ``lang``; any failure leaves the input untouched."""
     import importlib
 
     try:
@@ -590,6 +593,7 @@ def _numbers_to_words_native(text: str, lang: str) -> str:
         return text
 
     def _safe(m: re.Match, render: Callable[[re.Match], str]) -> str:
+        """Render one match; on any error return the original text."""
         try:
             return render(m)
         except Exception:  # noqa: BLE001 — conservative: never mangle
