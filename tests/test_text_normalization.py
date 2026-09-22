@@ -65,6 +65,23 @@ _CHANGE_CASES = [
     ("French", "il a 42 chats", "il a quarante-deux chats"),
     ("French", "Mme Dupont arrive", "Madame Dupont arrive"),
     ("Russian", "у меня 42 кота", "у меня сорок два кота"),
+    # Malayalam goes through the native verbalizer (num2words has no ml
+    # locale): cardinals with sandhi, years as plain cardinals, Indian
+    # lakh grouping, percent and decimal. Display name and ISO code agree.
+    ("Malayalam", "എനിക്ക് 2 പൂച്ചകൾ ഉണ്ട്", "എനിക്ക് രണ്ട് പൂച്ചകൾ ഉണ്ട്"),
+    ("Malayalam", "അവിടെ 42 പേർ വന്നു", "അവിടെ നാൽപത്തിരണ്ട് പേർ വന്നു"),
+    ("Malayalam", "വില 150 രൂപ", "വില നൂറ്റിയൻപത് രൂപ"),
+    ("Malayalam", "2026 ൽ", "രണ്ടായിരത്തി ഇരുപത്തിയാറ് ൽ"),
+    ("Malayalam", "1984 ലെ കഥ", "ആയിരത്തി തൊള്ളായിരത്തിയെൺപത്തിനാല് ലെ കഥ"),
+    ("Malayalam", "150000 രൂപ", "ഒരു ലക്ഷത്തി അൻപതിനായിരം രൂപ"),
+    ("Malayalam", "ഏകദേശം 50%", "ഏകദേശം അൻപത് ശതമാനം"),
+    ("Malayalam", "3.5 കിലോമീറ്റർ", "മൂന്ന് ദശാംശം അഞ്ച് കിലോമീറ്റർ"),
+    ("ml", "എനിക്ക് 2 പൂച്ചകൾ ഉണ്ട്", "എനിക്ക് രണ്ട് പൂച്ചകൾ ഉണ്ട്"),
+    ("ml-IN", "25000 രൂപ", "ഇരുപത്തയ്യായിരം രൂപ"),
+    # Digits inside bracket grammar are masked; the rest still verbalizes.
+    ("Malayalam", "[pause 300ms] 42 [voice:Anu]", "[pause 300ms] നാൽപത്തിരണ്ട് [voice:Anu]"),
+    # Native Malayalam digits are digits too.
+    ("Malayalam", "൪൨ പേർ", "നാൽപത്തിരണ്ട് പേർ"),
     # Digit ranges: the tilde has to be SPOKEN or the engine mashes the two
     # numbers into one ("20~30초" was read as "이십삼"). Spacing is part of the
     # per-language form — a Korean postposition binds to its numeral, Japanese
@@ -136,6 +153,19 @@ _UNCHANGED_CASES = [
     ("English", "I said no. Fine."),            # the word "no.", not "number"
     ("English", "down main st. Anyway"),        # lowercase "st." is not Saint
     ("German", "es kostet 3,5 Euro"),           # decimal comma: ambiguous
+    # Malayalam native path keeps the same conservative boundaries
+    ("Malayalam", "1,000 രൂപ"),                  # thousands separator
+    ("Malayalam", "പേജ് 3-5 വായിക്കുക"),           # range
+    ("Malayalam", "കോഡ് 007"),                    # leading-zero code
+    ("Malayalam", "1234567 എന്ന നമ്പർ"),           # 7+ digits: an ID
+    ("Malayalam", "[pause 300ms] ശബ്ദം [rate 0.9]"),  # bracket grammar untouched
+    # Python's \w misses combining marks: a number glued to a vowel sign or
+    # virama is part of a word ("10ാം" = 10th), never spliced into it.
+    ("Malayalam", "10ാം ക്ലാസ്"),
+    ("Malayalam", "ക്ലാസ്10 ജയിച്ചു"),
+    ("Malayalam", "കോടി150"),
+    ("Malayalam", "കോഡ് ൦൦൭"),                    # native leading-zero code
+    ("ar", "الرمز ٠٠٧"),                         # same class on the num2words path
     # Digit ranges: only the tilde family is a range mark. Everything else that
     # sits between digits means something other than "to".
     ("Korean", "대략 20-30초"),                   # ASCII hyphen: also dates/phones
@@ -207,6 +237,26 @@ def test_cjk_passthrough_untouched():
     for s in cases:
         assert normalize_text(s, "Japanese") == s
         assert normalize_text(s, None) == s
+
+
+def test_native_verbalizer_covers_full_integer_range():
+    """Every integer the conservative regex can match (≤ 6 digits) must render
+    without digits and without raising — the ml module has no num2words
+    fallback to hide a table gap."""
+    from services import number_words_ml as ml
+    for n in range(1_000_000):
+        word = ml.cardinal(n)
+        assert word and not any(ch.isdigit() for ch in word), n
+
+
+def test_native_language_is_outside_num2words_gate():
+    """ml resolves to the native path, never to num2words (no ml locale)."""
+    from services.text_normalization import _native_lang, _num2words_lang
+    assert _num2words_lang("Malayalam") is None
+    assert _num2words_lang("ml") is None
+    assert _native_lang("Malayalam") == "ml"
+    assert _native_lang("ml-IN") == "ml"
+    assert _native_lang("English") is None
 
 
 # ── Idempotency: f(f(x)) == f(x) for every table case ───────────────────────
