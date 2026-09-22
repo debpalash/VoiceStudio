@@ -42,7 +42,7 @@ from worker.transport.server import (
     WorkerServicer,
     serve,
 )
-from hang_guard import HANG_GUARD_S
+from hang_guard import BARRIER_WATCHDOG_S, HANG_GUARD_S
 
 ENGINE, MODEL, OP = "indextts", "IndexTTS-2", "tts"
 
@@ -622,7 +622,7 @@ async def test_registration_persistence_is_off_loop_and_drained_before_adoption(
     def persist(_worker_id):
         assert threading.current_thread() is not main_thread
         started.set()
-        release.wait(5)
+        release.wait(BARRIER_WATCHDOG_S)
         finished.set()
 
     config = WorkerConfig(

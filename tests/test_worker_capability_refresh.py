@@ -9,7 +9,7 @@ from worker.protocol.gen import worker_v1_pb2 as pb
 from worker.transport import client as client_module
 from worker.transport.client import WorkerClient, WorkerConfig
 from worker.transport.server import WorkerServicer
-from hang_guard import HANG_GUARD_S
+from hang_guard import BARRIER_WATCHDOG_S, HANG_GUARD_S
 
 
 def _client(probe):
@@ -32,7 +32,7 @@ async def test_blocked_telemetry_probe_is_not_restarted(monkeypatch):
         nonlocal calls
         calls += 1
         started.set()
-        release.wait(5)
+        release.wait(BARRIER_WATCHDOG_S)
         return 10.0, 20, 30.0
 
     monkeypatch.setattr(client_module, "_heartbeat_resources", sample)
@@ -90,7 +90,7 @@ async def test_register_and_refresh_share_one_off_loop_capability_probe():
         assert threading.current_thread() is not main_thread
         calls += 1
         started.set()
-        release.wait(5)
+        release.wait(BARRIER_WATCHDOG_S)
         return [{
             "engine": "omnivoice",
             "model_id": "omnivoice:default",
@@ -553,7 +553,7 @@ async def test_blocked_telemetry_does_not_block_drain_stop_or_duplicate_on_recon
     def sample():
         calls.append(threading.current_thread())
         started.set()
-        release.wait(5)
+        release.wait(BARRIER_WATCHDOG_S)
         return 1.0, 2, 3.0
 
     monkeypatch.setattr(client_module, "_heartbeat_resources", sample)

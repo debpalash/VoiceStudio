@@ -34,7 +34,7 @@ from worker.protocol.gen import worker_v1_pb2 as pb
 from worker.scheduler import Scheduler
 from worker.transport import codec, server as server_module
 from worker.transport.server import REQUIRED_FEATURES, SESSION_METADATA_KEY, WorkerServicer
-from hang_guard import HANG_GUARD_S
+from hang_guard import BARRIER_WATCHDOG_S, HANG_GUARD_S
 
 ENGINE, MODEL, OP = "indextts", "IndexTTS-2", "tts"
 
@@ -538,7 +538,7 @@ async def test_cancelled_resume_drains_rehash_and_releases_logical_lease(
 
     def blocked_rehash(upload):
         started.set()
-        if not release.wait(timeout=2):
+        if not release.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release resume rehash")
         original_rehash(upload)
 
@@ -557,7 +557,7 @@ async def test_cancelled_resume_drains_rehash_and_releases_logical_lease(
         )
     )
     try:
-        assert await asyncio.to_thread(started.wait, 1.0)
+        assert await asyncio.to_thread(started.wait, HANG_GUARD_S)
         resumed.cancel()
         await asyncio.sleep(0)
         assert not resumed.done(), "cancellation returned while resume rehash still ran"
@@ -753,7 +753,7 @@ async def test_revocation_during_result_barrier_cannot_ack_published_bytes(
     def paused_after_replace(source, destination):
         real_replace(source, destination)
         barrier_finished.set()
-        if not release_barrier.wait(timeout=2):
+        if not release_barrier.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release result durability")
 
     monkeypatch.setattr(server_module, "_durable_replace", paused_after_replace)
@@ -787,7 +787,7 @@ async def test_upload_commit_serializes_with_an_inline_result(plane, monkeypatch
     def pause_after_upload_publish(source, destination):
         real_replace(source, destination)
         upload_published.set()
-        if not release_upload.wait(timeout=2):
+        if not release_upload.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release upload publication")
 
     monkeypatch.setattr(
@@ -800,7 +800,7 @@ async def test_upload_commit_serializes_with_an_inline_result(plane, monkeypatch
             )
         )
     )
-    assert await asyncio.to_thread(upload_published.wait, 1.0)
+    assert await asyncio.to_thread(upload_published.wait, HANG_GUARD_S)
 
     inline = asyncio.create_task(
         plane.servicer._on_result(
@@ -854,7 +854,7 @@ async def test_upload_write_does_not_block_revocation_or_publish_after_it(
     def blocked_write(handle, data):
         watchdog.start()
         write_started.set()
-        if not release_write.wait(timeout=10):
+        if not release_write.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release the result upload write")
         real_write_all(handle, data)
 
@@ -1305,7 +1305,7 @@ async def test_cancelled_piggyback_releases_only_its_upload_reservation(
         calls += 1
         if calls == 1:
             first_started.set()
-            if not release_first.wait(timeout=2):
+            if not release_first.wait(timeout=BARRIER_WATCHDOG_S):
                 raise TimeoutError("test did not release upload admission")
         real_makedirs(path)
 
@@ -1316,7 +1316,7 @@ async def test_cancelled_piggyback_releases_only_its_upload_reservation(
             context, chunk, retained_session=plane.servicer._sessions[plane.worker_id]
         )
     )
-    assert await asyncio.to_thread(first_started.wait, 1.0)
+    assert await asyncio.to_thread(first_started.wait, HANG_GUARD_S)
 
     second, refusal, _session = await plane.servicer._open_upload(
         context, chunk, retained_session=plane.servicer._sessions[plane.worker_id]
@@ -1364,7 +1364,7 @@ async def test_committed_piggyback_keeps_waiting_owner_reserved(
         calls += 1
         if calls == 1:
             first_started.set()
-            if not release_first.wait(timeout=2):
+            if not release_first.wait(timeout=BARRIER_WATCHDOG_S):
                 raise TimeoutError("test did not release upload admission")
         real_makedirs(path)
 
@@ -1377,7 +1377,7 @@ async def test_committed_piggyback_keeps_waiting_owner_reserved(
             retained_session=plane.servicer._sessions[plane.worker_id],
         )
     )
-    assert await asyncio.to_thread(first_started.wait, 1.0)
+    assert await asyncio.to_thread(first_started.wait, HANG_GUARD_S)
 
     second, refusal, _session = await plane.servicer._open_upload(
         context,

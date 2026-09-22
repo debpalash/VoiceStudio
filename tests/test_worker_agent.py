@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from worker import agent, identity, tls
-from hang_guard import HANG_GUARD_S
+from hang_guard import BARRIER_WATCHDOG_S, HANG_GUARD_S
 
 
 @pytest.fixture
@@ -1219,7 +1219,7 @@ async def test_idle_unload_cancellation_drains_the_blocking_release(monkeypatch)
 
     def blocking_release():
         started.set()
-        if not release.wait(timeout=2):
+        if not release.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release idle unload")
         finished.set()
         return 0

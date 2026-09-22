@@ -10,10 +10,18 @@ not the product. With other suites writing to the same disk, two fsyncs past
 local runs. A correct run still returns in milliseconds; only a real hang
 pays this ceiling.
 
+A blocking fake's watchdog (the ``release.wait(N)`` that frees a barrier the
+test forgot) must outlast the hang guard. If it did not, "the event loop
+stalled on this barrier" would become a stall that ends after N seconds, and a
+long hang guard would accept it. With the watchdog longer, a stalled loop
+still fails the hang guard.
+
 Use a short literal only where the timeout firing is the outcome under test
-(inside ``pytest.raises(asyncio.TimeoutError)`` or an ``except TimeoutError``
-that the test expects to take). ``tests/test_worker_hang_guards.py`` enforces
-this for every ``asyncio.wait_for`` in the worker suites.
+(``pytest.raises(asyncio.TimeoutError)``, an ``except TimeoutError`` the test
+expects to take, ``assert not event.wait(...)``).
+``tests/test_worker_hang_guards.py`` enforces both constants in the worker
+suites.
 """
 
 HANG_GUARD_S = 15.0
+BARRIER_WATCHDOG_S = 2 * HANG_GUARD_S

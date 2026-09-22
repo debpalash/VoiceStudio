@@ -19,7 +19,7 @@ from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
-from hang_guard import HANG_GUARD_S
+from hang_guard import BARRIER_WATCHDOG_S, HANG_GUARD_S
 
 ENGINE, MODEL, OP = "indextts", "IndexTTS-2", "tts"
 
@@ -739,7 +739,7 @@ async def test_first_attach_key_persistence_does_not_block_other_sessions(
     def blocked_save():
         auth_thread.append(threading.current_thread())
         auth_started.set()
-        assert release_auth.wait(timeout=2)
+        assert release_auth.wait(timeout=BARRIER_WATCHDOG_S)
         real_save()
 
     monkeypatch.setattr(keys, "_save_locked", blocked_save)
@@ -821,7 +821,7 @@ async def test_first_attach_capability_probe_does_not_block_other_sessions(
         assert include_unavailable is True
         probe_thread.append(threading.current_thread())
         probe_started.set()
-        assert release_probe.wait(timeout=2)
+        assert release_probe.wait(timeout=BARRIER_WATCHDOG_S)
         return []
 
     monkeypatch.setattr(capabilities, "discover", blocked_discover)
@@ -1309,7 +1309,7 @@ async def test_blocked_result_read_does_not_stall_key_revocation(
 
         def read(self, size):
             read_started.set()
-            if not release_read.wait(timeout=10):
+            if not release_read.wait(timeout=BARRIER_WATCHDOG_S):
                 raise TimeoutError("test did not release the artifact read")
             return self._handle.read(size)
 
@@ -1425,7 +1425,7 @@ async def test_blocked_input_write_does_not_stall_key_revocation(
 
     def blocked_write(handle, payload):
         write_started.set()
-        if not release_write.wait(timeout=10):
+        if not release_write.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release the artifact write")
         real_write_all(handle, payload)
 
@@ -1502,7 +1502,7 @@ async def test_input_admission_and_mkdir_do_not_block_the_listener_loop(
 
     def blocked_begin(*args, **kwargs):
         admission_started.set()
-        if not release_admission.wait(timeout=10):
+        if not release_admission.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release input admission")
         return real_begin(*args, **kwargs)
 
@@ -1570,7 +1570,7 @@ async def test_artifact_untrack_cleanup_does_not_block_the_listener_loop(
 
     def blocked_retry(key_id):
         cleanup_started.set()
-        if not release_cleanup.wait(timeout=10):
+        if not release_cleanup.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release ACK retry cleanup")
         real_retry(key_id)
 
@@ -2006,7 +2006,7 @@ async def test_input_push_hashes_and_streams_bounded_blocks_off_the_loop(
                 has_blocked = True
             if should_block:
                 read_started.set()
-                assert allow_read.wait(timeout=2)
+                assert allow_read.wait(timeout=BARRIER_WATCHDOG_S)
             return self._handle.read(size)
 
         def close(self):
@@ -2203,7 +2203,7 @@ async def test_result_ack_deletion_does_not_block_the_attach_loop(
 
     def blocked_acked(artifact_id, *, key_id):
         cleanup_started.set()
-        if not release_cleanup.wait(timeout=10):
+        if not release_cleanup.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release result ACK cleanup")
         real_acked(artifact_id, key_id=key_id)
 
@@ -2710,7 +2710,7 @@ async def test_cancelled_result_publish_drains_write_before_removing_file(
 
         def write(self, payload):
             write_started.set()
-            if not allow_write.wait(timeout=2):
+            if not allow_write.wait(timeout=BARRIER_WATCHDOG_S):
                 raise TimeoutError("test did not release the staged result write")
             return self._handle.write(payload)
 
@@ -2766,7 +2766,7 @@ async def test_result_publish_sweep_does_not_block_the_listener_loop(
 
     def blocked_sweep(*args, **kwargs):
         sweep_started.set()
-        if not release_sweep.wait(timeout=10):
+        if not release_sweep.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release the staging sweep")
         real_sweep(*args, **kwargs)
 
@@ -2870,7 +2870,7 @@ async def test_parallel_input_retry_cannot_truncate_a_staged_reader(
     def blocked_copyfile(source, destination):
         with open(source, "rb") as source_handle:
             copy_opened.set()
-            if not allow_copy.wait(timeout=2):
+            if not allow_copy.wait(timeout=BARRIER_WATCHDOG_S):
                 raise TimeoutError("test did not release the staged input copy")
             with open(destination, "wb") as destination_handle:
                 destination_handle.write(source_handle.read())
@@ -2941,7 +2941,7 @@ async def test_duplicate_input_validation_never_blocks_other_panel_admission(
     def blocked_matches(path, expected_digest, expected_size):
         if path == committed:
             validation_started.set()
-            if not release_validation.wait(timeout=10):
+            if not release_validation.wait(timeout=BARRIER_WATCHDOG_S):
                 raise TimeoutError("test did not release duplicate validation")
         return real_matches(path, expected_digest, expected_size)
 
@@ -3096,7 +3096,7 @@ async def test_cancelled_input_staging_drains_copy_before_returning(
 
     def blocked_copyfile(source, destination):
         copy_started.set()
-        if not allow_copy.wait(timeout=2):
+        if not allow_copy.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release the staged input copy")
         try:
             return real_copyfile(source, destination)
@@ -3338,7 +3338,7 @@ async def test_cancelled_result_pull_drains_off_loop_write_before_unlink(
 
     def blocked_write(handle, payload):
         write_started.set()
-        if not release_write.wait(timeout=10):
+        if not release_write.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release the fetched-result write")
         real_write_all(handle, payload)
 

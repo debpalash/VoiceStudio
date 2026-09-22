@@ -14,7 +14,7 @@ import threading
 import pytest
 
 from worker import capabilities, service
-from hang_guard import HANG_GUARD_S
+from hang_guard import BARRIER_WATCHDOG_S, HANG_GUARD_S
 
 
 @pytest.fixture
@@ -974,7 +974,7 @@ async def test_dev_task_input_staging_keeps_the_request_loop_responsive(
     def blocked_create(task, **_kwargs):
         staging_thread.append(threading.current_thread())
         stage_started.set()
-        assert release_stage.wait(timeout=2)
+        assert release_stage.wait(timeout=BARRIER_WATCHDOG_S)
         return task
 
     async def settle(_request, active, task_id, **_kwargs):
@@ -1149,7 +1149,7 @@ def test_revoke_cannot_dispatch_after_commit_before_live_disconnect(
 
     def delayed_disconnect(worker_id):
         after_commit.set()
-        assert allow_disconnect.wait(2), "test did not release live publication"
+        assert allow_disconnect.wait(BARRIER_WATCHDOG_S), "test did not release live publication"
         return real_disconnect(worker_id)
 
     monkeypatch.setattr(scheduler, "on_disconnected", delayed_disconnect)
@@ -1160,7 +1160,7 @@ def test_revoke_cannot_dispatch_after_commit_before_live_disconnect(
 
     revoke_thread = threading.Thread(target=revoke)
     revoke_thread.start()
-    assert after_commit.wait(2), "revoke never reached its live publication"
+    assert after_commit.wait(HANG_GUARD_S), "revoke never reached its live publication"
     with sqlite3.connect(db) as conn:
         assert conn.execute(
             "SELECT revoked FROM remote_workers WHERE id = ?", (worker.id,)
@@ -1177,8 +1177,8 @@ def test_revoke_cannot_dispatch_after_commit_before_live_disconnect(
     assert not assignment_finished.wait(0.05), "revoked worker received new work"
 
     allow_disconnect.set()
-    revoke_thread.join(2)
-    assignment_thread.join(2)
+    revoke_thread.join(HANG_GUARD_S)
+    assignment_thread.join(HANG_GUARD_S)
 
     assert not revoke_thread.is_alive()
     assert not assignment_thread.is_alive()
