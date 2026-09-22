@@ -113,9 +113,7 @@ export function tracksByCharacter(tracks) {
  * a field or a line and desynchronise every following cue.
  */
 export function buildCueSheet(chapters) {
-  return (chapters || [])
-    .map((c) => `${formatTimecode(c.time)}\t${cueTitle(c.title)}`)
-    .join('\n');
+  return (chapters || []).map((c) => `${formatTimecode(c.time)}\t${cueTitle(c.title)}`).join('\n');
 }
 
 // Every character that splits a field (tab) or a line in common readers:
