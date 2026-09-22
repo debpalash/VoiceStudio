@@ -123,29 +123,44 @@ export function buildCueSheet(chapters) {
  * only on success, so including a failed chapter here would shift every
  * following cue out of step with the audio it describes.
  *
- * Total by construction: a missing, NaN, or negative `duration_s` contributes
- * zero rather than poisoning every later start time, and a blank title falls
- * back to its position.
+ * Accumulates in whole milliseconds, the unit the backend writes START/END in,
+ * so a cue lands on exactly the embedded chapter's start. `duration_ms` (the
+ * exact value the backend put in `chapters_meta`) wins; older backends only
+ * send `duration_s` rounded to centiseconds, which is converted per chapter.
+ * Summing float seconds instead would drift — `0.1 + 0.2` is not `0.3`, and a
+ * start that should be 60 s can floor to 59.
  *
- * @param {{title?: string, duration_s?: number|string}[]|null|undefined} chapters
+ * Total by construction: a missing, non-finite, or negative duration
+ * contributes zero rather than poisoning every later start time, and a blank
+ * title falls back to `fallbackTitle(position)` over the rendered chapters.
+ *
+ * @param {{title?: string, duration_s?: number|string, duration_ms?: number|string}[]|null|undefined} chapters
+ * @param {(n: number) => string} [fallbackTitle]
  * @returns {{time: number, title: string}[]}
  */
-export function cuesFromChapters(chapters) {
+export function cuesFromChapters(chapters, fallbackTitle = (n) => `Chapter ${n}`) {
   const cues = [];
-  let elapsed = 0;
+  let elapsedMs = 0;
   for (const chapter of chapters || []) {
     const title = String(chapter?.title ?? '').trim();
-    cues.push({ time: elapsed, title: title || `Chapter ${cues.length + 1}` });
-    elapsed += Math.max(0, Number(chapter?.duration_s) || 0);
+    cues.push({ time: elapsedMs / 1000, title: title || fallbackTitle(cues.length + 1) });
+    elapsedMs += chapterMs(chapter);
   }
   return cues;
+}
+
+function chapterMs(chapter) {
+  const ms = Number(chapter?.duration_ms);
+  if (chapter?.duration_ms != null && Number.isFinite(ms)) return Math.max(0, Math.round(ms));
+  const seconds = Number(chapter?.duration_s);
+  return Number.isFinite(seconds) ? Math.max(0, Math.round(seconds * 1000)) : 0;
 }
 
 /**
  * Cue-sheet filename for a render output: `audiobook_ab12.m4b` ->
  * `audiobook_ab12.txt`.
  *
- * Any path prefix is dropped, then a trailing `.m4b`/`.mp3` becomes `.txt`.
+ * Any path prefix (`/` or `\`) is dropped, then a trailing `.m4b`/`.mp3` becomes `.txt`.
  * Only those two are swapped — the formats the renderer actually produces — so
  * an unexpected name falls back to `cuesheet.txt` instead of turning
  * `report.tar.gz` into `report.tar.txt`.
@@ -158,7 +173,7 @@ export function cuesFromChapters(chapters) {
  */
 export function cueSheetFilename(output) {
   const base = String(output || '')
-    .split('/')
+    .split(/[\\/]/)
     .pop();
   const named = base.replace(/\.(m4b|mp3)$/i, '.txt');
   return /\.txt$/i.test(named) ? named : 'cuesheet.txt';

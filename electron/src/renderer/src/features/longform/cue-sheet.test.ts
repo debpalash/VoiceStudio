@@ -15,10 +15,16 @@ import { describe, expect, it } from 'vitest';
 import { cueSheetFor, renderedChapters } from './cue-sheet';
 import type { AudiobookRenderChapter } from './longform-session';
 
-const chapter = (title: string, status: string, duration_s?: number): AudiobookRenderChapter => ({
+const chapter = (
+  title: string,
+  status: string,
+  duration_s?: number,
+  duration_ms?: number,
+): AudiobookRenderChapter => ({
   title,
   status,
   ...(duration_s === undefined ? {} : { duration_s }),
+  ...(duration_ms === undefined ? {} : { duration_ms }),
 });
 
 describe('renderedChapters', () => {
@@ -31,6 +37,21 @@ describe('renderedChapters', () => {
       chapter('Broken', 'failed'),
     ]);
     expect(kept.map((c) => c.title)).toEqual(['Fresh', 'Cached']);
+  });
+
+  it('keeps nothing that never emitted a chapter event', () => {
+    // Only done/cached chapters reached chapters_meta. A slot still pending or
+    // rendering (a stream that ended early), a cancelled one, or a status a
+    // future backend invents must not claim a start time.
+    const kept = renderedChapters([
+      chapter('Done', 'done', 1),
+      chapter('Pending', 'pending'),
+      chapter('Rendering', 'rendering'),
+      chapter('Cancelled', 'cancelled', 5),
+      chapter('Mystery', 'something-new', 5),
+      chapter('Cached', 'cached', 1),
+    ]);
+    expect(kept.map((c) => c.title)).toEqual(['Done', 'Cached']);
   });
 
   it('is total for a missing list', () => {
@@ -88,7 +109,32 @@ describe('cueSheetFor', () => {
     // The cues are worth keeping even if the filename has to fall back.
     const sheet = cueSheetFor([chapter('One', 'done', 1)], 'something.wav');
     expect(sheet?.filename).toBe('cuesheet.txt');
-    expect(cueSheetFor([chapter('One', 'done', 1)], '')?.filename).toBe('cuesheet.txt');
+  });
+
+  it('offers nothing without an output file', () => {
+    // Chapters rendered but the mux failed: the audio they describe does not exist.
+    expect(cueSheetFor([chapter('One', 'done', 1)], '')).toBeNull();
+    expect(cueSheetFor([chapter('One', 'done', 1)], null)).toBeNull();
+  });
+
+  it('names an untitled chapter through the caller, by rendered position', () => {
+    const sheet = cueSheetFor(
+      [chapter('', 'done', 5), chapter('Broken', 'failed'), chapter('', 'done', 5)],
+      'x.m4b',
+      (n) => `Kapitel ${n}`,
+    );
+    expect(sheet?.body).toBe('00:00:00\tKapitel 1\n00:00:05\tKapitel 2');
+  });
+
+  it('uses the exact milliseconds the m4b chapters were built from', () => {
+    // duration_s is rounded to centiseconds for display; duration_ms is what
+    // chapters_meta holds. 59.996 s rounds to 60.00 s but is 59996 ms, so the
+    // m4b's second chapter starts at 00:00:59 — and so must the sheet.
+    const sheet = cueSheetFor(
+      [chapter('One', 'done', 60, 59_996), chapter('Two', 'done', 1, 1_000)],
+      'x.m4b',
+    );
+    expect(sheet?.body).toBe('00:00:00\tOne\n00:00:59\tTwo');
   });
 
   it('drops a path prefix from the output name', () => {

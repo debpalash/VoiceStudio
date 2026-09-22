@@ -14,6 +14,7 @@ import { WorkspaceHeader } from '@/components/app-shell/workspace-header';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { importToText } from '../../../../../../frontend/src/utils/importStory';
 import { cueSheetFor } from './cue-sheet';
+import { saveLocalFile } from '@/lib/local-export';
 import { StoryCast, StoryEditor } from './story-editor';
 import { clearedScriptPatch, scriptSize } from './story-clear';
 import { ConfirmDialog } from '../clone/confirm-dialog';
@@ -186,19 +187,20 @@ export function LongformPage({ mode }: { mode: Mode }) {
   // The m4b embeds its chapters, but mp3 has no portable way to carry them, and
   // players, podcast hosts and show-notes want the timestamps as text. What
   // belongs in the sheet is decided in cue-sheet.ts; this only saves it.
-  const cueSheet = cueSheetFor(draft.outputChapters, draft.output);
-  const downloadCueSheet = () => {
+  const cueSheet = cueSheetFor(draft.outputChapters, draft.output, (n) =>
+    t('audiobook.chapter_n', { n }),
+  );
+  const downloadCueSheet = async () => {
     if (!cueSheet) return;
-    const url = URL.createObjectURL(
-      new Blob([cueSheet.body], { type: 'text/plain;charset=utf-8' }),
-    );
+    setLocalError(null);
     try {
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = cueSheet.filename;
-      link.click();
-    } finally {
-      URL.revokeObjectURL(url);
+      // Native save dialog under Electron, like every other local export.
+      await saveLocalFile(
+        new Blob([cueSheet.body], { type: 'text/plain;charset=utf-8' }),
+        cueSheet.filename,
+      );
+    } catch (cause) {
+      setLocalError(describeError(cause));
     }
   };
   return (
@@ -504,7 +506,7 @@ export function LongformPage({ mode }: { mode: Mode }) {
                   </div>
                   <div className="flex items-center gap-1">
                     {cueSheet && (
-                      <Button variant="ghost" size="sm" onClick={downloadCueSheet}>
+                      <Button variant="ghost" size="sm" onClick={() => void downloadCueSheet()}>
                         <ListIcon />
                         {t('audiobook.download_cues')}
                       </Button>

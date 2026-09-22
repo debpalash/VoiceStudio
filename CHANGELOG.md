@@ -10,11 +10,11 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 **Highlights**
 
-- Stories and Audiobook can save a chapter cue sheet — timestamps and titles as a `.txt` — for show notes, podcast platforms and players that don't read embedded chapters (#2277)
+- Stories and Audiobook can save a chapter cue sheet (`.txt`) after a render
 
 ### Added
 
-- Download cue sheet (.txt) after a Stories or Audiobook render: one `HH:MM:SS` line per chapter, taken from the chapters that actually rendered so the timestamps match the chapters embedded in an M4B. MP3 has no portable way to carry chapters, so this is how they travel with it (#2277)
+- Download a chapter cue sheet (`HH:MM:SS<TAB>Title`) after a Stories or Audiobook render; timestamps match the M4B's embedded chapters and give MP3 portable chapters (#2277, #2278) — thanks @shivsin25!
 
 ## [0.5.5] — 2026-09-22
 

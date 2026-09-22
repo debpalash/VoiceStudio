@@ -133,10 +133,54 @@ describe('cuesFromChapters', () => {
     }
   });
 
+  it('treats an infinite duration as zero', () => {
+    const cues = cuesFromChapters([
+      { title: 'A', duration_s: 5 },
+      { title: 'B', duration_s: Infinity },
+      { title: 'C', duration_s: -Infinity },
+      { title: 'D', duration_ms: Infinity },
+      { title: 'E' },
+    ]);
+    expect(cues.map((c) => c.time)).toEqual([0, 5, 5, 5, 5]);
+  });
+
+  it('does not drift below a whole second from float addition', () => {
+    // Ten 0.1 s chapters summed as float seconds give 0.9999999999999999,
+    // which floors to 00:00:00 — a second early. Whole milliseconds cannot.
+    const tenths = Array.from({ length: 10 }, (_, i) => ({ title: `c${i}`, duration_s: 0.1 }));
+    const last = cuesFromChapters([...tenths, { title: 'end' }]).at(-1);
+    expect(last.time).toBe(1);
+    expect(buildCueSheet([last])).toBe('00:00:01\tend');
+  });
+
+  it('prefers the exact duration_ms the m4b chapters were built from', () => {
+    expect(
+      cuesFromChapters([{ title: 'A', duration_s: 60, duration_ms: 59996 }, { title: 'B' }])[1]
+        .time,
+    ).toBe(59.996);
+    // Older backends send only duration_s.
+    expect(cuesFromChapters([{ title: 'A', duration_s: 12.34 }, { title: 'B' }])[1].time).toBe(
+      12.34,
+    );
+  });
+
+  it('matches cumulative millisecond START offsets past 24 hours', () => {
+    // 30 chapters of 59:59.999 each — the same ms the backend sums into START.
+    const long = Array.from({ length: 30 }, (_, i) => ({ title: `c${i}`, duration_ms: 3_599_999 }));
+    const cues = cuesFromChapters([...long, { title: 'end' }]);
+    expect(cues.at(-1).time).toBe((30 * 3_599_999) / 1000);
+    expect(formatTimecode(cues.at(-1).time)).toBe('29:59:59');
+    expect(formatTimecode(100 * 3600)).toBe('100:00:00');
+  });
+
   it('accepts a numeric string duration', () => {
     expect(cuesFromChapters([{ title: 'A', duration_s: '12.5' }, { title: 'B' }])[1].time).toBe(
       12.5,
     );
+  });
+
+  it('names a blank title through the caller-supplied fallback', () => {
+    expect(cuesFromChapters([{ title: '' }], (n) => `Capítulo ${n}`)[0].title).toBe('Capítulo 1');
   });
 
   it('falls back to the chapter position when the title is blank', () => {
@@ -182,6 +226,7 @@ describe('cueSheetFilename', () => {
     ['story_abc.mp3', 'story_abc.txt'],
     ['/outputs/story_abc.m4b', 'story_abc.txt'],
     ['X.M4B', 'X.txt'],
+    ['C:\\outputs\\story_abc.mp3', 'story_abc.txt'],
   ])('%s -> %s', (output, expected) => {
     expect(cueSheetFilename(output)).toBe(expected);
   });
