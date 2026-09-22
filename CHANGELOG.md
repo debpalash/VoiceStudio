@@ -18,14 +18,14 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 - Malayalam dubs and audiobooks speak numbers, percentages, and decimals in Malayalam instead of reading raw digits (#2280) — thanks @nikhilkilivayil!
 - Download a chapter cue sheet (`HH:MM:SS<TAB>Title`) after a Stories or Audiobook render; timestamps match the M4B's embedded chapters and give MP3 portable chapters (#2278) — thanks @shivsin25!
-- Integrations: copyable setup for Codex CLI (`config.toml`), any MCP client (HTTP or stdio), the VoiceStudio API (`curl` and OpenAI SDK), and Docker/GHCR (#PRNUM)
+- Integrations: copyable setup for Codex CLI (`config.toml`), any MCP client (HTTP or stdio), the VoiceStudio API (`curl` and OpenAI SDK), and Docker/GHCR (#2289)
 
 ### Fixed
 
 - On Windows, one reset connection no longer leaves the backend running but unreachable (#2276) — thanks @ialexbond!
-- MCP clients pointed at `/mcp` connect on Docker and source builds instead of getting HTTP 405 (#PRNUM)
-- MCP tools and `backend.speech_client` follow a backend moved with `OMNIVOICE_PORT` instead of assuming port 3900 (#PRNUM)
-- Integration cards show real capabilities: "Works with VoiceStudio" only where a setup exists, "External link" everywhere else (#PRNUM)
+- MCP clients pointed at `/mcp` connect on Docker and source builds instead of getting HTTP 405 (#2289)
+- MCP tools and `backend.speech_client` follow a backend moved with `OMNIVOICE_PORT` instead of assuming port 3900 (#2289)
+- Integration cards show real capabilities: "Works with VoiceStudio" only where a setup exists, "External link" everywhere else (#2289)
 
 ## [0.5.5] — 2026-09-22
 
