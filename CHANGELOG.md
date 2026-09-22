@@ -14,7 +14,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ### Fixed
 
-- On Windows, one reset connection no longer leaves the backend running but unreachable — reported by @ialexbond (#2276)
+- On Windows, one reset connection no longer leaves the backend running but unreachable (#2276) — thanks @ialexbond!
 
 ## [0.5.5] — 2026-09-22
 

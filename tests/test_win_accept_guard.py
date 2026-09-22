@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import importlib
 import os
 import socket
 import sys
@@ -24,9 +25,6 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
-
-from core import win_accept_guard as guard
-
 
 def _winerr(code: int) -> OSError:
     exc = OSError(22, "The specified network name is no longer available")
@@ -70,6 +68,12 @@ class FakeProactor:
 
 
 @pytest.fixture
+def guard():
+    """Resolve the module at run time so sys.modules pollution cannot go stale."""
+    return importlib.import_module("core.win_accept_guard")
+
+
+@pytest.fixture
 def loop():
     lp = asyncio.new_event_loop()
     yield lp
@@ -77,7 +81,7 @@ def loop():
 
 
 @pytest.fixture
-def guarded(monkeypatch):
+def guarded(guard, monkeypatch):
     """A FakeProactor subclass with the guard applied (fresh per test)."""
     cls = type("GuardedFake", (FakeProactor,), {})
     assert guard.patch_proactor_class(cls)
@@ -119,8 +123,13 @@ def test_outer_cancel_cancels_inflight_accept(loop, guarded):
     assert p.issued[0].cancelled()
 
 
-def test_outer_cancel_during_backoff_stops_retrying(loop, guarded, monkeypatch):
+def test_outer_cancel_during_backoff_stops_retrying(loop, guarded, monkeypatch, guard):
     monkeypatch.setattr(guard, "_IMMEDIATE_RETRIES", 0)
+    # A backoff far above any loop clock resolution: Windows' ~15.6 ms monotonic
+    # tick made a 10 ms call_later fire inside _settle, so the retry had already
+    # run before the cancel (Smoke (Windows) failure on #2283).
+    monkeypatch.setattr(guard, "_BASE_DELAY_S", 30.0)
+    monkeypatch.setattr(guard, "_MAX_DELAY_S", 30.0)
     p = guarded(loop, [_winerr(64), ("c", "a")])
     outer = p.accept(_Listener())
     _settle(loop, rounds=5)  # first failure processed, retry now on call_later
@@ -162,7 +171,7 @@ def test_transient_error_after_listener_closed_propagates(loop, guarded):
     assert outer.exception() is err
 
 
-def test_retry_cap_then_propagates(loop, guarded, monkeypatch):
+def test_retry_cap_then_propagates(loop, guarded, monkeypatch, guard):
     monkeypatch.setattr(guard, "MAX_CONSECUTIVE_RETRIES", 5)
     p = guarded(loop, [_winerr(64) for _ in range(20)])
     outer = p.accept(_Listener())
@@ -171,7 +180,7 @@ def test_retry_cap_then_propagates(loop, guarded, monkeypatch):
     assert p.calls == 6
 
 
-def test_backoff_is_bounded_and_grows():
+def test_backoff_is_bounded_and_grows(guard):
     delays = [guard.retry_delay(n) for n in range(1, guard.MAX_CONSECUTIVE_RETRIES + 1)]
     assert delays[0] == 0.0
     assert delays == sorted(delays)
@@ -179,14 +188,14 @@ def test_backoff_is_bounded_and_grows():
     assert sum(delays) < 60  # never a tight loop, never an endless stall
 
 
-def test_classifier():
+def test_classifier(guard):
     assert guard.is_transient_accept_error(_winerr(64))
     assert guard.is_transient_accept_error(ConnectionAbortedError())
     assert not guard.is_transient_accept_error(_winerr(10048))
     assert not guard.is_transient_accept_error(ValueError())
 
 
-def test_patch_is_idempotent():
+def test_patch_is_idempotent(guard):
     cls = type("F", (FakeProactor,), {})
     assert guard.patch_proactor_class(cls)
     wrapped = cls.accept
@@ -194,7 +203,7 @@ def test_patch_is_idempotent():
     assert cls.accept is wrapped
 
 
-def test_install_is_noop_off_windows(monkeypatch):
+def test_install_is_noop_off_windows(monkeypatch, guard):
     monkeypatch.setattr(sys, "platform", "linux")
     guard.install()  # must not import asyncio.windows_events
 
@@ -240,7 +249,7 @@ def test_unguarded_cpython_accept_loop_closes_listener():
     assert not open_ and transports == [] and errors
 
 
-def test_guarded_cpython_accept_loop_keeps_serving(monkeypatch):
+def test_guarded_cpython_accept_loop_keeps_serving(monkeypatch, guard):
     monkeypatch.setattr(guard, "_IMMEDIATE_RETRIES", 1000)
     cls = type("GuardedFake", (FakeProactor,), {})
     guard.patch_proactor_class(cls)
@@ -249,22 +258,39 @@ def test_guarded_cpython_accept_loop_keeps_serving(monkeypatch):
     assert transports == ["conn-1", "conn-2"]
 
 
+def _guard_installed_before_serving(src: str) -> bool:
+    """Module-level install() call precedes every uvicorn.run(...) (AST linenos)."""
+    tree = ast.parse(src)
+    installs = [n.lineno for n in tree.body
+                if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)
+                and getattr(n.value.func, "id", "") == "_install_accept_guard"]
+    runs = [n.lineno for n in ast.walk(tree)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "run" and getattr(n.func.value, "id", "") == "uvicorn"]
+    return bool(installs) and bool(runs) and installs[0] < min(runs)
+
+
+def test_order_check_rejects_install_after_serving():
+    before = "_install_accept_guard()\nimport uvicorn\nuvicorn.run(app)\n"
+    after = "import uvicorn\nif x:\n    uvicorn.run(app)\n_install_accept_guard()\n"
+    assert _guard_installed_before_serving(before)
+    assert not _guard_installed_before_serving(after)
+    assert not _guard_installed_before_serving("import uvicorn\nuvicorn.run(app)\n")
+
+
 def test_main_installs_guard_before_serving():
     src = Path(__file__).resolve().parents[1].joinpath("backend", "main.py").read_text(
         encoding="utf-8")
-    tree = ast.parse(src)
-    calls = [n for n in tree.body
-             if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)
-             and getattr(n.value.func, "id", "") == "_install_accept_guard"]
-    assert calls, "main.py must call core.win_accept_guard.install at module level"
-    assert calls[0].lineno < src.index("uvicorn.run(") and calls[0].lineno < 120
+    assert _guard_installed_before_serving(src), (
+        "main.py must call core.win_accept_guard.install at module level, "
+        "before any uvicorn.run")
 
 
 # ── Windows: real ProactorEventLoop ─────────────────────────────────────────
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="IocpProactor is Windows-only")
-def test_real_proactor_server_survives_winerror_64():
+def test_real_proactor_server_survives_winerror_64(guard):
     from asyncio import windows_events
 
     class Flaky(windows_events.IocpProactor):

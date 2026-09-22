@@ -66,7 +66,8 @@ _MAX_DELAY_S = 0.5
 _WARN_INTERVAL_S = 60.0
 
 _MARKER = "_omnivoice_accept_guard"
-_last_warning = float("-inf")
+# Mutable holder (not a rebound global): monotonic time of the last WARNING.
+_warn_state = {"last": float("-inf")}
 
 
 def is_transient_accept_error(exc: BaseException) -> bool:
@@ -86,11 +87,10 @@ def retry_delay(attempt: int) -> float:
 
 
 def _log_retry(exc: OSError, attempt: int) -> None:
-    global _last_warning
     now = time.monotonic()
     level = logging.DEBUG
-    if now - _last_warning >= _WARN_INTERVAL_S:
-        _last_warning = now
+    if now - _warn_state["last"] >= _WARN_INTERVAL_S:
+        _warn_state["last"] = now
         level = logging.WARNING
     logger.log(
         level,
