@@ -14,7 +14,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ### Added
 
-- Download a chapter cue sheet (`HH:MM:SS<TAB>Title`) after a Stories or Audiobook render; timestamps match the M4B's embedded chapters and give MP3 portable chapters (#2277, #2278) — thanks @shivsin25!
+- Download a chapter cue sheet (`HH:MM:SS<TAB>Title`) after a Stories or Audiobook render; timestamps match the M4B's embedded chapters and give MP3 portable chapters (#2278) — thanks @shivsin25!
 
 ## [0.5.5] — 2026-09-22
 
