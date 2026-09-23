@@ -44,7 +44,14 @@ import soundfile as sf
 
 from core.config import DUB_DIR
 from fastapi import HTTPException
-from services.ffmpeg_utils import find_ffmpeg, find_ffprobe, _get_semaphore, _spawn_with_retry
+from services.ffmpeg_utils import (
+    _get_semaphore,
+    _spawn_with_retry,
+    find_ffmpeg,
+    find_ffprobe,
+    raise_for_audio_extract_failure,
+    require_audio_stream,
+)
 from services.srt_parser import spoken_cue_text
 from services.model_manager import get_best_device
 # Process lifecycle moved to its own leaf module so ffmpeg_utils can import
@@ -1337,11 +1344,18 @@ async def ingest_pipeline(
 
         yield prep_event("extract_start")
         try:
+            # A video with no audio stream has nothing to transcribe or dub.
+            # Name that instead of letting ffmpeg fail with exit 234 and a
+            # stream dump ending in "Invalid argument".
+            await asyncio.to_thread(require_audio_stream, video_path)
             p, _, stderr = await run_proc([
                 ffmpeg, "-i", video_path, "-vn", "-acodec", "pcm_s16le",
                 "-ar", "16000", "-ac", "1", audio_path, "-y",
             ])
             if p.returncode != 0:
+                # The probe can be undetermined (no ffprobe); recognize the
+                # same cause from ffmpeg's own wording.
+                await asyncio.to_thread(raise_for_audio_extract_failure, stderr, video_path)
                 msg = _media_process_error("FFmpeg", p.returncode, stderr, paths=(video_path, audio_path, job_dir))
                 raise Exception(msg)
             # Second, FULL-QUALITY extraction for source separation. audio.wav

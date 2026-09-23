@@ -358,6 +358,11 @@ def _decode_audio_16k_mono(audio_path: str):
             "ffmpeg or clear the imageio-ffmpeg cache."
         ) from e
     except subprocess.CalledProcessError as e:
+        from services.ffmpeg_utils import raise_for_audio_extract_failure
+
+        # A file with no audio stream gets the shared actionable error, not
+        # ffmpeg's stream dump (NoAudioTrackError; raw stderr goes to the log).
+        raise_for_audio_extract_failure(e.stderr or b"", audio_path)
         stderr = (e.stderr or b"").decode(errors="replace")[:500]
         raise RuntimeError(f"Failed to decode audio for transcription: {stderr}") from e
     return np.frombuffer(out, np.int16).flatten().astype(np.float32) / 32768.0

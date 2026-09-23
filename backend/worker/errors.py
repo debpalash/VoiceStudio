@@ -95,6 +95,7 @@ _TAXONOMY: dict[str, ErrorClass] = {
     "UNSUPPORTED_VIDEO_URL": ErrorClass.TERMINAL,
     "VIDEO_DRM_PROTECTED": ErrorClass.TERMINAL,
     "VIDEO_DOWNLOAD_BOT_CHECK": ErrorClass.TERMINAL,
+    "NO_AUDIO_TRACK": ErrorClass.TERMINAL,
 }
 
 # Protocol-level codes raised by the worker layer itself (no docs taxonomy).
