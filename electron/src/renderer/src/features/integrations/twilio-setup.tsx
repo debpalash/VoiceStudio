@@ -166,6 +166,8 @@ export function TwilioSetup() {
       });
       queryClient.setQueryData(QUERY_KEY, next);
       if (!onlyExtra) setForm(formFrom(next));
+      // A removed token must not come back from an unsaved draft on the next Save.
+      else if ('auth_token' in extra) setForm({ ...form, auth_token: '' });
       toast.success(t('nav.saved'));
     } catch (reason) {
       setError(explain(reason));

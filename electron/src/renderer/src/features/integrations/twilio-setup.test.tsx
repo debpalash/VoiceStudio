@@ -171,6 +171,8 @@ it('turns off with only the switch, so an invalid draft cannot block disabling',
 it('removes the Auth Token without submitting an invalid draft, turning calls off with it', async () => {
   renderPage({ ...base, enabled: true, has_auth_token: true, missing: [] });
   fireEvent.change(await screen.findByPlaceholderText('AC…'), { target: { value: 'not-a-sid' } });
+  const token = screen.getByPlaceholderText('Saved. Leave empty to keep it.');
+  fireEvent.change(token, { target: { value: 'typed-but-unsaved' } });
   api.json.mockResolvedValueOnce({ ...base });
   fireEvent.click(screen.getByRole('button', { name: 'Remove Auth Token' }));
   await waitFor(() =>
@@ -180,4 +182,10 @@ it('removes the Auth Token without submitting an invalid draft, turning calls of
     }),
   );
   expect(screen.getByPlaceholderText('AC…')).toHaveValue('not-a-sid');
+  // The typed token draft is cleared, so a later Save cannot restore it.
+  await waitFor(() => expect(token).toHaveValue(''));
+  api.json.mockResolvedValueOnce({ ...base });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(api.json.mock.calls.at(-1)?.[1]?.body).toBeDefined());
+  expect(JSON.parse(api.json.mock.calls.at(-1)![1].body)).not.toHaveProperty('auth_token');
 });
