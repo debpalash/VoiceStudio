@@ -10,10 +10,12 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 **Highlights**
 
+- Footer integration logos open their in-app page (#2302)
 - Record or drop a voice sample from one view in Voice Clone (#2307)
 
 ### Changed
 
+- Integration logos in the footer open their page inside the app instead of an outside website (#2302)
 - Voice Clone shows upload and record side by side instead of behind a toggle (#2307)
 
 ## [0.5.6] — 2026-09-23

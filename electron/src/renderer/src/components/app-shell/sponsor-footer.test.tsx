@@ -44,7 +44,7 @@ it('shows a labeled preview and opens the booking form without launching email',
   expect(document.querySelectorAll('img')).toHaveLength(0);
   expect(mock.open).not.toHaveBeenCalled();
 });
-it('opens the configured sponsor only on click and shows a themed tooltip on focus', async () => {
+it('opens a sponsor tile in the app, never an outside link, and shows a themed tooltip on focus', async () => {
   mock.sponsors.push({
     name: 'Example sponsor',
     logoUrl: '/sponsor.svg',
@@ -52,15 +52,28 @@ it('opens the configured sponsor only on click and shows a themed tooltip on foc
     tier: 'gold',
   });
   render(<SponsorFooter />);
-  const link = screen.getByRole('link', { name: 'support.sponsors_logo_aria Example sponsor' });
-  expect(link.querySelector('img')).toHaveAttribute('src', '/sponsor.svg');
-  fireEvent.focus(link);
+  const tile = screen.getByRole('button', { name: 'support.sponsors_logo_aria Example sponsor' });
+  expect(tile).not.toHaveAttribute('href');
+  expect(tile.querySelector('img')).toHaveAttribute('src', '/sponsor.svg');
+  fireEvent.focus(tile);
   await waitFor(() => expect(screen.getByText('support.sponsors_tier_gold')).toBeVisible());
+  fireEvent.click(tile);
+  // Not in the integration catalog: the catalog page, still in the app.
+  expect(mock.navigate).toHaveBeenCalledWith({ to: '/integrations' });
   expect(mock.open).not.toHaveBeenCalled();
-  fireEvent.click(link);
-  expect(mock.open).toHaveBeenCalledWith('https://example.org');
-  fireEvent.error(link.querySelector('img')!);
-  expect(link).toHaveTextContent('Example sponsor');
+  fireEvent.error(tile.querySelector('img')!);
+  expect(tile).toHaveTextContent('Example sponsor');
+});
+
+it('opens a catalog integration on its in-app detail page', () => {
+  mock.examples.push({ name: 'Twilio', url: 'https://www.twilio.com', logoUrl: '/twilio.ico' });
+  render(<SponsorFooter />);
+  fireEvent.click(screen.getByRole('button', { name: 'support.sponsors_logo_aria Twilio' }));
+  expect(mock.navigate).toHaveBeenCalledWith({
+    to: '/integrations/$slug',
+    params: { slug: 'twilio' },
+  });
+  expect(mock.open).not.toHaveBeenCalled();
 });
 
 it('encodes the message into an email draft and copies only the partner address', async () => {
@@ -149,6 +162,6 @@ it('labels company examples without presenting them as featured sponsors', () =>
     logoUrl: '/elevenlabs.ico',
   });
   render(<SponsorFooter />);
-  expect(screen.getByRole('link', { name: 'support.sponsors_logo_aria ElevenLabs' })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'support.sponsors_logo_aria ElevenLabs' })).toBeVisible();
   expect(mock.open).not.toHaveBeenCalled();
 });
