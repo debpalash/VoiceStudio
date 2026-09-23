@@ -202,6 +202,38 @@ describe('commitMoveResize — fingerprint parity (#281 invariants)', () => {
     const after = commitMoveResize(seg(1, 0, 2), { start: 2, end: 2 });
     expect('speed' in after).toBe(false);
   });
+
+  // Imported SRT/ASR times carry milliseconds. Rounding both edges to
+  // hundredths on commit snaps the unedited edge and can turn a move into a
+  // resize (speed + original_duration), so a 0.1s start nudge of 1.234-3.456
+  // became 1.13-3.46 at speed 0.95.
+  it('a one-edge edit keeps the other edge milliseconds', () => {
+    const before = seg(1, 1.234, 3.456);
+    const after = commitMoveResize(before, { start: 1.134, end: 3.456 });
+    expect(after.start).toBe(1.134);
+    expect(after.end).toBe(3.456);
+    expect(after.original_duration).toBe(2.222);
+    expect(after.speed).toBe(0.96);
+  });
+
+  it('a pure move of millisecond times does not rewrite speed', () => {
+    const before = seg(1, 1.234, 3.456, { profile_id: 'p1' });
+    const after = commitMoveResize(before, { start: 1.334, end: 3.556 });
+    expect(after.start).toBe(1.334);
+    expect(after.end).toBe(3.556);
+    expect('speed' in after).toBe(false);
+    expect('original_duration' in after).toBe(false);
+    expect(segmentGenInputs(after)).toEqual(segmentGenInputs(before));
+  });
+
+  it('recommitting millisecond times does not snap them to hundredths', () => {
+    const before = seg(1, 1.234, 3.456);
+    const after = commitMoveResize(before, { start: 1.234, end: 3.456 });
+    expect(after.start).toBe(1.234);
+    expect(after.end).toBe(3.456);
+    expect('speed' in after).toBe(false);
+    expect('original_duration' in after).toBe(false);
+  });
 });
 
 describe('detectOverlaps', () => {
