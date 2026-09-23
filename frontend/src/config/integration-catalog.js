@@ -181,16 +181,6 @@ const groups = [
   ],
 ];
 
-const categoryDetails = {
-  automation: ['tools.title'],
-  comms: ['nav.dub'],
-  agents: ['dub.choose_translation_agent'],
-  mcp: ['settings.mcp_title'],
-  developer: ['tools.title'],
-  data: ['engineSidebar.asr'],
-  productivity: ['tools.title'],
-};
-
 const catalogEntries = [
   ...VOICE_AI_DIRECTORY.map((entry) => ({ ...entry, category: 'comms', featured: false })),
   ...groups.flatMap(([category, items]) =>
@@ -200,7 +190,6 @@ const catalogEntries = [
         name,
         url,
         logoUrl: genericLogo,
-        detailKeys: categoryDetails[category],
         category,
         featured: false,
       };
@@ -225,10 +214,6 @@ const catalogBySlug = new Map();
 for (const entry of catalogEntries) {
   const slug = integrationSlug(entry.name);
   const previous = catalogBySlug.get(slug);
-  catalogBySlug.set(slug, {
-    ...entry,
-    logoUrl: previous?.logoUrl ?? entry.logoUrl,
-    detailKeys: [...new Set([...(previous?.detailKeys ?? []), ...entry.detailKeys])],
-  });
+  catalogBySlug.set(slug, { ...entry, logoUrl: previous?.logoUrl ?? entry.logoUrl });
 }
 export const INTEGRATION_CATALOG = [...catalogBySlug.values()];

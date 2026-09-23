@@ -19,6 +19,7 @@ from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
+from hang_guard import BARRIER_WATCHDOG_S, HANG_GUARD_S
 
 ENGINE, MODEL, OP = "indextts", "IndexTTS-2", "tts"
 
@@ -282,7 +283,7 @@ async def test_reconnect_claims_the_same_running_inbound_execution(inbound):
     assignment = inbound.scheduler.next_assignment()
     assert assignment is not None
     assert await inbound.servicer.dispatch(assignment)
-    await asyncio.wait_for(execution_started.wait(), timeout=2)
+    await asyncio.wait_for(execution_started.wait(), timeout=HANG_GUARD_S)
 
     inbound.connector_task.cancel()
     await asyncio.gather(inbound.connector_task, return_exceptions=True)
@@ -320,7 +321,7 @@ async def test_reconnect_redelivers_an_inbound_result_not_yet_acknowledged(
     assignment = inbound.scheduler.next_assignment()
     assert assignment is not None
     assert await inbound.servicer.dispatch(assignment)
-    await asyncio.wait_for(result_seen.wait(), timeout=2)
+    await asyncio.wait_for(result_seen.wait(), timeout=HANG_GUARD_S)
 
     inbound.connector_task.cancel()
     await asyncio.gather(inbound.connector_task, return_exceptions=True)
@@ -381,7 +382,7 @@ async def test_lost_result_ack_refetch_keeps_the_committed_inbound_artifact(
     assignment = inbound.scheduler.next_assignment()
     assert assignment is not None
     assert await inbound.servicer.dispatch(assignment)
-    await asyncio.wait_for(ack_dropped.wait(), timeout=5)
+    await asyncio.wait_for(ack_dropped.wait(), timeout=HANG_GUARD_S)
     assert task.state.value == "completed"
     committed = task.result_ref
     assert committed and open(committed, "rb").read() == payload
@@ -402,7 +403,7 @@ async def test_lost_result_ack_refetch_keeps_the_committed_inbound_artifact(
     assert open(committed, "rb").read() == payload
     # The ACK removes the pending item before awaiting filesystem cleanup.
     # Observe completion of that asynchronous operation, not its queue marker.
-    await asyncio.wait_for(cleanup_done.wait(), timeout=5)
+    await asyncio.wait_for(cleanup_done.wait(), timeout=HANG_GUARD_S)
     assert inbound.artifacts.open_result(
         artifact_id, key_id=inbound.panel_key_id
     ) is None
@@ -427,7 +428,7 @@ async def test_a_panel_refuses_a_node_whose_tls_certificate_misses_the_pin(inbou
     )
 
     with pytest.raises(RuntimeError, match="certificate fingerprint"):
-        await asyncio.wait_for(dialer._connect_once(), timeout=2.0)
+        await asyncio.wait_for(dialer._connect_once(), timeout=HANG_GUARD_S)
 
     assert len(inbound.pool) == 0
 
@@ -482,7 +483,7 @@ async def test_two_panels_can_use_one_node_at_the_same_time(tmp_path, db, inboun
 @pytest.mark.asyncio
 async def test_a_panel_with_no_key_never_reaches_the_worker_pool(inbound):
     await inbound.connect_panel(secret="ovnode_" + "z" * 40, wait=False)
-    await asyncio.wait_for(inbound.log.rejected_event.wait(), timeout=2.0)
+    await asyncio.wait_for(inbound.log.rejected_event.wait(), timeout=HANG_GUARD_S)
 
     assert len(inbound.pool) == 0
     kinds = [e["kind"] for e in inbound.log.snapshot()["events"]]
@@ -508,7 +509,7 @@ async def test_terminal_panel_registration_refusal_is_not_retried(
     monkeypatch.setattr(connection, "_connect_once", refuse_once)
 
     with pytest.raises(TerminalRegistrationError, match="AUTH_FAILED"):
-        await asyncio.wait_for(connection.run_forever(), timeout=0.1)
+        await asyncio.wait_for(connection.run_forever(), timeout=HANG_GUARD_S)
     assert attempts == 1
     assert connection.last_error.startswith("AUTH_FAILED")
 
@@ -530,7 +531,7 @@ async def test_inbound_worker_id_persistence_failure_is_terminal(
     connection = await inbound.connect_panel(wait=False)
 
     with pytest.raises(TerminalRegistrationError, match="LOCAL_STATE"):
-        await asyncio.wait_for(inbound.connector_task, timeout=2)
+        await asyncio.wait_for(inbound.connector_task, timeout=HANG_GUARD_S)
 
     assert attempts == 1
     assert len(inbound.pool) == 0
@@ -596,7 +597,7 @@ async def test_registration_confirmation_timeout_discards_the_provisional_sessio
     monkeypatch.setattr(connection, "_register", register)
 
     with pytest.raises(RuntimeError, match="did not confirm registration"):
-        await asyncio.wait_for(connection._connect_once(), timeout=1.0)
+        await asyncio.wait_for(connection._connect_once(), timeout=HANG_GUARD_S)
 
     assert discarded == [("worker-1", "session-1")]
     assert connection.worker_id == ""
@@ -717,7 +718,7 @@ async def test_attach_ends_when_its_incoming_reader_stops(tmp_path, monkeypatch)
     confirmation = await anext(stream)
     assert confirmation.WhichOneof("payload") == "heartbeat"
     with pytest.raises(StopAsyncIteration):
-        await asyncio.wait_for(anext(stream), timeout=2)
+        await asyncio.wait_for(anext(stream), timeout=HANG_GUARD_S)
 
 
 @pytest.mark.asyncio
@@ -738,7 +739,7 @@ async def test_first_attach_key_persistence_does_not_block_other_sessions(
     def blocked_save():
         auth_thread.append(threading.current_thread())
         auth_started.set()
-        assert release_auth.wait(timeout=2)
+        assert release_auth.wait(timeout=BARRIER_WATCHDOG_S)
         real_save()
 
     monkeypatch.setattr(keys, "_save_locked", blocked_save)
@@ -820,7 +821,7 @@ async def test_first_attach_capability_probe_does_not_block_other_sessions(
         assert include_unavailable is True
         probe_thread.append(threading.current_thread())
         probe_started.set()
-        assert release_probe.wait(timeout=2)
+        assert release_probe.wait(timeout=BARRIER_WATCHDOG_S)
         return []
 
     monkeypatch.setattr(capabilities, "discover", blocked_discover)
@@ -978,10 +979,10 @@ async def test_revocation_ends_an_attach_stalled_before_registration(tmp_path):
     stream = servicer.Attach(frames(), Context())
     assert (await anext(stream)).WhichOneof("payload") == "register"
     pending = asyncio.create_task(anext(stream))
-    await asyncio.wait_for(waiting_for_registration.wait(), timeout=1)
+    await asyncio.wait_for(waiting_for_registration.wait(), timeout=HANG_GUARD_S)
 
     assert servicer.revoke_key(issued.key.key_id) is True
-    goodbye = await asyncio.wait_for(pending, timeout=1)
+    goodbye = await asyncio.wait_for(pending, timeout=HANG_GUARD_S)
     assert goodbye.WhichOneof("payload") == "goodbye"
     with pytest.raises(StopAsyncIteration):
         await anext(stream)
@@ -1059,7 +1060,7 @@ async def test_a_revoked_key_stops_working_without_disturbing_the_others(inbound
     inbound.keys.revoke(alice.key.key_id)
 
     await inbound.connect_panel(secret=alice.secret, wait=False)
-    await asyncio.wait_for(inbound.log.rejected_event.wait(), timeout=2.0)
+    await asyncio.wait_for(inbound.log.rejected_event.wait(), timeout=HANG_GUARD_S)
 
     assert len(inbound.pool) == 0
 
@@ -1081,7 +1082,7 @@ async def test_key_revoked_during_registration_is_never_confirmed(
     await inbound.connect_panel(wait=False)
 
     with pytest.raises(TerminalRegistrationError, match="LOCAL_STATE"):
-        await asyncio.wait_for(inbound.connector_task, timeout=2)
+        await asyncio.wait_for(inbound.connector_task, timeout=HANG_GUARD_S)
 
     assert len(inbound.pool) == 0
     assert inbound.servicer._sessions == {}
@@ -1095,7 +1096,7 @@ async def test_revoking_a_live_key_ends_every_session_it_authorized(inbound):
 
     assert inbound.listener.revoke_key(inbound.panel_key_id) is True
 
-    await asyncio.wait_for(inbound.log.closed_event.wait(), timeout=2)
+    await asyncio.wait_for(inbound.log.closed_event.wait(), timeout=HANG_GUARD_S)
     await _until(lambda: len(inbound.pool) == 0)
     assert inbound.log.snapshot()["sessions"] == []
 
@@ -1122,12 +1123,12 @@ async def test_revoking_a_live_key_cancels_its_running_executor(inbound):
     assignment = inbound.scheduler.next_assignment()
     assert assignment is not None
     assert await inbound.servicer.dispatch(assignment)
-    await asyncio.wait_for(execution_started.wait(), timeout=2)
+    await asyncio.wait_for(execution_started.wait(), timeout=HANG_GUARD_S)
 
     assert inbound.listener.revoke_key(issued.key.key_id) is True
 
-    await asyncio.wait_for(execution_cancelled.wait(), timeout=2)
-    await asyncio.wait_for(inbound.log.closed_event.wait(), timeout=2)
+    await asyncio.wait_for(execution_cancelled.wait(), timeout=HANG_GUARD_S)
+    await asyncio.wait_for(inbound.log.closed_event.wait(), timeout=HANG_GUARD_S)
 
 
 @pytest.mark.asyncio
@@ -1152,7 +1153,7 @@ async def test_revoking_a_disconnected_key_cancels_its_retained_executor(inbound
     assignment = inbound.scheduler.next_assignment()
     assert assignment is not None
     assert await inbound.servicer.dispatch(assignment)
-    await asyncio.wait_for(execution_started.wait(), timeout=2)
+    await asyncio.wait_for(execution_started.wait(), timeout=HANG_GUARD_S)
 
     inbound.connector_task.cancel()
     await asyncio.gather(inbound.connector_task, return_exceptions=True)
@@ -1162,7 +1163,7 @@ async def test_revoking_a_disconnected_key_cancels_its_retained_executor(inbound
 
     assert inbound.listener.revoke_key(issued.key.key_id) is True
     assert issued.key.key_id not in inbound.listener._servicer._protocols
-    await asyncio.wait_for(execution_cancelled.wait(), timeout=2)
+    await asyncio.wait_for(execution_cancelled.wait(), timeout=HANG_GUARD_S)
 
 
 @pytest.mark.asyncio
@@ -1195,7 +1196,7 @@ async def test_terminal_panel_refusal_cancels_retained_inbound_execution(inbound
     assignment = inbound.scheduler.next_assignment()
     assert assignment is not None
     assert await inbound.servicer.dispatch(assignment)
-    await asyncio.wait_for(execution_started.wait(), timeout=2)
+    await asyncio.wait_for(execution_started.wait(), timeout=HANG_GUARD_S)
 
     inbound.connector_task.cancel()
     await asyncio.gather(inbound.connector_task, return_exceptions=True)
@@ -1205,12 +1206,12 @@ async def test_terminal_panel_refusal_cancels_retained_inbound_execution(inbound
 
     await inbound.connect_panel(secret=issued.secret, wait=False)
     with pytest.raises(TerminalRegistrationError, match="AUTH_FAILED"):
-        await asyncio.wait_for(inbound.connector_task, timeout=2)
+        await asyncio.wait_for(inbound.connector_task, timeout=HANG_GUARD_S)
 
     await _until(lambda: not inbound.listener._servicer._attached_keys)
     assert issued.key.key_id not in inbound.listener._servicer._protocols
     assert client_box["client"]._running == {}
-    await asyncio.wait_for(execution_cancelled.wait(), timeout=2)
+    await asyncio.wait_for(execution_cancelled.wait(), timeout=HANG_GUARD_S)
 
 
 @pytest.mark.asyncio
@@ -1308,7 +1309,7 @@ async def test_blocked_result_read_does_not_stall_key_revocation(
 
         def read(self, size):
             read_started.set()
-            if not release_read.wait(timeout=10):
+            if not release_read.wait(timeout=BARRIER_WATCHDOG_S):
                 raise TimeoutError("test did not release the artifact read")
             return self._handle.read(size)
 
@@ -1341,7 +1342,7 @@ async def test_blocked_result_read_does_not_stall_key_revocation(
             await asyncio.sleep(0)
 
     try:
-        await asyncio.wait_for(wait_for_read(), timeout=1)
+        await asyncio.wait_for(wait_for_read(), timeout=HANG_GUARD_S)
         assert servicer.revoke_key(issued.key.key_id) is True
         cleanup = servicer._key_retirements[issued.key.key_id]
         assert not release_read.is_set(), "result reading blocked the gRPC event loop"
@@ -1424,7 +1425,7 @@ async def test_blocked_input_write_does_not_stall_key_revocation(
 
     def blocked_write(handle, payload):
         write_started.set()
-        if not release_write.wait(timeout=10):
+        if not release_write.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release the artifact write")
         real_write_all(handle, payload)
 
@@ -1461,7 +1462,7 @@ async def test_blocked_input_write_does_not_stall_key_revocation(
             await asyncio.sleep(0)
 
     try:
-        await asyncio.wait_for(wait_for_write(), timeout=1)
+        await asyncio.wait_for(wait_for_write(), timeout=HANG_GUARD_S)
         assert servicer.revoke_key(issued.key.key_id) is True
         cleanup = servicer._key_retirements[issued.key.key_id]
         assert not release_write.is_set(), "input writing blocked the gRPC event loop"
@@ -1501,7 +1502,7 @@ async def test_input_admission_and_mkdir_do_not_block_the_listener_loop(
 
     def blocked_begin(*args, **kwargs):
         admission_started.set()
-        if not release_admission.wait(timeout=10):
+        if not release_admission.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release input admission")
         return real_begin(*args, **kwargs)
 
@@ -1532,7 +1533,7 @@ async def test_input_admission_and_mkdir_do_not_block_the_listener_loop(
     uploading = asyncio.create_task(servicer.PushInput(chunks(), Context()))
     try:
         await asyncio.wait_for(
-            asyncio.to_thread(admission_started.wait), timeout=1
+            asyncio.to_thread(admission_started.wait), timeout=HANG_GUARD_S
         )
         assert not release_admission.is_set(), (
             "input admission blocked the gRPC event loop"
@@ -1569,7 +1570,7 @@ async def test_artifact_untrack_cleanup_does_not_block_the_listener_loop(
 
     def blocked_retry(key_id):
         cleanup_started.set()
-        if not release_cleanup.wait(timeout=10):
+        if not release_cleanup.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release ACK retry cleanup")
         real_retry(key_id)
 
@@ -1594,7 +1595,7 @@ async def test_artifact_untrack_cleanup_does_not_block_the_listener_loop(
     uploading = asyncio.create_task(servicer.PushInput(chunks(), Context()))
     try:
         await asyncio.wait_for(
-            asyncio.to_thread(cleanup_started.wait), timeout=1
+            asyncio.to_thread(cleanup_started.wait), timeout=HANG_GUARD_S
         )
         assert not release_cleanup.is_set(), "input cleanup blocked the gRPC event loop"
     finally:
@@ -1639,7 +1640,7 @@ async def test_revocation_cancels_a_stalled_input_rpc_and_removes_its_partial(tm
         await asyncio.Event().wait()
 
     upload = asyncio.create_task(servicer.PushInput(chunks(), Context()))
-    await asyncio.wait_for(stalled.wait(), timeout=1)
+    await asyncio.wait_for(stalled.wait(), timeout=HANG_GUARD_S)
     assert any(files for _root, _dirs, files in os.walk(artifacts._root))
 
     assert await servicer.revoke_key_and_wait(issued.key.key_id) is True
@@ -1699,7 +1700,7 @@ async def test_revocation_cancels_a_backpressured_result_fetch(tmp_path):
             await asyncio.Event().wait()
 
     fetch = asyncio.create_task(consume())
-    await asyncio.wait_for(backpressured.wait(), timeout=1)
+    await asyncio.wait_for(backpressured.wait(), timeout=HANG_GUARD_S)
 
     assert await servicer.revoke_key_and_wait(issued.key.key_id) is True
     with pytest.raises(asyncio.CancelledError):
@@ -1760,7 +1761,7 @@ async def test_the_owner_can_see_who_connected_and_kick_them(inbound):
 
     # The kick has to land on an idle session too, which is the case a
     # loop that only wakes on outbound traffic would never notice.
-    await asyncio.wait_for(inbound.log.closed_event.wait(), timeout=2.0)
+    await asyncio.wait_for(inbound.log.closed_event.wait(), timeout=HANG_GUARD_S)
     assert inbound.log.snapshot()["sessions"] == []
 
     # And it has to STAY landed for a moment. The panel redials on its own, so
@@ -1768,7 +1769,7 @@ async def test_the_owner_can_see_who_connected_and_kick_them(inbound):
     # appears to do nothing — which is what it did on hardware, where the log
     # read disconnected and connected in the same breath.
     assert inbound.log.cooling_down(sessions[0]["key_id"]) is True
-    await asyncio.wait_for(inbound.log.rejected_event.wait(), timeout=2.0)
+    await asyncio.wait_for(inbound.log.rejected_event.wait(), timeout=HANG_GUARD_S)
     assert inbound.log.snapshot()["sessions"] == [], (
         "the kicked panel came straight back"
     )
@@ -1798,15 +1799,15 @@ async def test_explicit_inbound_disconnect_cancels_retained_execution(
     assignment = inbound.scheduler.next_assignment()
     assert assignment is not None
     assert await inbound.servicer.dispatch(assignment)
-    await asyncio.wait_for(execution_started.wait(), timeout=2)
+    await asyncio.wait_for(execution_started.wait(), timeout=HANG_GUARD_S)
 
     if initiator == "panel":
-        await asyncio.wait_for(inbound.connection.stop(), timeout=2)
+        await asyncio.wait_for(inbound.connection.stop(), timeout=HANG_GUARD_S)
     else:
         session = inbound.log.snapshot()["sessions"][0]
         assert inbound.log.kick(session["session_id"]) is True
 
-    await asyncio.wait_for(execution_cancelled.wait(), timeout=2)
+    await asyncio.wait_for(execution_cancelled.wait(), timeout=HANG_GUARD_S)
     await _until(
         lambda: inbound.panel_key_id not in inbound.listener._servicer._protocols
     )
@@ -1955,7 +1956,7 @@ async def test_cancelled_result_fetch_removes_its_partial_destination(tmp_path):
     fetch = asyncio.create_task(
         connector.fetch_result(pb.ArtifactRef(artifact_id="result"), str(destination))
     )
-    await asyncio.wait_for(fetch_waiting.wait(), timeout=1)
+    await asyncio.wait_for(fetch_waiting.wait(), timeout=HANG_GUARD_S)
     assert destination.exists()
 
     fetch.cancel()
@@ -2005,7 +2006,7 @@ async def test_input_push_hashes_and_streams_bounded_blocks_off_the_loop(
                 has_blocked = True
             if should_block:
                 read_started.set()
-                assert allow_read.wait(timeout=2)
+                assert allow_read.wait(timeout=BARRIER_WATCHDOG_S)
             return self._handle.read(size)
 
         def close(self):
@@ -2202,7 +2203,7 @@ async def test_result_ack_deletion_does_not_block_the_attach_loop(
 
     def blocked_acked(artifact_id, *, key_id):
         cleanup_started.set()
-        if not release_cleanup.wait(timeout=10):
+        if not release_cleanup.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release result ACK cleanup")
         real_acked(artifact_id, key_id=key_id)
 
@@ -2216,7 +2217,7 @@ async def test_result_ack_deletion_does_not_block_the_attach_loop(
     )
     try:
         await asyncio.wait_for(
-            asyncio.to_thread(cleanup_started.wait), timeout=1
+            asyncio.to_thread(cleanup_started.wait), timeout=HANG_GUARD_S
         )
         assert not release_cleanup.is_set(), (
             "result cleanup blocked the gRPC event loop"
@@ -2709,7 +2710,7 @@ async def test_cancelled_result_publish_drains_write_before_removing_file(
 
         def write(self, payload):
             write_started.set()
-            if not allow_write.wait(timeout=2):
+            if not allow_write.wait(timeout=BARRIER_WATCHDOG_S):
                 raise TimeoutError("test did not release the staged result write")
             return self._handle.write(payload)
 
@@ -2733,7 +2734,7 @@ async def test_cancelled_result_publish_drains_write_before_removing_file(
             key_id="panel",
         )
     )
-    await asyncio.wait_for(wait_until_set(write_started), timeout=1)
+    await asyncio.wait_for(wait_until_set(write_started), timeout=HANG_GUARD_S)
 
     publish.cancel()
     await asyncio.sleep(0)
@@ -2742,7 +2743,7 @@ async def test_cancelled_result_publish_drains_write_before_removing_file(
     allow_write.set()
     with pytest.raises(asyncio.CancelledError):
         await publish
-    await asyncio.wait_for(wait_until_set(write_finished), timeout=1)
+    await asyncio.wait_for(wait_until_set(write_finished), timeout=HANG_GUARD_S)
 
     assert cancellation_is_draining, "cancellation must wait for the active disk write"
     assert store._out == {}
@@ -2765,7 +2766,7 @@ async def test_result_publish_sweep_does_not_block_the_listener_loop(
 
     def blocked_sweep(*args, **kwargs):
         sweep_started.set()
-        if not release_sweep.wait(timeout=10):
+        if not release_sweep.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release the staging sweep")
         real_sweep(*args, **kwargs)
 
@@ -2781,7 +2782,7 @@ async def test_result_publish_sweep_does_not_block_the_listener_loop(
         )
     )
     try:
-        await asyncio.wait_for(asyncio.to_thread(sweep_started.wait), timeout=1)
+        await asyncio.wait_for(asyncio.to_thread(sweep_started.wait), timeout=HANG_GUARD_S)
         assert not release_sweep.is_set(), (
             "artifact sweeping blocked the gRPC event loop"
         )
@@ -2869,7 +2870,7 @@ async def test_parallel_input_retry_cannot_truncate_a_staged_reader(
     def blocked_copyfile(source, destination):
         with open(source, "rb") as source_handle:
             copy_opened.set()
-            if not allow_copy.wait(timeout=2):
+            if not allow_copy.wait(timeout=BARRIER_WATCHDOG_S):
                 raise TimeoutError("test did not release the staged input copy")
             with open(destination, "wb") as destination_handle:
                 destination_handle.write(source_handle.read())
@@ -2883,7 +2884,7 @@ async def test_parallel_input_retry_cannot_truncate_a_staged_reader(
     staging = asyncio.create_task(
         store.stage_in(ref, str(destination), key_id="panel")
     )
-    await asyncio.wait_for(wait_until_set(copy_opened), timeout=1)
+    await asyncio.wait_for(wait_until_set(copy_opened), timeout=HANG_GUARD_S)
 
     retry = store.begin_input(ref, key_id="panel")
     assert retry != committed
@@ -2940,7 +2941,7 @@ async def test_duplicate_input_validation_never_blocks_other_panel_admission(
     def blocked_matches(path, expected_digest, expected_size):
         if path == committed:
             validation_started.set()
-            if not release_validation.wait(timeout=10):
+            if not release_validation.wait(timeout=BARRIER_WATCHDOG_S):
                 raise TimeoutError("test did not release duplicate validation")
         return real_matches(path, expected_digest, expected_size)
 
@@ -2958,7 +2959,7 @@ async def test_duplicate_input_validation_never_blocks_other_panel_admission(
             await asyncio.sleep(0)
 
     try:
-        await asyncio.wait_for(wait_for_validation(), timeout=1)
+        await asyncio.wait_for(wait_for_validation(), timeout=HANG_GUARD_S)
         other = store.begin_input(
             pb.ArtifactRef(artifact_id="other", filename="reference.wav"),
             key_id="other-panel",
@@ -3095,7 +3096,7 @@ async def test_cancelled_input_staging_drains_copy_before_returning(
 
     def blocked_copyfile(source, destination):
         copy_started.set()
-        if not allow_copy.wait(timeout=2):
+        if not allow_copy.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release the staged input copy")
         try:
             return real_copyfile(source, destination)
@@ -3125,7 +3126,7 @@ async def test_cancelled_input_staging_drains_copy_before_returning(
     staging = asyncio.create_task(
         store.stage_in(ref, str(destination), key_id="panel")
     )
-    await asyncio.wait_for(wait_until_set(copy_started), timeout=1)
+    await asyncio.wait_for(wait_until_set(copy_started), timeout=HANG_GUARD_S)
 
     staging.cancel()
     await asyncio.sleep(0)
@@ -3134,7 +3135,7 @@ async def test_cancelled_input_staging_drains_copy_before_returning(
     allow_copy.set()
     with pytest.raises(asyncio.CancelledError):
         await staging
-    await asyncio.wait_for(wait_until_set(copy_finished), timeout=1)
+    await asyncio.wait_for(wait_until_set(copy_finished), timeout=HANG_GUARD_S)
 
     assert cancellation_is_draining, "cancellation must wait for the active disk copy"
     destination.unlink()
@@ -3337,7 +3338,7 @@ async def test_cancelled_result_pull_drains_off_loop_write_before_unlink(
 
     def blocked_write(handle, payload):
         write_started.set()
-        if not release_write.wait(timeout=10):
+        if not release_write.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release the fetched-result write")
         real_write_all(handle, payload)
 
@@ -3356,7 +3357,7 @@ async def test_cancelled_result_pull_drains_off_loop_write_before_unlink(
             await asyncio.sleep(0)
 
     try:
-        await asyncio.wait_for(wait_for_write(), timeout=1)
+        await asyncio.wait_for(wait_for_write(), timeout=HANG_GUARD_S)
         fetching.cancel()
         await asyncio.sleep(0)
         assert not fetching.done(), "cancellation abandoned an active file write"
@@ -3572,7 +3573,7 @@ async def test_shutdown_disconnect_before_goodbye_fails_without_forgetting_state
     connection._remote_protocol_retained = True
     connection._session_closed.clear()
     stopping = asyncio.create_task(connection.stop())
-    message = await asyncio.wait_for(connection._outbox.get(), timeout=1)
+    message = await asyncio.wait_for(connection._outbox.get(), timeout=HANG_GUARD_S)
     assert message.WhichOneof("payload") == "shutdown"
     connection._active_session = None
     connection._session_closed.set()
@@ -3619,7 +3620,7 @@ async def test_outbound_teardown_waits_for_connector_cleanup(operation):
         teardown = asyncio.create_task(outbound._drop(endpoint))
     else:
         teardown = asyncio.create_task(outbound.stop())
-    await asyncio.wait_for(cleanup_started.wait(), timeout=1)
+    await asyncio.wait_for(cleanup_started.wait(), timeout=HANG_GUARD_S)
 
     try:
         assert not teardown.done()
@@ -3751,7 +3752,7 @@ async def test_cancelled_replacement_restores_live_and_durable_generation(
         fingerprint=fingerprint,
     )
     adding = asyncio.create_task(outbound.add(replacement, object()))
-    await asyncio.wait_for(candidate_waiting.wait(), timeout=1)
+    await asyncio.wait_for(candidate_waiting.wait(), timeout=HANG_GUARD_S)
     adding.cancel()
 
     with pytest.raises(asyncio.CancelledError):
@@ -3813,7 +3814,7 @@ async def test_cancelled_removal_drains_rollback_and_redials_previous_generation
 
     monkeypatch.setattr(outbound, "_dial", blocked_redial)
     removing = asyncio.create_task(outbound.remove(endpoint))
-    await asyncio.wait_for(rollback_started.wait(), timeout=1)
+    await asyncio.wait_for(rollback_started.wait(), timeout=HANG_GUARD_S)
     removing.cancel()
     await asyncio.sleep(0)
     assert not removing.done(), "a second cancellation abandoned rollback"
@@ -4198,7 +4199,7 @@ async def test_enabling_inbound_starts_the_idle_sweep(monkeypatch, tmp_path):
 
     await node.start()
     try:
-        await asyncio.wait_for(started.wait(), timeout=2.0)
+        await asyncio.wait_for(started.wait(), timeout=HANG_GUARD_S)
         assert received == [node._listener.refresh_all]
     finally:
         await node.stop()
@@ -4226,7 +4227,7 @@ async def test_concurrent_inbound_starts_publish_only_one_listener(monkeypatch):
 
     monkeypatch.setattr(node, "_start", staged_start)
     first = asyncio.create_task(node.start())
-    await asyncio.wait_for(entered.wait(), timeout=1)
+    await asyncio.wait_for(entered.wait(), timeout=HANG_GUARD_S)
     second = asyncio.create_task(node.start())
     await asyncio.sleep(0)
 
@@ -4277,7 +4278,7 @@ async def test_cancelled_listener_bind_closes_server_before_losing_its_handle(
     starting = asyncio.create_task(
         listener.start(host="127.0.0.1", port=7444)
     )
-    await asyncio.wait_for(start_entered.wait(), timeout=1)
+    await asyncio.wait_for(start_entered.wait(), timeout=HANG_GUARD_S)
     starting.cancel()
     await asyncio.sleep(0)
     assert not starting.done(), "bind cancellation abandoned a starting server"
@@ -4342,7 +4343,7 @@ async def test_cancelled_node_stop_drains_listener_before_clearing_handle():
     listener = Listener()
     node._listener = listener
     stopping = asyncio.create_task(node.stop())
-    await asyncio.wait_for(stop_entered.wait(), timeout=1)
+    await asyncio.wait_for(stop_entered.wait(), timeout=HANG_GUARD_S)
     stopping.cancel()
     await asyncio.sleep(0)
 

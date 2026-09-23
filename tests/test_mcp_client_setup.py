@@ -8,12 +8,13 @@ pytest.importorskip('mcp')
 
 
 @pytest.mark.parametrize('client_id', ['claude-code', 'cursor'])
-def test_client_setup_initializes_lists_tools_and_preserves_voice_binding(monkeypatch, client_id):
+def test_client_setup_initializes_lists_tools_and_preserves_voice_binding(monkeypatch, tmp_path, client_id):
     import httpx
     import mcp_server
     from services import mcp_bindings
     from starlette.applications import Starlette
     from starlette.routing import Mount
+    from starlette.staticfiles import StaticFiles
     from starlette.testclient import TestClient
 
     resolved = []
@@ -22,29 +23,38 @@ def test_client_setup_initializes_lists_tools_and_preserves_voice_binding(monkey
     ))
     monkeypatch.setattr(mcp_bindings, 'touch_last_seen', lambda client: None)
     from urllib.parse import parse_qs
+    monkeypatch.delenv('OMNIVOICE_API_URL', raising=False)
     def generate(request):
+        # The mounted server calls its own app in-process as a loopback
+        # caller: no bind host/port involved.
+        assert request.url.host == '127.0.0.1'
         assert request.url.path == '/generate'
         assert parse_qs(request.content.decode())['profile_id'] == ['test-profile']
         return httpx.Response(200, content=b'test-audio', headers={'X-Audio-Id': 'test'})
     real_client = httpx.AsyncClient
     monkeypatch.setattr(httpx, 'AsyncClient', lambda **kwargs: real_client(
-        **kwargs, transport=httpx.MockTransport(generate)
+        **{**kwargs, 'transport': httpx.MockTransport(generate)}
     ))
     monkeypatch.setenv('OMNIVOICE_MCP_OUTPUT_MODE', 'resources')
-    server = mcp_server.create_mcp_server()
-    transport = server.streamable_http_app()
     @asynccontextmanager
     async def lifespan(app):
-        async with server.session_manager.run():
+        async with app.state.mcp_session_manager.run():
             yield
-    app = Starlette(routes=[Mount('/mcp', app=transport)], lifespan=lifespan)
+    # The production mount path plus an SPA catch-all at "/", as Docker and
+    # source builds serve it: the exported "/mcp" URL must not fall through.
+    spa = tmp_path / 'dist'
+    spa.mkdir()
+    (spa / 'index.html').write_text('<!doctype html>')
+    app = Starlette(lifespan=lifespan)
+    assert mcp_server.mount_mcp(app)
+    app.router.routes.append(Mount('/', app=StaticFiles(directory=spa, html=True)))
     headers = {'Accept': 'application/json, text/event-stream', 'X-OmniVoice-Client-Id': client_id}
     def result(response):
         assert response.status_code == 200, response.text
         if response.headers.get('content-type', '').startswith('text/event-stream'):
             return json.loads(next(line[6:] for line in response.text.splitlines() if line.startswith('data: ')))
         return response.json()
-    with TestClient(app, base_url='http://127.0.0.1:3912') as client:
+    with TestClient(app, base_url='http://127.0.0.1:3912', follow_redirects=False) as client:
         initialized = client.post('/mcp', headers=headers, json={
             'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {
                 'protocolVersion': '2024-11-05', 'capabilities': {},
@@ -66,3 +76,49 @@ def test_client_setup_initializes_lists_tools_and_preserves_voice_binding(monkey
         }))
         assert not called['result'].get('isError'), called
         assert resolved == [client_id]
+
+
+def test_standalone_server_calls_the_backend_on_its_real_port(monkeypatch):
+    """Without a mounted app the tools go over HTTP to OMNIVOICE_PORT, not :3900."""
+    import asyncio
+    import httpx
+    import mcp_server
+
+    seen = []
+
+    def health(request):
+        seen.append(request.url)
+        return httpx.Response(200, json={'status': 'ok'})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kwargs: real_client(
+        **{**kwargs, 'transport': httpx.MockTransport(health)}
+    ))
+    monkeypatch.setenv('OMNIVOICE_PORT', '3912')
+    for name in ('OMNIVOICE_API_URL', 'OMNIVOICE_BIND_HOST'):
+        monkeypatch.delenv(name, raising=False)
+    server = mcp_server.create_mcp_server()
+    asyncio.run(server.call_tool('check_health', {}))
+    assert [(u.host, u.port, u.path) for u in seen] == [('127.0.0.1', 3912, '/health')]
+
+
+def test_standalone_server_authenticates_to_a_keyed_https_backend(monkeypatch):
+    import asyncio
+    import httpx
+    import mcp_server
+
+    seen = []
+
+    def health(request):
+        seen.append((str(request.url), request.headers.get('authorization')))
+        return httpx.Response(200, json={'status': 'ok'})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kwargs: real_client(
+        **{**kwargs, 'transport': httpx.MockTransport(health)}
+    ))
+    monkeypatch.setenv('OMNIVOICE_API_URL', 'https://gpu.example/voicestudio')
+    monkeypatch.setenv('OMNIVOICE_API_KEY', 'k' * 40)
+    server = mcp_server.create_mcp_server()
+    asyncio.run(server.call_tool('check_health', {}))
+    assert seen == [('https://gpu.example/voicestudio/health', 'Bearer ' + 'k' * 40)]

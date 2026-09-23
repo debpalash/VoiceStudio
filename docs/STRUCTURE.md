@@ -35,11 +35,11 @@ VoiceStudio/
 ├── backend/                     ⟵ FastAPI server
 │   ├── main.py                  the one entry point; its boot order is load-bearing —
 │   │                            read the comments before reordering anything
-│   ├── api/routers/             40 routers, auto-included; thin HTTP/WS surface
+│   ├── api/routers/             41 routers, auto-included; thin HTTP/WS surface
 │   │   └── setup/               first-run wizard, model download
 │   ├── core/                    config, db, job queue, event bus, auth/CSRF, path security,
 │   │                            opt-in analytics, version, diagnostics
-│   ├── services/                89 modules of business logic — TTS, dubbing pipeline,
+│   ├── services/                90 modules of business logic — TTS, dubbing pipeline,
 │   │                            audio DSP, GPU gateway, engine routing, model lifecycle
 │   ├── engines/                 per-engine adapters: indextts, supertonic3, confucius4,
 │   │                            dots_tts, moss_tts_v15, pockettts, audiocpp,

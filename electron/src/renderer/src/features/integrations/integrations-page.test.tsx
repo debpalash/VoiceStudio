@@ -33,3 +33,16 @@ it('keeps integrations with a shared vendor URL distinct while filtering', async
   expect(container.querySelectorAll('.integration-card')).toHaveLength(originalCount);
   expect(errors).not.toHaveBeenCalled();
 });
+
+it('badges only entries with a real setup block as working with VoiceStudio', () => {
+  const { container } = render(<IntegrationsPage />);
+  const card = (name: string) =>
+    [...container.querySelectorAll('.integration-card')].find(
+      (element) => element.querySelector('h3')?.textContent === name,
+    )!;
+  expect(card('Codex CLI')).toHaveTextContent('integrationCatalog.worksWith');
+  expect(card('Codex CLI')).toHaveTextContent('integrationCatalog.capability.mcp');
+  expect(card('Zapier')).toHaveTextContent('integrationCatalog.externalLink');
+  expect(card('Zapier').querySelector('.integration-card-capabilities')).toBeNull();
+  expect(container.textContent).not.toContain('directoryExamples.example');
+});

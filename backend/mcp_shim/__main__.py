@@ -8,8 +8,14 @@ JSON-RPC message to ``http://127.0.0.1:<port>/mcp/`` (the FastMCP app mounted
 on the running VoiceStudio backend) and stream the server's response back.
 
 Environment variables:
+  OMNIVOICE_URL        full backend base URL (http or https, may carry a
+                       path prefix, e.g. https://gpu-box/voicestudio). Wins
+                       over OMNIVOICE_HOST / OMNIVOICE_PORT.
   OMNIVOICE_PORT       backend port (default 3900).
   OMNIVOICE_HOST       host (default 127.0.0.1).
+  OMNIVOICE_API_KEY    sent as a Bearer token when set (remote backends that
+                       require an API key; loopback never needs one). Refused
+                       for a remote plain-http URL: use https:// there.
   OMNIVOICE_CLIENT_ID  forwarded as X-OmniVoice-Client-Id on every request
                        (drives per-agent voice binding).
 
@@ -25,10 +31,12 @@ Usage in an MCP client config (stdio):
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import os
 import sys
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -43,17 +51,34 @@ def _err(msg: str) -> None:
 
 
 def _base_url() -> tuple[str, str]:
-    host = os.environ.get("OMNIVOICE_HOST", "127.0.0.1")
-    port = int(os.environ.get("OMNIVOICE_PORT", str(DEFAULT_PORT)))
-    return f"http://{host}:{port}/mcp/", f"http://{host}:{port}/health"
+    base = os.environ.get("OMNIVOICE_URL", "").strip().rstrip("/")
+    if not base:
+        host = os.environ.get("OMNIVOICE_HOST", "127.0.0.1")
+        port = int(os.environ.get("OMNIVOICE_PORT", str(DEFAULT_PORT)))
+        base = f"http://{host}:{port}"
+    return f"{base}/mcp/", f"{base}/health"
 
 
-async def _wait_for_backend(client: httpx.AsyncClient, health_url: str) -> bool:
+def _credentials_allowed(url: str) -> bool:
+    """A key may go over https, or to loopback; never plain http elsewhere."""
+    target = urlsplit(url)
+    host = (target.hostname or "").strip("[]")
+    if target.scheme.lower() == "https" or host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+async def _wait_for_backend(
+    client: httpx.AsyncClient, health_url: str, headers: dict[str, str] | None = None
+) -> bool:
     loop = asyncio.get_running_loop()
     deadline = loop.time() + HEALTH_TIMEOUT_S
     while loop.time() < deadline:
         try:
-            r = await client.get(health_url, timeout=2.0)
+            r = await client.get(health_url, headers=headers, timeout=2.0)
             if r.status_code == 200:
                 return True
         except Exception:
@@ -142,11 +167,17 @@ async def _run() -> int:
     client_id = os.environ.get("OMNIVOICE_CLIENT_ID")
     if client_id:
         forward_headers[CLIENT_ID_HEADER] = client_id
+    api_key = os.environ.get("OMNIVOICE_API_KEY", "").strip()
+    if api_key:
+        if not _credentials_allowed(url):
+            _err("remote VoiceStudio API keys require https:// (set OMNIVOICE_URL)")
+            return 1
+        forward_headers["Authorization"] = f"Bearer {api_key}"
 
     session_id: list[str | None] = [None]
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(300.0)) as client:
-        if not await _wait_for_backend(client, health_url):
+        if not await _wait_for_backend(client, health_url, forward_headers):
             _err(f"timed out waiting for VoiceStudio at {health_url} — is the app running?")
             return 2
         try:

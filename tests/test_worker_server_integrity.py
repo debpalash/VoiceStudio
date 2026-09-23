@@ -30,6 +30,7 @@ from worker.protocol.gen import worker_v1_pb2 as pb
 from worker.scheduler import Scheduler
 from worker.transport import codec, server as server_module
 from worker.transport.server import PROTOCOL_VERSION, REQUIRED_FEATURES, WorkerServicer
+from hang_guard import BARRIER_WATCHDOG_S, HANG_GUARD_S
 
 # How long a test waits for a Control stream to finish ending. These waits
 # only prove the stream ends; the latency assertions stay at 0.2s. Ending
@@ -359,7 +360,7 @@ async def test_result_persistence_failure_reconnects_for_redelivery(
 
     with pytest.raises(OSError, match="result transaction failed"):
         await asyncio.wait_for(
-            plane.servicer._read_loop(plane.session, first_stream()), timeout=0.2
+            plane.servicer._read_loop(plane.session, first_stream()), timeout=HANG_GUARD_S
         )
 
     durable = task_store.get(task.task_id)
@@ -406,7 +407,7 @@ async def test_inline_result_barrier_does_not_block_control_frames(
 
     def blocked_write(path, payload):
         barrier_started.set()
-        if not release_barrier.wait(timeout=2):
+        if not release_barrier.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release inline durability")
         real_write(path, payload)
 
@@ -423,7 +424,7 @@ async def test_inline_result_barrier_does_not_block_control_frames(
             await asyncio.sleep(0)
 
     try:
-        await asyncio.wait_for(wait_for_barrier(), timeout=1)
+        await asyncio.wait_for(wait_for_barrier(), timeout=HANG_GUARD_S)
         assert asyncio.get_running_loop().time() - started_at < 0.2
     finally:
         release_barrier.set()
@@ -456,7 +457,7 @@ async def test_superseded_sessions_serialize_one_attempt_result_publication(
         writes.append(payload)
         if len(writes) == 1:
             first_started.set()
-            if not release_first.wait(timeout=2):
+            if not release_first.wait(timeout=BARRIER_WATCHDOG_S):
                 raise TimeoutError("test did not release the first publication")
         real_write(path, payload)
 
@@ -471,7 +472,7 @@ async def test_superseded_sessions_serialize_one_attempt_result_publication(
             _result(codec.ref_for(attempt), payload=first_payload).result,
         )
     )
-    assert await asyncio.to_thread(first_started.wait, 1.0)
+    assert await asyncio.to_thread(first_started.wait, HANG_GUARD_S)
     second = asyncio.create_task(
         plane.servicer._on_result(
             replacement,
@@ -712,7 +713,7 @@ async def test_inbound_result_barrier_does_not_block_control_frames(
 
     def blocked_replace(source, destination):
         barrier_started.set()
-        if not release_barrier.wait(timeout=2):
+        if not release_barrier.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release fetched-result durability")
         real_replace(source, destination)
 
@@ -732,7 +733,7 @@ async def test_inbound_result_barrier_does_not_block_control_frames(
             await asyncio.sleep(0)
 
     try:
-        await asyncio.wait_for(wait_for_barrier(), timeout=1)
+        await asyncio.wait_for(wait_for_barrier(), timeout=HANG_GUARD_S)
         assert asyncio.get_running_loop().time() - started_at < 0.2
     finally:
         release_barrier.set()
@@ -770,7 +771,7 @@ async def test_inbound_result_directory_barrier_does_not_block_control_frames(
         if os.path.abspath(directory) != os.path.abspath(plane.artifact_dir):
             return
         barrier_started.set()
-        if not release_barrier.wait(timeout=2):
+        if not release_barrier.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release result-directory durability")
 
     monkeypatch.setattr(
@@ -788,7 +789,7 @@ async def test_inbound_result_directory_barrier_does_not_block_control_frames(
             await asyncio.sleep(0)
 
     try:
-        await asyncio.wait_for(wait_for_barrier(), timeout=1)
+        await asyncio.wait_for(wait_for_barrier(), timeout=HANG_GUARD_S)
         assert asyncio.get_running_loop().time() - started_at < 0.2
     finally:
         release_barrier.set()
@@ -830,7 +831,7 @@ async def test_revocation_during_inbound_result_barrier_cannot_ack(
     def paused_after_replace(source, destination):
         real_replace(source, destination)
         barrier_finished.set()
-        if not release_barrier.wait(timeout=2):
+        if not release_barrier.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release fetched-result durability")
 
     monkeypatch.setattr(server_module, "_durable_replace", paused_after_replace)
@@ -845,7 +846,7 @@ async def test_revocation_during_inbound_result_barrier_cannot_ack(
         while not barrier_finished.is_set():
             await asyncio.sleep(0)
 
-    await asyncio.wait_for(wait_for_barrier(), timeout=1)
+    await asyncio.wait_for(wait_for_barrier(), timeout=HANG_GUARD_S)
     assert os.path.isfile(final)
     assert plane.servicer.revoke_worker_sessions(plane.worker_id) == 1
     release_barrier.set()
@@ -1069,7 +1070,7 @@ async def test_heartbeat_flood_updates_live_state_without_blocking_or_flooding_s
     def slow_touch(worker_id: str, **_kwargs) -> None:
         calls.append(worker_id)
         started.set()
-        assert release.wait(1.0)
+        assert release.wait(BARRIER_WATCHDOG_S)
 
     monkeypatch.setattr(registry, "touch", slow_touch)
     safety_release = threading.Timer(0.5, release.set)
@@ -1081,7 +1082,7 @@ async def test_heartbeat_flood_updates_live_state_without_blocking_or_flooding_s
         )
     )
     assert time.monotonic() - before < 0.2
-    assert await asyncio.to_thread(started.wait, 1.0)
+    assert await asyncio.to_thread(started.wait, HANG_GUARD_S)
 
     for _ in range(50):
         await plane.send(
@@ -1113,7 +1114,7 @@ async def test_capability_flood_coalesces_off_loop_to_the_latest_snapshot(
         calls.append(capabilities[0]["engine"])
         if len(calls) == 1:
             started.set()
-            assert release.wait(1.0)
+            assert release.wait(BARRIER_WATCHDOG_S)
 
     monkeypatch.setattr(registry, "update_capabilities", slow_update)
     monkeypatch.setattr(server_module, "_CAPABILITY_UPDATE_INTERVAL_SECONDS", 0.01)
@@ -1137,7 +1138,7 @@ async def test_capability_flood_coalesces_off_loop_to_the_latest_snapshot(
     safety_release = threading.Timer(0.5, release.set)
     safety_release.start()
     await plane.send(update("first"))
-    assert await asyncio.to_thread(started.wait, 1.0)
+    assert await asyncio.to_thread(started.wait, HANG_GUARD_S)
     before = time.monotonic()
     for index in range(50):
         await plane.send(update(f"burst-{index}"))
@@ -1147,7 +1148,7 @@ async def test_capability_flood_coalesces_off_loop_to_the_latest_snapshot(
     task = plane.session.capability_update_task
     release.set()
     safety_release.cancel()
-    await asyncio.wait_for(task, 1.0)
+    await asyncio.wait_for(task, HANG_GUARD_S)
 
     assert calls == ["first", "burst-49"]
     assert plane.pool.get(plane.worker_id).record.capabilities[0]["engine"] == "burst-49"
@@ -1230,7 +1231,7 @@ async def test_hostile_wire_concurrency_claims_are_clamped_to_server_limit(plane
             )
         )
     )
-    await asyncio.wait_for(plane.session.capability_update_task, 1.0)
+    await asyncio.wait_for(plane.session.capability_update_task, HANG_GUARD_S)
     slot = live.capacity.slot_for(ENGINE, MODEL)
     assert slot.derived_concurrency == server_module.MAX_CONCURRENT_TASKS
     assert registry.get(plane.worker_id).capabilities[0]["derived_concurrency"] == server_module.MAX_CONCURRENT_TASKS
@@ -1242,7 +1243,7 @@ async def test_hostile_wire_concurrency_claims_are_clamped_to_server_limit(plane
             )
         )
     )
-    await asyncio.wait_for(plane.session.heartbeat_touch_task, 1.0)
+    await asyncio.wait_for(plane.session.heartbeat_touch_task, HANG_GUARD_S)
     assert live.capacity.active_tasks == server_module.MAX_CONCURRENT_TASKS
     assert live.capacity.available_slots == 0
 
@@ -1396,7 +1397,7 @@ async def test_blocked_reconnect_persistence_does_not_stall_another_worker(
         if call >= len(started):
             return real_save_many(*args, **kwargs)
         started[call].set()
-        if not release[call].wait(timeout=2):
+        if not release[call].wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release reconciliation")
         return real_save_many(*args, **kwargs)
 
@@ -1422,7 +1423,7 @@ async def test_blocked_reconnect_persistence_does_not_stall_another_worker(
             raise RuntimeError(message)
 
     control = asyncio.create_task(plane.servicer.Control(frames(), Context()))
-    assert await asyncio.to_thread(started[0].wait, 1.0)
+    assert await asyncio.to_thread(started[0].wait, HANG_GUARD_S)
 
     await asyncio.wait_for(
         plane.servicer._handle(
@@ -1431,13 +1432,13 @@ async def test_blocked_reconnect_persistence_does_not_stall_another_worker(
                 heartbeat=pb.Heartbeat(active_tasks=0, available_slots=2)
             ),
         ),
-        timeout=0.2,
+        timeout=HANG_GUARD_S,
     )
     assert await asyncio.wait_for(
         plane.servicer.prewarm(
             plane.worker_id, engine=ENGINE, model_id=MODEL
         ),
-        timeout=0.2,
+        timeout=HANG_GUARD_S,
     )
     assert not control.done()
 
@@ -1451,7 +1452,7 @@ async def test_blocked_reconnect_persistence_does_not_stall_another_worker(
     plane.scheduler._bind(task, live, now=time.time())
 
     close_stream.set()
-    assert await asyncio.to_thread(started[1].wait, 1.0)
+    assert await asyncio.to_thread(started[1].wait, HANG_GUARD_S)
     await asyncio.wait_for(
         plane.servicer._handle(
             plane.session,
@@ -1459,13 +1460,13 @@ async def test_blocked_reconnect_persistence_does_not_stall_another_worker(
                 heartbeat=pb.Heartbeat(active_tasks=0, available_slots=2)
             ),
         ),
-        timeout=0.2,
+        timeout=HANG_GUARD_S,
     )
     assert await asyncio.wait_for(
         plane.servicer.prewarm(
             plane.worker_id, engine=ENGINE, model_id=MODEL
         ),
-        timeout=0.2,
+        timeout=HANG_GUARD_S,
     )
     assert not control.done()
 
@@ -1895,7 +1896,7 @@ async def test_revocation_cancels_an_assignment_already_blocked_in_control_write
     assignment = plane.scheduler.next_assignment()
     assert assignment is not None
     assert await plane.servicer.dispatch(assignment)
-    await asyncio.wait_for(write_started.wait(), timeout=1)
+    await asyncio.wait_for(write_started.wait(), timeout=HANG_GUARD_S)
 
     assert plane.servicer.revoke_worker_sessions(plane.worker_id) == 1
     plane.scheduler.on_disconnected(plane.worker_id)
@@ -1942,7 +1943,7 @@ async def test_replacement_cancels_an_old_assignment_blocked_in_control_write(pl
     assignment = plane.scheduler.next_assignment()
     assert assignment is not None
     assert await plane.servicer.dispatch(assignment)
-    await asyncio.wait_for(write_started.wait(), timeout=1)
+    await asyncio.wait_for(write_started.wait(), timeout=HANG_GUARD_S)
 
     response = await plane.register(activate=False)
     replacement = plane.servicer.session_for(
@@ -1979,7 +1980,7 @@ async def test_revocation_cancels_an_assignment_blocked_in_inbound_egress(plane)
     connector._outbox = BlockingOutbox()
     pump = asyncio.create_task(connector._pump_outbound(session))
     session.outbox.put_nowait(pb.ServerMessage(assignment=pb.TaskAssignment()))
-    await asyncio.wait_for(transfer_started.wait(), timeout=1)
+    await asyncio.wait_for(transfer_started.wait(), timeout=HANG_GUARD_S)
 
     assert plane.servicer.revoke_worker_sessions(plane.worker_id) == 1
     release_transfer.set()
@@ -2007,7 +2008,7 @@ async def test_replacement_cancels_an_assignment_blocked_in_inbound_egress(plane
     connector._outbox = BlockingOutbox()
     pump = asyncio.create_task(connector._pump_outbound(old_session))
     old_session.outbox.put_nowait(pb.ServerMessage(assignment=pb.TaskAssignment()))
-    await asyncio.wait_for(transfer_started.wait(), timeout=1)
+    await asyncio.wait_for(transfer_started.wait(), timeout=HANG_GUARD_S)
 
     response = await plane.register(activate=False)
     replacement = plane.servicer.session_for(
@@ -2039,7 +2040,7 @@ async def test_revocation_discards_an_assignment_already_in_inbound_request_queu
     outbound = connector._outbound()
 
     with pytest.raises(StopAsyncIteration):
-        await asyncio.wait_for(anext(outbound), timeout=1)
+        await asyncio.wait_for(anext(outbound), timeout=HANG_GUARD_S)
 
 
 @pytest.mark.asyncio
@@ -2069,7 +2070,7 @@ async def test_revocation_during_inbound_result_fetch_cannot_commit(plane, monke
             _result(codec.ref_for(attempt), artifact_id="remote-result"),
         )
     )
-    await asyncio.wait_for(fetch_started.wait(), timeout=1)
+    await asyncio.wait_for(fetch_started.wait(), timeout=HANG_GUARD_S)
 
     assert plane.servicer.revoke_worker_sessions(plane.worker_id) == 1
     release_fetch.set()
@@ -2111,7 +2112,7 @@ async def test_revocation_after_inbound_fetch_wakes_removes_bytes_and_budget(pla
             pb.TaskResult(ref=codec.ref_for(attempt), artifacts=[artifact]),
         )
     )
-    await asyncio.wait_for(fetch_started.wait(), timeout=1)
+    await asyncio.wait_for(fetch_started.wait(), timeout=HANG_GUARD_S)
 
     release_fetch.set()
     assert plane.servicer.revoke_worker_sessions(plane.worker_id) == 1
@@ -2159,7 +2160,7 @@ async def test_cancel_during_inbound_fetch_discards_the_nonwinning_artifact(plan
             pb.TaskResult(ref=codec.ref_for(attempt), artifacts=[artifact]),
         )
     )
-    await asyncio.wait_for(fetch_started.wait(), timeout=1)
+    await asyncio.wait_for(fetch_started.wait(), timeout=HANG_GUARD_S)
 
     plane.scheduler.cancel(task.task_id)
     release_fetch.set()
@@ -2205,11 +2206,11 @@ async def test_revoke_cleans_partial_result_when_inbound_stream_cancels_fetch(pl
     stream = asyncio.create_task(
         plane.servicer.run_inbound_stream(session, frames(), Connection())
     )
-    await asyncio.wait_for(fetch_started.wait(), timeout=1)
+    await asyncio.wait_for(fetch_started.wait(), timeout=HANG_GUARD_S)
     assert len(destinations) == 1 and os.path.exists(destinations[0])
 
     assert plane.servicer.revoke_worker_sessions(plane.worker_id) == 1
-    await asyncio.wait_for(stream, timeout=1)
+    await asyncio.wait_for(stream, timeout=HANG_GUARD_S)
 
     assert not os.path.exists(path)
     assert not os.path.exists(destinations[0])
@@ -2276,7 +2277,7 @@ async def test_staged_input_verification_does_not_block_heartbeats(
 
     def blocked_digest(path):
         verification_started.set()
-        if not release_verification.wait(timeout=2):
+        if not release_verification.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release staged-input verification")
         return real_digest(path)
 
@@ -2291,7 +2292,7 @@ async def test_staged_input_verification_does_not_block_heartbeats(
             await asyncio.sleep(0)
 
     try:
-        await asyncio.wait_for(wait_for_verification(), timeout=1)
+        await asyncio.wait_for(wait_for_verification(), timeout=HANG_GUARD_S)
         await plane.send(
             pb.WorkerMessage(
                 heartbeat=pb.Heartbeat(active_tasks=1, available_slots=1)
@@ -2329,7 +2330,7 @@ async def test_inbound_upload_cannot_send_to_a_replaced_session(plane, monkeypat
     monkeypatch.setattr(codec, "assignment_to_pb", assignment_with_input)
     monkeypatch.setattr(plane.servicer, "_push_inbound_inputs", blocked_upload)
     sending = asyncio.create_task(plane.servicer.dispatch(assignment))
-    await asyncio.wait_for(upload_started.wait(), timeout=1)
+    await asyncio.wait_for(upload_started.wait(), timeout=HANG_GUARD_S)
 
     response = await plane.register(activate=False)
     replacement = plane.servicer.session_for(
@@ -2371,7 +2372,7 @@ async def test_inbound_upload_cannot_send_an_attempt_cancelled_while_awaiting(
     monkeypatch.setattr(codec, "assignment_to_pb", assignment_with_input)
     monkeypatch.setattr(plane.servicer, "_push_inbound_inputs", blocked_upload)
     sending = asyncio.create_task(plane.servicer.dispatch(assignment))
-    await asyncio.wait_for(upload_started.wait(), timeout=1)
+    await asyncio.wait_for(upload_started.wait(), timeout=HANG_GUARD_S)
 
     assert plane.scheduler.cancel(task.task_id)
     release_upload.set()
@@ -2409,12 +2410,12 @@ async def test_revoke_stops_an_inbound_input_upload_before_more_bytes_leave(
     monkeypatch.setattr(codec, "assignment_to_pb", assignment_with_input)
     monkeypatch.setattr(plane.servicer, "_push_inbound_inputs", upload_in_chunks)
     dispatch = asyncio.create_task(plane.servicer.dispatch(assignment))
-    await asyncio.wait_for(first_chunk_sent.wait(), timeout=1)
+    await asyncio.wait_for(first_chunk_sent.wait(), timeout=HANG_GUARD_S)
 
     assert plane.servicer.revoke_worker_sessions(plane.worker_id) == 1
     release_upload.set()
 
-    assert await asyncio.wait_for(dispatch, timeout=1) is False
+    assert await asyncio.wait_for(dispatch, timeout=HANG_GUARD_S) is False
     assert sent == ["first"]
     assert not any(message.HasField("assignment") for message in session.outbox._queue)
 
@@ -2468,7 +2469,7 @@ async def test_cancelled_confirmation_immediately_releases_pending_handoff(
     monkeypatch.setattr(connection, "_register", register)
 
     task = asyncio.create_task(connection._connect_once())
-    await asyncio.wait_for(waiting.wait(), timeout=1.0)
+    await asyncio.wait_for(waiting.wait(), timeout=HANG_GUARD_S)
     task.cancel()
     await asyncio.gather(task, return_exceptions=True)
 
@@ -2510,7 +2511,7 @@ async def test_concurrent_register_flood_persists_one_pending_epoch_off_loop(
     def slow_begin(worker_id: str, **kwargs) -> int:
         calls.append(worker_id)
         started.set()
-        assert release.wait(1.0)
+        assert release.wait(BARRIER_WATCHDOG_S)
         return real_begin(worker_id, **kwargs)
 
     monkeypatch.setattr(registry, "begin_session", slow_begin)
@@ -2520,7 +2521,7 @@ async def test_concurrent_register_flood_persists_one_pending_epoch_off_loop(
     registrations = [
         asyncio.create_task(plane.register(activate=False)) for _ in range(25)
     ]
-    assert await asyncio.to_thread(started.wait, 1.0)
+    assert await asyncio.to_thread(started.wait, HANG_GUARD_S)
 
     # The durable call is blocked, but the gRPC loop remains runnable and no
     # sibling Register starts a second SQLite epoch transaction.
@@ -2531,7 +2532,7 @@ async def test_concurrent_register_flood_persists_one_pending_epoch_off_loop(
 
     release.set()
     safety_release.cancel()
-    responses = await asyncio.wait_for(asyncio.gather(*registrations), 2.0)
+    responses = await asyncio.wait_for(asyncio.gather(*registrations), HANG_GUARD_S)
 
     assert len({response.session_token for response in responses}) == 1
     assert len({response.session_epoch for response in responses}) == 1

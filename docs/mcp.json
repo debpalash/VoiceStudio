@@ -1,6 +1,6 @@
 {
   "_comment": "MCP client config for VoiceStudio. See docs/mcp.md for both connection modes.",
-  "_streamable_http": "If your MCP client speaks Streamable HTTP, point it directly at the running app: http://localhost:3900/mcp — no separate process needed (the server is mounted on the backend). Send an X-OmniVoice-Client-Id header to bind this agent to a specific voice.",
+  "_streamable_http": "If your MCP client speaks Streamable HTTP, point it directly at the running app: http://localhost:3900/mcp/ — no separate process needed (the server is mounted on the backend). Send an X-OmniVoice-Client-Id header to bind this agent to a specific voice.",
   "_output_mode": "To keep audio out of the agent's context, set OMNIVOICE_MCP_OUTPUT_MODE=files and OMNIVOICE_MCP_BASE_PATH=<a directory visible to both backend and agent> on the BACKEND's environment for the mounted endpoint (or on a standalone `python -m backend.mcp_server` entry's env). The agent's working directory is valid only when it is mounted into the backend at the same path. See docs/mcp.md, 'Output mode and file inputs'.",
   "mcpServers": {
     "omnivoice": {

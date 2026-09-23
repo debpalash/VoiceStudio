@@ -725,6 +725,7 @@ def _phase_a_build_inner() -> None:
     )
     from api.routers import mcp_bindings as _mcp_bindings_router  # noqa: E402
     from api.routers import workers as workers_router  # noqa: E402
+    from api.routers import telephony_twilio as _telephony_twilio_router  # noqa: E402
     _router_modules.extend([
         system, profiles, profile_images, exports, generation, voice_convert, dub_core, dub_generate,
         dub_export, dub_translate, projects, glossary, engines, tools,
@@ -733,6 +734,7 @@ def _phase_a_build_inner() -> None:
         openai_compat, tts_stream, marketplace, personas, sonitranslate,
         audiobook, longform_jobs, pronunciation, settings_router,
         media_tools_router, auth_router, _mcp_bindings_router, workers_router,
+        _telephony_twilio_router,
     ])
     # Download-acceleration state, once, for triage-from-logs (FDL-03).
     try:
@@ -780,11 +782,12 @@ def _phase_a_finalize() -> None:
         app.mount("/demo_audio", StaticFiles(directory=_demo_dir), name="demo_audio")
 
     # SPA shell LAST so the "/" StaticFiles mount can't shadow any router.
-    _frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+    from core.spa_inject import frontend_dist_dir, is_valid_public_api_base, inject_api_base
+
+    _frontend_path = frontend_dist_dir()
     if os.path.exists(_frontend_path):
         # Runtime API-base override (Docker / reverse-proxy): inject
         # OMNIVOICE_PUBLIC_API_BASE into index.html; unset → untouched.
-        from core.spa_inject import is_valid_public_api_base, inject_api_base
 
         _public_api_base = os.environ.get("OMNIVOICE_PUBLIC_API_BASE", "").strip().rstrip("/")
         _index_path = os.path.join(_frontend_path, "index.html")
@@ -815,7 +818,7 @@ def _phase_a_finalize() -> None:
 
         @app.get("/", include_in_schema=False)
         def _dev_fallback():
-            return RedirectResponse(url="http://localhost:3901")
+            return RedirectResponse(url=f"http://localhost:{_ui_port()}")
 
     # An early /docs or /openapi.json hit may have cached a schema without
     # the routers — bust it so the next request rebuilds the full one.
@@ -1054,6 +1057,14 @@ async def _phase_b(app: FastAPI) -> None:
     except Exception:
         logger.exception("Worker agent startup failed (continuing without it)")
 
+    # Phone calls (opt-in): the separate loopback telephony listener resumes
+    # only when the user left the Twilio integration enabled.
+    try:
+        from api.routers.telephony_twilio import start_gateway_if_enabled
+        await start_gateway_if_enabled()
+    except Exception:
+        logger.exception("Telephony gateway startup failed (continuing without it)")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -1181,6 +1192,11 @@ async def lifespan(app: FastAPI):
         await worker_service.stop()
     except Exception:
         logger.exception("Remote worker shutdown failed")
+    try:
+        from services.telephony import gateway as telephony_gateway
+        await telephony_gateway.stop()
+    except Exception:
+        logger.exception("Telephony gateway shutdown failed")
     logger.info("Shutdown: cleaning up…")
     # Flip model_manager into shutdown mode, so a model load in flight (or
     # still queued) on a GPU-pool thread classifies executor rejections as a

@@ -62,6 +62,77 @@ import pytest
 import warnings as _warnings
 
 
+# ── Persisted user settings: per-test isolation ────────────────────────────
+# The hermetic data dir above is per SESSION, so prefs.json and the user-env
+# file are shared by every test in the run. Anything a test persists there —
+# directly, or as a side effect such as the app lifespan's startup
+# `reconcile_active_profile()` — silently changes what every later test
+# resolves. That lifespan pass picks models from the developer's real HF cache
+# and persists them (`dictation.model_id`, `asr_backend`, …), so a dev with a
+# sherpa dictation model installed saw later capture-WebSocket tests routed to
+# the sherpa handler, while CI (empty cache, nothing to persist) stayed green.
+# Restoring the files byte-for-byte at every test and module boundary closes
+# the whole class — including leaks from module-scoped fixtures — without each
+# test having to redirect `prefs._PREFS_PATH` itself. The paths are frozen
+# here, not read from `core.prefs`, so a test that re-imports or repoints the
+# module cannot move the store this guard protects.
+_PERSISTED_SETTINGS_FILES = (
+    os.path.join(os.environ["OMNIVOICE_DATA_DIR"], "prefs.json"),
+    os.environ["OMNIVOICE_ENV_FILE"],
+)
+
+
+def _settings_files_snapshot() -> dict:
+    snapshot = {}
+    for path in _PERSISTED_SETTINGS_FILES:
+        try:
+            with open(path, "rb") as handle:
+                snapshot[path] = handle.read()
+        except FileNotFoundError:
+            snapshot[path] = None
+    return snapshot
+
+
+def _settings_files_restore(snapshot: dict) -> None:
+    # `core.prefs` freezes its path at first import. When that first import
+    # happens inside a test that aimed OMNIVOICE_DATA_DIR at its tmp_path
+    # (the reload-fixture shape), the rest of the session would read and
+    # write prefs in that test's directory, out of this guard's reach. Test
+    # monkeypatches are already undone here, so any other value is a leak.
+    prefs = sys.modules.get("core.prefs")
+    if prefs is not None and getattr(prefs, "_PREFS_PATH", None) != _PERSISTED_SETTINGS_FILES[0]:
+        prefs._PREFS_PATH = _PERSISTED_SETTINGS_FILES[0]
+    for path, before in snapshot.items():
+        try:
+            with open(path, "rb") as handle:
+                after = handle.read()
+        except FileNotFoundError:
+            after = None
+        if after == before:
+            continue
+        if before is None:
+            os.remove(path)
+            continue
+        tmp = f"{path}.conftest-restore"
+        with open(tmp, "wb") as handle:
+            handle.write(before)
+        os.replace(tmp, path)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _isolate_persisted_settings_per_module():
+    snapshot = _settings_files_snapshot()
+    yield
+    _settings_files_restore(snapshot)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_persisted_settings():
+    snapshot = _settings_files_snapshot()
+    yield
+    _settings_files_restore(snapshot)
+
+
 # App lifespans deliberately close watermark admission during shutdown. The
 # test process then keeps running and many route tests call handlers without
 # starting another lifespan, so restore the equivalent of a fresh lifespan at
@@ -267,8 +338,9 @@ def torch_dtype_isolation(request):
 # change what *later* tests' `active_backend_id()` / `active_provider_id()`
 # resolved to (order-dependent failures in test_engines.py,
 # test_llm_endpoint_settings.py, test_llm_providers.py). The autouse guard
-# below snapshots all three surfaces before every test and restores them
-# exactly afterwards, making the whole class of leak impossible.
+# below snapshots the env vars and settings rows before every test and
+# restores them exactly afterwards; prefs.json is restored whole by
+# `_isolate_persisted_settings` above.
 
 # Env vars that are NOT declared on a Provider entry but still steer LLM /
 # translation resolution.
@@ -347,36 +419,6 @@ def _llm_store_restore(before: dict) -> None:
         pass  # table never existed during the test → nothing leaked
 
 
-def _llm_prefs_subset(data: dict) -> dict:
-    return {
-        k: v for k, v in data.items()
-        if k == "llm_backend" or k.startswith("env.TRANSLATE")
-    }
-
-
-def _llm_prefs_snapshot() -> dict:
-    try:
-        from core import prefs
-        return _llm_prefs_subset(prefs._load())
-    except Exception:
-        return {}
-
-
-def _llm_prefs_restore(before: dict) -> None:
-    try:
-        from core import prefs
-        data = prefs._load()
-        current = _llm_prefs_subset(data)
-        if current == before:
-            return
-        for k in current.keys() - before.keys():
-            data.pop(k, None)
-        data.update(before)
-        prefs._save(data)
-    except Exception:
-        pass
-
-
 # ── HF endpoint probes: no real network, ever ───────────────────────────────
 # services.endpoint_race probes huggingface.co / hf-mirror.com over HTTPS.
 # Several suites reach it indirectly (/setup/preflight forces a race, the
@@ -392,7 +434,6 @@ def _no_real_endpoint_probes():
     # teardown against other autouse guards (it broke the dtype guard vs
     # test_torch_compile_gate's torch stub). An isolated MonkeyPatch leaves
     # the shared fixture's position untouched.
-    from core import prefs as _prefs
     from services import endpoint_race as _er
 
     def _fake_probe(endpoint, timeout=None):
@@ -406,13 +447,8 @@ def _no_real_endpoint_probes():
         mp.setattr(_er, "probe_endpoint", _fake_probe)
         mp.setattr(_er, "throughput_probe", lambda endpoint, timeout=None: None)
         yield
-    # The decision cache lives in prefs, which persist across tests within
-    # the hermetic session dir — clear it so one test's auto pick can never
-    # leak into another's preflight assertions.
-    try:
-        _prefs.set_(_er._DECISION_PREF, None)
-    except Exception:
-        pass
+    # The decision cache lives in prefs; `_isolate_persisted_settings` restores
+    # it, so one test's auto pick cannot leak into another's preflight.
 
 
 @pytest.fixture(autouse=True)
@@ -421,7 +457,6 @@ def _isolate_llm_provider_state():
     names = _llm_env_names()
     env_before = {n: os.environ.get(n) for n in names}
     store_before = _llm_store_snapshot()
-    prefs_before = _llm_prefs_snapshot()
     yield
     for n, v in env_before.items():
         if os.environ.get(n) != v:
@@ -430,7 +465,6 @@ def _isolate_llm_provider_state():
             else:
                 os.environ[n] = v
     _llm_store_restore(store_before)
-    _llm_prefs_restore(prefs_before)
 
 
 @pytest.fixture

@@ -29,6 +29,7 @@ from fastapi.testclient import TestClient
 from api.dependencies import require_admin
 from api.routers import workers as workers_router
 from worker import agent as worker_agent
+from hang_guard import HANG_GUARD_S
 
 
 @pytest.fixture
@@ -673,11 +674,11 @@ async def test_join_cancellation_restores_the_previous_enrollment_and_agent(
     request = asyncio.create_task(
         workers_router.join_control_plane(workers_router.JoinRequest(token="ovw_new"))
     )
-    await asyncio.wait_for(waiting.wait(), timeout=1)
+    await asyncio.wait_for(waiting.wait(), timeout=HANG_GUARD_S)
     request.cancel()
 
     with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(request, timeout=1)
+        await asyncio.wait_for(request, timeout=HANG_GUARD_S)
 
     assert manifest.read_bytes() == previous
     assert settings["worker_endpoint"] == "old-studio:7443"
@@ -763,11 +764,11 @@ async def test_toggle_cancellation_restores_the_previous_live_state(
     request = asyncio.create_task(
         workers_router.set_agent_enabled(workers_router.EnableRequest(enabled=False))
     )
-    await asyncio.wait_for(stopping.wait(), timeout=1)
+    await asyncio.wait_for(stopping.wait(), timeout=HANG_GUARD_S)
     request.cancel()
 
     with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(request, timeout=1)
+        await asyncio.wait_for(request, timeout=HANG_GUARD_S)
 
     assert state["running"] is True
     assert settings["worker_mode_enabled"] == "true"

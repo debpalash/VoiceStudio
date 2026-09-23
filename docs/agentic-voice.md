@@ -17,6 +17,8 @@ its TTS/STT at VoiceStudio.
 > separate, deferred milestone (they need a paid carrier — there is no
 > fully-local path to the PSTN) and ship only behind explicit consent
 > guardrails. See the roadmap in `docs/competitive-analysis.md` (§R1).
+> Answering **inbound** calls with a spoken greeting is available as an opt-in
+> integration: see [Twilio](integrations/twilio.md).
 
 ## The endpoints
 
@@ -165,6 +167,8 @@ WebSocket, which VoiceStudio does not implement.
 Running VoiceStudio on a [remote GPU box](remote-gpu.md)? Append `/v1` to that
 backend's service-root URL for the OpenAI client's `base_url`, and pass its
 `OMNIVOICE_API_KEY` as the `api_key` — the same bearer the rest of the app uses.
+Only send the key over https (for example Tailscale Serve); over plain http it
+crosses the network in clear text.
 Keep the unmodified service root for `/.well-known/voicestudio-speech`
 discovery, and keep the backend on your tailnet, not the open internet.
 

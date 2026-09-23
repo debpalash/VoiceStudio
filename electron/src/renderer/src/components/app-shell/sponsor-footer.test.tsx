@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, expect, it, vi } from 'vitest';
 import type { AnchorHTMLAttributes } from 'react';
 const mock = vi.hoisted(() => ({
-  examples: [] as { name: string; logoUrl: string; url: string; detailKeys: string[] }[],
+  examples: [] as { name: string; logoUrl: string; url: string }[],
   sponsors: [] as { name: string; logoUrl: string; url: string; tier: string }[],
   open: vi.fn().mockResolvedValue(undefined),
   navigate: vi.fn(),
@@ -147,7 +147,6 @@ it('labels company examples without presenting them as featured sponsors', () =>
     name: 'ElevenLabs',
     url: 'https://elevenlabs.io',
     logoUrl: '/elevenlabs.ico',
-    detailKeys: ['nav.clone'],
   });
   render(<SponsorFooter />);
   expect(screen.getByRole('link', { name: 'support.sponsors_logo_aria ElevenLabs' })).toBeVisible();
