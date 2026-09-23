@@ -12,11 +12,13 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 - Twilio setup is a guided checklist with live status and exact commands (#2304)
 - Integration pages use the full window, with a side panel on wide screens (#2304)
+- Footer integration logos open their in-app page (#2302)
 
 ### Changed
 
 - Twilio setup is a guided checklist: account, tunnel, phone number and voice steps with live status, exact tunnel commands for your OS and gateway port, copyable webhook URL, a readiness panel and clear reasons when an action is unavailable (#2304)
 - Integration pages use the full window: setup beside a side panel with status, capabilities and website on wide screens, stacked on narrow ones, with the scrollbar at the window edge (#2304)
+- Integration logos in the footer open their page inside the app instead of an outside website (#2302)
 
 ### Fixed
 

@@ -7,6 +7,7 @@ import { SponsorInquiry } from './sponsor-inquiry';
 import {
   ArrowUpRightIcon,
   BlocksIcon,
+  ChevronRightIcon,
   CircleIcon,
   SearchIcon,
   GemIcon,
@@ -15,9 +16,12 @@ import {
   XIcon,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { getBridge } from '@/components/bridge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { SPONSORS, SPONSOR_TIERS } from '../../../../../../frontend/src/config/sponsors';
+import {
+  getIntegrationBySlug,
+  integrationSlug,
+} from '../../../../../../frontend/src/config/integration-catalog';
 
 const linkClass =
   'flex min-h-9 shrink-0 items-center gap-2 rounded-lg px-2.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary motion-safe:transition-colors';
@@ -49,11 +53,22 @@ export function SponsorFooter() {
       .toLocaleLowerCase()
       .includes(query.trim().toLocaleLowerCase()),
   );
+  // Logos open the in-app integration page, never an outside link; the page
+  // itself offers the vendor's website for anyone who wants it.
+  const openIntegration = (name: string) => {
+    const slug = integrationSlug(name);
+    runRendererTask('Open integration', () =>
+      navigate(
+        getIntegrationBySlug(slug)
+          ? { to: '/integrations/$slug', params: { slug } }
+          : { to: '/integrations' },
+      ),
+    );
+  };
   const collapse = () => {
     setExpanded(false);
     toggleRef.current?.focus();
   };
-  const [failed, setFailed] = useState(false);
   const [inquiryOpen, setInquiryOpen] = useState(false);
   return (
     <div className="sponsor-footer-host">
@@ -96,19 +111,11 @@ export function SponsorFooter() {
           </label>
           <div className="sponsor-catalog-grid">
             {visibleSponsors.map((sponsor) => (
-              <a
+              <button
+                type="button"
                 key={sponsor.url}
-                href={sponsor.url}
-                target="_blank"
-                rel="noreferrer"
                 className="sponsor-catalog-card"
-                onClick={(event) => {
-                  const bridge = getBridge();
-                  if (!bridge) return;
-                  event.preventDefault();
-                  setFailed(false);
-                  void bridge.files.openExternal(sponsor.url).catch(() => setFailed(true));
-                }}
+                onClick={() => openIntegration(sponsor.name)}
               >
                 <div className="sponsor-catalog-card-top">
                   <img
@@ -119,7 +126,7 @@ export function SponsorFooter() {
                       event.currentTarget.style.display = 'none';
                     }}
                   />
-                  <ArrowUpRightIcon aria-hidden="true" className="size-4" />
+                  <ChevronRightIcon aria-hidden="true" className="size-4" />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h3>{sponsor.name}</h3>
@@ -135,7 +142,7 @@ export function SponsorFooter() {
                   <span>{t('support.sponsors_tier_' + sponsor.tier)}</span>
                 )}
                 <p>{sponsor.url}</p>
-              </a>
+              </button>
             ))}
             {entries.length > 0 && visibleSponsors.length === 0 && (
               <p role="status" className="text-sm text-muted-foreground">
@@ -188,19 +195,11 @@ export function SponsorFooter() {
             <Tooltip key={sponsor.url}>
               <TooltipTrigger
                 render={
-                  <a
-                    href={sponsor.url}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    type="button"
                     className="sponsor-logo-tile"
                     aria-label={t('support.sponsors_logo_aria', { name: sponsor.name })}
-                    onClick={(event) => {
-                      const bridge = getBridge();
-                      if (!bridge) return;
-                      event.preventDefault();
-                      setFailed(false);
-                      void bridge.files.openExternal(sponsor.url).catch(() => setFailed(true));
-                    }}
+                    onClick={() => openIntegration(sponsor.name)}
                   />
                 }
               >
@@ -241,17 +240,12 @@ export function SponsorFooter() {
                 </span>
                 <span className="flex max-w-full items-center gap-1 text-xs text-primary">
                   <span className="break-all">{sponsor.url}</span>
-                  <ArrowUpRightIcon aria-hidden="true" className="size-3 shrink-0" />
+                  <ChevronRightIcon aria-hidden="true" className="size-3 shrink-0" />
                 </span>
               </TooltipContent>
             </Tooltip>
           ))}
         </div>
-        {failed && (
-          <span role="alert" className="text-xs text-destructive">
-            {t('common.error')}
-          </span>
-        )}
         <Tooltip>
           <TooltipTrigger
             render={
