@@ -30,7 +30,7 @@ import logging
 import os
 import re
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Iterator, Optional
 
 logger = logging.getLogger("omnivoice.llm")
 
@@ -134,6 +134,17 @@ class LLMBackend(ABC):
             )
         return self.chat(system=sys_msg, user=usr_msg, timeout=timeout,
                          temperature=temperature, reasoning_effort=reasoning_effort)
+
+    def chat_messages_stream(self, *, messages: list[dict], timeout: Optional[float] = None,
+                             temperature: Optional[float] = None) -> Iterator[str]:
+        """Yield the reply as text deltas while it is generated.
+
+        Latency-critical callers (the phone call agent starts speaking on the
+        first sentence) use this. Backends without streaming yield the whole
+        reply once. Reasoning blocks are NOT stripped here — a streaming
+        caller must handle a leading ``<think>`` block itself.
+        """
+        yield self.chat_messages(messages=messages, timeout=timeout, temperature=temperature)
 
 
 # ── OpenAI-compatible (the only backend that actually calls out today) ─────
@@ -285,6 +296,28 @@ class OpenAICompatBackend(LLMBackend):
             res = _create(**kw)
 
         return _strip_reasoning(res.choices[0].message.content or "")
+
+    def chat_messages_stream(self, *, messages: list[dict], timeout: Optional[float] = None,
+                             temperature: Optional[float] = None) -> Iterator[str]:
+        if timeout is None:
+            try:
+                timeout = float(os.environ.get("OMNIVOICE_LLM_TIMEOUT", "45"))
+            except ValueError:
+                timeout = 45.0
+        kw = {} if temperature is None else {"temperature": temperature}
+        stream = self._get_client().chat.completions.create(
+            model=self.model_name, timeout=timeout, messages=messages, stream=True, **kw,
+        )
+        try:
+            for chunk in stream:
+                choices = getattr(chunk, "choices", None) or []
+                delta = getattr(choices[0].delta, "content", None) if choices else None
+                if delta:
+                    yield delta
+        finally:
+            close = getattr(stream, "close", None)
+            if callable(close):
+                close()
 
 
 # ── Off — explicit no-LLM path ────────────────────────────────────────────
