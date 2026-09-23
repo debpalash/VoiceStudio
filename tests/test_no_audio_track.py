@@ -313,3 +313,28 @@ def test_openai_transcription_of_video_without_audio_is_a_400(video_only, monkey
     assert excinfo.value.status_code == 400
     assert excinfo.value.code == "no_audio_track"
     assert excinfo.value.detail == NO_AUDIO_TRACK_MESSAGE
+
+
+def test_openai_keeps_an_engine_raised_no_audio_error_when_the_probe_cannot_run(tmp_path, monkeypatch):
+    """CodeRabbit #2308: the ASR decoder's stderr fallback raised NoAudioTrackError,
+    the route's probe was undetermined, and the answer became a 500."""
+    from fastapi import UploadFile
+
+    import services.ffmpeg_utils as fu
+    from api.routers.openai_compat import OpenAIError, _transcribe_request
+
+    class _Raises(_SilentVideoASR):
+        def transcribe(self, path, **_kwargs):
+            raise NoAudioTrackError()
+
+    _fake_asr(monkeypatch)
+    monkeypatch.setattr("services.asr_backend.load_active_asr_backend", lambda *_a, **_k: _Raises())
+    monkeypatch.setattr(fu, "has_audio_stream", lambda _path: None)
+    upload = UploadFile(io.BytesIO(b"not probeable"), filename="clip.mp4")
+    with pytest.raises(OpenAIError) as excinfo:
+        asyncio.run(_transcribe_request(
+            task="transcribe", file=upload, model="whisper-1", language=None, prompt=None,
+            response_format="json", temperature=None,
+        ))
+    assert excinfo.value.status_code == 400
+    assert excinfo.value.code == "no_audio_track"

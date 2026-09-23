@@ -695,9 +695,13 @@ def raise_for_audio_extract_failure(stderr, path: str) -> None:
     Returns normally for every other failure so the caller keeps its own
     diagnosis; the raw stderr stays in the log, never in the user message.
     """
-    from core.failure import NoAudioTrackError, is_no_audio_stream_stderr
+    from core.failure import NO_AUDIO_TRACK_MESSAGE, NoAudioTrackError, is_no_audio_stream_stderr
 
-    if is_no_audio_stream_stderr(stderr) or has_audio_stream(path) is False:
+    # An engine may already have raised NoAudioTrackError (via the ASR decoder's
+    # stderr check) and the caller passes its text back here: keep that answer
+    # even when the probe cannot run.
+    already = NO_AUDIO_TRACK_MESSAGE in (stderr if isinstance(stderr, str) else "")
+    if already or is_no_audio_stream_stderr(stderr) or has_audio_stream(path) is False:
         text = stderr.decode("utf-8", errors="replace") if isinstance(stderr, bytes) else str(stderr or "")
         logger.info(
             "Audio decode of %s failed because it has no audio stream: %s",
