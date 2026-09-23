@@ -219,3 +219,18 @@ export function RecordZone({ onAccept }: { onAccept?: AcceptReference } = {}) {
     </div>
   );
 }
+
+/**
+ * Upload and record side by side: both ways in are visible at once instead of
+ * hidden behind a toggle. Stacks on narrow containers.
+ */
+export function ReferenceSourcePicker({ onAccept }: { onAccept?: AcceptReference } = {}) {
+  return (
+    <div className="@container">
+      <div className="grid gap-3 @md:grid-cols-2 [&>*]:min-w-0">
+        <UploadZone onAccept={onAccept} />
+        <RecordZone onAccept={onAccept} />
+      </div>
+    </div>
+  );
+}
