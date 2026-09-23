@@ -286,27 +286,109 @@ def test_stalled_ffmpeg_check_is_killed_and_reaped(env, monkeypatch):
     monkeypatch.setattr("services.ffmpeg_utils.find_ffmpeg", lambda: "ffmpeg")
     monkeypatch.setattr("services.ffmpeg_utils.spawn_subprocess", spawn)
     monkeypatch.setattr(profiles, "_DECODE_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(profiles, "_DECODE_SEMAPHORE", None)
     assert replace(client, created["id"], name="take.webm", body=WEBM_JUNK).status_code == 422
     assert seen == {"killed": True, "reaped": True}
 
 
 def test_ffmpeg_check_does_not_queue_on_export_slots(tmp_path, monkeypatch):
-    """Busy dub exports must not stall a reference check (no run_ffmpeg)."""
+    """Saturated dub-export slots must not block a reference check."""
     import asyncio
 
     from api.routers import profiles
-    from services.ffmpeg_utils import find_ffmpeg
+    from services import ffmpeg_utils
 
-    if not find_ffmpeg():
+    if not ffmpeg_utils.find_ffmpeg():
         pytest.skip("ffmpeg unavailable")
-
-    async def must_not_queue(*_args, **_kwargs):
-        raise AssertionError("reference check queued on the shared ffmpeg slots")
-
-    monkeypatch.setattr("services.ffmpeg_utils.run_ffmpeg", must_not_queue)
+    monkeypatch.setattr(profiles, "_DECODE_SEMAPHORE", None)
     good = tmp_path / "good.wav"
     good.write_bytes(wav_bytes())
-    assert asyncio.run(profiles._ffmpeg_decodes(str(good))) is True
+
+    async def check():
+        # Every export slot is taken for the whole check.
+        monkeypatch.setattr(ffmpeg_utils, "_FFMPEG_SEMAPHORE", asyncio.Semaphore(0))
+        return await asyncio.wait_for(profiles._ffmpeg_decodes(str(good)), 20)
+
+    assert asyncio.run(check()) is True
+
+
+def test_reference_decodes_are_capped(monkeypatch):
+    """At most _DECODE_CONCURRENCY decodes run at once; the rest wait."""
+    import asyncio
+
+    from api.routers import profiles
+
+    monkeypatch.setattr(profiles, "_DECODE_SEMAPHORE", None)
+    monkeypatch.setattr("services.ffmpeg_utils.find_ffmpeg", lambda: "ffmpeg")
+    live = {"now": 0, "peak": 0}
+
+    async def run():
+        release = asyncio.Event()
+
+        class Proc:
+            returncode = None
+
+            async def communicate(self):
+                live["now"] += 1
+                live["peak"] = max(live["peak"], live["now"])
+                await release.wait()
+                live["now"] -= 1
+                self.returncode = 0
+                return b"\x00\x01", b""
+
+        async def spawn(*_args, **_kwargs):
+            return Proc()
+
+        monkeypatch.setattr("services.ffmpeg_utils.spawn_subprocess", spawn)
+        checks = [asyncio.create_task(profiles._ffmpeg_decodes("clip.webm")) for _ in range(5)]
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert live["now"] == profiles._DECODE_CONCURRENCY
+        release.set()
+        return await asyncio.gather(*checks)
+
+    assert asyncio.run(run()) == [True] * 5
+    assert live["peak"] == profiles._DECODE_CONCURRENCY
+
+
+def test_cancelled_check_still_kills_and_reaps(monkeypatch):
+    import asyncio
+
+    from api.routers import profiles
+
+    monkeypatch.setattr(profiles, "_DECODE_SEMAPHORE", None)
+    monkeypatch.setattr("services.ffmpeg_utils.find_ffmpeg", lambda: "ffmpeg")
+    seen = {"killed": False, "reaped": False}
+
+    class Stalled:
+        returncode = None
+
+        async def communicate(self):
+            await asyncio.sleep(3600)
+
+        def kill(self):
+            seen["killed"] = True
+
+        async def wait(self):
+            seen["reaped"] = True
+            self.returncode = -9
+            return -9
+
+    async def spawn(*_args, **_kwargs):
+        return Stalled()
+
+    monkeypatch.setattr("services.ffmpeg_utils.spawn_subprocess", spawn)
+
+    async def run():
+        task = asyncio.create_task(profiles._ffmpeg_decodes("clip.webm"))
+        for _ in range(5):
+            await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(run())
+    assert seen == {"killed": True, "reaped": True}
 
 
 def test_legacy_null_kind_profile_is_replaced(env):

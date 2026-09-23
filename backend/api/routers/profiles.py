@@ -354,6 +354,8 @@ _MIN_REF_AUDIO_BYTES = 1000  # same floor as consent recordings
 _MAX_REF_AUDIO_BYTES = 128 * 1024 * 1024
 _UPLOAD_CHUNK = 1024 * 1024
 _DECODE_TIMEOUT_S = 30.0
+_DECODE_CONCURRENCY = 2
+_DECODE_SEMAPHORE: Optional[asyncio.Semaphore] = None
 # One replacement at a time per profile: overlapping uploads would otherwise
 # read the same previous paths and leave the losing clip unreferenced.
 _replace_locks: "weakref.WeakValueDictionary[str, asyncio.Lock]" = weakref.WeakValueDictionary()
@@ -384,34 +386,52 @@ async def _ffmpeg_decodes(path: str) -> bool:
     no decodable frames. Browser MediaRecorder WebM has no duration header but
     decodes fine. Missing ffmpeg or a failed run counts as not decodable.
     """
-    from services.ffmpeg_utils import find_ffmpeg, spawn_subprocess
+    from services.ffmpeg_utils import find_ffmpeg
 
     ffmpeg = find_ffmpeg()
     if not ffmpeg:
         logger.warning("ffmpeg is unavailable; cannot verify a replacement reference")
         return False
-    # Spawned directly rather than through run_ffmpeg: that helper queues on
-    # the shared export slots before its timeout starts, so a busy dub export
-    # could stall a one-second check indefinitely. The whole check is bounded
-    # here, and the process is killed and reaped on any failure.
-    proc = None
     try:
+        # One deadline covers waiting for a decode slot and the decode itself.
+        return await asyncio.wait_for(_decode_one_second(ffmpeg, path), _DECODE_TIMEOUT_S)
+    except Exception as exc:  # noqa: BLE001 — cannot verify; refuse the clip
+        logger.info("ffmpeg could not decode a replacement reference: %s", exc)
+        return False
+
+
+def _decode_slots() -> asyncio.Semaphore:
+    """Reference checks' own FFmpeg slots, separate from the export slots.
+
+    run_ffmpeg's shared slots can be held by long dub exports, so a check must
+    not queue there; its own small pool still caps concurrent decodes.
+    """
+    global _DECODE_SEMAPHORE
+    if _DECODE_SEMAPHORE is None:
+        _DECODE_SEMAPHORE = asyncio.Semaphore(_DECODE_CONCURRENCY)
+    return _DECODE_SEMAPHORE
+
+
+async def _decode_one_second(ffmpeg: str, path: str) -> bool:
+    """Decode the first second to PCM; the process never outlives this call."""
+    from services.ffmpeg_utils import spawn_subprocess
+
+    async with _decode_slots():
         proc = await spawn_subprocess(
             ffmpeg, "-nostdin", "-v", "error", "-i", path, "-map", "0:a:0",
             "-t", "1", "-ac", "1", "-f", "s16le", "pipe:1",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=_DECODE_TIMEOUT_S)
-    except BaseException as exc:
-        if proc is not None and proc.returncode is None:
-            with contextlib.suppress(ProcessLookupError, OSError):
-                proc.kill()
-            with contextlib.suppress(Exception):
-                await asyncio.wait_for(proc.wait(), timeout=5)
-        if not isinstance(exc, Exception):
-            raise  # cancellation still propagates, after the process is reaped
-        logger.info("ffmpeg could not decode a replacement reference: %s", exc)
-        return False
+        try:
+            stdout, _ = await proc.communicate()
+        finally:
+            # Runs on timeout and on request cancellation as well: kill the
+            # decode and wait (boundedly) for it to exit before the slot frees.
+            if proc.returncode is None:
+                with contextlib.suppress(ProcessLookupError, OSError):
+                    proc.kill()
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(proc.wait(), timeout=5)
     return proc.returncode == 0 and len(stdout or b"") > 0
 
 
