@@ -217,6 +217,22 @@ it('shows exact tunnel commands for the gateway port, copies them and checks the
   ).toBeInTheDocument();
 });
 
+it('does not count rejected or busy attempts as a working webhook', async () => {
+  renderPage({
+    ...complete,
+    calls: {
+      active: 0,
+      max_concurrent: 2,
+      recent: [
+        { call: 'a', started_at: 1, ended_at: 1, outcome: 'rejected_signature', audio_seconds: 0 },
+        { call: 'b', started_at: 1, ended_at: 1, outcome: 'busy', audio_seconds: 0 },
+      ],
+    },
+  });
+  await loadedHero();
+  expect(within(step('Phone number')).getByText('To do')).toBeInTheDocument();
+});
+
 it('gives the webhook step a reason until the tunnel is saved, then a copyable URL', async () => {
   const copy = vi.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator, 'clipboard', { value: { writeText: copy }, configurable: true });

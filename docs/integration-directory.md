@@ -50,8 +50,9 @@ The schemas follow the official [Claude Code MCP guide](https://code.claude.com/
 card per route, retaining bundled logos and the correct category when entries
 overlap.
 
-Each detail page leads with the integration's category, a one-line summary of
-what it does and a single **Learn more** link to its guide. On wide windows the
+Each detail page leads with the integration's category and a one-line summary.
+Pages for integrations that work with VoiceStudio add a single **Learn more**
+link to their guide; external entries link only to the provider's website. On wide windows the
 setup sits beside a side panel with status, capabilities and the website; on
 narrow windows the panel's status comes first and its details follow the setup.
 

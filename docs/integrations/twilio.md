@@ -50,7 +50,8 @@ left. Each step saves on its own.
    (`https://<your-tunnel>/integrations/twilio/voice`). In the Twilio Console,
    open **Phone Numbers → Manage → Active numbers**, select your number, and under
    **Voice configuration** set **A call comes in** to **Webhook**, that URL, and
-   **HTTP POST**. Save. The step shows **Done** once your first call arrives.
+   **HTTP POST**. Save. The step shows **Done** once a call passes the
+   signature check (rejected or busy attempts do not count).
 4. **Voice and behavior.** Choose a voice (**Default voice** uses the engine's
    default; voices marked **Your voice** are verified as your own) and an engine
    (**Active engine** follows your current engine), and write the greeting (up to

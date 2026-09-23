@@ -132,6 +132,14 @@ const OUTCOMES = new Set([
   'synthesis_failed',
   'engine_unavailable',
 ]);
+const ANSWERED = new Set([
+  'completed',
+  'in_progress',
+  'caller_hung_up',
+  'time_limit',
+  'synthesis_failed',
+  'engine_unavailable',
+]);
 const ERROR_CODES = new Set([
   'invalid_account_sid',
   'invalid_public_url',
@@ -362,7 +370,9 @@ export function TwilioSetup({ hero, rail }: IntegrationPanelProps) {
   // ── Derived status ──────────────────────────────────────────────────────
   const credentialsDone = Boolean(server.account_sid && server.has_auth_token);
   const tunnelDone = Boolean(server.public_base_url);
-  const answered = server.calls.recent.length > 0;
+  // Only a call that passed the signature check proves the webhook points
+  // here with the current token; rejected or busy attempts do not.
+  const answered = server.calls.recent.some((call) => ANSWERED.has(call.outcome));
   const voiceDone = Boolean(server.greeting);
   const steps: Record<Step, StepStatus> = {
     account: credentialsDone ? 'done' : 'todo',
