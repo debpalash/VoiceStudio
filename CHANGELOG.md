@@ -10,11 +10,11 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 **Highlights**
 
-- Record or drop a voice sample from one view in Voice Clone (#PR)
+- Record or drop a voice sample from one view in Voice Clone (#2307)
 
 ### Changed
 
-- Voice Clone shows upload and record side by side instead of behind a toggle (#PR)
+- Voice Clone shows upload and record side by side instead of behind a toggle (#2307)
 
 ## [0.5.6] — 2026-09-23
 
