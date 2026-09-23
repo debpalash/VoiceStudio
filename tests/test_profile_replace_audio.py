@@ -251,29 +251,62 @@ def test_unverifiable_clip_is_refused_when_ffmpeg_missing(env, monkeypatch):
 def test_unverifiable_clip_is_refused_when_ffmpeg_fails(env, monkeypatch):
     client, _profiles, _db, _voices, created, _transcribed, _events = env
 
-    async def broken_run(*_args, **_kwargs):
+    async def broken_spawn(*_args, **_kwargs):
         raise OSError("ffmpeg crashed")
 
     monkeypatch.setattr("services.ffmpeg_utils.find_ffmpeg", lambda: "ffmpeg")
-    monkeypatch.setattr("services.ffmpeg_utils.run_ffmpeg", broken_run)
+    monkeypatch.setattr("services.ffmpeg_utils.spawn_subprocess", broken_spawn)
     assert replace(client, created["id"], name="take.webm", body=WEBM_JUNK).status_code == 422
 
 
-def test_ffmpeg_check_is_bounded_and_reaped(env, monkeypatch):
-    """The decode check goes through run_ffmpeg, which kills and reaps on timeout."""
+def test_stalled_ffmpeg_check_is_killed_and_reaped(env, monkeypatch):
+    """A hung decode is bounded, killed and reaped, never left running."""
     import asyncio
 
-    client, _profiles, _db, _voices, created, _transcribed, _events = env
-    calls = []
+    client, profiles, _db, _voices, created, _transcribed, _events = env
+    seen = {"killed": False, "reaped": False}
 
-    async def stalled_run(cmd, timeout, **_kwargs):
-        calls.append(timeout)
-        raise asyncio.TimeoutError
+    class Stalled:
+        returncode = None
+
+        async def communicate(self):
+            await asyncio.sleep(3600)
+
+        def kill(self):
+            seen["killed"] = True
+
+        async def wait(self):
+            seen["reaped"] = True
+            self.returncode = -9
+            return -9
+
+    async def spawn(*_args, **_kwargs):
+        return Stalled()
 
     monkeypatch.setattr("services.ffmpeg_utils.find_ffmpeg", lambda: "ffmpeg")
-    monkeypatch.setattr("services.ffmpeg_utils.run_ffmpeg", stalled_run)
+    monkeypatch.setattr("services.ffmpeg_utils.spawn_subprocess", spawn)
+    monkeypatch.setattr(profiles, "_DECODE_TIMEOUT_S", 0.05)
     assert replace(client, created["id"], name="take.webm", body=WEBM_JUNK).status_code == 422
-    assert calls == [30]
+    assert seen == {"killed": True, "reaped": True}
+
+
+def test_ffmpeg_check_does_not_queue_on_export_slots(tmp_path, monkeypatch):
+    """Busy dub exports must not stall a reference check (no run_ffmpeg)."""
+    import asyncio
+
+    from api.routers import profiles
+    from services.ffmpeg_utils import find_ffmpeg
+
+    if not find_ffmpeg():
+        pytest.skip("ffmpeg unavailable")
+
+    async def must_not_queue(*_args, **_kwargs):
+        raise AssertionError("reference check queued on the shared ffmpeg slots")
+
+    monkeypatch.setattr("services.ffmpeg_utils.run_ffmpeg", must_not_queue)
+    good = tmp_path / "good.wav"
+    good.write_bytes(wav_bytes())
+    assert asyncio.run(profiles._ffmpeg_decodes(str(good))) is True
 
 
 def test_legacy_null_kind_profile_is_replaced(env):

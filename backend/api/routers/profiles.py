@@ -353,6 +353,7 @@ _MIN_REF_AUDIO_BYTES = 1000  # same floor as consent recordings
 # stereo float stays far below this. Bounds memory and disk per request.
 _MAX_REF_AUDIO_BYTES = 128 * 1024 * 1024
 _UPLOAD_CHUNK = 1024 * 1024
+_DECODE_TIMEOUT_S = 30.0
 # One replacement at a time per profile: overlapping uploads would otherwise
 # read the same previous paths and leave the losing clip unreferenced.
 _replace_locks: "weakref.WeakValueDictionary[str, asyncio.Lock]" = weakref.WeakValueDictionary()
@@ -383,24 +384,35 @@ async def _ffmpeg_decodes(path: str) -> bool:
     no decodable frames. Browser MediaRecorder WebM has no duration header but
     decodes fine. Missing ffmpeg or a failed run counts as not decodable.
     """
-    from services.ffmpeg_utils import find_ffmpeg, run_ffmpeg
+    from services.ffmpeg_utils import find_ffmpeg, spawn_subprocess
 
     ffmpeg = find_ffmpeg()
     if not ffmpeg:
         logger.warning("ffmpeg is unavailable; cannot verify a replacement reference")
         return False
+    # Spawned directly rather than through run_ffmpeg: that helper queues on
+    # the shared export slots before its timeout starts, so a busy dub export
+    # could stall a one-second check indefinitely. The whole check is bounded
+    # here, and the process is killed and reaped on any failure.
+    proc = None
     try:
-        # run_ffmpeg kills and reaps the process on timeout, so a stalled
-        # decode never leaves an orphaned ffmpeg behind.
-        returncode, stdout, _ = await run_ffmpeg(
-            [ffmpeg, "-nostdin", "-v", "error", "-i", path, "-map", "0:a:0",
-             "-t", "1", "-ac", "1", "-f", "s16le", "pipe:1"],
-            timeout=30,
+        proc = await spawn_subprocess(
+            ffmpeg, "-nostdin", "-v", "error", "-i", path, "-map", "0:a:0",
+            "-t", "1", "-ac", "1", "-f", "s16le", "pipe:1",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         )
-    except Exception as exc:  # noqa: BLE001 — cannot verify; refuse the clip
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=_DECODE_TIMEOUT_S)
+    except BaseException as exc:
+        if proc is not None and proc.returncode is None:
+            with contextlib.suppress(ProcessLookupError, OSError):
+                proc.kill()
+            with contextlib.suppress(Exception):
+                await asyncio.wait_for(proc.wait(), timeout=5)
+        if not isinstance(exc, Exception):
+            raise  # cancellation still propagates, after the process is reaped
         logger.info("ffmpeg could not decode a replacement reference: %s", exc)
         return False
-    return returncode == 0 and len(stdout or b"") > 0
+    return proc.returncode == 0 and len(stdout or b"") > 0
 
 
 async def _is_decodable_audio(path: str) -> bool:
