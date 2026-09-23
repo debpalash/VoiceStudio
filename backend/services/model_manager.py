@@ -3315,6 +3315,36 @@ def _clear_cublas_workspaces(torch) -> None:
         logger.debug("clearing cuBLAS workspaces failed", exc_info=True)
 
 
+def release_device_cache() -> None:
+    """Ask the active accelerator to hand its cached blocks back.
+
+    The narrow primitive behind ``free_vram()``: no ``gc.collect()`` and no
+    cuBLAS workspace clear, because the callers that need it most — the
+    per-segment release in dubbing, the OOM retry guard — sit on a hot path
+    where a full collection is the wrong price for dropping the allocator's
+    cache.
+
+    It has to reach every backend an engine can synthesize on. Engines resolve
+    their device through ``torch.accelerator``, so an Ascend NPU host runs the
+    model on ``npu`` and an Intel Arc host on ``xpu``; the CUDA/MPS pair that
+    was open-coded at those call sites made the flush a silent no-op exactly
+    where the allocator was holding the freed blocks. Never raises: freeing
+    memory must not fail the request.
+    """
+    torch = _lazy_torch()
+    try:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+        elif hasattr(torch, "xpu") and torch.xpu.is_available():
+            torch.xpu.empty_cache()
+        elif hasattr(torch, "npu") and torch.npu.is_available():
+            torch.npu.empty_cache()
+    except Exception:  # noqa: BLE001 — freeing memory must never raise
+        logger.debug("releasing the device cache failed", exc_info=True)
+
+
 def free_vram():
     """Release cached GPU memory on any accelerator (CUDA, MPS, XPU, NPU)."""
     torch = _lazy_torch()
@@ -3322,13 +3352,7 @@ def free_vram():
     gc.collect()
     if torch.cuda.is_available():
         _clear_cublas_workspaces(torch)
-        torch.cuda.empty_cache()
-    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        torch.mps.empty_cache()
-    elif hasattr(torch, "xpu") and torch.xpu.is_available():
-        torch.xpu.empty_cache()
-    elif hasattr(torch, "npu") and torch.npu.is_available():
-        torch.npu.empty_cache()
+    release_device_cache()
 
 
 def unload_shared_model() -> bool:

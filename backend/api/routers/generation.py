@@ -591,12 +591,10 @@ def _oom_friendly_reraise(e):
     """Best-effort cache flush + the user-facing OOM hint shared by both
     inference paths."""
     import gc
-    import torch
+    from services.model_manager import release_device_cache
+
     gc.collect()
-    if torch.backends.mps.is_available():
-        torch.mps.empty_cache()
-    elif torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    release_device_cache()
     # #278: don't mislabel a torch.compile/Triton/Inductor crash as an
     # out-of-memory condition. (model_manager's generate wrapper already
     # retries these eagerly; this only triggers if that retry also died.)
