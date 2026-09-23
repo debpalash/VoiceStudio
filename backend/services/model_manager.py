@@ -3315,7 +3315,30 @@ def _clear_cublas_workspaces(torch) -> None:
         logger.debug("clearing cuBLAS workspaces failed", exc_info=True)
 
 
-def release_device_cache() -> None:
+def _active_accelerator_name(torch):
+    """The device type this host runs inference on, when torch can say.
+
+    Engine sidecars resolve their device with
+    ``torch.accelerator.current_accelerator(check_available=True)`` (see
+    ``engines/moss_tts_v15``), so the flush has to ask the same question — on a
+    hybrid host where CUDA also reports available, the accelerator the engines
+    actually synthesize on is the one whose cache must go back.
+
+    ``None`` means this build cannot answer (pre-2.6 has no ``torch.accelerator``,
+    or probing raised on an optional driver); callers then probe the backends
+    the build ships.
+    """
+    current = getattr(getattr(torch, "accelerator", None), "current_accelerator", None)
+    if current is None:
+        return None
+    try:
+        accel = current(check_available=True)
+    except Exception:  # noqa: BLE001 — probing optional drivers can fail
+        return None
+    return getattr(accel, "type", None)
+
+
+def release_device_cache(*, raise_on_failure: bool = False) -> None:
     """Ask the active accelerator to hand its cached blocks back.
 
     The narrow primitive behind ``free_vram()``: no ``gc.collect()`` and no
@@ -3328,20 +3351,34 @@ def release_device_cache() -> None:
     their device through ``torch.accelerator``, so an Ascend NPU host runs the
     model on ``npu`` and an Intel Arc host on ``xpu``; the CUDA/MPS pair that
     was open-coded at those call sites made the flush a silent no-op exactly
-    where the allocator was holding the freed blocks. Never raises: freeing
-    memory must not fail the request.
+    where the allocator was holding the freed blocks.
+
+    Best-effort by default: freeing memory must not fail the request, so a
+    broken backend is logged and swallowed. ``raise_on_failure`` restores
+    ``free_vram()``'s original contract for unload callers that report a failed
+    flush to the user.
     """
     torch = _lazy_torch()
     try:
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            torch.mps.empty_cache()
-        elif hasattr(torch, "xpu") and torch.xpu.is_available():
-            torch.xpu.empty_cache()
-        elif hasattr(torch, "npu") and torch.npu.is_available():
-            torch.npu.empty_cache()
+        name = _active_accelerator_name(torch)
+        if name and name != "cpu":
+            empty_cache = getattr(getattr(torch, name, None), "empty_cache", None)
+            if empty_cache is not None:
+                empty_cache()
+                return
+        # No usable answer from torch.accelerator: probe the backends this build
+        # ships, in the order the host prefers them.
+        for name in ("cuda", "mps", "xpu", "npu"):
+            backend = getattr(torch, name, None)
+            is_available = getattr(backend, "is_available", None)
+            empty_cache = getattr(backend, "empty_cache", None)
+            if is_available is None or empty_cache is None or not is_available():
+                continue
+            empty_cache()
+            return
     except Exception:  # noqa: BLE001 — freeing memory must never raise
+        if raise_on_failure:
+            raise
         logger.debug("releasing the device cache failed", exc_info=True)
 
 
@@ -3352,7 +3389,7 @@ def free_vram():
     gc.collect()
     if torch.cuda.is_available():
         _clear_cublas_workspaces(torch)
-    release_device_cache()
+    release_device_cache(raise_on_failure=True)
 
 
 def unload_shared_model() -> bool:

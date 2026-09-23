@@ -7,9 +7,11 @@ open-coded the CUDA/MPS pair instead, which made the flush a silent no-op on
 those hosts: the allocator kept the blocks it had just been asked to hand back,
 and the next allocation failed with the memory still counted as "in use".
 
-These tests pin the shared primitive to all four backends, and to the two
-properties the call sites depend on — it never raises, and it never needs a
-vendor backend that this torch build does not ship.
+These tests pin the shared primitive to all four backends, to the accelerator
+the engines actually resolve (``torch.accelerator``, and the probe chain on
+builds too old to have it), and to the two properties the call sites depend on —
+the direct recovery calls never raise, and ``free_vram()`` still surfaces a
+failed flush to its unload callers.
 """
 from __future__ import annotations
 
@@ -21,8 +23,13 @@ import pytest
 BACKENDS = ("cuda", "mps", "xpu", "npu")
 
 
-def _fake_torch(active: str, *, npu_present: bool = True):
-    """A torch stub whose only available accelerator is ``active``."""
+def _fake_torch(active: str, *, npu_present: bool = True, engine_accelerator: str | None = None):
+    """A torch stub whose only available accelerator is ``active``.
+
+    ``engine_accelerator`` mirrors what ``torch.accelerator.current_accelerator``
+    answers — i.e. the device the engine sidecars would synthesize on. Left
+    ``None`` the stub has no ``torch.accelerator`` at all, like a pre-2.6 build.
+    """
     backends = {
         name: SimpleNamespace(
             is_available=lambda name=name: active == name,
@@ -38,6 +45,9 @@ def _fake_torch(active: str, *, npu_present: bool = True):
     )
     if npu_present:
         torch.npu = backends["npu"]
+    if engine_accelerator is not None:
+        accel = SimpleNamespace(type=engine_accelerator)
+        torch.accelerator = SimpleNamespace(current_accelerator=lambda **_kw: accel)
     return torch, backends
 
 
@@ -66,6 +76,50 @@ def test_release_device_cache_skips_a_backend_this_torch_does_not_ship(monkeypat
     assert all(backend.empty_cache.call_count == 0 for backend in backends.values())
 
 
+def test_release_device_cache_follows_the_engines_accelerator(monkeypatch):
+    """Hybrid host: CUDA probes as available, but the engines run on npu.
+
+    ``torch.accelerator.current_accelerator`` is the resolution the engine
+    sidecars use (``engines/moss_tts_v15``), so the flush has to follow it
+    instead of stopping at the first backend that merely probes as available —
+    otherwise the active allocator keeps the blocks and the recovery retry hits
+    the same OOM.
+    """
+    from services import model_manager as mm
+
+    torch, backends = _fake_torch("cuda", engine_accelerator="npu")
+    monkeypatch.setattr(mm, "_lazy_torch", lambda: torch)
+
+    mm.release_device_cache()
+
+    assert backends["npu"].empty_cache.call_count == 1
+    assert backends["cuda"].empty_cache.call_count == 0
+
+
+def test_release_device_cache_ignores_a_cpu_answer(monkeypatch):
+    """A cpu answer must not end the search — probe the shipped backends."""
+    from services import model_manager as mm
+
+    torch, backends = _fake_torch("npu", engine_accelerator="cpu")
+    monkeypatch.setattr(mm, "_lazy_torch", lambda: torch)
+
+    mm.release_device_cache()
+
+    assert backends["npu"].empty_cache.call_count == 1
+
+
+def test_release_device_cache_falls_back_without_torch_accelerator(monkeypatch):
+    """A pre-2.6 build has no ``torch.accelerator`` — the probe chain still runs."""
+    from services import model_manager as mm
+
+    torch, backends = _fake_torch("npu")  # no accelerator attribute at all
+    monkeypatch.setattr(mm, "_lazy_torch", lambda: torch)
+
+    mm.release_device_cache()
+
+    assert backends["npu"].empty_cache.call_count == 1
+
+
 def test_release_device_cache_never_raises(monkeypatch):
     """Freeing memory is best-effort — a broken backend must not fail a request."""
     from services import model_manager as mm
@@ -75,6 +129,20 @@ def test_release_device_cache_never_raises(monkeypatch):
     monkeypatch.setattr(mm, "_lazy_torch", lambda: torch)
 
     mm.release_device_cache()  # must not raise
+
+
+def test_free_vram_still_propagates_a_flush_failure(monkeypatch):
+    """``free_vram()`` keeps its original contract: unload callers report a
+    failed flush (``model_lifecycle`` records ``success: False, reason: …``)."""
+    from services import model_manager as mm
+
+    torch, backends = _fake_torch("cuda")
+    backends["cuda"].empty_cache.side_effect = RuntimeError("driver went away")
+    monkeypatch.setattr(mm, "_lazy_torch", lambda: torch)
+    monkeypatch.setattr(mm, "_clear_cublas_workspaces", lambda torch: None)
+
+    with pytest.raises(RuntimeError):
+        mm.free_vram()
 
 
 def test_free_vram_still_collects_cublas_and_flushes(monkeypatch):
