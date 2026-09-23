@@ -13,6 +13,7 @@ const SECONDARY_ROUTES = new Set([
   '/dub',
   '/design',
   '/transcriptions',
+  '/calls',
   '/settings',
 ]);
 // A local-controls pane needs enough room for the actual workspace. At the

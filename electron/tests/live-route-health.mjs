@@ -14,6 +14,7 @@ const routes = [
   '/batch',
   '/gallery',
   '/transcriptions',
+  '/calls',
   '/design',
   '/audiobook',
   '/projects',
