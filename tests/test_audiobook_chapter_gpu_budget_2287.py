@@ -139,10 +139,10 @@ async def test_extension_cap_scales_with_the_budget(mm, pool, monkeypatch):
         time.sleep(0.1)
         return torch.zeros(240)
 
-    # ~1.6s of steady progress against a 0.5s budget: past budget + the
-    # fixed 0.2s cap, within budget + 3 x budget.
+    # ~1.6s of steady progress against a 0.8s budget: past budget + the
+    # fixed 0.2s cap (1.0s), well within budget + 3 x budget (3.2s).
     _audio, dur = await _run(
-        mm, pool, lambda: synthesize_chapter(_spans(16), synth, SR), 0.5,
+        mm, pool, lambda: synthesize_chapter(_spans(16), synth, SR), 0.8,
     )
     assert dur > 0
 
