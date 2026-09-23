@@ -10,7 +10,12 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 **Highlights**
 
+- Footer integration logos open their in-app page (#2302)
 - Videos without sound get a clear message instead of an ffmpeg error dump
+
+### Changed
+
+- Integration logos in the footer open their page inside the app instead of an outside website (#2302)
 
 ### Fixed
 
