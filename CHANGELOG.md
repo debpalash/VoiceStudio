@@ -10,7 +10,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ### Changed
 
-- Integration logos in the footer open their page inside the app instead of an outside website
+- Integration logos in the footer open their page inside the app instead of an outside website (#2302)
 
 ## [0.5.6] — 2026-09-23
 
