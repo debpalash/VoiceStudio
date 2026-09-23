@@ -62,8 +62,10 @@ as `max_ref_seconds` and `ref_strategy`.
 
 A whole-clip transcript cannot match a passage the engine cuts out, so automatic
 and saved transcripts are ignored when the clip is over the limit. A transcript
-you type for an OmniVoice clip longer than 20 s is rejected with
-`[clone_ref_too_long]`: trim both to the same passage, or clear the transcript.
+sent with a `/generate` request for an OmniVoice clip longer than 20 s, whether
+an upload or a saved voice, is rejected with `[clone_ref_too_long]`: trim both
+to the same passage, or leave the transcript out. The limits are the same when
+an engine runs in its own environment.
 
 ## Speech-to-text
 

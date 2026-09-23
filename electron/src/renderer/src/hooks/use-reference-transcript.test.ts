@@ -113,3 +113,30 @@ it('leaves the transcript to an engine that picks its own passage (#2281)', asyn
   expect(api).not.toHaveBeenCalled();
   expect(cloneSettingsStore.state.refText).toBe('');
 });
+
+it('withdraws its own transcript when the engine starts picking the passage itself', async () => {
+  api.mockResolvedValueOnce({ text: 'Whole clip words' });
+  const { result, rerender } = renderHook(({ skip }) => useReferenceTranscript(file, { skip }), {
+    initialProps: { skip: false },
+  });
+  await waitFor(() => expect(result.current.state).toBe('ready'));
+  expect(cloneSettingsStore.state.refText).toBe('Whole clip words');
+
+  rerender({ skip: true });
+
+  expect(cloneSettingsStore.state.refText).toBe('');
+  expect(result.current.state).toBe('idle');
+});
+
+it('keeps a user-edited transcript when skip turns on later', async () => {
+  api.mockResolvedValueOnce({ text: 'Whole clip words' });
+  const { result, rerender } = renderHook(({ skip }) => useReferenceTranscript(file, { skip }), {
+    initialProps: { skip: false },
+  });
+  await waitFor(() => expect(result.current.state).toBe('ready'));
+  act(() => setCloneSetting('refText', 'My own words'));
+
+  rerender({ skip: true });
+
+  expect(cloneSettingsStore.state.refText).toBe('My own words');
+});

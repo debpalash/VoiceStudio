@@ -1689,6 +1689,10 @@ async def generate_speech(
     # transcript paired with the original reference); design profiles are
     # excluded (a re-render replaces the sample, stranding a stale transcript).
     persist_ref_text_profile_id = None
+    # A transcript the caller sent, before a profile fills in its stored one:
+    # an explicit transcript on an over-long clip gets the actionable 400
+    # below instead of being silently dropped at the engine boundary (#2281).
+    request_ref_text = (ref_text or "").strip()
 
     if profile_id:
         with db_conn() as conn:
@@ -1734,7 +1738,7 @@ async def generate_speech(
         if getattr(backend_cls, "ref_strategy", None) == "best_window" and _ref_max:
             _ref_seconds = reference_duration_s(ref_audio_path)
             ref_picks_own_passage = _ref_seconds is not None and _ref_seconds > _ref_max
-            if ref_picks_own_passage and ref_text and not resolved_profile_id:
+            if ref_picks_own_passage and request_ref_text:
                 from omnivoice.utils.audio import clone_ref_transcript_too_long_message
 
                 if cleanup_ref and ref_lease is not None:

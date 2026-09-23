@@ -797,7 +797,11 @@ def omnivoice_ref_text(ref_audio, ref_text):
     chosen passage itself. A transcript typed on a ``/generate`` request is
     rejected there with ``[clone_ref_too_long]`` before reaching this point.
     """
-    if not ref_text or not isinstance(ref_audio, str):
+    if not ref_text or not ref_text.strip():
+        # "" and whitespace are no transcript: the model checks
+        # ``ref_text is not None``, so pass None and let it pick the passage.
+        return None
+    if not isinstance(ref_audio, str):
         return ref_text
     from omnivoice.utils.audio import CLONE_REF_TEXT_MAX_SECONDS
 

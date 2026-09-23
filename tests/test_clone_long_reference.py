@@ -299,3 +299,91 @@ def test_voxcpm_uncapped_reference_keeps_transcript(tmp_path):
     _tts().prepare_voxcpm_reference(kw)
 
     assert kw["ref_text"] == "short clip"
+
+
+# ── Review follow-ups ────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_blank_transcript_is_no_transcript(tmp_path, blank):
+    """The model checks ``ref_text is not None``; "" must not reach it."""
+    tts = _tts()
+    assert tts.omnivoice_ref_text(_wav(tmp_path / "long.wav", 25), blank) is None
+    assert tts.omnivoice_ref_text(_wav(tmp_path / "short.wav", 8), blank) is None
+
+
+def test_inline_fallback_drops_blank_transcript_on_long_reference(tmp_path, monkeypatch):
+    seen = {}
+
+    class _Model:
+        def generate(self, **kw):
+            seen.update(kw)
+            return [torch.zeros(1, 10)]
+
+    monkeypatch.setattr(_tts(), "_get_clone_prompt", lambda *a, **k: None)
+    path = _wav(tmp_path / "long.wav", 25)
+    _tts().generate_with_cached_ref(_Model(), ref_audio=path, ref_text="", text="hi")
+    assert seen["ref_text"] is None
+
+
+def test_every_sidecar_advertises_its_in_process_reference_limits():
+    """An own-venv install resolves to the sidecar class, so /engines reports
+    the sidecar's metadata; it must match the in-process engine's."""
+    tts = _tts()
+    for engine_id, (module_name, class_name) in tts._OWN_VENV_SIDECARS.items():
+        sidecar = getattr(importlib.import_module(module_name), class_name)
+        in_process = tts._REGISTRY[engine_id]
+        assert (sidecar.max_ref_seconds, sidecar.ref_strategy) == (
+            in_process.max_ref_seconds, in_process.ref_strategy,
+        ), engine_id
+    from engines.omnivoice_subprocess import OmniVoiceMPSSubprocessBackend
+
+    assert OmniVoiceMPSSubprocessBackend.max_ref_seconds == tts.OmniVoiceBackend.max_ref_seconds
+    assert OmniVoiceMPSSubprocessBackend.ref_strategy == tts.OmniVoiceBackend.ref_strategy
+
+
+@pytest.fixture()
+def long_profile():
+    import uuid
+
+    from api.routers import generation
+    from core.db import db_conn, init_db
+
+    init_db()
+    pid = f"vp-long-{uuid.uuid4().hex[:8]}"
+    os.makedirs(generation.VOICES_DIR, exist_ok=True)
+    clip = os.path.join(generation.VOICES_DIR, f"{pid}.wav")
+    _wav(clip, 25)
+    with db_conn() as conn:
+        conn.execute(
+            "INSERT INTO voice_profiles (id, name, kind, created_at, ref_text, ref_audio_path) "
+            "VALUES (?, 'Long', 'clone', 0.0, 'stored whole clip words', ?)",
+            (pid, f"{pid}.wav"),
+        )
+    yield pid
+    with db_conn() as conn:
+        conn.execute("DELETE FROM generation_history WHERE profile_id=?", (pid,))
+        conn.execute("DELETE FROM voice_profiles WHERE id=?", (pid,))
+    os.remove(clip)
+
+
+def test_generate_profile_with_typed_transcript_is_actionable(client, fake_engine, long_profile):
+    fake, _counting = fake_engine
+    res = client.post(
+        "/generate",
+        data={"text": "Hello world", "engine": fake.id, "profile_id": long_profile,
+              "ref_text": "typed override"},
+    )
+    assert res.status_code == 400
+    assert "[clone_ref_too_long]" in res.json()["detail"]
+    assert fake.calls == []
+
+
+def test_generate_profile_stored_transcript_still_clones(client, fake_engine, long_profile):
+    fake, counting = fake_engine
+    res = client.post(
+        "/generate",
+        data={"text": "Hello world", "engine": fake.id, "profile_id": long_profile},
+    )
+    assert res.status_code == 200, res.text
+    assert counting.calls == 0
