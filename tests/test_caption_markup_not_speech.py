@@ -250,6 +250,58 @@ def test_reimported_caption_file_exports_its_own_markup(monkeypatch):
         _dub_jobs.pop(job_id, None)
 
 
+def _generate(job, texts, lang, cue_ids=None):
+    from api.routers.dub_generate import _sync_job_segments
+    from schemas.requests import DubRequest, DubSegment
+
+    ids = [str(s["id"]) for s in job["segments"]]
+    segs = [
+        DubSegment(start=s["start"], end=s["end"], text=t,
+                   cue_source_id=(cue_ids or [None] * len(texts))[i])
+        for i, (s, t) in enumerate(zip(job["segments"], texts))
+    ]
+    _sync_job_segments(job, DubRequest(segments=segs, segment_ids=ids, language_code=lang))
+
+
+def test_imported_cue_needs_the_import_id_not_equal_text():
+    """A paste or edit that lands on the imported words is not the import (#2295)."""
+    from services.srt_parser import parse_srt
+
+    srt = "1\n00:00:01,000 --> 00:00:02,000\n<i>Hello</i>\n"
+    for cue_id, expected in ((None, "\nHello\n"), ("someone-else:0", "\nHello\n"), ("own", "\n<i>Hello</i>\n")):
+        segments = parse_srt(srt).segments
+        own = segments[0]["srt_source"]["id"]
+        job = {"segments": segments}
+        _generate(job, ["Hello"], "en", [own if cue_id == "own" else cue_id])
+        assert expected in _export("srt", job["segments"]), cue_id
+    # Ids are unique per import, so another file's cue never vouches for this one.
+    assert parse_srt(srt).segments[0]["srt_source"]["id"] != parse_srt(srt).segments[0]["srt_source"]["id"]
+
+
+def test_per_language_export_reuses_markup_only_for_the_vouched_track():
+    from services.srt_parser import parse_srt
+    from services.dub_pipeline import _dub_jobs
+    from fastapi.testclient import TestClient
+    from main import app
+
+    segments = parse_srt("1\n00:00:01,000 --> 00:00:02,000\n<i>Hello</i>\n").segments
+    own = segments[0]["srt_source"]["id"]
+    job = {"video_path": "/nonexistent/clip.mp4", "duration": 10.0, "filename": "clip.mp4",
+           "segments": segments}
+    _generate(job, ["Hello"], "fr")             # pasted, equal words: no id
+    _generate(job, ["Hello"], "en", [own])      # the import's own text
+    job_id = "cue-per-lang"
+    _dub_jobs[job_id] = job
+    try:
+        client = TestClient(app, client=("127.0.0.1", 50000))
+        en = client.get(f"/dub/srt/{job_id}?lang=en").text
+        fr = client.get(f"/dub/srt/{job_id}?lang=fr").text
+    finally:
+        _dub_jobs.pop(job_id, None)
+    assert "<i>Hello</i>" in en
+    assert "<i>" not in fr and "\nHello\n" in fr
+
+
 def test_edited_srt_text_exports_as_edited():
     from services.srt_parser import parse_srt
 

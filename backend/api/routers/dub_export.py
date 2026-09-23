@@ -400,13 +400,28 @@ def _segments_for_lang(job: dict, lang: "str | None") -> list:
     lang_texts = i18n.get(lang) if isinstance(i18n, dict) else None
     if not isinstance(lang_texts, dict) or not lang_texts:
         return segments
+    from services.srt_parser import vouch_cue_source
+    # Jobs generated before #2295 have no vouch map and keep the legacy
+    # equal-text reuse; newer ones reuse a cue only for its vouched track.
+    cue_maps = job.get("segments_i18n_cue_sources")
+    lang_cues = cue_maps.get(lang) if isinstance(cue_maps, dict) else None
     out = []
     for i, seg in enumerate(segments):
         key = str(seg.get("id")) if seg.get("id") is not None else str(i)
         txt = lang_texts.get(key)
         if txt is None:
             txt = lang_texts.get(str(i))
-        out.append(dict(seg, text=txt) if isinstance(txt, str) and txt.strip() else seg)
+            key = str(i)
+        if isinstance(txt, str) and txt.strip():
+            # Imported cue markup belongs to this track only if this track's
+            # generate carried the import's own text (#2295).
+            row = dict(seg, text=txt)
+            if isinstance(cue_maps, dict):
+                cues = lang_cues if isinstance(lang_cues, dict) else {}
+                vouch_cue_source(row, txt, cues.get(key))
+            out.append(row)
+        else:
+            out.append(seg)
     return out
 
 

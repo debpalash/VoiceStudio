@@ -16,6 +16,7 @@
  */
 import type { StateCreator } from 'zustand';
 import type { EffectPreset } from '../api/engines';
+import { settleCueSources } from '../utils/segments';
 
 type DubStep =
   | 'idle'
@@ -284,7 +285,10 @@ export const createDubSlice: StateCreator<DubSlice, [], [], DubSlice> = (set, ge
   setDubError: (v) => set((s) => ({ dubError: resolve(v, s.dubError) })),
   setDubFailure: (v) => set((s) => ({ dubFailure: resolve(v, s.dubFailure) })),
   setIsTranslating: (v) => set((s) => ({ isTranslating: resolve(v, s.isTranslating) })),
-  setDubSegments: (v) => set((s) => ({ dubSegments: resolve(v, s.dubSegments) })),
+  // An imported cue whose text no longer matches is dropped for good here,
+  // so no writer can revive it by landing on equal text later (#2295).
+  setDubSegments: (v) =>
+    set((s) => ({ dubSegments: settleCueSources(resolve(v, s.dubSegments)) })),
   setDubTranscript: (v) => set((s) => ({ dubTranscript: resolve(v, s.dubTranscript) })),
   setDubFilename: (v) => set((s) => ({ dubFilename: resolve(v, s.dubFilename) })),
   setDubDuration: (v) => set((s) => ({ dubDuration: resolve(v, s.dubDuration) })),

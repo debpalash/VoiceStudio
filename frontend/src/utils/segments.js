@@ -35,6 +35,46 @@ export function segmentGenInputs(s) {
   };
 }
 
+// The cue a caption import wrote, kept so an unchanged export restores its
+// markup (backend/services/srt_parser.py CUE_SOURCE_FIELDS). It is provenance,
+// not text: valid only while the segment still holds that import's text.
+const CUE_SOURCE_FIELDS = ['webvtt_source', 'srt_source'];
+
+/** `segment` without its imported cue. Every text write that is not the import
+ *  itself (edit, paste, translation) must go through this, even when the new
+ *  text equals the imported text by coincidence. */
+export function withoutCueSource(segment) {
+  if (!segment || !CUE_SOURCE_FIELDS.some((key) => key in segment)) return segment;
+  const next = { ...segment };
+  for (const key of CUE_SOURCE_FIELDS) delete next[key];
+  return next;
+}
+
+/** Drop imported cues whose text no longer matches, so editing away and back
+ *  never revives them. Returns `segments` itself when nothing changed. */
+export function settleCueSources(segments) {
+  if (!Array.isArray(segments)) return segments;
+  let changed = false;
+  const next = segments.map((segment) => {
+    const stale = CUE_SOURCE_FIELDS.some(
+      (key) => segment && segment[key] && segment[key].text !== segment.text,
+    );
+    if (!stale) return segment;
+    changed = true;
+    return withoutCueSource(segment);
+  });
+  return changed ? next : segments;
+}
+
+/** The import id `/dub/generate` needs to keep the segment's imported cue. */
+export function cueSourceId(segment) {
+  for (const key of CUE_SOURCE_FIELDS) {
+    const source = segment?.[key];
+    if (source && source.id && source.text === segment.text) return source.id;
+  }
+  return undefined;
+}
+
 /** The `auto:<safe>` profile id for a diarized speaker. Mirrors the backend's
  *  portable filename/profile slug and is shared by every voice picker. */
 export function autoProfileId(speakerId) {

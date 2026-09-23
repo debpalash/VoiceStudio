@@ -15,7 +15,12 @@ import {
   DUB_COOKIE_SIZE_ERROR,
 } from '../api/dub';
 import { dialectMatchesLang } from '../api/dialects';
-import { segmentGenInputs, applySpeakerCloneDefaults } from '../utils/segments';
+import {
+  segmentGenInputs,
+  applySpeakerCloneDefaults,
+  cueSourceId,
+  withoutCueSource,
+} from '../utils/segments';
 import { apiPost, apiFetch } from '../api/client';
 import { API } from '../api/client';
 import { streamDropError } from '../utils/backendCrash';
@@ -1022,7 +1027,7 @@ export default function useDubWorkflow({
             if (hit.error) translateErrors[targetLang] = hit.error;
             else delete translateErrors[targetLang];
             return {
-              ...s,
+              ...(gotText ? withoutCueSource(s) : s),
               text: gotText ? hit.text : s.text,
               // P1.2 — keep every language's translation, keyed by target.
               // `text` stays the currently-shown language (legacy single-slot
@@ -1162,6 +1167,8 @@ export default function useDubWorkflow({
             end: s.end,
             gain: s.gain !== undefined && s.gain !== 1.0 ? s.gain : undefined,
             ...segmentGenInputs(s),
+            // Keeps the imported caption markup for unchanged exports (#2295).
+            cue_source_id: cueSourceId(s),
           })),
           language: langOv ? langOv.language : dubLang === 'Auto' ? 'Auto' : dubLang,
           language_code: langOv ? langOv.language_code : dubLangCode,

@@ -31,6 +31,10 @@ class DubSegment(BaseModel):
     # fingerprint (#281).
     direction: Optional[str] = None
     effect_preset: str = "broadcast"   # NEW: DSP preset id (default: broadcast)
+    # Echo of the segment's imported caption source id (`webvtt_source.id` /
+    # `srt_source.id`) while its text is still that import's text. Without
+    # it the job forgets the imported cue markup (#2295).
+    cue_source_id: Optional[str] = None
 
     @field_validator("effect_preset")
     @classmethod

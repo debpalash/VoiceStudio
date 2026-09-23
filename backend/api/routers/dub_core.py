@@ -19,6 +19,7 @@ from core.tasks import task_manager
 from core.logging_utils import log_safe
 from core import event_bus
 from schemas.requests import DubIngestUrlRequest, ParseSubtitleTextRequest
+from services.srt_parser import CUE_SOURCE_FIELDS, CUE_SOURCE_OK
 from services.model_manager import get_model, _gpu_pool, _cpu_pool, get_diarization_pipeline, offload_tts_for_asr, restore_tts_after_asr, should_preload_tts_asr
 from services.asr_backend import (
     ASR_TRANSCRIBE_TIMEOUT_S,
@@ -136,7 +137,6 @@ _MAX_SUBTITLE_PASTE_CHARS = 2_000_000
 
 # The imported cue syntax belongs to the new cue. A prior segment's would
 # restore stale markup on an unchanged export; dropping the new one loses it.
-_CUE_SOURCE_FIELDS = ("webvtt_source", "srt_source")
 _SRT_REPLACED_FIELDS = {
     "id",
     "start",
@@ -146,7 +146,8 @@ _SRT_REPLACED_FIELDS = {
     "translations",
     "translate_error",
     "translate_degraded",
-    *_CUE_SOURCE_FIELDS,
+    *CUE_SOURCE_FIELDS,
+    CUE_SOURCE_OK,
 }
 
 
@@ -199,7 +200,7 @@ def _carry_srt_voice_metadata(
             "end": cue.get("end", 0.0),
             "text": cue.get("text", ""),
             "text_original": cue.get("text", ""),
-            **{key: cue[key] for key in _CUE_SOURCE_FIELDS if key in cue},
+            **{key: cue[key] for key in CUE_SOURCE_FIELDS if key in cue},
         }
         if not merged.get("speaker_id"):
             merged["speaker_id"] = cue.get("speaker_id") or "Speaker 1"

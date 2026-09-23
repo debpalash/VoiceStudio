@@ -8,7 +8,7 @@ import { useState, useRef, useCallback } from 'react';
 import { useAppStore } from '../store';
 import { askConfirm } from '../utils/dialog';
 import { apiPost } from '../api/client';
-import { segmentGenInputs } from '../utils/segments';
+import { segmentGenInputs, withoutCueSource } from '../utils/segments';
 import { commitMoveResize } from '../utils/timeline';
 import { buildPastePlan } from '../utils/pasteTranslations';
 import {
@@ -96,7 +96,8 @@ export default function useSegmentEditing() {
       setDubSegments((prev) =>
         prev.map((s) => {
           if (s.id !== id) return s;
-          const next = clearStaleMergeParts({ ...s, [field]: value }, [field]);
+          const edited = field === 'text' ? withoutCueSource(s) : s;
+          const next = clearStaleMergeParts({ ...edited, [field]: value }, [field]);
           if (field === 'text' && lang) {
             next.translations = { ...s.translations, [lang]: value };
           }
@@ -235,8 +236,9 @@ export default function useSegmentEditing() {
         prev.map((s) => {
           const next = byId.get(String(s.id));
           if (next === undefined) return s;
+          // Pasted words are not the import's, even when they read the same.
           return {
-            ...s,
+            ...withoutCueSource(s),
             text: next,
             ...(lang ? { translations: { ...s.translations, [lang]: next } } : {}),
             translate_error: undefined,

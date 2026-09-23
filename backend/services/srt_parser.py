@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import html
 import re
+import secrets
 from dataclasses import dataclass
 
 
@@ -100,6 +101,9 @@ def parse_srt(content: str) -> SrtParseResult:
         text = "\n\n".join(blocks)
     raw: list[dict] = []
     skipped = 0
+    # Each cue source gets an id unique to this import. A later generate keeps
+    # the source only when the client echoes that id (see CUE_SOURCE_FIELDS).
+    import_id = secrets.token_hex(6)
     # Find every timing line, slice the cue text from there to the next
     # timing line (or end of file). This is robust to missing index
     # numbers and to spec deviations in the blank-line separator.
@@ -158,7 +162,7 @@ def parse_srt(content: str) -> SrtParseResult:
         # and so exporters know which syntax the text follows.
         source_key = "webvtt_source" if is_webvtt else "srt_source"
         raw.append({"start": start, "end": end, "text": cue_text,
-                    source_key: {"text": cue_text, "cue": source_cue}})
+                    source_key: {"id": f"{import_id}:{i}", "text": cue_text, "cue": source_cue}})
 
     raw.sort(key=lambda r: r["start"])
 
@@ -254,6 +258,30 @@ def spoken_cue_text(text: str, *, webvtt: bool = False) -> str:
     return "\n".join(line.strip() for line in out.split("\n") if line.strip())
 
 
+# Segment fields holding the cue as imported. They are provenance, not text:
+# valid only while the segment still holds that import's text, never because
+# some later text happens to be equal. Clients echo the source `id` as
+# `cue_source_id` on generate; CUE_SOURCE_OK records whether they did. The
+# source itself stays on the row so another track can still vouch for it.
+CUE_SOURCE_FIELDS = ("webvtt_source", "srt_source")
+CUE_SOURCE_OK = "cue_source_ok"
+
+
+def vouch_cue_source(row: dict, text: str, cue_source_id: str | None) -> str | None:
+    """Mark whether ``row``'s imported cue is still its ``text``; return that cue's id."""
+    vouched = None
+    for key in CUE_SOURCE_FIELDS:
+        source = row.get(key)
+        if (isinstance(source, dict) and cue_source_id and source.get("id") == cue_source_id
+                and source.get("text") == text):
+            vouched = cue_source_id
+    if any(key in row for key in CUE_SOURCE_FIELDS):
+        row[CUE_SOURCE_OK] = vouched is not None
+    else:
+        row.pop(CUE_SOURCE_OK, None)
+    return vouched
+
+
 def srt_cue_to_webvtt(cue: str) -> str:
     """A SubRip cue as escaped WebVTT cue text.
 
@@ -286,6 +314,8 @@ def source_cue_or(seg: dict, text: str, key: str) -> str:
     round trip. Edited text and older projects fall back to ``text``.
     """
     source = seg.get(key)
+    if seg.get(CUE_SOURCE_OK) is False:
+        return text
     if isinstance(source, dict) and source.get("text") == text and isinstance(source.get("cue"), str):
         return source["cue"]
     return text
