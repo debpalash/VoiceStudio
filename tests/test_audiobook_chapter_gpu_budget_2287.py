@@ -19,6 +19,7 @@ Timings are tenths of seconds via monkeypatched constants.
 """
 from __future__ import annotations
 
+import asyncio
 import importlib
 import threading
 import time
@@ -26,7 +27,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 import torch
-from services.audiobook import Span, synthesize_chapter
 
 SR = 24000
 
@@ -57,7 +57,14 @@ def pool(release):
     ex.shutdown(wait=True)
 
 
+def synthesize_chapter(*args, **kwargs):
+    # Resolved at call time so sys.modules replacement elsewhere in the suite
+    # cannot leave this file testing a stale module.
+    return importlib.import_module("services.audiobook").synthesize_chapter(*args, **kwargs)
+
+
 def _spans(n):
+    Span = importlib.import_module("services.audiobook").Span
     # One short sentence per span, so each span is exactly one engine chunk.
     return [Span(voice_id=None, text=f"Sentence number {i}.") for i in range(n)]
 
@@ -113,7 +120,8 @@ async def test_an_abandoned_chapter_stops_before_its_next_chunk(mm, pool, releas
     def synth(text, voice, speed=None):
         calls.append(text)
         if len(calls) == 1:
-            release.wait(0.8)  # first chunk overruns the whole budget
+            # Blocked until the guard has abandoned the job.
+            release.wait(10)
         return torch.zeros(240)
 
     def chapter():
@@ -122,8 +130,11 @@ async def test_an_abandoned_chapter_stops_before_its_next_chunk(mm, pool, releas
         finally:
             done.set()
 
-    with pytest.raises(mm.GpuJobTimeoutError):
-        await _run(mm, pool, chapter, 0.3)
+    try:
+        with pytest.raises(mm.GpuJobTimeoutError):
+            await asyncio.wait_for(_run(mm, pool, chapter, 0.3), 5.0)
+    finally:
+        release.set()
     assert done.wait(5.0)
     assert len(calls) == 1, f"abandoned chapter kept rendering: {len(calls)} chunks"
 

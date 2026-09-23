@@ -177,10 +177,11 @@ holds its VRAM until it does, so a Flush (or a retry) issued seconds after a
 timeout is competing with a job that is still on the device. Wait for it to
 drain, or restart the backend, and then Flush.
 
-Audiobook and Stories chapters are the exception: an abandoned chapter stops
-before its next chunk, so the device frees up within one chunk. Chunks that
-already finished stay in the segment cache, so a retry or resume continues from
-there.
+Audiobook and Stories chapters are the exception: an abandoned chapter does
+not start another chunk. It stops using the GPU once the chunk it is rendering
+returns. A chunk that is itself stalled still holds the device until it returns.
+Each line (span) is cached once all of its chunks are done, so a retry or resume
+reuses every finished line. It re-renders only the line that was interrupted.
 
 A render that keeps finishing chunks (a long Generate text or an audiobook
 chapter) is not abandoned when it reaches its budget. It gets extra time while
