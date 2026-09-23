@@ -62,3 +62,16 @@ it('sends a blank transcript so the backend transcribes the new clip', async () 
   expect(form.get('ref_text')).toBe('');
   expect((form.get('ref_audio') as File).name).toBe('reference.wav');
 });
+
+it('sends profile edits with the clip so they save atomically', async () => {
+  mock.json.mockResolvedValue({});
+  await replaceProfileAudio('v1', {
+    refAudio: new Blob(['audio']),
+    fields: { name: 'Crimson', instruct: 'male', language: 'French' },
+  });
+  const form = mock.json.mock.calls[0][1].body as FormData;
+  expect(form.get('name')).toBe('Crimson');
+  expect(form.get('instruct')).toBe('male');
+  expect(form.get('language')).toBe('French');
+  expect(form.get('personality')).toBeNull();
+});

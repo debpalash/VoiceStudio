@@ -50,6 +50,11 @@ export interface ReplaceProfileAudioInput {
   refAudioName?: string;
   /** Transcript of the NEW clip; blank lets the backend transcribe it locally. */
   refText?: string;
+  /**
+   * Profile edits saved in the same request as the clip, so a failed
+   * replacement leaves the whole profile unchanged.
+   */
+  fields?: Partial<Pick<Profile, 'name' | 'instruct' | 'language' | 'personality'>>;
 }
 
 /**
@@ -68,6 +73,9 @@ export async function replaceProfileAudio(
     'reference.wav';
   form.append('ref_audio', input.refAudio, fileName);
   form.append('ref_text', input.refText ?? '');
+  for (const [key, value] of Object.entries(input.fields ?? {})) {
+    if (typeof value === 'string') form.append(key, value);
+  }
   return apiJson<Profile>(`/profiles/${encodeURIComponent(id)}/audio`, {
     method: 'PUT',
     body: form,

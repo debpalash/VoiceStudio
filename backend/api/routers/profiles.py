@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import uuid
+import weakref
 import time
 import shutil
 from typing import Optional
@@ -335,52 +336,81 @@ def update_profile(profile_id: str, patch: ProfileUpdate):
 # Reference-clip uploads (#2282). Same formats the desktop picker offers plus
 # Opus; anything else is refused so a crafted filename can never choose the
 # on-disk extension (py/path-injection) or store a non-audio payload.
-_REF_AUDIO_EXTS = frozenset({".wav", ".mp3", ".m4a", ".flac", ".ogg", ".oga", ".opus", ".aac", ".webm"})
+_REF_AUDIO_TYPES = {
+    ".wav": "audio/wav",
+    ".mp3": "audio/mpeg",
+    ".m4a": "audio/mp4",
+    ".flac": "audio/flac",
+    ".ogg": "audio/ogg",
+    ".oga": "audio/ogg",
+    ".opus": "audio/ogg",
+    ".aac": "audio/aac",
+    ".webm": "audio/webm",
+}
+_REF_AUDIO_EXTS = frozenset(_REF_AUDIO_TYPES)
 _MIN_REF_AUDIO_BYTES = 1000  # same floor as consent recordings
+# A reference is at most a minute or so of speech; even uncompressed 192 kHz
+# stereo float stays far below this. Bounds memory and disk per request.
+_MAX_REF_AUDIO_BYTES = 128 * 1024 * 1024
+_UPLOAD_CHUNK = 1024 * 1024
+# One replacement at a time per profile: overlapping uploads would otherwise
+# read the same previous paths and leave the losing clip unreferenced.
+_replace_locks: "weakref.WeakValueDictionary[str, asyncio.Lock]" = weakref.WeakValueDictionary()
 
 
-async def _ffprobe_has_audio(path: str) -> Optional[bool]:
-    """True/False when ffprobe can judge the file, None when ffprobe is absent.
-
-    Checks for an audio *stream* rather than a container duration: browser
-    MediaRecorder WebM files carry no duration header but decode fine.
-    """
-    from services.ffmpeg_utils import find_ffprobe, spawn_subprocess
-
-    ffprobe = find_ffprobe()
-    if not ffprobe:
-        return None
-    try:
-        proc = await spawn_subprocess(
-            ffprobe, "-v", "error", "-select_streams", "a",
-            "-show_entries", "stream=codec_type", "-of", "csv=p=0", path,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
-    except Exception as exc:  # noqa: BLE001 — cannot judge; do not block the save
-        logger.info("ffprobe could not inspect a replacement reference: %s", exc)
-        return None
-    return proc.returncode == 0 and "audio" in stdout.decode(errors="replace")
+def _audio_media_type(filename: str) -> str:
+    """Content type for a stored clip, from its (allowlisted) extension."""
+    return _REF_AUDIO_TYPES.get(os.path.splitext(filename)[1].lower(), "audio/wav")
 
 
-async def _is_decodable_audio(path: str) -> bool:
-    """Reject payloads that are not audio before they replace a voice's clip.
-
-    libsndfile covers WAV/FLAC/OGG/MP3 in-process; compressed browser formats
-    (WebM/M4A/AAC) fall through to ffprobe. When neither can judge (no media
-    engine installed) the clip is accepted, matching POST /profiles, so a
-    missing optional tool never blocks editing a voice.
-    """
+def _sndfile_decodes(path: str) -> bool:
+    """True when libsndfile decodes real sample frames, not just a header."""
     try:
         import soundfile as sf
 
-        info = sf.info(path)
-        if info.frames > 0 and info.samplerate > 0:
-            return True
-    except Exception as exc:  # noqa: BLE001 — not a libsndfile format; try ffprobe
-        logger.debug("libsndfile could not read a replacement reference: %s", exc)
-    verdict = await _ffprobe_has_audio(path)
-    return True if verdict is None else verdict
+        with sf.SoundFile(path) as clip:
+            return clip.samplerate > 0 and len(clip.read(4096, dtype="float32")) > 0
+    except Exception as exc:  # noqa: BLE001 — not a libsndfile format; try ffmpeg
+        logger.debug("libsndfile could not decode a replacement reference: %s", exc)
+        return False
+
+
+async def _ffmpeg_decodes(path: str) -> bool:
+    """True when ffmpeg decodes at least one audio sample from the file.
+
+    Decodes (bounded to the first second) instead of probing the header: a
+    truncated compressed clip can carry valid stream metadata and still have
+    no decodable frames. Browser MediaRecorder WebM has no duration header but
+    decodes fine. Missing ffmpeg or a failed run counts as not decodable.
+    """
+    from services.ffmpeg_utils import find_ffmpeg, spawn_subprocess
+
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        logger.warning("ffmpeg is unavailable; cannot verify a replacement reference")
+        return False
+    try:
+        proc = await spawn_subprocess(
+            ffmpeg, "-nostdin", "-v", "error", "-i", path, "-map", "0:a:0",
+            "-t", "1", "-ac", "1", "-f", "s16le", "pipe:1",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+    except Exception as exc:  # noqa: BLE001 — cannot verify; refuse the clip
+        logger.info("ffmpeg could not decode a replacement reference: %s", exc)
+        return False
+    return proc.returncode == 0 and len(stdout) > 0
+
+
+async def _is_decodable_audio(path: str) -> bool:
+    """Require a positive decode before a clip replaces a voice's reference.
+
+    libsndfile covers WAV/FLAC/OGG/MP3 in-process; compressed browser formats
+    (WebM/M4A/AAC) fall through to ffmpeg. The previous reference is deleted
+    once the replacement commits, so an unverifiable clip is refused rather
+    than risk swapping a working voice for one no engine can read.
+    """
+    return _sndfile_decodes(path) or await _ffmpeg_decodes(path)
 
 
 def _remove_voice_file(filename: Optional[str], *, keep: str) -> None:
@@ -401,18 +431,59 @@ def _remove_voice_file(filename: Optional[str], *, keep: str) -> None:
             logger.warning("could not remove superseded voice file: %s", exc)
 
 
+def _replacement_fields(
+    name: Optional[str], instruct: Optional[str], language: Optional[str],
+    personality: Optional[str],
+) -> "list[tuple[str, str]]":
+    """Profile edits saved in the same UPDATE as the new clip (clone only)."""
+    fields: list[tuple[str, str]] = []
+    if name is not None:
+        if not name.strip():
+            raise HTTPException(status_code=400, detail="A voice profile needs a name.")
+        fields.append(("name", name.strip()))
+    if instruct is not None:
+        fields.append(("instruct", sanitize_instruct(instruct)))
+    if language is not None:
+        fields.append(("language", language.strip()))
+    if personality is not None:
+        fields.append(("personality", personality))
+    return fields
+
+
+async def _save_upload(upload: UploadFile, dest: str) -> int:
+    """Stream an upload to ``dest`` with a size cap; returns bytes written."""
+    total = 0
+    with open(dest, "wb") as out:
+        while chunk := await upload.read(_UPLOAD_CHUNK):
+            total += len(chunk)
+            if total > _MAX_REF_AUDIO_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail="That recording is too large for a voice reference. "
+                    "Trim it to under a minute and try again.",
+                )
+            out.write(chunk)
+    return total
+
+
 @router.put("/profiles/{profile_id}/audio")
 async def replace_profile_audio(
     profile_id: str,
     ref_audio: UploadFile = File(...),
     ref_text: Optional[str] = Form(None),
+    name: Optional[str] = Form(None),
+    instruct: Optional[str] = Form(None),
+    language: Optional[str] = Form(None),
+    personality: Optional[str] = Form(None),
 ):
     """Replace a saved clone's reference clip in place (#2282).
 
-    The profile keeps its id, name, portrait, style, language and history. The
-    clip is written under a NEW versioned filename (``{id}-{token}{ext}``)
-    rather than overwritten: engine prompt caches, prepared-reference caches
-    and chapter render caches are keyed by the reference path, so a new name
+    The profile keeps its id, portrait and history. Optional ``name``,
+    ``instruct``, ``language`` and ``personality`` are saved in the same
+    UPDATE, so an editor save commits every change or none. The clip is
+    written under a NEW versioned filename (``{id}-{token}{ext}``) rather
+    than overwritten: engine prompt caches, prepared-reference caches and
+    chapter render caches are keyed by the reference path, so a new name
     invalidates all of them at once. Because the new clip may be a different
     speaker, a locked take and own-voice consent no longer describe this voice
     and are cleared. The previous files are removed only after the database
@@ -424,66 +495,84 @@ async def replace_profile_audio(
     )
     if not _PROFILE_ID_RE.fullmatch(profile_id or ""):
         raise not_found
-    with db_conn() as conn:
-        row = conn.execute(
-            "SELECT kind, ref_audio_path, locked_audio_path, consent_audio_path "
-            "FROM voice_profiles WHERE id=?",
-            (profile_id,),
-        ).fetchone()
-    if not row:
-        raise not_found
-    if (row["kind"] or "clone") != "clone":
-        raise HTTPException(
-            status_code=409,
-            detail="Designed voices are defined by their recipe, not a recorded sample. "
-            "Edit the voice's traits in Voice Design instead.",
-        )
     ext = os.path.splitext(ref_audio.filename or "")[1].lower()
     if ext not in _REF_AUDIO_EXTS:
         raise HTTPException(
             status_code=415,
             detail="Choose a supported audio file: WAV, MP3, M4A, FLAC, OGG, Opus, AAC, or WebM.",
         )
-    data = await ref_audio.read()
-    if len(data) < _MIN_REF_AUDIO_BYTES:
-        raise HTTPException(status_code=422, detail="The reference recording is empty or too short.")
-
-    new_filename = f"{profile_id}-{uuid.uuid4().hex[:8]}{ext}"
-    new_path = _voices_path(new_filename)
-    if new_path is None:  # profile_id is charset-checked above; belt and braces
-        raise not_found
-    os.makedirs(VOICES_DIR, exist_ok=True)
-    tmp_path = f"{new_path}.part"
-    try:
-        with open(tmp_path, "wb") as out:
-            out.write(data)
-        os.replace(tmp_path, new_path)
-        if not await _is_decodable_audio(new_path):
-            raise HTTPException(
-                status_code=422,
-                detail="That file could not be read as audio. Choose another recording.",
-            )
-        text = (ref_text or "").strip() or await _auto_transcribe_reference(new_path)
+    edits = _replacement_fields(name, instruct, language, personality)
+    lock = _replace_locks.get(profile_id)
+    if lock is None:
+        lock = _replace_locks[profile_id] = asyncio.Lock()
+    async with lock:
         with db_conn() as conn:
-            cur = conn.execute(
-                "UPDATE voice_profiles SET ref_audio_path=?, ref_text=?, "
-                "locked_audio_path='', is_locked=0, seed=NULL, "
-                "verified_own_voice=0, consent_text='', consent_audio_path='', "
-                "consent_recorded_at=NULL WHERE id=? AND kind='clone'",
-                (new_filename, text, profile_id),
-            )
-            if cur.rowcount == 0:  # deleted/converted while the upload ran
-                raise not_found
-            updated = conn.execute(
-                "SELECT * FROM voice_profiles WHERE id=?", (profile_id,),
+            row = conn.execute(
+                "SELECT kind, ref_audio_path, locked_audio_path, consent_audio_path "
+                "FROM voice_profiles WHERE id=?",
+                (profile_id,),
             ).fetchone()
-    except BaseException:
-        for leftover in (tmp_path, new_path):
-            with contextlib.suppress(OSError):
-                os.remove(leftover)
-        raise
-    for column in ("ref_audio_path", "locked_audio_path", "consent_audio_path"):
-        _remove_voice_file(row[column], keep=new_filename)
+        if not row:
+            raise not_found
+        if (row["kind"] or "clone") != "clone":
+            raise HTTPException(
+                status_code=409,
+                detail="Designed voices are defined by their recipe, not a recorded sample. "
+                "Edit the voice's traits in Voice Design instead.",
+            )
+        new_filename = f"{profile_id}-{uuid.uuid4().hex[:8]}{ext}"
+        new_path = _voices_path(new_filename)
+        if new_path is None:  # profile_id is charset-checked above; belt and braces
+            raise not_found
+        os.makedirs(VOICES_DIR, exist_ok=True)
+        tmp_path = f"{new_path}.part"
+        try:
+            if await _save_upload(ref_audio, tmp_path) < _MIN_REF_AUDIO_BYTES:
+                raise HTTPException(
+                    status_code=422, detail="The reference recording is empty or too short.",
+                )
+            os.replace(tmp_path, new_path)
+            if not await _is_decodable_audio(new_path):
+                raise HTTPException(
+                    status_code=422,
+                    detail="That file could not be read as audio. Choose another recording.",
+                )
+            text = (ref_text or "").strip() or await _auto_transcribe_reference(new_path)
+            columns = [("ref_audio_path", new_filename), ("ref_text", text), *edits]
+            # Column names come from the fixed tuples above, never from input.
+            assignments = ", ".join(f"{col}=?" for col, _ in columns)
+            with db_conn() as conn:
+                # Compare-and-swap on the clip read above, so a writer outside
+                # this process can never be overwritten with its file orphaned.
+                cur = conn.execute(
+                    f"UPDATE voice_profiles SET {assignments}, "
+                    "locked_audio_path='', is_locked=0, seed=NULL, "
+                    "verified_own_voice=0, consent_text='', consent_audio_path='', "
+                    "consent_recorded_at=NULL "
+                    "WHERE id=? AND kind='clone' AND ref_audio_path IS ?",
+                    (*(value for _, value in columns), profile_id, row["ref_audio_path"]),
+                )
+                if cur.rowcount == 0:
+                    still_there = conn.execute(
+                        "SELECT 1 FROM voice_profiles WHERE id=?", (profile_id,),
+                    ).fetchone()
+                    if not still_there:  # deleted while the upload ran
+                        raise not_found
+                    raise HTTPException(
+                        status_code=409,
+                        detail="This voice changed while the new sample was uploading. "
+                        "Reopen it and try again.",
+                    )
+                updated = conn.execute(
+                    "SELECT * FROM voice_profiles WHERE id=?", (profile_id,),
+                ).fetchone()
+        except BaseException:
+            for leftover in (tmp_path, new_path):
+                with contextlib.suppress(OSError):
+                    os.remove(leftover)
+            raise
+        for column in ("ref_audio_path", "locked_audio_path", "consent_audio_path"):
+            _remove_voice_file(row[column], keep=new_filename)
     event_bus.emit("profiles", {"action": "updated", "id": profile_id})
     return _profile_record(updated)
 
@@ -574,7 +663,7 @@ async def get_profile_audio(profile_id: str):
     audio_path = _voices_path(str(audio_file))
     if audio_path is None or not os.path.exists(audio_path):
         return Response("Audio file missing", status_code=404)
-    return FileResponse(audio_path, media_type="audio/wav")
+    return FileResponse(audio_path, media_type=_audio_media_type(audio_path))
 
 
 async def _materialize_design_sample(profile_id: str, row) -> Optional[str]:

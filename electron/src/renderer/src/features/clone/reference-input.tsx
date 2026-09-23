@@ -38,19 +38,21 @@ async function checkClip(file: File): Promise<SetReferenceResult> {
  */
 function useIngest(onAccept?: AcceptReference): IngestFn {
   const { t } = useTranslation();
+  // Monotonic pick token: a slow probe for an earlier clip must never replace
+  // (or toast over) a later one.
+  const latestPick = useRef(0);
   return async (file) => {
     if (!file) return;
+    const pick = ++latestPick.current;
     if (!isAudioFile(file)) {
       toast.error(t('clone.unsupported_audio'));
       return;
     }
-    let result: SetReferenceResult;
-    if (onAccept) {
-      result = await checkClip(file);
-      if (result.ok) onAccept(file, result.durationSeconds);
-    } else {
-      result = await setReferenceFile(file);
-    }
+    const result: SetReferenceResult = onAccept
+      ? await checkClip(file)
+      : await setReferenceFile(file);
+    if (pick !== latestPick.current) return;
+    if (onAccept && result.ok) onAccept(file, result.durationSeconds);
     const duration = Math.round(result.durationSeconds ?? 0);
     if (!result.ok) {
       toast.error(t('tts_errors.too_long', { duration, max: REF_HARD_MAX_SECONDS }));
@@ -142,7 +144,9 @@ export function RecordZone({ onAccept }: { onAccept?: AcceptReference } = {}) {
           aria-hidden="true"
         />
         <SquareIcon className="size-5 fill-current" />
-        <span className="tabular-nums">{rec.seconds}s</span>
+        <span className="tabular-nums">
+          {t('clone.duration_seconds', { seconds: rec.seconds })}
+        </span>
       </button>
     );
   } else {

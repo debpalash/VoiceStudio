@@ -96,12 +96,28 @@ it('saves a replacement clip back to the same profile with a fresh transcript', 
   fireEvent.submit(screen.getByRole('button', { name: 'clone.save' }).closest('form')!);
 
   await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
-  const [path, init] = mock.json.mock.calls[0];
-  expect(path).toBe('/profiles/v1');
-  expect(JSON.parse(init.body)).not.toHaveProperty('ref_text');
+  // One request carries the clip and the profile edits, so it is atomic.
+  expect(mock.json).not.toHaveBeenCalled();
   expect(mock.replace).toHaveBeenCalledWith(
-    expect.objectContaining({ id: 'v1', refAudioName: 'better.wav', refText: '' }),
+    expect.objectContaining({
+      id: 'v1',
+      refAudioName: 'better.wav',
+      refText: '',
+      fields: { name: 'Scarlet', language: 'Auto', instruct: '' },
+    }),
   );
+});
+
+it('restores transcript edits made before a replacement is discarded', () => {
+  renderEditor();
+  const transcript = screen.getByLabelText('clone.transcript');
+  fireEvent.change(transcript, { target: { value: 'corrected words' } });
+
+  fireEvent.click(screen.getByRole('button', { name: /clone.replace_reference/ }));
+  fireEvent.click(screen.getByText('pick-clip'));
+  fireEvent.click(screen.getByRole('button', { name: /clone.keep_reference/ }));
+
+  expect(screen.getByLabelText('clone.transcript')).toHaveValue('corrected words');
 });
 
 it('keeps the current reference and its transcript when the replacement is discarded', async () => {
@@ -119,17 +135,20 @@ it('keeps the current reference and its transcript when the replacement is disca
   expect(mock.replace).not.toHaveBeenCalled();
 });
 
-it('keeps the chosen clip and reports the error when the upload fails', async () => {
+it('keeps the chosen clip and saves no edits when the upload fails', async () => {
   mock.json.mockResolvedValue({ ...base });
   mock.replace.mockRejectedValue(new Error('That file could not be read as audio.'));
   const onDone = renderEditor();
 
+  fireEvent.change(screen.getByLabelText('clone.profile_name'), { target: { value: 'Crimson' } });
   fireEvent.click(screen.getByRole('button', { name: /clone.replace_reference/ }));
   fireEvent.click(screen.getByText('pick-clip'));
   fireEvent.submit(screen.getByRole('button', { name: 'clone.save' }).closest('form')!);
 
   expect(await screen.findByRole('alert')).toBeInTheDocument();
   expect(onDone).not.toHaveBeenCalled();
+  // The name edit was not committed separately ahead of the failed upload.
+  expect(mock.json).not.toHaveBeenCalled();
   expect(screen.getByTestId('player')).toHaveTextContent('blob:new-clip');
 });
 

@@ -3,7 +3,7 @@ import { ProfilePreview } from './profile-preview';
 import { ProfileUsagePanel } from './profile-usage';
 import { LanguagePicker } from './language-picker';
 import { PersonaExport } from './persona-export';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -70,6 +70,13 @@ export function EditProfile({ profile, onDone }: { profile: Profile; onDone: () 
     return () => revokeObjectUrl(url);
   }, [replacement]);
   const canReplace = profile.kind !== 'design';
+  // Transcript as it stood when Replace was pressed, so Keep reference
+  // restores the user's unsaved edits rather than the stored text.
+  const refTextBeforeReplace = useRef(draft.ref_text);
+  const startReplacement = () => {
+    refTextBeforeReplace.current = draft.ref_text;
+    setChoosing(true);
+  };
   const acceptReplacement = (file: File, durationSeconds: number | null) => {
     setReplacement({ file, durationSeconds });
     setChoosing(false);
@@ -80,7 +87,7 @@ export function EditProfile({ profile, onDone }: { profile: Profile; onDone: () 
   const keepCurrentReference = () => {
     setReplacement(null);
     setChoosing(false);
-    setDraft((previous) => ({ ...previous, ref_text: profile.ref_text ?? '' }));
+    setDraft((previous) => ({ ...previous, ref_text: refTextBeforeReplace.current }));
   };
   const [confirmDelete, setConfirmDelete] = useState(false);
   const unavailable = busy || deleteProfile.isPending;
@@ -93,28 +100,29 @@ export function EditProfile({ profile, onDone }: { profile: Profile; onDone: () 
         setBusy(true);
         setFailed(null);
         try {
-          // With a new clip, its transcript travels with the audio upload so
-          // the old clip's text is never saved against the new reference.
+          // With a new clip, the edits and its transcript travel in the one
+          // audio request: the backend saves all of them or none, and the old
+          // clip's text is never saved against the new reference.
           const { ref_text: refText, ...fields } = draft;
-          const updated = await apiJson<Profile>(`/profiles/${encodeURIComponent(profile.id)}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(replacement ? fields : draft),
-          });
+          const updated = replacement
+            ? await replaceAudio.mutateAsync({
+                id: profile.id,
+                refAudio: replacement.file,
+                refAudioName: replacement.file.name,
+                refText,
+                fields,
+              })
+            : await apiJson<Profile>(`/profiles/${encodeURIComponent(profile.id)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(draft),
+              });
           if (cloneSettingsStore.state.selectedProfileId === profile.id)
             patchCloneSettings({
               language: updated.language || 'Auto',
               refText: updated.ref_text ?? '',
               instruct: updated.instruct ?? '',
             });
-          if (replacement) {
-            await replaceAudio.mutateAsync({
-              id: profile.id,
-              refAudio: replacement.file,
-              refAudioName: replacement.file.name,
-              refText,
-            });
-          }
           await client.invalidateQueries({ queryKey: queryKeys.profiles });
           onDone();
         } catch (error) {
@@ -158,7 +166,7 @@ export function EditProfile({ profile, onDone }: { profile: Profile; onDone: () 
                 variant="secondary"
                 size="sm"
                 disabled={unavailable}
-                onClick={() => setChoosing(true)}
+                onClick={startReplacement}
               >
                 <ReplaceIcon data-icon="inline-start" />
                 {t('clone.replace_reference')}

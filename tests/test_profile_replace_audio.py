@@ -139,7 +139,7 @@ def test_undecodable_payload_is_refused_and_cleaned(env, monkeypatch):
     async def no_audio(_path):
         return False
 
-    monkeypatch.setattr(profiles, "_ffprobe_has_audio", no_audio)
+    monkeypatch.setattr(profiles, "_ffmpeg_decodes", no_audio)
     before = sorted(p.name for p in voices.iterdir())
     response = replace(client, created["id"], body=b"not audio at all" * 200)
     assert response.status_code == 422
@@ -212,3 +212,178 @@ def test_create_profile_still_auto_transcribes_blank_transcript(env):
     ).json()
     assert made["ref_text"] == "auto transcript"
     assert transcribed[-1] == os.path.join(str(voices), made["ref_audio_path"])
+
+
+WEBM_JUNK = b"\x1aE\xdf\xa3" * 400  # EBML magic, no decodable stream
+
+
+def header_only_wav() -> bytes:
+    """A valid WAV header (padded past the size floor) with no sample frames."""
+    import struct
+
+    fmt = struct.pack("<HHIIHH", 1, 1, 16000, 32000, 2, 16)
+    junk = b"\x00" * 1200
+    body = (
+        b"WAVE"
+        + b"JUNK" + struct.pack("<I", len(junk)) + junk
+        + b"fmt " + struct.pack("<I", len(fmt)) + fmt
+        + b"data" + struct.pack("<I", 0)
+    )
+    return b"RIFF" + struct.pack("<I", len(body)) + body
+
+
+def test_header_without_frames_is_refused(env, monkeypatch):
+    client, _profiles, _db, voices, created, _transcribed, _events = env
+    monkeypatch.setattr("services.ffmpeg_utils.find_ffmpeg", lambda: None)
+    before = sorted(p.name for p in voices.iterdir())
+    assert replace(client, created["id"], body=header_only_wav()).status_code == 422
+    assert sorted(p.name for p in voices.iterdir()) == before
+
+
+def test_unverifiable_clip_is_refused_when_ffmpeg_missing(env, monkeypatch):
+    client, _profiles, _db, voices, created, _transcribed, _events = env
+    monkeypatch.setattr("services.ffmpeg_utils.find_ffmpeg", lambda: None)
+    before = sorted(p.name for p in voices.iterdir())
+    assert replace(client, created["id"], name="take.webm", body=WEBM_JUNK).status_code == 422
+    assert sorted(p.name for p in voices.iterdir()) == before
+
+
+def test_unverifiable_clip_is_refused_when_ffmpeg_fails(env, monkeypatch):
+    client, _profiles, _db, _voices, created, _transcribed, _events = env
+
+    async def broken_spawn(*_args, **_kwargs):
+        raise OSError("ffmpeg crashed")
+
+    monkeypatch.setattr("services.ffmpeg_utils.find_ffmpeg", lambda: "ffmpeg")
+    monkeypatch.setattr("services.ffmpeg_utils.spawn_subprocess", broken_spawn)
+    assert replace(client, created["id"], name="take.webm", body=WEBM_JUNK).status_code == 422
+
+
+def test_ffmpeg_decode_needs_real_samples(tmp_path):
+    import asyncio
+
+    from api.routers import profiles
+    from services.ffmpeg_utils import find_ffmpeg
+
+    if not find_ffmpeg():
+        pytest.skip("ffmpeg unavailable")
+    good = tmp_path / "good.wav"
+    good.write_bytes(wav_bytes())
+    bad = tmp_path / "bad.webm"
+    bad.write_bytes(WEBM_JUNK)
+    assert asyncio.run(profiles._ffmpeg_decodes(str(good))) is True
+    assert asyncio.run(profiles._ffmpeg_decodes(str(bad))) is False
+
+
+def test_oversized_upload_is_refused_and_cleaned(env, monkeypatch):
+    client, profiles, _db, voices, created, _transcribed, _events = env
+    monkeypatch.setattr(profiles, "_MAX_REF_AUDIO_BYTES", 5000)
+    monkeypatch.setattr(profiles, "_UPLOAD_CHUNK", 1024)
+    before = sorted(p.name for p in voices.iterdir())
+    assert replace(client, created["id"], text="words").status_code == 413
+    assert sorted(p.name for p in voices.iterdir()) == before
+
+
+def test_non_wav_reference_is_served_with_its_media_type(env):
+    import soundfile as sf
+
+    client, _profiles, _db, _voices, created, _transcribed, _events = env
+    flac = io.BytesIO()
+    sf.write(flac, [((i * 7919) % 2000 - 1000) / 2000 for i in range(16000)], 16000, format="FLAC")
+    response = replace(client, created["id"], name="take.flac", body=flac.getvalue(), text="w")
+    assert response.status_code == 200, response.text
+    served = client.get(f"/profiles/{created['id']}/audio")
+    assert served.status_code == 200
+    assert served.headers["content-type"] == "audio/flac"
+
+
+def test_profile_edits_save_with_the_clip(env):
+    client, _profiles, _db, _voices, created, _transcribed, _events = env
+    response = client.put(
+        f"/profiles/{created['id']}/audio",
+        data={"ref_text": "words", "name": "  Crimson ", "language": "French", "instruct": "male"},
+        files={"ref_audio": ("new.wav", wav_bytes(6000), "audio/wav")},
+    )
+    assert response.status_code == 200, response.text
+    updated = response.json()
+    assert (updated["name"], updated["language"], updated["instruct"]) == (
+        "Crimson", "French", "male",
+    )
+
+
+def test_failed_replacement_leaves_profile_edits_unsaved(env, monkeypatch):
+    client, profiles, _db, _voices, created, _transcribed, _events = env
+
+    async def no_audio(_path):
+        return False
+
+    monkeypatch.setattr(profiles, "_ffmpeg_decodes", no_audio)
+    response = client.put(
+        f"/profiles/{created['id']}/audio",
+        data={"name": "Crimson", "instruct": "male"},
+        files={"ref_audio": ("new.webm", WEBM_JUNK, "audio/webm")},
+    )
+    assert response.status_code == 422
+    kept = client.get(f"/profiles/{created['id']}").json()
+    assert (kept["name"], kept["instruct"]) == ("Scarlet", "female")
+
+
+def test_blank_name_is_refused_before_upload(env):
+    client, _profiles, _db, voices, created, _transcribed, _events = env
+    before = sorted(p.name for p in voices.iterdir())
+    response = client.put(
+        f"/profiles/{created['id']}/audio",
+        data={"name": "   "},
+        files={"ref_audio": ("new.wav", wav_bytes(6000), "audio/wav")},
+    )
+    assert response.status_code == 400
+    assert sorted(p.name for p in voices.iterdir()) == before
+
+
+def test_concurrent_replacements_leave_no_orphan(env, monkeypatch):
+    import asyncio
+
+    import httpx
+
+    client, profiles, _db, voices, created, _transcribed, _events = env
+    pid = created["id"]
+
+    async def slow_transcribe(_path):
+        await asyncio.sleep(0.05)
+        return "auto transcript"
+
+    monkeypatch.setattr(profiles, "_auto_transcribe_reference", slow_transcribe)
+    app = FastAPI()
+    app.include_router(profiles.router)
+
+    async def race():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as http:
+            return await asyncio.gather(*(
+                http.put(
+                    f"/profiles/{pid}/audio",
+                    files={"ref_audio": (f"take{i}.wav", wav_bytes(6000 + i), "audio/wav")},
+                )
+                for i in range(2)
+            ))
+
+    responses = asyncio.run(race())
+    assert [r.status_code for r in responses] == [200, 200]
+    final = client.get(f"/profiles/{pid}").json()["ref_audio_path"]
+    assert sorted(p.name for p in voices.iterdir() if p.name.startswith(pid)) == [final]
+
+
+def test_clip_changed_elsewhere_is_a_conflict_and_cleaned(env, monkeypatch):
+    client, profiles, db, voices, created, _transcribed, _events = env
+    pid = created["id"]
+
+    async def rival_writes(_path):
+        with db.db_conn() as conn:
+            conn.execute("UPDATE voice_profiles SET ref_audio_path='rival.wav' WHERE id=?", (pid,))
+        return "auto transcript"
+
+    monkeypatch.setattr(profiles, "_auto_transcribe_reference", rival_writes)
+    before = sorted(p.name for p in voices.iterdir())
+    assert replace(client, pid).status_code == 409
+    assert sorted(p.name for p in voices.iterdir()) == before
+    assert client.get(f"/profiles/{pid}").json()["ref_audio_path"] == "rival.wav"

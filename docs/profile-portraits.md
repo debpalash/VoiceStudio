@@ -91,16 +91,20 @@ blank to transcribe the new clip locally. Replacing the reference also clears
 the voice's locked take and own-voice verification, because the new clip may be
 a different speaker. Designed voices are edited through their recipe instead.
 
-`PUT /profiles/{id}/audio` (multipart `ref_audio`, optional `ref_text`) stores the
-clip under a new `<id>-<token>.<ext>` filename. The old files are deleted only
-after the database update succeeds. The new filename also invalidates engine
-prompt caches and audiobook chapter caches, because those are keyed by the
-reference path. Profile records include a versioned `audio_url` so players reload
-the new clip. The route accepts WAV, MP3, M4A, FLAC, OGG, Opus, AAC and WebM, and
-rejects files that cannot be decoded as audio. When neither libsndfile nor ffprobe
-can inspect a file, it is accepted, as it is for new profiles. Designed voices
-return 409. A Gallery or Community voice whose reference is replaced counts
-as the user's own edit: importing the same voice again creates a separate profile
+`PUT /profiles/{id}/audio` (multipart `ref_audio`, optional `ref_text`, `name`,
+`instruct`, `language` and `personality`) stores the clip under a new
+`<id>-<token>.<ext>` filename and saves the other fields in the same database
+update, so an editor save commits every change or none. The old files are
+deleted only after the database update succeeds. The new filename also
+invalidates engine prompt caches and audiobook chapter caches, because those are
+keyed by the reference path. Profile records include a versioned `audio_url` so
+players reload the new clip, and `GET /profiles/{id}/audio` serves each clip with
+its own media type. The route accepts WAV, MP3, M4A, FLAC, OGG, Opus, AAC and
+WebM up to 128 MiB, and requires libsndfile or FFmpeg to decode real samples
+before the clip replaces the old one; a file neither can decode returns 422.
+Replacements of one voice run one at a time, and a clip changed by another
+writer during an upload returns 409. Designed voices return 409. A Gallery or
+Community voice whose reference is replaced counts as the user's own edit: importing the same voice again creates a separate profile
 and leaves the edited one unchanged. No database migration is required.
 
 The sidebar lists selected TTS, ASR and LLM engines, resolved model identities
