@@ -11,10 +11,15 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 **Highlights**
 
 - Have VoiceStudio phone someone in your own voice for a task like booking a table (#2305)
+- Footer integration logos open their in-app page (#2302)
 
 ### Added
 
 - Calls workspace with a live transcript, take-over, hang-up and an after-call summary (#2305)
+
+### Changed
+
+- Integration logos in the footer open their page inside the app instead of an outside website (#2302)
 
 ## [0.5.6] — 2026-09-23
 
