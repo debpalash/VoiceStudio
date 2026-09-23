@@ -90,7 +90,13 @@ export function liveCallReducer(state: LiveCallState, action: LiveCallAction): L
   if (action.kind === 'takeover') return { ...state, takeover: action.enabled };
   if (action.kind === 'snapshot') {
     const { call } = action;
-    const finals: LiveLine[] = (call.transcript ?? []).map((line) => ({ ...line, final: true }));
+    // A snapshot can be older than lines already streamed (a reconnect resync
+    // racing live events), so merge instead of replacing: never drop a line.
+    const finals: LiveLine[] = state.lines.filter((line) => line.final);
+    for (const line of call.transcript ?? []) {
+      if (!finals.some((item) => sameLine(item, line))) finals.push({ ...line, final: true });
+    }
+    finals.sort((a, b) => a.t - b.t);
     // Interim lines the snapshot cannot know about survive, after the finals.
     const interim = state.lines.filter(
       (line) =>

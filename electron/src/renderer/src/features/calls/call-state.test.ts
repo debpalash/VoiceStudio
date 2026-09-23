@@ -110,3 +110,32 @@ it('formats elapsed time', () => {
   expect(formatDuration(3725)).toBe('1:02:05');
   expect(formatDuration(null)).toBe('0:00');
 });
+
+it('never drops streamed lines when a stale snapshot arrives after a reconnect', () => {
+  const state = play([
+    { type: 'transcript', speaker: 'agent', text: 'Hello', final: true, t: 1 },
+    { type: 'transcript', speaker: 'caller', text: 'Hi there', final: true, t: 3 },
+    { type: 'transcript', speaker: 'agent', text: 'A table for two', final: true, t: 5 },
+  ]);
+  const resynced = liveCallReducer(state, {
+    kind: 'snapshot',
+    call: record({
+      status: 'in_progress',
+      transcript: [
+        { speaker: 'agent', text: 'Hello', t: 1 },
+        { speaker: 'caller', text: 'Hi there', t: 3 },
+      ],
+    }),
+  });
+  expect(resynced.lines.map((line) => line.text)).toEqual(['Hello', 'Hi there', 'A table for two']);
+  const ended = liveCallReducer(resynced, {
+    kind: 'snapshot',
+    call: record({ status: 'completed', transcript: [{ speaker: 'caller', text: 'Bye', t: 9 }] }),
+  });
+  expect(ended.lines.map((line) => line.text)).toEqual([
+    'Hello',
+    'Hi there',
+    'A table for two',
+    'Bye',
+  ]);
+});

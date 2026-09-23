@@ -250,3 +250,24 @@ it('streams the live call and wires take-over, say and hang-up', async () => {
   expect(screen.getAllByText('Booked').length).toBeGreaterThan(0);
   expect(source.readyState).toBe(FakeEventSource.CLOSED);
 });
+
+it('refreshes the finished record when a terminal status arrives without an ended event', async () => {
+  server.calls = [call({ status: 'in_progress', started_at: Date.now() / 1000 })];
+  server.detail = server.calls[0];
+  renderPage();
+  fireEvent.click(await screen.findByRole('button', { name: /Book a table for 2/ }));
+  await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0));
+  const detailFetches = () => api.json.mock.calls.filter(([path]) => path === '/calls/c1').length;
+  const before = detailFetches();
+  server.detail = call({
+    status: 'completed',
+    ended_at: Date.now() / 1000,
+    duration_s: 20,
+    outcome: 'done',
+    summary: 'They open at 9am on Saturday.',
+  });
+  act(() => FakeEventSource.latest().emit({ type: 'status', status: 'completed' }));
+  await waitFor(() => expect(detailFetches()).toBeGreaterThan(before));
+  expect(await screen.findByText('They open at 9am on Saturday.')).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Hang up' })).not.toBeInTheDocument();
+});

@@ -6,8 +6,8 @@ appointment to next week", "ask what time you open on Sunday". You watch the
 call live, can take over at any moment, and get a summary when it ends.
 
 Calls go through **your own Twilio number**. Nothing is dialled until you
-confirm a call, and nothing else leaves your machine. The API behind this
-workspace is described in [integrations/calls.md](integrations/calls.md).
+confirm a call, and nothing else leaves your machine. Twilio setup is covered
+in [integrations/twilio.md](integrations/twilio.md).
 
 Open it from the sidebar: **Calls** (or press Ctrl/⌘ K and type "Calls").
 

@@ -42,8 +42,13 @@ export function useLiveCall(callId: string | null): LiveCall {
   const onEvent = useCallback(
     (event: CallEvent) => {
       dispatch({ kind: 'event', event });
-      if (event.type === 'ended' || event.type === 'outcome') {
-        // The finished record carries the summary and the full transcript.
+      if (
+        event.type === 'ended' ||
+        event.type === 'outcome' ||
+        (event.type === 'status' && callPhase(event.status) === 'ended')
+      ) {
+        // The finished record carries the summary and the full transcript;
+        // CALLS_KEY also covers this call's detail query.
         void queryClient.invalidateQueries({ queryKey: CALLS_KEY });
       }
     },
