@@ -19,23 +19,26 @@ const CUE_MARKUP = new RegExp(
 );
 // SubRip/ASS overrides (`{\an8}`, `{\i1}`); the body excludes `{` to stay linear.
 const ASS_OVERRIDE = /\{\\[^{}\n]*\}/g;
+// `<br>` is a rendered line break, so it separates words instead of vanishing.
+const LINE_BREAK = /<br[ \t]*\/?>/gi;
 
-/** `text` without the spans `re` matches. */
-function dropMatches(text, re) {
+/** `text` with each span `re` matches replaced by `sep`. */
+function dropMatches(text, re, sep = '') {
   // Slices around each match instead of String#replace: this is TTS text,
   // never HTML, and a tag-pattern replace trips CodeQL's sanitizer queries.
   let out = '';
   let last = 0;
   for (const m of text.matchAll(re)) {
-    out += text.slice(last, m.index);
+    out += text.slice(last, m.index) + sep;
     last = m.index + m[0].length;
   }
   return out + text.slice(last);
 }
 
-/** Caption markup is not speech: karaoke spans, italics, `{\an8}` alignment. */
+/** Caption markup is not speech: karaoke spans, italics, `<br>`, `{\an8}` alignment. */
 function spokenCueText(text) {
-  return dropMatches(dropMatches(String(text || ''), ASS_OVERRIDE), CUE_MARKUP)
+  const spaced = dropMatches(dropMatches(String(text || ''), ASS_OVERRIDE), LINE_BREAK, ' ');
+  return dropMatches(spaced, CUE_MARKUP)
     .replace(/[^\S\n]+/g, ' ')
     .trim();
 }

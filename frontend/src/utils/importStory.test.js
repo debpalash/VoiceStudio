@@ -68,9 +68,14 @@ describe('parseSrt', () => {
     }
   });
   it('drops font, voice and bold tags but keeps CJK and RTL words', () => {
-    const words = '你好 שלום';
+    const words = '\u4f60\u597d \u05e9\u05dc\u05d5\u05dd';
     const s = `1\n00:00:01,000 --> 00:00:02,000\n<font color="#ff0">{\\an8}<b>${words}</b></font> <v Roger>ok</v>\n`;
     expect(parseSrt(s)).toBe(`${words} ok`);
+  });
+  it('reads a SubRip line break as a word gap', () => {
+    expect(parseSrt('1\n00:00:01,000 --> 00:00:02,000\nHello<br>big<BR />world\n')).toBe(
+      'Hello big world',
+    );
   });
   it('scans unclosed markup prefixes in linear time', () => {
     const started = Date.now();

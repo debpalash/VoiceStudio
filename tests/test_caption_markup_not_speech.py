@@ -122,6 +122,15 @@ def test_srt_player_tags_are_not_dialogue():
     assert parse_srt(srt).segments[0]["text"] == "Hi there you"
 
 
+def test_line_break_tags_separate_words():
+    from services.srt_parser import parse_srt
+
+    srt = "1\n00:00:01,000 --> 00:00:02,000\nHello<br>big<BR />world\n"
+    vtt = "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello<br/>world\n"
+    assert parse_srt(srt).segments[0]["text"] == "Hello big world"
+    assert parse_srt(vtt).segments[0]["text"] == "Hello world"
+
+
 def test_webvtt_escaped_math_reads_as_written():
     from services.srt_parser import parse_srt
 
@@ -132,7 +141,7 @@ def test_webvtt_escaped_math_reads_as_written():
 def test_cjk_and_rtl_text_survive_markup_stripping():
     from services.srt_parser import parse_srt
 
-    words = "你好 שלום مرحبا"
+    words = "\u4f60\u597d \u05e9\u05dc\u05d5\u05dd \u0645\u0631\u062d\u0628\u0627"
     srt = f"1\n00:00:01,000 --> 00:00:02,000\n{{\\an8}}<i>{words}</i>\n"
     vtt = f"WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v A>{words}</v>\n"
     assert parse_srt(srt).segments[0]["text"] == words
@@ -144,7 +153,7 @@ def test_malformed_markup_prefixes_parse_in_linear_time():
 
     from services.srt_parser import spoken_cue_text
 
-    for junk in ("<" * 50_000, "{\\" * 50_000, "<i" * 50_000, "{{\\" * 50_000):
+    for junk in ("<" * 50_000, "{\\" * 50_000, "<i" * 50_000, "{{\\" * 50_000, "<br " * 50_000):
         for webvtt in (False, True):
             started = time.perf_counter()
             spoken_cue_text(junk, webvtt=webvtt)
@@ -183,6 +192,9 @@ def test_unchanged_srt_export_keeps_alignment_and_italics():
     italic = parse_srt("1\n00:00:01,000 --> 00:00:02,000\n{\\an8}<i>Hello</i>\n").segments
     vtt = _export("vtt", italic)
     assert "<i>Hello</i>" in vtt and "an8" not in vtt
+    broken = parse_srt("1\n00:00:01,000 --> 00:00:02,000\nHello<br>world\n").segments
+    assert "Hello<br>world" in _export("srt", broken)
+    assert "Hello\nworld" in _export("vtt", broken)
 
 
 def test_edited_srt_text_exports_as_edited():

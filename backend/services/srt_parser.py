@@ -231,6 +231,9 @@ _SRT_MARKUP_RE = re.compile(
 # SubRip/ASS overrides (`{\an8}`, `{\i1}`). A `{` in dialogue has no backslash.
 # The body excludes `{` for the same linear-time reason.
 _ASS_OVERRIDE_RE = re.compile(r"\{\\[^{}\n]*\}")
+# `<br>` is a rendered line break in SubRip (and a stray one in WebVTT), so
+# it separates words instead of vanishing.
+_LINE_BREAK_RE = re.compile(r"<br[ \t]*/?>", re.IGNORECASE)
 # An `&` that does not already start a character reference.
 _BARE_AMPERSAND_RE = re.compile(r"&(?!#\d+;|#[xX][0-9a-fA-F]+;|[A-Za-z][A-Za-z0-9]*;)")
 
@@ -244,16 +247,16 @@ def spoken_cue_text(text: str, *, webvtt: bool = False) -> str:
     "<laughter>"): only the tags players render (`<i>`, `<font>`, karaoke
     timestamps) and ASS overrides are removed.
     """
-    out = _ASS_OVERRIDE_RE.sub("", text)
+    out = _LINE_BREAK_RE.sub(" ", _ASS_OVERRIDE_RE.sub("", text))
     out = (_WEBVTT_TAG_RE if webvtt else _SRT_MARKUP_RE).sub("", out)
     if webvtt:
         out = html.unescape(out)
     return "\n".join(line.strip() for line in out.split("\n") if line.strip())
 
 
-def strip_ass_overrides(text: str) -> str:
-    """``text`` without SubRip/ASS override blocks such as `{\\an8}`."""
-    return _ASS_OVERRIDE_RE.sub("", text)
+def srt_cue_as_webvtt(cue: str) -> str:
+    """A SubRip cue in WebVTT terms: no `{\\an8}` overrides, `<br>` as a newline."""
+    return _LINE_BREAK_RE.sub("\n", _ASS_OVERRIDE_RE.sub("", cue))
 
 
 def source_cue_or(seg: dict, text: str, key: str) -> str:

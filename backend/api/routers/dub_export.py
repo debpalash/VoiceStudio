@@ -1856,7 +1856,7 @@ async def dub_export_vtt(
         segments = _apply_fitted_times(segments, fitted)
     cues = None if fitted else _fitted_cue_times(job, lang)
 
-    from services.srt_parser import escape_webvtt_text, source_cue_or, strip_ass_overrides
+    from services.srt_parser import escape_webvtt_text, source_cue_or, srt_cue_as_webvtt
 
     vtt_lines = ["WEBVTT", ""]
     for i, seg in enumerate(segments):
@@ -1870,9 +1870,9 @@ async def dub_export_vtt(
             if "webvtt_source" in seg:
                 return escape_webvtt_text(source_cue_or(seg, text, "webvtt_source"))
             # An imported SRT's `<i>` is WebVTT markup too; its `{\an8}`
-            # overrides are not, so they stay out of the WebVTT file.
+            # overrides are not, and its `<br>` becomes a real line break.
             srt_cue = source_cue_or(seg, text, "srt_source")
-            return escape_webvtt_text(text if srt_cue == text else strip_ass_overrides(srt_cue))
+            return escape_webvtt_text(text if srt_cue == text else srt_cue_as_webvtt(srt_cue))
         vtt_lines.append(_pick_subtitle_text(seg, dual, escape=escape_text))
         vtt_lines.append("")
 
