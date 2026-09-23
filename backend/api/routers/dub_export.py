@@ -435,7 +435,7 @@ def _write_burn_srt(job: dict, exports_dir: str, stamp: str, dual: bool,
     for i, seg in enumerate(segments):
         lines.append(str(i + 1))
         lines.append(f"{_format_srt_time(seg['start'])} --> {_format_srt_time(seg['end'])}")
-        lines.append(_pick_subtitle_text(seg, dual))
+        lines.append(_pick_subtitle_text(seg, dual, escape=_srt_cue_text(seg)))
         lines.append("")
     sub_path = os.path.join(exports_dir, f"burn_subs_{stamp}.srt")
     with open(sub_path, "w", encoding="utf-8") as f:
@@ -1739,6 +1739,12 @@ def _format_srt_time(seconds):
     from services.srt_parser import format_cue_timestamp
     return format_cue_timestamp(seconds, ",")
 
+def _srt_cue_text(seg: dict):
+    """SRT writer for ``seg``: an unchanged imported cue keeps its markup."""
+    from services.srt_parser import source_cue_or
+    return lambda text: source_cue_or(seg, text, "srt_source")
+
+
 def _pick_subtitle_text(seg: dict, dual: bool, escape=lambda text: text) -> str:
     """One line per subtitle cue, unless dual=true and an original exists.
 
@@ -1809,7 +1815,7 @@ async def dub_export_srt(
         s, e = cues[i] if cues else (seg["start"], seg["end"])
         srt_lines.append(f"{i + 1}")
         srt_lines.append(f"{_format_srt_time(s)} --> {_format_srt_time(e)}")
-        srt_lines.append(_pick_subtitle_text(seg, dual))
+        srt_lines.append(_pick_subtitle_text(seg, dual, escape=_srt_cue_text(seg)))
         srt_lines.append("")
 
     srt_content = "\n".join(srt_lines)
@@ -1850,7 +1856,7 @@ async def dub_export_vtt(
         segments = _apply_fitted_times(segments, fitted)
     cues = None if fitted else _fitted_cue_times(job, lang)
 
-    from services.srt_parser import escape_webvtt_text
+    from services.srt_parser import escape_webvtt_text, source_cue_or, strip_ass_overrides
 
     vtt_lines = ["WEBVTT", ""]
     for i, seg in enumerate(segments):
@@ -1860,12 +1866,13 @@ async def dub_export_vtt(
         # Reuse imported cue syntax only while the corresponding text is unchanged.
         # This distinguishes literal &lt;i&gt; from genuine <i> markup and survives
         # persistence; older projects retain the legacy markup interpretation.
-        source = seg.get("webvtt_source")
-        def escape_text(text):
-            if (isinstance(source, dict) and source.get("text") == text
-                    and isinstance(source.get("cue"), str)):
-                return escape_webvtt_text(source["cue"])
-            return escape_webvtt_text(text)
+        def escape_text(text, seg=seg):
+            if "webvtt_source" in seg:
+                return escape_webvtt_text(source_cue_or(seg, text, "webvtt_source"))
+            # An imported SRT's `<i>` is WebVTT markup too; its `{\an8}`
+            # overrides are not, so they stay out of the WebVTT file.
+            srt_cue = source_cue_or(seg, text, "srt_source")
+            return escape_webvtt_text(text if srt_cue == text else strip_ass_overrides(srt_cue))
         vtt_lines.append(_pick_subtitle_text(seg, dual, escape=escape_text))
         vtt_lines.append("")
 

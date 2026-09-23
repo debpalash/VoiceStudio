@@ -3,14 +3,39 @@
  * auto-cast or split. Pure + testable; the component handles file reading.
  */
 
+// SubRip has no escaping, so `2 < 3` or `a<b and c>d` is dialogue. Only exact
+// tag shapes are markup: `<i>`, `<c.x>`, `<v Name>`, `<font ...>`, karaoke
+// timestamps. Mirrors _SRT_MARKUP_RE in backend/services/srt_parser.py.
+const CUE_MARKUP = new RegExp(
+  [
+    '</?(?:[biu]|c|ruby|rt)(?:\\.[^\\s.<>]+)*>',
+    '<(?:v|lang)(?:\\.[^\\s.<>]+)*[ \\t][^<>\\n]*>',
+    '</(?:v|lang)>',
+    '<font[ \\t][^<>\\n]*>',
+    '</?font>',
+    '<(?:\\d+:)?\\d{2}:\\d{2}\\.\\d{3}>',
+  ].join('|'),
+  'gi',
+);
+// SubRip/ASS overrides (`{\an8}`, `{\i1}`); the body excludes `{` to stay linear.
+const ASS_OVERRIDE = /\{\\[^{}\n]*\}/g;
+
+/** `text` without the spans `re` matches. */
+function dropMatches(text, re) {
+  // Slices around each match instead of String#replace: this is TTS text,
+  // never HTML, and a tag-pattern replace trips CodeQL's sanitizer queries.
+  let out = '';
+  let last = 0;
+  for (const m of text.matchAll(re)) {
+    out += text.slice(last, m.index);
+    last = m.index + m[0].length;
+  }
+  return out + text.slice(last);
+}
+
 /** Caption markup is not speech: karaoke spans, italics, `{\an8}` alignment. */
 function spokenCueText(text) {
-  // Cue tags are stripped for TTS, never assigned to the DOM. A `/<[^>]+>/`
-  // replace is the same filter parse_vtt_segments already uses in Python;
-  // CodeQL's js/bad-tag-filter is for HTML sanitization, which this is not.
-  return String(text || '')
-    .replace(/\{\\[^}]*\}/g, '')
-    .replace(/<[^>]+>/g, '')
+  return dropMatches(dropMatches(String(text || ''), ASS_OVERRIDE), CUE_MARKUP)
     .replace(/[^\S\n]+/g, ' ')
     .trim();
 }

@@ -28,7 +28,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ### Fixed
 
-- Pasted and imported captions no longer speak karaoke tags or `{\an8}` alignment prefixes; unchanged WebVTT exports keep the original cue markup (#2295) — thanks @kevin9327!
+- Pasted and imported captions no longer speak karaoke tags, `<i>`/`<font>` tags or `{\an8}` alignment prefixes, while SubRip dialogue such as `2 < 3` is kept; unchanged WebVTT and SubRip exports keep the original cue markup (#2295) — thanks @kevin9327!
 - On Windows, one reset connection no longer leaves the backend running but unreachable (#2276) — thanks @ialexbond!
 - The official `openai` SDK and OpenAI Agents SDK work unchanged: `gpt-4o-mini-tts` and current OpenAI voice names no longer fail with "Unknown model" (#2290)
 - OpenAI `instructions` now reaches the voice engine instead of being ignored; OmniVoice uses the voice-design tags in it (#2290)

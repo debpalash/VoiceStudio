@@ -102,3 +102,93 @@ def test_escaped_tags_stay_literal_in_spoken_text():
 
     vtt = "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n&lt;i&gt;literal&lt;/i&gt; <i>real</i>\n"
     assert parse_srt(vtt).segments[0]["text"] == "<i>literal</i> real"
+
+
+def test_srt_dialogue_with_angle_brackets_is_kept():
+    from services.srt_parser import parse_srt
+
+    for line in ("2 < 3 and 4 > 1", "<laughter> okay", "if a<b and c>d", "x <= y >= z"):
+        srt = f"1\n00:00:01,000 --> 00:00:02,000\n{line}\n"
+        assert parse_srt(srt).segments[0]["text"] == line
+
+
+def test_srt_player_tags_are_not_dialogue():
+    from services.srt_parser import parse_srt
+
+    srt = (
+        "1\n00:00:01,000 --> 00:00:02,000\n"
+        '<font color="#ffff00"><b>Hi</b></font> <u>there</u> <I>you</I>\n'
+    )
+    assert parse_srt(srt).segments[0]["text"] == "Hi there you"
+
+
+def test_webvtt_escaped_math_reads_as_written():
+    from services.srt_parser import parse_srt
+
+    vtt = "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<i>x &lt; y</i> &amp;&amp; y &gt; z\n"
+    assert parse_srt(vtt).segments[0]["text"] == "x < y && y > z"
+
+
+def test_cjk_and_rtl_text_survive_markup_stripping():
+    from services.srt_parser import parse_srt
+
+    words = "你好 שלום مرحبا"
+    srt = f"1\n00:00:01,000 --> 00:00:02,000\n{{\\an8}}<i>{words}</i>\n"
+    vtt = f"WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<v A>{words}</v>\n"
+    assert parse_srt(srt).segments[0]["text"] == words
+    assert parse_srt(vtt).segments[0]["text"] == words
+
+
+def test_malformed_markup_prefixes_parse_in_linear_time():
+    import time
+
+    from services.srt_parser import spoken_cue_text
+
+    for junk in ("<" * 50_000, "{\\" * 50_000, "<i" * 50_000, "{{\\" * 50_000):
+        for webvtt in (False, True):
+            started = time.perf_counter()
+            spoken_cue_text(junk, webvtt=webvtt)
+            assert time.perf_counter() - started < 1.0, (junk[:4], webvtt)
+
+
+def _export(kind, segments):
+    from services.dub_pipeline import _dub_jobs
+    from fastapi.testclient import TestClient
+    from main import app
+    import uuid
+
+    job_id = str(uuid.uuid4())[:8]
+    _dub_jobs[job_id] = {
+        "video_path": "/nonexistent/original.mp4",
+        "duration": 10.0,
+        "filename": "clip.mp4",
+        "segments": segments,
+    }
+    try:
+        client = TestClient(app, client=("127.0.0.1", 50000))
+        response = client.get(f"/dub/{kind}/{job_id}")
+    finally:
+        _dub_jobs.pop(job_id, None)
+    assert response.status_code == 200
+    return response.text
+
+
+def test_unchanged_srt_export_keeps_alignment_and_italics():
+    from services.srt_parser import parse_srt
+
+    segments = parse_srt(ASS_SRT).segments
+    assert segments[0]["text"] == "Hello"
+    assert "{\\an8}{\\i1}Hello{\\i0}" in _export("srt", segments)
+    # WebVTT has no `{\an8}`; SubRip's `<i>` is still markup there.
+    italic = parse_srt("1\n00:00:01,000 --> 00:00:02,000\n{\\an8}<i>Hello</i>\n").segments
+    vtt = _export("vtt", italic)
+    assert "<i>Hello</i>" in vtt and "an8" not in vtt
+
+
+def test_edited_srt_text_exports_as_edited():
+    from services.srt_parser import parse_srt
+
+    segments = parse_srt(ASS_SRT).segments
+    segments[0]["text"] = "Goodbye"
+    exported = _export("srt", segments)
+    assert "Goodbye" in exported and "an8" not in exported

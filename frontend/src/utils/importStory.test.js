@@ -62,6 +62,21 @@ describe('parseSrt', () => {
   it('keeps a literal less-than that is not a tag', () => {
     expect(parseSrt('1\n00:00:01,000 --> 00:00:02,000\nI <3 you\n')).toBe('I <3 you');
   });
+  it('keeps angle-bracketed dialogue that is not a player tag', () => {
+    for (const line of ['2 < 3 and 4 > 1', '<laughter> okay', 'if a<b and c>d']) {
+      expect(parseSrt(`1\n00:00:01,000 --> 00:00:02,000\n${line}\n`)).toBe(line);
+    }
+  });
+  it('drops font, voice and bold tags but keeps CJK and RTL words', () => {
+    const words = '你好 שלום';
+    const s = `1\n00:00:01,000 --> 00:00:02,000\n<font color="#ff0">{\\an8}<b>${words}</b></font> <v Roger>ok</v>\n`;
+    expect(parseSrt(s)).toBe(`${words} ok`);
+  });
+  it('scans unclosed markup prefixes in linear time', () => {
+    const started = Date.now();
+    parseSrt(`1\n00:00:01,000 --> 00:00:02,000\n${'<i'.repeat(50000)}${'{\\'.repeat(50000)}\n`);
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
 });
 
 describe('importToText', () => {

@@ -154,8 +154,11 @@ def parse_srt(content: str) -> SrtParseResult:
         if not cue_text:
             skipped += 1
             continue
+        # Keep the cue as written so an unchanged export restores its markup.
+        source_key = "webvtt_source" if is_webvtt else "srt_source"
+        keep_source = is_webvtt or source_cue != cue_text
         raw.append({"start": start, "end": end, "text": cue_text,
-                    **({"webvtt_source": {"text": cue_text, "cue": source_cue}} if is_webvtt else {})})
+                    **({source_key: {"text": cue_text, "cue": source_cue}} if keep_source else {})})
 
     raw.sort(key=lambda r: r["start"])
 
@@ -181,7 +184,7 @@ def parse_srt(content: str) -> SrtParseResult:
             "text": seg["text"],
             "text_original": seg["text"],
             "speaker_id": "Speaker 1",
-            **({"webvtt_source": seg["webvtt_source"]} if "webvtt_source" in seg else {}),
+            **{k: seg[k] for k in ("webvtt_source", "srt_source") if k in seg},
         }
         for i, seg in enumerate(out)
     ]
@@ -210,10 +213,24 @@ _CUE_MARKUP_RE = re.compile(
     r"</?(?:[biu]|c|v|lang|ruby|rt|font)(?=[\s.>])[^<>\n]*>|<(?:\d+:)?\d{2}:\d{2}\.\d{3}>",
     re.IGNORECASE,
 )
-# YouTube karaoke and unknown cue tags (`<c.colorE5E5E5>`, `<00:00:01.200>`).
-_CUE_TAG_RE = re.compile(r"<[^>]+>")
+# In WebVTT an unescaped `<` always opens a tag and players drop unknown
+# ones, so every tag is markup (`<c.colorE5E5E5>`, `<00:00:01.200>`). The
+# body excludes `<` so a run of unclosed `<` cannot make the scan quadratic.
+_WEBVTT_TAG_RE = re.compile(r"<[^<>\n]*>")
+# SubRip has no escaping, so `a<b and c>d` is dialogue. Only exact tag
+# shapes are markup: `<i>`/`<b.x>`/`</u>`, `<c.colorE5E5E5>`, `<v Roger>`,
+# `<font color=...>` and karaoke timestamps. Mirrored in
+# frontend/src/utils/importStory.js (CUE_MARKUP); keep the two in step.
+_SRT_MARKUP_RE = re.compile(
+    r"</?(?:[biu]|c|ruby|rt)(?:\.[^\s.<>]+)*>"
+    r"|<(?:v|lang)(?:\.[^\s.<>]+)*[ \t][^<>\n]*>|</(?:v|lang)>"
+    r"|<font[ \t][^<>\n]*>|</?font>"
+    r"|<(?:\d+:)?\d{2}:\d{2}\.\d{3}>",
+    re.IGNORECASE,
+)
 # SubRip/ASS overrides (`{\an8}`, `{\i1}`). A `{` in dialogue has no backslash.
-_ASS_OVERRIDE_RE = re.compile(r"\{\\[^}]*\}")
+# The body excludes `{` for the same linear-time reason.
+_ASS_OVERRIDE_RE = re.compile(r"\{\\[^{}\n]*\}")
 # An `&` that does not already start a character reference.
 _BARE_AMPERSAND_RE = re.compile(r"&(?!#\d+;|#[xX][0-9a-fA-F]+;|[A-Za-z][A-Za-z0-9]*;)")
 
@@ -223,13 +240,33 @@ def spoken_cue_text(text: str, *, webvtt: bool = False) -> str:
 
     Tags and alignment overrides are dropped first so a WebVTT entity that
     decodes to `<i>` stays literal (`&lt;i&gt;` is speech; `<i>Hi</i>` is not).
-    SubRip has no entity escaping, so only SRT/ASS markup is removed there.
+    SubRip has no escaping, so a `<` there is often dialogue ("2 < 3",
+    "<laughter>"): only the tags players render (`<i>`, `<font>`, karaoke
+    timestamps) and ASS overrides are removed.
     """
     out = _ASS_OVERRIDE_RE.sub("", text)
-    out = _CUE_TAG_RE.sub("", out)
+    out = (_WEBVTT_TAG_RE if webvtt else _SRT_MARKUP_RE).sub("", out)
     if webvtt:
         out = html.unescape(out)
     return "\n".join(line.strip() for line in out.split("\n") if line.strip())
+
+
+def strip_ass_overrides(text: str) -> str:
+    """``text`` without SubRip/ASS override blocks such as `{\\an8}`."""
+    return _ASS_OVERRIDE_RE.sub("", text)
+
+
+def source_cue_or(seg: dict, text: str, key: str) -> str:
+    """The imported cue syntax for ``text`` while it is unchanged, else ``text``.
+
+    Imports strip markup from the spoken text; an export of the same text
+    writes the original cue back so italics and `{\\an8}` survive a
+    round trip. Edited text and older projects fall back to ``text``.
+    """
+    source = seg.get(key)
+    if isinstance(source, dict) and source.get("text") == text and isinstance(source.get("cue"), str):
+        return source["cue"]
+    return text
 
 
 def _escape_cue_span(span: str) -> str:
