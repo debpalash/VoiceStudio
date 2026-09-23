@@ -9,7 +9,18 @@ unit-tested without booting the app.
 from __future__ import annotations
 
 import json
+import os
 import re
+
+
+def frontend_dist_dir() -> str:
+    """The built SPA served at "/" when it exists (Docker, source builds).
+
+    Resolved relative to the backend package root, exactly where ``main``
+    looks — one seam so tests can serve a real SPA mount without building it.
+    """
+    backend_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(backend_root, "..", "frontend", "dist")
 
 # Operator-controlled value, but validate to a plain http(s) URL with no
 # whitespace, quotes, or angle brackets so it can never break out of the

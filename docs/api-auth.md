@@ -125,8 +125,9 @@ client = OpenAI(
 )                                          # (any string works ONLY when no key is set — the loopback default)
 audio = client.audio.speech.create(
     model="tts-1", voice="alloy", input="Hello from a keyed backend.",
+    response_format="wav",
 )
-audio.stream_to_file("speech.wav")
+audio.write_to_file("speech.wav")
 ```
 
 A missing or wrong key returns:

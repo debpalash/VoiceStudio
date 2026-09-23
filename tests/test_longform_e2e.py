@@ -160,6 +160,35 @@ def test_partial_failure_isolates_bad_chapter(tmp_path, monkeypatch):
     assert (out / done["output"]).exists()  # the surviving chapter still muxed
 
 
+def test_chapter_duration_ms_reproduces_the_embedded_chapter_starts(tmp_path, monkeypatch):
+    """The cue sheet (#2278) sums `duration_ms` over the chapters that rendered.
+    That sum must land on the m4b's own chapter START offsets, with a failed
+    chapter contributing neither a chapter nor any time."""
+    out = tmp_path / "outputs"
+    out.mkdir()
+    events = _collect_events(
+        _plan(("One", "Hello there."), ("Bad", "FAILME now"), ("Three", "Third one."),
+              ("Four", "Fourth one.")),
+        monkeypatch, out, fmt="m4b", fail_on=lambda t: "FAILME" in t,
+    )
+    chapters = [e for e in events if e["type"] == "chapter"]
+    assert [c["title"] for c in chapters] == ["One", "Three", "Four"]
+    for c in chapters:
+        assert isinstance(c["duration_ms"], int)
+        assert c["duration_ms"] == pytest.approx(c["duration_s"] * 1000, abs=5)
+    starts, elapsed = [], 0
+    for c in chapters:
+        starts.append(elapsed)
+        elapsed += c["duration_ms"]
+    done = events[-1]
+    assert done["type"] == "done"
+    assert done["duration_s"] == pytest.approx(elapsed / 1000, abs=0.005)
+    if _FFPROBE:
+        embedded = _ffprobe(str(out / done["output"]))["chapters"]
+        assert [ch["tags"]["title"] for ch in embedded] == ["One", "Three", "Four"]
+        assert [round(float(ch["start_time"]) * 1000) for ch in embedded] == starts
+
+
 def test_all_chapters_fail_emits_error_and_no_file(tmp_path, monkeypatch):
     out = tmp_path / "outputs"
     out.mkdir()

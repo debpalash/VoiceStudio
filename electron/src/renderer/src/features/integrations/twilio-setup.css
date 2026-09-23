@@ -1,0 +1,78 @@
+.twilio-setup h4 {
+  font-size: 13px;
+  font-weight: 600;
+}
+.twilio-warning {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--destructive) 30%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--destructive) 6%, transparent);
+  line-height: 1.5;
+}
+.twilio-grid {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 12px;
+}
+.twilio-grid label {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  font-size: 12px;
+}
+.twilio-grid label > span {
+  font-weight: 500;
+}
+.twilio-grid small {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.twilio-wide {
+  grid-column: 1 / -1;
+}
+.twilio-code {
+  max-width: 100%;
+  padding: 6px 8px;
+  overflow-wrap: anywhere;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+  font-size: 12px;
+}
+.twilio-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--muted-foreground);
+  vertical-align: middle;
+}
+.twilio-dot.is-on {
+  background: var(--primary);
+}
+.twilio-calls {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+.twilio-calls li {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.6fr) minmax(0, 1.4fr) minmax(0, 0.6fr);
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--foreground) 3%, transparent);
+}
+.twilio-calls li span {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 520px) {
+  .twilio-calls li {
+    grid-template-columns: 1fr 1fr;
+  }
+}

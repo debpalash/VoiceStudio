@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from worker import agent, identity, tls
+from hang_guard import BARRIER_WATCHDOG_S, HANG_GUARD_S
 
 
 @pytest.fixture
@@ -299,7 +300,7 @@ async def test_retry_retires_failed_client_and_idle_sweep(
     assert first_task is not None
     assert first_sweep is not None
     with pytest.raises(transport.TerminalRegistrationError):
-        await asyncio.wait_for(asyncio.shield(first_task), timeout=1)
+        await asyncio.wait_for(asyncio.shield(first_task), timeout=HANG_GUARD_S)
 
     await instance.start()
     second_task = instance._task
@@ -703,7 +704,7 @@ async def test_legacy_token_recovers_after_key_session_then_control_plane_reset(
     instance = agent.WorkerAgent()
     try:
         await instance.start()
-        await asyncio.wait_for(key_connected.wait(), timeout=1)
+        await asyncio.wait_for(key_connected.wait(), timeout=HANG_GUARD_S)
         assert agent._load_enrollment_manifest(locations["enrollment_manifest"])[
             "token_hash"
         ] == ""
@@ -712,7 +713,7 @@ async def test_legacy_token_recovers_after_key_session_then_control_plane_reset(
         ) == ""
 
         reset_control_plane.set()
-        await asyncio.wait_for(token_accepted.wait(), timeout=1)
+        await asyncio.wait_for(token_accepted.wait(), timeout=HANG_GUARD_S)
     finally:
         await instance.stop()
 
@@ -1218,7 +1219,7 @@ async def test_idle_unload_cancellation_drains_the_blocking_release(monkeypatch)
 
     def blocking_release():
         started.set()
-        if not release.wait(timeout=2):
+        if not release.wait(timeout=BARRIER_WATCHDOG_S):
             raise TimeoutError("test did not release idle unload")
         finished.set()
         return 0
@@ -1648,7 +1649,7 @@ async def test_the_worker_releases_engines_it_has_stopped_using(monkeypatch, enr
     instance = agent.WorkerAgent()
     try:
         await instance.start()
-        await asyncio.wait_for(swept.wait(), timeout=2)
+        await asyncio.wait_for(swept.wait(), timeout=HANG_GUARD_S)
         sweep = instance._idle_sweep
     finally:
         await instance.stop()

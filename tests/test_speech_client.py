@@ -127,3 +127,20 @@ def test_interrupt_releases_focused_output_session(monkeypatch):
 
     assert calls[-1][0] == "DELETE"
     assert calls[-1][1].endswith("/v1/output/sessions/42")
+
+
+@pytest.mark.parametrize("env,expected", [
+    ({}, "http://127.0.0.1:3900"),
+    ({"OMNIVOICE_PORT": "3912"}, "http://127.0.0.1:3912"),
+    ({"OMNIVOICE_PORT": "nope"}, "http://127.0.0.1:3900"),
+    ({"OMNIVOICE_PORT": "3912", "VOICESTUDIO_URL": "http://gpu:4000"}, "http://gpu:4000"),
+])
+def test_engine_url_follows_the_backend_port(monkeypatch, env, expected):
+    """A backend moved with OMNIVOICE_PORT (as Electron does) is found by default."""
+    for name in ("OMNIVOICE_PORT", "VOICESTUDIO_URL"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    from speech_client.__main__ import _parser
+
+    assert _parser().parse_args(["status"]).engine_url == expected

@@ -10,21 +10,52 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 **Highlights**
 
-- Long reference clips clone on OmniVoice instead of failing with a 20-second error (#2281)
-- Voice Clone shows how much of a long clip the active engine uses (#2281)
+- Finished audiobook chapters survive a data-folder move or a power-off mid-render (#2279) — thanks @castlecreati!
+- Malayalam speech reads numbers in Malayalam (#2280) — thanks @nikhilkilivayil!
+- Stories and Audiobook can save a chapter cue sheet (`.txt`) after a render (#2278) — thanks @shivsin25!
+- Windows backend keeps answering after antivirus or VPN software resets a connection (#2276) — thanks @ialexbond!
+- Long reference clips clone on OmniVoice, and Voice Clone shows how much of a clip the active engine uses (#2281)
 
 ### Changed
 
-- Voice Clone says how much of a long reference the active engine uses instead of asking you to trim to 15 s — requested by @Cengokill (#2281)
+- Voice Clone says how much of a long reference the active engine uses instead of asking you to trim to 15 s (#2281) — thanks @Cengokill!
+
+### Added
+
+- Answer Twilio phone calls in a saved voice: off by default, signed webhooks and single-use stream tokens, with a local phone-quality test (#2291)
+- Malayalam dubs and audiobooks speak numbers, percentages, and decimals in Malayalam instead of reading raw digits (#2280) — thanks @nikhilkilivayil!
+- Download a chapter cue sheet (`HH:MM:SS<TAB>Title`) after a Stories or Audiobook render; timestamps match the M4B's embedded chapters and give MP3 portable chapters (#2278) — thanks @shivsin25!
+- The OpenAI Agents integration page gives a copyable snippet that runs the Agents SDK voice pipeline on VoiceStudio (#2290)
+- The OpenAI-compatible API adds `GET /v1/models` and `POST /v1/audio/translations` (multilingual Whisper models; turbo models are refused) (#2290)
+- Speech requests accept `stream_format` (`audio` or `sse`) and OpenAI's `{"id": ...}` voice object (#2290)
+- Transcriptions pass `language`, `prompt` and `temperature` to Whisper engines and return `words` with `timestamp_granularities[]=word` (#2290)
+- Integrations: copyable setup for Codex CLI (`config.toml`), any MCP client (HTTP or stdio), the VoiceStudio API (`curl` and OpenAI SDK), and Docker/GHCR (#2289)
 
 ### Fixed
 
-- Saved voices and uploads longer than 20 s clone on OmniVoice again; the best passage is picked automatically — requested by @Cengokill (#2281)
+- Saved voices and uploads longer than 20 s clone on OmniVoice again; the best passage is picked automatically (#2281) — thanks @Cengokill!
 - VoxCPM2 no longer pairs a capped reference with a transcript of the whole clip (#2281)
+- On Windows, one reset connection no longer leaves the backend running but unreachable (#2276) — thanks @ialexbond!
+- The official `openai` SDK and OpenAI Agents SDK work unchanged: `gpt-4o-mini-tts` and current OpenAI voice names no longer fail with "Unknown model" (#2290)
+- OpenAI `instructions` now reaches the voice engine instead of being ignored; OmniVoice uses the voice-design tags in it (#2290)
+- Speech `pcm` is 24 kHz as OpenAI specifies; `aac` and `opus` return real AAC and Opus, and a missing encoder is a clear error instead of a mislabelled WAV (#2290)
+- Transcriptions report the detected language instead of always saying English, and `verbose_json` segments follow OpenAI's schema (#2290)
+- OpenAI-compatible routes return errors in OpenAI's format, with 400 for invalid requests (#2290)
+- Rendered audiobook chapters stay reusable after the data folder moves, and a power-off no longer empties the resume point or tears chapter audio (#2279) — thanks @castlecreati!
+- An audiobook chapter-cache miss now logs which input changed since the cached render (#2279)
+- MCP clients pointed at `/mcp` connect on Docker and source builds instead of getting HTTP 405 (#2289)
+- MCP tools and `backend.speech_client` follow a backend moved with `OMNIVOICE_PORT` instead of assuming port 3900 (#2289)
+- Integration cards show real capabilities: "Works with VoiceStudio" only where a setup exists, "External link" everywhere else (#2289)
+
+### Bug reporters
+
+- @castlecreati — audiobook chapter cache lost after a power-off (#2279).
+- @Cengokill — long reference clips failed to clone on OmniVoice (#2281).
 
 ### Docs
 
 - Per-engine reference clip limits in the engine guide (#2281)
+- Install with prompt is now a two-line prompt; the full agent steps live in [docs/install/agent.md](docs/install/agent.md) (#2288)
 
 ## [0.5.5] — 2026-09-22
 

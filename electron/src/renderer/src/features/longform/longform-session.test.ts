@@ -37,6 +37,23 @@ it('resumes a manifest without submitting edited script and accepts only termina
   expect(longformSession.state.drafts.audiobook.output).toBe('new.m4b');
   expect(longformSession.state.failed).toBe(1);
 });
+it('keeps the exact chapter milliseconds the cue sheet needs', async () => {
+  fetchMock.mockResolvedValue(
+    eventResponse([
+      { type: 'started', chapters: 3 },
+      { type: 'chapter', index: 0, title: 'One', duration_s: 60, duration_ms: 59996 },
+      { type: 'chapter_error', index: 1, title: 'Two', error: 'boom' },
+      { type: 'chapter', index: 2, title: 'Three', duration_s: 1.5, cached: true },
+      { type: 'done', output: 'new.m4b', failed_chapters: [1] },
+    ]),
+  );
+  await renderLongform('audiobook');
+  expect(longformSession.state.drafts.audiobook.outputChapters).toEqual([
+    { title: 'One', status: 'done', duration_s: 60, duration_ms: 59996 },
+    { title: 'Two', status: 'failed', error: 'boom' },
+    { title: 'Three', status: 'cached', duration_s: 1.5 },
+  ]);
+});
 it('stop aborts the network request and blocks duplicate renders', async () => {
   fetchMock.mockImplementation(
     (_url, options) =>

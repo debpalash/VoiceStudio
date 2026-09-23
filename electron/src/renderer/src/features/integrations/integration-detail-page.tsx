@@ -2,11 +2,10 @@ import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useBackendStatus } from '@/hooks/use-backend-status';
-import { mcpSetup } from './mcp-setup';
-import { n8nSetup } from './n8n-setup';
+import { integrationSetup, type SetupBlock } from './setup-registry';
 import { saveLocalFile } from '@/lib/local-export';
 import { describeError } from '@/lib/api/client';
-import { ArrowLeftIcon, ExternalLinkIcon, BlocksIcon } from 'lucide-react';
+import { ArrowLeftIcon, ExternalLinkIcon, BlocksIcon, CircleCheckIcon } from 'lucide-react';
 import { Link, useParams } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { WorkspaceHeader } from '@/components/app-shell/workspace-header';
@@ -24,13 +23,67 @@ const categoryLabels: Record<string, [string, string]> = {
   productivity: ['tools.title', 'Productivity'],
 };
 
+function SetupBlockView({ block }: { block: SetupBlock }) {
+  const { t } = useTranslation();
+  const [saving, setSaving] = useState(false);
+  const headingId = `setup-${block.id}`;
+  return (
+    <section className="integration-setup-block space-y-2" aria-labelledby={headingId}>
+      <h4 id={headingId}>{t(block.titleKey)}</h4>
+      {block.hintKey && <p>{t(block.hintKey, block.hintValues)}</p>}
+      <pre
+        className="max-h-80 overflow-auto rounded-lg bg-muted/40 p-4 text-xs"
+        data-language={block.language}
+      >
+        <code>{block.text}</code>
+      </pre>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(block.text);
+              toast.success(t('transcriptions.copied'));
+            } catch {
+              toast.error(t('transcriptions.copy_failed'));
+            }
+          }}
+        >
+          {t('transcriptions.copy')}
+        </Button>
+        {block.download && (
+          <Button
+            variant="outline"
+            disabled={saving}
+            aria-busy={saving}
+            onClick={async () => {
+              setSaving(true);
+              try {
+                const result = await saveLocalFile(
+                  new Blob([block.text], { type: block.download!.type }),
+                  block.download!.file,
+                );
+                if (!result.canceled) toast.success(t('nav.saved'));
+              } catch (error) {
+                toast.error(t('clone.download_failed', { message: describeError(error) }));
+              } finally {
+                setSaving(false);
+              }
+            }}
+          >
+            {t('clone.download')}
+          </Button>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function IntegrationDetailPage() {
   const { t } = useTranslation();
   const { slug } = useParams({ strict: false });
   const backend = useBackendStatus();
-  const [saving, setSaving] = useState(false);
-  const workflow = useMemo(() => n8nSetup(slug ?? '', backend.baseUrl), [slug, backend.baseUrl]);
-  const setup = workflow ?? mcpSetup(slug ?? '', backend.baseUrl);
+  const setup = integrationSetup(slug ?? '');
+  const blocks = useMemo(() => setup?.blocks(backend.baseUrl) ?? null, [setup, backend.baseUrl]);
   const entry = getIntegrationBySlug(slug ?? '');
   if (!entry) {
     return (
@@ -77,58 +130,27 @@ export function IntegrationDetailPage() {
               {t(categoryKey, { defaultValue: categoryFallback })}
             </p>
             <h2>{entry.name}</h2>
-            <p>{t('integrationCatalog.description')}</p>
+            <p>
+              {t(setup ? 'integrationCatalog.worksWithHint' : 'integrationCatalog.externalHint')}
+            </p>
           </div>
         </section>
         {setup && (
-          <section className="integration-detail-panel space-y-3">
-            <h3>{workflow ? entry.name : t('settings.mcp_title')}</h3>
-            <p>
-              {t(workflow ? 'integrationCatalog.n8nHint' : 'integrationCatalog.setupHint', {
-                file: setup.file,
-              })}
-            </p>
-            <pre className="max-h-80 overflow-auto rounded-lg bg-muted/40 p-4 text-xs">
-              <code>{setup.text}</code>
-            </pre>
+          <section
+            className="integration-detail-panel space-y-4"
+            aria-labelledby="integration-setup-title"
+          >
+            <h3 id="integration-setup-title">
+              {t('integrationCatalog.setupTitle', { name: entry.name })}
+            </h3>
+            {blocks ? (
+              blocks.map((block) => <SetupBlockView key={block.id} block={block} />)
+            ) : (
+              <p>{t('integrationCatalog.setupUnavailable')}</p>
+            )}
+            {setup.panel && <setup.panel />}
             <div className="flex flex-wrap items-center gap-3">
-              <Button
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(setup.text);
-                    toast.success(t('transcriptions.copied'));
-                  } catch {
-                    toast.error(t('transcriptions.copy_failed'));
-                  }
-                }}
-              >
-                {t('transcriptions.copy')}
-              </Button>
-              {workflow ? (
-                <Button
-                  variant="outline"
-                  disabled={saving}
-                  aria-busy={saving}
-                  onClick={async () => {
-                    setSaving(true);
-                    try {
-                      const result = await saveLocalFile(
-                        new Blob([setup.text], { type: 'application/json' }),
-                        setup.file,
-                      );
-                      if (!result.canceled) toast.success(t('nav.saved'));
-                    } catch (error) {
-                      toast.error(t('clone.download_failed', { message: describeError(error) }));
-                    } finally {
-                      setSaving(false);
-                    }
-                  }}
-                >
-                  {t('clone.download')}
-                </Button>
-              ) : (
-                <Link to="/settings/sharing">{t('settings.mcp_title')}</Link>
-              )}
+              {setup.voiceBindings && <Link to="/settings/sharing">{t('settings.mcp_title')}</Link>}
               <a href={setup.docs} target="_blank" rel="noopener noreferrer">
                 {t('common.learn_more')}
               </a>
@@ -137,16 +159,25 @@ export function IntegrationDetailPage() {
         )}
         <div className="integration-detail-grid">
           <section className="integration-detail-panel">
-            <h3>{t('common.details')}</h3>
-            <div className="integration-capabilities">
-              {entry.detailKeys.map((key) => (
-                <span key={key}>{t(key)}</span>
-              ))}
-            </div>
-            <p className="integration-detail-note">{t('directoryExamples.notice')}</p>
+            <h3>{t('integrationCatalog.capabilitiesTitle')}</h3>
+            {setup ? (
+              <>
+                <p className="integration-works-with">
+                  <CircleCheckIcon aria-hidden="true" />
+                  {t('integrationCatalog.worksWith')}
+                </p>
+                <div className="integration-capabilities">
+                  {setup.capabilities.map((capability) => (
+                    <span key={capability}>{t(`integrationCatalog.capability.${capability}`)}</span>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="integration-detail-note">{t('directoryExamples.notice')}</p>
+            )}
           </section>
           <section className="integration-detail-panel integration-detail-action">
-            <h3>{t('common.details')}</h3>
+            <h3>{t('integrationCatalog.websiteTitle')}</h3>
             <p className="integration-detail-url">{entry.url}</p>
             <button type="button" onClick={openExternal} className="integration-open-button">
               {t('common.open')}

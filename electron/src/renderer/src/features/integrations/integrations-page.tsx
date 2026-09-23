@@ -11,6 +11,7 @@ import {
   integrationSlug,
 } from '../../../../../../frontend/src/config/integration-catalog';
 import { SPONSORS } from '../../../../../../frontend/src/config/sponsors';
+import { integrationSetup } from './setup-registry';
 import './integrations-page.css';
 
 const categories = [
@@ -39,22 +40,30 @@ export function IntegrationsPage() {
       ...SPONSORS.map((entry) => ({
         ...entry,
         featured: true,
-        directory: false,
-        detailKeys: [] as string[],
+        capabilities: [] as readonly string[],
+        worksWith: false,
         category: null as string | null,
       })),
-      ...INTEGRATION_CATALOG.map((entry) => ({
-        ...entry,
-        tier: '',
-        featured: false,
-        directory: true,
-      })),
+      ...INTEGRATION_CATALOG.map((entry) => {
+        const setup = integrationSetup(integrationSlug(entry.name));
+        return {
+          ...entry,
+          tier: '',
+          featured: false,
+          // Only entries with a real setup block claim capabilities; the rest
+          // are external links to the provider.
+          capabilities: (setup?.capabilities ?? []).map(
+            (capability) => `integrationCatalog.capability.${capability}`,
+          ),
+          worksWith: Boolean(setup),
+        };
+      }),
     ],
     [],
   );
   const filtered = entries.filter((entry) => {
     const haystack =
-      `${entry.name} ${entry.url} ${entry.detailKeys.join(' ')} ${entry.category ?? ''}`.toLocaleLowerCase();
+      `${entry.name} ${entry.url} ${entry.capabilities.map((key) => t(key)).join(' ')} ${entry.category ?? ''}`.toLocaleLowerCase();
     return (
       haystack.includes(query.trim().toLocaleLowerCase()) &&
       (!category || entry.category === category)
@@ -166,17 +175,25 @@ export function IntegrationsPage() {
                   className={
                     entry.featured
                       ? 'integration-badge integration-badge--featured'
-                      : 'integration-badge'
+                      : entry.worksWith
+                        ? 'integration-badge integration-badge--works'
+                        : 'integration-badge'
                   }
                 >
-                  {t(entry.featured ? 'integrationCatalog.featured' : 'directoryExamples.example')}
+                  {t(
+                    entry.featured
+                      ? 'integrationCatalog.featured'
+                      : entry.worksWith
+                        ? 'integrationCatalog.worksWith'
+                        : 'integrationCatalog.externalLink',
+                  )}
                 </span>
               </div>
-              <p>
-                {entry.directory && entry.detailKeys.length
-                  ? entry.detailKeys.map((key) => t(key)).join(' · ')
-                  : t('integrationCatalog.description')}
-              </p>
+              {entry.capabilities.length > 0 && (
+                <p className="integration-card-capabilities">
+                  {entry.capabilities.map((key) => t(key)).join(' · ')}
+                </p>
+              )}
               <span className="integration-card-url">{entry.url}</span>
             </button>
           ))}

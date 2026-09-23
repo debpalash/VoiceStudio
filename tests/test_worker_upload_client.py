@@ -40,6 +40,7 @@ from worker.transport.client import (
     _Outbox,
 )
 from worker.transport.server import SESSION_METADATA_KEY
+from hang_guard import BARRIER_WATCHDOG_S, HANG_GUARD_S
 
 ENGINE, MODEL, OP = "indextts", "indextts:v2", "tts"
 LEASE_SECONDS = 1
@@ -179,7 +180,7 @@ async def test_input_file_writes_are_off_loop_and_complete_short_writes(tmp_path
             nonlocal write_calls
             write_calls += 1
             write_started.set()
-            release_write.wait(timeout=5)
+            release_write.wait(timeout=BARRIER_WATCHDOG_S)
             return self._handle.write(payload[:2])
 
         def close(self):
@@ -195,7 +196,7 @@ async def test_input_file_writes_are_off_loop_and_complete_short_writes(tmp_path
             return chunks()
 
     def delayed_release():
-        assert write_started.wait(timeout=5)
+        assert write_started.wait(timeout=BARRIER_WATCHDOG_S)
         time.sleep(0.2)
         release_write.set()
 
@@ -211,7 +212,7 @@ async def test_input_file_writes_are_off_loop_and_complete_short_writes(tmp_path
         ticks += 1
         await asyncio.sleep(0.01)
     await task
-    release_thread.join(timeout=1)
+    release_thread.join(timeout=HANG_GUARD_S)
 
     assert ticks >= 3, "a blocked file write stalled the worker event loop"
     assert write_calls > 1, "short writes must be retried until the chunk is complete"
@@ -230,7 +231,7 @@ async def test_cancel_during_input_write_drains_then_removes_partial_file(tmp_pa
 
         def write(self, payload):
             write_started.set()
-            release_write.wait(timeout=5)
+            release_write.wait(timeout=BARRIER_WATCHDOG_S)
             return self._handle.write(payload)
 
         def close(self):
@@ -250,7 +251,7 @@ async def test_cancel_during_input_write_drains_then_removes_partial_file(tmp_pa
     task = asyncio.create_task(
         client._fetch_input(pb.ArtifactRef(artifact_id="inputs/voice.wav"), str(destination))
     )
-    assert await asyncio.to_thread(write_started.wait, 5)
+    assert await asyncio.to_thread(write_started.wait, HANG_GUARD_S)
     task.cancel()
     await asyncio.sleep(0)
     assert not task.done(), "cancellation detached an in-flight file write"
@@ -666,7 +667,7 @@ async def test_the_outbox_blocks_rather_than_spinning_when_empty():
     waiter = asyncio.create_task(outbox.get())
     await asyncio.sleep(0.05)
     await outbox.put(pb.WorkerMessage(pong=pb.Pong(nonce=7)))
-    assert (await asyncio.wait_for(waiter, timeout=1)).WhichOneof("payload") == "pong"
+    assert (await asyncio.wait_for(waiter, timeout=HANG_GUARD_S)).WhichOneof("payload") == "pong"
 
 
 @pytest.mark.asyncio

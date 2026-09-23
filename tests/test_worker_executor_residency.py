@@ -27,6 +27,7 @@ from services import tts_backend
 from worker import capabilities
 from worker.errors import ErrorClass
 from worker.executor import TaskExecutor, TaskFailure
+from hang_guard import BARRIER_WATCHDOG_S, HANG_GUARD_S
 
 
 # ── Fixtures ───────────────────────────────────────────────────────────────
@@ -112,13 +113,13 @@ async def test_cancelling_execution_drains_the_blocking_engine_thread(monkeypatc
 
     def blocked_load(_engine):
         started.set()
-        release.wait(5)
+        release.wait(BARRIER_WATCHDOG_S)
         finished.set()
         return _FakeBackend()
 
     monkeypatch.setattr(TaskExecutor, "_load_backend", staticmethod(blocked_load))
     execution = asyncio.create_task(TaskExecutor().execute(_FakeAssignment()))
-    await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=1)
+    await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=HANG_GUARD_S)
 
     try:
         execution.cancel()
@@ -128,7 +129,7 @@ async def test_cancelling_execution_drains_the_blocking_engine_thread(monkeypatc
         release.set()
 
     with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(execution, timeout=1)
+        await asyncio.wait_for(execution, timeout=HANG_GUARD_S)
     assert finished.is_set()
 
 @pytest.fixture(autouse=True)
