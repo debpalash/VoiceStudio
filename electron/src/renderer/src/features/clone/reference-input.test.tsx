@@ -73,3 +73,51 @@ it('shows the drop zone and the record button together, with no mode toggle', ()
   expect(view.getByRole('button', { name: 'clone.record' })).toBeTruthy();
   expect(view.queryByRole('tablist')).toBeNull();
 });
+
+function mockRecorder() {
+  let finish: (file: File) => void = () => {};
+  vi.mocked(useRecording).mockImplementation(((onDone: (file: File) => void) => {
+    finish = onDone;
+    return {
+      level: 0,
+      seconds: 0,
+      isStarting: false,
+      isCleaning: false,
+      isRecording: false,
+      start: vi.fn(),
+      stop: vi.fn(),
+    };
+  }) as unknown as typeof useRecording);
+  return (file: File) => finish(file);
+}
+
+it('never lets a slow upload probe replace a newer recording', async () => {
+  const record = mockRecorder();
+  const onAccept = vi.fn();
+  const { container } = render(<ReferenceSourcePicker onAccept={onAccept} />);
+  fireEvent.change(container.querySelector('input[type="file"]')!, {
+    target: { files: [clip('upload.wav')] },
+  });
+  record(clip('recording.wav'));
+  mock.probes.get('recording.wav')!(6);
+  await vi.waitFor(() => expect(onAccept).toHaveBeenCalledOnce());
+  mock.probes.get('upload.wav')!(7);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  expect(onAccept).toHaveBeenCalledOnce();
+  expect(onAccept.mock.calls[0][0].name).toBe('recording.wav');
+});
+
+it('drops a probe that finishes after the picker closes', async () => {
+  mockRecorder();
+  const onAccept = vi.fn();
+  const { container, unmount } = render(<ReferenceSourcePicker onAccept={onAccept} />);
+  fireEvent.change(container.querySelector('input[type="file"]')!, {
+    target: { files: [clip('late.wav')] },
+  });
+  unmount();
+  mock.probes.get('late.wav')!(5);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  expect(onAccept).not.toHaveBeenCalled();
+});
