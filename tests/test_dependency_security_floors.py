@@ -11,6 +11,10 @@ PYTHON_FLOORS = {
     "aiohttp": "3.14.3",
     "cryptography": "50.0.0",
     "gradio": "6.15.1",
+    # GHSA-qqmf-gpg7-g8gw: checkpoint _instantiator code execution, fixed in
+    # 2.6.6. The advisory range is malformed (< 2022.6.15), so Dependabot
+    # still flags fixed releases; this floor is the real guard.
+    "lightning": "2.6.6",
     "mako": "1.3.12",
     "mcp": "1.28.1",
     "msgpack": "1.2.1",
@@ -20,6 +24,7 @@ PYTHON_FLOORS = {
     "pydantic-settings": "2.14.2",
     "pygments": "2.20.0",
     "pypdf": "6.15.0",
+    "pytorch-lightning": "2.6.6",
     "python-multipart": "0.0.31",
     "starlette": "1.3.1",
     "transformers": "5.10.0",
