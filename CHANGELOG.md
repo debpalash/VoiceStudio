@@ -8,6 +8,14 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ## [Unreleased]
 
+**Highlights**
+
+- Turn a finished dub into a Stories script in one click, speakers and voices included (#2300)
+
+### Added
+
+- Create Story from a dub: its speakers become characters, its segments become lines, and each character keeps the voice the dub assigned — no retyping the script (#2300) — thanks @shivsin25!
+
 ## [0.5.6] — 2026-09-23
 
 **VoiceStudio now talks to your other tools.** Answer Twilio phone calls in a saved voice, and connect Claude Code, Cursor, Codex CLI and the OpenAI Agents SDK to VoiceStudio with copyable setup that works, including in Docker, where MCP previously returned HTTP 405. Integration cards now say plainly which ones work with VoiceStudio and which are external links.
@@ -31,12 +39,6 @@ This release also lets you replace a saved clone's reference sample, clones long
 
 **Highlights**
 
-- Finished audiobook chapters survive a data-folder move or a power-off mid-render (#2279) — thanks @castlecreati!
-- Malayalam speech reads numbers in Malayalam (#2280) — thanks @nikhilkilivayil!
-- Stories and Audiobook can save a chapter cue sheet (`.txt`) after a render (#2278) — thanks @shivsin25!
-- Windows backend keeps answering after antivirus or VPN software resets a connection (#2276) — thanks @ialexbond!
-- Replace a saved voice clone's reference sample without creating a duplicate voice (#2282)
-- Turn a finished dub into a Stories script in one click, speakers and voices included
 - Answer Twilio phone calls with a greeting in a saved voice; off by default, with a local phone-quality test (#2291)
 - Claude Code, Cursor, Codex CLI and the OpenAI Agents SDK connect to VoiceStudio with working setup (#2289, #2290)
 - Replace a saved clone's reference sample, and clone from references longer than 20 s on OmniVoice (#2282, #2281) — thanks @Cengokill!
@@ -49,7 +51,6 @@ This release also lets you replace a saved clone's reference sample, clones long
 
 ### Added
 
-- Create Story from a dub: its speakers become characters, its segments become lines, and each character keeps the voice the Cast strip assigned — no retyping the script — thanks @shivsin25!
 - Edit a saved voice clone's reference sample: play it, replace it by upload or recording, and save back to the same voice (#2282) — thanks @Cengokill!
 - Answer Twilio phone calls in a saved voice: off by default, signed webhooks and single-use stream tokens, with a local phone-quality test (#2291)
 - Malayalam dubs and audiobooks speak numbers, percentages, and decimals in Malayalam instead of reading raw digits (#2280) — thanks @nikhilkilivayil!
