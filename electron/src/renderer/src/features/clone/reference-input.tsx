@@ -1,5 +1,5 @@
 import { LoaderCircleIcon, MicIcon, SparklesIcon, SquareIcon, UploadCloudIcon } from 'lucide-react';
-import { useId, useRef, useState, type DragEvent } from 'react';
+import { useEffect, useId, useRef, useState, type DragEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { RecordingInputs } from '@/components/recording-inputs';
@@ -38,11 +38,15 @@ async function checkClip(file: File): Promise<SetReferenceResult> {
  * Without `onAccept` the clip becomes the composer's reference; with it (the
  * saved-profile editor) the same checks run and the clip is handed back.
  */
-function useIngest(onAccept?: AcceptReference): IngestFn {
+type PickToken = { current: number };
+
+function useIngest(onAccept?: AcceptReference, sharedPick?: PickToken): IngestFn {
   const { t } = useTranslation();
   // Monotonic pick token: a slow probe for an earlier clip must never replace
-  // (or toast over) a later one.
-  const latestPick = useRef(0);
+  // (or toast over) a later one. Zones shown together share one token, so an
+  // upload probe cannot land after a newer recording.
+  const ownPick = useRef(0);
+  const latestPick = sharedPick ?? ownPick;
   return async (file) => {
     if (!file) return;
     const pick = ++latestPick.current;
@@ -81,9 +85,12 @@ export function ReferenceUsageNote({ durationSeconds }: { durationSeconds: numbe
   );
 }
 
-export function UploadZone({ onAccept }: { onAccept?: AcceptReference } = {}) {
+export function UploadZone({
+  onAccept,
+  pickToken,
+}: { onAccept?: AcceptReference; pickToken?: PickToken } = {}) {
   const { t } = useTranslation();
-  const ingestFile = useIngest(onAccept);
+  const ingestFile = useIngest(onAccept, pickToken);
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const id = useId();
@@ -129,9 +136,12 @@ export function UploadZone({ onAccept }: { onAccept?: AcceptReference } = {}) {
   );
 }
 
-export function RecordZone({ onAccept }: { onAccept?: AcceptReference } = {}) {
+export function RecordZone({
+  onAccept,
+  pickToken,
+}: { onAccept?: AcceptReference; pickToken?: PickToken } = {}) {
   const { t } = useTranslation();
-  const ingestFile = useIngest(onAccept);
+  const ingestFile = useIngest(onAccept, pickToken);
   const rec = useRecording((file) => void ingestFile(file));
   const hasSignal = rec.level >= LEVEL_THRESHOLD;
   let micButton;
@@ -216,6 +226,30 @@ export function RecordZone({ onAccept }: { onAccept?: AcceptReference } = {}) {
           </span>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Upload and record side by side: both ways in are visible at once instead of
+ * hidden behind a toggle. Stacks on narrow containers.
+ */
+export function ReferenceSourcePicker({ onAccept }: { onAccept?: AcceptReference } = {}) {
+  const pickToken = useRef(0);
+  // Leaving the picker (a clip was accepted, or the user cancelled) retires
+  // every probe still running, so none can replace the choice afterwards.
+  useEffect(() => {
+    const token = pickToken;
+    return () => {
+      token.current += 1;
+    };
+  }, []);
+  return (
+    <div className="@container">
+      <div className="grid gap-3 @md:grid-cols-2 [&>*]:min-w-0">
+        <UploadZone onAccept={onAccept} pickToken={pickToken} />
+        <RecordZone onAccept={onAccept} pickToken={pickToken} />
+      </div>
     </div>
   );
 }

@@ -74,8 +74,6 @@
     "webhookNeedsTunnel": "Lưu URL đường hầm công khai ở bước 2 để lấy URL webhook.",
     "stepVoice": "Giọng nói và hành vi",
     "stepVoiceHint": "Chọn cách VoiceStudio phát âm và những gì người gọi nghe thấy.",
-    "voiceOwnHint": "Các giọng được đánh dấu \"Giọng của bạn\" đã được xác minh là của bạn. Chỉ những giọng đó mới có thể thực hiện cuộc gọi đi.",
-    "ownVoice": "Giọng của bạn",
     "defaultVoice": "Giọng mặc định",
     "activeEngineNamed": "Engine đang dùng ({{name}})",
     "inboundMode": "Khi có người gọi",
@@ -115,7 +113,9 @@
     "securityTokens": "Mỗi cuộc gọi nhận một token dùng một lần, thời hạn ngắn cho luồng âm thanh của nó.",
     "securityIsolation": "Cổng là một cổng cục bộ riêng chỉ phục vụ các tuyến cuộc gọi. Phần còn lại của VoiceStudio vẫn riêng tư.",
     "securitySecret": "Auth Token của bạn được lưu mã hóa trên máy tính này và không bao giờ được hiển thị, ghi nhật ký hoặc xuất ra.",
-    "copyLabel": "Sao chép {{label}}"
+    "copyLabel": "Sao chép {{label}}",
+    "canCall": "Có thể gọi",
+    "voiceCallHint": "Giọng được đánh dấu \"Có thể gọi\" là giọng của chính bạn đã xác minh hoặc giọng được thiết kế. Chỉ những giọng đó mới gọi điện được."
   },
   "tts": {
     "generationComplete": "Đã tạo giọng nói xong",

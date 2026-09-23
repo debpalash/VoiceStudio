@@ -5,4 +5,6 @@
 - ``session`` — provider-agnostic call loop, tokens, limits, call log
 - ``config``  — persisted settings (auth token encrypted, default off)
 - ``gateway`` — the separate loopback listener a public tunnel targets
+- ``calls``   — call-agent sessions: placing calls, records, live events
+- ``agent``   — the conversational responder (VAD → ASR → LLM → TTS)
 """

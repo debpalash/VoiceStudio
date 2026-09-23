@@ -74,8 +74,6 @@
     "webhookNeedsTunnel": "Salva l'URL pubblico del tunnel al passaggio 2 per ottenere l'URL del webhook.",
     "stepVoice": "Voce e comportamento",
     "stepVoiceHint": "Scegli come suona VoiceStudio e cosa sentono i chiamanti.",
-    "voiceOwnHint": "Le voci contrassegnate come \"La tua voce\" sono verificate come tue. Solo quelle possono effettuare chiamate in uscita.",
-    "ownVoice": "La tua voce",
     "defaultVoice": "Voce predefinita",
     "activeEngineNamed": "Motore attivo ({{name}})",
     "inboundMode": "Quando qualcuno chiama",
@@ -115,7 +113,9 @@
     "securityTokens": "Ogni chiamata riceve un token monouso a breve scadenza per il suo flusso audio.",
     "securityIsolation": "Il gateway è una porta locale separata che serve solo le route delle chiamate. Il resto di VoiceStudio rimane privato.",
     "securitySecret": "Il tuo Auth Token è archiviato cifrato su questo computer e non viene mai mostrato, registrato nei log né esportato.",
-    "copyLabel": "Copia {{label}}"
+    "copyLabel": "Copia {{label}}",
+    "canCall": "Può chiamare",
+    "voiceCallHint": "Le voci contrassegnate con «Può chiamare» sono la tua voce verificata o una voce progettata. Solo queste possono effettuare chiamate."
   },
   "tts": {
     "generationComplete": "Generazione vocale completata",

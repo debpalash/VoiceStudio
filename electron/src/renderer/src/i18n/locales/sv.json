@@ -74,8 +74,6 @@
     "webhookNeedsTunnel": "Spara din offentliga tunnel-URL i steg 2 för att få webhook-URL:en.",
     "stepVoice": "Röst och beteende",
     "stepVoiceHint": "Välj hur VoiceStudio låter och vad uppringare hör.",
-    "voiceOwnHint": "Röster märkta \"Din röst\" är verifierade som din egen. Endast de kan ringa utgående samtal.",
-    "ownVoice": "Din röst",
     "defaultVoice": "Standardröst",
     "activeEngineNamed": "Aktiv motor ({{name}})",
     "inboundMode": "När någon ringer",
@@ -115,7 +113,9 @@
     "securityTokens": "Varje samtal får en kortlivad engångstoken för sin ljudström.",
     "securityIsolation": "Gatewayen är en separat lokal port som endast betjänar samtalsrutter. Resten av VoiceStudio förblir privat.",
     "securitySecret": "Ditt Auth Token lagras krypterat på den här datorn och visas, loggas eller exporteras aldrig.",
-    "copyLabel": "Kopiera {{label}}"
+    "copyLabel": "Kopiera {{label}}",
+    "canCall": "Kan ringa",
+    "voiceCallHint": "Röster märkta ”Kan ringa” är din verifierade egna röst eller en designad röst. Bara de kan ringa samtal."
   },
   "tts": {
     "generationComplete": "Talgenereringen är klar",

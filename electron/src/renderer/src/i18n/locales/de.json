@@ -74,8 +74,6 @@
     "webhookNeedsTunnel": "Speichere in Schritt 2 deine öffentliche Tunnel-URL, um die Webhook-URL zu erhalten.",
     "stepVoice": "Stimme und Verhalten",
     "stepVoiceHint": "Lege fest, wie VoiceStudio klingt und was Anrufer hören.",
-    "voiceOwnHint": "Mit „Deine Stimme“ markierte Stimmen sind als deine eigene verifiziert. Nur diese können ausgehende Anrufe tätigen.",
-    "ownVoice": "Deine Stimme",
     "defaultVoice": "Standardstimme",
     "activeEngineNamed": "Aktive Engine ({{name}})",
     "inboundMode": "Wenn jemand anruft",
@@ -115,7 +113,9 @@
     "securityTokens": "Jeder Anruf erhält ein kurzlebiges Einmal-Token für seinen Audiostream.",
     "securityIsolation": "Das Gateway ist ein separater lokaler Port, der nur Anrufrouten bereitstellt. Der Rest von VoiceStudio bleibt privat.",
     "securitySecret": "Dein Auth Token wird verschlüsselt auf diesem Computer gespeichert und nie angezeigt, protokolliert oder exportiert.",
-    "copyLabel": "{{label}} kopieren"
+    "copyLabel": "{{label}} kopieren",
+    "canCall": "Kann anrufen",
+    "voiceCallHint": "Mit „Kann anrufen“ markierte Stimmen sind deine verifizierte eigene Stimme oder eine entworfene Stimme. Nur diese können Anrufe tätigen."
   },
   "tts": {
     "generationComplete": "Spracherzeugung abgeschlossen",

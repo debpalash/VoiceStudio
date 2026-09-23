@@ -85,6 +85,7 @@ def _mutating_route_functions(
 @pytest.mark.parametrize(
     "filename",
     [
+        "calls.py",
         "mcp_bindings.py",
         "media_tools.py",
         "pronunciation.py",

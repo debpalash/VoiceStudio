@@ -22,6 +22,7 @@ vi.mock('@/hooks/use-profiles', () => ({
     data: [
       { id: 'p1', name: 'Front desk', verified_own_voice: 0 },
       { id: 'p2', name: 'Me', verified_own_voice: 1 },
+      { id: 'p3', name: 'Designed', kind: 'design', verified_own_voice: 0 },
     ],
   }),
 }));
@@ -70,7 +71,7 @@ const SID = `AC${'b'.repeat(32)}`;
 const notFound = () => new ApiError(404, 'Not Found');
 let put: (path: string, body: Record<string, unknown>) => Promise<unknown>;
 let calls: CallsSettings | null;
-let readiness: { checklist: ReadinessItem[] } | null;
+let readiness: ReadinessItem[] | null;
 
 function renderPage(state: TwilioState) {
   api.json.mockImplementation(async (path: string, init?: RequestInit) => {
@@ -148,8 +149,9 @@ it('marks voices verified as your own in the voice picker', async () => {
   renderPage(base);
   fireEvent.click(await screen.findByRole('combobox', { name: 'Voice' }));
   const own = await screen.findByRole('option', { name: /Me/ });
-  expect(own).toHaveTextContent('Your voice');
-  expect(screen.getByRole('option', { name: 'Front desk' })).not.toHaveTextContent('Your voice');
+  expect(own).toHaveTextContent('Can call');
+  expect(screen.getByRole('option', { name: /Designed/ })).toHaveTextContent('Can call');
+  expect(screen.getByRole('option', { name: 'Front desk' })).not.toHaveTextContent('Can call');
 });
 
 it('saves only the account step, never echoes a stored token, and replaces it on request', async () => {
@@ -349,13 +351,15 @@ it('falls back cleanly without the Calls backend: agent mode and test calls expl
 
 it('uses the Calls backend when present: readiness, number, agent mode and disclosure', async () => {
   router.routesByPath = { '/calls': {} };
-  calls = { from_number: '', inbound_mode: 'greeting', disclosure: '' };
-  readiness = {
-    checklist: [
-      { id: 'credentials', ok: true },
-      { id: 'llm', ok: false, detail: 'Start a local model' },
-    ],
+  calls = {
+    from_number: '',
+    inbound_mode: 'greeting',
+    disclosure_template: "Hi, this is {name}'s AI assistant calling on their behalf.",
   };
+  readiness = [
+    { id: 'credentials', ok: true },
+    { id: 'llm', ok: false, detail: 'Start a local model' },
+  ];
   put = async (path, body) => (path === '/calls/settings' ? { ...calls, ...body } : complete);
   renderPage(complete);
   expect(await screen.findByText('Start a local model')).toBeInTheDocument();
@@ -375,13 +379,16 @@ it('uses the Calls backend when present: readiness, number, agent mode and discl
 
   fireEvent.click(screen.getByRole('button', { name: 'AI agent' }));
   expect(screen.getByLabelText('AI disclosure')).toHaveValue(
-    'This call uses an AI-generated voice.',
+    "Hi, this is {name}'s AI assistant calling on their behalf.",
   );
   fireEvent.click(within(step('Voice and behavior')).getByRole('button', { name: 'Save' }));
   await waitFor(() =>
     expect(puts()).toContainEqual([
       '/calls/settings',
-      { inbound_mode: 'agent', disclosure: 'This call uses an AI-generated voice.' },
+      {
+        inbound_mode: 'agent',
+        disclosure_template: "Hi, this is {name}'s AI assistant calling on their behalf.",
+      },
     ]),
   );
 });
@@ -407,4 +414,13 @@ it('keeps steps read-only while an update is in flight and keeps later edits', a
   await waitFor(() => expect(greeting).toBeEnabled());
   fireEvent.change(greeting, { target: { value: 'Edited after save' } });
   expect(greeting).toHaveValue('Edited after save');
+});
+
+it('needs no greeting when the call agent answers incoming calls', async () => {
+  calls = { from_number: '', inbound_mode: 'agent', disclosure_template: 'Hi.' };
+  renderPage(base);
+  await loadedHero();
+  await waitFor(() =>
+    expect(within(step('Voice and behavior')).getByText('Done')).toBeInTheDocument(),
+  );
 });

@@ -74,8 +74,6 @@
     "webhookNeedsTunnel": "Webhook URL'sini almak için 2. adımda genel tünel URL'nizi kaydedin.",
     "stepVoice": "Ses ve davranış",
     "stepVoiceHint": "VoiceStudio'nun nasıl sesleneceğini ve arayanların ne duyacağını seçin.",
-    "voiceOwnHint": "\"Sizin sesiniz\" olarak işaretlenen sesler size ait olarak doğrulanmıştır. Yalnızca bunlar giden arama yapabilir.",
-    "ownVoice": "Sizin sesiniz",
     "defaultVoice": "Varsayılan ses",
     "activeEngineNamed": "Etkin motor ({{name}})",
     "inboundMode": "Biri aradığında",
@@ -115,7 +113,9 @@
     "securityTokens": "Her arama, ses akışı için tek kullanımlık, kısa ömürlü bir token alır.",
     "securityIsolation": "Ağ geçidi, yalnızca arama yollarını sunan ayrı bir yerel bağlantı noktasıdır. VoiceStudio'nun geri kalanı gizli kalır.",
     "securitySecret": "Auth Token'ınız bu bilgisayarda şifreli olarak saklanır ve asla gösterilmez, günlüğe yazılmaz veya dışa aktarılmaz.",
-    "copyLabel": "{{label}} kopyala"
+    "copyLabel": "{{label}} kopyala",
+    "canCall": "Arama yapabilir",
+    "voiceCallHint": "\"Arama yapabilir\" olarak işaretlenen sesler doğrulanmış kendi sesiniz veya tasarlanmış bir sestir. Yalnızca bunlar arama yapabilir."
   },
   "tts": {
     "generationComplete": "Konuşma oluşturma tamamlandı",

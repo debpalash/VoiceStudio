@@ -74,8 +74,6 @@
     "webhookNeedsTunnel": "Enregistrez l'URL publique de votre tunnel à l'étape 2 pour obtenir l'URL du webhook.",
     "stepVoice": "Voix et comportement",
     "stepVoiceHint": "Choisissez comment VoiceStudio sonne et ce qu'entendent les appelants.",
-    "voiceOwnHint": "Les voix marquées « Votre voix » sont vérifiées comme étant la vôtre. Seules celles-ci peuvent passer des appels sortants.",
-    "ownVoice": "Votre voix",
     "defaultVoice": "Voix par défaut",
     "activeEngineNamed": "Moteur actif ({{name}})",
     "inboundMode": "Quand quelqu'un appelle",
@@ -115,7 +113,9 @@
     "securityTokens": "Chaque appel reçoit un token à usage unique et de courte durée pour son flux audio.",
     "securityIsolation": "La passerelle est un port local distinct qui ne sert que les routes d'appel. Le reste de VoiceStudio reste privé.",
     "securitySecret": "Votre Auth Token est stocké chiffré sur cet ordinateur et n'est jamais affiché, journalisé ni exporté.",
-    "copyLabel": "Copier {{label}}"
+    "copyLabel": "Copier {{label}}",
+    "canCall": "Peut appeler",
+    "voiceCallHint": "Les voix marquées « Peut appeler » sont votre propre voix vérifiée ou une voix conçue. Seules celles-ci peuvent passer des appels."
   },
   "tts": {
     "generationComplete": "Génération vocale terminée",

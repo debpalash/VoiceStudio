@@ -74,8 +74,6 @@
     "webhookNeedsTunnel": "Save your public tunnel URL in step 2 to get the webhook URL.",
     "stepVoice": "Voice and behavior",
     "stepVoiceHint": "Choose how VoiceStudio sounds and what callers hear.",
-    "voiceOwnHint": "Voices marked \"Your voice\" are verified as your own. Only those can place outgoing calls.",
-    "ownVoice": "Your voice",
     "defaultVoice": "Default voice",
     "activeEngineNamed": "Active engine ({{name}})",
     "inboundMode": "When someone calls",
@@ -115,7 +113,9 @@
     "securityTokens": "Each call gets a single-use, short-lived token for its audio stream.",
     "securityIsolation": "The gateway is a separate local port that serves only call routes. The rest of VoiceStudio stays private.",
     "securitySecret": "Your Auth Token is stored encrypted on this computer and never shown, logged or exported.",
-    "copyLabel": "Copy {{label}}"
+    "copyLabel": "Copy {{label}}",
+    "canCall": "Can call",
+    "voiceCallHint": "Voices marked \"Can call\" are your verified own voice or a designed voice. Only those can place calls."
   },
   "permissions": {
     "title": "Permissions",

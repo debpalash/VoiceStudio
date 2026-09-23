@@ -74,8 +74,6 @@
     "webhookNeedsTunnel": "Webhook URL を取得するには、ステップ 2 で公開トンネル URL を保存してください。",
     "stepVoice": "音声と動作",
     "stepVoiceHint": "VoiceStudio の声と、発信者が聞く内容を選びます。",
-    "voiceOwnHint": "「あなたの声」と表示された音声は、本人の声として確認済みです。発信できるのはそれらの音声だけです。",
-    "ownVoice": "あなたの声",
     "defaultVoice": "デフォルトの音声",
     "activeEngineNamed": "アクティブなエンジン（{{name}}）",
     "inboundMode": "着信時の動作",
@@ -115,7 +113,9 @@
     "securityTokens": "各通話には、音声ストリーム用の使い捨ての短期トークンが発行されます。",
     "securityIsolation": "ゲートウェイは通話ルートのみを提供する独立したローカルポートです。VoiceStudio のその他の部分は非公開のままです。",
     "securitySecret": "Auth Token はこのコンピューターに暗号化して保存され、表示、ログ記録、エクスポートされることはありません。",
-    "copyLabel": "{{label}} をコピー"
+    "copyLabel": "{{label}} をコピー",
+    "canCall": "通話可",
+    "voiceCallHint": "「通話可」の音声は、本人確認済みのあなたの声、またはデザインした声です。通話を発信できるのはこれらだけです。"
   },
   "tts": {
     "generationComplete": "音声生成が完了しました",

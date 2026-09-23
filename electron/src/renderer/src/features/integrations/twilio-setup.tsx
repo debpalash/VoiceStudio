@@ -48,9 +48,10 @@ export const TWILIO_DOCS =
 const STATE_PATH = '/api/integrations/twilio/state';
 const QUERY_KEY = ['integrations', 'twilio'] as const;
 /**
- * Optional Calls backend (feature-detected: a 404 means "not in this build").
- * `/calls/settings` may carry `from_number`, `inbound_mode` and `disclosure`;
- * `/calls/readiness` returns `{ checklist: [{ id, ok, detail }] }`.
+ * Calls backend (docs/integrations/calls.md), feature-detected: a 404 means
+ * "not in this build". `/calls/settings` carries `from_number`,
+ * `inbound_mode` and `disclosure_template`; `/calls/readiness` returns
+ * `[{ id, ok, detail }]`.
  */
 export const CALLS_SETTINGS_PATH = '/calls/settings';
 export const CALLS_READINESS_PATH = '/calls/readiness';
@@ -93,7 +94,7 @@ export interface TwilioState {
 export interface CallsSettings {
   from_number?: string;
   inbound_mode?: string;
-  disclosure?: string;
+  disclosure_template?: string;
 }
 
 export interface ReadinessItem {
@@ -240,7 +241,7 @@ export function TwilioSetup({ hero, rail }: IntegrationPanelProps) {
   const readiness = useQuery({
     queryKey: ['calls', 'readiness'],
     queryFn: ({ signal }) =>
-      optionalJson<{ checklist?: ReadinessItem[] }>(CALLS_READINESS_PATH, signal),
+      optionalJson<ReadinessItem[] | { checklist?: ReadinessItem[] }>(CALLS_READINESS_PATH, signal),
     retry: false,
     refetchInterval: enabled ? 5000 : false,
   });
@@ -264,7 +265,8 @@ export function TwilioSetup({ hero, rail }: IntegrationPanelProps) {
         from_number: callsSettings.data.from_number ?? '',
         inbound_mode: callsSettings.data.inbound_mode ?? 'greeting',
         // Prefilled, so what is shown is exactly what gets saved.
-        disclosure: callsSettings.data.disclosure || t('twilioIntegration.disclosureDefault'),
+        disclosure:
+          callsSettings.data.disclosure_template || t('twilioIntegration.disclosureDefault'),
       });
   }, [callsSettings.data, callsDraft, t]);
   useEffect(
@@ -357,7 +359,7 @@ export function TwilioSetup({ hero, rail }: IntegrationPanelProps) {
       setBusy(null);
     }
   };
-  const saveCalls = async (step: Step, body: Partial<CallsDraft>) => {
+  const saveCalls = async (step: Step, body: CallsSettings) => {
     const next = await apiJson<CallsSettings>(CALLS_SETTINGS_PATH, {
       method: 'PUT',
       body: JSON.stringify(body),
@@ -373,7 +375,9 @@ export function TwilioSetup({ hero, rail }: IntegrationPanelProps) {
   // Only a call that passed the signature check proves the webhook points
   // here with the current token; rejected or busy attempts do not.
   const answered = server.calls.recent.some((call) => ANSWERED.has(call.outcome));
-  const voiceDone = Boolean(server.greeting);
+  // In agent mode the call agent answers, so no greeting is needed.
+  const agentAnswers = callsSettings.data?.inbound_mode === 'agent';
+  const voiceDone = Boolean(server.greeting) || agentAnswers;
   const steps: Record<Step, StepStatus> = {
     account: credentialsDone ? 'done' : 'todo',
     tunnel: tunnelDone ? 'done' : 'todo',
@@ -396,9 +400,8 @@ export function TwilioSetup({ hero, rail }: IntegrationPanelProps) {
     { id: 'number', ok: answered },
     { id: 'voice', ok: voiceDone },
   ];
-  const checklist = (readiness.data?.checklist ?? derivedChecklist).filter((item) =>
-    CHECKS.has(item.id),
-  );
+  const served = Array.isArray(readiness.data) ? readiness.data : readiness.data?.checklist;
+  const checklist = (served ?? derivedChecklist).filter((item) => CHECKS.has(item.id));
 
   const toggleCalls = (on: boolean) =>
     void save('enable', { enabled: on }, []).then((ok) => {
@@ -759,7 +762,7 @@ export function TwilioSetup({ hero, rail }: IntegrationPanelProps) {
   ];
   const ownVoices = new Set(
     (profiles.data ?? [])
-      .filter((profile) => Boolean(profile.verified_own_voice))
+      .filter((profile) => Boolean(profile.verified_own_voice) || profile.kind === 'design')
       .map((profile) => profile.id),
   );
   const ttsBackends = (engines.data?.tts?.backends ?? []).filter((backend) => backend.available);
@@ -773,7 +776,7 @@ export function TwilioSetup({ hero, rail }: IntegrationPanelProps) {
     ...ttsBackends.map((backend) => ({ value: backend.id, label: backend.display_name })),
   ];
   const agentSupported = Boolean(calls && 'inbound_mode' in calls && callsDraft);
-  const disclosureSupported = Boolean(calls && 'disclosure' in calls && callsDraft);
+  const disclosureSupported = Boolean(calls && 'disclosure_template' in calls && callsDraft);
   const defaultDisclosure = t('twilioIntegration.disclosureDefault');
   const hasDisclosure = draft.greeting.includes(defaultDisclosure);
   const voiceStep = (
@@ -798,7 +801,7 @@ export function TwilioSetup({ hero, rail }: IntegrationPanelProps) {
               try {
                 await saveCalls('voice', {
                   ...(agentSupported ? { inbound_mode: callsDraft.inbound_mode } : {}),
-                  ...(disclosureSupported ? { disclosure: callsDraft.disclosure } : {}),
+                  ...(disclosureSupported ? { disclosure_template: callsDraft.disclosure } : {}),
                 });
               } catch (reason) {
                 fail('voice', explain(reason));
@@ -814,7 +817,7 @@ export function TwilioSetup({ hero, rail }: IntegrationPanelProps) {
         <Field
           label={t('twilioIntegration.voice')}
           htmlFor="twilio-voice"
-          hint={t('twilioIntegration.voiceOwnHint')}
+          hint={t('twilioIntegration.voiceCallHint')}
         >
           <Select
             items={voiceItems}
@@ -833,7 +836,7 @@ export function TwilioSetup({ hero, rail }: IntegrationPanelProps) {
                 <SelectItem key={item.value} value={item.value}>
                   {item.label}
                   {ownVoices.has(item.value) && (
-                    <span className="twilio-own">{t('twilioIntegration.ownVoice')}</span>
+                    <span className="twilio-own">{t('twilioIntegration.canCall')}</span>
                   )}
                 </SelectItem>
               ))}

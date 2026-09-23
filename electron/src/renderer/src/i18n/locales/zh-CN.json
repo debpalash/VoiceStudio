@@ -74,8 +74,6 @@
     "webhookNeedsTunnel": "请在第 2 步保存公开隧道 URL，以获取 Webhook URL。",
     "stepVoice": "语音与行为",
     "stepVoiceHint": "选择 VoiceStudio 的声音以及来电者听到的内容。",
-    "voiceOwnHint": "标记为“你的声音”的音色已验证为你本人的声音。只有这些音色可以拨打外呼电话。",
-    "ownVoice": "你的声音",
     "defaultVoice": "默认音色",
     "activeEngineNamed": "当前引擎（{{name}}）",
     "inboundMode": "有人来电时",
@@ -115,7 +113,9 @@
     "securityTokens": "每通电话的音频流都会获得一个一次性的短期令牌。",
     "securityIsolation": "网关是一个独立的本地端口，只提供通话路由。VoiceStudio 的其余部分保持私密。",
     "securitySecret": "你的 Auth Token 加密存储在这台电脑上，绝不会被显示、记录到日志或导出。",
-    "copyLabel": "复制{{label}}"
+    "copyLabel": "复制{{label}}",
+    "canCall": "可通话",
+    "voiceCallHint": "标记为“可通话”的声音是你已验证的本人声音或设计的声音。只有这些声音可以拨打电话。"
   },
   "tts": {
     "generationComplete": "语音生成完成",

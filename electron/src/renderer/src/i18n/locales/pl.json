@@ -74,8 +74,6 @@
     "webhookNeedsTunnel": "Zapisz publiczny URL tunelu w kroku 2, aby uzyskać URL webhooka.",
     "stepVoice": "Głos i zachowanie",
     "stepVoiceHint": "Wybierz, jak brzmi VoiceStudio i co słyszą dzwoniący.",
-    "voiceOwnHint": "Głosy oznaczone jako \"Twój głos\" są zweryfikowane jako Twoje. Tylko one mogą wykonywać połączenia wychodzące.",
-    "ownVoice": "Twój głos",
     "defaultVoice": "Głos domyślny",
     "activeEngineNamed": "Aktywny silnik ({{name}})",
     "inboundMode": "Gdy ktoś dzwoni",
@@ -115,7 +113,9 @@
     "securityTokens": "Każde połączenie otrzymuje jednorazowy, krótkotrwały token dla swojego strumienia audio.",
     "securityIsolation": "Brama to osobny port lokalny obsługujący wyłącznie trasy połączeń. Reszta VoiceStudio pozostaje prywatna.",
     "securitySecret": "Twój Auth Token jest przechowywany w postaci zaszyfrowanej na tym komputerze i nigdy nie jest wyświetlany, logowany ani eksportowany.",
-    "copyLabel": "Kopiuj {{label}}"
+    "copyLabel": "Kopiuj {{label}}",
+    "canCall": "Może dzwonić",
+    "voiceCallHint": "Głosy oznaczone „Może dzwonić” to Twój zweryfikowany własny głos lub głos zaprojektowany. Tylko one mogą wykonywać połączenia."
   },
   "tts": {
     "generationComplete": "Generowanie mowy zakończone",

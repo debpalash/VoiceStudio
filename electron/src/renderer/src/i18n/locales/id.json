@@ -74,8 +74,6 @@
     "webhookNeedsTunnel": "Simpan URL tunnel publik Anda di langkah 2 untuk mendapatkan URL webhook.",
     "stepVoice": "Suara dan perilaku",
     "stepVoiceHint": "Pilih bagaimana VoiceStudio terdengar dan apa yang didengar penelepon.",
-    "voiceOwnHint": "Suara bertanda \"Suara Anda\" telah diverifikasi sebagai milik Anda. Hanya suara tersebut yang dapat melakukan panggilan keluar.",
-    "ownVoice": "Suara Anda",
     "defaultVoice": "Suara default",
     "activeEngineNamed": "Mesin aktif ({{name}})",
     "inboundMode": "Saat seseorang menelepon",
@@ -115,7 +113,9 @@
     "securityTokens": "Setiap panggilan mendapat token sekali pakai berumur pendek untuk aliran audionya.",
     "securityIsolation": "Gateway adalah port lokal terpisah yang hanya melayani rute panggilan. Bagian lain VoiceStudio tetap privat.",
     "securitySecret": "Auth Token Anda disimpan terenkripsi di komputer ini dan tidak pernah ditampilkan, dicatat, atau diekspor.",
-    "copyLabel": "Salin {{label}}"
+    "copyLabel": "Salin {{label}}",
+    "canCall": "Bisa menelepon",
+    "voiceCallHint": "Suara bertanda \"Bisa menelepon\" adalah suara Anda sendiri yang terverifikasi atau suara rancangan. Hanya suara itu yang dapat melakukan panggilan."
   },
   "tts": {
     "generationComplete": "Pembuatan ucapan selesai",

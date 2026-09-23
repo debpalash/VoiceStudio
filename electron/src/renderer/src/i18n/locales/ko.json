@@ -74,8 +74,6 @@
     "webhookNeedsTunnel": "웹훅 URL을 받으려면 2단계에서 공개 터널 URL을 저장하세요.",
     "stepVoice": "음성 및 동작",
     "stepVoiceHint": "VoiceStudio의 목소리와 발신자가 듣는 내용을 선택하세요.",
-    "voiceOwnHint": "\"내 목소리\"로 표시된 음성은 본인의 목소리로 인증된 것입니다. 이 음성만 발신 통화를 걸 수 있습니다.",
-    "ownVoice": "내 목소리",
     "defaultVoice": "기본 음성",
     "activeEngineNamed": "활성 엔진({{name}})",
     "inboundMode": "누군가 전화하면",
@@ -115,7 +113,9 @@
     "securityTokens": "각 통화는 오디오 스트림용 일회용 단기 토큰을 받습니다.",
     "securityIsolation": "게이트웨이는 통화 경로만 제공하는 별도의 로컬 포트입니다. VoiceStudio의 나머지 부분은 비공개로 유지됩니다.",
     "securitySecret": "Auth Token은 이 컴퓨터에 암호화되어 저장되며 표시, 로그 기록, 내보내기되지 않습니다.",
-    "copyLabel": "{{label}} 복사"
+    "copyLabel": "{{label}} 복사",
+    "canCall": "통화 가능",
+    "voiceCallHint": "\"통화 가능\"으로 표시된 음성은 인증된 본인 음성 또는 디자인한 음성입니다. 이 음성만 전화를 걸 수 있습니다."
   },
   "tts": {
     "generationComplete": "음성 생성이 완료되었습니다",

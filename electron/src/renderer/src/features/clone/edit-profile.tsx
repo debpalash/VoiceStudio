@@ -9,11 +9,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   Clock3Icon,
   FileAudioIcon,
-  MicIcon,
   ReplaceIcon,
   ShieldCheckIcon,
   Trash2Icon,
-  UploadCloudIcon,
   Volume2Icon,
   XIcon,
 } from 'lucide-react';
@@ -28,10 +26,9 @@ import { apiJson, describeError, profileAudioUrl } from '@/lib/api/client';
 import type { Profile } from '@/lib/api/types';
 import { queryKeys } from '@/lib/query';
 import { cloneSettingsStore, patchCloneSettings } from '@/lib/store/clone-settings';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { createObjectUrl, revokeObjectUrl } from '@/lib/audio/object-url';
 import { cn } from '@/lib/utils';
-import { RecordZone, ReferenceUsageNote, UploadZone } from './reference-input';
+import { ReferenceSourcePicker, ReferenceUsageNote } from './reference-input';
 import { ProfileImageEditor } from './profile-image-editor';
 import { formatRelative } from './format';
 import { useTtsReadiness } from '@/hooks/use-tts-readiness';
@@ -54,7 +51,6 @@ export function EditProfile({ profile, onDone }: { profile: Profile; onDone: () 
   // Replacing the reference (#2282): `choosing` shows the upload/record zones,
   // `replacement` holds the accepted clip until Save writes it to this profile.
   const [choosing, setChoosing] = useState(false);
-  const [inputMode, setInputMode] = useState<'upload' | 'record'>('upload');
   const [replacement, setReplacement] = useState<{
     file: File;
     durationSeconds: number | null;
@@ -234,28 +230,7 @@ export function EditProfile({ profile, onDone }: { profile: Profile; onDone: () 
           )}
           {choosing && !replacement && (
             <div className="flex flex-col gap-2">
-              <Tabs
-                value={inputMode}
-                onValueChange={(value) => {
-                  if (value === 'upload' || value === 'record') setInputMode(value);
-                }}
-              >
-                <TabsList aria-label={t('clone.replace_reference')}>
-                  <TabsTrigger value="upload">
-                    <UploadCloudIcon data-icon="inline-start" />
-                    {t('clone.upload_audio')}
-                  </TabsTrigger>
-                  <TabsTrigger value="record">
-                    <MicIcon data-icon="inline-start" />
-                    {t('clone.record')}
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-              {inputMode === 'upload' ? (
-                <UploadZone onAccept={acceptReplacement} />
-              ) : (
-                <RecordZone onAccept={acceptReplacement} />
-              )}
+              <ReferenceSourcePicker onAccept={acceptReplacement} />
             </div>
           )}
           {(replacement || choosing) && (

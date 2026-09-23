@@ -74,8 +74,6 @@
     "webhookNeedsTunnel": "Sla in stap 2 je openbare tunnel-URL op om de webhook-URL te krijgen.",
     "stepVoice": "Stem en gedrag",
     "stepVoiceHint": "Kies hoe VoiceStudio klinkt en wat bellers horen.",
-    "voiceOwnHint": "Stemmen gemarkeerd met \"Jouw stem\" zijn geverifieerd als je eigen stem. Alleen die kunnen uitgaande oproepen doen.",
-    "ownVoice": "Jouw stem",
     "defaultVoice": "Standaardstem",
     "activeEngineNamed": "Actieve engine ({{name}})",
     "inboundMode": "Als iemand belt",
@@ -115,7 +113,9 @@
     "securityTokens": "Elke oproep krijgt een kortlevend token voor eenmalig gebruik voor zijn audiostream.",
     "securityIsolation": "De gateway is een aparte lokale poort die alleen oproeproutes bedient. De rest van VoiceStudio blijft privé.",
     "securitySecret": "Je Auth Token wordt versleuteld op deze computer opgeslagen en nooit getoond, gelogd of geëxporteerd.",
-    "copyLabel": "{{label}} kopiëren"
+    "copyLabel": "{{label}} kopiëren",
+    "canCall": "Kan bellen",
+    "voiceCallHint": "Stemmen met ‘Kan bellen’ zijn je geverifieerde eigen stem of een ontworpen stem. Alleen die kunnen bellen."
   },
   "tts": {
     "generationComplete": "Spraakgeneratie voltooid",

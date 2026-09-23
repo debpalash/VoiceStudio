@@ -74,8 +74,6 @@
     "webhookNeedsTunnel": "Guarda la URL pública de tu túnel en el paso 2 para obtener la URL del webhook.",
     "stepVoice": "Voz y comportamiento",
     "stepVoiceHint": "Elige cómo suena VoiceStudio y qué oyen quienes llaman.",
-    "voiceOwnHint": "Las voces marcadas como \"Tu voz\" están verificadas como tuyas. Solo esas pueden hacer llamadas salientes.",
-    "ownVoice": "Tu voz",
     "defaultVoice": "Voz predeterminada",
     "activeEngineNamed": "Motor activo ({{name}})",
     "inboundMode": "Cuando alguien llama",
@@ -115,7 +113,9 @@
     "securityTokens": "Cada llamada recibe un token de un solo uso y corta duración para su flujo de audio.",
     "securityIsolation": "La pasarela es un puerto local independiente que solo sirve rutas de llamadas. El resto de VoiceStudio sigue siendo privado.",
     "securitySecret": "Tu Auth Token se guarda cifrado en este equipo y nunca se muestra, registra ni exporta.",
-    "copyLabel": "Copiar {{label}}"
+    "copyLabel": "Copiar {{label}}",
+    "canCall": "Puede llamar",
+    "voiceCallHint": "Las voces marcadas con «Puede llamar» son tu propia voz verificada o una voz diseñada. Solo esas pueden hacer llamadas."
   },
   "tts": {
     "generationComplete": "Generación de voz completada",
