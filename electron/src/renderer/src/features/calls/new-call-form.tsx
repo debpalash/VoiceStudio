@@ -102,8 +102,9 @@ export function NewCallForm({
     profile_id: draft.profileId,
     ...(!draft.disclosureOn
       ? { disclosure: '' }
-      : draft.disclosure !== null
-        ? { disclosure: disclosure.trim() }
+      : // Only the switch opts out: a cleared line falls back to the template.
+        draft.disclosure?.trim()
+        ? { disclosure: draft.disclosure.trim() }
         : {}),
     max_minutes: draft.maxMinutes,
   });

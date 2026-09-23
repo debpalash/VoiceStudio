@@ -171,6 +171,10 @@ it('validates the number and asks for confirmation before dialling', async () =>
     expect(screen.getByRole('button', { name: 'Call +15550100199' })).toBeEnabled(),
   );
 
+  // Clearing the line while the switch is on must not opt out of the disclosure.
+  fireEvent.change(screen.getByDisplayValue("Hi, this is Sam's AI assistant."), {
+    target: { value: '   ' },
+  });
   fireEvent.click(screen.getByRole('button', { name: 'Call +15550100199' }));
   const dialog = await screen.findByRole('dialog', { name: 'Call +15550100199 now?' });
   expect(requests()).toEqual([]);
@@ -179,7 +183,6 @@ it('validates the number and asks for confirmation before dialling', async () =>
   fireEvent.click(within(dialog).getByRole('button', { name: 'Call now' }));
   // The unedited template is left to the backend, which fills {name} itself;
   // the form previews it with the user's name and marks it as uninterruptible.
-  expect(screen.getByDisplayValue("Hi, this is Sam's AI assistant.")).toBeInTheDocument();
   expect(screen.getByText(/can't be interrupted/)).toBeInTheDocument();
   await waitFor(() => expect(requests()).toHaveLength(1));
   expect(requests()[0]).toEqual({
