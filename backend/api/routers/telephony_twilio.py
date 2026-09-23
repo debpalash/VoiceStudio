@@ -345,14 +345,20 @@ async def twilio_media_stream(websocket: WebSocket):
             cfg.greeting, voice=cfg.voice_id, engine=cfg.engine, language=cfg.language
         )
 
-    outcome = await session.run_call(
-        websocket,
-        provider,
-        account_id=cfg.account_sid,
-        responder_factory=_responder,
-        max_calls=config.max_concurrent_calls(),
-        max_seconds=config.max_call_seconds(),
-    )
-    agent = agent_call.get("agent")
-    if agent is not None:
-        await calls.finish(agent.call, outcome, agent)
+    outcome = "error"
+    try:
+        outcome = await session.run_call(
+            websocket,
+            provider,
+            account_id=cfg.account_sid,
+            responder_factory=_responder,
+            max_calls=config.max_concurrent_calls(),
+            max_seconds=config.max_call_seconds(),
+        )
+    finally:
+        agent = agent_call.get("agent")
+        if agent is not None:
+            # Always finalize a connected agent call — even when the stream
+            # failed or this handler is cancelled — or it would hold its
+            # max_concurrent slot until a restart.
+            await asyncio.shield(calls.finish(agent.call, outcome, agent))

@@ -103,7 +103,8 @@ In call settings, **Answer incoming calls with** chooses between:
 - `agent`: the agent answers, speaks the disclosure, and follows the
   **incoming-call brief** (for example, "Take a message: ask who is calling and
   what it is about"). It uses the voice, engine and language from the Twilio
-  page. If no LLM is available, the greeting answers instead.
+  page. If no LLM is available, the greeting answers instead when one is
+  configured; otherwise the call is rejected with a busy signal.
 
 ## Legal note
 

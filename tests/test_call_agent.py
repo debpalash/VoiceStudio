@@ -284,6 +284,10 @@ def test_guard_blocks_card_and_unknown_id_numbers_but_allows_brief_numbers():
     assert agent.guard_sensitive("The ID is 123-45-6789.", brief) == agent.REFUSAL
     assert agent.guard_sensitive("Call back on 415 555 0123 4.", brief) == "Call back on 415 555 0123 4."
     assert agent.guard_sensitive("A table for 2 at 8pm.", brief) == "A table for 2 at 8pm."
+    styled = "Call Palash back on +1 (415) 555-0123."
+    assert agent.guard_sensitive("His number is 415-555-0123.", styled) == "His number is 415-555-0123."
+    assert agent.guard_sensitive("It's 1 415 555 0123.", styled) == "It's 1 415 555 0123."
+    assert agent.guard_sensitive("It's 415 555 0199.", styled) == agent.REFUSAL
     for spaced in ("4111,1111,1111,1111", "4111–1111–1111–1111", "123,456,789"):
         assert agent.guard_sensitive(f"It is {spaced}.", brief) == agent.REFUSAL, spaced
     # A card number is refused even when the user put it in the brief.
@@ -619,6 +623,30 @@ def test_takeover_pauses_the_llm_and_say_speaks_exactly_the_text(api, gw, fakes)
     assert [t["text"] for t in manual] == ["This is Palash's assistant."]
     assert len(fakes.llm_calls) == 1
     assert api.post(f"/calls/{call_id}/say", json={"text": "late"}).status_code == 409
+
+
+def test_a_crashed_stream_still_finalizes_and_frees_the_slot(api, gw, fakes, monkeypatch):
+    _configure()
+    call_id = _place(api, _profile(verified=1)).json()["call"]["id"]
+    params = _stream_params(_answer(gw, call_id))
+
+    async def _boom(self, name):
+        raise RuntimeError("mark handler failed")
+
+    monkeypatch.setattr(M.agent.CallAgent, "on_mark", _boom)
+    try:
+        with gw.websocket_connect(M.tw.STREAM_PATH) as ws:
+            ws.send_json(_start(params))
+            _, mark, _ = _read_until_mark(ws)
+            _echo(ws, mark)
+            with pytest.raises(Exception):
+                while True:
+                    _recv(ws, timeout=5)
+    except RuntimeError:
+        pass  # the handler's exception may surface through the test client
+    rec = _wait_record(api, call_id, lambda r: r["ended_at"] is not None)
+    assert rec["status"] in ("completed", "failed") and M.calls.get_live(call_id) is None
+    assert _place(api, _profile(verified=1)).status_code == 201  # the slot was released
 
 
 def test_stream_token_is_bound_to_the_call_session(api, gw, fakes):

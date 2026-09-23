@@ -156,6 +156,9 @@ def upsample_to_16k(pcm8k: np.ndarray) -> np.ndarray:
 #: Separators a model may put between digit groups (incl. commas and Unicode dashes).
 _DIGIT_RUN_RE = re.compile(r"\d(?:[\s\-.,_\u2010-\u2015\u2212]?\d){8,}")
 
+#: Numbers the user wrote in the brief, including phone styles like "+1 (415) 555-0123".
+_BRIEF_NUMBER_RE = re.compile(r"\d[\d\s().\-,_\u2010-\u2015\u2212]{7,}\d")
+
 
 def _luhn_ok(digits: str) -> bool:
     total = 0
@@ -171,10 +174,15 @@ def guard_sensitive(sentence: str, brief: str) -> str:
     """Replace a sentence that would read out a card number, or any 9+ digit
     number the user did not put in the brief (IDs, account numbers), with
     :data:`REFUSAL`. A card number is refused even if it is in the brief."""
-    allowed = {re.sub(r"\D", "", m.group()) for m in _DIGIT_RUN_RE.finditer(brief or "")}
+    allowed = {re.sub(r"\D", "", m.group()) for m in _BRIEF_NUMBER_RE.finditer(brief or "")}
+
+    def _in_brief(digits: str) -> bool:
+        # "+1 (415) 555-0123" in the brief allows "415 555 0123" spoken, and back.
+        return any(a.endswith(digits) or digits.endswith(a) for a in allowed if min(len(a), len(digits)) >= 9)
+
     for match in _DIGIT_RUN_RE.finditer(sentence):
         digits = re.sub(r"\D", "", match.group())
-        if (13 <= len(digits) <= 19 and _luhn_ok(digits)) or digits not in allowed:
+        if (13 <= len(digits) <= 19 and _luhn_ok(digits)) or not _in_brief(digits):
             return REFUSAL
     return sentence
 
