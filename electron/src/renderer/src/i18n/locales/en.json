@@ -883,7 +883,11 @@
   "dubWorkspace": {
     "title": "Dub",
     "start": "Start",
-    "end": "End"
+    "end": "End",
+    "createStory": "Create Story",
+    "createStoryConfirm": "This replaces the current Stories script and cast with the speakers and lines from this dub. Your dub is not changed.",
+    "storySpeaker": "Speaker",
+    "storyBusy": "Finish or stop the Stories render first."
   },
   "logs": {
     "no_tauri_log": "No Tauri log on disk yet — launch via the desktop build to produce one",

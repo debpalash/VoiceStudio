@@ -764,7 +764,11 @@
   "dubWorkspace": {
     "title": "Sulih Suara",
     "start": "Mulai",
-    "end": "Akhir"
+    "end": "Akhir",
+    "createStory": "Buat Cerita",
+    "createStoryConfirm": "Ini mengganti naskah dan pemeran Cerita saat ini dengan pembicara dan baris dari sulih suara ini. Sulih suara Anda tidak berubah.",
+    "storySpeaker": "Pembicara",
+    "storyBusy": "Selesaikan atau hentikan render Cerita terlebih dahulu."
   },
   "player": {
     "fullscreen": "Layar penuh",

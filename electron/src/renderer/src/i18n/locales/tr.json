@@ -764,7 +764,11 @@
   "dubWorkspace": {
     "title": "Dublaj",
     "start": "Başlat",
-    "end": "Bitiş"
+    "end": "Bitiş",
+    "createStory": "Hikâye oluştur",
+    "createStoryConfirm": "Bu, mevcut Hikâye metnini ve kadrosunu bu dublajdaki konuşmacılar ve satırlarla değiştirir. Dublajınız değişmez.",
+    "storySpeaker": "Konuşmacı",
+    "storyBusy": "Önce Hikâye oluşturmayı bitirin veya durdurun."
   },
   "player": {
     "fullscreen": "Tam ekran",

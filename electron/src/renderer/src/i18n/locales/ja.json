@@ -764,7 +764,11 @@
   "dubWorkspace": {
     "title": "ダビング",
     "start": "スタート",
-    "end": "終了"
+    "end": "終了",
+    "createStory": "ストーリーを作成",
+    "createStoryConfirm": "現在のストーリーの台本とキャストを、このダビングの話者とセリフで置き換えます。ダビングは変更されません。",
+    "storySpeaker": "話者",
+    "storyBusy": "先にストーリーの生成を完了するか停止してください。"
   },
   "player": {
     "fullscreen": "全画面表示",

@@ -764,7 +764,11 @@
   "dubWorkspace": {
     "title": "Dubba",
     "start": "Starta",
-    "end": "Slut"
+    "end": "Slut",
+    "createStory": "Skapa berättelse",
+    "createStoryConfirm": "Detta ersätter det nuvarande Berättelser-manuset och rollistan med talarna och replikerna från den här dubbningen. Din dubbning ändras inte.",
+    "storySpeaker": "Talare",
+    "storyBusy": "Slutför eller stoppa Berättelser-renderingen först."
   },
   "player": {
     "fullscreen": "Helskärm",

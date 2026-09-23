@@ -764,7 +764,11 @@
   "dubWorkspace": {
     "title": "더빙",
     "start": "시작",
-    "end": "끝"
+    "end": "끝",
+    "createStory": "스토리 만들기",
+    "createStoryConfirm": "현재 스토리 대본과 캐스트를 이 더빙의 화자와 대사로 바꿉니다. 더빙은 변경되지 않습니다.",
+    "storySpeaker": "화자",
+    "storyBusy": "먼저 스토리 렌더링을 완료하거나 중지하세요."
   },
   "player": {
     "fullscreen": "전체 화면",

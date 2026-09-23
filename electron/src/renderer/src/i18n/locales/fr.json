@@ -766,7 +766,11 @@
   "dubWorkspace": {
     "title": "Doubler",
     "start": "Commencer",
-    "end": "Fin"
+    "end": "Fin",
+    "createStory": "Créer une histoire",
+    "createStoryConfirm": "Remplace le script et la distribution actuels d'Histoires par les locuteurs et les répliques de ce doublage. Votre doublage n'est pas modifié.",
+    "storySpeaker": "Locuteur",
+    "storyBusy": "Terminez ou arrêtez d'abord le rendu Histoires."
   },
   "player": {
     "fullscreen": "Plein écran",

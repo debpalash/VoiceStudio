@@ -764,7 +764,11 @@
   "dubWorkspace": {
     "title": "Dubben",
     "start": "Starten",
-    "end": "Ende"
+    "end": "Ende",
+    "createStory": "Story erstellen",
+    "createStoryConfirm": "Ersetzt das aktuelle Stories-Skript und die Besetzung durch die Sprecher und Zeilen aus dieser Synchronisation. Die Synchronisation bleibt unverändert.",
+    "storySpeaker": "Sprecher",
+    "storyBusy": "Beende oder stoppe zuerst die Stories-Wiedergabe."
   },
   "player": {
     "fullscreen": "Vollbild",

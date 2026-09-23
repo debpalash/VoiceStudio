@@ -764,7 +764,11 @@
   "dubWorkspace": {
     "title": "影片配音",
     "start": "開始",
-    "end": "結束"
+    "end": "結束",
+    "createStory": "建立故事",
+    "createStoryConfirm": "這會用此配音中的說話者與台詞取代目前的故事腳本與角色。您的配音不會變更。",
+    "storySpeaker": "說話者",
+    "storyBusy": "請先完成或停止故事算繪。"
   },
   "player": {
     "fullscreen": "全螢幕",

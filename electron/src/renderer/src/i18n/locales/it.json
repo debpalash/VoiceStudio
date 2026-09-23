@@ -766,7 +766,11 @@
   "dubWorkspace": {
     "title": "Doppia",
     "start": "Inizia",
-    "end": "Fine"
+    "end": "Fine",
+    "createStory": "Crea storia",
+    "createStoryConfirm": "Sostituisce il copione e il cast attuali di Storie con i parlanti e le battute di questo doppiaggio. Il doppiaggio non viene modificato.",
+    "storySpeaker": "Parlante",
+    "storyBusy": "Completa o interrompi prima il rendering di Storie."
   },
   "player": {
     "fullscreen": "Schermo intero",

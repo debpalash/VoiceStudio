@@ -764,7 +764,11 @@
   "dubWorkspace": {
     "title": "Dubben",
     "start": "Begin",
-    "end": "Einde"
+    "end": "Einde",
+    "createStory": "Verhaal maken",
+    "createStoryConfirm": "Dit vervangt het huidige Verhalen-script en de cast door de sprekers en regels uit deze nasynchronisatie. Je nasynchronisatie verandert niet.",
+    "storySpeaker": "Spreker",
+    "storyBusy": "Voltooi of stop eerst de Verhalen-render."
   },
   "player": {
     "fullscreen": "Volledig scherm",

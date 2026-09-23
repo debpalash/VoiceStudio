@@ -768,7 +768,11 @@
   "dubWorkspace": {
     "title": "Dubbing",
     "start": "Zacznij",
-    "end": "Koniec"
+    "end": "Koniec",
+    "createStory": "Utwórz historię",
+    "createStoryConfirm": "Zastąpi bieżący scenariusz i obsadę Historii mówcami i kwestiami z tego dubbingu. Dubbing pozostaje bez zmian.",
+    "storySpeaker": "Mówca",
+    "storyBusy": "Najpierw zakończ lub zatrzymaj renderowanie Historii."
   },
   "player": {
     "fullscreen": "Pełny ekran",

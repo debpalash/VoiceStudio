@@ -766,7 +766,11 @@
   "dubWorkspace": {
     "title": "Doblar",
     "start": "Empezar",
-    "end": "Fin"
+    "end": "Fin",
+    "createStory": "Crear historia",
+    "createStoryConfirm": "Esto reemplaza el guion y el reparto actuales de Historias con los hablantes y las líneas de este doblaje. Tu doblaje no cambia.",
+    "storySpeaker": "Hablante",
+    "storyBusy": "Primero termina o detén la generación de Historias."
   },
   "player": {
     "fullscreen": "Pantalla completa",

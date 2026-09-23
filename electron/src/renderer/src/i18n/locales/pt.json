@@ -766,7 +766,11 @@
   "dubWorkspace": {
     "title": "Dublar",
     "start": "Começar",
-    "end": "Fim"
+    "end": "Fim",
+    "createStory": "Criar história",
+    "createStoryConfirm": "Isto substitui o guião e o elenco atuais de Histórias pelos locutores e falas desta dobragem. A sua dobragem não é alterada.",
+    "storySpeaker": "Locutor",
+    "storyBusy": "Termine ou pare primeiro a renderização de Histórias."
   },
   "player": {
     "fullscreen": "Tela cheia",

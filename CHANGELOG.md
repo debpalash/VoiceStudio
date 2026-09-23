@@ -15,9 +15,11 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 - Stories and Audiobook can save a chapter cue sheet (`.txt`) after a render (#2278) — thanks @shivsin25!
 - Windows backend keeps answering after antivirus or VPN software resets a connection (#2276) — thanks @ialexbond!
 - Replace a saved voice clone's reference sample without creating a duplicate voice (#2282)
+- Turn a finished dub into a Stories script in one click, speakers and voices included
 
 ### Added
 
+- Create Story from a dub: its speakers become characters, its segments become lines, and each character keeps the voice the Cast strip assigned — no retyping the script — thanks @shivsin25!
 - Edit a saved voice clone's reference sample: play it, replace it by upload or recording, and save back to the same voice (#2282) — thanks @Cengokill!
 - Answer Twilio phone calls in a saved voice: off by default, signed webhooks and single-use stream tokens, with a local phone-quality test (#2291)
 - Malayalam dubs and audiobooks speak numbers, percentages, and decimals in Malayalam instead of reading raw digits (#2280) — thanks @nikhilkilivayil!
