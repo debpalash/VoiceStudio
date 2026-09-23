@@ -422,7 +422,12 @@
     "cancel_generation": "Generierung abbrechen",
     "download_failed": "Die Datei konnte nicht gespeichert werden: {{message}}",
     "duration_seconds": "{{seconds}}s",
-    "history_clear_confirm": "Jeden Take aus dem Verlauf löschen? Audiodateien werden ebenfalls entfernt."
+    "history_clear_confirm": "Jeden Take aus dem Verlauf löschen? Audiodateien werden ebenfalls entfernt.",
+    "edit_voice": "Stimme bearbeiten",
+    "replace_reference": "Referenz ersetzen",
+    "keep_reference": "Aktuelle Referenz behalten",
+    "new_reference": "Neue Referenz: {{name}}",
+    "replace_reference_hint": "Beim Speichern wird das Referenzbeispiel dieser Stimme ersetzt. Die fixierte Aufnahme und die Bestätigung der eigenen Stimme werden zurückgesetzt, da der neue Clip von einer anderen Person stammen kann. Lass das Transkript leer, um den neuen Clip automatisch zu transkribieren."
   },
   "designWorkspace": {
     "title": "Designen",
@@ -2620,7 +2625,6 @@
     "ignored_conflict": "{{items}} wurde ignoriert — ein chinesischer Dialekt und ein englischer Akzent lassen sich nicht kombinieren.",
     "enter_text": "Bitte geben Sie Text ein",
     "upload_or_select": "Laden Sie ein Audio hoch oder wählen Sie ein Sprachprofil aus",
-    "trim_hint": "Audio ist {{duration}}s – für bestes Klonen auf ≤{{max}}s kürzen",
     "timeout": "Zeitüberschreitung bei der Generierung – das Modell wird möglicherweise noch heruntergeladen. Überprüfen Sie Einstellungen → Protokolle und versuchen Sie es dann erneut.",
     "ignored_unsupported": "Nicht unterstützte Anweisung ignoriert: {{items}}",
     "model_not_downloaded": "Das Modell wurde noch nicht heruntergeladen. Öffnen Sie die Einstellungen → Engines der Haupt-App, um sie zu installieren.",

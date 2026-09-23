@@ -76,9 +76,36 @@ transcription; no model downloads are initiated. Missing models leave manual
 transcript entry available. ASR never overwrites text edited while it runs.
 Saving waits for transcription; using the reference without saving remains possible.
 
-Saved-voice pencil buttons open a profile editor for name, transcript, style,
-and portrait. Editing does not select a different voice. The voice-sample pane's
-chevron collapses it; the Voice sample toolbar control reopens it.
+Saved-voice pencil buttons, and **Edit voice** on the selected voice in the
+voice-sample pane, open a profile editor for name, transcript, style, portrait
+and reference sample. Clicking a saved voice still only selects it; editing does
+not select a different voice. The voice-sample pane's chevron collapses it; the
+Voice sample toolbar control reopens it.
+
+The editor plays the stored reference. For clone voices, **Replace reference**
+accepts an upload or recording with the same format and length checks as a new
+voice. **Keep current reference** discards the new clip. **Save** writes it
+to the same profile. The profile id, name, portrait, style, language and history
+stay the same. The transcript field clears when a new clip is chosen; leave it
+blank to transcribe the new clip locally. Replacing the reference also clears
+the voice's locked take and own-voice verification, because the new clip may be
+a different speaker. Designed voices are edited through their recipe instead.
+
+`PUT /profiles/{id}/audio` (multipart `ref_audio`, optional `ref_text`, `name`,
+`instruct`, `language` and `personality`) stores the clip under a new
+`<id>-<token>.<ext>` filename and saves the other fields in the same database
+update, so an editor save commits every change or none. The old files are
+deleted only after the database update succeeds. The new filename also
+invalidates engine prompt caches and audiobook chapter caches, because those are
+keyed by the reference path. Profile records include a versioned `audio_url` so
+players reload the new clip, and `GET /profiles/{id}/audio` serves each clip with
+its own media type. The route accepts WAV, MP3, M4A, FLAC, OGG, Opus, AAC and
+WebM up to 128 MiB, and requires libsndfile or FFmpeg to decode real samples
+before the clip replaces the old one; a file neither can decode returns 422.
+Replacements of one voice run one at a time, and a clip changed by another
+writer during an upload returns 409. Designed voices return 409. A Gallery or
+Community voice whose reference is replaced counts as the user's own edit: importing the same voice again creates a separate profile
+and leaves the edited one unchanged. No database migration is required.
 
 The sidebar lists selected TTS, ASR and LLM engines, resolved model identities
 where available, and the selected installed dictation model. These are selections,

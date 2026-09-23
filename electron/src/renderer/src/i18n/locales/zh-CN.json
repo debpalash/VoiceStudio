@@ -439,7 +439,12 @@
     "cancel_generation": "取消生成",
     "duration_seconds": "{{seconds}}s",
     "output_meta": "{{duration}}s · 在 {{gen}}s 中渲染",
-    "download_failed": "无法保存文件：{{message}}"
+    "download_failed": "无法保存文件：{{message}}",
+    "edit_voice": "编辑音色",
+    "replace_reference": "替换参考音频",
+    "keep_reference": "保留当前参考音频",
+    "new_reference": "新参考音频：{{name}}",
+    "replace_reference_hint": "保存后将替换此音色的参考样本。由于新片段可能来自其他说话人，已锁定的片段和本人声音验证会被清除。转写留空即可自动转写新片段。"
   },
   "designWorkspace": {
     "title": "设计",
@@ -2624,7 +2629,6 @@
     "ignored_conflict": "已忽略{{items}} — 中文方言和英文口音不能同时使用。",
     "enter_text": "请输入文字",
     "upload_or_select": "上传音频或选择语音配置文件",
-    "trim_hint": "音频为 {{duration}}s — 修剪至 ≤{{max}}s 以获得最佳克隆效果",
     "timeout": "生成超时 - 模型可能仍在下载。检查设置 → 日志，然后重试。",
     "ignored_unsupported": "忽略不支持的指令：{{items}}",
     "too_long": "该剪辑是 {{duration}}s。引擎最多接受没有成绩单的 {{max}}。",

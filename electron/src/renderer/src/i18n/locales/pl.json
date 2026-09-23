@@ -426,7 +426,12 @@
     "no_profiles": "Nie ma jeszcze zapisanych głosów. Prześlij lub nagraj referencje, a następnie zapisz je jako profil.",
     "shortcut_hint": "Ctrl/Cmd + Enter",
     "history_empty": "Nie ma jeszcze żadnych ujęć.",
-    "history_delete": "Usuń ujęcie"
+    "history_delete": "Usuń ujęcie",
+    "edit_voice": "Edytuj głos",
+    "replace_reference": "Zastąp próbkę referencyjną",
+    "keep_reference": "Zachowaj obecną próbkę",
+    "new_reference": "Nowa próbka: {{name}}",
+    "replace_reference_hint": "Zapisanie zastępuje próbkę referencyjną tego głosu. Zablokowane nagranie i weryfikacja własnego głosu zostaną wyczyszczone, ponieważ nowy klip może należeć do innej osoby. Zostaw transkrypcję pustą, aby nowy klip został przepisany automatycznie."
   },
   "designWorkspace": {
     "title": "Projektuj",
@@ -2624,7 +2629,6 @@
     "ignored_conflict": "Zignorowano {{items}} — chińskiego dialektu i angielskiego akcentu nie można łączyć.",
     "enter_text": "Proszę wpisać tekst",
     "upload_or_select": "Prześlij plik audio lub wybierz profil głosowy",
-    "trim_hint": "Dźwięk wynosi {{duration}}s — przytnij do ≤{{max}}s, aby uzyskać najlepsze klonowanie",
     "timeout": "Upłynął limit czasu generacji — model może nadal być pobierany. Sprawdź Ustawienia → Dzienniki i spróbuj ponownie.",
     "ignored_unsupported": "Ignorowana nieobsługiwana instrukcja: {{items}}",
     "too_long": "Klip to {{duration}}s. Silnik akceptuje co najwyżej {{max}} bez transkrypcji.",

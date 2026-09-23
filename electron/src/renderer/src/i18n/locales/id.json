@@ -422,7 +422,12 @@
     "cancel_generation": "Batalkan pembuatan",
     "duration_seconds": "{{seconds}}s",
     "download_failed": "Tidak dapat menyimpan file: {{message}}",
-    "history_clear_confirm": "Hapus setiap pengambilan dari riwayat? File audio juga dihapus."
+    "history_clear_confirm": "Hapus setiap pengambilan dari riwayat? File audio juga dihapus.",
+    "edit_voice": "Edit suara",
+    "replace_reference": "Ganti referensi",
+    "keep_reference": "Pertahankan referensi saat ini",
+    "new_reference": "Referensi baru: {{name}}",
+    "replace_reference_hint": "Menyimpan akan mengganti sampel referensi suara ini. Take yang dikunci dan verifikasi suara sendiri dihapus karena klip baru mungkin berasal dari pembicara lain. Biarkan transkrip kosong untuk mentranskripsikan klip baru secara otomatis."
   },
   "designWorkspace": {
     "title": "Desain",
@@ -2620,7 +2625,6 @@
     "ignored_conflict": "{{items}} diabaikan — dialek Tionghoa dan aksen Inggris tidak dapat digabungkan.",
     "enter_text": "Silakan masukkan teks",
     "upload_or_select": "Unggah audio atau pilih profil suara",
-    "trim_hint": "Audio adalah {{duration}}s — potong ke ≤{{max}}s untuk kloning terbaik",
     "timeout": "Waktu pembuatan habis — model mungkin masih diunduh. Periksa Pengaturan → Log, lalu coba lagi.",
     "ignored_unsupported": "Mengabaikan instruksi yang tidak didukung: {{items}}",
     "too_long": "Klipnya adalah {{duration}}s. Mesin menerima paling banyak {{max}} tanpa transkrip.",
