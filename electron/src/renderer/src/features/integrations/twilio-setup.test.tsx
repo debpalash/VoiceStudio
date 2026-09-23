@@ -189,3 +189,19 @@ it('removes the Auth Token without submitting an invalid draft, turning calls of
   await waitFor(() => expect(api.json.mock.calls.at(-1)?.[1]?.body).toBeDefined());
   expect(JSON.parse(api.json.mock.calls.at(-1)![1].body)).not.toHaveProperty('auth_token');
 });
+
+it('keeps the form read-only while an update is in flight and keeps later edits', async () => {
+  renderPage({ ...base, has_auth_token: true, greeting: 'Hello' });
+  const greeting = await screen.findByPlaceholderText(
+    'Thanks for calling. We will get back to you soon.',
+  );
+  let finish: (value: TwilioState) => void = () => {};
+  api.json.mockImplementationOnce(() => new Promise<TwilioState>((resolve) => (finish = resolve)));
+  fireEvent.click(screen.getByRole('button', { name: 'Remove Auth Token' }));
+  await waitFor(() => expect(greeting).toBeDisabled());
+  expect(screen.getByPlaceholderText('AC…')).toBeDisabled();
+  finish({ ...base, greeting: 'Hello' });
+  await waitFor(() => expect(greeting).toBeEnabled());
+  fireEvent.change(greeting, { target: { value: 'Edited after removal' } });
+  expect(greeting).toHaveValue('Edited after removal');
+});

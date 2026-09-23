@@ -129,7 +129,7 @@ export function TwilioSetup() {
   }
   const server = state.data;
   const set = (key: keyof Form, value: string) => {
-    setForm({ ...form, [key]: value });
+    setForm((current) => (current ? { ...current, [key]: value } : current));
     setError('');
   };
   const explain = (reason: unknown) => {
@@ -167,7 +167,8 @@ export function TwilioSetup() {
       queryClient.setQueryData(QUERY_KEY, next);
       if (!onlyExtra) setForm(formFrom(next));
       // A removed token must not come back from an unsaved draft on the next Save.
-      else if ('auth_token' in extra) setForm({ ...form, auth_token: '' });
+      else if ('auth_token' in extra)
+        setForm((current) => (current ? { ...current, auth_token: '' } : current));
       toast.success(t('nav.saved'));
     } catch (reason) {
       setError(explain(reason));
@@ -240,7 +241,9 @@ export function TwilioSetup() {
         {t('twilioIntegration.exposureWarning')}
       </p>
 
-      <div className="twilio-grid">
+      {/* Read-only while a configuration update is in flight, so the
+          response can never overwrite edits made meanwhile. */}
+      <fieldset className="twilio-grid" disabled={busy}>
         <label>
           <span>{t('twilioIntegration.accountSid')}</span>
           <Input
@@ -320,7 +323,7 @@ export function TwilioSetup() {
             onChange={(event) => set('greeting', event.target.value)}
           />
         </label>
-      </div>
+      </fieldset>
 
       <div className="flex flex-wrap items-center gap-3">
         <Button disabled={busy} aria-busy={busy} onClick={() => void submit()}>

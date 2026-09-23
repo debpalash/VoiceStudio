@@ -10,6 +10,10 @@
   line-height: 1.5;
 }
 .twilio-grid {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   gap: 12px;
