@@ -98,6 +98,10 @@ def state() -> dict:
         "running": running,
         "host": host,
         "port": port,
+        # The port the gateway binds first when it starts (it moves up only if
+        # that one is taken), so setup can show the exact tunnel command while
+        # calls are still off.
+        "preferred_port": port if running else gateway_port_base(),
         "tunnel_target": f"http://{display_host}:{port}" if running else None,
     }
 

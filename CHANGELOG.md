@@ -8,6 +8,22 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ## [Unreleased]
 
+**Highlights**
+
+- Twilio setup is a guided checklist with live status and exact commands (#PR)
+- Integration pages use the full window, with a side panel on wide screens (#PR)
+
+### Changed
+
+- Twilio setup is a guided checklist: account, tunnel, phone number and voice steps with live status, exact tunnel commands for your OS and gateway port, copyable webhook URL, a readiness panel and clear reasons when an action is unavailable (#PR)
+- Integration pages use the full window: setup beside a side panel with status, capabilities and website on wide screens, stacked on narrow ones, with the scrollbar at the window edge (#PR)
+
+### Fixed
+
+- Integration pages show each integration's own category and summary instead of borrowed labels such as "Dubbing" for Twilio (#PR)
+- Integration and featured logos open their page in VoiceStudio; the vendor website opens only from the page's Website card (#PR)
+- Pickers show readable labels instead of raw values such as `__default__`, `auto` or language codes before they are opened (#PR)
+
 ## [0.5.6] — 2026-09-23
 
 **VoiceStudio now talks to your other tools.** Answer Twilio phone calls in a saved voice, and connect Claude Code, Cursor, Codex CLI and the OpenAI Agents SDK to VoiceStudio with copyable setup that works, including in Docker, where MCP previously returned HTTP 405. Integration cards now say plainly which ones work with VoiceStudio and which are external links.

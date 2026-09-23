@@ -621,6 +621,9 @@ def api(store, monkeypatch):
 def test_state_is_off_by_default_and_never_returns_the_token(api, store):
     state = api.get("/api/integrations/twilio/state").json()
     assert state["enabled"] is False and state["has_auth_token"] is False
+    # Setup shows the exact tunnel command before the gateway is running.
+    assert state["listener"]["running"] is False
+    assert state["listener"]["preferred_port"] == gateway.gateway_port_base()
     api.put("/api/integrations/twilio/config", json={"auth_token": "s3cret-token"})
     state = api.get("/api/integrations/twilio/state")
     assert state.json()["has_auth_token"] is True
