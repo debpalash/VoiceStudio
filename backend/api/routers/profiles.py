@@ -383,23 +383,24 @@ async def _ffmpeg_decodes(path: str) -> bool:
     no decodable frames. Browser MediaRecorder WebM has no duration header but
     decodes fine. Missing ffmpeg or a failed run counts as not decodable.
     """
-    from services.ffmpeg_utils import find_ffmpeg, spawn_subprocess
+    from services.ffmpeg_utils import find_ffmpeg, run_ffmpeg
 
     ffmpeg = find_ffmpeg()
     if not ffmpeg:
         logger.warning("ffmpeg is unavailable; cannot verify a replacement reference")
         return False
     try:
-        proc = await spawn_subprocess(
-            ffmpeg, "-nostdin", "-v", "error", "-i", path, "-map", "0:a:0",
-            "-t", "1", "-ac", "1", "-f", "s16le", "pipe:1",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        # run_ffmpeg kills and reaps the process on timeout, so a stalled
+        # decode never leaves an orphaned ffmpeg behind.
+        returncode, stdout, _ = await run_ffmpeg(
+            [ffmpeg, "-nostdin", "-v", "error", "-i", path, "-map", "0:a:0",
+             "-t", "1", "-ac", "1", "-f", "s16le", "pipe:1"],
+            timeout=30,
         )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
     except Exception as exc:  # noqa: BLE001 — cannot verify; refuse the clip
         logger.info("ffmpeg could not decode a replacement reference: %s", exc)
         return False
-    return proc.returncode == 0 and len(stdout) > 0
+    return returncode == 0 and len(stdout or b"") > 0
 
 
 async def _is_decodable_audio(path: str) -> bool:
@@ -434,20 +435,29 @@ def _remove_voice_file(filename: Optional[str], *, keep: str) -> None:
 def _replacement_fields(
     name: Optional[str], instruct: Optional[str], language: Optional[str],
     personality: Optional[str],
-) -> "list[tuple[str, str]]":
-    """Profile edits saved in the same UPDATE as the new clip (clone only)."""
-    fields: list[tuple[str, str]] = []
-    if name is not None:
-        if not name.strip():
-            raise HTTPException(status_code=400, detail="A voice profile needs a name.")
-        fields.append(("name", name.strip()))
-    if instruct is not None:
-        fields.append(("instruct", sanitize_instruct(instruct)))
-    if language is not None:
-        fields.append(("language", language.strip()))
-    if personality is not None:
-        fields.append(("personality", personality))
-    return fields
+) -> "tuple[Optional[str], Optional[str], Optional[str], Optional[str]]":
+    """Normalized profile edits saved with the new clip; None keeps a column."""
+    if name is not None and not name.strip():
+        raise HTTPException(status_code=400, detail="A voice profile needs a name.")
+    return (
+        name.strip() if name is not None else None,
+        sanitize_instruct(instruct) if instruct is not None else None,
+        language.strip() if language is not None else None,
+        personality,
+    )
+
+
+# Static statement: optional edits use COALESCE(?, column) so no SQL is built
+# from strings. A legacy row with a NULL kind is a clone, as the read treats it.
+_REPLACE_AUDIO_SQL = (
+    "UPDATE voice_profiles SET ref_audio_path=?, ref_text=?, "
+    "name=COALESCE(?, name), instruct=COALESCE(?, instruct), "
+    "language=COALESCE(?, language), personality=COALESCE(?, personality), "
+    "locked_audio_path='', is_locked=0, seed=NULL, "
+    "verified_own_voice=0, consent_text='', consent_audio_path='', "
+    "consent_recorded_at=NULL "
+    "WHERE id=? AND COALESCE(kind, 'clone')='clone' AND ref_audio_path IS ?"
+)
 
 
 async def _save_upload(upload: UploadFile, dest: str) -> int:
@@ -538,19 +548,12 @@ async def replace_profile_audio(
                     detail="That file could not be read as audio. Choose another recording.",
                 )
             text = (ref_text or "").strip() or await _auto_transcribe_reference(new_path)
-            columns = [("ref_audio_path", new_filename), ("ref_text", text), *edits]
-            # Column names come from the fixed tuples above, never from input.
-            assignments = ", ".join(f"{col}=?" for col, _ in columns)
             with db_conn() as conn:
                 # Compare-and-swap on the clip read above, so a writer outside
                 # this process can never be overwritten with its file orphaned.
                 cur = conn.execute(
-                    f"UPDATE voice_profiles SET {assignments}, "
-                    "locked_audio_path='', is_locked=0, seed=NULL, "
-                    "verified_own_voice=0, consent_text='', consent_audio_path='', "
-                    "consent_recorded_at=NULL "
-                    "WHERE id=? AND kind='clone' AND ref_audio_path IS ?",
-                    (*(value for _, value in columns), profile_id, row["ref_audio_path"]),
+                    _REPLACE_AUDIO_SQL,
+                    (new_filename, text, *edits, profile_id, row["ref_audio_path"]),
                 )
                 if cur.rowcount == 0:
                     still_there = conn.execute(

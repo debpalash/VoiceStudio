@@ -251,12 +251,38 @@ def test_unverifiable_clip_is_refused_when_ffmpeg_missing(env, monkeypatch):
 def test_unverifiable_clip_is_refused_when_ffmpeg_fails(env, monkeypatch):
     client, _profiles, _db, _voices, created, _transcribed, _events = env
 
-    async def broken_spawn(*_args, **_kwargs):
+    async def broken_run(*_args, **_kwargs):
         raise OSError("ffmpeg crashed")
 
     monkeypatch.setattr("services.ffmpeg_utils.find_ffmpeg", lambda: "ffmpeg")
-    monkeypatch.setattr("services.ffmpeg_utils.spawn_subprocess", broken_spawn)
+    monkeypatch.setattr("services.ffmpeg_utils.run_ffmpeg", broken_run)
     assert replace(client, created["id"], name="take.webm", body=WEBM_JUNK).status_code == 422
+
+
+def test_ffmpeg_check_is_bounded_and_reaped(env, monkeypatch):
+    """The decode check goes through run_ffmpeg, which kills and reaps on timeout."""
+    import asyncio
+
+    client, _profiles, _db, _voices, created, _transcribed, _events = env
+    calls = []
+
+    async def stalled_run(cmd, timeout, **_kwargs):
+        calls.append(timeout)
+        raise asyncio.TimeoutError
+
+    monkeypatch.setattr("services.ffmpeg_utils.find_ffmpeg", lambda: "ffmpeg")
+    monkeypatch.setattr("services.ffmpeg_utils.run_ffmpeg", stalled_run)
+    assert replace(client, created["id"], name="take.webm", body=WEBM_JUNK).status_code == 422
+    assert calls == [30]
+
+
+def test_legacy_null_kind_profile_is_replaced(env):
+    client, _profiles, db, _voices, created, _transcribed, _events = env
+    with db.db_conn() as conn:
+        conn.execute("UPDATE voice_profiles SET kind=NULL WHERE id=?", (created["id"],))
+    response = replace(client, created["id"], text="words")
+    assert response.status_code == 200, response.text
+    assert response.json()["ref_audio_path"] != created["ref_audio_path"]
 
 
 def test_ffmpeg_decode_needs_real_samples(tmp_path):
