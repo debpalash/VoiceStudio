@@ -26,7 +26,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 import torch
-
 from services.audiobook import Span, synthesize_chapter
 
 SR = 24000
@@ -87,7 +86,7 @@ def test_a_failing_progress_report_cannot_break_a_chapter(monkeypatch):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(mod, "report_generate_progress", boom)
-    audio, dur = synthesize_chapter(_spans(2), lambda t, v, s=None: torch.zeros(240), SR)
+    _audio, dur = synthesize_chapter(_spans(2), lambda t, v, s=None: torch.zeros(240), SR)
     assert dur > 0
 
 
@@ -98,7 +97,7 @@ async def test_a_chapter_that_keeps_finishing_chunks_outlives_its_budget(mm, poo
         time.sleep(0.15)
         return torch.zeros(240)
 
-    audio, dur = await _run(
+    _audio, dur = await _run(
         mm, pool, lambda: synthesize_chapter(_spans(8), synth, SR), 0.3,
     )
     assert dur > 0
@@ -142,7 +141,7 @@ async def test_extension_cap_scales_with_the_budget(mm, pool, monkeypatch):
 
     # ~1.6s of steady progress against a 0.5s budget: past budget + the
     # fixed 0.2s cap, within budget + 3 x budget.
-    audio, dur = await _run(
+    _audio, dur = await _run(
         mm, pool, lambda: synthesize_chapter(_spans(16), synth, SR), 0.5,
     )
     assert dur > 0
