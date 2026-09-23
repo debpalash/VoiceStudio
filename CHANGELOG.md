@@ -20,6 +20,10 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 - Integration pages use the full window: setup beside a side panel with status, capabilities and website on wide screens, stacked on narrow ones, with the scrollbar at the window edge (#2304)
 - Integration logos in the footer open their page inside the app instead of an outside website (#2302)
 
+### Docs
+
+- The Twilio guide and integration directory describe the guided setup and in-app integration pages (#2304)
+
 ### Fixed
 
 - Integration pages show each integration's own category and summary instead of borrowed labels such as "Dubbing" for Twilio (#2304)
