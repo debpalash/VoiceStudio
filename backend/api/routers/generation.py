@@ -14,7 +14,7 @@ import threading
 import traceback
 from typing import Optional
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 import sqlite3
@@ -1671,6 +1671,24 @@ async def generate_speech(
                     f"model shows as installed."
                 ),
             ) from exc
+        except HTTPException:
+            raise
+        # #2298: everything else the load can raise. A JSONResponse rather than
+        # an HTTPException because the classified `hint` / `docs_topic` are
+        # top-level keys the client already reads off a failure body, and
+        # HTTPException would bury them under `detail`. The global 500 handler
+        # produced exactly this shape — the only thing that changes is that the
+        # reply now names the engine and the model load, and arrives as a 503
+        # the client can treat as retryable instead of a crash.
+        except Exception as exc:
+            from core.public_errors import model_load_failure
+
+            logger.exception("engine '%s' failed to load its model", engine_id)
+            return JSONResponse(
+                status_code=503,
+                content=model_load_failure(engine_id, exc),
+                headers={"Retry-After": "30", "X-OmniVoice-Retryable": "true"},
+            )
 
     ref_audio_path = None
     cleanup_ref = False

@@ -721,7 +721,19 @@ async def create_speech(req: SpeechRequest):
         # interpreter / placeholder binary) — surface the typed 503 here too.
         http = _typed_speech_http_error(e)
         if http is None:
-            raise
+            # #2298: an untyped load failure — the weight download refused,
+            # DNS gone, the mirror down — used to re-raise into the generic
+            # 500. Same actionable sentence as /generate's twin catch; this
+            # route keeps a string detail because its errors are read by
+            # OpenAI-shaped clients.
+            from core.public_errors import model_load_failure
+
+            logger.exception("OpenAI TTS engine '%s' failed to load its model", backend.id)
+            raise HTTPException(
+                status_code=503,
+                detail=str(model_load_failure(backend.id, e)["detail"]),
+                headers={"Retry-After": "30", "X-OmniVoice-Retryable": "true"},
+            ) from e
         logger.warning("OpenAI TTS engine load failed: %s", e)
         raise http from e
 
