@@ -70,7 +70,7 @@
     "phoneNumberInvalid": "Använd internationellt format: + och landskod, sedan numret, endast siffror.",
     "consoleOpen": "Öppna Phone Numbers → Manage → Active numbers i Twilio Console och välj ditt nummer.",
     "consoleVoice": "Under Voice Configuration, ställ in \"A call comes in\" på Webhook med HTTP POST.",
-    "consolePaste": "Klistra in URL:en ovan och spara. Det här steget visar Klar när ditt första samtal kommer in.",
+    "consolePaste": "Klistra in URL:en ovan och spara. Steget visas som klart när ett samtal klarar Twilios signaturkontroll.",
     "webhookNeedsTunnel": "Spara din offentliga tunnel-URL i steg 2 för att få webhook-URL:en.",
     "stepVoice": "Röst och beteende",
     "stepVoiceHint": "Välj hur VoiceStudio låter och vad uppringare hör.",

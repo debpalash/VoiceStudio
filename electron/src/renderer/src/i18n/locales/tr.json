@@ -70,7 +70,7 @@
     "phoneNumberInvalid": "Uluslararası biçimi kullanın: + ve ülke kodu, ardından numara, yalnızca rakam.",
     "consoleOpen": "Twilio Console'da Phone Numbers → Manage → Active numbers bölümünü açın ve numaranızı seçin.",
     "consoleVoice": "Voice Configuration altında \"A call comes in\" seçeneğini HTTP POST ile Webhook olarak ayarlayın.",
-    "consolePaste": "Yukarıdaki URL'yi yapıştırıp kaydedin. İlk aramanız geldiğinde bu adım Tamam olarak görünür.",
+    "consolePaste": "Yukarıdaki URL'yi yapıştırıp kaydedin. Bir arama Twilio imza denetiminden geçtiğinde bu adım tamamlandı olarak görünür.",
     "webhookNeedsTunnel": "Webhook URL'sini almak için 2. adımda genel tünel URL'nizi kaydedin.",
     "stepVoice": "Ses ve davranış",
     "stepVoiceHint": "VoiceStudio'nun nasıl sesleneceğini ve arayanların ne duyacağını seçin.",

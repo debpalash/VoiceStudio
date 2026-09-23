@@ -70,7 +70,7 @@
     "phoneNumberInvalid": "国際形式で入力してください: + と国番号、続けて番号を数字のみで。",
     "consoleOpen": "Twilio Console で Phone Numbers → Manage → Active numbers を開き、番号を選択します。",
     "consoleVoice": "Voice Configuration で \"A call comes in\" を HTTP POST の Webhook に設定します。",
-    "consolePaste": "上の URL を貼り付けて保存します。最初の着信があると、このステップは完了と表示されます。",
+    "consolePaste": "上の URL を貼り付けて保存します。Twilio の署名チェックに通った通話があると、このステップは完了になります。",
     "webhookNeedsTunnel": "Webhook URL を取得するには、ステップ 2 で公開トンネル URL を保存してください。",
     "stepVoice": "音声と動作",
     "stepVoiceHint": "VoiceStudio の声と、発信者が聞く内容を選びます。",

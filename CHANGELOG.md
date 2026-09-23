@@ -30,9 +30,6 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 ### Docs
 
 - New call agent guide covering setup, disclosure, recording consent and safeguards (#2306)
-
-### Docs
-
 - The Twilio guide and integration directory describe the guided setup and in-app integration pages (#2304)
 
 ### Fixed

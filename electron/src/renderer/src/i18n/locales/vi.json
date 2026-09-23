@@ -70,7 +70,7 @@
     "phoneNumberInvalid": "Dùng định dạng quốc tế: + và mã quốc gia, sau đó là số, chỉ gồm chữ số.",
     "consoleOpen": "Trong Twilio Console, mở Phone Numbers → Manage → Active numbers và chọn số của bạn.",
     "consoleVoice": "Trong Voice Configuration, đặt \"A call comes in\" thành Webhook với HTTP POST.",
-    "consolePaste": "Dán URL ở trên và lưu. Bước này hiển thị Xong sau khi cuộc gọi đầu tiên đến.",
+    "consolePaste": "Dán URL ở trên và lưu. Bước này hiện Xong khi có cuộc gọi vượt qua bước kiểm tra chữ ký của Twilio.",
     "webhookNeedsTunnel": "Lưu URL đường hầm công khai ở bước 2 để lấy URL webhook.",
     "stepVoice": "Giọng nói và hành vi",
     "stepVoiceHint": "Chọn cách VoiceStudio phát âm và những gì người gọi nghe thấy.",

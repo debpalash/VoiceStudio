@@ -70,7 +70,7 @@
     "phoneNumberInvalid": "请使用国际格式：+ 加国家代码，再加号码，仅限数字。",
     "consoleOpen": "在 Twilio Console 中打开 Phone Numbers → Manage → Active numbers，然后选择你的号码。",
     "consoleVoice": "在 Voice Configuration 下，将 \"A call comes in\" 设置为使用 HTTP POST 的 Webhook。",
-    "consolePaste": "粘贴上方的 URL 并保存。收到第一通来电后，此步骤会显示已完成。",
+    "consolePaste": "粘贴上面的 URL 并保存。有通话通过 Twilio 签名校验后，此步骤显示为完成。",
     "webhookNeedsTunnel": "请在第 2 步保存公开隧道 URL，以获取 Webhook URL。",
     "stepVoice": "语音与行为",
     "stepVoiceHint": "选择 VoiceStudio 的声音以及来电者听到的内容。",

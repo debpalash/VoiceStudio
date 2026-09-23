@@ -70,7 +70,7 @@
     "phoneNumberInvalid": "Użyj formatu międzynarodowego: + i kod kraju, potem numer, tylko cyfry.",
     "consoleOpen": "W Twilio Console otwórz Phone Numbers → Manage → Active numbers i wybierz swój numer.",
     "consoleVoice": "W sekcji Voice Configuration ustaw \"A call comes in\" na Webhook z HTTP POST.",
-    "consolePaste": "Wklej powyższy URL i zapisz. Ten krok pokaże Gotowe po nadejściu pierwszego połączenia.",
+    "consolePaste": "Wklej powyższy adres URL i zapisz. Ten krok zostanie oznaczony jako gotowy, gdy połączenie przejdzie weryfikację podpisu Twilio.",
     "webhookNeedsTunnel": "Zapisz publiczny URL tunelu w kroku 2, aby uzyskać URL webhooka.",
     "stepVoice": "Głos i zachowanie",
     "stepVoiceHint": "Wybierz, jak brzmi VoiceStudio i co słyszą dzwoniący.",
