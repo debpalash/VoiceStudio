@@ -8,9 +8,13 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ## [Unreleased]
 
+**Highlights**
+
+- Have VoiceStudio phone someone in your own voice for a task like booking a table (#2305)
+
 ### Added
 
-- Calls workspace: have VoiceStudio phone someone in your own voice for a task like booking a table, with a live transcript, take-over and hang-up, and a summary afterwards ([guide](docs/calls.md))
+- Calls workspace with a live transcript, take-over, hang-up and an after-call summary (#2305)
 
 ## [0.5.6] — 2026-09-23
 
