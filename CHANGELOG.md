@@ -13,6 +13,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 - A call agent that places or answers phone calls in your own voice to get a task done (#2306)
 - Footer integration logos open their in-app page (#2302)
 - Record or drop a voice sample from one view in Voice Clone (#2307)
+- Voice Clone keeps the original container of a one-shot MP3, M4A or WebM reference
 
 ### Added
 
@@ -26,6 +27,10 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 ### Docs
 
 - New call agent guide covering setup, disclosure, recording consent and safeguards (#2306)
+
+### Fixed
+
+- `/generate` writes an uploaded clone reference with its real extension instead of always `.wav`, so a non-WAV one-shot clip still decodes (#2311)
 
 ## [0.5.6] — 2026-09-23
 

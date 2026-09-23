@@ -238,12 +238,19 @@ def fake_engine(monkeypatch):
 
 
 def _post(client, engine, path, **extra):
+    filename = extra.pop("filename", "ref.wav")
+    mime = extra.pop("mime", "audio/wav")
     with open(path, "rb") as fh:
         return client.post(
             "/generate",
             data={"text": "Hello world", "engine": engine.id, **extra},
-            files={"ref_audio": ("ref.wav", fh, "audio/wav")},
+            files={"ref_audio": (filename, fh, mime)},
         )
+
+
+def _flac(path, seconds, value=0.1):
+    sf.write(path, torch.full((int(seconds * SR),), value).numpy(), SR, format="FLAC")
+    return str(path)
 
 
 def test_generate_long_upload_skips_whole_clip_asr(client, fake_engine, tmp_path):
@@ -415,3 +422,72 @@ def test_generate_profile_stored_transcript_still_clones(client, fake_engine, lo
     )
     assert res.status_code == 200, res.text
     assert counting.calls == 0
+
+
+def test_generate_keeps_uploaded_flac_extension(client, fake_engine, tmp_path):
+    """A one-shot clone upload must keep its container, not be rewritten as .wav.
+
+    /profiles already stores the original extension. /generate wrote every
+    upload with suffix=.wav, so an MP3/M4A/WebM recording failed to decode
+    (pydub passes -f wav to ffmpeg). Saved voices were fine; Use once was not.
+    """
+    fake, counting = fake_engine
+    path = _flac(tmp_path / "voice.flac", 25)
+
+    res = _post(
+        client, fake, path, filename="voice.flac", mime="audio/flac",
+    )
+
+    assert res.status_code == 200, res.text
+    saved = fake.calls[0]["ref_audio"]
+    assert saved.endswith(".flac"), saved
+    assert counting.calls == 0
+
+
+def test_generate_keeps_webm_recording_extension(client, fake_engine, tmp_path):
+    """MediaRecorder WebM is the fallback when /clean-audio is missing."""
+    fake, _counting = fake_engine
+    path = _wav(tmp_path / "recording.wav", 8)
+
+    res = _post(
+        client, fake, path, filename="recording.webm", mime="audio/webm",
+    )
+
+    assert res.status_code == 200, res.text
+    assert fake.calls[0]["ref_audio"].endswith(".webm")
+
+
+def test_generate_unknown_reference_extension_stays_wav(client, fake_engine, tmp_path):
+    """A crafted filename must not choose the on-disk suffix."""
+    fake, _counting = fake_engine
+    path = _wav(tmp_path / "voice.wav", 8)
+
+    res = _post(
+        client, fake, path, filename="voice.exe", mime="application/octet-stream",
+    )
+
+    assert res.status_code == 200, res.text
+    assert fake.calls[0]["ref_audio"].endswith(".wav")
+
+
+@pytest.mark.parametrize(
+    "filename, suffix",
+    [
+        ("voice.flac", ".flac"),
+        ("take.MP3", ".mp3"),
+        ("clip.m4a", ".m4a"),
+        ("recording.webm", ".webm"),
+        ("note.opus", ".opus"),
+        ("note.oga", ".oga"),
+        ("clip.aac", ".aac"),
+        ("clip.ogg", ".ogg"),
+        ("voice.exe", ".wav"),
+        ("voice", ".wav"),
+        (None, ".wav"),
+        (r"C:\Users\a\clip.mp3", ".mp3"),
+    ],
+)
+def test_ref_upload_suffix_allowlist(filename, suffix):
+    from api.routers.generation import _ref_upload_suffix
+
+    assert _ref_upload_suffix(filename) == suffix

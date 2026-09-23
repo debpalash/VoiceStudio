@@ -35,6 +35,20 @@ from omnivoice.utils.voice_design import heal_design_instruct
 router = APIRouter()
 logger = logging.getLogger("omnivoice.generate")
 
+# Same containers POST /profiles stores for a clone reference. /generate used
+# to write every upload with suffix=".wav"; pydub then passes -f wav to ffmpeg,
+# so an MP3/M4A/WebM one-shot clip failed to decode while a saved voice of the
+# same file worked.
+_REF_UPLOAD_EXTS = frozenset({
+    ".wav", ".mp3", ".m4a", ".flac", ".ogg", ".oga", ".opus", ".aac", ".webm",
+})
+
+
+def _ref_upload_suffix(filename: Optional[str]) -> str:
+    """On-disk suffix for a one-shot /generate reference upload."""
+    ext = os.path.splitext(filename or "")[1].lower()
+    return ext if ext in _REF_UPLOAD_EXTS else ".wav"
+
 
 class _TempReferenceLease:
     """Delete a request-owned reference once every abandoned reader drains."""
@@ -1717,7 +1731,8 @@ async def generate_speech(
                 persist_ref_text_profile_id = profile_id
     elif ref_audio is not None:
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+            suffix = _ref_upload_suffix(ref_audio.filename)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
                 f.write(await ref_audio.read())
                 ref_audio_path = f.name
                 cleanup_ref = True
