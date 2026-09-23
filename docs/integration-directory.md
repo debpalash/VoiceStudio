@@ -88,11 +88,16 @@ local OpenAI-compatible server); the snippet never falls back to a hosted model.
 The Twilio detail page answers calls to your Twilio number with a saved voice:
 VoiceStudio speaks a greeting over a Twilio Media Stream, then hangs up. It is
 off by default. When enabled, a separate loopback listener that your own HTTPS
-tunnel (cloudflared, ngrok) forwards to serves only two endpoints: the voice
-webhook, which must carry a valid Twilio signature, and the Media Stream, which
-must present a single-use per-call token. The main API is never exposed.
-**Test locally** plays the greeting at phone quality without Twilio. See
-[Twilio setup](integrations/twilio.md) for the
-tunnel, Twilio Console configuration, security model and limits. Twilio is an
+tunnel (cloudflared, ngrok) forwards to serves only Twilio's endpoints: the
+voice and status webhooks, which must carry a valid Twilio signature, and the
+Media Stream, which must present a single-use per-call token. The main API is
+never exposed. **Test locally** plays the greeting at phone quality without
+Twilio. See [Twilio setup](integrations/twilio.md) for the
+tunnel, Twilio Console configuration, security model and limits.
+
+The [call agent](integrations/calls.md) uses the same setup to place a call from
+your request (for example, booking a table) or answer one, and holds the
+conversation in your verified or designed voice. It opens with an editable AI
+disclosure and records nothing unless you turn recording on. Twilio is an
 implemented connector; the other calling entries (Plivo, Telnyx) remain
 capability references.

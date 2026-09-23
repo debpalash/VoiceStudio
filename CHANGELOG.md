@@ -10,12 +10,23 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 **Highlights**
 
+- A call agent that places or answers phone calls in your own voice to get a task done (#2306)
 - Footer integration logos open their in-app page (#2302)
-- Videos without sound get a clear message instead of an ffmpeg error dump
+- Record or drop a voice sample from one view in Voice Clone (#2307)
+- Videos without sound get a clear message instead of an ffmpeg error dump (#2308)
+
+### Added
+
+- Call agent backend: place or answer phone calls that hold a task conversation in your verified or designed voice, with an editable AI disclosure, take-over and an after-call summary (#2306)
 
 ### Changed
 
 - Integration logos in the footer open their page inside the app instead of an outside website (#2302)
+- Voice Clone shows upload and record side by side instead of behind a toggle (#2307)
+
+### Docs
+
+- New call agent guide covering setup, disclosure, recording consent and safeguards (#2306)
 
 ### Fixed
 
