@@ -2819,6 +2819,7 @@
     "design_voice": "Bir ses tasarla",
     "first_line": "İlk söyleyeceği şey",
     "disclosure_toggle": "Yapay zeka bildirimi",
+    "disclosure_locked": "Konuşma başlamadan önce tamamen çalınır; kesilemez.",
     "disclosure_default": "Merhaba, ben kullanıcım adına arayan bir yapay zeka asistanıyım. Bu görüşme kaydedilebilir.",
     "disclosure_off_warning": "Bazı yerler, kişilere bir yapay zekayla konuştuklarının söylenmesini zorunlu kılar. Bunu yalnızca izin verildiğinden eminseniz kapatın.",
     "max_duration": "Azami süre",

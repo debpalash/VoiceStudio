@@ -2819,6 +2819,7 @@
     "design_voice": "Stimme entwerfen",
     "first_line": "Was zuerst gesagt wird",
     "disclosure_toggle": "KI-Offenlegung",
+    "disclosure_locked": "Wird vor dem Gespräch vollständig abgespielt und kann nicht unterbrochen werden.",
     "disclosure_default": "Hallo, hier spricht ein KI-Assistent im Auftrag meines Nutzers. Dieser Anruf kann aufgezeichnet werden.",
     "disclosure_off_warning": "Manche Orte verlangen, dass Personen mitgeteilt wird, dass sie mit einer KI sprechen. Deaktivieren Sie dies nur, wenn Sie sicher sind, dass es erlaubt ist.",
     "max_duration": "Maximale Dauer",

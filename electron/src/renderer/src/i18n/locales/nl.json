@@ -2819,6 +2819,7 @@
     "design_voice": "Stem ontwerpen",
     "first_line": "Wat er als eerste gezegd wordt",
     "disclosure_toggle": "AI-melding",
+    "disclosure_locked": "Wordt volledig afgespeeld voordat het gesprek begint en kan niet worden onderbroken.",
     "disclosure_default": "Hoi, dit is een AI-assistent die belt namens mijn gebruiker. Dit gesprek kan worden opgenomen.",
     "disclosure_off_warning": "Sommige plekken vereisen dat mensen weten dat ze met een AI spreken. Zet dit alleen uit als je zeker weet dat het is toegestaan.",
     "max_duration": "Maximale duur",

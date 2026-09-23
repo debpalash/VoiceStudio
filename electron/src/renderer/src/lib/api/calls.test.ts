@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from './client';
 import {
   callEventsUrl,
+  callRecordingUrl,
+  deleteCall,
+  renderDisclosure,
   callTime,
   callsUnavailable,
   getReadiness,
@@ -135,4 +138,15 @@ it('reads epoch seconds, epoch milliseconds and ISO timestamps', () => {
   expect(callTime('2026-09-23T10:00:00Z')).toBe(Date.parse('2026-09-23T10:00:00Z'));
   expect(callTime(null)).toBeNull();
   expect(callTime('nope')).toBeNull();
+});
+
+it('deletes calls, links recordings and fills the disclosure name like the backend', async () => {
+  fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+  await deleteCall('c1');
+  expect(lastRequest()).toMatchObject({ url: '/api/calls/c1', method: 'DELETE' });
+  expect(callRecordingUrl('c1')).toBe('/api/calls/c1/recording');
+  expect(renderDisclosure("Hi, this is {name}'s assistant.", ' Sam ')).toBe(
+    "Hi, this is Sam's assistant.",
+  );
+  expect(renderDisclosure('{name} calling', '')).toBe('someone calling');
 });

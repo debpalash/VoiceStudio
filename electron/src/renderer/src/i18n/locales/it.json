@@ -2821,6 +2821,7 @@
     "design_voice": "Crea una voce",
     "first_line": "Cosa dirà per prima cosa",
     "disclosure_toggle": "Dichiarazione IA",
+    "disclosure_locked": "Viene riprodotta per intero prima della conversazione; non può essere interrotta.",
     "disclosure_default": "Ciao, sono un assistente IA che chiama per conto del mio utente. Questa chiamata potrebbe essere registrata.",
     "disclosure_off_warning": "Alcuni luoghi richiedono di avvisare che si sta parlando con un'IA. Disattivalo solo se sei sicuro che sia consentito.",
     "max_duration": "Durata massima",

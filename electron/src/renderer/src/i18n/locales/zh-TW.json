@@ -2819,6 +2819,7 @@
     "design_voice": "設計聲音",
     "first_line": "開頭要說的話",
     "disclosure_toggle": "AI 揭露",
+    "disclosure_locked": "會在對話開始前完整播放，無法中斷。",
     "disclosure_default": "您好，我是代表使用者撥打此電話的 AI 助理，此通話可能會被錄音。",
     "disclosure_off_warning": "部分地區規定須告知對方正在與 AI 通話。請務必確認允許後再關閉此選項。",
     "max_duration": "最長時間",

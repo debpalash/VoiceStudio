@@ -2823,6 +2823,7 @@
     "design_voice": "设计声音",
     "first_line": "首先要说的内容",
     "disclosure_toggle": "AI 披露",
+    "disclosure_locked": "在对话开始前完整播放，无法打断。",
     "disclosure_default": "您好，我是代表用户拨打此电话的 AI 助手。此通话可能会被录音。",
     "disclosure_off_warning": "有些地方要求告知对方正在与 AI 通话。只有在确定允许的情况下才关闭此项。",
     "max_duration": "最长时长",

@@ -2821,6 +2821,7 @@
     "design_voice": "Criar uma voz",
     "first_line": "O que será dito primeiro",
     "disclosure_toggle": "Aviso de IA",
+    "disclosure_locked": "É reproduzida por completo antes da conversa; não pode ser interrompida.",
     "disclosure_default": "Olá, aqui é um assistente de IA ligando em nome do meu usuário. Esta chamada pode ser gravada.",
     "disclosure_off_warning": "Em alguns lugares é obrigatório informar que a pessoa está falando com uma IA. Desative isso somente se tiver certeza de que é permitido.",
     "max_duration": "Duração máxima",

@@ -2819,6 +2819,7 @@
     "design_voice": "Design a voice",
     "first_line": "What it will say first",
     "disclosure_toggle": "AI disclosure",
+    "disclosure_locked": "Plays in full before the conversation starts; it can't be interrupted.",
     "disclosure_default": "Hi, this is an AI assistant calling on behalf of my user. This call may be recorded.",
     "disclosure_off_warning": "Some places require telling people they are speaking to an AI. Turn this off only if you are sure it is allowed.",
     "max_duration": "Maximum length",

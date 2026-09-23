@@ -85,7 +85,8 @@ beforeEach(() => {
     if (path === '/calls/settings')
       return {
         from_number: '+15550000000',
-        disclosure_template: 'Hi, this is an AI assistant calling for Sam.',
+        disclosure_template: "Hi, this is {name}'s AI assistant.",
+        user_name: 'Sam',
         inbound_mode: 'greeting',
         inbound_brief: '',
         max_concurrent: 1,
@@ -176,6 +177,10 @@ it('validates the number and asks for confirmation before dialling', async () =>
   // Focus lands on Cancel, so a held Enter cannot dial.
   await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus());
   fireEvent.click(within(dialog).getByRole('button', { name: 'Call now' }));
+  // The unedited template is left to the backend, which fills {name} itself;
+  // the form previews it with the user's name and marks it as uninterruptible.
+  expect(screen.getByDisplayValue("Hi, this is Sam's AI assistant.")).toBeInTheDocument();
+  expect(screen.getByText(/can't be interrupted/)).toBeInTheDocument();
   await waitFor(() => expect(requests()).toHaveLength(1));
   expect(requests()[0]).toEqual({
     path: '/calls',
@@ -184,7 +189,6 @@ it('validates the number and asks for confirmation before dialling', async () =>
       to: '+15550100199',
       brief: expect.stringContaining('Book a table for 2 people'),
       profile_id: 'mine',
-      disclosure: 'Hi, this is an AI assistant calling for Sam.',
       max_minutes: 5,
     },
   });

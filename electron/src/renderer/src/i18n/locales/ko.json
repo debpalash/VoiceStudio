@@ -2819,6 +2819,7 @@
     "design_voice": "음성 디자인하기",
     "first_line": "처음에 할 말",
     "disclosure_toggle": "AI 공개 안내",
+    "disclosure_locked": "대화가 시작되기 전에 끝까지 재생되며 중간에 끊을 수 없습니다.",
     "disclosure_default": "안녕하세요, 저는 사용자를 대신해 전화하는 AI 어시스턴트입니다. 이 통화는 녹음될 수 있습니다.",
     "disclosure_off_warning": "일부 지역에서는 상대방에게 AI와 통화 중임을 알려야 합니다. 허용되는 것이 확실한 경우에만 이 기능을 끄세요.",
     "max_duration": "최대 통화 시간",

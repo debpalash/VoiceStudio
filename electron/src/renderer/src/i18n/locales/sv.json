@@ -2819,6 +2819,7 @@
     "design_voice": "Designa en röst",
     "first_line": "Vad den säger först",
     "disclosure_toggle": "AI-information",
+    "disclosure_locked": "Spelas upp i sin helhet innan samtalet börjar och kan inte avbrytas.",
     "disclosure_default": "Hej, det här är en AI-assistent som ringer å min användares vägnar. Det här samtalet kan komma att spelas in.",
     "disclosure_off_warning": "På vissa platser krävs det att man berättar för personer att de pratar med en AI. Stäng bara av detta om du är säker på att det är tillåtet.",
     "max_duration": "Maximal längd",

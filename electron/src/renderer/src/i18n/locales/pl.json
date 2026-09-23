@@ -2823,6 +2823,7 @@
     "design_voice": "Zaprojektuj głos",
     "first_line": "Co powie jako pierwsze",
     "disclosure_toggle": "Informacja o AI",
+    "disclosure_locked": "Odtwarzana w całości przed rozpoczęciem rozmowy; nie można jej przerwać.",
     "disclosure_default": "Cześć, tu asystent AI dzwoniący w imieniu użytkownika. Ta rozmowa może być nagrywana.",
     "disclosure_off_warning": "W niektórych miejscach wymagane jest poinformowanie rozmówcy, że rozmawia z AI. Wyłącz tę opcję tylko wtedy, gdy masz pewność, że jest to dozwolone.",
     "max_duration": "Maksymalny czas trwania",

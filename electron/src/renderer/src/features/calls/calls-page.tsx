@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { describeError } from '@/lib/api/client';
 import {
   callsUnavailable,
+  renderDisclosure,
   getCallSettings,
   getReadiness,
   listCalls,
@@ -202,7 +203,10 @@ export function CallsPage() {
     live.call?.max_minutes ??
     (selectedId ? dialled.current.get(selectedId)?.maxMinutes : null) ??
     null;
-  const disclosureTemplate = settings.data?.disclosure_template || t('calls.disclosure_default');
+  const disclosureTemplate = renderDisclosure(
+    settings.data?.disclosure_template || t('calls.disclosure_default'),
+    settings.data?.user_name || voices.find((voice) => voice.id === effectiveDraft.profileId)?.name,
+  );
 
   const form = (
     <div className="studio-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-4">

@@ -2819,6 +2819,7 @@
     "design_voice": "音声をデザインする",
     "first_line": "最初に話す内容",
     "disclosure_toggle": "AI開示",
+    "disclosure_locked": "会話の前に最後まで再生され、途中で遮ることはできません。",
     "disclosure_default": "こんにちは、こちらはユーザーの代理で発信しているAIアシスタントです。この通話は録音される場合があります。",
     "disclosure_off_warning": "相手がAIと話していることを伝える義務がある地域もあります。許可されていると確実にわかる場合のみオフにしてください。",
     "max_duration": "最大通話時間",

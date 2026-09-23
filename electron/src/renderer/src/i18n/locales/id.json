@@ -2819,6 +2819,7 @@
     "design_voice": "Desain suara",
     "first_line": "Kalimat pertama yang akan diucapkan",
     "disclosure_toggle": "Pemberitahuan AI",
+    "disclosure_locked": "Diputar penuh sebelum percakapan dimulai; tidak bisa disela.",
     "disclosure_default": "Halo, ini asisten AI yang menelepon atas nama pengguna saya. Panggilan ini mungkin direkam.",
     "disclosure_off_warning": "Beberapa tempat mewajibkan pemberitahuan bahwa lawan bicara adalah AI. Matikan ini hanya jika Anda yakin diizinkan.",
     "max_duration": "Durasi maksimum",

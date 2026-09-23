@@ -3,7 +3,7 @@
  * answers calls through the user's own Twilio number; nothing is dialled until
  * the user confirms a call in the Calls workspace.
  */
-import { ApiError, apiJson, apiPath } from './client';
+import { ApiError, apiFetch, apiJson, apiPath } from './client';
 
 export type CallDirection = 'outbound' | 'inbound';
 export type CallOutcome = 'booked' | 'done' | 'not_done' | 'needs_you' | 'failed';
@@ -36,6 +36,14 @@ export interface CallRecord {
   transcript?: TranscriptLine[];
   max_minutes?: number | null;
   takeover?: boolean;
+  /** The opening line actually spoken; it always plays in full. */
+  disclosure?: string;
+  agent_state?: AgentState | null;
+  /** True when a recording exists (`GET /calls/{id}/recording`). */
+  recording?: boolean | string | null;
+  error?: string | null;
+  /** Detail view only: status changes with their times. */
+  timeline?: Array<{ status: string; t?: number | string | null; at?: number | string | null }>;
 }
 
 export interface StartCallInput {
@@ -44,13 +52,18 @@ export interface StartCallInput {
   profile_id: string;
   engine?: string;
   language?: string;
-  /** The line spoken first. An empty string opts this call out of the disclosure. */
+  /**
+   * The line spoken first. Omit it to use the settings template (the backend
+   * fills `{name}`); an empty string opts this call out of the disclosure.
+   */
   disclosure?: string;
   max_minutes?: number;
 }
 
 export interface CallSettings {
   from_number: string;
+  /** Fills `{name}` in the disclosure template. */
+  user_name?: string;
   disclosure_template: string;
   inbound_mode: InboundMode;
   inbound_brief: string;
@@ -112,6 +125,20 @@ export async function setTakeover(callId: string, enabled: boolean): Promise<voi
 
 export async function hangUp(callId: string): Promise<void> {
   await apiJson<unknown>(`/calls/${id(callId)}/hangup`, post({}));
+}
+
+export async function deleteCall(callId: string): Promise<void> {
+  await apiFetch(`/calls/${id(callId)}`, { method: 'DELETE' });
+}
+
+/** Playable URL for a call's recording, when the record says one exists. */
+export function callRecordingUrl(callId: string): string {
+  return apiPath(`/calls/${id(callId)}/recording`);
+}
+
+/** Fill `{name}` the way the backend does (`someone` when no name is known). */
+export function renderDisclosure(template: string, name: string | null | undefined): string {
+  return template.trim().replaceAll('{name}', name?.trim() || 'someone');
 }
 
 export function getCallSettings(signal?: AbortSignal): Promise<CallSettings> {

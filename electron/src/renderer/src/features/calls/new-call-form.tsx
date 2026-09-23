@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import { PhoneOutgoingIcon, ShieldCheckIcon, TriangleAlertIcon } from 'lucide-react';
+import { LockIcon, PhoneOutgoingIcon, ShieldCheckIcon, TriangleAlertIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -56,7 +56,8 @@ export interface StartRequest {
   to: string;
   brief: string;
   profile_id: string;
-  disclosure: string;
+  /** Omitted when unedited, so the backend renders the template itself. */
+  disclosure?: string;
   max_minutes: number;
 }
 
@@ -99,7 +100,11 @@ export function NewCallForm({
     to: number,
     brief,
     profile_id: draft.profileId,
-    disclosure: draft.disclosureOn ? disclosure.trim() : '',
+    ...(!draft.disclosureOn
+      ? { disclosure: '' }
+      : draft.disclosure !== null
+        ? { disclosure: disclosure.trim() }
+        : {}),
     max_minutes: draft.maxMinutes,
   });
 
@@ -226,8 +231,14 @@ export function NewCallForm({
 
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-3">
-          <label htmlFor={`${ids}-disclosure`} className="text-sm font-medium">
+          <label
+            htmlFor={`${ids}-disclosure`}
+            className="flex items-center gap-1.5 text-sm font-medium"
+          >
             {t('calls.first_line')}
+            {draft.disclosureOn && (
+              <LockIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
+            )}
           </label>
           <span className="flex items-center gap-2 text-xs text-muted-foreground">
             <span aria-hidden="true">{t('calls.disclosure_toggle')}</span>
@@ -244,8 +255,14 @@ export function NewCallForm({
             id={`${ids}-disclosure`}
             rows={2}
             value={disclosure}
+            aria-describedby={`${ids}-disclosure-locked`}
             onChange={(event) => set('disclosure', event.target.value)}
           />
+        ) : null}
+        {draft.disclosureOn ? (
+          <p id={`${ids}-disclosure-locked`} className="text-xs text-muted-foreground">
+            {t('calls.disclosure_locked')}
+          </p>
         ) : (
           <p className="flex gap-2 rounded-lg bg-warning-surface px-3 py-2 text-xs text-warning-foreground">
             <TriangleAlertIcon aria-hidden="true" className="size-4 shrink-0" />

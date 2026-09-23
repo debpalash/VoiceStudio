@@ -2819,6 +2819,7 @@
     "design_voice": "Thiết kế giọng nói",
     "first_line": "Câu nói đầu tiên",
     "disclosure_toggle": "Thông báo AI",
+    "disclosure_locked": "Được phát trọn vẹn trước khi cuộc trò chuyện bắt đầu và không thể ngắt ngang.",
     "disclosure_default": "Xin chào, đây là trợ lý AI gọi thay mặt người dùng của tôi. Cuộc gọi này có thể được ghi âm.",
     "disclosure_off_warning": "Một số nơi yêu cầu phải thông báo rằng người nghe đang nói chuyện với AI. Chỉ tắt tùy chọn này nếu bạn chắc chắn được phép.",
     "max_duration": "Thời lượng tối đa",
