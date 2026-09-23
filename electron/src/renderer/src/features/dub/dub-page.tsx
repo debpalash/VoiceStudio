@@ -42,6 +42,7 @@ import {
 } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
+import { runRendererTask } from '@/lib/global-error-recovery';
 import { canCreateStoryFromDub, loadDubIntoStories, storiesDraftOccupied } from './dub-to-story';
 import { useLongformSession } from '../longform/longform-session';
 import { ConfirmDialog } from '../clone/confirm-dialog';
@@ -293,7 +294,7 @@ export function DubPage() {
     });
     // Nothing was loaded — a render started while the confirm was open, say.
     // Navigating would show the old script and look like the action worked.
-    if (loaded) void navigate({ to: '/stories' });
+    if (loaded) runRendererTask('Create Story from dub', () => navigate({ to: '/stories' }));
   };
   // The current remote Dubbing producer still prepares a local fallback
   // before dispatch, so do not promise remote-only readiness yet.
