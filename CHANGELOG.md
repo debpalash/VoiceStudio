@@ -10,11 +10,22 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 **Highlights**
 
-- A first generation that fails while downloading an engine's weights now says so, instead of "internal error" (#2298)
+- A call agent that places or answers phone calls in your own voice to get a task done (#2306)
+- Footer integration logos open their in-app page (#2302)
+- Record or drop a voice sample from one view in Voice Clone (#2307)
 
-### Fixed
+### Added
 
-- Selecting a new engine and generating no longer reports a generic 500 when the weight download fails — the reply names the engine, explains that the download failed rather than generation, and keeps the mirror or cache remedy for the actual cause (#2298) — thanks @HNK-I!
+- Call agent backend: place or answer phone calls that hold a task conversation in your verified or designed voice, with an editable AI disclosure, take-over and an after-call summary (#2306)
+
+### Changed
+
+- Integration logos in the footer open their page inside the app instead of an outside website (#2302)
+- Voice Clone shows upload and record side by side instead of behind a toggle (#2307)
+
+### Docs
+
+- New call agent guide covering setup, disclosure, recording consent and safeguards (#2306)
 
 ## [0.5.6] — 2026-09-23
 

@@ -63,6 +63,13 @@ def mask_call_id(call_id: str) -> str:
     return f"…{call_id[-4:]}" if len(call_id) >= 4 else "…"
 
 
+def token_subject(call_id: str, session_id: str = "") -> str:
+    """What a stream token is bound to: the provider's call id, plus the call
+    agent's session id when the TwiML named one (so a token issued for one
+    agent call can never start another session)."""
+    return f"{call_id}|{session_id}" if session_id else call_id
+
+
 # ── Per-call WebSocket tokens ───────────────────────────────────────────────
 # Twilio signs the webhook but not the WebSocket upgrade, so the TwiML carries
 # a random single-use token as a <Stream> custom parameter. The stream's
@@ -435,13 +442,28 @@ async def render_ulaw_all(text: str, **kw) -> bytes:
 # ── The call loop ──────────────────────────────────────────────────────────
 
 
+@dataclass(frozen=True)
+class Clear:
+    """Yielded by a responder: drop everything queued for playback (barge-in)."""
+
+
+@dataclass(frozen=True)
+class Mark:
+    """Yielded by a responder: ask the provider to report (``on_mark``) once
+    playback reaches this point, i.e. when the audio before it was heard."""
+
+    name: str
+
+
 class Responder(Protocol):
     """What the caller hears. The announcement responder speaks a fixed text;
-    a conversational agent would implement ``on_inbound_audio`` (μ-law 8 kHz
-    from the caller) and yield replies from ``speak``."""
+    the call agent (``services.telephony.agent``) listens through
+    ``on_inbound_audio`` and yields replies, :class:`Clear` and :class:`Mark`
+    items from ``speak``. Optional extras: ``async on_mark(name)`` and a
+    ``max_seconds`` attribute overriding the call-length limit."""
 
-    def speak(self) -> AsyncIterator[bytes]:
-        """8 kHz μ-law audio to play to the caller, in order."""
+    def speak(self) -> AsyncIterator[bytes | Clear | Mark]:
+        """8 kHz μ-law audio (and playback controls) for the caller, in order."""
 
     async def on_inbound_audio(self, ulaw: bytes) -> None:
         """Caller audio (8 kHz μ-law) as it arrives."""
@@ -494,7 +516,13 @@ async def run_call(
     max_calls: int,
     max_seconds: float,
 ) -> str:
-    """Drive one media stream from handshake to hang-up; returns the outcome."""
+    """Drive one media stream from handshake to hang-up; returns the outcome.
+
+    ``responder_factory(start)`` receives the verified ``start`` event and
+    returns the responder, or None to refuse the stream. The stream token is
+    bound to the CallSid and, for agent calls, to the ``call`` session id the
+    TwiML carried (see :func:`token_subject`).
+    """
     from services.telephony.audio import FRAME_BYTES, PHONE_SAMPLE_RATE, ULAW_SILENCE
 
     await websocket.accept()
@@ -513,7 +541,10 @@ async def run_call(
         start = None
     if (
         start is None
-        or not tokens.redeem(start.params.get("token", ""), start.call_id)
+        or not tokens.redeem(
+            start.params.get("token", ""),
+            token_subject(start.call_id, start.params.get("call", "")) if start.call_id else "",
+        )
         or not secrets.compare_digest(start.account_id.encode(), account_id.encode())
     ):
         registry.note("rejected_stream", start.call_id if start else "")
@@ -526,13 +557,30 @@ async def run_call(
         await _close(websocket, 1013)
         return "busy"
 
-    responder = responder_factory()
+    responder = responder_factory(start)
+    if responder is None:
+        registry.end(record, "rejected_stream")
+        await _close(websocket, 1008)
+        return "rejected_stream"
     stream_id = start.stream_id
+    max_seconds = getattr(responder, "max_seconds", None) or max_seconds
 
     async def _send() -> None:
         pending = b""
         sent = 0
         async for chunk in responder.speak():
+            if isinstance(chunk, Clear):
+                pending = b""
+                await websocket.send_json(provider.clear_message(stream_id))
+                continue
+            if isinstance(chunk, Mark):
+                if pending:
+                    frame = pending + bytes([ULAW_SILENCE]) * (FRAME_BYTES - len(pending))
+                    await websocket.send_json(provider.media_message(stream_id, frame))
+                    sent += FRAME_BYTES
+                    pending = b""
+                await websocket.send_json(provider.mark_message(stream_id, chunk.name))
+                continue
             pending += chunk
             whole = len(pending) - len(pending) % FRAME_BYTES
             for i in range(0, whole, FRAME_BYTES):
@@ -550,6 +598,8 @@ async def run_call(
         # Twilio echoes the mark once everything before it has played.
         await websocket.send_json(provider.mark_message(stream_id, END_MARK))
 
+    on_mark = getattr(responder, "on_mark", None)
+
     async def _receive() -> str:
         while True:
             event = await _receive_event(websocket, provider)
@@ -557,6 +607,8 @@ async def run_call(
                 return "caller_hung_up"
             if event.kind == "mark" and event.mark == END_MARK:
                 return "completed"
+            if event.kind == "mark" and on_mark is not None:
+                await on_mark(event.mark)
             if event.kind == "media" and event.payload:
                 await responder.on_inbound_audio(event.payload)
 
