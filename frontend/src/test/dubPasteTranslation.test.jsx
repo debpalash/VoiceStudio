@@ -254,13 +254,15 @@ describe('pasteTranslations (useSegmentEditing)', () => {
   it('drops the imported cue even when the pasted words equal it (#2295)', () => {
     const source = { id: 'imp:0', text: 'Hello there', cue: '<i>Hello there</i>' };
     useAppStore.setState({
-      dubSegments: SEGMENTS.map((s, i) => (i === 0 ? { ...s, srt_source: source } : { ...s })),
+      dubSegments: SEGMENTS.map((s, i) =>
+        i === 0 ? { ...s, srt_source: source, cue_source_id: 'imp:0' } : { ...s },
+      ),
     });
     const { result } = renderHook(() => useSegmentEditing());
     paste(result, 'Hello there\nQue tal\nAdios');
     const [first] = useAppStore.getState().dubSegments;
     expect(first.text).toBe('Hello there');
-    expect(first.srt_source).toBeUndefined();
+    expect(first.cue_source_id).toBeUndefined();
   });
 
   it('NEVER overwrites text_original (would poison a later re-translate)', () => {

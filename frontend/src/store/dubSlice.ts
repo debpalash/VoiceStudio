@@ -301,7 +301,7 @@ export const createDubSlice: StateCreator<DubSlice, [], [], DubSlice> = (set, ge
     set((s) => {
       const prev = s.dubLangCode;
       if (!code || code === prev) return {};
-      const dubSegments = s.dubSegments.map((seg) => {
+      const switched = s.dubSegments.map((seg) => {
         const translations: Record<string, string> = {
           ...(seg.translations as Record<string, string> | undefined),
         };
@@ -330,7 +330,7 @@ export const createDubSlice: StateCreator<DubSlice, [], [], DubSlice> = (set, ge
       const dialectStillValid = !!s.dubDialect && s.dubDialect.toLowerCase().startsWith(`${base}-`);
       return {
         dubLangCode: code,
-        dubSegments,
+        dubSegments: settleCueSources(switched),
         ...(dialectStillValid ? {} : { dubDialect: '' }),
       };
     }),

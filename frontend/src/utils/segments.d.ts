@@ -25,3 +25,4 @@ export function castSourcesFromJob(job: Record<string, unknown>): Record<string,
 export function withoutCueSource<T>(segment: T): T;
 export function settleCueSources<T>(segments: T[]): T[];
 export function cueSourceId(segment: unknown): string | undefined;
+export function withOriginalCueSource<T>(segment: T): T;

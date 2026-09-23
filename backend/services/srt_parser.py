@@ -188,7 +188,9 @@ def parse_srt(content: str) -> SrtParseResult:
             "text": seg["text"],
             "text_original": seg["text"],
             "speaker_id": "Speaker 1",
-            **{k: seg[k] for k in ("webvtt_source", "srt_source") if k in seg},
+            **{k: seg[k] for k in CUE_SOURCE_FIELDS if k in seg},
+            # The text is this import's own words.
+            **{CUE_SOURCE_ID: seg[k]["id"] for k in CUE_SOURCE_FIELDS if k in seg},
         }
         for i, seg in enumerate(out)
     ]
@@ -259,26 +261,27 @@ def spoken_cue_text(text: str, *, webvtt: bool = False) -> str:
 
 
 # Segment fields holding the cue as imported. They are provenance, not text:
-# valid only while the segment still holds that import's text, never because
-# some later text happens to be equal. Clients echo the source `id` as
-# `cue_source_id` on generate; CUE_SOURCE_OK records whether they did. The
-# source itself stays on the row so another track can still vouch for it.
+# a cue is reused only while the segment's CUE_SOURCE_ID names it, meaning its
+# `text` is still that import's words, never because later text is equal.
+# Imports set CUE_SOURCE_ID; clients echo it on /dub/generate while the text
+# is untouched and drop it on any paste, edit or translation. The source
+# record itself stays, so returning to the original language can restore it.
 CUE_SOURCE_FIELDS = ("webvtt_source", "srt_source")
-CUE_SOURCE_OK = "cue_source_ok"
+CUE_SOURCE_ID = "cue_source_id"
 
 
 def vouch_cue_source(row: dict, text: str, cue_source_id: str | None) -> str | None:
-    """Mark whether ``row``'s imported cue is still its ``text``; return that cue's id."""
+    """Set ``row``'s CUE_SOURCE_ID when ``cue_source_id`` names its cue for ``text``."""
     vouched = None
     for key in CUE_SOURCE_FIELDS:
         source = row.get(key)
         if (isinstance(source, dict) and cue_source_id and source.get("id") == cue_source_id
                 and source.get("text") == text):
             vouched = cue_source_id
-    if any(key in row for key in CUE_SOURCE_FIELDS):
-        row[CUE_SOURCE_OK] = vouched is not None
+    if vouched:
+        row[CUE_SOURCE_ID] = vouched
     else:
-        row.pop(CUE_SOURCE_OK, None)
+        row.pop(CUE_SOURCE_ID, None)
     return vouched
 
 
@@ -314,11 +317,13 @@ def source_cue_or(seg: dict, text: str, key: str) -> str:
     round trip. Edited text and older projects fall back to ``text``.
     """
     source = seg.get(key)
-    if seg.get(CUE_SOURCE_OK) is False:
+    if not (isinstance(source, dict) and source.get("text") == text
+            and isinstance(source.get("cue"), str)):
         return text
-    if isinstance(source, dict) and source.get("text") == text and isinstance(source.get("cue"), str):
-        return source["cue"]
-    return text
+    # Cues from before #2295 carry no id and keep the equal-text rule.
+    if source.get("id") and seg.get(CUE_SOURCE_ID) != source["id"]:
+        return text
+    return source["cue"]
 
 
 def _escape_cue_span(span: str) -> str:

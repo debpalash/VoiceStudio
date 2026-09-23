@@ -20,6 +20,7 @@ import {
   cueSourceId,
   segmentGenInputs,
   settleCueSources,
+  withOriginalCueSource,
   withoutCueSource,
 } from '../../../../../../frontend/src/utils/segments';
 import { hasCompleteTranslation } from '../../../../../../frontend/src/utils/multiLang';
@@ -57,9 +58,11 @@ export interface DubSegment {
   instruct?: string;
   target_lang?: string;
   translations?: Record<string, string>;
-  /** The cue a caption import wrote; valid only while `text` is that import's text. */
+  /** The cue a caption import wrote, kept for unchanged exports. */
   webvtt_source?: { id?: string; text: string; cue: string };
   srt_source?: { id?: string; text: string; cue: string };
+  /** Set while `text` is still that import's words; cleared by any other write. */
+  cue_source_id?: string;
   merge_parts?: SegmentPart[];
   merge_parts_original?: SegmentPart[];
   original_duration?: number;
@@ -319,13 +322,17 @@ export const setDubTarget = (target: string, code?: string) =>
     ...current,
     target,
     segments: code
-      ? settleCueSources(
-          current.segments.map((segment) => ({
+      ? current.segments.map((segment) => {
+          const translated = segment.translations?.[code];
+          const next = {
             ...segment,
-            text: segment.translations?.[code] || segment.text_original || segment.text,
+            text: translated || segment.text_original || segment.text,
             agent_generated_lang: segment.agent_generated_langs?.includes(code) ? code : undefined,
-          })),
-        )
+          };
+          // Back on the untouched original, the row shows the import's words
+          // again, so its caption markup applies once more (#2295).
+          return translated ? withoutCueSource(next) : withOriginalCueSource(next);
+        })
       : current.segments,
   }));
 export const setDubMultiTargets = (multiTargets: Array<{ lang: string; code: string }>) => {

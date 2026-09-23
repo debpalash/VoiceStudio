@@ -641,7 +641,15 @@ it('echoes an imported cue only while no paste or edit has replaced its words (#
       recovery: null,
       timingStrategy: 'strict_slot',
       segments: [
-        { id: '0', start: 0, end: 1, text: 'Hello', text_original: 'Hello', srt_source: source },
+        {
+          id: '0',
+          start: 0,
+          end: 1,
+          text: 'Hello',
+          text_original: 'Hello',
+          srt_source: source,
+          cue_source_id: 'imp:0',
+        },
       ],
     }));
   const generatedCueId = async () => {
@@ -662,7 +670,7 @@ it('echoes an imported cue only while no paste or edit has replaced its words (#
   applyDubTranslationRows('en', [
     { id: '0', index: 0, start: 0, end: 1, before: 'Hello', after: 'Hello', matched: true },
   ]);
-  expect(dubSession.state.segments[0].srt_source).toBeUndefined();
+  expect(dubSession.state.segments[0].cue_source_id).toBeUndefined();
   expect(await generatedCueId()).toBeUndefined();
 
   // Editing away and back never revives it.
@@ -670,4 +678,16 @@ it('echoes an imported cue only while no paste or edit has replaced its words (#
   editDubSegment('0', { text: 'Bye' });
   editDubSegment('0', { text: 'Hello' });
   expect(await generatedCueId()).toBeUndefined();
+
+  // Switching to a translation and back to the untouched original restores it.
+  reset();
+  dubSession.setState((current) => ({
+    ...current,
+    segments: current.segments.map((segment) => ({ ...segment, translations: { es: 'Hola' } })),
+  }));
+  setDubTarget('Spanish', 'es');
+  expect(dubSession.state.segments[0].cue_source_id).toBeUndefined();
+  setDubTarget('English', 'en');
+  expect(dubSession.state.segments[0].text).toBe('Hello');
+  expect(await generatedCueId()).toBe('imp:0');
 });
