@@ -107,6 +107,8 @@ export const APP_LANGUAGES = SUPPORTED_LOCALES.map((code) => {
     return { code, label: code };
   }
 });
+/** Select `items`: a language picker must show the language name, never its code. */
+export const APP_LANGUAGE_ITEMS = APP_LANGUAGES.map(({ code, label }) => ({ value: code, label }));
 
 let languageRequest = 0;
 

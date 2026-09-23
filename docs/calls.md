@@ -7,7 +7,8 @@ call live, can take over at any moment, and get a summary when it ends.
 
 Calls go through **your own Twilio number**. Nothing is dialled until you
 confirm a call, and nothing else leaves your machine. Twilio setup is covered
-in [integrations/twilio.md](integrations/twilio.md).
+in [integrations/twilio.md](integrations/twilio.md); the API is described in
+[integrations/calls.md](integrations/calls.md).
 
 Open it from the sidebar: **Calls** (or press Ctrl/⌘ K and type "Calls").
 

@@ -86,9 +86,16 @@ export type CallEvent =
       final: boolean;
       t: number;
     }
-  | { type: 'agent_state'; state: AgentState }
+  | { type: 'agent_state'; state: AgentState; takeover?: boolean }
   | { type: 'outcome'; outcome: CallOutcome | null; summary?: string | null }
-  | { type: 'ended'; status?: string; duration_s?: number | null; ended_at?: string | number };
+  | {
+      type: 'ended';
+      status?: string;
+      duration_s?: number | null;
+      ended_at?: string | number;
+      /** The finished record (#2306 sends it with `ended`). */
+      call?: CallRecord;
+    };
 
 const id = (value: string) => encodeURIComponent(value);
 const post = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.stringify(body) });
@@ -194,9 +201,10 @@ export function parseCallEvent(data: string, name?: string): CallEvent | null {
       };
     case 'agent_state': {
       const state = object.state ?? object.agent_state;
-      return state === 'listening' || state === 'thinking' || state === 'speaking'
-        ? { type, state }
-        : null;
+      if (state !== 'listening' && state !== 'thinking' && state !== 'speaking') return null;
+      return typeof object.takeover === 'boolean'
+        ? { type, state, takeover: object.takeover }
+        : { type, state };
     }
     case 'outcome':
       return {
@@ -204,9 +212,14 @@ export function parseCallEvent(data: string, name?: string): CallEvent | null {
         outcome: (object.outcome as CallOutcome | null) ?? null,
         summary: typeof object.summary === 'string' ? object.summary : null,
       };
-    case 'ended':
+    case 'ended': {
+      const call =
+        object.call && typeof object.call === 'object' && !Array.isArray(object.call)
+          ? (object.call as CallRecord)
+          : undefined;
       return {
         type,
+        ...(call ? { call } : {}),
         status: typeof object.status === 'string' ? object.status : undefined,
         duration_s: typeof object.duration_s === 'number' ? object.duration_s : null,
         ended_at:
@@ -214,6 +227,7 @@ export function parseCallEvent(data: string, name?: string): CallEvent | null {
             ? object.ended_at
             : undefined,
       };
+    }
     default:
       return null;
   }

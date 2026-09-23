@@ -86,6 +86,13 @@ def _free_port(host: str, base: int) -> int:
     raise RuntimeError(f"no free telephony port in {base}-{base + _PORT_TRIES - 1}")
 
 
+def _next_port(host: str) -> Optional[int]:
+    try:
+        return _free_port(host, gateway_port_base())
+    except (OSError, RuntimeError):
+        return None
+
+
 def state() -> dict:
     running = _runtime.server is not None and bool(getattr(_runtime.server, "started", False))
     host = _runtime.host or gateway_host()
@@ -98,6 +105,9 @@ def state() -> dict:
         "running": running,
         "host": host,
         "port": port,
+        # The port the gateway would bind now (the same probe start() uses),
+        # so setup shows the exact tunnel command while calls are still off.
+        "preferred_port": port if running else _next_port(host),
         "tunnel_target": f"http://{display_host}:{port}" if running else None,
     }
 

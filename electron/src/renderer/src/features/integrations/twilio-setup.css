@@ -1,59 +1,380 @@
-.twilio-setup h4 {
-  font-size: 13px;
+/* Twilio guided setup. Cards follow .integration-detail-panel; controls are the
+   shared ui/ components. Every field is full width inside its step card; only
+   the voice/engine pair goes 2-up, and only when the card itself is wide. */
+.twilio-steps {
+  display: grid;
+  gap: 14px;
+}
+.twilio-loading {
+  margin-top: 14px;
+}
+.twilio-page-error {
+  margin-top: 12px;
+}
+
+/* Status pill */
+.twilio-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.twilio-pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.twilio-pill[data-status='ready'] {
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+  color: var(--primary);
+}
+.twilio-pill[data-status='live'] {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+.twilio-pill[data-status='attention'] {
+  border-color: color-mix(in srgb, var(--destructive) 40%, var(--border));
+  color: var(--destructive);
+}
+
+/* Step cards */
+.twilio-step {
+  container-type: inline-size;
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--foreground) 2.5%, var(--background));
+}
+.twilio-step[data-status='done'] {
+  border-color: color-mix(in srgb, var(--primary) 22%, var(--border));
+}
+.twilio-step-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+}
+.twilio-step-index {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--muted-foreground);
+  font-size: 12px;
   font-weight: 600;
 }
-.twilio-warning {
-  padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--destructive) 30%, var(--border));
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--destructive) 6%, transparent);
+.twilio-step[data-status='done'] .twilio-step-index {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.twilio-step-index svg {
+  width: 14px;
+  height: 14px;
+}
+.twilio-step-heading h3 {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 26px;
+}
+.twilio-step-heading h3:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.twilio-step-heading p {
+  margin-top: 2px;
+  color: var(--muted-foreground);
+  font-size: 12px;
   line-height: 1.5;
 }
-.twilio-grid {
+.twilio-step-badge {
+  margin-top: 3px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.twilio-step-badge[data-status='done'] {
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
+}
+.twilio-step-fieldset {
+  display: grid;
   min-width: 0;
+  gap: 14px;
   margin: 0;
   padding: 0;
   border: 0;
+}
+.twilio-step-body {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
-  gap: 12px;
+  min-width: 0;
+  gap: 14px;
+  padding-left: 38px;
 }
-.twilio-grid label {
-  display: grid;
-  gap: 6px;
-  align-content: start;
-  font-size: 12px;
+.twilio-step-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 12px 0 0 38px;
+  border-top: 1px solid var(--border);
 }
-.twilio-grid label > span {
-  font-weight: 500;
-}
-.twilio-grid small {
+.twilio-step-footer small {
   color: var(--muted-foreground);
   font-size: 11px;
   line-height: 1.4;
 }
-.twilio-wide {
-  grid-column: 1 / -1;
+@container (max-width: 480px) {
+  .twilio-step-header {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .twilio-step-badge {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .twilio-step-body,
+  .twilio-step-footer {
+    padding-left: 0;
+  }
 }
-.twilio-code {
-  max-width: 100%;
-  padding: 6px 8px;
+
+/* Fields */
+.twilio-fields {
+  display: grid;
+  gap: 12px;
+}
+@container (min-width: 560px) {
+  .twilio-fields-pair {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.twilio-field {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  align-content: start;
+}
+.twilio-field-label {
+  font-size: 12px;
+  font-weight: 500;
+}
+.twilio-field small,
+.twilio-copy small {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.twilio-field [aria-invalid='true'] + small,
+.twilio-field:has([aria-invalid='true']) small {
+  color: var(--destructive);
+}
+.twilio-inline {
+  display: flex;
+  gap: 8px;
+}
+.twilio-inline > :first-child {
+  flex: 1;
+}
+.twilio-secret {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 8px 6px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.twilio-secret > span {
+  flex: 1;
+  min-width: 160px;
+  color: var(--muted-foreground);
+}
+.twilio-secret > svg {
+  width: 15px;
+  height: 15px;
+  color: var(--primary);
+}
+.twilio-own {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+  font-size: 10px;
+}
+
+/* Copyable values */
+.twilio-copy {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+.twilio-copy-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.twilio-copy-row code {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  padding: 6px 10px;
   overflow-wrap: anywhere;
-  border-radius: 6px;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--foreground) 5%, transparent);
   font-size: 12px;
+  line-height: 1.5;
+}
+.twilio-substeps,
+.twilio-console-steps {
+  display: grid;
+  gap: 14px;
+  padding-left: 18px;
+  list-style: decimal;
+  font-size: 12px;
+}
+.twilio-console-steps {
+  gap: 4px;
+  color: var(--muted-foreground);
+  line-height: 1.5;
+}
+.twilio-substeps li::marker {
+  color: var(--muted-foreground);
+}
+.twilio-substeps a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Gateway check */
+.twilio-check {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--foreground) 3.5%, transparent);
+  font-size: 12px;
+}
+.twilio-check > span:nth-child(2) {
+  min-width: 180px;
+  flex: 1;
 }
 .twilio-dot {
   display: inline-block;
   width: 8px;
   height: 8px;
-  margin-right: 8px;
   border-radius: 50%;
   background: var(--muted-foreground);
-  vertical-align: middle;
 }
 .twilio-dot.is-on {
   background: var(--primary);
+}
+
+/* Notes, reasons, errors */
+.twilio-note,
+.twilio-reason {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.twilio-error {
+  color: var(--destructive);
+  font-size: 12px;
+}
+.twilio-disclosure {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+.twilio-disclosure .twilio-field-label {
+  width: 100%;
+}
+.twilio-disclosure q {
+  min-width: 0;
+  flex: 1;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* Rail cards */
+.twilio-rail-card {
+  display: grid;
+  gap: 10px;
+}
+.twilio-checklist {
+  display: grid;
+  gap: 2px;
+}
+.twilio-checklist button,
+.twilio-checklist li > div {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 8px;
+  text-align: left;
+  font-size: 12px;
+}
+.twilio-checklist button {
+  cursor: pointer;
+}
+.twilio-checklist button:hover {
+  background: var(--accent);
+}
+.twilio-checklist button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+.twilio-checklist svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+}
+.twilio-checklist svg.is-ok {
+  color: var(--primary);
+}
+.twilio-checklist small {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.twilio-calls-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.twilio-calls-title span {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 400;
 }
 .twilio-calls {
   display: grid;
@@ -62,17 +383,93 @@
 }
 .twilio-calls li {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.6fr) minmax(0, 1.4fr) minmax(0, 0.6fr);
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
   padding: 6px 8px;
   border-radius: 6px;
   background: color-mix(in srgb, var(--foreground) 3%, transparent);
 }
-.twilio-calls li span {
-  overflow-wrap: anywhere;
+.twilio-calls li span:first-child {
+  color: var(--muted-foreground);
 }
-@media (max-width: 520px) {
-  .twilio-calls li {
-    grid-template-columns: 1fr 1fr;
-  }
+.twilio-calls li span:last-child {
+  grid-column: 1 / -1;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+/* How it works */
+.twilio-how {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.twilio-how-trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.twilio-how-trigger:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  border-radius: 14px;
+}
+.twilio-how-trigger svg {
+  width: 16px;
+  height: 16px;
+  transition: transform 150ms;
+}
+.twilio-how-trigger[data-panel-open] svg {
+  transform: rotate(180deg);
+}
+.twilio-how-body {
+  display: grid;
+  gap: 14px;
+  padding: 0 18px 18px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.twilio-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  counter-reset: flow;
+}
+.twilio-flow li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.twilio-flow li span {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.twilio-flow li:not(:last-child)::after {
+  color: var(--muted-foreground);
+  content: '→' / '';
+}
+.twilio-security {
+  display: grid;
+  gap: 6px;
+  padding-left: 18px;
+  color: var(--muted-foreground);
+  list-style: disc;
+}
+/* Long engine or voice names truncate inside the trigger instead of overflowing. */
+.twilio-field [data-slot='select-trigger'] {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.twilio-field [data-slot='select-value'] {
+  display: block !important;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

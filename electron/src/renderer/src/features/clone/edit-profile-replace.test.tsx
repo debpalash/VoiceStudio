@@ -28,7 +28,11 @@ vi.mock('@/components/waveform-player', () => ({
   },
 }));
 vi.mock('./reference-input', () => ({
-  UploadZone: ({ onAccept }: { onAccept: (file: File, seconds: number | null) => void }) => (
+  ReferenceSourcePicker: ({
+    onAccept,
+  }: {
+    onAccept: (file: File, seconds: number | null) => void;
+  }) => (
     <button
       type="button"
       onClick={() => onAccept(new File(['audio'], 'better.wav', { type: 'audio/wav' }), 4.2)}
@@ -36,7 +40,6 @@ vi.mock('./reference-input', () => ({
       pick-clip
     </button>
   ),
-  RecordZone: () => null,
   ReferenceUsageNote: ({ durationSeconds }: { durationSeconds: number | null }) => (
     <p data-testid="usage-note">{durationSeconds}</p>
   ),

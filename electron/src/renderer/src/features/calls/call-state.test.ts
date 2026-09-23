@@ -139,3 +139,31 @@ it('never drops streamed lines when a stale snapshot arrives after a reconnect',
     'Bye',
   ]);
 });
+
+it('applies take-over from agent_state and the finished record sent with ended', () => {
+  const taken = play([{ type: 'agent_state', state: 'listening', takeover: true }]);
+  expect(taken.takeover).toBe(true);
+  const state = play(
+    [
+      {
+        type: 'ended',
+        call: record({
+          status: 'completed',
+          ended_at: 1_700_000_050,
+          duration_s: 41,
+          outcome: 'done',
+          summary: 'Open 9 to 5.',
+          transcript: [{ speaker: 'caller', text: 'We open at 9', t: 4 }],
+        }),
+      },
+    ],
+    taken,
+  );
+  expect(state).toMatchObject({
+    ended: true,
+    outcome: 'done',
+    summary: 'Open 9 to 5.',
+    durationS: 41,
+  });
+  expect(state.lines.map((line) => line.text)).toEqual(['We open at 9']);
+});

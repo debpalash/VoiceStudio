@@ -177,6 +177,38 @@ _BASE_SCHEMA = """
     );
     CREATE INDEX IF NOT EXISTS idx_pron_lang ON pronunciation_entries(language);
 
+    -- Phone call agent (docs/integrations/calls.md): one row per call placed
+    -- or answered by the agent. Full numbers stay in this local DB; the API
+    -- returns only remote_masked. Existing DBs get it via alembic
+    -- 0012_call_sessions (dual-path discipline).
+    CREATE TABLE IF NOT EXISTS call_sessions (
+        id TEXT NOT NULL PRIMARY KEY,
+        direction TEXT NOT NULL DEFAULT 'outbound',
+        remote_number TEXT NOT NULL DEFAULT '',
+        remote_masked TEXT NOT NULL DEFAULT '',
+        from_number TEXT NOT NULL DEFAULT '',
+        provider TEXT NOT NULL DEFAULT 'twilio',
+        provider_call_id TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'queued',
+        brief TEXT NOT NULL DEFAULT '',
+        profile_id TEXT NOT NULL DEFAULT '',
+        engine TEXT NOT NULL DEFAULT '',
+        language TEXT NOT NULL DEFAULT '',
+        disclosure TEXT NOT NULL DEFAULT '',
+        max_minutes INTEGER NOT NULL DEFAULT 10,
+        outcome TEXT,
+        summary TEXT NOT NULL DEFAULT '',
+        transcript_json TEXT NOT NULL DEFAULT '[]',
+        timeline_json TEXT NOT NULL DEFAULT '[]',
+        recording_path TEXT NOT NULL DEFAULT '',
+        error TEXT NOT NULL DEFAULT '',
+        created_at REAL,
+        started_at REAL,
+        ended_at REAL,
+        duration_s REAL
+    );
+    CREATE INDEX IF NOT EXISTS idx_call_sessions_created ON call_sessions(created_at);
+
     -- Remote GPU workers (docs/remote-workers.md). Opt-in: an install with no
     -- remote workers never writes a row here and behaves exactly as before.
     --

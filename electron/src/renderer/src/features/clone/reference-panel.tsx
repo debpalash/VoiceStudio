@@ -13,7 +13,6 @@ import {
   MicIcon,
   PencilIcon,
   SaveIcon,
-  UploadCloudIcon,
   XIcon,
 } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
@@ -26,13 +25,12 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useProfiles, useCreateCloneProfile } from '@/hooks/use-profiles';
 import { setCloneSetting, useCloneSetting } from '@/lib/store/clone-settings';
 import { selectCloneProfile, setReferenceFile, useReference } from '@/lib/store/reference';
 import { setWorkspace } from '@/lib/store/workspace';
 import { cn } from '@/lib/utils';
-import { RecordZone, ReferenceUsageNote, UploadZone } from './reference-input';
+import { ReferenceSourcePicker, ReferenceUsageNote } from './reference-input';
 
 interface SaveProfileFormProps {
   metadata?: { refText: string; instruct: string; language: string; seed: number | null };
@@ -309,7 +307,6 @@ export function ReferencePanel({
   const reference = useReference();
   const profiles = useProfiles();
   const selectedProfileId = useCloneSetting('selectedProfileId');
-  const [mode, setMode] = useState<'upload' | 'record'>('upload');
   const [saving, setSaving] = useState(false);
 
   const profile =
@@ -330,29 +327,9 @@ export function ReferencePanel({
               </span>
             )}
           </div>
-          {!hasReference ? (
-            <Tabs
-              value={mode}
-              onValueChange={(value) => {
-                if (value === 'upload' || value === 'record') setMode(value);
-              }}
-            >
-              <TabsList aria-label={t('clone.reference_audio')}>
-                <TabsTrigger value="upload">
-                  <UploadCloudIcon data-icon="inline-start" />
-                  {t('clone.upload_audio')}
-                </TabsTrigger>
-                <TabsTrigger value="record">
-                  <MicIcon data-icon="inline-start" />
-                  {t('clone.record')}
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          ) : null}
         </div>
 
-        {!hasReference && mode === 'upload' ? <UploadZone /> : null}
-        {!hasReference && mode === 'record' ? <RecordZone /> : null}
+        {!hasReference ? <ReferenceSourcePicker /> : null}
 
         {file ? (
           <div className="flex flex-col gap-2 rounded-lg bg-muted/30 p-3">

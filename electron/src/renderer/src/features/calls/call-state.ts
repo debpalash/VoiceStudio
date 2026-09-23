@@ -138,11 +138,17 @@ export function liveCallReducer(state: LiveCallState, action: LiveCallAction): L
         }),
       };
     case 'agent_state':
-      return state.ended ? state : { ...state, agentState: event.state };
+      return state.ended
+        ? state
+        : {
+            ...state,
+            agentState: event.state,
+            takeover: event.takeover ?? state.takeover,
+          };
     case 'outcome':
       return { ...state, outcome: event.outcome, summary: event.summary ?? state.summary };
-    case 'ended':
-      return {
+    case 'ended': {
+      const closed: LiveCallState = {
         ...state,
         ended: true,
         agentState: null,
@@ -153,6 +159,9 @@ export function liveCallReducer(state: LiveCallState, action: LiveCallAction): L
         // Nobody is still talking once the line is closed.
         lines: state.lines.filter((line) => line.final || line.text.trim()),
       };
+      // The backend may send the finished record along: fold it in directly.
+      return event.call ? liveCallReducer(closed, { kind: 'snapshot', call: event.call }) : closed;
+    }
   }
 }
 

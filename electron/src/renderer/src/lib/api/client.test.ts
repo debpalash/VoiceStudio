@@ -193,6 +193,24 @@ it('localizes structured profile language failures', async () => {
   }
 });
 
+it('localizes a no-audio-track upload rejection (422)', async () => {
+  const translate = vi.spyOn(i18next, 't').mockReturnValue('Localized no-audio guidance');
+  try {
+    const detail = {
+      code: 'no_audio_track',
+      docs_topic: 'NO_AUDIO_TRACK',
+      message: 'This file has no audio track, so there is no speech to transcribe, dub or clone.',
+      hint: 'English hint',
+    };
+    const error = await errorFromResponse(new Response(JSON.stringify({ detail }), { status: 422 }));
+    expect(error.message).toBe('Localized no-audio guidance');
+    expect(error.payload?.detail).toEqual(detail);
+    expect(translate).toHaveBeenCalledWith('tts_errors.no_audio_track');
+  } finally {
+    translate.mockRestore();
+  }
+});
+
 it.each([false, true])('localizes HTTP failure topics (nested: %s)', async (nested) => {
   const translate = vi.spyOn(i18next, 't').mockReturnValue('Localized recovery');
   try {
