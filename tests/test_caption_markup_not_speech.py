@@ -217,6 +217,39 @@ def test_srt_dialogue_brackets_survive_webvtt_export_and_reimport():
     assert parse_srt(_export("vtt", segments)).segments[0]["text"] == "x <b and y> z"
 
 
+def test_reimported_caption_file_exports_its_own_markup(monkeypatch):
+    """`/dub/import-srt` onto a job: the new cue's source wins, never the prior one."""
+    import asyncio
+    import io
+
+    from api.routers import dub_core
+    from fastapi import UploadFile
+    from services.dub_pipeline import _dub_jobs
+    from services.srt_parser import parse_srt
+
+    job_id = "caption-reimport"
+    prior = parse_srt("1\n00:00:01,000 --> 00:00:02,000\n{\\an8}<i>Hello</i>\n").segments
+    job = {"duration": 10.0, "filename": "clip.mp4", "video_path": "/nonexistent/clip.mp4",
+           "segments": [{**prior[0], "profile_id": "auto:speaker_1"}]}
+    monkeypatch.setattr(dub_core, "_save_job", lambda *_args: None)
+    _dub_jobs[job_id] = job
+    try:
+        for body, srt_line, vtt_line in (
+            (b"1\n00:00:01,000 --> 00:00:02,000\n<b>Hello</b>\n", "<b>Hello</b>", "<b>Hello</b>"),
+            (b"WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n<u>Hello</u>\n", "Hello", "<u>Hello</u>"),
+        ):
+            upload = UploadFile(filename="captions.srt", file=io.BytesIO(body))
+            asyncio.run(dub_core.dub_import_srt(job_id, upload))
+            segment = job["segments"][0]
+            assert segment["text"] == "Hello"
+            assert segment["profile_id"] == "auto:speaker_1"
+            vtt = _export("vtt", job["segments"])
+            assert f"\n{vtt_line}\n" in vtt and "<i>" not in vtt
+            assert f"\n{srt_line}\n" in _export("srt", job["segments"])
+    finally:
+        _dub_jobs.pop(job_id, None)
+
+
 def test_edited_srt_text_exports_as_edited():
     from services.srt_parser import parse_srt
 

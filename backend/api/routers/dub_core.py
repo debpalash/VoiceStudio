@@ -134,6 +134,9 @@ _save_job          = dub_pipeline.save_job
 # paste (or a mis-aimed binary) burn CPU in the parser.
 _MAX_SUBTITLE_PASTE_CHARS = 2_000_000
 
+# The imported cue syntax belongs to the new cue. A prior segment's would
+# restore stale markup on an unchanged export; dropping the new one loses it.
+_CUE_SOURCE_FIELDS = ("webvtt_source", "srt_source")
 _SRT_REPLACED_FIELDS = {
     "id",
     "start",
@@ -143,6 +146,7 @@ _SRT_REPLACED_FIELDS = {
     "translations",
     "translate_error",
     "translate_degraded",
+    *_CUE_SOURCE_FIELDS,
 }
 
 
@@ -195,6 +199,7 @@ def _carry_srt_voice_metadata(
             "end": cue.get("end", 0.0),
             "text": cue.get("text", ""),
             "text_original": cue.get("text", ""),
+            **{key: cue[key] for key in _CUE_SOURCE_FIELDS if key in cue},
         }
         if not merged.get("speaker_id"):
             merged["speaker_id"] = cue.get("speaker_id") or "Speaker 1"
