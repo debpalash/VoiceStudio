@@ -300,6 +300,9 @@ async def twilio_voice_webhook(request: Request):
         session.registry.note("busy", call_sid)
         return Response(provider.reject_twiml(), media_type=_XML)
     if config.load_call_settings().inbound_mode == "agent" and calls.llm_status()[0]:
+        if not calls.has_agent_capacity():
+            session.registry.note("busy", call_sid)
+            return Response(provider.reject_twiml(), media_type=_XML)
         inbound = calls.create_inbound(call_sid, fields.get("From", ""))
         return _stream_twiml(cfg, call_sid, epoch, inbound.id)
     if not cfg.greeting:

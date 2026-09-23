@@ -153,7 +153,8 @@ def upsample_to_16k(pcm8k: np.ndarray) -> np.ndarray:
 
 # ── Sensitive-number guard ──────────────────────────────────────────────────
 
-_DIGIT_RUN_RE = re.compile(r"\d(?:[\s\-.]?\d){8,}")
+#: Separators a model may put between digit groups (incl. commas and Unicode dashes).
+_DIGIT_RUN_RE = re.compile(r"\d(?:[\s\-.,_\u2010-\u2015\u2212]?\d){8,}")
 
 
 def _luhn_ok(digits: str) -> bool:
@@ -367,21 +368,20 @@ async def _default_llm_stream(messages: list[dict]) -> AsyncIterator[str]:
                     break
                 loop.call_soon_threadsafe(queue.put_nowait, delta)
             loop.call_soon_threadsafe(queue.put_nowait, done)
-        except BaseException as exc:  # noqa: BLE001 — handed to the awaiting turn
+        except Exception as exc:  # noqa: BLE001 — handed to the awaiting turn
             loop.call_soon_threadsafe(queue.put_nowait, exc)
 
-    worker = loop.run_in_executor(None, _run)
+    loop.run_in_executor(None, _run)
     try:
         while True:
             item = await queue.get()
             if item is done:
                 return
-            if isinstance(item, BaseException):
+            if isinstance(item, Exception):
                 raise item
             yield item
     finally:
         stop.set()  # a cancelled turn closes the provider stream at the next delta
-        worker.add_done_callback(lambda f: f.exception() if not f.cancelled() else None)
 
 
 async def _default_llm_complete(messages: list[dict]) -> str:
@@ -699,7 +699,7 @@ class CallAgent:
         producer = asyncio.create_task(_produce())
         try:
             spoken = await self._speak_sentences(sentences)
-            await producer
+            await asyncio.gather(producer)  # re-raises an LLM failure
         finally:
             if not producer.done():
                 producer.cancel()

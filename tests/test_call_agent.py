@@ -284,6 +284,8 @@ def test_guard_blocks_card_and_unknown_id_numbers_but_allows_brief_numbers():
     assert agent.guard_sensitive("The ID is 123-45-6789.", brief) == agent.REFUSAL
     assert agent.guard_sensitive("Call back on 415 555 0123 4.", brief) == "Call back on 415 555 0123 4."
     assert agent.guard_sensitive("A table for 2 at 8pm.", brief) == "A table for 2 at 8pm."
+    for spaced in ("4111,1111,1111,1111", "4111–1111–1111–1111", "123,456,789"):
+        assert agent.guard_sensitive(f"It is {spaced}.", brief) == agent.REFUSAL, spaced
     # A card number is refused even when the user put it in the brief.
     assert agent.guard_sensitive("It is 4111111111111111.", "card 4111111111111111") == agent.REFUSAL
 
@@ -319,6 +321,16 @@ def test_endpointer_detects_onset_barge_and_utterance_end():
 
 def M_agent():
     return importlib.import_module("services.telephony.agent")
+
+
+def test_only_an_affirmative_recording_notice_allows_recording(mods):
+    announces = M.calls.disclosure_announces_recording
+    for text in ("This call is recorded.", "This call may be recorded for quality.",
+                 "We're recording this call.", "Calls are being recorded"):
+        assert announces(text), text
+    for text in ("This call is not recorded.", "This call won't be recorded.", "We never record calls.",
+                 "No recording.", "Hi, this is an AI assistant.", "I'd like to record a message"):
+        assert not announces(text), text
 
 
 def test_upsample_doubles_the_rate():
@@ -666,6 +678,14 @@ def test_inbound_calls_are_answered_by_the_agent_in_agent_mode(api, gw, fakes):
     assert rec["direction"] == "inbound" and rec["to_masked"] == "+1••••••8888"
     assert fakes.rendered[:2] == ["Hi, this is Palash's AI assistant calling on their behalf.", "How can I help?"]
     assert "Take a message for Palash." in fakes.llm_calls[0][0]["content"]
+
+
+def test_max_concurrent_limits_agent_calls_in_both_directions(api, gw, fakes):
+    _configure(inbound_mode="agent")
+    assert _place(api, _profile(verified=1)).status_code == 201  # holds the only slot
+    params = [("AccountSid", ACCOUNT), ("CallSid", "CA" + "c" * 32), ("From", "+15557778888")]
+    resp = _signed_post(gw, M.tw.VOICE_PATH, "", params)
+    assert ET.fromstring(resp.text).find("Reject") is not None
 
 
 def test_greeting_mode_is_unchanged_for_inbound_calls(gw, fakes):

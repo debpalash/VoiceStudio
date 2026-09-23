@@ -32,8 +32,8 @@ Give the number (international format, such as `+14155550123`), the task brief,
 and the voice. Optional: the engine, the language, a disclosure for this call
 only, and a time limit (10 minutes by default, 30 at most).
 
-1. VoiceStudio asks Twilio to place the call. Only one call runs at a time by
-   default (at most two, in call settings). There is no queue and no bulk
+1. VoiceStudio asks Twilio to place the call. Only one agent call (placed or
+   answered) runs at a time by default (at most two, in call settings). There is no queue and no bulk
    dialing: every call starts from your own request.
 2. When the call is answered, the agent speaks the disclosure first. This line
    cannot be interrupted.
@@ -72,13 +72,14 @@ that it is an AI assistant if someone asks.
   is not verified as your own voice and is not a designed voice (HTTP 403,
   `voice_not_allowed`).
 - **One call per request.** No queues, lists or automatic redialing. The number
-  of simultaneous outbound calls is limited to 1 by default (2 at most).
+  of simultaneous agent calls, placed or answered, is limited to 1 by default
+  (2 at most). Incoming calls beyond the limit get a busy signal.
 - **Stays on task.** The agent only pursues the brief and declines unrelated
   requests. It never invents facts about you beyond the brief.
 - **No payment or ID numbers.** The agent is told never to give card, bank,
   password or government-ID numbers. A separate check blocks any sentence
   containing a card number, or a number of 9 or more digits that is not in your
-  brief. The agent says "I'm not able to share that number over the phone"
+  brief (digits separated by spaces, dashes, dots or commas included). The agent says "I'm not able to share that number over the phone"
   instead.
 - **Time limit.** Calls end after their time limit (Twilio also enforces it).
 - **Recording is off.** See [Recording](#recording).
@@ -86,9 +87,11 @@ that it is an AI assistant if someone asks.
 ## Recording
 
 Calls are not recorded by default. To record, turn on **Record calls** in call
-settings **and** use a disclosure that mentions recording, for example "Hi, this
-is Palash's AI assistant, and this call is recorded." If the disclosure does not
-contain the word "record", the call is not recorded even with the setting on.
+settings **and** use a disclosure that says the call is recorded, for example
+"Hi, this is Palash's AI assistant, and this call is recorded." Phrases such as
+"is recorded", "may be recorded" or "we're recording this call" count; a negated
+one ("this call is not recorded") does not. Without such a notice the call is
+not recorded, even with the setting on.
 Recordings are stereo WAV files (the other person on the left, the agent on the
 right) stored in your data folder under `calls/`. They are never uploaded.
 
@@ -111,7 +114,7 @@ and state, and you are responsible for following them. Examples:
   voices under the TCPA. Calls with them need the called party's prior consent
   in many cases, and several states require disclosure that a call is automated.
 - Many jurisdictions require **all parties** to consent before a call is
-  recorded. The recording rule above (disclosure must mention recording) helps,
+  recorded. The recording rule above (the disclosure must say the call is recorded) helps,
   but it does not replace consent where consent is required.
 - Telemarketing, robocall and do-not-call rules can apply even to a single call.
 

@@ -194,8 +194,10 @@ def _http_post_form(url: str, fields: list[tuple[str, str]], username: str, pass
             "Accept": "application/json",
         },
     )
+    if not url.startswith(API_BASE + "/"):
+        raise ValueError("Twilio REST calls only go to api.twilio.com over https")
     try:
-        with urllib.request.urlopen(request, timeout=_REST_TIMEOUT_S) as resp:  # noqa: S310 — fixed https host
+        with urllib.request.urlopen(request, timeout=_REST_TIMEOUT_S) as resp:  # nosec B310 — https api.twilio.com only (checked above)
             return resp.status, resp.read()
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read() or b""

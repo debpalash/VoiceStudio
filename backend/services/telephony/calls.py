@@ -21,6 +21,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import threading
 import time
 import uuid
@@ -239,6 +240,11 @@ _COLUMNS = (
     "summary", "transcript_json", "timeline_json", "recording_path", "error", "created_at",
     "started_at", "ended_at", "duration_s",
 )
+#: Built once from the fixed column tuple above (no caller input).
+_UPSERT_SQL = (
+    f"INSERT OR REPLACE INTO call_sessions ({','.join(_COLUMNS)}) "  # nosec B608 — constant column names
+    f"VALUES ({','.join('?' for _ in _COLUMNS)})"
+)
 
 
 def store_save(session: CallSession) -> None:
@@ -253,10 +259,9 @@ def store_save(session: CallSession) -> None:
             session.recording_path, session.error, session.created_at, session.started_at,
             session.ended_at, session.duration_s if session.finalized else None,
         )
-    placeholders = ",".join("?" for _ in _COLUMNS)
     try:
         with db_conn() as conn:
-            conn.execute(f"INSERT OR REPLACE INTO call_sessions ({','.join(_COLUMNS)}) VALUES ({placeholders})", values)
+            conn.execute(_UPSERT_SQL, values)
     except Exception:  # noqa: BLE001 — a DB hiccup must not drop a live call
         logger.warning("Could not save call %s", session.id, exc_info=True)
 
@@ -301,8 +306,8 @@ def _mark_orphans(conn) -> None:
     with _registry_lock:
         live = set(_sessions)
     rows = conn.execute(
-        "SELECT id FROM call_sessions WHERE status NOT IN (%s)" % ",".join("?" for _ in TERMINAL_STATUSES),
-        TERMINAL_STATUSES,
+        "SELECT id FROM call_sessions WHERE status NOT IN "
+        "('completed', 'busy', 'no_answer', 'failed', 'canceled')"
     ).fetchall()
     for (cid,) in rows:
         if cid not in live:
@@ -392,9 +397,15 @@ def _unregister(session: CallSession) -> None:
             del _sessions[session.id]
 
 
-def active_outbound() -> int:
+def active_agent_calls() -> int:
+    """Live agent calls in either direction: ``max_concurrent`` limits them all."""
     with _registry_lock:
-        return sum(1 for s in _sessions.values() if s.direction == "outbound" and not s.finalized)
+        return sum(1 for s in _sessions.values() if not s.finalized)
+
+
+def has_agent_capacity() -> bool:
+    sweep()
+    return active_agent_calls() < config.load_call_settings().max_concurrent
 
 
 def reset_state() -> None:
@@ -545,10 +556,28 @@ def _speaker_name(settings: config.CallSettings, profile_row) -> str:
     return settings.user_name or (profile_row["name"] if profile_row is not None else "") or ""
 
 
+#: Affirmative recording notices ("this call is recorded", "may be recorded",
+#: "we are recording this call"). A negated one ("is not recorded") never counts.
+_RECORDING_NOTICE_RE = re.compile(
+    r"\b(?:is|are|will\s+be|may\s+be|might\s+be|can\s+be|being|gets?)\s+(?:being\s+)?recorded\b"
+    r"|\b(?:we|i)(?:'re|\s+am|\s+are|'m)?\s+recording\b"
+    r"|\brecording\s+(?:this|the)\s+call\b",
+    re.IGNORECASE,
+)
+_NEGATED_RECORDING_RE = re.compile(
+    r"(?:\b(?:not|never|no)\b|n['’]t\b)[^.!?]{0,30}\brecord", re.IGNORECASE
+)
+
+
+def disclosure_announces_recording(disclosure: str) -> bool:
+    text = disclosure or ""
+    return bool(_RECORDING_NOTICE_RE.search(text)) and not _NEGATED_RECORDING_RE.search(text)
+
+
 def _recording_allowed(settings: config.CallSettings, disclosure: str) -> bool:
     """Recording needs the user's opt-in AND a disclosure that tells the other
-    person about it (consent laws differ; the docs explain)."""
-    return settings.record_calls and "record" in disclosure.lower()
+    person it is recorded (consent laws differ; the docs explain)."""
+    return settings.record_calls and disclosure_announces_recording(disclosure)
 
 
 def create_outbound(
@@ -573,8 +602,7 @@ def create_outbound(
         raise CallError(400, "invalid_number", "The number to call is your own Twilio number")
     row = eligible_profile(profile_id)
     _require_ready(cfg, settings)
-    sweep()
-    if active_outbound() >= settings.max_concurrent:
+    if not has_agent_capacity():
         raise CallError(409, "busy", "Another call is in progress; hang it up or wait for it to finish")
     name = _speaker_name(settings, row)
     text = config.render_disclosure(settings.disclosure_template, name) if custom is None else custom
