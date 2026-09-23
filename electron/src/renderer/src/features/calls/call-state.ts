@@ -111,7 +111,11 @@ export function liveCallReducer(state: LiveCallState, action: LiveCallAction): L
         state.ended && callPhase(call.status) !== 'ended'
           ? state.status
           : call.status || state.status,
-      lines: ended ? finals : [...finals, ...interim],
+      // An ended call keeps the interim lines the record did not supersede, as
+      // final: nobody is still talking, and dropping them loses the last words.
+      lines: ended
+        ? [...finals, ...interim.map((line) => ({ ...line, final: true }))]
+        : [...finals, ...interim],
       outcome: call.outcome ?? state.outcome,
       summary: call.summary ?? state.summary,
       ended,
@@ -161,14 +165,13 @@ export function liveCallReducer(state: LiveCallState, action: LiveCallAction): L
         status: event.status ?? (callPhase(state.status) === 'ended' ? state.status : 'completed'),
         durationS: event.duration_s ?? state.durationS,
         endedAt: event.ended_at ?? state.endedAt ?? Date.now() / 1000,
-        // Nobody is still talking once the line is closed: the last utterance
-        // becomes final so a following snapshot or refetch keeps it.
-        lines: state.lines
-          .filter((line) => line.final || line.text.trim())
-          .map((line) => (line.final ? line : { ...line, final: true })),
+        lines: state.lines.filter((line) => line.final || line.text.trim()),
       };
       // The backend may send the finished record along: fold it in directly.
-      return event.call ? liveCallReducer(closed, { kind: 'snapshot', call: event.call }) : closed;
+      // The backend may send the finished record along: merge it first, so a
+      // partial it completes is replaced rather than kept twice.
+      if (event.call) return liveCallReducer(closed, { kind: 'snapshot', call: event.call });
+      return { ...closed, lines: closed.lines.map((line) => ({ ...line, final: true })) };
     }
   }
 }

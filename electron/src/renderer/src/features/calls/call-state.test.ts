@@ -185,3 +185,18 @@ it('keeps the last interim utterance when the call ends with its record', () => 
   ] as CallEvent[]);
   expect(state.lines.map((line) => [line.text, line.final])).toEqual([['See you at eight', true]]);
 });
+
+it('replaces a partial utterance with the completed one from the ended record', () => {
+  const state = play([
+    { type: 'transcript', speaker: 'caller', text: 'See you at', final: false, t: 5 },
+    {
+      type: 'ended',
+      status: 'completed',
+      call: record({
+        status: 'completed',
+        transcript: [{ speaker: 'caller', text: 'See you at eight', t: 5 }],
+      }),
+    },
+  ] as CallEvent[]);
+  expect(state.lines.map((line) => [line.text, line.final])).toEqual([['See you at eight', true]]);
+});
