@@ -64,6 +64,13 @@ def video_with_audio(tmp_path) -> Path:
     return _make(tmp_path / "speech.mp4", audio=True)
 
 
+def _raises_no_audio():
+    # Match on the stable base class and sentence, not the class object:
+    # other suites reload core.failure, which would leave this module's
+    # imported NoAudioTrackError a stale, non-matching class.
+    return pytest.raises(ValueError, match="has no audio track")
+
+
 def _events(raw: list[str]) -> list[dict]:
     out = []
     for chunk in raw:
@@ -192,7 +199,7 @@ async def test_dub_extract_of_video_with_audio_still_extracts(video_with_audio, 
 def test_asr_decode_of_video_without_audio_raises_no_audio_track(video_only, video_with_audio):
     from services.asr_backend import _decode_audio_16k_mono
 
-    with pytest.raises(NoAudioTrackError):
+    with _raises_no_audio():
         _decode_audio_16k_mono(str(video_only))
     assert _decode_audio_16k_mono(str(video_with_audio)).size > 8000
 
@@ -201,7 +208,7 @@ def test_asr_decode_of_video_without_audio_raises_no_audio_track(video_only, vid
 def test_extract_failure_helper_keeps_other_failures(video_with_audio):
     from services.ffmpeg_utils import raise_for_audio_extract_failure
 
-    with pytest.raises(NoAudioTrackError):
+    with _raises_no_audio():
         raise_for_audio_extract_failure(OWNER_STDERR.encode(), "")
     # A different ffmpeg failure on a file that HAS audio is left to the caller.
     raise_for_audio_extract_failure(b"Unknown encoder 'foo'", str(video_with_audio))
@@ -217,7 +224,7 @@ def test_gallery_upload_refuses_video_without_audio(video_only, tmp_path, monkey
     store.mkdir()
     monkeypatch.setattr(gallery, "VOICE_GALLERY_DIR", store)
     upload = UploadFile(io.BytesIO(video_only.read_bytes()), filename="silent.mp4")
-    with pytest.raises(NoAudioTrackError):
+    with _raises_no_audio():
         asyncio.run(gallery.upload_voice_clip(
             name="x", character="", category="import", description="", audio=upload,
         ))
@@ -234,7 +241,7 @@ def test_clone_profile_refuses_reference_without_audio(video_only, tmp_path, mon
     store.mkdir()
     monkeypatch.setattr(profiles, "VOICES_DIR", str(store))
     upload = UploadFile(io.BytesIO(video_only.read_bytes()), filename="ref.mp4")
-    with pytest.raises(NoAudioTrackError):
+    with _raises_no_audio():
         asyncio.run(profiles.create_profile(
             name="Silent", ref_audio=upload, ref_text="hello", instruct="",
             language="Auto", seed=None, personality="", kind="clone",
@@ -252,7 +259,7 @@ def test_batch_extract_reports_no_audio_track(video_only, tmp_path, monkeypatch)
         "video_path": str(video_only), "langs": ["es"], "status": "running",
         "progress": None,
     }
-    with pytest.raises(NoAudioTrackError):
+    with _raises_no_audio():
         asyncio.run(batch._run_batch_pipeline("noaudio", job))
 
 
@@ -286,7 +293,7 @@ def test_transcribe_upload_of_video_without_audio_names_the_cause(video_only, mo
 
     _fake_asr(monkeypatch)
     upload = UploadFile(io.BytesIO(video_only.read_bytes()), filename="silent.mp4")
-    with pytest.raises(NoAudioTrackError):
+    with _raises_no_audio():
         asyncio.run(transcribe_audio(audio=upload, language=None, model=None, mode="accurate", refine=None))
 
 
