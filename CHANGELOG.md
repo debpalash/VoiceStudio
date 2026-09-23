@@ -10,11 +10,11 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ### Added
 
-- Call agent backend: place or answer phone calls that hold a task conversation in your verified or designed voice, with an editable AI disclosure, take-over and an after-call summary (#PRNUM)
+- Call agent backend: place or answer phone calls that hold a task conversation in your verified or designed voice, with an editable AI disclosure, take-over and an after-call summary (#2306)
 
 ### Docs
 
-- New call agent guide covering setup, disclosure, recording consent and safeguards (#PRNUM)
+- New call agent guide covering setup, disclosure, recording consent and safeguards (#2306)
 
 ## [0.5.6] — 2026-09-23
 
