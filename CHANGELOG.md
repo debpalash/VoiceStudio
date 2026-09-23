@@ -10,19 +10,19 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 **Highlights**
 
-- Twilio setup is a guided checklist with live status and exact commands (#PR)
-- Integration pages use the full window, with a side panel on wide screens (#PR)
+- Twilio setup is a guided checklist with live status and exact commands (#2304)
+- Integration pages use the full window, with a side panel on wide screens (#2304)
 
 ### Changed
 
-- Twilio setup is a guided checklist: account, tunnel, phone number and voice steps with live status, exact tunnel commands for your OS and gateway port, copyable webhook URL, a readiness panel and clear reasons when an action is unavailable (#PR)
-- Integration pages use the full window: setup beside a side panel with status, capabilities and website on wide screens, stacked on narrow ones, with the scrollbar at the window edge (#PR)
+- Twilio setup is a guided checklist: account, tunnel, phone number and voice steps with live status, exact tunnel commands for your OS and gateway port, copyable webhook URL, a readiness panel and clear reasons when an action is unavailable (#2304)
+- Integration pages use the full window: setup beside a side panel with status, capabilities and website on wide screens, stacked on narrow ones, with the scrollbar at the window edge (#2304)
 
 ### Fixed
 
-- Integration pages show each integration's own category and summary instead of borrowed labels such as "Dubbing" for Twilio (#PR)
-- Integration and featured logos open their page in VoiceStudio; the vendor website opens only from the page's Website card (#PR)
-- Pickers show readable labels instead of raw values such as `__default__`, `auto` or language codes before they are opened (#PR)
+- Integration pages show each integration's own category and summary instead of borrowed labels such as "Dubbing" for Twilio (#2304)
+- Integration and featured logos open their page in VoiceStudio; the vendor website opens only from the page's Website card (#2304)
+- Pickers show readable labels instead of raw values such as `__default__`, `auto` or language codes before they are opened (#2304)
 
 ## [0.5.6] — 2026-09-23
 
