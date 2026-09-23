@@ -421,7 +421,12 @@
     "duration_seconds": "{{seconds}}s",
     "download_failed": "Impossible d'enregistrer le fichier : {{message}}",
     "history_clear_failed": "Impossible d’effacer l’historique : {{message}}",
-    "history_clear_confirm": "Supprimer toutes les prises de l’historique ? Les fichiers audio seront également supprimés."
+    "history_clear_confirm": "Supprimer toutes les prises de l’historique ? Les fichiers audio seront également supprimés.",
+    "edit_voice": "Modifier la voix",
+    "replace_reference": "Remplacer la référence",
+    "keep_reference": "Conserver la référence actuelle",
+    "new_reference": "Nouvelle référence : {{name}}",
+    "replace_reference_hint": "L'enregistrement remplace l'échantillon de référence de cette voix. La prise verrouillée et la vérification de votre propre voix sont effacées, car le nouveau clip peut provenir d'une autre personne. Laissez la transcription vide pour transcrire automatiquement le nouveau clip."
   },
   "designWorkspace": {
     "title": "Concevoir",

@@ -11,12 +11,18 @@ import {
   createCloneProfile,
   deleteProfile,
   listProfiles,
+  replaceProfileAudio,
   type CreateCloneProfileInput,
+  type ReplaceProfileAudioInput,
 } from '@/lib/api/profiles';
 import type { Profile } from '@/lib/api/types';
 import { tr } from '@/lib/i18n-text';
 import { queryKeys } from '@/lib/query';
-import { cloneSettingsStore, setCloneSetting } from '@/lib/store/clone-settings';
+import {
+  cloneSettingsStore,
+  patchCloneSettings,
+  setCloneSetting,
+} from '@/lib/store/clone-settings';
 import { readDraft, writeDraft } from '@/features/design/design-draft';
 import { useBackendStatus } from './use-backend-status';
 
@@ -50,6 +56,32 @@ export function useCreateCloneProfile(): UseMutationResult<
     },
     onError: (err) => {
       toast.error(tr('clone.save_failed', { message: describeError(err) }));
+    },
+  });
+}
+
+/**
+ * Replace a saved clone's reference clip. Errors are left to the caller (the
+ * profile editor shows them inline and keeps the chosen clip for retry).
+ */
+export function useReplaceProfileAudio(): UseMutationResult<
+  Profile,
+  Error,
+  ReplaceProfileAudioInput & { id: string }
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...input }) => replaceProfileAudio(id, input),
+    onSuccess: async (updated) => {
+      queryClient.setQueryData<Profile[]>(queryKeys.profiles, (old) =>
+        old?.map((profile) => (profile.id === updated.id ? updated : profile)),
+      );
+      // The composer's transcript belongs to the selected voice's clip; keep it
+      // matched to the new reference instead of the replaced one.
+      if (cloneSettingsStore.state.selectedProfileId === updated.id) {
+        patchCloneSettings({ refText: updated.ref_text ?? '' });
+      }
+      await queryClient.invalidateQueries({ queryKey: queryKeys.profiles });
     },
   });
 }

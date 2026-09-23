@@ -419,7 +419,12 @@
     "cancel_generation": "Batalkan pembuatan",
     "duration_seconds": "{{seconds}}s",
     "download_failed": "Tidak dapat menyimpan file: {{message}}",
-    "history_clear_confirm": "Hapus setiap pengambilan dari riwayat? File audio juga dihapus."
+    "history_clear_confirm": "Hapus setiap pengambilan dari riwayat? File audio juga dihapus.",
+    "edit_voice": "Edit suara",
+    "replace_reference": "Ganti referensi",
+    "keep_reference": "Pertahankan referensi saat ini",
+    "new_reference": "Referensi baru: {{name}}",
+    "replace_reference_hint": "Menyimpan akan mengganti sampel referensi suara ini. Take yang dikunci dan verifikasi suara sendiri dihapus karena klip baru mungkin berasal dari pembicara lain. Biarkan transkrip kosong untuk mentranskripsikan klip baru secara otomatis."
   },
   "designWorkspace": {
     "title": "Desain",

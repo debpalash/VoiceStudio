@@ -14,9 +14,11 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 - Malayalam speech reads numbers in Malayalam (#2280) — thanks @nikhilkilivayil!
 - Stories and Audiobook can save a chapter cue sheet (`.txt`) after a render (#2278) — thanks @shivsin25!
 - Windows backend keeps answering after antivirus or VPN software resets a connection (#2276) — thanks @ialexbond!
+- Replace a saved voice clone's reference sample without creating a duplicate voice (#2282)
 
 ### Added
 
+- Edit a saved voice clone's reference sample: play it, replace it by upload or recording, and save back to the same voice (#2282) — thanks @Cengokill!
 - Answer Twilio phone calls in a saved voice: off by default, signed webhooks and single-use stream tokens, with a local phone-quality test (#2291)
 - Malayalam dubs and audiobooks speak numbers, percentages, and decimals in Malayalam instead of reading raw digits (#2280) — thanks @nikhilkilivayil!
 - Download a chapter cue sheet (`HH:MM:SS<TAB>Title`) after a Stories or Audiobook render; timestamps match the M4B's embedded chapters and give MP3 portable chapters (#2278) — thanks @shivsin25!
@@ -30,6 +32,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 - Pasted and imported captions no longer speak karaoke tags, `<i>`/`<font>` tags or `{\an8}` alignment prefixes, while SubRip dialogue such as `2 < 3` is kept; unchanged WebVTT and SubRip exports keep the original cue markup (#2295) — thanks @kevin9327!
 - Speaker diarisation uses Lightning 2.6.6, which blocks code execution from a crafted checkpoint (#2296)
+- Long audiobook chapters on 8 GB GPUs no longer time out while still rendering, and a timed-out chapter stops using the GPU after its current chunk (#2287) — thanks @Tran-Van-Hieu!
 - On Windows, one reset connection no longer leaves the backend running but unreachable (#2276) — thanks @ialexbond!
 - The official `openai` SDK and OpenAI Agents SDK work unchanged: `gpt-4o-mini-tts` and current OpenAI voice names no longer fail with "Unknown model" (#2290)
 - OpenAI `instructions` now reaches the voice engine instead of being ignored; OmniVoice uses the voice-design tags in it (#2290)
@@ -45,6 +48,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 ### Bug reporters
 
 - @castlecreati — audiobook chapter cache lost after a power-off (#2279).
+- @Cengokill — no way to replace a saved clone's reference sample (#2282).
 
 ### Docs
 

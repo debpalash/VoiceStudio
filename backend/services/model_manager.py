@@ -452,6 +452,13 @@ MODEL_LOAD_HEARTBEAT_GRACE_S = float(
 # 300s base — beyond that, telling the user is better than silently waiting.
 MODEL_LOAD_EXTRA_TIMEOUT_S = float(
     os.environ.get("OMNIVOICE_MODEL_LOAD_TIMEOUT_S", "1800.0"))
+# The cap also grows with the job's own budget: a job that keeps reporting
+# progress may run for this many extra budgets. A fixed 1800s cap made a job's
+# length a hard limit however steadily it progressed. A 50k-character audiobook
+# chapter (1520s budget) on an 8 GB card was abandoned mid-render even while it
+# finished chunk after chunk (#2287). A wedged job still dies after one grace
+# window, because only a fresh heartbeat extends the deadline.
+PROGRESS_EXTENSION_BUDGETS = 3.0
 
 # How long a SYNTHESIS heartbeat stays fresh. Much longer than the load grace
 # on purpose: the finest progress signal a generate has is "a chunk finished",
@@ -865,11 +872,14 @@ async def run_on_gpu_pool_guarded(fn, *, what: str = "GPU job",
     # download is healthy with progress frames the backend forwards via
     # report_model_load_activity(). Sliced waiting lets the deadline extend
     # while those heartbeats stay fresh — bounded by MODEL_LOAD_EXTRA_TIMEOUT_S
+    # or PROGRESS_EXTENSION_BUDGETS x the budget, whichever is larger
     # — so a slow connection is no longer reported as too-slow hardware. A job
     # that goes SILENT still dies at the original deadline (± one slice).
     _t0 = time.monotonic()
     _soft_deadline = _t0 + timeout
-    _hard_deadline = _soft_deadline + MODEL_LOAD_EXTRA_TIMEOUT_S
+    _hard_deadline = _soft_deadline + max(
+        MODEL_LOAD_EXTRA_TIMEOUT_S, PROGRESS_EXTENSION_BUDGETS * timeout,
+    )
     _extended = False
 
     class _ExecutionDeadlineExceeded(Exception):
@@ -904,7 +914,7 @@ async def run_on_gpu_pool_guarded(fn, *, what: str = "GPU job",
                         "making progress — extending while heartbeats continue "
                         "(grace %.0fs, cap +%.0fs) (#1367/#1391).",
                         _log_safe(what), timeout, _grace,
-                        MODEL_LOAD_EXTRA_TIMEOUT_S,
+                        _hard_deadline - _soft_deadline,
                     )
                 # Wake at the next decision point (heartbeat expiry or the
                 # cap), not a fixed 5s — a fixed slice overshoots both.

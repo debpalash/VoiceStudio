@@ -427,7 +427,12 @@
     "characters_one": "حرف {{count}}",
     "cancel_generation": "إلغاء الجيل",
     "duration_seconds": "{{seconds}}s",
-    "download_failed": "تعذر حفظ الملف: {{message}}"
+    "download_failed": "تعذر حفظ الملف: {{message}}",
+    "edit_voice": "تعديل الصوت",
+    "replace_reference": "استبدال المرجع",
+    "keep_reference": "الإبقاء على المرجع الحالي",
+    "new_reference": "المرجع الجديد: {{name}}",
+    "replace_reference_hint": "يؤدي الحفظ إلى استبدال العينة المرجعية لهذا الصوت. يُمسح المقطع المقفل والتحقق من الصوت الشخصي لأن المقطع الجديد قد يكون لمتحدث مختلف. اترك النص فارغًا لتفريغ المقطع الجديد تلقائيًا."
   },
   "designWorkspace": {
     "title": "تصميم",

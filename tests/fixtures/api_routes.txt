@@ -315,6 +315,7 @@ PUT /archetypes/previews
 PUT /glossary/{project_id}/{term_id}
 PUT /history/{history_id}/starred
 PUT /profiles/{profile_id}
+PUT /profiles/{profile_id}/audio
 PUT /profiles/{profile_id}/image
 PUT /projects/{project_id}
 PUT /pronunciation/{entry_id}

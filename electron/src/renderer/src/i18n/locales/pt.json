@@ -421,7 +421,12 @@
     "duration_seconds": "{{seconds}}s",
     "download_failed": "Não foi possível salvar o arquivo: {{message}}",
     "history_clear_confirm": "Excluir todas as tomadas do histórico? Os arquivos de áudio também são removidos.",
-    "output_empty": "Seu áudio gerado aparecerá aqui."
+    "output_empty": "Seu áudio gerado aparecerá aqui.",
+    "edit_voice": "Editar voz",
+    "replace_reference": "Substituir referência",
+    "keep_reference": "Manter a referência atual",
+    "new_reference": "Nova referência: {{name}}",
+    "replace_reference_hint": "Salvar substitui a amostra de referência desta voz. A tomada bloqueada e a verificação de voz própria são removidas porque o novo clipe pode ser de outra pessoa. Deixe a transcrição em branco para transcrever o novo clipe automaticamente."
   },
   "designWorkspace": {
     "title": "Desenhar",

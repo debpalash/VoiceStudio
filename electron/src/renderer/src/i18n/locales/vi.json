@@ -419,7 +419,12 @@
     "cancel_generation": "Hủy tạo",
     "duration_seconds": "{{seconds}}",
     "download_failed": "Không thể lưu tệp: {{message}}",
-    "history_clear_confirm": "Xóa mọi cảnh quay khỏi lịch sử? Các tập tin âm thanh cũng bị xóa."
+    "history_clear_confirm": "Xóa mọi cảnh quay khỏi lịch sử? Các tập tin âm thanh cũng bị xóa.",
+    "edit_voice": "Chỉnh sửa giọng",
+    "replace_reference": "Thay mẫu tham chiếu",
+    "keep_reference": "Giữ mẫu tham chiếu hiện tại",
+    "new_reference": "Mẫu tham chiếu mới: {{name}}",
+    "replace_reference_hint": "Khi lưu, mẫu tham chiếu của giọng này sẽ được thay thế. Bản thu đã khóa và xác minh giọng của chính bạn sẽ bị xóa vì đoạn mới có thể là của người nói khác. Để trống bản chép lời để tự động chép lời đoạn mới."
   },
   "designWorkspace": {
     "title": "Thiết kế",

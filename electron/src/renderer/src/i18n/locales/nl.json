@@ -419,7 +419,12 @@
     "duration_seconds": "{{seconds}}'s",
     "download_failed": "Kan het bestand niet opslaan: {{message}}",
     "history_star_failed": "Kan de take niet bijwerken: {{message}}",
-    "history_clear_confirm": "Elke take uit de geschiedenis verwijderen? Audiobestanden worden ook verwijderd."
+    "history_clear_confirm": "Elke take uit de geschiedenis verwijderen? Audiobestanden worden ook verwijderd.",
+    "edit_voice": "Stem bewerken",
+    "replace_reference": "Referentie vervangen",
+    "keep_reference": "Huidige referentie behouden",
+    "new_reference": "Nieuwe referentie: {{name}}",
+    "replace_reference_hint": "Opslaan vervangt het referentievoorbeeld van deze stem. De vastgezette opname en de verificatie van je eigen stem worden gewist, omdat de nieuwe clip van een andere spreker kan zijn. Laat het transcript leeg om de nieuwe clip automatisch te transcriberen."
   },
   "designWorkspace": {
     "title": "Ontwerpen",

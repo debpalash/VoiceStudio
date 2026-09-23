@@ -419,7 +419,12 @@
     "cancel_generation": "Generierung abbrechen",
     "download_failed": "Die Datei konnte nicht gespeichert werden: {{message}}",
     "duration_seconds": "{{seconds}}s",
-    "history_clear_confirm": "Jeden Take aus dem Verlauf löschen? Audiodateien werden ebenfalls entfernt."
+    "history_clear_confirm": "Jeden Take aus dem Verlauf löschen? Audiodateien werden ebenfalls entfernt.",
+    "edit_voice": "Stimme bearbeiten",
+    "replace_reference": "Referenz ersetzen",
+    "keep_reference": "Aktuelle Referenz behalten",
+    "new_reference": "Neue Referenz: {{name}}",
+    "replace_reference_hint": "Beim Speichern wird das Referenzbeispiel dieser Stimme ersetzt. Die fixierte Aufnahme und die Bestätigung der eigenen Stimme werden zurückgesetzt, da der neue Clip von einer anderen Person stammen kann. Lass das Transkript leer, um den neuen Clip automatisch zu transkribieren."
   },
   "designWorkspace": {
     "title": "Designen",

@@ -419,7 +419,12 @@
     "download_failed": "ファイルを保存できませんでした: {{message}}",
     "history_clear_confirm": "履歴からすべてのテイクを削除しますか?音声ファイルも削除されます。",
     "shortcut_hint": "Ctrl/Cmd + Enter",
-    "download": "名前を付けて保存…"
+    "download": "名前を付けて保存…",
+    "edit_voice": "音声を編集",
+    "replace_reference": "参照音声を置き換える",
+    "keep_reference": "現在の参照音声を使う",
+    "new_reference": "新しい参照音声: {{name}}",
+    "replace_reference_hint": "保存すると、この音声の参照サンプルが置き換わります。新しいクリップは別の話者の可能性があるため、固定したテイクと本人音声の確認はリセットされます。書き起こしを空欄にすると、新しいクリップを自動で書き起こします。"
   },
   "designWorkspace": {
     "title": "デザイン",

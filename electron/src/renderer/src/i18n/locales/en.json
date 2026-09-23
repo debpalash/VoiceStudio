@@ -317,7 +317,12 @@
     "cat_AccentDialect": "Accent or Dialect",
     "accent_dialect_hint": "one or the other, never both",
     "reset_to_description": "Reset to description",
-    "chips_more": "{{count}} more…"
+    "chips_more": "{{count}} more…",
+    "edit_voice": "Edit voice",
+    "replace_reference": "Replace reference",
+    "keep_reference": "Keep current reference",
+    "new_reference": "New reference: {{name}}",
+    "replace_reference_hint": "Saving replaces this voice's reference sample. Its locked take and own-voice verification are cleared because the new clip may be a different speaker. Leave the transcript blank to transcribe the new clip automatically."
   },
   "recording": {
     "cleaned_loaded": "Recording cleaned and loaded.",

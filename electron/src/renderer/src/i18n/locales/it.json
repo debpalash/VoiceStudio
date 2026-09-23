@@ -421,7 +421,12 @@
     "duration_seconds": "{{seconds}}s",
     "download_failed": "Impossibile salvare il file: {{message}}",
     "history_clear_confirm": "Eliminare ogni ripresa dalla cronologia? Anche i file audio vengono rimossi.",
-    "history_title": "Riprese recenti"
+    "history_title": "Riprese recenti",
+    "edit_voice": "Modifica voce",
+    "replace_reference": "Sostituisci riferimento",
+    "keep_reference": "Mantieni il riferimento attuale",
+    "new_reference": "Nuovo riferimento: {{name}}",
+    "replace_reference_hint": "Il salvataggio sostituisce il campione di riferimento di questa voce. La ripresa bloccata e la verifica della propria voce vengono cancellate perché la nuova clip potrebbe essere di un'altra persona. Lascia vuota la trascrizione per trascrivere automaticamente la nuova clip."
   },
   "designWorkspace": {
     "title": "Progetta",

@@ -419,7 +419,12 @@
     "cancel_generation": "Oluşturmayı iptal et",
     "duration_seconds": "{{seconds}}'ler",
     "download_failed": "Dosya kaydedilemedi: {{message}}",
-    "history_clear_confirm": "Geçmişteki her kayıt silinsin mi? Ses dosyaları da kaldırılır."
+    "history_clear_confirm": "Geçmişteki her kayıt silinsin mi? Ses dosyaları da kaldırılır.",
+    "edit_voice": "Sesi düzenle",
+    "replace_reference": "Referansı değiştir",
+    "keep_reference": "Mevcut referansı koru",
+    "new_reference": "Yeni referans: {{name}}",
+    "replace_reference_hint": "Kaydetmek bu sesin referans örneğini değiştirir. Yeni klip farklı bir konuşmacıya ait olabileceğinden kilitli kayıt ve kendi ses doğrulaması temizlenir. Yeni klibin otomatik olarak yazıya dökülmesi için transkripti boş bırakın."
   },
   "designWorkspace": {
     "title": "Tasarla",

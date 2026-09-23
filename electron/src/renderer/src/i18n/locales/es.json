@@ -421,7 +421,12 @@
     "cancel_generation": "Cancelar generación",
     "duration_seconds": "{{seconds}}s",
     "download_failed": "No se pudo guardar el archivo: {{message}}",
-    "history_clear_confirm": "¿Eliminar cada toma del historial? Los archivos de audio también se eliminan."
+    "history_clear_confirm": "¿Eliminar cada toma del historial? Los archivos de audio también se eliminan.",
+    "edit_voice": "Editar voz",
+    "replace_reference": "Reemplazar referencia",
+    "keep_reference": "Mantener la referencia actual",
+    "new_reference": "Nueva referencia: {{name}}",
+    "replace_reference_hint": "Al guardar se reemplaza la muestra de referencia de esta voz. La toma fijada y la verificación de voz propia se borran porque el nuevo clip puede ser de otra persona. Deja la transcripción vacía para transcribir el nuevo clip automáticamente."
   },
   "designWorkspace": {
     "title": "Diseñar",

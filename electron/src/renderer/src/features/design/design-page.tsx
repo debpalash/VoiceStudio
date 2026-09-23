@@ -269,7 +269,7 @@ export function DesignPage() {
                     <PencilIcon />
                   </Button>
                   <AudioPreviewButton
-                    src={profileAudioUrl(profile.id)}
+                    src={profileAudioUrl(profile.id, profile.audio_url)}
                     source={'design-profile-' + profile.id}
                     activity={!profile.ref_audio_path ? 'synthesis' : undefined}
                     disabled={!profile.ref_audio_path && Boolean(generation.designBlocker)}

@@ -3,22 +3,35 @@ import { ProfilePreview } from './profile-preview';
 import { ProfileUsagePanel } from './profile-usage';
 import { LanguagePicker } from './language-picker';
 import { PersonaExport } from './persona-export';
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
-import { Clock3Icon, ShieldCheckIcon, Trash2Icon, Volume2Icon } from 'lucide-react';
+import {
+  Clock3Icon,
+  FileAudioIcon,
+  MicIcon,
+  ReplaceIcon,
+  ShieldCheckIcon,
+  Trash2Icon,
+  UploadCloudIcon,
+  Volume2Icon,
+  XIcon,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { WaveformPlayer } from '@/components/waveform-player';
 import { AudioPreviewButton } from '@/components/audio-preview-button';
-import { useDeleteProfile } from '@/hooks/use-profiles';
+import { useDeleteProfile, useReplaceProfileAudio } from '@/hooks/use-profiles';
 import { apiJson, describeError, profileAudioUrl } from '@/lib/api/client';
 import type { Profile } from '@/lib/api/types';
 import { queryKeys } from '@/lib/query';
 import { cloneSettingsStore, patchCloneSettings } from '@/lib/store/clone-settings';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { createObjectUrl, revokeObjectUrl } from '@/lib/audio/object-url';
 import { cn } from '@/lib/utils';
+import { RecordZone, UploadZone } from './reference-input';
 import { ProfileImageEditor } from './profile-image-editor';
 import { formatRelative } from './format';
 import { useTtsReadiness } from '@/hooks/use-tts-readiness';
@@ -28,6 +41,7 @@ export function EditProfile({ profile, onDone }: { profile: Profile; onDone: () 
   const prefix = useId();
   const client = useQueryClient();
   const deleteProfile = useDeleteProfile();
+  const replaceAudio = useReplaceProfileAudio();
   const ttsBlocker = useTtsReadiness();
   const [draft, setDraft] = useState({
     name: profile.name,
@@ -37,6 +51,44 @@ export function EditProfile({ profile, onDone }: { profile: Profile; onDone: () 
   });
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
+  // Replacing the reference (#2282): `choosing` shows the upload/record zones,
+  // `replacement` holds the accepted clip until Save writes it to this profile.
+  const [choosing, setChoosing] = useState(false);
+  const [inputMode, setInputMode] = useState<'upload' | 'record'>('upload');
+  const [replacement, setReplacement] = useState<{
+    file: File;
+    durationSeconds: number | null;
+  } | null>(null);
+  const [replacementUrl, setReplacementUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!replacement) {
+      setReplacementUrl(null);
+      return;
+    }
+    const url = createObjectUrl(replacement.file);
+    setReplacementUrl(url);
+    return () => revokeObjectUrl(url);
+  }, [replacement]);
+  const canReplace = profile.kind !== 'design';
+  // Transcript as it stood when Replace was pressed, so Keep reference
+  // restores the user's unsaved edits rather than the stored text.
+  const refTextBeforeReplace = useRef(draft.ref_text);
+  const startReplacement = () => {
+    refTextBeforeReplace.current = draft.ref_text;
+    setChoosing(true);
+  };
+  const acceptReplacement = (file: File, durationSeconds: number | null) => {
+    setReplacement({ file, durationSeconds });
+    setChoosing(false);
+    // The saved transcript describes the old clip. Leave it blank so the
+    // backend transcribes the new one locally unless the user types it.
+    setDraft((previous) => ({ ...previous, ref_text: '' }));
+  };
+  const keepCurrentReference = () => {
+    setReplacement(null);
+    setChoosing(false);
+    setDraft((previous) => ({ ...previous, ref_text: refTextBeforeReplace.current }));
+  };
   const [confirmDelete, setConfirmDelete] = useState(false);
   const unavailable = busy || deleteProfile.isPending;
   return (
@@ -48,11 +100,23 @@ export function EditProfile({ profile, onDone }: { profile: Profile; onDone: () 
         setBusy(true);
         setFailed(null);
         try {
-          const updated = await apiJson<Profile>(`/profiles/${encodeURIComponent(profile.id)}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(draft),
-          });
+          // With a new clip, the edits and its transcript travel in the one
+          // audio request: the backend saves all of them or none, and the old
+          // clip's text is never saved against the new reference.
+          const { ref_text: refText, ...fields } = draft;
+          const updated = replacement
+            ? await replaceAudio.mutateAsync({
+                id: profile.id,
+                refAudio: replacement.file,
+                refAudioName: replacement.file.name,
+                refText,
+                fields,
+              })
+            : await apiJson<Profile>(`/profiles/${encodeURIComponent(profile.id)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(draft),
+              });
           if (cloneSettingsStore.state.selectedProfileId === profile.id)
             patchCloneSettings({
               language: updated.language || 'Auto',
@@ -91,26 +155,112 @@ export function EditProfile({ profile, onDone }: { profile: Profile; onDone: () 
 
       {(profile.ref_audio_path || profile.locked_audio_path || profile.kind === 'design') && (
         <section className="space-y-2 rounded-lg bg-muted/25 p-3 @min-[620px]:col-span-2">
-          <h3 className="flex items-center gap-2 text-sm font-medium">
-            <Volume2Icon className="size-4 text-muted-foreground" />
-            {t('clone.reference_audio')}
-          </h3>
-          {profile.ref_audio_path || profile.locked_audio_path ? (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="flex items-center gap-2 text-sm font-medium">
+              <Volume2Icon className="size-4 text-muted-foreground" />
+              {t('clone.reference_audio')}
+            </h3>
+            {canReplace && !replacement && !choosing && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={unavailable}
+                onClick={startReplacement}
+              >
+                <ReplaceIcon data-icon="inline-start" />
+                {t('clone.replace_reference')}
+              </Button>
+            )}
+            {canReplace && (replacement || choosing) && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={unavailable}
+                onClick={keepCurrentReference}
+              >
+                <XIcon data-icon="inline-start" />
+                {t('clone.keep_reference')}
+              </Button>
+            )}
+          </div>
+          {replacement ? (
+            <div className="flex flex-col gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <FileAudioIcon
+                  className="size-4 shrink-0 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                  {t('clone.new_reference', { name: replacement.file.name })}
+                </span>
+                {replacement.durationSeconds != null ? (
+                  <span className="text-[length:var(--text-caption)] text-muted-foreground tabular-nums">
+                    {t('clone.duration_seconds', {
+                      seconds: replacement.durationSeconds.toFixed(1),
+                    })}
+                  </span>
+                ) : null}
+              </div>
+              {replacementUrl ? (
+                <WaveformPlayer
+                  key={replacementUrl}
+                  src={replacementUrl}
+                  source={'profile-editor-replacement-' + profile.id}
+                  height={44}
+                  compact
+                />
+              ) : null}
+            </div>
+          ) : profile.ref_audio_path || profile.locked_audio_path ? (
             <WaveformPlayer
-              src={profileAudioUrl(profile.id)}
+              key={profile.audio_url ?? profile.id}
+              src={profileAudioUrl(profile.id, profile.audio_url)}
               source={'profile-editor-' + profile.id}
               height={44}
               compact
             />
           ) : (
             <AudioPreviewButton
-              src={profileAudioUrl(profile.id)}
+              src={profileAudioUrl(profile.id, profile.audio_url)}
               source={'profile-editor-' + profile.id}
               activity="synthesis"
               disabled={Boolean(ttsBlocker)}
               disabledLabel={t('engines.none_ready_title')}
               onReady={() => void client.invalidateQueries({ queryKey: queryKeys.profiles })}
             />
+          )}
+          {choosing && !replacement && (
+            <div className="flex flex-col gap-2">
+              <Tabs
+                value={inputMode}
+                onValueChange={(value) => {
+                  if (value === 'upload' || value === 'record') setInputMode(value);
+                }}
+              >
+                <TabsList aria-label={t('clone.replace_reference')}>
+                  <TabsTrigger value="upload">
+                    <UploadCloudIcon data-icon="inline-start" />
+                    {t('clone.upload_audio')}
+                  </TabsTrigger>
+                  <TabsTrigger value="record">
+                    <MicIcon data-icon="inline-start" />
+                    {t('clone.record')}
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+              {inputMode === 'upload' ? (
+                <UploadZone onAccept={acceptReplacement} />
+              ) : (
+                <RecordZone onAccept={acceptReplacement} />
+              )}
+            </div>
+          )}
+          {(replacement || choosing) && (
+            <p role="note" className="text-xs text-muted-foreground">
+              {t('clone.replace_reference_hint')}
+            </p>
           )}
         </section>
       )}

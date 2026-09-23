@@ -146,7 +146,12 @@ export function audioUrl(filename: string): string {
   return `${API_BASE}/audio/${encodeURIComponent(filename)}`;
 }
 
-/** Playable URL for a saved voice's reference clip. */
-export function profileAudioUrl(id: string): string {
+/**
+ * Playable URL for a saved voice's reference clip. Pass the profile's
+ * `audio_url` when available: its version token changes whenever the clip is
+ * replaced, so players and HTTP caches never keep the previous sample.
+ */
+export function profileAudioUrl(id: string, audioUrl?: string | null): string {
+  if (audioUrl?.startsWith('/profiles/')) return apiPath(audioUrl);
   return `${API_BASE}/profiles/${encodeURIComponent(id)}/audio`;
 }

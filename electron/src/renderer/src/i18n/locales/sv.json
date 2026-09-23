@@ -419,7 +419,12 @@
     "cancel_generation": "Avbryt generering",
     "duration_seconds": "{{seconds}}s",
     "download_failed": "Det gick inte att spara filen: {{message}}",
-    "history_clear_confirm": "Vill du ta bort alla tag från historien? Ljudfiler tas också bort."
+    "history_clear_confirm": "Vill du ta bort alla tag från historien? Ljudfiler tas också bort.",
+    "edit_voice": "Redigera röst",
+    "replace_reference": "Ersätt referens",
+    "keep_reference": "Behåll nuvarande referens",
+    "new_reference": "Ny referens: {{name}}",
+    "replace_reference_hint": "När du sparar ersätts röstens referensprov. Den låsta tagningen och verifieringen av egen röst rensas eftersom det nya klippet kan vara en annan talare. Lämna transkriptionen tom för att transkribera det nya klippet automatiskt."
   },
   "designWorkspace": {
     "title": "Designa",

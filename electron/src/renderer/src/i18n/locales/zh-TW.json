@@ -419,7 +419,12 @@
     "cancel_generation": "取消生成",
     "duration_seconds": "{{seconds}}s",
     "download_failed": "無法儲存檔案：{{message}}",
-    "shortcut_hint": "Ctrl/Cmd + Enter"
+    "shortcut_hint": "Ctrl/Cmd + Enter",
+    "edit_voice": "編輯音色",
+    "replace_reference": "替換參考音訊",
+    "keep_reference": "保留目前的參考音訊",
+    "new_reference": "新參考音訊：{{name}}",
+    "replace_reference_hint": "儲存後將替換此音色的參考樣本。由於新片段可能來自其他說話者，已鎖定的片段和本人聲音驗證會被清除。逐字稿留空即可自動轉寫新片段。"
   },
   "designWorkspace": {
     "title": "設計聲音",
