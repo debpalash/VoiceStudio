@@ -195,6 +195,11 @@ def test_unchanged_srt_export_keeps_alignment_and_italics():
     broken = parse_srt("1\n00:00:01,000 --> 00:00:02,000\nHello<br>world\n").segments
     assert "Hello<br>world" in _export("srt", broken)
     assert "Hello\nworld" in _export("vtt", broken)
+    # A blank line would end the WebVTT cue early and drop the rest.
+    edged = parse_srt("1\n00:00:01,000 --> 00:00:02,000\n<br>Hello<br><br>big<br>\nworld<br>\n").segments
+    vtt = _export("vtt", edged)
+    assert "00:00:02.000\nHello\nbig\nworld\n" in vtt
+    assert [s["text"] for s in parse_srt(vtt).segments] == ["Hello\nbig\nworld"]
 
 
 def test_edited_srt_text_exports_as_edited():

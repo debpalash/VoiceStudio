@@ -256,7 +256,9 @@ def spoken_cue_text(text: str, *, webvtt: bool = False) -> str:
 
 def srt_cue_as_webvtt(cue: str) -> str:
     """A SubRip cue in WebVTT terms: no `{\\an8}` overrides, `<br>` as a newline."""
-    return _LINE_BREAK_RE.sub("\n", _ASS_OVERRIDE_RE.sub("", cue))
+    lines = _LINE_BREAK_RE.sub("\n", _ASS_OVERRIDE_RE.sub("", cue)).split("\n")
+    # A blank line ends a WebVTT cue, so doubled or edge breaks must not leave one.
+    return "\n".join(line.strip() for line in lines if line.strip())
 
 
 def source_cue_or(seg: dict, text: str, key: str) -> str:
