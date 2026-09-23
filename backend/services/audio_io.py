@@ -372,6 +372,8 @@ def atomic_save_wav(
     target_path: str,
     audio: torch.Tensor,
     sample_rate: int,
+    *,
+    durable: bool = False,
     **kwargs: Any,
 ) -> None:
     """Write a WAV to ``target_path`` atomically.
@@ -389,6 +391,10 @@ def atomic_save_wav(
         target_path: Final destination. Missing parent directories are recreated.
         audio: ``(channels, samples)`` or ``(samples,)`` tensor.
         sample_rate: WAV sample rate in Hz.
+        durable: Also survive a power loss — flush the data before the rename
+            and the directory entry after it (``core.durable_io``). Costs a
+            disk flush per file, so it is for files that are expensive to
+            recreate (longform chapter/segment cache, #2279), not every write.
         **kwargs: Forwarded to ``_safe_torchaudio_save`` (``format``,
             ``bits_per_sample``). Legacy callers that pass other kwargs
             are tolerated for back-compat.
@@ -423,7 +429,13 @@ def atomic_save_wav(
         if "bits_per_sample" in kwargs:
             safe_kwargs["bits_per_sample"] = kwargs["bits_per_sample"]
         _safe_torchaudio_save(tmp_path, audio, sample_rate, **safe_kwargs)
+        if durable:
+            from core.durable_io import flush_file
+            flush_file(tmp_path)
         os.replace(tmp_path, target_path)
+        if durable:
+            from core.durable_io import flush_dir
+            flush_dir(target_dir)
     except BaseException:
         # BaseException so we clean up on KeyboardInterrupt + SystemExit too.
         try:

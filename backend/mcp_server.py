@@ -389,8 +389,15 @@ def _ensure_mcp():
         raise ImportError(msg) from e
 
 
-def create_mcp_server():
-    """Build and return the FastMCP server instance."""
+def create_mcp_server(app=None):
+    """Build and return the FastMCP server instance.
+
+    ``app`` is the backend ASGI app this server is mounted on. When given,
+    tool calls reach the API in-process as a loopback caller — independent of
+    the bind host/port and never challenged by the share-PIN / API-key gates
+    (which a concrete LAN ``OMNIVOICE_BIND_HOST`` would otherwise trigger).
+    Standalone runs (no app) call the backend over HTTP.
+    """
     FastMCP = _ensure_mcp()
     mcp = FastMCP(
         "VoiceStudio",
@@ -430,11 +437,29 @@ def create_mcp_server():
     # ── Helpers ─────────────────────────────────────────────────────────
 
     def _api_base() -> str:
-        return os.environ.get("OMNIVOICE_API_URL", "http://localhost:3900")
+        # Follows the backend's real bind host/port (OMNIVOICE_PORT), not a
+        # hard-coded 3900 — Electron moves the port via OMNIVOICE_PORT only.
+        # Also the public base of the `audio_url` returned in files mode.
+        from services.network_share import backend_self_url
+        return backend_self_url()
+
+    def _client(timeout: float):
+        import httpx
+        # OMNIVOICE_API_URL is an explicit "send tool calls there" override.
+        if app is not None and not os.environ.get("OMNIVOICE_API_URL", "").strip():
+            return httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app, client=("127.0.0.1", 0)),
+                base_url="http://127.0.0.1",
+                timeout=timeout,
+            )
+        from services.network_share import backend_auth_headers
+        base = _api_base()
+        return httpx.AsyncClient(
+            base_url=base, timeout=timeout, headers=backend_auth_headers(base)
+        )
 
     async def _api_get(path: str):
-        import httpx
-        async with httpx.AsyncClient(base_url=_api_base(), timeout=30) as c:
+        async with _client(30) as c:
             r = await c.get(path)
             r.raise_for_status()
             return r.json()
@@ -442,9 +467,8 @@ def create_mcp_server():
     async def _api_post_form(
         path: str, data: dict, files: dict | None = None, *, timeout: float | None = None
     ):
-        import httpx
         wait = _post_timeout_s() if timeout is None else timeout
-        async with httpx.AsyncClient(base_url=_api_base(), timeout=wait) as c:
+        async with _client(wait) as c:
             r = await c.post(path, data=data, files=files or {})
             r.raise_for_status()
             return r
@@ -692,6 +716,28 @@ def create_mcp_server():
     return mcp
 
 
+class _BareMcpPath:
+    """ASGI endpoint for exactly ``/mcp``: re-dispatch as ``/mcp/``.
+
+    A class instance (not a function) so Starlette's ``Route`` treats it as a
+    raw ASGI app with no method restriction — GET (SSE), POST and DELETE all
+    reach the Streamable-HTTP transport. Re-entering the router keeps the
+    mount's own path/root_path handling instead of re-implementing it.
+    """
+
+    def __init__(self, router) -> None:
+        self._router = router
+
+    async def __call__(self, scope, receive, send) -> None:
+        scope = dict(scope)
+        scope["path"] = scope["path"] + "/"
+        raw = scope.get("raw_path")
+        if isinstance(raw, (bytes, bytearray)):
+            path, sep, query = bytes(raw).partition(b"?")
+            scope["raw_path"] = path + b"/" + sep + query
+        await self._router(scope, receive, send)
+
+
 def mount_mcp(app) -> bool:
     """Best-effort sub-mount of the MCP Streamable-HTTP app at /mcp.
 
@@ -702,10 +748,18 @@ def mount_mcp(app) -> bool:
     boundary, #1143).
     """
     try:
-        mcp = create_mcp_server()
+        mcp = create_mcp_server(app)
         mcp_app = mcp.streamable_http_app()
         app.state.mcp_session_manager = mcp.session_manager
         app.mount("/mcp", mcp_app)
+        # The mount only matches "/mcp/..."; a bare "/mcp" would fall through
+        # to the SPA StaticFiles mount at "/" (405 on POST) or, without a
+        # built SPA, to a 307 that many MCP clients won't re-POST. Serve the
+        # published "/mcp" URL directly, for every method, ahead of "/".
+        from starlette.routing import Route
+        app.router.routes.append(
+            Route("/mcp", endpoint=_BareMcpPath(app.router), include_in_schema=False)
+        )
         logger.info("MCP app mounted at /mcp")
         return True
     except (Exception, SystemExit) as err:  # noqa: BLE001
@@ -726,6 +780,13 @@ def main():
         help="Port for SSE transport (default: 8765)",
     )
     args = parser.parse_args()
+
+    # `python -m backend.mcp_server` runs from the repo root, where the
+    # backend's own packages (services.*, core.*) are not importable; the
+    # embedded mount runs with backend/ on sys.path already.
+    _backend_dir = os.path.dirname(os.path.abspath(__file__))
+    if _backend_dir not in sys.path:
+        sys.path.insert(0, _backend_dir)
 
     try:
         mcp = create_mcp_server()

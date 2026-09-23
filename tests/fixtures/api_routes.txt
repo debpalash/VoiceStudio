@@ -23,6 +23,7 @@ DELETE /workers/inbound/connections/{endpoint}
 DELETE /workers/inbound/keys/{key_id}
 DELETE /workers/{worker_id}
 GET /.well-known/voicestudio-speech
+GET /api/integrations/twilio/state
 GET /api/mcp/bindings
 GET /api/settings/analytics
 GET /api/settings/asr-openai-compat
@@ -154,6 +155,8 @@ GET /tools/effects
 GET /tools/plugins
 GET /v1/audio/capabilities
 GET /v1/audio/voices
+GET /v1/models
+GET /v1/models/{model_id:path}
 GET /watermark/status
 GET /workers
 GET /workers/agent
@@ -167,6 +170,7 @@ PATCH /projects/{project_id}
 PATCH /workers/{worker_id}
 POST /api/auth/session
 POST /api/auth/ws-ticket
+POST /api/integrations/twilio/test
 POST /api/settings/asr-openai-compat/test
 POST /api/settings/hf-mirror/test
 POST /api/settings/hf-token
@@ -277,6 +281,7 @@ POST /tools/video-context/{job_id}
 POST /transcribe
 POST /v1/audio/speech
 POST /v1/audio/transcriptions
+POST /v1/audio/translations
 POST /watermark/detect
 POST /watermark/settings
 POST /workers/agent/enabled
@@ -292,6 +297,7 @@ POST /workers/tasks
 POST /workers/tasks/{task_id}/cancel
 POST /workers/{worker_id}/consent
 POST /workers/{worker_id}/resume
+PUT /api/integrations/twilio/config
 PUT /api/mcp/bindings
 PUT /api/settings/analytics
 PUT /api/settings/asr-openai-compat

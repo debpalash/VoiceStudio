@@ -42,6 +42,7 @@ from worker.transport.server import (
     WorkerServicer,
     serve,
 )
+from hang_guard import BARRIER_WATCHDOG_S, HANG_GUARD_S
 
 ENGINE, MODEL, OP = "indextts", "IndexTTS-2", "tts"
 
@@ -517,7 +518,7 @@ async def test_registration_refusal_escapes_the_reconnect_loop(monkeypatch):
     monkeypatch.setattr(client, "_connect_once", refused)
 
     with pytest.raises(TerminalRegistrationError, match="AUTH_FAILED"):
-        await asyncio.wait_for(client.run_forever(), timeout=0.1)
+        await asyncio.wait_for(client.run_forever(), timeout=HANG_GUARD_S)
     assert attempts == 1
 
 
@@ -621,7 +622,7 @@ async def test_registration_persistence_is_off_loop_and_drained_before_adoption(
     def persist(_worker_id):
         assert threading.current_thread() is not main_thread
         started.set()
-        release.wait(5)
+        release.wait(BARRIER_WATCHDOG_S)
         finished.set()
 
     config = WorkerConfig(
@@ -640,10 +641,10 @@ async def test_registration_persistence_is_off_loop_and_drained_before_adoption(
             session_epoch=4,
         )
     ))
-    await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=1)
+    await asyncio.wait_for(asyncio.to_thread(started.wait), timeout=HANG_GUARD_S)
 
     await client._on_server_message(pb.ServerMessage(ping=pb.Ping(nonce=7)))
-    assert (await asyncio.wait_for(client._outbox.get(), timeout=1)).pong.nonce == 7
+    assert (await asyncio.wait_for(client._outbox.get(), timeout=HANG_GUARD_S)).pong.nonce == 7
 
     try:
         accepting.cancel()
@@ -656,7 +657,7 @@ async def test_registration_persistence_is_off_loop_and_drained_before_adoption(
     finally:
         release.set()
     with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(accepting, timeout=1)
+        await asyncio.wait_for(accepting, timeout=HANG_GUARD_S)
 
     assert finished.is_set()
     assert config.worker_id == "old-worker"
@@ -837,12 +838,12 @@ async def test_unpersisted_registration_never_becomes_a_connected_worker(
     await harness.connect_worker(on_registered=fail_persistence, wait=False)
 
     with pytest.raises(TerminalRegistrationError, match="LOCAL_STATE"):
-        await asyncio.wait_for(harness.client_task, timeout=2)
+        await asyncio.wait_for(harness.client_task, timeout=HANG_GUARD_S)
     async def registration_is_retired():
         while len(harness.pool) or harness.servicer._sessions:
             await asyncio.sleep(0)
 
-    await asyncio.wait_for(registration_is_retired(), timeout=1)
+    await asyncio.wait_for(registration_is_retired(), timeout=HANG_GUARD_S)
 
     assert len(harness.pool) == 0
     assert harness.servicer._sessions == {}
@@ -971,7 +972,7 @@ async def test_worker_at_capacity_rejects_without_penalty(harness):
 
     first = harness.scheduler.submit(operation=OP, engine=ENGINE, model_id=MODEL)
     await harness.servicer.dispatch(harness.scheduler.next_assignment())
-    await asyncio.wait_for(started.wait(), timeout=10)
+    await asyncio.wait_for(started.wait(), timeout=HANG_GUARD_S)
 
     # Force a second assignment onto a worker the scheduler thinks has room.
     second = harness.scheduler.submit(operation=OP, engine=ENGINE, model_id=MODEL)
@@ -1492,7 +1493,7 @@ async def test_a_restarted_worker_reconnects_without_a_new_token(
         # The server publishes its session before the registration response
         # reaches the client. Wait for that response callback to persist the
         # id instead of racing its filesystem write.
-        await asyncio.wait_for(persisted.wait(), timeout=2.0)
+        await asyncio.wait_for(persisted.wait(), timeout=HANG_GUARD_S)
         assert worker_agent.load_worker_id(monkey_paths["worker_id"]) == first_id
 
         # The process goes away.

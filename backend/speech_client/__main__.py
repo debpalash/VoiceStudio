@@ -21,6 +21,18 @@ DEFAULT_CONTROL_URL = "http://127.0.0.1:3902"
 DEFAULT_ENGINE_URL = "http://127.0.0.1:3900"
 
 
+def _default_engine_url() -> str:
+    """VOICESTUDIO_URL, else the backend's OMNIVOICE_PORT on loopback."""
+    explicit = os.environ.get("VOICESTUDIO_URL", "").strip()
+    if explicit:
+        return explicit
+    try:
+        port = int(os.environ.get("OMNIVOICE_PORT", ""))
+    except ValueError:
+        return DEFAULT_ENGINE_URL
+    return f"http://127.0.0.1:{port}" if 0 < port <= 65535 else DEFAULT_ENGINE_URL
+
+
 class SpeechClientError(RuntimeError):
     pass
 
@@ -238,7 +250,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--engine-url",
-        default=os.environ.get("VOICESTUDIO_URL", DEFAULT_ENGINE_URL),
+        default=_default_engine_url(),
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     for command in ("status", "capabilities", "start", "stop", "toggle"):

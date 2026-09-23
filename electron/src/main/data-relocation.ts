@@ -2,6 +2,7 @@ import {
   cp,
   lstat,
   mkdir,
+  open,
   readFile,
   readdir,
   readlink,
@@ -183,6 +184,62 @@ export async function prepareDataRelocation(
   };
 }
 
+/**
+ * Leave the old voices root on record in the moved longform cache (#2279).
+ * Chapters rendered by builds before the portable cache key are keyed by the
+ * reference audio's absolute path under the OLD data dir; the backend probes
+ * every root listed in `voices_roots.json` for them. It records its own root
+ * at startup, and this covers the canonical spelling of the source the move
+ * came from. Best-effort: no cache means nothing legacy to find, and a failed
+ * write never fails the move.
+ */
+export async function recordPreviousVoicesRoot(source: string, target: string): Promise<void> {
+  const cacheDir = join(target, 'outputs', 'longform_cache');
+  try {
+    if (!(await lstat(cacheDir)).isDirectory()) return;
+  } catch {
+    return;
+  }
+  const file = join(cacheDir, 'voices_roots.json');
+  let seen: string[] = [];
+  try {
+    const parsed: unknown = JSON.parse(await readFile(file, 'utf8'));
+    if (Array.isArray(parsed)) {
+      seen = parsed.filter((root): root is string => typeof root === 'string' && root.length > 0);
+    }
+  } catch {
+    seen = [];
+  }
+  const previous = join(source, 'voices');
+  if (seen.includes(previous)) return;
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  const handle = await open(temporary, 'w');
+  try {
+    await handle.writeFile(JSON.stringify([previous, ...seen].slice(0, 8)));
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await rename(temporary, file);
+  await syncDirectory(cacheDir);
+}
+
+// Persist a rename into `dir` (POSIX). Windows has no directory handle to
+// fsync and journals renames itself; failure is best-effort, like the move.
+async function syncDirectory(dir: string): Promise<void> {
+  if (process.platform === 'win32') return;
+  try {
+    const handle = await open(dir, 'r');
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    // The index is advisory; a lost entry only costs one re-render.
+  }
+}
+
 export function userEnvironmentPath(): string {
   return process.env.OMNIVOICE_ENV_FILE || join(homedir(), '.config', 'omnivoice', 'env');
 }
@@ -251,6 +308,7 @@ export async function relocateDataDirectory(
     stopped = true;
     runtime.progress('copying');
     prepared = await prepareDataRelocation(source, target);
+    await recordPreviousVoicesRoot(prepared.source, prepared.target).catch(() => undefined);
     previousSetting = await readDataDirectorySetting(runtime.environmentPath);
     runtime.progress('switching');
     await writeDataDirectorySetting(target, runtime.environmentPath);

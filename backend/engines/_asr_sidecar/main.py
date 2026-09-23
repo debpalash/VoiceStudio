@@ -128,7 +128,30 @@ def _get_model():
     return _model
 
 
-def _transcribe(audio_path, word_timestamps, decode_options=None):
+def _request_options(request_options):
+    """Validate per-request Whisper options (OpenAI-route language, prompt,
+    temperature, task). Strictly typed like the decode options: the parent is
+    trusted, but a malformed frame must fail loudly, not decode wrongly."""
+    options = request_options or {}
+    if not isinstance(options, dict):
+        raise ValueError("Invalid ASR request options")
+    for key, value in options.items():
+        if key == "language":
+            ok = isinstance(value, str) and 0 < len(value) <= 32
+        elif key == "initial_prompt":
+            ok = isinstance(value, str) and len(value) <= 4096
+        elif key == "temperature":
+            ok = type(value) in (int, float) and 0 <= value <= 1
+        elif key == "task":
+            ok = value in ("transcribe", "translate")
+        else:
+            ok = False
+        if not ok:
+            raise ValueError("Invalid ASR request options")
+    return options
+
+
+def _transcribe(audio_path, word_timestamps, decode_options=None, request_options=None):
     options = decode_options or {}
     if not isinstance(options, dict) or any(
         key not in {"beam_size", "best_of"}
@@ -136,8 +159,11 @@ def _transcribe(audio_path, word_timestamps, decode_options=None):
         for key, value in options.items()
     ):
         raise ValueError("Invalid ASR decoding options")
+    extra = _request_options(request_options)
     model = _get_model()
-    segments, info = model.transcribe(audio_path, word_timestamps=word_timestamps, **options)
+    segments, info = model.transcribe(
+        audio_path, word_timestamps=word_timestamps, **options, **extra,
+    )
     out = []
     for s in segments:
         seg = {"start": float(s.start), "end": float(s.end), "text": s.text}
@@ -189,7 +215,10 @@ def main() -> int:
             if op == "ping":
                 _send(stdout, {"op": "pong"})
             elif op == "transcribe":
-                result = _transcribe(msg.get("audio_path"), bool(msg.get("word_timestamps", True)), msg.get("decode_options"))
+                result = _transcribe(
+                    msg.get("audio_path"), bool(msg.get("word_timestamps", True)),
+                    msg.get("decode_options"), msg.get("request_options"),
+                )
                 _send(stdout, {"op": "segments", "result": result})
             elif op == "shutdown":
                 return 0

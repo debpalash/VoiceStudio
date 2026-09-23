@@ -2,7 +2,6 @@ export interface IntegrationCatalogEntry {
   name: string;
   url: string;
   logoUrl: string;
-  detailKeys: string[];
   category: string;
   featured: boolean;
 }
