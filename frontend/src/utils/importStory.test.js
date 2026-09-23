@@ -80,7 +80,45 @@ describe('parseSrt', () => {
   it('scans unclosed markup prefixes in linear time', () => {
     const started = Date.now();
     parseSrt(`1\n00:00:01,000 --> 00:00:02,000\n${'<i'.repeat(50000)}${'{\\'.repeat(50000)}\n`);
+    parseSrt(`WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n${'<'.repeat(50000)}\n`);
     expect(Date.now() - started).toBeLessThan(1000);
+  });
+  it('does not speak a WebVTT file header', () => {
+    const vtt =
+      'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello\n\n00:00:02.000 --> 00:00:03.000\nWorld\n';
+    expect(parseSrt(vtt)).toBe('Hello\nWorld');
+  });
+  it('drops NOTE, STYLE and REGION blocks and cue identifiers', () => {
+    const vtt =
+      'WEBVTT\n\nNOTE made by a translator\n\n' +
+      'intro\n00:00:01.000 --> 00:00:02.500 align:start\nHola\n\n' +
+      'STYLE\n::cue { color: red }\n\n' +
+      'REGION\nid:fred width:40%\n\n' +
+      'cue-2\n00:00:03.000 --> 00:00:04.000\nQue tal\n';
+    expect(parseSrt(vtt)).toBe('Hola\nQue tal');
+  });
+  it('keeps NOTE when it is the spoken dialogue', () => {
+    expect(
+      parseSrt('WEBVTT\n\n00:01.000 --> 00:02.000\nNOTE this is spoken\nSTYLE\nREGION\n'),
+    ).toBe('NOTE this is spoken STYLE REGION');
+  });
+  it('unescapes WebVTT character references after dropping tags', () => {
+    expect(parseSrt('WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nTom &amp; Jerry\n')).toBe(
+      'Tom & Jerry',
+    );
+    expect(
+      parseSrt('WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n&lt;i&gt;literal&lt;/i&gt; <i>real</i>\n'),
+    ).toBe('<i>literal</i> real');
+  });
+  it('still keeps a SubRip entity as written', () => {
+    expect(parseSrt('1\n00:00:01,000 --> 00:00:02,000\nTom &amp; Jerry\n')).toBe('Tom &amp; Jerry');
+  });
+  it('reads a caption file that uses only CR line endings', () => {
+    expect(
+      parseSrt(
+        '1\r00:00:01,000 --> 00:00:02,000\rHello\r\r2\r00:00:02,000 --> 00:00:03,000\rWorld',
+      ),
+    ).toBe('Hello\nWorld');
   });
 });
 
@@ -90,5 +128,11 @@ describe('importToText', () => {
   });
   it('passes .txt through unchanged', () => {
     expect(importToText('story.txt', 'Once upon a time.')).toBe('Once upon a time.');
+  });
+  it('routes .vtt through parseSrt so timestamps are not spoken', () => {
+    const vtt =
+      'WEBVTT\n\n00:00:00.160 --> 00:00:02.310 align:start position:0%\nhey<00:00:00.480><c> everyone</c>\n';
+    expect(importToText('captions.vtt', vtt)).toBe('hey everyone');
+    expect(importToText('captions.VTT', vtt)).toBe('hey everyone');
   });
 });

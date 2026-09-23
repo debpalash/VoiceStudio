@@ -17,10 +17,22 @@ const CUE_MARKUP = new RegExp(
   ].join('|'),
   'gi',
 );
+// WebVTT: an unescaped `<` opens a tag. Body excludes `<` so a run of
+// unclosed `<` cannot make the scan quadratic. Mirrors _WEBVTT_TAG_RE.
+const WEBVTT_TAG = /<[^<>\n]*>/g;
 // SubRip/ASS overrides (`{\an8}`, `{\i1}`); the body excludes `{` to stay linear.
 const ASS_OVERRIDE = /\{\\[^{}\n]*\}/g;
 // `<br>` is a rendered line break, so it separates words instead of vanishing.
 const LINE_BREAK = /<br[ \t]*\/?>/gi;
+const WEBVTT_ENTITY = /&(?:#\d+|#x[0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);/g;
+const NAMED_ENTITY = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: '\u00a0',
+};
 
 /** `text` with each span `re` matches replaced by `sep`. */
 function dropMatches(text, re, sep = '') {
@@ -35,24 +47,75 @@ function dropMatches(text, re, sep = '') {
   return out + text.slice(last);
 }
 
-/** Caption markup is not speech: karaoke spans, italics, `<br>`, `{\an8}` alignment. */
-function spokenCueText(text) {
-  const spaced = dropMatches(dropMatches(String(text || ''), ASS_OVERRIDE), LINE_BREAK, ' ');
-  return dropMatches(spaced, CUE_MARKUP)
-    .replace(/[^\S\n]+/g, ' ')
-    .trim();
+function decodeWebVttEntity(ref) {
+  const body = ref.slice(1, -1);
+  if (body[0] === '#') {
+    const code =
+      body[1] === 'x' || body[1] === 'X' ? parseInt(body.slice(2), 16) : Number(body.slice(1));
+    if (Number.isInteger(code) && code >= 0 && code <= 0x10ffff) return String.fromCodePoint(code);
+    return ref;
+  }
+  return Object.prototype.hasOwnProperty.call(NAMED_ENTITY, body.toLowerCase())
+    ? NAMED_ENTITY[body.toLowerCase()]
+    : ref;
 }
 
-/** Strip SRT indices + timestamps, returning one cue's text per line. */
+function unescapeWebVtt(text) {
+  let out = '';
+  let last = 0;
+  for (const m of text.matchAll(WEBVTT_ENTITY)) {
+    out += text.slice(last, m.index) + decodeWebVttEntity(m[0]);
+    last = m.index + m[0].length;
+  }
+  return out + text.slice(last);
+}
+
+function isWebVtt(text) {
+  return /^[\uFEFF \t\n]*WEBVTT(?:[ \t\n]|$)/.test(text);
+}
+
+function isTimingLine(line) {
+  // Plain substring: a `/-->/` regex trips CodeQL's js/bad-tag-filter.
+  return line.includes('-->');
+}
+
+function isWebVttMetadata(first) {
+  return first === 'STYLE' || first === 'REGION' || /^NOTE(?:[ \t]|$)/.test(first);
+}
+
+/** Caption markup is not speech: karaoke spans, italics, `<br>`, `{\an8}` alignment. */
+function spokenCueText(text, webvtt = false) {
+  const spaced = dropMatches(dropMatches(String(text || ''), ASS_OVERRIDE), LINE_BREAK, ' ');
+  const stripped = dropMatches(spaced, webvtt ? WEBVTT_TAG : CUE_MARKUP);
+  const spoken = webvtt ? unescapeWebVtt(stripped) : stripped;
+  return spoken.replace(/[^\S\n]+/g, ' ').trim();
+}
+
+function captionBlocks(text, webvtt) {
+  const blocks = text.split(/\n\s*\n/);
+  if (!webvtt) return blocks;
+  return blocks.filter((b) => {
+    const lines = b
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (!lines.length) return false;
+    const first = lines[0];
+    if (/^WEBVTT(?:[ \t]|$)/.test(first)) return false;
+    const identifiesCue = lines.length > 1 && isTimingLine(lines[1]);
+    return !isWebVttMetadata(first) || identifiesCue;
+  });
+}
+
+/** Strip SRT/WebVTT indices, identifiers, timestamps; one cue's text per line. */
 export function parseSrt(content) {
-  const blocks = String(content || '')
-    .replace(/\r\n/g, '\n')
-    .split(/\n\s*\n/);
+  const normalized = String(content || '').replace(/\r\n?/g, '\n');
+  const webvtt = isWebVtt(normalized);
   const out = [];
   // Cues seen so far, and the index the current cue carried (null if none).
   let cues = 0;
   let index = null;
-  for (const b of blocks) {
+  for (const b of captionBlocks(normalized, webvtt)) {
     const lines = b
       .split('\n')
       .map((l) => l.trim())
@@ -60,32 +123,29 @@ export function parseSrt(content) {
     const kept = [];
     let pending = null;
     lines.forEach((l, i) => {
-      // Use a plain substring check for the SRT time arrow — a `/-->/` regex
-      // trips CodeQL's js/bad-tag-filter (it mistakes it for HTML-comment
-      // filtering).
-      if (l.includes('-->')) {
+      if (isTimingLine(l)) {
         cues += 1;
         index = pending;
         pending = null;
         return;
       }
+      // WebVTT cue identifiers sit on the first line of a cue, immediately
+      // before its timestamp. They are never spoken (backend parse_srt).
+      if (webvtt && i === 0 && lines[i + 1] && isTimingLine(lines[i + 1])) return;
       // Digits right before a timestamp are its cue index when they open the
       // block. Inside a compact block they are only if they are the number the
       // sequence expects next; digits right under a timestamp are that cue's
       // dialogue ("3", "1984"), since a cue needs text.
-      if (/^\d+$/.test(l) && lines[i + 1]?.includes('-->')) {
+      if (/^\d+$/.test(l) && lines[i + 1] && isTimingLine(lines[i + 1])) {
         const expected = (index ?? cues) + 1;
-        if (
-          i === 0 ||
-          (index !== null && !lines[i - 1].includes('-->') && Number(l) === expected)
-        ) {
+        if (i === 0 || (index !== null && !isTimingLine(lines[i - 1]) && Number(l) === expected)) {
           pending = Number(l);
           return;
         }
       }
       kept.push(l);
     });
-    const text = spokenCueText(kept.join(' '));
+    const text = spokenCueText(kept.join(' '), webvtt);
     if (text) out.push(text);
   }
   return out.join('\n');
@@ -97,7 +157,7 @@ export function importToText(filename, content) {
     .toLowerCase()
     .split('.')
     .pop();
-  if (ext === 'srt') return parseSrt(content);
+  if (ext === 'srt' || ext === 'vtt') return parseSrt(content);
   // .txt and anything else: use as-is.
   return String(content || '');
 }
