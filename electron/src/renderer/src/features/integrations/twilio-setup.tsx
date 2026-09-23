@@ -333,7 +333,15 @@ export function TwilioSetup() {
           {testing ? t('twilioIntegration.testing') : t('twilioIntegration.test')}
         </Button>
         {server.has_auth_token && (
-          <Button variant="ghost" disabled={busy} onClick={() => void submit({ auth_token: '' })}>
+          <Button
+            variant="ghost"
+            disabled={busy}
+            onClick={() =>
+              // Only the removal (never the draft form), and calls go off with
+              // it: they cannot be answered without the token.
+              void submit({ auth_token: '', ...(server.enabled ? { enabled: false } : {}) }, true)
+            }
+          >
             {t('twilioIntegration.clearToken')}
           </Button>
         )}

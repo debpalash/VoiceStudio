@@ -167,3 +167,17 @@ it('turns off with only the switch, so an invalid draft cannot block disabling',
   );
   expect(screen.getByPlaceholderText('AC…')).toHaveValue('not-a-sid');
 });
+
+it('removes the Auth Token without submitting an invalid draft, turning calls off with it', async () => {
+  renderPage({ ...base, enabled: true, has_auth_token: true, missing: [] });
+  fireEvent.change(await screen.findByPlaceholderText('AC…'), { target: { value: 'not-a-sid' } });
+  api.json.mockResolvedValueOnce({ ...base });
+  fireEvent.click(screen.getByRole('button', { name: 'Remove Auth Token' }));
+  await waitFor(() =>
+    expect(api.json).toHaveBeenCalledWith('/api/integrations/twilio/config', {
+      method: 'PUT',
+      body: JSON.stringify({ auth_token: '', enabled: false }),
+    }),
+  );
+  expect(screen.getByPlaceholderText('AC…')).toHaveValue('not-a-sid');
+});
