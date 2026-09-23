@@ -167,3 +167,21 @@ it('applies take-over from agent_state and the finished record sent with ended',
   });
   expect(state.lines.map((line) => line.text)).toEqual(['We open at 9']);
 });
+
+it('keeps an ended call ended when a stale snapshot says it is live', () => {
+  const ended = play([{ type: 'ended', status: 'completed' } as CallEvent]);
+  const after = liveCallReducer(ended, {
+    kind: 'snapshot',
+    call: record({ status: 'in-progress' }),
+  });
+  expect(after.ended).toBe(true);
+  expect(callPhase(after.status)).toBe('ended');
+});
+
+it('keeps the last interim utterance when the call ends with its record', () => {
+  const state = play([
+    { type: 'transcript', speaker: 'caller', text: 'See you at eight', final: false, t: 5 },
+    { type: 'ended', status: 'completed', call: record({ status: 'completed', transcript: [] }) },
+  ] as CallEvent[]);
+  expect(state.lines.map((line) => [line.text, line.final])).toEqual([['See you at eight', true]]);
+});
