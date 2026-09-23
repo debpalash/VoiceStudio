@@ -177,6 +177,17 @@ holds its VRAM until it does, so a Flush (or a retry) issued seconds after a
 timeout is competing with a job that is still on the device. Wait for it to
 drain, or restart the backend, and then Flush.
 
+Audiobook and Stories chapters are the exception: an abandoned chapter stops
+before its next chunk, so the device frees up within one chunk. Chunks that
+already finished stay in the segment cache, so a retry or resume continues from
+there.
+
+A render that keeps finishing chunks (a long Generate text or an audiobook
+chapter) is not abandoned when it reaches its budget. It gets extra time while
+chunks keep landing, up to three times its own budget or 30 minutes, whichever
+is longer (#2287). A render that finishes no chunk within 5 minutes after its
+budget is still abandoned.
+
 **Where it lives:**
 
 - **Top toolbar → Flush** (the button next to the model-status badge). The

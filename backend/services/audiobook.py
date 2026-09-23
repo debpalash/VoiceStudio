@@ -282,6 +282,45 @@ def parse_audiobook_script(text: str, *, default_voice: Optional[str] = None) ->
 MAX_JOIN_SILENCE_MS = 15 * 60 * 1000
 
 
+class ChapterRenderCancelled(RuntimeError):
+    """The chapter's GPU job was abandoned; stopped between chunks (#2287)."""
+
+
+def _stop_if_abandoned() -> None:
+    """Stop a chapter whose caller gave up, before it starts another chunk.
+
+    A whole chapter runs as ONE GPU-pool job. When its budget runs out or the
+    client disconnects, the pool guard stops waiting but cannot kill the
+    thread, which then renders the rest of the chapter while holding the device
+    (#2287). The guard cancels the job's scope, so check it between chunks.
+    Finished spans are already in the segment cache, so a retry or resume picks
+    up from there.
+    """
+    from services.inference_cancellation import current_cancellation
+
+    scope = current_cancellation()
+    if scope is not None and scope.cancelled.is_set():
+        raise ChapterRenderCancelled(
+            "Audiobook chapter stopped: its GPU job was abandoned (timed out or "
+            "the client disconnected). Finished segments are cached."
+        )
+
+
+def _note_chunk_done() -> None:
+    """Tell the pool guard that this chapter just finished a chunk (#2287).
+
+    Without this signal, a long chapter that was still rendering chunk after
+    chunk timed out as "too heavy for the available compute" when it reached
+    its text-scaled budget. Same signal as /generate's (#1391). Never raises.
+    """
+    try:
+        from services.model_manager import report_generate_progress
+
+        report_generate_progress()
+    except Exception:  # noqa: BLE001 — a liveness signal must not break a render
+        pass
+
+
 def _gap_after_span(span: Span, line_gap_ms: int, paragraph_gap_ms: int) -> int:
     if span.pause_ms_after > 0 or span.join == "continue":
         return 0
@@ -396,7 +435,11 @@ def synthesize_chapter(
                 rendered_paragraphs = []
                 for paragraph in paragraphs:
                     chunks = split_text_into_chunks(paragraph)
-                    rendered = [trace_call("synthesis", synth, c, span.voice_id, span.speed) for c in chunks]
+                    rendered = []
+                    for c in chunks:
+                        _stop_if_abandoned()
+                        rendered.append(trace_call("synthesis", synth, c, span.voice_id, span.speed))
+                        _note_chunk_done()
                     # Deliberately NOT pre-filtered (#1330). Dropping the empties
                     # here both hid them — a chapter would come back short with
                     # nothing said about it — and misaligned `rendered` from
