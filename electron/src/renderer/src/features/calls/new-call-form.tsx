@@ -329,9 +329,12 @@ export function NewCallForm({
             {brief}
           </p>
           <DialogFooter>
-            <DialogClose render={<Button variant="outline" />}>{t('common.cancel')}</DialogClose>
+            {/* Focus starts on Cancel: an Enter held from submitting the form
+                must never dial by landing on the confirm button. */}
+            <DialogClose render={<Button variant="outline" autoFocus />}>
+              {t('common.cancel')}
+            </DialogClose>
             <Button
-              autoFocus
               disabled={starting}
               onClick={async () => {
                 setConfirming(false);

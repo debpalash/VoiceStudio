@@ -20,7 +20,9 @@ it('explains what is wrong with a number', () => {
 });
 
 it('hints the country from the calling code, preferring the longest code', () => {
-  expect(phoneRegion('+15550100199')).toBe('US');
+  expect(phoneRegion('+15550100199')).toBeNull();
+  expect(phoneRegion('+14165550199')).toBeNull();
+  expect(phoneRegion('+77012345678')).toBeNull();
   expect(phoneRegion('+442079460958')).toBe('GB');
   expect(phoneRegion('+353 1 234 5678')).toBe('IE');
   expect(phoneRegion('+999 1234 5678')).toBeNull();

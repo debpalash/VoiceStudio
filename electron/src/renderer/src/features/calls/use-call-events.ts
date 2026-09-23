@@ -13,7 +13,8 @@ export function reconnectDelay(attempt: number): number {
 /**
  * Follow a call's live events. The browser retries dropped connections on its
  * own; when it gives up (an HTTP error closes the stream) we reopen with
- * backoff. Every reopen asks the caller to resync from `GET /calls/{id}`, so a
+ * backoff, and past the retry budget keep retrying at the capped delay
+ * while reporting the stream as lost. Every reopen asks the caller to resync from `GET /calls/{id}`, so a
  * gap in the stream never loses transcript lines. The stream closes for good
  * on `ended` and on unmount.
  */
@@ -52,7 +53,9 @@ export function useCallEvents(
     };
     const open = () => {
       if (finished) return;
-      setState(attempts ? 'reconnecting' : 'connecting');
+      // Past the retry budget the UI says the stream is lost, but we keep
+      // trying at the capped delay so a long call still recovers.
+      if (attempts <= MAX_RETRIES) setState(attempts ? 'reconnecting' : 'connecting');
       const current = new EventSource(callEventsUrl(callId));
       source = current;
       current.onopen = () => {
@@ -67,7 +70,7 @@ export function useCallEvents(
         if (finished || source !== current) return;
         reopened = true;
         if (current.readyState === EventSource.CONNECTING) {
-          setState('reconnecting');
+          if (attempts <= MAX_RETRIES) setState('reconnecting');
           return;
         }
         current.close();
@@ -76,9 +79,9 @@ export function useCallEvents(
         if (attempts > MAX_RETRIES) {
           setState('closed');
           handlers.current.onResync();
-          return;
+        } else {
+          setState('reconnecting');
         }
-        setState('reconnecting');
         timer = setTimeout(open, reconnectDelay(attempts));
       };
     };

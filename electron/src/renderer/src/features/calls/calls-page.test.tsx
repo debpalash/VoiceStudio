@@ -161,8 +161,10 @@ it('validates the number and asks for confirmation before dialling', async () =>
   fireEvent.change(number, { target: { value: '555 010 0199' } });
   fireEvent.blur(number);
   expect(screen.getByText(/Start with \+ and the country code/)).toBeVisible();
+  fireEvent.change(number, { target: { value: '+44 20 7946 0958' } });
+  expect(screen.getByText('Calling United Kingdom')).toBeVisible();
   fireEvent.change(number, { target: { value: '+1 (555) 010-0199' } });
-  expect(screen.getByText('Calling United States')).toBeVisible();
+  expect(screen.queryByText(/^Calling /)).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Book a restaurant' }));
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'Call +15550100199' })).toBeEnabled(),
@@ -171,6 +173,8 @@ it('validates the number and asks for confirmation before dialling', async () =>
   fireEvent.click(screen.getByRole('button', { name: 'Call +15550100199' }));
   const dialog = await screen.findByRole('dialog', { name: 'Call +15550100199 now?' });
   expect(requests()).toEqual([]);
+  // Focus lands on Cancel, so a held Enter cannot dial.
+  await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus());
   fireEvent.click(within(dialog).getByRole('button', { name: 'Call now' }));
   await waitFor(() => expect(requests()).toHaveLength(1));
   expect(requests()[0]).toEqual({

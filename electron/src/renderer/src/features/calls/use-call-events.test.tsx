@@ -71,3 +71,21 @@ it('stays idle without a live call', () => {
   expect(result.current).toBe('idle');
   expect(FakeEventSource.instances).toHaveLength(0);
 });
+
+it('keeps retrying at the capped delay after reporting the stream as lost', () => {
+  const onResync = vi.fn();
+  const { result } = renderHook(() => useCallEvents('c1', true, vi.fn(), onResync));
+  for (let attempt = 1; attempt <= 9; attempt += 1) {
+    act(() => FakeEventSource.latest().fail(true));
+    act(() => vi.advanceTimersByTime(reconnectDelay(attempt)));
+  }
+  expect(result.current).toBe('closed');
+  const opened = FakeEventSource.instances.length;
+  act(() => FakeEventSource.latest().fail(true));
+  act(() => vi.advanceTimersByTime(reconnectDelay(99)));
+  expect(FakeEventSource.instances.length).toBe(opened + 1);
+  expect(result.current).toBe('closed');
+  act(() => FakeEventSource.latest().open());
+  expect(result.current).toBe('open');
+  expect(onResync).toHaveBeenCalled();
+});

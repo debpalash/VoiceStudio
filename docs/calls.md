@@ -44,8 +44,9 @@ Clones of other people never appear in the picker. Use **Verify a voice** or
 
 1. **Phone number**: the full international number, starting with `+` and the
    country code (for example `+1 555 010 0199`). Spaces, dashes and brackets are
-   fine. The field shows which country you are calling, or what is wrong with
-   the number.
+   fine. The field shows which country you are calling (when the country code
+   belongs to one country; +1 and +7 are shared), or what is wrong with the
+   number.
 2. **What should it do?**: the task, in plain words. Include names, times and
    what is acceptable if the first choice is unavailable. The example chips
    fill in a starting point.

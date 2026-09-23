@@ -59,9 +59,9 @@ const CALLING_CODES: ReadonlyArray<readonly [string, string]> = [
   ['90', 'TR'],
   ['91', 'IN'],
   ['92', 'PK'],
-  ['7', 'RU'],
-  ['1', 'US'],
 ];
+// +1 (US, Canada, Caribbean) and +7 (Russia, Kazakhstan) are shared by several
+// countries; naming one of them would mislabel the number, so give no hint.
 
 /** Strip formatting; a leading `00` international prefix becomes `+`. */
 export function normalizePhone(input: string): string {
