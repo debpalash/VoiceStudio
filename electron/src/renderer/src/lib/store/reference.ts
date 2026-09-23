@@ -17,7 +17,7 @@ export interface SetReferenceResult {
   /** False when the clip was rejected (longer than REF_HARD_MAX_SECONDS). */
   ok: boolean;
   durationSeconds: number | null;
-  /** Longer than CLONE_MAX_SECONDS: accepted, but the UI should suggest trimming. */
+  /** Longer than the CLONE_MAX_SECONDS recommendation: accepted; the UI says what the engine uses. */
   tooLong: boolean;
 }
 
@@ -62,9 +62,9 @@ export function selectCloneProfile(
 
 /**
  * Set (or clear) the reference clip. Probes the duration first: clips over
- * REF_HARD_MAX_SECONDS are rejected outright (the engine cannot use them
- * without a transcript); clips over CLONE_MAX_SECONDS are accepted with
- * `tooLong` so the caller can nudge the user to trim. Picking a file
+ * REF_HARD_MAX_SECONDS are rejected outright (automatic passage selection
+ * stops there); clips over CLONE_MAX_SECONDS are accepted with `tooLong`, and
+ * the engine keeps as much of them as it can use (#2281). Picking a file
  * deselects any saved voice — exactly one of the two feeds `/generate`.
  */
 export async function setReferenceFile(file: File | null): Promise<SetReferenceResult> {

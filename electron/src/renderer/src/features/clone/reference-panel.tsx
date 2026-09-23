@@ -32,7 +32,7 @@ import { setCloneSetting, useCloneSetting } from '@/lib/store/clone-settings';
 import { selectCloneProfile, setReferenceFile, useReference } from '@/lib/store/reference';
 import { setWorkspace } from '@/lib/store/workspace';
 import { cn } from '@/lib/utils';
-import { RecordZone, UploadZone } from './reference-input';
+import { RecordZone, ReferenceUsageNote, UploadZone } from './reference-input';
 
 interface SaveProfileFormProps {
   metadata?: { refText: string; instruct: string; language: string; seed: number | null };
@@ -384,6 +384,7 @@ export function ReferencePanel({
                 compact
               />
             ) : null}
+            <ReferenceUsageNote durationSeconds={reference.durationSeconds} />
           </div>
         ) : null}
 

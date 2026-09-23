@@ -17,7 +17,11 @@ import { publicFailureFromEvent, type PublicFailure } from '@/lib/api/failure';
 import {
   assignSpeakerProfile,
   applySpeakerCloneDefaults,
+  cueSourceId,
   segmentGenInputs,
+  settleCueSources,
+  withOriginalCueSource,
+  withoutCueSource,
 } from '../../../../../../frontend/src/utils/segments';
 import { hasCompleteTranslation } from '../../../../../../frontend/src/utils/multiLang';
 import {
@@ -54,6 +58,11 @@ export interface DubSegment {
   instruct?: string;
   target_lang?: string;
   translations?: Record<string, string>;
+  /** The cue a caption import wrote, kept for unchanged exports. */
+  webvtt_source?: { id?: string; text: string; cue: string };
+  srt_source?: { id?: string; text: string; cue: string };
+  /** Set while `text` is still that import's words; cleared by any other write. */
+  cue_source_id?: string;
   merge_parts?: SegmentPart[];
   merge_parts_original?: SegmentPart[];
   original_duration?: number;
@@ -313,11 +322,17 @@ export const setDubTarget = (target: string, code?: string) =>
     ...current,
     target,
     segments: code
-      ? current.segments.map((segment) => ({
-          ...segment,
-          text: segment.translations?.[code] || segment.text_original || segment.text,
-          agent_generated_lang: segment.agent_generated_langs?.includes(code) ? code : undefined,
-        }))
+      ? current.segments.map((segment) => {
+          const translated = segment.translations?.[code];
+          const next = {
+            ...segment,
+            text: translated || segment.text_original || segment.text,
+            agent_generated_lang: segment.agent_generated_langs?.includes(code) ? code : undefined,
+          };
+          // Back on the untouched original, the row shows the import's words
+          // again, so its caption markup applies once more (#2295).
+          return translated ? withoutCueSource(next) : withOriginalCueSource(next);
+        })
       : current.segments,
   }));
 export const setDubMultiTargets = (multiTargets: Array<{ lang: string; code: string }>) => {
@@ -426,7 +441,13 @@ let controller: AbortController | null = null;
 let cancelling = false;
 let batchRunId = 0;
 const patch = (value: Partial<DubSession>) =>
-  dubSession.setState((current) => ({ ...current, ...value }));
+  dubSession.setState((current) => ({
+    ...current,
+    ...value,
+    // An imported cue whose text no longer matches is dropped for good, so
+    // no writer can revive it by landing on equal text later (#2295).
+    ...(value.segments ? { segments: settleCueSources(value.segments) } : {}),
+  }));
 const QC_INVALIDATING_FIELDS = new Set([
   'text',
   'profile_id',
@@ -449,9 +470,11 @@ const invalidateQc = (segment: DubSegment): DubSegment => {
 };
 const patchSegment = (segment: DubSegment, value: Partial<DubSegment>) => {
   const fields = Object.keys(value);
+  // Any text write (edit, paste) replaces the import's words, even when equal.
+  const base = 'text' in value ? withoutCueSource(segment) : segment;
   const next = fields.some((field) => QC_INVALIDATING_FIELDS.has(field))
-    ? { ...invalidateQc(segment), ...value, id: segment.id }
-    : { ...segment, ...value, id: segment.id };
+    ? { ...invalidateQc(base), ...value, id: segment.id }
+    : { ...base, ...value, id: segment.id };
   if (segment.merge_parts && fields.some((field) => MERGE_PART_FIELDS.has(field))) {
     next.merge_parts = undefined;
     if (fields.some((field) => ATTRIBUTION_FIELD_NAMES.has(field)))
@@ -1138,7 +1161,7 @@ export async function translateDubWithAgent(
           const agentLanguages = new Set(segment.agent_generated_langs || []);
           agentLanguages.add(target);
           return {
-            ...segment,
+            ...withoutCueSource(segment),
             text,
             translations: { ...segment.translations, [target]: text },
             translate_error: undefined,
@@ -1269,7 +1292,7 @@ export async function translateDub(
           if (row?.error) translateErrors[target] = row.error;
           else delete translateErrors[target];
           return {
-            ...segment,
+            ...(row?.error ? segment : withoutCueSource(segment)),
             text: translatedText,
             translations: {
               ...segment.translations,
@@ -1397,6 +1420,8 @@ export async function generateDub(
                 end: segment.end,
                 gain: segment.gain !== undefined && segment.gain !== 1 ? segment.gain : undefined,
                 ...segmentGenInputs(segment),
+                // Keeps the imported caption markup for unchanged exports (#2295).
+                cue_source_id: cueSourceId(segment),
               })),
               segment_ids: current.segments.map((segment) => segment.id),
               regen_only: regenOnly?.length ? regenOnly : null,
@@ -1503,7 +1528,7 @@ export async function generateDub(
             const text = changed.get(segment.id);
             return text
               ? {
-                  ...segment,
+                  ...withoutCueSource(segment),
                   text,
                   translations: { ...segment.translations, [languageCode]: text },
                   sync_ratio: undefined,

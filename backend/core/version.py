@@ -24,7 +24,7 @@ from pathlib import Path
 # tests/test_app_version.py::test_all_version_files_in_lockstep and bumped by
 # the owner-approved release bump, so it stays equal to
 # pyproject.toml and frontend/package.json. Archived Tauri versions are frozen.
-_FALLBACK_VERSION = "0.5.5"
+_FALLBACK_VERSION = "0.5.6"
 
 
 def _fallback_version() -> str:

@@ -400,13 +400,28 @@ def _segments_for_lang(job: dict, lang: "str | None") -> list:
     lang_texts = i18n.get(lang) if isinstance(i18n, dict) else None
     if not isinstance(lang_texts, dict) or not lang_texts:
         return segments
+    from services.srt_parser import vouch_cue_source
+    # Jobs generated before #2295 have no vouch map and keep the legacy
+    # equal-text reuse; newer ones reuse a cue only for its vouched track.
+    cue_maps = job.get("segments_i18n_cue_sources")
+    lang_cues = cue_maps.get(lang) if isinstance(cue_maps, dict) else None
     out = []
     for i, seg in enumerate(segments):
         key = str(seg.get("id")) if seg.get("id") is not None else str(i)
         txt = lang_texts.get(key)
         if txt is None:
             txt = lang_texts.get(str(i))
-        out.append(dict(seg, text=txt) if isinstance(txt, str) and txt.strip() else seg)
+            key = str(i)
+        if isinstance(txt, str) and txt.strip():
+            # Imported cue markup belongs to this track only if this track's
+            # generate carried the import's own text (#2295).
+            row = dict(seg, text=txt)
+            if isinstance(cue_maps, dict):
+                cues = lang_cues if isinstance(lang_cues, dict) else {}
+                vouch_cue_source(row, txt, cues.get(key))
+            out.append(row)
+        else:
+            out.append(seg)
     return out
 
 
@@ -435,7 +450,7 @@ def _write_burn_srt(job: dict, exports_dir: str, stamp: str, dual: bool,
     for i, seg in enumerate(segments):
         lines.append(str(i + 1))
         lines.append(f"{_format_srt_time(seg['start'])} --> {_format_srt_time(seg['end'])}")
-        lines.append(_pick_subtitle_text(seg, dual))
+        lines.append(_pick_subtitle_text(seg, dual, escape=_srt_cue_text(seg)))
         lines.append("")
     sub_path = os.path.join(exports_dir, f"burn_subs_{stamp}.srt")
     with open(sub_path, "w", encoding="utf-8") as f:
@@ -1739,6 +1754,12 @@ def _format_srt_time(seconds):
     from services.srt_parser import format_cue_timestamp
     return format_cue_timestamp(seconds, ",")
 
+def _srt_cue_text(seg: dict):
+    """SRT writer for ``seg``: an unchanged imported cue keeps its markup."""
+    from services.srt_parser import source_cue_or
+    return lambda text: source_cue_or(seg, text, "srt_source")
+
+
 def _pick_subtitle_text(seg: dict, dual: bool, escape=lambda text: text) -> str:
     """One line per subtitle cue, unless dual=true and an original exists.
 
@@ -1809,7 +1830,7 @@ async def dub_export_srt(
         s, e = cues[i] if cues else (seg["start"], seg["end"])
         srt_lines.append(f"{i + 1}")
         srt_lines.append(f"{_format_srt_time(s)} --> {_format_srt_time(e)}")
-        srt_lines.append(_pick_subtitle_text(seg, dual))
+        srt_lines.append(_pick_subtitle_text(seg, dual, escape=_srt_cue_text(seg)))
         srt_lines.append("")
 
     srt_content = "\n".join(srt_lines)
@@ -1850,7 +1871,7 @@ async def dub_export_vtt(
         segments = _apply_fitted_times(segments, fitted)
     cues = None if fitted else _fitted_cue_times(job, lang)
 
-    from services.srt_parser import escape_webvtt_text
+    from services.srt_parser import escape_webvtt_text, source_cue_or, srt_cue_to_webvtt
 
     vtt_lines = ["WEBVTT", ""]
     for i, seg in enumerate(segments):
@@ -1860,11 +1881,13 @@ async def dub_export_vtt(
         # Reuse imported cue syntax only while the corresponding text is unchanged.
         # This distinguishes literal &lt;i&gt; from genuine <i> markup and survives
         # persistence; older projects retain the legacy markup interpretation.
-        source = seg.get("webvtt_source")
-        def escape_text(text):
-            if (isinstance(source, dict) and source.get("text") == text
-                    and isinstance(source.get("cue"), str)):
-                return escape_webvtt_text(source["cue"])
+        def escape_text(text, seg=seg):
+            if "webvtt_source" in seg:
+                return escape_webvtt_text(source_cue_or(seg, text, "webvtt_source"))
+            if "srt_source" in seg:
+                # Imported SubRip text follows SubRip rules: its `<i>` is
+                # markup, `a<b and c>d` is dialogue.
+                return srt_cue_to_webvtt(source_cue_or(seg, text, "srt_source"))
             return escape_webvtt_text(text)
         vtt_lines.append(_pick_subtitle_text(seg, dual, escape=escape_text))
         vtt_lines.append("")

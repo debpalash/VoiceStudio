@@ -199,6 +199,9 @@ def test_list_backends_shape(registry_sandbox):
         # Graded-emotion capability (#1208): bool from the class attr; drives
         # the Audiobook expressive panel's emotion gate.
         "supports_emotion",
+        # Reference-length truth (#2281): seconds of a clone clip the engine
+        # uses and how it picks them; None when not verified in-repo.
+        "max_ref_seconds", "ref_strategy",
         # True when services.sidecar_install can provision the engine in-app
         # (the Settings Install button keys off this).
         "one_click_install",

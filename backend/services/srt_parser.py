@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import html
 import re
+import secrets
 from dataclasses import dataclass
 
 
@@ -100,6 +101,9 @@ def parse_srt(content: str) -> SrtParseResult:
         text = "\n\n".join(blocks)
     raw: list[dict] = []
     skipped = 0
+    # Each cue source gets an id unique to this import. A later generate keeps
+    # the source only when the client echoes that id (see CUE_SOURCE_FIELDS).
+    import_id = secrets.token_hex(6)
     # Find every timing line, slice the cue text from there to the next
     # timing line (or end of file). This is robust to missing index
     # numbers and to spec deviations in the blank-line separator.
@@ -148,16 +152,17 @@ def parse_srt(content: str) -> SrtParseResult:
             continue
         lines = body.strip("\n").split("\n")
         source_cue = "\n".join(line.strip() for line in lines if line.strip())
-        if is_webvtt:
-            # WebVTT escapes `&`, `<` and `>` in cue text ("Q&amp;A");
-            # SubRip has no escaping, so its text stays as written.
-            lines = [html.unescape(line) for line in lines]
-        cue_text = "\n".join(line.strip() for line in lines if line.strip())
+        # Markup is not speech. Strip it before WebVTT unescape so a real
+        # `<i>` tag drops and a written `&lt;i&gt;` still reads as `<i>`.
+        cue_text = spoken_cue_text(source_cue, webvtt=is_webvtt)
         if not cue_text:
             skipped += 1
             continue
+        # Keep the cue as written so an unchanged export restores its markup,
+        # and so exporters know which syntax the text follows.
+        source_key = "webvtt_source" if is_webvtt else "srt_source"
         raw.append({"start": start, "end": end, "text": cue_text,
-                    **({"webvtt_source": {"text": cue_text, "cue": source_cue}} if is_webvtt else {})})
+                    source_key: {"id": f"{import_id}:{i}", "text": cue_text, "cue": source_cue}})
 
     raw.sort(key=lambda r: r["start"])
 
@@ -183,7 +188,9 @@ def parse_srt(content: str) -> SrtParseResult:
             "text": seg["text"],
             "text_original": seg["text"],
             "speaker_id": "Speaker 1",
-            **({"webvtt_source": seg["webvtt_source"]} if "webvtt_source" in seg else {}),
+            **{k: seg[k] for k in CUE_SOURCE_FIELDS if k in seg},
+            # The text is this import's own words.
+            **{CUE_SOURCE_ID: seg[k]["id"] for k in CUE_SOURCE_FIELDS if k in seg},
         }
         for i, seg in enumerate(out)
     ]
@@ -212,8 +219,111 @@ _CUE_MARKUP_RE = re.compile(
     r"</?(?:[biu]|c|v|lang|ruby|rt|font)(?=[\s.>])[^<>\n]*>|<(?:\d+:)?\d{2}:\d{2}\.\d{3}>",
     re.IGNORECASE,
 )
+# In WebVTT an unescaped `<` always opens a tag and players drop unknown
+# ones, so every tag is markup (`<c.colorE5E5E5>`, `<00:00:01.200>`). The
+# body excludes `<` so a run of unclosed `<` cannot make the scan quadratic.
+_WEBVTT_TAG_RE = re.compile(r"<[^<>\n]*>")
+# SubRip has no escaping, so `a<b and c>d` is dialogue. Only exact tag
+# shapes are markup: `<i>`/`<b.x>`/`</u>`, `<c.colorE5E5E5>`, `<v Roger>`,
+# `<font color=...>` and karaoke timestamps. Mirrored in
+# frontend/src/utils/importStory.js (CUE_MARKUP); keep the two in step.
+_SRT_MARKUP_RE = re.compile(
+    r"</?(?:[biu]|c|ruby|rt)(?:\.[^\s.<>]+)*>"
+    r"|<(?:v|lang)(?:\.[^\s.<>]+)*[ \t][^<>\n]*>|</(?:v|lang)>"
+    r"|<font[ \t][^<>\n]*>|</?font>"
+    r"|<(?:\d+:)?\d{2}:\d{2}\.\d{3}>",
+    re.IGNORECASE,
+)
+# SubRip/ASS overrides (`{\an8}`, `{\i1}`). A `{` in dialogue has no backslash.
+# The body excludes `{` for the same linear-time reason.
+_ASS_OVERRIDE_RE = re.compile(r"\{\\[^{}\n]*\}")
+# `<br>` is a rendered line break in SubRip (and a stray one in WebVTT), so
+# it separates words instead of vanishing.
+_LINE_BREAK_RE = re.compile(r"<br[ \t]*/?>", re.IGNORECASE)
 # An `&` that does not already start a character reference.
 _BARE_AMPERSAND_RE = re.compile(r"&(?!#\d+;|#[xX][0-9a-fA-F]+;|[A-Za-z][A-Za-z0-9]*;)")
+
+
+def spoken_cue_text(text: str, *, webvtt: bool = False) -> str:
+    """Return the words a cue should speak, without player markup.
+
+    Tags and alignment overrides are dropped first so a WebVTT entity that
+    decodes to `<i>` stays literal (`&lt;i&gt;` is speech; `<i>Hi</i>` is not).
+    SubRip has no escaping, so a `<` there is often dialogue ("2 < 3",
+    "<laughter>"): only the tags players render (`<i>`, `<font>`, karaoke
+    timestamps) and ASS overrides are removed.
+    """
+    out = _LINE_BREAK_RE.sub(" ", _ASS_OVERRIDE_RE.sub("", text))
+    out = (_WEBVTT_TAG_RE if webvtt else _SRT_MARKUP_RE).sub("", out)
+    if webvtt:
+        out = html.unescape(out)
+    return "\n".join(line.strip() for line in out.split("\n") if line.strip())
+
+
+# Segment fields holding the cue as imported. They are provenance, not text:
+# a cue is reused only while the segment's CUE_SOURCE_ID names it, meaning its
+# `text` is still that import's words, never because later text is equal.
+# Imports set CUE_SOURCE_ID; clients echo it on /dub/generate while the text
+# is untouched and drop it on any paste, edit or translation. The source
+# record itself stays, so returning to the original language can restore it.
+CUE_SOURCE_FIELDS = ("webvtt_source", "srt_source")
+CUE_SOURCE_ID = "cue_source_id"
+
+
+def vouch_cue_source(row: dict, text: str, cue_source_id: str | None) -> str | None:
+    """Set ``row``'s CUE_SOURCE_ID when ``cue_source_id`` names its cue for ``text``."""
+    vouched = None
+    for key in CUE_SOURCE_FIELDS:
+        source = row.get(key)
+        if (isinstance(source, dict) and cue_source_id and source.get("id") == cue_source_id
+                and source.get("text") == text):
+            vouched = cue_source_id
+    if vouched:
+        row[CUE_SOURCE_ID] = vouched
+    else:
+        row.pop(CUE_SOURCE_ID, None)
+    return vouched
+
+
+def srt_cue_to_webvtt(cue: str) -> str:
+    """A SubRip cue as escaped WebVTT cue text.
+
+    SubRip has no escaping, so only its player tags stay markup; every other
+    `<` and `&` is dialogue and is escaped (`a<b and c>d` stays readable).
+    `{\\an8}` overrides have no WebVTT meaning and `<br>` becomes a newline.
+    """
+    lines = _LINE_BREAK_RE.sub("\n", _ASS_OVERRIDE_RE.sub("", cue)).split("\n")
+    # A blank line ends a WebVTT cue, so doubled or edge breaks must not leave one.
+    cue = "\n".join(line.strip() for line in lines if line.strip())
+    parts = []
+    last = 0
+    for markup in _SRT_MARKUP_RE.finditer(cue):
+        parts.append(_escape_plain_span(cue[last:markup.start()]))
+        parts.append(markup.group(0))
+        last = markup.end()
+    parts.append(_escape_plain_span(cue[last:]))
+    return "".join(parts)
+
+
+def _escape_plain_span(span: str) -> str:
+    return span.replace("&", "&amp;").replace("<", "&lt;").replace("-->", "--&gt;")
+
+
+def source_cue_or(seg: dict, text: str, key: str) -> str:
+    """The imported cue syntax for ``text`` while it is unchanged, else ``text``.
+
+    Imports strip markup from the spoken text; an export of the same text
+    writes the original cue back so italics and `{\\an8}` survive a
+    round trip. Edited text and older projects fall back to ``text``.
+    """
+    source = seg.get(key)
+    if not (isinstance(source, dict) and source.get("text") == text
+            and isinstance(source.get("cue"), str)):
+        return text
+    # Cues from before #2295 carry no id and keep the equal-text rule.
+    if source.get("id") and seg.get(CUE_SOURCE_ID) != source["id"]:
+        return text
+    return source["cue"]
 
 
 def _escape_cue_span(span: str) -> str:

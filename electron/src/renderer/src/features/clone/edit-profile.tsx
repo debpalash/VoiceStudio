@@ -31,7 +31,7 @@ import { cloneSettingsStore, patchCloneSettings } from '@/lib/store/clone-settin
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { createObjectUrl, revokeObjectUrl } from '@/lib/audio/object-url';
 import { cn } from '@/lib/utils';
-import { RecordZone, UploadZone } from './reference-input';
+import { RecordZone, ReferenceUsageNote, UploadZone } from './reference-input';
 import { ProfileImageEditor } from './profile-image-editor';
 import { formatRelative } from './format';
 import { useTtsReadiness } from '@/hooks/use-tts-readiness';
@@ -203,6 +203,7 @@ export function EditProfile({ profile, onDone }: { profile: Profile; onDone: () 
                   </span>
                 ) : null}
               </div>
+              <ReferenceUsageNote durationSeconds={replacement.durationSeconds} />
               {replacementUrl ? (
                 <WaveformPlayer
                   key={replacementUrl}

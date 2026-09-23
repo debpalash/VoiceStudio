@@ -51,8 +51,10 @@ now retried once with a fresh client. See
   passes it in the native `(description)text` format; there is no separate
   `voice_description` argument in VoxCPM 2.0.3.
 - **Cloning:** the reference clip is prepared before use (edge-silence trim
-  and length cap) so dead air in a raw clip doesn't condition the output; on
-  any prep problem the raw clip is used as-is.
+  and a cap at the first 30 seconds) so dead air in a raw clip doesn't
+  condition the output; on any prep problem the raw clip is used as-is. When
+  the cap cuts the clip, its whole-clip transcript no longer matches, so it is
+  ignored and the capped clip clones as a plain reference.
 - **Style instructions** (the Style field, API `instruct`, or a leading
   `(instruction)` in the text) use controllable cloning: the reference supplies
   timbre, without the saved transcript forcing continuation of its delivery.

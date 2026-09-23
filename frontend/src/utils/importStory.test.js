@@ -53,6 +53,35 @@ describe('parseSrt', () => {
       '3\n00:00:03,000 --> 00:00:04,000\n2\n';
     expect(parseSrt(s)).toBe('Count 3 2');
   });
+  it('drops karaoke tags and alignment overrides from spoken lines', () => {
+    const s =
+      '1\n00:00:01,000 --> 00:00:02,000\n{\\an8}{\\i1}Hello{\\i0}\n\n' +
+      '2\n00:00:02,000 --> 00:00:03,000\nhey<00:00:00.480><c> everyone</c>\n';
+    expect(parseSrt(s)).toBe('Hello\nhey everyone');
+  });
+  it('keeps a literal less-than that is not a tag', () => {
+    expect(parseSrt('1\n00:00:01,000 --> 00:00:02,000\nI <3 you\n')).toBe('I <3 you');
+  });
+  it('keeps angle-bracketed dialogue that is not a player tag', () => {
+    for (const line of ['2 < 3 and 4 > 1', '<laughter> okay', 'if a<b and c>d']) {
+      expect(parseSrt(`1\n00:00:01,000 --> 00:00:02,000\n${line}\n`)).toBe(line);
+    }
+  });
+  it('drops font, voice and bold tags but keeps CJK and RTL words', () => {
+    const words = '\u4f60\u597d \u05e9\u05dc\u05d5\u05dd';
+    const s = `1\n00:00:01,000 --> 00:00:02,000\n<font color="#ff0">{\\an8}<b>${words}</b></font> <v Roger>ok</v>\n`;
+    expect(parseSrt(s)).toBe(`${words} ok`);
+  });
+  it('reads a SubRip line break as a word gap', () => {
+    expect(parseSrt('1\n00:00:01,000 --> 00:00:02,000\nHello<br>big<BR />world\n')).toBe(
+      'Hello big world',
+    );
+  });
+  it('scans unclosed markup prefixes in linear time', () => {
+    const started = Date.now();
+    parseSrt(`1\n00:00:01,000 --> 00:00:02,000\n${'<i'.repeat(50000)}${'{\\'.repeat(50000)}\n`);
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
 });
 
 describe('importToText', () => {

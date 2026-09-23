@@ -4,6 +4,7 @@ import { expect, it, vi } from 'vitest';
 import { apiJson } from '@/lib/api/client';
 import { consumeTaskStream, IncompleteTaskStreamError } from '@/lib/api/event-stream';
 import {
+  applyDubTranslationRows,
   uploadDub,
   setDubProduction,
   dubSession,
@@ -628,4 +629,65 @@ it('stops Agent Fit when the slot-fitting provider disappears mid-run', async ()
     error: DUB_AGENT_UNAVAILABLE,
     tracks: ['es'],
   });
+});
+
+it('echoes an imported cue only while no paste or edit has replaced its words (#2295)', async () => {
+  const source = { id: 'imp:0', text: 'Hello', cue: '<i>Hello</i>' };
+  const reset = () =>
+    dubSession.setState((current) => ({
+      ...current,
+      jobId: 'cue',
+      phase: 'editing',
+      recovery: null,
+      timingStrategy: 'strict_slot',
+      segments: [
+        {
+          id: '0',
+          start: 0,
+          end: 1,
+          text: 'Hello',
+          text_original: 'Hello',
+          srt_source: source,
+          cue_source_id: 'imp:0',
+        },
+      ],
+    }));
+  const generatedCueId = async () => {
+    vi.mocked(apiJson).mockClear().mockResolvedValueOnce({ task_id: 'cue-task' });
+    vi.mocked(consumeTaskStream).mockImplementationOnce(async (_path, emit) => {
+      emit({ type: 'done', tracks: ['en'] });
+    });
+    await generateDub('English', 'en');
+    const body = JSON.parse(vi.mocked(apiJson).mock.calls[0][1]!.body as string);
+    return body.segments[0].cue_source_id;
+  };
+
+  reset();
+  expect(await generatedCueId()).toBe('imp:0');
+
+  // A pasted translation that reads exactly like the import is still not it.
+  reset();
+  applyDubTranslationRows('en', [
+    { id: '0', index: 0, start: 0, end: 1, before: 'Hello', after: 'Hello', matched: true },
+  ]);
+  expect(dubSession.state.segments[0].cue_source_id).toBeUndefined();
+  expect(await generatedCueId()).toBeUndefined();
+
+  // Editing away and back never revives it.
+  reset();
+  editDubSegment('0', { text: 'Bye' });
+  editDubSegment('0', { text: 'Hello' });
+  expect(await generatedCueId()).toBeUndefined();
+
+  // Switching to a translation and back to the untouched original restores it.
+  reset();
+  dubSession.setState((current) => ({
+    ...current,
+    segments: current.segments.map((segment) => ({ ...segment, translations: { es: 'Hola' } })),
+  }));
+  setDubTarget('Spanish', 'es');
+  expect(dubSession.state.segments[0].cue_source_id).toBeUndefined();
+  setDubTarget('English', 'en');
+  expect(dubSession.state.segments[0].text).toBe('Hello');
+  expect(await generatedCueId()).toBe('imp:0');
 });
