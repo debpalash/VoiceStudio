@@ -11,10 +11,15 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 **Highlights**
 
 - A call agent that places or answers phone calls in your own voice to get a task done (#2306)
+- Footer integration logos open their in-app page (#2302)
 
 ### Added
 
 - Call agent backend: place or answer phone calls that hold a task conversation in your verified or designed voice, with an editable AI disclosure, take-over and an after-call summary (#2306)
+
+### Changed
+
+- Integration logos in the footer open their page inside the app instead of an outside website (#2302)
 
 ### Docs
 
