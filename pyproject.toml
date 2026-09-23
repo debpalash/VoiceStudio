@@ -208,6 +208,11 @@ dependencies = [
     # protobuf runtime already present transitively.
     "grpcio>=1.60",
     "protobuf>=5.29.6",
+    # Security floors for pyannote-audio's checkpoint loader (GHSA-qqmf-gpg7-g8gw).
+    # Declared here, not only in uv.lock, so `uv pip install .` (Docker, Colab)
+    # cannot keep a preinstalled 2.6.5 that pyannote's `lightning>=2.0.1` allows.
+    "lightning>=2.6.6",
+    "pytorch-lightning>=2.6.6",
     "nvidia-ml-py>=13.0",
 ]
 
