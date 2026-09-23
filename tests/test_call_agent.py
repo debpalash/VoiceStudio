@@ -128,6 +128,7 @@ def fakes(mods, monkeypatch):
         return f.rest_status, json.dumps(f.rest_body).encode()
 
     monkeypatch.setattr(M.tw, "_http_post_form", _post)
+    monkeypatch.setattr(M.calls, "store_save", _notify(M.calls.store_save))
     monkeypatch.setattr(M.calls, "llm_status", lambda: (True, "ready (fake)"))
     monkeypatch.setattr(M.calls, "asr_status", lambda: (True, "ready (fake)"))
     monkeypatch.setattr(
@@ -237,14 +238,37 @@ def _speak(ws, speech_frames=30, silence_frames=40):
         ws.send_json({"event": "media", "streamSid": STREAM_SID, "media": {"payload": quiet}})
 
 
+#: Notified whenever a call record changes (a turn is added, a call is
+#: finalized), so tests wait on the event itself instead of sleeping.
+_changed = threading.Condition()
+_generation = [0]
+
+
+def _notify(fn):
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            with _changed:
+                _generation[0] += 1
+                _changed.notify_all()
+
+    return wrapper
+
+
 def _wait_record(api, call_id, pred, timeout=15):
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        rec = api.get(f"/calls/{call_id}").json()
+    deadline = time.monotonic() + timeout
+    while True:
+        with _changed:
+            seen = _generation[0]
+        rec = api.get(f"/calls/{call_id}").json()  # never under the lock
         if pred(rec):
             return rec
-        time.sleep(0.05)
-    raise AssertionError(f"timed out; last record: {rec}")
+        with _changed:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise AssertionError(f"timed out; last record: {rec}")
+            _changed.wait_for(lambda: _generation[0] != seen, remaining)
 
 
 def _place(api, profile, **extra):
@@ -630,20 +654,23 @@ def test_a_crashed_stream_still_finalizes_and_frees_the_slot(api, gw, fakes, mon
     call_id = _place(api, _profile(verified=1)).json()["call"]["id"]
     params = _stream_params(_answer(gw, call_id))
 
+    boomed = threading.Event()
+
     async def _boom(self, name):
+        boomed.set()
         raise RuntimeError("mark handler failed")
 
+    from starlette.websockets import WebSocketDisconnect
+
     monkeypatch.setattr(M.agent.CallAgent, "on_mark", _boom)
-    try:
+    with pytest.raises((WebSocketDisconnect, RuntimeError)):
         with gw.websocket_connect(M.tw.STREAM_PATH) as ws:
             ws.send_json(_start(params))
             _, mark, _ = _read_until_mark(ws)
             _echo(ws, mark)
-            with pytest.raises(Exception):
-                while True:
-                    _recv(ws, timeout=5)
-    except RuntimeError:
-        pass  # the handler's exception may surface through the test client
+            while True:
+                _recv(ws)
+    assert boomed.is_set()
     rec = _wait_record(api, call_id, lambda r: r["ended_at"] is not None)
     assert rec["status"] in ("completed", "failed") and M.calls.get_live(call_id) is None
     assert _place(api, _profile(verified=1)).status_code == 201  # the slot was released
