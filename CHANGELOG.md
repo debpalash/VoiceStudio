@@ -16,6 +16,10 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 - Integration logos in the footer open their page inside the app instead of an outside website (#2302)
 
+### Fixed
+
+- Hardsub exports on Windows pass the caption path in ffmpeg's filter form so burned-in line and karaoke captions render (#2312)
+
 ## [0.5.6] — 2026-09-23
 
 **VoiceStudio now talks to your other tools.** Answer Twilio phone calls in a saved voice, and connect Claude Code, Cursor, Codex CLI and the OpenAI Agents SDK to VoiceStudio with copyable setup that works, including in Docker, where MCP previously returned HTTP 405. Integration cards now say plainly which ones work with VoiceStudio and which are external links.
