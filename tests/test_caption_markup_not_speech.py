@@ -202,6 +202,21 @@ def test_unchanged_srt_export_keeps_alignment_and_italics():
     assert [s["text"] for s in parse_srt(vtt).segments] == ["Hello\nbig\nworld"]
 
 
+def test_srt_dialogue_brackets_survive_webvtt_export_and_reimport():
+    from services.srt_parser import parse_srt
+
+    srt = "1\n00:00:01,000 --> 00:00:02,000\nif a<b and c>d, <i>Q&A</i> &amp; 2 < 3\n"
+    segments = parse_srt(srt).segments
+    spoken = segments[0]["text"]
+    assert spoken == "if a<b and c>d, Q&A &amp; 2 < 3"
+    vtt = _export("vtt", segments)
+    assert "if a&lt;b and c>d, <i>Q&amp;A</i> &amp;amp; 2 &lt; 3" in vtt
+    assert parse_srt(vtt).segments[0]["text"] == spoken
+    # Edited SubRip text keeps SubRip rules too.
+    segments[0]["text"] = "x <b and y> z"
+    assert parse_srt(_export("vtt", segments)).segments[0]["text"] == "x <b and y> z"
+
+
 def test_edited_srt_text_exports_as_edited():
     from services.srt_parser import parse_srt
 

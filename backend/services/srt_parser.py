@@ -154,11 +154,11 @@ def parse_srt(content: str) -> SrtParseResult:
         if not cue_text:
             skipped += 1
             continue
-        # Keep the cue as written so an unchanged export restores its markup.
+        # Keep the cue as written so an unchanged export restores its markup,
+        # and so exporters know which syntax the text follows.
         source_key = "webvtt_source" if is_webvtt else "srt_source"
-        keep_source = is_webvtt or source_cue != cue_text
         raw.append({"start": start, "end": end, "text": cue_text,
-                    **({source_key: {"text": cue_text, "cue": source_cue}} if keep_source else {})})
+                    source_key: {"text": cue_text, "cue": source_cue}})
 
     raw.sort(key=lambda r: r["start"])
 
@@ -254,11 +254,28 @@ def spoken_cue_text(text: str, *, webvtt: bool = False) -> str:
     return "\n".join(line.strip() for line in out.split("\n") if line.strip())
 
 
-def srt_cue_as_webvtt(cue: str) -> str:
-    """A SubRip cue in WebVTT terms: no `{\\an8}` overrides, `<br>` as a newline."""
+def srt_cue_to_webvtt(cue: str) -> str:
+    """A SubRip cue as escaped WebVTT cue text.
+
+    SubRip has no escaping, so only its player tags stay markup; every other
+    `<` and `&` is dialogue and is escaped (`a<b and c>d` stays readable).
+    `{\\an8}` overrides have no WebVTT meaning and `<br>` becomes a newline.
+    """
     lines = _LINE_BREAK_RE.sub("\n", _ASS_OVERRIDE_RE.sub("", cue)).split("\n")
     # A blank line ends a WebVTT cue, so doubled or edge breaks must not leave one.
-    return "\n".join(line.strip() for line in lines if line.strip())
+    cue = "\n".join(line.strip() for line in lines if line.strip())
+    parts = []
+    last = 0
+    for markup in _SRT_MARKUP_RE.finditer(cue):
+        parts.append(_escape_plain_span(cue[last:markup.start()]))
+        parts.append(markup.group(0))
+        last = markup.end()
+    parts.append(_escape_plain_span(cue[last:]))
+    return "".join(parts)
+
+
+def _escape_plain_span(span: str) -> str:
+    return span.replace("&", "&amp;").replace("<", "&lt;").replace("-->", "--&gt;")
 
 
 def source_cue_or(seg: dict, text: str, key: str) -> str:
