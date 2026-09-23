@@ -14,7 +14,11 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 - Malayalam speech reads numbers in Malayalam (#2280) — thanks @nikhilkilivayil!
 - Stories and Audiobook can save a chapter cue sheet (`.txt`) after a render (#2278) — thanks @shivsin25!
 - Windows backend keeps answering after antivirus or VPN software resets a connection (#2276) — thanks @ialexbond!
-- Replace a saved voice clone's reference sample without creating a duplicate voice (#2282)
+- Saved voice clones can swap their reference sample in place, and long reference clips clone on OmniVoice (#2282, #2281)
+
+### Changed
+
+- Voice Clone says how much of a long reference the active engine uses instead of asking you to trim to 15 s (#2281) — thanks @Cengokill!
 
 ### Added
 
@@ -31,6 +35,8 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 ### Fixed
 
 - Pasted and imported captions no longer speak karaoke tags, `<i>`/`<font>` tags or `{\an8}` alignment prefixes, while SubRip dialogue such as `2 < 3` is kept; unchanged WebVTT and SubRip exports keep the original cue markup (#2295) — thanks @kevin9327!
+- Saved voices and uploads longer than 20 s clone on OmniVoice again; the best passage is picked automatically (#2281) — thanks @Cengokill!
+- VoxCPM2 no longer pairs a capped reference with a transcript of the whole clip (#2281)
 - Speaker diarisation uses Lightning 2.6.6, which blocks code execution from a crafted checkpoint (#2296)
 - Long audiobook chapters on 8 GB GPUs no longer time out while still rendering, and a timed-out chapter stops using the GPU after its current chunk (#2287) — thanks @Tran-Van-Hieu!
 - On Windows, one reset connection no longer leaves the backend running but unreachable (#2276) — thanks @ialexbond!
@@ -49,9 +55,11 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 - @castlecreati — audiobook chapter cache lost after a power-off (#2279).
 - @Cengokill — no way to replace a saved clone's reference sample (#2282).
+- @Cengokill — long reference clips failed to clone on OmniVoice (#2281).
 
 ### Docs
 
+- Per-engine reference clip limits in the engine guide (#2281)
 - Install with prompt is now a two-line prompt; the full agent steps live in [docs/install/agent.md](docs/install/agent.md) (#2288)
 
 ## [0.5.5] — 2026-09-22

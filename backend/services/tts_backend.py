@@ -18,6 +18,7 @@ dub generator consumes whole segments today.
 """
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import re
@@ -396,6 +397,15 @@ class TTSBackend(ABC):
     #: of silently falling back to OmniVoice or mis-cloning per segment.
     supports_cloning: bool = True
 
+    #: Longest stretch of a reference clip this engine actually conditions on,
+    #: in seconds, and how it chooses that stretch from a longer clip:
+    #: ``"best_window"`` (picks the passage with the most speech), ``"head"``
+    #: (keeps the start), ``"full"`` (uses everything). ``None`` = not verified
+    #: in-repo; the UI then makes no engine-specific claim (#2281). Surfaced via
+    #: ``list_backends()`` so Voice Clone can say what a long clip turns into.
+    max_ref_seconds: Optional[float] = None
+    ref_strategy: Optional[str] = None
+
     #: Curated model keys that DO accept a reference clip, for an adapter
     #: whose ``supports_cloning`` is model-dependent (a property rather than
     #: a plain bool). Empty when cloning is a fixed fact about the engine.
@@ -741,6 +751,71 @@ def _clone_prompt_key(ref_audio: str, ref_text, preprocess_prompt: bool = True):
     return (os.path.abspath(ref_audio), mtime, ref_text or "", bool(preprocess_prompt))
 
 
+def reference_duration_s(path) -> Optional[float]:
+    """Duration of a reference clip on disk in seconds, or ``None`` if unknown.
+
+    Same decoders the OmniVoice loader uses (libsndfile, then pydub/ffmpeg),
+    so every format a reference can be saved in resolves. Memoized per file
+    version: callers probe once per generate call, and the ffmpeg fallback
+    decodes the whole clip.
+    """
+    if not isinstance(path, str) or not path:
+        return None
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return _reference_duration_cached(os.path.abspath(path), st.st_mtime_ns, st.st_size)
+
+
+@functools.lru_cache(maxsize=64)
+def _reference_duration_cached(path: str, _mtime_ns: int, _size: int) -> Optional[float]:
+    try:
+        import soundfile as sf
+
+        return float(sf.info(path).duration)
+    except Exception:  # noqa: BLE001 — fall through to ffmpeg
+        pass
+    try:
+        from pydub import AudioSegment
+
+        return float(AudioSegment.from_file(path).duration_seconds)
+    except Exception:  # noqa: BLE001 — unknown length: callers keep old behavior
+        return None
+
+
+def omnivoice_ref_text(ref_audio, ref_text):
+    """The transcript OmniVoice can actually align with ``ref_audio`` (#2281).
+
+    OmniVoice rejects a transcript paired with a clip longer than
+    ``CLONE_REF_TEXT_MAX_SECONDS``. Transcripts reaching the engine layer are
+    overwhelmingly machine-made: the profile save and Voice Clone both
+    transcribe the whole clip automatically, and a stored profile keeps that
+    transcript forever. Passing one on made every saved voice longer than 20 s
+    permanently unusable on the default engine. Dropping it routes the clip
+    through the model's own best-passage selection, which transcribes the
+    chosen passage itself. A transcript typed on a ``/generate`` request is
+    rejected there with ``[clone_ref_too_long]`` before reaching this point.
+    """
+    if not ref_text or not ref_text.strip():
+        # "" and whitespace are no transcript: the model checks
+        # ``ref_text is not None``, so pass None and let it pick the passage.
+        return None
+    if not isinstance(ref_audio, str):
+        return ref_text
+    from omnivoice.utils.audio import CLONE_REF_TEXT_MAX_SECONDS
+
+    duration = reference_duration_s(ref_audio)
+    if duration is None or duration <= CLONE_REF_TEXT_MAX_SECONDS:
+        return ref_text
+    logger.info(
+        "reference is %.1fs (>%.0fs): ignoring its whole-clip transcript so "
+        "OmniVoice picks and transcribes the best passage",
+        duration, CLONE_REF_TEXT_MAX_SECONDS,
+    )
+    return None
+
+
 def _get_clone_prompt(
     model, ref_audio: str, ref_text, preprocess_prompt: bool = True, *,
     store: bool = True,
@@ -768,7 +843,14 @@ def _get_clone_prompt(
     # persist the transcript. Incomplete reference conditioning can destabilize
     # the reference/target boundary and introduce words in the generated prefix.
     unresolved_key = None
-    if ref_audio and not ref_text:
+    from omnivoice.utils.audio import CLONE_REF_TEXT_MAX_SECONDS
+
+    duration = reference_duration_s(ref_audio)
+    if duration is not None and duration > CLONE_REF_TEXT_MAX_SECONDS:
+        # #2281: a whole-clip transcript cannot be aligned — neither a stored
+        # one nor one resolved here. Leave it to the model's passage selection.
+        ref_text = omnivoice_ref_text(ref_audio, ref_text)
+    elif ref_audio and not ref_text:
         try:
             unresolved_key = _clone_prompt_key(
                 ref_audio, None, preprocess_prompt
@@ -891,7 +973,9 @@ def generate_with_cached_ref(model, *, ref_audio, ref_text, **gen_kw):
             return model.generate(voice_clone_prompt=prompt, **gen_kw)
         except Exception as e:  # noqa: BLE001 — fall back to the inline ref
             logger.warning("voice_clone_prompt generate failed; retrying inline ref: %s", e)
-    return model.generate(ref_audio=ref_audio, ref_text=ref_text, **gen_kw)
+    return model.generate(
+        ref_audio=ref_audio, ref_text=omnivoice_ref_text(ref_audio, ref_text), **gen_kw
+    )
 
 
 def clear_clone_prompt_cache() -> None:
@@ -928,6 +1012,10 @@ class OmniVoiceBackend(TTSBackend):
     # floor: the rest have no measured figure, and inventing one would put a
     # confident number in the UI that nothing backs.
     min_vram_gb = 6.0
+    # omnivoice.utils.audio.CLONE_REF_TEXT_MAX_SECONDS: longer clips are cut to
+    # the 15 s passage with the most speech (create_voice_clone_prompt).
+    max_ref_seconds = 20.0
+    ref_strategy = "best_window"
 
     def __init__(self, model=None):
         # The live OmniVoice instance. Reuses the singleton owned by
@@ -1191,6 +1279,27 @@ def _voxcpm_upgrade_hint() -> Optional[str]:
 # generations from re-reading + re-writing the same clip, and keeps the temp
 # dir from filling with one copy per generate() call.
 _VOXCPM_REF_PREP_CACHE: dict[tuple, str] = {}
+#: Prepared paths whose voiced span was cut at :data:`_VOXCPM_REF_MAX_S`.
+_VOXCPM_CAPPED_REFS: set[str] = set()
+
+
+def prepare_voxcpm_reference(kw: dict) -> None:
+    """Prepare ``kw["ref_audio"]`` in place for VoxCPM2 (both adapters).
+
+    #2281: when the clip was cut to its first :data:`_VOXCPM_REF_MAX_S`, a
+    whole-clip transcript no longer matches the audio, and VoxCPM2 would
+    continue from a prompt whose text runs past its end. Drop the transcript
+    so the capped clip clones as a plain reference instead.
+    """
+    if not kw.get("ref_audio"):
+        return
+    kw["ref_audio"] = _prepare_voxcpm_ref(kw["ref_audio"])
+    if kw.get("ref_text") and kw["ref_audio"] in _VOXCPM_CAPPED_REFS:
+        logger.info(
+            "VoxCPM2: reference capped at %.0fs; ignoring its whole-clip transcript",
+            _VOXCPM_REF_MAX_S,
+        )
+        kw["ref_text"] = None
 
 
 def _prepare_voxcpm_ref(path: str) -> str:
@@ -1242,6 +1351,7 @@ def _prepare_voxcpm_ref(path: str) -> str:
         start = max(0, int(voiced[0]) - pad)
         end = min(n, int(voiced[-1]) + 1 + pad)
         cap = int(_VOXCPM_REF_MAX_S * sr)
+        capped = end > start + cap
         end = min(end, start + cap)
 
         # No-op path: nothing meaningful to cut (>0.1 s total) — hand the
@@ -1255,6 +1365,8 @@ def _prepare_voxcpm_ref(path: str) -> str:
         os.close(fd)
         sf.write(prepared, audio[start:end], sr)
         _VOXCPM_REF_PREP_CACHE[cache_key] = prepared
+        if capped:
+            _VOXCPM_CAPPED_REFS.add(prepared)
         logger.info(
             "VoxCPM2: prepared reference clip %s → %s (%.2fs → %.2fs; "
             "silence trimmed, cap %.0fs)",
@@ -1281,6 +1393,9 @@ class VoxCPM2Backend(TTSBackend):
     id = "voxcpm2"
     display_name = "VoxCPM2 (30 langs, studio 48 kHz, voice design)"
     supports_voice_design = True
+    # _prepare_voxcpm_ref keeps the first _VOXCPM_REF_MAX_S after silence trim.
+    max_ref_seconds = _VOXCPM_REF_MAX_S
+    ref_strategy = "head"
     applies_own_mastering = True  # native 48 kHz studio output — skip apply_mastering()
     gpu_compat = ("cuda", "mps", "cpu")
 
@@ -1345,8 +1460,7 @@ class VoxCPM2Backend(TTSBackend):
 
         from engines.voxcpm2_subprocess.main import generation_kwargs
 
-        if kw.get("ref_audio"):
-            kw["ref_audio"] = _prepare_voxcpm_ref(kw["ref_audio"])
+        prepare_voxcpm_reference(kw)
         wav = self._model.generate(**generation_kwargs(text, **kw))
         return self._finalize(wav)
 
@@ -2773,6 +2887,8 @@ def list_backends(*, include_hidden: bool = False) -> list[dict]:
           "gpu_compat":     list[str],              # subset of {cuda, rocm, mps, vulkan, xpu, npu, cpu}
           "supports_cloning": Optional[bool],       # True/False from the class attr; None when
                                                     #   model-dependent (property, e.g. mlx-audio)
+          "max_ref_seconds": Optional[float],       # seconds of a clone clip the engine uses
+          "ref_strategy": Optional[str],            # "best_window" | "head" | "full"; None = unverified
           "effective_device": str,                  # device this engine uses on THIS host
           "routing_status": "accelerated" | "cpu_fallback" | "cpu_only" | "unavailable",
           "routing_reason": Optional[str],          # scrubbed; null when none
@@ -2894,6 +3010,10 @@ def list_backends(*, include_hidden: bool = False) -> list[dict]:
             # Graded-emotion capability (#1208) — drives the Audiobook emotion
             # panel's engine gate. Class attr, defaults False.
             "supports_emotion": bool(getattr(cls, "supports_emotion", False)),
+            # Reference-length truth (#2281): how much of a clone clip the
+            # engine really uses and how it picks it. None = not verified.
+            "max_ref_seconds": getattr(cls, "max_ref_seconds", None),
+            "ref_strategy": getattr(cls, "ref_strategy", None),
             "install_hint": _INSTALL_HINTS.get(bid),
             # Exact `export VAR=...` line for path-gated opt-in engines, or None.
             "setup_snippet": _SETUP_SNIPPETS.get(bid),

@@ -45,6 +45,11 @@ class VoxCPM2SubprocessBackend(SubprocessBackend):
     applies_own_mastering = True  # native 48 kHz studio output — skip apply_mastering()
     gpu_compat = ("cuda", "mps", "cpu")
     _DEFAULT_SAMPLE_RATE = 48_000
+    # Same reference handling as VoxCPM2Backend (prepare_voxcpm_reference caps
+    # the clip to its first 30 s), so the same advertised truth (#2281). A
+    # parity test pins every sidecar to its in-process class.
+    max_ref_seconds = 30.0
+    ref_strategy = "head"
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:
@@ -96,10 +101,9 @@ class VoxCPM2SubprocessBackend(SubprocessBackend):
         # it), and the output's long silent tail is cut.
         self._check_language(kw.get("language"))
         from services.audio_dsp import trim_trailing_silence
-        from services.tts_backend import _prepare_voxcpm_ref
+        from services.tts_backend import prepare_voxcpm_reference
 
-        if kw.get("ref_audio"):
-            kw["ref_audio"] = _prepare_voxcpm_ref(kw["ref_audio"])
+        prepare_voxcpm_reference(kw)
         wav = super().generate(text, **kw)
         return trim_trailing_silence(wav, self.sample_rate)
 

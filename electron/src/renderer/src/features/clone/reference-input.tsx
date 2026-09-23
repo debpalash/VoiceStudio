@@ -4,8 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { RecordingInputs } from '@/components/recording-inputs';
 import { useRecording } from '@/hooks/use-recording';
+import { useEngines } from '@/hooks/use-engines';
 import { CLONE_MAX_SECONDS, REF_HARD_MAX_SECONDS } from '@/lib/api/generate';
 import { probeAudioDuration } from '@/lib/audio/probe';
+import { referenceUsageNote } from '@/lib/reference-usage';
 import { setReferenceFile, type SetReferenceResult } from '@/lib/store/reference';
 import { cn } from '@/lib/utils';
 
@@ -53,13 +55,30 @@ function useIngest(onAccept?: AcceptReference): IngestFn {
       : await setReferenceFile(file);
     if (pick !== latestPick.current) return;
     if (onAccept && result.ok) onAccept(file, result.durationSeconds);
-    const duration = Math.round(result.durationSeconds ?? 0);
+    // An accepted long clip gets ReferenceUsageNote beside it instead: how
+    // much of it the active engine really uses (#2281).
     if (!result.ok) {
+      const duration = Math.round(result.durationSeconds ?? 0);
       toast.error(t('tts_errors.too_long', { duration, max: REF_HARD_MAX_SECONDS }));
-    } else if (result.tooLong) {
-      toast.warning(t('tts_errors.trim_hint', { duration, max: CLONE_MAX_SECONDS }));
     }
   };
+}
+
+/** How much of a clip longer than the 5–15 s recommendation the active engine uses. */
+export function ReferenceUsageNote({ durationSeconds }: { durationSeconds: number | null }) {
+  const { t } = useTranslation();
+  const { activeTts } = useEngines();
+  const note = referenceUsageNote(activeTts, durationSeconds);
+  if (!note) return null;
+  return (
+    <p className="text-[length:var(--text-caption)] text-muted-foreground" role="status">
+      {note.kind === 'best_window'
+        ? t('clone.ref_usage_best_window', { seconds: note.seconds })
+        : note.kind === 'head'
+          ? t('clone.ref_usage_head', { seconds: note.seconds })
+          : t('clone.ref_usage_long', { seconds: note.seconds })}
+    </p>
+  );
 }
 
 export function UploadZone({ onAccept }: { onAccept?: AcceptReference } = {}) {

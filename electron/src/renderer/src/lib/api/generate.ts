@@ -6,9 +6,12 @@ import type { CloneGenerateInput, GenerateResult } from './types';
 import { beginAppActivity } from '@/lib/app-activity';
 import { createStreamingPreview } from '@/lib/audio/streaming-preview';
 
-/** Above this, cloning quality degrades — the UI suggests trimming. */
+/** Upper end of the recommended 5–15 s reference; longer clips get an engine-aware note. */
 export const CLONE_MAX_SECONDS = 15;
-/** Above this, the engine refuses the clip without a transcript — rejected outright. */
+/**
+ * Hard cap. OmniVoice's automatic passage selection examines at most five 15 s
+ * windows (omnivoice/utils/audio.py CLONE_REF_MAX_WINDOWS) — rejected outright.
+ */
 export const REF_HARD_MAX_SECONDS = 75;
 /**
  * Client-side abort backstop. The first /generate may cold-load the model;

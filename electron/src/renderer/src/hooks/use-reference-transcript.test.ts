@@ -106,3 +106,37 @@ it('does not replace a saved voice transcript when an upload request finishes', 
   await act(async () => finish({ text: 'Previous upload transcript' }));
   expect(cloneSettingsStore.state.refText).toBe('');
 });
+
+it('leaves the transcript to an engine that picks its own passage (#2281)', async () => {
+  const { result } = renderHook(() => useReferenceTranscript(file, { skip: true }));
+  await waitFor(() => expect(result.current.state).toBe('idle'));
+  expect(api).not.toHaveBeenCalled();
+  expect(cloneSettingsStore.state.refText).toBe('');
+});
+
+it('withdraws its own transcript when the engine starts picking the passage itself', async () => {
+  api.mockResolvedValueOnce({ text: 'Whole clip words' });
+  const { result, rerender } = renderHook(({ skip }) => useReferenceTranscript(file, { skip }), {
+    initialProps: { skip: false },
+  });
+  await waitFor(() => expect(result.current.state).toBe('ready'));
+  expect(cloneSettingsStore.state.refText).toBe('Whole clip words');
+
+  rerender({ skip: true });
+
+  expect(cloneSettingsStore.state.refText).toBe('');
+  expect(result.current.state).toBe('idle');
+});
+
+it('keeps a user-edited transcript when skip turns on later', async () => {
+  api.mockResolvedValueOnce({ text: 'Whole clip words' });
+  const { result, rerender } = renderHook(({ skip }) => useReferenceTranscript(file, { skip }), {
+    initialProps: { skip: false },
+  });
+  await waitFor(() => expect(result.current.state).toBe('ready'));
+  act(() => setCloneSetting('refText', 'My own words'));
+
+  rerender({ skip: true });
+
+  expect(cloneSettingsStore.state.refText).toBe('My own words');
+});

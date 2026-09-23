@@ -1,14 +1,30 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiJson, ApiError } from '@/lib/api/client';
 import { cloneSettingsStore, setCloneSetting } from '@/lib/store/clone-settings';
 import { beginAppActivity } from '@/lib/app-activity';
 
-/** The existing capture endpoint preflights installed models and honors the selected ASR engine. */
-export function useReferenceTranscript(file: File | null) {
+/**
+ * The existing capture endpoint preflights installed models and honors the selected ASR engine.
+ *
+ * `skip`: the active engine keeps only part of this clip and picks that part
+ * itself (#2281). A whole-clip transcript would not match what it keeps — and
+ * OmniVoice rejects one outright — so leave the transcript to the engine.
+ * When `skip` turns true after this hook already filled the transcript (the
+ * engine list loaded late, or the user switched engines), that machine
+ * transcript is cleared; a transcript the user edited is kept.
+ */
+export function useReferenceTranscript(file: File | null, { skip = false } = {}) {
   const [state, setState] = useState<'idle' | 'busy' | 'ready' | 'unavailable' | 'failed'>('idle');
   const [attempt, setAttempt] = useState(0);
+  // The transcript this hook last wrote, so it can be withdrawn when `skip`
+  // turns true without touching anything the user typed.
+  const autoFilled = useRef<string | null>(null);
   useEffect(() => {
-    if (!file) {
+    if (skip && autoFilled.current !== null) {
+      if (cloneSettingsStore.state.refText === autoFilled.current) setCloneSetting('refText', '');
+      autoFilled.current = null;
+    }
+    if (!file || skip) {
       setState('idle');
       return;
     }
@@ -32,7 +48,9 @@ export function useReferenceTranscript(file: File | null) {
           !cloneSettingsStore.state.selectedProfileId &&
           cloneSettingsStore.state.refText === before
         ) {
-          setCloneSetting('refText', result.text.trim());
+          const text = result.text.trim();
+          setCloneSetting('refText', text);
+          autoFilled.current = text;
         }
         setState('ready');
       } catch (error) {
@@ -54,6 +72,6 @@ export function useReferenceTranscript(file: File | null) {
       controller.abort();
       finishActivity();
     };
-  }, [file, attempt]);
+  }, [file, attempt, skip]);
   return { state, retry: () => setAttempt((value) => value + 1) };
 }

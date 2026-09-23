@@ -41,6 +41,27 @@ CLONE_REF_UNUSABLE_MARKER = "[clone_ref_unusable]"
 CLONE_REF_TOO_LONG_MARKER = "[clone_ref_too_long]"
 CLONE_REF_NO_SPEECH_MARKER = "[clone_ref_no_speech]"
 
+# Reference-length policy (#1578, #2281). A transcript is aligned against the
+# whole clip, so a clip paired with one is used as-is only up to
+# CLONE_REF_TEXT_MAX_SECONDS. Without a transcript, a longer clip is split into
+# CLONE_REF_WINDOW_SECONDS windows (at most CLONE_REF_MAX_WINDOWS of them) and
+# the passage with the most detected speech is cloned. Backends advertise the
+# first value as OmniVoice's max_ref_seconds, so the UI states the real limit.
+CLONE_REF_TEXT_MAX_SECONDS = 20.0
+CLONE_REF_WINDOW_SECONDS = 15.0
+CLONE_REF_MAX_WINDOWS = 5
+
+
+def clone_ref_transcript_too_long_message(duration_s: float) -> str:
+    """The actionable error for a supplied transcript on an over-long clip."""
+    return (
+        f"{CLONE_REF_TOO_LONG_MARKER} Reference audio is {duration_s:.1f} "
+        f"seconds long; supplied transcripts support at most "
+        f"{CLONE_REF_TEXT_MAX_SECONDS:.0f} seconds. Trim both the audio and "
+        "transcript to the same 3-10 second passage, or omit the transcript "
+        "so VoiceStudio can pick and transcribe the best passage automatically."
+    )
+
 
 def load_audio(audio_path: str, sampling_rate: int):
     """

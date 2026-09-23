@@ -1689,6 +1689,10 @@ async def generate_speech(
     # transcript paired with the original reference); design profiles are
     # excluded (a re-render replaces the sample, stranding a stale transcript).
     persist_ref_text_profile_id = None
+    # A transcript the caller sent, before a profile fills in its stored one:
+    # an explicit transcript on an over-long clip gets the actionable 400
+    # below instead of being silently dropped at the engine boundary (#2281).
+    request_ref_text = (ref_text or "").strip()
 
     if profile_id:
         with db_conn() as conn:
@@ -1721,12 +1725,36 @@ async def generate_speech(
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
+    # #2281: an engine that picks the best passage of a long clip itself
+    # (OmniVoice) cannot align a whole-clip transcript. A transcript typed on
+    # this request gets the actionable error before any work starts; a missing
+    # one is left missing, because transcribing the full clip here produced
+    # exactly the transcript the engine then rejected — and persisted it.
+    ref_picks_own_passage = False
+    if ref_audio_path:
+        from services.tts_backend import reference_duration_s
+
+        _ref_max = getattr(backend_cls, "max_ref_seconds", None)
+        if getattr(backend_cls, "ref_strategy", None) == "best_window" and _ref_max:
+            # Off the event loop: non-WAV clips decode through ffmpeg.
+            _ref_seconds = await asyncio.to_thread(reference_duration_s, ref_audio_path)
+            ref_picks_own_passage = _ref_seconds is not None and _ref_seconds > _ref_max
+            if ref_picks_own_passage and request_ref_text:
+                from omnivoice.utils.audio import clone_ref_transcript_too_long_message
+
+                if cleanup_ref and ref_lease is not None:
+                    ref_lease.finish_request()
+                raise HTTPException(
+                    status_code=400,
+                    detail=clone_ref_transcript_too_long_message(_ref_seconds),
+                )
+
     # #308: a transcript-less reference is transcribed with the active ASR
     # backend (whisperx / faster-whisper / mlx-whisper) instead of the model's
     # built-in transformers pipeline, which cannot load whisper-large-v3-turbo
     # on transformers 5.3. On failure ref_text stays None and the model's
     # installed-only fallback can try without downloading another ASR model.
-    if ref_audio_path and not ref_text:
+    if ref_audio_path and not ref_text and not ref_picks_own_passage:
         from services.asr_backend import transcribe_reference
         # Same #730 hang risk as any whisperx transcribe — bound + reset the pool
         # so a wedged reference transcribe can't brick the backend. This path is

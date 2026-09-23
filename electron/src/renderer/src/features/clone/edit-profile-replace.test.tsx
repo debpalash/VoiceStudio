@@ -37,6 +37,9 @@ vi.mock('./reference-input', () => ({
     </button>
   ),
   RecordZone: () => null,
+  ReferenceUsageNote: ({ durationSeconds }: { durationSeconds: number | null }) => (
+    <p data-testid="usage-note">{durationSeconds}</p>
+  ),
 }));
 vi.mock('./profile-consent', () => ({ ProfileConsent: () => null }));
 vi.mock('./profile-preview', () => ({ ProfilePreview: () => null }));
@@ -90,6 +93,8 @@ it('saves a replacement clip back to the same profile with a fresh transcript', 
 
   expect(screen.getByTestId('player')).toHaveTextContent('blob:new-clip');
   expect(screen.getByText('clone.replace_reference_hint')).toBeInTheDocument();
+  // The engine-aware length note describes the new clip (#2281).
+  expect(screen.getByTestId('usage-note')).toHaveTextContent('4.2');
   // The old clip's transcript no longer applies to the new one.
   expect(screen.getByLabelText('clone.transcript')).toHaveValue('');
 

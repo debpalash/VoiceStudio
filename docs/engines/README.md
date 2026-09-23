@@ -47,6 +47,26 @@ approval), [Windows](../install/windows.md), [Linux](../install/linux.md),
 | Confucius4-TTS | [confucius4-tts](confucius4-tts.md) | CUDA · CPU | ✅ | clone + env var |
 | audio.cpp (Breeze-TTS-2) | [audio-cpp](audio-cpp.md) | CPU + Vulkan/Metal/CUDA/HIP/ROCm where compiled | ✅ + voice design | prebuilt binary + env var (weights research/non-commercial) |
 
+### Reference clip length
+
+Voice Clone accepts clips up to 75 seconds and recommends 5–15 seconds of clean
+speech. How much of a longer clip reaches the model depends on the engine; the
+Voice Clone screen says which applies, and `GET /engines` reports it per engine
+as `max_ref_seconds` and `ref_strategy`.
+
+| Engine | Uses | From a longer clip |
+|---|---|---|
+| VoiceStudio (OmniVoice), OmniVoice (subprocess) | up to 20 s | picks the 15 s passage with the most speech and transcribes it (`best_window`) |
+| VoxCPM2 | up to 30 s | keeps the first 30 s after edge-silence trim (`head`) |
+| Other engines | not verified | the clip is passed through (`null`) |
+
+A whole-clip transcript cannot match a passage the engine cuts out, so automatic
+and saved transcripts are ignored when the clip is over the limit. A transcript
+sent with a `/generate` request for an OmniVoice clip longer than 20 s, whether
+an upload or a saved voice, is rejected with `[clone_ref_too_long]`: trim both
+to the same passage, or leave the transcript out. The limits are the same when
+an engine runs in its own environment.
+
 ## Speech-to-text
 
 | Engine | Guide | Runs on | Best at | Enabled by |
