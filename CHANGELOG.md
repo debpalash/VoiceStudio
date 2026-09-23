@@ -8,13 +8,34 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ## [Unreleased]
 
+## [0.5.6] — 2026-09-23
+
+**VoiceStudio now talks to your other tools.** Answer Twilio phone calls in a saved voice, and connect Claude Code, Cursor, Codex CLI and the OpenAI Agents SDK to VoiceStudio with copyable setup that works, including in Docker, where MCP previously returned HTTP 405. Integration cards now say plainly which ones work with VoiceStudio and which are external links.
+
+This release also lets you replace a saved clone's reference sample, clones long reference clips on OmniVoice, finishes long audiobook chapters on 8 GB GPUs, and keeps rendered chapters through a power-off or data-folder move.
+
+**Download**
+
+| Platform | Installer |
+| --- | --- |
+| Windows x64 | [Installer](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.6/VoiceStudio-Electron-0.5.6-win-x64.exe) |
+| macOS Apple Silicon | [DMG](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.6/VoiceStudio-Electron-0.5.6-mac-arm64.dmg) |
+| macOS Intel | [DMG](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.6/VoiceStudio-Electron-0.5.6-mac-x64.dmg) |
+| Linux x64 | [AppImage](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.6/VoiceStudio-Electron-0.5.6-linux-x64.AppImage) · [deb](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.6/VoiceStudio-Electron-0.5.6-linux-x64.deb) |
+
+**Upgrading:** Install over your existing Electron app; voices, projects and settings are kept. If setup asks, choose **Install local runtime** to refresh its dependencies. MCP clients configured with `/mcp` keep working; new exports use `/mcp/`. OpenAI-compatible `/v1` clients now get OpenAI-format errors with HTTP 400 instead of 422, and `response_format="mp3"` returns real MP3.
+
+**Moving from Tauri:** Close the app, back up its data directory, install Electron, and verify your voices and projects before removing Tauri. Follow the [migration guide](https://github.com/debpalash/VoiceStudio/blob/v0.5.6/docs/electron-migration.md). Tauri v0.5.3 remains the final Tauri release; its updater cannot install Electron.
+
+**Installer trust:** Electron installers are unsigned or ad-hoc signed and are not Apple-notarized. Windows/macOS may show trust warnings. macOS automatic updates are unverified; use manual installer updates. See the [installation guide](https://github.com/debpalash/VoiceStudio/blob/v0.5.6/docs/install/troubleshooting.md).
+
 **Highlights**
 
-- Finished audiobook chapters survive a data-folder move or a power-off mid-render (#2279) — thanks @castlecreati!
-- Malayalam speech reads numbers in Malayalam (#2280) — thanks @nikhilkilivayil!
-- Stories and Audiobook can save a chapter cue sheet (`.txt`) after a render (#2278) — thanks @shivsin25!
-- Windows backend keeps answering after antivirus or VPN software resets a connection (#2276) — thanks @ialexbond!
-- Saved voice clones can swap their reference sample in place, and long reference clips clone on OmniVoice (#2282, #2281)
+- Answer Twilio phone calls with a greeting in a saved voice; off by default, with a local phone-quality test (#2291)
+- Claude Code, Cursor, Codex CLI and the OpenAI Agents SDK connect to VoiceStudio with working setup (#2289, #2290)
+- Replace a saved clone's reference sample, and clone from references longer than 20 s on OmniVoice (#2282, #2281) — thanks @Cengokill!
+- Long audiobook chapters finish on 8 GB GPUs and survive a power-off or data-folder move (#2287, #2279) — thanks @Tran-Van-Hieu and @castlecreati!
+- Malayalam numbers, chapter cue sheets, and captions without spoken markup tags (#2280, #2278, #2295) — thanks @nikhilkilivayil, @shivsin25 and @kevin9327!
 
 ### Changed
 
@@ -51,16 +72,25 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 - MCP tools and `backend.speech_client` follow a backend moved with `OMNIVOICE_PORT` instead of assuming port 3900 (#2289)
 - Integration cards show real capabilities: "Works with VoiceStudio" only where a setup exists, "External link" everywhere else (#2289)
 
-### Bug reporters
-
-- @castlecreati — audiobook chapter cache lost after a power-off (#2279).
-- @Cengokill — no way to replace a saved clone's reference sample (#2282).
-- @Cengokill — long reference clips failed to clone on OmniVoice (#2281).
-
 ### Docs
 
 - Per-engine reference clip limits in the engine guide (#2281)
 - Install with prompt is now a two-line prompt; the full agent steps live in [docs/install/agent.md](docs/install/agent.md) (#2288)
+
+### Contributors
+
+- @nikhilkilivayil — Malayalam number verbalization (#2280).
+- @shivsin25 and @Shivendra-Coherent — chapter cue sheet export (#2278).
+- @kevin9327 — caption markup stripping for dubbing (#2295).
+- @debpalash — integrations (Twilio, MCP, OpenAI SDK), voice cloning, audiobook reliability, Windows backend, security updates and release validation.
+
+### Bug reporters
+
+- @ialexbond — Windows backend unreachable after a reset connection (#2276).
+- @Tran-Van-Hieu — audiobook chapters timing out on an 8 GB GPU (#2287).
+- @castlecreati — audiobook chapter cache lost after a power-off (#2279).
+- @Cengokill — no way to replace a saved clone's reference sample (#2282).
+- @Cengokill — long reference clips failed to clone on OmniVoice (#2281).
 
 ## [0.5.5] — 2026-09-22
 
