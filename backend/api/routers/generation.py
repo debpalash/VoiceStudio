@@ -1736,7 +1736,8 @@ async def generate_speech(
 
         _ref_max = getattr(backend_cls, "max_ref_seconds", None)
         if getattr(backend_cls, "ref_strategy", None) == "best_window" and _ref_max:
-            _ref_seconds = reference_duration_s(ref_audio_path)
+            # Off the event loop: non-WAV clips decode through ffmpeg.
+            _ref_seconds = await asyncio.to_thread(reference_duration_s, ref_audio_path)
             ref_picks_own_passage = _ref_seconds is not None and _ref_seconds > _ref_max
             if ref_picks_own_passage and request_ref_text:
                 from omnivoice.utils.audio import clone_ref_transcript_too_long_message

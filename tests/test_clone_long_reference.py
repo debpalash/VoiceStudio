@@ -269,6 +269,34 @@ def test_generate_long_upload_with_typed_transcript_is_actionable(
     assert fake.calls == [] and counting.calls == 0
 
 
+def test_generate_probes_reference_length_off_the_event_loop(
+    client, fake_engine, tmp_path, monkeypatch
+):
+    """Non-WAV clips decode through ffmpeg to measure length; doing that on the
+    request loop would stall every other request."""
+    import asyncio
+
+    tts = _tts()
+    real = tts.reference_duration_s
+    on_loop: list[bool] = []
+
+    def probe(path):
+        try:
+            asyncio.get_running_loop()
+            on_loop.append(True)
+        except RuntimeError:
+            on_loop.append(False)
+        return real(path)
+
+    monkeypatch.setattr(tts, "reference_duration_s", probe)
+    fake, _counting = fake_engine
+
+    res = _post(client, fake, _wav(tmp_path / "long.wav", 25))
+
+    assert res.status_code == 200, res.text
+    assert on_loop == [False]
+
+
 def test_generate_short_upload_is_still_transcribed(client, fake_engine, tmp_path):
     fake, counting = fake_engine
 
