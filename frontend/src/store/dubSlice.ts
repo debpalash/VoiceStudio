@@ -287,8 +287,7 @@ export const createDubSlice: StateCreator<DubSlice, [], [], DubSlice> = (set, ge
   setIsTranslating: (v) => set((s) => ({ isTranslating: resolve(v, s.isTranslating) })),
   // An imported cue whose text no longer matches is dropped for good here,
   // so no writer can revive it by landing on equal text later (#2295).
-  setDubSegments: (v) =>
-    set((s) => ({ dubSegments: settleCueSources(resolve(v, s.dubSegments)) })),
+  setDubSegments: (v) => set((s) => ({ dubSegments: settleCueSources(resolve(v, s.dubSegments)) })),
   setDubTranscript: (v) => set((s) => ({ dubTranscript: resolve(v, s.dubTranscript) })),
   setDubFilename: (v) => set((s) => ({ dubFilename: resolve(v, s.dubFilename) })),
   setDubDuration: (v) => set((s) => ({ dubDuration: resolve(v, s.dubDuration) })),
