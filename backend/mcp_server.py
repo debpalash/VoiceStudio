@@ -531,11 +531,11 @@ def create_mcp_server(app=None):
             raise ValueError(f"unsupported speech format {format!r}; choose wav, ogg or opus")
         if format != "wav" and _output_mode() == "resources":
             raise ValueError("Ogg/Opus output requires MCP files or both output mode")
-        if format != "wav":
+        if format != "wav" and _base_path() is not None:
             from services.ffmpeg_utils import find_ffmpeg
             import asyncio
             if not await asyncio.to_thread(find_ffmpeg):
-                raise RuntimeError("Ogg/Opus output requires ffmpeg; install it or set FFMPEG_PATH")
+                raise RuntimeError("Ogg/Opus file output requires local ffmpeg; install it or set FFMPEG_PATH")
         # Per-agent voice binding (Wave 2.2): explicit arg wins; otherwise
         # resolve this client's bound profile, then the global default.
         client_id = _current_client_id()
@@ -565,6 +565,15 @@ def create_mcp_server(app=None):
         audio_id = r.headers.get("X-Audio-Id", "unknown")
         gen_time = _maybe_number(r.headers.get("X-Gen-Time", "?"))
         duration = _maybe_number(r.headers.get("X-Audio-Duration", "?"))
+        if format != "wav":
+            if not _SAFE_AUDIO_ID.fullmatch(audio_id):
+                raise ValueError("backend returned an invalid X-Audio-Id header")
+            # The MCP process may run on a different host: only the backend can
+            # prove the returned URL is actually encodable. Stream to avoid
+            # buffering another full audio copy in the agent process.
+            async with _client(300) as c:
+                async with c.stream("GET", f"/audio/{audio_id}.{format}") as encoded:
+                    encoded.raise_for_status()
 
         return json.dumps(await _speech_result(
             audio_id, gen_time, duration, r.content, _api_base(), format

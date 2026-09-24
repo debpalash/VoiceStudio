@@ -33,9 +33,10 @@ tool by path:
 `format="opus"` both encode **Opus inside Ogg**, with `.ogg` and `.opus`
 extensions respectively and `audio/ogg` HTTP media type. The backend converts
 the saved WAV on demand for the URL, even if no base path is configured;
-with a base path the tool also transcodes the file. An installed local ffmpeg
-is required only for these compressed formats; if unavailable or encoding
-fails, the tool returns an error instead of labelling WAV bytes as Opus.
+with a base path the MCP process also transcodes the file. These compressed
+formats require ffmpeg on the backend (and on the MCP host if it writes a file).
+The tool checks the backend URL before reporting success; missing encoders or
+conversion failures return an error instead of labelling WAV bytes as Opus.
 `format` must be one of `wav`, `ogg`, `opus` and compressed output requires
 `files` or `both` mode. In `both`, `wav_base64` is the original WAV even if
 the URL and file are Opus.

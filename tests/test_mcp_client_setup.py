@@ -124,3 +124,45 @@ def test_standalone_server_authenticates_to_a_keyed_https_backend(monkeypatch):
     server = mcp_server.create_mcp_server()
     asyncio.run(server.call_tool('check_health', {}))
     assert seen == [('https://gpu.example/voicestudio/health', 'Bearer ' + 'k' * 40)]
+
+
+@pytest.mark.parametrize('backend_status', [200, 503])
+def test_remote_compressed_speech_checks_backend_encoder_not_mcp_host(
+    monkeypatch, backend_status
+):
+    import asyncio
+    import httpx
+    import mcp_server
+    from mcp.server.fastmcp.exceptions import ToolError
+    from services import ffmpeg_utils
+
+    seen = []
+
+    def backend(request):
+        seen.append((request.url.path, request.headers.get('authorization')))
+        if request.url.path.endswith('/generate'):
+            return httpx.Response(200, content=b'RIFFwav', headers={'X-Audio-Id': 'ab12cd34'})
+        return httpx.Response(backend_status, content=b'OggS', headers={'Content-Type': 'audio/ogg'})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kwargs: real_client(
+        **{**kwargs, 'transport': httpx.MockTransport(backend)}
+    ))
+    monkeypatch.setattr(ffmpeg_utils, 'find_ffmpeg', lambda: None)
+    monkeypatch.delenv('OMNIVOICE_MCP_BASE_PATH', raising=False)
+    monkeypatch.setenv('OMNIVOICE_MCP_OUTPUT_MODE', 'files')
+    monkeypatch.setenv('OMNIVOICE_API_URL', 'https://gpu.example/voicestudio')
+    monkeypatch.setenv('OMNIVOICE_API_KEY', 'k' * 40)
+    server = mcp_server.create_mcp_server()
+    if backend_status == 503:
+        with pytest.raises(ToolError, match='503'):
+            asyncio.run(server.call_tool('generate_speech', {'text': 'Hello', 'format': 'opus'}))
+    else:
+        result = asyncio.run(server.call_tool('generate_speech', {'text': 'Hello', 'format': 'opus'}))
+        assert json.loads(result[0][0].text)['audio_url'] == (
+            'https://gpu.example/voicestudio/audio/ab12cd34.opus'
+        )
+    assert seen == [
+        ('/voicestudio/generate', 'Bearer ' + 'k' * 40),
+        ('/voicestudio/audio/ab12cd34.opus', 'Bearer ' + 'k' * 40),
+    ]
