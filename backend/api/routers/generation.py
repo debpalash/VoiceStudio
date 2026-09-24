@@ -40,7 +40,7 @@ logger = logging.getLogger("omnivoice.generate")
 # one conversion per WAV version and bound both concurrent work and retained
 # audio; neither Ogg nor Opus requests should reload the WAV on a cache hit.
 _OGG_CACHE_LIMIT = 32 * 1024 * 1024
-_ogg_cache: OrderedDict[tuple[str, int, int], bytes] = OrderedDict()
+_ogg_cache: OrderedDict[tuple[str, int, int, int], bytes] = OrderedDict()
 _ogg_cache_bytes = 0
 _ogg_encode_lock = asyncio.Lock()
 
@@ -58,7 +58,7 @@ async def generated_ogg_opus(audio_id: str):
     async with _ogg_encode_lock:
         try:
             info = os.stat(path)
-            key = (path, info.st_mtime_ns, info.st_size)
+            key = (path, info.st_ino, info.st_mtime_ns, info.st_size)
             encoded = _ogg_cache.get(key)
             if encoded is not None:
                 _ogg_cache.move_to_end(key)
