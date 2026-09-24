@@ -97,6 +97,13 @@ describe('parseSrt', () => {
       'cue-2\n00:00:03.000 --> 00:00:04.000\nQue tal\n';
     expect(parseSrt(vtt)).toBe('Hola\nQue tal');
   });
+  it('does not speak arrow-bearing WebVTT metadata without a timing line', () => {
+    const vtt =
+      'WEBVTT\n\nNOTE\nTransition A --> B\nprivate note\n\n' +
+      'STYLE\nTransition A --> B\n::cue { color: red }\n\n' +
+      '00:00:01.000 --> 00:00:02.000\nSpoken text\n';
+    expect(parseSrt(vtt)).toBe('Spoken text');
+  });
   it('keeps NOTE when it is the spoken dialogue', () => {
     expect(
       parseSrt('WEBVTT\n\n00:01.000 --> 00:02.000\nNOTE this is spoken\nSTYLE\nREGION\n'),
@@ -109,6 +116,11 @@ describe('parseSrt', () => {
     expect(
       parseSrt('WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n&lt;i&gt;literal&lt;/i&gt; <i>real</i>\n'),
     ).toBe('<i>literal</i> real');
+  });
+  it('decodes other HTML references and directional marks in WebVTT speech', () => {
+    expect(
+      parseSrt('WEBVTT\n\n00:01.000 --> 00:02.000\nFran&ccedil;ais &lrm;gauche&rlm;\n'),
+    ).toBe('Français \u200egauche\u200f');
   });
   it('still keeps a SubRip entity as written', () => {
     expect(parseSrt('1\n00:00:01,000 --> 00:00:02,000\nTom &amp; Jerry\n')).toBe('Tom &amp; Jerry');

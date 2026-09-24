@@ -24,15 +24,8 @@ const WEBVTT_TAG = /<[^<>\n]*>/g;
 const ASS_OVERRIDE = /\{\\[^{}\n]*\}/g;
 // `<br>` is a rendered line break, so it separates words instead of vanishing.
 const LINE_BREAK = /<br[ \t]*\/?>/gi;
-const WEBVTT_ENTITY = /&(?:#\d+|#x[0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);/g;
-const NAMED_ENTITY = {
-  amp: '&',
-  lt: '<',
-  gt: '>',
-  quot: '"',
-  apos: "'",
-  nbsp: '\u00a0',
-};
+const TIMESTAMP = /^(?:(?:\d{1,2}):)?[0-5]?\d:[0-5]?\d[,.]\d{1,3}$/;
+const TIMESTAMP_START = /^(?:(?:\d{1,2}):)?[0-5]?\d:[0-5]?\d[,.]\d{1,3}(?:[ \t]|$)/;
 
 /** `text` with each span `re` matches replaced by `sep`. */
 function dropMatches(text, re, sep = '') {
@@ -47,27 +40,12 @@ function dropMatches(text, re, sep = '') {
   return out + text.slice(last);
 }
 
-function decodeWebVttEntity(ref) {
-  const body = ref.slice(1, -1);
-  if (body[0] === '#') {
-    const code =
-      body[1] === 'x' || body[1] === 'X' ? parseInt(body.slice(2), 16) : Number(body.slice(1));
-    if (Number.isInteger(code) && code >= 0 && code <= 0x10ffff) return String.fromCodePoint(code);
-    return ref;
-  }
-  return Object.prototype.hasOwnProperty.call(NAMED_ENTITY, body.toLowerCase())
-    ? NAMED_ENTITY[body.toLowerCase()]
-    : ref;
-}
-
+/** Decode HTML character references after tag removal, leaving decoded tags literal. */
 function unescapeWebVtt(text) {
-  let out = '';
-  let last = 0;
-  for (const m of text.matchAll(WEBVTT_ENTITY)) {
-    out += text.slice(last, m.index) + decodeWebVttEntity(m[0]);
-    last = m.index + m[0].length;
-  }
-  return out + text.slice(last);
+  if (!text.includes('&')) return text;
+  // HTML parsing supplies the complete named/numeric reference table (including
+  // directional marks). Escape literal '<' first so it cannot become markup.
+  return new DOMParser().parseFromString(text.replaceAll('<', '&lt;'), 'text/html').body.textContent;
 }
 
 function isWebVtt(text) {
@@ -75,8 +53,13 @@ function isWebVtt(text) {
 }
 
 function isTimingLine(line) {
-  // Plain substring: a `/-->/` regex trips CodeQL's js/bad-tag-filter.
-  return line.includes('-->');
+  // An arrow in metadata/dialogue is not a cue timestamp.
+  const arrow = line.indexOf('-->');
+  return (
+    arrow >= 0 &&
+    TIMESTAMP.test(line.slice(0, arrow).trim()) &&
+    TIMESTAMP_START.test(line.slice(arrow + 3).trimStart())
+  );
 }
 
 function isWebVttMetadata(first) {
