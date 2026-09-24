@@ -65,11 +65,32 @@ class OmniVoiceSubprocessBackend(SubprocessBackend):
         # The sidecar calls model.generate() directly, so it bypasses the
         # in-process prompt cache where a whole-clip transcript on an over-long
         # reference is dropped. Apply the same rule before the request leaves.
-        if kw.get("ref_text"):
-            from services.tts_backend import omnivoice_ref_text
+        passage = None
+        audio = kw.get("ref_audio")
+        if isinstance(audio, str):
+            from omnivoice.utils.audio import CLONE_REF_TEXT_MAX_SECONDS
+            from services.tts_backend import (
+                _reuse_or_rank_passage,
+                omnivoice_ref_text,
+                reference_duration_s,
+            )
 
-            kw["ref_text"] = omnivoice_ref_text(kw.get("ref_audio"), kw["ref_text"])
-        return super().generate(text, **kw)
+            duration = reference_duration_s(audio)
+            if duration is not None and duration > CLONE_REF_TEXT_MAX_SECONDS:
+                selected = _reuse_or_rank_passage(audio)
+                if selected is not None:
+                    kw["ref_audio"], kw["ref_text"] = selected
+                    passage = selected[0]
+                elif kw.get("ref_text"):
+                    kw["ref_text"] = omnivoice_ref_text(audio, kw["ref_text"])
+        try:
+            return super().generate(text, **kw)
+        finally:
+            if passage is not None:
+                try:
+                    os.remove(passage)
+                except OSError:
+                    pass
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:

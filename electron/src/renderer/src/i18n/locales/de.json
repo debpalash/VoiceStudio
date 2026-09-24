@@ -532,6 +532,8 @@
     "youtube_auth": "YouTube-Anmeldung (optional)",
     "youtube_cookie_file": "cookies.txt-Export auswählen",
     "remove_cookie_file": "Cookie-Datei entfernen",
+    "remove_video": "Video entfernen",
+    "remove_video_confirm": "Dieses Video, sein Transkript und ungespeicherte Änderungen entfernen? Das kann nicht rückgängig gemacht werden.",
     "cookie_transport_error": "Cookie-Exporte erfordern HTTPS oder die lokale Desktop-App.",
     "cookie_size_error": "Der Cookie-Export darf höchstens 1 MB groß sein.",
     "save": "Speichern",

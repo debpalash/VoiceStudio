@@ -532,6 +532,8 @@
     "youtube_auth": "Masuk YouTube (opsional)",
     "youtube_cookie_file": "Pilih ekspor cookies.txt",
     "remove_cookie_file": "Hapus berkas kuki",
+    "remove_video": "Hapus video",
+    "remove_video_confirm": "Hapus video ini, transkripnya, dan perubahan yang belum disimpan? Tindakan ini tidak dapat dibatalkan.",
     "cookie_transport_error": "Ekspor kuki memerlukan HTTPS atau aplikasi desktop lokal.",
     "cookie_size_error": "Ekspor kuki harus berukuran 1 MB atau kurang.",
     "save": "Simpan",

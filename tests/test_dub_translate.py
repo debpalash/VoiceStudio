@@ -168,6 +168,66 @@ async def test_nllb_batches_segments_by_target_language(monkeypatch):
     assert response["translated"][2]["text"].startswith("spa_Latn:")
 
 
+@pytest.mark.asyncio
+async def test_nllb_mps_fallback_releases_the_old_allocator(monkeypatch):
+    from unittest.mock import Mock
+
+    import torch
+    from api.routers import dub_translate
+    from schemas.requests import TranslateRequest
+    from services import model_manager, translation_engines
+
+    class Tensor:
+        def __init__(self, values):
+            self.values = values
+
+        def to(self, device):
+            return self
+
+    class Tokenizer:
+        def __call__(self, texts, **kwargs):
+            return {"input_ids": Tensor(texts)}
+
+        def convert_tokens_to_ids(self, target):
+            return target
+
+        def batch_decode(self, tokens, **kwargs):
+            return tokens
+
+    class Model:
+        def __init__(self):
+            self.device = "mps"
+
+        def to(self, device):
+            self.device = device
+            return self
+
+        def generate(self, *, input_ids, **kwargs):
+            if self.device == "mps":
+                raise RuntimeError("MPS allocation failed")
+            return [f"translated:{text}" for text in input_ids.values]
+
+    flushed = Mock()
+    monkeypatch.setattr(model_manager, "release_device_cache", flushed)
+    monkeypatch.setattr(dub_translate, "_nllb_tokenizer", Tokenizer())
+    monkeypatch.setattr(dub_translate, "_nllb_model", Model())
+    monkeypatch.setattr(dub_translate, "_nllb_device", "mps")
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(torch.backends.mps, "is_available", lambda: True)
+    monkeypatch.setattr(translation_engines, "is_installed", lambda _: True)
+    monkeypatch.setattr(translation_engines, "is_ready", lambda _: True)
+    monkeypatch.setenv("OMNIVOICE_UNLOAD_NLLB", "0")
+
+    response = await dub_translate.dub_translate(
+        TranslateRequest(
+            provider="nllb", source_lang="en", target_lang="de",
+            segments=[{"id": "1", "text": "hello"}],
+        )
+    )
+    assert response["translated"][0]["text"] == "translated:hello"
+    assert dub_translate._nllb_device == "cpu"
+    flushed.assert_called_once_with(device="mps")
+
 def test_resolve_source_lang_priority(monkeypatch):
     from api.routers import dub_translate
 

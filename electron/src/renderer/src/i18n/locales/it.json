@@ -534,6 +534,8 @@
     "youtube_auth": "Accesso a YouTube (facoltativo)",
     "youtube_cookie_file": "Scegli un'esportazione cookies.txt",
     "remove_cookie_file": "Rimuovi file dei cookie",
+    "remove_video": "Rimuovi video",
+    "remove_video_confirm": "Rimuovere questo video, la trascrizione e le modifiche non salvate? L'operazione non può essere annullata.",
     "cookie_transport_error": "L’esportazione dei cookie richiede HTTPS o l’app desktop locale.",
     "cookie_size_error": "L’esportazione dei cookie deve essere al massimo di 1 MB.",
     "save": "Salva",

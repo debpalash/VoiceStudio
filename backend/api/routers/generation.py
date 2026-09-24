@@ -14,7 +14,7 @@ import threading
 import traceback
 from typing import Optional
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 import sqlite3
@@ -34,6 +34,20 @@ from omnivoice.utils.voice_design import heal_design_instruct
 
 router = APIRouter()
 logger = logging.getLogger("omnivoice.generate")
+
+# Same containers POST /profiles stores for a clone reference. /generate used
+# to write every upload with suffix=".wav"; pydub then passes -f wav to ffmpeg,
+# so an MP3/M4A/WebM one-shot clip failed to decode while a saved voice of the
+# same file worked.
+_REF_UPLOAD_EXTS = frozenset({
+    ".wav", ".mp3", ".m4a", ".flac", ".ogg", ".oga", ".opus", ".aac", ".webm",
+})
+
+
+def _ref_upload_suffix(filename: Optional[str]) -> str:
+    """On-disk suffix for a one-shot /generate reference upload."""
+    ext = os.path.splitext(filename or "")[1].lower()
+    return ext if ext in _REF_UPLOAD_EXTS else ".wav"
 
 
 class _TempReferenceLease:
@@ -591,12 +605,10 @@ def _oom_friendly_reraise(e):
     """Best-effort cache flush + the user-facing OOM hint shared by both
     inference paths."""
     import gc
-    import torch
+    from services.model_manager import release_device_cache
+
     gc.collect()
-    if torch.backends.mps.is_available():
-        torch.mps.empty_cache()
-    elif torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    release_device_cache()
     # #278: don't mislabel a torch.compile/Triton/Inductor crash as an
     # out-of-memory condition. (model_manager's generate wrapper already
     # retries these eagerly; this only triggers if that retry also died.)
@@ -1670,7 +1682,28 @@ async def generate_speech(
                     f"for progress), not that generation failed. Retry once the "
                     f"model shows as installed."
                 ),
+                headers={"Retry-After": "30", "X-OmniVoice-Retryable": "true"},
             ) from exc
+        except HTTPException:
+            raise
+        # #2298: everything else the load can raise. A JSONResponse rather than
+        # an HTTPException because the classified `hint` / `docs_topic` are
+        # top-level keys the client already reads off a failure body, and
+        # HTTPException would bury them under `detail`. The global 500 handler
+        # produced exactly this shape — the only thing that changes is that the
+        # reply now names the engine and the model load, and arrives as a 503
+        # the client can treat as retryable instead of a crash.
+        except Exception as exc:
+            if type(exc).__name__ == "ModelLoadInterruptedByShutdown":
+                raise
+            from core.public_errors import model_load_failure
+
+            logger.error("engine model load failed")
+            return JSONResponse(
+                status_code=503,
+                content=model_load_failure(engine_id, exc),
+                headers={"Retry-After": "30", "X-OmniVoice-Retryable": "true"},
+            )
 
     ref_audio_path = None
     cleanup_ref = False
@@ -1717,7 +1750,8 @@ async def generate_speech(
                 persist_ref_text_profile_id = profile_id
     elif ref_audio is not None:
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+            suffix = _ref_upload_suffix(ref_audio.filename)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
                 f.write(await ref_audio.read())
                 ref_audio_path = f.name
                 cleanup_ref = True

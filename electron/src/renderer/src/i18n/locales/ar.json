@@ -540,6 +540,8 @@
     "youtube_auth": "تسجيل الدخول إلى YouTube (اختياري)",
     "youtube_cookie_file": "اختيار ملف cookies.txt مُصدَّر",
     "remove_cookie_file": "إزالة ملف تعريف الارتباط",
+    "remove_video": "إزالة الفيديو",
+    "remove_video_confirm": "إزالة هذا الفيديو ونصّه والتعديلات غير المحفوظة؟ لا يمكن التراجع عن ذلك.",
     "cookie_transport_error": "يتطلب تصدير ملفات تعريف الارتباط HTTPS أو تطبيق سطح المكتب المحلي.",
     "cookie_size_error": "يجب ألا يتجاوز تصدير ملفات تعريف الارتباط 1 ميغابايت.",
     "save": "حفظ",

@@ -19,7 +19,10 @@ import {
   insertDubSegment,
   mergeDubSegment,
   moveResizeDubSegment,
+  cancelDub,
+  dubCancelling,
   redoDubEdit,
+  resetDubSession,
   translateDub,
   translateDubBatchWithAgent,
   translateDubWithAgent,
@@ -690,4 +693,60 @@ it('echoes an imported cue only while no paste or edit has replaced its words (#
   setDubTarget('English', 'en');
   expect(dubSession.state.segments[0].text).toBe('Hello');
   expect(await generatedCueId()).toBe('imp:0');
+});
+
+it('resetDubSession drops the loaded source but keeps production preferences', () => {
+  dubSession.setState((current) => ({
+    ...current,
+    jobId: 'remove-me',
+    filename: 'clip.mp4',
+    phase: 'done',
+    segments: [
+      {
+        id: '0',
+        start: 0,
+        end: 1,
+        text: 'Hello',
+        text_original: 'Hello',
+        translations: {},
+      },
+    ],
+    error: 'boom',
+    target: 'French',
+    quality: 'cinematic',
+  }));
+  resetDubSession();
+  expect(dubSession.state.jobId).toBeNull();
+  expect(dubSession.state.filename).toBe('');
+  expect(dubSession.state.segments).toEqual([]);
+  expect(dubSession.state.phase).toBe('idle');
+  expect(dubSession.state.error).toBeNull();
+  expect(dubSession.state.target).toBe('French');
+  expect(dubSession.state.quality).toBe('cinematic');
+});
+
+it('cancelDub exposes cancel-in-flight state so removal stays disabled', async () => {
+  dubSession.setState((current) => ({
+    ...current,
+    jobId: 'cancel-job',
+    taskId: null,
+    recovery: 'transcribing',
+    phase: 'transcribing',
+  }));
+  let resolveAbort!: (value: unknown) => void;
+  vi.mocked(apiJson).mockReset();
+  vi.mocked(apiJson).mockImplementationOnce(
+    () => new Promise((resolve) => { resolveAbort = resolve; }),
+  );
+  const pending = cancelDub();
+  expect(dubCancelling.state).toBe(true);
+  resolveAbort({});
+  await pending;
+  expect(dubCancelling.state).toBe(false);
+  dubSession.setState((current) => ({
+    ...current,
+    jobId: null,
+    recovery: null,
+    phase: 'idle',
+  }));
 });

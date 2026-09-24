@@ -536,6 +536,8 @@
     "youtube_auth": "Вхід у YouTube (необов’язково)",
     "youtube_cookie_file": "Вибрати експорт cookies.txt",
     "remove_cookie_file": "Видалити файл cookie",
+    "remove_video": "Видалити відео",
+    "remove_video_confirm": "Видалити це відео, його транскрипт і незбережені зміни? Цю дію неможливо скасувати.",
     "cookie_transport_error": "Для експорту cookie потрібен HTTPS або локальний застосунок.",
     "cookie_size_error": "Розмір експорту cookie не повинен перевищувати 1 МБ.",
     "save": "зберегти",

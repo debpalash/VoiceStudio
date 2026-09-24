@@ -534,6 +534,8 @@
     "youtube_auth": "Inicio de sesión en YouTube (opcional)",
     "youtube_cookie_file": "Elegir una exportación cookies.txt",
     "remove_cookie_file": "Quitar archivo de cookies",
+    "remove_video": "Quitar video",
+    "remove_video_confirm": "¿Quitar este video, su transcripción y los cambios sin guardar? No se puede deshacer.",
     "cookie_transport_error": "Las cookies exportadas requieren HTTPS o la aplicación de escritorio local.",
     "cookie_size_error": "El archivo de cookies debe tener 1 MB o menos.",
     "save": "Guardar",

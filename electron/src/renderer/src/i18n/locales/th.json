@@ -532,6 +532,8 @@
     "youtube_auth": "ลงชื่อเข้าใช้ YouTube (ไม่บังคับ)",
     "youtube_cookie_file": "เลือกไฟล์ส่งออก cookies.txt",
     "remove_cookie_file": "ลบไฟล์คุกกี้",
+    "remove_video": "ลบวิดีโอ",
+    "remove_video_confirm": "ลบวิดีโอนี้ บทถอดเสียง และการแก้ไขที่ยังไม่บันทึกหรือไม่? ไม่สามารถย้อนกลับได้",
     "cookie_transport_error": "การส่งออกคุกกี้ต้องใช้ HTTPS หรือแอปเดสก์ท็อปในเครื่อง",
     "cookie_size_error": "ไฟล์ส่งออกคุกกี้ต้องมีขนาดไม่เกิน 1 MB",
     "save": "บันทึก",

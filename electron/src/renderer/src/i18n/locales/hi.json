@@ -532,6 +532,8 @@
     "youtube_auth": "YouTube साइन-इन (वैकल्पिक)",
     "youtube_cookie_file": "cookies.txt निर्यात चुनें",
     "remove_cookie_file": "कुकी फ़ाइल हटाएँ",
+    "remove_video": "वीडियो हटाएँ",
+    "remove_video_confirm": "यह वीडियो, इसकी ट्रांसक्रिप्ट और बिना सहेजे बदलाव हटाएँ? इसे वापस नहीं लिया जा सकता।",
     "cookie_transport_error": "कुकी निर्यात के लिए HTTPS या स्थानीय डेस्कटॉप ऐप आवश्यक है।",
     "cookie_size_error": "कुकी निर्यात 1 MB या उससे छोटा होना चाहिए।",
     "save": "सहेजें",

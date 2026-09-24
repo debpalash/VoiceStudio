@@ -549,6 +549,8 @@
     "youtube_auth": "YouTube 登录（可选）",
     "youtube_cookie_file": "选择导出的 cookies.txt",
     "remove_cookie_file": "移除 Cookie 文件",
+    "remove_video": "移除视频",
+    "remove_video_confirm": "要移除此视频、转录文本和未保存的编辑吗？此操作无法撤销。",
     "cookie_transport_error": "Cookie 导出文件只能通过 HTTPS 或本地桌面应用发送。",
     "cookie_size_error": "Cookie 导出文件必须小于或等于 1 MB。",
     "save": "保存",

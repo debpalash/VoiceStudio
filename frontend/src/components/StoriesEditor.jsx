@@ -803,7 +803,7 @@ export default function StoriesEditor({ profiles = [] }) {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".txt,.srt,text/plain"
+                accept=".txt,.srt,.vtt,text/plain"
                 onChange={onImportFile}
                 aria-label={t('stories.import')}
                 name="story-import-file"

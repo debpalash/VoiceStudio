@@ -532,6 +532,8 @@
     "youtube_auth": "YouTube ログイン（任意）",
     "youtube_cookie_file": "cookies.txt のエクスポートを選択",
     "remove_cookie_file": "Cookie ファイルを削除",
+    "remove_video": "ビデオを削除",
+    "remove_video_confirm": "このビデオ、文字起こし、未保存の編集内容を削除しますか？元に戻せません。",
     "cookie_transport_error": "Cookie のエクスポートには HTTPS またはローカルのデスクトップアプリが必要です。",
     "cookie_size_error": "Cookie のエクスポートは 1 MB 以下にしてください。",
     "save": "保存",

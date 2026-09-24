@@ -532,6 +532,8 @@
     "youtube_auth": "Đăng nhập YouTube (tùy chọn)",
     "youtube_cookie_file": "Chọn bản xuất cookies.txt",
     "remove_cookie_file": "Xóa tệp cookie",
+    "remove_video": "Xóa video",
+    "remove_video_confirm": "Xóa video này, bản chép lời và các chỉnh sửa chưa lưu? Không thể hoàn tác.",
     "cookie_transport_error": "Tệp cookie xuất yêu cầu HTTPS hoặc ứng dụng máy tính cục bộ.",
     "cookie_size_error": "Tệp cookie xuất phải có dung lượng không quá 1 MB.",
     "save": "Lưu",

@@ -534,6 +534,8 @@
     "youtube_auth": "Connexion YouTube (facultative)",
     "youtube_cookie_file": "Choisir un export cookies.txt",
     "remove_cookie_file": "Supprimer le fichier de cookies",
+    "remove_video": "Supprimer la vidéo",
+    "remove_video_confirm": "Supprimer cette vidéo, sa transcription et les modifications non enregistrées ? Cette action est irréversible.",
     "cookie_transport_error": "L’export de cookies nécessite HTTPS ou l’application de bureau locale.",
     "cookie_size_error": "L’export de cookies doit faire 1 Mo maximum.",
     "save": "Enregistrer",

@@ -66,11 +66,15 @@ The env var overrides the persisted UI choice.
   to 20 seconds so the two stay aligned; trim both to the same passage. Without
   a transcript, VoiceStudio can search up to 75 seconds in five contiguous,
   bounded transcription passes and selects the 15-second passage with the most
-  detected speech. For a clip longer than 20 seconds, VoiceStudio skips
+  detected speech. Those passes use the speech-to-text model already installed
+  in Model Catalogue. For a clip longer than 20 seconds, VoiceStudio skips
   whole-clip transcription and ignores a saved profile transcript, so long
-  saved voices use this selection too. A transcript typed on the request for
+  saved voices use this selection too. OmniVoice's own Whisper snapshot is only
+  a fallback when no catalogue recognizer can transcribe a window, and it is
+  never downloaded during cloning. A transcript typed on the request for
   such a clip is rejected with `[clone_ref_too_long]`.
-  Longer clips must be trimmed first. If no spoken words are detected, trim to
+  Only that 15-second window is sent to the model. Clips longer than 75 seconds
+  must be trimmed first. If no spoken words are detected, trim to
   a clear 3–10 second passage or provide its matching transcript.
 - For cross-language cloning, keep the reference transcript in the sample's
   original language and write the new script in the desired output language.
@@ -82,9 +86,11 @@ The env var overrides the persisted UI choice.
   default for existing API clients. Engine language coverage and accent quality
   still vary; use a multilingual engine that supports the target language.
 - Encoded voice references persist on disk (`prompt_cache/` in the app data
-  dir), so the first generation with a known voice after a restart skips the
-  re-encode and any transcription pass. Set `OMNIVOICE_PROMPT_DISK_CACHE=0`
-  to keep the cache in memory only.
+  dir), so known short references skip re-encoding and transcription after a
+  restart. Long references must rank windows once after a restart to recover
+  the selected transcript; subsequent generations reuse the chosen passage
+  and cached prompt without re-decoding the clip. Set
+  `OMNIVOICE_PROMPT_DISK_CACHE=0` to keep the prompt cache in memory only.
 - Style attributes (`instruct`) and a reference clip can be **combined**:
   when they agree, the instruct stabilizes cloning for the attributes it
   names (upstream documents dialect cloning as the canonical case — dialect

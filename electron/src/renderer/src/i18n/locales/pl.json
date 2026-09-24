@@ -536,6 +536,8 @@
     "youtube_auth": "Logowanie do YouTube (opcjonalne)",
     "youtube_cookie_file": "Wybierz eksport cookies.txt",
     "remove_cookie_file": "Usuń plik cookie",
+    "remove_video": "Usuń wideo",
+    "remove_video_confirm": "Usunąć ten film, jego transkrypcję i niezapisane zmiany? Tej operacji nie można cofnąć.",
     "cookie_transport_error": "Eksport plików cookie wymaga HTTPS lub lokalnej aplikacji komputerowej.",
     "cookie_size_error": "Eksport plików cookie może mieć najwyżej 1 MB.",
     "save": "Zapisz",

@@ -352,18 +352,13 @@ def _unload_nllb():
     """Release NLLB VRAM so TTS model can reload."""
     global _nllb_device, _nllb_model, _nllb_tokenizer
     import gc
+    from services.model_manager import release_device_cache
+    device = _nllb_device
     _nllb_model = None
     _nllb_tokenizer = None
     _nllb_device = None
     gc.collect()
-    try:
-        import torch
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            torch.mps.empty_cache()
-    except Exception:
-        pass
+    release_device_cache(device=device)
 
 
 def _should_unload_nllb() -> bool:
@@ -414,6 +409,7 @@ async def dub_translate(req: TranslateRequest):
             def _translate_nllb():
                 global _nllb_model, _nllb_tokenizer, _nllb_device
                 import torch
+                from services.model_manager import release_device_cache
                 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
                 if torch.cuda.is_available():
@@ -472,6 +468,7 @@ async def dub_translate(req: TranslateRequest):
                         _nllb_model.to("cpu")
                         _nllb_device = "cpu"
                         inputs = {key: value.to("cpu") for key, value in inputs.items()}
+                        release_device_cache(device="mps")
                         tokens = _nllb_model.generate(
                             **inputs,
                             forced_bos_token_id=forced_bos_token_id,
@@ -521,9 +518,11 @@ async def dub_translate(req: TranslateRequest):
                                 continue
                             # A single unusually long row must not sink its
                             # neighbours. Clear a failed device allocation and
-                            # retain the established per-segment degradation.
-                            if torch.cuda.is_available():
-                                torch.cuda.empty_cache()
+                            # retain the established per-segment degradation —
+                            # on whichever accelerator the translator is on
+                            # (the ladder above picks CUDA or MPS, and a
+                            # CUDA-only flush missed the MPS case).
+                            release_device_cache(device=_nllb_device)
                             logger.warning(
                                 "NLLB batch of %d failed; retrying rows individually: %s",
                                 len(batch),

@@ -694,6 +694,8 @@
     "youtube_auth": "YouTube sign-in (optional)",
     "youtube_cookie_file": "Choose a cookies.txt export",
     "remove_cookie_file": "Remove cookie file",
+    "remove_video": "Remove video",
+    "remove_video_confirm": "Remove this video, its transcript and unsaved edits? This cannot be undone.",
     "cookie_transport_error": "Cookie exports require HTTPS or the local desktop app.",
     "cookie_size_error": "The cookie export must be 1 MB or smaller.",
     "save": "Save",

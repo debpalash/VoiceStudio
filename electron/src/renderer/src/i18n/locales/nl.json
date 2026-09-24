@@ -532,6 +532,8 @@
     "youtube_auth": "YouTube-aanmelding (optioneel)",
     "youtube_cookie_file": "Een cookies.txt-export kiezen",
     "remove_cookie_file": "Cookiebestand verwijderen",
+    "remove_video": "Video verwijderen",
+    "remove_video_confirm": "Deze video, het transcript en niet-opgeslagen wijzigingen verwijderen? Dit kan niet ongedaan worden gemaakt.",
     "cookie_transport_error": "Cookie-exports vereisen HTTPS of de lokale desktop-app.",
     "cookie_size_error": "De cookie-export mag maximaal 1 MB zijn.",
     "save": "Opslaan",
