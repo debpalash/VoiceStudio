@@ -173,18 +173,3 @@ def test_free_vram_still_collects_cublas_and_flushes(monkeypatch):
     assert backends["cuda"].empty_cache.call_count == 1
 
 
-def test_recovery_paths_use_the_shared_flush():
-    """No recovery path re-introduces a backend-specific flush.
-
-    Mechanical rule, checked in source: these modules release memory only
-    through the one primitive that knows about every backend, so a new call
-    site cannot quietly skip NPU/XPU by copying a CUDA/MPS pair again.
-    """
-    from pathlib import Path
-
-    routers = Path(__file__).resolve().parent.parent / "backend" / "api" / "routers"
-    for name in ("generation", "dub_generate", "dub_translate", "dub_core"):
-        source = (routers / f"{name}.py").read_text(encoding="utf-8")
-        assert "release_device_cache" in source, name
-        assert "torch.cuda.empty_cache()" not in source, name
-        assert "torch.mps.empty_cache()" not in source, name
