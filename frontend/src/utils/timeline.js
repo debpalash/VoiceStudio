@@ -262,7 +262,8 @@ export function commitMoveResize(seg, { start, end }) {
   const newEnd = +end.toFixed(3);
   const oldDur = seg.end - seg.start;
   const newDur = newEnd - newStart;
-  const isMove = Math.abs(newDur - oldDur) < 0.0005;
+  // Classify the gesture before rounding: sub-millisecond imported edges can round differently.
+  const isMove = Math.abs(end - start - oldDur) < 0.0005;
   if (isMove) {
     return { ...seg, start: newStart, end: newEnd };
   }

@@ -235,6 +235,16 @@ describe('commitMoveResize — fingerprint parity (#281 invariants)', () => {
     expect(segmentGenInputs(after)).toEqual(segmentGenInputs(before));
   });
 
+  it('a move of sub-millisecond endpoints stays a move after rounding', () => {
+    const before = seg(1, 1.23449, 3.45651, { profile_id: 'p1' });
+    const after = commitMoveResize(before, { start: 1.23549, end: 3.45751 });
+    expect(after.start).toBe(1.235);
+    expect(after.end).toBe(3.458);
+    expect('speed' in after).toBe(false);
+    expect('original_duration' in after).toBe(false);
+    expect(segmentGenInputs(after)).toEqual(segmentGenInputs(before));
+  });
+
   it('recommitting millisecond times does not snap them to hundredths', () => {
     const before = seg(1, 1.234, 3.456);
     const after = commitMoveResize(before, { start: 1.234, end: 3.456 });
