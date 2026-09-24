@@ -37,6 +37,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 ### Fixed
 
 - Integration pages show each integration's own category and summary instead of borrowed labels such as "Dubbing" for Twilio (#2304)
+- Clone Import script reads Windows-1252 and BOM-tagged UTF-16 text the same way Stories and Dub paste already do (#2313) — thanks @kevin9327!
 - Integration and featured logos open their page in VoiceStudio; the vendor website opens only from the page's Website card (#2304)
 - Pickers show readable labels instead of raw values such as `__default__`, `auto` or language codes before they are opened (#2304)
 
