@@ -13,6 +13,11 @@ the selected Settings > Models > Translation provider. Choose a target language,
 translate, review the text, then generate. Completed tracks can be previewed and
 exported through the native save dialog.
 
+The import card can clear a pasted URL and its cookie attachment before ingest.
+After loading a source, Remove video returns to the import card, discarding the
+transcript and edit history while retaining production settings. It asks for
+confirmation when transcript edits or segments would be discarded.
+
 Segment rows scan as compact source/translation pairs: speaker, voice, fit state,
 selection and timestamp stay visible, while row actions reveal on hover or keyboard
 focus. Inset hairline separators preserve the reading rhythm; source text and metadata
@@ -298,3 +303,16 @@ repairing an older transcript.
 Video watermark exports and visual-context keyframes resolve FFmpeg through the
 app’s shared media-tool resolver, including its bundled binary. They do not
 require a separate system FFmpeg installation.
+
+A dub that has segments offers **Create Story**, which carries its speakers and
+lines into the Stories editor: one character per speaker, one line per segment,
+each character keeping its saved Cast voice. Auto-clone voices are matched by
+speaker name against saved profiles; designed-voice presets, deleted profiles
+and unmatched auto-clones fall back to the cast default rather than a reference
+that would dangle. A merged row is split back onto the speakers its attribution
+bookkeeping records, so a merge spanning two speakers becomes two lines instead
+of one in the wrong voice, while a merge within one speaker stays a single line.
+The dub itself is not changed. Loading replaces the current Stories script, cast,
+pending import and previous render output, and asks first when there is something
+to replace; it is unavailable until saved profiles load or while a Stories or
+Audiobook render is running.

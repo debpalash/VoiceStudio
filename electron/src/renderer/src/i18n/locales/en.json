@@ -694,6 +694,8 @@
     "youtube_auth": "YouTube sign-in (optional)",
     "youtube_cookie_file": "Choose a cookies.txt export",
     "remove_cookie_file": "Remove cookie file",
+    "remove_video": "Remove video",
+    "remove_video_confirm": "Remove this video, its transcript and unsaved edits? This cannot be undone.",
     "cookie_transport_error": "Cookie exports require HTTPS or the local desktop app.",
     "cookie_size_error": "The cookie export must be 1 MB or smaller.",
     "save": "Save",
@@ -958,7 +960,11 @@
   "dubWorkspace": {
     "title": "Dub",
     "start": "Start",
-    "end": "End"
+    "end": "End",
+    "createStory": "Create Story",
+    "createStoryConfirm": "This replaces the current Stories script and cast with the speakers and lines from this dub. Your dub is not changed.",
+    "storySpeaker": "Speaker",
+    "storyBusy": "Finish or stop the Stories or Audiobook render first."
   },
   "logs": {
     "no_tauri_log": "No Tauri log on disk yet — launch via the desktop build to produce one",

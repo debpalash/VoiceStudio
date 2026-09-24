@@ -532,6 +532,8 @@
     "youtube_auth": "YouTube oturumu (isteğe bağlı)",
     "youtube_cookie_file": "Bir cookies.txt dışa aktarımı seçin",
     "remove_cookie_file": "Çerez dosyasını kaldır",
+    "remove_video": "Videoyu kaldır",
+    "remove_video_confirm": "Bu video, dökümü ve kaydedilmemiş düzenlemeler silinsin mi? Bu işlem geri alınamaz.",
     "cookie_transport_error": "Çerez dışa aktarımları HTTPS veya yerel masaüstü uygulamasını gerektirir.",
     "cookie_size_error": "Çerez dışa aktarımı en fazla 1 MB olmalıdır.",
     "save": "Kaydet",
@@ -838,7 +840,11 @@
   "dubWorkspace": {
     "title": "Dublaj",
     "start": "Başlat",
-    "end": "Bitiş"
+    "end": "Bitiş",
+    "createStory": "Hikâye oluştur",
+    "createStoryConfirm": "Bu, mevcut Hikâye metnini ve kadrosunu bu dublajdaki konuşmacılar ve satırlarla değiştirir. Dublajınız değişmez.",
+    "storySpeaker": "Konuşmacı",
+    "storyBusy": "Önce Hikâye veya Sesli Kitap oluşturmayı bitirin ya da durdurun."
   },
   "player": {
     "fullscreen": "Tam ekran",

@@ -348,6 +348,10 @@ export const setDubMultiTargets = (multiTargets: Array<{ lang: string; code: str
   });
 };
 export const useDubSession = () => useStore(dubSession);
+/** Reactive mirror of the module-level cancel-in-flight flag. Ephemeral by
+ * design: never persisted, so a reload can never wedge the UI disabled. */
+export const dubCancelling = new Store(false);
+export const useDubCancelling = () => useStore(dubCancelling);
 const editHistory = new Store({ undoDepth: 0, redoDepth: 0 });
 const undoStack: DubSegment[][] = [];
 const redoStack: DubSegment[][] = [];
@@ -1733,6 +1737,7 @@ export async function cancelDub() {
   batchRunId += 1;
   patch({ batchProgress: undefined });
   cancelling = true;
+  dubCancelling.setState(() => true);
   controller?.abort();
   try {
     const results = await Promise.allSettled([
@@ -1762,6 +1767,7 @@ export async function cancelDub() {
     else patch({ recovery, error: DUB_STOP_FAILED });
   } finally {
     cancelling = false;
+    dubCancelling.setState(() => false);
   }
 }
 
@@ -1797,6 +1803,39 @@ export function discardDubRecovery(): void {
     exportOptions: current.exportOptions,
   }));
   persist();
+}
+
+/** Drop the current source so a new video or URL can be started. Production
+ * preferences (target, quality, voice, timing, …) are kept; everything
+ * source-specific (job, segments, transcript, errors) is cleared. */
+export function resetDubSession(): boolean {
+  if (controller || cancelling) return false;
+  const current = dubSession.state;
+  clearDubEditHistory();
+  dubSession.setState(() => ({
+    ...initial,
+    target: current.target,
+    multiTargets: current.multiTargets,
+    quality: current.quality,
+    agentCli: current.agentCli,
+    autoGlossary: current.autoGlossary,
+    reflectPass: current.reflectPass,
+    condenseSuggest: current.condenseSuggest,
+    dialect: current.dialect,
+    translationInstructions: current.translationInstructions,
+    timingStrategy: current.timingStrategy,
+    voiceMatch: current.voiceMatch,
+    sourceLanguage: current.sourceLanguage,
+    numSpeakers: current.numSpeakers,
+    fitOptions: current.fitOptions,
+    steps: current.steps,
+    guidance: current.guidance,
+    speed: current.speed,
+    instruct: current.instruct,
+    exportOptions: current.exportOptions,
+  }));
+  persist();
+  return true;
 }
 
 export async function resumeDub() {

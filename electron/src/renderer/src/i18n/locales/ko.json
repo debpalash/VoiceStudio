@@ -530,6 +530,8 @@
     "youtube_auth": "YouTube 로그인(선택 사항)",
     "youtube_cookie_file": "cookies.txt 내보내기 선택",
     "remove_cookie_file": "쿠키 파일 제거",
+    "remove_video": "동영상 삭제",
+    "remove_video_confirm": "이 동영상과 자막, 저장하지 않은 편집 내용을 삭제할까요? 되돌릴 수 없습니다.",
     "cookie_transport_error": "쿠키 내보내기에는 HTTPS 또는 로컬 데스크톱 앱이 필요합니다.",
     "cookie_size_error": "쿠키 내보내기 파일은 1MB 이하여야 합니다.",
     "save": "저장",
@@ -838,7 +840,11 @@
   "dubWorkspace": {
     "title": "더빙",
     "start": "시작",
-    "end": "끝"
+    "end": "끝",
+    "createStory": "스토리 만들기",
+    "createStoryConfirm": "현재 스토리 대본과 캐스트를 이 더빙의 화자와 대사로 바꿉니다. 더빙은 변경되지 않습니다.",
+    "storySpeaker": "화자",
+    "storyBusy": "먼저 스토리 또는 오디오북 렌더링을 완료하거나 중지하세요."
   },
   "player": {
     "fullscreen": "전체 화면",

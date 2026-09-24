@@ -536,6 +536,8 @@
     "youtube_auth": "Logowanie do YouTube (opcjonalne)",
     "youtube_cookie_file": "Wybierz eksport cookies.txt",
     "remove_cookie_file": "Usuń plik cookie",
+    "remove_video": "Usuń wideo",
+    "remove_video_confirm": "Usunąć ten film, jego transkrypcję i niezapisane zmiany? Tej operacji nie można cofnąć.",
     "cookie_transport_error": "Eksport plików cookie wymaga HTTPS lub lokalnej aplikacji komputerowej.",
     "cookie_size_error": "Eksport plików cookie może mieć najwyżej 1 MB.",
     "save": "Zapisz",
@@ -842,7 +844,11 @@
   "dubWorkspace": {
     "title": "Dubbing",
     "start": "Zacznij",
-    "end": "Koniec"
+    "end": "Koniec",
+    "createStory": "Utwórz historię",
+    "createStoryConfirm": "Zastąpi bieżący scenariusz i obsadę Historii mówcami i kwestiami z tego dubbingu. Dubbing pozostaje bez zmian.",
+    "storySpeaker": "Mówca",
+    "storyBusy": "Najpierw zakończ lub zatrzymaj renderowanie Historii lub Audiobooka."
   },
   "player": {
     "fullscreen": "Pełny ekran",

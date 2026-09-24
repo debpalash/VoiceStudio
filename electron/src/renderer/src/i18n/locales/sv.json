@@ -532,6 +532,8 @@
     "youtube_auth": "YouTube-inloggning (valfritt)",
     "youtube_cookie_file": "Välj en cookies.txt-export",
     "remove_cookie_file": "Ta bort cookie-filen",
+    "remove_video": "Ta bort video",
+    "remove_video_confirm": "Ta bort videon, transkriptet och osparade ändringar? Det går inte att ångra.",
     "cookie_transport_error": "Cookie-exporter kräver HTTPS eller den lokala skrivbordsappen.",
     "cookie_size_error": "Cookie-exporten får vara högst 1 MB.",
     "save": "Spara",
@@ -838,7 +840,11 @@
   "dubWorkspace": {
     "title": "Dubba",
     "start": "Starta",
-    "end": "Slut"
+    "end": "Slut",
+    "createStory": "Skapa berättelse",
+    "createStoryConfirm": "Detta ersätter det nuvarande Berättelser-manuset och rollistan med talarna och replikerna från den här dubbningen. Din dubbning ändras inte.",
+    "storySpeaker": "Talare",
+    "storyBusy": "Slutför eller stoppa först renderingen av Berättelser eller Ljudbok."
   },
   "player": {
     "fullscreen": "Helskärm",
