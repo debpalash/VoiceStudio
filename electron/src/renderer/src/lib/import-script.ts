@@ -1,5 +1,6 @@
 import { getBridge } from '@/components/bridge';
 import { apiJson } from '@/lib/api/client';
+import { decodeTextBytes } from '../../../../../frontend/src/utils/readTextFile';
 
 export const SCRIPT_ACCEPT = '.txt,.md,.markdown,.doc,.docx,.pdf,.epub';
 
@@ -20,14 +21,9 @@ export async function importScript(file: File): Promise<string> {
     text = (await apiJson<{ text: string }>('/audiobook/import', { method: 'POST', body: form }))
       .text;
   } else if (ext === 'txt' || ext === 'md' || ext === 'markdown') {
-    const data = new Uint8Array(await file.arrayBuffer());
-    const encoding =
-      data[0] === 0xff && data[1] === 0xfe
-        ? 'utf-16le'
-        : data[0] === 0xfe && data[1] === 0xff
-          ? 'utf-16be'
-          : 'utf-8';
-    text = new TextDecoder(encoding, { fatal: true }).decode(data);
+    // Same decoder Stories and Dub paste use: a BOM names the encoding,
+    // valid UTF-8 stays UTF-8, anything else is Windows-1252.
+    text = decodeTextBytes(new Uint8Array(await file.arrayBuffer()));
   } else throw new Error('unsupported_file');
   if (!text.trim() || text.length > 1000000) throw new Error('invalid_text');
   return text.replace(/\r\n?/g, '\n');
