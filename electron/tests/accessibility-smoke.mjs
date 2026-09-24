@@ -8,6 +8,7 @@ const routes = [
   '/personas',
   '/gallery',
   '/transcriptions',
+  '/calls',
   '/stories',
   '/audiobook',
   '/dub',

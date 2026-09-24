@@ -4,6 +4,25 @@ import {
   integrationSlug,
   getIntegrationBySlug,
 } from '../../../../../../frontend/src/config/integration-catalog';
+import {
+  INTEGRATION_CATEGORIES,
+  integrationCategoryKey,
+  isIntegrationCategory,
+} from './integration-categories';
+
+it('gives every catalog category its own label key, never one borrowed from another feature', () => {
+  const labels = en.integrationCatalog.category as Record<string, string>;
+  const used = new Set(INTEGRATION_CATALOG.map((entry) => entry.category));
+  for (const category of used) {
+    expect(isIntegrationCategory(category), category).toBe(true);
+    expect(integrationCategoryKey(category)).toBe(`integrationCatalog.category.${category}`);
+  }
+  for (const category of INTEGRATION_CATEGORIES) expect(labels[category], category).toBeTruthy();
+  const shown = INTEGRATION_CATEGORIES.map((category) => labels[category]);
+  expect(new Set(shown).size).toBe(shown.length);
+  expect(labels.comms).toBe('Calling & voice agents');
+  expect(integrationCategoryKey('unknown')).toBe('integrationCatalog.category.other');
+});
 
 it('gives every directory entry one stable route and its actual category', () => {
   const slugs = INTEGRATION_CATALOG.map((entry) => integrationSlug(entry.name));

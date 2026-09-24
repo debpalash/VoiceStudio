@@ -2245,7 +2245,8 @@
     "ref_audio_no_speech": "Otomatik konuşma algılama referansta söylenmiş kelime bulamadı. Sesi 3–10 saniyelik net bir konuşma bölümüne kırpın veya eşleşen bir transkript sağlayın.",
     "gpu_arch_unsupported": "Bu PyTorch derlemesi GPU’nuzu desteklemiyor. Ayarlar → Performans ve Cihaz bölümünden CPU’yu seçin veya uyumlu bir PyTorch derlemesi yükleyin.",
     "windows_app_control_blocked": "Windows uygulama denetimi gerekli bir dosyayı engelledi. Yöneticinizden güvenilir VoiceStudio çalışma ortamına izin vermesini isteyin, ardından uygulamayı yeniden başlatın.",
-    "audio_io_failed": "Ses okunamadı veya kaydedilemedi. Dosya biçimini, boş disk alanını ve dosya izinlerini kontrol edin. Ayarlar → Depolama bölümündeki klasörü inceleyin."
+    "audio_io_failed": "Ses okunamadı veya kaydedilemedi. Dosya biçimini, boş disk alanını ve dosya izinlerini kontrol edin. Ayarlar → Depolama bölümündeki klasörü inceleyin.",
+    "no_audio_track": "Bu dosyada ses parçası yok, bu yüzden yazıya dökülecek, dublajlanacak veya klonlanacak konuşma yok. Ses içeren bir video veya ses dosyası seçin."
   },
   "sharing": {
     "title": "Paylaşım ve Uzaktan Erişim",
