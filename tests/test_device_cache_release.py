@@ -171,5 +171,3 @@ def test_free_vram_still_collects_cublas_and_flushes(monkeypatch):
 
     assert cleared.call_count == 1
     assert backends["cuda"].empty_cache.call_count == 1
-
-
