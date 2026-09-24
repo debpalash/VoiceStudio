@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -30,10 +31,14 @@ function capture(source, pattern, label) {
   return yamlValue(value);
 }
 
-async function sha512(path) {
-  const hash = createHash('sha512');
-  for await (const chunk of createReadStream(path)) hash.update(chunk);
-  return hash.digest('base64');
+async function fileHashes(path, includeSha1) {
+  const sha512 = createHash('sha512');
+  const sha1 = includeSha1 ? createHash('sha1') : null;
+  for await (const chunk of createReadStream(path)) {
+    sha512.update(chunk);
+    sha1?.update(chunk);
+  }
+  return { sha512: sha512.digest('base64'), sha1: sha1?.digest('hex') };
 }
 
 const platform = option('platform', process.platform);
@@ -88,7 +93,8 @@ assert.equal(
   declaredSize,
   'Update metadata size matches artifact bytes',
 );
-assert.equal(await sha512(artifactPath), fileSha, 'Update metadata SHA-512 matches artifact bytes');
+const hashes = await fileHashes(artifactPath, platform === 'linux');
+assert.equal(hashes.sha512, fileSha, 'Update metadata SHA-512 matches artifact bytes');
 
 const osToken = platform === 'win32' ? 'win' : platform === 'darwin' ? 'mac' : 'linux';
 assert(
@@ -103,6 +109,25 @@ if (platform === 'win32') {
   assert(fileUrl.endsWith('.zip'), 'macOS update artifact is the updater ZIP');
 } else {
   assert(fileUrl.endsWith('.AppImage'), 'Linux update artifact is the AppImage');
+  const updateInfo = execFileSync(artifactPath, ['--appimage-updateinformation'], {
+    encoding: 'utf8',
+  }).trim();
+  assert.equal(
+    updateInfo,
+    'gh-releases-zsync|debpalash|VoiceStudio|latest|VoiceStudio-Electron-*-linux-x64.AppImage.zsync',
+    'External AppImage updaters find the stable Linux release',
+  );
+  const control = `${artifactPath}.zsync`;
+  assert(existsSync(control), 'Versioned AppImage zsync control file exists');
+  const header = readFileSync(control).subarray(0, 4096).toString('utf8');
+  assert(
+    header.includes(
+      `URL: https://github.com/debpalash/VoiceStudio/releases/download/v${expectedVersion}/${fileUrl}\n`,
+    ),
+    'zsync downloads the exact versioned release artifact',
+  );
+  assert(header.includes(`Length: ${declaredSize}\n`), 'zsync describes final AppImage size');
+  assert(header.includes(`SHA-1: ${hashes.sha1}\n`), 'zsync verifies the final AppImage bytes');
 }
 
 console.log(

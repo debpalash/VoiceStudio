@@ -119,7 +119,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev pkg-config xvfb
+          sudo apt-get install -y libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev pkg-config xvfb zsync
       - name: Bundle pinned uv for the host architecture
         run: |
           node --input-type=module <<'NODE'
@@ -162,6 +162,9 @@ jobs:
             unset CSC_LINK CSC_KEY_PASSWORD
           fi
           bun x electron-builder --config electron-builder.config.mjs ${{ matrix.flags }} --publish never
+          if [ "$RUNNER_OS" = Linux ]; then
+            node scripts/embed-appimage-update.mjs
+          fi
           node tests/packaging-contract.mjs --artifact
           node tests/update-package-contract.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
       - name: Verify macOS signing and notarization before publication
