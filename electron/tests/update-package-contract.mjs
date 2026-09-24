@@ -117,22 +117,23 @@ if (platform === 'win32') {
     /^\s*\[\s*\d+\]\s+\.static\s+PROGBITS/m,
     'AppImage uses the FUSE2-independent static runtime',
   );
+  const preview = channel === 'electron-preview-linux-x64';
   const updateInfo = execFileSync(artifactPath, ['--appimage-updateinformation'], {
     encoding: 'utf8',
   }).trim();
   assert.equal(
     updateInfo,
-    'gh-releases-zsync|debpalash|VoiceStudio|latest|VoiceStudio-Electron-*-linux-x64.AppImage.zsync',
-    'External AppImage updaters find the stable Linux release',
+    `gh-releases-zsync|debpalash|VoiceStudio|${preview ? 'preview' : 'latest'}|VoiceStudio-Electron-*-linux-x64.AppImage.zsync`,
+    'External AppImage updaters follow the selected Linux release channel',
   );
   const control = `${artifactPath}.zsync`;
   assert(existsSync(control), 'Versioned AppImage zsync control file exists');
   const header = readFileSync(control).subarray(0, 4096).toString('utf8');
   assert(
     header.includes(
-      `URL: https://github.com/debpalash/VoiceStudio/releases/download/v${expectedVersion}/${fileUrl}\n`,
+      `URL: https://github.com/debpalash/VoiceStudio/releases/download/${preview ? 'preview' : `v${expectedVersion}`}/${fileUrl}\n`,
     ),
-    'zsync downloads the exact versioned release artifact',
+    'zsync downloads the matching release-channel artifact',
   );
   assert(header.includes(`Length: ${declaredSize}\n`), 'zsync describes final AppImage size');
   assert(header.includes(`SHA-1: ${hashes.sha1}\n`), 'zsync verifies the final AppImage bytes');

@@ -16,9 +16,16 @@ const filename = `VoiceStudio-Electron-${version}-linux-x64.AppImage`;
 const image = resolve(releaseDir, filename);
 const zsync = `${image}.zsync`;
 const channel = process.env.VOICESTUDIO_UPDATE_CHANNEL || 'electron-stable-linux-x64';
+assert(
+  ['electron-stable-linux-x64', 'electron-preview-linux-x64'].includes(channel),
+  'Known Linux updater channel',
+);
+const preview = channel === 'electron-preview-linux-x64';
+const releaseTag = preview ? 'preview' : `v${version}`;
 const manifestPath = resolve(releaseDir, `${channel}-linux.yml`);
 const updateInfo =
-  'gh-releases-zsync|debpalash|VoiceStudio|latest|VoiceStudio-Electron-*-linux-x64.AppImage.zsync';
+  `gh-releases-zsync|debpalash|VoiceStudio|${preview ? 'preview' : 'latest'}|` +
+  'VoiceStudio-Electron-*-linux-x64.AppImage.zsync';
 
 // The pinned electron-builder runtime reserves a fixed-size .upd_info ELF
 // section. Read its actual offset instead of assuming a particular runtime
@@ -84,7 +91,7 @@ const { appendBlockmap } = require(
 const { size, sha512, blockMapSize } = await appendBlockmap(image);
 assert.equal((await stat(image)).size, size);
 
-const url = `https://github.com/debpalash/VoiceStudio/releases/download/v${version}/${filename}`;
+const url = `https://github.com/debpalash/VoiceStudio/releases/download/${releaseTag}/${filename}`;
 execFileSync('zsyncmake', ['-u', url, '-o', zsync, image], { stdio: 'inherit' });
 
 const manifest = readFileSync(manifestPath, 'utf8');

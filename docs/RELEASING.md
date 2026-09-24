@@ -112,11 +112,13 @@ the downloaded image on a clean host because build-runner libraries can hide
 relocation errors.
 
 Linux release AppImages include `gh-releases-zsync` update information and a
-versioned `.AppImage.zsync` asset for AppImageUpdate/AppImageLauncher. The release
-build uses `readelf` and `zsyncmake` (Ubuntu package `zsync`) to embed this
-information before regenerating electron-updater's blockmap and checksums; the
-existing in-app updater still uses its separate channel manifest. Verify both
-update paths against the final downloaded artifact, not the pre-publish build.
+versioned `.AppImage.zsync` asset for AppImageUpdate/AppImageLauncher. Stable
+images follow the latest stable GitHub release; previews follow the `preview`
+release instead of downgrading to stable. The build uses `readelf` and
+`zsyncmake` (Ubuntu package `zsync`) to embed this information before
+regenerating electron-updater's blockmap and checksums; the existing in-app
+updater still uses its separate channel manifest. Verify both update paths
+against the final downloaded artifact, not the pre-publish build.
 
 Electron update manifests use platform and architecture channels. Confirm every
 manifest names an uploaded installer, reports the tagged version, and matches the
