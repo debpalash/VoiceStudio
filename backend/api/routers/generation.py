@@ -93,6 +93,11 @@ async def generated_ogg_opus(audio_id: str):
             from services.audio_io import encode_ogg_opus
             try:
                 encoded = await encode_ogg_opus(path)
+            except asyncio.TimeoutError as exc:
+                logger.warning("Ogg/Opus encoding timed out")
+                raise HTTPException(
+                    status_code=503, detail="Ogg/Opus encoding timed out; try again later"
+                ) from exc
             except RuntimeError as exc:
                 logger.warning("Ogg/Opus encoding failed: %s", exc)
                 raise HTTPException(status_code=503, detail=str(exc)) from exc
