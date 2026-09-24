@@ -147,7 +147,7 @@ export function LongformPage({ mode }: { mode: Mode }) {
     setLocalError(null);
     try {
       let text: string;
-      if (mode === 'stories' && /\.(txt|md|srt)$/i.test(file.name))
+      if (mode === 'stories' && /\.(txt|md|srt|vtt)$/i.test(file.name))
         text = importToText(file.name, await readTextFile(file));
       else {
         const body = new FormData();
@@ -370,7 +370,9 @@ export function LongformPage({ mode }: { mode: Mode }) {
                 <input
                   aria-label={t('audiobook.import')}
                   type="file"
-                  accept={mode === 'stories' ? '.txt,.md,.srt,.epub,.pdf' : '.txt,.md,.epub,.pdf'}
+                  accept={
+                    mode === 'stories' ? '.txt,.md,.srt,.vtt,.epub,.pdf' : '.txt,.md,.epub,.pdf'
+                  }
                   disabled={locked}
                   className="sr-only"
                   onChange={(e) => {

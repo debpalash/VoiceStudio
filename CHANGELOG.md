@@ -37,13 +37,16 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 ### Fixed
 
 - Integration pages show each integration's own category and summary instead of borrowed labels such as "Dubbing" for Twilio (#2304)
+- Clone Import script reads Windows-1252 and BOM-tagged UTF-16 text the same way Stories and Dub paste already do (#2313) — thanks @kevin9327!
 - Integration and featured logos open their page in VoiceStudio; the vendor website opens only from the page's Website card (#2304)
+- Stories caption imports drop the WebVTT header, NOTE/STYLE/REGION blocks and cue identifiers, keep `&` from `&amp;`, accept `.vtt`, and read CR-only files (#2310) — thanks @kevin9327!
 - Pickers show readable labels instead of raw values such as `__default__`, `auto` or language codes before they are opened (#2304)
 - Pure Dub timeline moves keep both millisecond cue times without unintended playback-speed changes (#2309) — thanks @kevin9327!
 
 ### Fixed
 
 - A video with no audio track now says so in Dub, Batch, transcription, cloning and imports instead of showing ffmpeg's exit-234 dump (#2308)
+- Hardsub exports on Windows pass the caption path in ffmpeg's filter form so burned-in line and karaoke captions render (#2312) — thanks @kevin9327!
 
 ## [0.5.6] — 2026-09-23
 
