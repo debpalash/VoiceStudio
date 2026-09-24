@@ -715,8 +715,11 @@ async def create_speech(req: SpeechRequest):
                 f"progress), not that generation failed. Retry once the model "
                 f"shows as installed."
             ),
+            headers={"Retry-After": "30", "X-OmniVoice-Retryable": "true"},
         ) from e
     except Exception as e:
+        if type(e).__name__ == "ModelLoadInterruptedByShutdown":
+            raise
         # A sidecar engine's load can also hit the #1172 class (broken venv
         # interpreter / placeholder binary) — surface the typed 503 here too.
         http = _typed_speech_http_error(e)
@@ -728,7 +731,7 @@ async def create_speech(req: SpeechRequest):
             # OpenAI-shaped clients.
             from core.public_errors import model_load_failure
 
-            logger.exception("OpenAI TTS engine '%s' failed to load its model", backend.id)
+            logger.error("OpenAI TTS model load failed")
             raise HTTPException(
                 status_code=503,
                 detail=str(model_load_failure(backend.id, e)["detail"]),

@@ -1670,6 +1670,7 @@ async def generate_speech(
                     f"for progress), not that generation failed. Retry once the "
                     f"model shows as installed."
                 ),
+                headers={"Retry-After": "30", "X-OmniVoice-Retryable": "true"},
             ) from exc
         except HTTPException:
             raise
@@ -1681,9 +1682,11 @@ async def generate_speech(
         # reply now names the engine and the model load, and arrives as a 503
         # the client can treat as retryable instead of a crash.
         except Exception as exc:
+            if type(exc).__name__ == "ModelLoadInterruptedByShutdown":
+                raise
             from core.public_errors import model_load_failure
 
-            logger.exception("engine '%s' failed to load its model", engine_id)
+            logger.error("engine model load failed")
             return JSONResponse(
                 status_code=503,
                 content=model_load_failure(engine_id, exc),

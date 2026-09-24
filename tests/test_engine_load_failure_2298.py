@@ -112,7 +112,9 @@ def test_generate_names_the_failed_model_load_not_an_internal_error(
         "/generate", data={"text": "Hello.", "engine": "mirror-down-engine"}
     )
 
-    assert res.status_code != 500, res.text
+    assert res.status_code == 503, res.text
+    assert res.headers["Retry-After"] == "30"
+    assert res.headers["X-OmniVoice-Retryable"] == "true"
     detail = res.json()["detail"]
     assert "hit an internal error" not in detail
     assert "mirror-down-engine" in detail
@@ -130,6 +132,9 @@ def test_generate_keeps_the_mirror_remedy_that_the_500_already_carried(
         "/generate", data={"text": "Hello.", "engine": "mirror-hint-engine"}
     )
 
+    assert res.status_code == 503, res.text
+    assert res.headers["Retry-After"] == "30"
+    assert res.headers["X-OmniVoice-Retryable"] == "true"
     body = res.json()
     assert "Hugging Face mirror" in body["detail"]
     assert body.get("docs_topic") == "HF_MIRROR_UNREACHABLE"
@@ -144,7 +149,7 @@ def test_generate_explains_a_load_failure_with_no_known_class(client, monkeypatc
         "/generate", data={"text": "Hello.", "engine": "odd-failure-engine"}
     )
 
-    assert res.status_code != 500, res.text
+    assert res.status_code == 503, res.text
     detail = res.json()["detail"]
     assert "hit an internal error" not in detail
     assert "odd-failure-engine" in detail
@@ -166,7 +171,9 @@ def test_speech_route_gets_the_same_treatment(client, monkeypatch, mirror_config
         },
     )
 
-    assert res.status_code != 500, res.text
+    assert res.status_code == 503, res.text
+    assert res.headers["Retry-After"] == "30"
+    assert res.headers["X-OmniVoice-Retryable"] == "true"
     assert "hit an internal error" not in res.text
 
 
@@ -185,3 +192,19 @@ def test_a_stalled_download_still_reports_the_load_budget(client, monkeypatch):
 
     assert res.status_code == 503, res.text
     assert "model-load budget" in res.json()["detail"]
+    assert res.headers["Retry-After"] == "30"
+    assert res.headers["X-OmniVoice-Retryable"] == "true"
+
+
+def test_speech_shutdown_preserves_graceful_response(client, monkeypatch):
+    """Shutdown is not a failed download or a reportable model crash."""
+    from services.model_manager import ModelLoadInterruptedByShutdown
+
+    _register(monkeypatch, "shutdown-engine", ModelLoadInterruptedByShutdown("stopping"))
+    res = client.post(
+        "/v1/audio/speech",
+        json={"model": "shutdown-engine", "input": "Hi.", "response_format": "wav"},
+    )
+    assert res.status_code == 503, res.text
+    assert "[shutting_down]" in res.json()["detail"]
+    assert res.headers["Retry-After"] == "5"
