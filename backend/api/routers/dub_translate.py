@@ -353,11 +353,12 @@ def _unload_nllb():
     global _nllb_device, _nllb_model, _nllb_tokenizer
     import gc
     from services.model_manager import release_device_cache
+    device = _nllb_device
     _nllb_model = None
     _nllb_tokenizer = None
     _nllb_device = None
     gc.collect()
-    release_device_cache()
+    release_device_cache(device=device)
 
 
 def _should_unload_nllb() -> bool:
@@ -520,7 +521,7 @@ async def dub_translate(req: TranslateRequest):
                             # on whichever accelerator the translator is on
                             # (the ladder above picks CUDA or MPS, and a
                             # CUDA-only flush missed the MPS case).
-                            release_device_cache()
+                            release_device_cache(device=_nllb_device)
                             logger.warning(
                                 "NLLB batch of %d failed; retrying rows individually: %s",
                                 len(batch),

@@ -96,6 +96,19 @@ def test_release_device_cache_follows_the_engines_accelerator(monkeypatch):
     assert backends["cuda"].empty_cache.call_count == 0
 
 
+def test_release_device_cache_uses_explicit_caller_device(monkeypatch):
+    """NLLB may run on CUDA while the default engine accelerator is NPU."""
+    from services import model_manager as mm
+
+    torch, backends = _fake_torch("npu", engine_accelerator="npu")
+    monkeypatch.setattr(mm, "_lazy_torch", lambda: torch)
+    mm.release_device_cache(device="cuda:0")
+    assert backends["cuda"].empty_cache.call_count == 1
+    assert backends["npu"].empty_cache.call_count == 0
+    mm.release_device_cache(device="cpu")
+    assert backends["npu"].empty_cache.call_count == 0
+
+
 def test_release_device_cache_ignores_a_cpu_answer(monkeypatch):
     """A cpu answer must not end the search — probe the shipped backends."""
     from services import model_manager as mm

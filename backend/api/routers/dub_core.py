@@ -2147,7 +2147,10 @@ async def dub_transcribe_stream(
         # allocator is still holding on the accelerator this host actually
         # synthesizes on (MPS-only here left CUDA, XPU and Ascend NPU hosts
         # holding the freed blocks).
-        release_device_cache()
+        fut_release = loop.run_in_executor(_gpu_pool, release_device_cache)
+        async for _ping in _ping_while(fut_release):
+            yield _ping
+        fut_release.result()
 
         yield _sse_event("final", {
             "segments": final_segs,

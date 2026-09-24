@@ -3338,8 +3338,8 @@ def _active_accelerator_name(torch):
     return getattr(accel, "type", None)
 
 
-def release_device_cache(*, raise_on_failure: bool = False) -> None:
-    """Ask the active accelerator to hand its cached blocks back.
+def release_device_cache(*, device: str | None = None, raise_on_failure: bool = False) -> None:
+    """Release the chosen device's cached blocks, or the active accelerator's.
 
     The narrow primitive behind ``free_vram()``: no ``gc.collect()`` and no
     cuBLAS workspace clear, because the callers that need it most — the
@@ -3347,11 +3347,10 @@ def release_device_cache(*, raise_on_failure: bool = False) -> None:
     where a full collection is the wrong price for dropping the allocator's
     cache.
 
-    It has to reach every backend an engine can synthesize on. Engines resolve
-    their device through ``torch.accelerator``, so an Ascend NPU host runs the
-    model on ``npu`` and an Intel Arc host on ``xpu``; the CUDA/MPS pair that
-    was open-coded at those call sites made the flush a silent no-op exactly
-    where the allocator was holding the freed blocks.
+    By default it follows the accelerator used by engines that select through
+    ``torch.accelerator`` (CUDA, MPS, XPU or NPU). Callers that select their
+    own device, such as NLLB, pass that device explicitly so a hybrid host
+    never flushes a different allocator.
 
     Best-effort by default: freeing memory must not fail the request, so a
     broken backend is logged and swallowed. ``raise_on_failure`` restores
@@ -3360,11 +3359,15 @@ def release_device_cache(*, raise_on_failure: bool = False) -> None:
     """
     torch = _lazy_torch()
     try:
-        name = _active_accelerator_name(torch)
+        name = str(device).split(":", 1)[0] if device is not None else _active_accelerator_name(torch)
+        if name == "cpu" and device is not None:
+            return
         if name and name != "cpu":
             empty_cache = getattr(getattr(torch, name, None), "empty_cache", None)
             if empty_cache is not None:
                 empty_cache()
+                return
+            if device is not None:
                 return
         # No usable answer from torch.accelerator: probe the backends this build
         # ships, in the order the host prefers them.
@@ -3379,7 +3382,7 @@ def release_device_cache(*, raise_on_failure: bool = False) -> None:
     except Exception:  # noqa: BLE001 — freeing memory must never raise
         if raise_on_failure:
             raise
-        logger.debug("releasing the device cache failed", exc_info=True)
+        logger.debug("releasing the device cache failed")
 
 
 def free_vram():
