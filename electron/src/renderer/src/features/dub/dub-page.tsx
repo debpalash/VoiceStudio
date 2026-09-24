@@ -46,7 +46,6 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { canCreateStoryFromDub, loadDubIntoStories, storiesDraftOccupied } from './dub-to-story';
 import { useLongformSession } from '../longform/longform-session';
-import { ConfirmDialog } from '../clone/confirm-dialog';
 import { useTranslation } from 'react-i18next';
 import {
   AlertCircleIcon,
@@ -1418,10 +1417,15 @@ export function DubPage() {
                   maxLength={5000}
                   value={session.translationInstructions || ''}
                   disabled={busy || Boolean(session.recovery)}
-                  onChange={(event) => setDubTranslationOptions({ translationInstructions: event.target.value })}
+                  onChange={(event) =>
+                    setDubTranslationOptions({ translationInstructions: event.target.value })
+                  }
                   className="w-full resize-y rounded-lg border border-input bg-background/40 px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                 />
-                <p id="dub-translation-instructions-help" className="text-xs leading-5 text-muted-foreground">
+                <p
+                  id="dub-translation-instructions-help"
+                  className="text-xs leading-5 text-muted-foreground"
+                >
                   {t('dubStyle.help')}
                 </p>
               </div>
