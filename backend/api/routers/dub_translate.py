@@ -468,6 +468,7 @@ async def dub_translate(req: TranslateRequest):
                         _nllb_model.to("cpu")
                         _nllb_device = "cpu"
                         inputs = {key: value.to("cpu") for key, value in inputs.items()}
+                        release_device_cache(device="mps")
                         tokens = _nllb_model.generate(
                             **inputs,
                             forced_bos_token_id=forced_bos_token_id,
