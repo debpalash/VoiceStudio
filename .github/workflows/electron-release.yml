@@ -189,7 +189,9 @@ jobs:
         working-directory: electron
         run: |
           if [ "$RUNNER_OS" = Linux ]; then
-            xvfb-run -a node tests/packaged-smoke.mjs --setup
+            for image in release/VoiceStudio-Electron-*-linux-x64.AppImage; do
+              VOICESTUDIO_PACKAGED_EXE="electron/$image" xvfb-run -a node tests/packaged-smoke.mjs --setup
+            done
           else
             node tests/packaged-smoke.mjs --setup
           fi
