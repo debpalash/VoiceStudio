@@ -25,8 +25,8 @@ const WEBVTT_TAG = /<[^<>\n]*>/g;
 const ASS_OVERRIDE = /\{\\[^{}\n]*\}/g;
 // `<br>` is a rendered line break, so it separates words instead of vanishing.
 const LINE_BREAK = /<br[ \t]*\/?>/gi;
-const TIMESTAMP = /^(?:(?:\d{1,2}):)?[0-5]?\d:[0-5]?\d[,.]\d{1,3}$/;
-const TIMESTAMP_START = /^(?:(?:\d{1,2}):)?[0-5]?\d:[0-5]?\d[,.]\d{1,3}(?:[ \t]|$)/;
+const TIMESTAMP = /^(?:\d+:)?[0-5]?\d:[0-5]?\d[,.]\d{1,3}$/;
+const TIMESTAMP_START = /^(?:\d+:)?[0-5]?\d:[0-5]?\d[,.]\d{1,3}(?:[ \t]|$)/;
 
 /** `text` with each span `re` matches replaced by `sep`. */
 function dropMatches(text, re, sep = '') {
@@ -83,8 +83,7 @@ function captionBlocks(text, webvtt) {
     if (!lines.length) return false;
     const first = lines[0];
     if (/^WEBVTT(?:[ \t]|$)/.test(first)) return false;
-    const identifiesCue = lines.length > 1 && isTimingLine(lines[1]);
-    return !isWebVttMetadata(first) || identifiesCue;
+    return !isWebVttMetadata(first);
   });
 }
 

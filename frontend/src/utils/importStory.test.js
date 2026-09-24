@@ -88,6 +88,11 @@ describe('parseSrt', () => {
       'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello\n\n00:00:02.000 --> 00:00:03.000\nWorld\n';
     expect(parseSrt(vtt)).toBe('Hello\nWorld');
   });
+  it('skips WebVTT timings with three-digit hours instead of speaking them', () => {
+    expect(parseSrt('WEBVTT\n\n100:00:00.000 --> 100:00:02.000\nLong recording\n')).toBe(
+      'Long recording',
+    );
+  });
   it('drops NOTE, STYLE and REGION blocks and cue identifiers', () => {
     const vtt =
       'WEBVTT\n\nNOTE made by a translator\n\n' +
@@ -102,6 +107,12 @@ describe('parseSrt', () => {
       'WEBVTT\n\nNOTE\nTransition A --> B\nprivate note\n\n' +
       'STYLE\nTransition A --> B\n::cue { color: red }\n\n' +
       '00:00:01.000 --> 00:00:02.000\nSpoken text\n';
+    expect(parseSrt(vtt)).toBe('Spoken text');
+  });
+  it('never treats a NOTE block as a cue even when it contains a valid timing line', () => {
+    const vtt =
+      'WEBVTT\n\nNOTE\n00:00:01.000 --> 00:00:02.000\nprivate note\n\n' +
+      '00:00:03.000 --> 00:00:04.000\nSpoken text\n';
     expect(parseSrt(vtt)).toBe('Spoken text');
   });
   it('keeps NOTE when it is the spoken dialogue', () => {
