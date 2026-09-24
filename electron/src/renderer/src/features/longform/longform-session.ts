@@ -155,6 +155,8 @@ export const longformSession = new Store<Session>({
   stopped: false,
 });
 export const useLongformSession = () => useStore(longformSession);
+/** Fences document imports that finish after a new dub replaces the Stories draft. */
+export const storiesImportEpoch = { current: 0 };
 const patch = (value: Partial<Session>) => longformSession.setState((s) => ({ ...s, ...value }));
 export function editLongform(mode: Mode, value: Partial<Draft>) {
   if (longformSession.state.active) return;

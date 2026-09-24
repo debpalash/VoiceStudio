@@ -8,7 +8,7 @@ import {
 } from './mcp-setup';
 import { n8nSetup } from './n8n-setup';
 import { openaiAgentsSetup } from './openai-agents-setup';
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import { TwilioSetup, TWILIO_DOCS } from './twilio-setup';
 
 /**
@@ -42,8 +42,18 @@ export interface SetupBlock {
   download?: { file: string; type: string };
 }
 
+/** What an interactive panel receives to lay out a whole detail page. */
+export interface IntegrationPanelProps {
+  /** The page hero (logo, category, name, tagline) with the panel's status and primary action. */
+  hero: (slots: { status?: ReactNode; action?: ReactNode }) => ReactNode;
+  /** The page's generic rail cards (capabilities, website), placed below the panel's own. */
+  rail: ReactNode;
+}
+
 export interface IntegrationSetup {
   capabilities: readonly IntegrationCapability[];
+  /** i18n key for the one-line hero subtitle: what this integration does for the user. */
+  taglineKey: string;
   docs: string;
   /** Link to Settings → Sharing for per-client MCP voice bindings. */
   voiceBindings?: boolean;
@@ -54,7 +64,7 @@ export interface IntegrationSetup {
    * inside VoiceStudio rather than exported as snippets (e.g. Twilio). An
    * entry needs copyable blocks, a panel, or both.
    */
-  panel?: ComponentType;
+  panel?: ComponentType<IntegrationPanelProps>;
 }
 
 const REPO_DOCS = 'https://github.com/debpalash/VoiceStudio/blob/main/docs';
@@ -64,6 +74,7 @@ const GHCR_IMAGE = 'ghcr.io/debpalash/omnivoice-studio';
 function mcpClient(slug: keyof typeof MCP_CLIENTS): IntegrationSetup {
   return {
     capabilities: ['mcp'],
+    taglineKey: 'integrationCatalog.tagline.mcpClient',
     docs: MCP_CLIENTS[slug].docs,
     voiceBindings: true,
     blocks: (baseUrl) => {
@@ -138,6 +149,7 @@ function dockerCompose(image: string) {
 function container(image: string, docs: string): IntegrationSetup {
   return {
     capabilities: ['selfHost', 'speechApi', 'transcriptionApi', 'mcp'],
+    taglineKey: 'integrationCatalog.tagline.container',
     docs,
     blocks: () => [
       {
@@ -170,6 +182,7 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
   'codex-cli': mcpClient('codex-cli'),
   'model-context-protocol': {
     capabilities: ['mcp'],
+    taglineKey: 'integrationCatalog.tagline.mcp',
     docs: `${REPO_DOCS}/mcp.md`,
     voiceBindings: true,
     blocks: (baseUrl) => {
@@ -223,6 +236,7 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
   },
   'voicestudio-api': {
     capabilities: ['speechApi', 'transcriptionApi'],
+    taglineKey: 'integrationCatalog.tagline.api',
     docs: `${REPO_DOCS}/api-auth.md`,
     blocks: (baseUrl) => {
       const base = backendEndpoint(baseUrl, '');
@@ -307,6 +321,7 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
     // VoiceStudio serves the pipeline's speech-to-text and text-to-speech; the
     // agent's language model is a local OpenAI-compatible server of the user's.
     capabilities: ['speechApi', 'transcriptionApi', 'localLlm'],
+    taglineKey: 'integrationCatalog.tagline.openaiAgents',
     docs: `${REPO_DOCS}/agentic-voice.md#openai-agents-sdk`,
     blocks: (baseUrl) => {
       const setup = openaiAgentsSetup('openai-agents', baseUrl);
@@ -329,12 +344,14 @@ export const INTEGRATION_SETUPS: Record<string, IntegrationSetup> = {
   },
   twilio: {
     capabilities: ['phoneCalls'],
+    taglineKey: 'integrationCatalog.tagline.twilio',
     docs: TWILIO_DOCS,
     blocks: () => [],
     panel: TwilioSetup,
   },
   n8n: {
     capabilities: ['workflow', 'speechApi'],
+    taglineKey: 'integrationCatalog.tagline.n8n',
     docs: `${REPO_DOCS}/integrations/n8n.md`,
     blocks: (baseUrl) => {
       const setup = n8nSetup('n8n', baseUrl);

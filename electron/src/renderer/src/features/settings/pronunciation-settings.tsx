@@ -278,6 +278,7 @@ export function PronunciationSettings() {
           onChange={(event) => setReplacement(event.target.value)}
         />
         <Select
+          items={TYPES.map((value) => ({ value, label: t('pronunciation.type_' + value) }))}
           value={type}
           disabled={busy}
           onValueChange={(value) => {
@@ -319,7 +320,14 @@ export function PronunciationSettings() {
         title={t('pronunciation.test_label')}
         description={globalPreviewHidesScoped ? t('pronunciation.test_global_hint') : undefined}
       >
-        <Select value={testLanguage} onValueChange={(value) => value && setTestLanguage(value)}>
+        <Select
+          items={[
+            { value: '*', label: t('pronunciation.global') },
+            ...scopedLanguages.map((value) => ({ value, label: value })),
+          ]}
+          value={testLanguage}
+          onValueChange={(value) => value && setTestLanguage(value)}
+        >
           <SelectTrigger aria-label={t('pronunciation.test_language')}>
             <SelectValue />
           </SelectTrigger>

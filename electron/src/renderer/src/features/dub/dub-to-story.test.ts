@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { canCreateStoryFromDub, loadDubIntoStories, storiesDraftOccupied } from './dub-to-story';
-import { longformSession, type Draft } from '../longform/longform-session';
+import { longformSession, storiesImportEpoch, type Draft } from '../longform/longform-session';
 
 const storiesDraft = () => longformSession.state.drafts.stories;
 const baseline = JSON.parse(JSON.stringify(longformSession.state.drafts));
@@ -45,9 +45,11 @@ describe('whether the user is asked first', () => {
   it.each([
     ['lines', { lines: [{ id: 'l1', text: 'Hello', profileId: null }] }],
     ['a cast', { cast: [{ id: 'c1', name: 'Mara', profileId: null }] }],
+    ['saved voice assignments', { voiceCast: { Anna: 'voice-1' } }],
     // Imported text not yet split into lines is work too, and loading a dub
     // clears it — asking only about lines would lose it silently.
     ['pending imported text', { importText: 'A chapter someone imported.' }],
+    ['a completed render', { output: 'old-render.mp3' }],
   ])('is asked when Stories holds %s', (_label, patch) => {
     expect(storiesDraftOccupied({ ...storiesDraft(), ...patch } as Draft)).toBe(true);
   });
@@ -60,9 +62,13 @@ describe('loading a dub into Stories', () => {
   ];
 
   it('replaces the cast and lines, and gives every line an id', () => {
-    expect(loadDubIntoStories(segments, { unknownSpeakerLabel: 'Speaker', newLineId: ids() })).toBe(
-      true,
-    );
+    expect(
+      loadDubIntoStories(segments, {
+        profiles: [{ id: 'p-anna' }, { id: 'p-ben' }],
+        unknownSpeakerLabel: 'Speaker',
+        newLineId: ids(),
+      }),
+    ).toBe(true);
     const draft = storiesDraft();
     expect(draft.cast.map((c) => [c.name, c.profileId])).toEqual([
       ['Anna', 'p-anna'],
@@ -81,6 +87,35 @@ describe('loading a dub into Stories', () => {
     }));
     loadDubIntoStories(segments, { unknownSpeakerLabel: 'Speaker', newLineId: ids() });
     expect(storiesDraft().importText).toBe('');
+  });
+
+  it('invalidates an import in flight and clears previous render/download state', () => {
+    const oldEpoch = storiesImportEpoch.current;
+    longformSession.setState((s) => ({
+      ...s,
+      drafts: {
+        ...s.drafts,
+        stories: {
+          ...s.drafts.stories,
+          output: 'old-render.mp3',
+          outputScript: 'old script',
+          outputChapters: [{ title: 'Old', status: 'done' }],
+          outputCachedChapters: 1,
+          outputFailedChapters: 2,
+          voiceCast: { Anna: 'old-voice' },
+        },
+      },
+    }));
+    loadDubIntoStories(segments, { unknownSpeakerLabel: 'Speaker', newLineId: ids() });
+    expect(storiesImportEpoch.current).toBe(oldEpoch + 1);
+    expect(storiesDraft()).toMatchObject({
+      output: '',
+      outputScript: '',
+      outputChapters: [],
+      outputCachedChapters: 0,
+      outputFailedChapters: 0,
+      voiceCast: {},
+    });
   });
 
   it('detaches the open project, so a later save cannot overwrite it', () => {
@@ -130,7 +165,11 @@ describe('loading a dub into Stories', () => {
           ],
         },
       ],
-      { unknownSpeakerLabel: 'Speaker', newLineId: ids() },
+      {
+        profiles: [{ id: 'p-anna' }, { id: 'p-ben' }],
+        unknownSpeakerLabel: 'Speaker',
+        newLineId: ids(),
+      },
     );
     expect(loaded).toBe(true);
     expect(storiesDraft().cast.map((c) => c.name)).toEqual(['Anna', 'Ben']);

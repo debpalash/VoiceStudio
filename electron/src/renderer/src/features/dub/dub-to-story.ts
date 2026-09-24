@@ -7,8 +7,13 @@
  * and what it overwrites, can be tested without mounting the page.
  */
 import { dubToStory } from '../../../../../../frontend/src/utils/dubToStory';
+import {
+  editLongform,
+  longformSession,
+  storiesImportEpoch,
+  type Draft,
+} from '../longform/longform-session';
 import { clearedScriptPatch, scriptSize } from '../longform/story-clear';
-import { editLongform, longformSession, type Draft } from '../longform/longform-session';
 
 /**
  * Dub phases whose segments are worth carrying over: the text has settled and
@@ -40,12 +45,16 @@ export function canCreateStoryFromDub(session: { phase: string; segments: unknow
 
 /**
  * Whether loading a dub would overwrite work, which is what decides if the user
- * is asked first. `scriptSize` is the existing answer to "how much script is
- * there", pending imported text included — a user whose only work is an import
- * they have not split yet must still be asked.
+ * is asked first. Count pending imports and old renders too: both are lost when
+ * the dub replaces the draft, even if the current script has no lines.
  */
 export function storiesDraftOccupied(draft: Draft): boolean {
-  return scriptSize('stories', draft) > 0 || draft.cast.length > 0;
+  return (
+    scriptSize('stories', draft) > 0 ||
+    draft.cast.length > 0 ||
+    Object.keys(draft.voiceCast).length > 0 ||
+    Boolean(draft.output || draft.outputScript || draft.outputChapters.length)
+  );
 }
 
 /**
@@ -74,13 +83,20 @@ export function loadDubIntoStories(
   });
   if (tracks.length === 0) return false;
   const newLineId = options.newLineId ?? (() => crypto.randomUUID());
+  storiesImportEpoch.current += 1;
   editLongform('stories', {
     // Clearing the script the same way "Clear script" does, so a pending import
     // cannot survive underneath the lines that just replaced it.
     ...clearedScriptPatch('stories'),
     cast,
     lines: tracks.map((line) => ({ ...line, id: newLineId(), profileId: null })),
+    voiceCast: {},
     projectId: null,
+    output: '',
+    outputScript: '',
+    outputChapters: [],
+    outputCachedChapters: 0,
+    outputFailedChapters: 0,
   });
   return true;
 }

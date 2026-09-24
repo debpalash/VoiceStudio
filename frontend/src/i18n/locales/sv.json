@@ -2245,7 +2245,8 @@
     "ref_audio_no_speech": "Den automatiska taldetekteringen hittade inga talade ord. Klipp referensen till ett tydligt talavsnitt på 3–10 sekunder eller ange en matchande transkription.",
     "gpu_arch_unsupported": "Den här PyTorch-versionen stöder inte din GPU. Välj CPU under Inställningar → Prestanda och enhet eller installera en kompatibel PyTorch-version.",
     "windows_app_control_blocked": "Windows programkontroll blockerade en nödvändig fil. Be administratören tillåta den betrodda VoiceStudio-körmiljön och starta sedan om appen.",
-    "audio_io_failed": "Ljudet kunde inte läsas eller sparas. Kontrollera filformat, ledigt diskutrymme och filbehörigheter. Kontrollera mappen under Inställningar → Lagring."
+    "audio_io_failed": "Ljudet kunde inte läsas eller sparas. Kontrollera filformat, ledigt diskutrymme och filbehörigheter. Kontrollera mappen under Inställningar → Lagring.",
+    "no_audio_track": "Filen saknar ljudspår, så det finns inget tal att transkribera, dubba eller klona. Välj en video- eller ljudfil som innehåller ljud."
   },
   "sharing": {
     "title": "Delning och fjärråtkomst",

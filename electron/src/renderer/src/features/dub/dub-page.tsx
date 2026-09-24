@@ -288,8 +288,9 @@ export function DubPage() {
   // is something to lose.
   const storyOccupied = storiesDraftOccupied(longform.drafts.stories);
   const createStoryFromDub = () => {
+    if (!profiles.isSuccess) return;
     const loaded = loadDubIntoStories(session.segments, {
-      profiles: profiles.data || [],
+      profiles: profiles.data,
       unknownSpeakerLabel: t('dubWorkspace.storySpeaker'),
     });
     // Nothing was loaded — a render started while the confirm was open, say.
@@ -847,8 +848,14 @@ export function DubPage() {
             size="sm"
             // editLongform is a no-op while a longform render is running, so the
             // action would navigate to Stories having loaded nothing.
-            disabled={Boolean(longform.active)}
-            title={longform.active ? t('dubWorkspace.storyBusy') : undefined}
+            disabled={Boolean(longform.active) || !profiles.isSuccess}
+            title={
+              longform.active
+                ? t('dubWorkspace.storyBusy')
+                : !profiles.isSuccess
+                  ? t(profiles.isError ? 'common.error' : 'common.loading')
+                  : undefined
+            }
             onClick={() => (storyOccupied ? setStoryOpen(true) : createStoryFromDub())}
           >
             <AudioLinesIcon />

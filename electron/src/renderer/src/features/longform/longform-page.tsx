@@ -59,6 +59,7 @@ import {
   renderLongform,
   stopLongform,
   useLongformSession,
+  storiesImportEpoch,
   type Mode,
 } from './longform-session';
 import { SAMPLE_AUDIOBOOK_SCRIPT } from '../../../../../../frontend/src/data/sampleAudiobook';
@@ -143,6 +144,7 @@ export function LongformPage({ mode }: { mode: Mode }) {
     />
   );
   const importFile = async (file: File) => {
+    const importEpoch = storiesImportEpoch.current;
     setImporting(true);
     setLocalError(null);
     try {
@@ -158,8 +160,10 @@ export function LongformPage({ mode }: { mode: Mode }) {
         });
         text = data.text;
       }
+      if (mode === 'stories' && importEpoch !== storiesImportEpoch.current) return;
       set(mode === 'audiobook' ? { script: text } : { importText: text });
     } catch (cause) {
+      if (mode === 'stories' && importEpoch !== storiesImportEpoch.current) return;
       setLocalError(describeError(cause));
     } finally {
       setImporting(false);

@@ -2245,7 +2245,8 @@
     "ref_audio_no_speech": "Automatyczne wykrywanie mowy nie znalazło wypowiedzianych słów. Przytnij nagranie do wyraźnego fragmentu mowy 3–10 sekund lub podaj pasującą transkrypcję.",
     "gpu_arch_unsupported": "Ta wersja PyTorch nie obsługuje Twojego GPU. Wybierz CPU w Ustawienia → Wydajność i urządzenie lub zainstaluj zgodną wersję PyTorch.",
     "windows_app_control_blocked": "Kontrola aplikacji systemu Windows zablokowała wymagany plik. Poproś administratora o zezwolenie na uruchamianie zaufanego środowiska VoiceStudio, a następnie uruchom aplikację ponownie.",
-    "audio_io_failed": "Nie można odczytać ani zapisać dźwięku. Sprawdź format pliku, wolne miejsce na dysku i uprawnienia do plików. Sprawdź folder w Ustawienia → Pamięć."
+    "audio_io_failed": "Nie można odczytać ani zapisać dźwięku. Sprawdź format pliku, wolne miejsce na dysku i uprawnienia do plików. Sprawdź folder w Ustawienia → Pamięć.",
+    "no_audio_track": "Ten plik nie ma ścieżki dźwiękowej, więc nie ma mowy do transkrypcji, dubbingu ani klonowania. Wybierz plik wideo lub audio zawierający dźwięk."
   },
   "sharing": {
     "title": "Udostępnianie i dostęp zdalny",

@@ -41,7 +41,11 @@ describe('dubToStory — the ordinary case', () => {
   });
 
   it('keeps each speaker their assigned voice', () => {
-    expect(dubToStory(segments).cast.map((c) => c.profileId)).toEqual(['p-anna', 'p-ben']);
+    expect(
+      dubToStory(segments, { profiles: [{ id: 'p-anna' }, { id: 'p-ben' }] }).cast.map(
+        (c) => c.profileId,
+      ),
+    ).toEqual(['p-anna', 'p-ben']);
   });
 
   it('makes one line per segment, under the right character', () => {
@@ -255,6 +259,8 @@ describe('which voice a character gets', () => {
   const profiles = [
     { id: 'p1', name: 'Anna' },
     { id: 'p2', name: 'Ben' },
+    { id: 'p-saved', name: 'Saved' },
+    { id: 7, name: 'Seven' },
   ];
   const voiceOf = (profile_id, { speaker = 'Anna', list = profiles } = {}) =>
     dubToStory([seg({ text: 'x', speaker_id: speaker, profile_id })], { profiles: list }).cast[0]
@@ -264,10 +270,8 @@ describe('which voice a character gets', () => {
     expect(voiceOf('p-saved')).toBe('p-saved');
   });
 
-  it('passes an id through even when no profile matches it', () => {
-    // A profile deleted since the dub still resolves to the default downstream;
-    // dropping it here would lose a recoverable assignment.
-    expect(voiceOf('p-gone', { list: [] })).toBe('p-gone');
+  it('falls back to the default when a saved profile was deleted', () => {
+    expect(voiceOf('p-gone', { list: [] })).toBeNull();
   });
 
   it.each([[''], [null], [undefined]])('means the cast default for %s', (profile_id) => {
@@ -311,11 +315,14 @@ describe('which voice a character gets', () => {
 });
 
 describe('a speaker whose segments disagree about the voice', () => {
-  it('takes the first, so the cast is deterministic', () => {
-    const { cast } = dubToStory([
-      seg({ start: 0, text: 'a', speaker_id: 'Anna', profile_id: 'p-first' }),
-      seg({ start: 1, text: 'b', speaker_id: 'Anna', profile_id: 'p-second' }),
-    ]);
+  it('takes the first available voice, so the cast is deterministic', () => {
+    const { cast } = dubToStory(
+      [
+        seg({ start: 0, text: 'a', speaker_id: 'Anna', profile_id: 'p-first' }),
+        seg({ start: 1, text: 'b', speaker_id: 'Anna', profile_id: 'p-second' }),
+      ],
+      { profiles: [{ id: 'p-first' }, { id: 'p-second' }] },
+    );
     expect(cast).toHaveLength(1);
     expect(cast[0].profileId).toBe('p-first');
   });
@@ -408,7 +415,9 @@ describe('rows built by merging', () => {
   });
 
   it('keeps each speaker their own words and their own voice (#1612)', () => {
-    const { cast, tracks } = dubToStory([merged(anna, ben)]);
+    const { cast, tracks } = dubToStory([merged(anna, ben)], {
+      profiles: [{ id: 'p-anna' }, { id: 'p-ben' }],
+    });
     expect(tracks).toEqual([
       { character: 'anna', text: 'Good morning.' },
       { character: 'ben', text: 'And to you.' },
@@ -454,7 +463,9 @@ describe('rows built by merging', () => {
       speaker_id: 'Anna',
       profile_id: 'p-other',
     });
-    const { cast, tracks } = dubToStory([merged(first, second)]);
+    const { cast, tracks } = dubToStory([merged(first, second)], {
+      profiles: [{ id: 'p-anna' }],
+    });
     expect(tracks).toEqual([{ character: 'anna', text: 'Wait. Please.' }]);
     expect(cast[0].profileId).toBe('p-anna');
   });
@@ -469,7 +480,7 @@ describe('rows built by merging', () => {
       profile_id: 'auto:ben-xyz',
     });
     const { cast } = dubToStory([merged(anna, auto)], {
-      profiles: [{ id: 'saved-ben', name: 'Ben' }],
+      profiles: [{ id: 'p-anna' }, { id: 'saved-ben', name: 'Ben' }],
     });
     expect(cast.map((c) => c.profileId)).toEqual(['p-anna', 'saved-ben']);
   });

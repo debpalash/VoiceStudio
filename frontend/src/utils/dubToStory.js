@@ -204,10 +204,8 @@ function castIdFor(name, taken) {
  * - `preset:<id>` — a designed-voice preset, which the Stories voice picker
  *   does not list. Mapping it to the default avoids a permanently blank
  *   selection.
- * - anything else non-empty — a real saved id, passed through unchecked. An id
- *   whose profile was deleted since the dub still resolves to the default
- *   downstream, so validating here would only turn a recoverable state into a
- *   silent loss.
+ * - anything else non-empty — a saved id, validated against current profiles.
+ *   Deleted profiles fall back to the cast default rather than blocking Stories.
  *
  * Matching is by equality and `startsWith`, never a regex, because
  * `profile_id` is user-influenced.
@@ -233,7 +231,7 @@ function resolveVoice(source, speakerName, profiles) {
     );
     return match?.id == null ? null : String(match.id);
   }
-  return id;
+  return profiles.some((profile) => profile?.id != null && String(profile.id) === id) ? id : null;
 }
 
 /**

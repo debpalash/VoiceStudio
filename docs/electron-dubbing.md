@@ -301,12 +301,13 @@ require a separate system FFmpeg installation.
 
 A dub that has segments offers **Create Story**, which carries its speakers and
 lines into the Stories editor: one character per speaker, one line per segment,
-each character keeping the voice the Cast strip assigned. Auto-clone voices are
-matched by speaker name against saved profiles; designed-voice presets and
-unmatched auto-clones fall back to the cast default rather than a reference that
-would dangle. A merged row is split back onto the speakers its attribution
+each character keeping its saved Cast voice. Auto-clone voices are matched by
+speaker name against saved profiles; designed-voice presets, deleted profiles
+and unmatched auto-clones fall back to the cast default rather than a reference
+that would dangle. A merged row is split back onto the speakers its attribution
 bookkeeping records, so a merge spanning two speakers becomes two lines instead
 of one in the wrong voice, while a merge within one speaker stays a single line.
-The dub itself is not changed. Loading replaces the current Stories script, cast
-and pending import, and asks first when there is something to replace; it is
-unavailable while a Stories or Audiobook render is running.
+The dub itself is not changed. Loading replaces the current Stories script, cast,
+pending import and previous render output, and asks first when there is something
+to replace; it is unavailable until saved profiles load or while a Stories or
+Audiobook render is running.
