@@ -28,7 +28,7 @@
     "smoke:server": "vite --config tests/renderer-smoke.vite.config.mjs",
     "smoke:live-routes": "node tests/live-route-health.mjs",
     "check": "vp check",
-    "dist": "bun run locale:check && electron-vite build && node tests/packaging-contract.mjs && electron-builder --config electron-builder.config.mjs && node tests/update-package-contract.mjs",
+    "dist": "bun run locale:check && electron-vite build && node tests/packaging-contract.mjs && electron-builder --config electron-builder.config.mjs && node --input-type=module -e \"if (process.platform === 'linux') await import('./scripts/embed-appimage-update.mjs')\" && node tests/update-package-contract.mjs",
     "dist:dir": "bun run locale:check && electron-vite build && node tests/packaging-contract.mjs && electron-builder --config electron-builder.config.mjs --dir",
     "ui:add": "shadcn add"
   },

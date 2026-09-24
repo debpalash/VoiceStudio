@@ -100,7 +100,8 @@ dependencies used by the Electron build:
 
 ```sh
 sudo apt-get install build-essential pkg-config libasound2-dev libxdo-dev \
-  libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev
+  libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev \
+  binutils zsync
 ```
 
 Other Linux distributions need equivalent development packages. A graphical

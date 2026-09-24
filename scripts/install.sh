@@ -168,6 +168,9 @@ install_app() {
 
 if [ "$MODE" = main ]; then
     for tool in git node bun cargo; do have "$tool" || die "Main builds require $tool; see the source-build prerequisites in README."; done
+    if [ "$OS" = linux ]; then
+        for tool in readelf zsyncmake; do have "$tool" || die "Linux main builds require $tool; install binutils and zsync (see docs/install/script.md)."; done
+    fi
     node -e 'if (Number(process.versions.node.split(".")[0]) < 22) process.exit(1)' || die 'Node.js 22 or newer is required.'
     printf 'Building and installing Electron from main (this may take several minutes).\n'
     # Never pull into, reset, or build from an existing user checkout.
@@ -185,6 +188,7 @@ if [ "$MODE" = main ]; then
         # Invoke the builder directly: bun appends flags to the last command
         # in a chained package script, not necessarily to electron-builder.
         bun run electron-builder --config electron-builder.config.mjs --publish never --"$OS" --"$ARCH"
+        if [ "$OS" = linux ]; then node scripts/embed-appimage-update.mjs; fi
         node tests/update-package-contract.mjs
     )
     VERSION=$(node -p 'require(process.argv[1]).version' "$WORK/source/frontend/package.json")
