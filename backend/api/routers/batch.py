@@ -69,6 +69,7 @@ class BatchJobStatus(BaseModel):
     started_at: Optional[float] = None
     finished_at: Optional[float] = None
     error: Optional[str] = None
+    docs_topic: Optional[str] = None
     progress: Optional[dict] = None
     attempts: int = 1
     retry_ready: bool = True
@@ -120,7 +121,11 @@ async def _worker():
         except Exception as e:
             job["status"] = "failed"
             # plan-04 (#131): guaranteed non-empty, structured reason.
-            job["error"] = failure.build_failure(e, stage="batch", include_diagnostic=False)["reason"]
+            failed = failure.build_failure(e, stage="batch", include_diagnostic=False)
+            job["error"] = failed["reason"]
+            # Lets the client show its localized message for a known class
+            # (e.g. NO_AUDIO_TRACK) while `error` keeps the English reason.
+            job["docs_topic"] = failed["docs_topic"] or None
             job["finished_at"] = time.time()
             logger.error("Batch job %s failed: %s", job_id, e, exc_info=True)
         finally:
@@ -279,17 +284,29 @@ async def _run_batch_pipeline(job_id: str, job: dict):
     _set_progress(job, "extract", 0)
     audio_path = os.path.join(batch_dir, "audio.wav")
 
-    from services.ffmpeg_utils import bed_mix_filter, find_ffmpeg
+    from services.ffmpeg_utils import (
+        bed_mix_filter,
+        find_ffmpeg,
+        raise_for_audio_extract_failure,
+        require_audio_stream,
+    )
     ffmpeg = find_ffmpeg()
 
     def _extract():
-        subprocess.run(
-            [ffmpeg, "-y", "-i", video_path,
-             "-vn", "-acodec", "pcm_s16le", "-ar", "22050", "-ac", "1",
-             audio_path],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            timeout=300, check=True,
-        )
+        # A video with no audio stream has nothing to dub: say so rather than
+        # fail with ffmpeg's bare "returned non-zero exit status 234".
+        require_audio_stream(video_path)
+        try:
+            subprocess.run(
+                [ffmpeg, "-y", "-i", video_path,
+                 "-vn", "-acodec", "pcm_s16le", "-ar", "22050", "-ac", "1",
+                 audio_path],
+                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                timeout=300, check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            raise_for_audio_extract_failure(e.stderr or b"", video_path)
+            raise
         # Get duration
         result = subprocess.run(
             [ffmpeg, "-i", audio_path],
@@ -1062,6 +1079,7 @@ async def retry_batch_job(job_id: str):
         "warnings",
         "setup_required",
         "retry_ready",
+        "docs_topic",
     ):
         job.pop(key, None)
     job.update({

@@ -2921,7 +2921,8 @@
     "ref_audio_no_speech": "Automatic speech detection found no spoken words in the reference. Trim it to a clear 3–10 second speech passage, or supply a matching transcript.",
     "gpu_arch_unsupported": "This PyTorch build does not support your GPU. Choose CPU in Settings → Performance & Device, or install a compatible PyTorch build.",
     "windows_app_control_blocked": "Windows application control blocked a required file. Ask your administrator to allow the trusted VoiceStudio runtime, then restart the app.",
-    "audio_io_failed": "Audio could not be read or saved. Check the file format, free disk space, and file permissions. Review the folder in Settings → Storage."
+    "audio_io_failed": "Audio could not be read or saved. Check the file format, free disk space, and file permissions. Review the folder in Settings → Storage.",
+    "no_audio_track": "This file has no audio track, so there is no speech to transcribe, dub or clone. Choose a video or audio file that contains sound."
   },
   "tts": {
     "routingFallback": "Running on CPU — this engine has no GPU path on your machine, so generation will be slower. {{reason}}",

@@ -69,7 +69,7 @@ import { appearanceScales, useAppearance } from '@/hooks/use-appearance';
 import { isMac } from '@/components/bridge';
 import { cn } from '@/lib/utils';
 import { SettingsContent, SettingsRow, SettingsSection } from './settings-layout';
-import i18n, { APP_LANGUAGES, setAppLanguage, type AppLocale } from '@/i18n';
+import i18n, { APP_LANGUAGE_ITEMS, APP_LANGUAGES, setAppLanguage, type AppLocale } from '@/i18n';
 import { setReviewMode, useReviewMode } from '@/hooks/use-review-mode';
 import { rememberSettingsRoute } from '@/lib/settings-route';
 import { setWorkspace, useWorkspace } from '@/lib/store/workspace';
@@ -673,6 +673,7 @@ export function SettingsPage() {
                     description={t('settings.language_desc')}
                   >
                     <Select
+                      items={APP_LANGUAGE_ITEMS}
                       value={i18n.resolvedLanguage || i18n.language}
                       onValueChange={(value) => void setAppLanguage(value as AppLocale)}
                     >

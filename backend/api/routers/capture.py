@@ -165,6 +165,14 @@ async def transcribe_audio(
                 status_code=409,
                 detail={**e.payload, "message": asr_model_missing_detail(e.payload)},
             )
+        except Exception as e:
+            # Each ASR engine decodes the upload its own way (ffmpeg, PyAV,
+            # libsndfile), so a video with no audio stream fails with a
+            # different engine-specific error in each. Name the cause once
+            # here; the global handler turns NoAudioTrackError into a 422.
+            from services.ffmpeg_utils import raise_for_audio_extract_failure
+            await asyncio.to_thread(raise_for_audio_extract_failure, str(e), tmp.name)
+            raise
 
         # Some sherpa-onnx NeMo-TDT builds load successfully but decode an
         # entire spoken clip to no tokens. Live dictation already recovers

@@ -726,6 +726,7 @@ def _phase_a_build_inner() -> None:
     from api.routers import mcp_bindings as _mcp_bindings_router  # noqa: E402
     from api.routers import workers as workers_router  # noqa: E402
     from api.routers import telephony_twilio as _telephony_twilio_router  # noqa: E402
+    from api.routers import calls as _calls_router  # noqa: E402
     _router_modules.extend([
         system, profiles, profile_images, exports, generation, voice_convert, dub_core, dub_generate,
         dub_export, dub_translate, projects, glossary, engines, tools,
@@ -734,7 +735,7 @@ def _phase_a_build_inner() -> None:
         openai_compat, tts_stream, marketplace, personas, sonitranslate,
         audiobook, longform_jobs, pronunciation, settings_router,
         media_tools_router, auth_router, _mcp_bindings_router, workers_router,
-        _telephony_twilio_router,
+        _telephony_twilio_router, _calls_router,
     ])
     # Download-acceleration state, once, for triage-from-logs (FDL-03).
     try:
@@ -1395,6 +1396,23 @@ def _safe_validation_input(value):
     if isinstance(value, str) and len(value) > _VALIDATION_INPUT_MAX:
         return value[:_VALIDATION_INPUT_MAX] + f"… (+{len(value) - _VALIDATION_INPUT_MAX} chars)"
     return value
+
+
+from core.failure import NoAudioTrackError, no_audio_track_detail  # noqa: E402
+
+
+@app.exception_handler(NoAudioTrackError)
+async def no_audio_track_handler(request: Request, exc: NoAudioTrackError):
+    """422 for an upload with no audio stream, on every route that decodes one.
+
+    The structured detail carries ``docs_topic`` so the desktop client shows
+    its localized message; ffmpeg's own output stays in the backend log.
+    """
+    return JSONResponse(
+        status_code=422,
+        content={"detail": no_audio_track_detail()},
+        headers=_cors_headers_for(request),
+    )
 
 
 @app.exception_handler(RequestValidationError)

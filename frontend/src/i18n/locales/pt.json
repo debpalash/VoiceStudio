@@ -2245,7 +2245,8 @@
     "ref_audio_no_speech": "A detecção automática não encontrou palavras faladas na referência. Corte-a para um trecho de fala claro de 3–10 segundos ou forneça uma transcrição correspondente.",
     "gpu_arch_unsupported": "Esta versão do PyTorch não é compatível com a sua GPU. Escolha CPU em Configurações → Desempenho e dispositivo ou instale uma versão compatível do PyTorch.",
     "windows_app_control_blocked": "O controle de aplicativos do Windows bloqueou um arquivo necessário. Peça ao administrador para permitir o ambiente de execução confiável do VoiceStudio e reinicie o aplicativo.",
-    "audio_io_failed": "Não foi possível ler ou salvar o áudio. Verifique o formato do arquivo, o espaço livre e as permissões. Confira a pasta em Configurações → Armazenamento."
+    "audio_io_failed": "Não foi possível ler ou salvar o áudio. Verifique o formato do arquivo, o espaço livre e as permissões. Confira a pasta em Configurações → Armazenamento.",
+    "no_audio_track": "Este arquivo não tem faixa de áudio, então não há fala para transcrever, dublar ou clonar. Escolha um arquivo de vídeo ou áudio que tenha som."
   },
   "sharing": {
     "title": "Compartilhamento e acesso remoto",

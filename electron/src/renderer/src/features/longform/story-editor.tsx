@@ -373,6 +373,10 @@ export function StoryEditor({
             <label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
               {t('stories.splitMode')}
               <Select
+                items={SPLIT_MODES.map((mode) => ({
+                  value: mode,
+                  label: t(`stories.split_${mode}`),
+                }))}
                 value={splitMode}
                 disabled={disabled}
                 onValueChange={(value) => setSplitMode(value as SplitMode)}

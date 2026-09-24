@@ -2245,7 +2245,8 @@
     "ref_audio_no_speech": "Tính năng phát hiện tự động không tìm thấy lời nói trong âm thanh tham chiếu. Hãy cắt thành đoạn lời nói rõ dài 3–10 giây hoặc cung cấp bản chép lời khớp.",
     "gpu_arch_unsupported": "Bản dựng PyTorch này không hỗ trợ GPU của bạn. Chọn CPU trong Cài đặt → Hiệu năng và thiết bị hoặc cài đặt bản dựng PyTorch tương thích.",
     "windows_app_control_blocked": "Tính năng kiểm soát ứng dụng của Windows đã chặn một tệp cần thiết. Nhờ quản trị viên cho phép môi trường chạy VoiceStudio đáng tin cậy, rồi khởi động lại ứng dụng.",
-    "audio_io_failed": "Không thể đọc hoặc lưu âm thanh. Kiểm tra định dạng tệp, dung lượng đĩa trống và quyền truy cập tệp. Kiểm tra thư mục trong Cài đặt → Lưu trữ."
+    "audio_io_failed": "Không thể đọc hoặc lưu âm thanh. Kiểm tra định dạng tệp, dung lượng đĩa trống và quyền truy cập tệp. Kiểm tra thư mục trong Cài đặt → Lưu trữ.",
+    "no_audio_track": "Tệp này không có rãnh âm thanh nên không có lời nói để chép lời, lồng tiếng hoặc nhân bản. Hãy chọn tệp video hoặc âm thanh có tiếng."
   },
   "sharing": {
     "title": "Chia sẻ & Truy cập từ xa",

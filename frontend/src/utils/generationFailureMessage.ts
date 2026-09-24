@@ -11,6 +11,8 @@ export function generationFailureMessage(
       return translate('tts_errors.windows_app_control_blocked');
     case 'AUDIO_IO_FAILED':
       return translate('tts_errors.audio_io_failed');
+    case 'NO_AUDIO_TRACK':
+      return translate('tts_errors.no_audio_track');
     default:
       return undefined;
   }

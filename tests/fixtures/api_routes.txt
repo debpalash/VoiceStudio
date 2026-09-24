@@ -4,6 +4,7 @@ DELETE /api/auth/session
 DELETE /api/mcp/bindings/{client_id}
 DELETE /api/settings/hf-token
 DELETE /batch/jobs/{job_id}
+DELETE /calls/{call_id}
 DELETE /dub/history
 DELETE /dub/history/{history_id}
 DELETE /engines/sidecar/{engine_id}/install
@@ -53,6 +54,12 @@ GET /audiobook/jobs
 GET /batch/download/{job_id}/{lang}
 GET /batch/jobs
 GET /batch/jobs/{job_id}
+GET /calls
+GET /calls/readiness
+GET /calls/settings
+GET /calls/{call_id}
+GET /calls/{call_id}/events
+GET /calls/{call_id}/recording
 GET /community/items
 GET /community/items/{item_id}/preview
 GET /community/manifest
@@ -189,6 +196,10 @@ POST /audiobook/resume/{job_id}
 POST /batch/enqueue
 POST /batch/jobs/{job_id}/cancel
 POST /batch/jobs/{job_id}/retry
+POST /calls
+POST /calls/{call_id}/hangup
+POST /calls/{call_id}/say
+POST /calls/{call_id}/takeover
 POST /clean-audio
 POST /community/items/{item_id}/use
 POST /convert
@@ -312,6 +323,7 @@ PUT /api/settings/perf/torch-compile-disabled
 PUT /api/settings/performance-profile
 PUT /api/settings/storage/models-dir
 PUT /archetypes/previews
+PUT /calls/settings
 PUT /glossary/{project_id}/{term_id}
 PUT /history/{history_id}/starred
 PUT /profiles/{profile_id}

@@ -10,6 +10,8 @@ export interface BatchJob {
   started_at?: number;
   finished_at?: number;
   error?: string;
+  /** Failure class from the backend taxonomy (e.g. NO_AUDIO_TRACK), for a localized message. */
+  docs_topic?: string | null;
   attempts?: number;
   retry_ready?: boolean;
   setup_required?: {
