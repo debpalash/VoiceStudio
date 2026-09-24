@@ -117,18 +117,13 @@ opens with one right-click, no Terminal.
 
 <a id="gatekeeper-quarantine"></a>
 
-On first launch you'll see **"VoiceStudio cannot be opened because the
-developer cannot be verified"** — macOS Gatekeeper blocking an app it can't trace
-to a paid Apple Developer account (issues #134, #72).
-
-**Why:** the build is **ad-hoc code-signed** (a valid signature, free) but not
-yet **notarised** by Apple, so macOS quarantines any copy downloaded from the
-internet and asks you to confirm the first launch. This is expected for
-open-source builds — releases are notarised (warning-free) only once the
-project's Apple Developer ID pipeline is funded (see "For maintainers" below).
-Confirming is **safe** because you downloaded from the official repo / Releases
-page; for belt-and-braces, verify the SHA-256 against the `*.dmg.sha256` checksum
-on the release page first.
+An unsigned or ad-hoc signed installer may show **"VoiceStudio cannot be opened
+because the developer cannot be verified"**. macOS Gatekeeper cannot verify an
+Apple Developer identity until the Electron release is signed and notarized
+(#1779). For an installer from the official GitHub release, compare its SHA-256
+with the release's `SHA256SUMS.txt` before considering the workaround below.
+Restricted environments that prohibit the workaround need a signed, notarized
+release; bypassing Gatekeeper is not a substitute.
 
 **Fix — GUI, no Terminal (do this):** in Finder, **right-click** (or
 Control-click) **VoiceStudio.app** → **Open** → click **Open** again in the
@@ -151,24 +146,16 @@ xattr -dr com.apple.quarantine "/Applications/VoiceStudio.app"
 That clears the quarantine attribute so Gatekeeper stops blocking the launch — a
 one-time fix per install.
 
-### For maintainers — enabling notarised builds
+### For maintainers — enabling notarized Electron builds
 
-The release workflow (`.github/workflows/release.yml`) is already wired to
-code-sign + notarise the macOS bundle; it activates automatically once these
-repository **secrets** are set (it skips signing — producing today's unsigned
-build — when they're absent):
-
-| Secret | What |
-|--------|------|
-| `APPLE_CERTIFICATE` | Developer ID Application cert, exported as a base64-encoded `.p12` |
-| `APPLE_CERTIFICATE_PASSWORD` | password for that `.p12` |
-| `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: Your Name (TEAMID)` |
-| `APPLE_ID` | Apple ID email used for notarisation |
-| `APPLE_PASSWORD` | an **app-specific password** for that Apple ID |
-| `APPLE_TEAM_ID` | your 10-char Apple Developer Team ID |
-
-Requires a paid Apple Developer account ($99/yr). Once set, downloaded DMGs open
-without the quarantine step.
+The maintained Electron release workflow uses a Developer ID Application
+certificate (`ELECTRON_MACOS_CSC_LINK` and `ELECTRON_MACOS_CSC_KEY_PASSWORD`)
+plus `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` for
+notarization. The Apple password is an **app-specific password**, not the
+account login password. See [the release guide](../RELEASING.md#credentials)
+for all platform credentials and verification gates. An Apple Developer
+membership is required; the archived Tauri workflow's `APPLE_CERTIFICATE`
+secrets do not sign Electron installers.
 
 ## Apple Silicon vs Intel
 

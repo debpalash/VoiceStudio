@@ -88,6 +88,16 @@ export default {
     icon: '../frontend/src-tauri/icons/icon.icns',
     entitlements: 'build/entitlements.mac.plist',
     entitlementsInherit: 'build/entitlements.mac.plist',
+    hardenedRuntime: true,
+    // Artifact rehearsals need no Apple account; signed releases supply both
+    // the Developer ID certificate and notarization credentials.
+    notarize: Boolean(
+      process.env.CSC_LINK &&
+        process.env.CSC_KEY_PASSWORD &&
+        process.env.APPLE_ID &&
+        process.env.APPLE_APP_SPECIFIC_PASSWORD &&
+        process.env.APPLE_TEAM_ID,
+    ),
     extendInfo: {
       NSMicrophoneUsageDescription: readFileSync(
         resolve(here, '../frontend/src-tauri/Info.plist'),
