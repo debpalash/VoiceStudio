@@ -7,6 +7,11 @@ the shape helpers they delegate to, so these run without a backend.
 """
 import base64
 import os
+import asyncio
+import io
+import math
+import struct
+import wave
 
 os.environ.setdefault("OMNIVOICE_MODEL", "test")
 os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
@@ -178,7 +183,7 @@ def test_concurrent_parent_replacement_cannot_escape_base(
 def test_speech_result_resources_is_the_original_contract(monkeypatch):
     from mcp_server import _speech_result
     monkeypatch.setenv("OMNIVOICE_MCP_OUTPUT_MODE", "resources")
-    out = _speech_result("ab12cd34", 1.5, 2.0, b"RIFF", "http://localhost:3900")
+    out = asyncio.run(_speech_result("ab12cd34", 1.5, 2.0, b"RIFF", "http://localhost:3900"))
     assert out["wav_base64"] == base64.b64encode(b"RIFF").decode()
     assert "audio_url" not in out and "output_path" not in out
     assert out["output_mode"] == "resources"
@@ -188,7 +193,7 @@ def test_speech_result_files_returns_url_and_writes_under_base(monkeypatch, tmp_
     from mcp_server import _speech_result
     monkeypatch.setenv("OMNIVOICE_MCP_OUTPUT_MODE", "files")
     monkeypatch.setenv("OMNIVOICE_MCP_BASE_PATH", str(tmp_path))
-    out = _speech_result("ab12cd34", 1.5, 2.0, b"RIFF", "http://localhost:3900/")
+    out = asyncio.run(_speech_result("ab12cd34", 1.5, 2.0, b"RIFF", "http://localhost:3900/"))
     assert out["audio_url"] == "http://localhost:3900/audio/ab12cd34.wav"
     assert "wav_base64" not in out
     written = out["output_path"]
@@ -203,7 +208,7 @@ def test_speech_result_rejects_traversal_audio_id(monkeypatch, tmp_path):
     monkeypatch.setenv("OMNIVOICE_MCP_OUTPUT_MODE", "files")
     monkeypatch.setenv("OMNIVOICE_MCP_BASE_PATH", str(tmp_path))
     with pytest.raises(ValueError, match="invalid X-Audio-Id"):
-        _speech_result("../../escape", 1.5, 2.0, b"RIFF", "http://localhost:3900")
+        asyncio.run(_speech_result("../../escape", 1.5, 2.0, b"RIFF", "http://localhost:3900"))
     assert not (tmp_path.parent / "escape.wav").exists()
 
 
@@ -222,7 +227,7 @@ def test_speech_result_does_not_follow_existing_output_symlink(
     monkeypatch.setenv("OMNIVOICE_MCP_OUTPUT_MODE", "files")
     monkeypatch.setenv("OMNIVOICE_MCP_BASE_PATH", str(tmp_path))
     with pytest.raises(ValueError, match="outside OMNIVOICE_MCP_BASE_PATH"):
-        _speech_result("ab12cd34", 1.5, 2.0, b"replace", "http://localhost:3900")
+        asyncio.run(_speech_result("ab12cd34", 1.5, 2.0, b"replace", "http://localhost:3900"))
     assert outside.read_bytes() == b"keep"
 
 
@@ -230,7 +235,7 @@ def test_speech_result_files_without_base_is_url_only_with_a_note(monkeypatch):
     from mcp_server import _speech_result
     monkeypatch.setenv("OMNIVOICE_MCP_OUTPUT_MODE", "files")
     monkeypatch.delenv("OMNIVOICE_MCP_BASE_PATH", raising=False)
-    out = _speech_result("ab12cd34", 1.5, 2.0, b"RIFF", "http://localhost:3900")
+    out = asyncio.run(_speech_result("ab12cd34", 1.5, 2.0, b"RIFF", "http://localhost:3900"))
     assert out["audio_url"].endswith("/audio/ab12cd34.wav")
     assert "output_path" not in out and "OMNIVOICE_MCP_BASE_PATH" in out["note"]
     assert "wav_base64" not in out
@@ -240,9 +245,111 @@ def test_speech_result_both_carries_everything(monkeypatch, tmp_path):
     from mcp_server import _speech_result
     monkeypatch.setenv("OMNIVOICE_MCP_OUTPUT_MODE", "both")
     monkeypatch.setenv("OMNIVOICE_MCP_BASE_PATH", str(tmp_path))
-    out = _speech_result("ab12cd34", "?", "?", b"RIFF", "http://localhost:3900")
+    out = asyncio.run(_speech_result("ab12cd34", "?", "?", b"RIFF", "http://localhost:3900"))
     assert {"wav_base64", "audio_url", "output_path"} <= set(out)
     assert out["generation_time_s"] == "?"   # header text passes through untouched
+
+
+def _sample_wav():
+    samples = [int(8000 * math.sin(i * 2 * math.pi * 440 / 24000)) for i in range(12000)]
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(24000)
+        out.writeframes(struct.pack(f"<{len(samples)}h", *samples))
+    return buf.getvalue()
+
+
+@pytest.mark.parametrize("fmt", ["ogg", "opus"])
+def test_files_format_is_encoded_opus_and_url_serves_same_codec(monkeypatch, tmp_path, fmt):
+    from fastapi.testclient import TestClient
+    from services.ffmpeg_utils import find_ffmpeg
+    from api.routers import generation
+    from main import app
+    from mcp_server import _speech_result
+
+    if not find_ffmpeg():
+        pytest.skip("ffmpeg is not installed")
+    raw = _sample_wav()
+    monkeypatch.setenv("OMNIVOICE_MCP_OUTPUT_MODE", "files")
+    monkeypatch.setenv("OMNIVOICE_MCP_BASE_PATH", str(tmp_path / "mcp"))
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    monkeypatch.setattr(generation, "OUTPUTS_DIR", str(outputs))
+    (outputs / "ab12cd34.wav").write_bytes(raw)
+
+    result = asyncio.run(_speech_result("ab12cd34", 1.5, 0.5, raw, "http://testserver", fmt))
+    saved = (tmp_path / "mcp" / f"ab12cd34.{fmt}").read_bytes()
+    assert result["output_path"] == str(tmp_path / "mcp" / f"ab12cd34.{fmt}")
+    assert result["audio_url"] == f"http://testserver/audio/ab12cd34.{fmt}"
+    assert result["format"] == fmt
+    assert saved[:4] == b"OggS" and b"OpusHead" in saved[:64]
+    assert len(saved) < len(raw) / 2
+    response = TestClient(app).get(f"/audio/ab12cd34.{fmt}")
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "audio/ogg"
+    assert response.content[:4] == b"OggS" and b"OpusHead" in response.content[:64]
+    monkeypatch.delenv("OMNIVOICE_MCP_BASE_PATH")
+    url_only = asyncio.run(_speech_result("ab12cd34", 1.5, 0.5, raw, "http://testserver", fmt))
+    assert url_only["audio_url"] == result["audio_url"]
+    assert "output_path" not in url_only
+    monkeypatch.setenv("OMNIVOICE_MCP_OUTPUT_MODE", "both")
+    both = asyncio.run(_speech_result("ab12cd35", 1.5, 0.5, raw, "http://testserver", fmt))
+    assert base64.b64decode(both["wav_base64"]) == raw
+    assert both["audio_url"].endswith(f".{fmt}")
+
+
+def test_compressed_format_requires_files_or_both_and_rejects_unknown(monkeypatch):
+    from mcp_server import _speech_result
+
+    monkeypatch.setenv("OMNIVOICE_MCP_OUTPUT_MODE", "resources")
+    with pytest.raises(ValueError, match="files or both"):
+        asyncio.run(_speech_result("ab12cd34", 1, 1, b"RIFF", "http://localhost", "opus"))
+    monkeypatch.setenv("OMNIVOICE_MCP_OUTPUT_MODE", "files")
+    with pytest.raises(ValueError, match="unsupported speech format"):
+        asyncio.run(_speech_result("ab12cd34", 1, 1, b"RIFF", "http://localhost", "mp3"))
+
+
+def test_opus_conversion_missing_ffmpeg_does_not_write_mislabelled_wav(monkeypatch, tmp_path):
+    from mcp_server import _speech_result
+    from services import ffmpeg_utils
+
+    monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: None)
+    monkeypatch.setenv("OMNIVOICE_MCP_OUTPUT_MODE", "files")
+    monkeypatch.setenv("OMNIVOICE_MCP_BASE_PATH", str(tmp_path))
+    with pytest.raises(RuntimeError, match="requires ffmpeg"):
+        asyncio.run(_speech_result("ab12cd34", 1, 1, _sample_wav(), "http://localhost", "opus"))
+    assert not (tmp_path / "ab12cd34.opus").exists()
+
+
+def test_opus_encoder_failure_does_not_create_file(monkeypatch, tmp_path):
+    from mcp_server import _speech_result
+    from services import ffmpeg_utils
+
+    monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: "ffmpeg")
+
+    async def failed_encode(_cmd, **_kwargs):
+        return 1, b"", b"Unknown encoder 'libopus'"
+
+    monkeypatch.setattr(ffmpeg_utils, "run_ffmpeg", failed_encode)
+    monkeypatch.setenv("OMNIVOICE_MCP_OUTPUT_MODE", "files")
+    monkeypatch.setenv("OMNIVOICE_MCP_BASE_PATH", str(tmp_path))
+    with pytest.raises(RuntimeError, match="Unknown encoder"):
+        asyncio.run(_speech_result("ab12cd34", 1, 1, _sample_wav(), "http://localhost", "opus"))
+    assert not (tmp_path / "ab12cd34.opus").exists()
+
+
+def test_opus_url_missing_render_is_a_404(monkeypatch, tmp_path):
+    from api.routers import generation
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(generation, "OUTPUTS_DIR", str(tmp_path))
+    app = FastAPI()
+    app.include_router(generation.router)
+    assert TestClient(app).get("/audio/ab12cd34.opus").status_code == 404
+    assert TestClient(app).get("/audio/not-a-render.ogg").status_code == 404
 
 
 @pytest.mark.parametrize("raw,expected", [

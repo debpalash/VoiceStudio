@@ -9,7 +9,6 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 ## [Unreleased]
 
 **Highlights**
-
 - Twilio setup is a guided checklist with live status and exact commands (#2304)
 - Integration pages use the full window, with a side panel on wide screens (#2304)
 - A call agent that places or answers phone calls in your own voice to get a task done (#2306)
@@ -18,6 +17,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 - Record or drop a voice sample from one view in Voice Clone (#2307)
 - Voice Clone keeps the original container of a one-shot MP3, M4A or WebM reference (#2311)
 - Videos without sound get a clear message instead of an ffmpeg error dump (#2308)
+- MCP speech files and URLs can deliver Ogg/Opus instead of WAV; Ogg saves preserve int16 audio levels (#2321) — thanks @tracyndoan!
 
 ### Added
 

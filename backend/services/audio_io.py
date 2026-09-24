@@ -67,6 +67,40 @@ logger = logging.getLogger("omnivoice.audio_io")
 # both; we forward whichever the caller hands us.
 PathOrBuf = Union[str, "os.PathLike[str]", BinaryIO, io.IOBase]
 
+# Opus is carried in Ogg for both .opus and .ogg filenames.
+OPUS_CODEC_ARGS = ["-c:a", "libopus", "-b:a", "64k"]
+OPUS_SAMPLE_RATE = 48000
+
+
+async def encode_ogg_opus(wav: bytes) -> bytes:
+    """Transcode a WAV render to genuine Ogg/Opus; never return WAV on error."""
+    import asyncio
+    from core.failure import strip_ffmpeg_banner
+    from services.ffmpeg_utils import find_ffmpeg, run_ffmpeg
+
+    ffmpeg = await asyncio.to_thread(find_ffmpeg)
+    if not ffmpeg:
+        raise RuntimeError(
+            "Ogg/Opus output requires ffmpeg. Install it (Settings → Audio tools) "
+            "or set FFMPEG_PATH."
+        )
+    fd, src = tempfile.mkstemp(suffix=".wav")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(wav)
+        cmd = [
+            ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
+            "-i", src, "-ar", str(OPUS_SAMPLE_RATE),
+            *OPUS_CODEC_ARGS, "-f", "ogg", "pipe:1",
+        ]
+        rc, out, err = await run_ffmpeg(cmd, timeout=300.0)
+    finally:
+        os.unlink(src)
+    if rc != 0 or not out:
+        detail = strip_ffmpeg_banner((err or b"").decode("utf-8", "replace")).strip()[-300:]
+        raise RuntimeError(f"Ogg/Opus encoding failed: {detail or f'ffmpeg exit {rc}'}")
+    return out
+
 
 def _ensure_audio_parent(path_or_buf: PathOrBuf) -> None:
     """Recover app output folders removed after backend initialization."""
@@ -126,12 +160,12 @@ def _safe_torchaudio_save(
     if tensor.device.type != "cpu":
         tensor = tensor.cpu()
 
-    # ── Failure mode 4: wrong dtype. TorchCodec 2.9+ requires
-    # float32-in-[-1, 1]; soundfile accepts int16 / int32 / float32 /
-    # float64 but treats each differently. Coerce to float32 so the
-    # subsequent clamp and the explicit encoding kwarg have a single,
-    # predictable input shape.
-    if tensor.dtype != torch.float32:
+    # Integer PCM is full-scale, not normalized: casting int16 without
+    # scaling clips nearly every sample and libvorbis rejects s16 input.
+    if tensor.dtype in (torch.int16, torch.int32):
+        scale = 32768.0 if tensor.dtype == torch.int16 else 2147483648.0
+        tensor = tensor.to(torch.float32).div_(scale)
+    elif tensor.dtype != torch.float32:
         tensor = tensor.to(torch.float32)
 
     # ── Failure mode 3: out-of-range values. apply_mastering produces
@@ -175,13 +209,13 @@ def _safe_torchaudio_save(
                 encoding=encoding,
                 bits_per_sample=bits_per_sample,
             )
+        elif fmt == "ogg":
+            # libvorbis only accepts float planar samples, not PCM_S (s16).
+            torchaudio.save(path_or_buf, tensor, sample_rate, format=fmt)
         else:
-            # FLAC accepts encoding + bits_per_sample; mp3/ogg ignore
-            # them with newer torchaudio but older versions raise. Try
-            # with the kwargs first, fall back without them so we stay
-            # backward-compatible with the openai_compat.py callers
-            # that previously passed only ``format=`` and relied on
-            # codec defaults.
+            # FLAC accepts encoding + bits_per_sample; mp3 ignores
+            # them on newer torchaudio but older versions raise. Try
+            # with kwargs first, then without them for compatibility.
             try:
                 torchaudio.save(
                     path_or_buf,

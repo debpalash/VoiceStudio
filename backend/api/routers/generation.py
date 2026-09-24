@@ -14,7 +14,7 @@ import threading
 import traceback
 from typing import Optional
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 import sqlite3
@@ -34,6 +34,28 @@ from omnivoice.utils.voice_design import heal_design_instruct
 
 router = APIRouter()
 logger = logging.getLogger("omnivoice.generate")
+
+
+@router.get("/audio/{audio_id}.ogg")
+@router.get("/audio/{audio_id}.opus")
+async def generated_ogg_opus(audio_id: str):
+    """Serve the same render as /audio/<id>.wav, encoded as Ogg/Opus."""
+    if not re.fullmatch(r"[0-9a-f]{8}", audio_id):
+        raise HTTPException(status_code=404, detail="Audio file not found")
+    path = os.path.join(OUTPUTS_DIR, f"{audio_id}.wav")
+    try:
+        with open(path, "rb") as handle:
+            wav = handle.read()
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Audio file not found") from None
+    from services.audio_io import encode_ogg_opus
+    try:
+        encoded = await encode_ogg_opus(wav)
+    except RuntimeError as exc:
+        logger.warning("Ogg/Opus encoding failed: %s", exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return Response(encoded, media_type="audio/ogg")
+
 
 # Same containers POST /profiles stores for a clone reference. /generate used
 # to write every upload with suffix=".wav"; pydub then passes -f wav to ffmpeg,

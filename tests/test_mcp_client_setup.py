@@ -70,6 +70,8 @@ def test_client_setup_initializes_lists_tools_and_preserves_voice_binding(monkey
             'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list',
         }))
         assert 'generate_speech' in {t['name'] for t in tools['result']['tools']}
+        speech = next(t for t in tools['result']['tools'] if t['name'] == 'generate_speech')
+        assert speech['inputSchema']['properties']['format']['default'] == 'wav'
         called = result(client.post('/mcp', headers=headers, json={
             'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call',
             'params': {'name': 'generate_speech', 'arguments': {'text': 'Hello'}},

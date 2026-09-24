@@ -215,6 +215,26 @@ def test_safe_save_format_passthrough_flac(tmp_path):
     assert info.frames == 24000
 
 
+def test_ogg_save_converts_int16_pcm_to_normalized_float_without_s16_kwargs(monkeypatch):
+    from services import audio_io
+
+    samples = torch.tensor([[0, 8192, -8192, 16384]], dtype=torch.int16)
+    seen = []
+
+    def save(_buf, tensor, _rate, **kwargs):
+        seen.append((tensor.clone(), kwargs))
+        if kwargs.get("encoding") == "PCM_S":
+            raise RuntimeError("libvorbis does not support s16 format. Supported values are; fltp")
+
+    monkeypatch.setattr(audio_io.torchaudio, "save", save)
+    audio_io._safe_torchaudio_save(io.BytesIO(), samples, 24000, format="ogg")
+    assert len(seen) == 1
+    tensor, kwargs = seen[0]
+    assert kwargs == {"format": "ogg"}
+    assert tensor.dtype == torch.float32
+    assert torch.allclose(tensor, torch.tensor([[0.0, 0.25, -0.25, 0.5]]))
+
+
 def test_safe_save_in_memory_buffer():
     """io.BytesIO destination must produce a valid WAV the consumer can decode."""
     wave = _sine_tensor()

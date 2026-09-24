@@ -50,6 +50,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from services.model_manager import _gpu_pool, run_on_gpu_pool_guarded
 from core.http_headers import content_disposition
+from services.audio_io import OPUS_CODEC_ARGS, OPUS_SAMPLE_RATE
 
 logger = logging.getLogger("omnivoice.openai_compat")
 
@@ -383,7 +384,7 @@ _FORMAT_MEDIA = {
 _FFMPEG_FORMATS = {
     "mp3": (["-c:a", "libmp3lame", "-b:a", "128k"], "mp3",
             {8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000}),
-    "opus": (["-c:a", "libopus", "-b:a", "64k"], "ogg", {48000}),
+    "opus": (OPUS_CODEC_ARGS, "ogg", {OPUS_SAMPLE_RATE}),
     "aac": (["-c:a", "aac", "-b:a", "128k"], "adts",
             {8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000, 64000, 88200, 96000}),
 }
@@ -440,7 +441,7 @@ async def _encode_ffmpeg(ffmpeg: str, wav_tensor, sample_rate: int, fmt: str) ->
     from services.ffmpeg_utils import run_ffmpeg
 
     codec_args, container, rates = _FFMPEG_FORMATS[fmt]
-    out_rate = sample_rate if sample_rate in rates else (48000 if fmt == "opus" else PCM_SAMPLE_RATE)
+    out_rate = sample_rate if sample_rate in rates else (OPUS_SAMPLE_RATE if fmt == "opus" else PCM_SAMPLE_RATE)
     fd, src = tempfile.mkstemp(suffix=".wav")
     os.close(fd)
     try:

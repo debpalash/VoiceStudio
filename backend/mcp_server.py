@@ -6,7 +6,7 @@ Run standalone:
     python -m backend.mcp_server --sse    # SSE transport (remote agents)
 
 Tools exposed:
-    generate_speech   — text → WAV audio (voice clone or design)
+    generate_speech   — text → WAV or Ogg/Opus audio (voice clone or design)
     clone_voice       — reference audio (base64, or a file path) → new voice profile
     transcribe        — audio (base64, or a file path) → text
     list_voices       — enumerate saved voice profiles
@@ -21,8 +21,8 @@ Resources exposed:
 Output mode (OMNIVOICE_MCP_OUTPUT_MODE):
     resources — generate_speech returns the WAV as base64 inline (the original
                 contract; default)
-    files     — it returns a URL to the render (and, with a base path, a WAV
-                written there); nothing large ever enters the agent's context
+    files     — it returns a URL to the requested format (and, with a base
+                path, a file written there); no audio enters agent context
     both      — both of the above
 
 File inputs (OMNIVOICE_MCP_BASE_PATH):
@@ -94,6 +94,7 @@ def _sniff_audio_ext(raw: bytes) -> str:
 _OUTPUT_MODES = ("resources", "files", "both")
 _MAX_INPUT_BYTES = 200 * 1024 * 1024
 _SAFE_AUDIO_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_SPEECH_FORMATS = ("wav", "ogg", "opus")
 
 
 def _output_mode() -> str:
@@ -101,7 +102,7 @@ def _output_mode() -> str:
 
     'resources' is the original base64-inline contract and stays the default
     so existing integrations see no change; 'files' returns a URL to the
-    render (plus a WAV under the base path when one is configured); 'both'
+    render (plus a file under the base path when configured); 'both'
     returns everything. Anything unrecognized falls back to 'resources' with
     a warning rather than failing the tool."""
     mode = os.environ.get("OMNIVOICE_MCP_OUTPUT_MODE", "resources").strip().lower()
@@ -258,13 +259,18 @@ def _read_input_audio(
     return raw, None
 
 
-def _write_output(audio_id: str, raw: bytes) -> str:
-    """Land a render under the base path as ``<audio_id>.wav``; returns the path."""
+async def _write_output(audio_id: str, raw: bytes, format: str = "wav") -> str:
+    """Write the actual requested container inside the confined base path."""
     if not _SAFE_AUDIO_ID.fullmatch(audio_id):
         raise ValueError("backend returned an invalid X-Audio-Id header")
+    if format not in _SPEECH_FORMATS:
+        raise ValueError(f"unsupported speech format {format!r}; choose wav, ogg or opus")
+    if format != "wav":
+        from services.audio_io import encode_ogg_opus
+        raw = await encode_ogg_opus(raw)
     base = _base_path()
     os.makedirs(base, exist_ok=True)
-    filename = f"{audio_id}.wav"
+    filename = f"{audio_id}.{format}"
     fd, path = _open_under_base(filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
     with os.fdopen(fd, "wb") as handle:
         handle.write(raw)
@@ -336,28 +342,30 @@ def _maybe_number(value):
         return value
 
 
-def _speech_result(audio_id: str, gen_time, duration, raw: bytes, api_base: str) -> dict:
-    """The generate_speech reply shaped by the output mode.
-
-    The backend already keeps every render on disk and serves it at
-    ``/audio/<audio_id>.wav``, so files mode costs nothing but a URL - plus one
-    write when a base path invites the WAV into the agent's own directory."""
+async def _speech_result(
+    audio_id: str, gen_time, duration, raw: bytes, api_base: str, format: str = "wav"
+) -> dict:
+    """Shape the reply; resource bytes stay WAV, file and URL match format."""
+    if format not in _SPEECH_FORMATS:
+        raise ValueError(f"unsupported speech format {format!r}; choose wav, ogg or opus")
     if not _SAFE_AUDIO_ID.fullmatch(audio_id):
         raise ValueError("backend returned an invalid X-Audio-Id header")
     mode = _output_mode()
+    if format != "wav" and mode == "resources":
+        raise ValueError("Ogg/Opus output requires MCP files or both output mode")
     out = {
         "audio_id": audio_id,
         "generation_time_s": gen_time,
         "audio_duration_s": duration,
-        "format": "wav",
+        "format": format,
         "output_mode": mode,
     }
     if mode in ("files", "both"):
-        out["audio_url"] = f"{api_base.rstrip('/')}/audio/{audio_id}.wav"
+        out["audio_url"] = f"{api_base.rstrip('/')}/audio/{audio_id}.{format}"
         if _base_path() is not None:
-            out["output_path"] = _write_output(audio_id, raw)
+            out["output_path"] = await _write_output(audio_id, raw, format)
         else:
-            out["note"] = "set OMNIVOICE_MCP_BASE_PATH to also receive the WAV as a file"
+            out["note"] = "set OMNIVOICE_MCP_BASE_PATH to also receive the audio as a file"
     if mode in ("resources", "both"):
         out["wav_base64"] = base64.b64encode(raw).decode("ascii")
     return out
@@ -498,6 +506,7 @@ def create_mcp_server(app=None):
         instruct: str | None = None,
         speed: float = 1.0,
         steps: int = 16,
+        format: str = "wav",
     ) -> str:
         """Generate speech audio from text.
 
@@ -509,15 +518,24 @@ def create_mcp_server(app=None):
             instruct: Style instruction (e.g. 'whisper', 'excited', 'narrator').
             speed: Speech speed multiplier (0.5–2.0, default 1.0).
             steps: Diffusion steps (8=fast/draft, 16=balanced, 32=quality).
+            format: File and URL format: wav (default), ogg or opus. Both
+                ogg and opus carry Opus in Ogg; requires files/both mode and ffmpeg.
 
         Returns:
             JSON with audio_id, generation_time_s, audio_duration_s and the
-            audio itself shaped by OMNIVOICE_MCP_OUTPUT_MODE: base64 WAV data
-            ('resources', the default), a URL to the render plus a WAV under
-            OMNIVOICE_MCP_BASE_PATH when one is set ('files'), or all of the
-            above ('both'). Prefer 'files' for LLM agents: nothing large
-            enters the context.
+            audio shaped by OMNIVOICE_MCP_OUTPUT_MODE: base64 WAV data
+            ('resources', the default), a URL plus an optional file ('files'),
+            or both ('both'). Prefer 'files' for LLM agents.
         """
+        if format not in _SPEECH_FORMATS:
+            raise ValueError(f"unsupported speech format {format!r}; choose wav, ogg or opus")
+        if format != "wav" and _output_mode() == "resources":
+            raise ValueError("Ogg/Opus output requires MCP files or both output mode")
+        if format != "wav":
+            from services.ffmpeg_utils import find_ffmpeg
+            import asyncio
+            if not await asyncio.to_thread(find_ffmpeg):
+                raise RuntimeError("Ogg/Opus output requires ffmpeg; install it or set FFMPEG_PATH")
         # Per-agent voice binding (Wave 2.2): explicit arg wins; otherwise
         # resolve this client's bound profile, then the global default.
         client_id = _current_client_id()
@@ -548,7 +566,9 @@ def create_mcp_server(app=None):
         gen_time = _maybe_number(r.headers.get("X-Gen-Time", "?"))
         duration = _maybe_number(r.headers.get("X-Audio-Duration", "?"))
 
-        return json.dumps(_speech_result(audio_id, gen_time, duration, r.content, _api_base()))
+        return json.dumps(await _speech_result(
+            audio_id, gen_time, duration, r.content, _api_base(), format
+        ))
 
     @mcp.tool()
     async def list_voices() -> str:
