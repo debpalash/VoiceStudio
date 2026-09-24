@@ -309,6 +309,9 @@ class TestKaraokeBurnEndpoint:
         graph = _filter_graph(calls[-1])
         assert "[0:v]ass='" in graph and ".ass'[vsub]" in graph
         assert "subtitles=" not in graph
+        # Windows job dirs are C:\...; doubled backslashes in the quoted
+        # filter value are a path ffmpeg cannot open.
+        assert "\\\\" not in graph
         ass_files = list((job_dir / "exports").glob("burn_subs_*.ass"))
         assert len(ass_files) == 1
         assert ass_files[0].name.isascii()

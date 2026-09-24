@@ -246,6 +246,9 @@ export function clampSegmentEdit(segments, index, mode, proposed, opts = {}) {
  *
  *  - A pure MOVE (duration preserved) touches ONLY start/end. Neither field
  *    is a generation input, so the segment stays cache-fresh.
+ *  - Start/end round to milliseconds, matching clampSegmentEdit and SRT
+ *    import. Rounding both edges to hundredths snapped the unedited edge
+ *    and could turn a move of 1.234-3.456 into a resize at 1.23-3.46.
  *  - A RESIZE recomputes speed exactly like the old Regions handler:
  *    speed = +(original_duration / newDuration).toFixed(2), persisting the
  *    very first original_duration so successive drags compound correctly.
@@ -255,11 +258,12 @@ export function clampSegmentEdit(segments, index, mode, proposed, opts = {}) {
  *    never-speed-adjusted segment stale.
  */
 export function commitMoveResize(seg, { start, end }) {
-  const newStart = +start.toFixed(2);
-  const newEnd = +end.toFixed(2);
+  const newStart = +start.toFixed(3);
+  const newEnd = +end.toFixed(3);
   const oldDur = seg.end - seg.start;
   const newDur = newEnd - newStart;
-  const isMove = Math.abs(newDur - oldDur) < 0.005;
+  // Classify the gesture before rounding: sub-millisecond imported edges can round differently.
+  const isMove = Math.abs(end - start - oldDur) < 0.0005;
   if (isMove) {
     return { ...seg, start: newStart, end: newEnd };
   }

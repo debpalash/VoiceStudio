@@ -79,12 +79,10 @@ def _prepare_oom_retry(error: Exception, *, execution_target: str) -> bool:
         raise error
 
     import gc
+    from services.model_manager import release_device_cache
 
     gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        torch.mps.empty_cache()
+    release_device_cache()
     return True
 
 
@@ -579,6 +577,8 @@ async def dub_generate(job_id: str, req: DubRequest):
         # serialised the GPU loop; the batched-I/O design it replaced kept
         # it off the hot path on purpose. Flush every ~16 releases instead —
         # frequent enough to bound VRAM, rare enough to stay invisible.
+        from services.model_manager import release_device_cache
+
         _RELEASE_FLUSH_EVERY = 16
         _release_count = {"n": 0}
 
@@ -586,21 +586,17 @@ async def dub_generate(job_id: str, req: DubRequest):
             """Best-effort VRAM cleanup after a segment is safely on disk.
 
             Tensors are freed by the callers' own ``del`` once they fall out
-            of scope; this only throttles the device cache flush. ``*objs`` is
-            kept for call-site compatibility but intentionally unused — a local
-            ``del`` here would only unbind the parameter, never the caller's
-            reference.
+            of scope; this only throttles the device cache flush, which has to
+            cover every backend an engine can synthesize on (CUDA, MPS, XPU,
+            Ascend NPU) — the CUDA/MPS pair this used to open-code skipped the
+            rest. ``*objs`` is kept for call-site compatibility but
+            intentionally unused — a local ``del`` here would only unbind the
+            parameter, never the caller's reference.
             """
             _release_count["n"] += 1
             if _release_count["n"] % _RELEASE_FLUSH_EVERY != 0:
                 return
-            try:
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-                    torch.mps.empty_cache()
-            except Exception:
-                pass
+            release_device_cache()
 
         # mix_<id> scratch WAVs written for silence/cached-fail/error slots are
         # pure assembly inputs (no preview/regen contract), so they're deleted

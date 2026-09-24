@@ -480,12 +480,20 @@ def _write_burn_ass(job: dict, exports_dir: str, stamp: str,
 
 
 def _ffmpeg_filter_escape(path: str) -> str:
-    """Escape a path for use inside an ffmpeg filter value (subtitles=...).
+    """Escape a path for use inside a quoted ffmpeg filter value (subtitles=/ass=).
 
-    ffmpeg's filter parser treats `:` as an option separator and `\\`, `'` specially.
-    Backslashes first, then colons, then single quotes.
+    ffmpeg's filter parser treats ``:`` as an option separator. The subtitles
+    and ass filters also fail to open Windows backslash paths: doubling every
+    ``\\`` and then escaping the drive colon produced ``C\\:\\Users\\...``
+    inside the quotes, which is not a real file, so burned-in captions were
+    missing on Windows. Use forward slashes for Windows paths only; a POSIX
+    backslash is part of the filename and needs escaping at both parser levels.
+    Apostrophes close/reopen quotes and likewise escape for both parsers.
     """
-    return path.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+    normalized = str(path)
+    if os.name == "nt" or re.match(r"^[A-Za-z]:[\\/]", normalized):
+        normalized = normalized.replace("\\", "/")
+    return normalized.replace("\\", "\\\\").replace(":", "\\:").replace("'", "'" + "\\" * 3 + "''")
 
 
 def _build_video_stretch_filter_graph(

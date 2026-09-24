@@ -20,7 +20,7 @@ from core.logging_utils import log_safe
 from core import event_bus
 from schemas.requests import DubIngestUrlRequest, ParseSubtitleTextRequest
 from services.srt_parser import CUE_SOURCE_FIELDS, CUE_SOURCE_ID
-from services.model_manager import get_model, _gpu_pool, _cpu_pool, get_diarization_pipeline, offload_tts_for_asr, restore_tts_after_asr, should_preload_tts_asr
+from services.model_manager import get_model, _gpu_pool, _cpu_pool, get_diarization_pipeline, offload_tts_for_asr, restore_tts_after_asr, should_preload_tts_asr, release_device_cache
 from services.asr_backend import (
     ASR_TRANSCRIBE_TIMEOUT_S,
     ASRTimeoutError,
@@ -2143,9 +2143,14 @@ async def dub_transcribe_stream(
         # Debt paid — don't make gen()'s finally repeat it.
         _tts_offloaded["v"] = False
 
-        if torch.backends.mps.is_available():
-            try: torch.mps.empty_cache()
-            except Exception: pass
+        # The offload dance above is what made room; hand back whatever the
+        # allocator is still holding on the accelerator this host actually
+        # synthesizes on (MPS-only here left CUDA, XPU and Ascend NPU hosts
+        # holding the freed blocks).
+        fut_release = loop.run_in_executor(_gpu_pool, release_device_cache)
+        async for _ping in _ping_while(fut_release):
+            yield _ping
+        fut_release.result()
 
         yield _sse_event("final", {
             "segments": final_segs,
@@ -2367,8 +2372,10 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
             s.setdefault("text_original", s.get("text", ""))
         job["full_transcript"] = " ".join(s["text"] for s in segments)
 
-        if torch.backends.mps.is_available():
-            torch.mps.empty_cache()
+        # Transcription is done with the resident TTS model still offloaded;
+        # release the accelerator cache the offload freed, on whichever
+        # backend this host synthesizes with.
+        release_device_cache()
 
         return segments
 
