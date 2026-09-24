@@ -69,3 +69,9 @@ it('drops caption markup from an imported story SRT', () => {
     ),
   ).toBe('Hello\nhey everyone');
 });
+it('drops WebVTT scaffolding from an imported story caption file', () => {
+  const vtt =
+    'WEBVTT\n\nNOTE translator notes\n\nintro\n00:00:00.160 --> 00:00:02.310 align:start position:0%\nhey<00:00:00.480><c> everyone</c>\n';
+  expect(importToText('captions.vtt', vtt)).toBe('hey everyone');
+  expect(importToText('captions.srt', vtt)).toBe('hey everyone');
+});

@@ -200,7 +200,7 @@ budget is still abandoned.
   switched away from it is marked *"not active — safe to unload"*. Below the
   list are the two bulk actions:
   - **Flush caches** — runs a multi-pass garbage collection and releases the
-    accelerator's cached memory (CUDA/MPS/XPU `empty_cache`). Models stay
+    accelerator's cached memory (CUDA/MPS/XPU/NPU `empty_cache`). Models stay
     loaded, so there's no reload cost; this recovers cache/fragmentation
     memory only.
   - **Unload all + flush** — the above **plus** fully unloads the resident

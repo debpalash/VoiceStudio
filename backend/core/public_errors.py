@@ -202,3 +202,53 @@ def public_exception_response(error: BaseException, *, fallback: str) -> dict[st
     if topic and hint:
         payload.update({"docs_topic": topic, "hint": hint})
     return payload
+
+
+# ── Engine model load / download failure (#2298) ─────────────────────────────
+# An adapter engine fetches its weights lazily on first use, so /generate and
+# /v1/audio/speech warm it under the model-LOAD budget before the generate
+# clock starts (#1033). That warm-up translated only a TIMEOUT into an
+# actionable reply. A download that FAILED — the mirror unreachable, DNS gone,
+# the connection refused, the body truncated, the cache corrupt — escaped the
+# route and reached the global 500 handler, which could only say "VoiceStudio
+# hit an internal error": it named neither the engine nor the fact that a model
+# download was the thing that broke. #2298 is that report (KittenTTS, first
+# generate, an unreachable mirror). A download that stalls and a download that
+# fails are the same event to the user, so they now get the same treatment.
+
+
+def model_load_failure(engine_id: str, error: BaseException) -> dict[str, object]:
+    """Fixed, actionable metadata for an engine whose model would not load.
+
+    Opens with the same sentence shape as the load-TIMEOUT sibling on both
+    routes, then appends whatever the shared taxonomy can say about THIS
+    failure — an unreachable mirror points at the mirror setting, a corrupt
+    cache names the repair — reusing ``public_exception_response`` so the
+    context-free hint allowlist (#1943) applies here too.
+
+    Only VoiceStudio-owned constants reach the payload; no substring of
+    ``error`` is copied (Constitution I). The exception's TYPE NAME rides along
+    as ``error_class`` so two load failures that render the same sentence are
+    still distinguishable in an auto-filed report (the #1800 reasoning).
+
+    Never raises: a diagnosis failure must not replace the failure being
+    diagnosed.
+    """
+    engine = (str(engine_id) if engine_id else "").strip() or "the selected engine"
+    base = (
+        f"TTS engine '{engine}' could not load its model. On a first run this is "
+        f"the weight download failing rather than generation — check the engine's "
+        f"Weights list in Model Catalogue, then retry."
+    )
+    try:
+        payload: dict[str, object] = dict(
+            public_exception_response(error, fallback=base)
+        )
+    except Exception:  # pragma: no cover — diagnosis must never mask the fault
+        payload = {"detail": base}
+    try:
+        if isinstance(error, BaseException):
+            payload["error_class"] = type(error).__name__
+    except Exception:  # pragma: no cover
+        pass
+    return payload

@@ -3315,6 +3315,76 @@ def _clear_cublas_workspaces(torch) -> None:
         logger.debug("clearing cuBLAS workspaces failed", exc_info=True)
 
 
+def _active_accelerator_name(torch):
+    """The device type this host runs inference on, when torch can say.
+
+    Engine sidecars resolve their device with
+    ``torch.accelerator.current_accelerator(check_available=True)`` (see
+    ``engines/moss_tts_v15``), so the flush has to ask the same question — on a
+    hybrid host where CUDA also reports available, the accelerator the engines
+    actually synthesize on is the one whose cache must go back.
+
+    ``None`` means this build cannot answer (pre-2.6 has no ``torch.accelerator``,
+    or probing raised on an optional driver); callers then probe the backends
+    the build ships.
+    """
+    current = getattr(getattr(torch, "accelerator", None), "current_accelerator", None)
+    if current is None:
+        return None
+    try:
+        accel = current(check_available=True)
+    except Exception:  # noqa: BLE001 — probing optional drivers can fail
+        return None
+    return getattr(accel, "type", None)
+
+
+def release_device_cache(*, device: str | None = None, raise_on_failure: bool = False) -> None:
+    """Release the chosen device's cached blocks, or the active accelerator's.
+
+    The narrow primitive behind ``free_vram()``: no ``gc.collect()`` and no
+    cuBLAS workspace clear, because the callers that need it most — the
+    per-segment release in dubbing, the OOM retry guard — sit on a hot path
+    where a full collection is the wrong price for dropping the allocator's
+    cache.
+
+    By default it follows the accelerator used by engines that select through
+    ``torch.accelerator`` (CUDA, MPS, XPU or NPU). Callers that select their
+    own device, such as NLLB, pass that device explicitly so a hybrid host
+    never flushes a different allocator.
+
+    Best-effort by default: freeing memory must not fail the request, so a
+    broken backend is logged and swallowed. ``raise_on_failure`` restores
+    ``free_vram()``'s original contract for unload callers that report a failed
+    flush to the user.
+    """
+    torch = _lazy_torch()
+    try:
+        name = str(device).split(":", 1)[0] if device is not None else _active_accelerator_name(torch)
+        if name == "cpu" and device is not None:
+            return
+        if name and name != "cpu":
+            empty_cache = getattr(getattr(torch, name, None), "empty_cache", None)
+            if empty_cache is not None:
+                empty_cache()
+                return
+            if device is not None:
+                return
+        # No usable answer from torch.accelerator: probe the backends this build
+        # ships, in the order the host prefers them.
+        for name in ("cuda", "mps", "xpu", "npu"):
+            backend = getattr(torch, name, None)
+            is_available = getattr(backend, "is_available", None)
+            empty_cache = getattr(backend, "empty_cache", None)
+            if is_available is None or empty_cache is None or not is_available():
+                continue
+            empty_cache()
+            return
+    except Exception:  # noqa: BLE001 — freeing memory must never raise
+        if raise_on_failure:
+            raise
+        logger.debug("releasing the device cache failed")
+
+
 def free_vram():
     """Release cached GPU memory on any accelerator (CUDA, MPS, XPU, NPU)."""
     torch = _lazy_torch()
@@ -3322,13 +3392,7 @@ def free_vram():
     gc.collect()
     if torch.cuda.is_available():
         _clear_cublas_workspaces(torch)
-        torch.cuda.empty_cache()
-    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        torch.mps.empty_cache()
-    elif hasattr(torch, "xpu") and torch.xpu.is_available():
-        torch.xpu.empty_cache()
-    elif hasattr(torch, "npu") and torch.npu.is_available():
-        torch.npu.empty_cache()
+    release_device_cache(raise_on_failure=True)
 
 
 def unload_shared_model() -> bool:
