@@ -620,6 +620,96 @@ async def probe_frame_rates(path: str) -> "tuple[str, str] | None":
         return None
 
 
+def has_audio_stream(path: str) -> "bool | None":
+    """Whether a media file carries at least one audio stream.
+
+    ``True``/``False`` only when a probe actually read the container; ``None``
+    when that could not be determined (no ffprobe/ffmpeg, unreadable or
+    unrecognized file) — callers then let the real decode report its own
+    error rather than block a file on a failed probe. Never raises. Blocking;
+    call it from a worker thread on async paths.
+    """
+    try:
+        return _probe_audio_stream(path)
+    except Exception as e:  # noqa: BLE001 — a probe must not replace the real error
+        logger.debug("audio-stream probe failed: %s", log_safe(e))
+        return None
+
+
+def _probe_audio_stream(path: str) -> "bool | None":
+    if not path or not os.path.isfile(path):
+        return None
+    ffprobe = find_ffprobe()
+    if ffprobe:
+        try:
+            proc = subprocess.run(
+                [ffprobe, "-v", "error", "-select_streams", "a",
+                 "-show_entries", "stream=index", "-of", "csv=p=0", path],
+                capture_output=True, timeout=60, check=False,
+            )
+            if proc.returncode == 0:
+                return bool(proc.stdout.strip())
+            return None
+        except (OSError, subprocess.SubprocessError) as e:
+            logger.debug("ffprobe audio-stream probe failed: %s", log_safe(e))
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        return None
+    # No ffprobe: `ffmpeg -i` lists the input's streams on stderr (and exits 1
+    # for want of an output), which is enough to tell audio from no audio.
+    try:
+        proc = subprocess.run(
+            [ffmpeg, "-hide_banner", "-nostdin", "-i", path],
+            capture_output=True, timeout=60, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        logger.debug("ffmpeg audio-stream probe failed: %s", log_safe(e))
+        return None
+    listing = proc.stderr.decode("utf-8", errors="replace")
+    streams = [line for line in listing.splitlines() if line.strip().startswith("Stream #")]
+    if not streams:
+        return None
+    return any(": Audio:" in line for line in streams)
+
+
+def require_audio_stream(path: str) -> None:
+    """Raise :class:`core.failure.NoAudioTrackError` when ``path`` has no audio.
+
+    Only a positive "no audio stream" answer raises; an undetermined probe
+    passes so the decode that follows reports its own failure.
+    """
+    from core.failure import NoAudioTrackError
+
+    if has_audio_stream(path) is False:
+        logger.info(
+            "Refusing %s: the file has no audio stream",
+            log_safe(os.path.basename(str(path))),
+        )
+        raise NoAudioTrackError()
+
+
+def raise_for_audio_extract_failure(stderr, path: str) -> None:
+    """After a failed audio decode, raise ``NoAudioTrackError`` when the cause
+    was a missing audio stream (ffmpeg's own wording, or a positive probe).
+
+    Returns normally for every other failure so the caller keeps its own
+    diagnosis; the raw stderr stays in the log, never in the user message.
+    """
+    from core.failure import NO_AUDIO_TRACK_MESSAGE, NoAudioTrackError, is_no_audio_stream_stderr
+
+    # An engine may already have raised NoAudioTrackError (via the ASR decoder's
+    # stderr check) and the caller passes its text back here: keep that answer
+    # even when the probe cannot run.
+    already = NO_AUDIO_TRACK_MESSAGE in (stderr if isinstance(stderr, str) else "")
+    if already or is_no_audio_stream_stderr(stderr) or has_audio_stream(path) is False:
+        text = stderr.decode("utf-8", errors="replace") if isinstance(stderr, bytes) else str(stderr or "")
+        logger.info(
+            "Audio decode of %s failed because it has no audio stream: %s",
+            log_safe(os.path.basename(str(path))), log_safe(text[-500:]),
+        )
+        raise NoAudioTrackError()
+
+
 # Windows CreateProcess rejects command lines over 32,767 chars with
 # `[WinError 206] The filename or extension is too long`. The dub-export mux
 # argv scales with track/segment count (per-track -i/-map/-metadata plus the
