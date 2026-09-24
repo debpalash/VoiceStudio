@@ -8,6 +8,7 @@ import asyncio
 import tempfile
 import contextlib
 import logging
+from collections import OrderedDict
 
 from core.render_trace import timed as _render_timed
 import threading
@@ -35,6 +36,14 @@ from omnivoice.utils.voice_design import heal_design_instruct
 router = APIRouter()
 logger = logging.getLogger("omnivoice.generate")
 
+# A URL can be fetched repeatedly (including the MCP readiness probe). Keep
+# one conversion per WAV version and bound both concurrent work and retained
+# audio; neither Ogg nor Opus requests should reload the WAV on a cache hit.
+_OGG_CACHE_LIMIT = 32 * 1024 * 1024
+_ogg_cache: OrderedDict[tuple[str, int, int], bytes] = OrderedDict()
+_ogg_cache_bytes = 0
+_ogg_encode_lock = asyncio.Lock()
+
 
 @router.get("/audio/{audio_id}.ogg")
 @router.get("/audio/{audio_id}.opus")
@@ -45,17 +54,30 @@ async def generated_ogg_opus(audio_id: str):
     path = _safe_output_path(f"{audio_id}.wav")
     if path is None:
         raise HTTPException(status_code=404, detail="Audio file not found")
-    try:
-        with open(path, "rb") as handle:
-            wav = handle.read()
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Audio file not found") from None
-    from services.audio_io import encode_ogg_opus
-    try:
-        encoded = await encode_ogg_opus(wav)
-    except RuntimeError as exc:
-        logger.warning("Ogg/Opus encoding failed: %s", exc)
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    global _ogg_cache_bytes
+    async with _ogg_encode_lock:
+        try:
+            info = os.stat(path)
+            key = (path, info.st_mtime_ns, info.st_size)
+            encoded = _ogg_cache.get(key)
+            if encoded is not None:
+                _ogg_cache.move_to_end(key)
+            else:
+                with open(path, "rb") as handle:
+                    wav = handle.read()
+                from services.audio_io import encode_ogg_opus
+                try:
+                    encoded = await encode_ogg_opus(wav)
+                except RuntimeError as exc:
+                    logger.warning("Ogg/Opus encoding failed: %s", exc)
+                    raise HTTPException(status_code=503, detail=str(exc)) from exc
+                if len(encoded) <= _OGG_CACHE_LIMIT:
+                    while _ogg_cache_bytes + len(encoded) > _OGG_CACHE_LIMIT:
+                        _ogg_cache_bytes -= len(_ogg_cache.popitem(last=False)[1])
+                    _ogg_cache[key] = encoded
+                    _ogg_cache_bytes += len(encoded)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Audio file not found") from None
     return Response(encoded, media_type="audio/ogg")
 
 

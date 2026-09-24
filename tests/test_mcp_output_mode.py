@@ -371,6 +371,45 @@ def test_opus_url_does_not_follow_render_symlink_outside_outputs(monkeypatch, tm
     assert TestClient(app).get("/audio/ab12cd34.opus").status_code == 404
 
 
+def test_opus_url_reuses_encoded_audio_until_wav_changes(monkeypatch, tmp_path):
+    from api.routers import generation
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from services import audio_io
+    from services.ffmpeg_utils import find_ffmpeg
+
+    if not find_ffmpeg():
+        pytest.skip("ffmpeg is not installed")
+    wav = tmp_path / "ab12cd34.wav"
+    raw = _sample_wav()
+    wav.write_bytes(raw)
+    monkeypatch.setattr(generation, "OUTPUTS_DIR", str(tmp_path))
+    real_encode = audio_io.encode_ogg_opus
+    calls = []
+
+    async def counted_encode(value):
+        calls.append(value)
+        return await real_encode(value)
+
+    monkeypatch.setattr(audio_io, "encode_ogg_opus", counted_encode)
+    app = FastAPI()
+    app.include_router(generation.router)
+    with TestClient(app) as client:
+        first = client.get("/audio/ab12cd34.opus")
+        assert first.status_code == 200 and first.content.startswith(b"OggS")
+        assert client.get("/audio/ab12cd34.opus").content == first.content
+        assert client.get("/audio/ab12cd34.ogg").content == first.content
+        assert calls == [raw]
+        altered = raw[:44] + bytes(len(raw) - 44)
+        wav.write_bytes(altered)
+        info = wav.stat()
+        os.utime(wav, ns=(info.st_atime_ns, info.st_mtime_ns + 1_000_000_000))
+        changed = client.get("/audio/ab12cd34.opus")
+        assert changed.status_code == 200 and changed.content != first.content
+        assert calls == [raw, altered]
+        assert generation._ogg_cache_bytes <= generation._OGG_CACHE_LIMIT
+
+
 @pytest.mark.parametrize("raw,expected", [
     (None, 120.0),
     ("600", 600.0),
