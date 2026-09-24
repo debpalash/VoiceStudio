@@ -486,11 +486,14 @@ def _ffmpeg_filter_escape(path: str) -> str:
     and ass filters also fail to open Windows backslash paths: doubling every
     ``\\`` and then escaping the drive colon produced ``C\\:\\Users\\...``
     inside the quotes, which is not a real file, so burned-in captions were
-    missing on Windows. Convert backslashes to forward slashes first, then
-    escape ``:`` and ``'``. POSIX paths are unchanged.
+    missing on Windows. Use forward slashes for Windows paths only; a POSIX
+    backslash is part of the filename and needs escaping at both parser levels.
+    Apostrophes close/reopen quotes and likewise escape for both parsers.
     """
-    posix = str(path).replace("\\", "/")
-    return posix.replace(":", "\\:").replace("'", "\\'")
+    normalized = str(path)
+    if os.name == "nt" or re.match(r"^[A-Za-z]:[\\/]", normalized):
+        normalized = normalized.replace("\\", "/")
+    return normalized.replace("\\", "\\\\").replace(":", "\\:").replace("'", "'" + "\\" * 3 + "''")
 
 
 def _build_video_stretch_filter_graph(
