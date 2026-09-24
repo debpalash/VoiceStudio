@@ -31,7 +31,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Linux build dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev binutils zsync
       - name: Native PowerShell safety cases
         if: runner.os == 'Windows'
         shell: pwsh
@@ -45,7 +45,16 @@ jobs:
         run: sh scripts/install.sh
       - name: Build and install main (macOS/Linux)
         if: runner.os != 'Windows'
-        run: sh scripts/install.sh --main
+        run: |
+          if [ "$RUNNER_OS" = Linux ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            # Exercise the PR source as main before its installer changes are merged.
+            git init --bare "$RUNNER_TEMP/voicestudio-main.git"
+            git push "$RUNNER_TEMP/voicestudio-main.git" HEAD:refs/heads/main
+            export GIT_CONFIG_COUNT=1
+            export GIT_CONFIG_KEY_0="url.file://$RUNNER_TEMP/voicestudio-main.git.insteadOf"
+            export GIT_CONFIG_VALUE_0=https://github.com/debpalash/VoiceStudio.git
+          fi
+          sh scripts/install.sh --main
       - name: Verify and uninstall Electron (macOS/Linux)
         if: runner.os != 'Windows'
         run: |
