@@ -40,10 +40,10 @@ const bundledUvResources =
     : [];
 const notarizeMac = Boolean(
   process.env.CSC_LINK &&
-    process.env.CSC_KEY_PASSWORD &&
-    process.env.APPLE_ID &&
-    process.env.APPLE_APP_SPECIFIC_PASSWORD &&
-    process.env.APPLE_TEAM_ID,
+  process.env.CSC_KEY_PASSWORD &&
+  process.env.APPLE_ID &&
+  process.env.APPLE_APP_SPECIFIC_PASSWORD &&
+  process.env.APPLE_TEAM_ID,
 );
 
 /** @type {import('electron-builder').Configuration} */
@@ -53,6 +53,9 @@ export default {
   extraMetadata: { version },
   directories: { output: 'release', buildResources: 'build' },
   artifactName: 'VoiceStudio-Electron-${version}-${os}-${arch}.${ext}',
+  // The default FUSE2 runtime cannot start on distros without libfuse.so.2.
+  // v26's pinned static runtime keeps AppImage mounting independent of FUSE2.
+  toolsets: { appimage: '1.0.3' },
   files: ['out/**/*', 'package.json'],
   // The Python backend + engine sources ride along as plain resources (same as
   // the Tauri bundle): the shell bootstraps a uv venv on first run.

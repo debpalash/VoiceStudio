@@ -109,6 +109,14 @@ if (platform === 'win32') {
   assert(fileUrl.endsWith('.zip'), 'macOS update artifact is the updater ZIP');
 } else {
   assert(fileUrl.endsWith('.AppImage'), 'Linux update artifact is the AppImage');
+  const runtimeSections = execFileSync('readelf', ['-SW', artifactPath], {
+    encoding: 'utf8',
+  });
+  assert.match(
+    runtimeSections,
+    /^\s*\[\s*\d+\]\s+\.static\s+PROGBITS/m,
+    'AppImage uses the FUSE2-independent static runtime',
+  );
   const updateInfo = execFileSync(artifactPath, ['--appimage-updateinformation'], {
     encoding: 'utf8',
   }).trim();

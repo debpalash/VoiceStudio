@@ -107,8 +107,9 @@ rehearsal channel; no Tauri or desktop-preview build is maintained.
 
 Linux packages must carry the native helper's non-glibc libraries under
 `resources/native/lib`. Packaging checks reject missing or host-resolved
-libraries. Test the downloaded AppImage on a clean host because build-runner
-libraries can hide relocation errors.
+libraries. AppImages use the static runtime, which needs no host libfuse2; test
+the downloaded image on a clean host because build-runner libraries can hide
+relocation errors.
 
 Linux release AppImages include `gh-releases-zsync` update information and a
 versioned `.AppImage.zsync` asset for AppImageUpdate/AppImageLauncher. The release
