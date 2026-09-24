@@ -118,9 +118,9 @@ describe('parseSrt', () => {
     ).toBe('<i>literal</i> real');
   });
   it('decodes other HTML references and directional marks in WebVTT speech', () => {
-    expect(
-      parseSrt('WEBVTT\n\n00:01.000 --> 00:02.000\nFran&ccedil;ais &lrm;gauche&rlm;\n'),
-    ).toBe('Français \u200egauche\u200f');
+    expect(parseSrt('WEBVTT\n\n00:01.000 --> 00:02.000\nFran&ccedil;ais &lrm;gauche&rlm;\n')).toBe(
+      'Français \u200egauche\u200f',
+    );
   });
   it('still keeps a SubRip entity as written', () => {
     expect(parseSrt('1\n00:00:01,000 --> 00:00:02,000\nTom &amp; Jerry\n')).toBe('Tom &amp; Jerry');

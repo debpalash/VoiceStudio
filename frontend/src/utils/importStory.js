@@ -2,6 +2,7 @@
  * Story import helpers — turn an uploaded file into plain text the editor can
  * auto-cast or split. Pure + testable; the component handles file reading.
  */
+import { decode } from 'html-entities';
 
 // SubRip has no escaping, so `2 < 3` or `a<b and c>d` is dialogue. Only exact
 // tag shapes are markup: `<i>`, `<c.x>`, `<v Name>`, `<font ...>`, karaoke
@@ -40,12 +41,9 @@ function dropMatches(text, re, sep = '') {
   return out + text.slice(last);
 }
 
-/** Decode HTML character references after tag removal, leaving decoded tags literal. */
+/** Decode WebVTT character references without parsing cue text as HTML. */
 function unescapeWebVtt(text) {
-  if (!text.includes('&')) return text;
-  // HTML parsing supplies the complete named/numeric reference table (including
-  // directional marks). Escape literal '<' first so it cannot become markup.
-  return new DOMParser().parseFromString(text.replaceAll('<', '&lt;'), 'text/html').body.textContent;
+  return text.includes('&') ? decode(text) : text;
 }
 
 function isWebVtt(text) {
