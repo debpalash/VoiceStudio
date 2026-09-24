@@ -10,11 +10,39 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 **Highlights**
 
+- Twilio setup is a guided checklist with live status and exact commands (#2304)
+- Integration pages use the full window, with a side panel on wide screens (#2304)
+- A call agent and Calls workspace that phone someone in your own voice to get a task done (#2306, #2305)
 - Footer integration logos open their in-app page (#2302)
+- Record or drop a voice sample from one view in Voice Clone (#2307)
+- Videos without sound get a clear message instead of an ffmpeg error dump (#2308)
+
+### Added
+
+- Call agent backend: place or answer phone calls that hold a task conversation in your verified or designed voice, with an editable AI disclosure, take-over and an after-call summary (#2306)
+- Calls workspace with a live transcript, take-over, hang-up and an after-call summary (#2305)
 
 ### Changed
 
+- Twilio setup is a guided checklist: account, tunnel, phone number and voice steps with live status, exact tunnel commands for your OS and gateway port, copyable webhook URL, a readiness panel and clear reasons when an action is unavailable (#2304)
+- Integration pages use the full window: setup beside a side panel with status, capabilities and website on wide screens, stacked on narrow ones, with the scrollbar at the window edge (#2304)
 - Integration logos in the footer open their page inside the app instead of an outside website (#2302)
+- Voice Clone shows upload and record side by side instead of behind a toggle (#2307)
+
+### Docs
+
+- New call agent guide covering setup, disclosure, recording consent and safeguards (#2306)
+- The Twilio guide and integration directory describe the guided setup and in-app integration pages (#2304)
+
+### Fixed
+
+- Integration pages show each integration's own category and summary instead of borrowed labels such as "Dubbing" for Twilio (#2304)
+- Integration and featured logos open their page in VoiceStudio; the vendor website opens only from the page's Website card (#2304)
+- Pickers show readable labels instead of raw values such as `__default__`, `auto` or language codes before they are opened (#2304)
+
+### Fixed
+
+- A video with no audio track now says so in Dub, Batch, transcription, cloning and imports instead of showing ffmpeg's exit-234 dump (#2308)
 
 ### Fixed
 

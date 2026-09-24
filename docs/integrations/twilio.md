@@ -6,6 +6,10 @@ your saved voices. When someone calls, VoiceStudio speaks your greeting over a
 hangs up. Synthesis runs on your computer with your chosen voice and engine.
 Twilio receives the 8 kHz phone audio it plays to the caller.
 
+The same setup also runs the [call agent](calls.md), which places calls and
+holds a conversation in your voice, and can answer incoming calls instead of the
+greeting.
+
 The integration is **off by default**. Nothing listens and nothing leaves your
 computer until you turn it on. It then needs a public HTTPS tunnel that you run.
 
@@ -21,33 +25,53 @@ computer until you turn it on. It then needs a public HTTPS tunnel that you run.
 
 ## Setup
 
-1. Open **Integrations → Twilio**. Enter your **Account SID** and **Auth Token**
-   from the Twilio Console home page. Choose a voice and engine, and write the
-   greeting (up to 1,000 characters).
-2. Choose **Test locally** to hear the greeting at phone quality. It is resampled
-   to 8 kHz, μ-law encoded and decoded again, exactly as a caller hears it. This
-   runs entirely on your computer and also pre-renders the greeting, so the
-   first real call starts speaking immediately.
-3. Start your tunnel pointed at the telephony listener's port (**3950** unless
-   you set `OMNIVOICE_TWILIO_PORT`), **not** at VoiceStudio's main port:
+Open **Integrations → Twilio**. The page is a guided checklist: each step shows
+**To do** or **Done**, the header shows the overall status (**Not set up**,
+**Ready**, **Live**), and **Readiness** in the side panel jumps to whatever is
+left. Each step saves on its own.
+
+1. **Twilio account.** Enter your **Account SID** and **Auth Token** from the
+   Twilio Console home page and choose **Save and check**. VoiceStudio checks the
+   format; Twilio confirms the token when it signs your first call. A saved token
+   is never shown again: use **Replace** or **Remove**.
+2. **Public tunnel.** Pick cloudflared or ngrok. The page shows the install
+   command for your operating system and the exact command to start the tunnel
+   against the call gateway's port (**3950** unless you set
+   `OMNIVOICE_TWILIO_PORT`), **not** VoiceStudio's main port:
 
    ```sh
    cloudflared tunnel --url http://127.0.0.1:3950
    # or
-   ngrok http 3950
+   ngrok http 127.0.0.1:3950
    ```
 
-4. Paste the tunnel's `https://…` address into **Public tunnel URL** and save.
-   Use only the origin, without a path. The page then shows the **Voice webhook URL**
-   (`https://<your-tunnel>/integrations/twilio/voice`).
-5. Turn on **Answer calls**. VoiceStudio starts the separate telephony listener
-   on `127.0.0.1` and shows its address as the **tunnel target**. If port 3950
-   was taken, the listener uses the next free port; restart the tunnel against
-   the tunnel target shown.
-6. In the Twilio Console, open **Phone Numbers → Manage → Active numbers**, select
-   your number, and under **Voice configuration** set **A call comes in** to
-   **Webhook**, the Voice webhook URL, and **HTTP POST**. Save.
-7. Call your number. **Recent calls** on the Twilio page shows each call's outcome.
+   Paste the tunnel's `https://…` address into **Public tunnel URL** and save.
+   Use only the origin, without a path. **Check** shows whether the gateway is
+   listening; it starts when you turn on calls. If port 3950 was taken, the
+   gateway uses the next free port and the commands update; restart the tunnel
+   with the new command.
+3. **Phone number.** Copy the **Voice webhook URL**
+   (`https://<your-tunnel>/integrations/twilio/voice`). In the Twilio Console,
+   open **Phone Numbers → Manage → Active numbers**, select your number, and under
+   **Voice configuration** set **A call comes in** to **Webhook**, that URL, and
+   **HTTP POST**. Save. The step shows **Done** once a call passes the
+   signature check (rejected or busy attempts do not count).
+4. **Voice and behavior.** Choose a voice (**Default voice** uses the engine's
+   default; voices marked **Can call** are your verified own voice or a designed
+   voice, the ones the [call agent](calls.md) may use) and an engine (**Active
+   engine** follows your current engine). Choose what answers incoming calls:
+   **Play greeting** (write the greeting, up to 1,000 characters) or **AI agent**
+   (the [call agent](calls.md); the greeting can then stay empty). The AI
+   disclosure the agent opens with is editable here; without the agent,
+   **Add to greeting** inserts a short one. Some places require telling callers
+   they hear an AI voice.
+5. **Test.** **Play phone-quality preview** resamples the greeting to 8 kHz,
+   μ-law encodes and decodes it, exactly as a caller hears it. This runs entirely
+   on your computer and pre-renders the greeting, so the first real call starts
+   speaking immediately. When the button is unavailable, the reason is shown
+   below it.
+6. Choose **Turn on calls** in the header. Call your number; **Recent calls**
+   shows each call's outcome.
 
 Quick tunnels (such as `cloudflared tunnel --url` and free ngrok) usually get a
 new address on every restart. Update the Public tunnel URL and the Twilio webhook
@@ -59,7 +83,8 @@ rejected.
 - **Separate listener.** A tunnel running on your computer connects from
   `127.0.0.1`, and VoiceStudio's main API trusts local callers as you. The
   telephony listener is therefore a separate server that exposes only
-  `/integrations/twilio/voice` and `/integrations/twilio/stream`. Every other
+  `/integrations/twilio/voice`, `/integrations/twilio/stream` and (for calls
+  the [call agent](calls.md) places) `/integrations/twilio/status`. Every other
   path returns 404, including the API docs. **Never point a tunnel at the main
   backend port**, because that publishes the whole API.
 - **Signed webhooks.** Every webhook must carry a valid `X-Twilio-Signature`.
@@ -73,19 +98,21 @@ rejected.
   1008 if its `start` message does not present the token.
 - **Secrets stay local.** The Auth Token is encrypted in VoiceStudio's local
   settings store. It is never shown again, returned by the API, logged, or
-  included in any export. **Remove Auth Token** deletes it.
-- **Minimal call log.** Recent calls are kept in memory only and show the last
+  included in any export. **Remove** deletes it.
+- **Minimal call log.** Greeting calls are kept in memory only and show the last
   four characters of the call ID, time, outcome and length of audio spoken.
-  VoiceStudio does not store caller numbers or caller audio.
-- **Off means off.** Turning the integration off stops the listener. Both public
-  endpoints also check the setting on every request.
+  VoiceStudio does not store their caller numbers or caller audio. Calls handled
+  by the [call agent](calls.md) keep a local record with a transcript (see its
+  Privacy section).
+- **Off means off.** Turning the integration off stops the listener. Every public
+  endpoint also checks the setting on every request.
 
 ## Limits
 
 | Limit | Default | Override |
 |---|---|---|
 | Simultaneous calls | 2 (more are rejected with a busy signal) | `OMNIVOICE_TWILIO_MAX_CALLS` (1–16) |
-| Call length | 300 s, then the call is ended | `OMNIVOICE_TWILIO_MAX_CALL_SECONDS` (30–3600) |
+| Call length | 300 s, then the call is ended (calls the agent places use their own limit, up to 30 minutes) | `OMNIVOICE_TWILIO_MAX_CALL_SECONDS` (30–3600) |
 | Webhooks per minute | 30 (more are rejected as busy) | `OMNIVOICE_TWILIO_WEBHOOKS_PER_MINUTE` |
 | Listener port | 3950, then the next free port | `OMNIVOICE_TWILIO_PORT` |
 | Listener address | `127.0.0.1` | `OMNIVOICE_TWILIO_HOST` (an IP address; anything else falls back to loopback) |
@@ -120,15 +147,13 @@ watermarking is enabled.
 | Rejected: invalid signature | The Auth Token, Public tunnel URL or Twilio webhook URL do not match. This is common after a quick tunnel restarts with a new address. |
 | Rejected: invalid stream token | The stream started too late (over 60 s) or did not come from the call that received the TwiML. |
 | Rejected: busy | Too many simultaneous calls or webhooks. Raise the limits above if needed. |
-| Engine unavailable / Speech failed | The selected engine cannot run. Use **Test locally** to see the error. |
-| No entry at all | The request did not reach VoiceStudio. Check that the tunnel is running, targets the tunnel target shown on the page, and that Twilio has the correct webhook URL. |
+| Engine unavailable / Speech failed | The selected engine cannot run. Use **Play phone-quality preview** to see the error. |
+| No entry at all | The request did not reach VoiceStudio. Check that the tunnel is running, uses the exact tunnel command shown in the **Public tunnel** step, and that Twilio has the correct webhook URL. |
 
 ## Not included yet
 
-This integration speaks a fixed greeting. It does not transcribe callers or carry
-on a conversation. VoiceStudio has no built-in agent to decide replies
-([agentic voice](../agentic-voice.md) describes using VoiceStudio as the voice
-for your own agent). The call session is built so a conversational responder can
-receive the caller's μ-law audio and speak replies later. Outbound calls, and
-Plivo or Telnyx, are not supported. Their media-stream protocols are similar, so
-the provider code is written to accommodate an adapter for them.
+Conversations and outbound calls are handled by the [call agent](calls.md). To
+use VoiceStudio as the voice of your own agent instead, see
+[agentic voice](../agentic-voice.md). Plivo and Telnyx are not supported. Their
+media-stream protocols are similar, so the provider code is written to
+accommodate an adapter for them.

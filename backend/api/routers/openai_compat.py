@@ -1081,6 +1081,12 @@ async def _transcribe_request(
         logger.warning("OpenAI transcription timed out: %s", e)
         raise HTTPException(status_code=504, detail=str(e))
     except Exception as e:
+        from core.failure import NO_AUDIO_TRACK_MESSAGE, NoAudioTrackError
+        from services.ffmpeg_utils import raise_for_audio_extract_failure
+        try:
+            await asyncio.to_thread(raise_for_audio_extract_failure, str(e), tmp_path)
+        except NoAudioTrackError:
+            raise OpenAIError(400, NO_AUDIO_TRACK_MESSAGE, param="file", code="no_audio_track")
         logger.exception("OpenAI transcription failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
     finally:

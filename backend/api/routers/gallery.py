@@ -328,6 +328,15 @@ async def upload_voice_clip(
     with open(audio_path, "wb") as f:
         f.write(await audio.read())
 
+    # The picker accepts video; one without an audio stream is no voice clip.
+    from services.ffmpeg_utils import require_audio_stream
+    try:
+        await asyncio.to_thread(require_audio_stream, audio_path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.remove(audio_path)
+        raise
+
     try:
         import soundfile as sf
 

@@ -4,13 +4,20 @@
   height: 100%;
   flex-direction: column;
 }
+/* The scroller spans the whole workspace so its scrollbar sits at the window
+   edge; the centred, width-capped column lives inside it. Layout responds to
+   this container's width (the sidebar can take any share of the window). */
 .integrations-content {
   width: 100%;
-  max-width: 1180px;
-  margin: 0 auto;
   min-height: 0;
   flex: 1;
   overflow-y: auto;
+  container: integrations / inline-size;
+}
+.integrations-container {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
   padding: 34px clamp(18px, 4vw, 58px) 48px;
 }
 .integrations-hero {
@@ -305,13 +312,18 @@
   color: var(--muted-foreground);
 }
 .integrations-detail {
-  max-width: 920px;
+  max-width: 1240px;
+}
+@container integrations (min-width: 1800px) {
+  .integrations-detail {
+    max-width: 1400px;
+  }
 }
 .integration-back-link {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  margin-bottom: 26px;
+  margin-bottom: 18px;
   color: var(--muted-foreground);
   font-size: 12px;
 }
@@ -325,8 +337,9 @@
 .integration-detail-hero {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 18px;
-  padding: 24px;
+  padding: 22px 24px;
   border: 1px solid var(--border);
   border-radius: 16px;
   background: color-mix(in srgb, var(--foreground) 3%, var(--background));
@@ -363,10 +376,101 @@
   font-weight: 650;
   letter-spacing: -0.045em;
 }
-.integration-detail-hero p:last-child {
+.integration-detail-hero-copy {
+  min-width: min(100%, 260px);
+  flex: 1;
+}
+.integration-detail-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.integration-detail-tagline {
   margin-top: 7px;
   color: var(--muted-foreground);
   font-size: 13px;
+  line-height: 1.5;
+}
+.integration-detail-hero-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+.integration-docs-link,
+.integration-inline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.integration-docs-link:hover,
+.integration-inline-link:hover {
+  color: var(--foreground);
+}
+.integration-docs-link svg {
+  width: 14px;
+  height: 14px;
+}
+/* Detail layout. Narrow: one column, the rail's status/checklist above the
+   setup and capabilities/website below it. Wide: setup beside a sticky rail. */
+.integration-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'top' 'main' 'bottom';
+  gap: 14px;
+  margin-top: 14px;
+}
+.integration-detail-main {
+  grid-area: main;
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 14px;
+}
+.integration-detail-rail {
+  display: contents;
+}
+.integration-detail-rail-top,
+.integration-detail-rail-bottom {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 12px;
+}
+.integration-detail-rail-top {
+  grid-area: top;
+}
+.integration-detail-rail-bottom {
+  grid-area: bottom;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+}
+@container integrations (min-width: 1024px) {
+  .integration-detail-layout {
+    grid-template-columns: minmax(0, 1fr) clamp(300px, 30%, 360px);
+    grid-template-areas: 'main rail';
+    gap: 20px;
+    align-items: start;
+  }
+  .integration-detail-rail {
+    position: sticky;
+    top: 16px;
+    display: flex;
+    max-height: calc(100vh - 96px);
+    min-width: 0;
+    grid-area: rail;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .integration-detail-rail-bottom {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .integration-detail-grid {
   display: grid;
@@ -375,7 +479,7 @@
   margin-top: 14px;
 }
 .integration-detail-panel {
-  min-height: 160px;
+  min-width: 0;
   padding: 18px;
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -473,7 +577,7 @@
   }
 }
 @media (max-width: 600px) {
-  .integrations-content {
+  .integrations-container {
     padding-inline: 16px;
   }
   .integrations-hero {
@@ -495,7 +599,7 @@
   }
   .integration-detail-hero {
     align-items: flex-start;
-    flex-direction: column;
+    padding: 18px;
   }
   .integration-detail-grid {
     grid-template-columns: 1fr;

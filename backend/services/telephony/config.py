@@ -7,6 +7,7 @@ any API, never logged, and never part of an export. Everything defaults OFF.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -136,8 +137,14 @@ def set_auth_token(value: str) -> None:
     settings_store.set_secret(SECRET_NAME, value.strip())
 
 
-def missing_for_enable(cfg: TwilioConfig, token_present: bool) -> list[str]:
-    """Fields that must be set before calls can be answered (UI codes)."""
+def missing_for_enable(cfg: TwilioConfig, token_present: bool, inbound_mode: str | None = None) -> list[str]:
+    """Fields that must be set before the listener may run (UI codes).
+
+    The greeting is only required while incoming calls are answered with it;
+    in agent mode the call agent answers instead.
+    """
+    if inbound_mode is None:
+        inbound_mode = load_call_settings().inbound_mode
     missing = []
     if not cfg.account_sid:
         missing.append("account_sid")
@@ -145,9 +152,113 @@ def missing_for_enable(cfg: TwilioConfig, token_present: bool) -> list[str]:
         missing.append("auth_token")
     if not cfg.public_base_url:
         missing.append("public_base_url")
-    if not cfg.greeting:
+    if not cfg.greeting and inbound_mode == "greeting":
         missing.append("greeting")
     return missing
+
+
+# ── Call agent settings (docs/integrations/calls.md) ────────────────────────
+
+_CALLS_PREFIX = "integrations.twilio.calls."
+MAX_DISCLOSURE_CHARS = 500
+MAX_BRIEF_CHARS = 4000
+MAX_NAME_CHARS = 80
+DEFAULT_DISCLOSURE = "Hi, this is {name}'s AI assistant calling on their behalf."
+INBOUND_MODES = ("greeting", "agent")
+#: E.164: "+", a non-zero country-code digit, up to 15 digits in total.
+E164_RE = re.compile(r"^\+[1-9]\d{6,14}$")
+_NUMBER_PUNCTUATION_RE = re.compile(r"[\s().\-]")
+
+
+@dataclass(frozen=True)
+class CallSettings:
+    from_number: str = ""
+    #: ``{name}`` is replaced with ``user_name``. May be empty (no disclosure):
+    #: that is the user's decision and responsibility (see the docs).
+    disclosure_template: str = DEFAULT_DISCLOSURE
+    user_name: str = ""
+    inbound_mode: str = "greeting"
+    inbound_brief: str = ""
+    max_concurrent: int = 1
+    record_calls: bool = False
+
+    def as_dict(self) -> dict:
+        return {
+            "from_number": self.from_number,
+            "disclosure_template": self.disclosure_template,
+            "user_name": self.user_name,
+            "inbound_mode": self.inbound_mode,
+            "inbound_brief": self.inbound_brief,
+            "max_concurrent": self.max_concurrent,
+            "record_calls": self.record_calls,
+        }
+
+
+def normalize_phone_number(value: str, *, code: str = "invalid_number") -> str:
+    """``+1 (415) 555-0123`` → ``+14155550123``; anything not E.164 is refused."""
+    value = _NUMBER_PUNCTUATION_RE.sub("", (value or "").strip())
+    if value.startswith("00"):
+        value = "+" + value[2:]
+    if not E164_RE.match(value):
+        raise ConfigError(
+            code,
+            "Enter the number in international format with its country code, such as +14155550123",
+        )
+    return value
+
+
+def normalize_disclosure(value: str) -> str:
+    value = (value or "").strip()
+    if len(value) > MAX_DISCLOSURE_CHARS:
+        raise ConfigError("disclosure_too_long", f"The disclosure is limited to {MAX_DISCLOSURE_CHARS} characters")
+    return value
+
+
+def normalize_brief(value: str, *, required: bool = True) -> str:
+    value = (value or "").strip()
+    if required and not value:
+        raise ConfigError("missing_brief", "Describe what the call should achieve")
+    if len(value) > MAX_BRIEF_CHARS:
+        raise ConfigError("brief_too_long", f"The brief is limited to {MAX_BRIEF_CHARS} characters")
+    return value
+
+
+def render_disclosure(template: str, user_name: str) -> str:
+    """Fill ``{name}`` (``someone`` when no name is known)."""
+    template = (template or "").strip()
+    return template.replace("{name}", (user_name or "").strip() or "someone") if template else ""
+
+
+def load_call_settings() -> CallSettings:
+    from services import settings_store
+
+    def text(key: str, default: str = "") -> str:
+        value = settings_store.get_text(_CALLS_PREFIX + key, None)
+        return default if value is None else value
+
+    mode = text("inbound_mode", "greeting")
+    try:
+        concurrent = max(1, min(2, int(text("max_concurrent", "1") or 1)))
+    except ValueError:
+        concurrent = 1
+    return CallSettings(
+        from_number=text("from_number"),
+        disclosure_template=text("disclosure_template", DEFAULT_DISCLOSURE),
+        user_name=text("user_name"),
+        inbound_mode=mode if mode in INBOUND_MODES else "greeting",
+        inbound_brief=text("inbound_brief"),
+        max_concurrent=concurrent,
+        record_calls=text("record_calls") == "1",
+    )
+
+
+def save_call_settings(cfg: CallSettings) -> None:
+    from services import settings_store
+
+    for key in ("from_number", "disclosure_template", "user_name", "inbound_mode", "inbound_brief"):
+        settings_store.set_text(_CALLS_PREFIX + key, getattr(cfg, key))
+    settings_store.set_text(_CALLS_PREFIX + "max_concurrent", str(cfg.max_concurrent))
+    settings_store.set_text(_CALLS_PREFIX + "record_calls", "1" if cfg.record_calls else "0")
 
 
 def _int_env(name: str, default: int, lo: int, hi: int) -> int:

@@ -621,6 +621,11 @@ def api(store, monkeypatch):
 def test_state_is_off_by_default_and_never_returns_the_token(api, store):
     state = api.get("/api/integrations/twilio/state").json()
     assert state["enabled"] is False and state["has_auth_token"] is False
+    # Setup shows the exact tunnel command before the gateway is running.
+    assert state["listener"]["running"] is False
+    assert state["listener"]["preferred_port"] == gateway._free_port(
+        "127.0.0.1", gateway.gateway_port_base()
+    )
     api.put("/api/integrations/twilio/config", json={"auth_token": "s3cret-token"})
     state = api.get("/api/integrations/twilio/state")
     assert state.json()["has_auth_token"] is True
@@ -701,6 +706,16 @@ def _free_port():
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
+
+
+def test_preferred_port_skips_a_taken_base_port_like_start_does(monkeypatch):
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", 0))
+        base = taken.getsockname()[1]
+        monkeypatch.setenv("OMNIVOICE_TWILIO_PORT", str(base))
+        preferred = gateway.state()["preferred_port"]
+        assert preferred != base
+        assert preferred == gateway._free_port("127.0.0.1", base)
 
 
 def test_gateway_listener_exposes_only_twilio_routes(store, monkeypatch):

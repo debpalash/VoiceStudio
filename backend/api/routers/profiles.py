@@ -170,6 +170,16 @@ async def create_profile(
         os.makedirs(VOICES_DIR, exist_ok=True)
         with open(audio_path, "wb") as f:
             f.write(await ref_audio.read())
+        # A clone needs speech to copy: refuse a reference with no audio
+        # stream (a silent screen recording, a video-only WebM) at save time
+        # instead of failing every later generation with it.
+        from services.ffmpeg_utils import require_audio_stream
+        try:
+            await asyncio.to_thread(require_audio_stream, audio_path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.remove(audio_path)
+            raise
         # Resolve the transcript at save time (see _auto_transcribe_reference).
         if not ref_text.strip():
             ref_text = await _auto_transcribe_reference(audio_path)
@@ -575,6 +585,10 @@ async def replace_profile_audio(
                 )
             os.replace(tmp_path, new_path)
             if not await _is_decodable_audio(new_path):
+                # A video-only WebM decodes to nothing because it has no audio
+                # stream at all; say that rather than "could not be read".
+                from services.ffmpeg_utils import require_audio_stream
+                await asyncio.to_thread(require_audio_stream, new_path)
                 raise HTTPException(
                     status_code=422,
                     detail="That file could not be read as audio. Choose another recording.",
