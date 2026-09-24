@@ -25,6 +25,7 @@ import {
   LayersIcon,
   LibraryIcon,
   MicIcon,
+  PhoneCallIcon,
   PlayIcon,
   SettingsIcon,
   KeyboardIcon,
@@ -159,6 +160,13 @@ export function CommandPalette() {
       group: workspaceGroup,
       icon: MicIcon,
       run: () => navigate({ to: '/transcriptions' }),
+    },
+    {
+      id: 'calls',
+      label: t('nav.calls'),
+      group: workspaceGroup,
+      icon: PhoneCallIcon,
+      run: () => navigate({ to: '/calls' }),
     },
     {
       id: 'design',

@@ -28,6 +28,7 @@ const ProjectsPage = lazyRouteComponent(
   () => import('@/features/projects/projects-page'),
   'ProjectsPage',
 );
+const CallsPage = lazyRouteComponent(() => import('@/features/calls/calls-page'), 'CallsPage');
 const ToolsPage = lazyRouteComponent(() => import('@/features/tools/tools-page'), 'ToolsPage');
 const IntegrationsPage = lazyRouteComponent(
   () => import('@/features/integrations/integrations-page'),
@@ -137,6 +138,11 @@ export const batchRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/batch',
   component: BatchPage,
+});
+export const callsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/calls',
+  component: CallsPage,
 });
 export const toolsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -269,6 +275,7 @@ export const routeTree = rootRoute.addChildren([
   pronunciationRoute,
   mediaRoute,
   toolsRoute,
+  callsRoute,
   integrationsRoute,
   integrationDetailRoute,
   batchRoute,

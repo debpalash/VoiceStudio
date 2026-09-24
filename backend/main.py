@@ -1398,6 +1398,23 @@ def _safe_validation_input(value):
     return value
 
 
+from core.failure import NoAudioTrackError, no_audio_track_detail  # noqa: E402
+
+
+@app.exception_handler(NoAudioTrackError)
+async def no_audio_track_handler(request: Request, exc: NoAudioTrackError):
+    """422 for an upload with no audio stream, on every route that decodes one.
+
+    The structured detail carries ``docs_topic`` so the desktop client shows
+    its localized message; ffmpeg's own output stays in the backend log.
+    """
+    return JSONResponse(
+        status_code=422,
+        content={"detail": no_audio_track_detail()},
+        headers=_cors_headers_for(request),
+    )
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """422 for a malformed request — never a 500, never an audio-sized body.

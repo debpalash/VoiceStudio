@@ -2245,7 +2245,8 @@
     "ref_audio_no_speech": "Die automatische Spracherkennung hat keine gesprochenen Wörter gefunden. Kürze die Referenz auf eine klare Sprachpassage von 3–10 Sekunden oder gib ein passendes Transkript an.",
     "gpu_arch_unsupported": "Diese PyTorch-Version unterstützt deine GPU nicht. Wähle CPU unter Einstellungen → Leistung & Gerät oder installiere eine kompatible PyTorch-Version.",
     "windows_app_control_blocked": "Die Windows-Anwendungssteuerung hat eine benötigte Datei blockiert. Bitte deinen Administrator, die vertrauenswürdige VoiceStudio-Laufzeit zuzulassen, und starte die App neu.",
-    "audio_io_failed": "Die Audiodatei konnte nicht gelesen oder gespeichert werden. Prüfe Dateiformat, freien Speicherplatz und Dateiberechtigungen. Überprüfe den Ordner unter Einstellungen → Speicher."
+    "audio_io_failed": "Die Audiodatei konnte nicht gelesen oder gespeichert werden. Prüfe Dateiformat, freien Speicherplatz und Dateiberechtigungen. Überprüfe den Ordner unter Einstellungen → Speicher.",
+    "no_audio_track": "Diese Datei hat keine Tonspur, daher gibt es keine Sprache zum Transkribieren, Synchronisieren oder Klonen. Wähle eine Video- oder Audiodatei mit Ton."
   },
   "sharing": {
     "title": "Teilen und Fernzugriff",

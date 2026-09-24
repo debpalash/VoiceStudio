@@ -2245,7 +2245,8 @@
     "ref_audio_no_speech": "Deteksi otomatis tidak menemukan kata yang diucapkan dalam referensi. Potong menjadi bagian ucapan jelas sepanjang 3–10 detik atau sertakan transkrip yang cocok.",
     "gpu_arch_unsupported": "Versi PyTorch ini tidak mendukung GPU Anda. Pilih CPU di Pengaturan → Performa & Perangkat, atau instal versi PyTorch yang kompatibel.",
     "windows_app_control_blocked": "Kontrol aplikasi Windows memblokir file yang diperlukan. Minta administrator mengizinkan runtime VoiceStudio yang tepercaya, lalu mulai ulang aplikasi.",
-    "audio_io_failed": "Audio tidak dapat dibaca atau disimpan. Periksa format file, ruang disk yang tersedia, dan izin file. Periksa folder di Pengaturan → Penyimpanan."
+    "audio_io_failed": "Audio tidak dapat dibaca atau disimpan. Periksa format file, ruang disk yang tersedia, dan izin file. Periksa folder di Pengaturan → Penyimpanan.",
+    "no_audio_track": "File ini tidak memiliki trek audio, jadi tidak ada ucapan untuk ditranskripsi, di-dubbing, atau dikloning. Pilih file video atau audio yang berisi suara."
   },
   "sharing": {
     "title": "Berbagi & Akses Jarak Jauh",
