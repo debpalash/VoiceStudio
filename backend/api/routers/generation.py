@@ -42,7 +42,10 @@ async def generated_ogg_opus(audio_id: str):
     """Serve the same render as /audio/<id>.wav, encoded as Ogg/Opus."""
     if not re.fullmatch(r"[0-9a-f]{8}", audio_id):
         raise HTTPException(status_code=404, detail="Audio file not found")
-    path = os.path.join(OUTPUTS_DIR, os.path.basename(f"{audio_id}.wav"))
+    outputs_real = os.path.realpath(OUTPUTS_DIR)
+    path = os.path.realpath(os.path.join(outputs_real, f"{audio_id}.wav"))
+    if os.path.commonpath((outputs_real, path)) != outputs_real:
+        raise HTTPException(status_code=404, detail="Audio file not found")
     try:
         with open(path, "rb") as handle:
             wav = handle.read()

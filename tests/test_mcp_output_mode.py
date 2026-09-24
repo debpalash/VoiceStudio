@@ -352,6 +352,25 @@ def test_opus_url_missing_render_is_a_404(monkeypatch, tmp_path):
     assert TestClient(app).get("/audio/not-a-render.ogg").status_code == 404
 
 
+def test_opus_url_does_not_follow_render_symlink_outside_outputs(monkeypatch, tmp_path):
+    from api.routers import generation
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    private = tmp_path / "private.wav"
+    private.write_bytes(_sample_wav())
+    try:
+        (outputs / "ab12cd34.wav").symlink_to(private)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unavailable")
+    monkeypatch.setattr(generation, "OUTPUTS_DIR", str(outputs))
+    app = FastAPI()
+    app.include_router(generation.router)
+    assert TestClient(app).get("/audio/ab12cd34.opus").status_code == 404
+
+
 @pytest.mark.parametrize("raw,expected", [
     (None, 120.0),
     ("600", 600.0),

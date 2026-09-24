@@ -50,6 +50,8 @@ GET /archetypes/previews/status
 GET /archetypes/{archetype_id}
 GET /archetypes/{archetype_id}/preview
 GET /archetypes/{archetype_id}/preview/state
+GET /audio/{audio_id}.ogg
+GET /audio/{audio_id}.opus
 GET /audiobook/jobs
 GET /batch/download/{job_id}/{lang}
 GET /batch/jobs
