@@ -2631,7 +2631,8 @@
     "ref_audio_no_speech": "自动语音检测未在参考音频中发现口语。请裁剪为含清晰语音的3–10秒片段，或提供匹配的文字稿。",
     "gpu_arch_unsupported": "此 PyTorch 构建不支持您的 GPU。请在设置 → 性能与设备中选择 CPU，或安装兼容的 PyTorch 构建。",
     "windows_app_control_blocked": "Windows 应用程序控制阻止了所需文件。请联系管理员允许受信任的 VoiceStudio 运行环境，然后重启应用。",
-    "audio_io_failed": "无法读取或保存音频。请检查文件格式、磁盘剩余空间和文件访问权限，并在设置 → 存储中检查文件夹。"
+    "audio_io_failed": "无法读取或保存音频。请检查文件格式、磁盘剩余空间和文件访问权限，并在设置 → 存储中检查文件夹。",
+    "no_audio_track": "此文件没有音轨，因此没有可转录、配音或克隆的语音。请选择包含声音的视频或音频文件。"
   },
   "sharing": {
     "title": "共享和远程访问",

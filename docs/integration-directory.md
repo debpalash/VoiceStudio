@@ -1,6 +1,6 @@
 # Integration directory
 
-Directory entries are not paid sponsors or endorsements. Only entries with a built-in setup block or setup panel carry the **Works with VoiceStudio** badge and capability chips (MCP server, Speech API, Transcription API, Workflow template, Self-hosted, Local language model, Phone calls); every other card is marked **External link** and only opens the provider's website. Setup blocks and panels live in one registry keyed by the catalog slug (`electron/src/renderer/src/features/integrations/setup-registry.ts`), so a connector is added in one place. Icons are bundled locally so viewing the catalog sends no logo requests to providers. Brand marks belong to their respective owners.
+Directory entries are not paid sponsors or endorsements. Only entries with a built-in setup block or setup panel carry the **Works with VoiceStudio** badge and capability chips (MCP server, Speech API, Transcription API, Workflow template, Self-hosted, Local language model, Phone calls); every other card is marked **External link**. Every card and featured logo opens the integration's page in VoiceStudio; the provider's website opens only from that page's **Website** card. Setup blocks and panels live in one registry keyed by the catalog slug (`electron/src/renderer/src/features/integrations/setup-registry.ts`), so a connector is added in one place. Icons are bundled locally so viewing the catalog sends no logo requests to providers. Brand marks belong to their respective owners.
 
 | Company | Official source | Icon source |
 |---|---|---|
@@ -50,6 +50,12 @@ The schemas follow the official [Claude Code MCP guide](https://code.claude.com/
 card per route, retaining bundled logos and the correct category when entries
 overlap.
 
+Each detail page leads with the integration's category and a one-line summary.
+Pages for integrations that work with VoiceStudio add a single **Learn more**
+link to their guide; external entries link only to the provider's website. On wide windows the
+setup sits beside a side panel with status, capabilities and the website; on
+narrow windows the panel's status comes first and its details follow the setup.
+
 ## Call the API or run the container
 
 The **VoiceStudio API** page shows the current backend's OpenAI-compatible base
@@ -85,14 +91,20 @@ local OpenAI-compatible server); the snippet never falls back to a hosted model.
 
 ## Answer phone calls with Twilio
 
-The Twilio detail page answers calls to your Twilio number with a saved voice:
-VoiceStudio speaks a greeting over a Twilio Media Stream, then hangs up. It is
-off by default. When enabled, a separate loopback listener that your own HTTPS
-tunnel (cloudflared, ngrok) forwards to serves only two endpoints: the voice
-webhook, which must carry a valid Twilio signature, and the Media Stream, which
-must present a single-use per-call token. The main API is never exposed.
-**Test locally** plays the greeting at phone quality without Twilio. See
-[Twilio setup](integrations/twilio.md) for the
-tunnel, Twilio Console configuration, security model and limits. Twilio is an
+The Twilio detail page is a guided setup (account, tunnel, phone number, voice)
+with a live readiness checklist; it answers calls to your Twilio number with a
+saved voice: VoiceStudio speaks a greeting over a Twilio Media Stream, then
+hangs up. It is off by default. When enabled, a separate loopback listener that your own HTTPS
+tunnel (cloudflared, ngrok) forwards to serves only Twilio's endpoints: the
+voice and status webhooks, which must carry a valid Twilio signature, and the
+Media Stream, which must present a single-use per-call token. The main API is
+never exposed. **Play phone-quality preview** plays the greeting as a caller
+hears it, without Twilio. See [Twilio setup](integrations/twilio.md) for the
+tunnel, Twilio Console configuration, security model and limits.
+
+The [call agent](integrations/calls.md) uses the same setup to place a call from
+your request (for example, booking a table) or answer one, and holds the
+conversation in your verified or designed voice. It opens with an editable AI
+disclosure and records nothing unless you turn recording on. Twilio is an
 implemented connector; the other calling entries (Plivo, Telnyx) remain
 capability references.

@@ -24,7 +24,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from api.dependencies import require_admin
-from services.telephony import config, gateway, session
+from services.telephony import calls, config, gateway, session
 from services.telephony import twilio as provider
 
 logger = logging.getLogger("omnivoice.telephony")
@@ -231,11 +231,9 @@ async def _read_limited(request: Request) -> bytes | None:
     return bytes(body)
 
 
-@webhook_router.post(provider.VOICE_PATH)
-async def twilio_voice_webhook(request: Request):
-    # Captured before any await: a disable while this request is in flight
-    # bumps the epoch, and no token is then issued for it.
-    epoch = session.tokens.epoch
+async def _verified_webhook(request: Request, path: str):
+    """Authenticate a Twilio webhook. Returns ``(cfg, fields)`` or the
+    rejection Response."""
     cfg = config.load()
     auth_token = config.auth_token() if cfg.enabled else ""
     if not cfg.enabled or not auth_token or not cfg.account_sid or not cfg.public_base_url:
@@ -248,7 +246,7 @@ async def twilio_voice_webhook(request: Request):
     except (UnicodeDecodeError, ValueError):
         return Response("Bad Request", status_code=400)
     # Twilio signs the URL it called: the tunnel's public URL, not our loopback one.
-    url = cfg.webhook_url + (f"?{request.url.query}" if request.url.query else "")
+    url = cfg.public_base_url + path + (f"?{request.url.query}" if request.url.query else "")
     signature = request.headers.get(provider.SIGNATURE_HEADER, "")
     if not provider.signature_valid(auth_token, url, params, signature):
         # Throttle only unsigned traffic, after verifying: a flood of forged
@@ -263,31 +261,104 @@ async def twilio_voice_webhook(request: Request):
     if fields.get("AccountSid") != cfg.account_sid or not provider.CALL_SID_RE.match(call_sid):
         session.registry.note("rejected_signature", call_sid)
         return _forbidden()
+    return cfg, fields
+
+
+def _stream_twiml(cfg: config.TwilioConfig, call_sid: str, epoch: int, agent_session_id: str = "") -> Response:
+    token = session.tokens.issue(session.token_subject(call_sid, agent_session_id), epoch)
+    if token is None:
+        return _forbidden()
+    params = {"token": token, **({"call": agent_session_id} if agent_session_id else {})}
+    return Response(provider.connect_twiml(cfg.stream_url, params), media_type=_XML)
+
+
+@webhook_router.post(provider.VOICE_PATH)
+async def twilio_voice_webhook(request: Request):
+    # Captured before any await: a disable while this request is in flight
+    # bumps the epoch, and no token is then issued for it.
+    epoch = session.tokens.epoch
+    verified = await _verified_webhook(request, provider.VOICE_PATH)
+    if isinstance(verified, Response):
+        return verified
+    cfg, fields = verified
+    call_sid = fields["CallSid"]
     max_calls = config.max_concurrent_calls()
+    agent_call = request.query_params.get("call", "")
+    if agent_call:
+        # An outbound call the user placed (POST /calls) was answered.
+        outbound = calls.claim_outbound(agent_call, call_sid)
+        if outbound is None:
+            return Response(provider.hangup_twiml(), media_type=_XML)
+        if not session.registry.has_capacity(max_calls, session.tokens.pending()):
+            session.registry.note("busy", call_sid)
+            calls.finish_unconnected(outbound, "failed", error="Too many simultaneous calls")
+            return Response(provider.hangup_twiml(), media_type=_XML)
+        return _stream_twiml(cfg, call_sid, epoch, outbound.id)
     if not session.webhook_window.allow(config.webhooks_per_minute()) or not session.registry.has_capacity(
         max_calls, session.tokens.pending()
     ):
         session.registry.note("busy", call_sid)
         return Response(provider.reject_twiml(), media_type=_XML)
-    token = session.tokens.issue(call_sid, epoch)
-    if token is None:
-        return _forbidden()
-    return Response(provider.connect_twiml(cfg.stream_url, {"token": token}), media_type=_XML)
+    if config.load_call_settings().inbound_mode == "agent" and calls.llm_status()[0]:
+        if not calls.has_agent_capacity():
+            session.registry.note("busy", call_sid)
+            return Response(provider.reject_twiml(), media_type=_XML)
+        inbound = calls.create_inbound(call_sid, fields.get("From", ""))
+        return _stream_twiml(cfg, call_sid, epoch, inbound.id)
+    if not cfg.greeting:
+        session.registry.note("busy", call_sid)
+        return Response(provider.reject_twiml(), media_type=_XML)
+    return _stream_twiml(cfg, call_sid, epoch)
+
+
+@webhook_router.post(provider.STATUS_PATH)
+async def twilio_status_callback(request: Request):
+    """Progress of an outbound call (ringing, answered, busy, no answer…)."""
+    verified = await _verified_webhook(request, provider.STATUS_PATH)
+    if isinstance(verified, Response):
+        return verified
+    _cfg, fields = verified
+    calls.on_provider_status(
+        request.query_params.get("call", ""), fields["CallSid"], fields.get("CallStatus", "")
+    )
+    return Response(status_code=204)
 
 
 @webhook_router.websocket(provider.STREAM_PATH)
 async def twilio_media_stream(websocket: WebSocket):
     cfg = config.load()
-    if not cfg.enabled or not cfg.greeting:
+    if not cfg.enabled:
         await websocket.close(code=1008)
         return
-    await session.run_call(
-        websocket,
-        provider,
-        account_id=cfg.account_sid,
-        responder_factory=lambda: session.AnnouncementResponder(
+    agent_call: dict = {}
+
+    def _responder(start):
+        session_id = start.params.get("call", "")
+        if session_id:
+            agent = calls.connect_stream(session_id, start.call_id)
+            if agent is not None:
+                agent_call["agent"] = agent
+            return agent
+        if not cfg.greeting:
+            return None
+        return session.AnnouncementResponder(
             cfg.greeting, voice=cfg.voice_id, engine=cfg.engine, language=cfg.language
-        ),
-        max_calls=config.max_concurrent_calls(),
-        max_seconds=config.max_call_seconds(),
-    )
+        )
+
+    outcome = "error"
+    try:
+        outcome = await session.run_call(
+            websocket,
+            provider,
+            account_id=cfg.account_sid,
+            responder_factory=_responder,
+            max_calls=config.max_concurrent_calls(),
+            max_seconds=config.max_call_seconds(),
+        )
+    finally:
+        agent = agent_call.get("agent")
+        if agent is not None:
+            # Always finalize a connected agent call — even when the stream
+            # failed or this handler is cancelled — or it would hold its
+            # max_concurrent slot until a restart.
+            await asyncio.shield(calls.finish(agent.call, outcome, agent))

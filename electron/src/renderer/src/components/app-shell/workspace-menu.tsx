@@ -15,6 +15,7 @@ import {
   UsersRoundIcon,
   ChevronRightIcon,
   BlocksIcon,
+  PhoneCallIcon,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -34,6 +35,7 @@ type Destination = readonly [
     | '/design'
     | '/transcriptions'
     | '/personas'
+    | '/calls'
     | '/integrations',
   label: string,
   icon: typeof AudioLinesIcon,
@@ -58,6 +60,7 @@ const dubDestinations: Destination[] = [
 ];
 const laterDestinations: Destination[] = [
   ['/transcriptions', 'nav.transcribe', MicIcon],
+  ['/calls', 'nav.calls', PhoneCallIcon],
   ['/projects', 'projects.title', FolderIcon],
   ['/tools', 'tools.title', WrenchIcon],
   ['/integrations', 'integrationCatalog.title', BlocksIcon],
