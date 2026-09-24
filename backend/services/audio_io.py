@@ -72,8 +72,8 @@ OPUS_CODEC_ARGS = ["-c:a", "libopus", "-b:a", "64k"]
 OPUS_SAMPLE_RATE = 48000
 
 
-async def encode_ogg_opus(wav: bytes) -> bytes:
-    """Transcode a WAV render to genuine Ogg/Opus; never return WAV on error."""
+async def encode_ogg_opus(wav: bytes | str | os.PathLike[str]) -> bytes:
+    """Transcode a WAV render or saved WAV to Ogg/Opus; never return WAV on error."""
     import asyncio
     from core.failure import strip_ffmpeg_banner
     from services.ffmpeg_utils import find_ffmpeg, run_ffmpeg
@@ -84,10 +84,15 @@ async def encode_ogg_opus(wav: bytes) -> bytes:
             "Ogg/Opus output requires ffmpeg. Install it (Settings → Audio tools) "
             "or set FFMPEG_PATH."
         )
-    fd, src = tempfile.mkstemp(suffix=".wav")
+    temporary = None
     try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(wav)
+        if isinstance(wav, bytes):
+            fd, temporary = tempfile.mkstemp(suffix=".wav")
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(wav)
+            src = temporary
+        else:
+            src = os.fspath(wav)
         cmd = [
             ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
             "-i", src, "-ar", str(OPUS_SAMPLE_RATE),
@@ -95,7 +100,8 @@ async def encode_ogg_opus(wav: bytes) -> bytes:
         ]
         rc, out, err = await run_ffmpeg(cmd, timeout=300.0)
     finally:
-        os.unlink(src)
+        if temporary is not None:
+            os.unlink(temporary)
     if rc != 0 or not out:
         detail = strip_ffmpeg_banner((err or b"").decode("utf-8", "replace")).strip()[-300:]
         raise RuntimeError(f"Ogg/Opus encoding failed: {detail or f'ffmpeg exit {rc}'}")

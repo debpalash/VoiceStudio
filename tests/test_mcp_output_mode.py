@@ -388,7 +388,7 @@ def test_opus_url_reuses_encoded_audio_until_wav_changes(monkeypatch, tmp_path):
     calls = []
 
     async def counted_encode(value):
-        calls.append(value)
+        calls.append(os.fspath(value))
         return await real_encode(value)
 
     monkeypatch.setattr(audio_io, "encode_ogg_opus", counted_encode)
@@ -399,15 +399,61 @@ def test_opus_url_reuses_encoded_audio_until_wav_changes(monkeypatch, tmp_path):
         assert first.status_code == 200 and first.content.startswith(b"OggS")
         assert client.get("/audio/ab12cd34.opus").content == first.content
         assert client.get("/audio/ab12cd34.ogg").content == first.content
-        assert calls == [raw]
+        assert calls == [str(wav)]
         altered = raw[:44] + bytes(len(raw) - 44)
         wav.write_bytes(altered)
         info = wav.stat()
         os.utime(wav, ns=(info.st_atime_ns, info.st_mtime_ns + 1_000_000_000))
         changed = client.get("/audio/ab12cd34.opus")
         assert changed.status_code == 200 and changed.content != first.content
-        assert calls == [raw, altered]
+        assert calls == [str(wav), str(wav)]
         assert generation._ogg_cache_bytes <= generation._OGG_CACHE_LIMIT
+
+
+def test_slow_opus_encode_does_not_block_other_renders(monkeypatch, tmp_path):
+    import httpx
+    from api.routers import generation
+    from fastapi import FastAPI
+    from services import audio_io
+    from services.ffmpeg_utils import find_ffmpeg
+
+    if not find_ffmpeg():
+        pytest.skip("ffmpeg is not installed")
+    for audio_id in ("ab12cd34", "ab12cd35", "ab12cd36"):
+        (tmp_path / f"{audio_id}.wav").write_bytes(_sample_wav())
+    monkeypatch.setattr(generation, "OUTPUTS_DIR", str(tmp_path))
+    real_encode = audio_io.encode_ogg_opus
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def paused_encode(value):
+        if os.fspath(value).endswith("ab12cd35.wav"):
+            started.set()
+            await release.wait()
+        return await real_encode(value)
+
+    monkeypatch.setattr(audio_io, "encode_ogg_opus", paused_encode)
+    app = FastAPI()
+    app.include_router(generation.router)
+
+    async def exercise():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            cached = await client.get("/audio/ab12cd34.opus")
+            assert cached.status_code == 200 and cached.content.startswith(b"OggS")
+            slow = asyncio.create_task(client.get("/audio/ab12cd35.opus"))
+            try:
+                await asyncio.wait_for(started.wait(), timeout=5)
+                hit = await asyncio.wait_for(client.get("/audio/ab12cd34.opus"), timeout=3)
+                other = await asyncio.wait_for(client.get("/audio/ab12cd36.opus"), timeout=5)
+                assert hit.content == cached.content
+                assert other.status_code == 200 and other.content.startswith(b"OggS")
+            finally:
+                release.set()
+                assert (await asyncio.wait_for(slow, timeout=10)).status_code == 200
+
+    asyncio.run(exercise())
 
 
 @pytest.mark.parametrize("raw,expected", [
