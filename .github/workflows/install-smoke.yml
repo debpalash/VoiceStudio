@@ -48,7 +48,8 @@ jobs:
         run: |
           if [ "$RUNNER_OS" = Linux ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             # Exercise the PR source as main before its installer changes are merged.
-            git init --bare "$RUNNER_TEMP/voicestudio-main.git"
+            git init --bare -q --initial-branch=main "$RUNNER_TEMP/voicestudio-main.git"
+            git --git-dir "$RUNNER_TEMP/voicestudio-main.git" config receive.shallowUpdate true
             git push "$RUNNER_TEMP/voicestudio-main.git" HEAD:refs/heads/main
             export GIT_CONFIG_COUNT=1
             export GIT_CONFIG_KEY_0="url.file://$RUNNER_TEMP/voicestudio-main.git.insteadOf"
