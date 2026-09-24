@@ -8,7 +8,9 @@ Default Track control when the source audio should play first instead.
 ## Hardsub captions
 
 Turning on **Burn subtitles into picture (hardsub)** re-encodes the video with
-captions rendered into the frames. Two caption styles are available:
+captions rendered into the frames. Windows caption paths are passed to ffmpeg
+with forward slashes so drive-letter paths open in the subtitles and ass
+filters; POSIX filenames keep literal backslashes. Two caption styles are available:
 
 - **Line** (default) — static line subtitles, unchanged from previous releases.
 - **Karaoke (word highlight)** — each word fills with the highlight colour in
