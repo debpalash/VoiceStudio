@@ -262,7 +262,7 @@ export function commitMoveResize(seg, { start, end }) {
   const newEnd = +end.toFixed(3);
   const oldDur = seg.end - seg.start;
   const newDur = newEnd - newStart;
-  const isMove = Math.abs(newDur - oldDur) < 0.005;
+  const isMove = Math.abs(newDur - oldDur) < 0.0005;
   if (isMove) {
     return { ...seg, start: newStart, end: newEnd };
   }

@@ -216,6 +216,15 @@ describe('commitMoveResize — fingerprint parity (#281 invariants)', () => {
     expect(after.speed).toBe(0.96);
   });
 
+  it('a millisecond one-edge resize updates duration metadata', () => {
+    const before = seg(1, 1.234, 1.334, { profile_id: 'p1' });
+    const after = commitMoveResize(before, { start: 1.234, end: 1.335 });
+    expect(after.start).toBe(1.234);
+    expect(after.end).toBe(1.335);
+    expect(after.original_duration).toBeCloseTo(0.1, 10);
+    expect(segmentGenInputs(after).speed).toBe(0.99);
+  });
+
   it('a pure move of millisecond times does not rewrite speed', () => {
     const before = seg(1, 1.234, 3.456, { profile_id: 'p1' });
     const after = commitMoveResize(before, { start: 1.334, end: 3.556 });
