@@ -12,8 +12,8 @@
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
-    "dev:software-compositing": "electron-vite dev -- --disable-gpu-compositing",
+    "dev": "node scripts/dev.mjs",
+    "dev:software-compositing": "node scripts/dev.mjs -- --disable-gpu-compositing",
     "locale:check": "node tests/locale-encoding.mjs && node tests/locale-source-keys.mjs && node tests/locale-coverage.mjs",
     "build": "bun run locale:check && electron-vite build",
     "build:web": "bun run locale:check && vite build --config vite.web.config.ts",

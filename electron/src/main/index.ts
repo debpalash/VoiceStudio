@@ -4,7 +4,7 @@ import { isTrustedRenderer } from './trusted-renderer';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, ipcMain, nativeImage, session, shell, Tray } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, session, shell, Tray } from 'electron';
 import { electronApp, is, optimizer } from '@electron-toolkit/utils';
 import { BackendSupervisor, backendRoot } from './backend';
 import { registerIpc, wireWindowMaximizeEvents } from './ipc';
@@ -21,6 +21,7 @@ import {
   observeMainProcessTask,
 } from './main-error-journal';
 import { activateLiveWindow, isLiveWindow } from './window-safety';
+import { installAppIdentity, installMacApplicationMenu } from './app-identity';
 
 // Packaged GUI launches can inherit a short-lived terminal pipe. When that
 // launcher exits, diagnostic console writes emit EPIPE asynchronously and can
@@ -38,6 +39,7 @@ const RENDERER_DIR = join(here, '../renderer');
 const BACKGROUND = '#0a0a0a';
 const OVERLAY = { color: '#00000000', symbolColor: '#737373', height: 52 };
 
+installAppIdentity(app);
 registerAppScheme();
 
 const mainErrors = new MainErrorJournal(
@@ -233,6 +235,7 @@ if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSing
     .whenReady()
     .then(async () => {
       electronApp.setAppUserModelId(APP_USER_MODEL_ID);
+      if (process.platform === 'darwin') installMacApplicationMenu(app, Menu, __APP_VERSION__);
       installRendererPermissions(session.defaultSession, process.env.ELECTRON_RENDERER_URL);
       app.on('browser-window-created', (_event, window) => optimizer.watchWindowShortcuts(window));
 
