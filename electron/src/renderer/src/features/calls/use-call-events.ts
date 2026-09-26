@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { callEventsUrl, parseCallEvent, type CallEvent } from '@/lib/api/calls';
+import { callEventsUrl, parseCallEvent, streamCallEvents, type CallEvent } from '@/lib/api/calls';
 
 export type StreamState = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'closed';
 
@@ -29,11 +29,12 @@ export function useCallEvents(
   handlers.current = { onEvent, onResync };
 
   useEffect(() => {
-    if (!callId || !enabled || typeof EventSource === 'undefined') {
+    if (!callId || !enabled || (!__WEB_DEPLOYMENT__ && typeof EventSource === 'undefined')) {
       setState('idle');
       return;
     }
     let source: EventSource | null = null;
+    let streamAbort: AbortController | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let attempts = 0;
     let finished = false;
@@ -43,19 +44,58 @@ export function useCallEvents(
       finished = next === 'closed';
       source?.close();
       source = null;
+      streamAbort?.abort();
+      streamAbort = null;
       setState(next);
     };
-    const handle = (name: string) => (message: MessageEvent<string>) => {
-      const event = parseCallEvent(message.data, name);
+    const handleData = (name: string, data: string) => {
+      const event = parseCallEvent(data, name);
       if (!event) return;
       handlers.current.onEvent(event);
       if (event.type === 'ended') close('closed');
+    };
+    const handle = (name: string) => (message: MessageEvent<string>) => {
+      handleData(name, message.data);
+    };
+    const scheduleReconnect = () => {
+      reopened = true;
+      attempts += 1;
+      if (attempts > MAX_RETRIES) {
+        setState('closed');
+        handlers.current.onResync();
+      } else {
+        setState('reconnecting');
+      }
+      timer = setTimeout(open, reconnectDelay(attempts));
     };
     const open = () => {
       if (finished) return;
       // Past the retry budget the UI says the stream is lost, but we keep
       // trying at the capped delay so a long call still recovers.
       if (attempts <= MAX_RETRIES) setState(attempts ? 'reconnecting' : 'connecting');
+      if (__WEB_DEPLOYMENT__) {
+        const current = new AbortController();
+        streamAbort = current;
+        void streamCallEvents(
+          callId,
+          () => {
+            if (streamAbort !== current || finished) return;
+            if (reopened) handlers.current.onResync();
+            reopened = false;
+            attempts = 0;
+            setState('open');
+          },
+          handleData,
+          current.signal,
+        )
+          .catch(() => undefined)
+          .then(() => {
+            if (finished || streamAbort !== current) return;
+            streamAbort = null;
+            scheduleReconnect();
+          });
+        return;
+      }
       const current = new EventSource(callEventsUrl(callId));
       source = current;
       current.onopen = () => {
@@ -75,14 +115,7 @@ export function useCallEvents(
         }
         current.close();
         source = null;
-        attempts += 1;
-        if (attempts > MAX_RETRIES) {
-          setState('closed');
-          handlers.current.onResync();
-        } else {
-          setState('reconnecting');
-        }
-        timer = setTimeout(open, reconnectDelay(attempts));
+        scheduleReconnect();
       };
     };
     open();
@@ -91,6 +124,8 @@ export function useCallEvents(
       if (timer) clearTimeout(timer);
       source?.close();
       source = null;
+      streamAbort?.abort();
+      streamAbort = null;
     };
   }, [callId, enabled]);
 

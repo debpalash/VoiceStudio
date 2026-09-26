@@ -171,6 +171,57 @@ export function callEventsUrl(callId: string): string {
   return apiPath(`/calls/${id(callId)}/events`);
 }
 
+/** Follow call SSE through apiFetch so cross-origin web deployments can send
+ * their short-lived bearer session. Native EventSource cannot set headers. */
+export async function streamCallEvents(
+  callId: string,
+  onOpen: () => void,
+  onMessage: (event: string, data: string) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const response = await apiFetch(`/calls/${id(callId)}/events`, {
+    headers: { Accept: 'text/event-stream' },
+    signal,
+  });
+  if (!response.body) throw new ApiError(0, 'Call event stream returned no body.');
+  onOpen();
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const dispatch = (frame: string) => {
+    let event = 'message';
+    const data: string[] = [];
+    for (const rawLine of frame.split(/\r?\n/)) {
+      const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+      if (!line || line.startsWith(':')) continue;
+      const separator = line.indexOf(':');
+      const field = separator < 0 ? line : line.slice(0, separator);
+      let value = separator < 0 ? '' : line.slice(separator + 1);
+      if (value.startsWith(' ')) value = value.slice(1);
+      if (field === 'event' && value) event = value;
+      if (field === 'data') data.push(value);
+    }
+    if (data.length) onMessage(event, data.join('\n'));
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const frames = buffer.split(/\r?\n\r?\n/);
+      buffer = frames.pop() ?? '';
+      for (const frame of frames) dispatch(frame);
+      if (done) {
+        if (buffer.trim()) dispatch(buffer);
+        return;
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 /** Parse one SSE payload into a typed event; unknown shapes are dropped. */
 export function parseCallEvent(data: string, name?: string): CallEvent | null {
   let parsed: unknown;

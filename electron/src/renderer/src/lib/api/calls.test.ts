@@ -15,6 +15,7 @@ import {
   sayOnCall,
   setTakeover,
   startCall,
+  streamCallEvents,
 } from './calls';
 
 const fetchMock = vi.fn();
@@ -40,6 +41,34 @@ vi.stubGlobal('fetch', fetchMock);
 afterEach(() => fetchMock.mockReset());
 
 describe('calls client', () => {
+  it('streams named SSE events through authenticated apiFetch', async () => {
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(': ping\r\nevent: status\r\ndata: {"status":"ringing"}\r\n\r\n'),
+        );
+        controller.enqueue(new TextEncoder().encode('data: {"type":"ended",\n'));
+        controller.enqueue(new TextEncoder().encode('data: "duration_s":3}\n\n'));
+        controller.close();
+      },
+    });
+    fetchMock.mockResolvedValueOnce(
+      new Response(body, { headers: { 'Content-Type': 'text/event-stream' } }),
+    );
+    const opened = vi.fn();
+    const received = vi.fn();
+    await streamCallEvents('a/b', opened, received, new AbortController().signal);
+    expect(lastRequest()).toMatchObject({ url: '/api/calls/a%2Fb/events' });
+    expect(new Headers(fetchMock.mock.calls.at(-1)?.[1]?.headers).get('Accept')).toBe(
+      'text/event-stream',
+    );
+    expect(opened).toHaveBeenCalledOnce();
+    expect(received.mock.calls).toEqual([
+      ['status', '{"status":"ringing"}'],
+      ['message', '{"type":"ended",\n"duration_s":3}'],
+    ]);
+  });
+
   it('starts a call with a JSON body and unwraps the record', async () => {
     const call = { id: 'c1', status: 'dialing' };
     respond({ call }, 201);
