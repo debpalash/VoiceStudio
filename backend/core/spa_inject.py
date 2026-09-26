@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+from urllib.parse import urlsplit
 
 
 def frontend_dist_dir() -> str:
@@ -50,6 +51,14 @@ def inject_api_base(html_doc: str, api_base: str) -> str:
     html_doc = html_doc.replace(
         "script-src 'self'",
         f"script-src 'self' 'sha256-{digest}'",
+        1,
+    )
+    parsed = urlsplit(api_base)
+    http_origin = f"{parsed.scheme}://{parsed.netloc}"
+    ws_scheme = "wss" if parsed.scheme == "https" else "ws"
+    html_doc = html_doc.replace(
+        "connect-src 'self'",
+        f"connect-src 'self' {http_origin} {ws_scheme}://{parsed.netloc}",
         1,
     )
     if "<head>" in html_doc:

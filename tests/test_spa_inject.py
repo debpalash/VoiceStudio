@@ -52,3 +52,9 @@ def test_inject_api_base_authorizes_exact_script_under_renderer_csp():
     doc = '<meta http-equiv="Content-Security-Policy" content="script-src \'self\';">'
     out = inject_api_base(doc, "https://api.example.com")
     assert f"script-src 'self' 'sha256-{digest}'" in out
+
+
+def test_inject_api_base_allows_remote_http_and_websocket_connections():
+    doc = '<meta http-equiv="Content-Security-Policy" content="connect-src \'self\' blob:">'
+    out = inject_api_base(doc, "https://api.example.com/v1")
+    assert "connect-src 'self' https://api.example.com wss://api.example.com blob:" in out
