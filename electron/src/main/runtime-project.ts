@@ -99,6 +99,9 @@ export function runtimePython(root: string, platform = process.platform): string
 async function dependencyStamp(bundle: string): Promise<string> {
   const hash = createHash('sha256');
   hash.update(RUNTIME_SCHEMA);
+  if (process.env.OMNIVOICE_TORCH_VARIANT?.trim().toLowerCase() === 'rocm') {
+    hash.update(':torch=rocm');
+  }
   for (const file of ['pyproject.toml', 'uv.lock']) hash.update(await readFile(join(bundle, file)));
   return hash.digest('hex');
 }
@@ -328,7 +331,9 @@ export async function runtimeCompatible(bundle: string, project: string): Promis
       config.isFile() &&
       bundledProject.equals(installedProject) &&
       bundledLock.equals(installedLock) &&
-      (marker === null || marker === (await dependencyStamp(bundle)))
+      (marker === null
+        ? process.env.OMNIVOICE_TORCH_VARIANT?.trim().toLowerCase() !== 'rocm'
+        : marker === (await dependencyStamp(bundle)))
     );
   } catch {
     return false;

@@ -209,6 +209,21 @@ describe('packaged runtime setup', () => {
     ]);
     expect(ROCM_TORCH_INDEX).toContain('/rocm');
   });
+  it('does not reuse a default runtime after ROCm is selected', async () => {
+    const { bundle, project } = await fixture();
+    const run = vi.fn(
+      async (_command: string, _args: string[], _cwd: string, _env?: NodeJS.ProcessEnv) => {
+        await interpreter(project);
+      },
+    );
+    await installRuntime(bundle, project, 'uv', run, new AbortController().signal);
+    expect(await runtimeReady(bundle, project)).toBe(true);
+    expect(await runtimeCompatible(bundle, project)).toBe(true);
+
+    vi.stubEnv('OMNIVOICE_TORCH_VARIANT', 'rocm');
+    expect(await runtimeReady(bundle, project)).toBe(false);
+    expect(await runtimeCompatible(bundle, project)).toBe(false);
+  });
   it('does not mark a runtime ready if the native tokenizer crashes during verification', async () => {
     const { bundle, project } = await fixture();
     const run = vi.fn(async (_command: string, args: string[]) => {

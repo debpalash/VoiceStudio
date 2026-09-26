@@ -70,6 +70,7 @@ try {
             Push-Location 'electron'
             try {
                 Run-Checked bun @('run', 'build')
+                Run-Checked bun @('run', 'build:web')
                 Run-Checked node @('tests/packaging-contract.mjs')
                 Run-Checked bun @('run', 'electron-builder', '--config', 'electron-builder.config.mjs', '--publish', 'never', '--win', '--x64')
                 Run-Checked node @('tests/update-package-contract.mjs')

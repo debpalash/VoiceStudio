@@ -174,6 +174,7 @@ for (const option of ['--main', '--source']) {
     const commands = readFileSync(join(f.root, 'commands'), 'utf8');
     assert.match(commands, /git clone --depth 1 --branch main --single-branch/);
     assert.match(commands, /bun install --frozen-lockfile/);
+    assert.match(commands, /bun run build:web/);
     assert.match(commands, /bun run electron-builder --config electron-builder.config.mjs --publish never --linux --x64/);
     assert.doesNotMatch(commands, /git pull|git reset|frontend.*build/);
   });

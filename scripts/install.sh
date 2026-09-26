@@ -184,6 +184,7 @@ if [ "$MODE" = main ]; then
         export CSC_IDENTITY_AUTO_DISCOVERY=false
         cd electron
         bun run build
+        bun run build:web
         node tests/packaging-contract.mjs
         # Invoke the builder directly: bun appends flags to the last command
         # in a chained package script, not necessarily to electron-builder.

@@ -49,6 +49,29 @@ def _rocm_reinstall_args() -> list:
     return re.findall(r'"([^"]+)"', body)
 
 
+def _electron_rocm_reinstall_args() -> list:
+    """The literal package pins in Electron's ``ROCM_TORCH_PINS``."""
+    path = os.path.join(_ROOT, "electron", "src", "main", "runtime-project.ts")
+    with open(path, encoding="utf-8") as fh:
+        src = fh.read()
+    marker = "export const ROCM_TORCH_PINS = ["
+    assert marker in src, f"ROCM_TORCH_PINS renamed or removed from {path}"
+    body = src.split(marker, 1)[1].split("]", 1)[0]
+    return re.findall(r"'([^']+)'", body)
+
+
+def test_electron_rocm_pins_match_the_project_constraint():
+    pins = _constraint_pins()
+    named = {
+        name.lower(): version
+        for name, _, version in (arg.partition("==") for arg in _electron_rocm_reinstall_args())
+        if version
+    }
+    assert {pkg: named.get(pkg) for pkg in _TORCH_STACK} == {
+        pkg: pins[pkg] for pkg in _TORCH_STACK
+    }
+
+
 def test_the_torch_stack_is_pinned_in_pyproject():
     """Guards the rest of this file from passing vacuously if the pins move."""
     pins = _constraint_pins()
