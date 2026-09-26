@@ -50,6 +50,7 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
+- Windows main-source installs use the built app version even when PowerShell tooling has its own `Version` variable (#2343)
 - The macOS application menu says VoiceStudio instead of Electron in development launches (#2342)
 - Engine health checks recognize one-click TTS engines such as VoxCPM2 and MOSS-TTS-Nano in their isolated environments (#2339)
 - Privacy controls stay expanded during first-run installation instead of hiding behind Advanced (#2337)
