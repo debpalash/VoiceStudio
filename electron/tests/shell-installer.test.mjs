@@ -7,8 +7,15 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
 const installer = process.env.INSTALLER_UNDER_TEST || resolve('../scripts/install.sh');
+const installerSource = readFileSync(installer, 'utf8');
 const payload = 'fixture Electron AppImage';
 const digest = createHash('sha256').update(payload).digest('hex');
+
+test('installer isolates the app version from generic tooling variables', () => {
+  assert.match(installerSource, /^VS_VERSION=$/m);
+  assert.match(installerSource, /^\s*VS_VERSION=\$\(node -p/m);
+  assert.doesNotMatch(installerSource, /^VERSION=/m);
+});
 
 for (const mac of [false, true]) {
   test(`uninstall preserves data and a recoverable app (${mac ? 'macOS' : 'Linux'})`, (t) => {
