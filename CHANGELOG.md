@@ -9,7 +9,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 ## [Unreleased]
 
 **Highlights**
-- Docker and browser deployments now use the same maintained interface as the Electron desktop app
+- Docker and browser deployments now use the same maintained interface as the Electron desktop app (#2341)
 - Manage Projects with confirmed individual and bulk deletion, retry failed items, and keep exported files and render audio (#2333)
 - Twilio setup is a guided checklist with live status and exact commands (#2304)
 - Integration pages use the full window, with a side panel on wide screens (#2304)
@@ -34,7 +34,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ### Changed
 
-- Docker, `build:web`, and `dev:web` now build the maintained Electron renderer instead of the archived browser interface
+- Docker, `build:web`, and `dev:web` now build the maintained Electron renderer instead of the archived browser interface (#2341)
 - Twilio setup is a guided checklist: account, tunnel, phone number and voice steps with live status, exact tunnel commands for your OS and gateway port, copyable webhook URL, a readiness panel and clear reasons when an action is unavailable (#2304)
 - Integration pages use the full window: setup beside a side panel with status, capabilities and website on wide screens, stacked on narrow ones, with the scrollbar at the window edge (#2304)
 - Footer sponsor hover details show dated GitHub reach, and its X opens the Pro page (#2302)
