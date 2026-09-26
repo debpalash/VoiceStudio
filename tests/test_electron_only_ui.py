@@ -33,6 +33,15 @@ def test_supported_ui_commands_target_electron_only():
     manifests = [ROOT / "package.json", ROOT / "electron/package.json"]
     assert all("@tauri-apps/" not in path.read_text(encoding="utf-8") for path in manifests)
 
+    electron_package = json.loads((ROOT / "electron/package.json").read_text(encoding="utf-8"))
+    assert "vite.shared.config.ts" in electron_package["scripts"]["test"]
+
+
+def test_remote_worker_acceptance_uses_the_electron_workspace():
+    script = (ROOT / "scripts/verify-remote-worker.sh").read_text(encoding="utf-8")
+    assert "--cwd frontend" not in script
+    assert script.count("bun run --cwd electron test -- src/shared/") == 2
+
 
 def test_docker_builds_the_electron_renderer():
     dockerfile = (ROOT / "deploy/Dockerfile").read_text(encoding="utf-8")

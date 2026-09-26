@@ -20,6 +20,8 @@
   "include": [
     "electron.vite.config.ts",
     "vite.web.config.ts",
+    "vite.shared.config.ts",
+    "tests/tauri-api-stub.ts",
     "src/main/**/*",
     "src/preload/**/*",
     "src/shared/web-api-routing.ts",

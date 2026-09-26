@@ -25,7 +25,7 @@
     "lint:fix": "vp lint --fix",
     "format": "vp fmt",
     "format:check": "vp fmt --check",
-    "test": "bun run locale:check && vp test --run",
+    "test": "bun run locale:check && vp test --run && vp test --run --config vite.shared.config.ts",
     "test:watch": "vp test",
     "smoke:server": "vite --config tests/renderer-smoke.vite.config.mjs",
     "smoke:live-routes": "node tests/live-route-health.mjs",
