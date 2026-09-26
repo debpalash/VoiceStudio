@@ -36,6 +36,9 @@
     "dist:dir": "bun run --cwd electron dist:dir --publish never"
   },
   "workspaces": ["electron"],
+  "dependencies": {
+    "posthog-js": "^1.434.14"
+  },
   "devDependencies": {
     "concurrently": "^10",
     "playwright": "^1.63.0",

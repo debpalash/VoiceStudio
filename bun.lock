@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "omnivoice-studio-monorepo",
+      "dependencies": {
+        "posthog-js": "^1.434.14",
+      },
       "devDependencies": {
         "concurrently": "^10",
         "playwright": "^1.63.0",
