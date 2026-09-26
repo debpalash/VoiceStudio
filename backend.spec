@@ -166,15 +166,10 @@ for pkg in _collect_pkgs:
         print(f"[backend.spec] collect_all({pkg!r}) skipped: {e}")
 
 # Include the backend's own modules as data so imports like
-# `api.routers.dub_generate` resolve inside the frozen bundle.  `engines/`
-# is also runtime data, not just importable Python: managed engine venvs launch
-# `engines/<name>/main.py` with their own interpreter.  A module collected only
-# into PyInstaller's PYZ has a plausible `__file__` but no script at that path,
-# so every installed sidecar exits before its ready handshake.
+# `api.routers.dub_generate` resolve inside the frozen bundle.
 datas += [
     ('backend/api', 'api'),
     ('backend/core', 'core'),
-    ('backend/engines', 'engines'),
     ('backend/services', 'services'),
     ('backend/schemas', 'schemas'),
     ('backend/migrations', 'migrations'),

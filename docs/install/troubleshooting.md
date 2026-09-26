@@ -1221,11 +1221,11 @@ When torchaudio requires an unavailable TorchCodec installation, VoiceStudio wri
 
 Generation has a separate deadline from health checks. Default sidecar deadlines scale with text length and the host execution budget; per-engine timeout overrides remain supported. The outer job guard includes time for sidecar termination and error reporting. A timeout identifies the deadline, while a closed pipe without a timeout indicates a crash.
 
-VoiceStudio 0.5.6 desktop installers omitted the sidecar entrypoint files. An
-engine such as VoxCPM2 or MOSS-TTS-Nano could therefore finish its one-click
-install and appear available, then fail **Test engine** immediately. Update to
-a newer desktop build; reinstalling the engine or downloading its model again
-does not repair the 0.5.6 application bundle.
+VoiceStudio 0.5.6 could report an installed one-click TTS engine such as
+VoxCPM2 or MOSS-TTS-Nano as unavailable when **Test engine** probed its
+in-process adapter instead of the installed isolated runtime. Update to a
+newer desktop build; reinstalling the engine or downloading its model again
+does not correct the health-check resolver in 0.5.6.
 
 Per-engine receive overrides include `OMNIVOICE_CONFUCIUS4_RECV_TIMEOUT_S`, `OMNIVOICE_DOTS_TTS_RECV_TIMEOUT_S`, `OMNIVOICE_MOSS_TTS_V15_RECV_TIMEOUT_S`, and `OMNIVOICE_SUPERTONIC3_RECV_TIMEOUT_S` (seconds). Invalid or non-finite values use the default; values below 30 seconds are raised to 30.
 
