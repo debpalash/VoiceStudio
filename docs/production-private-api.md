@@ -9,7 +9,7 @@ internet.
 ```yaml
 services:
   voicestudio:
-    image: ghcr.io/debpalash/omnivoice-studio:0.5.2
+    image: ghcr.io/debpalash/voicestudio:0.5.2
     restart: unless-stopped
     environment:
       OMNIVOICE_API_KEY: ${OMNIVOICE_API_KEY:?set a long random key}
