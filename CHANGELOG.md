@@ -46,6 +46,7 @@ metadata and the backend fallback mirror it. Archived Tauri manifests stay froze
 
 ### Fixed
 
+- Desktop builds include the sidecar scripts needed to start one-click engines such as VoxCPM2 and MOSS-TTS-Nano (#2339)
 - Privacy controls stay expanded during first-run installation instead of hiding behind Advanced (#2337)
 - Preserve large workflow libraries and keyboard moves, secure library deletion and license storage, and keep analytics opt-out authoritative during startup (#2333)
 
