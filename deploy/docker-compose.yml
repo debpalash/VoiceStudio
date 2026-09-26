@@ -25,7 +25,7 @@
 services:
   # ── CPU mode — activate with: docker compose --profile cpu up
   omnivoice:
-    image: ghcr.io/debpalash/omnivoice-studio:latest
+    image: ghcr.io/debpalash/voicestudio:latest
     # To build from source instead of pulling, comment out `image:` and
     # uncomment the two lines below:
     build:
@@ -71,7 +71,7 @@ services:
 
   # ── GPU mode — activate with: docker compose --profile gpu up
   omnivoice-gpu:
-    image: ghcr.io/debpalash/omnivoice-studio:latest
+    image: ghcr.io/debpalash/voicestudio:latest
     build:
       context: ..
       dockerfile: deploy/Dockerfile
@@ -119,7 +119,7 @@ services:
   # the amdgpu kernel driver (the ROCm userspace ships inside the image).
   # Podman works with the same two --device flags (Quadlet: AddDevice=).
   omnivoice-rocm:
-    image: ghcr.io/debpalash/omnivoice-studio:rocm
+    image: ghcr.io/debpalash/voicestudio:rocm
     # To build from source instead of pulling, comment out `image:` and
     # uncomment the lines below. BASE_IMAGE/GPU_FLAVOR are required — the
     # Dockerfile's defaults build the CUDA variant.
@@ -171,7 +171,7 @@ services:
   # No port is published: uvicorn only hosts the application lifespan that
   # owns the outbound worker agent. The browser UI is not needed or exposed.
   omnivoice-worker-gpu:
-    image: ghcr.io/debpalash/omnivoice-studio:latest
+    image: ghcr.io/debpalash/voicestudio:latest
     build:
       context: ..
       dockerfile: deploy/Dockerfile
@@ -208,7 +208,7 @@ services:
 
   # ── Worker-only AMD GPU (ROCm) mode
   omnivoice-worker-rocm:
-    image: ghcr.io/debpalash/omnivoice-studio:rocm
+    image: ghcr.io/debpalash/voicestudio:rocm
     container_name: omnivoice-worker-rocm
     profiles: ["worker-rocm"]
     entrypoint: ["python3", "-m", "uvicorn"]

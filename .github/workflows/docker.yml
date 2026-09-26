@@ -22,7 +22,8 @@
 #   :0.3-rocm       — major.minor floating tag, ROCm build
 #   :sha-xxxx-rocm  — specific commit SHA, ROCm build
 #
-# Images land at: ghcr.io/debpalash/omnivoice-studio AND docker.io/palashdeb/omnivoice-studio
+# Images land at: ghcr.io/debpalash/voicestudio, the legacy GHCR alias
+# ghcr.io/debpalash/omnivoice-studio, and docker.io/palashdeb/omnivoice-studio
 # (Docker Hub push gated on the DOCKERHUB_USERNAME/DOCKERHUB_TOKEN secrets;
 # if unset the build still pushes to GHCR.)
 #
@@ -48,16 +49,11 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  # PINNED, not ${{ github.repository }}. The repository was renamed to
-  # `VoiceStudio`, and deriving the image path from it would have silently
-  # moved published images to ghcr.io/debpalash/voicestudio — while Docker Hub
-  # (a hardcoded literal below) stayed put. Everyone pulling the documented
-  # GHCR path would have kept getting the last pre-rename image forever: no
-  # error, no warning, just a channel that quietly stopped updating. A
-  # published image path is a promise to users, not a mirror of the repo name.
-  # Renaming it is a deliberate migration (publish to both, document the move,
-  # then retire the old), not a side effect of renaming the repo.
-  IMAGE_NAME: debpalash/omnivoice-studio
+  # Keep registry coordinates explicit. VoiceStudio is the canonical GHCR
+  # path; the old path remains a compatibility alias during the migration.
+  IMAGE_NAME: debpalash/voicestudio
+  # Compatibility alias: keep existing deployments on the same tag stream.
+  LEGACY_IMAGE_NAME: debpalash/omnivoice-studio
   DOCKERHUB_IMAGE: palashdeb/omnivoice-studio
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -125,6 +121,7 @@ jobs:
           # tags in that case.
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            ${{ env.REGISTRY }}/${{ env.LEGACY_IMAGE_NAME }}
             ${{ steps.dockerhub.outputs.enabled == 'true' && env.DOCKERHUB_IMAGE || '' }}
           tags: |
             type=semver,pattern={{version}},enable=${{ github.event_name == 'push' }}
@@ -221,6 +218,7 @@ jobs:
         with:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            ${{ env.REGISTRY }}/${{ env.LEGACY_IMAGE_NAME }}
             ${{ steps.dockerhub.outputs.enabled == 'true' && env.DOCKERHUB_IMAGE || '' }}
           # latest=false is load-bearing: metadata-action's default (`auto`)
           # would add a bare un-suffixed `:latest` on release-tag pushes,

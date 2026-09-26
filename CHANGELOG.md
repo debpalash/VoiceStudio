@@ -35,6 +35,7 @@ metadata and the backend fallback mirror it.
 
 ### Changed
 
+- GHCR images use the VoiceStudio coordinate, with the previous OmniVoice-Studio path kept as a compatible alias during migration (#2348)
 - Electron is now the only desktop and web UI, with native helpers, packaging, setup, Docker and Network Sharing owned by maintained Electron paths (#2343)
 - Docker, `build:web`, and `dev:web` now build the maintained Electron renderer instead of the archived browser interface (#2341)
 - Twilio setup is a guided checklist: account, tunnel, phone number and voice steps with live status, exact tunnel commands for your OS and gateway port, copyable webhook URL, a readiness panel and clear reasons when an action is unavailable (#2304)

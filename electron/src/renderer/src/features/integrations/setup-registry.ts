@@ -69,7 +69,7 @@ export interface IntegrationSetup {
 
 const REPO_DOCS = 'https://github.com/debpalash/VoiceStudio/blob/main/docs';
 const DOCKER_HUB_IMAGE = 'palashdeb/omnivoice-studio';
-const GHCR_IMAGE = 'ghcr.io/debpalash/omnivoice-studio';
+const GHCR_IMAGE = 'ghcr.io/debpalash/voicestudio';
 
 function mcpClient(slug: keyof typeof MCP_CLIENTS): IntegrationSetup {
   return {
