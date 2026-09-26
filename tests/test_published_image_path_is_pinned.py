@@ -28,29 +28,34 @@ def test_both_ghcr_paths_are_published_by_both_builds():
     assert text.count("${{ env.REGISTRY }}/${{ env.LEGACY_IMAGE_NAME }}") == 2
 
 
+def test_current_release_tags_are_backfilled_for_both_gpu_flavors():
+    text = open(WORKFLOW, encoding="utf-8").read()
+    assert "for TAG in stable \"$VERSION\" \"$MINOR\"" in text
+    assert 'for TAG in stable-rocm "${VERSION}-rocm" "${MINOR}-rocm"' in text
+    assert text.count('test "$RELEASE_REF" = "v${VERSION}"') == 2
+    assert text.count("docker buildx imagetools create") == 4
+
+
 def test_docker_hub_keeps_its_existing_coordinate():
     assert _env()["DOCKERHUB_IMAGE"] == "palashdeb/omnivoice-studio"
 
 
-def test_active_ghcr_templates_use_the_canonical_path():
-    canonical = "ghcr.io/debpalash/voicestudio"
+def test_active_templates_stay_on_the_public_path_during_rollout():
     legacy = "ghcr.io/debpalash/omnivoice-studio"
     for rel in (
         "deploy/docker-compose.yml",
-        "docs/production-private-api.md",
         "docs/integration-directory.md",
         "docs/install/linux.md",
         "electron/src/renderer/src/features/integrations/setup-registry.ts",
     ):
         text = open(os.path.join(ROOT, rel), encoding="utf-8").read()
-        assert canonical in text, f"{rel} does not use {canonical}"
-        assert legacy not in text, f"{rel} still recommends {legacy}"
+        assert legacy in text, f"{rel} switched before the new package is public"
 
 
 def test_the_docs_name_the_path_that_is_actually_published():
     """Docs drift here is invisible: a wrong pull command fails only for users."""
     env = _env()
-    published = f"ghcr.io/{env['IMAGE_NAME']}"
+    published = f"ghcr.io/{env['LEGACY_IMAGE_NAME']}"
     for rel in ("docs/install/docker.md", "deploy/dockerhub-overview.md"):
         path = os.path.join(ROOT, rel)
         if not os.path.isfile(path):

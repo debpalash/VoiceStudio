@@ -130,9 +130,7 @@ publishing the web UI — see the [Docker install guide](https://github.com/debp
 Preview builds always come from `main` and never version-sort below `:stable`,
 so upgrades flow naturally. The same images and tags
 are mirrored on GHCR at
-[`ghcr.io/debpalash/voicestudio`](https://github.com/debpalash/VoiceStudio/pkgs/container/voicestudio).
-The previous `ghcr.io/debpalash/omnivoice-studio` coordinate remains a
-compatible alias during migration.
+[`ghcr.io/debpalash/omnivoice-studio`](https://github.com/debpalash/VoiceStudio/pkgs/container/omnivoice-studio).
 
 ---
 

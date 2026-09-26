@@ -18,8 +18,7 @@ def test_every_studio_docker_run_passes_the_admin_key(relative_path):
     commands = [
         block
         for block in re.findall(r"```bash\n(.*?)```", text, flags=re.DOTALL)
-        if "docker run" in block
-        and ("omnivoice-studio:" in block or "voicestudio:" in block)
+        if "docker run" in block and "omnivoice-studio:" in block
     ]
 
     assert commands

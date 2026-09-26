@@ -42,6 +42,15 @@ on:
     tags: ['v*']
     branches: [main]
   workflow_dispatch:
+    inputs:
+      backfill_release:
+        description: Copy an existing release into canonical GHCR/Docker Hub tags
+        type: boolean
+        default: false
+      release_ref:
+        description: Release tag to build when backfilling (for example v0.5.6)
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -62,6 +71,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.backfill_release && inputs.release_ref || github.sha }}
 
       # Both image builds run right at the runner's disk ceiling (CUDA hit
       # ENOSPC 2026-07-16 morning; ROCm hit it the same afternoon even with
@@ -142,6 +153,35 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # One-time migration path for releases that predate the canonical GHCR
+      # coordinate. The explicit ref is validated against package.json before
+      # the freshly built sha tag is promoted in both registries.
+      - name: Backfill canonical GHCR release tags
+        if: inputs.backfill_release
+        shell: bash
+        env:
+          RELEASE_REF: ${{ inputs.release_ref }}
+          DOCKERHUB_ENABLED: ${{ steps.dockerhub.outputs.enabled }}
+        run: |
+          VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
+          MINOR="${VERSION%.*}"
+          SOURCE_TAG="sha-${GITHUB_SHA::7}"
+          test "$RELEASE_REF" = "v${VERSION}"
+          for IMAGE in "$IMAGE_NAME" "$LEGACY_IMAGE_NAME"; do
+            for TAG in stable "$VERSION" "$MINOR"; do
+              docker buildx imagetools create \
+                --tag "${REGISTRY}/${IMAGE}:${TAG}" \
+                "${REGISTRY}/${IMAGE}:${SOURCE_TAG}"
+            done
+          done
+          if [[ "$DOCKERHUB_ENABLED" == "true" ]]; then
+            for TAG in stable "$VERSION" "$MINOR"; do
+              docker buildx imagetools create \
+                --tag "${DOCKERHUB_IMAGE}:${TAG}" \
+                "${DOCKERHUB_IMAGE}:${SOURCE_TAG}"
+            done
+          fi
+
       # Sync the Docker Hub repository overview from deploy/dockerhub-overview.md.
       # Only on main pushes (the overview tracks the rolling preview) and only
       # when Docker Hub creds are present, mirroring the push gating above.
@@ -174,6 +214,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.backfill_release && inputs.release_ref || github.sha }}
 
       # The ROCm base (~25 GB unpacked) plus build layers need every GB.
       # Same reclaim list as the CUDA job above — keep them identical
@@ -248,3 +290,29 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
+
+      - name: Backfill canonical GHCR release tags (ROCm)
+        if: inputs.backfill_release
+        shell: bash
+        env:
+          RELEASE_REF: ${{ inputs.release_ref }}
+          DOCKERHUB_ENABLED: ${{ steps.dockerhub.outputs.enabled }}
+        run: |
+          VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
+          MINOR="${VERSION%.*}"
+          SOURCE_TAG="sha-${GITHUB_SHA::7}-rocm"
+          test "$RELEASE_REF" = "v${VERSION}"
+          for IMAGE in "$IMAGE_NAME" "$LEGACY_IMAGE_NAME"; do
+            for TAG in stable-rocm "${VERSION}-rocm" "${MINOR}-rocm"; do
+              docker buildx imagetools create \
+                --tag "${REGISTRY}/${IMAGE}:${TAG}" \
+                "${REGISTRY}/${IMAGE}:${SOURCE_TAG}"
+            done
+          done
+          if [[ "$DOCKERHUB_ENABLED" == "true" ]]; then
+            for TAG in stable-rocm "${VERSION}-rocm" "${MINOR}-rocm"; do
+              docker buildx imagetools create \
+                --tag "${DOCKERHUB_IMAGE}:${TAG}" \
+                "${DOCKERHUB_IMAGE}:${SOURCE_TAG}"
+            done
+          fi
