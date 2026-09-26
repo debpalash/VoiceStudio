@@ -22,6 +22,12 @@ def test_the_ghcr_paths_are_explicit_and_keep_the_legacy_alias():
     assert "github.repository" not in str(env)
 
 
+def test_release_backfills_require_an_actual_git_tag():
+    workflow = open(WORKFLOW, encoding="utf-8").read()
+    assert workflow.count('git rev-parse "refs/tags/${RELEASE_REF}^{commit}"') == 2
+    assert 'git rev-parse "${RELEASE_REF}^{commit}"' not in workflow
+
+
 def test_both_ghcr_paths_are_published_by_both_builds():
     text = open(WORKFLOW, encoding="utf-8").read()
     assert text.count("${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}") == 2
