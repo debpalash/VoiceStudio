@@ -2,6 +2,14 @@
 # execution itself requires a Windows release smoke test.
 $ErrorActionPreference = 'Stop'
 $source = Get-Content "$PSScriptRoot/../../scripts/install.ps1" -Raw
+$requiredVersionLines = @(
+    '$vsVersion = $Version',
+    '$vsVersion = (Get-Content',
+    '$asset = "VoiceStudio-Electron-$vsVersion-win-x64.exe"'
+)
+foreach ($line in $requiredVersionLines) {
+    if (-not $source.Contains($line)) { throw "Installer version must be isolated from PowerShell's Version parameter: $line" }
+}
 $tokens = $null; $parseErrors = $null
 $null = [Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$parseErrors)
 if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
