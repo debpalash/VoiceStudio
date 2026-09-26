@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/popover';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LANGUAGES, POPULAR_LANGUAGES } from '@/lib/languages';
+import { isImeComposing } from '@/lib/ime';
 import { setCloneSetting, useCloneSetting } from '@/lib/store/clone-settings';
 import { cn } from '@/lib/utils';
 
@@ -111,6 +112,7 @@ export function LanguagePicker({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (isImeComposing(event)) return;
     if (event.key === 'ArrowDown') {
       event.preventDefault();
       move(1);

@@ -44,6 +44,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { runRendererTask } from '@/lib/global-error-recovery';
+import { isImeComposing } from '@/lib/ime';
 import { canCreateStoryFromDub, loadDubIntoStories, storiesDraftOccupied } from './dub-to-story';
 import { useLongformSession } from '../longform/longform-session';
 import { useTranslation } from 'react-i18next';
@@ -559,7 +560,7 @@ export function DubPage() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (
-        event.isComposing ||
+        isImeComposing(event) ||
         event.repeat ||
         !(event.ctrlKey || event.metaKey) ||
         busy ||
