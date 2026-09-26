@@ -47,3 +47,11 @@ def test_docker_builds_the_electron_renderer():
     dockerfile = (ROOT / "deploy/Dockerfile").read_text(encoding="utf-8")
     assert "--cwd electron build:web" in dockerfile
     assert "frontend/index.html" not in dockerfile
+
+
+def test_windows_install_smoke_builds_the_pull_request_checkout():
+    workflow = (ROOT / ".github/workflows/install-smoke.yml").read_text(encoding="utf-8")
+    windows_step = workflow.split("- name: Build and install main (Windows)", 1)[1]
+    assert "GITHUB_EVENT_NAME -eq 'pull_request'" in windows_step
+    assert "git push $bare HEAD:refs/heads/main" in windows_step
+    assert "url.file:///" in windows_step
