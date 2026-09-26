@@ -3,8 +3,8 @@
 @import 'shadcn/tailwind.css';
 @import './t3-theme.css';
 
-@source '../../../../../frontend/src/components/SearchableSelect.jsx';
-@source '../../../../../frontend/src/components/VoiceSelector.jsx';
+@source '../../../shared/components/SearchableSelect.jsx';
+@source '../../../shared/components/VoiceSelector.jsx';
 
 @custom-variant dark (&:is(.dark, .dark *));
 

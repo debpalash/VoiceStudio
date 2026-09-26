@@ -7,7 +7,7 @@
  * occupies no time in the finished file. Give it a cue and every later
  * timestamp is wrong by that chapter's would-be duration.
  *
- * The timecode maths lives in `frontend/src/utils/storyExport` and is tested
+ * The timecode maths lives in `electron/src/shared/utils/storyExport` and is tested
  * there; this pins the part that is specific to a render — which chapters
  * count, and when there is nothing worth downloading.
  */

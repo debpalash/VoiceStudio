@@ -1,4 +1,4 @@
-import { storyToSpans } from '../../../../../../frontend/src/utils/storyToSpans';
+import { storyToSpans } from '@shared/utils/storyToSpans';
 import { castVoice } from './cast-map';
 import type { Draft } from './longform-session';
 export function storyVoicesReady(draft: Draft, profiles: { id: string }[]) {

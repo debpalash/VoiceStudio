@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   _resetBackendContactForTests,
   lastBackendContact,
-} from '../../../../../../frontend/src/utils/backendContact';
+} from '@shared/utils/backendContact';
 import {
   ApiError,
   apiFetch,

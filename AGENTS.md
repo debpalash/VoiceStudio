@@ -3,7 +3,7 @@
 Electron (`electron/`) is the only desktop and web UI. The Tauri shell and legacy
 UI entrypoints are removed; do not restore build, runtime, release, or CI paths for
 them. Triage reports from final Tauri installations toward the migration guide and
-preserve their immutable updater feeds. Some modules under `frontend/src/` remain
+preserve their immutable updater feeds. Some modules under `electron/src/shared/` remain
 temporarily shared by Electron; they are not a runnable app. New UI, IPC, setup
 instructions, tests, and browser assets belong in Electron; validate Electron on
 macOS, Windows and Linux.
@@ -37,7 +37,7 @@ Binding for every AI agent (Claude, Codex, Cursor, review bots, …). CLAUDE.md 
 - Root-cause the class, not the instance; fail-before/pass-after regression test; smallest correct change.
 - Default behavior identical on macOS/Windows/Linux; platform-only features go behind explicit opt-in. Divergent default = P0.
 - Local-first: no new required network calls; any HF download gated on installed-ness or explicit user action; all synthetic audio through the `mark_synthetic` chokepoint.
-- Every user-facing string via i18n, present in ALL 21 `frontend/src/i18n/locales/*.json` with real translations.
+- Every user-facing string via i18n, present in ALL 21 `electron/src/shared/i18n/locales/*.json` with real translations.
 - Docs-sync in the same PR. CHANGELOG Unreleased: quiet one-liners ending `(#N)` + `— thanks @user!` for community work, under a short `**Highlights**` list.
 - Tagged release announcements lead with the biggest user-visible change; redesigns need real UI screenshots and migrations need installer links and steps. Verify all contributor credits from the tag comparison and included PRs; list authors and bug reporters separately (see `docs/RELEASING.md`).
 - Versioning: root `package.json` is the single source of truth; never bump without the owner asking.
@@ -46,7 +46,7 @@ Binding for every AI agent (Claude, Codex, Cursor, review bots, …). CLAUDE.md 
 
 ## Shared select controls
 
-- Use `frontend/src/components/SearchableSelect.jsx` for all new or redesigned select boxes. Reuse `VoiceSelector` for voice choices. Do not introduce native `<select>` controls.
+- Use `electron/src/shared/components/SearchableSelect.jsx` for all new or redesigned select boxes. Reuse `VoiceSelector` for voice choices. Do not introduce native `<select>` controls.
 - Provide a localized `ariaLabel`; use `menuPortal` inside scrolling or clipping containers. Preserve keyboard selection and disabled states.
 
 ## Agent skills

@@ -19,13 +19,12 @@ import { normalizeChannel } from './updateChannel';
 import { flushApplicationPersistence } from './persistenceLifecycle';
 
 export function isTauri() {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+  return typeof window !== 'undefined' && !!window.voicestudio;
 }
 
 async function currentChannel() {
   try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    return normalizeChannel(await invoke('get_update_channel'));
+    return normalizeChannel((await window.voicestudio.updates.getState()).channel);
   } catch {
     return 'stable';
   }
@@ -48,11 +47,11 @@ export async function checkForUpdate(store) {
   }
   try {
     store.setUpdateChecking();
-    const { invoke } = await import('@tauri-apps/api/core');
     const channel = await currentChannel();
-    const update = await invoke('check_update', { channel });
-    if (update) {
-      store.setUpdateAvailable(update.version, update.notes || null);
+    await window.voicestudio.updates.setChannel(channel);
+    const update = await window.voicestudio.updates.check();
+    if (update.status === 'available' && update.availableVersion) {
+      store.setUpdateAvailable(update.availableVersion, update.notes || null);
       // Announce it where the user is looking. The footer's version dot stays
       // as the persistent, non-intrusive marker; this is the one-time nudge.
       // Lazy so the toast never loads in a browser/dev build that can't update.
@@ -63,7 +62,7 @@ export async function checkForUpdate(store) {
       // state (footer dot, Settings → Updates) is what has to survive.
       try {
         const { showUpdateToast } = await import('../components/UpdateToast');
-        showUpdateToast(update.version);
+        showUpdateToast(update.availableVersion);
       } catch (e) {
         console.debug('Update toast failed to load (non-fatal):', e);
       }
@@ -79,20 +78,11 @@ export async function checkForUpdate(store) {
 
 export async function installUpdate(store) {
   if (!isTauri()) return;
-  let unlisten;
   try {
-    const [{ invoke }, { listen }, { relaunch }] = await Promise.all([
-      import('@tauri-apps/api/core'),
-      import('@tauri-apps/api/event'),
-      import('@tauri-apps/plugin-process'),
-    ]);
     const channel = await currentChannel();
+    await window.voicestudio.updates.setChannel(channel);
     store.setUpdateProgress(0);
-    unlisten = await listen('update://progress', (ev) => {
-      const { downloaded = 0, total = 0 } = ev?.payload || {};
-      if (total > 0) store.setUpdateProgress(Math.min(99, (downloaded / total) * 100));
-    });
-    await invoke('install_update', { channel });
+    await window.voicestudio.updates.download();
     store.setUpdateReady();
     try {
       await flushApplicationPersistence();
@@ -101,30 +91,24 @@ export async function installUpdate(store) {
       // that successful state as an install error or strand the relaunch.
       console.warn('[persistence] installed-update flush failed', error);
     }
-    await relaunch();
+    await window.voicestudio.updates.install();
   } catch (e) {
     console.warn('Update install failed:', e);
     store.setUpdateError((e && e.message) || String(e) || 'Update failed');
   } finally {
-    if (unlisten) unlisten();
+    // Electron owns updater listeners and removes them with the window.
   }
 }
 
 /** Fetch the project's releases (changelog/history) via the Rust command. [] outside Tauri / on error. */
 export async function listReleases(channel) {
   if (!isTauri()) return [];
-  const { invoke } = await import('@tauri-apps/api/core');
-  const data = await invoke('list_releases', { channel });
+  const data = await window.voicestudio.updates.listReleases(normalizeChannel(channel));
   return Array.isArray(data) ? data : [];
 }
 
 /** Current app version via Tauri, or null outside a packaged build. */
 export async function fetchAppVersion() {
   if (!isTauri()) return null;
-  try {
-    const { getVersion } = await import('@tauri-apps/api/app');
-    return await getVersion();
-  } catch {
-    return null;
-  }
+  return window.voicestudio.app.version;
 }

@@ -1,7 +1,7 @@
 """Locale key parity — all 21 i18n files stay in lockstep with en.json.
 
 Replaces the manual locale sweeps: CLAUDE.md's Localization rule routes every
-UI string through ``frontend/src/i18n/locales/*.json``, which only works if
+UI string through ``electron/src/shared/i18n/locales/*.json``, which only works if
 every file parses, carries no keys en.json doesn't have, and preserves en's
 ``{{placeholder}}`` tokens. Real bug classes this pins down:
 
@@ -28,7 +28,7 @@ import pytest
 
 _LOCALES_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "frontend", "src", "i18n", "locales",
+    "electron", "src", "shared", "i18n", "locales",
 )
 _EN = "en"
 
@@ -465,7 +465,7 @@ def test_dub_plan_actions_and_explanations_are_translated(locale):
 def test_locale_objects_have_no_duplicate_keys():
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
-    for directory in (root / "frontend/src/i18n/locales", root / "electron/src/renderer/src/i18n/locales"):
+    for directory in (root / "electron/src/shared/i18n/locales", root / "electron/src/renderer/src/i18n/locales"):
         for path in directory.glob("*.json"):
             def unique_object(pairs):
                 result = {}

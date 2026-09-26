@@ -44,9 +44,9 @@ def test_visible_brand_surfaces_say_voicestudio() -> None:
 
 
 def test_brand_mark_is_shared_and_fills_the_icon() -> None:
-    mark = (ROOT / "frontend/src/components/brand/VoiceStudioMark.jsx").read_text()
-    header = (ROOT / "frontend/src/components/Header.jsx").read_text()
-    about = (ROOT / "frontend/src/components/settings/AboutTab.jsx").read_text()
+    mark = (ROOT / "electron/src/shared/components/brand/VoiceStudioMark.jsx").read_text()
+    header = (ROOT / "electron/src/shared/components/Header.jsx").read_text()
+    about = (ROOT / "electron/src/shared/components/settings/AboutTab.jsx").read_text()
     logo = (ROOT / "docs/logo.svg").read_text()
     favicon = (ROOT / "electron/public/favicon.svg").read_text()
 
@@ -106,7 +106,7 @@ def test_active_source_launch_is_electron_and_web_ports_clean_quietly() -> None:
 
 
 def test_icon_rail_has_no_static_section_captions_and_keeps_air_between_items() -> None:
-    rail = (ROOT / "frontend/src/components/NavRail.jsx").read_text()
+    rail = (ROOT / "electron/src/shared/components/NavRail.jsx").read_text()
     for stale_caption in ("Start", "Create", "Workflows", "Reference"):
         assert stale_caption not in rail
     assert "pt-[18px]" in rail

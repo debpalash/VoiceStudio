@@ -211,11 +211,11 @@ one. The rules:
   Anything over 500 lines must be split. (The cap does **not** apply to
   `src/index.css` — it is the single, intentional styling foundation and the
   only app stylesheet; see the CSS rule above.)
-- **Pages are thin orchestrators.** A file in `frontend/src/pages/` is just
+- **Pages are thin orchestrators.** A file in `electron/src/shared/pages/` is just
   layout + routing + state wiring that composes feature components — no inline
   sub-component over ~50 lines.
 - **One component per file.** Co-locate `Foo.jsx` + `Foo.test.jsx` together in a
-  per-page feature folder under `frontend/src/components/` (e.g.
+  per-page feature folder under `electron/src/shared/components/` (e.g.
   `components/settings/`, `components/dub/`). Styling is **not** co-located —
   it's utilities + shadcn, with any irreducible rules in `src/index.css`.
 - **Shared bits go in a `primitives/` folder** inside the feature folder
@@ -309,7 +309,7 @@ hard rules from the first prompt.
   var, or CLI flag).
 - **i18n — all 21 locales (hard rule):** every user-facing string goes through
   `t('...')` and the key must exist in **all 21** files under
-  `frontend/src/i18n/locales/`. Translate; don't copy English into non-English
+  `electron/src/shared/i18n/locales/`. Translate; don't copy English into non-English
   locales. CI fails on hardcoded CJK outside the allowlist in
   `tests/test_no_hardcoded_cjk.py` (extend `_ALLOWED_FILES` with a
   justification for legitimate functional CJK).

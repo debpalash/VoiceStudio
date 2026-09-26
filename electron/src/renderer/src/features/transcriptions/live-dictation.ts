@@ -1,16 +1,16 @@
-import { startMicCapture } from '../../../../../../frontend/src/utils/aec/micCapture';
-import { subscribeFarEnd } from '../../../../../../frontend/src/utils/aec/farEndBus';
+import { startMicCapture } from '@shared/utils/aec/micCapture';
+import { subscribeFarEnd } from '@shared/utils/aec/farEndBus';
 import {
   AEC_FAR,
   AEC_NEAR,
   floatToInt16,
   tagFrame,
-} from '../../../../../../frontend/src/utils/aec/pcm';
+} from '@shared/utils/aec/pcm';
 import {
   classifySherpaFinal,
   sherpaSummaryTail,
-} from '../../../../../../frontend/src/utils/captureProtocol';
-import type { TranscriptEntry } from '../../../../../../frontend/src/utils/transcriptionsStore';
+} from '@shared/utils/captureProtocol';
+import type { TranscriptEntry } from '@shared/utils/transcriptionsStore';
 import { apiJson } from '@/lib/api/client';
 import { backendWebSocketUrl } from '@/lib/api/websocket';
 import { beginAppActivity } from '@/lib/app-activity';

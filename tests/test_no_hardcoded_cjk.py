@@ -1,8 +1,8 @@
 """Hard rule: no hardcoded non-English (CJK) *user-facing* text outside the
 translation layer.
 
-UI strings must go through i18n (``frontend/src/i18n/locales/*.json`` via
-``t('...')``); native language names live in ``frontend/src/i18n/index.ts``.
+UI strings must go through i18n (``electron/src/shared/i18n/locales/*.json`` via
+``t('...')``); native language names live in ``electron/src/shared/i18n/index.ts``.
 This guards against contributors hardcoding Chinese/Japanese/Korean display
 strings in component or app code (see CLAUDE.md > Conventions).
 
@@ -41,7 +41,7 @@ _SKIP_EXT = {
 # CJK (test-fixture descriptions, model/engine identifiers like CosyVoice
 # speaker IDs, multilingual sample text) — they are documentation, not shipped
 # UI strings, so they belong on the same footing as the allowlisted docs below.
-_ALLOWED_PREFIXES = ("frontend/src/i18n/", "electron/src/renderer/src/i18n/", "docs/specs/")
+_ALLOWED_PREFIXES = ("electron/src/shared/i18n/", "electron/src/renderer/src/i18n/", "docs/specs/")
 
 # Functional / data / documentation files where CJK is intentional and required.
 _ALLOWED_FILES = {
@@ -60,22 +60,22 @@ _ALLOWED_FILES = {
     "backend/services/subtitle_segmenter.py",
     "backend/services/text_normalization.py",  # spoken range word per language ("20~30" must not read as one number)
     "backend/core/http_headers.py",               # docstring quotes the CJK filename that 500'd the header (#1262)
-    "frontend/src/components/DubSegmentRow.jsx",
-    "frontend/src/components/StoriesEditor.jsx",
-    "frontend/src/utils/voiceInstruct.js",
+    "electron/src/shared/components/DubSegmentRow.jsx",
+    "electron/src/shared/components/StoriesEditor.jsx",
+    "electron/src/shared/utils/voiceInstruct.js",
     "omnivoice/utils/text.py",
     # Model / engine vocabulary & identifiers (the model/engine requires these)
     "backend/services/tts_backend.py",            # CosyVoice speaker IDs
     "backend/core/personalities.py",              # Chinese-dialect showcase preset
     "backend/core/archetypes.py",                 # Chinese-dialect + JA/KO multilingual preview sample text
     "backend/core/describe_voice.py",             # pinyin → Chinese-dialect token mapping (model vocabulary, #317)
-    "frontend/src/utils/constants.js",            # Chinese-dialect picker names
+    "electron/src/shared/utils/constants.js",            # Chinese-dialect picker names
     "omnivoice/models/omnivoice.py",              # instruct-mode vocabulary
     "omnivoice/utils/duration.py",
     "omnivoice/utils/voice_design.py",            # EN/CJK attribute maps
     "backend/migrations/versions/0007_rebuild_poisoned_design_instruct.py",  # frozen CJK dialect-tag snapshot for the instruct heal (#564)
     # Localized error matching (classify OS errors reported in Chinese, #72)
-    "frontend/src/utils/errorDocsMap.ts",
+    "electron/src/shared/utils/errorDocsMap.ts",
     # WER evaluation data
     "omnivoice/eval/wer/fleurs.py",
     "omnivoice/eval/wer/punctuations.lst",
@@ -157,7 +157,7 @@ def test_no_hardcoded_cjk_outside_locales():
     if offenders:
         msg = [
             "Hardcoded non-English (CJK) text found outside the translation layer.",
-            "Move user-facing strings into frontend/src/i18n/locales/*.json (or use English).",
+            "Move user-facing strings into electron/src/shared/i18n/locales/*.json (or use English).",
             "If functional CJK (regex/model-vocab/data/fixture), add the file to _ALLOWED_FILES here.",
             "",
         ]

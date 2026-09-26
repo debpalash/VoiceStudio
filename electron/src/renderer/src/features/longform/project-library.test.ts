@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { createProjectLibrary } from './project-library';
 import { blankLongformDraft } from './longform-session';
-import type { DurableLongformRecord } from '../../../../../../frontend/src/utils/indexedDbLongformStore';
+import type { DurableLongformRecord } from '@shared/utils/indexedDbLongformStore';
 it('serializes simultaneous saves without losing a project and snapshots inputs', async () => {
   let record: DurableLongformRecord | null = null;
   const library = createProjectLibrary({

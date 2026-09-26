@@ -6,38 +6,6 @@ import type { SystemInfo, ModelStatus, LogsResponse, ClearTauriResponse } from '
 // works when the Python backend is still booting. Falls back to HTTP when
 // running in browser dev mode (no Tauri shell).
 
-let _invoke: ((cmd: string, args?: Record<string, unknown>) => Promise<unknown>) | null = null;
-
-async function getInvoke() {
-  if (_invoke !== null) return _invoke;
-  try {
-    const mod = await import('@tauri-apps/api/core');
-    _invoke = mod.invoke;
-    return _invoke;
-  } catch {
-    // Not running inside Tauri (browser dev mode)
-    _invoke = null as any;
-    return null;
-  }
-}
-
-/** Try Tauri invoke, fall back to HTTP. */
-async function invokeOrFetch<T>(
-  command: string,
-  args: Record<string, unknown> | undefined,
-  httpFallback: () => Promise<T>,
-): Promise<T> {
-  try {
-    const invoke = await getInvoke();
-    if (invoke) {
-      return (await invoke(command, args)) as T;
-    }
-  } catch {
-    // invoke failed — fall through to HTTP
-  }
-  return httpFallback();
-}
-
 // ── System info (polled every 5s) ────────────────────────────────────────
 
 export interface SysinfoData {
@@ -56,9 +24,7 @@ const VRAM_CACHE_TTL = 15_000;
 export async function sysinfo(): Promise<SysinfoData> {
   // Rust provides CPU + RAM; VRAM stays at 0. We merge with the Python
   // endpoint to get GPU data when available.
-  const rustData = await invokeOrFetch<SysinfoData>('get_sysinfo', undefined, () =>
-    apiJson<SysinfoData>('/sysinfo'),
-  );
+  const rustData = await apiJson<SysinfoData>('/sysinfo');
 
   // If we got data from Rust (vram=0), enrich with Python's VRAM data
   // but only re-fetch every 15s to avoid hammering the backend.
@@ -166,15 +132,11 @@ export async function systemNotifications(): Promise<NotificationsResponse> {
 // ── Logs (polled every 5s) ───────────────────────────────────────────────
 
 export async function systemLogs(tail: number = 300): Promise<LogsResponse> {
-  return invokeOrFetch<LogsResponse>('read_log_tail', { source: 'backend', tail }, () =>
-    apiJson<LogsResponse>(`/system/logs?tail=${tail}`),
-  );
+  return apiJson<LogsResponse>(`/system/logs?tail=${tail}`);
 }
 
 export async function systemLogsTauri(tail: number = 300): Promise<LogsResponse> {
-  return invokeOrFetch<LogsResponse>('read_log_tail', { source: 'tauri', tail }, () =>
-    apiJson<LogsResponse>(`/system/logs/tauri?tail=${tail}`),
-  );
+  return apiJson<LogsResponse>(`/system/logs/tauri?tail=${tail}`);
 }
 
 // ── Log clearing ─────────────────────────────────────────────────────────

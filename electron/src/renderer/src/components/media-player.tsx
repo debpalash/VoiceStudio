@@ -17,7 +17,7 @@ import { RemotionProviderLoader } from '@vidstack/react/player/remotion';
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import { claimPlayback } from '@/lib/audio/playback';
 import { useAecEnabled } from '@/lib/store/dictation-settings';
-import { attachPlaybackTap } from '../../../../../frontend/src/utils/aec/playbackTap';
+import { attachPlaybackTap } from '@shared/utils/aec/playbackTap';
 
 export type { MediaPlayerInstance };
 export { useMediaState } from '@vidstack/react';

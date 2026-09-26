@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { CheckCircleIcon, TriangleAlertIcon, CircleXIcon, ScanSearchIcon } from 'lucide-react';
-import type { PreflightReport } from '../../../../../../frontend/src/api/setup-types';
+import type { PreflightReport } from '@shared/api/setup-types';
 import { apiJson } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { SettingsRow, SettingsSection } from './settings-layout';

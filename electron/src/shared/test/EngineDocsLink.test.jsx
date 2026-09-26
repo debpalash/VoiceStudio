@@ -11,7 +11,7 @@
  *
  * `docs/engines/<engine>.md` is what actually explains it — accurate, and in
  * cosyvoice's case CI-guarded against the installer registry — and nothing in
- * `frontend/src` referenced `docs/engines` at all. The backend now carries a
+ * `electron/src/shared` referenced `docs/engines` at all. The backend now carries a
  * registry-authored `docs_url` that the scrub leaves alone, and the row renders
  * it with the same "Learn more →" affordance the MCP and Remote GPU panels use.
  */

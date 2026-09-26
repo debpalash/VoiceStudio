@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   clamp, encodeWav, computePeaksFromChannel, pickTickInterval,
   xToTime, pickHandle, applyDrag, zoomAtCursor, zoomCenter, sliceToMono,
-} from '../../frontend/src/utils/audioTrim.js';
+} from '../../electron/src/shared/utils/audioTrim.js';
 
 test('clamp', () => {
   assert.equal(clamp(5, 0, 10), 5);

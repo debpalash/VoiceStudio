@@ -27,7 +27,7 @@ import { getBridge } from '@/components/bridge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { getFrontendLogs } from '../../../../../../frontend/src/utils/consoleBuffer';
+import { getFrontendLogs } from '@shared/utils/consoleBuffer';
 import { useBackendStatus } from '@/hooks/use-backend-status';
 import type {
   RepairAgentId,

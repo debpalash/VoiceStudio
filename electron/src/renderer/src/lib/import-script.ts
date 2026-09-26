@@ -1,6 +1,6 @@
 import { getBridge } from '@/components/bridge';
 import { apiJson } from '@/lib/api/client';
-import { decodeTextBytes } from '../../../../../frontend/src/utils/readTextFile';
+import { decodeTextBytes } from '@shared/utils/readTextFile';
 
 export const SCRIPT_ACCEPT = '.txt,.md,.markdown,.doc,.docx,.pdf,.epub';
 

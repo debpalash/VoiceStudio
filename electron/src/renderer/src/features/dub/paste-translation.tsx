@@ -1,4 +1,4 @@
-import { readTextFile } from '../../../../../../frontend/src/utils/readTextFile';
+import { readTextFile } from '@shared/utils/readTextFile';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangleIcon, ClipboardPasteIcon, FileTextIcon, XIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -10,7 +10,7 @@ import {
   detectPasteMode,
   type PasteTranslationCue,
   type PasteTranslationRow,
-} from '../../../../../../frontend/src/utils/pasteTranslations';
+} from '@shared/utils/pasteTranslations';
 import type { DubSegment } from './dub-session';
 
 const PREVIEW_LIMIT = 120;

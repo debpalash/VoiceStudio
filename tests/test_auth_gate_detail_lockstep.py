@@ -5,7 +5,7 @@ mode-distinct ``detail`` (``_admin_gate_403`` in backend/api/dependencies.py):
 "loopback origin or admin API key required" in server mode, plain
 "loopback origin required" on the desktop build. The SPA's ``apiFetch`` routes
 a 403 to the API-key login gate exactly when the detail contains the substring
-"admin api key" (frontend/src/api/client.ts) — i.e. when presenting the key
+"admin api key" (electron/src/shared/api/client.ts) — i.e. when presenting the key
 could actually satisfy the gate. The per-mode behaviour is pinned by
 tests/test_loopback_server_mode.py; this file pins the LITERAL contract across
 layers: a backend reword keeps backend tests green while the frontend matcher
@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEPS = ROOT / "backend" / "api" / "dependencies.py"
-CLIENT = ROOT / "frontend" / "src" / "api" / "client.ts"
+CLIENT = ROOT / "electron" / "src" / "shared" / "api" / "client.ts"
 
 
 def _frontend_sniff() -> str:
@@ -28,7 +28,7 @@ def _frontend_sniff() -> str:
     text = CLIENT.read_text(encoding="utf-8")
     # adminGate403 = ... detail.toLowerCase().includes('<sniff>')
     m = re.search(r"adminGate403 =.*?includes\('([^']+)'\)", text, re.DOTALL)
-    assert m, "adminGate403 matcher not found in frontend/src/api/client.ts"
+    assert m, "adminGate403 matcher not found in electron/src/shared/api/client.ts"
     return m.group(1)
 
 
@@ -42,7 +42,7 @@ def test_key_named_details_match_frontend_sniff():
     details = _key_named_details()
     assert details, (
         "no 'admin API key' detail literal left in dependencies.py — moved or "
-        "reworded? Update frontend/src/api/client.ts in the same change."
+        "reworded? Update electron/src/shared/api/client.ts in the same change."
     )
     sniff = _frontend_sniff()
     for detail in details:
@@ -50,7 +50,7 @@ def test_key_named_details_match_frontend_sniff():
         assert sniff in detail.lower(), (
             f"backend detail {detail!r} no longer contains the frontend matcher "
             f"{sniff!r} — the SPA would stop routing it to the API-key gate. "
-            "Update frontend/src/api/client.ts in the same change."
+            "Update electron/src/shared/api/client.ts in the same change."
         )
 
 

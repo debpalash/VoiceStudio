@@ -16,7 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const _dir = path.dirname(fileURLToPath(import.meta.url));
-const SRC = path.resolve(_dir, '..'); // frontend/src
+const SRC = path.resolve(_dir, '..'); // electron/src/shared
 const read = (p) => fs.readFileSync(path.join(SRC, p), 'utf8');
 
 // Legacy/alias modes intentionally kept in the union but routed elsewhere

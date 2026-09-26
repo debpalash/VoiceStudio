@@ -2,16 +2,16 @@ import {
   DEFAULT_OVERRIDES,
   overridesToRequest,
   type Overrides,
-} from '../../../../../../frontend/src/utils/longformOverrides';
+} from '@shared/utils/longformOverrides';
 import { castVoice } from './cast-map';
-import { parseCastNames } from '../../../../../../frontend/src/utils/audiobookScript';
+import { parseCastNames } from '@shared/utils/audiobookScript';
 import { restoreBookOptions, lexiconMap, type BookOptions } from './book-options';
-import { createCoalescedJsonStorage } from '../../../../../../frontend/src/utils/coalescedJsonStorage';
+import { createCoalescedJsonStorage } from '@shared/utils/coalescedJsonStorage';
 import { Store } from '@tanstack/store';
 import { useStore } from '@tanstack/react-store';
 import { apiFetch } from '@/lib/api/client';
-import { consumeLongformStream } from '../../../../../../frontend/src/utils/longformStream';
-import { storyToSpans } from '../../../../../../frontend/src/utils/storyToSpans';
+import { consumeLongformStream } from '@shared/utils/longformStream';
+import { storyToSpans } from '@shared/utils/storyToSpans';
 import { beginAppActivity } from '@/lib/app-activity';
 import { publicFailureFromEvent, type PublicFailure } from '@/lib/api/failure';
 export type Mode = 'stories' | 'audiobook';

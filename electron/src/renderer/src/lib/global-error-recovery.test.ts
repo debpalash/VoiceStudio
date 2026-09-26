@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 const openRepairAgent = vi.fn();
 const captureException = vi.fn();
 vi.mock('@/lib/repair-agent-events', () => ({ openRepairAgent }));
-vi.mock('../../../../../frontend/src/utils/analytics', () => ({ captureException }));
+vi.mock('@shared/utils/analytics', () => ({ captureException }));
 
 describe('global renderer error recovery', () => {
   it('hands uncaught faults to repair once while ignoring cancellation and foreign noise', async () => {

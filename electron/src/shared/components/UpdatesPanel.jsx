@@ -1,4 +1,4 @@
-// frontend/src/components/UpdatesPanel.jsx
+// electron/src/shared/components/UpdatesPanel.jsx
 // Update management panel — lives under Settings → Updates. Shows live update
 // status (with the available build's actual release notes), channel switcher,
 // the data-safety line (pre-update DB backups), the app's own "What's new"

@@ -8,7 +8,7 @@ got:
     'Auto', or switch to a multilingual engine …
 
 They had left it on Auto. The UI omits `language` entirely while its picker
-reads "Auto" (`frontend/src/hooks/useProfiles.js`: `if (reqLang && reqLang !==
+reads "Auto" (`electron/src/shared/hooks/useProfiles.js`: `if (reqLang && reqLang !==
 'Auto') formData.append(...)`), and #533 fills that gap from the selected voice
 profile. So "Auto" is precisely how 'Persian' got there — the one remedy the
 message leads with is the state the user was already in, and nothing in it

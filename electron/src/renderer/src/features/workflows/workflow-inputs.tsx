@@ -9,9 +9,9 @@ import { importScript, SCRIPT_ACCEPT } from '@/lib/import-script';
 import { LANGUAGES } from '@/lib/languages';
 // Shared application controls are JavaScript; keep their established voice/value contracts.
 // @ts-expect-error shared JSX component has no declaration file
-import VoiceSelector from '../../../../../../frontend/src/components/VoiceSelector';
+import VoiceSelector from '@shared/components/VoiceSelector';
 // @ts-expect-error shared JSX component has no declaration file
-import SearchableSelect from '../../../../../../frontend/src/components/SearchableSelect';
+import SearchableSelect from '@shared/components/SearchableSelect';
 import { deleteWorkflowArtifacts, saveWorkflowMedia } from './workflow-run-store';
 import type { WorkflowStep } from './workflow-model';
 

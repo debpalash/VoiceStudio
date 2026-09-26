@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import { apiJson, describeError } from '@/lib/api/client';
 import type { DataDirectorySelection, DataRelocationStage } from '../../../../preload/index.d';
-import { fmtBytes } from '../../../../../../frontend/src/components/settings/models/format';
+import { fmtBytes } from '@shared/components/settings/models/format';
 import { SettingsRow, SettingsSection } from './settings-layout';
 
 function relocationError(t: (key: string) => string, error: unknown): string {

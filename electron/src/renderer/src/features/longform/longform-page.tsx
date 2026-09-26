@@ -1,4 +1,4 @@
-import { readTextFile } from '../../../../../../frontend/src/utils/readTextFile';
+import { readTextFile } from '@shared/utils/readTextFile';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import {
   BookOpenTextIcon,
@@ -12,7 +12,7 @@ import { AudioLinesIcon } from 'lucide-react';
 import { SecondarySidebar } from '@/components/workspace-sidebar';
 import { WorkspaceHeader } from '@/components/app-shell/workspace-header';
 import { PipelineFailure } from '@/components/pipeline-failure';
-import { importToText } from '../../../../../../frontend/src/utils/importStory';
+import { importToText } from '@shared/utils/importStory';
 import { cueSheetFor } from './cue-sheet';
 import { saveLocalFile } from '@/lib/local-export';
 import { StoryCast, StoryEditor } from './story-editor';
@@ -31,7 +31,7 @@ import {
   scriptStats,
   formatRuntimeClock,
   validateScript,
-} from '../../../../../../frontend/src/utils/audiobookScript';
+} from '@shared/utils/audiobookScript';
 import { BookSettings } from './book-settings';
 import { duplicateWords } from './book-options';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -52,7 +52,7 @@ import { useProfiles } from '@/hooks/use-profiles';
 import { apiJson, apiPath, describeError } from '@/lib/api/client';
 import { saveExport } from '@/lib/export-history';
 import { EngineLanguagePicker } from '@/features/clone/engine-language-picker';
-import { LANG_CODES } from '../../../../../../frontend/src/utils/languages';
+import { LANG_CODES } from '@shared/utils/languages';
 import {
   editLongform,
   dismissLongformError,
@@ -62,7 +62,7 @@ import {
   storiesImportEpoch,
   type Mode,
 } from './longform-session';
-import { SAMPLE_AUDIOBOOK_SCRIPT } from '../../../../../../frontend/src/data/sampleAudiobook';
+import { SAMPLE_AUDIOBOOK_SCRIPT } from '@shared/data/sampleAudiobook';
 import { useTtsReadiness } from '@/hooks/use-tts-readiness';
 interface Recovery {
   job_id: string;

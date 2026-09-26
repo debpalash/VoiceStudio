@@ -1,7 +1,7 @@
 import {
   createIndexedDbLongformStore,
   type LongformDurableStore,
-} from '../../../../../../frontend/src/utils/indexedDbLongformStore';
+} from '@shared/utils/indexedDbLongformStore';
 import type { Draft, Mode } from './longform-session';
 export interface LongformProject {
   id: string;

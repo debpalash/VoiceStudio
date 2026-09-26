@@ -1,7 +1,7 @@
 """Error class → docs URL mapping for the in-app deeplink button.
 
 Used by the React ErrorBoundary's "Open docs for this error" button (via the
-TypeScript mirror at `frontend/src/utils/errorDocsMap.ts`) and by the Phase 5
+TypeScript mirror at `electron/src/shared/utils/errorDocsMap.ts`) and by the Phase 5
 bug-reporter for "this error has a docs page" links.
 
 The error taxonomy below is the contract — Phase 5 reporter consumes it,
@@ -10,7 +10,7 @@ locks the key set. To add a new class:
 
   1. Pick a stable ALL_CAPS key (the API will live forever).
   2. Add the entry here.
-  3. Mirror it in `frontend/src/utils/errorDocsMap.ts`.
+  3. Mirror it in `electron/src/shared/utils/errorDocsMap.ts`.
   4. Update the `test_keys_match_taxonomy` set and the TS-side keys-sync test.
 """
 from __future__ import annotations

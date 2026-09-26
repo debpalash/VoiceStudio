@@ -75,6 +75,7 @@ export default defineConfig({
     resolve: {
       alias: {
         '@': resolve(__dirname, 'src/renderer/src'),
+        '@shared': resolve(__dirname, 'src/shared'),
         // Scalar's optional AI client reaches a CommonJS browser entry that
         // native ESM cannot import by name. Mirror its browser API as real ESM.
         '@vercel/oidc': resolve(__dirname, 'src/renderer/src/lib/vercel-oidc-browser.ts'),

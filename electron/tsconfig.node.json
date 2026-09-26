@@ -22,6 +22,7 @@
     "vite.web.config.ts",
     "src/main/**/*",
     "src/preload/**/*",
-    "src/shared/**/*"
+    "src/shared/web-api-routing.ts",
+    "src/shared/repair-request.ts"
   ]
 }

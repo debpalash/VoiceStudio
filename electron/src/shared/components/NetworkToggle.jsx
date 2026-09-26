@@ -1,4 +1,4 @@
-// frontend/src/components/NetworkToggle.jsx
+// electron/src/shared/components/NetworkToggle.jsx
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { copyText } from '../utils/copyText';

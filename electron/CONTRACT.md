@@ -53,7 +53,7 @@ Live dictation uses a WebSocket, which cannot pass through the app protocol HTTP
   `apiJson<T>(path, init?)`; `audioUrl(filename)` → `/api/audio/<filename>`;
   `profileAudioUrl(id)` → `/api/profiles/<id>/audio`.
 - `@/lib/api/generate.ts`: `generateClone(input: CloneGenerateInput, opts?: { signal?: AbortSignal; onProgress?: (pct: number|null) => void }): Promise<GenerateResult>`;
-  `sanitizeInstruct(free: string): { instruct: string; unsupported: string[]; duplicates: string[]; conflicts: string[] }` (port of frontend/src/utils/voiceInstruct.js buildDesignInstruct with empty vdStates);
+  `sanitizeInstruct(free: string): { instruct: string; unsupported: string[]; duplicates: string[]; conflicts: string[] }` (port of electron/src/shared/utils/voiceInstruct.js buildDesignInstruct with empty vdStates);
   `CLONE_MAX_SECONDS = 15`, `REF_HARD_MAX_SECONDS = 75`.
 - `@/lib/api/profiles.ts`: `listProfiles()`, `createCloneProfile({ name, refAudio, refAudioName, refText, instruct, language })`, `deleteProfile(id)`.
 - `@/lib/api/history.ts`: `listHistory()`, `clearHistory()`, `deleteHistoryItem(id)`, `setHistoryStarred(id, starred)`.

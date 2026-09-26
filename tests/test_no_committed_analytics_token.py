@@ -8,7 +8,7 @@ data access — PostHog's client keys are designed to ship in client code) is
 committed as an in-repo default in the two files that implement analytics:
 
     backend/core/analytics.py        (_PUBLIC_PROJECT_TOKEN)
-    frontend/src/utils/analytics.ts  (PUBLIC_PROJECT_TOKEN)
+    electron/src/shared/utils/analytics.ts  (PUBLIC_PROJECT_TOKEN)
 
 This guard pins the new contract: a `phc_` literal may exist ONLY there, both
 files must actually carry one, and the two must be the SAME token (one PostHog
@@ -31,7 +31,7 @@ _POSTHOG_KEY_RE = re.compile(r"phc_[A-Za-z0-9]{20,}")
 # The ONLY tracked files allowed to contain a `phc_` literal (#1193).
 _CANONICAL_TOKEN_FILES = (
     "backend/core/analytics.py",
-    "frontend/src/utils/analytics.ts",
+    "electron/src/shared/utils/analytics.ts",
 )
 
 _SKIP_DIRS = {"node_modules", ".git", "target", "dist", "build", ".venv", "zig-out"}
@@ -103,7 +103,7 @@ def test_both_canonical_files_carry_the_same_default_token():
 
 def test_the_frontend_reads_its_token_override_from_the_build_env():
     """The build-time override mechanism must stay in place."""
-    src = (_REPO / "frontend/src/utils/analytics.ts").read_text(encoding="utf-8")
+    src = (_REPO / "electron/src/shared/utils/analytics.ts").read_text(encoding="utf-8")
     assert "VITE_POSTHOG_KEY" in src
 
 

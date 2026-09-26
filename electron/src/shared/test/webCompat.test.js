@@ -99,7 +99,7 @@ describe('AbortSignal.timeout polyfill', () => {
  *  - **Syntax.** A post-floor *grammar* feature (RegExp lookbehind, Safari
  *    16.4) is a parse-time SyntaxError that kills its whole chunk before a
  *    line runs, and no polyfill can help. Text patterns here cannot see that.
- *  - **Dependencies.** Only `frontend/src` is scanned. A bundled library using
+ *  - **Dependencies.** Only `electron/src/shared` is scanned. A bundled library using
  *    a post-floor API or grammar is invisible here and ships anyway.
  *  - **CSS.** Tailwind v4's own floor is Safari 16.4, and `index.css` uses
  *    `color-mix()` (16.2) throughout, so the *rendering* floor is already

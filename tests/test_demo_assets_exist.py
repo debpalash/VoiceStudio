@@ -37,7 +37,7 @@ _BACKEND = os.path.join(_REPO_ROOT, "backend")
 _DEMO_ROOT = os.path.join(_BACKEND, "assets", "samples")
 
 _DICTATION_DEMO = os.path.join(
-    _REPO_ROOT, "frontend", "src", "components", "DictationDemo.jsx"
+    _REPO_ROOT, "electron", "src", "shared", "components", "DictationDemo.jsx"
 )
 
 

@@ -7,12 +7,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_tauri_shell_and_legacy_ui_entrypoints_are_removed():
     assert not (ROOT / "frontend/src-tauri").exists()
+    assert not (ROOT / "frontend/src").exists()
     assert not (ROOT / ".github/workflows/release.yml").exists()
     for path in (
         "frontend/index.html",
-        "frontend/src/main.jsx",
-        "frontend/src/main-app.jsx",
-        "frontend/src/App.jsx",
+        "electron/src/shared/main.jsx",
+        "electron/src/shared/main-app.jsx",
+        "electron/src/shared/App.jsx",
         "scripts/desktop-dev.mjs",
         "scripts/desktop-dev-launch.mjs",
         "scripts/desktop-prod.sh",

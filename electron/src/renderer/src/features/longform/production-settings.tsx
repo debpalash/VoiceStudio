@@ -8,7 +8,7 @@ import { apiJson } from '@/lib/api/client';
 import {
   DEFAULT_OVERRIDES,
   type Overrides,
-} from '../../../../../../frontend/src/utils/longformOverrides';
+} from '@shared/utils/longformOverrides';
 const knobs = [
   { key: 'numStep', label: 'steps', min: 8, max: 64, step: 1, value: 32 },
   { key: 'guidanceScale', label: 'cfg', min: 0, max: 4, step: 0.1, value: 2 },

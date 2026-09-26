@@ -1,6 +1,6 @@
 # i18n spec — localization structural integrity (CLAUDE.md hard rule).
 #
-# Actor: read frontend/src/i18n/locales/*.json. The test supplies locales_dir.
+# Actor: read electron/src/shared/i18n/locales/*.json. The test supplies locales_dir.
 #
 # Gates only on valid JSON. Orphan-key detection and coverage are ADVISORY: the
 # repo currently has real orphan keys (non-en locales carry gallery.cat_* and
@@ -12,7 +12,7 @@ layer: i18n
 
 steps:
   - actor: fs
-    read: frontend/src/i18n/locales/*.json
+    read: electron/src/shared/i18n/locales/*.json
     capture: { locales_dir: $.locales_dir }
 
 judge:

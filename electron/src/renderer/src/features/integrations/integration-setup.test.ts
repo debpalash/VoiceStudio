@@ -3,7 +3,7 @@ import {
   INTEGRATION_CATALOG,
   integrationSlug,
   getIntegrationBySlug,
-} from '../../../../../../frontend/src/config/integration-catalog';
+} from '@shared/config/integration-catalog';
 import {
   INTEGRATION_CATEGORIES,
   integrationCategoryKey,

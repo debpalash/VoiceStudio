@@ -6,8 +6,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const utilPath = new URL('../../frontend/src/utils/voiceInstruct.js', import.meta.url).pathname;
-const constantsPath = new URL('../../frontend/src/utils/constants.js', import.meta.url).pathname;
+const utilPath = new URL('../../electron/src/shared/utils/voiceInstruct.js', import.meta.url).pathname;
+const constantsPath = new URL('../../electron/src/shared/utils/constants.js', import.meta.url).pathname;
 const { mergeDescribedAttrs } = await import(utilPath);
 const { CATEGORIES } = await import(constantsPath);
 

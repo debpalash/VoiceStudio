@@ -2,11 +2,11 @@
  * Carrying a finished dub into the Stories editor.
  *
  * The transform itself is shared with the browser app
- * (`frontend/src/utils/dubToStory`); this is the Electron wiring around it, kept
+ * (`electron/src/shared/utils/dubToStory`); this is the Electron wiring around it, kept
  * out of `dub-page.tsx` so the rules that decide whether the action is offered,
  * and what it overwrites, can be tested without mounting the page.
  */
-import { dubToStory } from '../../../../../../frontend/src/utils/dubToStory';
+import { dubToStory } from '@shared/utils/dubToStory';
 import {
   editLongform,
   longformSession,

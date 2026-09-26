@@ -4,7 +4,7 @@ import { CopyIcon, MicIcon, PauseIcon, PlayIcon, SquareIcon, XIcon } from 'lucid
 import { Button } from '@/components/ui/button';
 import { useBackendStatus } from '@/hooks/use-backend-status';
 import { LiveDictation } from './live-dictation';
-import { addTranscription } from '../../../../../../frontend/src/utils/transcriptionsStore';
+import { addTranscription } from '@shared/utils/transcriptionsStore';
 
 /** Native recorder stays separate from page navigation and the script editor. */
 export function CaptureWidget() {

@@ -12,7 +12,7 @@ from . import spec as probe_spec
 from .judges import i18n as I
 
 _SPEC = os.path.join(os.path.dirname(__file__), "specs", "i18n_parity.probe.yaml")
-_LOCALES = str(Path(__file__).resolve().parents[2] / "frontend" / "src" / "i18n" / "locales")
+_LOCALES = str(Path(__file__).resolve().parents[2] / "electron" / "src" / "shared" / "i18n" / "locales")
 
 
 def _write_locales(tmp_path, mapping):

@@ -61,7 +61,7 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       # Node 22 is needed for --experimental-strip-types so node:test can
-      # import .ts files directly from frontend/src/api/*.
+      # import .ts files directly from electron/src/shared/api/*.
       - name: Setup Node 22
         uses: actions/setup-node@v4
         with:

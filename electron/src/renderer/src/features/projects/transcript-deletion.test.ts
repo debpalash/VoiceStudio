@@ -4,7 +4,7 @@ import {
   removeTranscription,
   subscribeTranscriptions,
   TRANSCRIPTIONS_KEY,
-} from '../../../../../../frontend/src/utils/transcriptionsStore';
+} from '@shared/utils/transcriptionsStore';
 beforeEach(() => localStorage.clear());
 afterEach(() => vi.restoreAllMocks());
 it('deletes from fresh storage and notifies mounted library subscribers', () => {

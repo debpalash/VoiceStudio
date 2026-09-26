@@ -2,7 +2,7 @@ import {
   buildCueSheet,
   cueSheetFilename,
   cuesFromChapters,
-} from '../../../../../../frontend/src/utils/storyExport';
+} from '@shared/utils/storyExport';
 import type { AudiobookRenderChapter } from './longform-session';
 
 const RENDERED: ReadonlySet<string> = new Set(['done', 'cached']);

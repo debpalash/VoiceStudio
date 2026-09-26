@@ -38,11 +38,6 @@ export interface BackendLifecycle {
   message: string | null;
 }
 
-function inTauri(): boolean {
-  const w = window as unknown as Record<string, unknown> | undefined;
-  return typeof window !== 'undefined' && !!(w?.__TAURI__ || w?.__TAURI_INTERNALS__);
-}
-
 /** Map the shell's BootstrapStage tag to the coarse lifecycle answer the
  * transport layer needs. Pure + exported for unit tests. */
 export function classifyBootstrapStage(stage: string | null | undefined): BackendLifecycleStage {
@@ -75,22 +70,20 @@ export function _toLifecycle(res: { stage?: string; message?: unknown } | null):
  * (`last_bootstrap_failure`, #1177). A precise diagnosis outranks silence,
  * and the retained copy is the only place it still exists. */
 export async function backendLifecycleStage(): Promise<BackendLifecycle> {
-  if (!inTauri()) return { stage: 'unknown', message: null };
+  if (typeof window === 'undefined' || !window.voicestudio) {
+    return { stage: 'unknown', message: null };
+  }
   try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    const res = (await invoke('bootstrap_status')) as { stage?: string; message?: unknown } | null;
-    const lifecycle = _toLifecycle(res);
-    if (lifecycle.stage === 'failed' && !lifecycle.message) {
-      try {
-        const retained = (await invoke('last_bootstrap_failure')) as string | null;
-        if (typeof retained === 'string' && retained.trim()) {
-          return { stage: 'failed', message: retained.trim() };
-        }
-      } catch {
-        /* older shell / IPC gone — the stage alone still ends the retry loop */
-      }
+    const status = await window.voicestudio.backend.getStatus();
+    if (status.stage === 'ready') return { stage: 'ready', message: null };
+    if (['failed', 'crashed', 'port_in_use'].includes(status.stage)) {
+      const detail = status.message?.trim() || status.logTail.at(-1)?.trim() || null;
+      return { stage: 'failed', message: detail };
     }
-    return lifecycle;
+    if (['setup_required', 'installing', 'attaching', 'starting'].includes(status.stage)) {
+      return { stage: 'starting', message: null };
+    }
+    return { stage: 'unknown', message: null };
   } catch {
     return { stage: 'unknown', message: null };
   }

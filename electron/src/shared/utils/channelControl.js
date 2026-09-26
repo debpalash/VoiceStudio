@@ -1,4 +1,4 @@
-// frontend/src/utils/channelControl.js
+// electron/src/shared/utils/channelControl.js
 import { isTauri } from './updater';
 import { normalizeChannel } from './updateChannel';
 

@@ -34,6 +34,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(root, 'src'),
+      '@shared': resolve(import.meta.dirname, 'src/shared'),
       '@vercel/oidc': resolve(root, 'src/lib/vercel-oidc-browser.ts'),
     },
     dedupe: ['react', 'react-dom'],

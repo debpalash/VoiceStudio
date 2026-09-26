@@ -1,4 +1,4 @@
-// frontend/src/components/NetworkToggle.test.jsx
+// electron/src/shared/components/NetworkToggle.test.jsx
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import NetworkToggle from './NetworkToggle';

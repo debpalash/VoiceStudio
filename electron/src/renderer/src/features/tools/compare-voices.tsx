@@ -13,7 +13,7 @@ import { cloneSettingsStore } from '@/lib/store/clone-settings';
 import { acquireSynthesis } from '@/lib/synthesis-lock';
 import { queryKeys } from '@/lib/query';
 import { describeError } from '@/lib/api/client';
-import { PRESETS } from '../../../../../../frontend/src/utils/constants';
+import { PRESETS } from '@shared/utils/constants';
 import { beginAppActivity } from '@/lib/app-activity';
 import { useTtsReadiness } from '@/hooks/use-tts-readiness';
 

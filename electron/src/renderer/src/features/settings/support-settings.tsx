@@ -20,12 +20,12 @@ import { brandIcon } from '@/lib/brand';
 import { DonationGoal } from './donation-goal';
 import { ReportBug } from '@/components/report-bug';
 import { ExternalLink } from '@/components/external-link';
-import { KOFI_URL, PAYPAL_URL } from '../../../../../../frontend/src/utils/donateLinks';
+import { KOFI_URL, PAYPAL_URL } from '@shared/utils/donateLinks';
 import {
   SPONSORS,
   SPONSOR_TIERS,
   SPONSOR_CONTACT,
-} from '../../../../../../frontend/src/config/sponsors';
+} from '@shared/config/sponsors';
 import {
   ISSUES_URL,
   DISCORD_URL,
@@ -33,7 +33,7 @@ import {
   EMAIL,
   WEBSITE_URL,
   X_URL,
-} from '../../../../../../frontend/src/utils/contactLinks';
+} from '@shared/utils/contactLinks';
 import './support-settings.css';
 
 export function SupportSettings() {

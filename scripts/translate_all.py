@@ -5,7 +5,7 @@ import time
 from deep_translator import GoogleTranslator
 
 LOCALES_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "frontend", "src", "i18n", "locales"
+    os.path.dirname(os.path.abspath(__file__)), "..", "electron", "src", "shared", "i18n", "locales"
 )
 
 LANGUAGES = [

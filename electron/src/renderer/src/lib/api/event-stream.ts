@@ -1,5 +1,5 @@
 import { apiFetch } from './client';
-import { splitSSEBuffer, parseSSELine } from '../../../../../../frontend/src/utils/sseParse';
+import { splitSSEBuffer, parseSSELine } from '@shared/utils/sseParse';
 export class IncompleteTaskStreamError extends Error {
   constructor() {
     super('Task stream ended without a terminal event');

@@ -6,7 +6,7 @@ import {
   progressPct,
   isGoalMet,
   formatMoney,
-} from '../../../../../../frontend/src/api/donation';
+} from '@shared/api/donation';
 import snapshotUrl from '../../../../../public/donation_progress.json?url';
 
 export function DonationGoal() {

@@ -1,6 +1,6 @@
 """Canonical longform parser (#27) — pytest side of the cross-impl golden corpus.
 
-This suite and ``frontend/src/test/longformParser.test.js`` load the SAME JSON
+This suite and ``electron/src/shared/test/longformParser.test.js`` load the SAME JSON
 (`tests/fixtures/longform_parser_cases.json`) and assert both impls produce it
 byte-for-byte. A divergence cannot pass both suites — the side that drifts fails
 its own assertion against the shared truth.

@@ -4,7 +4,7 @@
  *
  * Byte-for-byte mirror of the Python parser, verified by the shared golden
  * corpus tests/fixtures/longform_parser_cases.json (asserted in both
- * tests/test_longform_parser.py and frontend/src/test/longformParser.test.js).
+ * tests/test_longform_parser.py and electron/src/shared/test/longformParser.test.js).
  * Do not "improve" one side without the other — the corpus will fail.
  *
  * Grammar precedence (outer→inner):  # chapter → [voice:] → [pause] → SSML-lite.

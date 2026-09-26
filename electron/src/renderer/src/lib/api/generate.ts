@@ -1,6 +1,6 @@
-import { generationFailureMessage } from '../../../../../../frontend/src/utils/generationFailureMessage.ts';
+import { generationFailureMessage } from '@shared/utils/generationFailureMessage.ts';
 import i18next from 'i18next';
-import { languageRejectionMessage } from '../../../../../../frontend/src/utils/languageRejection.ts';
+import { languageRejectionMessage } from '@shared/utils/languageRejection.ts';
 import { ApiError, apiFetch, isAbortError } from './client';
 import type { CloneGenerateInput, GenerateResult } from './types';
 import { beginAppActivity } from '@/lib/app-activity';

@@ -44,7 +44,7 @@ def test_electron_shell_agrees_on_the_exit_code():
 
 
 def test_frontend_crash_hint_agrees_on_the_exit_code():
-    src = _read("frontend", "src", "utils", "backendCrash.ts")
+    src = _read("electron", "src", "shared", "utils", "backendCrash.ts")
     assert f"marker.exit_code === {_EXPECTED_EXIT}" in src
 
 

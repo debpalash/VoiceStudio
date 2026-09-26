@@ -3,7 +3,7 @@ import type { DubExportPreferences } from './dub-export';
 import {
   MAX_COOKIE_EXPORT_BYTES,
   _cookieTransportAllowed,
-} from '../../../../../../frontend/src/utils/cookieExport';
+} from '@shared/utils/cookieExport';
 import { projectSession, type DubProject } from '../projects/project-format';
 import { DUB_DRAFT_KEY, restoreDubDraft } from './dub-draft';
 import { Store } from '@tanstack/store';
@@ -22,8 +22,8 @@ import {
   settleCueSources,
   withOriginalCueSource,
   withoutCueSource,
-} from '../../../../../../frontend/src/utils/segments';
-import { hasCompleteTranslation } from '../../../../../../frontend/src/utils/multiLang';
+} from '@shared/utils/segments';
+import { hasCompleteTranslation } from '@shared/utils/multiLang';
 import {
   ATTRIBUTION_FIELDS,
   applyAttribution,
@@ -36,9 +36,9 @@ import {
   nextSegmentId,
   partsFor,
   type SegmentPart,
-} from '../../../../../../frontend/src/utils/segmentParts';
-import { commitMoveResize } from '../../../../../../frontend/src/utils/timeline';
-import type { PasteTranslationRow } from '../../../../../../frontend/src/utils/pasteTranslations';
+} from '@shared/utils/segmentParts';
+import { commitMoveResize } from '@shared/utils/timeline';
+import type { PasteTranslationRow } from '@shared/utils/pasteTranslations';
 import type {
   DubAgentTranslationRequest,
   DubAgentTranslationResult,

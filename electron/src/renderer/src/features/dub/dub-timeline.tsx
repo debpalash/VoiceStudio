@@ -7,7 +7,7 @@ import {
   nearestOnset,
   snapCandidates,
   snapTime,
-} from '../../../../../../frontend/src/utils/timeline';
+} from '@shared/utils/timeline';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {

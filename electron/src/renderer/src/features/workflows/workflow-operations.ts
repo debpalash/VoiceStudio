@@ -2,7 +2,7 @@ import { apiFetch, apiJson } from '@/lib/api/client';
 import { convertSpeech } from '@/lib/api/convert';
 import { generateClone } from '@/lib/api/generate';
 import { DEFAULT_CLONE_SETTINGS } from '@/lib/store/clone-settings';
-import { LANG_CODES } from '../../../../../../frontend/src/utils/languages';
+import { LANG_CODES } from '@shared/utils/languages';
 import { loadWorkflowMedia } from './workflow-run-store';
 import type { WorkflowOperations } from './workflow-runtime';
 

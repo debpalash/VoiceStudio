@@ -216,7 +216,7 @@ class TestErrorDocsDeeplink:
 
     def test_pyannote_license_required_is_in_locked_taxonomy(self):
         """If this test fails, the 5-class taxonomy was bumped without
-        also bumping the TS mirror — see frontend/src/utils/errorDocsMap.ts
+        also bumping the TS mirror — see electron/src/shared/utils/errorDocsMap.ts
         and its keys-sync test."""
         from core import error_docs_map
         assert "PYANNOTE_LICENSE_REQUIRED" in error_docs_map.ERROR_DOCS

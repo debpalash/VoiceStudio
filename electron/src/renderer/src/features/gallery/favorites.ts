@@ -1,5 +1,5 @@
 import { apiJson } from '@/lib/api/client';
-import type { ArchetypePage } from '../../../../../../frontend/src/api/archetypes-types';
+import type { ArchetypePage } from '@shared/api/archetypes-types';
 export const FAVORITES_KEY = 'voicestudio.gallery.favorites.v1';
 export function readFavorites(): string[] {
   try {

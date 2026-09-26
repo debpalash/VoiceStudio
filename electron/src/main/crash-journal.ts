@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import type { NativeCrashRecord } from '../preload/index.d';
-import { nativeCrashExcerpt } from '../../../frontend/src/utils/crashReport';
-import { scrubText } from '../../../frontend/src/utils/scrub';
+import { nativeCrashExcerpt } from '../shared/utils/crashReport';
+import { scrubText } from '../shared/utils/scrub';
 
 /** Small version-scoped local journal. Read failures must never block startup. */
 export class CrashJournal {

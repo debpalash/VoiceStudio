@@ -45,9 +45,8 @@ export interface BackendCrashMarker {
   acknowledged: boolean;
 }
 
-function inTauri(): boolean {
-  const w = window as unknown as Record<string, unknown> | undefined;
-  return typeof window !== 'undefined' && !!(w?.__TAURI__ || w?.__TAURI_INTERNALS__);
+function inElectron(): boolean {
+  return typeof window !== 'undefined' && !!window.voicestudio;
 }
 
 // ── Browser/Docker fallback: the backend's run-sentinel record (#1164) ─────
@@ -177,10 +176,20 @@ async function fetchLastRunCrash(): Promise<BackendCrashMarker | null> {
 /** Newest crash marker: the shell's (desktop) or the backend run-sentinel's
  * (browser/dev/Docker), or null when nothing ever crashed / nothing answers. */
 export async function getLastBackendCrash(): Promise<BackendCrashMarker | null> {
-  if (!inTauri()) return fetchLastRunCrash();
+  if (!inElectron()) return fetchLastRunCrash();
   try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    return ((await invoke('get_last_backend_crash')) as BackendCrashMarker | null) ?? null;
+    const crash = (await window.voicestudio.backend.getStatus()).lastCrash;
+    if (!crash) return null;
+    return {
+      ts: Math.round(crash.timestamp / 1000),
+      exit_code: crash.exitCode,
+      signal: null,
+      exit_desc: crash.signal || (crash.exitCode == null ? 'process ended unexpectedly' : ''),
+      backend_version: crash.version,
+      uptime_s: Math.round(crash.uptimeMs / 1000),
+      last_stderr: crash.logTail.join('\n'),
+      acknowledged: crash.acknowledged,
+    };
   } catch {
     return null;
   }
@@ -235,7 +244,7 @@ export async function awaitBackendCrashMarker(
     }
     opts.signal?.throwIfAborted();
     if (crash) return { crash, unavailable: false };
-    if (!inTauri()) return { crash: null, unavailable: false };
+    if (!inElectron()) return { crash: null, unavailable: false };
     if (Date.now() >= deadline) return { crash: null, unavailable: false };
     await sleep(intervalMs);
   }
@@ -243,7 +252,7 @@ export async function awaitBackendCrashMarker(
 
 /** Mark the newest crash as seen (the marker itself is retained for reports). */
 export async function acknowledgeBackendCrash(): Promise<void> {
-  if (!inTauri()) {
+  if (!inElectron()) {
     // Browser/dev/Docker: watermark the backend's run-sentinel record.
     try {
       const { API, apiUrl } = await import('../api/client.ts');
@@ -258,8 +267,7 @@ export async function acknowledgeBackendCrash(): Promise<void> {
     return;
   }
   try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('acknowledge_backend_crash');
+    await window.voicestudio.backend.acknowledgeCrash();
   } catch {
     /* shell unavailable — nothing to acknowledge */
   }

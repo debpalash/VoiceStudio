@@ -3,12 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { useGenerateClone } from '@/hooks/use-generate';
 import { router } from '@/router';
 import { writeDraft } from '@/features/design/design-draft';
-import defaults from '../../../../../frontend/src/utils/firstSound.json';
+import defaults from '@shared/utils/firstSound.json';
 import {
   instructToVdStates,
   mergeDescribedAttrs,
-} from '../../../../../frontend/src/utils/voiceInstruct';
-import { pickDesignSeed } from '../../../../../frontend/src/utils/seed';
+} from '@shared/utils/voiceInstruct';
+import { pickDesignSeed } from '@shared/utils/seed';
 import { FIRST_SOUND_EVENT } from '@/lib/first-sound';
 
 /**

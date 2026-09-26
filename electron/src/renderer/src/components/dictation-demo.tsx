@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { DICTATION_SCRIPTS } from '../../../../../frontend/src/utils/dictationScripts';
+import { DICTATION_SCRIPTS } from '@shared/utils/dictationScripts';
 import { apiFetch, apiJson, apiPath, ApiError } from '@/lib/api/client';
 import { Button } from './ui/button';
 import { AudioPreviewButton } from './audio-preview-button';

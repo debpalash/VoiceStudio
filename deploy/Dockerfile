@@ -19,7 +19,7 @@ COPY electron/package.json ./electron/
 
 RUN bun install --frozen-lockfile
 
-# Build the maintained Electron renderer as the browser UI. `frontend/src`
+# Build the maintained Electron renderer as the browser UI. `electron/src/shared`
 # contains transitional shared modules only; it has no app entry point.
 COPY frontend/ ./frontend/
 COPY electron/ ./electron/

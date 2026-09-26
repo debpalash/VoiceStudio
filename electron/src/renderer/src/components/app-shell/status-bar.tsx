@@ -34,7 +34,7 @@ import { ComputeVendorIcon, formatComputeRuntime } from '@/components/compute-ve
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/popover';
 import { ComputeTargetChoices } from '@/components/compute-target-choices';
 import { useComputeRuntime, useComputeTarget } from '@/hooks/use-compute-target';
-import type { BatchJob } from '../../../../../../frontend/src/api/batch-types';
+import type { BatchJob } from '@shared/api/batch-types';
 import {
   IDLE_STATUS_POLL_MS,
   batchStatusPollMs,

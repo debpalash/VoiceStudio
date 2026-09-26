@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { FolderOpenIcon } from 'lucide-react';
-import type { ProfileUsage } from '../../../../../../frontend/src/api/types';
+import type { ProfileUsage } from '@shared/api/types';
 import { apiJson, describeError } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { PipelineFailure } from '@/components/pipeline-failure';

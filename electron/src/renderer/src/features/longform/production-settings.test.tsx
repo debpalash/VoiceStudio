@@ -5,7 +5,7 @@ import i18n from '@/i18n';
 import {
   DEFAULT_OVERRIDES,
   overridesToRequest,
-} from '../../../../../../frontend/src/utils/longformOverrides';
+} from '@shared/utils/longformOverrides';
 import { ProductionSettings } from './production-settings';
 it('shows effective legacy joins for untouched and reset drafts', () => {
   render(

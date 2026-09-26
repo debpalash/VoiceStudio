@@ -4,7 +4,7 @@ import {
   loadTranscriptions,
   TRANSCRIPTIONS_KEY,
   TRANSCRIPTION_EVENT,
-} from '../../../../../../frontend/src/utils/transcriptionsStore';
+} from '@shared/utils/transcriptionsStore';
 beforeEach(() => localStorage.clear());
 it('preserves existing history and publishes a complete entry with nullable timings', () => {
   localStorage.setItem(TRANSCRIPTIONS_KEY, JSON.stringify([{ id: 1, text: 'Existing' }]));

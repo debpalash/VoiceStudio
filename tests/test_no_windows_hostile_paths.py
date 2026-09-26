@@ -102,7 +102,7 @@ def test_rejects_every_shape_windows_refuses(rel):
     [
         "backend/core/version.py",
         "docs/adr/0001-something.md",
-        "frontend/src/i18n/locales/zh-CN.json",
+        "electron/src/shared/i18n/locales/zh-CN.json",
         "tests/test_no_windows_hostile_paths.py",
         "scripts/build-omnivoice-tts.sh",
         "bin/omnivoice-tts-linux-aarch64",

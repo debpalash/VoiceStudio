@@ -110,26 +110,22 @@ export function reloadAfterApplicationPersistence(
 export async function installDesktopPersistenceExitHandshake(
   dependencies: DesktopExitHandshakeDependencies = {},
 ): Promise<Unlisten> {
-  const desktop =
-    dependencies.desktop ?? (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window);
+  const desktop = dependencies.desktop ?? (typeof window !== 'undefined' && !!window.voicestudio);
   if (!desktop) return () => {};
 
   const warn = dependencies.warn ?? defaultWarn;
-  let listen = dependencies.listen;
-  if (!listen) {
-    try {
-      listen = (await import('@tauri-apps/api/event')).listen;
-    } catch (error) {
-      warn('[persistence] native exit listener could not load', error);
-      return () => {};
-    }
-  }
-  const confirm =
-    dependencies.confirm ??
-    (async () => {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke(CONFIRM_PERSISTENCE_FLUSH_COMMAND);
+  if (!dependencies.listen && !dependencies.confirm && window.voicestudio) {
+    return window.voicestudio.app.onPersistenceFlush(async () => {
+      try {
+        await flushApplicationPersistence(dependencies);
+      } catch (error) {
+        warn('[persistence] orderly exit flush failed', error);
+      }
     });
+  }
+  let listen = dependencies.listen;
+  if (!listen) return () => {};
+  const confirm = dependencies.confirm ?? (async () => {});
   let completion: Promise<void> | null = null;
 
   try {

@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useBackendStatus } from '@/hooks/use-backend-status';
-import { scrubText } from '../../../../../frontend/src/utils/scrub';
-import { describeExitCode } from '../../../../../frontend/src/utils/nativeExit';
+import { scrubText } from '@shared/utils/scrub';
+import { describeExitCode } from '@shared/utils/nativeExit';
 import { ReportBug } from './report-bug';
 import { getBridge } from './bridge';
 

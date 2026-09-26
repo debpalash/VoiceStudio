@@ -14,11 +14,11 @@ vi.mock('@/hooks/use-backend-status', () => ({
 }));
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { addBreadcrumb, clearBreadcrumbs } from '../../../../../frontend/src/utils/breadcrumbs';
+import { addBreadcrumb, clearBreadcrumbs } from '@shared/utils/breadcrumbs';
 import {
   _resetBackendContactForTests,
   recordBackendContact,
-} from '../../../../../frontend/src/utils/backendContact';
+} from '@shared/utils/backendContact';
 const mock = vi.hoisted(() => ({
   crashed: false,
   native: true,
