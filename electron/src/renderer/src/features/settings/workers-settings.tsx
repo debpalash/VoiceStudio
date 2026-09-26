@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { apiJson, describeError } from '@/lib/api/client';
+import { isImeComposing } from '@/lib/ime';
 import { cn } from '@/lib/utils';
 import { SettingsRow, SettingsSection } from './settings-layout';
 import { InboundWorkersSettings } from './inbound-workers-settings';
@@ -267,6 +268,7 @@ function WorkerRow({
                 onChange={(event) => setDraft(event.target.value)}
                 onBlur={commit}
                 onKeyDown={(event) => {
+                  if (isImeComposing(event)) return;
                   if (event.key === 'Enter') commit();
                   if (event.key === 'Escape') {
                     setDraft(worker.name);

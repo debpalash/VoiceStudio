@@ -80,3 +80,18 @@ it('preserves keyboard selection when a refresh returns the same supported set',
   fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
   expect(onValueChange).toHaveBeenCalledWith('Japanese');
 });
+
+it('ignores the Enter that commits an IME composition in the search box', async () => {
+  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(320);
+  vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(340);
+  const onValueChange = vi.fn();
+  render(<LanguagePicker onValueChange={onValueChange} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Language' }));
+  await screen.findAllByRole('option', { name: 'English' });
+  const search = screen.getByRole('combobox');
+  fireEvent.keyDown(search, { key: 'Enter', isComposing: true });
+  fireEvent.keyDown(search, { key: 'Enter', keyCode: 229 });
+  expect(onValueChange).not.toHaveBeenCalled();
+  fireEvent.keyDown(search, { key: 'Enter' });
+  expect(onValueChange).toHaveBeenCalledTimes(1);
+});
