@@ -74,6 +74,15 @@ jobs:
         with:
           ref: ${{ inputs.backfill_release && inputs.release_ref || github.sha }}
 
+      - name: Validate release backfill ref
+        if: inputs.backfill_release
+        shell: bash
+        env:
+          RELEASE_REF: ${{ inputs.release_ref }}
+        run: |
+          VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
+          test "$RELEASE_REF" = "v${VERSION}"
+
       # Both image builds run right at the runner's disk ceiling (CUDA hit
       # ENOSPC 2026-07-16 morning; ROCm hit it the same afternoon even with
       # the original reclaim list). Reclaim everything these jobs can never
@@ -160,13 +169,11 @@ jobs:
         if: inputs.backfill_release
         shell: bash
         env:
-          RELEASE_REF: ${{ inputs.release_ref }}
           DOCKERHUB_ENABLED: ${{ steps.dockerhub.outputs.enabled }}
         run: |
           VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
           MINOR="${VERSION%.*}"
           SOURCE_TAG="sha-${GITHUB_SHA::7}"
-          test "$RELEASE_REF" = "v${VERSION}"
           for IMAGE in "$IMAGE_NAME" "$LEGACY_IMAGE_NAME"; do
             for TAG in stable "$VERSION" "$MINOR"; do
               docker buildx imagetools create \
@@ -216,6 +223,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.backfill_release && inputs.release_ref || github.sha }}
+
+      - name: Validate release backfill ref
+        if: inputs.backfill_release
+        shell: bash
+        env:
+          RELEASE_REF: ${{ inputs.release_ref }}
+        run: |
+          VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
+          test "$RELEASE_REF" = "v${VERSION}"
 
       # The ROCm base (~25 GB unpacked) plus build layers need every GB.
       # Same reclaim list as the CUDA job above — keep them identical
@@ -295,13 +311,11 @@ jobs:
         if: inputs.backfill_release
         shell: bash
         env:
-          RELEASE_REF: ${{ inputs.release_ref }}
           DOCKERHUB_ENABLED: ${{ steps.dockerhub.outputs.enabled }}
         run: |
           VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
           MINOR="${VERSION%.*}"
           SOURCE_TAG="sha-${GITHUB_SHA::7}-rocm"
-          test "$RELEASE_REF" = "v${VERSION}"
           for IMAGE in "$IMAGE_NAME" "$LEGACY_IMAGE_NAME"; do
             for TAG in stable-rocm "${VERSION}-rocm" "${MINOR}-rocm"; do
               docker buildx imagetools create \
