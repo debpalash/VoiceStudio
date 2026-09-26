@@ -162,10 +162,10 @@ and with no LLM configured (or on any LLM error) it simply does nothing.
 
 **Settings → System → LLM Providers** is the one place to set up the LLM. Pick a
 provider, paste its API key, choose a model, **Test** it, and "use for
-translation." Supported: OpenAI, OpenRouter, OrcaRouter, Groq, Cerebras, Google AI (Gemini),
-Mistral, Cohere, NVIDIA, GitHub Models, Cloudflare, Hugging Face, SambaNova,
-SiliconFlow, **local Ollama / LM Studio** (offline, no key), and a **Custom**
-OpenAI-compatible endpoint.
+translation." Supported: OpenAI, OpenRouter, OrcaRouter, Cheaper Inference, Groq,
+Cerebras, Google AI (Gemini), Mistral, Cohere, NVIDIA, GitHub Models, Cloudflare,
+Hugging Face, SambaNova, SiliconFlow, **local Ollama / LM Studio** (offline, no
+key), and a **Custom** OpenAI-compatible endpoint.
 
 Keys entered here are stored **encrypted** on your machine and never returned to
 the UI. For a fully offline setup, pick **Ollama** (`ollama pull llama3.1`) or
@@ -177,6 +177,13 @@ provider via environment variables (e.g. `GROQ_API_KEY`, or the legacy
 OrcaRouter can be configured without the UI with `ORCAROUTER_API_KEY`, and its
 defaults can be overridden with `ORCAROUTER_BASE_URL` and `ORCAROUTER_MODEL`.
 
+[Cheaper Inference](https://cheaperinference.com) is an OpenAI-compatible
+gateway to models from several labs (default model `gpt-5.4-mini`).
+Each model costs 15–60% less than the list price of its lab.
+It can be configured without the UI with `CHEAPER_INFERENCE_API_KEY`, and its
+defaults can be overridden with `CHEAPER_INFERENCE_BASE_URL` and
+`CHEAPER_INFERENCE_MODEL`.
+
 ### Pinning the active provider with `LLM_DEFAULT_PROVIDER`
 
 By default the LLM used for Cinematic/Autofit is the one you mark "use for
@@ -186,7 +193,7 @@ shared machine — set the `LLM_DEFAULT_PROVIDER` environment variable to a
 provider id before launching the backend:
 
 ```
-LLM_DEFAULT_PROVIDER=groq        # or openai, openrouter, orcarouter, cerebras, ollama, custom, …
+LLM_DEFAULT_PROVIDER=groq        # or openai, openrouter, orcarouter, cheaperinference, cerebras, ollama, custom, …
 ```
 
 Resolution order for the active provider is: `LLM_DEFAULT_PROVIDER` (env) →

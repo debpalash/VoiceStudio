@@ -39,8 +39,9 @@ def lp(monkeypatch, clean_llm_env):
 
 def test_registry_has_all_providers(lp):
     ids = {p.id for p in lp.all_providers()}
-    # 13 cloud + 2 local + custom + openai
-    for expected in ("openai", "openrouter", "orcarouter", "groq", "cerebras", "google-ai",
+    # 14 cloud + 2 local + custom + openai
+    for expected in ("openai", "openrouter", "orcarouter", "cheaperinference",
+                     "groq", "cerebras", "google-ai",
                      "mistral", "cohere", "nvidia", "github-models", "cloudflare",
                      "huggingface", "sambanova", "siliconflow", "ollama",
                      "lmstudio", "custom"):
@@ -61,6 +62,23 @@ def test_orcarouter_provider_contract(lp, monkeypatch):
     assert lp.resolve_api_key(p) == "sk-orca-test"
     assert lp.resolve_base_url(p) == "https://orcarouter.example/v1"
     assert lp.resolve_model(p) == "orcarouter/test-model"
+
+
+def test_cheaperinference_provider_contract(lp, monkeypatch):
+    p = lp.get_provider("cheaperinference")
+    assert p.display_name == "Cheaper Inference"
+    assert p.default_base_url == "https://api.cheaperinference.com/v1"
+    assert p.default_model == "gpt-5.4-mini"
+    assert p.key_envs == ("CHEAPER_INFERENCE_API_KEY",)
+    assert p.base_url_env == "CHEAPER_INFERENCE_BASE_URL"
+    assert p.model_env == "CHEAPER_INFERENCE_MODEL"
+
+    monkeypatch.setenv("CHEAPER_INFERENCE_API_KEY", "sk-ci-test")
+    monkeypatch.setenv("CHEAPER_INFERENCE_BASE_URL", "https://cheaperinference.example/v1")
+    monkeypatch.setenv("CHEAPER_INFERENCE_MODEL", "gpt-5.4")
+    assert lp.resolve_api_key(p) == "sk-ci-test"
+    assert lp.resolve_base_url(p) == "https://cheaperinference.example/v1"
+    assert lp.resolve_model(p) == "gpt-5.4"
 
 
 def test_default_base_url_and_model(lp):
