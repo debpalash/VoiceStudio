@@ -60,7 +60,7 @@ class Spec:
 def _build_registry() -> dict[str, Callable[..., JudgeResult]]:
     """Map YAML judge keys → judge callables. Imported lazily to avoid the
     spec ⇄ judges circular import (judges import JudgeResult from here)."""
-    from .judges import audio, coverage, desktop, dictation, dubbing, engine, http, i18n, speaker, transcription
+    from .judges import audio, coverage, dictation, dubbing, engine, http, i18n, speaker, transcription
     from .judges import web as web_judges
 
     return {
@@ -84,11 +84,6 @@ def _build_registry() -> dict[str, Callable[..., JudgeResult]]:
         "web_visible": web_judges.web_visible,
         "web_text_equals": web_judges.web_text_equals,
         "web_url_matches": web_judges.web_url_matches,
-        # L3 desktop (judges operate on the parsed Tauri config)
-        "config_present": desktop.config_present,
-        "config_eq": desktop.config_eq,
-        "config_contains": desktop.config_contains,
-        "csp_allows": desktop.csp_allows,
         # L4 dubbing
         "segments_duration_ratio": dubbing.segments_duration_ratio,
         "srt_well_formed": dubbing.srt_well_formed,

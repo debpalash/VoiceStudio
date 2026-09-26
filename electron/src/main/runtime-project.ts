@@ -15,12 +15,26 @@ import {
 } from 'node:fs/promises';
 import { join } from 'node:path';
 
-const SOURCES = ['backend', 'omnivoice', 'pyproject.toml', 'uv.lock', 'README.md', 'LICENSE'];
-export const UV_VERSION = '0.12.13'; // Kept in sync with the Tauri tools contract.
+const SOURCES = [
+  'backend',
+  'frontend',
+  'omnivoice',
+  'pyproject.toml',
+  'uv.lock',
+  'README.md',
+  'LICENSE',
+];
+export const UV_VERSION = '0.12.13';
 export const CUDNN8_COMPAT_PIN = 'nvidia-cudnn-cu12==8.9.7.29';
+export const ROCM_TORCH_INDEX = 'https://download.pytorch.org/whl/rocm6.4';
+export const ROCM_TORCH_PINS = [
+  'torch==2.8.0',
+  'torchaudio==2.8.0',
+  'torchvision==0.23.0',
+] as const;
 const RUNTIME_SCHEMA = 'electron-runtime-v2-cudnn8';
 const CUDNN8_PROBE_PREFIX = 'VOICESTUDIO_CUDNN8_PROBE=';
-const REQUIRED_ENV_BYTES = 9 * 1024 ** 3; // Tauri setup.rs: REQUIRED_ENV_BYTES.
+const REQUIRED_ENV_BYTES = 9 * 1024 ** 3;
 export type RuntimePhase = 'checking' | 'downloading_uv' | 'installing_deps' | 'verifying';
 export type RuntimeRegion = 'auto' | 'global' | 'china' | 'russia' | 'restricted';
 export type RuntimeRunner = (
@@ -463,6 +477,24 @@ export async function installRuntime(
   }
   await run(uv, ['sync', '--frozen', '--no-dev', ...pythonArgs, ...repairArgs], project, env);
   signal.throwIfAborted();
+  if (process.env.OMNIVOICE_TORCH_VARIANT?.trim().toLowerCase() === 'rocm') {
+    await run(
+      uv,
+      [
+        'pip',
+        'install',
+        '--reinstall',
+        '--python',
+        runtimePython(project),
+        ...ROCM_TORCH_PINS,
+        '--index-url',
+        process.env.OMNIVOICE_TORCH_INDEX || ROCM_TORCH_INDEX,
+      ],
+      project,
+      env,
+    );
+    signal.throwIfAborted();
+  }
   await ensureCudnn8Compat(uv, project, run, env, signal);
   signal.throwIfAborted();
   phase('verifying');

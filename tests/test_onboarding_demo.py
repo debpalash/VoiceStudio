@@ -8,6 +8,7 @@ import os
 import sqlite3
 import sys
 import wave
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backend"))
 
@@ -77,20 +78,13 @@ def test_demo_clip_is_not_gitignored():
         )
 
 
-def test_backend_is_a_bundled_tauri_resource():
-    """The clip ships only because the whole `backend/` tree is a Tauri bundle
-    resource. If that entry is removed, the asset (and the backend) stops
-    shipping. Pin it."""
-    import json
-    conf = os.path.join(_ROOT, "frontend", "src-tauri", "tauri.conf.json")
-    if not os.path.isfile(conf):
-        import pytest
-        pytest.skip("tauri.conf.json not found")
-    resources = json.load(open(conf)).get("bundle", {}).get("resources", []) or []
-    assert any(str(r).rstrip("/").endswith("backend") for r in resources), (
-        "backend/ is no longer a bundle resource in tauri.conf.json — the demo "
-        "clip and the backend source would stop shipping with the app."
+def test_backend_is_a_bundled_electron_resource():
+    """The backend tree, including the demo clip, must ship with Electron."""
+    config = Path(_ROOT, "electron", "electron-builder.config.mjs").read_text(
+        encoding="utf-8"
     )
+    assert "from: '../backend'" in config
+    assert "to: 'backend'" in config
 
 
 def _table_sql():

@@ -7,7 +7,7 @@ import tailwindcss from '@tailwindcss/vite';
 const electronRoot = resolve(import.meta.dirname, '..');
 const rendererRoot = resolve(electronRoot, 'src/renderer');
 const version = JSON.parse(
-  readFileSync(resolve(electronRoot, '../frontend/package.json'), 'utf8'),
+  readFileSync(resolve(electronRoot, '../package.json'), 'utf8'),
 ).version;
 const backendPort = process.env.OMNIVOICE_PORT || '3900';
 const uiPort = Number(process.env.VOICESTUDIO_SMOKE_PORT) || 3912;
@@ -23,7 +23,7 @@ export default defineConfig({
         server.middlewares.use((request, response, next) => {
           if (request.url?.split('?')[0] !== '/aec-worklet.js') return next();
           response.setHeader('Content-Type', 'application/javascript');
-          response.end(readFileSync(resolve(electronRoot, '../frontend/public/aec-worklet.js')));
+          response.end(readFileSync(resolve(electronRoot, 'public/aec-worklet.js')));
         });
       },
     },

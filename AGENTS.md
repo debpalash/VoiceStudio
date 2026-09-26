@@ -1,13 +1,12 @@
 ## Active desktop: Electron only
 
-Electron (`electron/`) is the only maintained desktop app. Tauri is sunset and
-archived; do not add features, repair its UI, or backport Electron changes to it.
-Triage Tauri-only reports toward the Electron migration guide; investigate shared
-backend defects only when they affect Electron or the supported API. Keep archived
-source, migration data, and existing compatibility contracts intact. Some code under
-`frontend/` is still shared with Electron or serves the web app: trace consumers
-before editing or removing it. New desktop UI, IPC, setup instructions and tests
-belong in Electron; validate Electron on macOS, Windows and Linux.
+Electron (`electron/`) is the only desktop and web UI. The Tauri shell and legacy
+UI entrypoints are removed; do not restore build, runtime, release, or CI paths for
+them. Triage reports from final Tauri installations toward the migration guide and
+preserve their immutable updater feeds. Some modules under `frontend/src/` remain
+temporarily shared by Electron; they are not a runnable app. New UI, IPC, setup
+instructions, tests, and browser assets belong in Electron; validate Electron on
+macOS, Windows and Linux.
 
 # Agent Rules — VoiceStudio
 
@@ -41,8 +40,8 @@ Binding for every AI agent (Claude, Codex, Cursor, review bots, …). CLAUDE.md 
 - Every user-facing string via i18n, present in ALL 21 `frontend/src/i18n/locales/*.json` with real translations.
 - Docs-sync in the same PR. CHANGELOG Unreleased: quiet one-liners ending `(#N)` + `— thanks @user!` for community work, under a short `**Highlights**` list.
 - Tagged release announcements lead with the biggest user-visible change; redesigns need real UI screenshots and migrations need installer links and steps. Verify all contributor credits from the tag comparison and included PRs; list authors and bug reporters separately (see `docs/RELEASING.md`).
-- Versioning: `frontend/package.json` is the single source of truth; never bump without the owner asking.
-- `frontend/package.json` dep changes require regenerating root `bun.lock` (Docker runs `--frozen-lockfile`).
+- Versioning: root `package.json` is the single source of truth; never bump without the owner asking.
+- JavaScript dependency changes require regenerating root `bun.lock` (Docker runs `--frozen-lockfile`).
 - Issues: absorb or decline — never defer to a future version. Check the open-PR queue before implementing community-reported fixes.
 
 ## Shared select controls

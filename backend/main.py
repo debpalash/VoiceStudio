@@ -1841,7 +1841,7 @@ _mimetypes.add_type("audio/wav",  ".wav")
 _mimetypes.add_type("audio/flac", ".flac")
 
 # ── Health check ────────────────────────────────────────────────────────
-# Used by Docker health checks, load balancers, and the Tauri desktop shell.
+# Used by Docker health checks, load balancers, and the Electron desktop shell.
 # Answers from the moment the socket binds: 503 with the current startup step
 # while the deferred phases run (curl -f / the shell's probes treat that as
 # not-ready, exactly like the connection-refused it replaces), the full body
@@ -1982,11 +1982,11 @@ if __name__ == "__main__":
     # Distinct exit code for "the port was already taken" (#1223), so the
     # desktop shell can tell that apart from a crash without parsing an
     # OS-translated error string. Kept out of the 0-2 range the interpreter
-    # itself uses, and mirrored in frontend/src-tauri/src/backend.rs.
+    # itself uses, and mirrored in electron/src/main/backend.ts.
     _EXIT_PORT_IN_USE = 78  # EX_CONFIG, sysexits.h
 
     # Port 3900 picked to dodge common 8000 conflicts (Django/Rails/Jupyter).
-    # Rust sidecar launcher in lib.rs::BACKEND_PORT must stay in sync.
+    # Electron's backend supervisor must stay in sync.
     #
     # SECURITY: default to loopback (127.0.0.1) so the API isn't reachable
     # from the LAN out of the box. VoiceStudio ships no authentication; binding

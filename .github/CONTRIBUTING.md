@@ -81,15 +81,13 @@ cause doesn't scroll away with the terminal. The same death is also reported
 as a crash notice in the UI the next time the backend starts (see
 [docs/install/troubleshooting.md §14c](docs/install/troubleshooting.md)).
 
-### Archived desktop (Tauri)
+### Retired desktop (Tauri)
 
 Tauri is sunset after v0.5.3 and receives no further development or backports.
 Use Electron for desktop contributions and reproduce desktop bugs there.
 Existing users should follow the [migration guide](../docs/electron-migration.md).
-Archived sources remain for history and migration; shared backend/web code and
-native helpers still used by Electron remain maintained.
-The root package exposes no Tauri launch or build command, and active CI does
-not compile the archived shell.
+The Tauri shell and its legacy UI entry points have been removed. Shared
+modules and native helpers used by Electron remain maintained.
 
 ---
 
@@ -104,13 +102,12 @@ VoiceStudio/
 │       └── tts_backend.py   # ← Multi-engine TTS registry
 ├── electron/                # Active Electron desktop: main, preload, renderer
 ├── native/                  # Desktop helpers used by Electron
-├── frontend/                # Web UI, shared modules, and archived desktop
+├── frontend/                # Transitional modules shared by Electron
 │   ├── src/
 │   │   ├── components/      # UI components
 │   │   ├── hooks/           # Custom React hooks
 │   │   ├── stores/          # Zustand state slices
 │   │   └── utils/           # Shared utilities
-│   └── src-tauri/           # Archived Rust/Tauri desktop shell
 ├── deploy/                  # Docker, CI configs
 ├── docs/                    # Screenshots, MCP config
 └── scripts/                 # Build & release scripts

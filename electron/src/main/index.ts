@@ -118,7 +118,7 @@ function beginOrderlyQuit(flushPersistence = true): Promise<void> {
 function brandIconPath(file: string): string {
   return app.isPackaged
     ? join(process.resourcesPath, 'brand', file)
-    : join(backendRoot(), 'frontend', 'src-tauri', 'icons', file);
+    : join(backendRoot(), 'electron', 'build', 'icons', file);
 }
 
 function createWindow(): BrowserWindow {

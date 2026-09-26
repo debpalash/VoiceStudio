@@ -56,7 +56,7 @@ jobs:
           if [ -n "$RELEASE_TAG_OVERRIDE" ]; then
             test "$WORKFLOW_REF" = refs/heads/main || { echo "Tag overrides require the workflow from main"; exit 1; }
           fi
-          VERSION=$(node -p "require('./frontend/package.json').version")
+          VERSION=$(node -p "require('./package.json').version")
           test "$REF" = "refs/tags/v$VERSION" || { echo "Select the exact version tag"; exit 1; }
           test "$(git rev-parse HEAD)" = "$(git rev-parse "$REF^{commit}")" || { echo "Checkout does not match the release tag"; exit 1; }
   package:

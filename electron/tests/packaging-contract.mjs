@@ -85,12 +85,12 @@ if (artifactRequested && bundledUvSource) {
 }
 assert.equal(
   config.extraMetadata.version,
-  JSON.parse(readFileSync(resolve(root, '../frontend/package.json'))).version,
+  JSON.parse(readFileSync(resolve(root, '../package.json'))).version,
 );
 const platformIcons = {
-  win: '../frontend/src-tauri/icons/icon.ico',
-  mac: '../frontend/src-tauri/icons/icon.icns',
-  linux: '../frontend/src-tauri/icons/icon.png',
+  win: 'build/icons/icon.ico',
+  mac: 'build/icons/icon.icns',
+  linux: 'build/icons/icon.png',
 };
 for (const [platform, icon] of Object.entries(platformIcons)) {
   assert.equal(config[platform].icon, icon, `${platform} uses the shared VoiceStudio icon`);

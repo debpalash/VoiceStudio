@@ -147,30 +147,6 @@ def test_duration_probe_rejects_absolute_traversal_and_symlink_escapes(tmp_path,
     assert spawned == []
 
 
-def test_native_reveal_reaps_the_opener_child():
-    source = Path("frontend/src-tauri/src/commands.rs").read_text(encoding="utf-8")
-    reveal = source.split("pub fn reveal_host_path", 1)[1].split(
-        "// ── WebView cache repair", 1
-    )[0]
-    assert "let mut child = crate::tools::no_window(&mut command)" in reveal
-    assert "std::thread::spawn(move ||" in reveal
-    assert "child.wait()" in reveal
-
-
-def test_native_reveal_requires_app_root_or_native_selection():
-    source = Path("frontend/src-tauri/src/commands.rs").read_text(encoding="utf-8")
-    reveal = source.split("pub fn reveal_host_path", 1)[1].split(
-        "// ── WebView cache repair", 1
-    )[0]
-    assert "reveal_path_is_authorized(&app, &target)" in reveal
-    assert "That path was not selected by VoiceStudio" in reveal
-    authorization = source.split("pub async fn authorize_host_path", 1)[1].split(
-        "#[cfg(test)]", 1
-    )[0]
-    assert 'if payload.kind == "dub_export"' in authorization
-    assert "remember_reveal_path(&app, &validated)" in authorization
-
-
 def test_marketplace_filename_cannot_escape_store(tmp_path, monkeypatch):
     from api.routers import marketplace
 

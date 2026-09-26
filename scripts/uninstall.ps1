@@ -10,7 +10,7 @@
 
   It NEVER deletes the app binary itself (uninstall that via Settings > Apps),
   and never touches anything outside the paths it lists. Mirrors
-  backend/core/config.py + frontend/src-tauri/src/setup.rs.
+  backend/core/config.py and the Electron setup flow.
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\uninstall.ps1

@@ -6,6 +6,7 @@
     "lib": ["ES2023"],
     "module": "esnext",
     "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
     "types": ["node", "electron-vite/node"],
     "skipLibCheck": true,
     "strict": true,

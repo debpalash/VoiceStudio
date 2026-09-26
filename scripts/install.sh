@@ -191,7 +191,7 @@ if [ "$MODE" = main ]; then
         if [ "$OS" = linux ]; then node scripts/embed-appimage-update.mjs; fi
         node tests/update-package-contract.mjs
     )
-    VERSION=$(node -p 'require(process.argv[1]).version' "$WORK/source/frontend/package.json")
+    VERSION=$(node -p 'require(process.argv[1]).version' "$WORK/source/package.json")
     valid_version "$VERSION" || die 'Invalid version in source checkout.'
     PACKAGE_DIR="$WORK/source/electron/release"
 else

@@ -8,9 +8,8 @@ cause: the Windows wording is OS-translated (the report was in Russian), so no
 English phrase in the log could be matched.
 
 The fix is to make the signal locale-independent — a dedicated exit code that
-`frontend/src-tauri/src/backend.rs` and `frontend/src/utils/backendCrash.ts`
-both key off. This test pins the code and its cross-language agreement; the
-matcher side is pinned in frontend/src/test/portInUseHint.test.js.
+Electron's backend supervisor and the shared renderer crash hint both key off.
+This test pins the code and its cross-language agreement.
 """
 from __future__ import annotations
 
@@ -36,12 +35,11 @@ def test_backend_declares_the_exit_code():
     assert f"_EXIT_PORT_IN_USE = {_EXPECTED_EXIT}" in src
 
 
-def test_rust_shell_agrees_on_the_exit_code():
-    """The Rust side reads this code to distinguish a conflict from a crash —
-    a silent divergence would restore the unexplained "exit code 1"."""
-    src = _read("frontend", "src-tauri", "src", "backend.rs")
-    match = re.search(r"pub const EXIT_PORT_IN_USE: i32 = (\d+);", src)
-    assert match, "EXIT_PORT_IN_USE missing from backend.rs"
+def test_electron_shell_agrees_on_the_exit_code():
+    """The desktop supervisor must distinguish a conflict from a crash."""
+    src = _read("electron", "src", "main", "backend.ts")
+    match = re.search(r"const EXIT_PORT_IN_USE = (\d+);", src)
+    assert match, "EXIT_PORT_IN_USE missing from Electron backend supervisor"
     assert int(match.group(1)) == _EXPECTED_EXIT
 
 

@@ -1,3 +1,3 @@
-// Canonical assets shared with the Tauri frontend; Vite bundles them locally.
-export { default as brandIcon } from '../../../../../frontend/public/favicon.svg';
-export { default as brandArtwork } from '../../../../../frontend/src/assets/signal-field.webp';
+// Canonical Electron assets; Vite bundles them locally for desktop and web.
+export { default as brandIcon } from '../../../../public/favicon.svg';
+export { default as brandArtwork } from '../../../../public/signal-field.webp';

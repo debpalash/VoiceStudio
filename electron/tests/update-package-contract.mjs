@@ -64,7 +64,7 @@ assert(existsSync(metadataPath), `Update metadata exists: ${basename(metadataPat
 
 const metadata = readFileSync(metadataPath, 'utf8');
 const expectedVersion = JSON.parse(
-  readFileSync(resolve(electronRoot, '../frontend/package.json'), 'utf8'),
+  readFileSync(resolve(electronRoot, '../package.json'), 'utf8'),
 ).version;
 const version = capture(metadata, /^version:\s*(.+)$/m, 'version');
 const fileUrl = capture(metadata, /^\s+- url:\s*(.+)$/m, 'files[0].url');
@@ -74,7 +74,7 @@ const legacyPath = capture(metadata, /^path:\s*(.+)$/m, 'path');
 const legacySha = capture(metadata, /^sha512:\s*(.+)$/m, 'sha512');
 const releaseDate = capture(metadata, /^releaseDate:\s*(.+)$/m, 'releaseDate');
 
-assert.equal(version, expectedVersion, 'Update version follows frontend/package.json');
+assert.equal(version, expectedVersion, 'Update version follows the root package.json');
 assert.equal(fileUrl, basename(fileUrl), 'Update artifact URL stays release-relative');
 assert.equal(legacyPath, fileUrl, 'Legacy path agrees with files[0].url');
 assert.equal(legacySha, fileSha, 'Legacy SHA-512 agrees with files[0].sha512');

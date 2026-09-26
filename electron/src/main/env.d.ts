@@ -1,4 +1,4 @@
-/** Injected by electron.vite.config.ts (main + preload) from frontend/package.json. */
+/** Injected by electron.vite.config.ts (main + preload) from the root package.json. */
 declare const __APP_VERSION__: string;
 declare const __PRO_STORE_ID__: string;
 declare const __PRO_PRODUCT_ID__: string;

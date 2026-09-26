@@ -17,7 +17,7 @@ def test_app_version_matches_installed_package_metadata():
 
 
 def test_all_version_files_in_lockstep():
-    """``frontend/package.json`` is the SINGLE SOURCE OF TRUTH for the app
+    """The root ``package.json`` is the SINGLE SOURCE OF TRUTH for the app
     version: Electron's builder reads it and Vite injects ``__APP_VERSION__``.
 
     The maintained toolchain-required CI-guarded mirrors are pyproject.toml and
@@ -44,9 +44,7 @@ def test_all_version_files_in_lockstep():
 
     import json
 
-    canonical = json.loads(
-        (root / "frontend/package.json").read_text(encoding="utf-8")
-    )["version"]
+    canonical = json.loads((root / "package.json").read_text(encoding="utf-8"))["version"]
     mirrors = {
         "pyproject.toml": _toml_version(root / "pyproject.toml"),
         "core/version.py": _named_literal(root / "backend/core/version.py", "_FALLBACK_VERSION"),

@@ -91,10 +91,10 @@ esac
 printf 'git %s\\n' "$*" >> "$TEST_ROOT/commands"
 if [ "$1" = clone ]; then
  for arg in "$@"; do dest=$arg; done
- mkdir -p "$dest/frontend" "$dest/electron/release"
+ mkdir -p "$dest/electron/release"
  mkdir -p "$dest/electron/tests" "$dest/electron/scripts"
  touch "$dest/electron/tests/packaging-contract.mjs" "$dest/electron/tests/update-package-contract.mjs" "$dest/electron/scripts/embed-appimage-update.mjs"
- printf '{"version":"1.2.4"}' > "$dest/frontend/package.json"
+ printf '{"version":"1.2.4"}' > "$dest/package.json"
 else echo fixture-commit; fi
 `,
   );

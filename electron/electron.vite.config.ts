@@ -4,11 +4,11 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
-// The app version is single-sourced from frontend/package.json (CLAUDE.md,
+// The app version is single-sourced from the root package.json (CLAUDE.md,
 // Versioning). Nothing in electron/ mirrors it: the renderer reads it through
 // __APP_VERSION__ and the installer through electron-builder.config.mjs.
 const frontendPkg = JSON.parse(
-  readFileSync(resolve(__dirname, '../frontend/package.json'), 'utf-8'),
+  readFileSync(resolve(__dirname, '../package.json'), 'utf-8'),
 ) as { version: string };
 
 const define = {
@@ -49,7 +49,7 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
-    publicDir: resolve(__dirname, '../frontend/public'),
+    publicDir: resolve(__dirname, 'public'),
     plugins: [
       react(),
       tailwindcss(),
@@ -59,14 +59,14 @@ export default defineConfig({
           server.middlewares.use((req, res, next) => {
             if (req.url?.split('?')[0] !== '/early-error-capture.js') return next();
             res.setHeader('Content-Type', 'application/javascript');
-            res.end(readFileSync(resolve(__dirname, 'src/renderer/public/early-error-capture.js')));
+            res.end(readFileSync(resolve(__dirname, 'public/early-error-capture.js')));
           });
         },
         generateBundle() {
           this.emitFile({
             type: 'asset',
             fileName: 'early-error-capture.js',
-            source: readFileSync(resolve(__dirname, 'src/renderer/public/early-error-capture.js')),
+            source: readFileSync(resolve(__dirname, 'public/early-error-capture.js')),
           });
         },
       },

@@ -1,0 +1,39 @@
+import json
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_tauri_shell_and_legacy_ui_entrypoints_are_removed():
+    assert not (ROOT / "frontend/src-tauri").exists()
+    assert not (ROOT / ".github/workflows/release.yml").exists()
+    for path in (
+        "frontend/index.html",
+        "frontend/src/main.jsx",
+        "frontend/src/main-app.jsx",
+        "frontend/src/App.jsx",
+        "scripts/desktop-dev.mjs",
+        "scripts/desktop-dev-launch.mjs",
+        "scripts/desktop-prod.sh",
+        "scripts/desktop-prod.mjs",
+        "scripts/desktop-fresh.mjs",
+    ):
+        assert not (ROOT / path).exists(), f"retired Tauri entrypoint remains: {path}"
+
+
+def test_supported_ui_commands_target_electron_only():
+    root_package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+    assert root_package["workspaces"] == ["electron"]
+    for command in ("dev", "desktop", "build", "build:web", "start", "test", "typecheck"):
+        assert "electron" in root_package["scripts"][command]
+
+    assert not (ROOT / "frontend/package.json").exists()
+    manifests = [ROOT / "package.json", ROOT / "electron/package.json"]
+    assert all("@tauri-apps/" not in path.read_text(encoding="utf-8") for path in manifests)
+
+
+def test_docker_builds_the_electron_renderer():
+    dockerfile = (ROOT / "deploy/Dockerfile").read_text(encoding="utf-8")
+    assert "--cwd electron build:web" in dockerfile
+    assert "frontend/index.html" not in dockerfile

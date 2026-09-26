@@ -75,7 +75,7 @@ try {
                 Run-Checked node @('tests/update-package-contract.mjs')
             } finally { Pop-Location }
         } finally { Pop-Location }
-        $Version = (Get-Content (Join-Path $checkout 'frontend/package.json') -Raw | ConvertFrom-Json).version
+        $Version = (Get-Content (Join-Path $checkout 'package.json') -Raw | ConvertFrom-Json).version
         Assert-Version $Version
         $packageDir = Join-Path $checkout 'electron/release'
     } else {

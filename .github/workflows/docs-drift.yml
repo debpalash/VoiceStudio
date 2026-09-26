@@ -5,7 +5,7 @@
 # job updates (or creates) ONE issue labeled `docs-drift` in place — no issue
 # spam — and closes it automatically when the check is clean again.
 #
-# Companion to the PR-gating validate-install-docs.py step in ci.yml.
+# Scheduled documentation-link and structure audit.
 # Spec: docs/competitive-analysis.md Spec 9a / parity program Wave 0.1.
 # Rolling-issue pattern adapted from Patter (MIT).
 

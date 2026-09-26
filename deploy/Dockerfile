@@ -15,13 +15,12 @@ WORKDIR /app
 # Monorepo — bun workspace with lockfile at repo root. Copy manifests first
 # so `bun install` caches independently of source edits.
 COPY package.json bun.lock ./
-COPY frontend/package.json ./frontend/
 COPY electron/package.json ./electron/
 
 RUN bun install --frozen-lockfile
 
-# Build the maintained Electron renderer as the browser UI. Its web transport
-# targets FastAPI's same-origin root; native-only controls stay capability-gated.
+# Build the maintained Electron renderer as the browser UI. `frontend/src`
+# contains transitional shared modules only; it has no app entry point.
 COPY frontend/ ./frontend/
 COPY electron/ ./electron/
 RUN bun run --cwd electron build:web

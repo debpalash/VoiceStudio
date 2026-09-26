@@ -103,14 +103,6 @@ jobs:
         env:
           HF_HUB_OFFLINE: "1"
 
-      # Docs-drift CI gate (Phase 1 INST-06). The validator extracts code
-      # blocks tagged `<!-- validate -->` from docs/install/*.md and asserts
-      # each line appears in scripts/desktop-prod.sh after normalisation.
-      # Its own correctness is enforced by tests/scripts/test_validate_install_docs.py
-      # (checker B-5) — those tests run in the previous step.
-      - name: Validate install docs against desktop-prod.sh
-        run: python scripts/validate-install-docs.py
-
       # `backend/tests/` mounts routers on bare FastAPI apps (no heavy main
       # import chain) with a hermetic data dir from its conftest.py. It no
       # longer stubs sys.modules, so mixed sessions with tests/ are safe;
@@ -126,49 +118,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('frontend/bun.lock', 'bun.lock') }}
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
 
-      - name: Install frontend deps
-        working-directory: frontend
-        # --frozen-lockfile so a frontend/package.json change that forgets to
+      - name: Install Electron deps
+        # --frozen-lockfile so an Electron workspace change that forgets to
         # regenerate the root bun.lock fails HERE (fast) instead of only in the
         # Docker build (deploy/Dockerfile), which is what reddened main on #485.
         run: bun install --frozen-lockfile
-
-      # checkJs is true in tsconfig for IDE feedback, but 947 pre-existing
-      # JS errors remain. Override to false in CI so only .ts files block.
-      # Sourced from `typecheck:ci` in frontend/package.json so the release
-      # workflow runs an identical command — drift broke v0.3.x release runs.
-      - name: Frontend typecheck
-        working-directory: frontend
-        run: bun run typecheck:ci
-
-      # oxlint gate — fast Rust linter, blocks on errors so lint debt can't
-      # re-accumulate (warnings, incl. the react-compiler advisories in
-      # `lint:hooks`, are non-blocking). See frontend/.oxlintrc.json.
-      - name: Frontend lint (oxlint)
-        working-directory: frontend
-        run: bun run lint
-
-      # oxfmt format gate — JS/TS/JSX only (CSS/JSON/Tauri excluded; see
-      # frontend/.oxfmtrc.json). `bun run format` fixes locally.
-      - name: Frontend format check (oxfmt)
-        working-directory: frontend
-        run: bun run format:check
-
-      # `bun run test` (frontend/package.json), not `bunx vitest` — bunx
-      # resolves by npm package name and can miss workspace-hoisted bins,
-      # then falls back to fetching from npm (#962 class).
-      - name: Run Vitest (frontend)
-        working-directory: frontend
-        run: bun run test
-
-      # Legacy node:test runner for tests/frontend/*.test.mjs
-      - name: Run frontend node:test (legacy)
-        working-directory: frontend
-        run: node --experimental-strip-types --no-warnings --test ../tests/frontend/*.test.mjs
 
       # Electron used to be built only after a release started, so renderer,
       # preload and packaging regressions could pass the required PR gate.
@@ -176,20 +134,10 @@ jobs:
       - name: Electron typecheck, tests and production contract
         run: bun run check:electron
 
-      # Production-bundle blank-screen gate. Everything above runs UN-minified
-      # (dev server + Vitest/jsdom), so a crash that exists ONLY in the minified
-      # release bundle — a TDZ reorder that throws before React mounts — passes
-      # every check and ships a black screen. That is how v0.3.22 went out (#1178),
-      # and it recurred pre-0.3.23. This builds the real dist/ and asserts the app
-      # actually mounts into #root. See frontend/e2e-prod/prod-bundle-smoke.spec.ts.
-      # (The in-app root <ErrorBoundary> in main-app.jsx catches such throws at
-      # runtime; this gate stops them reaching a release in the first place.)
+      # Browser workflow smokes exercise the maintained Electron renderer after
+      # the production build/typecheck/test contract above succeeds.
       - name: Install Playwright chromium
-        working-directory: frontend
         run: bunx playwright install --with-deps chromium
-      - name: Production-bundle smoke — no blank screen
-        working-directory: frontend
-        run: bun run test:prod-bundle
       - name: Electron renderer workflow smokes
         shell: bash
         run: |

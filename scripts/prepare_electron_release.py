@@ -23,7 +23,7 @@ def validate_sunset(manifest, tag):
             raise ValueError("Missing Tauri signature")
 
 def prepare(assets, tag, sunset_tag=None):
-    version = json.loads(Path("frontend/package.json").read_text())["version"]
+    version = json.loads(Path("package.json").read_text())["version"]
     if tag != f"v{version}":
         raise ValueError("Tag must match package version")
     files = [p for p in assets.iterdir() if p.is_file()]

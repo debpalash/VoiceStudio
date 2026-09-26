@@ -6,7 +6,7 @@
 #   • CodeQL     — Python + JS/TS SAST. Results land in the Security tab.
 #   • bandit     — Python SAST (SARIF → Security tab). Reporting, non-gating.
 #   • pip-audit  — Python dependency advisories. Reporting, non-gating.
-#   • bun audit  — frontend dependency advisories. Reporting, non-gating.
+#   • bun audit  — Electron dependency advisories. Reporting, non-gating.
 #
 # Only the secret scan gates the PR. Dependency advisories and bandit findings
 # are surfaced as signal (Security tab / job log) rather than blocking every PR
@@ -183,11 +183,11 @@ jobs:
         with:
           bun-version: "1.2"
 
-      # `bun audit` reports advisories against the frontend lockfile. Non-gating
+      # `bun audit` reports advisories against the Electron lockfile. Non-gating
       # for the same reason; also tolerant of older bun without the subcommand.
-      - name: bun audit (frontend)
+      - name: bun audit (Electron)
         continue-on-error: true
-        working-directory: frontend
+        working-directory: electron
         run: |
           bun install --frozen-lockfile
           bun audit
