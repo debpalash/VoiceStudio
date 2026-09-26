@@ -757,6 +757,26 @@ def test_engine_health_unknown_id(fresh_app):
     assert "unknown engine id" in r.json()["detail"]
 
 
+def test_engine_health_resolves_managed_tts_sidecar(monkeypatch):
+    """Test engine must probe the same effective class generation uses."""
+    from api.routers import engines
+
+    class InProcessAdapter:
+        pass
+
+    class ManagedSidecar:
+        pass
+
+    monkeypatch.setitem(engines.tts_backend._REGISTRY, "managed-test", InProcessAdapter)
+    monkeypatch.setattr(
+        engines.tts_backend,
+        "get_backend_class",
+        lambda engine_id: ManagedSidecar if engine_id == "managed-test" else None,
+    )
+
+    assert engines._resolve_engine_class("managed-test") is ManagedSidecar
+
+
 def test_engine_health_is_admin_gated(fresh_app):
     """Non-loopback desktop traffic is rejected by require_admin."""
     client = _client(fresh_app, host="10.0.0.5")

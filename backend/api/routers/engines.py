@@ -576,11 +576,12 @@ def _resolve_engine_class(engine_id: str):
     tts → asr → llm so the most-common case (TTS engine matrix) wins
     early. No collision risk today — all current ids are family-unique.
     """
-    for registry in (
-        tts_backend._REGISTRY,
-        asr_backend._REGISTRY,
-        llm_backend._REGISTRY,
-    ):
+    if engine_id in tts_backend._REGISTRY:
+        # Managed installs keep the public id but run from a private venv.
+        # Probe the same effective class that generation and the catalogue use,
+        # not the unavailable in-process adapter stored in the raw registry.
+        return tts_backend.get_backend_class(engine_id)
+    for registry in (asr_backend._REGISTRY, llm_backend._REGISTRY):
         if engine_id in registry:
             return registry[engine_id]
     return None
