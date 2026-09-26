@@ -6,14 +6,18 @@ import type { ApiErrorPayload } from './types';
 import { tr } from '@/lib/i18n-text';
 import { getBackendStatusSnapshot } from '@/hooks/use-backend-status';
 import { recordBackendContact } from '../../../../../../frontend/src/utils/backendContact';
+import {
+  clearAdminSession,
+  CSRF_HEADER_NAME,
+  getAdminSession,
+  isSameOriginApi,
+} from '../../../../../../frontend/src/api/authSession';
+import { joinApiPath } from '../../../../shared/web-api-routing';
+export { joinApiPath } from '../../../../shared/web-api-routing';
 
 type ApiBaseWindow = Window & { __OMNIVOICE_API_BASE__?: string };
 
-export function resolveApiBase(
-  webDeployment: boolean,
-  dev: boolean,
-  win?: ApiBaseWindow,
-): string {
+export function resolveApiBase(webDeployment: boolean, dev: boolean, win?: ApiBaseWindow): string {
   if (!webDeployment || dev) return '/api';
   const runtime = win?.__OMNIVOICE_API_BASE__?.trim();
   return runtime ? runtime.replace(/\/+$/, '') : '';
@@ -24,6 +28,11 @@ export const API_BASE = resolveApiBase(
   import.meta.env.DEV,
   typeof window === 'undefined' ? undefined : (window as ApiBaseWindow),
 );
+
+export function absoluteApiBase(): string {
+  if (typeof window === 'undefined') return API_BASE;
+  return new URL(API_BASE || '/', window.location.href).toString().replace(/\/+$/, '');
+}
 
 export class ApiError extends Error {
   readonly status: number;
@@ -42,7 +51,10 @@ export class ApiError extends Error {
 }
 
 export function apiPath(path: string): string {
-  return `${API_BASE}${path.startsWith('/') ? '' : '/'}${path}`;
+  // Do not collapse repeated-looking segments: a reverse proxy base such as
+  // `/studio` or `/api` is a transport prefix, while `/api/settings` is the
+  // backend's logical route after that prefix is stripped.
+  return joinApiPath(API_BASE, path);
 }
 
 export function isAbortError(err: unknown): boolean {
@@ -112,10 +124,13 @@ export async function errorFromResponse(res: Response): Promise<ApiError> {
   }
   const detail =
     generationFailureMessage(payload, tr) ||
-    (payload && 'detail' in payload ? detailToString(payload.detail)
-      : payload && typeof payload.error === 'string' ? payload.error.trim()
-      : payload && typeof payload.message === 'string' ? payload.message.trim()
-      : text.trim());
+    (payload && 'detail' in payload
+      ? detailToString(payload.detail)
+      : payload && typeof payload.error === 'string'
+        ? payload.error.trim()
+        : payload && typeof payload.message === 'string'
+          ? payload.message.trim()
+          : text.trim());
   const statusLine = `HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ''}`;
   return new ApiError(res.status, detail || statusLine, payload);
 }
@@ -133,7 +148,23 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   )
     throw new ApiError(0, tr('tts_errors.backend_unreachable'));
   let res: Response;
+  let sentSession: ReturnType<typeof getAdminSession> = null;
   try {
+    if (__WEB_DEPLOYMENT__) {
+      const apiBase = absoluteApiBase();
+      const headers = new Headers(init?.headers);
+      let pin: string | null = null;
+      try {
+        pin = sessionStorage.getItem('ov_pin');
+      } catch {
+        // Cookie and bearer-session authentication still work when storage is blocked.
+      }
+      sentSession = getAdminSession(apiBase);
+      if (pin) headers.set('X-OmniVoice-Pin', pin);
+      if (sentSession) headers.set('Authorization', `Bearer ${sentSession.token}`);
+      if (isSameOriginApi(apiBase)) headers.set(CSRF_HEADER_NAME, '1');
+      init = { ...init, headers, credentials: 'include' };
+    }
     res = await fetch(apiPath(path), init);
   } catch (err) {
     if (isAbortError(err)) throw err;
@@ -141,7 +172,21 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   }
   // Any HTTP response, including an error status, proves the backend answered.
   recordBackendContact();
-  if (!res.ok) throw await errorFromResponse(res);
+  if (!res.ok) {
+    const error = await errorFromResponse(res);
+    const detail = error.detail.toLowerCase();
+    const adminGate = error.status === 403 && detail.includes('admin api key');
+    if (__WEB_DEPLOYMENT__ && (error.status === 401 || adminGate)) {
+      const mode = detail.includes('api key') ? 'apikey' : 'pin';
+      const currentSession = getAdminSession(absoluteApiBase());
+      const staleResponse = mode === 'apikey' && currentSession?.token !== sentSession?.token;
+      if (!staleResponse) {
+        if (mode === 'apikey' && sentSession) clearAdminSession();
+        window.dispatchEvent(new CustomEvent('ov:auth-required', { detail: { mode } }));
+      }
+    }
+    throw error;
+  }
   return res;
 }
 

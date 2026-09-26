@@ -1534,7 +1534,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-_SHELL_PATHS = {"/", "/index.html", "/favicon.ico", "/health"}
+_SHELL_PATHS = {"/", "/index.html", "/favicon.ico", "/early-error-capture.js", "/health"}
 
 # Paths that answer while deferred startup is still running. The shutdown
 # signal must exist before the ordinary system router so a bounded Windows

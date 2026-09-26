@@ -177,6 +177,7 @@ def test_non_ascii_invalid_key_fails_closed_instead_of_raising(key_env):
 def test_shell_paths_served_without_key(key_env):
     c = _client()
     assert c.get("/health").status_code == 200
+    assert c.get("/early-error-capture.js").status_code != 401
 
 
 def test_middleware_is_plain_asgi():

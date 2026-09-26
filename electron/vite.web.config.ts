@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
+import { rewriteDevApiProxyPath } from './src/shared/web-api-routing';
 
 const root = resolve(import.meta.dirname, 'src/renderer');
 const frontend = resolve(import.meta.dirname, '../frontend');
@@ -52,7 +53,9 @@ export default defineConfig({
       '/api': {
         target: `http://127.0.0.1:${backendPort}`,
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
+        // Four backend router families genuinely own `/api`; every other
+        // renderer request uses `/api` only as the Vite/Electron proxy prefix.
+        rewrite: rewriteDevApiProxyPath,
       },
     },
   },

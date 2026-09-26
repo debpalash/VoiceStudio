@@ -18,6 +18,7 @@ import { recordRouteBreadcrumb } from '@/lib/report-breadcrumb';
 import { ModelInstallSync } from '@/hooks/use-model-install-sync';
 import { RealtimeEventSync } from '@/hooks/use-realtime-events';
 import { runRendererTask } from '@/lib/global-error-recovery';
+import { WebAuthGate } from '@/components/web-auth-gate';
 
 const notifiedUpdates = new Set<string>();
 
@@ -111,19 +112,21 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ErrorBoundary>
-        <NativeDictationSync />
-        <ModelInstallSync />
-        <RealtimeEventSync />
-        <UpdateNotifier />
-        <AnalyticsRuntime />
-        <AnalyticsConsentBanner />
-        <GenerationProvider>
-          <FirstSoundHandoff />
-          <TooltipProvider>
-            <RouterProvider router={router} />
-            <Toaster richColors position="bottom-right" />
-          </TooltipProvider>
-        </GenerationProvider>
+        <WebAuthGate>
+          <NativeDictationSync />
+          <ModelInstallSync />
+          <RealtimeEventSync />
+          <UpdateNotifier />
+          <AnalyticsRuntime />
+          <AnalyticsConsentBanner />
+          <GenerationProvider>
+            <FirstSoundHandoff />
+            <TooltipProvider>
+              <RouterProvider router={router} />
+              <Toaster richColors position="bottom-right" />
+            </TooltipProvider>
+          </GenerationProvider>
+        </WebAuthGate>
       </ErrorBoundary>
     </QueryClientProvider>
   );
