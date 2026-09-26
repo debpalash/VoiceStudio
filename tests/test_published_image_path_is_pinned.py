@@ -30,7 +30,9 @@ def test_both_ghcr_paths_are_published_by_both_builds():
 
 def test_current_release_tags_are_backfilled_for_both_gpu_flavors():
     text = open(WORKFLOW, encoding="utf-8").read()
-    assert text.count('test "$RELEASE_REF" = "v${VERSION}"') == 2
+    assert text.count('[[ "$RELEASE_REF" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+$ ]]') == 2
+    assert text.count('${RELEASE_REF}^{commit}') == 2
+    assert text.count('VERSION="${RELEASE_REF#v}"') == 2
     assert text.count('if [[ "$PROMOTE_STABLE" == "true" ]]') == 2
     assert text.count("docker buildx imagetools create") == 4
 

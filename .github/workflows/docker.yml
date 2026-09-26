@@ -84,8 +84,8 @@ jobs:
         env:
           RELEASE_REF: ${{ inputs.release_ref }}
         run: |
-          VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
-          test "$RELEASE_REF" = "v${VERSION}"
+          [[ "$RELEASE_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "${RELEASE_REF}^{commit}")"
 
       - name: Resolve image source commit
         id: source
@@ -180,9 +180,10 @@ jobs:
         env:
           DOCKERHUB_ENABLED: ${{ steps.dockerhub.outputs.enabled }}
           PROMOTE_STABLE: ${{ inputs.promote_stable }}
+          RELEASE_REF: ${{ inputs.release_ref }}
           SOURCE_TAG: sha-${{ steps.source.outputs.short_sha }}
         run: |
-          VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
+          VERSION="${RELEASE_REF#v}"
           MINOR="${VERSION%.*}"
           TAGS=("$VERSION" "$MINOR")
           if [[ "$PROMOTE_STABLE" == "true" ]]; then TAGS=(stable "${TAGS[@]}"); fi
@@ -242,8 +243,8 @@ jobs:
         env:
           RELEASE_REF: ${{ inputs.release_ref }}
         run: |
-          VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
-          test "$RELEASE_REF" = "v${VERSION}"
+          [[ "$RELEASE_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "${RELEASE_REF}^{commit}")"
 
       - name: Resolve image source commit
         id: source
@@ -330,9 +331,10 @@ jobs:
         env:
           DOCKERHUB_ENABLED: ${{ steps.dockerhub.outputs.enabled }}
           PROMOTE_STABLE: ${{ inputs.promote_stable }}
+          RELEASE_REF: ${{ inputs.release_ref }}
           SOURCE_TAG: sha-${{ steps.source.outputs.short_sha }}-rocm
         run: |
-          VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
+          VERSION="${RELEASE_REF#v}"
           MINOR="${VERSION%.*}"
           TAGS=("${VERSION}-rocm" "${MINOR}-rocm")
           if [[ "$PROMOTE_STABLE" == "true" ]]; then TAGS=(stable-rocm "${TAGS[@]}"); fi
