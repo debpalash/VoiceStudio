@@ -28,7 +28,10 @@ export default defineConfig({
       },
     },
   ],
-  define: { __APP_VERSION__: JSON.stringify(version) },
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+    __WEB_DEPLOYMENT__: false,
+  },
   resolve: {
     alias: {
       '@': resolve(rendererRoot, 'src'),

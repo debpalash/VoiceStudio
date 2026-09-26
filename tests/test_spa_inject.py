@@ -6,6 +6,9 @@ test the pure helpers without booting the app.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
+
 from core.spa_inject import inject_api_base, is_valid_public_api_base
 
 
@@ -41,3 +44,11 @@ def test_inject_api_base_json_encodes_value():
     # the value can't contain a quote, so the snippet is always well-formed.
     out = inject_api_base("<head></head>", "https://a/b")
     assert '="https://a/b";' in out
+
+
+def test_inject_api_base_authorizes_exact_script_under_renderer_csp():
+    script = 'window.__OMNIVOICE_API_BASE__="https://api.example.com";'
+    digest = base64.b64encode(hashlib.sha256(script.encode()).digest()).decode()
+    doc = '<meta http-equiv="Content-Security-Policy" content="script-src \'self\';">'
+    out = inject_api_base(doc, "https://api.example.com")
+    assert f"script-src 'self' 'sha256-{digest}'" in out

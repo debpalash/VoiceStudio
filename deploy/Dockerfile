@@ -16,12 +16,15 @@ WORKDIR /app
 # so `bun install` caches independently of source edits.
 COPY package.json bun.lock ./
 COPY frontend/package.json ./frontend/
+COPY electron/package.json ./electron/
 
 RUN bun install --frozen-lockfile
 
-# Build static files (output lands in /app/frontend/dist)
+# Build the maintained Electron renderer as the browser UI. Its web transport
+# targets FastAPI's same-origin root; native-only controls stay capability-gated.
 COPY frontend/ ./frontend/
-RUN bun run --cwd frontend build
+COPY electron/ ./electron/
+RUN bun run --cwd electron build:web
 
 # ==========================================
 # Runtime Stage: Python & PyTorch Backend

@@ -13,6 +13,7 @@ const frontendPkg = JSON.parse(
 
 const define = {
   __APP_VERSION__: JSON.stringify(frontendPkg.version),
+  __WEB_DEPLOYMENT__: false,
   __PRO_STORE_ID__: JSON.stringify(process.env.VOICESTUDIO_PRO_STORE_ID ?? ''),
   __PRO_PRODUCT_ID__: JSON.stringify(process.env.VOICESTUDIO_PRO_PRODUCT_ID ?? ''),
   __PRO_YEARLY_VARIANT_ID__: JSON.stringify(process.env.VOICESTUDIO_PRO_YEARLY_VARIANT_ID ?? ''),
@@ -48,23 +49,24 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
+    publicDir: resolve(__dirname, '../frontend/public'),
     plugins: [
       react(),
       tailwindcss(),
       {
-        name: 'shared-capture-worklet',
+        name: 'renderer-boot-script',
         configureServer(server) {
           server.middlewares.use((req, res, next) => {
-            if (req.url?.split('?')[0] !== '/aec-worklet.js') return next();
+            if (req.url?.split('?')[0] !== '/early-error-capture.js') return next();
             res.setHeader('Content-Type', 'application/javascript');
-            res.end(readFileSync(resolve(__dirname, '../frontend/public/aec-worklet.js')));
+            res.end(readFileSync(resolve(__dirname, 'src/renderer/public/early-error-capture.js')));
           });
         },
         generateBundle() {
           this.emitFile({
             type: 'asset',
-            fileName: 'aec-worklet.js',
-            source: readFileSync(resolve(__dirname, '../frontend/public/aec-worklet.js')),
+            fileName: 'early-error-capture.js',
+            source: readFileSync(resolve(__dirname, 'src/renderer/public/early-error-capture.js')),
           });
         },
       },

@@ -13,7 +13,10 @@ export default defineConfig({
     ignorePatterns: ['out/**', 'dist/**', 'release/**', 'src/renderer/src/components/ui/**'],
   },
   plugins: [react()],
-  define: { __APP_VERSION__: JSON.stringify('0.0.0-test') },
+  define: {
+    __APP_VERSION__: JSON.stringify('0.0.0-test'),
+    __WEB_DEPLOYMENT__: false,
+  },
   resolve: {
     alias: {
       '@': resolve(import.meta.dirname, 'src/renderer/src'),

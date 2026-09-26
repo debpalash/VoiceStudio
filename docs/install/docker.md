@@ -2,7 +2,8 @@
 
 For headless servers, dedicated GPUs, or "I want one command" deployments.
 The docker image bundles the backend; the UI is served over HTTP and you open
-it in a normal browser.
+it in a normal browser. It is built from the same maintained renderer as the
+Electron desktop app; controls that require native desktop access are hidden.
 
 **Official images:** [`ghcr.io/debpalash/omnivoice-studio`](https://github.com/debpalash/VoiceStudio/pkgs/container/omnivoice-studio)
 and [`palashdeb/omnivoice-studio` on Docker Hub](https://hub.docker.com/r/palashdeb/omnivoice-studio) — same images, same tags.
@@ -42,7 +43,10 @@ On an ARM64 host, pulling without an explicit platform can fail with
 > Versioning rule: preview builds always come from `main` and never
 > version-sort below `:stable` — upgrades flow naturally.
 >
-> **Note on the update-channel toggle:** The update-channel UI (Settings → About → Update channel) is part of the Tauri desktop app's built-in auto-updater. It does **not** apply to the Docker image — the Docker image is the headless web-server build. To update your Docker deployment, pull the new image tag and recreate the container (`docker compose pull && docker compose up -d`).
+> **Note on desktop-only controls:** Electron updates, global shortcuts, native
+> file pickers, and runtime management do **not** apply to Docker. To update a
+> Docker deployment, pull the new image tag and recreate the container
+> (`docker compose pull && docker compose up -d`).
 
 Docker's NAT prevents the backend from proving that a browser is on the host,
 so server-mode settings and diagnostics require an administrator API key even

@@ -63,7 +63,7 @@ bun run start       # launch the built Electron app
 bun run dist        # package locally without publishing
 bun run smoke-test  # packaged startup, first-run consent, and native bridge
 bun run smoke-test -- --install  # also install and start the managed backend
-bun run dev:web     # legacy browser UI + backend
+bun run dev:web     # maintained Electron renderer in a browser + backend
 ```
 
 The legacy browser command starts both services:

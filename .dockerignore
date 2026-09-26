@@ -25,6 +25,8 @@ __pycache__/
 *.sqlite3
 omnivoice_data/
 frontend/dist/
+electron/out/
+electron/release/
 
 # Git internals
 .git/

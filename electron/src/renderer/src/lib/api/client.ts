@@ -1,16 +1,29 @@
 import { generationFailureMessage } from '../../../../../../frontend/src/utils/generationFailureMessage.ts';
 import { languageRejectionMessage } from '../../../../../../frontend/src/utils/languageRejection.ts';
-/**
- * Same-origin API client. The renderer never talks to 127.0.0.1:<port>
- * directly (CORS); `/api/*` is proxied by the dev server / the app:// protocol
- * handler in main (see CONTRACT.md).
- */
+/** Native builds use Electron's `/api` protocol proxy. The production web
+ * bundle is served by FastAPI itself, whose routes live at the origin root. */
 import type { ApiErrorPayload } from './types';
 import { tr } from '@/lib/i18n-text';
 import { getBackendStatusSnapshot } from '@/hooks/use-backend-status';
 import { recordBackendContact } from '../../../../../../frontend/src/utils/backendContact';
 
-export const API_BASE = '/api';
+type ApiBaseWindow = Window & { __OMNIVOICE_API_BASE__?: string };
+
+export function resolveApiBase(
+  webDeployment: boolean,
+  dev: boolean,
+  win?: ApiBaseWindow,
+): string {
+  if (!webDeployment || dev) return '/api';
+  const runtime = win?.__OMNIVOICE_API_BASE__?.trim();
+  return runtime ? runtime.replace(/\/+$/, '') : '';
+}
+
+export const API_BASE = resolveApiBase(
+  __WEB_DEPLOYMENT__,
+  import.meta.env.DEV,
+  typeof window === 'undefined' ? undefined : (window as ApiBaseWindow),
+);
 
 export class ApiError extends Error {
   readonly status: number;

@@ -12,6 +12,7 @@ import {
   describeError,
   errorFromResponse,
   profileAudioUrl,
+  resolveApiBase,
 } from './client';
 
 beforeEach(() => {
@@ -127,6 +128,24 @@ describe('url helpers', () => {
     expect(describeError(new ApiError(500, 'boom'))).toBe('boom');
     expect(describeError(new Error('plain'))).toBe('plain');
     expect(describeError('str')).toBe('str');
+  });
+});
+
+describe('deployment API base', () => {
+  it('keeps Electron and web development on the /api proxy', () => {
+    expect(resolveApiBase(false, false)).toBe('/api');
+    expect(resolveApiBase(true, true)).toBe('/api');
+  });
+
+  it('uses backend-root routes in the production web bundle', () => {
+    expect(resolveApiBase(true, false)).toBe('');
+  });
+
+  it('honors the runtime Docker/reverse-proxy override', () => {
+    const win = { __OMNIVOICE_API_BASE__: 'https://voice.example/api/' } as Window & {
+      __OMNIVOICE_API_BASE__?: string;
+    };
+    expect(resolveApiBase(true, false, win)).toBe('https://voice.example/api');
   });
 });
 

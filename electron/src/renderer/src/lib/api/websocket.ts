@@ -1,5 +1,6 @@
 import { getBridge } from '@/components/bridge';
 import { getBackendStatusSnapshot, type BackendStatus } from '@/hooks/use-backend-status';
+import { apiPath } from './client';
 
 export type BackendWebSocketPath = '/ws/events' | '/ws/transcribe' | '/ws/tts';
 
@@ -15,7 +16,7 @@ export async function backendWebSocketUrl(
     bridge && mainOwned
       ? await bridge.backend.websocketUrl(path)
       : new URL(
-          mainOwned && backend.baseUrl ? path : '/api' + path,
+          mainOwned && backend.baseUrl ? path : apiPath(path),
           mainOwned ? backend.baseUrl || window.location.href : window.location.href,
         ).toString();
   const url = new URL(raw);

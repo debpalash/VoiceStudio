@@ -8,6 +8,8 @@ unit-tested without booting the app.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 import re
@@ -40,7 +42,16 @@ def inject_api_base(html_doc: str, api_base: str) -> str:
     have validated it via `is_valid_public_api_base` first. Falls back to
     prepending the snippet if the document has no <head>.
     """
-    snippet = f"<script>window.__OMNIVOICE_API_BASE__={json.dumps(api_base)};</script>"
+    script = f"window.__OMNIVOICE_API_BASE__={json.dumps(api_base)};"
+    snippet = f"<script>{script}</script>"
+    # The Electron renderer ships a strict CSP. Authorize only this exact,
+    # backend-generated assignment instead of weakening script-src globally.
+    digest = base64.b64encode(hashlib.sha256(script.encode("utf-8")).digest()).decode("ascii")
+    html_doc = html_doc.replace(
+        "script-src 'self'",
+        f"script-src 'self' 'sha256-{digest}'",
+        1,
+    )
     if "<head>" in html_doc:
         return html_doc.replace("<head>", "<head>" + snippet, 1)
     return snippet + html_doc

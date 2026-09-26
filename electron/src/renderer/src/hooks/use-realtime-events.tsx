@@ -1,4 +1,5 @@
 import { backendWebSocketUrl } from '@/lib/api/websocket';
+import { apiPath } from '@/lib/api/client';
 import { queryKeys } from '@/lib/query';
 import { useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { useEffect } from 'react';
@@ -22,7 +23,7 @@ const EVENT_QUERY_KEYS: Readonly<Record<string, readonly QueryKey[]>> = {
 async function devBackendReady(signal: AbortSignal, remote: boolean): Promise<boolean> {
   if (window.location.protocol === 'app:' || remote) return true;
   try {
-    const response = await fetch('/api/health', {
+    const response = await fetch(apiPath('/health'), {
       signal: AbortSignal.any([signal, AbortSignal.timeout(2_000)]),
     });
     return response.ok;
