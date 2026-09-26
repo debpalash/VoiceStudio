@@ -51,6 +51,10 @@ on:
         description: Release tag to build when backfilling (for example v0.5.6)
         type: string
         required: false
+      promote_stable:
+        description: Also move stable tags to this backfilled release
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -82,6 +86,11 @@ jobs:
         run: |
           VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
           test "$RELEASE_REF" = "v${VERSION}"
+
+      - name: Resolve image source commit
+        id: source
+        shell: bash
+        run: echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
 
       # Both image builds run right at the runner's disk ceiling (CUDA hit
       # ENOSPC 2026-07-16 morning; ROCm hit it the same afternoon even with
@@ -149,7 +158,7 @@ jobs:
             type=raw,value=stable,enable=${{ github.event_name == 'push' && github.ref_type == 'tag' && !contains(github.ref, '-') }}
             type=raw,value=latest,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
             type=raw,value=main,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-            type=sha,prefix=sha-,format=short
+            type=raw,value=sha-${{ steps.source.outputs.short_sha }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -170,19 +179,22 @@ jobs:
         shell: bash
         env:
           DOCKERHUB_ENABLED: ${{ steps.dockerhub.outputs.enabled }}
+          PROMOTE_STABLE: ${{ inputs.promote_stable }}
+          SOURCE_TAG: sha-${{ steps.source.outputs.short_sha }}
         run: |
           VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
           MINOR="${VERSION%.*}"
-          SOURCE_TAG="sha-${GITHUB_SHA::7}"
+          TAGS=("$VERSION" "$MINOR")
+          if [[ "$PROMOTE_STABLE" == "true" ]]; then TAGS=(stable "${TAGS[@]}"); fi
           for IMAGE in "$IMAGE_NAME" "$LEGACY_IMAGE_NAME"; do
-            for TAG in stable "$VERSION" "$MINOR"; do
+            for TAG in "${TAGS[@]}"; do
               docker buildx imagetools create \
                 --tag "${REGISTRY}/${IMAGE}:${TAG}" \
                 "${REGISTRY}/${IMAGE}:${SOURCE_TAG}"
             done
           done
           if [[ "$DOCKERHUB_ENABLED" == "true" ]]; then
-            for TAG in stable "$VERSION" "$MINOR"; do
+            for TAG in "${TAGS[@]}"; do
               docker buildx imagetools create \
                 --tag "${DOCKERHUB_IMAGE}:${TAG}" \
                 "${DOCKERHUB_IMAGE}:${SOURCE_TAG}"
@@ -232,6 +244,11 @@ jobs:
         run: |
           VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
           test "$RELEASE_REF" = "v${VERSION}"
+
+      - name: Resolve image source commit
+        id: source
+        shell: bash
+        run: echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
 
       # The ROCm base (~25 GB unpacked) plus build layers need every GB.
       # Same reclaim list as the CUDA job above — keep them identical
@@ -288,7 +305,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},suffix=-rocm,enable=${{ github.event_name == 'push' }}
             type=raw,value=stable-rocm,enable=${{ github.event_name == 'push' && github.ref_type == 'tag' && !contains(github.ref, '-') }}
             type=raw,value=rocm,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-            type=sha,prefix=sha-,suffix=-rocm,format=short
+            type=raw,value=sha-${{ steps.source.outputs.short_sha }}-rocm
 
       # cache-from only: reading the CUDA job's exported cache reuses the
       # identical frontend-builder stage. Deliberately NO cache-to — the
@@ -312,19 +329,22 @@ jobs:
         shell: bash
         env:
           DOCKERHUB_ENABLED: ${{ steps.dockerhub.outputs.enabled }}
+          PROMOTE_STABLE: ${{ inputs.promote_stable }}
+          SOURCE_TAG: sha-${{ steps.source.outputs.short_sha }}-rocm
         run: |
           VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
           MINOR="${VERSION%.*}"
-          SOURCE_TAG="sha-${GITHUB_SHA::7}-rocm"
+          TAGS=("${VERSION}-rocm" "${MINOR}-rocm")
+          if [[ "$PROMOTE_STABLE" == "true" ]]; then TAGS=(stable-rocm "${TAGS[@]}"); fi
           for IMAGE in "$IMAGE_NAME" "$LEGACY_IMAGE_NAME"; do
-            for TAG in stable-rocm "${VERSION}-rocm" "${MINOR}-rocm"; do
+            for TAG in "${TAGS[@]}"; do
               docker buildx imagetools create \
                 --tag "${REGISTRY}/${IMAGE}:${TAG}" \
                 "${REGISTRY}/${IMAGE}:${SOURCE_TAG}"
             done
           done
           if [[ "$DOCKERHUB_ENABLED" == "true" ]]; then
-            for TAG in stable-rocm "${VERSION}-rocm" "${MINOR}-rocm"; do
+            for TAG in "${TAGS[@]}"; do
               docker buildx imagetools create \
                 --tag "${DOCKERHUB_IMAGE}:${TAG}" \
                 "${DOCKERHUB_IMAGE}:${SOURCE_TAG}"

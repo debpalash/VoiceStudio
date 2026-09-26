@@ -30,10 +30,16 @@ def test_both_ghcr_paths_are_published_by_both_builds():
 
 def test_current_release_tags_are_backfilled_for_both_gpu_flavors():
     text = open(WORKFLOW, encoding="utf-8").read()
-    assert "for TAG in stable \"$VERSION\" \"$MINOR\"" in text
-    assert 'for TAG in stable-rocm "${VERSION}-rocm" "${MINOR}-rocm"' in text
     assert text.count('test "$RELEASE_REF" = "v${VERSION}"') == 2
+    assert text.count('if [[ "$PROMOTE_STABLE" == "true" ]]') == 2
     assert text.count("docker buildx imagetools create") == 4
+
+
+def test_sha_tags_follow_the_checked_out_source_commit():
+    text = open(WORKFLOW, encoding="utf-8").read()
+    assert text.count("git rev-parse --short=7 HEAD") == 2
+    assert "type=sha" not in text
+    assert "GITHUB_SHA::7" not in text
 
 
 def test_docker_hub_keeps_its_existing_coordinate():
