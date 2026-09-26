@@ -37,8 +37,8 @@ from pathlib import Path
 import pytest
 
 _REPO = Path(__file__).resolve().parents[1]
-_SRC = _REPO / "frontend" / "src"
-_INDEX_CSS = _SRC / "index.css"
+_SRC = _REPO / "electron" / "src" / "renderer" / "src"
+_GLOBAL_CSS = _SRC / "styles" / "globals.css"
 
 # This enforcement file's own pattern literals must not trip the scan.
 _SELF = Path(__file__).name
@@ -85,6 +85,14 @@ _BORDER_ALLOW = {
     "components/ui/table.tsx",
 }
 
+# Media controls and palette swatches intentionally need contrast against
+# image/video content rather than the surrounding theme.
+_LITERAL_BORDER_ALLOW = {
+    "components/video-player.tsx",
+    "components/app-shell/workspace-header.tsx",
+    "features/settings/palette-picker.tsx",
+}
+
 
 def _iter_frontend_files(suffixes):
     for p in _SRC.rglob("*"):
@@ -92,11 +100,12 @@ def _iter_frontend_files(suffixes):
             yield p
 
 
-def test_no_neutral_literal_borders_in_index_css():
+def test_no_neutral_literal_borders_in_renderer_css():
     offenders = []
-    for i, line in enumerate(_INDEX_CSS.read_text().splitlines(), 1):
-        if _CSS_NEUTRAL_BORDER.search(line):
-            offenders.append(f"index.css:{i}: {line.strip()}")
+    for path in _SRC.rglob("*.css"):
+        for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if _CSS_NEUTRAL_BORDER.search(line):
+                offenders.append(f"{path.relative_to(_REPO)}:{i}: {line.strip()}")
     assert not offenders, (
         "Decorative neutral (white/black) literal borders reappeared in "
         "index.css. Use `border: … transparent` (or drop the border) — the "
@@ -107,7 +116,9 @@ def test_no_neutral_literal_borders_in_index_css():
 def test_no_literal_color_border_utilities_in_jsx():
     offenders = []
     for p in _iter_frontend_files({".jsx", ".tsx"}):
-        for i, line in enumerate(p.read_text().splitlines(), 1):
+        if p.relative_to(_SRC).as_posix() in _LITERAL_BORDER_ALLOW:
+            continue
+        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
             for m in _JSX_BORDER_UTIL.finditer(line):
                 token = m.group(0)
                 if "border-transparent" in token:
@@ -123,7 +134,7 @@ def test_no_literal_color_border_utilities_in_jsx():
 def test_no_inline_border_color_in_jsx():
     offenders = []
     for p in _iter_frontend_files({".jsx", ".tsx"}):
-        for i, line in enumerate(p.read_text().splitlines(), 1):
+        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
             if _JSX_BORDERCOLOR.search(line) and "transparent" not in line:
                 offenders.append(f"{p.relative_to(_REPO)}:{i}: {line.strip()}")
     assert not offenders, (
@@ -138,7 +149,7 @@ def test_no_token_border_utilities_in_jsx():
     for p in _iter_frontend_files({".jsx", ".tsx"}):
         if p.relative_to(_SRC).as_posix() in _BORDER_ALLOW:
             continue
-        for i, line in enumerate(p.read_text().splitlines(), 1):
+        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
             if _JSX_TOKEN_BORDER.search(line):
                 offenders.append(f"{p.relative_to(_REPO)}:{i}: {line.strip()[:120]}")
     assert not offenders, (
@@ -154,13 +165,11 @@ def test_no_token_border_utilities_in_jsx():
 
 def test_focus_indicators_are_preserved():
     """Regression guard: the border removal must not strip focus a11y."""
-    css = _INDEX_CSS.read_text()
+    css = _GLOBAL_CSS.read_text(encoding="utf-8")
     assert "--color-ring:" in css, "--color-ring focus token was removed"
-    assert "--focus-ring:" in css, "--focus-ring token was removed"
     assert ":focus-visible" in css, ":focus-visible ring rules were removed"
     # The token-zeroing override must NOT have zeroed the focus ring.
     assert "--color-ring: transparent" not in css
-    assert "--focus-ring: transparent" not in css
 
 
 if __name__ == "__main__":

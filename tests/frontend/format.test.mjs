@@ -1,8 +1,8 @@
-// Unit tests for frontend/src/utils/format.js — timecode formatter.
+// Unit tests for electron/src/shared/utils/format.js — timecode formatter.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatTime } from '../../frontend/src/utils/format.js';
+import { formatTime } from '../../electron/src/shared/utils/format.js';
 
 
 test('formatTime seconds below a minute', () => {

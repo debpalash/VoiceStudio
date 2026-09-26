@@ -1,9 +1,9 @@
 import { expect, it } from 'vitest';
-import { importToText } from '../../../../../../frontend/src/utils/importStory';
+import { importToText } from '@shared/utils/importStory';
 import {
   splitIntoChunks,
   splitStoryText,
-} from '../../../../../../frontend/src/utils/splitStoryText';
+} from '@shared/utils/splitStoryText';
 it('removes SRT metadata and retains spoken lines', () => {
   expect(
     importToText(
@@ -43,7 +43,7 @@ it('split presets give one line per paragraph or per chapter, headings kept sepa
 });
 
 it('decodes a UTF-16 manuscript before extracting subtitle speech', async () => {
-  const { readTextFile } = await import('../../../../../../frontend/src/utils/readTextFile');
+  const { readTextFile } = await import('@shared/utils/readTextFile');
   const text = '1\n00:00:01,000 --> 00:00:02,000\nCafé — hello';
   const bytes = new Uint8Array(2 + text.length * 2);
   bytes.set([0xff, 0xfe]);

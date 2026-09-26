@@ -17,7 +17,7 @@
 #
 # It NEVER deletes the app binary itself (that's a per-platform step — see
 # docs/install/uninstall.md), and it never touches anything outside the paths
-# it lists. Mirrors backend/core/config.py + frontend/src-tauri/src/setup.rs.
+# it lists. Mirrors backend/core/config.py and the Electron setup flow.
 set -euo pipefail
 
 APPLY=0

@@ -25,7 +25,7 @@ must never receive an Electron installer.
 
 ## Versioning
 
-`frontend/package.json` is the single source of truth for the maintained app
+The root `package.json` is the single source of truth for the maintained app
 version. Electron Builder reads it directly. Keep these active mirrors equal:
 
 - `pyproject.toml`

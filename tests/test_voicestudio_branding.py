@@ -8,11 +8,11 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CURRENT_VERSION = json.loads((ROOT / "frontend/package.json").read_text())["version"]
+CURRENT_VERSION = json.loads((ROOT / "package.json").read_text())["version"]
 
 
 def test_current_version_is_in_lockstep_everywhere() -> None:
-    package = json.loads((ROOT / "frontend/package.json").read_text())
+    package = json.loads((ROOT / "package.json").read_text())
     assert package["version"] == CURRENT_VERSION
 
     mirrors = {
@@ -23,22 +23,14 @@ def test_current_version_is_in_lockstep_everywhere() -> None:
         match = re.search(pattern, (ROOT / path).read_text())
         assert match and match.group(1) == CURRENT_VERSION, path
 
-    lock_contracts = {
-        "bun.lock": r'"name": "omnivoice-studio",\s+"version": "([^"]+)"',
-        "uv.lock": r'name = "omnivoice"\s+version = "([^"]+)"',
-    }
+    lock_contracts = {"uv.lock": r'name = "omnivoice"\s+version = "([^"]+)"'}
     for path, pattern in lock_contracts.items():
         match = re.search(pattern, (ROOT / path).read_text())
         assert match and match.group(1) == CURRENT_VERSION, path
 
 
 def test_visible_brand_surfaces_say_voicestudio() -> None:
-    visible_files = (
-        "frontend/src-tauri/Info.plist",
-        "frontend/src-tauri/appimage/AppRun",
-        "frontend/src/test/visual/harness.html",
-        "frontend/e2e/gallery.spec.ts",
-    )
+    visible_files = ("electron/build/Info.plist", "electron/src/renderer/index.html")
     for path in visible_files:
         text = (ROOT / path).read_text()
         assert "VoiceStudio" in text, path
@@ -52,11 +44,11 @@ def test_visible_brand_surfaces_say_voicestudio() -> None:
 
 
 def test_brand_mark_is_shared_and_fills_the_icon() -> None:
-    mark = (ROOT / "frontend/src/components/brand/VoiceStudioMark.jsx").read_text()
-    header = (ROOT / "frontend/src/components/Header.jsx").read_text()
-    about = (ROOT / "frontend/src/components/settings/AboutTab.jsx").read_text()
+    mark = (ROOT / "electron/src/shared/components/brand/VoiceStudioMark.jsx").read_text()
+    header = (ROOT / "electron/src/shared/components/Header.jsx").read_text()
+    about = (ROOT / "electron/src/shared/components/settings/AboutTab.jsx").read_text()
     logo = (ROOT / "docs/logo.svg").read_text()
-    favicon = (ROOT / "frontend/public/favicon.svg").read_text()
+    favicon = (ROOT / "electron/public/favicon.svg").read_text()
 
     signature = "M6 34c4 0 5-7 9-7"
     assert signature in mark
@@ -98,12 +90,10 @@ def test_engine_help_names_the_app_not_the_upstream_model() -> None:
 
 
 def test_compatibility_identifiers_stay_stable() -> None:
-    package = json.loads((ROOT / "frontend/package.json").read_text())
-    assert package["name"] == "omnivoice-studio"
+    package = json.loads((ROOT / "package.json").read_text())
+    assert package["name"] == "omnivoice-studio-monorepo"
     assert 'name = "omnivoice"' in (ROOT / "pyproject.toml").read_text()
-    assert 'name = "omnivoice-studio"' in (
-        ROOT / "frontend/src-tauri/Cargo.toml"
-    ).read_text()
+    assert "com.voicestudio.desktop" in (ROOT / "electron/electron-builder.config.mjs").read_text()
 
 
 def test_active_source_launch_is_electron_and_web_ports_clean_quietly() -> None:
@@ -116,7 +106,7 @@ def test_active_source_launch_is_electron_and_web_ports_clean_quietly() -> None:
 
 
 def test_icon_rail_has_no_static_section_captions_and_keeps_air_between_items() -> None:
-    rail = (ROOT / "frontend/src/components/NavRail.jsx").read_text()
+    rail = (ROOT / "electron/src/shared/components/NavRail.jsx").read_text()
     for stale_caption in ("Start", "Create", "Workflows", "Reference"):
         assert stale_caption not in rail
     assert "pt-[18px]" in rail

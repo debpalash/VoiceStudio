@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 import {
   getFrontendLogs,
   clearFrontendLogs,
-} from '../../../../../../frontend/src/utils/consoleBuffer';
+} from '@shared/utils/consoleBuffer';
 interface LogResponse {
   lines: string[];
   path?: string;

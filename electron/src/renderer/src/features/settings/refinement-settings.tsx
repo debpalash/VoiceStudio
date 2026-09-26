@@ -6,7 +6,7 @@ import { apiJson } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { SettingsSection, SettingsRow } from './settings-layout';
-import { refineFailureNoteKey } from '../../../../../../frontend/src/components/settings/refineStatus';
+import { refineFailureNoteKey } from '@shared/components/settings/refineStatus';
 const flags = ['auto', 'smart_cleanup', 'self_correction', 'preserve_technical'] as const;
 type Config = Record<(typeof flags)[number], boolean> & {
   llm_ready: boolean;

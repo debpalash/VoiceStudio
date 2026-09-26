@@ -1,5 +1,5 @@
-import { addBreadcrumb } from '../../../../../frontend/src/utils/breadcrumbs';
-import { capture, capturePageview } from '../../../../../frontend/src/utils/analytics';
+import { addBreadcrumb } from '@shared/utils/breadcrumbs';
+import { capture, capturePageview } from '@shared/utils/analytics';
 
 const WORKSPACES = new Set([
   'home',

@@ -5,7 +5,7 @@ vi.mock('@/hooks/use-backend-status', () => ({
   getBackendStatusSnapshot: () => ({ baseUrl: 'http://127.0.0.1:3900' }),
 }));
 vi.mock('@/components/bridge', () => ({ getBridge: () => mocks.bridge }));
-vi.mock('../../../../../../frontend/src/utils/aec/micCapture', () => ({
+vi.mock('@shared/utils/aec/micCapture', () => ({
   startMicCapture: mocks.capture,
 }));
 import { LiveDictation } from './live-dictation';

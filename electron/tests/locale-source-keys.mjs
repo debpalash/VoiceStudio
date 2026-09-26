@@ -31,7 +31,7 @@ const callPattern = /\b(?:t|tr)\(\s*(['"])([A-Za-z0-9_.:-]+)\1/g;
 const transPattern = /\bi18nKey\s*=\s*(['"])([A-Za-z0-9_.:-]+)\1/g;
 
 const sharedControls = ['SearchableSelect', 'VoiceSelector'].map((name) =>
-  new URL(`../../frontend/src/components/${name}.jsx`, import.meta.url));
+  new URL(`../src/shared/components/${name}.jsx`, import.meta.url));
 for (const file of [...await sourceFiles(sourceDirectory), ...sharedControls]) {
   const source = await readFile(file, 'utf8');
   for (const pattern of [callPattern, transPattern]) {

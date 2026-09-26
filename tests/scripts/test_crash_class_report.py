@@ -5,7 +5,7 @@ Pins two things:
 - title → sub-class mapping matches the auto-reporter's real title shapes
   (seeded from error messages, so titles are machine-stable), and
 - body → build bucket mapping matches the exact `**Build status:**` lines
-  the bug reporter stamps (frontend/src/utils/bugReport.js) — a drift in
+  the bug reporter stamps (electron/src/shared/utils/bugReport.js) — a drift in
   either side silently zeroes the metric.
 """
 
@@ -50,7 +50,7 @@ def test_title_bucketing(report, title, expected):
 
 
 def test_build_status_lines_match_the_reporter_stamps(report):
-    # These literals must stay in lockstep with frontend/src/utils/bugReport.js
+    # These literals must stay in lockstep with electron/src/shared/utils/bugReport.js
     # captureContext() — the stamps are the metric's only version signal.
     assert report.OUTDATED.search("**Build status:** OUTDATED — `v0.5.0` was already out when this was filed")
     assert report.CURRENT.search("**Build status:** current at filing time (latest `v0.5.0`)")
@@ -79,6 +79,6 @@ def test_classify_build(report, body, version, expected):
 
 def test_reporter_source_still_emits_the_stamps(report):
     # Fail here (not in production silence) if bugReport.js rewords the marker.
-    src = (SCRIPT_PATH.parents[1] / "frontend/src/utils/bugReport.js").read_text(encoding="utf-8")
+    src = (SCRIPT_PATH.parents[1] / "electron/src/shared/utils/bugReport.js").read_text(encoding="utf-8")
     assert "**Build status:** OUTDATED" in src
     assert "**Build status:** current at filing time" in src

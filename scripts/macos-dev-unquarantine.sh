@@ -8,7 +8,7 @@
 #   This is NEVER a substitute for proper Developer ID signing + notarization
 #   of production releases. Real users must receive a signed, notarized build
 #   (see docs/macos-signing-verification.md) — do not ship artifacts and tell
-#   users to run this. Production signing is gated separately in release.yml.
+#   users to run this. Production signing is gated in electron-release.yml.
 #
 # Usage:
 #   scripts/macos-dev-unquarantine.sh "path/to/VoiceStudio.app"
@@ -26,8 +26,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TARGET="${1:-}"
 
 if [ -z "$TARGET" ]; then
-  TARGET="$(find "$REPO_ROOT/frontend/src-tauri/target" -type d -name '*.app' -path '*/bundle/macos/*' 2>/dev/null | grep -E '/release/' | head -1)"
-  [ -z "$TARGET" ] && TARGET="$(find "$REPO_ROOT/frontend/src-tauri/target" -type d -name '*.app' -path '*/bundle/macos/*' 2>/dev/null | head -1)"
+  TARGET="$(find "$REPO_ROOT/electron/release" -maxdepth 2 -type d -name '*.app' 2>/dev/null | head -1)"
   [ -z "$TARGET" ] && { echo "ERROR: no built .app found — pass an explicit path." >&2; exit 2; }
 fi
 

@@ -3,16 +3,16 @@ import { resolve } from 'node:path';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
-import { rewriteDevApiProxyPath } from './src/shared/web-api-routing';
+import { rewriteDevApiProxyPath } from './src/shared/web-api-routing.ts';
 
 const root = resolve(import.meta.dirname, 'src/renderer');
-const frontend = resolve(import.meta.dirname, '../frontend');
-const version = JSON.parse(readFileSync(resolve(frontend, 'package.json'), 'utf8')).version;
+const webDist = resolve(import.meta.dirname, '../frontend/dist');
+const version = JSON.parse(readFileSync(resolve(import.meta.dirname, '../package.json'), 'utf8')).version;
 const backendPort = process.env.OMNIVOICE_PORT || '3900';
 
 export default defineConfig({
   root,
-  publicDir: resolve(frontend, 'public'),
+  publicDir: resolve(import.meta.dirname, 'public'),
   plugins: [
     react(),
     tailwindcss(),
@@ -22,7 +22,7 @@ export default defineConfig({
         this.emitFile({
           type: 'asset',
           fileName: 'early-error-capture.js',
-          source: readFileSync(resolve(root, 'public/early-error-capture.js')),
+          source: readFileSync(resolve(import.meta.dirname, 'public/early-error-capture.js')),
         });
       },
     },
@@ -34,6 +34,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(root, 'src'),
+      '@shared': resolve(import.meta.dirname, 'src/shared'),
       '@vercel/oidc': resolve(root, 'src/lib/vercel-oidc-browser.ts'),
     },
     dedupe: ['react', 'react-dom'],
@@ -60,7 +61,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: resolve(frontend, 'dist'),
+    outDir: webDist,
     emptyOutDir: true,
     rollupOptions: { input: resolve(root, 'index.html') },
   },

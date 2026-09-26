@@ -57,8 +57,8 @@ import {
   removeTranscription,
   subscribeTranscriptions,
   type TranscriptEntry,
-} from '../../../../../../frontend/src/utils/transcriptionsStore';
-import { preferredTranscript } from '../../../../../../frontend/src/utils/transcriptionFormat';
+} from '@shared/utils/transcriptionsStore';
+import { preferredTranscript } from '@shared/utils/transcriptionFormat';
 import {
   useDubSession,
   openDubProject,

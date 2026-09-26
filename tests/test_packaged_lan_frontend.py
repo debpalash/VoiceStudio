@@ -1,20 +1,17 @@
-"""Packaged desktop builds must carry the SPA used by Network Sharing."""
+"""Packaged Electron builds must carry the web SPA used by Network Sharing."""
 
-from __future__ import annotations
-
-import json
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_desktop_bundle_carries_the_lan_frontend() -> None:
-    """The backend cannot serve LAN clients from Tauri's embedded WebView assets."""
-    config = json.loads((ROOT / "frontend/src-tauri/tauri.conf.json").read_text())
-    resources = config["bundle"]["resources"]
+def test_electron_bundle_carries_the_lan_frontend() -> None:
+    builder = (ROOT / "electron/electron-builder.config.mjs").read_text(encoding="utf-8")
+    runtime = (ROOT / "electron/src/main/runtime-project.ts").read_text(encoding="utf-8")
+    root_package = (ROOT / "package.json").read_text(encoding="utf-8")
 
-    assert "../../frontend/dist" in resources, (
-        "frontend/dist must be a filesystem bundle resource so the packaged "
-        "Python backend can serve Network Sharing clients"
-    )
+    assert "from: '../frontend/dist'" in builder
+    assert "to: 'frontend/dist'" in builder
+    assert "'frontend'" in runtime.split("const SOURCES =", 1)[1].split("];", 1)[0]
+    assert "bun run --cwd electron build:web" in root_package

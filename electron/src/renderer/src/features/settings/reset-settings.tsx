@@ -32,7 +32,7 @@ import { apiFetch, describeError } from '@/lib/api/client';
 import { projectLibrary } from '@/features/longform/project-library';
 import { clearLongformDraftForReset } from '@/features/longform/longform-session';
 import { clearDubDraftForReset } from '@/features/dub/dub-session';
-import { fmtBytes } from '../../../../../../frontend/src/components/settings/models/format';
+import { fmtBytes } from '@shared/components/settings/models/format';
 import { SettingsSection } from './settings-layout';
 import { forgetSetupProgress } from '@/lib/setup-progress';
 

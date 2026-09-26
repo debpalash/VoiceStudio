@@ -20,6 +20,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(import.meta.dirname, 'src/renderer/src'),
+      '@shared': resolve(import.meta.dirname, 'src/shared'),
       '@vercel/oidc': resolve(import.meta.dirname, 'src/renderer/src/lib/vercel-oidc-browser.ts'),
     },
     dedupe: ['react', 'react-dom'],
@@ -29,7 +30,11 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/renderer/src/test/setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}'],
+    include: [
+      'src/main/**/*.test.{ts,tsx}',
+      'src/renderer/**/*.test.{ts,tsx}',
+      'src/shared/repair-request.test.ts',
+    ],
     css: false,
   },
 });

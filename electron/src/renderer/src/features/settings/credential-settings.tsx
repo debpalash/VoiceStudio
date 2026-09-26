@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { apiJson } from '@/lib/api/client';
 import { SettingsSection, SettingsRow } from './settings-layout';
 import { useSettingsAction } from './use-settings-action';
-import { PROVIDER_FIELDS } from '../../../../../../frontend/src/utils/translationProviderFields';
+import { PROVIDER_FIELDS } from '@shared/utils/translationProviderFields';
 interface TokenState {
   active: string | null;
   sources: {

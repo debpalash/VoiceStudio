@@ -207,13 +207,13 @@ def test_crash_source_is_single_the_frontend_never_emits_one():
     crash source. The frontend SDK wrapper must never grow its own crash
     event (the shell's marker describes the same death the sentinel reports)."""
     ts = os.path.join(
-        os.path.dirname(__file__), "..", "frontend", "src", "utils", "analytics.ts"
+        os.path.dirname(__file__), "..", "electron", "src", "shared", "utils", "analytics.ts"
     )
     with open(ts, encoding="utf-8") as f:
         src = f.read()
     assert "app_crashed" not in src
     crash_ts = os.path.join(
-        os.path.dirname(__file__), "..", "frontend", "src", "utils", "backendCrash.ts"
+        os.path.dirname(__file__), "..", "electron", "src", "shared", "utils", "backendCrash.ts"
     )
     with open(crash_ts, encoding="utf-8") as f:
         assert "app_crashed" not in f.read()

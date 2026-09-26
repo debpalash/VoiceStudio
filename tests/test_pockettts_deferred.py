@@ -160,7 +160,7 @@ def test_every_locale_discloses_hugging_face_model_access():
     import json
     from pathlib import Path
 
-    locales = Path(__file__).resolve().parents[1] / "frontend/src/i18n/locales"
+    locales = Path(__file__).resolve().parents[1] / "electron/src/shared/i18n/locales"
     paths = sorted(locales.glob("*.json"))
     assert len(paths) == 21
     for path in paths:

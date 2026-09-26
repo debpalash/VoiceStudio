@@ -235,12 +235,12 @@ def test_frontend_allowlist_mirrors_backend():
     import re
 
     ts_path = os.path.join(
-        os.path.dirname(__file__), "..", "frontend", "src", "utils", "analytics.ts"
+        os.path.dirname(__file__), "..", "electron", "src", "shared", "utils", "analytics.ts"
     )
     with open(ts_path, encoding="utf-8") as f:
         src = f.read()
     m = re.search(r"ALLOWED_PROPS\s*=\s*new Set\(\[(.*?)\]\)", src, re.S)
-    assert m, "ALLOWED_PROPS Set not found in frontend/src/utils/analytics.ts"
+    assert m, "ALLOWED_PROPS Set not found in electron/src/shared/utils/analytics.ts"
     frontend = set(re.findall(r"'([a-z_]+)'", m.group(1)))
     assert frontend == set(analytics._ALLOWED_PROPS)
 

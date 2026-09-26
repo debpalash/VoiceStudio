@@ -266,7 +266,7 @@ function isVoiceStudioCheckout(path: string): boolean {
     'CLAUDE.md',
     'backend/main.py',
     'electron/package.json',
-    'frontend/package.json',
+    'package.json',
   ].every((entry) => existsSync(join(path, entry)));
   if (!complete) return false;
   try {

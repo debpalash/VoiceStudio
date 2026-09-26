@@ -1,6 +1,7 @@
 # VoiceStudio Electron: latest, a release version, or build main.
 param([string]$Version = $env:VOICESTUDIO_VERSION, [switch]$Main, [switch]$Source, [switch]$Uninstall, [switch]$Help, [switch]$Silent)
 $ErrorActionPreference = 'Stop'
+$vsVersion = $Version
 if ($Help) {
     Write-Output @'
 VoiceStudio Electron installer (Windows x64)
@@ -21,7 +22,7 @@ $mode = if ($Main -or $Source) { 'main' } elseif ($env:VOICESTUDIO_INSTALL_MODE)
 if ($mode -eq 'source') { $mode = 'main' }
 if ($Uninstall) { $mode = 'uninstall' }
 if ($mode -eq 'uninstall') {
-    if ($Main -or $Source -or $Version) { throw 'Uninstall cannot be combined with installation options; clear VOICESTUDIO_VERSION first.' }
+    if ($Main -or $Source -or $vsVersion) { throw 'Uninstall cannot be combined with installation options; clear VOICESTUDIO_VERSION first.' }
     $keys = @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*')
     $entries = @(Get-ItemProperty $keys -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -match '^VoiceStudio(?: \d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?)?$' })
     foreach ($entry in $entries) {
@@ -43,7 +44,7 @@ if ($mode -eq 'uninstall') {
     return
 }
 if ($mode -notin @('binary', 'main')) { throw 'Install mode must be binary, main, source, or uninstall.' }
-if ($mode -eq 'main' -and $Version) { throw 'Main cannot be combined with Version.' }
+if ($mode -eq 'main' -and $vsVersion) { throw 'Main cannot be combined with Version.' }
 function Assert-Version([string]$Value) {
     if ($Value -notmatch '^\d+\.\d+\.\d+(-[A-Za-z0-9]+([.-][A-Za-z0-9]+)*)?$') { throw "Invalid version: $Value" }
 }
@@ -51,7 +52,7 @@ function Run-Checked([string]$Command, [string[]]$Arguments) {
     & $Command @Arguments
     if ($LASTEXITCODE -ne 0) { throw "$Command failed (exit $LASTEXITCODE)." }
 }
-if ($Version) { $Version = $Version -replace '^v', ''; Assert-Version $Version }
+if ($vsVersion) { $vsVersion = $vsVersion -replace '^v', ''; Assert-Version $vsVersion }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $work = Join-Path ([IO.Path]::GetTempPath()) ('voicestudio-install-' + [Guid]::NewGuid())
 New-Item -ItemType Directory -Path $work | Out-Null
@@ -70,34 +71,35 @@ try {
             Push-Location 'electron'
             try {
                 Run-Checked bun @('run', 'build')
+                Run-Checked bun @('run', 'build:web')
                 Run-Checked node @('tests/packaging-contract.mjs')
                 Run-Checked bun @('run', 'electron-builder', '--config', 'electron-builder.config.mjs', '--publish', 'never', '--win', '--x64')
                 Run-Checked node @('tests/update-package-contract.mjs')
             } finally { Pop-Location }
         } finally { Pop-Location }
-        $Version = (Get-Content (Join-Path $checkout 'frontend/package.json') -Raw | ConvertFrom-Json).version
-        Assert-Version $Version
+        $vsVersion = (Get-Content (Join-Path $checkout 'package.json') -Raw | ConvertFrom-Json).version
+        Assert-Version $vsVersion
         $packageDir = Join-Path $checkout 'electron/release'
     } else {
-        if (-not $Version) {
+        if (-not $vsVersion) {
             try {
                 $release = Invoke-RestMethod 'https://api.github.com/repos/debpalash/VoiceStudio/releases/latest'
-                $Version = $release.tag_name -replace '^v', ''
+                $vsVersion = $release.tag_name -replace '^v', ''
             } catch {
                 $response = Invoke-WebRequest -UseBasicParsing 'https://github.com/debpalash/VoiceStudio/releases/latest'
                 # HttpWebResponse on Windows PowerShell 5.1, HttpResponseMessage on 7.
                 $uri = if ($response.BaseResponse.ResponseUri) { $response.BaseResponse.ResponseUri } else { $response.BaseResponse.RequestMessage.RequestUri }
                 if ([string]$uri -notmatch '^https://github\.com/debpalash/VoiceStudio/releases/tag/v([^/?#]+)$') { throw 'Could not resolve the latest release tag.' }
-                $Version = $Matches[1]
+                $vsVersion = $Matches[1]
             }
-            Assert-Version $Version
+            Assert-Version $vsVersion
         }
         $packageDir = $work
     }
-    $asset = "VoiceStudio-Electron-$Version-win-x64.exe"
+    $asset = "VoiceStudio-Electron-$vsVersion-win-x64.exe"
     $package = Join-Path $packageDir $asset
     if ($mode -eq 'binary') {
-        $base = "https://github.com/debpalash/VoiceStudio/releases/download/v$Version"
+        $base = "https://github.com/debpalash/VoiceStudio/releases/download/v$vsVersion"
         Write-Output "Downloading $asset"
         Invoke-WebRequest -UseBasicParsing "$base/$asset" -OutFile $package
         $sums = Join-Path $work 'SHA256SUMS.txt'

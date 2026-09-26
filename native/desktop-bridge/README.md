@@ -31,7 +31,7 @@ sending the event to Electron. Windows native registration/key injection verifie
 one press/release pair, matching session IDs and preservation of the prior binding
 when replacement fails (`bun electron/tests/native-shortcut-smoke.ts`).
 
-Wayland portal logic was extracted into `frontend/src-tauri/src/wayland_shortcut_core.rs`;
+Wayland portal logic lives in `src/wayland_shortcut_core.rs`;
 Tauri keeps a thin adapter and its existing desktop identity. Electron supplies
 its own desktop identity and executable. Portal consent, request ordering and
 existing tests remain shared. Linux helper plus tests and the macOS ARM helper

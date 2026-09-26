@@ -12,7 +12,7 @@ import {
   capturePageview,
   disableAnalytics,
   enableAnalytics,
-} from '../../../../../frontend/src/utils/analytics';
+} from '@shared/utils/analytics';
 import { routeBreadcrumb } from '@/lib/report-breadcrumb';
 
 interface AnalyticsState {

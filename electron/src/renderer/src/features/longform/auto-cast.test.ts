@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { buildAutoCast } from '../../../../../../frontend/src/utils/autoCast';
+import { buildAutoCast } from '@shared/utils/autoCast';
 it('preserves assigned character voices and appends only new speakers', () => {
   const cast = [{ id: 'existing', name: 'Mara', profileId: 'actor' }];
   const result = buildAutoCast('[Mara] Hello.\n[Guest] Welcome.', cast, [{ id: 'narrator' }]);

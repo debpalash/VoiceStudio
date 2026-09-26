@@ -1,12 +1,9 @@
 """Source installs must honour `OMNIVOICE_TORCH_VARIANT=rocm` (#1665).
 
 `uv sync` always restores the lockfile's CUDA torch build, which is CPU-only
-on AMD cards, and `uv run` re-syncs before every launch — so a hand-swapped
-ROCm wheel was silently reverted by the next `bun run desktop`. The packaged
-app's bootstrap (`bootstrap.rs`) already performs the swap on opt-in; these
-tests pin the dev-flow equivalents: `scripts/setup.py` reinstalls the ROCm
-wheel after the sync, and `scripts/dev-backend.mjs` launches with
-`uv run --no-sync` so it sticks.
+on AMD cards, and `uv run` re-syncs before every launch. These tests pin the
+source flow: `scripts/setup.py` reinstalls the ROCm wheel after the sync, and
+`scripts/dev-backend.mjs` launches with `uv run --no-sync` so it sticks.
 """
 import importlib.util
 import json
@@ -17,7 +14,6 @@ import subprocess
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _SETUP = os.path.join(_ROOT, "scripts", "setup.py")
 _DEV_BACKEND = os.path.join(_ROOT, "scripts", "dev-backend.mjs")
-_BOOTSTRAP = os.path.join(_ROOT, "frontend", "src-tauri", "src", "bootstrap.rs")
 
 
 def _load_setup():
@@ -38,7 +34,7 @@ def test_rocm_opt_in_requires_explicit_variant():
     )
 
 
-def test_rocm_reinstall_targets_this_venv_with_bootstrap_pins():
+def test_rocm_reinstall_targets_this_venv_with_pinned_stack():
     setup = _load_setup()
     cmd = setup.rocm_torch_reinstall_cmd("https://idx/", python="/venv/bin/python")
     assert cmd == [
@@ -52,11 +48,11 @@ def test_rocm_reinstall_targets_this_venv_with_bootstrap_pins():
         "--index-url",
         "https://idx/",
     ]
-    # Same pins + default index as the packaged app's bootstrap.
-    rs = open(_BOOTSTRAP, encoding="utf-8").read()
-    for pin in setup.ROCM_TORCH_PINS:
-        assert f'"{pin}"' in rs, f"{pin} drifted from bootstrap.rs"
-    assert f'"{setup.ROCM_TORCH_INDEX}"' in rs
+    assert setup.ROCM_TORCH_PINS == (
+        "torch==2.8.0",
+        "torchaudio==2.8.0",
+        "torchvision==0.23.0",
+    )
 
 
 def test_dev_backend_skips_resync_when_rocm_requested():

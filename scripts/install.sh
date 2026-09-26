@@ -26,7 +26,7 @@ HELP
 }
 
 MODE=binary
-VERSION=
+VS_VERSION=
 UNINSTALL=0
 INSTALL_OPTION=0
 while [ "$#" -gt 0 ]; do
@@ -36,19 +36,19 @@ while [ "$#" -gt 0 ]; do
         --uninstall) UNINSTALL=1 ;;
         --version)
             [ "$#" -ge 2 ] || die '--version requires a value'
-            VERSION=${2#v}; INSTALL_OPTION=1; shift ;;
+            VS_VERSION=${2#v}; INSTALL_OPTION=1; shift ;;
         --help|-h) usage; exit 0 ;;
         *) die "Unknown option: $1 (see --help)" ;;
     esac
     shift
 done
 [ "$UNINSTALL-$INSTALL_OPTION" != 1-1 ] || die '--uninstall cannot be combined with installation options'
-[ "$MODE" != main ] || [ -z "$VERSION" ] || die '--main cannot be combined with --version'
+[ "$MODE" != main ] || [ -z "$VS_VERSION" ] || die '--main cannot be combined with --version'
 valid_version() {
     # Versions are used in URLs and filenames; reject paths and shell syntax.
     printf '%s\n' "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9]+([.-][A-Za-z0-9]+)*)?$'
 }
-[ -z "$VERSION" ] || valid_version "$VERSION" || die 'Invalid version; use X.Y.Z or X.Y.Z-prerelease'
+[ -z "$VS_VERSION" ] || valid_version "$VS_VERSION" || die 'Invalid version; use X.Y.Z or X.Y.Z-prerelease'
 case "$(uname -s)" in
     Darwin) OS=mac ;;
     Linux) OS=linux ;;
@@ -184,6 +184,7 @@ if [ "$MODE" = main ]; then
         export CSC_IDENTITY_AUTO_DISCOVERY=false
         cd electron
         bun run build
+        bun run build:web
         node tests/packaging-contract.mjs
         # Invoke the builder directly: bun appends flags to the last command
         # in a chained package script, not necessarily to electron-builder.
@@ -191,28 +192,28 @@ if [ "$MODE" = main ]; then
         if [ "$OS" = linux ]; then node scripts/embed-appimage-update.mjs; fi
         node tests/update-package-contract.mjs
     )
-    VERSION=$(node -p 'require(process.argv[1]).version' "$WORK/source/frontend/package.json")
-    valid_version "$VERSION" || die 'Invalid version in source checkout.'
+    VS_VERSION=$(node -p 'require(process.argv[1]).version' "$WORK/source/package.json")
+    valid_version "$VS_VERSION" || die 'Invalid version in source checkout.'
     PACKAGE_DIR="$WORK/source/electron/release"
 else
     RELEASES=https://github.com/debpalash/VoiceStudio/releases
-    if [ -z "$VERSION" ]; then
+    if [ -z "$VS_VERSION" ]; then
         # latest.json is the frozen Tauri feed. Resolve the release tag instead.
         URL=$(curl --proto '=https' --proto-redir '=https' --connect-timeout 30 --max-time 60 -fLsS --retry 3 -o /dev/null -w '%{url_effective}' "$RELEASES/latest")
-        case "$URL" in "$RELEASES/tag/v"*) VERSION=${URL##*/v} ;; *) die 'Could not resolve the latest release tag.' ;; esac
-        valid_version "$VERSION" || die 'Invalid latest release version.'
+        case "$URL" in "$RELEASES/tag/v"*) VS_VERSION=${URL##*/v} ;; *) die 'Could not resolve the latest release tag.' ;; esac
+        valid_version "$VS_VERSION" || die 'Invalid latest release version.'
     fi
     PACKAGE_DIR="$WORK"
 fi
 case "$OS" in
-    mac) ASSET="VoiceStudio-Electron-$VERSION-mac-$ARCH.dmg" ;;
-    linux) ASSET="VoiceStudio-Electron-$VERSION-linux-x64.AppImage" ;;
+    mac) ASSET="VoiceStudio-Electron-$VS_VERSION-mac-$ARCH.dmg" ;;
+    linux) ASSET="VoiceStudio-Electron-$VS_VERSION-linux-x64.AppImage" ;;
 esac
 PACKAGE="$PACKAGE_DIR/$ASSET"
 if [ "$MODE" = binary ]; then
-    BASE="$RELEASES/download/v$VERSION"
+    BASE="$RELEASES/download/v$VS_VERSION"
     printf 'Downloading %s\n' "$ASSET"
-    download "$BASE/$ASSET" "$PACKAGE" || die "No downloadable Electron package for v$VERSION ($OS/$ARCH). Check the release; legacy Tauri versions are not installed."
+    download "$BASE/$ASSET" "$PACKAGE" || die "No downloadable Electron package for v$VS_VERSION ($OS/$ARCH). Check the release; legacy Tauri versions are not installed."
     download "$BASE/SHA256SUMS.txt" "$WORK/SHA256SUMS.txt" || die 'Published checksums are unavailable; refusing to install.'
     EXPECTED=$(awk -v asset="$ASSET" '$2 == asset {print $1}' "$WORK/SHA256SUMS.txt")
     printf '%s\n' "$EXPECTED" | grep -Eq '^[a-fA-F0-9]{64}$' || die 'Missing, duplicate, or invalid checksum entry.'

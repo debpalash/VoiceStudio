@@ -7,18 +7,18 @@ import { AgentFixButton } from '@/components/agent-fix-button';
 import { getBridge } from '@/components/bridge';
 import { WorkspaceHeader } from '@/components/app-shell/workspace-header';
 import { Switch } from '@/components/ui/switch';
-import { MAX_COOKIE_EXPORT_BYTES } from '../../../../../../frontend/src/utils/cookieExport';
+import { MAX_COOKIE_EXPORT_BYTES } from '@shared/utils/cookieExport';
 import {
   hasCompleteTranslation,
   multiLangTargets,
-} from '../../../../../../frontend/src/utils/multiLang';
-import { segmentGenInputs } from '../../../../../../frontend/src/utils/segments';
-import { clampSegmentEdit } from '../../../../../../frontend/src/utils/timeline';
+} from '@shared/utils/multiLang';
+import { segmentGenInputs } from '@shared/utils/segments';
+import { clampSegmentEdit } from '@shared/utils/timeline';
 import {
   dialectLabel,
   dialectMatchesLang,
   dialectOptionsFor,
-} from '../../../../../../frontend/src/api/dialects';
+} from '@shared/api/dialects';
 import { DubExportPanel } from './dub-export-panel';
 import { DubTimeline } from './dub-timeline';
 import { PasteTranslation } from './paste-translation';
@@ -97,7 +97,7 @@ import { apiFetch, apiJson, apiPath, describeError, isAbortError } from '@/lib/a
 import { createObjectUrl, revokeObjectUrl } from '@/lib/audio/object-url';
 import { requestPlaybackSeek } from '@/lib/audio/playback-clock';
 import { beginAppActivity } from '@/lib/app-activity';
-import { LANG_CODES } from '../../../../../../frontend/src/utils/languages';
+import { LANG_CODES } from '@shared/utils/languages';
 import { cn } from '@/lib/utils';
 import {
   useDubSession,

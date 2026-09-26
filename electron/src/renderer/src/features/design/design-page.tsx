@@ -50,13 +50,13 @@ import { queryKeys } from '@/lib/query';
 import { cn } from '@/lib/utils';
 import { cloneSettingsStore } from '@/lib/store/clone-settings';
 import type { Profile } from '@/lib/api/types';
-import { CATEGORIES, PRESETS } from '../../../../../../frontend/src/utils/constants';
+import { CATEGORIES, PRESETS } from '@shared/utils/constants';
 import {
   applyVdState,
   buildDesignInstruct,
   mergeDescribedAttrs,
-} from '../../../../../../frontend/src/utils/voiceInstruct';
-import { pickDesignSeed } from '../../../../../../frontend/src/utils/seed';
+} from '@shared/utils/voiceInstruct';
+import { pickDesignSeed } from '@shared/utils/seed';
 export function DesignPage() {
   const { t } = useTranslation();
   const selectedTake = useSelectedTake();

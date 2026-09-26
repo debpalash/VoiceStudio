@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { KeyRoundIcon } from 'lucide-react';
-import { exchangeApiKey } from '../../../../../frontend/src/api/authSession';
+import { exchangeApiKey } from '@shared/api/authSession';
 import { absoluteApiBase, ApiError, apiFetch } from '@/lib/api/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';

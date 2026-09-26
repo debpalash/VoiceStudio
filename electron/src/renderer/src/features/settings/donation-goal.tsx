@@ -6,8 +6,8 @@ import {
   progressPct,
   isGoalMet,
   formatMoney,
-} from '../../../../../../frontend/src/api/donation';
-import snapshotUrl from '../../../../../../frontend/public/donation_progress.json?url';
+} from '@shared/api/donation';
+import snapshotUrl from '../../../../../public/donation_progress.json?url';
 
 export function DonationGoal() {
   const { t } = useTranslation();

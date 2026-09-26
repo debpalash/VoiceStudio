@@ -15,7 +15,7 @@
 # Two modes:
 #   • default (report-only) — for unsigned dev / preview builds. Missing
 #     signature/notarization is reported as WARN, exit 0. This is the repo's
-#     normal state: Apple signing is OPT-IN and OFF by default (see release.yml
+#     normal state: Apple signing is OPT-IN and OFF by default (see electron-release.yml
 #     "Configure Apple signing"); unsigned bundles are expected there.
 #   • --require-signed (strict) — for production. ANY unsigned component,
 #     Gatekeeper rejection, or missing notarization ticket is a FAIL (exit 1),
@@ -24,7 +24,7 @@
 # Usage:
 #   scripts/verify-macos-signing.sh [APP_OR_DMG_PATH] [--require-signed]
 #
-#   # auto-discover the most recent built .app under the Tauri target dir:
+#   # auto-discover the Electron release bundle:
 #   scripts/verify-macos-signing.sh
 #   # strict gate against a specific bundle:
 #   scripts/verify-macos-signing.sh "path/to/VoiceStudio.app" --require-signed
@@ -62,13 +62,8 @@ trap cleanup EXIT
 resolve_app() {
   local t="$1"
   if [ -z "$t" ]; then
-    # Auto-discover: prefer release bundles, fall back to debug. Newest first.
-    t="$(find "$REPO_ROOT/frontend/src-tauri/target" \
-          -type d -name '*.app' -path '*/bundle/macos/*' 2>/dev/null \
-          | grep -E '/release/' | head -1)"
-    [ -z "$t" ] && t="$(find "$REPO_ROOT/frontend/src-tauri/target" \
-          -type d -name '*.app' -path '*/bundle/macos/*' 2>/dev/null | head -1)"
-    [ -z "$t" ] && { echo "ERROR: no .app found under frontend/src-tauri/target/**/bundle/macos/. Build first (bun desktop-prod) or pass an explicit path." >&2; exit 2; }
+    t="$(find "$REPO_ROOT/electron/release" -maxdepth 2 -type d -name '*.app' 2>/dev/null | head -1)"
+    [ -z "$t" ] && { echo "ERROR: no .app found under electron/release. Build first (bun run dist:dir) or pass an explicit path." >&2; exit 2; }
     echo "$t"; return
   fi
   case "$t" in

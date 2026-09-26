@@ -23,7 +23,7 @@ from fastapi import HTTPException
 from api.routers.dub_core import _DUB_SOURCE_LANG_CODES, _source_lang_override
 
 _REPO = pathlib.Path(__file__).resolve().parents[1]
-_LANGUAGES_JS = _REPO / "frontend" / "src" / "utils" / "languages.js"
+_LANGUAGES_JS = _REPO / "electron" / "src" / "shared" / "utils" / "languages.js"
 
 
 def test_the_rejection_names_the_code():

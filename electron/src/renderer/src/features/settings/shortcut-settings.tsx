@@ -13,7 +13,7 @@ import {
 import {
   keyEventToAccelerator,
   isPureModifierEvent,
-} from '../../../../../../frontend/src/utils/shortcutAccelerator';
+} from '@shared/utils/shortcutAccelerator';
 import { SettingsSection, SettingsRow } from './settings-layout';
 
 export function ShortcutSettings() {

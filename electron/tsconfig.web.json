@@ -19,29 +19,31 @@
     "resolveJsonModule": true,
     "noEmit": true,
     "paths": {
-      "@/*": ["./src/renderer/src/*"]
+      "@/*": ["./src/renderer/src/*"],
+      "@shared/*": ["./src/shared/*"]
     }
   },
   "include": [
     "src/renderer/src/**/*",
     "src/preload/index.d.ts",
-    "src/shared/**/*",
     "src/renderer/env.d.ts",
-    "../frontend/src/utils/languageRejection.ts",
-    "../frontend/src/utils/generationFailureMessage.ts",
-    "../frontend/src/utils/coalescedJsonStorage.ts",
-    "../frontend/src/utils/indexedDbLongformStore.ts",
-    "../frontend/src/utils/cookieExport.ts",
-    "../frontend/src/api/types.ts",
-    "../frontend/src/api/donation.ts",
-    "../frontend/src/api/authSession.ts",
-    "../frontend/src/utils/runCrashRecord.ts",
-    "../frontend/src/utils/nativeExit.ts",
-    "../frontend/src/utils/backendContact.ts",
-    "../frontend/src/utils/deploymentMode.ts",
-    "../frontend/src/utils/errorDocsMap.ts",
-    "../frontend/src/utils/analytics.ts",
-    "../frontend/src/api/external.ts",
-    "../frontend/src/api/dialects.ts"
+    "src/shared/utils/languageRejection.ts",
+    "src/shared/utils/generationFailureMessage.ts",
+    "src/shared/utils/coalescedJsonStorage.ts",
+    "src/shared/utils/indexedDbLongformStore.ts",
+    "src/shared/utils/cookieExport.ts",
+    "src/shared/api/types.ts",
+    "src/shared/api/donation.ts",
+    "src/shared/api/authSession.ts",
+    "src/shared/utils/runCrashRecord.ts",
+    "src/shared/utils/nativeExit.ts",
+    "src/shared/utils/backendContact.ts",
+    "src/shared/utils/deploymentMode.ts",
+    "src/shared/utils/errorDocsMap.ts",
+    "src/shared/utils/analytics.ts",
+    "src/shared/api/external.ts",
+    "src/shared/api/dialects.ts",
+    "src/shared/repair-request.ts",
+    "src/shared/web-api-routing.ts"
   ]
 }

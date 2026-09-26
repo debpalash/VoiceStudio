@@ -1,5 +1,5 @@
 import i18next from 'i18next';
-import { generationFailureMessage } from '../../../../../../frontend/src/utils/generationFailureMessage.ts';
+import { generationFailureMessage } from '@shared/utils/generationFailureMessage.ts';
 export interface PublicFailure {
   reason: string;
   errorClass?: string;

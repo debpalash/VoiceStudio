@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { TAGS } from '../../../../../../frontend/src/utils/constants';
+import { TAGS } from '@shared/utils/constants';
 
 export function AudiobookMarkupToolbar({
   textareaRef,

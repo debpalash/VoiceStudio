@@ -2,7 +2,7 @@ import { createStreamingPreview, supportsStreamingPreview } from '@/lib/audio/st
 import { backendWebSocketUrl } from '@/lib/api/websocket';
 import { beginAppActivity } from '@/lib/app-activity';
 import { acquireSynthesis } from '@/lib/synthesis-lock';
-import { segmentGenInputs } from '../../../../../../frontend/src/utils/segments';
+import { segmentGenInputs } from '@shared/utils/segments';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';

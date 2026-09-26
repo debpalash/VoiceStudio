@@ -2,8 +2,8 @@ import type { HistoryItem, Profile } from '@/lib/api/types';
 import {
   instructToVdStates,
   mergeDescribedAttrs,
-} from '../../../../../../frontend/src/utils/voiceInstruct';
-import { pickDesignSeed } from '../../../../../../frontend/src/utils/seed';
+} from '@shared/utils/voiceInstruct';
+import { pickDesignSeed } from '@shared/utils/seed';
 export const STORAGE = 'voicestudio.design.v1';
 export const DESIGN_DRAFT_EVENT = 'voicestudio:design-draft';
 

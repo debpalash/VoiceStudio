@@ -11,7 +11,7 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "blo
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 libc = "0.2"
-# Same native registration backend already pinned by Tauri.
+# Native global-shortcut registration backend.
 global-hotkey = "=0.8.0"
 arboard = { version = "3", features = ["wayland-data-control"] }
 enigo = { version = "0.3", features = ["serde"] }

@@ -16,7 +16,7 @@ The fix (fail-before/pass-after — `remove_silence_safe` and
   * `validate_clone_reference` raises the one remaining hard failure — a clip
     with genuinely no audio (empty / digital silence / NaN) — with the
     machine-readable ``[clone_ref_unusable]`` marker the frontend maps to a
-    localized, actionable message (frontend/src/utils/errorToast.jsx →
+    localized, actionable message (electron/src/shared/utils/errorToast.jsx →
     tts_errors.ref_audio_unusable).
 
 All clone producers share this path (`create_voice_clone_prompt` is the single

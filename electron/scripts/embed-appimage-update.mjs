@@ -11,7 +11,7 @@ import { inflateRawSync } from 'node:zlib';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const releaseDir = resolve(root, process.argv[2] || 'release');
-const version = JSON.parse(readFileSync(resolve(root, '../frontend/package.json'), 'utf8')).version;
+const version = JSON.parse(readFileSync(resolve(root, '../package.json'), 'utf8')).version;
 const filename = `VoiceStudio-Electron-${version}-linux-x64.AppImage`;
 const image = resolve(releaseDir, filename);
 const zsync = `${image}.zsync`;

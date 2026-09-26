@@ -3,8 +3,8 @@ import type {
   DownloadParams,
   GalleryVoice,
   YoutubeSearchResult,
-} from '../../../../../../frontend/src/api/gallery-types';
-import type { PersonaImportResult } from '../../../../../../frontend/src/api/types';
+} from '@shared/api/gallery-types';
+import type { PersonaImportResult } from '@shared/api/types';
 export type { GalleryVoice, YoutubeSearchResult };
 export const importsApi = {
   list: (signal?: AbortSignal) => apiJson<GalleryVoice[]>('/gallery/voices', { signal }),

@@ -1,15 +1,15 @@
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { composeBugReportUrl } from '../../../../../frontend/src/utils/bugReportDocument';
-import { formatBreadcrumbs } from '../../../../../frontend/src/utils/breadcrumbs';
-import { contactAge, lastBackendContact } from '../../../../../frontend/src/utils/backendContact';
-import { clampCrashTail } from '../../../../../frontend/src/utils/crashReport';
-import { scrubText } from '../../../../../frontend/src/utils/scrub';
-import { describeExitCode, isNativeFaultExit } from '../../../../../frontend/src/utils/nativeExit';
+import { composeBugReportUrl } from '@shared/utils/bugReportDocument';
+import { formatBreadcrumbs } from '@shared/utils/breadcrumbs';
+import { contactAge, lastBackendContact } from '@shared/utils/backendContact';
+import { clampCrashTail } from '@shared/utils/crashReport';
+import { scrubText } from '@shared/utils/scrub';
+import { describeExitCode, isNativeFaultExit } from '@shared/utils/nativeExit';
 import {
   _adaptLastRunCrash,
   type LastRunCrashRecord,
-} from '../../../../../frontend/src/utils/runCrashRecord';
+} from '@shared/utils/runCrashRecord';
 import { getBackendStatusSnapshot } from '@/hooks/use-backend-status';
 import { apiJson } from '@/lib/api/client';
 import { router } from '@/router';

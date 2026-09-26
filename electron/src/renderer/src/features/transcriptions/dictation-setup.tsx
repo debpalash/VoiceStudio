@@ -7,7 +7,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { AgentFixButton } from '@/components/agent-fix-button';
 import { Progress } from '@/components/ui/progress';
 import { apiJson, describeError } from '@/lib/api/client';
-import { fmtBytes } from '../../../../../../frontend/src/components/settings/models/format';
+import { fmtBytes } from '@shared/components/settings/models/format';
 
 interface DictationModel {
   id: string;

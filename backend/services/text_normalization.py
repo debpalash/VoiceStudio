@@ -19,7 +19,7 @@ Design rules (load-bearing):
     pass through a pipeline is harmless.
   * **Per-language.** Numbers go through ``num2words`` only for languages it
     supports (``_NUM2WORDS_LANGS``; the request's ``language`` is a full
-    display name from frontend/src/languages.json or an ISO-ish code — both
+    display name from electron/src/shared/languages.json or an ISO-ish code — both
     resolve via :func:`_num2words_lang`), or through a hand-written native
     verbalizer for languages num2words lacks (``_NATIVE_VERBALIZERS``, e.g.
     Malayalam). Everything else keeps its digits.
@@ -75,7 +75,7 @@ PREF_KEY = "text_normalization_enabled"
 # ── Language resolution ───────────────────────────────────────────────────────
 #
 # The `language` kwarg across the app is normally a full display name from
-# frontend/src/languages.json ("English", "German", …) — see
+# electron/src/shared/languages.json ("English", "German", …) — see
 # resolve_kokoro_lang_code in services/tts_backend.py — but ISO-ish codes
 # ("en", "pt-BR") also flow through dub/API callers. Map both to a num2words
 # locale; anything unmapped keeps its digits (false negatives are fine).

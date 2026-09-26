@@ -41,7 +41,7 @@ export function installNativeCapture(
   const trayIcon = (file: string) =>
     app.isPackaged
       ? join(process.resourcesPath, 'brand', file)
-      : join(backendRoot(), 'frontend', 'src-tauri', 'icons', file);
+      : join(backendRoot(), 'electron', 'build', 'icons', file);
   const settingsPath = join(app.getPath('userData'), 'dictation-shortcut.json');
   let saved: unknown;
   try {

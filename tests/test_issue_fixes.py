@@ -32,8 +32,8 @@ NEW_DISCORD = "discord.gg/bzQavDfVV9"
 _LINK_FILES = [
     "README.md",
     ".github/CONTRIBUTING.md",
-    "frontend/src/pages/EnterprisePage.jsx",
-    "frontend/src/components/LogsFooter.jsx",
+    "electron/src/shared/pages/EnterprisePage.jsx",
+    "electron/src/shared/components/LogsFooter.jsx",
 ]
 
 
@@ -43,7 +43,7 @@ def test_discord_link_updated(relpath):
     filepath = _REPO / relpath
     if not filepath.exists():
         pytest.skip(f"{relpath} not found")
-    content = filepath.read_text()
+    content = filepath.read_text(encoding="utf-8")
     assert OLD_DISCORD not in content, f"{relpath} still contains expired link {OLD_DISCORD}"
     assert NEW_DISCORD in content, f"{relpath} missing new link {NEW_DISCORD}"
 

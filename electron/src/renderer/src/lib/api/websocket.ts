@@ -1,7 +1,7 @@
 import { getBridge } from '@/components/bridge';
 import { getBackendStatusSnapshot, type BackendStatus } from '@/hooks/use-backend-status';
 import { absoluteApiBase } from './client';
-import { authenticatedWsUrl } from '../../../../../../frontend/src/api/authSession';
+import { authenticatedWsUrl } from '@shared/api/authSession';
 
 export type BackendWebSocketPath = '/ws/events' | '/ws/transcribe' | '/ws/tts';
 

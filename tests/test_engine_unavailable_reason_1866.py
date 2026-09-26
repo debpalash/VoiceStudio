@@ -136,7 +136,7 @@ def test_a_license_gate_keeps_the_words_the_accept_button_needs(diagnostic, one_
     # detail split (engines/engineDisplay.js, used by the row and the panel).
     source = (
         Path(__file__).resolve().parents[1]
-        / "frontend/src/components/engines/engineDisplay.js"
+        / "electron/src/shared/components/engines/engineDisplay.js"
     ).read_text(encoding="utf-8")
     m = re.search(r"function reasonMentionsLicense\(reason\)[^}]*?return /([^/]+)/(\w*)\.test", source, re.S)
     assert m, "engineDisplay.reasonMentionsLicense changed shape"

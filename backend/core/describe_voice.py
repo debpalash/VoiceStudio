@@ -31,7 +31,7 @@ Design notes
 
 Localization note (CLAUDE.md): the only hardcoded CJK here is
 ``DIALECT_PINYIN`` — a functional pinyin → Chinese-dialect-token mapping
-(model vocabulary, like ``frontend/src/utils/constants.js``). Registered in
+(model vocabulary, like ``electron/src/shared/utils/constants.js``). Registered in
 ``tests/test_no_hardcoded_cjk.py``'s allowlist with this justification.
 """
 from __future__ import annotations

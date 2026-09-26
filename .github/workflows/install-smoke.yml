@@ -46,7 +46,7 @@ jobs:
       - name: Build and install main (macOS/Linux)
         if: runner.os != 'Windows'
         run: |
-          if [ "$RUNNER_OS" = Linux ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             # Exercise the PR source as main before its installer changes are merged.
             git init --bare -q --initial-branch=main "$RUNNER_TEMP/voicestudio-main.git"
             git --git-dir "$RUNNER_TEMP/voicestudio-main.git" config receive.shallowUpdate true
@@ -86,7 +86,18 @@ jobs:
       - name: Build and install main (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: ./scripts/install.ps1 -Main -Silent
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+            # Exercise the PR source as main before its installer changes are merged.
+            $bare = Join-Path $env:RUNNER_TEMP 'voicestudio-main.git'
+            git init --bare -q --initial-branch=main $bare
+            git --git-dir $bare config receive.shallowUpdate true
+            git push $bare HEAD:refs/heads/main
+            $env:GIT_CONFIG_COUNT = '1'
+            $env:GIT_CONFIG_VALUE_0 = 'https://github.com/debpalash/VoiceStudio.git'
+            $env:GIT_CONFIG_KEY_0 = "url.file:///$($bare.Replace('\', '/')).insteadOf"
+          }
+          ./scripts/install.ps1 -Main -Silent
       - name: Verify and uninstall Electron (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

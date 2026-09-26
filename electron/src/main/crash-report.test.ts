@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { expect, it } from 'vitest';
-import { clampCrashTail } from '../../../frontend/src/utils/crashReport';
+import { clampCrashTail } from '../shared/utils/crashReport';
 
 it.each(['Fatal Python error: Segmentation fault', 'Windows fatal exception: access violation'])(
   'preserves native fault frames under the report character limit: %s',

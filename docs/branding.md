@@ -9,18 +9,17 @@ spark identifies creation. The product voice is clear, calm, and direct.
 |---|---|
 | Primary vector mark | `docs/logo.svg` |
 | README mark | `docs/logo.png` and `docs/logo-256.png` |
-| Browser icon | `frontend/public/favicon.svg` |
+| Browser icon | `electron/public/favicon.svg` |
 | In-app mark | `frontend/src/components/brand/VoiceStudioMark.jsx` |
-| Desktop/platform icons (Tauri and Electron) | `frontend/src-tauri/icons/` |
-| Electron sidebar and browser icon | `frontend/public/favicon.svg` via `electron/src/renderer/src/lib/brand.ts` |
-| Shared sidebar/launchpad artwork | `frontend/src/assets/signal-field.webp` |
+| Desktop/platform icons | `electron/build/icons/` |
+| Electron sidebar and browser icon | `electron/public/favicon.svg` via `electron/src/renderer/src/lib/brand.ts` |
+| Sidebar/launchpad artwork | `electron/public/signal-field.webp` |
 
 Regenerate every desktop icon from the canonical vector after changing the
 mark:
 
-```bash
-bun run --cwd frontend tauri icon ../docs/logo.svg
-```
+Export the canonical vector to the required PNG, ICO, and ICNS sizes under
+`electron/build/icons/`, then run the Electron packaging contract.
 
 Do not redraw the waveform per screen. Use `VoiceStudioMark` in React and the
 canonical SVG elsewhere so the silhouette stays recognizable at 16–512 px.

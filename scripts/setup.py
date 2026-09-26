@@ -46,8 +46,8 @@ for _stream in (sys.stdout, sys.stderr):
 
 # ── AMD ROCm torch (opt-in) ────────────────────────────────────────────────
 
-# Keep in sync with ROCM_TORCH_INDEX / rocm_torch_reinstall_args in
-# frontend/src-tauri/src/bootstrap.rs and [tool.uv.constraint-dependencies].
+# Keep in sync with Electron's runtime-project.ts and
+# [tool.uv.constraint-dependencies].
 ROCM_TORCH_INDEX = "https://download.pytorch.org/whl/rocm6.4"
 ROCM_TORCH_PINS = ("torch==2.8.0", "torchaudio==2.8.0", "torchvision==0.23.0")
 

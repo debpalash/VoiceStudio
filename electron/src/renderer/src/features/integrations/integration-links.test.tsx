@@ -18,7 +18,7 @@ vi.mock('@/components/app-shell/workspace-header', () => ({
 vi.mock('@/hooks/use-backend-status', () => ({
   useBackendStatus: () => ({ baseUrl: 'http://127.0.0.1:3912' }),
 }));
-vi.mock('../../../../../../frontend/src/config/sponsors', () => ({
+vi.mock('@shared/config/sponsors', () => ({
   SPONSORS: [
     { name: 'Acme Voice', logoUrl: 'acme.svg', url: 'https://acme.example', tier: 'gold' },
   ],

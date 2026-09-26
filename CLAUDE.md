@@ -1,20 +1,19 @@
 ## Active desktop: Electron only
 
-Electron (`electron/`) is the only maintained desktop app. Tauri is sunset and
-archived; do not add features, repair its UI, or backport Electron changes to it.
-Triage Tauri-only reports toward the Electron migration guide; investigate shared
-backend defects only when they affect Electron or the supported API. Keep archived
-source, migration data, and existing compatibility contracts intact. Some code under
-`frontend/` is still shared with Electron or serves the web app: trace consumers
-before editing or removing it. New desktop UI, IPC, setup instructions and tests
-belong in Electron; validate Electron on macOS, Windows and Linux.
+Electron (`electron/`) is the only desktop and web UI. The Tauri shell and legacy
+UI entrypoints are removed; do not restore build, runtime, release, or CI paths for
+them. Triage reports from final Tauri installations toward the migration guide and
+preserve their immutable updater feeds. Some modules under `electron/src/shared/` remain
+temporarily shared by Electron; they are not a runnable app. New UI, IPC, setup
+instructions, tests, and browser assets belong in Electron; validate Electron on
+macOS, Windows and Linux.
 
 <!-- GSD:project-start source:PROJECT.md -->
 ## Project
 
 **VoiceStudio**
 
-VoiceStudio is an open-source, fully-local ElevenLabs alternative — a desktop app for voice cloning, voice design, video dubbing, and real-time dictation across 646 languages. It runs entirely on the user's machine (CUDA/MPS/ROCm/CPU auto-detect), with no API keys, no accounts, and no cloud dependencies. It's an active beta with a growing user base who hit it with real workloads (50-video batches, multi-engine setups, edge-OS platforms) and report friction in GitHub Issues and Discord. The current version lives in `frontend/package.json` (the single source of truth — see Versioning); the latest stable tag is on the [Releases page](https://github.com/debpalash/VoiceStudio/releases/latest). With `AUTO_VERSION_BUMP` off (the current owner setting), `main` holds at the released version between releases.
+VoiceStudio is an open-source, fully-local ElevenLabs alternative — a desktop app for voice cloning, voice design, video dubbing, and real-time dictation across 646 languages. It runs entirely on the user's machine (CUDA/MPS/ROCm/CPU auto-detect), with no API keys, no accounts, and no cloud dependencies. It's an active beta with a growing user base who hit it with real workloads (50-video batches, multi-engine setups, edge-OS platforms) and report friction in GitHub Issues and Discord. The current version lives in the root `package.json` (the single source of truth — see Versioning); the latest stable tag is on the [Releases page](https://github.com/debpalash/VoiceStudio/releases/latest). With `AUTO_VERSION_BUMP` off (the current owner setting), `main` holds at the released version between releases.
 
 **Core Value:** **A first-run that actually works.** A user who downloads the installer (or clones the repo) should reach a working voice-cloning or dubbing output without hitting a wall — and when something does go wrong, the error or docs should tell them exactly what to do.
 
@@ -35,19 +34,19 @@ Everything else (new engines, fancy features) is downstream of "the thing instal
 
 The May-2026 stack research that used to live here served five capabilities that have all since shipped (HF-token Settings panel, prefilled-URL bug reporting, uv mirror fallback for restricted networks, the Supertonic-3 engine, in-repo Markdown docs). Follow the patterns in the code itself; the durable *don'ts* that research established:
 
-- **No third-party endpoints for bug reporting or crash dumps** (`sentry-tauri` was evaluated and rejected) — bug reporting stays opt-in via prefilled GitHub-issue URLs, submitted from the user's own browser. The one sanctioned third-party endpoint is the opt-in PostHog US product analytics and error tracking (owner-set 2026-07-16; migrated 2026-09-26; sanitized renderer errors approved 2026-09-26), which is consent-gated behind the first-run prompt and ships allowlisted content-free metadata only. Raw exception, DOM, and session autocapture stay disabled; manually captured renderer exceptions must replace messages and scrub stack paths before transmission. Its publishable write-only project token is committed in-repo (owner reversal 2026-07-20, #1193 — source builds get the same consent-gated analytics as installers; env/baked token overrides), allowed by `tests/test_no_committed_analytics_token.py` in exactly `backend/core/analytics.py` + `frontend/src/utils/analytics.ts`.
+- **No third-party endpoints for bug reporting or crash dumps** (`sentry-tauri` was evaluated and rejected) — bug reporting stays opt-in via prefilled GitHub-issue URLs, submitted from the user's own browser. The one sanctioned third-party endpoint is the opt-in PostHog US product analytics and error tracking (owner-set 2026-07-16; migrated 2026-09-26; sanitized renderer errors approved 2026-09-26), which is consent-gated behind the first-run prompt and ships allowlisted content-free metadata only. Raw exception, DOM, and session autocapture stay disabled; manually captured renderer exceptions must replace messages and scrub stack paths before transmission. Its publishable write-only project token is committed in-repo (owner reversal 2026-07-20, #1193 — source builds get the same consent-gated analytics as installers; env/baked token overrides), allowed by `tests/test_no_committed_analytics_token.py` in exactly `backend/core/analytics.py` + `electron/src/shared/utils/analytics.ts`.
 - **No PAT/token-based GitHub posting from the app** — the user submits from their own browser.
 - **Don't recommend `setx` for env vars on Windows** (silent truncation, no current-shell propagation) — use the in-app Settings panel or PowerShell `[Environment]::SetEnvironmentVariable`.
 - **Don't adopt Material for MkDocs** for any future docs site (maintenance mode since Nov 2025) — Astro Starlight is the precedent if docs ever outgrow the repo.
 - **`hf_transfer` is deprecated** — default `huggingface_hub` (hf-xet) handles downloads.
 
-For anything new: prefer what's already pinned in `pyproject.toml` / `frontend/package.json`, and check `uv tree` for conflicts before adding a dependency.
+For anything new: prefer what's already pinned in `pyproject.toml` / `electron/package.json`, and check `uv tree` for conflicts before adding a dependency.
 <!-- GSD:stack-end -->
 
 <!-- GSD:conventions-start source:CONVENTIONS.md -->
 ## Conventions
 
-**Versioning (hard rule, owner-set 2026-06-11; single-source 2026-06-16):** **`frontend/package.json` is the SINGLE SOURCE OF TRUTH for the maintained Electron app version** — Electron's builder reads it directly and Vite injects `__APP_VERSION__` for the UI and bug reports. Two toolchain-required **mirrors** are kept equal to it and bumped in lockstep: `pyproject.toml` and `backend/core/version.py`'s `_FALLBACK_VERSION`. The archived Tauri manifests stay frozen at their final release and are not version mirrors. Guarded by `tests/test_app_version.py`. Version bumps are manual and happen only when the owner asks; until then, `main` may equal the latest released version. Consequences:
+**Versioning (hard rule, owner-set 2026-06-11; single-source 2026-09-26):** **The root `package.json` is the SINGLE SOURCE OF TRUTH for the maintained Electron app version** — Electron's builder reads it directly and Vite injects `__APP_VERSION__` for the UI and bug reports. Two toolchain-required **mirrors** are kept equal to it and bumped in lockstep: `pyproject.toml` and `backend/core/version.py`'s `_FALLBACK_VERSION`. Guarded by `tests/test_app_version.py`. Version bumps are manual and happen only when the owner asks; until then, `main` may equal the latest released version. Consequences:
 - Every PR and preview build uses the canonical version. Preview artifacts add the workflow run number without changing the checked-in version.
 - Releasing = obtain owner approval for the version, bump the canonical version and maintained mirrors together, then tag that exact version from `main` after validation.
 - Docker: `ghcr.io/debpalash/omnivoice-studio:latest` = **main** (rolling preview); `:X.Y.Z` + `:X.Y` + `:stable` = tagged releases. `:latest` is the preview channel by design — stable users pin `:stable` or a version tag.
@@ -59,7 +58,7 @@ For anything new: prefer what's already pinned in `pyproject.toml` / `frontend/p
 
 **Release presentation and credits (owner-set 2026-09-17):** Tagged release announcements lead with the biggest user-visible change; redesigns need real UI screenshots and migrations need installer links and steps. Verify all contributor credits from the tag comparison and included PRs; list authors and bug reporters separately (see `docs/RELEASING.md`). Keep Highlights to 3–5 bullets; the release introduction can include prose, images, and a download table before the concise change entries.
 
-**Localization (hard rule):** No hardcoded non-English (CJK) **user-facing text** anywhere in the codebase except the translation layer (`frontend/src/i18n/`). All UI strings go through i18n (`t('...')` keys in `locales/*.json`); native language names live in `i18n/index.ts` (`LANGUAGES`). Functional CJK is allowed and tracked via the allowlist in `tests/test_no_hardcoded_cjk.py` — text-processing regexes, model/engine vocabulary & identifiers (e.g. CosyVoice speaker IDs), localized error matching, demo/eval data, and test fixtures. CI fails on any hardcoded CJK outside the allowlist; to add legitimate functional CJK, extend `_ALLOWED_FILES` there with a justification.
+**Localization (hard rule):** No hardcoded non-English (CJK) **user-facing text** anywhere in the codebase except the translation layer (`electron/src/shared/i18n/`). All UI strings go through i18n (`t('...')` keys in `locales/*.json`); native language names live in `i18n/index.ts` (`LANGUAGES`). Functional CJK is allowed and tracked via the allowlist in `tests/test_no_hardcoded_cjk.py` — text-processing regexes, model/engine vocabulary & identifiers (e.g. CosyVoice speaker IDs), localized error matching, demo/eval data, and test fixtures. CI fails on any hardcoded CJK outside the allowlist; to add legitimate functional CJK, extend `_ALLOWED_FILES` there with a justification.
 
 **Release deployment channels (hard rule, owner-set 2026-07-16):** a version bump is not "released" until **every** maintained channel ships it — the full checklist lives in `docs/RELEASING.md`. The channels are the four-platform Electron GitHub Release, GHCR and Docker Hub in CUDA and ROCm flavors, and the Docker Hub overview page synced from `deploy/dockerhub-overview.md`. The final Tauri feeds are immutable compatibility assets copied into releases for old clients; they are never rebuilt. Verify all channels after tagging. Preview/RC builds always source from `main`; never cut a side-branch build.
 

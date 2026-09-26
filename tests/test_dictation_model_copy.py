@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 
-_LOCALES = Path(__file__).resolve().parents[1] / "frontend" / "src" / "i18n" / "locales"
+_LOCALES = Path(__file__).resolve().parents[1] / "electron" / "src" / "shared" / "i18n" / "locales"
 
 
 def test_recommended_badge_copy_belongs_to_whisper_tiny_in_every_locale():

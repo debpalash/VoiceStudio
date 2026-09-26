@@ -7,8 +7,15 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
 const installer = process.env.INSTALLER_UNDER_TEST || resolve('../scripts/install.sh');
+const installerSource = readFileSync(installer, 'utf8');
 const payload = 'fixture Electron AppImage';
 const digest = createHash('sha256').update(payload).digest('hex');
+
+test('installer isolates the app version from generic tooling variables', () => {
+  assert.match(installerSource, /^VS_VERSION=$/m);
+  assert.match(installerSource, /^\s*VS_VERSION=\$\(node -p/m);
+  assert.doesNotMatch(installerSource, /^VERSION=/m);
+});
 
 for (const mac of [false, true]) {
   test(`uninstall preserves data and a recoverable app (${mac ? 'macOS' : 'Linux'})`, (t) => {
@@ -91,10 +98,10 @@ esac
 printf 'git %s\\n' "$*" >> "$TEST_ROOT/commands"
 if [ "$1" = clone ]; then
  for arg in "$@"; do dest=$arg; done
- mkdir -p "$dest/frontend" "$dest/electron/release"
+ mkdir -p "$dest/electron/release"
  mkdir -p "$dest/electron/tests" "$dest/electron/scripts"
  touch "$dest/electron/tests/packaging-contract.mjs" "$dest/electron/tests/update-package-contract.mjs" "$dest/electron/scripts/embed-appimage-update.mjs"
- printf '{"version":"1.2.4"}' > "$dest/frontend/package.json"
+ printf '{"version":"1.2.4"}' > "$dest/package.json"
 else echo fixture-commit; fi
 `,
   );
@@ -174,6 +181,7 @@ for (const option of ['--main', '--source']) {
     const commands = readFileSync(join(f.root, 'commands'), 'utf8');
     assert.match(commands, /git clone --depth 1 --branch main --single-branch/);
     assert.match(commands, /bun install --frozen-lockfile/);
+    assert.match(commands, /bun run build:web/);
     assert.match(commands, /bun run electron-builder --config electron-builder.config.mjs --publish never --linux --x64/);
     assert.doesNotMatch(commands, /git pull|git reset|frontend.*build/);
   });

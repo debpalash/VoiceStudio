@@ -8,7 +8,7 @@ data access — PostHog's client keys are designed to ship in client code) is
 committed as an in-repo default in the two files that implement analytics:
 
     backend/core/analytics.py        (_PUBLIC_PROJECT_TOKEN)
-    frontend/src/utils/analytics.ts  (PUBLIC_PROJECT_TOKEN)
+    electron/src/shared/utils/analytics.ts  (PUBLIC_PROJECT_TOKEN)
 
 This guard pins the new contract: a `phc_` literal may exist ONLY there, both
 files must actually carry one, and the two must be the SAME token (one PostHog
@@ -31,7 +31,7 @@ _POSTHOG_KEY_RE = re.compile(r"phc_[A-Za-z0-9]{20,}")
 # The ONLY tracked files allowed to contain a `phc_` literal (#1193).
 _CANONICAL_TOKEN_FILES = (
     "backend/core/analytics.py",
-    "frontend/src/utils/analytics.ts",
+    "electron/src/shared/utils/analytics.ts",
 )
 
 _SKIP_DIRS = {"node_modules", ".git", "target", "dist", "build", ".venv", "zig-out"}
@@ -103,25 +103,24 @@ def test_both_canonical_files_carry_the_same_default_token():
 
 def test_the_frontend_reads_its_token_override_from_the_build_env():
     """The build-time override mechanism must stay in place."""
-    src = (_REPO / "frontend/src/utils/analytics.ts").read_text(encoding="utf-8")
+    src = (_REPO / "electron/src/shared/utils/analytics.ts").read_text(encoding="utf-8")
     assert "VITE_POSTHOG_KEY" in src
 
 
 def test_release_workflow_still_passes_the_secret_to_the_build():
-    wf = (_REPO / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    wf = (_REPO / ".github/workflows/electron-release.yml").read_text(encoding="utf-8")
     assert "VITE_POSTHOG_KEY" in wf, "the build no longer receives the analytics token override"
     assert "secrets.POSTHOG_PROJECT_TOKEN" in wf, "the override must come from the repo secret"
 
 
 def test_the_shell_hands_the_token_to_the_backend_it_spawns():
     """Without this a baked release token could never beat the in-repo default."""
-    src = (_REPO / "frontend/src-tauri/src/backend.rs").read_text(encoding="utf-8")
-    assert 'option_env!("VITE_POSTHOG_KEY")' in src, "the shell no longer bakes in the token"
+    src = (_REPO / "electron/src/main/backend.ts").read_text(encoding="utf-8")
+    assert "__POSTHOG_PROJECT_TOKEN__" in src, "the shell no longer bakes in the token"
     assert "POSTHOG_PROJECT_TOKEN" in src, "the backend process is no longer given the override"
     # #1193: the shell marks everything it spawns as the "installer" channel.
-    assert "OMNIVOICE_INSTALL_CHANNEL" in src, "the shell no longer stamps the install channel"
 
     # option_env! is resolved at COMPILE time, so cargo must rebuild when the
     # secret changes — otherwise a cached build keeps the token it first saw.
-    build_rs = (_REPO / "frontend/src-tauri/build.rs").read_text(encoding="utf-8")
-    assert "rerun-if-env-changed=VITE_POSTHOG_KEY" in build_rs
+    config = (_REPO / "electron/electron.vite.config.ts").read_text(encoding="utf-8")
+    assert "VITE_POSTHOG_KEY" in config

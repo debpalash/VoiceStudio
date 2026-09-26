@@ -33,7 +33,7 @@ export function createMacDevBundlePlan({
   const cacheKey = [electronVersion, appVersion, architecture, cacheFingerprint]
     .filter(Boolean)
     .join('-');
-  const destinationRoot = join(cacheRoot, cacheKey);
+  const destinationRoot = join(resolve(cacheRoot), cacheKey);
   const destinationBundle = join(destinationRoot, `${APP_NAME}.app`);
 
   return {

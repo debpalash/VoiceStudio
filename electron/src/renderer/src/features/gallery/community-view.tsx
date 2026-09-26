@@ -15,11 +15,11 @@ import { STORAGE, readDraft } from '@/features/design/design-draft';
 import {
   instructToVdStates,
   mergeDescribedAttrs,
-} from '../../../../../../frontend/src/utils/voiceInstruct';
+} from '@shared/utils/voiceInstruct';
 import type {
   CommunityItem,
   CommunityPage,
-} from '../../../../../../frontend/src/api/community-types';
+} from '@shared/api/community-types';
 import type { Profile } from '@/lib/api/types';
 import type { Mode } from '@/features/longform/longform-session';
 import { placeLongformVoice } from './place-voice';

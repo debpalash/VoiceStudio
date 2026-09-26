@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 import {
   activeWordIndex,
   buildLyricsTimeline,
-} from '../../../../../../frontend/src/utils/audiobookLyrics';
+} from '@shared/utils/audiobookLyrics';
 import type { AudiobookRenderChapter } from './longform-session';
 
 interface TimelineWord {

@@ -1,7 +1,7 @@
 """Tests for backend/core/error_docs_map.py — error → docs URL taxonomy.
 
 The locked taxonomy is the contract Phase 5's bug reporter consumes and
-the TS-side `frontend/src/utils/errorDocsMap.ts` mirrors. These tests pin
+the TS-side `electron/src/shared/utils/errorDocsMap.ts` mirrors. These tests pin
 both the keys and that every URL points back to the project repo.
 """
 from __future__ import annotations

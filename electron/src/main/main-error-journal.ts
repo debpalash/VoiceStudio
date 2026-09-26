@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { scrubText } from '../../../frontend/src/utils/scrub';
+import { scrubText } from '../shared/utils/scrub';
 
 const MAX_RECORDS = 20;
 const MAX_DETAIL = 20_000;

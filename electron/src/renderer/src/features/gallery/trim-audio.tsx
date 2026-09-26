@@ -12,7 +12,7 @@ import {
   decodeToMonoLowRate,
   sliceToMono,
   encodeWav,
-} from '../../../../../../frontend/src/utils/audioTrim';
+} from '@shared/utils/audioTrim';
 
 const MAX_TRIM_SECONDS = 60;
 

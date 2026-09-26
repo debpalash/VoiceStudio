@@ -3,7 +3,7 @@ import {
   inlineSegments,
   parseBlocks,
   type MarkdownBlock,
-} from '../../../../../frontend/src/utils/markdownLite';
+} from '@shared/utils/markdownLite';
 
 function InlineMarkdown({ text }: { text: string }) {
   return inlineSegments(text).map((segment, index) => {

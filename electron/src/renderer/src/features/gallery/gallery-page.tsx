@@ -16,7 +16,7 @@ import { VoiceDestinations } from './voice-destinations';
 import { placeLongformVoice } from './place-voice';
 import type { Mode } from '@/features/longform/longform-session';
 import { ImportsView } from './imports-view';
-import { FACETS } from '../../../../../../frontend/src/components/gallery/facets';
+import { FACETS } from '@shared/components/gallery/facets';
 import { FAVORITES_KEY, readFavorites, favoriteCatalogue } from './favorites';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
@@ -33,8 +33,8 @@ import type { Profile } from '@/lib/api/types';
 import type {
   ArchetypePage,
   ArchetypeCategory,
-} from '../../../../../../frontend/src/api/archetypes-types';
-import { mergeDescribedAttrs } from '../../../../../../frontend/src/utils/voiceInstruct';
+} from '@shared/api/archetypes-types';
+import { mergeDescribedAttrs } from '@shared/utils/voiceInstruct';
 import { STORAGE, readDraft } from '@/features/design/design-draft';
 import { setCloneSetting } from '@/lib/store/clone-settings';
 

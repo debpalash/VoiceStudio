@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { apiJson, describeError } from '@/lib/api/client';
 import { LanguagePicker } from '@/features/clone/language-picker';
-import { LANG_CODES } from '../../../../../../frontend/src/utils/languages';
+import { LANG_CODES } from '@shared/utils/languages';
 const options = LANG_CODES.map((item) => item.label);
 const tools = [
   {

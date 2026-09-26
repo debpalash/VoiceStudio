@@ -320,7 +320,7 @@ export interface VoiceStudioBridge {
     stop(token: string): Promise<void>;
   };
   app: {
-    /** From frontend/package.json via __APP_VERSION__ / extraMetadata. */
+    /** From the root package.json via __APP_VERSION__ / extraMetadata. */
     version: string;
     platform: NodeJS.Platform;
     isDev: boolean;

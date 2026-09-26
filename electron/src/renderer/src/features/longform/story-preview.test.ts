@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { exportStoryAudio } from '../../../../../../frontend/src/utils/storyExport';
+import { exportStoryAudio } from '@shared/utils/storyExport';
 import { storyChunkBody } from './story-preview';
 import { blankLongformDraft } from './longform-session';
 afterEach(() => vi.unstubAllGlobals());

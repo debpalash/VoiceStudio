@@ -31,7 +31,7 @@
 - [ ] I've tested this locally
 - [ ] I've updated relevant documentation (if applicable)
 - [ ] No local machine paths, logs, or personal env details in this PR
-- [ ] Maintained version files are in sync (if an owner-requested bump): `frontend/package.json`, `pyproject.toml`, `backend/core/version.py`, and lockfiles; archived Tauri versions remain frozen
+- [ ] Maintained version files are in sync (if an owner-requested bump): root `package.json`, `pyproject.toml`, `backend/core/version.py`, and lockfiles
 - [ ] If this PR changes runtime behavior, the regression fixture at `tests/fixtures/omnivoice_data/` still loads green on the `smoke-matrix` CI job (macOS + Windows + Linux)
 
 ## Release cadence

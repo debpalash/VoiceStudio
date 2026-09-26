@@ -15,12 +15,12 @@ import {
 import { ProfileAvatar } from '@/components/profile-avatar';
 import type { Profile } from '@/lib/api/types';
 import { cn } from '@/lib/utils';
-import { PRESETS } from '../../../../../../frontend/src/utils/constants';
+import { PRESETS } from '@shared/utils/constants';
 import {
   autoProfileId,
   castParts,
   castSpeakers,
-} from '../../../../../../frontend/src/utils/segments';
+} from '@shared/utils/segments';
 import type { DubSegment } from './dub-session';
 
 const DEFAULT_VOICE = '__default__';

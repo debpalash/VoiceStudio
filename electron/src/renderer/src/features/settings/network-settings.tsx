@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { apiJson } from '@/lib/api/client';
 import { SettingsSection, SettingsRow } from './settings-layout';
 import { useSettingsAction } from './use-settings-action';
-import { saveProxyPreference } from '../../../../../../frontend/src/utils/networkPreferences';
+import { saveProxyPreference } from '@shared/utils/networkPreferences';
 export function NetworkSettings() {
   const { t } = useTranslation();
   const client = useQueryClient();

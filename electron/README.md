@@ -59,7 +59,7 @@ bun run dist        # + electron-builder → release/
 ```
 
 The app version is **not** stored here: `electron.vite.config.ts` and
-`electron-builder.config.mjs` read it from `frontend/package.json`, the single
+`electron-builder.config.mjs` reads it from the root `package.json`, the single
 source of truth.
 
 ## Layout

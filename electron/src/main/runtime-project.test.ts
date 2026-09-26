@@ -8,6 +8,8 @@ import {
   installRuntime,
   promoteLegacyRuntimeCaches,
   CUDNN8_COMPAT_PIN,
+  ROCM_TORCH_INDEX,
+  ROCM_TORCH_PINS,
   clearCtranslate2ExecutableStack,
   runtimePython,
   runtimeReady,
@@ -30,6 +32,7 @@ async function fixture() {
   const bundle = join(root, 'bundle');
   const project = join(root, 'runtime');
   await mkdir(join(bundle, 'backend'), { recursive: true });
+  await mkdir(join(bundle, 'frontend', 'dist'), { recursive: true });
   await mkdir(join(bundle, 'omnivoice'));
   for (const file of [
     'pyproject.toml',
@@ -37,6 +40,7 @@ async function fixture() {
     'README.md',
     'LICENSE',
     'backend/main.py',
+    'frontend/dist/index.html',
     'omnivoice/__init__.py',
   ]) {
     await writeFile(join(bundle, file), file);
@@ -181,6 +185,44 @@ describe('packaged runtime setup', () => {
       ([, args]) => args[0] === '-c' && args[1]?.includes('import fastapi'),
     );
     expect(verify?.[1][1]).toContain('sentencepiece');
+  });
+  it('reinstalls the pinned ROCm stack only after an explicit opt-in', async () => {
+    const { bundle, project } = await fixture();
+    vi.stubEnv('OMNIVOICE_TORCH_VARIANT', ' ROCm ');
+    vi.stubEnv('OMNIVOICE_TORCH_INDEX', 'https://mirror.invalid/rocm');
+    const run = vi.fn(
+      async (_command: string, _args: string[], _cwd: string, _env?: NodeJS.ProcessEnv) => {
+        await interpreter(project);
+      },
+    );
+    await installRuntime(bundle, project, 'uv', run, new AbortController().signal);
+    const reinstall = run.mock.calls.find(([, args]) => args[0] === 'pip');
+    expect(reinstall?.[1]).toEqual([
+      'pip',
+      'install',
+      '--reinstall',
+      '--python',
+      runtimePython(project),
+      ...ROCM_TORCH_PINS,
+      '--index-url',
+      'https://mirror.invalid/rocm',
+    ]);
+    expect(ROCM_TORCH_INDEX).toContain('/rocm');
+  });
+  it('does not reuse a default runtime after ROCm is selected', async () => {
+    const { bundle, project } = await fixture();
+    const run = vi.fn(
+      async (_command: string, _args: string[], _cwd: string, _env?: NodeJS.ProcessEnv) => {
+        await interpreter(project);
+      },
+    );
+    await installRuntime(bundle, project, 'uv', run, new AbortController().signal);
+    expect(await runtimeReady(bundle, project)).toBe(true);
+    expect(await runtimeCompatible(bundle, project)).toBe(true);
+
+    vi.stubEnv('OMNIVOICE_TORCH_VARIANT', 'rocm');
+    expect(await runtimeReady(bundle, project)).toBe(false);
+    expect(await runtimeCompatible(bundle, project)).toBe(false);
   });
   it('does not mark a runtime ready if the native tokenizer crashes during verification', async () => {
     const { bundle, project } = await fixture();
@@ -462,10 +504,10 @@ describe('packaged runtime setup', () => {
   });
   it('pins the release workflow installer version', async () => {
     const release = await readFile(
-      new URL('../../../.github/workflows/release.yml', import.meta.url),
+      new URL('../../../.github/workflows/electron-release.yml', import.meta.url),
       'utf8',
     );
-    expect(release).toContain(`UV_VERSION: "${UV_VERSION}"`);
+    expect(release).toContain(`version: '${UV_VERSION}'`);
   });
 });
 

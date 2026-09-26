@@ -1,4 +1,4 @@
-import { LANG_CODES } from '../../../../../../frontend/src/utils/languages';
+import { LANG_CODES } from '@shared/utils/languages';
 import { restoreDubDraft } from '../dub/dub-draft';
 import type { DubSession } from '../dub/dub-session';
 export interface DubProject {

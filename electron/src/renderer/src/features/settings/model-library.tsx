@@ -37,7 +37,7 @@ import { SettingsSection, SettingsRow } from './settings-layout';
 import { familyIcons, type ModelFamily } from './model-family';
 import { useModelCatalogue, type CatalogueModel } from './model-catalogue-query';
 import { resolvePerformanceModelPack } from './performance-model-packs';
-import { fmtBytes } from '../../../../../../frontend/src/components/settings/models/format';
+import { fmtBytes } from '@shared/components/settings/models/format';
 import {
   engineSelectionFeedback,
   type EngineSelectionResult,

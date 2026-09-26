@@ -1,17 +1,17 @@
-import { generationFailureMessage } from '../../../../../../frontend/src/utils/generationFailureMessage.ts';
-import { languageRejectionMessage } from '../../../../../../frontend/src/utils/languageRejection.ts';
+import { generationFailureMessage } from '@shared/utils/generationFailureMessage.ts';
+import { languageRejectionMessage } from '@shared/utils/languageRejection.ts';
 /** Native builds use Electron's `/api` protocol proxy. The production web
  * bundle is served by FastAPI itself, whose routes live at the origin root. */
 import type { ApiErrorPayload } from './types';
 import { tr } from '@/lib/i18n-text';
 import { getBackendStatusSnapshot } from '@/hooks/use-backend-status';
-import { recordBackendContact } from '../../../../../../frontend/src/utils/backendContact';
+import { recordBackendContact } from '@shared/utils/backendContact';
 import {
   clearAdminSession,
   CSRF_HEADER_NAME,
   getAdminSession,
   isSameOriginApi,
-} from '../../../../../../frontend/src/api/authSession';
+} from '@shared/api/authSession';
 import { joinApiPath } from '../../../../shared/web-api-routing';
 export { joinApiPath } from '../../../../shared/web-api-routing';
 

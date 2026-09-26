@@ -83,7 +83,7 @@ _DIALECTS_SORTED = sorted(_CAT[5])                    # 12 Chinese dialects
 
 # ── Use-case categories (replaces the named-real-person buckets) ──────────────
 # `icon` values are lucide-react component names; the frontend maps them to SVG
-# components (see frontend/src/utils/archetypeIcons.jsx). No emoji — they render
+# components (see electron/src/shared/utils/archetypeIcons.jsx). No emoji — they render
 # inconsistently across OSes.
 USE_CASES = [
     {"id": "narration", "name": "Narration & Story", "icon": "BookOpen"},
@@ -323,7 +323,7 @@ def _make_featured():
 # gender/age/pitch axes keeps every instruct inside the validator's vocabulary —
 # ``test_archetypes.py`` enforces this independently.
 #
-# Each ``language`` label must match an entry in ``frontend/src/languages.json``
+# Each ``language`` label must match an entry in ``electron/src/shared/languages.json``
 # verbatim, because the string flows straight into ``model.generate(language=…)``
 # with no normalization. ("Arabic" is intentionally omitted — it is not in that
 # list.) ``_ML_SAMPLES`` is functional demo/eval text (like ``_ZH_SAMPLE``); the

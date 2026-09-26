@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearBreadcrumbs, getBreadcrumbs } from '../../../../../frontend/src/utils/breadcrumbs';
+import { clearBreadcrumbs, getBreadcrumbs } from '@shared/utils/breadcrumbs';
 import {
   recordActionBreadcrumb,
   recordRouteBreadcrumb,
@@ -7,7 +7,7 @@ import {
 } from './report-breadcrumb';
 const capture = vi.hoisted(() => vi.fn());
 const capturePageview = vi.hoisted(() => vi.fn());
-vi.mock('../../../../../frontend/src/utils/analytics', () => ({ capture, capturePageview }));
+vi.mock('@shared/utils/analytics', () => ({ capture, capturePageview }));
 
 beforeEach(() => {
   clearBreadcrumbs();

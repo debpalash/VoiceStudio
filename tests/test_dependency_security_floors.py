@@ -30,7 +30,6 @@ PYTHON_FLOORS = {
     "transformers": "5.10.0",
     "yt-dlp": "2026.7.4",
 }
-CARGO_FLOORS = {"quinn-proto": "0.11.15"}
 
 
 def _resolved_versions(packages, names):
@@ -55,15 +54,6 @@ def test_python_security_floors_are_locked():
     resolved = _resolved_versions(lock["package"], PYTHON_FLOORS)
     assert resolved.keys() == PYTHON_FLOORS.keys()
     assert _versions_below_floors(resolved, PYTHON_FLOORS) == {}
-
-
-def test_quinn_security_floor_is_locked():
-    lock = tomllib.loads(
-        Path("frontend/src-tauri/Cargo.lock").read_text(encoding="utf-8")
-    )
-    resolved = _resolved_versions(lock["package"], CARGO_FLOORS)
-    assert resolved.keys() == CARGO_FLOORS.keys()
-    assert _versions_below_floors(resolved, CARGO_FLOORS) == {}
 
 
 def test_duplicate_lock_entries_cannot_hide_a_vulnerable_version():

@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { apiJson } from '@/lib/api/client';
 import { SettingsSection, SettingsRow } from './settings-layout';
 import { useSettingsAction } from './use-settings-action';
-import { translatorPrivacy } from '../../../../../../frontend/src/utils/translatorPrivacy';
+import { translatorPrivacy } from '@shared/utils/translatorPrivacy';
 export function PrivacySettings({ showAnalytics = true }: { showAnalytics?: boolean } = {}) {
   const { t } = useTranslation();
   const info = useQuery({

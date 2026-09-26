@@ -236,16 +236,8 @@ def sandbox(tmp_path, monkeypatch, signer, _live_gallery):
 
 # ── The key in the binary ────────────────────────────────────────────────────
 
-def test_pubkey_matches_the_shipped_updater_key():
-    """The gallery's trust root IS the updater's — not a copy that can drift.
-
-    If the release key is ever rotated in tauri.conf.json, this fails here
-    rather than as "gallery quietly stopped updating" months later.
-    """
-    conf = json.loads((_REPO / "frontend" / "src-tauri" / "tauri.conf.json").read_text())
-    assert gallery.UPDATER_PUBKEY == conf["plugins"]["updater"]["pubkey"]
-    # …and is a key this client can actually use — equality alone would still
-    # pass with a truncated or re-encoded blob on both sides.
+def test_gallery_pubkey_is_valid():
+    """The gallery trust root remains a usable minisign public key."""
     algorithm, _key_id, raw = gallery._decode_minisign_pubkey(gallery.UPDATER_PUBKEY)
     assert algorithm in (b"Ed", b"ED") and len(raw) == 32
 

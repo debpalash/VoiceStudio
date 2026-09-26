@@ -10,6 +10,6 @@ judge:
   checks:
     - layers_have_specs:
         specs: $.specs
-        required: ["media", "env", "desktop", "web", "dubbing", "i18n", "engine", "security", "meta"]
+        required: ["media", "env", "web", "dubbing", "i18n", "engine", "security", "meta"]
 advisory:
   - coverage_report: { openapi_paths: $.openapi_paths, specs: $.specs }

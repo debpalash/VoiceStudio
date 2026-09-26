@@ -2,7 +2,7 @@ import { AlertCircleIcon, CopyIcon, XIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
-import { urlFor } from '../../../../../frontend/src/utils/errorDocsMap';
+import { urlFor } from '@shared/utils/errorDocsMap';
 import type { PublicFailure } from '@/lib/api/failure';
 import { cn } from '@/lib/utils';
 import { ExternalLink } from './external-link';

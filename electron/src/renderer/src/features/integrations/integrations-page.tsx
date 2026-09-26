@@ -8,8 +8,8 @@ import { Input } from '@/components/ui/input';
 import {
   INTEGRATION_CATALOG,
   integrationSlug,
-} from '../../../../../../frontend/src/config/integration-catalog';
-import { SPONSORS } from '../../../../../../frontend/src/config/sponsors';
+} from '@shared/config/integration-catalog';
+import { SPONSORS } from '@shared/config/sponsors';
 import { integrationSetup } from './setup-registry';
 import { INTEGRATION_CATEGORIES, integrationCategoryKey } from './integration-categories';
 import './integrations-page.css';

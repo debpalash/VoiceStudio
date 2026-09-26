@@ -1,6 +1,6 @@
 import { apiFetch } from '@/lib/api/client';
-import { exportStoryAudio, exportStems } from '../../../../../../frontend/src/utils/storyExport';
-import { overridesToRequest } from '../../../../../../frontend/src/utils/longformOverrides';
+import { exportStoryAudio, exportStems } from '@shared/utils/storyExport';
+import { overridesToRequest } from '@shared/utils/longformOverrides';
 import { resolveStoryVoice } from './story-inputs';
 import type { Draft, Line } from './longform-session';
 import { beginAppActivity } from '@/lib/app-activity';

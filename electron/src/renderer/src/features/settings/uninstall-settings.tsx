@@ -25,7 +25,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { describeError } from '@/lib/api/client';
 import type { UninstallTarget } from '../../../../preload/index.d';
-import { fmtBytes } from '../../../../../../frontend/src/components/settings/models/format';
+import { fmtBytes } from '@shared/components/settings/models/format';
 import { SettingsSection } from './settings-layout';
 
 const ICONS: Record<UninstallTarget['key'], LucideIcon> = {

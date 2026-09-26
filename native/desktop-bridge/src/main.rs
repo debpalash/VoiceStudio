@@ -1,12 +1,8 @@
 mod cleanup;
 mod shortcuts;
-#[path = "../../../frontend/src-tauri/src/watch_folder_core.rs"]
 mod watch_folder_core;
 #[cfg(target_os = "linux")]
-#[path = "../../../frontend/src-tauri/src/wayland_shortcut_core.rs"]
 mod wayland_shortcut_core;
-// Share the delivery implementation and its regression tests with Tauri.
-#[path = "../../../frontend/src-tauri/src/dictation_output.rs"]
 mod dictation_output;
 
 use dictation_output::{CaptureOrigin, DictationOutput};

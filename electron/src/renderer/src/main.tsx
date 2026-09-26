@@ -1,5 +1,5 @@
 import { CaptureWidget } from './features/transcriptions/capture-widget';
-import { installConsoleCapture } from '../../../../frontend/src/utils/consoleBuffer';
+import { installConsoleCapture } from '@shared/utils/consoleBuffer';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '@fontsource-variable/inter';

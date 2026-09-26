@@ -1,11 +1,8 @@
 """The ROCm reinstall must pin the same Torch stack the project resolves to.
 
-An AMD user's install does not come from ``uv.lock``. ``bootstrap.rs`` shells
-out to ``pip install --reinstall … --index-url .../rocm6.4`` to swap the CUDA
-wheels for ROCm ones, so whatever it names there is what that user actually
-runs. When those names carried no version (``torch torchaudio``), pip took
-whatever the ROCm index happened to top out at — which is how #972 happened,
-and it is why #1357/#1358 pinned them.
+An AMD source install does not come from ``uv.lock`` after setup swaps the CUDA
+wheels for ROCm ones, so the pins used by ``scripts/setup.py`` must match the
+project constraints.
 
 A pin in two files stays correct only while someone remembers both.
 ``bootstrap.rs`` says "Keep in sync with [tool.uv.constraint-dependencies]",
@@ -21,7 +18,7 @@ import re
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _PYPROJECT = os.path.join(_ROOT, "pyproject.toml")
-_BOOTSTRAP = os.path.join(_ROOT, "frontend", "src-tauri", "src", "bootstrap.rs")
+_SETUP = os.path.join(_ROOT, "scripts", "setup.py")
 
 #: Packages whose ROCm reinstall must match the project's constraint. The
 #: Torch trio specifically: they ship as one matched set, and mixing versions
@@ -43,13 +40,36 @@ def _constraint_pins() -> dict:
 
 
 def _rocm_reinstall_args() -> list:
-    """The literal package arguments in ``rocm_torch_reinstall_args``."""
-    with open(_BOOTSTRAP, encoding="utf-8") as fh:
+    """The literal package pins in ``ROCM_TORCH_PINS``."""
+    with open(_SETUP, encoding="utf-8") as fh:
         src = fh.read()
-    marker = "fn rocm_torch_reinstall_args("
-    assert marker in src, f"rocm_torch_reinstall_args renamed or removed from {_BOOTSTRAP}"
-    body = src.split(marker, 1)[1].split("\n}", 1)[0]
-    return re.findall(r'"([^"]+)"\.into\(\)', body)
+    marker = "ROCM_TORCH_PINS = ("
+    assert marker in src, f"ROCM_TORCH_PINS renamed or removed from {_SETUP}"
+    body = src.split(marker, 1)[1].split(")", 1)[0]
+    return re.findall(r'"([^"]+)"', body)
+
+
+def _electron_rocm_reinstall_args() -> list:
+    """The literal package pins in Electron's ``ROCM_TORCH_PINS``."""
+    path = os.path.join(_ROOT, "electron", "src", "main", "runtime-project.ts")
+    with open(path, encoding="utf-8") as fh:
+        src = fh.read()
+    marker = "export const ROCM_TORCH_PINS = ["
+    assert marker in src, f"ROCM_TORCH_PINS renamed or removed from {path}"
+    body = src.split(marker, 1)[1].split("]", 1)[0]
+    return re.findall(r"'([^']+)'", body)
+
+
+def test_electron_rocm_pins_match_the_project_constraint():
+    pins = _constraint_pins()
+    named = {
+        name.lower(): version
+        for name, _, version in (arg.partition("==") for arg in _electron_rocm_reinstall_args())
+        if version
+    }
+    assert {pkg: named.get(pkg) for pkg in _TORCH_STACK} == {
+        pkg: pins[pkg] for pkg in _TORCH_STACK
+    }
 
 
 def test_the_torch_stack_is_pinned_in_pyproject():
@@ -90,7 +110,7 @@ def test_rocm_reinstall_pins_match_the_project_constraint():
             )
 
     assert not problems, (
-        "The ROCm reinstall in frontend/src-tauri/src/bootstrap.rs has drifted "
+        "The ROCm reinstall in scripts/setup.py has drifted "
         "from [tool.uv.constraint-dependencies] in pyproject.toml. An AMD user's "
         "install comes from that pip command, not from uv.lock, so they would run "
         "a different Torch stack from every other platform — and it fails later, "

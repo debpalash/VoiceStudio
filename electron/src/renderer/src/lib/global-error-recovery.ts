@@ -1,10 +1,10 @@
-import { isBenignWindowError } from '../../../../../frontend/src/utils/foreignErrors';
-import { scrubText } from '../../../../../frontend/src/utils/scrub';
+import { isBenignWindowError } from '@shared/utils/foreignErrors';
+import { scrubText } from '@shared/utils/scrub';
 import { openRepairAgent } from '@/lib/repair-agent-events';
 import {
   captureException,
   type AnalyticsExceptionStage,
-} from '../../../../../frontend/src/utils/analytics';
+} from '@shared/utils/analytics';
 
 const THROTTLE_MS = 30_000;
 const lastOpened = new Map<string, number>();

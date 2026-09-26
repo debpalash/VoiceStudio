@@ -23,7 +23,7 @@ from pathlib import Path
 # Last-resort literal. Guarded by
 # tests/test_app_version.py::test_all_version_files_in_lockstep and bumped by
 # the owner-approved release bump, so it stays equal to
-# pyproject.toml and frontend/package.json. Archived Tauri versions are frozen.
+# pyproject.toml and the root package.json.
 _FALLBACK_VERSION = "0.5.6"
 
 

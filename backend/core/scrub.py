@@ -3,7 +3,7 @@
 Everything VoiceStudio renders into a bug report or diagnostic dump goes
 through ``scrub_text()`` before it can reach a prefilled GitHub Issues URL
 (the only outbound path — see CLAUDE.md Capability 2). The scrubber is the
-backend twin of ``frontend/src/utils/bugReport.js``'s ``scrubText`` and
+backend twin of ``electron/src/shared/utils/bugReport.js``'s ``scrubText`` and
 must stay at least as strict:
 
   - home directories → ``~`` (macOS ``/Users/<name>``, Linux ``/home/<name>``,

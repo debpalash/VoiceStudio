@@ -2230,7 +2230,7 @@ class KittenTTSBackend(TTSBackend):
 # #977: Kokoro's own ALIASES table (mlx_audio.tts.models.kokoro.pipeline) only
 # recognizes ISO-ish tokens ("en", "es", "fr-fr", "pt-br", …) — it has no idea
 # what a full language name is. OmniVoice's `language` kwarg is normally a
-# full display name from frontend/src/languages.json (e.g. "Dutch",
+# full display name from electron/src/shared/languages.json (e.g. "Dutch",
 # "Spanish"), forwarded verbatim by the frontend and by
 # `OmniVoiceBackend.generate()`. Translate the subset Kokoro actually
 # supports to the ISO token its own ALIASES expects; a caller that already

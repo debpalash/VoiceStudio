@@ -226,7 +226,7 @@ _WEBVTT_TAG_RE = re.compile(r"<[^<>\n]*>")
 # SubRip has no escaping, so `a<b and c>d` is dialogue. Only exact tag
 # shapes are markup: `<i>`/`<b.x>`/`</u>`, `<c.colorE5E5E5>`, `<v Roger>`,
 # `<font color=...>` and karaoke timestamps. Mirrored in
-# frontend/src/utils/importStory.js (CUE_MARKUP); keep the two in step.
+# electron/src/shared/utils/importStory.js (CUE_MARKUP); keep the two in step.
 _SRT_MARKUP_RE = re.compile(
     r"</?(?:[biu]|c|ruby|rt)(?:\.[^\s.<>]+)*>"
     r"|<(?:v|lang)(?:\.[^\s.<>]+)*[ \t][^<>\n]*>|</(?:v|lang)>"

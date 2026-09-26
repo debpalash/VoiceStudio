@@ -22,8 +22,8 @@ import {
   getIntegrationBySlug,
   integrationSlug,
   type IntegrationCatalogEntry,
-} from '../../../../../../frontend/src/config/integration-catalog';
-import { SPONSORS } from '../../../../../../frontend/src/config/sponsors';
+} from '@shared/config/integration-catalog';
+import { SPONSORS } from '@shared/config/sponsors';
 import './integrations-page.css';
 
 /** Catalog entries and featured sponsors both have an in-app page. */

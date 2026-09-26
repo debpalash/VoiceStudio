@@ -3,7 +3,7 @@
 The longform marker dialect (``# heading``, ``[voice:NAME]``, ``[pause …]``,
 ``[slow]/[fast]/[emphasis]/[spell]``) was parsed by three independent code
 paths that disagreed (client/server/regex-level). This module is the one
-canonical Python parser; ``frontend/src/utils/longformParser.js`` is its
+canonical Python parser; ``electron/src/shared/utils/longformParser.js`` is its
 mechanically-mirrored JS twin, and ``tests/fixtures/longform_parser_cases.json``
 is the shared golden corpus asserted byte-for-byte against both.
 

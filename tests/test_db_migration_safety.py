@@ -78,7 +78,7 @@ def test_pending_migrations_snapshot_first_then_upgrade(tmp_path, monkeypatch):
 
 
 def test_pending_migrations_apply_from_any_cwd(tmp_path, monkeypatch):
-    """The dev app launches the backend with cwd=frontend/src-tauri, not the
+    """The desktop app may launch the backend outside the repository root, not the
     repo root. alembic resolves a bare relative script_location against the
     CWD, so alembic.ini must use %(here)s — otherwise the first pending
     migration kills startup with "Path doesn't exist: backend/migrations"."""

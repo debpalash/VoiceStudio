@@ -1,4 +1,4 @@
-// Unit tests for frontend/src/api/client.ts URL composition + error handling.
+// Unit tests for electron/src/shared/api/client.ts URL composition + error handling.
 // Runs under node:test with a synthetic fetch mock so no backend is needed.
 
 import { test, mock } from 'node:test';
@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 
 // bun/node strip .ts extension when type='module' is set in package.json;
 // without that we load via bun's loader by requesting the .ts path.
-const clientPath = new URL('../../frontend/src/api/client.ts', import.meta.url).pathname;
+const clientPath = new URL('../../electron/src/shared/api/client.ts', import.meta.url).pathname;
 const { API, apiUrl, apiFetch, apiJson, apiPost, ApiError } = await import(clientPath);
 
 

@@ -1,6 +1,6 @@
 {
   "name": "omnivoice-studio-monorepo",
-  "version": "1.0.0",
+  "version": "0.5.6",
   "license": "AGPL-3.0-only",
   "private": true,
   "packageManager": "bun@1.4.2",
@@ -14,9 +14,9 @@
     "predev": "bun install",
     "dev": "bun run --cwd electron dev",
     "predesktop": "bun install",
-    "desktop": "bun run dev:desktop",
+    "desktop": "bun run --cwd electron dev",
     "build": "bun run --cwd electron build",
-    "check:electron": "bun run --cwd electron typecheck && bun run --cwd electron test && bun run --cwd electron build && node electron/tests/packaging-contract.mjs",
+    "check:electron": "bun run --cwd electron typecheck && bun run --cwd electron test && bun run --cwd electron build && bun run --cwd electron build:web && node electron/tests/packaging-contract.mjs",
     "start": "bun run --cwd electron start",
     "test:frontend": "node --test tests/frontend/*.test.mjs",
     "smoke-test": "node scripts/electron-smoke-test.mjs",
@@ -35,10 +35,7 @@
     "format": "bun run --cwd electron format",
     "dist:dir": "bun run --cwd electron dist:dir --publish never"
   },
-  "workspaces": [
-    "frontend",
-    "electron"
-  ],
+  "workspaces": ["electron"],
   "devDependencies": {
     "concurrently": "^10",
     "playwright": "^1.63.0",

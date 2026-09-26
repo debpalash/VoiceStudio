@@ -212,7 +212,7 @@ run_contract "inconclusive model probe fails open" \
 
 header "Phase 5 — Target-aware models and progress"
 run_contract "progress rows are keyed independently by (target, repo_id)" \
-    bun run --cwd frontend test src/test/modelStoreInstallError.test.jsx
+    bun run --cwd electron test -- src/shared/test/modelStoreInstallError.test.jsx
 manual "Model-list hardware check: on a macOS control plane select $WORKER_LABEL, open Settings → Models, search for 'mlx-community/' (expect zero rows), then clear the search and confirm CUDA-appropriate models are present. The management API deliberately does not expose the worker's full capability list."
 manual "Concurrent-download hardware check (downloads only; never delete caches): choose a repo reported downloaded=false on BOTH targets, open Settings → Models, start it on Local and $WORKER_LABEL together, and confirm two rows remain visible with targets Local and $WORKER_LABEL. Watch: curl -N '$API/setup/download-stream'."
 
@@ -245,7 +245,7 @@ else
     fail "dubbing picker API contradicts its own remote_operations list"
 fi
 run_contract "dubbing and dictation picker presentation stays local" \
-    bun run --cwd frontend test src/components/GpuTarget.test.jsx
+    bun run --cwd electron test -- src/shared/components/GpuTarget.test.jsx
 
 header "Phase 8 — Audiobook fallback and dictation"
 run_contract "remote audiobook chapter and local fallback contracts" \

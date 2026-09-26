@@ -8,7 +8,7 @@ import { describeError } from '@/lib/api/client';
 import {
   createIngestTracker,
   WATCH_POLL_MS,
-} from '../../../../../../frontend/src/utils/watchFolderTracker';
+} from '@shared/utils/watchFolderTracker';
 import type { WatchSelection } from '../../../../preload/index.d';
 
 export function WatchFolder({

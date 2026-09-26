@@ -12,7 +12,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { apiJson } from '@/lib/api/client';
-import { instructToVdStates } from '../../../../../../frontend/src/utils/voiceInstruct';
+import { instructToVdStates } from '@shared/utils/voiceInstruct';
 
 interface Personality {
   id: string;
