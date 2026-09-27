@@ -5,8 +5,9 @@ The docker image bundles the backend; the UI is served over HTTP and you open
 it in a normal browser. It is built from the same maintained renderer as the
 Electron desktop app; controls that require native desktop access are hidden.
 
-**Official images:** [`ghcr.io/debpalash/omnivoice-studio`](https://github.com/debpalash/VoiceStudio/pkgs/container/omnivoice-studio)
+**Official images:** [`ghcr.io/debpalash/voicestudio`](https://github.com/debpalash/VoiceStudio/pkgs/container/voicestudio)
 and [`palashdeb/omnivoice-studio` on Docker Hub](https://hub.docker.com/r/palashdeb/omnivoice-studio) — same images, same tags.
+The former `ghcr.io/debpalash/omnivoice-studio` path remains a compatible alias.
 
 ## Architecture
 
@@ -33,12 +34,12 @@ On an ARM64 host, pulling without an explicit platform can fail with
 > |-----|--------------|
 > | `:latest` | **Rolling preview** — latest commit on `main`, at or ahead of the last release. This is the preview channel; pin `:stable` for production. |
 > | `:stable` | Most recent versioned release (updated on every `v*` git tag) |
-> | `:0.5.2` | Exact release version |
+> | `:0.5.6` | Exact release version |
 > | `:0.5` | Latest patch within the 0.5 minor |
 > | `:main` | Alias of the same rolling `main` build as `:latest` |
 > | `:sha-xxxxxxx` | Specific commit (produced by manual workflow dispatch) |
 > | `:rocm` | **AMD GPU (ROCm) build** of the rolling preview — the ROCm analogue of `:latest` |
-> | `:stable-rocm`, `:0.5.2-rocm`, `:0.5-rocm`, `:sha-xxxxxxx-rocm` | ROCm builds of the corresponding CUDA tags above |
+> | `:stable-rocm`, `:0.5.6-rocm`, `:0.5-rocm`, `:sha-xxxxxxx-rocm` | ROCm builds of the corresponding CUDA tags above |
 >
 > Versioning rule: preview builds always come from `main` and never
 > version-sort below `:stable` — upgrades flow naturally.
@@ -64,14 +65,14 @@ master key.
 ## Pull and run (CPU)
 
 ```bash
-docker pull ghcr.io/debpalash/omnivoice-studio:latest
+docker pull ghcr.io/debpalash/voicestudio:latest
 
 docker run -d --name omnivoice \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
   -v omnivoice-data:/app/omnivoice_data \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
-  ghcr.io/debpalash/omnivoice-studio:latest
+  ghcr.io/debpalash/voicestudio:latest
 ```
 
 > **Docker Hub mirror:** the same images are published to
@@ -91,7 +92,7 @@ docker run -d --name omnivoice --gpus all \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
   -v omnivoice-data:/app/omnivoice_data \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
-  ghcr.io/debpalash/omnivoice-studio:latest
+  ghcr.io/debpalash/voicestudio:latest
 ```
 
 GPU mode requires the
@@ -112,7 +113,7 @@ docker run -d --name omnivoice \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
   -v omnivoice-data:/app/omnivoice_data \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
-  ghcr.io/debpalash/omnivoice-studio:rocm
+  ghcr.io/debpalash/voicestudio:rocm
 ```
 
 ### AMD GPU on WSL2
@@ -136,7 +137,7 @@ docker run -d --name omnivoice \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
   -v omnivoice-data:/app/omnivoice_data \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
-  ghcr.io/debpalash/omnivoice-studio:rocm
+  ghcr.io/debpalash/voicestudio:rocm
 ```
 
 The image currently uses ROCm 7.2.x, so `HSA_ENABLE_DXG_DETECTION=1` is
@@ -179,7 +180,7 @@ The same flags work with **Podman** (`podman run --device /dev/kfd
 ```ini
 # ~/.config/containers/systemd/omnivoice.container
 [Container]
-Image=ghcr.io/debpalash/omnivoice-studio:rocm
+Image=ghcr.io/debpalash/voicestudio:rocm
 AddDevice=/dev/kfd
 AddDevice=/dev/dri
 PublishPort=127.0.0.1:3900:3900
@@ -187,7 +188,7 @@ Volume=omnivoice-data:/app/omnivoice_data
 Environment=OMNIVOICE_API_KEY=replace-with-a-long-random-key
 ```
 
-Release pins exist too: `:stable-rocm`, `:0.5.2-rocm`, `:0.5-rocm` mirror
+Release pins exist too: `:stable-rocm`, `:0.5.6-rocm`, `:0.5-rocm` mirror
 the CUDA tags exactly.
 
 > **Consumer cards and APUs (RX 6000/7000, Strix Point/Halo):** the backend
@@ -358,7 +359,7 @@ prebuilt image via `docker run -e` (the older `VITE_OMNIVOICE_API` is inlined at
 docker run -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
   -e OMNIVOICE_PUBLIC_API_BASE=https://api.your-host.example \
   -p 0.0.0.0:3900:3900 \
-  ghcr.io/debpalash/omnivoice-studio:latest
+  ghcr.io/debpalash/voicestudio:latest
 ```
 
 > `OMNIVOICE_PUBLIC_API_BASE` must be a plain `http(s)://…` URL; anything else
@@ -388,7 +389,7 @@ Two paths are worth persisting across container restarts:
 
 - **Container reports 0.2.7 but image is tagged 0.3.x:** This was a workflow bug
   (fixes #249, #251) — the `:latest` tag was not being updated on release tag
-  pushes. Pull the image again after the fix is merged: `docker pull ghcr.io/debpalash/omnivoice-studio:latest`.
+  pushes. Pull the image again after the fix is merged: `docker pull ghcr.io/debpalash/voicestudio:latest`.
   The running version is now shown in **Settings → About → Version** (read live
   from the backend), so the web UI no longer displays a dash in Docker.
 - **Checking which version is running:** `docker exec <container> python3 -c "import importlib.metadata; print(importlib.metadata.version('omnivoice'))"`, or hit the `/health` endpoint — it returns `{"status": "ok", "device": ..., "version": "0.3.x"}`. Use the container name listed by `docker compose ps` (or `omnivoice` for the `docker run` examples).

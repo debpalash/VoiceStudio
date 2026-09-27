@@ -120,17 +120,18 @@ publishing the web UI — see the [Docker install guide](https://github.com/debp
 |-----|--------------|
 | `:latest` | **Rolling preview** — latest commit on `main`, at or ahead of the last release. This is the preview channel; pin `:stable` for production. |
 | `:stable` | Most recent versioned release (updated on every `v*` git tag) |
-| `:0.5.2` | Exact release version |
+| `:0.5.6` | Exact release version |
 | `:0.5` | Latest patch within the `0.5` minor |
 | `:main` | Alias of the same rolling `main` build as `:latest` |
 | `:sha-xxxxxxx` | A specific commit (produced by manual workflow dispatch) |
 | `:rocm` | **AMD GPU (ROCm) build** of the rolling preview — the ROCm analogue of `:latest` |
-| `:stable-rocm`, `:0.5.2-rocm`, `:0.5-rocm`, `:sha-xxxxxxx-rocm` | ROCm builds of the corresponding tags above |
+| `:stable-rocm`, `:0.5.6-rocm`, `:0.5-rocm`, `:sha-xxxxxxx-rocm` | ROCm builds of the corresponding tags above |
 
 Preview builds always come from `main` and never version-sort below `:stable`,
 so upgrades flow naturally. The same images and tags
 are mirrored on GHCR at
-[`ghcr.io/debpalash/omnivoice-studio`](https://github.com/debpalash/VoiceStudio/pkgs/container/omnivoice-studio).
+[`ghcr.io/debpalash/voicestudio`](https://github.com/debpalash/VoiceStudio/pkgs/container/voicestudio).
+The former `ghcr.io/debpalash/omnivoice-studio` path remains a compatible alias.
 
 ---
 

@@ -56,8 +56,8 @@ def test_docker_hub_keeps_its_existing_coordinate():
     assert _env()["DOCKERHUB_IMAGE"] == "palashdeb/omnivoice-studio"
 
 
-def test_active_templates_stay_on_the_public_path_during_rollout():
-    legacy = "ghcr.io/debpalash/omnivoice-studio"
+def test_active_templates_use_the_canonical_public_path():
+    canonical = "ghcr.io/debpalash/voicestudio"
     for rel in (
         "deploy/docker-compose.yml",
         "docs/integration-directory.md",
@@ -65,13 +65,14 @@ def test_active_templates_stay_on_the_public_path_during_rollout():
         "electron/src/renderer/src/features/integrations/setup-registry.ts",
     ):
         text = open(os.path.join(ROOT, rel), encoding="utf-8").read()
-        assert legacy in text, f"{rel} switched before the new package is public"
+        assert canonical in text, f"{rel} does not use the canonical GHCR path"
 
 
 def test_the_docs_name_the_path_that_is_actually_published():
     """Docs drift here is invisible: a wrong pull command fails only for users."""
     env = _env()
-    published = f"ghcr.io/{env['LEGACY_IMAGE_NAME']}"
+    published = f"ghcr.io/{env['IMAGE_NAME']}"
+    legacy = f"ghcr.io/{env['LEGACY_IMAGE_NAME']}"
     for rel in ("docs/install/docker.md", "deploy/dockerhub-overview.md"):
         path = os.path.join(ROOT, rel)
         if not os.path.isfile(path):
@@ -80,3 +81,4 @@ def test_the_docs_name_the_path_that_is_actually_published():
         if "ghcr.io/" not in text:
             continue
         assert published in text, f"{rel} does not document {published}"
+        assert legacy in text, f"{rel} does not document compatibility alias {legacy}"

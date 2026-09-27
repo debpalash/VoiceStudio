@@ -9,7 +9,7 @@ internet.
 ```yaml
 services:
   voicestudio:
-    image: ghcr.io/debpalash/omnivoice-studio:0.5.2
+    image: ghcr.io/debpalash/voicestudio:0.5.6
     restart: unless-stopped
     environment:
       OMNIVOICE_API_KEY: ${OMNIVOICE_API_KEY:?set a long random key}
@@ -44,7 +44,7 @@ volume across container recreation.
 
 Pin an exact release tag. `:latest` and `:main` are rolling previews;
 `:stable` moves whenever a stable release is published. AMD hosts use the
-matching `:0.5.2-rocm` image and the device mapping documented in
+matching `:0.5.6-rocm` image and the device mapping documented in
 [Docker installation](install/docker.md#pull-and-run-amd-gpu--rocm).
 
 ## Network boundary
