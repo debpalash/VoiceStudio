@@ -331,3 +331,32 @@ it('does not label an unreachable backend using a previous run’s signal', asyn
   expect(current).not.toContain('reportBug.native_fault_cause');
   expect(recorded).toContain('reportBug.native_fault_cause');
 });
+
+it('includes selected engine and model checkpoint in the report context (#2361)', async () => {
+  mock.api.mockImplementation((path: string) => {
+    if (path === '/system/info') {
+      return Promise.resolve({
+        platform: 'win32',
+        arch: 'AMD64',
+        python: '3.11.0',
+        device: 'cpu',
+        model_checkpoint: 'onnx-community/VoiceStudio-0.5',
+        asr_model: 'onnx-community/whisper-base',
+        disk_free_gb: 42.5,
+      });
+    }
+    if (path === '/engines') {
+      return Promise.resolve({ tts: { active: 'omnivoice' }, asr: { active: 'whisperx' } });
+    }
+    return Promise.resolve({});
+  });
+  render(<ReportBug />);
+  fireEvent.click(screen.getByRole('button', { name: 'reportBug.label' }));
+  await waitFor(() => expect(mock.open).toHaveBeenCalledTimes(1));
+  const body = new URL(mock.open.mock.calls[0]![0]).searchParams.get('body')!;
+  expect(body).toContain('model_checkpoint: onnx-community/VoiceStudio-0.5');
+  expect(body).toContain('asr_model: onnx-community/whisper-base');
+  expect(body).toContain('TTS: omnivoice');
+  expect(body).toContain('ASR: whisperx');
+  expect(body).toContain('arch: AMD64');
+});

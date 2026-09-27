@@ -85,6 +85,8 @@ metadata and the backend fallback mirror it.
 
 - `/generate` writes an uploaded clone reference with its real extension instead of always `.wav`, so a non-WAV one-shot clip still decodes (#2311)
 
+- Bug reports include the selected TTS and ASR engines plus model checkpoint, architecture and free disk space when the backend still answers, so native crashes carry triage context (#2361)
+
 - A reference longer than 20 s is transcribed with the speech-to-text model already installed, instead of failing when OmniVoice's own Whisper snapshot is not cached (#2301) — thanks @Cengokill!
 
 ## [0.5.6] — 2026-09-23

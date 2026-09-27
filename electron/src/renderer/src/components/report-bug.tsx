@@ -124,12 +124,16 @@ export function ReportBug({ error }: { error?: Error | string }) {
         for (const key of [
           'platform',
           'os_version',
+          'arch',
           'python',
           'device',
           'gpu_name',
           'cpu_model',
           'ram_total_gb',
           'vram_total_gb',
+          'disk_free_gb',
+          'model_checkpoint',
+          'asr_model',
         ]) {
           const value = system.value[key];
           if (typeof value === 'string' || typeof value === 'number')
@@ -138,6 +142,11 @@ export function ReportBug({ error }: { error?: Error | string }) {
       }
       if (engines.status === 'fulfilled' && engines.value.tts?.active)
         context.push('TTS: ' + engines.value.tts.active);
+      if (
+        engines.status === 'fulfilled' &&
+        (engines.value as { asr?: { active?: string } }).asr?.active
+      )
+        context.push('ASR: ' + (engines.value as { asr?: { active?: string } }).asr?.active);
       const failure = backend && ['failed', 'crashed', 'port_in_use'].includes(backend.stage);
       const crashSection = failure
         ? [
