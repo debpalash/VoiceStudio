@@ -48,6 +48,21 @@ def test_ffprobe_banner_too():
     assert out == "boom"
 
 
+def test_prefixed_homebrew_banner_keeps_wrapper_and_real_error():
+    """Dub wraps stderr after decoding it, so the banner is not at byte zero."""
+    homebrew = BANNER.replace(
+        "N-125781-gacf6b520c1-20260727", "9.0.2"
+    ).replace("built with gcc 15.2.0", "built with Apple clang version 21.0.0")
+    out = _strip(
+        "FFmpeg exited with code 1: "
+        + homebrew
+        + "Error opening input file sample.mp4"
+    )
+    assert out == "FFmpeg exited with code 1:\nError opening input file sample.mp4"
+    assert "configuration:" not in out
+    assert "Apple clang" not in out
+
+
 def test_banner_only_message_is_left_alone():
     """A message that is *nothing but* banner is unhelpful — an empty one is
     worse. Fail loud with something rather than silently with nothing."""

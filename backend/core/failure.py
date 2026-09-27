@@ -781,7 +781,10 @@ def classify(reason: str) -> str:
 #
 # The real diagnosis is always AFTER the banner. Strip the boilerplate so the
 # message starts at the first line that is actually about this run.
-_FFMPEG_BANNER_START = re.compile(r"^\s*(ffmpeg|ffprobe)\s+version\s", re.IGNORECASE)
+_FFMPEG_BANNER_START = re.compile(
+    r"^\s*(?:(?P<prefix>[^\n]{1,200}?):\s*)?(ffmpeg|ffprobe)\s+version\s",
+    re.IGNORECASE,
+)
 _FFMPEG_BANNER_CONT = re.compile(
     r"^\s+(built with|configuration:|lib[a-z]+\s+\d)", re.IGNORECASE
 )
@@ -799,7 +802,11 @@ def strip_ffmpeg_banner(text: Optional[str]) -> str:
     lines = str(text).splitlines()
     kept, in_banner = [], False
     for line in lines:
-        if _FFMPEG_BANNER_START.match(line):
+        banner = _FFMPEG_BANNER_START.match(line)
+        if banner:
+            prefix = (banner.group("prefix") or "").strip()
+            if prefix:
+                kept.append(f"{prefix}:")
             in_banner = True
             continue
         if in_banner:
