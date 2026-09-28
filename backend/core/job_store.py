@@ -89,14 +89,12 @@ def append_event(job_id: str, payload: str) -> int:
     now = time.time()
     with db_conn() as conn:
         row = conn.execute(
-            "SELECT COALESCE(MAX(seq), 0) AS s FROM job_events WHERE job_id = ?",
-            (job_id,),
+            "INSERT INTO job_events (job_id, seq, created_at, payload) "
+            "SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ? FROM job_events WHERE job_id = ? "
+            "RETURNING seq",
+            (job_id, now, payload, job_id),
         ).fetchone()
-        next_seq = int(row["s"]) + 1
-        conn.execute(
-            "INSERT INTO job_events (job_id, seq, created_at, payload) VALUES (?, ?, ?, ?)",
-            (job_id, next_seq, now, payload),
-        )
+        next_seq = int(row["seq"])
         # Trim oldest beyond the cap. Cheap: bounded by _EVENT_CAP_PER_JOB.
         cnt = conn.execute(
             "SELECT COUNT(*) AS n FROM job_events WHERE job_id = ?",
