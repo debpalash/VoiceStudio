@@ -126,3 +126,22 @@ def test_compressed_decode_rejects_output_over_budget(tmp_path, monkeypatch, bud
         monkeypatch.setattr(audio_io.shutil, "disk_usage", lambda _: SimpleNamespace(free=64 * 1024 ** 2 + 4096))
     with pytest.raises(ValueError, match="decoding size limit"):
         audio_io.load_audio(encoded)
+
+
+@pytest.mark.parametrize("budget", ["input_size", "free_space"])
+def test_compressed_stream_staging_is_bounded_and_cleaned(tmp_path, monkeypatch, budget):
+    import subprocess
+    from types import SimpleNamespace
+    from services import audio_io, ffmpeg_utils
+    monkeypatch.setattr(audio_io.tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(torchaudio, "load", lambda _: (_ for _ in ()).throw(ImportError()))
+    monkeypatch.setattr(sf, "read", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("unsupported")))
+    monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: "ffmpeg")
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: pytest.fail("oversized input reached decoder"))
+    if budget == "input_size":
+        monkeypatch.setattr(audio_io, "MAX_COMPRESSED_AUDIO_BYTES", 4096, raising=False)
+    else:
+        monkeypatch.setattr(audio_io.shutil, "disk_usage", lambda _: SimpleNamespace(free=64 * 1024 ** 2 + 4096))
+    with pytest.raises(ValueError, match="input size limit"):
+        audio_io.load_audio(io.BytesIO(b"x" * 32768))
+    assert list(tmp_path.iterdir()) == []

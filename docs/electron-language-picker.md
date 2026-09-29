@@ -84,5 +84,6 @@ released after its last render finishes.
 When TorchCodec is unavailable, audio decoding uses libsndfile first and the
 already-installed FFmpeg for compressed containers such as M4A and AAC. Channels
 and sample rates are retained; decoding does not download tools.
-The FFmpeg fallback caps decoded audio at 512 MiB and leaves 64 MiB of temporary
-storage free. It rejects oversized output instead of returning a truncated clip.
+The FFmpeg fallback caps compressed stream staging and decoded audio at 512 MiB
+each, and checks for 64 MiB of free temporary storage while copying. It rejects
+oversized output instead of returning a truncated clip.

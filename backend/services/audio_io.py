@@ -68,6 +68,7 @@ logger = logging.getLogger("omnivoice.audio_io")
 # both; we forward whichever the caller hands us.
 PathOrBuf = Union[str, "os.PathLike[str]", BinaryIO, io.IOBase]
 MAX_DECODED_AUDIO_BYTES = 512 * 1024 ** 2
+MAX_COMPRESSED_AUDIO_BYTES = 512 * 1024 ** 2
 _DECODE_DISK_RESERVE = 64 * 1024 ** 2
 
 
@@ -100,7 +101,21 @@ def load_audio(source: PathOrBuf) -> tuple[torch.Tensor, int]:
                         source.seek(position)
                     fd, temporary = tempfile.mkstemp(suffix=".audio")
                     with os.fdopen(fd, "wb") as target:
-                        shutil.copyfileobj(source, target)
+                        copied = 0
+                        while True:
+                            remaining = min(
+                                MAX_COMPRESSED_AUDIO_BYTES - copied,
+                                shutil.disk_usage(tempfile.gettempdir()).free - _DECODE_DISK_RESERVE,
+                            )
+                            if remaining < 0:
+                                raise ValueError("Audio exceeds the input size limit; free temporary storage or use a shorter clip.")
+                            chunk = source.read(min(1024 ** 2, remaining + 1))
+                            if not chunk:
+                                break
+                            if len(chunk) > remaining:
+                                raise ValueError("Audio exceeds the input size limit; free temporary storage or use a shorter clip.")
+                            target.write(chunk)
+                            copied += len(chunk)
                     filename = temporary
                 else:
                     filename = os.fspath(source)
