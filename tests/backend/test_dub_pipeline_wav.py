@@ -43,6 +43,7 @@ from services.audio_io import (  # noqa: E402
     _safe_soundfile_write,
     _safe_torchaudio_save,
     atomic_save_wav,
+    load_audio,
 )
 
 
@@ -283,3 +284,45 @@ def test_dub_pipeline_produces_valid_wav():
         "Phase 0 fixture present but end-to-end dub-pipeline harness "
         "not yet wired (deferred to Phase 4)."
     )
+
+
+# ── 4. Load path (issue #2378) ──────────────────────────────────────────
+
+
+def _bare_audio_loads_in_routers() -> list[str]:
+    """Bare ``torchaudio.load`` calls in routers (must use ``load_audio``)."""
+    pattern = re.compile(r"torchaudio\.load\(")
+    violations: list[str] = []
+    for py in sorted(_ROUTER_DIR.rglob("*.py")):
+        with py.open("r", encoding="utf-8") as fh:
+            for lineno, raw in enumerate(fh, start=1):
+                line = raw.rstrip("\n")
+                if line.lstrip().startswith("#"):
+                    continue
+                if pattern.search(line):
+                    violations.append(f"{py.relative_to(_ROUTER_DIR.parent.parent.parent)}:{lineno}: {line.strip()}")
+    return violations
+
+
+def test_no_bare_audio_loads_in_routers():
+    """Every audio-read site in routers must go through ``load_audio`` (#2378)."""
+    assert _bare_audio_loads_in_routers() == []
+
+
+def test_load_audio_falls_back_without_torchcodec(tmp_path, monkeypatch):
+    """Fail-before/pass-after for #2378: ImportError from torchaudio still reads."""
+    import torchaudio
+
+    sr = 24000
+    wav = (torch.sin(torch.linspace(0, 40 * 3.14159, sr)) * 0.5).unsqueeze(0)
+    target = tmp_path / "seg_0.wav"
+    atomic_save_wav(str(target), wav, sr)
+
+    def _missing(*a, **k):
+        raise ImportError("TorchCodec is required")
+
+    monkeypatch.setattr(torchaudio, "load", _missing)
+    got, got_sr = load_audio(str(target))
+    assert got_sr == sr
+    assert got.shape[-1] == sr
+    assert abs(got.numpy()).max() > 0.1

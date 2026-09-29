@@ -19,7 +19,7 @@ from services.tts_backend import TTSBackend, resolve_generation_backend, active_
 from services.dub_batching import batch_timeout_s, native_batch_width
 from services import gpu_gateway
 from services.audio_dsp import apply_mastering, normalize_audio, apply_effects_chain, get_effect_chain
-from services.audio_io import atomic_save_wav, _safe_torchaudio_save
+from services.audio_io import atomic_save_wav, _safe_torchaudio_save, load_audio
 from services.ffmpeg_utils import (
     find_ffmpeg,
     spawn_subprocess,
@@ -642,7 +642,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                 info = torchaudio.info(entry[2])
                 return int(info.num_frames)
             except Exception:
-                wav, _sr = torchaudio.load(entry[2])
+                wav, _sr = load_audio(entry[2])
                 n = int(wav.shape[-1])
                 _release_audio_tensors(wav)
                 return n
@@ -650,7 +650,7 @@ async def dub_generate(job_id: str, req: DubRequest):
         def _load_entry_wav(entry, target_sr: int) -> torch.Tensor:
             if isinstance(entry[2], torch.Tensor):
                 return entry[2]
-            wav, loaded_sr = torchaudio.load(entry[2])
+            wav, loaded_sr = load_audio(entry[2])
             if loaded_sr != target_sr:
                 import torchaudio.functional as AF
                 wav = AF.resample(wav, loaded_sr, target_sr)
@@ -1007,7 +1007,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                                 _t_cache += time.perf_counter() - _t_cache_0
                                 continue
 
-                        cached_wav, cached_sr = torchaudio.load(seg_wav_path)
+                        cached_wav, cached_sr = load_audio(seg_wav_path)
                         if cached_sr != backend.sample_rate:
                             import torchaudio.functional as AF
                             cached_wav = AF.resample(cached_wav, cached_sr, backend.sample_rate)
@@ -1458,7 +1458,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                 # dub segment used to die on the flat 300s even after v0.3.22.
                 from services.model_manager import generate_timeout_s
                 if i in remote_audio:
-                    audio_tensor, remote_sr = torchaudio.load(remote_audio[i])
+                    audio_tensor, remote_sr = load_audio(remote_audio[i])
                     try:
                         os.unlink(remote_audio[i])
                     except OSError:
@@ -1541,7 +1541,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                     atomic_save_wav(seg_wav_path, audio_tensor, backend.sample_rate)
                     try:
                         await loop.run_in_executor(_gpu_pool, apply_rvc, seg_wav_path)
-                        rvc_wav, rvc_sr = torchaudio.load(seg_wav_path)
+                        rvc_wav, rvc_sr = load_audio(seg_wav_path)
                         if rvc_sr == backend.sample_rate:
                             audio_tensor = rvc_wav
 

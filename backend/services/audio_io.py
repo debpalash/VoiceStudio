@@ -408,6 +408,31 @@ def _safe_soundfile_write(
     sf.write(path, samples, sample_rate, subtype=subtype, format=format)
 
 
+def load_audio(path_or_buf: PathOrBuf) -> tuple[torch.Tensor, int]:
+    """Single audited audio-read path — closes issue #2378.
+
+    torchaudio 2.9 routes ``torchaudio.load`` through TorchCodec, which
+    ``uv.lock`` never installs. Every fresh source install then raises
+    ``ImportError`` on read while the sibling soundfile save path works
+    fine. Try ``torchaudio.load`` first; on ``ImportError`` fall back to
+    ``soundfile`` (dub segments are always plain PCM WAV).
+
+    Returns ``(wav, sample_rate)`` with ``wav`` as ``(channels, samples)``
+    float32, matching ``torchaudio.load`` conventions.
+    """
+    try:
+        return torchaudio.load(path_or_buf)
+    except ImportError:
+        logger.warning(
+            "torchaudio.load needs TorchCodec; reading via soundfile"
+        )
+        import soundfile as sf
+
+        data, loaded_sr = sf.read(path_or_buf, dtype="float32", always_2d=True)
+        wav = torch.from_numpy(data.T).contiguous()
+        return wav, int(loaded_sr)
+
+
 def atomic_save_wav(
     target_path: str,
     audio: torch.Tensor,
