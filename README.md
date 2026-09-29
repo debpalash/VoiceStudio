@@ -53,6 +53,12 @@ Local workflows run on your hardware. Remote services are optional; usage analyt
 
 </details>
 
+## Launch video
+
+<a href="docs/media/launch/voicestudio-launch.mp4"><img src="docs/media/launch/voicestudio-launch.jpg" width="400" alt="VoiceStudio launch video"></a>
+
+A 22-second 1:1 launch video with sound ([captions](docs/media/launch/voicestudio-launch.srt)). Click the poster to play.
+
 ## Get started
 
 ### One-command install (macOS / Linux)
