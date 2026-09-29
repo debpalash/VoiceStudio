@@ -199,7 +199,16 @@ try {
       setupLayout.scrollWidth <= setupLayout.width + 1,
       'Setup gate must not overflow horizontally',
     );
-    await window.getByRole('button', { name: 'Install local runtime', exact: true }).waitFor();
+    const setupStatus = await waitForRuntimeGate(window, 30_000);
+    const installButton = window.getByRole('button', { name: 'Install local runtime', exact: true });
+    if (process.platform === 'darwin' && targetArch === 'x64') {
+      assert.equal(setupStatus.setupIssue, 'unsupported_platform');
+      await window.getByRole('textbox', { name: 'Backend URL', exact: true }).waitFor();
+      await window.getByRole('button', { name: 'Test connection', exact: true }).waitFor();
+      assert.equal(await installButton.count(), 0, 'Intel Macs must offer remote setup');
+    } else {
+      await installButton.waitFor();
+    }
     assert.equal(
       await window.evaluate(() => typeof window.voicestudio.backend.cleanSetupRuntime),
       'function',
