@@ -3053,7 +3053,8 @@ class GPTSoVITSBackend(TTSBackend):
         # Parse the WAV response
         import io
         import torchaudio
-        wav, sr = torchaudio.load(io.BytesIO(audio_bytes))
+        from services.audio_io import load_audio
+        wav, sr = load_audio(io.BytesIO(audio_bytes))
         if sr != self.sample_rate:
             wav = torchaudio.functional.resample(wav, sr, self.sample_rate)
         if wav.ndim == 1:
@@ -4005,7 +4006,7 @@ def get_active_tts_backend(*, model=None) -> TTSBackend:
     )
     if switching:
         try:
-            _active_instance.unload()
+            _retire_engine(_active_instance)
         except Exception as exc:  # noqa: BLE001
             logger.warning("engine switch: %s.unload() raised: %s",
                            type(_active_instance).__name__, exc)
@@ -4053,6 +4054,18 @@ _ENGINE_LAST_USED: dict[type, float] = {}
 # exactly like an abandoned model — and the sweep would unload it out from
 # under the thread rendering it.
 _ENGINE_IN_USE: dict[type, int] = {}
+_RETIRED_ENGINES: dict[type, list[object]] = {}
+
+
+def _retire_engine(instance) -> None:
+    """Unload a replaced model once every request holding its class has finished."""
+    with _ENGINE_CACHE_LOCK:
+        if _ENGINE_IN_USE.get(type(instance)):
+            retired = _RETIRED_ENGINES.setdefault(type(instance), [])
+            if not any(old is instance for old in retired):
+                retired.append(instance)
+            return
+        instance.unload()
 
 def _idle_seconds_from_env(name: str, default: float, *, floor: float) -> float:
     """Read a tunable idle duration, ignoring anything unusable.
@@ -4098,13 +4111,20 @@ def engine_in_use(instance, *, now: Optional[float] = None):
     try:
         yield instance
     finally:
+        retired = []
         with _ENGINE_CACHE_LOCK:
             remaining = _ENGINE_IN_USE.get(cls, 1) - 1
             if remaining > 0:
                 _ENGINE_IN_USE[cls] = remaining
             else:
                 _ENGINE_IN_USE.pop(cls, None)
+                retired = _RETIRED_ENGINES.pop(cls, [])
             _ENGINE_LAST_USED[cls] = time.monotonic() if now is None else float(now)
+        for old in retired:
+            try:
+                old.unload()
+            except Exception:
+                logger.warning("retired engine unload failed", exc_info=True)
 
 
 def get_engine_instance(cls, *, now: Optional[float] = None):
@@ -4122,7 +4142,7 @@ def get_engine_instance(cls, *, now: Optional[float] = None):
             # A model picked in Settings after this instance was built (mlx-audio's
             # curated models) must take effect; otherwise the old model keeps
             # speaking under the new name. A job still holding it keeps its copy.
-            stale = None if _ENGINE_IN_USE.get(cls) else inst
+            stale = inst
             inst = None
         if inst is None:
             inst = cls()
@@ -4130,7 +4150,7 @@ def get_engine_instance(cls, *, now: Optional[float] = None):
         _ENGINE_LAST_USED[cls] = time.monotonic() if now is None else float(now)
     if stale is not None:
         try:
-            stale.unload()
+            _retire_engine(stale)
         except Exception as exc:  # noqa: BLE001
             logger.warning("model switch: %s.unload() raised: %s", type(stale).__name__, exc)
     return inst

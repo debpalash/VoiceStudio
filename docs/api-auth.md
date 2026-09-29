@@ -80,6 +80,14 @@ Notes on the PIN gate (`NetworkAccessMiddleware`, `backend/main.py`):
 
 ## API key
 
+Export history (`GET /export/history`, `POST /export/record`) accepts local
+clients and authenticated remote consumers, including API-key sessions and
+share-PIN guests. Anonymous remote callers are rejected. Recording an export
+only stores metadata; `/export` and `/export/reveal` still require native local
+access, and deleting history retains its administrator boundary. Explicit server
+mode without a configured key or PIN keeps its existing open consumption policy
+for export metadata; the operator's port mapping controls access in that mode.
+
 The API key is the backend's durable root credential for a GPU box, Docker
 container, or reverse-proxied host. Direct API clients may send it on each
 request. The first-party browser/Tauri UI instead exchanges it once for a

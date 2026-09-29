@@ -31,18 +31,20 @@ metadata and the backend fallback mirror it.
 - Record or drop a voice sample from one view in Voice Clone (#2307)
 - Voice Clone keeps the original container of a one-shot MP3, M4A or WebM reference (#2311)
 - Videos without sound get a clear message instead of an ffmpeg error dump (#2308)
-- First-run setup stops Intel Macs up front with remote-backend guidance instead of a failed multi-GB install (#2365)- MCP speech files and URLs can deliver Ogg/Opus instead of WAV; Ogg saves preserve int16 audio levels (#2321) — thanks @tracyndoan!
+- First-run setup stops Intel Macs before downloading dependencies and explains remote-backend access (#2387) — thanks @JoAdo07!
+- MCP speech files and URLs can deliver Ogg/Opus instead of WAV; Ogg saves preserve int16 audio levels (#2321) — thanks @tracyndoan!
 - Turn a finished dub into a Stories script in one click, speakers and voices included (#2300) — thanks @shivsin25!
-- Workflows can branch: a Condition step sends each item down one of two routes by what its text says
+- Workflows can branch: a Condition step sends each item down one of two routes by what its text says (#2380) — thanks @shivsin25!
 
 ### Added
 
-- MCP agents can design a voice from a text description and reuse it by `profile_id` (`describe_voice`, `design_voice`) (#2368)
-- Dictation vocabulary hint in Settings → Dictation shortcut: names and jargon that Faster Whisper, MLX Whisper and OpenAI-compatible engines should expect (#2395)
+- MCP agents can design a voice from a text description and reuse it by `profile_id` (`describe_voice`, `design_voice`) (#2368) — thanks @thelselutopia!
+- Dictation vocabulary hint in Settings → Dictation shortcut: names and jargon that Faster Whisper, MLX Whisper and OpenAI-compatible engines should expect (#2395) — thanks @m061i6!
+- Cheaper Inference is available as an optional LLM provider (#2325) — thanks @aiapienthusiast!
 - Choose 16/24/32-bit WAV precision, sampling effort and mastering in Clone and Design, with file sizes and optional audio checks (#2406)
 - Language selection adds searchable flags, native names and codes in a responsive virtual grid, with supported model languages first and accessible keyboard navigation (#2408)
 - Run local narration, transcription, translation and voice-conversion recipes with resumable steps and WAV/TXT exports (#2333)
-- Workflows Condition step: route each script or clip down a yes/no branch by whether its text contains, equals, starts with or ends with a phrase — branches may rejoin, and each item picks its own route in the same run — thanks @shivsin25!
+- Workflows Condition step routes each item by a text phrase, preserves output on direct-to-End branches, and uses one phrase editor (#2380) — thanks @shivsin25!
 
 - Call agent backend: place or answer phone calls that hold a task conversation in your verified or designed voice, with an editable AI disclosure, take-over and an after-call summary (#2306)
 - Calls workspace with a live transcript, take-over, hang-up and an after-call summary (#2305)
@@ -50,11 +52,11 @@ metadata and the backend fallback mirror it.
 - Linux AppImages include standard update information and a published `.zsync` file so AppImageUpdate and desktop managers can download only changed bytes (#2327) — thanks @shuvashish76!
 
 ### Changed
-- Audio quality and Voice controls now open as compact popovers from the Synthesize box on Clone and Voice Design, replacing the inline section and side pane
-- The Synthesize button shows its keyboard shortcut as key chips inside the button
-- The language menu is more compact and stays within the window instead of clipping at the edges
-- Choose a voice shows photo cards with language and date, Newest/A–Z sorting and search; click or drop an image on any voice avatar to set its photo
-- Sidebar Speed / quality uses labelled Fast, Balanced, Quality and Max choices with a separate Auto toggle, shows engine status words only when something needs attention, and switches Simple, Models and Details views inline; Details shows a compact Engine / Model / Runs on card with a copyable model ID
+- Audio quality and Voice controls open as compact popovers from the Synthesize box on Clone and Voice Design (#2419)
+- The Synthesize button shows its keyboard shortcut as key chips inside the button (#2419)
+- The language menu stays within the window instead of clipping at the edges (#2419)
+- Choose a voice adds photo cards, Newest/A–Z sorting, search, and click or drop photo uploads (#2419)
+- Sidebar adds Fast, Balanced, Quality and Max choices, a separate Auto toggle, quieter engine status, and compact Simple, Models and Details views (#2419)
 - Sidebar adds hardware-aware Auto with live resource usage and TTS-first model selection, and groups compact engine status with icon-based Simple, Models and Details views (#2396)
 
 - LLM setup verifies a model response before enabling features, replaces the misleading engine inventory with connection guidance, and supports authenticated local servers (#2397)
@@ -76,6 +78,7 @@ metadata and the backend fallback mirror it.
 - Voice Clone shows upload and record side by side instead of behind a toggle (#2307)
 
 ### Docs
+- Chinese README now matches the Electron installation and migration guide (#2377) — thanks @lg114!
 
 - Record the supplied audio comparisons and installed-engine quality validation (#2406)
 
@@ -83,12 +86,19 @@ metadata and the backend fallback mirror it.
 - The Twilio guide and integration directory describe the guided setup and in-app integration pages (#2304)
 
 ### Fixed
-- MLX-Audio OuteTTS generates again, both with a reference clip and with its default voice, instead of failing with an internal error — thanks @debpalash!
+- Dub assembly, cached segments and audio tools can read generated WAV files when TorchCodec is missing or cannot load (#2379) — thanks @tokutei58301-boop!
+- Remote API-key and share-PIN clients can record and read export history while native filesystem operations stay local (#2383, #2384) — thanks @sedatdagg!
+- Concurrent job events receive unique sequence numbers (#2384) — thanks @sedatdagg!
+- Streaming reuses warm engines, follows model changes and protects active streams during eviction (#2391, #2400) — thanks @DeepanshuPal and @Kishore-MR!
+- VoxCPM2 performs one complete generation attempt with the requested sampling effort and enough time for CPU and MPS inference (#2412) — thanks @strauss-visuals!
+- Voice Clone explains when the selected model cannot clone instead of silently ignoring the reference (#2419)
+- GitHub Star count refreshes from the repository API, and macOS tray icons keep the intended menu-bar size (#2419)
+- MLX-Audio OuteTTS generates again with a reference clip or its default voice (#2419)
 - The language picker offers only the languages each MLX-Audio model supports (Kokoro, CSM, Qwen3-TTS, Dia, Chatterbox, MeloTTS, OuteTTS), per their model cards, instead of every language (#977)
 
 - The Enter that confirms Korean, Japanese or Chinese input no longer also submits project renames, language search, pronunciation, worker or MCP fields (#2338) — thanks @HEOJUNFO!
 - English text normalization speaks a dollar amount followed by a period or comma ("It costs $5.") instead of leaving the digits (#2390) — thanks @kevin9327!
-- Voice Design sends your written description unchanged to engines that read free text, such as Qwen3-TTS VoiceDesign and VoxCPM2, instead of reducing it to OmniVoice tags (#2389) — thanks @dominikj-cf!
+- Voice Design sends descriptions unchanged to free-text engines and restores the original design when reopening a take (#2401) — thanks @CauaMatheus and @dominikj-cf!
 - Voice Design keeps a detail you pick when you edit the description, unless the new text says otherwise, and reopening a take restores the description and picks it was made with (#2389)
 - A snapshot interrupted mid-copy (crash, kill or power loss) is no longer listed as a database backup or counted toward the three kept; the leftover partial file is cleaned up on the next snapshot (#2402) — thanks @fadiroot!
 - Low-disk notifications open Storage settings directly (#2407)
@@ -97,8 +107,8 @@ metadata and the backend fallback mirror it.
 - Development launches rebuild main and preload changes so embedded website previews do not keep stale browser IPC after UI updates (#2407)
 
 - Dubbing reports damaged source files clearly and removes partial or failed copies when storage runs out (#2411)
-- Streaming previews keep audio edges intact, preserve crossfades for late chunks, and use the PCM rate when supported (#2399) — thanks @Marcin-CCC!
-- Installed performance packs can be activated when all required models are present, even below the download-space reserve (#2386)
+- Streaming previews keep audio edges intact, preserve crossfades for late chunks, and use the PCM rate when supported (#2409) — thanks @dajiaohuang and @Marcin-CCC!
+- Installed performance packs can be activated when all required models are present, even below the download-space reserve (#2410) — thanks @dajiaohuang!
 - macOS development launches use the maintained Electron version and icon paths (#2351)
 - Electron detects and repairs incomplete PyTorch, torchaudio and torchvision runtime wheels before backend startup (#2354) — thanks @jonathanmoronta1-lab!
 - Returning to local mode discards sessions from unsaved remote-backend connection tests (#2356)

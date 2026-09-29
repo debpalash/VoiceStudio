@@ -65,3 +65,8 @@ These bridge fixtures do not replace native OS or manual screen-reader testing.
 Partial dub regeneration checks the selected segments in the renderer. The backend
 validates its final local render set, including segments promoted because their
 cache is missing, corrupt or from an incompatible timing format, before synthesis.
+
+MeloTTS English keeps its optional `g2p_en` package as a manual dependency; it is
+not bundled. Generation reports that prerequisite when absent. Its NLTK tagger and
+pronunciation data are prepared only when the user generates with that model and
+then reused from the local app data directory.

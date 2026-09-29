@@ -179,7 +179,7 @@ defaults can be overridden with `ORCAROUTER_BASE_URL` and `ORCAROUTER_MODEL`.
 
 [Cheaper Inference](https://cheaperinference.com) is an OpenAI-compatible
 gateway to models from several labs (default model `gpt-5.4-mini`).
-Each model costs 15–60% less than the list price of its lab.
+Pricing varies by model and request; check the [current provider catalog](https://cheaperinference.com/docs).
 It can be configured without the UI with `CHEAPER_INFERENCE_API_KEY`, and its
 defaults can be overridden with `CHEAPER_INFERENCE_BASE_URL` and
 `CHEAPER_INFERENCE_MODEL`.

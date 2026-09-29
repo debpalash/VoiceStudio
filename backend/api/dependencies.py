@@ -115,6 +115,21 @@ def _request_presents_admin_credential(
     return True
 
 
+def require_consumer(request: Request) -> None:
+    """Allow metadata access to local clients and authenticated remote consumers."""
+    principal = principal_for(request)
+    if not principal.allows("consume"):
+        # Explicit bare-server deployments delegate consumption to their port
+        # mapping. Preserve browser export history without granting admin/native.
+        if (_server_mode() and not _admin_credential_configured(request)
+                and principal.transport == CredentialTransport.NONE):
+            return
+        raise HTTPException(status_code=403, detail="authenticated consumer required")
+    if principal.transport in {CredentialTransport.COOKIE, CredentialTransport.LEGACY_COOKIE}:
+        if request.method.upper() not in SAFE_HTTP_METHODS and not cookie_csrf_allowed(request):
+            raise HTTPException(status_code=403, detail="CSRF validation failed")
+
+
 def require_loopback(request: Request) -> None:
     """Reject any request whose `client.host` is not a loopback address.
 

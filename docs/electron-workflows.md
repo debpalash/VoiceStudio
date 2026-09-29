@@ -45,3 +45,7 @@ renaming a step does not.
 Finished items expose their own playback and an explicit save; text output is
 saved as `.txt` and audio as `.wav` through the native save dialog. Nothing is
 downloaded automatically.
+
+A branch that goes directly from a Condition to End keeps the incoming text as
+its exportable result. Conditions have one phrase editor; the generic Instructions
+field is hidden for those steps.

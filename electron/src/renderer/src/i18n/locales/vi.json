@@ -2085,6 +2085,7 @@
     "installing": "Đang…",
     "setup_space": "Giải phóng ít nhất 9 GiB trên ổ đĩa của ứng dụng rồi thử lại.",
     "setup_access": "Cho phép ghi vào thư mục dữ liệu của ứng dụng rồi thử lại.",
+    "setup_intel_mac": "Máy Mac này dùng vi xử lý Intel và PyTorch không còn phát hành bản dựng cho Mac Intel — không thể cài backend AI cục bộ, và thử lại cũng không thay đổi được. Bạn vẫn có thể trỏ ứng dụng tới backend từ xa chạy trên máy khác (Cài đặt → Chia sẻ → Backend từ xa), hoặc dùng VoiceStudio trên Mac Apple Silicon, Windows hoặc Linux. Chi tiết: docs/install/macos.md.",
     "retry": "Thử lại",
     "ready": "Bộ máy sẵn sàng",
     "show_log": "Hiện nhật ký",

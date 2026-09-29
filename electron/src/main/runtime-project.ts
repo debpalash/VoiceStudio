@@ -391,6 +391,9 @@ export async function installRuntime(
 ): Promise<void> {
   signal.throwIfAborted();
   phase('checking');
+  if (process.platform === 'darwin' && process.arch === 'x64') {
+    throw Object.assign(new Error('INTEL_MAC_UNSUPPORTED'), { code: 'INTEL_MAC_UNSUPPORTED' });
+  }
   await mkdir(project, { recursive: true });
   const disk = await statfs(project);
   if (disk.bavail * disk.bsize < REQUIRED_ENV_BYTES) {

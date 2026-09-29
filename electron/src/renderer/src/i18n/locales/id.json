@@ -2085,6 +2085,7 @@
     "installing": "Memasang…",
     "setup_space": "Kosongkan setidaknya 9 GiB di drive aplikasi, lalu coba lagi.",
     "setup_access": "Izinkan akses tulis ke folder data aplikasi, lalu coba lagi.",
+    "setup_intel_mac": "Mac ini menggunakan prosesor Intel, dan PyTorch tidak lagi merilis build untuk Mac Intel — backend AI lokal tidak dapat dipasang, dan mencoba ulang tidak akan mengubahnya. Anda tetap dapat mengarahkan aplikasi ke backend jarak jauh di mesin lain (Pengaturan → Berbagi → Backend jarak jauh), atau menjalankan VoiceStudio di Mac Apple Silicon, Windows, atau Linux. Detail: docs/install/macos.md.",
     "ready": "Mesin siap",
     "show_log": "Tampilkan log",
     "hide_log": "Sembunyikan log",

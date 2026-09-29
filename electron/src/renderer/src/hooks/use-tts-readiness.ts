@@ -4,9 +4,11 @@ import { useComputeRuntime, useComputeTarget } from './use-compute-target';
 import { engineFamilyState, useEngines } from './use-engines';
 import { useBackendStatus } from './use-backend-status';
 
-export type TtsReadinessBlocker = 'engine' | 'loading' | null;
+export type TtsReadinessBlocker = 'engine' | 'loading' | 'cloning' | null;
 
 /** Resolve the selected TTS engine and explicit local weights without loading either. */
+export function useTtsReadiness(operation?: 'tts' | 'longform' | 'audiobook' | 'batch' | 'dub', requireLocal?: boolean): Exclude<TtsReadinessBlocker, 'cloning'>;
+export function useTtsReadiness(operation: string, requireLocal?: boolean): TtsReadinessBlocker;
 export function useTtsReadiness(operation = 'tts', requireLocal = false): TtsReadinessBlocker {
   const backend = useBackendStatus();
   const engines = useEngines();
@@ -44,6 +46,8 @@ export function useTtsReadiness(operation = 'tts', requireLocal = false): TtsRea
         : null;
   }
   if (!engines.activeTtsReady) return 'engine';
+  if (operation === 'clone' && tts?.backends.find((item) => item.id === activeEngine)?.supports_cloning === false)
+    return 'cloning';
   const activeModelId = tts?.active_model;
   if (activeModelId && catalogue.isLoading) return 'loading';
   const activeModel = catalogue.data?.models.find((model) => model.repo_id === activeModelId);

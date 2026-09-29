@@ -346,7 +346,17 @@ def _wav_to_pcm_b64(wav_path: str) -> tuple[str, int, int]:
     import numpy as np
     import torchaudio  # type: ignore[import-not-found]
 
-    wav, sr = torchaudio.load(wav_path)
+    try:
+        wav, sr = torchaudio.load(wav_path)
+    except (ImportError, RuntimeError) as exc:
+        if isinstance(exc, RuntimeError) and "could not load libtorchcodec" not in str(exc).lower():
+            raise
+        # Sidecars cannot import parent services; keep decoding self-contained.
+        import soundfile as sf
+        import torch
+
+        samples, sr = sf.read(wav_path, dtype="float32", always_2d=True)
+        wav = torch.from_numpy(samples.T.copy())
     # Downmix multi-channel to mono.
     if wav.ndim == 2 and wav.shape[0] > 1:
         wav = wav.mean(dim=0, keepdim=True)

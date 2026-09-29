@@ -47,6 +47,18 @@ const speakingOps = () => {
 };
 
 describe('a fork routes each clip on its own', () => {
+  it('keeps input text as exportable output on a branch directly to End', async () => {
+    const { document, start, condition, end } = forked('urgent', 'Calm input');
+    document.steps = [start, condition, end];
+    document.connections = [link(start, condition), link(condition, end, 'yes'),
+      link(condition, end, 'no')];
+    const plan = compileWorkflow(document);
+    const run = await executeWorkflow(plan, prepareRun(plan), speakingOps().operations,
+      new AbortController().signal, async () => {});
+    expect(run.items[0].state).toBe('done');
+    expect(run.items[0].texts?.[run.items[0].outputStep!]).toBe('Calm input');
+  });
+
   it('sends one clip down each branch in a single run', async () => {
     const plan = compileWorkflow(forked().document);
     const { voices, operations } = speakingOps();

@@ -1,3 +1,4 @@
+import { createTrayIcon } from './tray-icon';
 import { readFileSync } from 'node:fs';
 import { writeFile, rename } from 'node:fs/promises';
 import { ShortcutSettings } from './shortcut-settings';
@@ -89,7 +90,7 @@ export function installNativeCapture(
     if (!trayLabels) return;
     const labels = trayLabels;
     const shortcut = shortcuts.getState().accelerator;
-    tray.setImage(trayIcon(capturing ? 'tray-recording.png' : '32x32.png'));
+    tray.setImage(createTrayIcon(trayIcon(capturing ? 'tray-recording.png' : '32x32.png')));
     tray.setContextMenu(
       Menu.buildFromTemplate([
         { label: labels.show, click: () => showMain() },

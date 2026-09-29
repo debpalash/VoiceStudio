@@ -42,7 +42,7 @@ _perf_counter = time.perf_counter
 
 async def _resolve_stream_backend(engine_id: str | None):
     """Resolve the live-stream engine without bypassing host isolation."""
-    import services.tts_backend as tts_backend
+    from services import tts_backend
 
     selected_id = engine_id or tts_backend.active_backend_id()
     cls = tts_backend.get_backend_class(selected_id)
@@ -63,7 +63,10 @@ async def _resolve_stream_backend(engine_id: str | None):
         tts_backend._active_instance_id == selected_id
         and isinstance(tts_backend._active_instance, cls)
     ):
-        return tts_backend._active_instance
+        if not tts_backend._built_for_other_model(cls, tts_backend._active_instance):
+            return tts_backend._active_instance
+        if tts_backend.active_backend_id() == selected_id:
+            return tts_backend.get_active_tts_backend()
     return tts_backend.get_engine_instance_for(selected_id)
 
 class StreamTTSRequest(BaseModel):
@@ -220,15 +223,17 @@ async def synthesize_stream(
     from services.model_manager import generate_timeout_s, run_on_gpu_pool_guarded
 
     backend = await _resolve_stream_backend(engine)
-    routing = await runtime_compute_profile_async(backend, detect_host_caps())
-    if routing["routing_status"] == "unavailable":
-        raise StreamUnavailableError(
-            scrub_text(routing["routing_reason"]) or "engine cannot run on this host"
-        )
     from services.tts_backend import engine_in_use
 
     kw = build_stream_kwargs({"voice": voice, "language": language})
     with engine_in_use(backend):
+        routing = await runtime_compute_profile_async(backend, detect_host_caps())
+        if routing["routing_status"] == "unavailable":
+            raise StreamUnavailableError(
+                scrub_text(routing["routing_reason"]) or "engine cannot run on this host"
+            )
+        from services.engine_memory import evict_other_tts_engines
+        await evict_other_tts_engines(backend.id)
         for sentence in split_stream_sentences(text, language):
             wav, sr, _synth_s = await run_on_gpu_pool_guarded(
                 functools.partial(render_stream_sentence, backend, kw, sentence),
@@ -367,6 +372,8 @@ async def ws_tts(websocket: WebSocket):
                         "reason": scrub_text(_notice[1]) if _notice[1] else None,
                     })
 
+                from services.engine_memory import evict_other_tts_engines
+                await evict_other_tts_engines(backend.id)
                 kw = build_stream_kwargs(data)
 
                 # Normalized exactly once on the whole text, then chunked

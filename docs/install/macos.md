@@ -2,6 +2,10 @@
 
 ## Electron desktop (current)
 
+On Intel Macs, packaged Electron setup stops before creating a Python environment
+or downloading dependencies and displays remote-backend guidance. Use the remote
+connection controls in the setup screen; local inference requires a supported host.
+
 From the repository root, install Bun and uv, then run:
 
 ```sh

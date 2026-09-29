@@ -461,7 +461,8 @@ class SegmentCache:
             return None
         try:
             import torchaudio
-            audio, sr = torchaudio.load(path)
+            from services.audio_io import load_audio
+            audio, sr = load_audio(path)
         except Exception:
             self.misses += 1
             return None  # unreadable/corrupt entry — clean miss, re-render

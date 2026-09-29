@@ -39,8 +39,8 @@ it('keeps the preview badge offline when requested', async () => {
 it('shows an exact live count and refreshes it every 20 minutes', async () => {
   const fetchCount = vi
     .fn()
-    .mockResolvedValueOnce({ ok: true, json: async () => ({ count: 43_768 }) })
-    .mockResolvedValueOnce({ ok: true, json: async () => ({ count: 43_769 }) });
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ stargazers_count: 43_768 }) })
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ stargazers_count: 43_769 }) });
   vi.stubGlobal('fetch', fetchCount);
   vi.useFakeTimers();
   const client = mount();
@@ -52,7 +52,7 @@ it('shows an exact live count and refreshes it every 20 minutes', async () => {
   expect(screen.getByText('43,768')).toBeVisible();
   expect(fetchCount).toHaveBeenCalledOnce();
   expect(fetchCount.mock.calls[0][0]).toBe(
-    'https://api.github.com/repos/debpalash/VoiceStudio/stargazers/count',
+    'https://api.github.com/repos/debpalash/VoiceStudio',
   );
   expect(fetchCount.mock.calls[0][1]).toMatchObject({
     credentials: 'omit',
@@ -78,7 +78,7 @@ it('shows an exact live count and refreshes it every 20 minutes', async () => {
 it('keeps the last live count when a later request fails', async () => {
   const fetchCount = vi
     .fn()
-    .mockResolvedValueOnce({ ok: true, json: async () => ({ count: 45_001 }) })
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ stargazers_count: 45_001 }) })
     .mockRejectedValueOnce(new Error('offline'));
   vi.stubGlobal('fetch', fetchCount);
   vi.useFakeTimers();

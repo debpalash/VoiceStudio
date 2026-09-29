@@ -683,10 +683,13 @@ def test_model_switch_never_unloads_an_engine_mid_job(monkeypatch):
     monkeypatch.setattr(tts_backend, "_ENGINE_IN_USE", {})
     monkeypatch.setenv("OMNIVOICE_MLX_AUDIO_MODEL", "kokoro")
     first = tts_backend.get_engine_instance(tts_backend.MLXAudioBackend)
-    first.unload = lambda: (_ for _ in ()).throw(AssertionError("unloaded while in use"))
+    unloaded = []
+    first.unload = lambda: unloaded.append(True)
     with tts_backend.engine_in_use(first):
         monkeypatch.setenv("OMNIVOICE_MLX_AUDIO_MODEL", "csm")
         second = tts_backend.get_engine_instance(tts_backend.MLXAudioBackend)
+        assert not unloaded
+    assert unloaded == [True]
     assert second is not first
 
 

@@ -196,6 +196,9 @@ export async function executeWorkflow(
       item.texts ??= {};
       let value: string | Blob = item.text;
       const input = plan.steps[0];
+      // Even a condition-only route must leave an exportable checkpoint.
+      item.outputStep = input.id;
+      if (!item.sourceId) item.texts[input.id] = item.text;
       if (item.sourceId) {
         value = item.audio[input.id] || await operations.loadAudio!(item.sourceId);
         item.audio[input.id] = value;

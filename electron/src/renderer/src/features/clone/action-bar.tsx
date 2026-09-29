@@ -359,7 +359,9 @@ export function ActionBar() {
         >
           <span role="status">
             {t(
-              blocker === 'engine'
+              blocker === 'cloning'
+                ? 'convert.cloning_required'
+                : blocker === 'engine'
                 ? demo
                   ? 'demo.prerendered_chip'
                   : 'engines.none_ready_title'
@@ -391,7 +393,7 @@ export function ActionBar() {
               </Button>
             </div>
           )}
-          {blocker === 'engine' && !demo && (
+          {(blocker === 'engine' || blocker === 'cloning') && !demo && (
             <Link
               to="/settings/models/$family"
               params={{ family: 'tts' }}

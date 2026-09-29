@@ -128,6 +128,36 @@ async def _evict(keep):
 
 
 @pytest.mark.asyncio
+async def test_eviction_preserves_leased_engine_then_releases_it(instance_cache, monkeypatch):
+    from services import tts_backend
+
+    class Running:
+        id = 'running-test'
+        unloaded = False
+
+        def unload(self):
+            self.unloaded = True
+
+    running = Running()
+    instance_cache[Running] = running
+    with tts_backend.engine_in_use(running):
+        assert await _evict('kittentts') == []
+        assert not running.unloaded
+    assert await _evict('kittentts') == ['running-test']
+    assert running.unloaded
+
+
+@pytest.mark.asyncio
+async def test_unknown_override_cannot_evict_core_or_cached_models(instance_cache, monkeypatch):
+    import services.model_manager as mm
+
+    sentinel = object()
+    monkeypatch.setattr(mm, 'model', sentinel)
+    assert await _evict('not-a-real-engine') == []
+    assert mm.model is sentinel
+
+
+@pytest.mark.asyncio
 async def test_evicts_other_engine_instances_but_keeps_the_active_one(instance_cache, monkeypatch):
     class KittenTTSBackend:
         id = "kittentts"

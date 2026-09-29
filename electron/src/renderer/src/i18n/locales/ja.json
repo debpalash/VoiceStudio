@@ -2085,6 +2085,7 @@
     "installing": "依存関係のインストール中…",
     "setup_space": "アプリのドライブに9 GiB以上の空き容量を確保して、再試行してください。",
     "setup_access": "アプリのデータフォルダーへの書き込みを許可して、再試行してください。",
+    "setup_intel_mac": "この Mac は Intel プロセッサ搭載ですが、PyTorch は Intel Mac 向けビルドの提供を終了したため、ローカル AI バックエンドをインストールできません。再試行しても解決しません。別のマシンで動くリモートバックエンドにアプリを接続する(設定 → 共有 → リモートバックエンド)か、Apple Silicon Mac / Windows / Linux で VoiceStudio をご利用ください。詳細: docs/install/macos.md。",
     "ready": "エンジン準備完了",
     "show_log": "ログを表示",
     "hide_log": "ログを非表示",

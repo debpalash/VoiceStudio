@@ -45,7 +45,8 @@ async def detect_audio_watermark(file: UploadFile = File(...)):
             tmp.write(content)
             tmp_path = tmp.name
 
-        waveform, sr = torchaudio.load(tmp_path)
+        from services.audio_io import load_audio
+        waveform, sr = load_audio(tmp_path)
         result = detect_watermark(waveform, sr)
         return result
 

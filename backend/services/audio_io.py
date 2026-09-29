@@ -67,6 +67,22 @@ logger = logging.getLogger("omnivoice.audio_io")
 # both; we forward whichever the caller hands us.
 PathOrBuf = Union[str, "os.PathLike[str]", BinaryIO, io.IOBase]
 
+
+def load_audio(source: PathOrBuf) -> tuple[torch.Tensor, int]:
+    """Read normalized channel-first audio even when TorchCodec is unavailable."""
+    position = source.tell() if hasattr(source, "tell") and source.seekable() else None
+    try:
+        return torchaudio.load(source)
+    except (ImportError, RuntimeError) as exc:
+        if isinstance(exc, RuntimeError) and "could not load libtorchcodec" not in str(exc).lower():
+            raise
+        import soundfile as sf
+
+        if position is not None:
+            source.seek(position)
+        samples, sample_rate = sf.read(source, dtype="float32", always_2d=True)
+        return torch.from_numpy(samples.T.copy()), sample_rate
+
 # Opus is carried in Ogg for both .opus and .ogg filenames.
 OPUS_CODEC_ARGS = ["-c:a", "libopus", "-b:a", "64k"]
 OPUS_SAMPLE_RATE = 48000

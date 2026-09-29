@@ -711,7 +711,9 @@ export class BackendSupervisor extends EventEmitter<{
       if (gen === this.generation) {
         const code = (error as NodeJS.ErrnoException)?.code;
         this.setupIssue =
-          code === 'ENOSPC'
+          code === 'INTEL_MAC_UNSUPPORTED'
+            ? 'intel_mac'
+            : code === 'ENOSPC'
             ? 'space'
             : ['EACCES', 'EPERM', 'EROFS'].includes(code || '')
               ? 'access'

@@ -134,7 +134,7 @@ def stale_partial_backups(db_path: str) -> list[str]:
         if not name.startswith(base + ".backup-"):
             continue
         m = _PARTIAL_SUFFIX_RE.search(name)
-        if not m:
+        if not m or not _BACKUP_SUFFIX_RE.fullmatch(name[len(base):m.start()]):
             continue
         pid = int(name[m.start() + len(".part-"):])
         if pid != os.getpid() and not _pid_alive(pid):
@@ -143,16 +143,15 @@ def stale_partial_backups(db_path: str) -> list[str]:
 
 
 def _pid_alive(pid: int) -> bool:
+    import psutil
+
     if pid <= 0:
         return False
     try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except OSError:
-        # EPERM and friends: the pid exists but is not ours.
+        return psutil.pid_exists(pid)
+    except (OSError, psutil.Error):
+        # An uncertain owner must never cause deletion of its partial backup.
         return True
-    return True
 
 
 def prune_backups(db_path: str, keep: int = KEEP_BACKUPS) -> list[str]:

@@ -5,6 +5,7 @@ import { useTtsReadiness } from './use-tts-readiness';
 const state = vi.hoisted(() => ({
   backendStage: 'ready',
   localReady: false,
+  supportsCloning: true,
   remoteTarget: undefined as string | undefined,
   remotePending: false,
   remoteError: false,
@@ -25,7 +26,7 @@ vi.mock('./use-engines', () => ({
       tts: {
         active: 'omnivoice',
         active_model: 'k2-fsa/OmniVoice',
-        backends: [{ id: 'omnivoice', available: state.localReady }],
+        backends: [{ id: 'omnivoice', available: state.localReady, supports_cloning: state.supportsCloning }],
       },
     },
     activeTtsReady: state.localReady,
@@ -88,10 +89,17 @@ vi.mock('./use-compute-target', () => ({
 }));
 
 describe('target-aware TTS readiness', () => {
+  it('blocks cloning with a model that would ignore the reference', () => {
+    state.localReady = true;
+    state.supportsCloning = false;
+    const { result } = renderHook(() => useTtsReadiness('clone'));
+    expect(result.current).toBe('cloning');
+  });
   beforeEach(() => {
     Object.assign(state, {
       backendStage: 'ready',
       localReady: false,
+      supportsCloning: true,
       remoteTarget: undefined,
       remotePending: false,
       remoteError: false,

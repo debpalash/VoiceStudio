@@ -63,6 +63,22 @@ afterEach(async () => {
 });
 
 describe('packaged runtime setup', () => {
+  it('rejects Intel Macs before creating files or downloading dependencies', async () => {
+    const { bundle, project } = await fixture();
+    const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+    const arch = vi.spyOn(process, 'arch', 'get').mockReturnValue('x64');
+    const run = vi.fn();
+    try {
+      await expect(installRuntime(bundle, project, null, run, new AbortController().signal))
+        .rejects.toMatchObject({ code: 'INTEL_MAC_UNSUPPORTED' });
+      expect(run).not.toHaveBeenCalled();
+      expect(statfs).not.toHaveBeenCalled();
+    } finally {
+      platform.mockRestore();
+      arch.mockRestore();
+    }
+  });
+
   it('downloads the first-run installer with the same proxy environment as uv', async () => {
     const { bundle, project } = await fixture();
     vi.stubEnv('HTTPS_PROXY', 'socks5h://127.0.0.1:1080');

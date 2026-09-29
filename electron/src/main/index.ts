@@ -1,3 +1,4 @@
+import { createTrayIcon } from './tray-icon';
 import { installWatchFolders } from './watch-folders';
 import { installNativeCapture } from './native-capture';
 import { isTrustedRenderer } from './trusted-renderer';
@@ -305,7 +306,7 @@ if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSing
       );
       const icon = nativeImage.createFromPath(brandIconPath('icon.png'));
       if (process.platform === 'darwin') app.dock?.setIcon(icon);
-      tray = new Tray(brandIconPath('32x32.png'));
+      tray = new Tray(createTrayIcon(brandIconPath('32x32.png')));
       tray.setToolTip('VoiceStudio');
       closeCapture = installNativeCapture(PRELOAD_PATH, tray, () => mainWindow);
       tray.on('click', () => {

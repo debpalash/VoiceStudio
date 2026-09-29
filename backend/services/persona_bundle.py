@@ -200,7 +200,8 @@ def _generate_preview(profile: dict, embed_fn) -> tuple[bytes, bool, float]:
         if not path:
             continue
         try:
-            waveform, sr = torchaudio.load(path)
+            from services.audio_io import load_audio
+            waveform, sr = load_audio(path)
         except Exception:  # noqa: BLE001 — try the next candidate (A4)
             continue
         if waveform.numel() == 0:  # empty/zero-length (A5)

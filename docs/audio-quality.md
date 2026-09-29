@@ -114,3 +114,8 @@ arguments for TTS only; use `--text`, `--steps` and `--seed` to vary the experim
 Keep private recordings and generated voice comparisons outside Git. The original
 [audio investigation](audio-quality-handoff.md) remains available as historical
 evidence; this work does not establish a cause for the historical reverb report.
+
+Generated WAV reads use a shared TorchCodec fallback, including dub assembly,
+cached segments, watermark detection, longform and persona previews. Voice Clone
+blocks models that explicitly report no cloning support and explains how to select
+a capable model; plain text-to-speech remains available.
