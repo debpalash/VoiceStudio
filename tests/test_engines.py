@@ -629,6 +629,42 @@ def test_mlx_audio_generate_rejects_language_outside_curated_model_set():
         backend.generate("hello", language="Dutch", instruct="a warm narrator")
 
 
+@pytest.mark.parametrize("sample_rate", [24000, 48000])
+def test_outetts_reference_uses_shared_decoder_and_downmixes(monkeypatch, sample_rate):
+    import numpy as np
+    import torch
+    from services import audio_io
+
+    core = types.ModuleType("mlx.core")
+    core.array = np.asarray
+    mlx = types.ModuleType("mlx")
+    mlx.core = core
+    utils = types.ModuleType("mlx_audio.utils")
+    resampled = []
+
+    def resample(audio, source_rate, target_rate, axis):
+        resampled.append((source_rate, target_rate, axis))
+        return audio[::2]
+
+    utils.resample_audio = resample
+    monkeypatch.setitem(sys.modules, "mlx", mlx)
+    monkeypatch.setitem(sys.modules, "mlx.core", core)
+    monkeypatch.setitem(sys.modules, "mlx_audio.utils", utils)
+    decoded = []
+
+    def load(path):
+        decoded.append(path)
+        return torch.tensor([[0.0, 0.2, 0.4, 0.6], [0.2, 0.4, 0.6, 0.8]]), sample_rate
+
+    monkeypatch.setattr(audio_io, "load_audio", load)
+    result = tts_backend._outetts_reference_array("compressed-reference.m4a")
+    expected = [0.1, 0.3, 0.5, 0.7] if sample_rate == 24000 else [0.1, 0.5]
+    np.testing.assert_allclose(result, expected, atol=1e-7)
+    assert result.dtype == np.float32
+    assert decoded == ["compressed-reference.m4a"]
+    assert resampled == ([] if sample_rate == 24000 else [(48000, 24000, 0)])
+
+
 def test_mlx_audio_outetts_receives_reference_as_array(monkeypatch):
     # mlx-audio's OuteTTS crashes on a file path (UnboundLocalError: resampled_audio).
     backend = tts_backend.MLXAudioBackend()

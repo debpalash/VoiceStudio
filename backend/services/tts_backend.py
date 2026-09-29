@@ -2434,11 +2434,11 @@ def _outetts_reference_array(path: str):
     """Mono float32 ``mx.array`` at the OuteTTS codec rate, as its in-memory branch expects."""
     import mlx.core as mx
     import numpy as np
-    import soundfile as sf
+    from services.audio_io import load_audio
     from mlx_audio.utils import resample_audio
 
-    audio, sample_rate = sf.read(path, dtype="float32", always_2d=True)
-    mono = audio.mean(axis=1)
+    audio, sample_rate = load_audio(path)
+    mono = audio.mean(dim=0).detach().cpu().numpy()
     if sample_rate != _OUTETTS_CODEC_SAMPLE_RATE:
         mono = resample_audio(mono, sample_rate, _OUTETTS_CODEC_SAMPLE_RATE, axis=0)
     return mx.array(np.asarray(mono, dtype=np.float32))
