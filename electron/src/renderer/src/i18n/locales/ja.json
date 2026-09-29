@@ -1963,6 +1963,7 @@
     "installing": "依存関係のインストール中…",
     "setup_space": "アプリのドライブに9 GiB以上の空き容量を確保して、再試行してください。",
     "setup_access": "アプリのデータフォルダーへの書き込みを許可して、再試行してください。",
+    "setup_unsupported_platform": "このIntel MacではローカルAIバックエンドを実行できません — PyTorchにmacOS Intel用wheelがありません。代わりに下でリモートバックエンドに接続してください。ローカルインストールは不要です。",
     "ready": "エンジン準備完了",
     "show_log": "ログを表示",
     "hide_log": "ログを非表示",

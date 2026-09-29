@@ -1963,6 +1963,7 @@
     "installing": "Installerar…",
     "setup_space": "Frigör minst 9 GiB på appens disk och försök igen.",
     "setup_access": "Tillåt skrivåtkomst till appens datamapp och försök igen.",
+    "setup_unsupported_platform": "Den här Intel-Macen kan inte köra den lokala AI-backendservern — PyTorch saknar macOS Intel-hjul. Anslut en fjärrbackend nedan istället; ingen lokal installation behövs.",
     "retry": "Försök igen",
     "ready": "Motorn är redo",
     "show_log": "Visa logg",

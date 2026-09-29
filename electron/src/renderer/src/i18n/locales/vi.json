@@ -1963,6 +1963,7 @@
     "installing": "Đang…",
     "setup_space": "Giải phóng ít nhất 9 GiB trên ổ đĩa của ứng dụng rồi thử lại.",
     "setup_access": "Cho phép ghi vào thư mục dữ liệu của ứng dụng rồi thử lại.",
+    "setup_unsupported_platform": "Máy Mac Intel này không thể chạy backend AI cục bộ — PyTorch không có wheel cho macOS Intel. Hãy kết nối backend từ xa bên dưới; không cần cài đặt cục bộ.",
     "retry": "Thử lại",
     "ready": "Bộ máy sẵn sàng",
     "show_log": "Hiện nhật ký",

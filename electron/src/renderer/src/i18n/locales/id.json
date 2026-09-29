@@ -1963,6 +1963,7 @@
     "installing": "Memasang…",
     "setup_space": "Kosongkan setidaknya 9 GiB di drive aplikasi, lalu coba lagi.",
     "setup_access": "Izinkan akses tulis ke folder data aplikasi, lalu coba lagi.",
+    "setup_unsupported_platform": "Mac Intel ini tidak dapat menjalankan backend AI lokal — PyTorch tidak menyediakan wheel macOS Intel. Hubungkan backend jarak jauh di bawah; instalasi lokal tidak diperlukan.",
     "ready": "Mesin siap",
     "show_log": "Tampilkan log",
     "hide_log": "Sembunyikan log",

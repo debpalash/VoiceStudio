@@ -1965,6 +1965,7 @@
     "installing": "Installation…",
     "setup_space": "Libérez au moins 9 Gio sur le disque de l’application, puis réessayez.",
     "setup_access": "Autorisez l’écriture dans le dossier de données de l’application, puis réessayez.",
+    "setup_unsupported_platform": "Ce Mac Intel ne peut pas exécuter le backend IA local — PyTorch ne fournit pas de wheels macOS Intel. Connectez plutôt un backend distant ci-dessous ; aucune installation locale n'est nécessaire.",
     "ready": "Moteur prêt",
     "show_log": "Afficher le journal",
     "hide_log": "Masquer le journal",

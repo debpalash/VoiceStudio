@@ -1965,6 +1965,7 @@
     "installing": "Installazione…",
     "setup_space": "Libera almeno 9 GiB sull’unità dell’app, poi riprova.",
     "setup_access": "Consenti l’accesso in scrittura alla cartella dati dell’app, poi riprova.",
+    "setup_unsupported_platform": "Questo Mac Intel non può eseguire il backend IA locale — PyTorch non fornisce wheel per macOS Intel. Connetti un backend remoto qui sotto; nessuna installazione locale necessaria.",
     "retry": "Riprova",
     "ready": "Motore pronto",
     "show_log": "Mostra registro",

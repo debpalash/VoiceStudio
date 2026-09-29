@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { ConfirmDialog } from '@/features/clone/confirm-dialog';
+import { RemoteBackendSettings } from '@/features/settings/remote-backend-settings';
 import { useBackendStatus } from '@/hooks/use-backend-status';
 import i18n, { APP_LANGUAGE_ITEMS, APP_LANGUAGES, setAppLanguage, type AppLocale } from '@/i18n';
 import { brandIcon } from '@/lib/brand';
@@ -90,6 +91,9 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
   );
   const installing = status.stage === 'installing';
   const setupFailed = setup && Boolean(status.message);
+  // Intel Macs can never resolve the runtime (#2365): the setup screen
+  // offers a remote backend instead of a local install that must fail.
+  const unsupportedPlatform = setup && status.setupIssue === 'unsupported_platform';
   const running = status.stage === 'starting' || status.stage === 'attaching' || installing;
   const seconds = useElapsedSeconds(status.elapsedMs, running);
   const setupPhaseIndex = status.setupPhase ? SETUP_PHASES.indexOf(status.setupPhase) : 0;
@@ -321,6 +325,16 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
           {setup ? (
             <>
               <p className="max-w-sm text-sm text-muted-foreground">{t('backend.setup_hint')}</p>
+              {unsupportedPlatform && (
+                <>
+                  <p className="max-w-sm text-sm text-muted-foreground">
+                    {t('backend.setup_unsupported_platform')}
+                  </p>
+                  <div className="w-full text-left">
+                    <RemoteBackendSettings />
+                  </div>
+                </>
+              )}
               <div className="grid w-full grid-cols-2 gap-2">
                 <label className="space-y-1 text-left text-xs text-muted-foreground">
                   <span>{t('settings.language')}</span>
@@ -429,13 +443,15 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                   </div>
                 </div>
               )}
-              <Button disabled={restarting || choosingLocation} onClick={() => void runSetup()}>
-                {status.runtimeInterrupted
-                  ? t('common.resume')
-                  : setupFailed
-                    ? t('backend.retry')
-                    : t('backend.setup_required')}
-              </Button>
+              {!unsupportedPlatform && (
+                <Button disabled={restarting || choosingLocation} onClick={() => void runSetup()}>
+                  {status.runtimeInterrupted
+                    ? t('common.resume')
+                    : setupFailed
+                      ? t('backend.retry')
+                      : t('backend.setup_required')}
+                </Button>
+              )}
               {setupFailed ? (
                 <Button
                   variant="outline"

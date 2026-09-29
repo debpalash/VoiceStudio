@@ -1963,6 +1963,7 @@
     "installing": "종속성…",
     "setup_space": "앱 드라이브에 최소 9 GiB의 여유 공간을 확보한 후 다시 시도하세요.",
     "setup_access": "앱 데이터 폴더에 쓰기 권한을 허용한 후 다시 시도하세요.",
+    "setup_unsupported_platform": "이 Intel Mac에서는 로컬 AI 백엔드를 실행할 수 없습니다 — PyTorch에 macOS Intel용 휠이 없습니다. 아래에서 원격 백엔드에 연결하세요. 로컬 설치는 필요하지 않습니다.",
     "ready": "엔진 준비 완료",
     "show_log": "로그 표시",
     "hide_log": "로그 숨기기",

@@ -21,7 +21,8 @@ metadata and the backend fallback mirror it.
 - Record or drop a voice sample from one view in Voice Clone (#2307)
 - Voice Clone keeps the original container of a one-shot MP3, M4A or WebM reference (#2311)
 - Videos without sound get a clear message instead of an ffmpeg error dump (#2308)
-- First-run setup stops Intel Macs up front with remote-backend guidance instead of a failed multi-GB install (#2365)- MCP speech files and URLs can deliver Ogg/Opus instead of WAV; Ogg saves preserve int16 audio levels (#2321) — thanks @tracyndoan!
+- First-run setup stops Intel Macs up front with remote-backend guidance instead of a failed multi-GB install (#2365)
+- MCP speech files and URLs can deliver Ogg/Opus instead of WAV; Ogg saves preserve int16 audio levels (#2321) — thanks @tracyndoan!
 - Turn a finished dub into a Stories script in one click, speakers and voices included (#2300) — thanks @shivsin25!
 
 ### Added

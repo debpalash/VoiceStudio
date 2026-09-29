@@ -1963,6 +1963,7 @@
     "installing": "正在安裝依賴項…",
     "setup_space": "請在應用程式所在磁碟上釋出至少 9 GiB 空間，然後重試。",
     "setup_access": "請允許寫入應用程式資料夾，然後重試。",
+    "setup_unsupported_platform": "此 Intel Mac 無法執行本機 AI 後端——PyTorch 未提供 macOS Intel 建置。請在下方連接遠端後端，無需本機安裝。",
     "ready": "引擎已就緒",
     "show_log": "顯示日誌",
     "hide_log": "隱藏日誌",

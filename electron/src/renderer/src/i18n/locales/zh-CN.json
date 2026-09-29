@@ -1967,6 +1967,7 @@
     "installing": "正在安装依赖项…",
     "setup_space": "请在应用所在磁盘上释放至少 9 GiB 空间，然后重试。",
     "setup_access": "请允许写入应用数据文件夹，然后重试。",
+    "setup_unsupported_platform": "此 Intel Mac 无法运行本地 AI 后端——PyTorch 不提供 macOS Intel 构建。请在下方连接远程后端，无需本地安装。",
     "retry": "重试",
     "ready": "引擎已就绪",
     "show_log": "显示日志",

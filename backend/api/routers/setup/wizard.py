@@ -350,23 +350,6 @@ def preflight():
         "detail": f"{os_ver} ({arch})", "fix": None,
     })
 
-    # ── Intel-Mac platform gate (#2365): PyTorch ships no macOS x86_64
-    # wheels, so the dependency set can never resolve there (see #889 and
-    # docs/install/macos.md). Fail the preflight BEFORE any multi-GB
-    # download so first-run setup shows this guidance instead of a raw
-    # uv resolver error. Local inference stays unsupported; the Electron
-    # UI can use a remote backend on another supported machine.
-    if sys.platform == "darwin" and arch == "x86_64":
-        checks.append({
-            "id": "platform", "label": "Platform support", "status": "fail",
-            "detail": "Intel Macs can't run the local AI backend "
-                      "(PyTorch ships no macOS x86_64 wheels).",
-            "fix": "Use a remote backend on a supported machine "
-                   "(Apple Silicon, NVIDIA, or CPU-only Linux/Windows) — "
-                   "see docs/install/macos.md. Local setup is disabled "
-                   "on this host.",
-        })
-
     # ── Python runtime
     checks.append({
         "id": "python", "label": "Python runtime", "status": "pass",
@@ -434,6 +417,47 @@ def preflight():
         "fix": None if writable else
             f"Fix write permissions on {cache} or point HF_HOME elsewhere.",
     })
+
+    # ── Intel-Mac platform gate (#2365): PyTorch ships no macOS x86_64
+    # wheels, so the dependency set can never resolve there (see #889 and
+    # docs/install/macos.md). Fail the preflight BEFORE any multi-GB
+    # download so first-run setup shows this guidance instead of a raw
+    # uv resolver error. Local inference stays unsupported; the Electron
+    # UI can use a remote backend on another supported machine.
+    #
+    # Return immediately: _media_summary(auto_acquire=True) below would
+    # otherwise start a background acquisition on this blocked path.
+    if sys.platform == "darwin" and arch == "x86_64":
+        checks.append({
+            "id": "platform", "label": "Platform support", "status": "fail",
+            "detail": "Intel Macs can't run the local AI backend "
+                      "(PyTorch ships no macOS x86_64 wheels).",
+            "fix": "Use a remote backend on a supported machine "
+                   "(Apple Silicon, NVIDIA, or CPU-only Linux/Windows) — "
+                   "see docs/install/macos.md. Local setup is disabled "
+                   "on this host.",
+        })
+        gpu = _detect_gpu()
+        return {
+            "ok": False,
+            "has_warnings": False,
+            "checks": checks,
+            "device": {
+                "os": sys.platform,
+                "arch": arch,
+                "gpu_vendor": gpu["vendor"],
+                "gpu_backend": gpu["backend"],
+                "gpu_available": gpu["available"],
+                "gpu_driver": gpu["driver"],
+                "gpu_device_name": gpu["device_name"],
+                "gpu_family": "cpu",
+                "vram_gb": 0.0,
+                "ram_gb": round(ram, 1),
+                "disk_free_gb": round(free, 1),
+            },
+            "gpu_routing": None,
+            "media_tools": None,
+        }
 
     # ── Media engine (ffmpeg/ffprobe/yt-dlp) — deliberately NOT a check row.
     # These are internal dependencies the app provisions for itself, not user

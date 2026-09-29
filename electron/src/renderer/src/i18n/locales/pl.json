@@ -1967,6 +1967,7 @@
     "installing": "Instalowanie…",
     "setup_space": "Zwolnij co najmniej 9 GiB na dysku aplikacji i spróbuj ponownie.",
     "setup_access": "Zezwól na zapis w folderze danych aplikacji i spróbuj ponownie.",
+    "setup_unsupported_platform": "Ten Mac z procesorem Intel nie może uruchomić lokalnego backendu AI — PyTorch nie udostępnia pakietów wheel dla macOS Intel. Podłącz zdalny backend poniżej; instalacja lokalna nie jest potrzebna.",
     "ready": "Silnik gotowy",
     "show_log": "Pokaż dziennik",
     "hide_log": "Ukryj dziennik",

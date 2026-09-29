@@ -1963,6 +1963,7 @@
     "installing": "Abhängigkeiten…",
     "setup_space": "Gib mindestens 9 GiB auf dem Laufwerk der App frei und versuche es erneut.",
     "setup_access": "Erlaube Schreibzugriff auf den Datenordner der App und versuche es erneut.",
+    "setup_unsupported_platform": "Dieser Intel-Mac kann das lokale KI-Backend nicht ausführen — PyTorch bietet keine macOS-Intel-Wheels. Verbinde stattdessen unten ein Remote-Backend; keine lokale Installation nötig.",
     "ready": "Engine bereit",
     "show_log": "Protokoll anzeigen",
     "hide_log": "Protokoll ausblenden",
