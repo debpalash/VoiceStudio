@@ -248,7 +248,10 @@ export const createStreamingChunkPlayer = ({ label, sampleRate, crossfadeMs = 0,
     const when = anchor + (starts[i] + intra - baseOffset);
     const startAt = Math.max(when, ctx.currentTime);
     const tail = scheduled[scheduled.length - 1];
-    const fade = withFade && intra === 0 && tail?.endsAt > startAt ? fadeFor(i) : 0;
+    const fade =
+      withFade && intra === 0 && tail?.endsAt > startAt
+        ? Math.min(fadeFor(i), tail.endsAt - startAt)
+        : 0;
     if (fade > 0 && tail) {
       // Linear crossfade — same shape the backend bakes into the final file.
       tail.gain.gain.setValueAtTime(1, startAt);

@@ -600,8 +600,9 @@ describe('createStreamingChunkPlayer', () => {
       expect(ctx.started[1].startedAt.when).toBeCloseTo(0.17, 5);
       expect(ramp).toHaveBeenCalledTimes(2);
       expect(ramp.mock.calls.map(([target]) => target)).toEqual([0, 1]);
-      expect(ramp.mock.calls[0][1]).toBeCloseTo(0.22, 5);
-      expect(ramp.mock.calls[1][1]).toBeCloseTo(0.22, 5);
+      // Only 10 ms of the previous source remains after the new start.
+      expect(ramp.mock.calls[0][1]).toBeCloseTo(0.18, 5);
+      expect(ramp.mock.calls[1][1]).toBeCloseTo(0.18, 5);
     } finally {
       player.fail();
       ramp.mockRestore();
