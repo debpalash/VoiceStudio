@@ -67,6 +67,8 @@ logger = logging.getLogger("omnivoice.audio_io")
 # (``io.BytesIO`` for in-memory responses). ``torchaudio.save`` accepts
 # both; we forward whichever the caller hands us.
 PathOrBuf = Union[str, "os.PathLike[str]", BinaryIO, io.IOBase]
+MAX_DECODED_AUDIO_BYTES = 512 * 1024 ** 2
+_DECODE_DISK_RESERVE = 64 * 1024 ** 2
 
 
 def load_audio(source: PathOrBuf) -> tuple[torch.Tensor, int]:
@@ -105,13 +107,21 @@ def load_audio(source: PathOrBuf) -> tuple[torch.Tensor, int]:
                 # Keep decoded transport on disk, not as another full WAV in
                 # memory alongside the sample tensor. Close/unlink on all exits.
                 with tempfile.TemporaryFile() as decoded:
+                    limit = min(MAX_DECODED_AUDIO_BYTES,
+                                shutil.disk_usage(tempfile.gettempdir()).free - _DECODE_DISK_RESERVE)
+                    if limit <= 0:
+                        raise ValueError("Audio exceeds the decoding size limit; free temporary storage or use a shorter clip.")
                     subprocess.run(
                         [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
                          "-protocol_whitelist", "file,pipe", "-i", filename,
-                         "-map", "0:a:0", "-f", "wav", "-c:a", "pcm_f32le", "pipe:1"],
+                         "-map", "0:a:0", "-f", "wav", "-c:a", "pcm_f32le",
+                         "-fs", str(limit), "pipe:1"],
                         stdout=decoded, stderr=subprocess.PIPE, check=True, timeout=120,
                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                     )
+                    # ffmpeg exits successfully at -fs; never return truncated audio.
+                    if decoded.seek(0, os.SEEK_END) >= limit:
+                        raise ValueError("Audio exceeds the decoding size limit; use a shorter clip.")
                     decoded.seek(0)
                     samples, sample_rate = sf.read(decoded, dtype="float32", always_2d=True)
             finally:

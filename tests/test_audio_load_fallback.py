@@ -107,3 +107,22 @@ def test_ffmpeg_decode_transport_does_not_buffer_the_entire_wav(monkeypatch):
     finally:
         tracemalloc.stop()
     assert peak < 2 * 1024 ** 2, "transport buffered a full 10 MiB decoded WAV"
+
+
+@pytest.mark.parametrize("budget", ["decoded_size", "free_space"])
+def test_compressed_decode_rejects_output_over_budget(tmp_path, monkeypatch, budget):
+    import subprocess
+    from types import SimpleNamespace
+    from services import audio_io
+    from services.ffmpeg_utils import find_ffmpeg
+    source = tmp_path / "source.wav"
+    sf.write(source, np.zeros((12000, 2), dtype=np.float32), 24000)
+    encoded = tmp_path / "encoded.m4a"
+    subprocess.run([find_ffmpeg(), "-hide_banner", "-loglevel", "error", "-y", "-i", str(source), str(encoded)], check=True, capture_output=True)
+    monkeypatch.setattr(torchaudio, "load", lambda _: (_ for _ in ()).throw(ImportError()))
+    if budget == "decoded_size":
+        monkeypatch.setattr(audio_io, "MAX_DECODED_AUDIO_BYTES", 4096, raising=False)
+    else:
+        monkeypatch.setattr(audio_io.shutil, "disk_usage", lambda _: SimpleNamespace(free=64 * 1024 ** 2 + 4096))
+    with pytest.raises(ValueError, match="decoding size limit"):
+        audio_io.load_audio(encoded)
