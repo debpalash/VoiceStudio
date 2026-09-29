@@ -157,6 +157,13 @@ describe('toGenerateForm', () => {
       toGenerateForm({ ...BASE_INPUT, profileId: 'p1', instruct: 'just prose' }).has('instruct'),
     ).toBe(false);
   });
+
+  it('preserves model-native free-form instructions when requested', () => {
+    const prompt = 'an elderly Scottish woman with a raspy, low voice';
+    expect(
+      toGenerateForm({ ...BASE_INPUT, instruct: prompt, freeformInstruct: true }).get('instruct'),
+    ).toBe(prompt);
+  });
 });
 
 describe('parseGenerateHeaders', () => {

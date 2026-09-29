@@ -139,6 +139,8 @@ export interface CloneGenerateInput {
   refText?: string;
   /** Free-text style; sanitised through the instruct whitelist before sending. */
   instruct?: string;
+  /** Preserve model-native prose instead of applying the OmniVoice whitelist. */
+  freeformInstruct?: boolean;
   steps: number;
   cfg: number;
   speed: number;

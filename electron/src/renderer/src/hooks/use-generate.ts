@@ -48,6 +48,7 @@ let lastRoutingStatus: string | null = null;
 export interface DesignGenerateInput {
   text: string;
   instruct: string;
+  structuredInstruct?: string;
   seed: number;
   language?: string;
   profileId?: string | null;
@@ -273,11 +274,16 @@ function useGenerateController(): UseGenerateClone {
       const controller = new AbortController();
       abortRef.current = controller;
       try {
-        const free = design?.instruct ?? settings.instruct;
         const engines = queryClient.getQueryData<EnginesResponse>(queryKeys.engines);
+        const freeformInstruct = Boolean(design && supportsFreeformDesign(engines));
+        const free = design
+          ? freeformInstruct
+            ? design.instruct
+            : (design.structuredInstruct ?? design.instruct)
+          : settings.instruct;
         const instruct = free.trim()
-          ? supportsFreeformDesign(engines)
-            ? free.trim()
+          ? freeformInstruct
+            ? design?.instruct.trim()
             : announceInstructWarnings(free)
           : '';
         const input = {
@@ -288,6 +294,7 @@ function useGenerateController(): UseGenerateClone {
           refAudio: design || settings.selectedProfileId ? null : reference.file,
           refText: design ? undefined : settings.refText,
           instruct,
+          freeformInstruct,
           steps: effectiveSamplingSteps(
             settings.steps,
             queryClient.getQueryData<EnginesResponse>(queryKeys.engines)?.tts?.active,
