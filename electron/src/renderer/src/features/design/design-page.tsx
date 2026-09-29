@@ -548,7 +548,10 @@ export function DesignPage() {
                   onClick={() =>
                     void generation.generateDesign({
                       text: draft.text,
-                      instruct: buildDesignInstruct(draft.attrs, '').instruct,
+                      // Preserve the original prompt for engines such as Qwen3-TTS
+                      // VoiceDesign; the generation hook sanitizes it for engines
+                      // that only accept OmniVoice's structured taxonomy.
+                      instruct: description,
                       seed: draft.seed,
                       profileId: profiles.data?.some(
                         (profile) => profile.id === draft.profileId && profile.kind === 'design',

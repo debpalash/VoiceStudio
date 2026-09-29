@@ -97,6 +97,13 @@ function announceInstructWarnings(free: string): string {
   return instruct;
 }
 
+function supportsFreeformDesign(engines: EnginesResponse | undefined): boolean {
+  const tts = engines?.tts;
+  if (!tts) return false;
+  if (tts.active === 'voxcpm2') return true;
+  return tts.active === 'mlx-audio' && /qwen3|voicedesign/i.test(tts.active_model ?? '');
+}
+
 function announceResultNotices(result: GenerateResult): void {
   // Some of the text rendered to no audio: the take is clean but short, and
   // nothing else would ever tell the user — so quote what was lost.
@@ -267,7 +274,12 @@ function useGenerateController(): UseGenerateClone {
       abortRef.current = controller;
       try {
         const free = design?.instruct ?? settings.instruct;
-        const instruct = free.trim() ? announceInstructWarnings(free) : '';
+        const engines = queryClient.getQueryData<EnginesResponse>(queryKeys.engines);
+        const instruct = free.trim()
+          ? supportsFreeformDesign(engines)
+            ? free.trim()
+            : announceInstructWarnings(free)
+          : '';
         const input = {
           text: design?.text ?? settings.text,
           seed: design?.seed,
