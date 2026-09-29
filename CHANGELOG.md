@@ -94,6 +94,7 @@ metadata and the backend fallback mirror it.
 - Voice Clone explains when the selected model cannot clone instead of silently ignoring the reference (#2419)
 - GitHub Star count refreshes from the repository API, and macOS tray icons keep the intended menu-bar size (#2419)
 - MLX-Audio OuteTTS generates again with a reference clip or its default voice (#2419)
+- MLX Qwen3-TTS receives the selected language correctly; MeloTTS explains missing text resources without downloading during generation (#2419)
 - The language picker offers only the languages each MLX-Audio model supports (Kokoro, CSM, Qwen3-TTS, Dia, Chatterbox, MeloTTS, OuteTTS), per their model cards, instead of every language (#977)
 
 - The Enter that confirms Korean, Japanese or Chinese input no longer also submits project renames, language search, pronunciation, worker or MCP fields (#2338) — thanks @HEOJUNFO!

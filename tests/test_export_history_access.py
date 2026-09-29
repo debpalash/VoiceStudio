@@ -41,10 +41,12 @@ def test_export_history_access(tmp_path, monkeypatch, credential):
         headers = {"Authorization": "Bearer wrong"}
     with TestClient(app, client=(host, 50000), headers=headers) as client:
         expected = 403 if credential in {"anonymous", "invalid-key"} else 200
-        assert client.post("/export/record", json={"filename": "clip.wav"}).status_code == expected
+        assert client.post("/export/record", json={"filename": "clip.wav", "destination_path": "/private/operator/clip.wav"}).status_code == expected
         history = client.get("/export/history")
         assert history.status_code == expected
         if expected == 200:
             assert history.json()[0]["filename"] == "clip.wav"
+            expected_path = "" if credential == "bare-server" else "/private/operator/clip.wav"
+            assert history.json()[0]["destination_path"] == expected_path
         if credential != "local":
             assert client.post("/export/reveal", json={"path": "clip.wav"}).status_code == 403

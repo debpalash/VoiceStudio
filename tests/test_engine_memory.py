@@ -258,3 +258,30 @@ async def test_a_failing_unload_does_not_abort_the_eviction(instance_cache, monk
     assert set(evicted) == {"a", "b"}
     assert b.unloaded == 1
     assert not instance_cache  # both dropped despite the failure
+
+
+@pytest.mark.parametrize("method", ["generate", "generate_batch"])
+def test_render_holds_engine_during_eviction(instance_cache, monkeypatch, method):
+    import asyncio
+    from services import tts_backend as tb
+
+    class Rendering(_concrete(tb)):
+        def generate(self, text, **kwargs):
+            return self.render()
+
+        def generate_batch(self, texts, **kwargs):
+            return self.render()
+
+        def render(self):
+            asyncio.run(em.evict_other_tts_engines("other"))
+            assert self._model is sentinel
+            return sentinel
+
+    engine = Rendering()
+    sentinel = engine._model = object()
+    instance_cache[Rendering] = engine
+    monkeypatch.setattr(tb, "get_backend_class", lambda _: type("Other", (), {}))
+    assert getattr(engine, method)("hello" if method == "generate" else ["hello"]) is sentinel
+    assert not tb._ENGINE_IN_USE.get(Rendering)
+    asyncio.run(em.evict_other_tts_engines("other"))
+    assert engine._model is None

@@ -145,7 +145,7 @@ export function VirtualSearchableSelect({
   });
   useEffect(() => {
     if (!list) return;
-    const measure = () => setColumns(Math.max(1, Math.min(3, Math.floor(list.clientWidth / 180))));
+    const measure = () => setColumns(Math.max(1, Math.min(3, Math.floor(list.clientWidth / 200))));
     measure();
     if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(measure);
@@ -223,7 +223,7 @@ export function VirtualSearchableSelect({
             initialFocus={input}
             aria-label={ariaLabel}
             data-slot="language-menu"
-            className="flex max-h-[min(440px,var(--available-height))] w-[min(600px,calc(100vw-24px))] flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-xl outline-none"
+            className="flex max-h-[min(440px,var(--available-height))] w-[min(640px,calc(100vw-24px))] flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-xl outline-none"
             dir={rtl ? 'rtl' : 'ltr'}
           >
             <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 transition-colors focus-within:bg-muted/30">

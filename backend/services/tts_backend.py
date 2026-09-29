@@ -203,8 +203,25 @@ class TTSInputError(ValueError):
     surface as opaque 500s like "need at least one array to concatenate")."""
 
 
+def _lease_render(method):
+    """Keep engines resident for every render caller, including dub and batch."""
+    @functools.wraps(method)
+    def render(instance, *args, **kwargs):
+        with engine_in_use(instance):
+            return method(instance, *args, **kwargs)
+    return render
+
+
 class TTSBackend(ABC):
     """Every TTS engine exposes the same surface, regardless of vendor."""
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # Enforce lifetime at the engine boundary so every caller is covered.
+        for name in ("generate", "generate_batch", "_ensure_loaded"):
+            method = cls.__dict__.get(name)
+            if method is not None:
+                setattr(cls, name, _lease_render(method))
 
     #: Unique id for config + UI (e.g. "omnivoice", "voxcpm2").
     id: str = "base"
@@ -527,6 +544,7 @@ class TTSBackend(ABC):
         Engines that don't support this will ignore the parameter.
         """
 
+    @_lease_render
     def generate_batch(
         self,
         texts: list[str],
@@ -1388,22 +1406,23 @@ def generate_with_cached_ref(model, *, ref_audio, ref_text, **gen_kw):
     # look the cache up, but never insert — see _get_clone_prompt(store=). MUST
     # be popped: the model's generate() has an explicit signature and would
     # TypeError on an unknown kwarg.
-    cache_ref = bool(gen_kw.pop("cache_ref", True))
-    # Stays in gen_kw too: the model needs it on the inline branch, and it is inert
-    # on the prompt branch (that prompt is already encoded).
-    preprocess_prompt = bool(gen_kw.get("preprocess_prompt", True))
-    prompt = (
-        _get_clone_prompt(model, ref_audio, ref_text, preprocess_prompt, store=cache_ref)
-        if ref_audio else None
-    )
-    if prompt is not None:
-        try:
-            return model.generate(voice_clone_prompt=prompt, **gen_kw)
-        except Exception as e:  # noqa: BLE001 — fall back to the inline ref
-            logger.warning("voice_clone_prompt generate failed; retrying inline ref: %s", e)
-    return model.generate(
-        ref_audio=ref_audio, ref_text=omnivoice_ref_text(ref_audio, ref_text), **gen_kw
-    )
+    with engine_in_use(OmniVoiceBackend(model=model)):
+        cache_ref = bool(gen_kw.pop("cache_ref", True))
+        # Stays in gen_kw too: the model needs it on the inline branch, and it is inert
+        # on the prompt branch (that prompt is already encoded).
+        preprocess_prompt = bool(gen_kw.get("preprocess_prompt", True))
+        prompt = (
+            _get_clone_prompt(model, ref_audio, ref_text, preprocess_prompt, store=cache_ref)
+            if ref_audio else None
+        )
+        if prompt is not None:
+            try:
+                return model.generate(voice_clone_prompt=prompt, **gen_kw)
+            except Exception as e:  # noqa: BLE001 — fall back to the inline ref
+                logger.warning("voice_clone_prompt generate failed; retrying inline ref: %s", e)
+        return model.generate(
+            ref_audio=ref_audio, ref_text=omnivoice_ref_text(ref_audio, ref_text), **gen_kw
+        )
 
 
 def clear_clone_prompt_cache() -> None:
@@ -2362,28 +2381,27 @@ def _harden_mlx_audio_eos_ids() -> None:
 #: NLTK data MeloTTS English's g2p_en front end looks up on every call.
 _MELOTTS_NLTK_RESOURCES = (
     ("taggers/averaged_perceptron_tagger_eng", "averaged_perceptron_tagger_eng"),
-    ("corpora/cmudict", "cmudict"),
+    ("taggers/averaged_perceptron_tagger.zip", "averaged_perceptron_tagger"),
+    ("corpora/cmudict.zip", "cmudict"),
 )
 
 
 def _ensure_melotts_text_frontend() -> None:
-    """Fetch MeloTTS's NLTK data into the app data folder on first use.
+    """Validate optional text resources locally, before importing g2p_en.
 
-    g2p_en only downloads the pre-3.9 tagger name, so current NLTK fails with
-    ``LookupError: averaged_perceptron_tagger_eng``. This runs only when the
-    user generates with MeloTTS, alongside that model's own first download.
+    g2p_en downloads its legacy NLTK tagger and dictionary at import time.
+    Check those plus the modern English tagger first; generation must never
+    acquire resources behind the user's back.
     """
+    import importlib.util
     from pathlib import Path
 
-    try:
-        import g2p_en  # noqa: F401 — mlx-audio imports it lazily mid-generation
-    except ImportError as exc:
+    if importlib.util.find_spec("g2p_en") is None:
         raise RuntimeError(
-            "MeloTTS English needs the optional 'g2p_en' text package, which is "
-            "not bundled with VoiceStudio. Pick another MLX-Audio model such as "
-            "Kokoro, or install it into VoiceStudio's Python environment "
-            "(uv pip install g2p_en) and retry."
-        ) from exc
+            "MeloTTS English needs the optional 'g2p_en' text package. "
+            "Pick another MLX-Audio model or install it explicitly into "
+            "VoiceStudio's Python environment (uv pip install g2p_en)."
+        )
     import nltk
     from core.config import DATA_DIR
 
@@ -2393,13 +2411,14 @@ def _ensure_melotts_text_frontend() -> None:
     for lookup, package in _MELOTTS_NLTK_RESOURCES:
         try:
             nltk.data.find(lookup)
-        except LookupError:
-            target.mkdir(parents=True, exist_ok=True)
-            if not nltk.download(package, download_dir=str(target), quiet=True):
-                raise RuntimeError(
-                    f"MeloTTS needs the NLTK '{package}' data and it could not be "
-                    "downloaded. Check your internet connection, then retry."
-                )
+        except LookupError as exc:
+            raise RuntimeError(
+                f"MeloTTS needs the local NLTK '{package}' data. "
+                "Install its resources explicitly in VoiceStudio's Python "
+                "environment: python -m nltk.downloader "
+                "averaged_perceptron_tagger averaged_perceptron_tagger_eng cmudict. "
+                "Generation does not download these resources."
+            ) from exc
 
 
 def _dia_tagged(text: str) -> str:
@@ -2591,6 +2610,8 @@ class MLXAudioBackend(TTSBackend):
     def _ensure_loaded(self):
         if self._model is not None:
             return
+        if self._curated_key() == "melotts":
+            _ensure_melotts_text_frontend()
         from mlx_audio.tts.utils import load_model
         _harden_mlx_audio_eos_ids()
         logger.info("Loading mlx-audio model %s", self._model_id)
@@ -2662,7 +2683,7 @@ class MLXAudioBackend(TTSBackend):
         # "IndexError: list index out of range" deep inside mlx-audio,
         # instead of ever attempting the clone. Community-diagnosed (#1012).
         if ref_audio and ref_text: kwargs["ref_text"] = ref_text
-        if language and language != "Auto":
+        if language and language.strip().lower() != "auto":
             if self._model_id == self.CURATED_MODELS.get("kokoro"):
                 # Kokoro's vendored pipeline hard-asserts `lang_code` against
                 # its own single-letter table — a bogus code crashes with an
@@ -2681,7 +2702,18 @@ class MLXAudioBackend(TTSBackend):
                 # them. Curated models are checked against their documented
                 # set instead of silently speaking a language they don't know.
                 self._check_language(language)
-                kwargs["lang_code"] = language[:2].lower()
+                code = self._normalize_language_code(language)
+                if self._curated_key() == "qwen3-tts":
+                    # mlx-audio Qwen's codec_language_id uses full names.
+                    qwen_languages = {
+                        "zh": "chinese", "en": "english", "ja": "japanese",
+                        "ko": "korean", "de": "german", "fr": "french",
+                        "ru": "russian", "pt": "portuguese", "es": "spanish",
+                        "it": "italian",
+                    }
+                    kwargs["lang_code"] = qwen_languages[code]
+                elif code is not None:
+                    kwargs["lang_code"] = code
 
         def collect(results):
             groups = []

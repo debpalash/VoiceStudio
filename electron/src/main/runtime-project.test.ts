@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile, statfs } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { downloadRuntimeInstaller } from './runtime-download';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import {
   installRuntime,
   promoteLegacyRuntimeCaches,
@@ -55,7 +55,12 @@ async function interpreter(project: string) {
   await writeFile(runtimePython(project), 'interpreter');
   await writeFile(join(project, '.venv', 'pyvenv.cfg'), 'home = managed');
 }
+beforeEach(() => {
+  // Installation fixtures exercise a supported host; the Intel case overrides it.
+  if (process.platform === 'darwin') vi.spyOn(process, 'arch', 'get').mockReturnValue('arm64');
+});
 afterEach(async () => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   vi.mocked(statfs).mockClear();

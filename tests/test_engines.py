@@ -575,12 +575,14 @@ def test_mlx_audio_generate_design_path_unaffected_without_any_ref():
     assert "ref_audio" not in captured
 
 
-def test_mlx_audio_generate_auto_language_skips_lang_code_entirely():
+@pytest.mark.parametrize("language", ["Auto", "auto", " AUTO "])
+@pytest.mark.parametrize("model", ["kokoro", "qwen3-tts"])
+def test_mlx_audio_generate_auto_language_skips_lang_code_entirely(language, model):
     # Matches the "Auto" convention other engines in this file use
     # (OmniVoiceBackend.generate(), _run_backend_inference) — never resolved,
     # never forwarded as lang_code.
     backend = tts_backend.MLXAudioBackend()
-    backend._model_id = backend.CURATED_MODELS["kokoro"]
+    backend._model_id = backend.CURATED_MODELS[model]
     backend._ensure_loaded = lambda: None
     seen_kwargs = {}
 
@@ -589,11 +591,12 @@ def test_mlx_audio_generate_auto_language_skips_lang_code_entirely():
         return iter([types.SimpleNamespace(audio=[0.0, 0.0, 0.0, 0.0])])
 
     backend._model = types.SimpleNamespace(generate=_fake_generate)
-    backend.generate("hello", language="Auto")
+    backend.generate("hello", language=language, instruct="a warm narrator")
     assert "lang_code" not in seen_kwargs
 
 
-def test_mlx_audio_generate_non_kokoro_model_ignores_kokoro_validation():
+@pytest.mark.parametrize("language, expected", [("German", "german"), ("de", "german"), ("pt-BR", "portuguese"), ("Chinese", "chinese")])
+def test_mlx_audio_generate_non_kokoro_model_ignores_kokoro_validation(language, expected):
     # Qwen3-TTS (and CSM/Dia/Chatterbox/MeloTTS/OuteTTS) don't use Kokoro's
     # lang_code convention — a language Kokoro would reject must NOT be
     # rejected when a different curated model is active (#977 nuance).
@@ -612,8 +615,8 @@ def test_mlx_audio_generate_non_kokoro_model_ignores_kokoro_validation():
     # passed without one only because `instruct` was being dropped before it
     # ever reached the library (#1405); supply one so the scenario is real.
     # German: documented for Qwen3-TTS, absent from Kokoro's table.
-    backend.generate("hello", language="German", instruct="a warm narrator")  # must not raise
-    assert seen_kwargs.get("lang_code") == "ge"
+    backend.generate("hello", language=language, instruct="a warm narrator")  # must not raise
+    assert seen_kwargs.get("lang_code") == expected
     assert seen_kwargs.get("instruct") == "a warm narrator"
 
 
@@ -701,10 +704,13 @@ def test_melotts_names_its_missing_text_package(monkeypatch):
         tts_backend._ensure_melotts_text_frontend()
 
 
-def test_melotts_fetches_missing_nltk_data_into_the_app_folder(monkeypatch, tmp_path):
+def test_melotts_reports_missing_nltk_data_without_downloading(monkeypatch, tmp_path):
     import sys
 
-    monkeypatch.setitem(sys.modules, "g2p_en", types.ModuleType("g2p_en"))
+    from importlib.machinery import ModuleSpec
+    fake_g2p = types.ModuleType("g2p_en")
+    fake_g2p.__spec__ = ModuleSpec("g2p_en", loader=None)
+    monkeypatch.setitem(sys.modules, "g2p_en", fake_g2p)
     downloads = []
 
     def _find(lookup):
@@ -717,10 +723,14 @@ def test_melotts_fetches_missing_nltk_data_into_the_app_folder(monkeypatch, tmp_
     )
     monkeypatch.setitem(sys.modules, "nltk", fake_nltk)
     monkeypatch.setattr("core.config.DATA_DIR", str(tmp_path))
-    tts_backend._ensure_melotts_text_frontend()
-    assert [name for name, _ in downloads] == ["averaged_perceptron_tagger_eng", "cmudict"]
-    assert {path for _, path in downloads} == {str(tmp_path / "nltk_data")}
+    with pytest.raises(RuntimeError, match="nltk.downloader"):
+        tts_backend._ensure_melotts_text_frontend()
+    assert downloads == []
     assert fake_nltk.data.path[0] == str(tmp_path / "nltk_data")
+    fake_nltk.data.find = lambda lookup: object()
+    tts_backend._ensure_melotts_text_frontend()
+    assert downloads == []
+
 
 
 def test_mlx_audio_dia_receives_speaker_tagged_text():

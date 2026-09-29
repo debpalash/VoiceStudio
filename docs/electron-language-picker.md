@@ -67,6 +67,16 @@ validates its final local render set, including segments promoted because their
 cache is missing, corrupt or from an incompatible timing format, before synthesis.
 
 MeloTTS English keeps its optional `g2p_en` package as a manual dependency; it is
-not bundled. Generation reports that prerequisite when absent. Its NLTK tagger and
-pronunciation data are prepared only when the user generates with that model and
-then reused from the local app data directory.
+not bundled. Generation reports that prerequisite when absent. Install its NLTK data explicitly in the same Python environment:
+`python -m nltk.downloader averaged_perceptron_tagger averaged_perceptron_tagger_eng cmudict`.
+Generation checks local resources before importing the text frontend and never
+downloads missing NLTK data. Existing NLTK search directories and the app's
+`nltk_data` directory are reused.
+
+Qwen3-TTS receives the full language names required by its
+[upstream adapter](https://github.com/Blaizzy/mlx-audio/blob/main/mlx_audio/tts/models/qwen3_tts/qwen3_tts.py),
+including when users select an ISO code or region alias.
+
+Engine rendering and warm-up hold a residency lease, including dub and batch calls.
+Switching engines defers unloading any model still rendering; a retired model is
+released after its last render finishes.

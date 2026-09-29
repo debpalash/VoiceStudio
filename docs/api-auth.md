@@ -86,7 +86,8 @@ share-PIN guests. Anonymous remote callers are rejected. Recording an export
 only stores metadata; `/export` and `/export/reveal` still require native local
 access, and deleting history retains its administrator boundary. Explicit server
 mode without a configured key or PIN keeps its existing open consumption policy
-for export metadata; the operator's port mapping controls access in that mode.
+for export metadata, with destination paths redacted from anonymous responses;
+the operator's port mapping controls access in that mode.
 
 The API key is the backend's durable root credential for a GPU box, Docker
 container, or reverse-proxied host. Direct API clients may send it on each

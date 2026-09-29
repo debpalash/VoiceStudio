@@ -196,8 +196,6 @@ export async function executeWorkflow(
       item.texts ??= {};
       let value: string | Blob = item.text;
       const input = plan.steps[0];
-      // Even a condition-only route must leave an exportable checkpoint.
-      item.outputStep = input.id;
       if (!item.sourceId) item.texts[input.id] = item.text;
       if (item.sourceId) {
         value = item.audio[input.id] || await operations.loadAudio!(item.sourceId);
@@ -247,6 +245,8 @@ export async function executeWorkflow(
         cursor = plan.next[step.id];
       }
       signal.throwIfAborted();
+      // A branch directly to End exports its input only after completion.
+      item.outputStep ??= input.id;
       item.state = 'done';
       item.stepId = finished.id;
       await save();
