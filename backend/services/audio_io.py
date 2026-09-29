@@ -422,13 +422,19 @@ def load_audio(path_or_buf: PathOrBuf) -> tuple[torch.Tensor, int]:
     """
     try:
         return torchaudio.load(path_or_buf)
-    except ImportError:
+    except ImportError as torchaudio_error:
         logger.warning(
             "torchaudio.load needs TorchCodec; reading via soundfile"
         )
         import soundfile as sf
 
-        data, loaded_sr = sf.read(path_or_buf, dtype="float32", always_2d=True)
+        try:
+            data, loaded_sr = sf.read(path_or_buf, dtype="float32", always_2d=True)
+        except Exception as fallback_error:
+            # A format soundfile cannot decode (e.g. .m4a) fails here exactly
+            # as the missing-codec load did before: surface the root cause
+            # with the fallback error as context.
+            raise torchaudio_error from fallback_error
         wav = torch.from_numpy(data.T).contiguous()
         return wav, int(loaded_sr)
 
