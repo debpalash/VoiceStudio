@@ -29,7 +29,7 @@ export interface NativeCrashRecord {
 export interface BackendStatus {
   lastCrash?: NativeCrashRecord;
   stage: BackendStage;
-  setupIssue?: 'space' | 'access' | 'intel_mac';
+  setupIssue?: 'space' | 'access' | 'unsupported_platform';
   /** A prior explicit install stopped after creating its resumable project/cache. */
   runtimeInterrupted?: boolean;
   setupPhase?: 'checking' | 'downloading_uv' | 'installing_deps' | 'verifying';

@@ -2085,7 +2085,7 @@
     "installing": "Abhängigkeiten…",
     "setup_space": "Gib mindestens 9 GiB auf dem Laufwerk der App frei und versuche es erneut.",
     "setup_access": "Erlaube Schreibzugriff auf den Datenordner der App und versuche es erneut.",
-    "setup_intel_mac": "Dieser Mac hat einen Intel-Prozessor, und PyTorch liefert keine Intel-Mac-Builds mehr — das lokale KI-Backend kann nicht installiert werden, und ein erneuter Versuch ändert daran nichts. Sie können die App weiterhin mit einem Remote-Backend auf einem anderen Rechner verbinden (Einstellungen → Freigabe → Remote-Backend) oder VoiceStudio auf einem Apple-Silicon-Mac, Windows oder Linux nutzen. Details: docs/install/macos.md.",
+    "setup_unsupported_platform": "Dieser Intel-Mac kann das lokale KI-Backend nicht ausführen — PyTorch bietet keine macOS-Intel-Wheels. Verbinde stattdessen unten ein Remote-Backend; keine lokale Installation nötig.",
     "ready": "Engine bereit",
     "show_log": "Protokoll anzeigen",
     "hide_log": "Protokoll ausblenden",

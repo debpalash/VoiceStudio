@@ -323,7 +323,7 @@
     "installing": "Installing…",
     "setup_space": "Free at least 9 GiB on the app’s drive, then retry.",
     "setup_access": "Allow write access to the app’s data folder, then retry.",
-    "setup_intel_mac": "This Mac has an Intel processor, and PyTorch no longer ships Intel-Mac builds — the local AI backend can't be installed, and retrying won't change that. You can still point the app at a remote backend running on another machine (Settings → Sharing → Remote backend), or run VoiceStudio on an Apple Silicon Mac, Windows, or Linux. Details: docs/install/macos.md.",
+    "setup_unsupported_platform": "This Intel Mac can't run the local AI backend — PyTorch ships no macOS Intel wheels. Connect a remote backend below instead; no local install is needed.",
     "proxy_bypass_help": "Fully quit VoiceStudio, set HTTP_PROXY/HTTPS_PROXY to your proxy URL and NO_PROXY to excluded hosts in a terminal, then launch VoiceStudio from that terminal. Retrying in the current app cannot load new environment variables."
   },
   "engines": {

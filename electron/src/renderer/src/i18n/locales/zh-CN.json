@@ -2089,7 +2089,7 @@
     "installing": "正在安装依赖项…",
     "setup_space": "请在应用所在磁盘上释放至少 9 GiB 空间，然后重试。",
     "setup_access": "请允许写入应用数据文件夹，然后重试。",
-    "setup_intel_mac": "这台 Mac 使用 Intel 处理器,而 PyTorch 已不再发布 Intel Mac 版本 — 本地 AI 后端无法安装,重试也无济于事。您仍可将应用连接到另一台机器上运行的远程后端(设置 → 分享 → 远程后端),或在 Apple Silicon Mac、Windows 或 Linux 上使用 VoiceStudio。详情:docs/install/macos.md。",
+    "setup_unsupported_platform": "此 Intel Mac 无法运行本地 AI 后端——PyTorch 不提供 macOS Intel 构建。请在下方连接远程后端，无需本地安装。",
     "retry": "重试",
     "ready": "引擎已就绪",
     "show_log": "显示日志",

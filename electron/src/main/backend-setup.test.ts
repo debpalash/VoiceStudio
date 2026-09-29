@@ -60,6 +60,7 @@ import {
   BackendSupervisor,
   bundledUvPath,
   isExpectedPipeClose,
+  isUnsupportedPlatform,
   managedBackendSpawnOptions,
 } from './backend';
 
@@ -604,4 +605,53 @@ it('exposes the current process signal separately from the durable crash journal
   await supervisor.shutdown();
   expect(supervisor.status.exitSignal).toBeUndefined();
   vi.useRealTimers();
+});
+
+// ── #2365: Intel Macs can never resolve the runtime ─────────────────────────
+//
+// PyTorch ships no macOS x86_64 wheels, so offering a local install there
+// burns gigabytes before a certain resolver failure. The supervisor parks
+// in setup_required with an unsupported_platform issue (the setup screen
+// shows remote-backend guidance instead of an install CTA), and setupRuntime
+// refuses even direct IPC.
+
+function stubIntelMac(): () => void {
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+  const arch = Object.getOwnPropertyDescriptor(process, 'arch');
+  Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+  Object.defineProperty(process, 'arch', { value: 'x64', configurable: true });
+  return () => {
+    if (platform) Object.defineProperty(process, 'platform', platform);
+    if (arch) Object.defineProperty(process, 'arch', arch);
+  };
+}
+
+it('parks Intel Macs in setup_required with an unsupported-platform issue', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      throw new Error('no backend');
+    }),
+  );
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  vi.stubEnv('VOICESTUDIO_SKIP_BACKEND', '');
+  const restore = stubIntelMac();
+  try {
+    expect(isUnsupportedPlatform()).toBe(true);
+    const supervisor = new BackendSupervisor();
+    await supervisor.start();
+    expect(supervisor.status.stage).toBe('setup_required');
+    expect(supervisor.status.setupIssue).toBe('unsupported_platform');
+    await supervisor.setupRuntime();
+    expect(mocks.install).not.toHaveBeenCalled();
+    await supervisor.shutdown();
+  } finally {
+    restore();
+  }
+});
+
+it('does not gate Apple Silicon or other platforms', () => {
+  expect(isUnsupportedPlatform('darwin', 'arm64')).toBe(false);
+  expect(isUnsupportedPlatform('win32', 'x64')).toBe(false);
+  expect(isUnsupportedPlatform('linux', 'x64')).toBe(false);
 });

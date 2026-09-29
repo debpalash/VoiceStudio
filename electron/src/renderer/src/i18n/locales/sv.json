@@ -2085,7 +2085,7 @@
     "installing": "Installerar…",
     "setup_space": "Frigör minst 9 GiB på appens disk och försök igen.",
     "setup_access": "Tillåt skrivåtkomst till appens datamapp och försök igen.",
-    "setup_intel_mac": "Den här Macen har en Intel-processor och PyTorch levererar inte längre Intel-Mac-byggen — den lokala AI-backenden kan inte installeras, och att försöka igen ändrar inget. Du kan fortfarande koppla appen till en fjärrbackend på en annan dator (Inställningar → Delning → Fjärrbackend), eller köra VoiceStudio på en Apple Silicon-Mac, Windows eller Linux. Detaljer: docs/install/macos.md.",
+    "setup_unsupported_platform": "Den här Intel-Macen kan inte köra den lokala AI-backendservern — PyTorch saknar macOS Intel-hjul. Anslut en fjärrbackend nedan istället; ingen lokal installation behövs.",
     "retry": "Försök igen",
     "ready": "Motorn är redo",
     "show_log": "Visa logg",

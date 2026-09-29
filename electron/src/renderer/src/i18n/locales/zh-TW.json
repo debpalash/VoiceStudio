@@ -2085,7 +2085,7 @@
     "installing": "正在安裝依賴項…",
     "setup_space": "請在應用程式所在磁碟上釋出至少 9 GiB 空間，然後重試。",
     "setup_access": "請允許寫入應用程式資料夾，然後重試。",
-    "setup_intel_mac": "這台 Mac 使用 Intel 處理器,而 PyTorch 已不再發布 Intel Mac 版本 — 無法安裝本機 AI 後端,重試也無濟於事。您仍可將應用程式連接到另一台機器上執行的遠端後端(設定 → 網路共享 → 遠端後端),或在 Apple Silicon Mac、Windows 或 Linux 上使用 VoiceStudio。詳情:docs/install/macos.md。",
+    "setup_unsupported_platform": "此 Intel Mac 無法執行本機 AI 後端——PyTorch 未提供 macOS Intel 建置。請在下方連接遠端後端，無需本機安裝。",
     "ready": "引擎已就緒",
     "show_log": "顯示日誌",
     "hide_log": "隱藏日誌",

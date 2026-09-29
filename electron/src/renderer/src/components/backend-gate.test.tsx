@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, expect, it, vi } from 'vitest';
 import i18n from '@/i18n';
 import type { BackendStatus } from '../../../preload/index.d';
@@ -34,6 +35,7 @@ beforeEach(() => {
   backendStatus.elapsedMs = 0;
   backendStatus.logTail = [];
   delete backendStatus.message;
+  delete backendStatus.setupIssue;
   delete backendStatus.setupPhase;
   delete backendStatus.setupProgress;
   platform.current = 'linux';
@@ -127,6 +129,7 @@ it('keeps agent repair available when the backend is down', () => {
 });
 
 it('explains unsupported Windows proxy bypass rules before retrying setup', () => {
+
   backendStatus.message = 'VOICESTUDIO_PROXY_BYPASS_UNSUPPORTED';
   render(
     <BackendGate>
@@ -137,4 +140,25 @@ it('explains unsupported Windows proxy bypass rules before retrying setup', () =
   expect(i18n.t('backend.proxy_bypass_help')).toMatch(
     /quit VoiceStudio.*launch VoiceStudio from that terminal/,
   );
+});
+
+it('offers a remote backend instead of a doomed local install on Intel Macs', () => {
+  backendStatus.setupIssue = 'unsupported_platform';
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <BackendGate>
+        <div>workspace</div>
+      </BackendGate>
+    </QueryClientProvider>,
+  );
+
+  expect(screen.getByText(i18n.t('backend.setup_unsupported_platform'))).toBeVisible();
+  expect(
+    screen.queryByRole('button', { name: i18n.t('backend.setup_required') }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByRole('textbox', { name: i18n.t('settings.remote_backend_url') }),
+  ).toBeVisible();
 });

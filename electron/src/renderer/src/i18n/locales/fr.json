@@ -2087,7 +2087,7 @@
     "installing": "Installation…",
     "setup_space": "Libérez au moins 9 Gio sur le disque de l’application, puis réessayez.",
     "setup_access": "Autorisez l’écriture dans le dossier de données de l’application, puis réessayez.",
-    "setup_intel_mac": "Ce Mac a un processeur Intel et PyTorch ne publie plus de versions pour Mac Intel — le backend IA local ne peut pas être installé, et réessayer n'y changera rien. Vous pouvez toujours connecter l'application à un backend distant sur une autre machine (Paramètres → Partage → Backend distant) ou utiliser VoiceStudio sur un Mac Apple Silicon, Windows ou Linux. Détails : docs/install/macos.md.",
+    "setup_unsupported_platform": "Ce Mac Intel ne peut pas exécuter le backend IA local — PyTorch ne fournit pas de wheels macOS Intel. Connectez plutôt un backend distant ci-dessous ; aucune installation locale n'est nécessaire.",
     "ready": "Moteur prêt",
     "show_log": "Afficher le journal",
     "hide_log": "Masquer le journal",

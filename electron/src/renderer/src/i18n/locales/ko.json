@@ -2085,7 +2085,7 @@
     "installing": "종속성…",
     "setup_space": "앱 드라이브에 최소 9 GiB의 여유 공간을 확보한 후 다시 시도하세요.",
     "setup_access": "앱 데이터 폴더에 쓰기 권한을 허용한 후 다시 시도하세요.",
-    "setup_intel_mac": "이 Mac은 Intel 프로세서를 사용하며, PyTorch는 더 이상 Intel Mac용 빌드를 제공하지 않습니다 — 로컬 AI 백엔드를 설치할 수 없고, 다시 시도해도 달라지지 않습니다. 다른 컴퓨터에서 실행 중인 원격 백엔드에 앱을 연결하거나(설정 → 공유 → 원격 백엔드), Apple Silicon Mac, Windows 또는 Linux에서 VoiceStudio를 사용하세요. 자세한 내용: docs/install/macos.md.",
+    "setup_unsupported_platform": "이 Intel Mac에서는 로컬 AI 백엔드를 실행할 수 없습니다 — PyTorch에 macOS Intel용 휠이 없습니다. 아래에서 원격 백엔드에 연결하세요. 로컬 설치는 필요하지 않습니다.",
     "ready": "엔진 준비 완료",
     "show_log": "로그 표시",
     "hide_log": "로그 숨기기",

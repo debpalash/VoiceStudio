@@ -2085,7 +2085,7 @@
     "installing": "Afhankelijkheden…",
     "setup_space": "Maak minstens 9 GiB vrij op de schijf van de app en probeer het opnieuw.",
     "setup_access": "Sta schrijftoegang toe tot de gegevensmap van de app en probeer het opnieuw.",
-    "setup_intel_mac": "Deze Mac heeft een Intel-processor en PyTorch levert geen Intel-Mac-builds meer — de lokale AI-backend kan niet worden geïnstalleerd, en opnieuw proberen verandert daar niets aan. Je kunt de app wel verbinden met een remote backend op een andere machine (Instellingen → Delen → Remote backend), of VoiceStudio gebruiken op een Apple Silicon Mac, Windows of Linux. Details: docs/install/macos.md.",
+    "setup_unsupported_platform": "Deze Intel-Mac kan de lokale AI-backend niet uitvoeren — PyTorch levert geen macOS-Intel-wheels. Verbind hieronder een externe backend; geen lokale installatie nodig.",
     "ready": "Engine gereed",
     "show_log": "Logboek tonen",
     "hide_log": "Logboek verbergen",

@@ -2085,7 +2085,7 @@
     "installing": "Bağımlılıklar…",
     "setup_space": "Uygulamanın sürücüsünde en az 9 GiB alan açıp yeniden deneyin.",
     "setup_access": "Uygulamanın veri klasörüne yazma izni verip yeniden deneyin.",
-    "setup_intel_mac": "Bu Mac'te Intel işlemci var ve PyTorch artık Intel-Mac derlemeleri yayınlamıyor — yerel yapay zekâ arka ucu kurulamaz ve yeniden denemek bunu değiştirmez. Uygulamayı yine de başka bir makinede çalışan uzak arka uca bağlayabilir (Ayarlar → Paylaşım → Uzak arka uç) veya VoiceStudio'u Apple Silicon Mac, Windows ya da Linux'ta kullanabilirsiniz. Ayrıntılar: docs/install/macos.md.",
+    "setup_unsupported_platform": "Bu Intel Mac, yerel yapay zekâ arka ucunu çalıştıramaz — PyTorch'ta macOS Intel wheel'leri yok. Bunun yerine aşağıdan bir uzak arka uca bağlanın; yerel kurulum gerekmez.",
     "ready": "Motor hazır",
     "show_log": "Günlüğü göster",
     "hide_log": "Günlüğü gizle",

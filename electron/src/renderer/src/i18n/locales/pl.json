@@ -2089,7 +2089,7 @@
     "installing": "Instalowanie…",
     "setup_space": "Zwolnij co najmniej 9 GiB na dysku aplikacji i spróbuj ponownie.",
     "setup_access": "Zezwól na zapis w folderze danych aplikacji i spróbuj ponownie.",
-    "setup_intel_mac": "Ten Mac ma procesor Intel, a PyTorch nie publikuje już kompilacji dla Maców z Intelem — lokalnego backendu AI nie da się zainstalować i ponawianie prób tego nie zmieni. Możesz jednak połączyć aplikację ze zdalnym backendem na innej maszynie (Ustawienia → Udostępnianie → Zdalny backend) albo używać VoiceStudio na Macu z Apple Silicon, Windows lub Linuksie. Szczegóły: docs/install/macos.md.",
+    "setup_unsupported_platform": "Ten Mac z procesorem Intel nie może uruchomić lokalnego backendu AI — PyTorch nie udostępnia pakietów wheel dla macOS Intel. Podłącz zdalny backend poniżej; instalacja lokalna nie jest potrzebna.",
     "ready": "Silnik gotowy",
     "show_log": "Pokaż dziennik",
     "hide_log": "Ukryj dziennik",
