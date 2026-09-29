@@ -76,3 +76,34 @@ def test_compressed_audio_without_torchcodec(tmp_path, monkeypatch, extension, b
     assert rate in ({24000, 48000} if extension == "opus" else {24000})
     assert wave.dtype == torch.float32
     assert wave.abs().max() > 0.1
+
+
+def test_ffmpeg_decode_transport_does_not_buffer_the_entire_wav(monkeypatch):
+    import subprocess
+    import tracemalloc
+    from types import SimpleNamespace
+    from services import audio_io, ffmpeg_utils
+
+    monkeypatch.setattr(torchaudio, "load", lambda _: (_ for _ in ()).throw(ImportError()))
+    monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: "ffmpeg")
+    def read(source, **kwargs):
+        if source == "compressed.m4a":
+            raise RuntimeError("unsupported container")
+        return np.zeros((4, 2), dtype=np.float32), 24000
+    monkeypatch.setattr(sf, "read", read)
+    chunk = b"x" * 65536
+    def decode(*args, **kwargs):
+        target = kwargs.get("stdout")
+        if target is None or target == subprocess.PIPE:
+            return SimpleNamespace(stdout=chunk * 160, returncode=0)
+        for _ in range(160):
+            target.write(chunk)
+        return SimpleNamespace(stdout=None, returncode=0)
+    monkeypatch.setattr(subprocess, "run", decode)
+    tracemalloc.start()
+    try:
+        audio_io.load_audio("compressed.m4a")
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert peak < 2 * 1024 ** 2, "transport buffered a full 10 MiB decoded WAV"

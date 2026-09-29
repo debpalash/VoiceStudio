@@ -102,18 +102,22 @@ def load_audio(source: PathOrBuf) -> tuple[torch.Tensor, int]:
                     filename = temporary
                 else:
                     filename = os.fspath(source)
-                decoded = subprocess.run(
-                    [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
-                     "-protocol_whitelist", "file,pipe", "-i", filename,
-                     "-map", "0:a:0", "-f", "wav", "-c:a", "pcm_f32le", "pipe:1"],
-                    capture_output=True, check=True, timeout=120,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                )
-                samples, sample_rate = sf.read(io.BytesIO(decoded.stdout), dtype="float32", always_2d=True)
+                # Keep decoded transport on disk, not as another full WAV in
+                # memory alongside the sample tensor. Close/unlink on all exits.
+                with tempfile.TemporaryFile() as decoded:
+                    subprocess.run(
+                        [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
+                         "-protocol_whitelist", "file,pipe", "-i", filename,
+                         "-map", "0:a:0", "-f", "wav", "-c:a", "pcm_f32le", "pipe:1"],
+                        stdout=decoded, stderr=subprocess.PIPE, check=True, timeout=120,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    )
+                    decoded.seek(0)
+                    samples, sample_rate = sf.read(decoded, dtype="float32", always_2d=True)
             finally:
                 if temporary is not None:
                     os.unlink(temporary)
-        return torch.from_numpy(samples.T.copy()), sample_rate
+        return torch.from_numpy(samples.T), sample_rate
 
 # Opus is carried in Ogg for both .opus and .ogg filenames.
 OPUS_CODEC_ARGS = ["-c:a", "libopus", "-b:a", "64k"]
