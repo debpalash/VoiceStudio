@@ -53,6 +53,7 @@ import logging
 from core.render_trace import timed as _render_timed
 import os
 import shutil
+import subprocess
 import tempfile
 from typing import Any, BinaryIO, Union
 
@@ -70,7 +71,7 @@ PathOrBuf = Union[str, "os.PathLike[str]", BinaryIO, io.IOBase]
 
 def load_audio(source: PathOrBuf) -> tuple[torch.Tensor, int]:
     """Read normalized channel-first audio even when TorchCodec is unavailable."""
-    position = source.tell() if hasattr(source, "tell") and source.seekable() else None
+    position = source.tell() if hasattr(source, "tell") and getattr(source, "seekable", lambda: False)() else None
     try:
         return torchaudio.load(source)
     except (ImportError, RuntimeError) as exc:
@@ -80,7 +81,38 @@ def load_audio(source: PathOrBuf) -> tuple[torch.Tensor, int]:
 
         if position is not None:
             source.seek(position)
-        samples, sample_rate = sf.read(source, dtype="float32", always_2d=True)
+        try:
+            samples, sample_rate = sf.read(source, dtype="float32", always_2d=True)
+        except RuntimeError:
+            # libsndfile does not support every accepted upload container (AAC,
+            # M4A in particular). Decode with the already-installed ffmpeg.
+            from services.ffmpeg_utils import find_ffmpeg
+
+            ffmpeg = find_ffmpeg()
+            if not ffmpeg:
+                raise
+            temporary = None
+            try:
+                if hasattr(source, "read"):
+                    if position is not None:
+                        source.seek(position)
+                    fd, temporary = tempfile.mkstemp(suffix=".audio")
+                    with os.fdopen(fd, "wb") as target:
+                        shutil.copyfileobj(source, target)
+                    filename = temporary
+                else:
+                    filename = os.fspath(source)
+                decoded = subprocess.run(
+                    [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
+                     "-protocol_whitelist", "file,pipe", "-i", filename,
+                     "-map", "0:a:0", "-f", "wav", "-c:a", "pcm_f32le", "pipe:1"],
+                    capture_output=True, check=True, timeout=120,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+                samples, sample_rate = sf.read(io.BytesIO(decoded.stdout), dtype="float32", always_2d=True)
+            finally:
+                if temporary is not None:
+                    os.unlink(temporary)
         return torch.from_numpy(samples.T.copy()), sample_rate
 
 # Opus is carried in Ogg for both .opus and .ogg filenames.

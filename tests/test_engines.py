@@ -575,7 +575,7 @@ def test_mlx_audio_generate_design_path_unaffected_without_any_ref():
     assert "ref_audio" not in captured
 
 
-@pytest.mark.parametrize("language", ["Auto", "auto", " AUTO "])
+@pytest.mark.parametrize("language", ["Auto", "auto", " AUTO ", " ", "", None])
 @pytest.mark.parametrize("model", ["kokoro", "qwen3-tts"])
 def test_mlx_audio_generate_auto_language_skips_lang_code_entirely(language, model):
     # Matches the "Auto" convention other engines in this file use

@@ -80,3 +80,7 @@ including when users select an ISO code or region alias.
 Engine rendering and warm-up hold a residency lease, including dub and batch calls.
 Switching engines defers unloading any model still rendering; a retired model is
 released after its last render finishes.
+
+When TorchCodec is unavailable, audio decoding uses libsndfile first and the
+already-installed FFmpeg for compressed containers such as M4A and AAC. Channels
+and sample rates are retained; decoding does not download tools.

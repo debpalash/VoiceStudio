@@ -1473,11 +1473,15 @@ async def _finalize_generation(
     # failure — e.g. "no such table: generation_history" on a DB that missed
     # schema init — must NOT 500 the user's generation. Self-heal the schema
     # once and retry; if it still fails, log and return the audio anyway.
+    take_mode = history_mode or ("clone" if ref_audio_path else "design")
+    if take_mode != "design":
+        design_recipe = None
+
     def _write_history():
         with db_conn() as conn:
             conn.execute(
                 "INSERT INTO generation_history (id, text, mode, language, instruct, profile_id, audio_path, duration_seconds, generation_time, seed, design_recipe, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                (audio_id, text[:200], history_mode or ("clone" if ref_audio_path else "design"),
+                (audio_id, text[:200], take_mode,
                  language or "Auto", instruct or "", resolved_profile_id,
                  audio_filename, audio_dur, gen_time, used_seed, design_recipe, time.time())
             )

@@ -841,7 +841,7 @@ def test_generate_timeout_terminates_owned_server(monkeypatch, app_modules):
     monkeypatch.setattr(model_manager, "report_generate_progress", progress)
     monotonic = iter((10.0, 30.0))
     monkeypatch.setattr(
-        app_modules.audiocpp.time, "monotonic", lambda: next(monotonic),
+        app_modules.audiocpp, "time", SimpleNamespace(monotonic=lambda: next(monotonic)),
     )
 
     with pytest.raises(RuntimeError, match="timed out"):
@@ -884,7 +884,7 @@ def test_generate_uses_progress_lease_after_first_download(
     progress = Mock()
     monkeypatch.setattr(model_manager, "report_generate_progress", progress)
     monkeypatch.setattr(
-        app_modules.audiocpp.time, "monotonic", lambda: next(monotonic),
+        app_modules.audiocpp, "time", SimpleNamespace(monotonic=lambda: next(monotonic)),
     )
 
     with pytest.raises(RuntimeError, match="timed out"):

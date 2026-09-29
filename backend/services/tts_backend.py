@@ -2683,7 +2683,7 @@ class MLXAudioBackend(TTSBackend):
         # "IndexError: list index out of range" deep inside mlx-audio,
         # instead of ever attempting the clone. Community-diagnosed (#1012).
         if ref_audio and ref_text: kwargs["ref_text"] = ref_text
-        if language and language.strip().lower() != "auto":
+        if language and language.strip() and language.strip().lower() != "auto":
             if self._model_id == self.CURATED_MODELS.get("kokoro"):
                 # Kokoro's vendored pipeline hard-asserts `lang_code` against
                 # its own single-letter table — a bogus code crashes with an
@@ -2711,7 +2711,9 @@ class MLXAudioBackend(TTSBackend):
                         "ru": "russian", "pt": "portuguese", "es": "spanish",
                         "it": "italian",
                     }
-                    kwargs["lang_code"] = qwen_languages[code]
+                    mapped_language = qwen_languages.get(code)
+                    if mapped_language is not None:
+                        kwargs["lang_code"] = mapped_language
                 elif code is not None:
                     kwargs["lang_code"] = code
 

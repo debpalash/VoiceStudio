@@ -219,14 +219,24 @@ def _fake_engine():
 
 
 @pytest.fixture()
-def client(monkeypatch):
+def client(monkeypatch, tmp_path):
+    from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    importlib.import_module("core.db").init_db()
+    monkeypatch.setenv("OMNIVOICE_DATA_DIR", str(tmp_path))
+    db = importlib.import_module("core.db")
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "recipes.db"))
+    db.init_db()
+    generation = importlib.import_module("api.routers.generation")
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    monkeypatch.setattr(generation, "OUTPUTS_DIR", str(outputs))
     tts, engine = _fake_engine()
     monkeypatch.setitem(tts._REGISTRY, engine.id, engine)
-    app = importlib.import_module("main").app
-    return TestClient(app, client=("127.0.0.1", 50000)), engine
+    app = FastAPI()
+    app.include_router(generation.router)
+    with TestClient(app, client=("127.0.0.1", 50000)) as http:
+        yield http, engine
 
 
 def _take(client, engine, **extra):
@@ -266,3 +276,19 @@ def test_malformed_recipe_never_fails_the_take(client):
     assert stored is None
     _, absent = _take(http, engine, instruct="raspy")
     assert absent is None
+
+
+def test_clone_take_discards_a_design_recipe(client, monkeypatch):
+    import asyncio
+    import time
+    generation = importlib.import_module("api.routers.generation")
+    asyncio.run(generation._finalize_generation(
+        torch.zeros(1, 24000), 24000, text="clone", history_mode="clone",
+        ref_audio_path="reference.wav", language="en", instruct="",
+        resolved_profile_id=None, used_seed=None, start_time=time.time(),
+        already_marked=True, design_recipe=json.dumps(_SENT),
+    ))
+    with importlib.import_module("core.db").db_conn() as conn:
+        row = conn.execute("SELECT mode, design_recipe FROM generation_history").fetchone()
+    assert row["mode"] == "clone"
+    assert row["design_recipe"] is None
