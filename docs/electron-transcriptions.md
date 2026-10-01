@@ -77,7 +77,9 @@ by a dedicated, non-activating recorder window. It captures the output target
 before revealing the recorder, queues startup/stop events until registration,
 and uses the shared native delivery helper. The main app frame cannot invoke
 recorder-only output IPC. Cancellation/navigation/crash invalidate pending work;
-sequence numbers reject duplicate deliveries. Clipboard fallback retains the
+sequence numbers reject duplicate deliveries. A late WebSocket URL or remote
+ticket from a cancelled start cannot reconnect or replace the next dictation
+session. Clipboard fallback retains the
 complete transcript and is labeled as copied, not inserted.
 
 Native Windows smoke checks cover helper acceptance, pause/resume, no-speech,

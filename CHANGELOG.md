@@ -106,6 +106,7 @@ metadata and the backend fallback mirror it.
 - Voice Design keeps a detail you pick when you edit the description, unless the new text says otherwise, and reopening a take restores the description and picks it was made with (#2389)
 - A snapshot interrupted mid-copy (crash, kill or power loss) is no longer listed as a database backup or counted toward the three kept; the leftover partial file is cleaned up on the next snapshot (#2402) — thanks @fadiroot!
 - Low-disk notifications open Storage settings directly (#2407)
+- Cancelled dictation starts cannot replace the next session after a delayed connection ticket arrives (#2533) — thanks @rudycelekli!
 
 - Preserve float audio and requested seeds through OmniVoice/VoxCPM2 sidecars, and keep playback and saved WAV precision consistent (#2406)
 - Development launches rebuild main and preload changes so embedded website previews do not keep stale browser IPC after UI updates (#2407)

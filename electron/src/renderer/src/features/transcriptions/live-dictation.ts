@@ -112,6 +112,7 @@ export class LiveDictation {
       this.stream = stream;
       issue = 'connection';
       const url = new URL(await backendWebSocketUrl('/ws/transcribe'));
+      if (!current()) return;
       url.searchParams.set('model', prefs.model_id);
       url.searchParams.set('pcm', '1');
       url.searchParams.set('sr', '16000');
