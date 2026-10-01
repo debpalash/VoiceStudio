@@ -414,22 +414,39 @@ def _reconcile_additive_columns(conn) -> None:
 _JOB_EVENTS_OLD_INDEX = "idx_job_events_job_seq"
 _JOB_EVENTS_UNIQUE_INDEX = "idx_job_events_job_seq_unique"
 
-# Give every row of an affected job a fresh seq, ordered by insertion. `id` is
-# the INTEGER PRIMARY KEY, so the count is distinct per row and the result is a
-# gapless 1..N in true arrival order — no event is dropped, which a
-# DELETE-the-duplicate repair could not promise. The subquery reads only
-# `id`/`job_id`, never `seq`, so SQLite applying earlier row updates partway
-# through the statement cannot skew it.
-_RENUMBER_DUPLICATE_SEQS = """
+# Jobs holding at least one duplicated seq, with the lowest seq each still has.
+# COUNT(*) > COUNT(DISTINCT seq) is the duplicate test; MIN(seq) is the base the
+# renumber has to keep.
+_JOBS_WITH_DUPLICATE_SEQS = """
+    SELECT job_id, MIN(seq) AS base
+      FROM job_events
+     GROUP BY job_id
+    HAVING COUNT(*) > COUNT(DISTINCT seq)
+"""
+
+# Renumber one job from its own base, in insertion order: the k-th row by `id`
+# becomes base + k - 1. `id` is the INTEGER PRIMARY KEY so the count is distinct
+# per row, which makes the result gapless and unique — and no event is dropped,
+# which a DELETE-the-duplicate repair could not promise.
+#
+# Anchoring to the job's existing base rather than to 1 is what keeps live
+# readers correct. Seqs were handed out as MAX+1, so they are non-decreasing,
+# and the k-th row's old value is therefore at most base + k - 1: every row's
+# seq either rises or stays put, never falls. A client that reconnects with
+# `?after_seq=N` can then only ever see events it has not seen. Rebasing to 1
+# would push the retained events of a job the per-job cap had trimmed BELOW such
+# a cursor, and the client would silently skip them.
+#
+# The subquery reads only `id`/`job_id` and never `seq`, and the base is a bound
+# parameter read before any write, so SQLite applying earlier row updates
+# partway through the statement cannot skew the numbering.
+_RENUMBER_ONE_JOB = """
     UPDATE job_events
-       SET seq = (SELECT COUNT(*)
-                    FROM job_events AS e2
-                   WHERE e2.job_id = job_events.job_id
-                     AND e2.id <= job_events.id)
-     WHERE job_id IN (SELECT job_id
-                        FROM job_events
-                       GROUP BY job_id, seq
-                      HAVING COUNT(*) > 1)
+       SET seq = ? + (SELECT COUNT(*)
+                        FROM job_events AS e2
+                       WHERE e2.job_id = job_events.job_id
+                         AND e2.id <= job_events.id) - 1
+     WHERE job_id = ?
 """
 
 
@@ -457,7 +474,11 @@ def _ensure_job_events_seq_unique(conn) -> None:
             (_JOB_EVENTS_UNIQUE_INDEX,),
         ).fetchone():
             return  # already converged
-        repaired = conn.execute(_RENUMBER_DUPLICATE_SEQS).rowcount
+        repaired = 0
+        # Read every base before writing anything: the UPDATE changes `seq`, so
+        # a base still being derived from it mid-statement could drift.
+        for job_id, base in conn.execute(_JOBS_WITH_DUPLICATE_SEQS).fetchall():
+            repaired += conn.execute(_RENUMBER_ONE_JOB, (base, job_id)).rowcount
         conn.execute(f"DROP INDEX IF EXISTS {_JOB_EVENTS_OLD_INDEX}")
         conn.execute(
             f"CREATE UNIQUE INDEX IF NOT EXISTS {_JOB_EVENTS_UNIQUE_INDEX} "
@@ -470,6 +491,13 @@ def _ensure_job_events_seq_unique(conn) -> None:
                 "before making (job_id, seq) unique", repaired,
             )
     except sqlite3.Error as exc:
+        # Roll back before returning. The renumber and the index are one repair:
+        # leaving a half-renumbered table for the CALLER to commit would be worse
+        # than the duplicates this set out to fix.
+        try:
+            conn.rollback()
+        except sqlite3.Error:
+            pass
         logger.warning("job_events unique-seq reconcile failed: %s", exc)
 
 

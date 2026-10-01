@@ -18,6 +18,9 @@ carry duplicates.
 
 Duplicates are RENUMBERED, not deleted: both rows are genuine events with
 distinct payloads, and dropping one would lose a line from the replay tail.
+Each job is renumbered from its OWN lowest seq, never from 1, so no event's seq
+can fall — a job the per-job cap had trimmed keeps its base, and a client
+reconnecting with ``?after_seq=N`` cannot end up skipping retained events.
 
 Self-contained and idempotent (guarded by sqlite_master) in the style of 0008
 and 0012. ``core/db.py::_ensure_job_events_seq_unique`` performs the identical
@@ -39,21 +42,30 @@ depends_on: Union[str, Sequence[str], None] = None
 _OLD_INDEX = "idx_job_events_job_seq"
 _UNIQUE_INDEX = "idx_job_events_job_seq_unique"
 
-# Give every row of an affected job a fresh seq, ordered by insertion. `id` is
-# the INTEGER PRIMARY KEY, so the count is distinct per row and the result is a
-# gapless 1..N in true arrival order. The subquery reads only `id`/`job_id` and
-# never `seq`, so SQLite applying earlier row updates partway through the
-# statement cannot skew the numbering it produces.
-RENUMBER_DUPLICATE_SEQS = """
+# Jobs holding at least one duplicated seq, with the lowest seq each still has.
+JOBS_WITH_DUPLICATE_SEQS = """
+    SELECT job_id, MIN(seq) AS base
+      FROM job_events
+     GROUP BY job_id
+    HAVING COUNT(*) > COUNT(DISTINCT seq)
+"""
+
+# Renumber one job from its own base, in insertion order: the k-th row by `id`
+# becomes base + k - 1. `id` is the INTEGER PRIMARY KEY so the count is distinct
+# per row, making the result gapless and unique.
+#
+# Anchored to the job's existing base rather than to 1. Seqs were handed out as
+# MAX+1, so they are non-decreasing and the k-th row's old value is at most
+# base + k - 1: every seq either rises or stays put, never falls. Rebasing to 1
+# would push the retained events of a trimmed job below a reconnecting client's
+# `?after_seq=N` cursor, and it would silently skip them.
+RENUMBER_ONE_JOB = """
     UPDATE job_events
-       SET seq = (SELECT COUNT(*)
-                    FROM job_events AS e2
-                   WHERE e2.job_id = job_events.job_id
-                     AND e2.id <= job_events.id)
-     WHERE job_id IN (SELECT job_id
-                        FROM job_events
-                       GROUP BY job_id, seq
-                      HAVING COUNT(*) > 1)
+       SET seq = :base + (SELECT COUNT(*)
+                            FROM job_events AS e2
+                           WHERE e2.job_id = job_events.job_id
+                             AND e2.id <= job_events.id) - 1
+     WHERE job_id = :job_id
 """
 
 
@@ -74,7 +86,12 @@ def upgrade() -> None:
     # Must precede the index: CREATE UNIQUE INDEX over surviving duplicates
     # would abort the migration, and the databases that carry them are exactly
     # the ones this revision exists to repair.
-    op.get_bind().execute(sa.text(RENUMBER_DUPLICATE_SEQS))
+    #
+    # Every base is read before anything is written — the UPDATE changes `seq`,
+    # so a base still being derived from it mid-statement could drift.
+    bind = op.get_bind()
+    for job_id, base in bind.execute(sa.text(JOBS_WITH_DUPLICATE_SEQS)).fetchall():
+        bind.execute(sa.text(RENUMBER_ONE_JOB), {"base": base, "job_id": job_id})
 
     if _exists("index", _OLD_INDEX):
         op.drop_index(_OLD_INDEX, table_name="job_events")

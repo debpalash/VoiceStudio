@@ -36,14 +36,20 @@ _PRE_0013_JOB_EVENTS = f"""
 """
 
 # (job_id, seq, payload) in insertion order.
-#   raced  — the bug: two callers collided on seq 2, a third on seq 3
-#   clean  — untouched, already distinct
-#   capped — untouched, and its seq base is above 1 because the per-job cap
-#            trimmed its oldest rows; a blanket renumber would silently rebase it
+#   raced        — the bug: two callers collided on seq 2, two more on seq 3
+#   clean        — untouched, already distinct
+#   capped       — untouched; its base is above 1 because the per-job cap trimmed
+#                  its oldest rows
+#   trimmed_raced — BOTH: trimmed to base 51 and then raced. Renumbering this one
+#                  down to 1 would drop its retained events below a reconnecting
+#                  client's `?after_seq=` cursor, which is the whole reason the
+#                  repair anchors to each job's own base.
 _SEED = [
     ("raced", 1, "a"), ("raced", 2, "b"), ("raced", 2, "c"), ("raced", 3, "d"), ("raced", 3, "e"),
     ("clean", 1, "p"), ("clean", 2, "q"),
     ("capped", 10, "x"), ("capped", 11, "y"), ("capped", 12, "z"),
+    ("trimmed_raced", 51, "k"), ("trimmed_raced", 52, "l"), ("trimmed_raced", 52, "m"),
+    ("trimmed_raced", 53, "n"),
 ]
 
 
@@ -122,6 +128,11 @@ def _assert_converged(db_path: str) -> None:
     assert _rows(db_path, "clean") == [(1, "p"), (2, "q")]
     assert _rows(db_path, "capped") == [(10, "x"), (11, "y"), (12, "z")]
 
+    # A job that was trimmed AND raced keeps its base: 51,52,52,53 -> 51,52,53,54.
+    # Renumbering it to 1..4 would be silent data loss for a live reader; see
+    # test_repair_never_lowers_a_seq below.
+    assert _rows(db_path, "trimmed_raced") == [(51, "k"), (52, "l"), (53, "m"), (54, "n")]
+
     # And the invariant is now enforced, not merely upheld.
     conn = sqlite3.connect(db_path)
     try:
@@ -149,22 +160,59 @@ def test_migration_0013_renumbers_duplicates_and_enforces_uniqueness(tmp_path):
     _assert_converged(str(db))
 
 
+def _renumber(conn) -> None:
+    """Apply the migration's own repair SQL once, the way `upgrade()` does.
+
+    Runs the exact strings the migration module defines — sqlite3 understands
+    the same `:name` placeholders SQLAlchemy does — so this cannot drift from
+    what actually ships.
+    """
+    mod = _load_migration_module()
+    for job_id, base in conn.execute(mod.JOBS_WITH_DUPLICATE_SEQS).fetchall():
+        conn.execute(mod.RENUMBER_ONE_JOB, {"base": base, "job_id": job_id})
+
+
 def test_migration_0013_is_idempotent(tmp_path):
     """Running the repair twice must not renumber an already-clean database."""
-    mod = _load_migration_module()
     db = tmp_path / "twice.db"
     _seed(str(db))
 
     conn = sqlite3.connect(str(db))
     try:
         for _ in range(2):
-            conn.execute(mod.RENUMBER_DUPLICATE_SEQS)
+            _renumber(conn)
         conn.commit()
     finally:
         conn.close()
 
     assert _rows(str(db), "raced") == [(1, "a"), (2, "b"), (3, "c"), (4, "d"), (5, "e")]
     assert _rows(str(db), "capped") == [(10, "x"), (11, "y"), (12, "z")]
+    assert _rows(str(db), "trimmed_raced") == [(51, "k"), (52, "l"), (53, "m"), (54, "n")]
+
+
+def test_repair_never_lowers_a_seq(tmp_path):
+    """No event's seq may decrease — the property live readers depend on.
+
+    `events_since` serves an SSE reconnect as `seq > after_seq`. If the repair
+    lowered any retained event's seq past a client's cursor, that client would
+    skip it and never learn it existed. Anchoring each job to its own MIN(seq)
+    is what guarantees this: seqs were handed out as MAX+1 and are therefore
+    non-decreasing, so the k-th row's old value is at most base + k - 1.
+    """
+    db = tmp_path / "monotonic.db"
+    _seed(str(db))
+
+    conn = sqlite3.connect(str(db))
+    try:
+        before = {r[0]: r[1] for r in conn.execute("SELECT id, seq FROM job_events")}
+        _renumber(conn)
+        conn.commit()
+        after = {r[0]: r[1] for r in conn.execute("SELECT id, seq FROM job_events")}
+    finally:
+        conn.close()
+
+    lowered = {i: (before[i], after[i]) for i in before if after[i] < before[i]}
+    assert not lowered, f"seq decreased for row id -> (before, after): {lowered}"
 
 
 def test_core_db_converges_the_same_way_without_alembic(tmp_path):
