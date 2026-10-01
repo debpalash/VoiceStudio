@@ -52,12 +52,12 @@ def test_two_retry_requests_enqueue_one_attempt(queue, monkeypatch):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as client:
             first = asyncio.create_task(client.post("/batch/jobs/job/retry"))
             assert await asyncio.to_thread(entered.wait, 5)
-            second = asyncio.create_task(client.post("/batch/jobs/job/retry"))
-            # Both requests have entered the public ASGI app before releasing
-            # the first request's deliberately slow model-admission check.
-            await asyncio.sleep(0.05)
-            release.set()
-            responses = await asyncio.gather(first, second)
+            try:
+                second = await asyncio.wait_for(client.post("/batch/jobs/job/retry"), 5)
+                assert second.status_code == 409
+            finally:
+                release.set()
+            responses = [await first, second]
         assert sorted(r.status_code for r in responses) == [200, 409]
         assert batch._queue.qsize() == 1
         assert batch._jobs["job"]["attempts"] == 2
@@ -162,11 +162,17 @@ def test_cancelled_retry_keeps_reservation_until_output_cleanup_finishes(queue, 
             retry = asyncio.create_task(client.post("/batch/jobs/job/retry"))
             assert await asyncio.to_thread(entered.wait, 5)
             retry.cancel()
-            await asyncio.sleep(0)
-            deletion = asyncio.create_task(client.delete("/batch/jobs/job"))
-            await asyncio.sleep(0.05)
-            release.set()
-            result, response = await asyncio.gather(retry, deletion, return_exceptions=True)
+            delivered = asyncio.Event()
+            # Task.cancel schedules delivery before this callback. Await its
+            # explicit turn boundary before attempting the conflicting action.
+            asyncio.get_running_loop().call_soon(delivered.set)
+            await delivered.wait()
+            try:
+                response = await asyncio.wait_for(client.delete("/batch/jobs/job"), 5)
+                assert response.status_code == 409
+            finally:
+                release.set()
+            result = (await asyncio.gather(retry, return_exceptions=True))[0]
             assert isinstance(result, asyncio.CancelledError)
             assert response.status_code == 409
             assert video.read_bytes() == b"original input"
@@ -204,7 +210,9 @@ def test_cleanup_error_releases_custody_and_preserves_cancellation(queue, monkey
             assert await asyncio.to_thread(entered.wait, 5)
             if cancelled:
                 retry.cancel()
-                await asyncio.sleep(0)
+                delivered = asyncio.Event()
+                asyncio.get_running_loop().call_soon(delivered.set)
+                await delivered.wait()
             release.set()
             result = (await asyncio.gather(retry, return_exceptions=True))[0]
             if cancelled:

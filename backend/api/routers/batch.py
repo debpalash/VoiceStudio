@@ -1165,7 +1165,7 @@ def _delete_batch_job(job_id: str):
     job = _jobs.get(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
-    if job["status"] in ("queued", "running") or job_id in _processing_job_ids:
+    if job.get("status") in ("queued", "running") or job_id in _processing_job_ids:
         raise HTTPException(409, "Cancel the batch job and wait for it to stop before deleting")
     if job.get("video_path"):
         try:
