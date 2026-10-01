@@ -14,6 +14,10 @@ checks in test_router_smoke.py):
   used to silently export to a cwd-dependent location instead of the
   documented 400 (fail-before/pass-after: `_safe_destination` now checks
   `isabs` before realpath);
+* the access guards on /export/record and /export/history, which previously
+  carried no dependency at all: a non-loopback caller is rejected on a desktop
+  install, loopback still succeeds, and server mode (Docker / remote backend,
+  where the bridge makes every caller look non-loopback) stays reachable;
 * error mapping: copy failure → 500, reveal of a missing path → 404,
   reveal spawn failure → 500;
 * the mp4 branch: visible watermark disabled → plain copy; ffmpeg overlay
@@ -441,6 +445,70 @@ def test_history_is_newest_first(client):
     ids = [h["id"] for h in hist]
     assert ids.index(b) < ids.index(a)
     assert len(hist) <= 50
+
+
+# ── access guards on the history routes ──────────────────────────────────────
+@pytest.fixture(scope="module")
+def lan_client():
+    """A caller that is NOT on the loopback interface — any other host on the
+    same network as a desktop install."""
+    from fastapi.testclient import TestClient
+    from main import app
+    import core.db
+
+    core.db.init_db()
+    return TestClient(app, client=("192.168.1.50", 50000))
+
+
+_HISTORY_ROUTES = [
+    ("post", "/export/record", {"filename": "regression.wav"}),
+    ("get", "/export/history", None),
+]
+
+
+def _call(test_client, method, path, payload):
+    send = getattr(test_client, method)
+    return send(path) if payload is None else send(path, json=payload)
+
+
+@pytest.mark.parametrize(("method", "path", "payload"), _HISTORY_ROUTES)
+def test_history_routes_reject_non_local_callers(lan_client, method, path, payload):
+    """Fail-before/pass-after: these two routes carried NO dependency at all.
+
+    Every sibling on this router was gated, these two were not. In the default
+    desktop deployment both auth middlewares are inert — `NetworkAccessMiddleware`
+    needs a share PIN and `BearerKeyMiddleware` needs `OMNIVOICE_API_KEY`, and a
+    desktop install sets neither — so nothing else stood in the way: any host on
+    the LAN could forge rows into the user's export history, and read it back.
+    The rows carry absolute destination paths, so the GET also leaked the shape
+    of the user's filesystem.
+    """
+    r = _call(lan_client, method, path, payload)
+    assert r.status_code == 403
+    assert r.json()["detail"] == "loopback origin required"
+
+
+@pytest.mark.parametrize(("method", "path", "payload"), _HISTORY_ROUTES)
+def test_history_routes_allow_loopback(client, method, path, payload):
+    """The guard must not lock out the desktop app it is protecting."""
+    assert _call(client, method, path, payload).status_code == 200
+
+
+@pytest.mark.parametrize(("method", "path", "payload"), _HISTORY_ROUTES)
+def test_history_routes_stay_reachable_in_server_mode(lan_client, monkeypatch, method, path, payload):
+    """An Electron client talking to a remote backend must keep its history.
+
+    Docker's bridge NAT rewrites `client.host` to the gateway, so under
+    `OMNIVOICE_SERVER_MODE=1` *every* request looks non-loopback. Gating these
+    two with `require_loopback` would 403 the history write that follows a
+    successful save: the file lands on disk but never appears in the UI, and the
+    history list comes back empty. `require_local` is the consumption-tier gate
+    — a no-op in server mode — so the remote deployment keeps working, with
+    exposure still governed by the operator's port mapping plus the optional PIN
+    or API key.
+    """
+    monkeypatch.setenv("OMNIVOICE_SERVER_MODE", "1")
+    assert _call(lan_client, method, path, payload).status_code == 200
 
 
 # ── /export/reveal ───────────────────────────────────────────────────────────
