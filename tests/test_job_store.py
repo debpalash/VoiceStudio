@@ -89,6 +89,7 @@ def test_append_event_assigns_unique_seq_under_concurrency():
     errors: list[BaseException] = []
 
     def worker(n: int) -> None:
+        """Append one event, recording either the seq it got or the failure."""
         try:
             # Release all threads into append_event at the same moment so the
             # read-then-write window is actually exercised.
