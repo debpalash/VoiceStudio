@@ -22,6 +22,9 @@
 
 ![A tour of the Electron app: voice cloning, voice design, dubbing, and model management](docs/media/electron/voicestudio.gif)
 
+
+> **NASVoiceStudio development fork:** on the `develop` line, the default Electron workspace is being adapted for NAS FM radio production. The first vertical slice focuses on fixed saved voices, Iraqi broadcast scripts, Station ID/Stinger/Sweeper/Promo/News presets, three-take generation, preview, and WAV export. Existing VoiceStudio tools remain available on their original routes.
+
 ## Your voice. Your workflow.
 
 | Create | Produce | Connect |
