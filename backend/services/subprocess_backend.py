@@ -752,10 +752,6 @@ class SubprocessBackend(TTSBackend):
         finally:
             self._proc = None
 
-    def unload(self) -> None:
-        """TTSBackend.unload override — idempotent shutdown."""
-        self.shutdown()
-
     # ── health check + generate ────────────────────────────────────────────
 
     def health_check(self) -> tuple[bool, str]:

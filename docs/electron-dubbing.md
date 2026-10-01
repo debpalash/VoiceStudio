@@ -152,6 +152,8 @@ decision. The downloader skips automatic translations. Real caption downloads
 are verified by the isolated public-URL smoke above. Authenticated sites still
 require a user-owned cookies export for native acceptance.
 
+Downloaded WebVTT NOTE comments are excluded as complete blocks. Spoken cue lines beginning with NOTE, NOTEBOOK or WEBVTT remain dialogue; rolling-caption timing remains available for the existing transcript cleanup.
+
 Production overrides expose steps, guidance, speed and global voice direction,
 matching the existing Tauri generation request. Defaults remain 16 / 2 / 1 with
 no direction. Values persist in drafts and projects; Reset clears only these
