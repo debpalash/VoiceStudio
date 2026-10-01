@@ -364,7 +364,7 @@ def load_entries_from_db() -> list[dict]:
     with db_conn() as conn:
         rows = conn.execute(
             "SELECT id, term, replacement, type, language, enabled, created_at "
-            "FROM pronunciation_entries ORDER BY created_at ASC, id ASC"
+            "FROM pronunciation_entries ORDER BY created_at ASC, rowid ASC"
         ).fetchall()
     return [dict(r) for r in rows]
 

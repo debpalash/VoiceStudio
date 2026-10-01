@@ -142,7 +142,7 @@ def list_entries():
     with db_conn() as conn:
         rows = conn.execute(
             "SELECT id, term, replacement, type, language, enabled, created_at "
-            "FROM pronunciation_entries ORDER BY created_at ASC, id ASC"
+            "FROM pronunciation_entries ORDER BY created_at ASC, rowid ASC"
         ).fetchall()
     return [_row_to_dict(r) for r in rows]
 
@@ -250,7 +250,7 @@ def test_substitution(req: PronTestRequest):
     with db_conn() as conn:
         rows = conn.execute(
             "SELECT id, term, replacement, type, language, enabled, created_at "
-            "FROM pronunciation_entries"
+            "FROM pronunciation_entries ORDER BY created_at ASC, rowid ASC"
         ).fetchall()
     substituted = apply_pronunciation(req.text, rows, req.language)
     applied = entries_for_language(rows, req.language)
@@ -275,7 +275,7 @@ def export_entries():
     with db_conn() as conn:
         rows = conn.execute(
             "SELECT term, replacement, type, language, enabled "
-            "FROM pronunciation_entries ORDER BY created_at ASC, id ASC"
+            "FROM pronunciation_entries ORDER BY created_at ASC, rowid ASC"
         ).fetchall()
     return {"entries": [
         {"term": r["term"], "replacement": r["replacement"], "type": r["type"],
