@@ -21,6 +21,7 @@ epub/pdf ingest, ACX mastering shipped; the resume UI surface remains a follow-u
 """
 
 import asyncio
+import anyio
 import json
 import logging
 import os
@@ -1128,29 +1129,29 @@ async def _render_longform_sse(
                 pass  # best-effort job history; never block the stream
         return f"data: {json.dumps(payload)}\n\n"
 
-    if not plan.chapters:
-        yield _emit({"type": "error", "error": "nothing to render (no chapters)"})
-        return
-    ffmpeg = find_ffmpeg()
-    if not ffmpeg:
-        yield _emit({"type": "error", "error": "ffmpeg not available; the output needs it"})
-        return
-
-    # Confined work dir (job_id is already token-sanitized above; work_dir adds
-    # the basename + realpath barrier so CodeQL sees a clean path).
-    work = longform_resume.work_dir(job_type, job_id)
-    if work is None:
-        yield _emit({"type": "error", "error": "invalid job id"})
-        return
-    os.makedirs(work, exist_ok=True)
-    # Chapter WAVs are content-addressed in a shared cache so a re-run (after a
-    # failure or interruption) reuses what already rendered — only the
-    # missing/changed chapters synthesize again (resume). Shared across both
-    # front doors: an identical chapter renders once.
-    cache_dir = os.path.join(OUTPUTS_DIR, LONGFORM_CACHE_SUBDIR)
-    os.makedirs(cache_dir, exist_ok=True)
-    prune_cache_dir(cache_dir)  # bound disk before this job adds its chapters
     try:
+        if not plan.chapters:
+            yield _emit({"type": "error", "error": "nothing to render (no chapters)"})
+            return
+        ffmpeg = find_ffmpeg()
+        if not ffmpeg:
+            yield _emit({"type": "error", "error": "ffmpeg not available; the output needs it"})
+            return
+
+        # Confined work dir (job_id is already token-sanitized above; work_dir adds
+        # the basename + realpath barrier so CodeQL sees a clean path).
+        work = longform_resume.work_dir(job_type, job_id)
+        if work is None:
+            yield _emit({"type": "error", "error": "invalid job id"})
+            return
+        os.makedirs(work, exist_ok=True)
+        # Chapter WAVs are content-addressed in a shared cache so a re-run (after a
+        # failure or interruption) reuses what already rendered — only the
+        # missing/changed chapters synthesize again (resume). Shared across both
+        # front doors: an identical chapter renders once.
+        cache_dir = os.path.join(OUTPUTS_DIR, LONGFORM_CACHE_SUBDIR)
+        os.makedirs(cache_dir, exist_ok=True)
+        prune_cache_dir(cache_dir)  # bound disk before this job adds its chapters
         resolved_lang = _resolve_default_language(language, default_voice)
         operation = "audiobook" if job_type == "audiobook" else "longform"
         decision = gpu_gateway.decide(operation)
@@ -1405,6 +1406,16 @@ async def _public_longform_stream(plan, **render_kwargs):
     finally:
         await stream.aclose()
 
+class _ClosingLongformResponse(StreamingResponse):
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            # Older ASGI disconnects and outer AnyIO scopes can cancel cleanup.
+            with anyio.CancelScope(shield=True):
+                await self.body_iterator.aclose()
+
+
 @router.post("/audiobook")
 async def audiobook_synthesize(req: AudiobookRequest, request: Request = None):
     """Synthesize a chapterized audiobook from a script, streaming SSE progress."""
@@ -1412,7 +1423,7 @@ async def audiobook_synthesize(req: AudiobookRequest, request: Request = None):
     # `request` is injected by FastAPI on the HTTP path (the default only applies
     # to a direct in-process call, e.g. a unit test); its disconnect poll is what
     # lets Stop cancel the render mid-book (#1216).
-    return StreamingResponse(
+    return _ClosingLongformResponse(
         _public_longform_stream(
             plan, default_voice=req.default_voice, language=req.language,
             fmt=req.format, bitrate=req.bitrate,
@@ -1477,7 +1488,7 @@ async def longform_render(req: LongformRenderRequest, request: Request = None):
         if spans:
             chapters.append(Chapter(title=c.title or f"Chapter {i + 1}", spans=spans))
     plan = AudiobookPlan(chapters=chapters)
-    return StreamingResponse(
+    return _ClosingLongformResponse(
         _public_longform_stream(
             plan, default_voice=req.default_voice, language=req.language,
             fmt=req.format, bitrate=req.bitrate,
@@ -1572,7 +1583,7 @@ async def resume_longform(job_id: str, request: Request = None):
     # job id), so the already-rendered chapters still hit instantly — only the
     # unrendered ones synthesize. Using a fresh id means the request's job_id
     # never names a work dir / output file (defence-in-depth path-injection).
-    return StreamingResponse(
+    return _ClosingLongformResponse(
         _public_longform_stream(
             plan, default_voice=p.get("default_voice"), language=p.get("language"),
             fmt=p.get("fmt", "m4b"), bitrate=p.get("bitrate", "128k"),
