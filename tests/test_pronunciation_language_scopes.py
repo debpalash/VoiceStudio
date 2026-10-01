@@ -141,3 +141,98 @@ def test_known_chinese_iso_scopes_match_script_tags(client, operation, code):
         "/pronunciation/test", json={"text": "GIF", "language": "spa-MX"},
     )
     assert unrelated.json()["substituted"] == "GIF"
+
+
+@pytest.mark.parametrize("operation", ["create", "update", "import"])
+@pytest.mark.parametrize("code", ["cmn", "zho"])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_chinese_script_scopes_keep_identity_and_precedence(
+    client, operation, code, reverse,
+):
+    entries = [
+        {"term": "GIF", "replacement": "global", "language": "*"},
+        {"term": "gif", "replacement": "base", "language": code},
+        {"term": "GIF", "replacement": "simplified", "language": f"{code}-Hans"},
+        {"term": "gif", "replacement": "traditional", "language": f"{code}_Hant"},
+    ]
+    for entry in reversed(entries) if reverse else entries:
+        if operation == "create":
+            result = client.post("/pronunciation", json=entry)
+        elif operation == "update":
+            initial = client.post(
+                "/pronunciation", json={**entry, "language": "*"},
+            ).json()
+            result = client.put(
+                f"/pronunciation/{initial['id']}",
+                json={"language": entry["language"]},
+            )
+        else:
+            result = client.post("/pronunciation/import", json={"entries": [entry]})
+        assert result.status_code == 200
+    exported = client.get("/pronunciation/export").json()["entries"]
+    assert {entry["language"] for entry in exported} == {
+        "*", code, f"{code}-hans", f"{code}-hant",
+    }
+    # Export/import retains the explicit script identities, not just live rows.
+    for entry in client.get("/pronunciation").json():
+        assert client.delete(f"/pronunciation/{entry['id']}").status_code == 200
+    assert client.post(
+        "/pronunciation/import", json={"entries": exported},
+    ).status_code == 200
+    from services.pronunciation import apply_lexicon, load_dict_for_request
+
+    for language, expected in [
+        (code, "base"), (f"{code}-Hans", "simplified"),
+        (f"{code}_Hant", "traditional"), ("spa-MX", "global"),
+    ]:
+        result = client.post(
+            "/pronunciation/test", json={"text": "GIF gif", "language": language},
+        )
+        assert result.status_code == 200
+        assert result.json()["substituted"] == f"{expected} {expected}"
+        assert apply_lexicon(
+            "GIF gif", load_dict_for_request(language),
+        ) == f"{expected} {expected}"
+
+
+@pytest.mark.parametrize("code", ["cmn", "zho"])
+def test_unknown_chinese_suffixes_remain_distinct_literals(client, code):
+    for suffix in ("custom", "another"):
+        entry = {"term": "GIF", "replacement": suffix, "language": f"{code}-{suffix}"}
+        assert client.post("/pronunciation", json=entry).status_code == 200
+    exported = client.get("/pronunciation/export").json()["entries"]
+    assert {entry["language"] for entry in exported} == {
+        f"{code}-custom", f"{code}-another",
+    }
+    for suffix in ("custom", "another"):
+        result = client.post(
+            "/pronunciation/test", json={"text": "GIF", "language": f"{code}-{suffix}"},
+        )
+        assert result.json()["substituted"] == suffix
+    for language in (code, f"{code}-Hans", f"{code}-Hant"):
+        result = client.post(
+            "/pronunciation/test", json={"text": "GIF", "language": language},
+        )
+        assert result.json()["substituted"] == "GIF"
+
+
+@pytest.mark.parametrize("code", ["cmn", "zho"])
+def test_inert_chinese_rows_share_supported_scope_matching(client, code):
+    for term, language, enabled in [
+        ("global", "*", True), ("base", code, True),
+        ("simplified", f"{code}-Hans", True),
+        ("traditional", f"{code}-Hant", True),
+        ("disabled", f"{code}-Hans", False),
+    ]:
+        entry = {
+            "term": term, "replacement": "dʒɪf", "type": "ipa",
+            "language": language, "enabled": enabled,
+        }
+        assert client.post("/pronunciation", json=entry).status_code == 200
+    result = client.post(
+        "/pronunciation/test", json={"text": "GIF", "language": f"{code}-Hans"},
+    ).json()
+    assert result["substituted"] == "GIF"
+    assert {entry["term"] for entry in result["inert_entries"]} == {
+        "global", "base", "simplified",
+    }
