@@ -142,6 +142,9 @@ export function RadioStudioPage() {
     setPace(preset.pace);
     setEnergy(preset.energy);
     setDuration(preset.duration);
+  }, [jobType]);
+
+  useEffect(() => {
     if (jobType !== 'News') return;
     const news = voices.find((profile) => profile.name.toLowerCase().includes('news'));
     if (news) setSelectedProfileId(news.id);
