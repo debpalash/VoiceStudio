@@ -14,6 +14,8 @@ Script voice tags now expose saved-profile assignments in the Cast section. Only
 
 Audiobook Preview plan uses the backend parser and exposes per-chapter auditions. Auditions send the same voice, cast, language and pronunciation inputs as full renders, warming the shared cache. Editing those inputs clears stale auditions. Preview requests are aborted on navigation, never replace a full render, and expose their own Vidstack playback.
 
+Local chapter and segment caches include an explicitly resolved synthesis language, so changing it renders new audio even when the normalized text stays identical. Autodetected-language caches keep their existing keys.
+
 Production overrides now expose synthesis steps, guidance, sampling temperatures, postprocessing, seed and repeat variation. Emotion controls appear when the active engine advertises support. Reset restores the shared Tauri defaults; untouched fields are omitted from requests. The extracted `longformOverrides` helper is used by both apps, and chapter auditions carry the same overrides as full renders. Seamless-join controls (gap between lines, gap between paragraphs, trim engine silence) live in the same panel; untouched or reset controls show the preserved server defaults (zero gaps, trimming off). Set gaps and enable trimming explicitly for seamless joins; see `docs/expressive-speech.md`.
 
 Run `electron/tests/longform-live.mjs` with `VOICESTUDIO_LIVE_PROFILE` set to a local saved profile for an explicit real-render check. It verifies the active model is already installed before synthesis. The real run exposed missing JSON request headers in the shared client and array-shaped failed-chapter results; regression tests now cover both.
