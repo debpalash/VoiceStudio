@@ -64,6 +64,8 @@ for your engine below.
 
 Pronunciation dictionary matching uses Unicode case-insensitive literal matches. Each matched term uses its own respelling; distinct terms such as Straße and STRASSE can have different respellings. Longer terms win overlaps, and later equal-length case variants retain precedence.
 
+Dictionary lists, previews, synthesis and exports use creation time, then insertion order for tied timestamps. A bulk import therefore keeps its authored entry order, and exporting/restoring the dictionary preserves duplicate and case-variant precedence.
+
 ### Default engine (VoiceStudio)
 
 **Non-verbal tags.** The bundled model natively tokenizes 13 reaction tags
