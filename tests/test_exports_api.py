@@ -467,6 +467,7 @@ _HISTORY_ROUTES = [
 
 
 def _call(test_client, method, path, payload):
+    """Issue one parametrised request; `payload` is None for the GET route."""
     send = getattr(test_client, method)
     return send(path) if payload is None else send(path, json=payload)
 

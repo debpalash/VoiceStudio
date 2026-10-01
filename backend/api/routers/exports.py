@@ -111,6 +111,12 @@ def export_file(req: ExportRequest):
 
 @router.post("/export/record", dependencies=[Depends(require_local)])
 def record_export(req: ExportRecordRequest):
+    """Log an export the client performed itself, without copying any file.
+
+    Consumption tier (`require_local`), not admin: a desktop install keeps this
+    loopback-only, while a remote backend — where Docker's bridge makes every
+    caller look non-loopback — must still be able to record what it saved.
+    """
     export_id = str(uuid.uuid4())[:8]
     with db_conn() as conn:
         conn.execute(
@@ -132,6 +138,11 @@ def delete_export_history(export_id: str):
 
 @router.get("/export/history", dependencies=[Depends(require_local)])
 def get_export_history():
+    """The 50 most recent exports, newest first.
+
+    Rows carry absolute destination paths, so this is gated on the same
+    consumption tier as the write above rather than left open.
+    """
     with db_conn() as conn:
         rows = conn.execute("SELECT * FROM export_history ORDER BY created_at DESC LIMIT 50").fetchall()
     return [dict(r) for r in rows]
