@@ -15,6 +15,7 @@ export function AppShell() {
     select: (state) => state.location.pathname,
   });
   const shellOnly = pathname.startsWith('/settings') || pathname === '/pro';
+  const nasStudio = pathname === '/';
   const macWorkspace = isMac() && !shellOnly;
   const SettingsWorkspace = pathname === '/settings/openapi' ? 'div' : 'main';
   return (
@@ -25,7 +26,20 @@ export function AppShell() {
       )}
     >
       <div className="flex min-h-0 flex-1">
-        {shellOnly ? (
+        {nasStudio ? (
+          <BackendGate repairDock={<RepairAgentDock />}>
+            <CommandPalette />
+            <main
+              data-slot="workspace-content"
+              className="@container relative flex min-w-0 flex-1 flex-col overflow-hidden"
+            >
+              <div className="min-h-0 flex-1 overflow-hidden">
+                <Outlet />
+              </div>
+              <RepairAgentDock />
+            </main>
+          </BackendGate>
+        ) : shellOnly ? (
           <>
             <CommandPalette />
             {/* The main sidebar (navigation, library, status) stays where it is
