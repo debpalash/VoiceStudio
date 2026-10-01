@@ -106,14 +106,16 @@ def chapterize_plaintext(text: str) -> str:
 
     No-op if the text already has Markdown H1 headings (the user has structured
     it). Otherwise short standalone lines beginning with a chapter keyword
-    (``Chapter 3``, ``Prologue`` …) become headings; everything else is left
-    verbatim. Text with no detectable breaks falls through as a single chapter.
+    (``Chapter 3``, ``Prologue`` …) become headings; body text is preserved with
+    line endings normalized to LF. Text with no detectable breaks falls through
+    as a single chapter.
     """
     text = text or ""
-    if _H1_RE.search(text):
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    if _H1_RE.search(normalized):
         return text
     out = []
-    for line in text.split("\n"):
+    for line in normalized.split("\n"):
         s = line.strip()
         if s and len(s) <= _CHAPTER_TITLE_MAX and _CH_RE.match(s):
             out.append(f"# {s}")
