@@ -144,6 +144,7 @@ metadata and the backend fallback mirror it.
 
 - A reference longer than 20 s is transcribed with the speech-to-text model already installed, instead of failing when OmniVoice's own Whisper snapshot is not cached (#2301) — thanks @Cengokill!
 - Pronunciation dictionary entries in Japanese, Chinese and Thai apply inside a sentence, not only to a line that is the key alone (#2392) — thanks @kevin9327!
+- Removed a duplicate, shadowed `SubprocessBackend.unload()` definition in the subprocess backend (#<your-issue-number>)
 
 ## [0.5.6] — 2026-09-23
 
