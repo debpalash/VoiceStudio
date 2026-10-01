@@ -144,3 +144,13 @@ def test_models_endpoint_exposes_curated_flag(client):
     # The required TTS model is always curated.
     tts = next(m for m in models if m["repo_id"] == "k2-fsa/OmniVoice")
     assert tts["curated"] is True
+
+
+def test_cpu_preset_lists_the_light_whisper_before_the_heavy_ones(client):
+    models = _recommend(client, ["linux", "linux-x86_64", "cpu"])["models"]
+    asr = [m["repo_id"] for m in models if m["role"] == "ASR"]
+    small = asr.index("Systran/faster-whisper-small")
+    for heavy in ("Systran/faster-whisper-large-v3", "deepdml/faster-whisper-large-v3-turbo-ct2"):
+        assert small < asr.index(heavy), asr
+    # The required TTS entry still leads the whole preset.
+    assert models[0]["repo_id"] == "k2-fsa/OmniVoice"

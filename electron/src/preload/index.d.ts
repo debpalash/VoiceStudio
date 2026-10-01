@@ -31,6 +31,8 @@ export interface BackendStatus {
   lastCrash?: NativeCrashRecord;
   stage: BackendStage;
   setupIssue?: 'space' | 'access' | 'unsupported_platform';
+  /** Free disk (GiB) the failed install needed; the CPU-only install needs less than the CUDA one. */
+  setupRequiredGib?: number;
   /** A prior explicit install stopped after creating its resumable project/cache. */
   runtimeInterrupted?: boolean;
   setupPhase?: 'checking' | 'downloading_uv' | 'installing_deps' | 'verifying';
@@ -280,9 +282,19 @@ export interface UninstallTarget {
 export interface VoiceStudioBridge {
   browser: import('../shared/site-browser').SiteBrowserBridge;
   pro: {
-    status(): Promise<{ active: boolean; configured: boolean; error?: 'offline' | 'invalid' | 'storage' }>;
-    activate(key: string): Promise<{ active: boolean; configured: boolean; error?: 'offline' | 'invalid' | 'storage' }>;
-    deactivate(): Promise<{ active: boolean; configured: boolean; error?: 'offline' | 'invalid' | 'storage' }>;
+    status(): Promise<{
+      active: boolean;
+      configured: boolean;
+      error?: 'offline' | 'invalid' | 'storage';
+    }>;
+    activate(
+      key: string,
+    ): Promise<{ active: boolean; configured: boolean; error?: 'offline' | 'invalid' | 'storage' }>;
+    deactivate(): Promise<{
+      active: boolean;
+      configured: boolean;
+      error?: 'offline' | 'invalid' | 'storage';
+    }>;
   };
   repair: {
     list(): Promise<RepairAgentInfo[]>;

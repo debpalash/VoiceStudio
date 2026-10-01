@@ -44,7 +44,7 @@ def test_load_model_skips_pytorch_whisper_by_default(model_manager, monkeypatch)
             return SimpleNamespace(llm=object())
 
     monkeypatch.delenv("OMNIVOICE_PRELOAD_TTS_ASR", raising=False)
-    monkeypatch.setattr(model_manager, "_lazy_torch", lambda: SimpleNamespace(float16="float16"))
+    monkeypatch.setattr(model_manager, "_lazy_torch", lambda: SimpleNamespace(float16="float16", float32="float32"))
     monkeypatch.setattr(model_manager, "_lazy_omnivoice", lambda: DummyOmniVoice)
     monkeypatch.setattr(model_manager, "get_best_device", lambda: "mps")
 
@@ -78,7 +78,7 @@ def test_load_model_can_preload_pytorch_whisper_when_requested(model_manager, mo
             return DummyModel()
 
     monkeypatch.setenv("OMNIVOICE_PRELOAD_TTS_ASR", "1")
-    monkeypatch.setattr(model_manager, "_lazy_torch", lambda: SimpleNamespace(float16="float16"))
+    monkeypatch.setattr(model_manager, "_lazy_torch", lambda: SimpleNamespace(float16="float16", float32="float32"))
     monkeypatch.setattr(model_manager, "_lazy_omnivoice", lambda: DummyOmniVoice)
     monkeypatch.setattr(model_manager, "get_best_device", lambda: "mps")
 

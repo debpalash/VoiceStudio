@@ -10,6 +10,7 @@ import {
   CUDNN8_COMPAT_PIN,
   ROCM_TORCH_INDEX,
   ROCM_TORCH_PINS,
+  rocmTorchOptIn,
   RUNTIME_IMPORT_PROBE,
   RUNTIME_NATIVE_IMPORT_PROBE,
   RUNTIME_REPAIR_PACKAGES,
@@ -55,9 +56,15 @@ async function interpreter(project: string) {
   await writeFile(runtimePython(project), 'interpreter');
   await writeFile(join(project, '.venv', 'pyvenv.cfg'), 'home = managed');
 }
+function forcePlatform(platform: NodeJS.Platform) {
+  vi.spyOn(process, 'platform', 'get').mockReturnValue(platform);
+}
 beforeEach(() => {
   // Installation fixtures exercise a supported host; the Intel case overrides it.
   if (process.platform === 'darwin') vi.spyOn(process, 'arch', 'get').mockReturnValue('arm64');
+  // The baseline fixtures model an NVIDIA host (the lock's default wheels) whatever
+  // the machine running the tests has; CPU/ARM hosts are pinned explicitly below.
+  vi.stubEnv('OMNIVOICE_TORCH_VARIANT', 'cuda');
 });
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -211,6 +218,7 @@ describe('packaged runtime setup', () => {
     expect(verify?.[1][1]).toContain('sentencepiece');
   });
   it('reinstalls the pinned ROCm stack only after an explicit opt-in', async () => {
+    forcePlatform('linux');
     const { bundle, project } = await fixture();
     vi.stubEnv('OMNIVOICE_TORCH_VARIANT', ' ROCm ');
     vi.stubEnv('OMNIVOICE_TORCH_INDEX', 'https://mirror.invalid/rocm');
@@ -233,7 +241,29 @@ describe('packaged runtime setup', () => {
     ]);
     expect(ROCM_TORCH_INDEX).toContain('/rocm');
   });
+  it('ignores the ROCm opt-in where PyTorch publishes no ROCm wheels', async () => {
+    forcePlatform('win32');
+    const { bundle, project } = await fixture();
+    vi.stubEnv('OMNIVOICE_TORCH_VARIANT', 'rocm');
+    expect(rocmTorchOptIn('win32')).toBe(false);
+    expect(rocmTorchOptIn('darwin')).toBe(false);
+    expect(rocmTorchOptIn('linux')).toBe(true);
+    const run = vi.fn(
+      async (_command: string, _args: string[], _cwd: string, _env?: NodeJS.ProcessEnv) => {
+        await interpreter(project);
+      },
+    );
+    await installRuntime(bundle, project, 'uv', run, new AbortController().signal);
+    // No Linux-only index lookup that would fail the whole bootstrap...
+    const rocmLookups = run.mock.calls.filter(([, args]) =>
+      args.some((arg) => arg === ROCM_TORCH_INDEX || ROCM_TORCH_PINS.some((pin) => arg === pin)),
+    );
+    expect(rocmLookups).toEqual([]);
+    // ...and the default runtime stays reusable instead of being rebuilt forever.
+    expect(await runtimeReady(bundle, project)).toBe(true);
+  });
   it('does not reuse a default runtime after ROCm is selected', async () => {
+    forcePlatform('linux');
     const { bundle, project } = await fixture();
     const run = vi.fn(
       async (_command: string, _args: string[], _cwd: string, _env?: NodeJS.ProcessEnv) => {

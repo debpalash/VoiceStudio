@@ -54,7 +54,7 @@ from services.ffmpeg_utils import (
     require_audio_stream,
     validate_media_source,
 )
-from services.srt_parser import spoken_cue_text
+from services.srt_parser import spoken_cue_text, webvtt_content_blocks
 from services.model_manager import get_best_device
 # Process lifecycle moved to its own leaf module so ffmpeg_utils can import
 # it at module top (no dub_pipeline ↔ ffmpeg_utils cycle). Re-exported here —
@@ -1241,9 +1241,13 @@ def parse_vtt_segments(vtt_path: str) -> list[dict]:
         return h * 3600.0 + m * 60.0 + sec
 
     segments: list[dict] = []
-    blocks = raw.replace("\r\n", "\n").split("\n\n")
-    for block in blocks:
-        lines = [ln for ln in block.split("\n") if ln.strip() and not ln.startswith("WEBVTT") and not ln.startswith("NOTE")]
+    text = raw.lstrip("﻿").replace("\r\n", "\n").replace("\r", "\n")
+    for index, block in enumerate(webvtt_content_blocks(text, strict_blank=True)):
+        lines = [ln for ln in block.split("\n") if ln.strip()]
+        # Only the file's leading header line is metadata; the same words at
+        # the start of a cue's dialogue are spoken (#2510).
+        if index == 0 and lines and re.match(r"WEBVTT(?:[ \t]|$)", lines[0]):
+            lines = lines[1:]
         if not lines:
             continue
         # Skip numeric cue ID line if present

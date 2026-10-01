@@ -82,6 +82,14 @@ Download from [Releases](https://github.com/debpalash/VoiceStudio/releases/lates
 
 **[macOS](docs/install/macos.md) · [Windows](docs/install/windows.md) · [Linux](docs/install/linux.md) · [Docker](docs/install/docker.md)**
 
+| Hardware | Support |
+|---|---|
+| NVIDIA GPU (Windows / Linux) | CUDA acceleration |
+| Apple Silicon | Metal (MPS) acceleration |
+| No dedicated GPU (Intel/AMD integrated graphics, older PCs) | Fully usable on the CPU, slower; setup installs the small CPU build of PyTorch (about 5 GB free disk) |
+| Windows on ARM (Snapdragon X etc.) | **Experimental**, validation pending: native ARM64 app, x64 Python backend under emulation, CPU only |
+| Intel Mac | App UI only; connect to a remote backend ([why](docs/install/macos.md)) |
+
 Open **Voice cloning**, choose a voice or add a clean reference recording, enter your text, and generate. Install the required model when prompted. Hardware needs vary by engine; see [performance](docs/performance.md).
 
 ### Install with prompt

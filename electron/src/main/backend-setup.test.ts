@@ -363,11 +363,14 @@ it('exposes actionable storage failures without requiring log parsing', async ()
   );
   vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
   vi.stubEnv('VOICESTUDIO_SKIP_BACKEND', '');
-  mocks.install.mockRejectedValue(Object.assign(new Error('full'), { code: 'ENOSPC' }));
+  mocks.install.mockRejectedValue(
+    Object.assign(new Error('full'), { code: 'ENOSPC', requiredGib: 5 }),
+  );
   const supervisor = new BackendSupervisor();
   await supervisor.start();
   await supervisor.setupRuntime();
   expect(supervisor.status.setupIssue).toBe('space');
+  expect(supervisor.status.setupRequiredGib).toBe(5);
   mocks.install.mockRejectedValue(Object.assign(new Error('denied'), { code: 'EACCES' }));
   await supervisor.setupRuntime();
   expect(supervisor.status.setupIssue).toBe('access');

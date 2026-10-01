@@ -133,7 +133,8 @@ models:
     role: ASR
     engines: [faster-whisper, faster-whisper-isolated, whisperx]
     size_gb: 0.5
-    note: "Quick previews and testing. ~2× faster than medium."
+    curated_on: [cpu]
+    note: "Quick previews and testing. ~2× faster than medium. The light pick on CPU-only machines, where large-v3 is slow and memory-hungry."
 
   - repo_id: "Systran/faster-whisper-base"
     label: "Whisper base (minimal, fastest Whisper)"

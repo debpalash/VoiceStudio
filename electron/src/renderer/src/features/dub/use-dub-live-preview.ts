@@ -121,9 +121,12 @@ export function useDubLivePreview({ enabled, language }: { enabled: boolean; lan
           }
           if (message.type === 'start' && Number.isFinite(message.sample_rate)) {
             active.player = createStreamingPreview(message.sample_rate!, 0, () => {
-              if (session.current !== active) return;
-              // Playback can end before the stream (global stop or another preview).
-              stop();
+              // Fires on a normal tail finishing AND when the playback manager
+              // cancels output (stop / another preview). Cancelling mid-stream
+              // still owns the socket and the synthesis slot, so release them
+              // through the one stop path (#2511); after `done` they are
+              // already released and this only clears the row.
+              if (session.current === active) stop();
             });
           } else if (message.type === 'done') {
             active.socket = null;

@@ -6,6 +6,7 @@ import {
   Trash2Icon,
   ZapIcon,
 } from 'lucide-react';
+import { GpuAcceleration } from './gpu-acceleration';
 import { SystemPreflight } from './system-preflight';
 import { PerformanceProfile } from '@/components/performance-profile';
 import { familyIcons, modelFamilies } from './model-family';
@@ -130,6 +131,7 @@ export function PerformanceSettings() {
         })}
       </SettingsSection>
       <ComputeDevice />
+      <GpuAcceleration />
       <CompileSetting />
       <MemoryManagement />
       <SettingsSection icon={CpuIcon} title={t('settings.generate_budget_title')}>

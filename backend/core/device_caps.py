@@ -49,7 +49,15 @@ KERNEL_RISK_MARKER = "may fail at kernel launch"
 # router reads this marker to explain the neutral badge instead of "no GPU".
 DIRECTML_MARKER = "DirectML device present"
 
-# NOTE: the NVIDIA driver-version check (min R555 for the bundled CUDA runtime)
+# Stamped onto the note for a host whose OS reports a discrete GPU that the
+# installed PyTorch build cannot drive (an AMD card + the NVIDIA-CUDA wheel,
+# an NVIDIA card + a CPU wheel). ``engine_routing`` reads it so such a host's
+# GPU-capable engines say "cpu_fallback, and here is why" instead of the
+# neutral "cpu_only" a GPU-less machine gets - a Radeon owner must not be told
+# their machine simply has no GPU.
+UNUSABLE_GPU_MARKER = "present but PyTorch cannot use it"
+
+# NOTE: the NVIDIA driver-version check (CUDA 12.x minor-compat floor: R525.60.13 Linux / R528.33 Windows)
 # is intentionally NOT done here — it requires shelling to ``nvidia-smi``, which
 # would put a subprocess on the cold-start probe path. That check stays in
 # ``wizard._detect_gpu`` (preflight), which already runs it. The probe only
@@ -197,7 +205,24 @@ def _rocm_requires_dxg_detection(version: object) -> bool:
         return True
 
 
-def why_no_gpu(torch) -> tuple[str, ...]:
+def _unusable_gpu_note(torch, gpus) -> str | None:
+    """Note for the commonest silent-CPU host: hardware the torch build cannot
+    drive. ``None`` when no discrete GPU is known or torch can drive it."""
+    from core.gpu_inventory import pick_for_build
+
+    try:
+        hip = getattr(torch.version, "hip", None)
+        cuda = getattr(torch.version, "cuda", None)
+    except Exception:  # noqa: BLE001
+        hip = cuda = None
+    gpu = pick_for_build(tuple(gpus or ()), "rocm" if hip else "cuda" if cuda else "cpu")
+    if gpu is None:
+        return None
+    build = f"ROCm {hip}" if hip else (f"CUDA {cuda}" if cuda else "CPU-only")
+    return f"{gpu.name} ({gpu.vendor.upper()}) {UNUSABLE_GPU_MARKER}: this is a {build} PyTorch build"
+
+
+def why_no_gpu(torch, gpus=None) -> tuple[str, ...]:
     """Why ``torch.cuda.is_available()`` said no, as user-facing advisories.
 
     This branch used to produce **nothing** (#1274/#1228). A host with a GPU
@@ -323,6 +348,24 @@ def why_no_gpu(torch) -> tuple[str, ...]:
             "build's ROCm. Check `rocminfo` on the host",
         )
 
+    # A CUDA wheel on a machine whose only discrete GPU is not NVIDIA is not a
+    # driver problem - blaming the NVIDIA driver sent Radeon owners hunting for
+    # a driver they do not have. ``gpus`` is None -> read the OS inventory
+    # (registry/sysfs, no subprocess).
+    if gpus is None:
+        try:
+            from core.gpu_inventory import detect_host_gpus
+
+            gpus = detect_host_gpus()
+        except Exception:  # noqa: BLE001
+            gpus = ()
+    if gpus and not any(g.vendor == "nvidia" for g in gpus):
+        note = _unusable_gpu_note(torch, gpus)
+        if note:
+            return (
+                f"{note}. A CUDA build only drives NVIDIA GPUs; this machine "
+                "has none, so PyTorch engines run on the CPU",
+            )
     return (
         f"this is a CUDA {cuda} build but no CUDA device was found — the "
         "NVIDIA driver is missing or too old, or (in Docker) the container "
@@ -598,6 +641,19 @@ def _probe() -> HostCaps:
         # torch_directml absent (the common case) — no DirectML on this host.
         pass
 
+    # Hardware the OS can see but this torch build cannot drive. Only when
+    # nothing accelerated was detected: with a working GPU, an extra unused
+    # iGPU is noise. (Windows AMD + the shipped CUDA wheel lands here.)
+    if not detected and not any(UNUSABLE_GPU_MARKER in n for n in notes):
+        try:
+            from core.gpu_inventory import detect_host_gpus
+
+            unusable = _unusable_gpu_note(torch, detect_host_gpus())
+        except Exception:  # noqa: BLE001 - advisory only
+            unusable = None
+        if unusable:
+            notes.append(unusable)
+
     # Preferred family by priority; cpu when nothing accelerated was detected.
     family: DeviceFamily = "cpu"
     for pref in ACCELERATOR_PRIORITY:
@@ -656,6 +712,30 @@ def refresh() -> HostCaps:
     return detect_host_caps()
 
 
+# ── CPU-host precision + Windows-on-ARM detection ───────────────────────────
+
+# ── Windows-on-ARM detection ─────────────────────────────────────────────────
+
+
+def is_windows_on_arm() -> bool:
+    """True on a Windows-on-ARM machine, including an x64 interpreter running
+    under its Prism emulation layer (the only supported runtime there).
+
+    ``platform.machine()`` reports ``AMD64`` inside the emulated interpreter, so
+    it cannot tell a Snapdragon laptop from an ordinary x64 PC. Windows sets
+    ``PROCESSOR_ARCHITEW6432=ARM64`` for emulated processes; a native ARM64
+    process reports ``PROCESSOR_ARCHITECTURE=ARM64`` instead (also treated as
+    ARM — the answer to "is this an ARM Windows machine", not "is Python
+    native"). Never raises; always False off Windows.
+    """
+    if sys.platform != "win32":
+        return False
+    for key in ("PROCESSOR_ARCHITEW6432", "PROCESSOR_ARCHITECTURE"):
+        if os.environ.get(key, "").strip().upper() == "ARM64":
+            return True
+    return _platform.machine().strip().upper() == "ARM64"
+
+
 def mlx_supported() -> tuple[bool, str]:
     """``(ok, reason)``. ``ok=True`` **only** on Apple Silicon
     (``sys.platform == "darwin"`` and ``platform.machine() == "arm64"``) with
@@ -696,6 +776,7 @@ __all__ = [
     "detect_host_caps",
     "refresh",
     "mlx_supported",
+    "is_windows_on_arm",
     "arch_unsupported",
     "gfx_for_hsa_override",
     "hsa_override_for",
@@ -703,4 +784,5 @@ __all__ = [
     "ROCM_GFX_OVERRIDES",
     "KERNEL_RISK_MARKER",
     "DIRECTML_MARKER",
+    "UNUSABLE_GPU_MARKER",
 ]

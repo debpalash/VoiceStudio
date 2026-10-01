@@ -283,6 +283,19 @@ def set_compute_device(body: _ComputeDeviceBody):
     return _compute_device_state()
 
 
+@router.get("/gpu-report")
+def get_gpu_report():
+    """Which engines will use the GPU on this host, and why not otherwise.
+
+    Codes + params only (the renderer owns the prose, via i18n): the physical
+    GPUs, the installed PyTorch build, a host state such as ``amd_cuda_build``,
+    the honest options for that state, and a verdict per TTS/ASR engine.
+    """
+    from core.gpu_report import collect_gpu_report
+
+    return collect_gpu_report()
+
+
 # ── CUDA adapter selection (multi-GPU hosts) ─────────────────────────────
 
 

@@ -63,6 +63,7 @@ jobs:
     needs: validate
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
+    continue-on-error: ${{ matrix.experimental == true }}
     strategy:
       fail-fast: false
       matrix:
@@ -77,6 +78,15 @@ jobs:
             arch: x64
             target: x86_64-pc-windows-msvc
             flags: --win --x64
+          - runner: windows-11-arm
+            platform: win32
+            arch: arm64
+            target: aarch64-pc-windows-msvc
+            flags: --win --arm64
+            # Windows on ARM is new: a failed leg must not block the four
+            # established targets. check_electron_release_assets.py verifies the
+            # arm64 feed only when its manifest was published.
+            experimental: true
           - runner: macos-15
             platform: darwin
             arch: arm64
@@ -129,7 +139,7 @@ jobs:
           import { mkdirSync, copyFileSync, chmodSync } from 'node:fs';
           import { join } from 'node:path';
           const expected = process.env.VOICESTUDIO_RUST_TARGET;
-          const targets = { 'linux-x64': 'x86_64-unknown-linux-gnu', 'win32-x64': 'x86_64-pc-windows-msvc', 'darwin-arm64': 'aarch64-apple-darwin', 'darwin-x64': 'x86_64-apple-darwin' };
+          const targets = { 'linux-x64': 'x86_64-unknown-linux-gnu', 'win32-x64': 'x86_64-pc-windows-msvc', 'win32-arm64': 'aarch64-pc-windows-msvc', 'darwin-arm64': 'aarch64-apple-darwin', 'darwin-x64': 'x86_64-apple-darwin' };
           if (targets[`${process.platform}-${process.arch}`] !== expected) throw new Error('Runner architecture does not match package target');
           const source = execFileSync(process.platform === 'win32' ? 'where.exe' : 'which', ['uv'], { encoding: 'utf8' }).trim().split(/\r?\n/)[0];
           const dir = 'electron/build/uv';

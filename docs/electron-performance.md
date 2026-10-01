@@ -7,6 +7,8 @@ Adapter discovery checks PATH, the Windows NVSMI installation directory, and the
 An externally set, empty `CUDA_VISIBLE_DEVICES` is shown as Disabled, not Auto: it hides all CUDA adapters and keeps the selector pinned.
 After a failed save, Retry reloads both compute settings and clears the observed error only when both requests succeed; it does not silently retry the write or dismiss failures from a newer save.
 
+Settings > Performance > GPU acceleration reads `GET /api/settings/gpu-report`: the GPUs the OS reports (independent of PyTorch), the installed PyTorch build, a host state with the options that really exist on that OS, and a per-engine verdict (uses the GPU, CPU and why, CPU by design). Engines that are not installed get no verdict. The backend sends codes; the renderer owns the text.
+
 Device choices come from the backend's detected families plus Auto. The chosen preference and currently active family are displayed separately. Environment-pinned choices are disabled, an ignored unavailable override is explained, and a changed preference shows its actual restart requirement. Failed saves keep the last confirmed state. Nothing automatically restarts the backend or changes the active model.
 
 The torch.compile workaround matches Tauri: since #2135 it is selectable on every platform, because the compile failures it works around are not Windows-only. Generation budgets preserve separate GPU and CPU limits, validate the existing positive/21600-second range, and keep edits during refetches. An externally overridden budget reports that fact instead of implying the saved value will take effect after restart. Hardware RAM/VRAM readouts poll only while this view is mounted.

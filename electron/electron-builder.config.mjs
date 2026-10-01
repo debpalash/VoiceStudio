@@ -18,15 +18,15 @@ const updateUrl = updateChannel.startsWith('electron-preview-')
   : 'https://github.com/debpalash/VoiceStudio/releases/latest/download';
 
 const defaultRustTarget =
-  process.platform === 'win32' && process.arch === 'x64'
-    ? 'x86_64-pc-windows-msvc'
-    : process.platform === 'darwin' && process.arch === 'arm64'
-      ? 'aarch64-apple-darwin'
-      : process.platform === 'darwin' && process.arch === 'x64'
-        ? 'x86_64-apple-darwin'
-        : process.platform === 'linux' && process.arch === 'x64'
-          ? 'x86_64-unknown-linux-gnu'
-          : null;
+  {
+    'win32-x64': 'x86_64-pc-windows-msvc',
+    // Windows on ARM: native Electron shell + helper; the Python runtime is the
+    // emulated x64 build (see docs/install/windows.md).
+    'win32-arm64': 'aarch64-pc-windows-msvc',
+    'darwin-arm64': 'aarch64-apple-darwin',
+    'darwin-x64': 'x86_64-apple-darwin',
+    'linux-x64': 'x86_64-unknown-linux-gnu',
+  }[`${process.platform}-${process.arch}`] ?? null;
 const rustTarget = process.env.VOICESTUDIO_RUST_TARGET || defaultRustTarget;
 const uvExtension = rustTarget?.includes('windows') ? '.exe' : '';
 const uvSource = process.env.VOICESTUDIO_BUNDLED_UV
@@ -92,6 +92,8 @@ export default {
   afterPack: packageNativeHelper,
   win: {
     icon: 'build/icons/icon.ico',
+    // The CLI matrix selects one architecture per runner and updater feed
+    // (--x64 / --arm64); this default only applies to an unflagged local build.
     target: [{ target: 'nsis', arch: ['x64'] }],
   },
   nsis: {

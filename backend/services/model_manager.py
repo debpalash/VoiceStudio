@@ -2513,6 +2513,7 @@ def _load_model_sync():
         torch = _lazy_torch()
         VoiceStudio = _lazy_omnivoice()
         device = get_best_device()
+        from omnivoice.utils.dtype import tts_dtype_name
 
         checkpoint = resolve_omnivoice_checkpoint()
         _set_loading("loading_weights", f"Loading TTS weights on {device}…")
@@ -2524,7 +2525,8 @@ def _load_model_sync():
             logger.info("Skipping PyTorch Whisper preload; ASR will load on demand.")
         def _load():
             return VoiceStudio.from_pretrained(
-                checkpoint, device_map=device, dtype=torch.float16, load_asr=False,
+                checkpoint, device_map=device,
+                dtype=getattr(torch, tts_dtype_name(device)), load_asr=False,
             )
 
         def _recover_corrupt_weights(exc: BaseException):

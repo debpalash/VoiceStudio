@@ -35,6 +35,7 @@ GET /api/settings/compute-device
 GET /api/settings/cuda-device
 GET /api/settings/db-backup
 GET /api/settings/dictation-refinement
+GET /api/settings/gpu-report
 GET /api/settings/hf-mirror
 GET /api/settings/hf-token/state
 GET /api/settings/history-retention

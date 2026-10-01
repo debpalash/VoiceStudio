@@ -719,6 +719,16 @@ def recommendations():
         if _model_curated(m, tags) and _model_supported(m)
     ]
 
+    if not (is_mac_arm or has_cuda or has_rocm):
+        # CPU-only preset: lead with the light Whisper (small) so a user working
+        # down the list meets the cheap download before large-v3 / Turbo. Only
+        # the ASR slots are reordered (smallest first); every other entry keeps
+        # its catalog position.
+        asr_slots = [i for i, m in enumerate(curated) if m.get("role") == "ASR"]
+        ordered = sorted((curated[i] for i in asr_slots), key=lambda m: m.get("size_gb") or 0)
+        for slot, model in zip(asr_slots, ordered):
+            curated[slot] = model
+
     if is_mac_arm:
         rationale = (
             "Apple Silicon preset: VoiceStudio (required) covers multilingual TTS + "
@@ -743,9 +753,9 @@ def recommendations():
     else:
         rationale = (
             "CPU preset: VoiceStudio (required) runs standalone. Optional picks favour "
-            "speed on CPU — Whisper large-v3 (int8) for accuracy, Turbo when speed "
-            "matters, Whisper Tiny (ONNX) for live dictation, KittenTTS for "
-            "instant English TTS."
+            "speed on CPU — Whisper small (int8) as the light default, large-v3 for "
+            "accuracy and Turbo when you can spare the time and RAM, Whisper Tiny "
+            "(ONNX) for live dictation, KittenTTS for instant English TTS."
         )
 
     remote_inventory = _target_repo_inventory()

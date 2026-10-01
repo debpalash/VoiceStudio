@@ -28,7 +28,7 @@ import shutil
 import sys
 
 from core.config import DATA_DIR
-from core.device_caps import KERNEL_RISK_MARKER
+from core.device_caps import KERNEL_RISK_MARKER, UNUSABLE_GPU_MARKER
 from core.scrub import scrub_text
 from core.version import APP_VERSION
 
@@ -80,6 +80,23 @@ def _check_device() -> dict:
     except Exception:
         pass
     if device == "cpu":
+        # A GPU the OS can see but this PyTorch build cannot drive is not "no
+        # GPU": say which card and why, so the report is actionable.
+        try:
+            from core.device_caps import detect_host_caps
+
+            unusable = next(
+                (n for n in detect_host_caps().notes if UNUSABLE_GPU_MARKER in n), None,
+            )
+        except Exception:
+            unusable = None
+        if unusable:
+            return _check(
+                "device", "Compute device", WARN,
+                f"cpu - {unusable}",
+                "Settings > Performance > GPU acceleration lists which engines "
+                "can use this GPU on this machine, and what would change that.",
+            )
         return _check(
             "device", "Compute device", WARN,
             "cpu (no GPU acceleration detected)",

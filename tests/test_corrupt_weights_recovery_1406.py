@@ -129,7 +129,7 @@ def _drive_load(mm, monkeypatch, raise_first, repair_ok=True):
         return repair_ok
 
     monkeypatch.setattr(mm, "_lazy_omnivoice", lambda: _FakeModelClass)
-    monkeypatch.setattr(mm, "_lazy_torch", lambda: __import__("types").SimpleNamespace(float16="f16"))
+    monkeypatch.setattr(mm, "_lazy_torch", lambda: __import__("types").SimpleNamespace(float16="f16", float32="f32"))
     monkeypatch.setattr(mm, "get_best_device", lambda: "cpu")
     monkeypatch.setattr(mm, "resolve_omnivoice_checkpoint", lambda: "org/model")
     monkeypatch.setattr(mm, "should_preload_tts_asr", lambda: False)

@@ -31,6 +31,7 @@ import logging
 import math
 import os
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from services.subprocess_backend import SubprocessBackend
@@ -130,9 +131,11 @@ class IndexTTS2Backend(SubprocessBackend):
     _DEFAULT_SAMPLE_RATE = 24000
     # Explicit so IndexTTS2 stops advertising the inherited CPU-only default:
     # the sidecar runs the IndexTTS PyTorch model on CUDA when present, else
-    # CPU. ROCm left unclaimed (the sidecar's own venv would need a ROCm torch);
-    # a ROCm host honestly resolves to cpu_fallback.
-    gpu_compat = ("cuda", "cpu")
+    # CPU. ROCm is claimed since the one-click installer puts a ROCm torch in
+    # the sidecar venv on ROCm hosts (sidecar_install.uses_rocm_index, #2371),
+    # which `torch.cuda.is_available()` satisfies; a user-managed environment
+    # must supply its own ROCm torch to benefit.
+    gpu_compat = ("cuda", "rocm", "cpu")
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:
@@ -159,6 +162,55 @@ class IndexTTS2Backend(SubprocessBackend):
                 f"{INDEXTTS_SIDECAR_SCRIPT} — reinstall VoiceStudio."
             )
         return True, "ok"
+
+    @classmethod
+    def _sidecar_torch_is_cuda_only(cls) -> bool:
+        """True only when the sidecar venv is KNOWN to hold a non-ROCm torch.
+
+        ``gpu_compat`` claims ROCm because the one-click installer provisions a
+        ROCm torch on ROCm hosts (#2371). A venv that predates that, or a
+        user-managed clone, can still carry the CUDA wheel upstream resolves -
+        which sees no AMD GPU, so the engine would run on the CPU while routing
+        reported acceleration (the PR #2423 review finding). Unknown (venv not
+        located yet, no torch wheel found) keeps the claim: this runs on every
+        engine-list refresh, so it must never spawn the interpreter probe.
+        """
+        try:
+            from engines.indextts import bootstrap
+            from services.sidecar_install import venv_torch_hip
+
+            # The venv bootstrap will use: the one it already resolved, else the
+            # first candidate on disk in its own probe order (user clone, then
+            # this package's managed venv) - never spawning the import probe.
+            python = bootstrap._resolved_python or next(
+                (p for p in bootstrap._probe_paths() if p.is_file()), None
+            )
+            if python is None:
+                return False
+            return venv_torch_hip(Path(python).parent.parent) is False
+        except Exception:  # noqa: BLE001 - metadata only, never break the picker
+            return False
+
+    @classmethod
+    def runtime_compute_profile(cls, caps) -> dict:
+        from services.engine_routing import resolve_routing
+
+        compat = tuple(cls.gpu_compat)
+        if caps.family == "rocm" and cls._sidecar_torch_is_cuda_only():
+            # Honest on this host: the sidecar's torch cannot see the GPU.
+            compat = tuple(c for c in compat if c != "rocm")
+        floor = float(getattr(cls, "min_vram_gb", 0.0) or 0.0)
+        return {
+            "gpu_compat": compat,
+            "min_vram_gb": floor,
+            **resolve_routing(compat, caps, floor),
+            "runtime_backend": None,
+            "runtime_device_index": None,
+            "runtime_device_name": None,
+            "runtime_hardware_family": None,
+            "runtime_vram_gb": None,
+            "runtime_device_verified": None,
+        }
 
     @classmethod
     def venv_python(cls):

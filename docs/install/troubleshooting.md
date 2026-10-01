@@ -660,6 +660,32 @@ Apple-Silicon install skips this index entirely.
 
 **Linked issue:** [#569](https://github.com/debpalash/VoiceStudio/issues/569)
 
+## 12b. My AMD Radeon GPU is not used (CPU is busy, GPU is idle)
+
+**Symptom:** generation or transcription is slow, Task Manager shows the CPU
+busy and the Radeon idle, and **Settings → About → Run self-check** says the
+compute device is `cpu`.
+
+**Cause:** the default install has the NVIDIA CUDA build of PyTorch (or the
+CPU-only build when no NVIDIA driver is present), and neither can drive AMD GPUs. This is not a driver problem on your side. Open
+**Settings → Performance → GPU acceleration**: it names your card, the installed
+PyTorch build and, for every engine, whether it uses the GPU.
+
+**Fix, by platform:**
+
+- **Windows:** PyTorch engines stay on the CPU (no ROCm wheels exist for the
+  PyTorch version VoiceStudio ships). Engines with their own GPU runtime — today
+  audio.cpp (Vulkan) — do use a Radeon: install its runtime from **Settings →
+  Models**. Details and the advanced, unsupported AMD-wheels route:
+  [windows.md — GPU support](windows.md#gpu-support).
+- **Linux:** set `OMNIVOICE_TORCH_VARIANT=rocm` and run setup again, or use the
+  ROCm Docker image — [linux.md — AMD GPU (ROCm)](linux.md#amd-gpu-rocm). If the
+  panel says PyTorch has ROCm but cannot open the device, check that the `amdgpu`
+  driver is loaded and your user can open `/dev/kfd` (`render` and `video`
+  groups).
+
+**Linked issue:** [#2468](https://github.com/debpalash/VoiceStudio/issues/2468)
+
 ## 13. Stuck on the download page / incomplete model cache ("only `refs/`")
 
 **Symptom:** the setup screen never finishes the model download and you can't

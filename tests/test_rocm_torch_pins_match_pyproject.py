@@ -118,6 +118,65 @@ def test_rocm_reinstall_pins_match_the_project_constraint():
     )
 
 
+def _backend_rocm_pins_and_index():
+    """``(pins, index)`` from ``backend/core/torch_indexes.py`` — the values
+    the one-click sidecar installer swaps a ROCm host's torch to (#2371)."""
+    path = os.path.join(_ROOT, "backend", "core", "torch_indexes.py")
+    with open(path, encoding="utf-8") as fh:
+        src = fh.read()
+    marker = "ROCM_TORCH_PINS: tuple[str, ...] = ("
+    assert marker in src, f"ROCM_TORCH_PINS renamed or removed from {path}"
+    body = src.split(marker, 1)[1].split(")", 1)[0]
+    pins = re.findall(r'"([^"]+)"', body)
+    m = re.search(r'PYTORCH_ROCM_INDEX_URL = "([^"]+)"', src)
+    assert m, f"PYTORCH_ROCM_INDEX_URL renamed or removed from {path}"
+    return pins, m.group(1)
+
+
+def test_sidecar_rocm_pins_match_the_project_constraint():
+    """The sidecar's ROCm swap must install the same torch versions the main
+    venv does, or an AMD host runs its engine venv and its app venv on
+    different Torch stacks (#2371)."""
+    pins, _ = _backend_rocm_pins_and_index()
+    constraints = _constraint_pins()
+    named = {}
+    for arg in pins:
+        name, _, version = arg.partition("==")
+        named[name.lower()] = version
+    assert named, "backend ROCM_TORCH_PINS parsed empty"
+    problems = [
+        f"  {pkg}: pyproject pins =={constraints[pkg]}, sidecar pins =={version}"
+        for pkg, version in named.items()
+        if constraints.get(pkg) != version
+    ]
+    assert not problems, (
+        "backend/core/torch_indexes.py ROCM_TORCH_PINS drifted from "
+        "[tool.uv.constraint-dependencies] in pyproject.toml:\n" + "\n".join(problems)
+    )
+
+
+def _setup_rocm_index() -> str:
+    with open(_SETUP, encoding="utf-8") as fh:
+        src = fh.read()
+    m = re.search(r'ROCM_TORCH_INDEX = "([^"]+)"', src)
+    assert m, f"ROCM_TORCH_INDEX renamed or removed from {_SETUP}"
+    return m.group(1)
+
+
+def test_sidecar_rocm_index_matches_the_main_venv_swap():
+    """Three copies of the index (setup.py, runtime-project.ts, the sidecar
+    installer) with only a comment between them is how an AMD host ends up
+    running its app venv and its engine venv on different ROCm builds (#2371)."""
+    _, backend_index = _backend_rocm_pins_and_index()
+    assert backend_index == _setup_rocm_index()
+    path = os.path.join(_ROOT, "electron", "src", "main", "runtime-project.ts")
+    with open(path, encoding="utf-8") as fh:
+        src = fh.read()
+    m = re.search(r"export const ROCM_TORCH_INDEX = '([^']+)'", src)
+    assert m, f"ROCM_TORCH_INDEX renamed or removed from {path}"
+    assert backend_index == m.group(1)
+
+
 def test_the_whole_stack_is_reinstalled_together():
     """Torch, torchaudio and torchvision ship as one matched set.
 

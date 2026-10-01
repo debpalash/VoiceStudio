@@ -2,6 +2,7 @@ import { downloadProxyEnv } from './proxy-env';
 import { downloadRuntimeInstaller } from './runtime-download';
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import {
   cp,
   mkdir,
@@ -32,6 +33,49 @@ export const ROCM_TORCH_PINS = [
   'torchaudio==2.8.0',
   'torchvision==0.23.0',
 ] as const;
+/**
+ * Whether this OS can have the ROCm torch stack at all.
+ *
+ * PyTorch's ROCm index (`ROCM_TORCH_INDEX`) publishes Linux wheels only. On
+ * Windows `uv pip install --index-url <rocm6.4> torch==2.8.0` finds nothing and
+ * the whole runtime bootstrap fails, leaving the app unusable instead of merely
+ * CPU-bound - so the opt-in is ignored there and the host resolves like any
+ * other (Settings > Performance explains which engines can still use a Radeon).
+ * Windows ROCm needs AMD's own wheels and a validated engine matrix; it is
+ * deliberately not wired into this recipe.
+ */
+export function rocmTorchApplies(platform: NodeJS.Platform = process.platform): boolean {
+  return platform !== 'win32' && platform !== 'darwin';
+}
+/** The user explicitly asked for ROCm torch AND this OS can have it. */
+export function rocmTorchOptIn(platform: NodeJS.Platform = process.platform): boolean {
+  return (
+    process.env.OMNIVOICE_TORCH_VARIANT?.trim().toLowerCase() === 'rocm' &&
+    rocmTorchApplies(platform)
+  );
+}
+/**
+ * CPU-only PyTorch for hosts without an NVIDIA driver. The lock pins the
+ * `+cu128` build on Linux/Windows x64, whose wheels (plus ~15 `nvidia-*`
+ * packages on Linux) are several GB a CPU-only machine can never use. These
+ * pins mirror `backend/services/sidecar_install.py::_torch_pin_args` and are
+ * kept equal to the `torch==` constraints in pyproject.toml by
+ * tests/test_rocm_torch_pins_match_pyproject.py.
+ */
+export const CPU_TORCH_INDEX = 'https://download.pytorch.org/whl/cpu';
+export const CPU_TORCH_PINS = [
+  'torch==2.8.0+cpu',
+  'torchaudio==2.8.0+cpu',
+  'torchvision==0.23.0+cpu',
+] as const;
+export const CPU_TORCH_ARGS = [
+  '--extra-index-url',
+  CPU_TORCH_INDEX,
+  '--index-strategy',
+  'unsafe-best-match',
+] as const;
+/** Windows on ARM runs the x64 interpreter: PyTorch ships no win_arm64 torchaudio. */
+export const WIN_ARM64_PYTHON_REQUEST = 'cpython-3.11-windows-x86_64';
 export const RUNTIME_REPAIR_PACKAGES = ['torch', 'torchaudio', 'torchvision'] as const;
 export const RUNTIME_NATIVE_IMPORT_PROBE = 'import torch, torchaudio, torchvision';
 export const RUNTIME_IMPORT_PROBE =
@@ -39,6 +83,9 @@ export const RUNTIME_IMPORT_PROBE =
 const RUNTIME_SCHEMA = 'electron-runtime-v2-cudnn8';
 const CUDNN8_PROBE_PREFIX = 'VOICESTUDIO_CUDNN8_PROBE=';
 const REQUIRED_ENV_BYTES = 9 * 1024 ** 3;
+// No CUDA wheels: torch itself is ~0.2 GB; the rest is ordinary dependencies plus
+// the uv cache copy that cannot hardlink across volumes.
+const REQUIRED_CPU_ENV_BYTES = 5 * 1024 ** 3;
 export type RuntimePhase = 'checking' | 'downloading_uv' | 'installing_deps' | 'verifying';
 export type RuntimeRegion = 'auto' | 'global' | 'china' | 'russia' | 'restricted';
 export type RuntimeRunner = (
@@ -100,14 +147,122 @@ export function runtimePython(root: string, platform = process.platform): string
     : join(root, '.venv', 'bin', 'python');
 }
 
-async function dependencyStamp(bundle: string): Promise<string> {
+export type TorchVariant = 'default' | 'cpu' | 'rocm';
+export interface TorchChoice {
+  variant: TorchVariant;
+  /** True when pinned via OMNIVOICE_TORCH_VARIANT; false when inferred from the host. */
+  explicit: boolean;
+}
+
+/** Linux/Windows x64 (and Windows on ARM, via emulation) are where the lock selects CUDA wheels. */
+function cpuTorchApplies(platform: NodeJS.Platform, arch: string): boolean {
+  return (
+    (platform === 'linux' && arch === 'x64') ||
+    (platform === 'win32' && (arch === 'x64' || arch === 'arm64'))
+  );
+}
+
+/**
+ * Whether an NVIDIA driver is installed. File checks only (no subprocess), and
+ * deliberately generous: a false positive costs one avoidable GPU-wheel
+ * download, a false negative would silently strand a GPU host on CPU torch.
+ */
+export function nvidiaDriverPresent(
+  platform: NodeJS.Platform = process.platform,
+  exists: (path: string) => boolean = existsSync,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (platform === 'win32') {
+    const root = env.SystemRoot || env.windir || 'C:\\Windows';
+    return (
+      ['nvcuda.dll', 'nvml.dll', 'nvidia-smi.exe'].some((name) =>
+        exists(join(root, 'System32', name)),
+      ) || exists('C:\\Program Files\\NVIDIA Corporation\\NVSMI\\nvidia-smi.exe')
+    );
+  }
+  if (platform !== 'linux') return false;
+  return [
+    '/proc/driver/nvidia/version',
+    '/dev/nvidiactl',
+    '/usr/lib/wsl/lib/libcuda.so.1',
+    '/usr/lib/x86_64-linux-gnu/libcuda.so.1',
+    '/usr/lib64/libcuda.so.1',
+    '/usr/lib/libcuda.so.1',
+    '/lib/x86_64-linux-gnu/libcuda.so.1',
+    '/usr/local/nvidia/lib64/libcuda.so.1',
+    '/usr/bin/nvidia-smi',
+  ].some((path) => exists(path));
+}
+
+/**
+ * Pick the PyTorch flavour to install. `OMNIVOICE_TORCH_VARIANT` =
+ * `cuda` | `cpu` | `rocm` | `auto` (default). Auto installs the CPU build on
+ * Linux/Windows x64 hosts with no NVIDIA driver (no multi-GB CUDA download) and
+ * always on Windows on ARM; every other host keeps the lock's default wheels
+ * (macOS: PyPI MPS/CPU, Linux arm64: PyPI CPU).
+ */
+export function resolveTorchVariant(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+  hasNvidia: () => boolean = () => nvidiaDriverPresent(platform),
+): TorchChoice {
+  const raw = env.OMNIVOICE_TORCH_VARIANT?.trim().toLowerCase() ?? '';
+  // ROCm wheels exist for Linux only; elsewhere the opt-in is ignored (the
+  // host is resolved like any other, never a failed bootstrap).
+  if (raw === 'rocm' && rocmTorchApplies(platform)) return { variant: 'rocm', explicit: true };
+  if (raw === 'cuda' || raw === 'default') return { variant: 'default', explicit: true };
+  if (raw === 'cpu') {
+    return { variant: cpuTorchApplies(platform, arch) ? 'cpu' : 'default', explicit: true };
+  }
+  if (!cpuTorchApplies(platform, arch)) return { variant: 'default', explicit: false };
+  if (platform === 'win32' && arch === 'arm64') return { variant: 'cpu', explicit: false };
+  return { variant: hasNvidia() ? 'default' : 'cpu', explicit: false };
+}
+
+/** Python request for a fresh venv; Windows on ARM needs the emulated x64 build. */
+export function managedPythonRequest(
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+): string {
+  return platform === 'win32' && arch === 'arm64' ? WIN_ARM64_PYTHON_REQUEST : '3.11';
+}
+
+/** The lock's CUDA-only runtime wheels: every `nvidia-*` package but the tiny NVML binding. */
+export function cudaOnlyPackages(lockText: string): string[] {
+  const names = new Set<string>();
+  for (const match of lockText.matchAll(/^name = "(nvidia-[a-z0-9-]+)"$/gm)) {
+    if (match[1] !== 'nvidia-ml-py') names.add(match[1]!);
+  }
+  return [...names].sort();
+}
+
+async function dependencyStamp(
+  bundle: string,
+  variant: TorchVariant = resolveTorchVariant().variant,
+): Promise<string> {
   const hash = createHash('sha256');
   hash.update(RUNTIME_SCHEMA);
-  if (process.env.OMNIVOICE_TORCH_VARIANT?.trim().toLowerCase() === 'rocm') {
-    hash.update(':torch=rocm');
-  }
+  if (variant === 'rocm') hash.update(':torch=rocm');
+  if (variant === 'cpu') hash.update(':torch=cpu');
   for (const file of ['pyproject.toml', 'uv.lock']) hash.update(await readFile(join(bundle, file)));
   return hash.digest('hex');
+}
+
+/**
+ * Markers proving the installed environment fits this host's torch flavour.
+ * An inferred CPU choice also accepts a pre-existing default (CUDA) environment:
+ * it runs fine on CPU and must not be discarded just because this version learned
+ * to pick a smaller download. The reverse is not true: a CPU environment on a
+ * host that has since gained an NVIDIA driver is stale and needs reinstalling.
+ */
+async function acceptedStamps(bundle: string): Promise<string[]> {
+  const choice = resolveTorchVariant();
+  const stamps = [await dependencyStamp(bundle, choice.variant)];
+  if (choice.variant === 'cpu' && !choice.explicit) {
+    stamps.push(await dependencyStamp(bundle, 'default'));
+  }
+  return stamps;
 }
 
 interface Cudnn8Probe {
@@ -329,7 +484,9 @@ export async function runtimeReady(bundle: string, project: string): Promise<boo
     return (
       (await stat(runtimePython(project))).isFile() &&
       (await stat(join(project, '.venv', 'pyvenv.cfg'))).isFile() &&
-      (await readFile(join(project, '.runtime-ready'), 'utf8')) === (await dependencyStamp(bundle))
+      (await acceptedStamps(bundle)).includes(
+        await readFile(join(project, '.runtime-ready'), 'utf8'),
+      )
     );
   } catch {
     return false;
@@ -364,8 +521,10 @@ export async function runtimeCompatible(bundle: string, project: string): Promis
       bundledProject.equals(installedProject) &&
       bundledLock.equals(installedLock) &&
       (marker === null
-        ? process.env.OMNIVOICE_TORCH_VARIANT?.trim().toLowerCase() !== 'rocm'
-        : marker === (await dependencyStamp(bundle)))
+        ? // A Tauri environment carries the lock's default (CUDA) torch: fine for
+          // inferred CPU hosts, wrong for an explicit ROCm or CPU request.
+          !resolveTorchVariant().explicit || resolveTorchVariant().variant === 'default'
+        : (await acceptedStamps(bundle)).includes(marker))
     );
   } catch {
     return false;
@@ -418,11 +577,16 @@ export async function installRuntime(
     throw Object.assign(new Error('INTEL_MAC_UNSUPPORTED'), { code: 'INTEL_MAC_UNSUPPORTED' });
   }
   await mkdir(project, { recursive: true });
+  const torch = resolveTorchVariant();
+  const requiredBytes = torch.variant === 'cpu' ? REQUIRED_CPU_ENV_BYTES : REQUIRED_ENV_BYTES;
   const disk = await statfs(project);
-  if (disk.bavail * disk.bsize < REQUIRED_ENV_BYTES) {
-    throw Object.assign(new Error('Runtime setup needs at least 9 GiB of free disk space.'), {
-      code: 'ENOSPC',
-    });
+  if (disk.bavail * disk.bsize < requiredBytes) {
+    throw Object.assign(
+      new Error(
+        `Runtime setup needs at least ${requiredBytes / 1024 ** 3} GiB of free disk space.`,
+      ),
+      { code: 'ENOSPC', requiredGib: requiredBytes / 1024 ** 3 },
+    );
   }
   const probe = join(project, `.write-probe-${randomUUID()}`);
   try {
@@ -490,7 +654,14 @@ export async function installRuntime(
     try {
       await run(
         runtimePython(project),
-        ['-c', 'import sys; assert sys.version_info[:2] == (3, 11)'],
+        [
+          '-c',
+          'import sys; assert sys.version_info[:2] == (3, 11)' +
+            // A native ARM64 interpreter cannot install torchaudio/torchvision.
+            (managedPythonRequest() === WIN_ARM64_PYTHON_REQUEST
+              ? "; import platform; assert platform.machine().upper() in ('AMD64', 'X86_64')"
+              : ''),
+        ],
         project,
       );
       existingPython = true;
@@ -524,21 +695,60 @@ export async function installRuntime(
   }
   const pythonArgs = existingPython
     ? ['--python', runtimePython(project)]
-    : ['--managed-python', '--python', '3.11'];
+    : ['--managed-python', '--python', managedPythonRequest()];
+  const cpuTorch = torch.variant === 'cpu';
   // A failed native import may leave distribution metadata intact, so uv's
   // ordinary sync would otherwise consider the broken wheel already satisfied.
-  const repairArgs = repairPackages.flatMap((name) => ['--reinstall-package', name]);
+  const torchPackages: readonly string[] = RUNTIME_REPAIR_PACKAGES;
+  // A CPU install never syncs the lock's CUDA torch, so its repair goes through
+  // the CPU pip install below instead of `uv sync --reinstall-package`.
+  const repairArgs = repairPackages
+    .filter((name) => !cpuTorch || !torchPackages.includes(name))
+    .flatMap((name) => ['--reinstall-package', name]);
   signal.throwIfAborted();
-  if (repairArgs.length) {
+  if (repairPackages.length) {
     // uv may hardlink installed files to its unpacked wheel cache. A corrupted
     // native file can therefore poison the cached copy too; evict only this
     // package from the app-private cache before reinstalling its locked wheel.
     await run(uv, ['cache', 'clean', ...repairPackages], project, env);
     signal.throwIfAborted();
   }
-  await run(uv, ['sync', '--frozen', '--no-dev', ...pythonArgs, ...repairArgs], project, env);
+  // The lock resolves torch to the CUDA build (and, on Linux, ~3 GB of nvidia-*
+  // runtime wheels) for every Linux/Windows x64 host. Keep those out of a CPU
+  // install; the CPU wheels are laid down right after the frozen sync.
+  const skipArgs = cpuTorch
+    ? [
+        ...torchPackages,
+        ...cudaOnlyPackages(await readFile(join(project, 'uv.lock'), 'utf8')),
+      ].flatMap((name) => ['--no-install-package', name])
+    : [];
+  await run(
+    uv,
+    ['sync', '--frozen', '--no-dev', ...pythonArgs, ...repairArgs, ...skipArgs],
+    project,
+    env,
+  );
   signal.throwIfAborted();
-  if (process.env.OMNIVOICE_TORCH_VARIANT?.trim().toLowerCase() === 'rocm') {
+  if (cpuTorch) {
+    await run(
+      uv,
+      [
+        'pip',
+        'install',
+        '--python',
+        runtimePython(project),
+        ...repairPackages
+          .filter((name) => torchPackages.includes(name))
+          .flatMap((name) => ['--reinstall-package', name]),
+        ...CPU_TORCH_PINS,
+        ...CPU_TORCH_ARGS,
+      ],
+      project,
+      env,
+    );
+    signal.throwIfAborted();
+  }
+  if (torch.variant === 'rocm') {
     await run(
       uv,
       [
@@ -561,7 +771,7 @@ export async function installRuntime(
   phase('verifying');
   await run(runtimePython(project), ['-c', RUNTIME_IMPORT_PROBE], project);
   signal.throwIfAborted();
-  await writeFile(join(project, '.runtime-ready'), await dependencyStamp(bundle));
+  await writeFile(join(project, '.runtime-ready'), await dependencyStamp(bundle, torch.variant));
   await rm(join(project, '.runtime-installing'), { force: true });
 }
 

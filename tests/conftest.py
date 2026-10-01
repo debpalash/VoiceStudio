@@ -54,6 +54,12 @@ os.environ["OMNIVOICE_MODEL"] = "test"
 # shell must not re-enable it; a test that wants the warm-up monkeypatches.
 os.environ["OMNIVOICE_PRELOAD_WATERMARK"] = "0"
 
+# Physical-GPU inventory (core.gpu_inventory) reads the OS registry / sysfs. A
+# developer's own AMD/NVIDIA card must not change what a routing or probe test
+# resolves, so the suite sees a GPU-less inventory; the inventory's own tests
+# call its readers directly with fakes.
+os.environ["OMNIVOICE_DISABLE_GPU_INVENTORY"] = "1"
+
 
 # ── Test fixtures ──────────────────────────────────────────────────────────
 

@@ -506,6 +506,7 @@ export class BackendSupervisor extends EventEmitter<{
   private supervisingGeneration: number | null = null;
   private shuttingDown = false;
   private setupIssue: BackendStatus['setupIssue'];
+  private setupRequiredGib: number | undefined;
   private runtimeInterrupted = false;
   private setupPhase: BackendStatus['setupPhase'] = 'checking';
   private readonly setupProgress = new SetupProgressTracker();
@@ -561,6 +562,8 @@ export class BackendSupervisor extends EventEmitter<{
         : {}),
     };
     if (this.stage === 'setup_required' && this.setupIssue) status.setupIssue = this.setupIssue;
+    if (this.stage === 'setup_required' && this.setupIssue === 'space' && this.setupRequiredGib)
+      status.setupRequiredGib = this.setupRequiredGib;
     if (this.stage === 'setup_required' && this.runtimeInterrupted)
       status.runtimeInterrupted = true;
     if (this.stage === 'installing') {
@@ -723,6 +726,7 @@ export class BackendSupervisor extends EventEmitter<{
     this.log.length = 0;
     this.childLog.length = 0;
     this.setupIssue = undefined;
+    this.setupRequiredGib = undefined;
     this.runtimeInterrupted = false;
     this.setupPhase = 'checking';
     this.setupProgress.reset();
@@ -834,6 +838,8 @@ export class BackendSupervisor extends EventEmitter<{
               : ['EACCES', 'EPERM', 'EROFS'].includes(code || '')
                 ? 'access'
                 : undefined;
+        this.setupRequiredGib =
+          code === 'ENOSPC' ? (error as { requiredGib?: number }).requiredGib : undefined;
         this.runtimeInterrupted = await runtimeInstallInterrupted(project);
         this.pushLog('err', errorMessage(error));
         this.setStage('setup_required', { message: errorMessage(error) });
@@ -885,6 +891,7 @@ export class BackendSupervisor extends EventEmitter<{
     }
     if (gen !== this.generation) return;
     this.setupIssue = undefined;
+    this.setupRequiredGib = undefined;
     this.runtimeInterrupted = false;
     this.setupPhase = 'checking';
     this.message = undefined;

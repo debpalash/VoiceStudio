@@ -14,6 +14,59 @@ Use `bun run desktop-prod` to build and launch Electron, or `bun run dist`
 to create local installers without publishing. The app manages its backend.
 See [Electron setup](../../electron/README.md) and [migration notes](../electron-migration.md).
 
+### Windows installers
+
+Download the installer matching your PC from the
+[Releases page](https://github.com/debpalash/VoiceStudio/releases/latest):
+
+| PC | Installer |
+|---|---|
+| Intel / AMD (x64) | `VoiceStudio-Electron-<version>-win-x64.exe` |
+| Windows on ARM (Snapdragon X etc., experimental) | `VoiceStudio-Electron-<version>-win-arm64.exe` (releases without it: the x64 installer also works, under emulation) |
+
+`irm https://voicestudio.sh/install | iex` picks the right one automatically.
+
+### PCs without an NVIDIA GPU
+
+VoiceStudio is fully usable without a dedicated GPU: laptops with Intel or AMD
+integrated graphics, Ryzen/Ryzen AI parts and older desktops all run the whole
+app on the CPU, just slower (integrated graphics are not used for AI work).
+On first run the runtime installer detects that no NVIDIA driver is present and
+installs the small CPU build of PyTorch instead of the multi-GB CUDA one, so
+the download is much smaller and needs about 5 GiB free instead of 9 GiB. For
+the best experience on a CPU, pick a light voice engine (KittenTTS,
+Supertonic-3, PocketTTS) and a small Whisper model in the Model Catalogue; the
+setup screen lists them as its CPU preset. Set `OMNIVOICE_TORCH_VARIANT=cuda`
+(or `cpu`) before launching to override the detection.
+
+### Windows on ARM (Snapdragon X etc.)
+
+> [!NOTE]
+> **Experimental.** The ARM64 installer and the emulated runtime are built by
+> CI but have not yet passed an end-to-end validation on real hardware. Expect
+> rough edges and please report them.
+
+The app shell is native ARM64. PyTorch has no ARM64 Windows wheels for
+torchaudio/torchvision, so the AI backend runs as an **x64 Python under
+Windows' built-in emulation, on the CPU only** (no GPU or NPU acceleration).
+It is designed to work but will be slower than on an x64 PC; Windows 11 24H2
+or newer gives the emulator the AVX2 support PyTorch benefits from. Setup shows
+a "Windows on ARM" notice and applies the same light-engine advice as above.
+
+### Everything on an external drive (portable-style use)
+
+The Electron app has no single-file portable build. To keep it all on another
+drive (for example an external SSD):
+
+1. Run the installer and choose the external drive on its **Installation
+   Folder** page.
+2. On the setup screen, press **Change…** beside **App environment** to put the
+   Python environment on the drive.
+3. In **Settings > Storage**, move the application data folder (voices,
+   projects, settings) and the model cache to the drive.
+
+The drive must be connected when VoiceStudio starts.
+
 ## Legacy Tauri installation and troubleshooting
 
 The instructions below apply to the sunset Tauri app and existing Tauri installers.
@@ -28,7 +81,8 @@ working VoiceStudio install on Windows 10 / 11 (x64).
 - **Windows 10 (21H2 or newer) or Windows 11**, x64.
 - **~10 GB free disk** for the app, its Python environment, and model weights.
 - Optional: an **NVIDIA GPU + driver** for CUDA acceleration — see
-  [GPU support on Windows](#gpu-support). AMD GPUs run CPU-only on Windows.
+  [GPU support on Windows](#gpu-support). AMD GPUs do not accelerate PyTorch
+  engines on Windows (audio.cpp can use them via Vulkan).
 
 That's it — Python, FFmpeg, and the model weights are bundled or bootstrapped
 by the app itself on first launch. No toolchain needed.
@@ -56,16 +110,38 @@ Everything above, plus the toolchain:
 
 <a id="gpu-support"></a>
 
-**GPU acceleration on Windows is NVIDIA/CUDA-only.** The Windows install
+**PyTorch GPU acceleration on Windows is NVIDIA/CUDA-only.** The Windows install
 ships the CUDA build of PyTorch; with an NVIDIA GPU and a regular NVIDIA
 driver it's picked up automatically (no CUDA Toolkit install needed).
 
-**AMD GPUs — including Ryzen / Ryzen AI integrated Radeon graphics — run
-CPU-only on Windows.** ROCm is not supported on Windows: PyTorch publishes no
-Windows ROCm wheels, and VoiceStudio's ROCm option is Linux-only. (The Ryzen AI
-NPU is likewise not used.) Everything still works on CPU, just slower. If you
-have an AMD GPU and want GPU acceleration, run VoiceStudio on Linux instead —
-see [linux.md — AMD GPU (ROCm)](linux.md#amd-gpu-rocm).
+**AMD GPUs — including Ryzen / Ryzen AI integrated Radeon graphics — do not
+accelerate PyTorch engines on Windows.** The runtime has PyTorch 2.8 as either
+the NVIDIA CUDA build or (with no NVIDIA driver present) the CPU-only build;
+neither can drive a Radeon card, so those engines run on the CPU. pytorch.org publishes no Windows ROCm wheels, and VoiceStudio's ROCm
+option (`OMNIVOICE_TORCH_VARIANT=rocm`) is Linux-only — it is ignored on Windows
+rather than failing setup. (The Ryzen AI NPU is likewise not used.) Everything
+still works on CPU, just slower. What you can do today:
+
+- **Use an engine with its own GPU runtime.** [audio.cpp](../engines/audio-cpp.md)
+  (Breeze-TTS-2) ships a Vulkan build that runs on Radeon GPUs: install the
+  runtime from **Settings → Models**. VoiceStudio picks the discrete GPU
+  automatically.
+- **Run on Linux** (native, or the ROCm Docker image) for ROCm acceleration of
+  the PyTorch engines — see [linux.md — AMD GPU (ROCm)](linux.md#amd-gpu-rocm).
+- **Advanced / unsupported: AMD's own Windows ROCm wheels.** AMD publishes
+  PyTorch ROCm wheels for Windows (`https://repo.amd.com/rocm/whl-multi-arch/`,
+  Python 3.11–3.14, RDNA 3 / RDNA 4 cards such as the RX 7000 and RX 9000 series).
+  They are PyTorch 2.9 or newer, not the 2.8 the engines here are validated
+  against, and faster-whisper (CTranslate2) needs its own separate HIP build for
+  the GPU, so expect parts of the app (WhisperX is a reported example) to break. VoiceStudio does not install them, and no engine
+  parity is claimed. DirectML is not an option either: `torch-directml` needs
+  PyTorch 2.4.
+
+**Settings → Performance → GPU acceleration** shows exactly what applies to your
+machine: the GPUs Windows reports, which PyTorch build is installed, and a
+verdict for every engine (uses the GPU, runs on the CPU and why, or CPU by
+design). **Settings → About → Run self-check** names the card instead of just
+saying "no GPU acceleration detected".
 
 ## Install (from source)
 

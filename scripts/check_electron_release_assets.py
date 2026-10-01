@@ -24,6 +24,14 @@ TARGETS = {
     "win32-x64": ("win32-x64", "win", "x64", ".exe"),
 }
 
+# Targets whose build leg is allowed to fail without blocking a release
+# (continue-on-error in the workflow matrix). They are verified in full as soon
+# as any trace of them is published, and skipped only when entirely absent, so
+# a half-published feed still fails closed.
+OPTIONAL_TARGETS = {
+    "win32-arm64": ("win32-arm64", "win", "arm64", ".exe"),
+}
+
 
 class ReleaseContractError(RuntimeError):
     """The published release cannot safely serve an Electron update."""
@@ -62,9 +70,19 @@ def verify_release(
 
     assets = _asset_map(release)
     verified: list[str] = []
-    for target, (manifest_target, os_token, arch, extension) in TARGETS.items():
+    for target, (manifest_target, os_token, arch, extension) in {
+        **TARGETS,
+        **OPTIONAL_TARGETS,
+    }.items():
         manifest_name = f"electron-{channel}-{manifest_target}.yml"
         manifest_path = manifest_dir / manifest_name
+        if target in OPTIONAL_TARGETS:
+            # Skip only when NOTHING of this target is published: an installer
+            # or blockmap without its manifest is an incomplete release.
+            payload = f"VoiceStudio-Electron-{version}-{os_token}-{arch}{extension}"
+            traces = (manifest_name, payload, f"{payload}.blockmap")
+            if not manifest_path.is_file() and not any(name in assets for name in traces):
+                continue
         if not manifest_path.is_file():
             raise ReleaseContractError(f"missing downloaded manifest: {manifest_name}")
         manifest_asset = assets.get(manifest_name)
@@ -103,7 +121,7 @@ def verify_release(
             raise ReleaseContractError(f"published size does not match {artifact}")
         if not str(artifact_asset.get("digest") or "").startswith("sha256:"):
             raise ReleaseContractError(f"published payload has no GitHub digest: {artifact}")
-        if target == "win32-x64" and f"{artifact}.blockmap" not in assets:
+        if target.startswith("win32-") and f"{artifact}.blockmap" not in assets:
             raise ReleaseContractError(f"release is missing differential blockmap: {artifact}.blockmap")
         verified.append(f"{manifest_name} -> {artifact}")
     return verified

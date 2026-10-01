@@ -223,7 +223,12 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                 {status.message === 'VOICESTUDIO_PROXY_BYPASS_UNSUPPORTED'
                   ? t('backend.proxy_bypass_help')
                   : setup
-                    ? t(status.setupIssue ? `backend.setup_${status.setupIssue}` : 'backend.failed')
+                    ? t(
+                        status.setupIssue ? `backend.setup_${status.setupIssue}` : 'backend.failed',
+                        {
+                          gib: status.setupRequiredGib ?? 9,
+                        },
+                      )
                     : status.message}
               </p>
             ) : null}

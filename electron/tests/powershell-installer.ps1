@@ -25,6 +25,7 @@ $script:corrupt = $false
 $script:cancel = $false
 $script:rateLimited = $false
 $script:legacyResponse = $false
+$script:noArmAsset = $false
 function Invoke-RestMethod($Uri) {
     $script:urls.Add($Uri)
     if ($script:rateLimited) { throw 'GitHub quota exceeded' }
@@ -32,6 +33,7 @@ function Invoke-RestMethod($Uri) {
 }
 function Invoke-WebRequest($Uri, $OutFile, [switch]$UseBasicParsing) {
     $script:urls.Add($Uri)
+    if ($script:noArmAsset -and $Uri -like '*win-arm64*') { throw '404 Not Found' }
     if ($Uri.EndsWith('/latest')) {
         $target = [uri]'https://github.com/debpalash/VoiceStudio/releases/tag/v1.2.3'
         if ($script:legacyResponse) { return @{ BaseResponse = @{ ResponseUri = $target } } }
@@ -62,6 +64,22 @@ foreach ($version in @('', 'v1.0.0')) {
     if ($version -and ($script:urls -match '/latest')) { throw 'Pinned version consulted latest' }
     if (Test-Path $script:downloaded) { throw 'Temporary installer not cleaned up' }
 }
+# Windows on ARM prefers the native build and falls back to x64 (emulated) when a
+# release has no ARM64 installer. PROCESSOR_ARCHITEW6432 covers an emulated x64
+# PowerShell on ARM hardware.
+foreach ($armEnv in @(@('ARM64', ''), @('AMD64', 'ARM64'))) {
+    $env:PROCESSOR_ARCHITECTURE = $armEnv[0]; $env:PROCESSOR_ARCHITEW6432 = $armEnv[1]
+    $script:noArmAsset = $false; $script:urls.Clear(); $script:launched = $false
+    & $installer -Version '1.0.0'
+    if (-not $script:launched) { throw 'ARM64 setup was not launched' }
+    if (-not ($script:urls -match 'download/v1\.0\.0/VoiceStudio-Electron-1\.0\.0-win-arm64\.exe')) { throw 'ARM64 host must install the native build' }
+    $script:noArmAsset = $true; $script:urls.Clear(); $script:launched = $false
+    & $installer -Version '1.0.0'
+    if (-not $script:launched) { throw 'ARM64 fallback did not launch setup' }
+    if (-not ($script:urls -match 'download/v1\.0\.0/VoiceStudio-Electron-1\.0\.0-win-x64\.exe')) { throw 'ARM64 host must fall back to the x64 build' }
+}
+$script:noArmAsset = $false
+$env:PROCESSOR_ARCHITECTURE = 'AMD64'; $env:PROCESSOR_ARCHITEW6432 = ''
 $script:rateLimited = $true
 foreach ($legacy in @($true, $false)) {
     $script:legacyResponse = $legacy

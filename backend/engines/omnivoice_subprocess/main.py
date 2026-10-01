@@ -166,6 +166,8 @@ def _load_model(stdout):
     OmniVoice = _lazy_omnivoice()
     checkpoint = resolve_omnivoice_checkpoint()
     device = get_best_device()
+    from omnivoice.utils.dtype import tts_dtype_name
+
     preload_asr = should_preload_tts_asr()
 
     lid = register_listener(_on_progress)
@@ -177,7 +179,8 @@ def _load_model(stdout):
     heartbeat.start()
     try:
         _model = OmniVoice.from_pretrained(
-            checkpoint, device_map=device, dtype=torch.float16, load_asr=preload_asr,
+            checkpoint, device_map=device,
+            dtype=getattr(torch, tts_dtype_name(device)), load_asr=preload_asr,
         )
     finally:
         stop_heartbeat.set()
