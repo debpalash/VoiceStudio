@@ -75,16 +75,22 @@ async function fetchWithin(
   url: string,
   init: RequestInit,
   timeoutMs: number,
-): Promise<Response> {
+  expectedStatus?: number,
+): Promise<{ ok: boolean; status: number; payload: Record<string, unknown> | null }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetcher(url, {
+    const response = await fetcher(url, {
       ...init,
       cache: 'no-store',
       redirect: 'error',
       signal: controller.signal,
     });
+    // Fetch resolves at headers; keep the deadline armed through JSON reads.
+    const accepted =
+      expectedStatus === undefined ? response.ok : response.status === expectedStatus;
+    const payload = accepted ? await readObject(response) : null;
+    return { ok: response.ok, status: response.status, payload };
   } finally {
     clearTimeout(timer);
   }
@@ -107,7 +113,7 @@ export async function probeRemoteBackend(
     if (!healthResponse.ok) {
       return { ok: false, kind: 'http', status: healthResponse.status, target };
     }
-    const health = await readObject(healthResponse);
+    const health = healthResponse.payload;
     if (
       !health ||
       health.status !== 'ok' ||
@@ -133,6 +139,7 @@ export async function probeRemoteBackend(
           body: JSON.stringify({ transport: 'bearer' }),
         },
         timeoutMs,
+        201,
       );
       if (exchange.status !== 201) {
         return {
@@ -142,7 +149,7 @@ export async function probeRemoteBackend(
           target,
         };
       }
-      const payload = await readObject(exchange);
+      const payload = exchange.payload;
       const token = payload?.token;
       const relative = payload?.expires_in;
       if (
@@ -173,7 +180,7 @@ export async function probeRemoteBackend(
         target,
       };
     }
-    const info = await readObject(infoResponse);
+    const info = infoResponse.payload;
     if (!info || typeof info.app_version !== 'string') {
       return { ok: false, kind: 'wrong_port', target };
     }
@@ -211,10 +218,11 @@ export async function remoteWebSocketUrl(
       body: JSON.stringify({ path }),
     },
     timeoutMs,
+    201,
   );
   if (response.status !== 201)
     throw new Error(`Could not authorize WebSocket (HTTP ${response.status})`);
-  const payload = await readObject(response);
+  const payload = response.payload;
   const expiresIn = payload?.expires_in;
   if (
     typeof payload?.ticket !== 'string' ||
