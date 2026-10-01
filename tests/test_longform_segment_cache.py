@@ -115,7 +115,9 @@ def test_language_change_invalidates_chapter_and_segment_audio(tmp_path, keep_ch
     assert calls == [(first_language, "Hello."), (second_language, "Hello.")]
     assert first != second
     audio, _ = sf.read(second)
-    assert audio.max() == pytest.approx(0.2, abs=0.001)
+    # Compare the middle of the 2400-sample take: resampling can overshoot
+    # its edges, and the chapter may append silence after it.
+    assert audio[600:1800].mean() == pytest.approx(0.2, abs=0.001)
     _path, _dur, cached, stats = render(second_language, 0.3)
     assert cached is True
     assert stats is None
