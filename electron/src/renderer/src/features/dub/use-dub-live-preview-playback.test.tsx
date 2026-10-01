@@ -45,7 +45,7 @@ class Socket {
   frame(data: string | ArrayBuffer) { this.onmessage?.({ data }); }
 }
 
-const segment = { id: 'line', start: 0, end: 1, text: 'Hello', profile_id: 'voice' };
+const segment = { id: 'line', start: 0, end: 1, text: 'Hello', text_original: 'Hello', profile_id: 'voice' };
 let extraRelease: (() => void) | null = null;
 
 beforeEach(() => {
