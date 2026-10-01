@@ -170,3 +170,37 @@ def test_unload_unknown_sidecar_is_noop(echo):
     _spawn_alive(echo)
     assert unload_sidecar("does-not-exist") == 0
     assert echo._proc is not None and echo._proc.poll() is None  # untouched
+
+
+# ── SubprocessBackend.unload() must be the busy-guarded one ──────────────────
+
+def test_backend_unload_skips_busy_sidecar(echo):
+    """TTSBackend.unload() on a mid-synth sidecar must not kill it (MM2-02)."""
+    _spawn_alive(echo)
+    assert echo._lock.acquire(blocking=False)
+    try:
+        echo.unload()  # busy → skipped, not interrupted
+        assert echo._proc is not None and echo._proc.poll() is None
+    finally:
+        echo._lock.release()
+
+
+def test_backend_unload_routes_through_unload_sidecar(echo, monkeypatch):
+    seen = []
+    # tests/backend/conftest.py re-imports `services` between tests, so patch the
+    # globals of the module the class under test actually lives in.
+    monkeypatch.setitem(
+        SubprocessBackend.unload.__globals__, "unload_sidecar",
+        lambda engine_id: seen.append(engine_id) or 0,
+    )
+    shutdowns = []
+    monkeypatch.setattr(EchoBackend, "shutdown", lambda self: shutdowns.append(self.id))
+    echo.unload()
+    assert seen == [echo.id]
+    assert shutdowns == []  # the busy-guarded path, not a bare shutdown()
+
+
+def test_backend_unload_frees_idle_sidecar(echo):
+    _spawn_alive(echo)
+    echo.unload()
+    assert echo._proc is None or echo._proc.poll() is not None
