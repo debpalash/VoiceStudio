@@ -108,6 +108,7 @@ metadata and the backend fallback mirror it.
 - Low-disk notifications open Storage settings directly (#2407)
 
 - Preserve float audio and requested seeds through OmniVoice/VoxCPM2 sidecars, and keep playback and saved WAV precision consistent (#2406)
+- Reusing Clone takes restores their saved WAV precision and mastering controls (#2526) — thanks @rudycelekli!
 - Development launches rebuild main and preload changes so embedded website previews do not keep stale browser IPC after UI updates (#2407)
 
 - Dubbing reports damaged source files clearly and removes partial or failed copies when storage runs out (#2411)

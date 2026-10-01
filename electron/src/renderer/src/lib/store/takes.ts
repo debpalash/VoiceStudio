@@ -55,6 +55,10 @@ export function takeSettings(item: HistoryItem): Partial<TakeSettings> {
       if (typeof raw[name] === 'boolean') safe[name] = raw[name];
     for (const name of ['refText', 'duration'])
       if (typeof raw[name] === 'string') safe[name] = raw[name];
+    if (raw.wavBits === 16 || raw.wavBits === 24 || raw.wavBits === 32)
+      safe.wavBits = raw.wavBits;
+    if (raw.effectPreset === 'broadcast' || raw.effectPreset === 'raw')
+      safe.effectPreset = raw.effectPreset;
     return { ...safe, ...fallback };
   } catch {
     return fallback;
