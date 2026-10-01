@@ -1285,7 +1285,7 @@ async def _render_longform_sse(
 
         yield _emit({"type": "assembling"})
         meta_path = os.path.join(work, "chapters.ffmeta")
-        with open(meta_path, "w", encoding="utf-8") as f:
+        with open(meta_path, "w", encoding="utf-8", newline="") as f:
             f.write(build_ffmetadata(chapters_meta, global_meta=metadata))
         concat_path = os.path.join(work, "concat.txt")
         with open(concat_path, "w", encoding="utf-8") as f:

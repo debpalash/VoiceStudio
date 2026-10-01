@@ -113,6 +113,52 @@ def test_ffmetadata_escapes_special_chars():
     assert r"title=a\=b\;c\#d" in doc
 
 
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_ffmetadata_normalizes_line_endings_before_escaping(newline):
+    value = newline.join(["Opening =;#\\ paragraph.", "Closing paragraph."])
+    expected = build_ffmetadata([("Opening =;#\\ paragraph.\nClosing paragraph.", 1000)],
+                                {"description": "Opening =;#\\ paragraph.\nClosing paragraph."})
+    assert build_ffmetadata([(value, 1000)], {"description": value}) == expected
+    assert "\r" not in expected
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+@pytest.mark.parametrize("fmt", ["m4b", "mp3"])
+def test_rendered_metadata_retains_description_paragraphs(tmp_path, newline, fmt):
+    """Exercise the shipped chapter-WAV → mux path without synthesis."""
+    import json
+    import subprocess
+    import wave
+
+    from services.ffmpeg_utils import find_ffmpeg, find_ffprobe
+
+    ffmpeg, ffprobe = find_ffmpeg(), find_ffprobe()
+    if not ffmpeg or not ffprobe:
+        pytest.skip("ffmpeg and ffprobe required for metadata mux round trip")
+    audio = tmp_path / "chapter.wav"
+    with wave.open(str(audio), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(16000)
+        handle.writeframes(b"\0\0" * 16000)
+    concat = tmp_path / "chapters.txt"
+    concat.write_text(build_concat_list([str(audio)]), encoding="utf-8")
+    metadata = tmp_path / "chapters.ffmeta"
+    metadata.write_text(build_ffmetadata([("Chapter one", 1000)], {
+        "title": "My =;#\\ book",
+        "description": newline.join(["Opening =;#\\ paragraph.", "Closing paragraph."]),
+    }), encoding="utf-8", newline="")
+    output = tmp_path / f"book.{fmt}"
+    subprocess.run(build_render_cmd(ffmpeg, str(concat), str(metadata), str(output), fmt=fmt),
+                   check=True, capture_output=True, timeout=30)
+    probe = subprocess.run([ffprobe, "-v", "error", "-show_entries", "format_tags=title,comment",
+                            "-of", "json", str(output)],
+                           check=True, capture_output=True, timeout=30)
+    tags = json.loads(probe.stdout)["format"]["tags"]
+    assert tags["title"] == "My =;#\\ book"
+    assert tags["comment"] == "Opening =;#\\ paragraph.\nClosing paragraph."
+
+
 # ── concat list ─────────────────────────────────────────────────────────────
 
 def test_concat_list_quotes_and_escapes():
@@ -373,3 +419,53 @@ def test_render_cmd_off_emits_no_af_even_with_stray_measured():
 
     cmd2 = build_render_cmd("ffmpeg", "c.txt", "m.ff", "o.m4b")  # default: no loudness/measured
     assert "-af" not in cmd2
+
+
+@pytest.mark.parametrize("fmt", ["m4b", "mp3"])
+def test_public_renderer_retains_metadata_with_windows_newline_defaults(tmp_path, monkeypatch, fmt):
+    """Native full renderer, with Windows text-mode translation on any host."""
+    import asyncio
+    import builtins
+    import json
+    import subprocess
+    torch = pytest.importorskip("torch")
+    from api.routers import audiobook
+    from core.db import init_db
+    from services.audiobook import AudiobookPlan, Chapter, Span
+    from services.ffmpeg_utils import find_ffmpeg, find_ffprobe
+
+    if not find_ffmpeg() or not find_ffprobe():
+        pytest.skip("ffmpeg and ffprobe required for metadata mux round trip")
+    init_db()
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    monkeypatch.setattr("core.config.OUTPUTS_DIR", str(outputs))
+
+    def synth_factory(*args, **kwargs):
+        return {"mode": "generic", "engine_id": "stub", "sample_rate": 24000,
+                "resolve": lambda _: {"ref_audio": None, "ref_text": None,
+                                       "instruct": None, "seed": None},
+                "synth": lambda *args, **kwargs: torch.zeros(2400)}
+    monkeypatch.setattr(audiobook, "_build_synth", synth_factory)  # Model boundary only.
+    native_open = builtins.open
+
+    def windows_text_open(file, mode="r", *args, **kwargs):
+        if "w" in mode and "b" not in mode:
+            kwargs.setdefault("newline", "\r\n")
+        return native_open(file, mode, *args, **kwargs)
+    monkeypatch.setattr(audiobook, "open", windows_text_open, raising=False)
+
+    async def render():
+        plan = AudiobookPlan(chapters=[Chapter(title="One", spans=[Span(voice_id=None, text="Hello.")])])
+        return [json.loads(frame[len("data:"):].strip())
+                async for frame in audiobook._render_longform_sse(
+                    plan, default_voice=None, fmt=fmt,
+                    metadata={"description": "Opening paragraph.\r\nClosing paragraph."})]
+
+    events = asyncio.run(render())
+    assert events[-1]["type"] == "done", events
+    output = outputs / events[-1]["output"]
+    probe = subprocess.run([find_ffprobe(), "-v", "error", "-show_entries", "format_tags=comment",
+                            "-of", "json", str(output)],
+                           check=True, capture_output=True, timeout=30)
+    assert json.loads(probe.stdout)["format"]["tags"]["comment"] == "Opening paragraph.\nClosing paragraph."

@@ -66,7 +66,8 @@ _GLOBAL_TAG_KEYS: list[tuple[str, str]] = [
 
 def _escape_meta(value: str) -> str:
     """Escape an FFMETADATA value (``=``, ``;``, ``#``, ``\\``, newline)."""
-    return re.sub(r"([=;#\\\n])", r"\\\1", value or "")
+    value = (value or "").replace("\r\n", "\n").replace("\r", "\n")
+    return re.sub(r"([=;#\\\n])", r"\\\1", value)
 
 
 def prune_cache_dir(cache_dir: str, max_bytes: int = _CACHE_MAX_BYTES) -> tuple[int, int]:
