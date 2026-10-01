@@ -68,7 +68,9 @@ def test_relock_does_not_reuse_previous_take_audio(profile, tmp_path, keep_chapt
     assert first != second
     assert first_reference != second_reference
     assert not os.path.exists(os.path.join(voices, first_reference))
-    assert sf.read(second)[0].max() == pytest.approx(0.2, abs=0.001)
+    # Compare the middle of the 2400-sample take: resampling can overshoot
+    # its edges, and the chapter may append silence after it.
+    assert sf.read(second)[0][600:1800].mean() == pytest.approx(0.2, abs=0.001)
     served = client.get('/profiles/voice/audio')
     assert served.status_code == 200
     assert served.content == Path(voices, second_reference).read_bytes()
