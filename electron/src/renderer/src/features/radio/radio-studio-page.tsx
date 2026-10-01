@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { generateClone } from '@/lib/api/generate';
-import { apiFetch, describeError } from '@/lib/api/client';
+import { apiFetch, audioUrl, describeError } from '@/lib/api/client';
 import type { GenerateResult, Profile } from '@/lib/api/types';
 import { acquireSynthesis } from '@/lib/synthesis-lock';
 import { DEFAULT_CLONE_SETTINGS } from '@/lib/store/clone-settings';
@@ -170,13 +170,15 @@ export function RadioStudioPage() {
     }
   };
 
-  const buildInstruct = (profile: Profile): string => {
+  const buildInstruct = (profile: Profile, style: StylePreset): string => {
     const vocabulary = engines.activeTts?.instruct_vocabulary ?? 'tags';
-    if (vocabulary === 'freeform') return STYLE_PROMPTS[stylePreset];
+    if (vocabulary === 'freeform') {
+      return [profile.instruct?.trim(), STYLE_PROMPTS[style]].filter(Boolean).join(', ');
+    }
     return profile.instruct ?? '';
   };
 
-  const generateThree = async (reason = 'Generated') => {
+  const generateThree = async (reason = 'Generated', styleOverride?: StylePreset) => {
     if (!selectedProfile) {
       toast.error('Add or select a saved voice first.');
       return;
@@ -202,7 +204,8 @@ export function RadioStudioPage() {
 
     const previous = takes;
     const next: RadioTake[] = [];
-    const baseSeed = (Date.now() & 0x7fffffff) || 1;
+    const effectiveStyle = styleOverride ?? stylePreset;
+    const baseSeed = selectedProfile.seed ?? ((Date.now() & 0x7fffffff) || 1);
 
     try {
       for (let index = 0; index < TAKE_IDS.length; index += 1) {
@@ -217,7 +220,7 @@ export function RadioStudioPage() {
                 ? selectedProfile.language
                 : 'Arabic',
             profileId: selectedProfile.id,
-            instruct: buildInstruct(selectedProfile),
+            instruct: buildInstruct(selectedProfile, effectiveStyle),
             instructVocabulary: engines.activeTts?.instruct_vocabulary,
             seed,
             steps: Math.max(DEFAULT_CLONE_SETTINGS.steps, 24),
@@ -267,7 +270,10 @@ export function RadioStudioPage() {
       .filter(Boolean)
       .join('_');
     try {
-      const saved = await saveExport(selectedTake.objectUrl, stem + '.wav');
+      const source = selectedTake.result.audioPath
+        ? audioUrl(selectedTake.result.audioPath)
+        : selectedTake.objectUrl;
+      const saved = await saveExport(source, stem + '.wav');
       if (saved && !saved.canceled) toast.success('WAV exported');
     } catch (error) {
       toast.error(describeError(error));
@@ -278,7 +284,7 @@ export function RadioStudioPage() {
     const index = STYLE_PRESETS.indexOf(stylePreset);
     const next = STYLE_PRESETS[(index + 1) % STYLE_PRESETS.length];
     setStylePreset(next);
-    queueMicrotask(() => void generateThree('Style changed'));
+    void generateThree('Style changed', next);
   };
 
   const insertQuickText = (text: string) => {
@@ -338,43 +344,34 @@ export function RadioStudioPage() {
                   voices.slice(0, 6).map((profile) => {
                     const active = profile.id === selectedProfile?.id;
                     return (
-                      <button
+                      <div
                         key={profile.id}
-                        type="button"
                         className={cn(
                           'grid min-h-[70px] grid-cols-[1fr_40px] items-center gap-2 rounded-[14px] border px-3 text-right transition',
                           active
                             ? 'border-red-500/55 bg-[linear-gradient(90deg,rgba(227,6,19,.12),rgba(255,255,255,.025))] shadow-[inset_-3px_0_0_#e30613]'
                             : 'border-white/8 bg-white/[.02] hover:border-white/15 hover:bg-white/[.045]',
                         )}
-                        onClick={() => setSelectedProfileId(profile.id)}
                       >
-                        <span className="grid gap-1">
+                        <button
+                          type="button"
+                          className="grid min-w-0 gap-1 text-right"
+                          onClick={() => setSelectedProfileId(profile.id)}
+                        >
                           <span className="truncate text-sm font-bold">{profile.name}</span>
                           <span className="text-[11px] text-[#8ea0b5]">
                             {profile.name.toLowerCase().includes('news') ? 'News' : 'Imaging'} · Fixed
                           </span>
-                        </span>
-                        <span
-                          role="button"
-                          tabIndex={0}
+                        </button>
+                        <button
+                          type="button"
                           className="grid h-9 w-9 place-items-center rounded-xl border border-white/8 bg-white/[.035] text-[#dbe6f2] hover:border-red-500/40 hover:bg-red-500/10"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void previewProfile(profile);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              void previewProfile(profile);
-                            }
-                          }}
+                          onClick={() => void previewProfile(profile)}
                           aria-label={'Preview ' + profile.name}
                         >
                           <PlayIcon className="h-3.5 w-3.5 fill-current" />
-                        </span>
-                      </button>
+                        </button>
+                      </div>
                     );
                   })
                 ) : (
