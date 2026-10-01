@@ -213,7 +213,7 @@ None on the critical path to world-class. All are answers to real demand.
 | Voice memory across projects | ⏳ | After Phase 4 |
 | Context-aware pipeline (video frames → pipeline decisions) | ⏳ | After Phase 4 |
 | On-device learning from corrections (user edits → LoRA) | ⏳ | Research only; possibly Phase 5+ |
-| Real-time dub preview (stream TTS as you edit) | ✅ | Shipped 2026-09-02 (#1769) — opt-in "Live preview" toggle on the dub segment table streams the edited line over `/ws/tts` with its CAST voice; export path unchanged. |
+| Real-time dub preview (stream TTS as you edit) | ✅ | Shipped 2026-09-02 (#1769) — opt-in "Live preview" toggle on the dub segment table streams the edited line over `/ws/tts` with its CAST voice; stopping playback also closes the live stream and releases the synthesis slot; export path unchanged. |
 
 ### 🧪 Quality track _(🟡 underway)_
 

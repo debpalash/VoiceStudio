@@ -64,6 +64,36 @@ class SrtParseResult:
     dropped_overlaps: int        # cues that overlapped a kept one
 
 
+def webvtt_content_blocks(text: str, *, strict_blank: bool = False) -> list[str]:
+    """Split LF-normalised WebVTT into blocks, dropping non-cue metadata.
+
+    Metadata is block-scoped, never line-scoped: a ``NOTE`` block is a private
+    comment (a commented-out cue under it must not be dubbed), while a cue
+    line that merely *starts* with the word "NOTE" or "WEBVTT" is dialogue.
+    Shared by the uploaded-subtitle and downloaded-caption parsers so they
+    cannot drift apart (#2510). The leading ``WEBVTT`` header block is kept
+    for the caller.
+
+    ``strict_blank`` splits only on truly empty lines. Hand-edited uploads
+    treat a space-only line as a separator; platform rolling captions emit
+    ``" "`` lines *inside* a cue, which must not end it.
+    """
+    blocks = []
+    for block in re.split(r"\n\n" if strict_blank else r"\n[^\S\n]*\n", text):
+        lines = block.strip().split("\n")
+        first = lines[0].strip()
+        # WebVTT's block parser gives a timing line in position two
+        # precedence over the identifier, so STYLE/REGION can name a real
+        # cue (https://www.w3.org/TR/webvtt1/#file-parsing).
+        identifies_cue = len(lines) > 1 and _TIMING_RE.match(lines[1])
+        if re.match(r"NOTE(?:[ \t]|$)", first):
+            continue
+        if first in {"STYLE", "REGION"} and not identifies_cue:
+            continue
+        blocks.append(block)
+    return blocks
+
+
 def parse_srt(content: str) -> SrtParseResult:
     """Parse SRT text and return cleaned, non-overlapping segments.
 
@@ -85,22 +115,7 @@ def parse_srt(content: str) -> SrtParseResult:
     if is_webvtt:
         # Metadata is block-scoped. Filter it BEFORE scanning timings so an
         # example timestamp inside a NOTE/STYLE/REGION cannot become speech.
-        blocks = []
-        for block in re.split(r"\n[^\S\n]*\n", text):
-            lines = block.strip().split("\n")
-            first = lines[0].strip()
-            # WebVTT's block parser gives a timing line in position two
-            # precedence over the identifier, so STYLE/REGION can name a real
-            # cue (https://www.w3.org/TR/webvtt1/#file-parsing). A NOTE block
-            # is a private comment, never speech: a commented-out cue under
-            # it must not be dubbed.
-            identifies_cue = len(lines) > 1 and _TIMING_RE.match(lines[1])
-            if re.match(r"NOTE(?:[ \t]|$)", first):
-                continue
-            if first in {"STYLE", "REGION"} and not identifies_cue:
-                continue
-            blocks.append(block)
-        text = "\n\n".join(blocks)
+        text = "\n\n".join(webvtt_content_blocks(text))
     raw: list[dict] = []
     skipped = 0
     # Each cue source gets an id unique to this import. A later generate keeps

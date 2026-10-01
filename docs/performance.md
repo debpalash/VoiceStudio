@@ -196,6 +196,8 @@ chunks keep landing, up to three times its own budget or 30 minutes, whichever
 is longer (#2287). A render that finishes no chunk within 5 minutes after its
 budget is still abandoned.
 
+Subprocess-engine unload skips a sidecar while an operation holds its lock, including engine-switch unloads. An idle sidecar is released immediately and respawns on its next request. Explicit shutdown remains the termination path for application exit and failed operations.
+
 **Where it lives:**
 
 - **Top toolbar → Flush** (the button next to the model-status badge). The
