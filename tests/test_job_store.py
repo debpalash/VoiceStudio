@@ -74,15 +74,22 @@ def test_append_event_assigns_unique_seq_under_concurrency():
     duplicates landed silently and an SSE client reconnecting with
     `?after_seq=N` then replayed one event twice and skipped another.
 
-    The `INSERT … SELECT … RETURNING` that replaced it computes and writes the
-    next seq inside a single statement, which SQLite serializes behind the
-    write lock. Fail-before/pass-after: against the old two-step version the
-    barrier below reliably produces duplicate seq values.
+    The `INSERT … SELECT` that replaced it computes and writes the next seq
+    inside a single statement, which SQLite serializes behind the write lock.
+
+    The passing direction is deterministic — one statement cannot interleave —
+    so this can never flake red in CI. The failing direction is probabilistic:
+    the barrier only synchronizes *entry*, it cannot hold the old code inside
+    its read-then-write window, so a two-step implementation collides with high
+    probability but not with certainty. Reproduced here against the old version
+    on a real WAL database, where all callers came back with seq=1; widening the
+    window with a sleep between the SELECT and the INSERT makes it certain.
+    `UNIQUE(job_id, seq)` is the deterministic guard, and is its own change.
     """
     jid = _unique_id("race")
     job_store.create(jid, type="x")
 
-    workers = 8
+    workers = 16
     barrier = threading.Barrier(workers)
     lock = threading.Lock()
     returned: list[int] = []

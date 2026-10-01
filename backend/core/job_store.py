@@ -85,16 +85,35 @@ def append_event(job_id: str, payload: str) -> int:
 
     `payload` is the raw SSE line (e.g. `data: {...}\\n\\n`). The schema keeps
     it opaque so future event shapes don't require migrations.
+
+    The seq is computed inside the INSERT rather than by a preceding SELECT.
+    Each call opens its own connection and WAL lets a reader run while another
+    writer is mid-transaction, so a `SELECT COALESCE(MAX(seq), 0)` followed by a
+    separate INSERT let two concurrent callers read the same MAX and both write
+    it; `job_events` did not constrain the pair, so the duplicates persisted and
+    an SSE client reconnecting with `?after_seq=N` replayed one event twice and
+    skipped another. As one statement SQLite serializes it behind the write lock.
+
+    The seq is then read back by rowid rather than with `RETURNING`, which needs
+    SQLite 3.35+ (2021-03). Python only guarantees >= 3.11 here and its `sqlite3`
+    links whatever libsqlite3 the interpreter was built against — Debian 11 ships
+    3.34 and Ubuntu 20.04 ships 3.31 — and CI runs ubuntu-22.04/24.04, so a
+    RETURNING clause would fail only on a user's machine and never in CI. The
+    read-back is our own row, by primary key, on the same connection inside the
+    same transaction, so it costs nothing in correctness.
     """
     now = time.time()
     with db_conn() as conn:
-        row = conn.execute(
+        cur = conn.execute(
             "INSERT INTO job_events (job_id, seq, created_at, payload) "
-            "SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ? FROM job_events WHERE job_id = ? "
-            "RETURNING seq",
+            "SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ? FROM job_events WHERE job_id = ?",
             (job_id, now, payload, job_id),
-        ).fetchone()
-        next_seq = int(row["seq"])
+        )
+        next_seq = int(
+            conn.execute(
+                "SELECT seq FROM job_events WHERE id = ?", (cur.lastrowid,)
+            ).fetchone()["seq"]
+        )
         # Trim oldest beyond the cap. Cheap: bounded by _EVENT_CAP_PER_JOB.
         cnt = conn.execute(
             "SELECT COUNT(*) AS n FROM job_events WHERE job_id = ?",
