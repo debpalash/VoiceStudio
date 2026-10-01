@@ -67,7 +67,7 @@ def test_relock_does_not_reuse_previous_take_audio(profile, tmp_path, keep_chapt
     assert len(calls) == 2
     assert first != second
     assert first_reference != second_reference
-    assert not os.path.exists(os.path.join(voices, first_reference))
+    assert os.path.exists(os.path.join(voices, first_reference))
     # Compare the middle of the 2400-sample take: resampling can overshoot
     # its edges, and the chapter may append silence after it.
     assert sf.read(second)[0][600:1800].mean() == pytest.approx(0.2, abs=0.001)
@@ -104,3 +104,47 @@ def test_relock_keeps_a_reference_still_used_by_another_profile(profile):
     assert response.status_code == 200
     assert response.json()['locked_audio_path'] != initial
     assert Path(voices, initial).read_bytes() == original
+
+
+def test_existing_longform_voice_snapshot_survives_relock(profile):
+    from api.routers.audiobook import _build_synth
+    client, _db, voices = profile
+    first = client.post('/profiles/voice/lock', data={'history_id': 'first'}).json()
+    # Real longform resolver caches the reference before a worker reads it.
+    running = _build_synth(default_voice='voice')
+    before = running['resolve']('voice')
+    old_bytes = Path(before['ref_audio']).read_bytes()
+    response = client.post('/profiles/voice/lock', data={'history_id': 'second'})
+    assert response.status_code == 200
+    assert response.json()['locked_audio_path'] != first['locked_audio_path']
+    saved = running['resolve']('voice')
+    assert saved['ref_audio'] == before['ref_audio']
+    assert Path(saved['ref_audio']).read_bytes() == old_bytes
+    assert sf.read(saved['ref_audio'])[0].mean() == pytest.approx(0.1, abs=0.001)
+
+
+def test_explicit_profile_deletion_reclaims_retained_locked_versions(profile):
+    client, _db, voices = profile
+    versions = []
+    for take in ('first', 'second'):
+        versions.append(client.post('/profiles/voice/lock', data={'history_id': take}).json()['locked_audio_path'])
+    assert all(Path(voices, name).exists() for name in versions)
+    unrelated = Path(voices, 'voice_locked_not-a-generated-version.wav')
+    unrelated.write_bytes(b'unrelated')
+    response = client.delete('/profiles/voice')
+    assert response.status_code == 200, response.text
+    assert not any(Path(voices, name).exists() for name in versions)
+    assert unrelated.read_bytes() == b'unrelated'
+
+
+def test_explicit_deletion_preserves_a_retained_version_shared_by_another_profile(profile):
+    client, db, voices = profile
+    old = client.post('/profiles/voice/lock', data={'history_id': 'first'}).json()['locked_audio_path']
+    with db.db_conn() as conn:
+        conn.execute("INSERT INTO voice_profiles(id,name,ref_audio_path) VALUES(?,?,?)", ('shared', 'Shared', old))
+    latest = client.post('/profiles/voice/lock', data={'history_id': 'second'}).json()['locked_audio_path']
+    response = client.delete('/profiles/voice')
+    assert response.status_code == 200
+    assert Path(voices, old).exists()
+    assert not Path(voices, latest).exists()
+    assert client.get('/profiles/shared/audio').status_code == 200

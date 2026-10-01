@@ -863,7 +863,9 @@ async def lock_profile(
             with contextlib.suppress(OSError):
                 os.remove(staged_path)
         finalize()
-        _remove_voice_file(profile["locked_audio_path"], keep=locked_filename)
+        # Existing renders may have cached the previous filename before their
+        # engine reads it. Keep immutable locked versions until profile deletion;
+        # a database reference check cannot identify those in-flight readers.
     event_bus.emit("profiles", {"action": "locked", "id": profile_id})
     return {"locked": True, "profile_id": profile_id, "locked_audio_path": locked_filename}
 
@@ -1020,6 +1022,11 @@ def revoke_consent(profile_id: str):
 
 @router.delete("/profiles/{profile_id}")
 def delete_profile(profile_id: str):
+    with _voice_file_lock:
+        return _delete_profile(profile_id)
+
+
+def _delete_profile(profile_id: str):
     paths = []
     with db_conn() as conn:
         row = conn.execute("SELECT ref_audio_path, locked_audio_path, consent_audio_path FROM voice_profiles WHERE id=?", (profile_id,)).fetchone()
@@ -1029,6 +1036,16 @@ def delete_profile(profile_id: str):
                     path = _voices_path(row[col])
                     if path:
                         paths.append(path)
+        if row:
+            # Relocking retains immutable versions for already-admitted renders.
+            # Explicit deletion reclaims only this profile's generated names.
+            versions = re.compile(re.escape(profile_id) + r"_locked(?:_[0-9a-f]{32})?\.wav")
+            if os.path.isdir(VOICES_DIR):
+                for filename in os.listdir(VOICES_DIR):
+                    if versions.fullmatch(filename):
+                        path = _voices_path(filename)
+                        if path:
+                            paths.append(path)
         portrait_path = _voices_path(f"{profile_id}.portrait.jpg")
         if portrait_path and os.path.isfile(portrait_path):
             paths.append(portrait_path)
@@ -1038,6 +1055,14 @@ def delete_profile(profile_id: str):
         conn.execute("DELETE FROM voice_profiles WHERE id=?", (profile_id,))
     failed_assets = []
     for path in dict.fromkeys(paths):
+        filename = os.path.basename(path)
+        with db_conn() as conn:
+            shared = conn.execute(
+                "SELECT 1 FROM voice_profiles WHERE ref_audio_path=? OR locked_audio_path=? "
+                "OR consent_audio_path=? LIMIT 1", (filename, filename, filename),
+            ).fetchone()
+        if shared:
+            continue
         try:
             os.remove(path)
         except FileNotFoundError:

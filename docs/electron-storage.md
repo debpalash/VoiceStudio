@@ -21,3 +21,5 @@ Remove all data scans the backend data root, Electron runtime/configuration, log
 Interrupted sidecar installs without an environment remain included in application data. Completed sidecar environments, checkouts and weights are counted once in the engine category.
 
 An unreadable engine directory or entry produces an incomplete report and a warning; unavailable bytes are not presented as a complete empty footprint.
+
+Re-locking keeps prior immutable locked-reference clips for renders that already captured their filenames. These clips remain in the voices folder for the lifetime of the profile; explicit profile deletion reclaims its generated versions after committing the record deletion, while preserving versions still referenced by another profile. Repeated locks can therefore use additional local storage until the profile is deleted.
