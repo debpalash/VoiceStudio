@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -139,4 +139,50 @@ it('records nothing without a longform cache and is idempotent', async () => {
     await readFile(join(target, 'outputs', 'longform_cache', 'voices_roots.json'), 'utf8'),
   );
   expect(roots).toEqual([join(source, 'voices')]);
+});
+
+it('relocates data into an existing empty native-picked directory', async () => {
+  const { root, source, target } = await fixture();
+  await mkdir(target);
+  const env = join(root, 'config', 'env');
+  const stages: string[] = [];
+  const result = await relocateDataDirectory(source, target, {
+    environmentPath: env,
+    stop: async () => undefined,
+    start: async () => undefined,
+    verify: async (path) => (await readFile(join(path, 'omnivoice.db'), 'utf8')) === 'database',
+    progress: (stage) => stages.push(stage),
+  });
+  expect(result.removed_source).toBe(true);
+  expect(await readFile(join(target, 'voices', 'sample.wav'), 'utf8')).toBe('voice');
+  expect(await readDataDirectorySetting(env)).toBe(target);
+  expect(existsSync(source)).toBe(false);
+  expect(stages).toContain('done');
+});
+
+it('preserves a destination populated after inspection while staging the copy', async () => {
+  const { source, target } = await fixture();
+  await mkdir(target);
+  // Observe the real staging directory while asynchronous filesystem work
+  // yields; neither copy nor directory removal is replaced by a test double.
+  let populated = false;
+  let observing = true;
+  const observe = () => {
+    if (!observing || populated) return;
+    if (readdirSync(dirname(target)).some((name) => name.includes('.voicestudio-moving-'))) {
+      writeFileSync(join(target, 'personal.txt'), 'keep');
+      populated = true;
+    } else {
+      setImmediate(observe);
+    }
+  };
+  setImmediate(observe);
+  try {
+    await expect(prepareDataRelocation(source, target)).rejects.toThrow();
+    expect(populated).toBe(true);
+    expect(await readFile(join(target, 'personal.txt'), 'utf8')).toBe('keep');
+    expect(await readFile(join(source, 'omnivoice.db'), 'utf8')).toBe('database');
+  } finally {
+    observing = false;
+  }
 });

@@ -88,6 +88,8 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
+- Allow application-data relocation into existing empty folders without removing files added during copying (#2521) — thanks @rudycelekli!
+
 - Count interrupted sidecar installs and report unreadable engine scans in Storage usage (#2479) — thanks @rudycelekli!
 - Dub assembly, cached segments and audio tools can read generated WAV files when TorchCodec is missing or cannot load (#2379) — thanks @tokutei58301-boop!
 - Remote API-key and share-PIN clients can record and read export history while native filesystem operations stay local (#2383, #2384) — thanks @sedatdagg!
