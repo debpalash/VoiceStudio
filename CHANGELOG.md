@@ -38,6 +38,8 @@ metadata and the backend fallback mirror it.
 
 ### Added
 
+- NAS Radio Voice Studio becomes the default full-screen workspace on the NAS development line, with fixed saved voices, Iraqi broadcast presets, sequential three-take generation, preview, and WAV export.
+
 - MCP agents can design a voice from a text description and reuse it by `profile_id` (`describe_voice`, `design_voice`) (#2368) — thanks @thelselutopia!
 - Dictation vocabulary hint in Settings → Dictation shortcut: names and jargon that Faster Whisper, MLX Whisper and OpenAI-compatible engines should expect (#2395) — thanks @m061i6!
 - Cheaper Inference is available as an optional LLM provider (#2325) — thanks @aiapienthusiast!
