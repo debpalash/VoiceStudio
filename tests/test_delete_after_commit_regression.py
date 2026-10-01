@@ -207,9 +207,11 @@ def test_successful_relock_installs_new_take_and_drops_backup(profile, monkeypat
         conn.execute(
             "INSERT INTO generation_history(id, text, audio_path) VALUES('h','t','take.wav')"
         )
-    asyncio.run(profiles.lock_profile("voice", history_id="h", seed=1))
-    assert (profile / "voice_locked.wav").read_bytes() == b"new-take"
-    assert sorted(p.name for p in profile.iterdir() if "locked" in p.name) == ["voice_locked.wav"]
+    result = asyncio.run(profiles.lock_profile("voice", history_id="h", seed=1))
+    current = result["locked_audio_path"]
+    assert current != "voice_locked.wav"
+    assert (profile / current).read_bytes() == b"new-take"
+    assert sorted(p.name for p in profile.iterdir() if "locked" in p.name) == [current]
 
 
 def test_install_staged_restores_previous_file(tmp_path):

@@ -834,7 +834,8 @@ async def lock_profile(
         if not src_path.is_file():
             raise HTTPException(status_code=404, detail="Audio file not found on disk")
 
-        locked_filename = f"{profile_id}_locked.wav"
+        # A new take must change reference identity even if text and seed match.
+        locked_filename = f"{profile_id}_locked_{uuid.uuid4().hex}.wav"
         locked_path = _voices_path(locked_filename)
         if locked_path is None:
             raise HTTPException(status_code=400, detail="Invalid profile id")
@@ -862,6 +863,7 @@ async def lock_profile(
             with contextlib.suppress(OSError):
                 os.remove(staged_path)
         finalize()
+        _remove_voice_file(profile["locked_audio_path"], keep=locked_filename)
     event_bus.emit("profiles", {"action": "locked", "id": profile_id})
     return {"locked": True, "profile_id": profile_id, "locked_audio_path": locked_filename}
 
