@@ -44,6 +44,8 @@ def _plan(*chapters):
 
 
 def _drive(plan, monkeypatch, outputs_dir, *, is_disconnected=None, **kw):
+    from core.db import init_db
+    init_db()
     from api.routers import audiobook
     monkeypatch.setattr(audiobook, "_build_synth", _stub_build_synth())
     monkeypatch.setattr("core.config.OUTPUTS_DIR", str(outputs_dir))
@@ -87,6 +89,8 @@ def test_disconnect_stops_early_and_preserves_resume(tmp_path, monkeypatch):
     assert "assembling" not in types and "done" not in types
     assert types[-1] == "stopped"
     assert events[-1]["rendered"] == 1 and events[-1]["total"] == 3
+    from core import job_store
+    assert job_store.get(events[0]["job_id"])["status"] == "cancelled"
 
     # The resume manifest is preserved (NOT cleared), so the finished chapter is
     # offered for resume — Create-again picks up the rest from the cache.
@@ -101,6 +105,8 @@ def test_no_disconnect_renders_all_chapters(tmp_path, monkeypatch):
     # stopped — the normal completion path is untouched.
     out = tmp_path / "outputs"
     out.mkdir()
+    from core.db import init_db
+    init_db()
 
     async def _connected():
         return False
@@ -120,3 +126,146 @@ def test_no_disconnect_renders_all_chapters(tmp_path, monkeypatch):
     assert "stopped" not in types
     assert types.count("chapter") == 3
     assert types[-1] == "done"
+    from core import job_store
+    assert job_store.get(events[0]["job_id"])["status"] == "done"
+
+
+@pytest.mark.parametrize("close_kind", ["close", "cancel"])
+def test_cancelled_native_stream_leaves_terminal_job_and_checkpoint(close_kind):
+    if find_ffmpeg() is None:
+        pytest.skip("ffmpeg required to reach the native renderer lifecycle")
+    from core import job_store
+    from core.db import init_db
+    from api.routers import audiobook
+    from services import longform_resume
+
+    init_db()
+
+    async def run():
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def transport_wait():
+            entered.set()
+            await release.wait()
+            return False
+
+        stream = audiobook._render_longform_sse(
+            _plan(("One", "First chapter.")), default_voice=None,
+            is_disconnected=transport_wait,
+        )
+        event = json.loads((await anext(stream))[len("data:"):].strip())
+        assert event["type"] == "started"
+        job_id = event["job_id"]
+        assert job_store.get(job_id)["status"] == "running"
+        if close_kind == "cancel":
+            task = asyncio.create_task(anext(stream))
+            await asyncio.wait_for(entered.wait(), timeout=5)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        await stream.aclose()
+        assert job_store.get(job_id)["status"] == "cancelled"
+        assert longform_resume.has_manifest("audiobook", job_id)
+
+    asyncio.run(run())
+
+
+def test_public_http_transport_cancel_retires_running_job():
+    if find_ffmpeg() is None:
+        pytest.skip("ffmpeg required to reach the native renderer lifecycle")
+    from fastapi import FastAPI
+    from api.routers.audiobook import router
+    from core import job_store
+    from core.db import init_db
+    from services import longform_resume
+
+    init_db()
+    app = FastAPI()
+    app.include_router(router)
+    events = []
+
+    async def run():
+        request_body = json.dumps({"text": "# One\nFirst chapter."}).encode()
+
+        async def receive():
+            return {"type": "http.request", "body": request_body, "more_body": False}
+
+        async def send(message):
+            if message["type"] == "http.response.body" and message.get("body"):
+                events.append(json.loads(message["body"].decode()[len("data:"):].strip()))
+                raise asyncio.CancelledError
+
+        path = "/audiobook"
+        scope = {"type": "http", "asgi": {"version": "3.0", "spec_version": "2.4"},
+                 "http_version": "1.1", "method": "POST", "scheme": "http",
+                 "path": path, "raw_path": path.encode(), "query_string": b"",
+                 "root_path": "", "headers": [(b"content-type", b"application/json")],
+                 "client": ("127.0.0.1", 12345), "server": ("testserver", 80)}
+        with pytest.raises(asyncio.CancelledError):
+            await app(scope, receive, send)
+
+    asyncio.run(run())  # Also closes the cancelled response's lazy iterators.
+    assert [e["type"] for e in events] == ["started"]
+    job_id = events[0]["job_id"]
+    assert job_store.get(job_id)["status"] == "cancelled"
+    assert longform_resume.has_manifest("audiobook", job_id)
+
+
+@pytest.mark.parametrize("terminal", ["done", "failed"])
+def test_closed_stream_preserves_existing_terminal_status(terminal):
+    if find_ffmpeg() is None:
+        pytest.skip("ffmpeg required to reach the native renderer lifecycle")
+    from api.routers import audiobook
+    from core import job_store
+    from core.db import init_db
+
+    init_db()
+
+    async def run():
+        stream = audiobook._render_longform_sse(
+            _plan(("One", "First chapter.")), default_voice=None,
+        )
+        event = json.loads((await anext(stream))[len("data:"):].strip())
+        assert event["type"] == "started"
+        job_id = event["job_id"]
+        # Finalization can run after another owner recorded the terminal state.
+        if terminal == "done":
+            job_store.mark_done(job_id)
+        else:
+            job_store.mark_failed(job_id, "Stopped by the owning job")
+        await stream.aclose()
+        assert job_store.get(job_id)["status"] == terminal
+
+    asyncio.run(run())
+
+
+@pytest.mark.skipif(find_ffmpeg() is None, reason="ffmpeg required to reach native render lifecycle")
+def test_failed_render_keeps_failed_status(monkeypatch):
+    from api.routers import audiobook
+    from core import job_store
+    from core.db import init_db
+    from services import longform_resume
+
+    init_db()
+
+    def factory(*args, **kwargs):
+        spec = _stub_build_synth()(*args, **kwargs)
+        def unavailable_model(*_args, **_kwargs):
+            raise RuntimeError("Local synthesis unavailable")
+        spec["synth"] = unavailable_model
+        return spec
+
+    monkeypatch.setattr(audiobook, "_build_synth", factory)  # External synthesis boundary only.
+
+    async def run():
+        return [json.loads(frame[len("data:"):].strip())
+                async for frame in audiobook._render_longform_sse(
+                    _plan(("One", "Unique failed-render control.")), default_voice=None)]
+
+    events = asyncio.run(run())
+    assert events[0]["type"] == "started"
+    assert events[-1]["type"] == "error"
+    job_id = events[0]["job_id"]
+    assert job_store.get(job_id)["status"] == "failed"
+    assert longform_resume.has_manifest("audiobook", job_id)

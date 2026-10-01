@@ -92,6 +92,7 @@ metadata and the backend fallback mirror it.
 - Exclude downloaded caption comments while preserving spoken metadata words (#2510) — thanks @rudycelekli!
 
 - Stopping a live Dubbing preview releases its stream and synthesis slot so another render can start (#2511) — thanks @rudycelekli!
+- Retire cancelled longform response jobs while preserving their resume checkpoints (#2536) — thanks @rudycelekli!
 
 - Count interrupted sidecar installs and report unreadable engine scans in Storage usage (#2479) — thanks @rudycelekli!
 - Dub assembly, cached segments and audio tools can read generated WAV files when TorchCodec is missing or cannot load (#2379) — thanks @tokutei58301-boop!

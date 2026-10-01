@@ -1356,6 +1356,16 @@ async def _render_longform_sse(
                 "measured_i": measured.input_i if measured else None,
             }
         yield _emit(done)
+    except (asyncio.CancelledError, GeneratorExit):
+        # Transport cancellation/iterator closure bypass Exception; keep the
+        # checkpoint, but do not leave this finished response recorded as live.
+        if job_store is not None:
+            try:
+                if (job_store.get(job_id) or {}).get("status") in ("pending", "running"):
+                    job_store.mark_cancelled(job_id)
+            except Exception:
+                pass  # job history is best-effort, including during shutdown
+        raise
     except Exception as e:  # surface, don't 500 the stream
         logger.exception("[%s] longform render failed", job_id)
         if job_store is not None:
