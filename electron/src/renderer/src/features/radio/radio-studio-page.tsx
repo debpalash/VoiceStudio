@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { generateClone } from '@/lib/api/generate';
-import { apiFetch, audioUrl, describeError } from '@/lib/api/client';
+import { audioUrl, describeError, profileAudioUrl } from '@/lib/api/client';
 import type { GenerateResult, Profile } from '@/lib/api/types';
 import { acquireSynthesis } from '@/lib/synthesis-lock';
 import { DEFAULT_CLONE_SETTINGS } from '@/lib/store/clone-settings';
@@ -162,13 +162,8 @@ export function RadioStudioPage() {
   const previewProfile = async (profile: Profile) => {
     try {
       playbackRef.current?.pause();
-      const response = await apiFetch('/profiles/' + encodeURIComponent(profile.id) + '/audio');
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
+      const audio = new Audio(profileAudioUrl(profile.id, profile.audio_url));
       playbackRef.current = audio;
-      audio.onended = () => URL.revokeObjectURL(url);
-      audio.onerror = () => URL.revokeObjectURL(url);
       await audio.play();
     } catch (error) {
       toast.error(describeError(error));
