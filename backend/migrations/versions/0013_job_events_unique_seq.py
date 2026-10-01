@@ -70,6 +70,7 @@ RENUMBER_ONE_JOB = """
 
 
 def _exists(kind: str, name: str) -> bool:
+    """Whether sqlite_master holds an object of this type and name."""
     row = op.get_bind().execute(
         sa.text("SELECT name FROM sqlite_master WHERE type=:t AND name=:n"),
         {"t": kind, "n": name},
@@ -78,6 +79,7 @@ def _exists(kind: str, name: str) -> bool:
 
 
 def upgrade() -> None:
+    """Repair duplicate seqs, then constrain (job_id, seq) UNIQUE."""
     if not _exists("table", "job_events"):
         return
     if _exists("index", _UNIQUE_INDEX):
@@ -99,6 +101,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Restore the plain index. The renumbering is not undone — the new
+    seqs are valid and reversing them would re-introduce the duplicates."""
     if not _exists("table", "job_events"):
         return
     if _exists("index", _UNIQUE_INDEX):

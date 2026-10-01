@@ -54,6 +54,7 @@ _SEED = [
 
 
 def _repo_root() -> str:
+    """Walk up from this file to the directory holding alembic.ini."""
     root = os.path.abspath(os.path.dirname(__file__))
     while root and root != "/" and not os.path.isfile(os.path.join(root, "alembic.ini")):
         root = os.path.dirname(root)
@@ -62,6 +63,7 @@ def _repo_root() -> str:
 
 
 def _load_migration_module():
+    """Import revision 0013 by path; its filename is not an identifier."""
     path = os.path.join(
         _repo_root(), "backend", "migrations", "versions",
         "0013_job_events_unique_seq.py",
@@ -96,6 +98,7 @@ def _seed(db_path: str) -> None:
 
 
 def _rows(db_path: str, job_id: str) -> list[tuple[int, str]]:
+    """One job's (seq, payload) pairs in insertion order."""
     conn = sqlite3.connect(db_path)
     try:
         return [
@@ -117,6 +120,7 @@ def _indexes(db_path: str) -> dict[str, bool]:
 
 
 def _assert_converged(db_path: str) -> None:
+    """Every property the repair must hold, whichever path performed it."""
     idx = _indexes(db_path)
     assert idx.get(_UNIQUE_INDEX) is True, f"unique index missing: {idx}"
     assert _OLD_INDEX not in idx, f"superseded non-unique index still present: {idx}"
