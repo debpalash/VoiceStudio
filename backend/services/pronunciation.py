@@ -31,6 +31,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
+from omnivoice.utils.lang_map import LANG_NAME_TO_ID
 from services.dub_qc import _NO_SPACE_SCRIPT
 
 # A "word" character for boundary purposes. We treat the standard regex word
@@ -170,49 +171,67 @@ def save_lexicon(path, lexicon: Optional[dict]) -> dict[str, str]:
 # The JSON ``load_lexicon``/``save_lexicon`` above stay the per-project audiobook
 # override. THIS layer is the user-editable, DB-persisted, per-language default
 # dictionary surfaced in Settings → Pronunciation. Rows scoped ``language="*"``
-# apply to every request; a 2-letter language row applies only when the request
-# language's prefix matches (case-insensitive), so a German entry never fires on
+# apply to every request; a language row applies only when its canonical ID
+# matches the request language, so a German entry never fires on
 # an English render. Both layers are pure text substitution — they ride the same
 # ReDoS-safe ``apply_lexicon`` matcher, so every engine honors them.
 
 _ALL_LANG = "*"
+_CHINESE_SCRIPT_SCOPES = {"cmn-hans", "cmn-hant", "zho-hans", "zho-hant"}
 
 
-def _lang_prefix(language: Optional[str]) -> Optional[str]:
-    """Normalize a request language to a lowercase 2-letter prefix.
+def normalize_language_scope(language: Optional[str]) -> Optional[str]:
+    """Resolve picker names and ISO region tags to a dictionary language ID.
 
-    ``"Auto"``/``None``/``""`` → ``None`` (means "no language pin": only global
-    ``*`` rows apply, language-tagged rows are skipped, mirroring how the engines
-    treat an unset language). A value like ``"en-US"`` / ``"English"`` →
-    ``"en"`` (first two letters); matching against entries is on this prefix.
+    Auto/unset/global requests have no language pin. Unknown values remain
+    literal: old truncated codes cannot be unambiguously assigned a language.
     """
     if not language:
         return None
-    s = str(language).strip().lower()
-    if not s or s == "auto":
+    value = str(language).strip().lower()
+    if not value or value in ("auto", _ALL_LANG):
         return None
-    return s[:2]
+    aliases = {"mandarin": "zh", "arabic": "ar", "tagalog": "tl"}
+    if value in aliases:
+        return aliases[value]
+    if value in LANG_NAME_TO_ID:
+        return LANG_NAME_TO_ID[value]
+    tag = value.replace("_", "-")
+    if tag in _CHINESE_SCRIPT_SCOPES:
+        return tag
+    head = tag.split("-", 1)[0]
+    if head in LANG_NAME_TO_ID.values():
+        return head
+    return value
+
+
+def _language_scope_chain(language: Optional[str]) -> tuple[str, ...]:
+    """Matching scopes from base fallback to exact supported script scope."""
+    scope = normalize_language_scope(language)
+    if scope is None:
+        return ()
+    if scope in _CHINESE_SCRIPT_SCOPES:
+        return (scope.split("-", 1)[0], scope)
+    return (scope,)
 
 
 def entries_for_language(entries, language: Optional[str]) -> dict[str, str]:
     """Collapse DB rows into a ``{term: replacement}`` map for ``apply_lexicon``.
 
     Filters to ``enabled`` rows whose scope is global (``*``) OR whose language
-    prefix matches the request language. Only the **respelling** path produces a
+    ID matches the request language. Only the **respelling** path produces a
     plain substitution here (Phase 1); IPA/CMU rows that carry no respelling are
     skipped at this layer (they're handled — or honestly degraded — by the
     engine-markup path, never silently mangling text). A language-specific row
-    overrides a global row with the same (case-folded) term, so a per-language
-    pronunciation can refine the global default.
+    overrides a global row for the same literal match. For supported Chinese
+    script tags, the exact script overrides its base-language fallback.
 
     ``entries`` is any iterable of mappings/rows with ``term``, ``replacement``,
     ``type``, ``language``, ``enabled`` keys (a ``sqlite3.Row`` works directly).
     """
-    req_prefix = _lang_prefix(language)
-    # Two passes so language rows win over global rows on the same term: collect
-    # global first, then overlay matching-language rows.
+    # Exact script scopes override base fallbacks, which override global rows.
+    scoped = {scope: {} for scope in _language_scope_chain(language)}
     glob: dict[str, str] = {}
-    lang: dict[str, str] = {}
     for e in entries:
         try:
             if not int(e["enabled"]):
@@ -230,13 +249,20 @@ def entries_for_language(entries, language: Optional[str]) -> dict[str, str]:
         if etype != "respelling":
             continue
         scope = (e["language"] or _ALL_LANG).strip() or _ALL_LANG
-        if scope == _ALL_LANG:
-            glob[term] = str(replacement)
-        else:
-            if req_prefix is not None and scope[:2].lower() == req_prefix:
-                lang[term] = str(replacement)
-    merged = dict(glob)
-    merged.update(lang)  # language rows override global on the same term
+        layer = (
+            glob if scope == _ALL_LANG
+            else scoped.get(normalize_language_scope(scope))
+        )
+        if layer is not None:
+            layer.pop(term, None)
+            layer[term] = str(replacement)
+    merged: dict[str, str] = {}
+    for layer in (glob, *scoped.values()):
+        for term, replacement in layer.items():
+            # Move overrides after weaker rows, including case-variant keys,
+            # so the existing literal matcher honors scope precedence.
+            merged.pop(term, None)
+            merged[term] = replacement
     return merged
 
 
@@ -259,7 +285,7 @@ def inert_entries_for_language(entries, language: str | None) -> list[dict]:
     caller can now say WHY nothing happened instead of implying nothing
     matched.
     """
-    req_prefix = _lang_prefix(language)
+    matching_scopes = _language_scope_chain(language)
     out: list[dict] = []
     for e in entries or []:
         try:
@@ -274,7 +300,10 @@ def inert_entries_for_language(entries, language: str | None) -> list[dict]:
         if etype == "respelling":
             continue
         scope = (e["language"] or _ALL_LANG).strip() or _ALL_LANG
-        if scope != _ALL_LANG and (req_prefix is None or scope[:2].lower() != req_prefix):
+        if (
+            scope != _ALL_LANG
+            and normalize_language_scope(scope) not in matching_scopes
+        ):
             continue
         out.append({"term": term, "type": etype})
     return out
