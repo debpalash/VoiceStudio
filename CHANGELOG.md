@@ -9,7 +9,10 @@ metadata and the backend fallback mirror it.
 ## [Unreleased]
 
 **Highlights**
-- Reserve migration snapshot counters atomically (#2453) — thanks @rudycelekli!
+- Voice cloning finds a speech-to-text model installed through Model Catalogue and explains clips that are too long (#2442) — thanks @drakeo338!
+- PCs without a dedicated GPU install the small CPU PyTorch build and run models in float32; Windows on ARM gets an experimental native installer (#2500)
+- Settings → Performance → GPU acceleration shows your GPUs, the PyTorch build and why each engine runs on GPU or CPU, including Radeon on Windows (#2468)
+- Slow and no-GPU computers are no longer declared failed at start-up; failures name what could not launch (#2445, #2465)
 - Ask VoiceStudio Agent adds chat, harness selection, feature presets, read-only planning and autopilot app actions without a source checkout (#2407)
 - Home credits contributors with over 10 commits in three responsive rows of round avatars stacked from right to left with an All contributors link, with GitHub and X links on Palash's hover card (#2407)
 - The VoiceStudio.sh Open Source title opens a website preview below the clicked item, within the right content area, with navigation and external-browser controls (#2407)
@@ -38,6 +41,12 @@ metadata and the backend fallback mirror it.
 - Workflows can branch: a Condition step sends each item down one of two routes by what its text says (#2380) — thanks @shivsin25!
 
 ### Added
+- Settings → Performance → GPU acceleration lists your GPUs, the installed PyTorch build and which engines use the GPU or run on CPU and why, in all 21 languages (#2468)
+- iFLYTEK Astron MaaS as a named LLM provider (#2421) — thanks @FenjuFu!
+- Prosody Mirror directs each dub line from the source speaker's pitch, loudness, pace and voicing (#2417) — thanks @JoshuaWIls!
+- Windows on ARM: native ARM64 installer; the AI backend runs as x64 under emulation on the CPU (experimental) (#2500)
+- `OMNIVOICE_TORCH_VARIANT=auto|cuda|cpu` and `OMNIVOICE_CPU_DTYPE=bfloat16` override the automatic PyTorch build and CPU precision (#2500)
+- Bug reports include CPU architecture, free disk space and the active speech recognition engine (#2433) — thanks @HoneyTyagii!
 
 - MCP agents can design a voice from a text description and reuse it by `profile_id` (`describe_voice`, `design_voice`) (#2368) — thanks @thelselutopia!
 - Dictation vocabulary hint in Settings → Dictation shortcut: names and jargon that Faster Whisper, MLX Whisper and OpenAI-compatible engines should expect (#2395) — thanks @m061i6!
@@ -53,6 +62,9 @@ metadata and the backend fallback mirror it.
 - Linux AppImages include standard update information and a published `.zsync` file so AppImageUpdate and desktop managers can download only changed bytes (#2327) — thanks @shuvashish76!
 
 ### Changed
+- Machines without an NVIDIA GPU install the small CPU PyTorch build (about 5 GB instead of 9 GB free) and load voice models in float32 instead of float16 (#2500)
+- Engines that could use a GPU report a CPU fallback, naming the card, when the installed PyTorch cannot use it (#2468)
+- Setup names your Radeon card instead of blaming a missing NVIDIA driver, and ignores a ROCm override on Windows and macOS (#2468)
 - Audio quality and Voice controls open as compact popovers from the Synthesize box on Clone and Voice Design (#2419)
 - The Synthesize button shows its keyboard shortcut as key chips inside the button (#2419)
 - The language menu stays within the window instead of clipping at the edges (#2419)
@@ -79,6 +91,10 @@ metadata and the backend fallback mirror it.
 - Voice Clone shows upload and record side by side instead of behind a toggle (#2307)
 
 ### Docs
+- Hermes Agent MCP setup (#2464), ChromeOS and iPad guidance (#2438, #2398) and keeping app data on an external drive (#2436)
+- Japanese README (#2418) — thanks @eltociear!
+- Commercial License client verification and test guide (#2432) — thanks @velixio!
+- Hardware support table with CPU-only and Windows-on-ARM guidance (#2500)
 - Chinese README now matches the Electron installation and migration guide (#2377) — thanks @lg114!
 
 - Record the supplied audio comparisons and installed-engine quality validation (#2406)
@@ -87,10 +103,46 @@ metadata and the backend fallback mirror it.
 - The Twilio guide and integration directory describe the guided setup and in-app integration pages (#2304)
 
 ### Fixed
+- Voice cloning finds a speech-to-text model installed through Model Catalogue instead of asking you to install one (#2442) — thanks @drakeo338!
+- A reference over 20 s with no speech-to-text model says it is too long and to trim it to 3-10 s (#2442) — thanks @drakeo338!
+- A generate can no longer crash the backend while the start-up model preload is still running (#2394) — thanks @manoooo202020!
+- Out-of-memory failures name system RAM exhaustion and what to free (#2462) — thanks @dubeypankaj11-spec!
+- A slow launch no longer spends the backend's start-up budget; failures quote the backend's last output (#2445, #2461, #2448) — thanks @nirmalchatur, @nvtoan0201-swe!
+- Start-up failures name the program that could not launch and hint at blocked launches, slow starts and OneDrive-synced folders (#2440, #2465)
+- Slow and no-GPU computers are not declared failed during start-up: 180 s runtime check, doubled budget on small hosts, a still-printing backend extends the wait (#2445, #2465)
+- A busy backend is reported as recoverable and the health probe no longer imports torch (#2430, #2490, #2491) — thanks @nirmalchatur!
+- VoxCPM2 generation stays bounded without killing slow CPU renders or cutting quality steps (#2435) — thanks @strauss-visuals!
+- Segmented model downloads reject wrong status or `Content-Range` instead of publishing bad bytes (#2451) — thanks @rudycelekli, @ege-arhan!
+- Resume records are trusted only when the partial file matches (#2452) — thanks @rudycelekli!
+- Concurrent migration snapshots no longer overwrite each other and abandoned reservations are pruned (#2453) — thanks @rudycelekli!
+- Exports and downloads named after video titles no longer fail on Windows with `[Errno 22]` (#2376)
+- A full disk during an install stops at once with free-space guidance, and first-run retries the `uv` download on flaky connections (#2496)
+- Deleting a voice profile commits before removing its files (#2483), and history clearing, unlock and consent re-recording no longer delete audio before the change is saved — thanks @rudycelekli!
+- Cache pruning keeps `voices_roots.json` so relocated legacy audio is recovered (#2482) — thanks @rudycelekli!
+- Resuming a book keeps the original plan until the render finishes (#2481) — thanks @rudycelekli!
+- Newer dubbing jobs no longer hide finished books and stories from the library (#2480) — thanks @rudycelekli!
+- Truncated float, PCM and other WAV references are rejected instead of reported as playable (#2477) — thanks @rudycelekli!
+- Dub assembly and cached-segment checks no longer depend on TorchCodec or the removed `torchaudio.info` on torchaudio 2.9 (#2378)
+- Transcription says plainly when ffmpeg is missing or the backend lost its output pipe, and libraries that run plain `ffmpeg` find the bundled copy (#2404, #2405)
+- Streaming preview no longer clips the start and end of takes (#2399)
+- Specialized number tokens like `$5abc` and `3-5%` are left alone instead of half-spoken (#2475) — thanks @rudycelekli!
+- Stories WebVTT import keeps cues named `STYLE`, `REGION` or `NOTE` correctly (#2434) — thanks @Yi-111-a!
+- Percent-encoded EPUB chapter filenames import (#2449) — thanks @rudycelekli!
+- Pronunciation matches use the right replacement for Unicode case variants (#2450) — thanks @rudycelekli!
+- Literal `<stop>` and `<prd>` in streamed text are preserved (#2469) — thanks @rudycelekli!
+- Short answers from another known speaker are no longer folded into the previous speaker (#2471) — thanks @rudycelekli!
+- Fallback subprocess wrapper reports the child's exit code (#2473) — thanks @rudycelekli!
+- Short subtitle millisecond fields are read as milliseconds (#2422) — thanks @Vaishnavi220506!
+- Clone preview loops at the end of the audio stay within the clip (#2429) — thanks @Nikhi00718!
+- MCP tools and resources return real JSON (#2459) — thanks @abdullah-rashid62!
+- Call agents never speak reasoning that a chat template prefills (#2428) — thanks @swadhinbiswas!
+- Dub translation, review and glossary extraction strip reasoning from local thinking models (#2420) — thanks @FenjuFu!
+- IndexTTS 2.5 installs a ROCm PyTorch on ROCm hosts (#2371), verifies bf16 before enabling it (#2372) and avoids a long MIOpen stall (#2373) — thanks @swadhinbiswas!
+- The minimum NVIDIA driver check follows CUDA 12.x compatibility: 525.60.13 on Linux, 528.33 on Windows (#2489) — thanks @NN708!
+- Home keeps every qualifying contributor visible in its avatar rows (#2447) — thanks @nvtoan0201-swe!
 - Keep audiobook chapter boundaries when importing CR-only manuscripts (#2508) — thanks @rudycelekli!
 - Preserve busy sidecars during engine-level unload instead of terminating their active operation (#2507) — thanks @Anuj04432 and @rudycelekli!
 - Exclude downloaded caption comments while preserving spoken metadata words (#2510) — thanks @rudycelekli!
-
 - Stopping a live Dubbing preview releases its stream and synthesis slot so another render can start (#2511) — thanks @rudycelekli!
 
 - Count interrupted sidecar installs and report unreadable engine scans in Storage usage (#2479) — thanks @rudycelekli!
