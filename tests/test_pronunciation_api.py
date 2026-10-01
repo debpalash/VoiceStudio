@@ -286,3 +286,120 @@ def test_saved_entry_transforms_generate_text(client):
     from services.pronunciation import apply_pronunciation, load_entries_from_db
     rows = load_entries_from_db()
     assert apply_pronunciation("show me a GIF", rows, "en") == "show me a jiff"
+
+
+# ── Ordering: a backup/restore must not reshuffle precedence (#2552) ─────────
+#
+# ``import`` stamps every row of a batch with ONE ``time.time()``, so equal
+# ``created_at`` is the normal case. Every reader collapses rows to
+# ``{term: replacement}`` where the last row wins, so the tiebreak decides what
+# a duplicate or case-variant term actually pronounces as. Two case variants of
+# one term ("GIF"/"gif") collide in the IGNORECASE matcher, which makes the
+# winner observable through the model-free ``/pronunciation/test`` dry run.
+
+
+def _case_variant_pairs(count):
+    """``count`` respelling pairs that differ ONLY by term case, so exactly one
+    of each pair is the live pronunciation. Deliberately uses real terms the
+    matcher treats as whole-word, IGNORECASE equal."""
+    return {
+        "entries": [
+            entry
+            for i in range(count)
+            for entry in (
+                {"term": f"Gif{i}", "replacement": f"first{i}", "language": "*", "enabled": True},
+                {"term": f"gif{i}", "replacement": f"last{i}", "language": "*", "enabled": True},
+            )
+        ]
+    }
+
+
+def _dry_run_precedence(client, count):
+    """The winning replacement for each pair, as synthesis resolves it."""
+    out = {}
+    for i in range(count):
+        body = client.post("/pronunciation/test", json={"text": f"GIF{i}", "language": "en"}).json()
+        out[i] = body["substituted"]
+    return out
+
+
+def test_import_keeps_the_last_typed_case_variant(client):
+    """Importing two case variants leaves the LAST one live. With the random-``id``
+    tiebreak this flipped per import (#2552); insertion order makes it stable."""
+    client.post("/pronunciation/import", json=_case_variant_pairs(4))
+    assert _dry_run_precedence(client, 4) == {i: f"last{i}" for i in range(4)}
+
+
+def test_backup_restore_is_a_fixed_point(client):
+    """Export → import(replace) must reproduce the same effective pronunciations.
+    The old code exported tied rows in random-UUID order, so each round trip
+    re-inserted them in yet another order and the winner moved."""
+    client.post("/pronunciation/import", json=_case_variant_pairs(6))
+    before = _dry_run_precedence(client, 6)
+    assert before == {i: f"last{i}" for i in range(6)}
+
+    backup = client.get("/pronunciation/export").json()["entries"]
+    for _ in range(3):
+        assert client.post("/pronunciation/import", json={"entries": backup, "replace": True}).json()["imported"] == len(backup)
+        assert _dry_run_precedence(client, 6) == before
+
+
+def test_export_writes_the_load_order(client):
+    """The backup is a list, so its ORDER is the order a restore will insert —
+    it has to be the order the live dictionary resolves in, or the restore is
+    the shuffle. The last typed case variant is therefore the last one written."""
+    client.post("/pronunciation/import", json=_case_variant_pairs(3))
+    terms = [e["term"] for e in client.get("/pronunciation/export").json()["entries"]]
+    assert terms == [t for i in range(3) for t in (f"Gif{i}", f"gif{i}")]
+
+
+def test_list_test_and_synthesis_agree_on_order(client):
+    """The three live readers must return one order, not three. ``/pronunciation/test``
+    had no ORDER BY at all, so it could resolve a duplicate differently from the
+    list the Settings panel renders and from the synthesis loader."""
+    client.post("/pronunciation/import", json=_case_variant_pairs(8))
+    listed = client.get("/pronunciation").json()
+    assert [e["term"] for e in listed] == [t for i in range(8) for t in (f"Gif{i}", f"gif{i}")]
+
+    from services.pronunciation import apply_pronunciation, load_entries_from_db
+    rows = load_entries_from_db()
+    assert [r["term"] for r in rows] == [e["term"] for e in listed]
+    # And the synthesis transform resolves the same winner the dry run reports.
+    assert apply_pronunciation("GIF0", rows, "en") == "last0"
+
+
+def test_repeated_import_does_not_accumulate_duplicates(client):
+    """A non-replacing import appends, so restore-with-merge keeps the incoming
+    order at the end and the newest typed variant stays live."""
+    client.post("/pronunciation/import", json={"entries": [
+        {"term": "GIF", "replacement": "original", "language": "*", "enabled": True},
+    ]})
+    client.post("/pronunciation/import", json={"entries": [
+        {"term": "gif", "replacement": "override", "language": "*", "enabled": True},
+    ]})
+    body = client.post("/pronunciation/test", json={"text": "a GIF", "language": "en"}).json()
+    assert body["substituted"] == "a override"
+
+
+def test_scoped_disabled_and_duplicate_rows_survive_a_round_trip(client):
+    """The ordering fix must not disturb what each row MEANS: a scoped row stays
+    scoped, a disabled row stays disabled, and an exact duplicate keeps its
+    winner across a restore."""
+    client.post("/pronunciation/import", json={"entries": [
+        {"term": "Nevada", "replacement": "Nuh-VAD-uh", "language": "en", "enabled": True},
+        {"term": "Nevada", "replacement": "wrong", "language": "*", "enabled": True},
+        {"term": "RHS", "replacement": "parked", "language": "*", "enabled": False},
+        {"term": "RHS", "replacement": "live", "language": "*", "enabled": True},
+    ]})
+    before = client.post("/pronunciation/test", json={"text": "Nevada and RHS", "language": "en"}).json()
+    assert before["substituted"] == "Nuh-VAD-uh and live"  # scoped wins, disabled skipped
+
+    backup = client.get("/pronunciation/export").json()["entries"]
+    client.post("/pronunciation/import", json={"entries": backup, "replace": True})
+    after = client.post("/pronunciation/test", json={"text": "Nevada and RHS", "language": "en"}).json()
+    assert after["substituted"] == before["substituted"]
+
+    restored = client.get("/pronunciation/export").json()["entries"]
+    assert [(e["term"], e["language"], e["enabled"]) for e in restored] == [
+        (e["term"], e["language"], e["enabled"]) for e in backup
+    ]

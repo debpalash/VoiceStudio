@@ -33,6 +33,7 @@ from pydantic import BaseModel
 from api.dependencies import require_admin
 from core.db import db_conn
 from services.pronunciation import (
+    ENTRY_ORDER,
     apply_pronunciation,
     entries_for_language,
     inert_entries_for_language,
@@ -142,7 +143,7 @@ def list_entries():
     with db_conn() as conn:
         rows = conn.execute(
             "SELECT id, term, replacement, type, language, enabled, created_at "
-            "FROM pronunciation_entries ORDER BY created_at ASC, id ASC"
+            f"FROM pronunciation_entries {ENTRY_ORDER}"
         ).fetchall()
     return [_row_to_dict(r) for r in rows]
 
@@ -250,7 +251,7 @@ def test_substitution(req: PronTestRequest):
     with db_conn() as conn:
         rows = conn.execute(
             "SELECT id, term, replacement, type, language, enabled, created_at "
-            "FROM pronunciation_entries"
+            f"FROM pronunciation_entries {ENTRY_ORDER}"
         ).fetchall()
     substituted = apply_pronunciation(req.text, rows, req.language)
     applied = entries_for_language(rows, req.language)
@@ -271,11 +272,17 @@ def test_substitution(req: PronTestRequest):
 
 @router.get("/pronunciation/export")
 def export_entries():
-    """Every entry as a JSON-serializable list (round-trips ``/import``)."""
+    """Every entry as a JSON-serializable list (round-trips ``/import``).
+
+    The backup is written in :data:`ENTRY_ORDER`, the same order the rows are
+    read back in, so re-importing it (``replace=true``) reproduces the original
+    precedence instead of reshuffling it. Two case variants or exact duplicates
+    of one term keep the same winner across any number of round trips.
+    """
     with db_conn() as conn:
         rows = conn.execute(
             "SELECT term, replacement, type, language, enabled "
-            "FROM pronunciation_entries ORDER BY created_at ASC, id ASC"
+            f"FROM pronunciation_entries {ENTRY_ORDER}"
         ).fetchall()
     return {"entries": [
         {"term": r["term"], "replacement": r["replacement"], "type": r["type"],

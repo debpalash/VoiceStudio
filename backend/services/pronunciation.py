@@ -353,8 +353,35 @@ def apply_pronunciation(
 
 # ── DB load/save ──────────────────────────────────────────────────────────────
 
+#: The ONE chronological order every pronunciation_entries reader uses — the
+#: Settings list, ``/pronunciation/test``, the synthesis loader and the export
+#: backup. They must agree: each collapses rows to ``{term: replacement}`` where
+#: the LAST row for a term wins, so two different orders give two different
+#: pronunciations for the same saved dictionary.
+#:
+#: ``created_at`` alone cannot be that order. ``POST /pronunciation/import``
+#: stamps every row of a batch with one ``time.time()`` (and ``POST
+#: /pronunciation`` cannot separate two saves in the same clock tick), so equal
+#: timestamps are the normal case, not an edge case. The old tiebreak, ``id``,
+#: is ``uuid4()[:12]`` — random — so tied rows came back in arbitrary order.
+#: That made a backup/restore round trip able to change what a term
+#: pronounces as: the export wrote the rows shuffled, the restore inserted them
+#: shuffled a second time, and the winner among equal-time duplicates moved.
+#:
+#: ``rowid`` is SQLite's insertion sequence, so it is monotonic in the order the
+#: rows were actually written — which is the order the user typed them, and the
+#: order a backup preserves. Ties therefore resolve to insertion order and a
+#: repeated export/import is a fixed point. The table is not ``WITHOUT ROWID``
+#: and nothing runs ``VACUUM`` (which may renumber rowids), so the sequence is
+#: stable for the life of the database.
+ENTRY_ORDER = "ORDER BY created_at ASC, rowid ASC"
+
+
 def load_entries_from_db() -> list[dict]:
     """Return every pronunciation_entries row as a list of plain dicts.
+
+    Ordered by :data:`ENTRY_ORDER`, so the synthesis path resolves duplicate
+    and case-variant terms exactly as the Settings list and the dry run do.
 
     Import-light: the DB module is imported lazily so the pure-parser path (and
     the audiobook JSON path) never pull in sqlite/config.
@@ -364,7 +391,7 @@ def load_entries_from_db() -> list[dict]:
     with db_conn() as conn:
         rows = conn.execute(
             "SELECT id, term, replacement, type, language, enabled, created_at "
-            "FROM pronunciation_entries ORDER BY created_at ASC, id ASC"
+            f"FROM pronunciation_entries {ENTRY_ORDER}"
         ).fetchall()
     return [dict(r) for r in rows]
 
