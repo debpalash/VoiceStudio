@@ -1386,8 +1386,9 @@ async def _render_longform_sse(
 
 async def _public_longform_stream(plan, **render_kwargs):
     """Keep generator diagnostics local if setup fails before its own guard."""
-    stream = _render_longform_sse(plan, **render_kwargs)
+    stream = None
     try:
+        stream = _render_longform_sse(plan, **render_kwargs)
         async for event in stream:
             yield event
     except asyncio.CancelledError:
@@ -1404,7 +1405,8 @@ async def _public_longform_stream(plan, **render_kwargs):
         yield f"data: {json.dumps({'type': 'error', 'error': error})}\n\n"
 
     finally:
-        await stream.aclose()
+        if stream is not None:
+            await stream.aclose()
 
 class _ClosingLongformResponse(StreamingResponse):
     async def __call__(self, scope, receive, send):
