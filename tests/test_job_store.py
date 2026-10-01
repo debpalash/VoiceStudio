@@ -1,5 +1,6 @@
 """Phase 2.1 — persist task queue. Round-trip tests for core/job_store."""
 import os
+import threading
 import time
 
 os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
@@ -60,6 +61,60 @@ def test_append_event_assigns_monotonic_seq():
     s2 = job_store.append_event(jid, "data: b\n\n")
     s3 = job_store.append_event(jid, "data: c\n\n")
     assert (s1, s2, s3) == (1, 2, 3)
+
+
+def test_append_event_assigns_unique_seq_under_concurrency():
+    """Regression: seq assignment must be atomic, not read-then-write.
+
+    `append_event` used to run `SELECT COALESCE(MAX(seq), 0)` and then a
+    separate INSERT. Every call opens its own connection (`core.db.db_conn`)
+    and WAL lets a reader run while another writer is mid-transaction, so two
+    concurrent callers could both read the same MAX and both insert it.
+    `job_events` indexes (job_id, seq) but does NOT constrain it UNIQUE, so the
+    duplicates landed silently and an SSE client reconnecting with
+    `?after_seq=N` then replayed one event twice and skipped another.
+
+    The `INSERT … SELECT … RETURNING` that replaced it computes and writes the
+    next seq inside a single statement, which SQLite serializes behind the
+    write lock. Fail-before/pass-after: against the old two-step version the
+    barrier below reliably produces duplicate seq values.
+    """
+    jid = _unique_id("race")
+    job_store.create(jid, type="x")
+
+    workers = 8
+    barrier = threading.Barrier(workers)
+    lock = threading.Lock()
+    returned: list[int] = []
+    errors: list[BaseException] = []
+
+    def worker(n: int) -> None:
+        try:
+            # Release all threads into append_event at the same moment so the
+            # read-then-write window is actually exercised.
+            barrier.wait(timeout=10)
+            seq = job_store.append_event(jid, f"data: {n}\n\n")
+        except BaseException as exc:  # noqa: BLE001 — re-raised via `errors`
+            with lock:
+                errors.append(exc)
+            return
+        with lock:
+            returned.append(seq)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(workers)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+
+    assert not errors, f"append_event raised under concurrency: {errors!r}"
+    assert sorted(returned) == list(range(1, workers + 1)), (
+        f"returned seqs are not a 1..{workers} permutation: {sorted(returned)}"
+    )
+
+    persisted = [e["seq"] for e in job_store.events_since(jid, after_seq=0)]
+    assert len(persisted) == len(set(persisted)), f"duplicate seq persisted: {persisted}"
+    assert persisted == list(range(1, workers + 1))
 
 
 def test_events_since_filters():
