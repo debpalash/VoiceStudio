@@ -113,6 +113,52 @@ def test_ffmetadata_escapes_special_chars():
     assert r"title=a\=b\;c\#d" in doc
 
 
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_ffmetadata_normalizes_line_endings_before_escaping(newline):
+    value = newline.join(["Opening =;#\\ paragraph.", "Closing paragraph."])
+    expected = build_ffmetadata([("Opening =;#\\ paragraph.\nClosing paragraph.", 1000)],
+                                {"description": "Opening =;#\\ paragraph.\nClosing paragraph."})
+    assert build_ffmetadata([(value, 1000)], {"description": value}) == expected
+    assert "\r" not in expected
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+@pytest.mark.parametrize("fmt", ["m4b", "mp3"])
+def test_rendered_metadata_retains_description_paragraphs(tmp_path, newline, fmt):
+    """Exercise the shipped chapter-WAV → mux path without synthesis."""
+    import json
+    import subprocess
+    import wave
+
+    from services.ffmpeg_utils import find_ffmpeg, find_ffprobe
+
+    ffmpeg, ffprobe = find_ffmpeg(), find_ffprobe()
+    if not ffmpeg or not ffprobe:
+        pytest.skip("ffmpeg and ffprobe required for metadata mux round trip")
+    audio = tmp_path / "chapter.wav"
+    with wave.open(str(audio), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(16000)
+        handle.writeframes(b"\0\0" * 16000)
+    concat = tmp_path / "chapters.txt"
+    concat.write_text(build_concat_list([str(audio)]), encoding="utf-8")
+    metadata = tmp_path / "chapters.ffmeta"
+    metadata.write_text(build_ffmetadata([("Chapter one", 1000)], {
+        "title": "My =;#\\ book",
+        "description": newline.join(["Opening =;#\\ paragraph.", "Closing paragraph."]),
+    }), encoding="utf-8")
+    output = tmp_path / f"book.{fmt}"
+    subprocess.run(build_render_cmd(ffmpeg, str(concat), str(metadata), str(output), fmt=fmt),
+                   check=True, capture_output=True, timeout=30)
+    probe = subprocess.run([ffprobe, "-v", "error", "-show_entries", "format_tags=title,comment",
+                            "-of", "json", str(output)],
+                           check=True, capture_output=True, timeout=30)
+    tags = json.loads(probe.stdout)["format"]["tags"]
+    assert tags["title"] == "My =;#\\ book"
+    assert tags["comment"] == "Opening =;#\\ paragraph.\nClosing paragraph."
+
+
 # ── concat list ─────────────────────────────────────────────────────────────
 
 def test_concat_list_quotes_and_escapes():
