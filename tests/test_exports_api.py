@@ -448,10 +448,15 @@ def test_history_is_newest_first(client):
 
 
 # ── access guards on the history routes ──────────────────────────────────────
-@pytest.fixture(scope="module")
+@pytest.fixture
 def lan_client():
     """A caller that is NOT on the loopback interface — any other host on the
-    same network as a desktop install."""
+    same network as a desktop install.
+
+    Function-scoped on purpose: the server-mode case below monkeypatches
+    OMNIVOICE_SERVER_MODE, and a shared client would carry that state into
+    whatever ran next.
+    """
     from fastapi.testclient import TestClient
     from main import app
     import core.db
