@@ -6,7 +6,7 @@ Open folder uses Electron's native reveal bridge, with the existing backend reve
 
 Database backup status displays the latest pre-migration snapshot and date. This is database backup information, not a claim that source media and generated files are backed up. History retention reuses the confirmed cap editor from Privacy.
 
-Locking a profile to another take stores a new reference filename, so longform caches recognize the changed voice even when the take text and seed are unchanged. The replacement commits before superseded references are cleaned; files still referenced by another profile are retained, and a failed update keeps the previous take usable.
+Locking a profile to another take stores a new reference filename, so longform caches recognize the changed voice even when the take text and seed are unchanged. The replacement commits before the response returns; prior versions are retained as described below, and a failed update keeps the previous take usable.
 
 The model cache location uses Electron's native directory picker. Main verifies the directory is writable, stores a one-shot `models_dir` capability in the backend data directory, and returns only its token to the renderer. The backend consumes that token when persisting `OMNIVOICE_CACHE_DIR`; raw host paths never cross the HTTP boundary. Reset uses the same capability flow with an empty path, and either change takes effect after restart.
 
@@ -22,4 +22,4 @@ Interrupted sidecar installs without an environment remain included in applicati
 
 An unreadable engine directory or entry produces an incomplete report and a warning; unavailable bytes are not presented as a complete empty footprint.
 
-Re-locking keeps prior immutable locked-reference clips for renders that already captured their filenames. These clips remain in the voices folder for the lifetime of the profile; explicit profile deletion reclaims its generated versions after committing the record deletion, while preserving versions still referenced by another profile. Repeated locks can therefore use additional local storage until the profile is deleted.
+Re-locking keeps prior immutable locked-reference clips for renders that already captured their filenames. These clips remain in the voices folder for the lifetime of the profile; explicit profile deletion reclaims its generated versions after committing the record deletion, while preserving versions still referenced by another profile. Deletion returns a conflict while a longform render still holds a cached reference that would be removed; the profile record and files remain intact, and deletion can be retried once all those render workers finish. Repeated locks can therefore use additional local storage until the profile is deleted.

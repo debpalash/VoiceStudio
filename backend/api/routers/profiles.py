@@ -7,7 +7,6 @@ import uuid
 import weakref
 import time
 import shutil
-import threading
 from typing import Optional
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException
 from fastapi.responses import FileResponse, Response
@@ -21,6 +20,7 @@ from core.personalities import get_personalities
 from omnivoice.utils.voice_design import heal_design_instruct, sanitize_instruct
 from core.path_security import UnsafePath, resolve_within
 from core.profile_images import MAX_IMAGE_BYTES, normalize_portrait
+from core.voice_reference_snapshots import voice_file_lock as _voice_file_lock, references_in_use
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 router = APIRouter()
@@ -770,10 +770,6 @@ async def _materialize_design_sample(profile_id: str, row) -> Optional[str]:
         )
     return audio_filename
 
-# Serializes the lock/unlock/consent file swaps so one request's cleanup can
-# never unlink audio another request just installed.
-_voice_file_lock = threading.RLock()
-
 
 def _install_staged(staged: str, target: str):
     """Move ``staged`` onto ``target``, keeping any previous ``target`` as a
@@ -1049,12 +1045,29 @@ def _delete_profile(profile_id: str):
         portrait_path = _voices_path(f"{profile_id}.portrait.jpg")
         if portrait_path and os.path.isfile(portrait_path):
             paths.append(portrait_path)
+        # A live longform resolver may still read an earlier immutable version.
+        # Reject deletion before changing either the record or its assets. Files
+        # shared by another profile will not be removed and need no such guard.
+        exclusive_paths = []
+        for path in dict.fromkeys(paths):
+            filename = os.path.basename(path)
+            shared = conn.execute(
+                "SELECT 1 FROM voice_profiles WHERE id<>? AND "
+                "(ref_audio_path=? OR locked_audio_path=? OR consent_audio_path=?) LIMIT 1",
+                (profile_id, filename, filename, filename),
+            ).fetchone()
+            if not shared:
+                exclusive_paths.append(path)
+        if references_in_use(exclusive_paths):
+            raise HTTPException(409, "Wait for renders using this voice to finish before deleting the profile")
         # Commit the database change before removing assets: a failed write or
         # commit must leave the rolled-back profile's files usable.
         conn.execute("UPDATE generation_history SET profile_id = NULL WHERE profile_id=?", (profile_id,))
         conn.execute("DELETE FROM voice_profiles WHERE id=?", (profile_id,))
     failed_assets = []
-    for path in dict.fromkeys(paths):
+    # A shared path excluded from the guarded decision must not become a new
+    # deletion candidate if the other profile changes after our commit.
+    for path in exclusive_paths:
         filename = os.path.basename(path)
         with db_conn() as conn:
             shared = conn.execute(

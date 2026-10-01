@@ -148,3 +148,133 @@ def test_explicit_deletion_preserves_a_retained_version_shared_by_another_profil
     assert Path(voices, old).exists()
     assert not Path(voices, latest).exists()
     assert client.get('/profiles/shared/audio').status_code == 200
+
+
+@pytest.mark.parametrize('relock', [False, True])
+def test_profile_deletion_waits_for_live_longform_reference(profile, relock):
+    from api.routers.audiobook import _build_synth
+    client, db, voices = profile
+    client.post('/profiles/voice/lock', data={'history_id': 'first'})
+    running = _build_synth(default_voice='voice')
+    reference = running['resolve']('voice')['ref_audio']
+    original = Path(reference).read_bytes()
+    if relock:
+        client.post('/profiles/voice/lock', data={'history_id': 'second'})
+    response = client.delete('/profiles/voice')
+    assert response.status_code == 409, response.text
+    assert Path(reference).read_bytes() == original
+    with db.db_conn() as conn:
+        assert conn.execute("SELECT id FROM voice_profiles WHERE id='voice'").fetchone()
+    # Dropping the actual cached resolver lets the settled profile be deleted.
+    del running
+    response = client.delete('/profiles/voice')
+    assert response.status_code == 200, response.text
+    assert not Path(reference).exists()
+
+
+def test_profile_deletion_waits_for_every_cached_reader_and_ignores_other_profiles(profile):
+    from api.routers.audiobook import _build_synth
+    client, db, voices = profile
+    client.post('/profiles/voice/lock', data={'history_id': 'first'})
+    first = _build_synth(default_voice='voice')
+    old = first['resolve']('voice')['ref_audio']
+    client.post('/profiles/voice/lock', data={'history_id': 'second'})
+    second = _build_synth(default_voice='voice')
+    latest = second['resolve']('voice')['ref_audio']
+    with db.db_conn() as conn:
+        conn.execute("INSERT INTO voice_profiles(id,name,ref_audio_path) VALUES('other','Other','')")
+    assert client.delete('/profiles/other').status_code == 200
+    assert client.delete('/profiles/voice').status_code == 409
+    del first
+    assert client.delete('/profiles/voice').status_code == 409
+    assert Path(old).exists() and Path(latest).exists()
+    del second
+    assert client.delete('/profiles/voice').status_code == 200
+    assert not Path(old).exists() and not Path(latest).exists()
+
+
+def test_pending_render_worker_keeps_reference_custody_after_request_owner_drops(profile):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from api.routers.audiobook import _build_synth
+    client, _db, _voices = profile
+    client.post('/profiles/voice/lock', data={'history_id': 'first'})
+    running = _build_synth(default_voice='voice')
+    path = running['resolve']('voice')['ref_audio']
+    original = Path(path).read_bytes()
+    entered, release = threading.Event(), threading.Event()
+
+    def worker(resolve):
+        entered.set()
+        assert release.wait(5)
+        return Path(resolve('voice')['ref_audio']).read_bytes()
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        result = pool.submit(worker, running['resolve'])
+        assert entered.wait(5)
+        del running  # The HTTP request can finish before its worker does.
+        try:
+            assert client.delete('/profiles/voice').status_code == 409
+        finally:
+            release.set()
+        assert result.result(timeout=5) == original
+    assert client.delete('/profiles/voice').status_code == 200
+    assert not Path(path).exists()
+
+
+def test_live_shared_reference_does_not_block_deleting_its_original_profile(profile):
+    from api.routers.audiobook import _build_synth
+    client, db, _voices = profile
+    locked = client.post('/profiles/voice/lock', data={'history_id': 'first'}).json()['locked_audio_path']
+    running = _build_synth(default_voice='voice')
+    path = running['resolve']('voice')['ref_audio']
+    with db.db_conn() as conn:
+        conn.execute("INSERT INTO voice_profiles(id,name,ref_audio_path) VALUES('shared','Shared',?)", (locked,))
+    assert client.delete('/profiles/voice').status_code == 200
+    assert Path(path).exists()
+    assert client.delete('/profiles/shared').status_code == 409
+    del running
+    assert client.delete('/profiles/shared').status_code == 200
+    assert not Path(path).exists()
+
+
+def test_delete_does_not_adopt_a_shared_path_after_its_precommit_guard(profile, monkeypatch):
+    from contextlib import contextmanager
+    from api.routers import profiles
+    from api.routers.audiobook import _build_synth
+
+    client, db, voices = profile
+    locked = client.post('/profiles/voice/lock', data={'history_id': 'first'}).json()['locked_audio_path']
+    running = _build_synth(default_voice='voice')
+    path = running['resolve']('voice')['ref_audio']
+    original = Path(path).read_bytes()
+    replacement = Path(voices, 'shared-replacement.wav')
+    replacement.write_bytes(original)
+    with db.db_conn() as conn:
+        conn.execute("INSERT INTO voice_profiles(id,name,ref_audio_path) VALUES('shared','Shared',?)", (locked,))
+
+    moved = False
+    real_db_conn = db.db_conn
+
+    @contextmanager
+    def change_other_profile_after_delete_commit():
+        nonlocal moved
+        with real_db_conn() as conn:
+            yield conn
+        if not moved:
+            with real_db_conn() as conn:
+                deleted = conn.execute("SELECT 1 FROM voice_profiles WHERE id='voice'").fetchone() is None
+            if deleted:
+                # Actual SQLite update at the committed-delete boundary. This
+                # models the public replacement writer's ref/path reset without
+                # invoking that writer's separate, pre-existing cleanup path.
+                moved = True
+                with real_db_conn() as conn:
+                    conn.execute("UPDATE voice_profiles SET ref_audio_path=?, locked_audio_path='', consent_audio_path='' WHERE id='shared'", (replacement.name,))
+
+    monkeypatch.setattr(profiles, 'db_conn', change_other_profile_after_delete_commit)
+    response = client.delete('/profiles/voice')
+    assert response.status_code == 200, response.text
+    assert moved
+    assert Path(path).read_bytes() == original
+    assert running['resolve']('voice')['ref_audio'] == path
