@@ -139,7 +139,7 @@ export function RadioStudioPage() {
   const engineLabel =
     backend.stage === 'ready'
       ? engines.activeTts?.display_name ?? 'Voice Engine Ready'
-      : backend.stage === 'error'
+      : backend.stage === 'failed'
         ? 'Engine Error'
         : 'Starting Engine';
 
