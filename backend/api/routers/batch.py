@@ -14,6 +14,8 @@ import shutil
 import uuid
 import time
 import asyncio
+import contextlib
+import threading
 import logging
 from typing import Optional, List
 
@@ -55,7 +57,23 @@ _BATCH_PRESET_INSTRUCT = {
 _queue: asyncio.Queue = None       # Lazily initialised
 _worker_task: asyncio.Task = None  # Background consumer
 _processing_job_ids: set[str] = set()
+_mutating_job_ids: set[str] = set()
+_job_mutation_lock = threading.Lock()
 _jobs: dict = {}                   # job_id → status dict
+
+
+@contextlib.contextmanager
+def _job_mutation(job_id: str):
+    """Reserve retry/deletion across awaits and sync endpoint threads."""
+    with _job_mutation_lock:
+        if job_id in _mutating_job_ids:
+            raise HTTPException(409, "A batch job action is already in progress")
+        _mutating_job_ids.add(job_id)
+    try:
+        yield
+    finally:
+        with _job_mutation_lock:
+            _mutating_job_ids.discard(job_id)
 
 
 class BatchJobStatus(BaseModel):
@@ -1031,6 +1049,12 @@ def cancel_batch_job(job_id: str):
 
 @router.post("/batch/jobs/{job_id}/retry")
 async def retry_batch_job(job_id: str):
+    """Retry a terminal job once while protecting its input and output files."""
+    with _job_mutation(job_id):
+        return await _retry_batch_job(job_id)
+
+
+async def _retry_batch_job(job_id: str):
     """Retry a terminal job using its original app-owned upload and settings."""
     job = _jobs.get(job_id)
     if not job:
@@ -1081,7 +1105,24 @@ async def retry_batch_job(job_id: str):
         raise HTTPException(status_code=400, detail="Invalid batch job path")
     try:
         if os.path.isdir(output_dir):
-            await asyncio.to_thread(shutil.rmtree, output_dir)
+            # Cancelling the request cannot stop a filesystem worker. Keep
+            # custody until it settles so a second action cannot remove or
+            # recreate the directory while the first cleanup is still running.
+            cleanup = asyncio.get_running_loop().run_in_executor(None, shutil.rmtree, output_dir)
+            cancellation = None
+            while not cleanup.done():
+                try:
+                    await asyncio.shield(cleanup)
+                except asyncio.CancelledError as exc:
+                    cancellation = exc
+                except OSError:
+                    if cancellation is None:
+                        raise
+            if cancellation is not None:
+                with contextlib.suppress(OSError):
+                    cleanup.result()
+                raise cancellation
+            cleanup.result()
     except OSError as exc:
         raise HTTPException(
             status_code=500,
@@ -1114,10 +1155,18 @@ async def retry_batch_job(job_id: str):
 
 @router.delete("/batch/jobs/{job_id}")
 def delete_batch_job(job_id: str):
+    """Delete a settled job without racing retry admission or an active worker."""
+    with _job_mutation(job_id):
+        return _delete_batch_job(job_id)
+
+
+def _delete_batch_job(job_id: str):
     """Delete a batch job record and every app-owned input/output file."""
     job = _jobs.get(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
+    if job["status"] in ("queued", "running") or job_id in _processing_job_ids:
+        raise HTTPException(409, "Cancel the batch job and wait for it to stop before deleting")
     if job.get("video_path"):
         try:
             unlink_if_present(job["video_path"])
