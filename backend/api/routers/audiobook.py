@@ -778,6 +778,12 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
     seg_extra_sig = f"{lex_sig}\x00{expr_sig}" if expr_sig else lex_sig
     if vmap_sig:
         seg_extra_sig = f"{seg_extra_sig}\x00{vmap_sig}"
+    # Language reaches the engine even when normalization leaves text unchanged.
+    # Partition both layers; unknown-language legacy audio cannot satisfy an
+    # explicit language. Autodetect keeps its released cache derivation.
+    if language:
+        sig["\x00language"] = language
+        seg_extra_sig = f"{seg_extra_sig}\x00language={json.dumps(language)}"
     marking = will_mark()
     if marking:
         # Provenance-marked chapters cache under their own key (#1169): a
@@ -808,7 +814,7 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
     inputs: dict = {
         "sample rate": sr, "engine": engine_id, "normalized text": spans_tuples,
         "pronunciation lexicon": lex_sig, "expressive settings": expr_sig,
-        "voice map": vmap_sig, "watermark": marking,
+        "voice map": vmap_sig, "watermark": marking, "language": language,
     }
     for k, v in resolved.items():
         label = f"voice {re.sub(r'[^A-Za-z0-9_-]', '', k)[:40] or '(default)'}"
