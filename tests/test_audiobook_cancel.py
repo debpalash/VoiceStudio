@@ -269,3 +269,68 @@ def test_failed_render_keeps_failed_status(monkeypatch):
     job_id = events[0]["job_id"]
     assert job_store.get(job_id)["status"] == "failed"
     assert longform_resume.has_manifest("audiobook", job_id)
+
+
+@pytest.mark.parametrize("terminal", [None, "done", "failed"])
+def test_public_iterator_closure_retires_job_before_loop_shutdown(terminal):
+    if find_ffmpeg() is None:
+        pytest.skip("ffmpeg required to reach native render lifecycle")
+    from api.routers import audiobook
+    from core import job_store
+    from core.db import init_db
+    from services import longform_resume
+    init_db()
+
+    async def run():
+        stream = audiobook._public_longform_stream(
+            _plan(("One", "First chapter.")), default_voice=None)
+        event = json.loads((await anext(stream))[len("data:"):].strip())
+        assert event["type"] == "started"
+        job_id = event["job_id"]
+        assert job_store.get(job_id)["status"] == "running"
+        if terminal == "done":
+            job_store.mark_done(job_id)
+        elif terminal == "failed":
+            job_store.mark_failed(job_id, "Stopped by the owning job")
+        await stream.aclose()
+        # Check while this loop and the inner generator are still alive.
+        assert job_store.get(job_id)["status"] == (terminal or "cancelled")
+        assert longform_resume.has_manifest("audiobook", job_id)
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("case", ["empty_chapters", "empty_spans", "missing_ffmpeg"])
+def test_finite_public_setup_error_retires_job_and_keeps_checkpoint(case, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from api.routers.audiobook import router
+    from core import job_store
+    from core.db import init_db
+    from services import longform_resume
+    init_db()
+    app = FastAPI()
+    app.include_router(router)
+    payload = {"chapters": []}
+    if case == "empty_spans":
+        payload = {"chapters": [{"title": "One", "spans": [{"text": ""}]}]}
+    elif case == "missing_ffmpeg":
+        payload = {"chapters": [{"title": "One", "spans": [{"text": "Hello."}]}]}
+        # External executable availability only; routes, history and checkpoint
+        # processing are native. No synthesis is reached on this setup path.
+        monkeypatch.setattr("services.ffmpeg_utils.find_ffmpeg", lambda: None)
+    previous = {row["id"] for row in job_store.list_jobs(limit=100000)}
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        response = client.post("/longform/render", json=payload)
+    assert response.status_code == 200
+    frames = [json.loads(frame[len("data:"):].strip())
+              for frame in response.text.strip().split("\n\n")]
+    assert len(frames) == 1 and frames[0]["type"] == "error"
+    expected = "ffmpeg not available" if case == "missing_ffmpeg" else "nothing to render"
+    assert expected in frames[0]["error"]
+    jobs = [row for row in job_store.list_jobs(limit=100000) if row["id"] not in previous]
+    assert len(jobs) == 1
+    assert jobs[0]["status"] == "failed"
+    assert jobs[0]["finished_at"] is not None
+    assert jobs[0]["error"] == frames[0]["error"]
+    assert longform_resume.has_manifest("story", jobs[0]["id"])

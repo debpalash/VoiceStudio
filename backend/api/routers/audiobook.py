@@ -1116,6 +1116,12 @@ async def _render_longform_sse(
 
     def _emit(payload: dict) -> str:
         if job_store is not None:
+            if payload.get("type") == "error":
+                try:
+                    if (job_store.get(job_id) or {}).get("status") in ("pending", "running"):
+                        job_store.mark_failed(job_id, payload.get("error") or "render failed")
+                except Exception:
+                    pass  # terminal setup errors must still reach the client
             try:
                 job_store.append_event(job_id, json.dumps(payload))
             except Exception:
@@ -1379,8 +1385,9 @@ async def _render_longform_sse(
 
 async def _public_longform_stream(plan, **render_kwargs):
     """Keep generator diagnostics local if setup fails before its own guard."""
+    stream = _render_longform_sse(plan, **render_kwargs)
     try:
-        async for event in _render_longform_sse(plan, **render_kwargs):
+        async for event in stream:
             yield event
     except asyncio.CancelledError:
         raise
@@ -1395,6 +1402,8 @@ async def _public_longform_stream(plan, **render_kwargs):
         )
         yield f"data: {json.dumps({'type': 'error', 'error': error})}\n\n"
 
+    finally:
+        await stream.aclose()
 
 @router.post("/audiobook")
 async def audiobook_synthesize(req: AudiobookRequest, request: Request = None):
