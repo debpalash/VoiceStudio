@@ -113,3 +113,31 @@ def test_unknown_regional_scopes_remain_distinct_literals(client, operation):
         result = client.post("/pronunciation/test", json={"text": "GIF", "language": language})
         assert result.status_code == 200
         assert result.json()["substituted"] == expected
+
+
+@pytest.mark.parametrize("operation", ["create", "update", "import"])
+@pytest.mark.parametrize("code", ["cmn", "zho"])
+def test_known_chinese_iso_scopes_match_script_tags(client, operation, code):
+    entry = {"term": "GIF", "replacement": "Chinese", "language": code}
+    if operation == "create":
+        result = client.post("/pronunciation", json=entry)
+    elif operation == "update":
+        initial = client.post(
+            "/pronunciation", json={**entry, "language": "*"},
+        ).json()
+        result = client.put(
+            f"/pronunciation/{initial['id']}", json={"language": code},
+        )
+    else:
+        result = client.post("/pronunciation/import", json={"entries": [entry]})
+    assert result.status_code == 200
+    for language in (code, f"{code}-Hans", f"{code}-Hant", f"{code}_Hans"):
+        result = client.post(
+            "/pronunciation/test", json={"text": "GIF", "language": language},
+        )
+        assert result.status_code == 200
+        assert result.json()["substituted"] == "Chinese"
+    unrelated = client.post(
+        "/pronunciation/test", json={"text": "GIF", "language": "spa-MX"},
+    )
+    assert unrelated.json()["substituted"] == "GIF"

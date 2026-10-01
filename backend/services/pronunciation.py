@@ -196,7 +196,9 @@ def normalize_language_scope(language: Optional[str]) -> Optional[str]:
     if value in LANG_NAME_TO_ID:
         return LANG_NAME_TO_ID[value]
     head = value.replace("_", "-").split("-", 1)[0]
-    if head in LANG_NAME_TO_ID.values():
+    # Chinese script tags are also used by the dubbing language picker and
+    # translation backends. Keep their ISO-3 identity; don't infer unknown IDs.
+    if head in LANG_NAME_TO_ID.values() or head in {"cmn", "zho"}:
         return head
     return value
 

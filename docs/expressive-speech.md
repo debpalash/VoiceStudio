@@ -64,7 +64,7 @@ for your engine below.
 
 Pronunciation dictionary matching uses Unicode case-insensitive literal matches. Each matched term uses its own respelling; distinct terms such as Straße and STRASSE can have different respellings. Longer terms win overlaps, and later equal-length case variants retain precedence.
 
-Pronunciation scopes accept picker names such as Spanish, their bundled ISO IDs such as `es` or `kbt`, and regional forms such as `es-MX`; names resolve to the existing picker IDs. Alternate codes absent from the bundled engine map remain literal scopes (for example `spa` is not remapped to `es`). Global scopes still apply with Auto. Existing ambiguous truncated codes (for example `po`) keep their literal meaning: edit them to the intended name or ISO code rather than relying on an automatic migration.
+Pronunciation scopes accept picker names such as Spanish, their bundled ISO IDs such as `es` or `kbt`, and regional forms such as `es-MX`; names resolve to the existing picker IDs. The existing Chinese script tags `cmn-Hans`/`cmn-Hant` and `zho-Hans`/`zho-Hant` match their own `cmn` or `zho` dictionary scopes without changing the ISO ID. Other alternate codes absent from the bundled engine map remain literal scopes (for example `spa` is not remapped to `es`). Global scopes still apply with Auto. Existing ambiguous truncated codes (for example `po`) keep their literal meaning: edit them to the intended name or ISO code rather than relying on an automatic migration.
 
 ### Default engine (VoiceStudio)
 
