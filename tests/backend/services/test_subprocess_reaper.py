@@ -170,3 +170,37 @@ def test_unload_unknown_sidecar_is_noop(echo):
     _spawn_alive(echo)
     assert unload_sidecar("does-not-exist") == 0
     assert echo._proc is not None and echo._proc.poll() is None  # untouched
+
+
+def test_engine_unload_preserves_busy_sidecar(echo):
+    """The engine-level unload must honor the same custody as manual unload."""
+    _spawn_alive(echo)
+    proc = echo._proc
+    assert echo._lock.acquire(blocking=False)
+    try:
+        echo.unload()
+        assert echo._proc is proc
+        assert proc.poll() is None
+    finally:
+        echo._lock.release()
+    ok, message = echo.health_check()
+    assert ok, message
+    assert echo._proc is proc
+
+
+def test_engine_unload_reaps_idle_sidecar_and_respawns(echo):
+    _spawn_alive(echo)
+    proc = echo._proc
+    echo.unload()
+    assert proc.poll() is not None
+    assert echo._proc is None
+    echo.unload()
+    ok, message = echo.health_check()
+    assert ok, message
+    assert echo._proc.pid != proc.pid
+
+
+def test_engine_unload_before_first_spawn_is_idempotent(echo):
+    echo.unload()
+    echo.unload()
+    assert echo._proc is None

@@ -93,6 +93,34 @@ def test_plaintext_no_breaks_is_single_chapter():
     assert len(parse_audiobook_script(out).chapters) == 1
 
 
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_import_endpoint_chapter_titles_across_line_endings(newline):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from api.routers.audiobook import router
+
+    lines = ["Chapter 1", "Once upon a time, the story began.", "", "Chapter 2", "The story ended."]
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+    response = client.post(
+        "/audiobook/import",
+        files={"file": ("book.txt", newline.join(lines).encode(), "text/plain")},
+    )
+    assert response.status_code == 200
+    result = response.json()
+    assert result["chapters"] == 2
+    assert result["text"] == "# Chapter 1\nOnce upon a time, the story began.\n\n# Chapter 2\nThe story ended."
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_existing_markdown_headings_after_preamble_stay_verbatim(newline):
+    from services.longform_import import chapterize_plaintext
+
+    manuscript = newline.join(["Prologue", "# First", "Body."])
+    assert chapterize_plaintext(manuscript) == manuscript
+
+
 # ── EPUB ────────────────────────────────────────────────────────────────────
 
 def _make_epub_raw(documents: list[bytes]) -> bytes:
