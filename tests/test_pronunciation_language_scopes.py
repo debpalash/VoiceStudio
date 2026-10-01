@@ -92,3 +92,24 @@ def test_engine_language_aliases_match_dictionary_scopes(client, name, code):
                                                "language": name}).status_code == 200
     assert client.get("/pronunciation/export").json()["entries"][0]["language"] == code
     assert client.post("/pronunciation/test", json={"text": "GIF", "language": code}).json()["substituted"] == "alias"
+
+
+@pytest.mark.parametrize("operation", ["create", "update", "import"])
+def test_unknown_regional_scopes_remain_distinct_literals(client, operation):
+    for language, replacement in [("spa-MX", "literal Mexico"), ("spa-ES", "literal Spain")]:
+        entry = {"term": "GIF", "replacement": replacement, "language": language}
+        if operation == "create":
+            result = client.post("/pronunciation", json=entry)
+        elif operation == "update":
+            initial = client.post("/pronunciation", json={**entry, "language": "*"}).json()
+            result = client.put(f"/pronunciation/{initial['id']}", json={"language": language})
+        else:
+            result = client.post("/pronunciation/import", json={"entries": [entry]})
+        assert result.status_code == 200
+    exported = client.get("/pronunciation/export").json()["entries"]
+    assert {entry["language"] for entry in exported} == {"spa-mx", "spa-es"}
+    for language, expected in [("spa-MX", "literal Mexico"), ("spa-ES", "literal Spain"),
+                               ("spa", "GIF"), ("Spanish", "GIF"), ("es-MX", "GIF")]:
+        result = client.post("/pronunciation/test", json={"text": "GIF", "language": language})
+        assert result.status_code == 200
+        assert result.json()["substituted"] == expected

@@ -196,7 +196,7 @@ def normalize_language_scope(language: Optional[str]) -> Optional[str]:
     if value in LANG_NAME_TO_ID:
         return LANG_NAME_TO_ID[value]
     head = value.replace("_", "-").split("-", 1)[0]
-    if head.isascii() and head.isalpha() and len(head) in (2, 3):
+    if head in LANG_NAME_TO_ID.values():
         return head
     return value
 
