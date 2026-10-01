@@ -42,9 +42,11 @@ export function createStreamingPreview(
   const Context = window.AudioContext || (window as AudioContextWindow).webkitAudioContext;
   if (!Context) throw new Error('Web Audio is unavailable');
   const context = new Context({ sampleRate });
-  const nodes: Array<{ source: AudioBufferSourceNode; gain: GainNode }> = [];
+  const nodes: Array<{ source: AudioBufferSourceNode; gain: GainNode; endsAt: number }> = [];
   const crossfadeSeconds = Math.max(0, crossfadeMs) / 1000;
-  let nextStart = context.currentTime + 0.03;
+  const startLeadSeconds = 0.08;
+  const endPaddingSeconds = 0.05;
+  let nextStart = context.currentTime;
   let previousDuration = 0;
   let finished = false;
   let complete = false;
@@ -73,7 +75,7 @@ export function createStreamingPreview(
   release = claimPlayback(stop, 'output');
   if (context.state === 'suspended') void context.resume().catch(() => {});
   timer = setInterval(() => {
-    if (complete && context.currentTime >= nextStart - 0.02) stop();
+    if (complete && context.currentTime >= nextStart + endPaddingSeconds) stop();
   }, 100);
 
   return {
@@ -94,9 +96,12 @@ export function createStreamingPreview(
     if (finished) return;
     if (!samples.length) return;
     const duration = samples.length / sampleRate;
-    const fade = nodes.length ? Math.min(crossfadeSeconds, previousDuration, duration) : 0;
-    let start = nodes.length ? nextStart - fade : nextStart;
+    let fade = nodes.length ? Math.min(crossfadeSeconds, previousDuration, duration) : 0;
+    let start = nodes.length ? nextStart - fade : context.currentTime + startLeadSeconds;
     if (start < context.currentTime + 0.01) start = context.currentTime + 0.02;
+    const previous = nodes.at(-1);
+    // A late chunk can crossfade only against audio still scheduled at its start.
+    fade = Math.min(fade, Math.max(0, (previous?.endsAt ?? start) - start));
 
     const buffer = context.createBuffer(1, samples.length, sampleRate);
     buffer.getChannelData(0).set(samples);
@@ -106,14 +111,13 @@ export function createStreamingPreview(
     source.connect(gain);
     gain.connect(context.destination);
     if (fade > 0) {
-      const previous = nodes.at(-1);
       previous?.gain.gain.setValueAtTime(1, start);
       previous?.gain.gain.linearRampToValueAtTime(0, start + fade);
       gain.gain.setValueAtTime(0, start);
       gain.gain.linearRampToValueAtTime(1, start + fade);
     }
     source.start(start);
-    nodes.push({ source, gain });
+    nodes.push({ source, gain, endsAt: start + duration });
     previousDuration = duration;
     nextStart = start + duration;
   }
