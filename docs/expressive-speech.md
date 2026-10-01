@@ -64,6 +64,8 @@ for your engine below.
 
 Pronunciation dictionary matching uses Unicode case-insensitive literal matches. Each matched term uses its own respelling; distinct terms such as Straße and STRASSE can have different respellings. Longer terms win overlaps, and later equal-length case variants retain precedence.
 
+Pronunciation scopes accept picker names such as Spanish, ISO codes such as `es` or `kbt`, and regional forms such as `es-MX`; names and codes match the same language. Global scopes still apply with Auto. Existing ambiguous truncated codes (for example `po`) keep their literal meaning: edit them to the intended name or ISO code rather than relying on an automatic migration.
+
 ### Default engine (VoiceStudio)
 
 **Non-verbal tags.** The bundled model natively tokenizes 13 reaction tags
