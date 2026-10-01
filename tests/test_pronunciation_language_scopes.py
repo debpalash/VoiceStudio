@@ -13,8 +13,11 @@ def client(tmp_path, monkeypatch):
     db.init_db()
     app = FastAPI()
     app.include_router(router)
-    with TestClient(app, client=("127.0.0.1", 50000)) as native_client:
+    native_client = TestClient(app, client=("127.0.0.1", 50000))
+    try:
         yield native_client
+    finally:
+        native_client.close()
 
 
 @pytest.mark.parametrize("code,name", [("es", "Spanish"), ("de", "German"),
