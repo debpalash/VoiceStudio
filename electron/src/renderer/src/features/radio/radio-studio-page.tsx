@@ -60,6 +60,17 @@ const PACE_SPEED: Record<Pace, number> = {
   Slow: 0.92,
 };
 
+const JOB_PRESETS: Record<
+  JobType,
+  { style: StylePreset; pace: Pace; energy: number; duration: number }
+> = {
+  'Station ID': { style: 'Natural', pace: 'Normal', energy: 68, duration: 5 },
+  Stinger: { style: 'Punchy', pace: 'Fast', energy: 82, duration: 5 },
+  Sweeper: { style: 'Energetic', pace: 'Fast', energy: 76, duration: 7 },
+  Promo: { style: 'Energetic', pace: 'Normal', energy: 78, duration: 15 },
+  News: { style: 'News', pace: 'Normal', energy: 52, duration: 30 },
+};
+
 function profileRank(profile: Profile): number {
   const name = profile.name.toLowerCase();
   if (name.includes('nas') && name.includes('news')) return 0;
@@ -126,10 +137,12 @@ export function RadioStudioPage() {
   );
 
   useEffect(() => {
+    const preset = JOB_PRESETS[jobType];
+    setStylePreset(preset.style);
+    setPace(preset.pace);
+    setEnergy(preset.energy);
+    setDuration(preset.duration);
     if (jobType !== 'News') return;
-    setStylePreset('News');
-    setPace('Normal');
-    setEnergy(52);
     const news = voices.find((profile) => profile.name.toLowerCase().includes('news'));
     if (news) setSelectedProfileId(news.id);
   }, [jobType, voices]);
