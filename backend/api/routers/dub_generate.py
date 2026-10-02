@@ -566,10 +566,16 @@ async def dub_generate(job_id: str, req: DubRequest):
     # projection shares only read-only source rows; synchronization rebuilds
     # its own rows and language maps without publishing any job metadata.
     seg_ids = req.segment_ids or []
+    expected_order = [seg_ids[i] if i < len(seg_ids) else f"seg_{i}"
+                      for i in range(len(req.segments))]
+    if len(set(expected_order)) != len(expected_order):
+        raise HTTPException(status_code=409, detail={
+            "code": "dub_segment_identity_conflict",
+            "message": "Provide explicit unique segment IDs before regenerating: render identities would overwrite segment audio.",
+        })
     _sync_job_segments({
         "segments": job.get("segments"),
-        "seg_order": [seg_ids[i] if i < len(seg_ids) else f"seg_{i}"
-                      for i in range(len(req.segments))],
+        "seg_order": expected_order,
     }, req)
 
     # ── Engine resolution (issue #312 class) ────────────────────────────────
@@ -803,7 +809,7 @@ async def dub_generate(job_id: str, req: DubRequest):
         # Manifest: stable segment id per current index. Per-segment WAVs are
         # named by stable id (dub_seg_path) so regen reuses the right audio after
         # reorder; index-keyed readers (preview/export) resolve via this manifest.
-        job["seg_order"] = [seg_ids[k] if k < len(seg_ids) else f"seg_{k}" for k in range(len(req.segments))]
+        job["seg_order"] = list(expected_order)
 
         # Per-segment metadata to persist after the hot loop. Audio itself is
         # written immediately and only file paths are kept, so long videos don't

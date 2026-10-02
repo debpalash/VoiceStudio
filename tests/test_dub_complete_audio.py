@@ -134,7 +134,8 @@ def test_failed_regeneration_preserves_previous_track(render_dub):
     assert render_dub.job['dubbed_tracks']['en']['path'] == str(previous)
 
 
-def test_conflicting_regeneration_preserves_saved_audio_and_text(render_dub, monkeypatch):
+@pytest.mark.parametrize("segment_ids", [["duplicate", "duplicate"], ["seg_1"]])
+def test_conflicting_regeneration_preserves_saved_audio_and_text(render_dub, monkeypatch, segment_ids):
     from api.routers import dub_generate as dg
     from fastapi import HTTPException
 
@@ -158,7 +159,7 @@ def test_conflicting_regeneration_preserves_saved_audio_and_text(render_dub, mon
     with pytest.raises(HTTPException) as error:
         render_dub.run(segments=[dict(start=0, end=1, text='replacement first'),
                                  dict(start=1, end=2, text='replacement second')],
-                       segment_ids=['duplicate', 'duplicate'])
+                       segment_ids=segment_ids)
     assert error.value.status_code == 409
     assert error.value.detail['code'] == 'dub_segment_identity_conflict'
     assert previous.read_bytes() == previous_bytes
