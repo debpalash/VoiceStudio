@@ -587,8 +587,11 @@ def _build_synth(
     from services.tts_backend import OmniVoiceBackend, active_backend_id, get_backend_class
 
     opts = opts or ExpressiveOptions()
+    from core.voice_reference_snapshots import VoiceReferenceSnapshot, voice_file_lock
+
     cache: dict = {}
     token_cache: dict = {}
+    references = VoiceReferenceSnapshot()
 
     def resolve(voice_id):
         # Translate the span token ([voice:NAME] / exact id / None) to a profile
@@ -598,9 +601,13 @@ def _build_synth(
         if voice_id not in token_cache:
             token_cache[voice_id] = _map_span_voice(voice_id, default_voice, voice_map)
         key = token_cache[voice_id]
-        if key not in cache:
-            cache[key] = _resolve_voice(key)
-        return cache[key]
+        # Resolve and claim custody atomically with profile file deletion.
+        # The closure keeps the snapshot alive for any pending render worker.
+        with voice_file_lock:
+            if key not in cache:
+                cache[key] = _resolve_voice(key)
+                references.retain(cache[key]["ref_audio"])
+            return cache[key]
 
     engine_id = active_backend_id()
     cls = get_backend_class(engine_id)
