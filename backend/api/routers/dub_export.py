@@ -1641,12 +1641,12 @@ async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: flo
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     tracks = job.get("dubbed_tracks", {})
-    if lang and lang in tracks:
-        wav_path = _dub_artifact(tracks[lang].get("path"), job_id, missing_detail="Dubbed audio file not found")
-    elif tracks:
-        wav_path = _dub_artifact(list(tracks.values())[0].get("path"), job_id, missing_detail="Dubbed audio file not found")
-    else:
+    if not tracks:
         raise HTTPException(status_code=400, detail="No dubbed audio track generated yet")
+    # Resolve the text against the same track chosen for recognition, including
+    # the legacy first-track fallback when no matching language is requested.
+    selected_lang = lang if lang and lang in tracks else next(iter(tracks))
+    wav_path = _dub_artifact(tracks[selected_lang].get("path"), job_id, missing_detail="Dubbed audio file not found")
     segments = job.get("segments") or []
     if not segments:
         raise HTTPException(status_code=400, detail="Job has no segments")
@@ -1696,7 +1696,8 @@ async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: flo
         raise HTTPException(status_code=500, detail=f"QC transcription failed: {e}")
 
     seg_ids = job.get("seg_order") or [s.get("id", i) for i, s in enumerate(segments)]
-    scored = dub_qc.score_dub(segments, recognized, drift_threshold=drift_threshold, seg_ids=seg_ids)
+    scored = dub_qc.score_dub(_segments_for_lang(job, selected_lang), recognized,
+                              drift_threshold=drift_threshold, seg_ids=seg_ids)
 
     # Annotate each segment (non-destructive — content text untouched).
     by_id = {q.seg_id: q for q in scored}

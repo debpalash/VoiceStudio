@@ -109,7 +109,10 @@ Export options expand inside the existing sidebar. Users can select included vid
 tracks and the default track, background mixing, burned subtitles, dual layout and
 karaoke (disabled with dual layout). Audio supports WAV or MP3 with bitrate choice;
 SRT/VTT/ASS sidecars and per-language stem/segment ZIPs use the existing backend.
-Each download is explicit and targets the selected language. Export errors retain
+Each download is explicit and targets the selected language.
+Advanced QC compares recognized audio with the translation text for the selected
+track language, including when another language was generated more recently.
+The selected track's timing and voice settings remain unchanged. Export errors retain
 all choices for retry. Native save filters match the encoded file format.
 Browser fixtures verify MP3/SRT downloads, query options and failed-export retry;
 unit tests cover video/package parameters. Real rendered exports, batch presets
