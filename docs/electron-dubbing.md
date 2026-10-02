@@ -7,7 +7,10 @@ they do not regenerate the prerecorded audio. Edit on the dubbed card imports
 that sample video into the normal upload/transcription and editing workflow.
 
 Open Dub from the cloning sidebar or command search. Upload or drop audio/video, or explicitly submit a video URL;
-preparation completes before transcription starts. The editor shows source text,
+preparation completes before transcription starts.
+On Apple Silicon, forced alignment retries on CPU if its alignment model cannot
+load on MPS. If neither device can load the language aligner, transcription keeps
+the existing segment timings. The editor shows source text,
 editable translated text, and per-segment voice/timing controls. Translation uses
 the selected Settings > Models > Translation provider. Choose a target language,
 translate, review the text, then generate. Completed tracks can be previewed and
