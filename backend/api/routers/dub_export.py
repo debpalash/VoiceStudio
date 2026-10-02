@@ -1628,10 +1628,16 @@ def _qc_source_segments(job: dict, lang: str, segments: list[dict]) -> list[dict
     """Resolve source ownership before ASR; legacy ordinal times can be ambiguous."""
     track = job["dubbed_tracks"][lang]
     source = track.get("source_segments")
-    if not source or any(row.get("id") is not None for row in source):
+    if not source:
+        return source
+    segment_ids = [str(seg["id"]) for seg in segments if seg.get("id") is not None]
+    source_ids = [str(row["id"]) for row in source if row.get("id") is not None]
+    if (len(segment_ids) == len(set(segment_ids)) == len(segments)
+            and len(source_ids) == len(set(source_ids)) == len(source) == len(segments)
+            and set(segment_ids) == set(source_ids)):
         return source
     texts = (job.get("segments_i18n") or {}).get(lang) or {}
-    if len(source) == len(segments) == len(texts) == 1:
+    if not source_ids and len(source) == len(segments) == len(texts) == 1:
         sid = segments[0].get("id")
         if sid is not None and str(sid) in texts:
             return [dict(source[0], id=sid)]
@@ -1639,7 +1645,6 @@ def _qc_source_segments(job: dict, lang: str, segments: list[dict]) -> list[dict
     # even when the original source snapshot predates identity persistence.
     if track.get("timing_strategy") == "smart_fit":
         fitted = ((job.get("fit_plans") or {}).get(lang) or {}).get("fitted_segments") or []
-        segment_ids = [str(seg["id"]) for seg in segments if seg.get("id") is not None]
         fitted_ids = [str(cue["id"]) for cue in fitted if cue.get("id") is not None]
         if (len(segment_ids) == len(set(segment_ids)) == len(segments)
                 and len(fitted_ids) == len(set(fitted_ids)) == len(fitted) == len(segments)
@@ -1647,7 +1652,7 @@ def _qc_source_segments(job: dict, lang: str, segments: list[dict]) -> list[dict
             return None
     raise HTTPException(status_code=409, detail={
         "code": "dub_qc_timing_identity_missing",
-        "message": "Regenerate the selected track before QC: saved source timings lack segment identities.",
+        "message": "Regenerate the selected track with explicit unique segment IDs before QC: saved source timing identities are ambiguous.",
     })
 
 

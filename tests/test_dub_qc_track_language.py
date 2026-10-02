@@ -292,3 +292,68 @@ def test_sync_request_and_existing_identity_precede_current_manifest_fallback():
            "seg_order": ["explicit", "seg_1"]}
     _sync_job_segments(job, req)
     assert [s["id"] for s in job["segments"]] == ["explicit", "preserved"]
+
+
+@pytest.mark.parametrize("owner_index", [0, 1])
+def test_sync_refuses_fallback_collision_and_qc_refuses_partial_identity(monkeypatch, owner_index):
+    from api.routers.dub_generate import _sync_job_segments, _track_source_segments
+    from schemas.requests import DubRequest, DubSegment
+    from fastapi import HTTPException
+    missing_index = 1 - owner_index
+    owner_id = f"seg_{missing_index}"
+    existing = [{"text": "old a"}, {"text": "old b"}]
+    existing[owner_index]["id"] = owner_id
+    job = {"segments": existing, "seg_order": ["seg_0", "seg_1"]}
+    req = DubRequest(language_code="es", segments=[DubSegment(start=0.0, end=1.0, text="hola"),
+                                                  DubSegment(start=2.0, end=3.0, text="adios")])
+    _sync_job_segments(job, req)
+    ids = [row.get("id") for row in job["segments"]]
+    assert ids[owner_index] == owner_id
+    assert ids[missing_index] is None
+    assert set(job["segments_i18n"]["es"].values()) == {"hola", "adios"}
+    job["dubbed_tracks"] = {"es": {"path": "es.wav", "timing_strategy": "strict_slot",
+                                     "source_segments": _track_source_segments(job)}}
+    original = copy.deepcopy(job)
+    run, calls = _legacy_qc_route(monkeypatch, job, [{"start": 0.0, "end": 1.0, "text": "hola"},
+                                                  {"start": 2.0, "end": 3.0, "text": "adios"}])
+    with pytest.raises(HTTPException) as error:
+        run()
+    assert error.value.status_code == 409
+    assert calls == []
+    assert job == original
+
+
+@pytest.mark.parametrize("existing", [[{"id": "dup", "text": "first"}, {"id": "dup", "text": "second"}],
+    [{"id": "2", "text": "first"}, {"id": "seg_2", "text": "second"}, {"text": "third"}]])
+def test_sync_rejects_colliding_text_keys_before_metadata_mutation(existing):
+    from api.routers.dub_generate import _sync_job_segments
+    from schemas.requests import DubRequest, DubSegment
+    from fastapi import HTTPException
+    job = {"segments": existing, "seg_order": [f"seg_{i}" for i in range(len(existing))],
+           "segments_i18n": {"es": {"prior": "keep"}},
+           "segments_i18n_cue_sources": {"es": {"prior": "keep-source"}},
+           "dubbed_tracks": {"es": {"path": "prior.wav"}}}
+    original = copy.deepcopy(job)
+    req = DubRequest(language_code="es", segments=[
+        DubSegment(start=float(i*2), end=float(i*2+1), text=f"text {i}") for i in range(len(existing))])
+    with pytest.raises(HTTPException) as error:
+        _sync_job_segments(job, req)
+    assert error.value.status_code == 409
+    assert job == original
+
+
+@pytest.mark.parametrize("source_ids", [["a", "a"], ["a", None], ["a", "foreign"], ["a"]])
+def test_qc_rejects_incomplete_or_duplicate_source_identity(monkeypatch, source_ids):
+    from fastapi import HTTPException
+    source = [{"id": sid, "start": float(i*2), "end": float(i*2+1)} for i, sid in enumerate(source_ids)]
+    job = {"segments": [{"id": "a", "start": 0.0, "end": 1.0, "text": "hola"},
+                        {"id": "b", "start": 2.0, "end": 3.0, "text": "adios"}],
+           "segments_i18n": {"es": {"a": "hola", "b": "adios"}}, "seg_order": ["a", "b"],
+           "dubbed_tracks": {"es": {"path": "es.wav", "timing_strategy": "strict_slot", "source_segments": source}}}
+    run, calls = _legacy_qc_route(monkeypatch, job, [{"start": 0.0, "end": 1.0, "text": "hola"}])
+    original = copy.deepcopy(job)
+    with pytest.raises(HTTPException) as error:
+        run()
+    assert error.value.status_code == 409
+    assert calls == []
+    assert job == original
