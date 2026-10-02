@@ -96,7 +96,11 @@ export class SetupProgressTracker {
     if (bytePair) {
       const received = parseByteSize(bytePair[1], bytePair[2]);
       const total = parseByteSize(bytePair[3], bytePair[4]);
-      const name = [...this.planned.keys()].find((candidate) => line.includes(candidate));
+      // Match complete package identifiers, so torchvision cannot update torch.
+      const identifiers = new Set(
+        line.slice(0, bytePair.index).match(/[a-zA-Z0-9][a-zA-Z0-9_.-]*/g) ?? [],
+      );
+      const name = [...this.planned.keys()].find((candidate) => identifiers.has(candidate));
       if (name) {
         this.planned.set(name, total);
         this.received.set(name, Math.min(received, total));
