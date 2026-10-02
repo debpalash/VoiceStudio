@@ -198,6 +198,8 @@ in Scarlett". Voice resolution precedence on every `generate_speech` call:
 
 Manage bindings over the loopback REST API (the Settings UI uses these):
 
+Partial binding updates preserve omitted fields, including concurrent edits from different Settings clients. An empty profile or engine clears that field; an omitted value preserves it. Concurrent creation of the same client binding merges the supplied fields atomically.
+
 ```bash
 # list
 curl localhost:3900/api/mcp/bindings
