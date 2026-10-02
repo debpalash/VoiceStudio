@@ -86,8 +86,13 @@ def test_append_event_assigns_unique_seq_under_concurrency():
     window with a sleep between the SELECT and the INSERT makes it certain.
     `UNIQUE(job_id, seq)` is the deterministic guard, and is its own change.
     """
+    # Resolved here rather than through the module-level import: conftest
+    # reloads core.config/core.db for several suites, and a binding captured at
+    # collection time can outlive that and point the threads at a stale module.
+    from core import job_store as js
+
     jid = _unique_id("race")
-    job_store.create(jid, type="x")
+    js.create(jid, type="x")
 
     workers = 16
     barrier = threading.Barrier(workers)
@@ -101,7 +106,7 @@ def test_append_event_assigns_unique_seq_under_concurrency():
             # Release all threads into append_event at the same moment so the
             # read-then-write window is actually exercised.
             barrier.wait(timeout=10)
-            seq = job_store.append_event(jid, f"data: {n}\n\n")
+            seq = js.append_event(jid, f"data: {n}\n\n")
         except BaseException as exc:  # noqa: BLE001 — re-raised via `errors`
             with lock:
                 errors.append(exc)
@@ -120,7 +125,7 @@ def test_append_event_assigns_unique_seq_under_concurrency():
         f"returned seqs are not a 1..{workers} permutation: {sorted(returned)}"
     )
 
-    persisted = [e["seq"] for e in job_store.events_since(jid, after_seq=0)]
+    persisted = [e["seq"] for e in js.events_since(jid, after_seq=0)]
     assert len(persisted) == len(set(persisted)), f"duplicate seq persisted: {persisted}"
     assert persisted == list(range(1, workers + 1))
 
