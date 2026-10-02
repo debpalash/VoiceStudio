@@ -87,6 +87,10 @@ URL import runs only after clicking Ingest; it uses the backend's existing yt-dl
 pipeline. Explicit cookies.txt selection is available under URL sign-in options; optional caption downloads are available.
 
 Translation quality uses the existing backend Fast, Autofit and Cinematic modes.
+Japanese script checks accept kana and Han letters, including kanji-heavy place
+names and supplementary Han characters, in both ordinary translation and the
+Autofit/Cinematic quality pass. Latin-only responses still fail the Japanese
+script check.
 The choice persists in the working draft and saved project (`translateQuality`),
 including legacy project imports. New media preserves the user's quality choice.
 If the backend reports that no LLM is configured, the UI selects Fast and shows

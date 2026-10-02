@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from schemas.requests import AgentFitRequest, TranslateRequest
 from services.model_manager import _cpu_pool, _gpu_pool
 from services.hf_revisions import revision_for
-from services.translator import cinematic_available, cinematic_refine_many, _cinematic_budget
+from services.translator import cinematic_available, cinematic_refine_many, _cinematic_budget, _is_japanese_han
 from api.routers.dub_core import _get_job, _save_job
 
 router = APIRouter()
@@ -178,7 +178,8 @@ def _script_ratio(text: str, code: str) -> float:
     letters = [c for c in text if c.isalpha()]
     if not letters:
         return 1.0
-    inside = sum(1 for c in letters if lo <= ord(c) <= hi)
+    inside = sum(1 for c in letters if lo <= ord(c) <= hi
+                 or (code == "ja" and _is_japanese_han(ord(c))))
     return inside / len(letters)
 
 

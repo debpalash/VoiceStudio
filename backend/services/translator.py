@@ -84,6 +84,13 @@ _SCRIPT_RANGES = {
 }
 
 
+def _is_japanese_han(codepoint: int) -> bool:
+    """Japanese also uses Han letters and iteration marks, not just kana."""
+    return (0x3005 <= codepoint <= 0x3007 or 0x3400 <= codepoint <= 0x4DBF
+            or 0x4E00 <= codepoint <= 0x9FFF or 0xF900 <= codepoint <= 0xFAFF
+            or 0x20000 <= codepoint <= 0x323AF)
+
+
 def _looks_like_target_script(text: str, code: str, threshold: float = 0.5) -> bool:
     rng = _SCRIPT_RANGES.get(code)
     if not rng:
@@ -92,7 +99,8 @@ def _looks_like_target_script(text: str, code: str, threshold: float = 0.5) -> b
     letters = [c for c in text if c.isalpha()]
     if not letters:
         return True
-    inside = sum(1 for c in letters if lo <= ord(c) <= hi)
+    inside = sum(1 for c in letters if lo <= ord(c) <= hi
+                 or (code == "ja" and _is_japanese_han(ord(c))))
     return (inside / len(letters)) >= threshold
 
 
