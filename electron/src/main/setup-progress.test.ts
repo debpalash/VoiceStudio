@@ -71,3 +71,47 @@ describe('SetupProgressTracker', () => {
     expect(cleanProcessLine('\u001b[2K Downloaded torch\r')).toBe('Downloaded torch');
   });
 });
+
+
+describe('concurrent package byte updates', () => {
+  it.each([
+    ['torch', 'torchvision'],
+    ['torchvision', 'torch'],
+  ])('uses the closest planned identifier in a multi-package prefix (%s first)', (first, second) => {
+    const tracker = new SetupProgressTracker();
+    for (const name of [first, second]) {
+      tracker.ingest(`Downloading ${name} (${name === 'torch' ? 10 : 20} MiB)`, 0);
+    }
+    expect(tracker.ingest('torch ... torchvision 2 MiB / 20 MiB', 1000)).toMatchObject({
+      activePackage: 'torchvision',
+      totalBytes: 30 * 1024 ** 2,
+      downloadedBytes: 2 * 1024 ** 2,
+    });
+  });
+  it.each([
+    ['torch', 'torchvision'],
+    ['torchvision', 'torch'],
+    ['pydantic', 'pydantic-core'],
+    ['lib', 'lib.v2'],
+  ])('matches the complete %s / %s package identifiers', (first, second) => {
+    const tracker = new SetupProgressTracker();
+    tracker.ingest(`Downloading ${first} (10 MiB)`, 0);
+    tracker.ingest(`Downloading ${second} (20 MiB)`, 0);
+    expect(tracker.ingest(`${second} 2 MiB / 20 MiB`, 1000)).toMatchObject({
+      activePackage: second,
+      totalBytes: 30 * 1024 ** 2,
+      downloadedBytes: 2 * 1024 ** 2,
+    });
+    expect(tracker.ingest(`Downloaded ${first}`, 1001)).toMatchObject({
+      totalBytes: 30 * 1024 ** 2,
+      downloadedBytes: 12 * 1024 ** 2,
+    });
+  });
+
+  it('does not attribute an unannounced package to a matching substring', () => {
+    const tracker = new SetupProgressTracker();
+    tracker.ingest('Downloading torch (10 MiB)', 0);
+    expect(tracker.ingest('torchvision 2 MiB / 20 MiB', 1000)).toBeNull();
+    expect(tracker.snapshot()).toMatchObject({totalBytes: 10 * 1024 ** 2, downloadedBytes: 0});
+  });
+});
