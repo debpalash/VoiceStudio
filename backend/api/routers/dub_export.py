@@ -1701,7 +1701,9 @@ async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: flo
     # A later generate can replace both the job's text and source timings.
     # The selected track snapshots its own source timeline before fitting.
     source = track.get("source_segments")
-    if source:
+    # Legacy snapshots have no identities: positional pairing can silently
+    # assign another line's times after a later render reorders the job.
+    if source and any(row.get("id") is not None for row in source):
         qc_segments = _apply_fitted_times(qc_segments, source)
     strategy = track.get("timing_strategy") or job.get("timing_strategy")
     if strategy == "smart_fit":
@@ -1713,10 +1715,12 @@ async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: flo
         entry = (job.get("video_stretch_plans") or {}).get(selected_lang) or {}
         plan = entry.get("plan")
         if plan:
-            from services.fitted_subtitles import fitted_cues
-            cues = fitted_cues(qc_segments, plan)
-            qc_segments = [dict(seg, start=start, end=end)
-                           for seg, (start, end) in zip(qc_segments, cues)]
+            from services.fitted_subtitles import map_time_to_fitted
+            # QC follows stable ids, not chronological list order; the subtitle
+            # helper's monotonic-list guard would corrupt reordered lines.
+            qc_segments = [dict(seg, start=map_time_to_fitted(seg["start"], plan),
+                                end=map_time_to_fitted(seg["end"], plan))
+                           for seg in qc_segments]
     scored = dub_qc.score_dub(qc_segments, recognized,
                               drift_threshold=drift_threshold, seg_ids=seg_ids)
 

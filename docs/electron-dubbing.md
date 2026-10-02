@@ -112,10 +112,13 @@ SRT/VTT/ASS sidecars and per-language stem/segment ZIPs use the existing backend
 Each download is explicit and targets the selected language.
 Advanced QC compares recognized audio with the translation text for the selected
 track language, including when another language was generated more recently.
-QC matches recognized lines against the selected track's source timing, with its
-Smart Fit cues or stretch-video plan applied when available. Missing timing
-metadata retains the existing segment-time fallback. QC annotations preserve the
-saved source times, text, and track settings. Export errors retain
+Newly generated tracks save source timing by stable segment identity, so QC
+matches the correct line even after another language reorders the job. Smart Fit
+cues and stretch-video plans are applied for the selected track when available.
+Older source snapshots without segment identities cannot prove line ownership;
+QC retains the job's segment-time fallback for those snapshots. Regenerate that
+track to save identity-aware source timing. QC annotations preserve saved source
+times, text, and track settings. Export errors retain
 all choices for retry. Native save filters match the encoded file format.
 Browser fixtures verify MP3/SRT downloads, query options and failed-export retry;
 unit tests cover video/package parameters. Real rendered exports, batch presets

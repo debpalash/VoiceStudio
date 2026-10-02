@@ -170,6 +170,12 @@ GAP_OVERFLOW_MAX_S = 0.25
 GAP_OVERFLOW_BUFFER_S = 0.05
 
 
+def _track_source_segments(job: dict) -> list[dict]:
+    """Snapshot source times by the identities persisted for this render."""
+    return [{"id": seg.get("id"), "start": seg["start"], "end": seg["end"]}
+            for seg in job["segments"]]
+
+
 def _sync_job_segments(job: dict, req: DubRequest) -> None:
     """Persist the segments this dub was actually generated from back onto the job.
 
@@ -1987,7 +1993,6 @@ async def dub_generate(job_id: str, req: DubRequest):
             "language_code": lang_code,
             "duration": round(track_dur, 4),
             "timing_strategy": strategy,
-            "source_segments": [{"start": seg.start, "end": seg.end} for seg in req.segments],
         }
 
         # Persist the timing strategy + (for Mode B) the per-segment stretch
@@ -2000,6 +2005,7 @@ async def dub_generate(job_id: str, req: DubRequest):
         # Keep job segments in lock-step with what was just rendered so
         # subtitle export / burn-in use the translated text (#309).
         _sync_job_segments(job, req)
+        job["dubbed_tracks"][lang_code]["source_segments"] = _track_source_segments(job)
         if strategy == "stretch_video":
             stretch_plans = job.setdefault("video_stretch_plans", {})
             stretch_plans[lang_code] = {
