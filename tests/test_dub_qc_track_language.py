@@ -88,15 +88,19 @@ def test_qc_matches_selected_track_rendered_times(monkeypatch, strategy, with_pl
         job["video_stretch_plans"] = {"es": {"plan": plan}}
     timing = (job["segments"] if strategy == "legacy_source" else
               fitted if with_plan and strategy != "strict_slot" else source)
+    if strategy == "legacy_source":
+        timing = source
     recognized = [dict(t, text=text) for t, text in zip(timing, ["hola", "adios"])]
     if reordered:
         job["segments"].reverse()
         job["seg_order"].reverse()
     original = copy.deepcopy(job)
+    asr_calls = []
 
     class Backend:
         id = "test-local-asr"
         def transcribe(self, path, **kwargs):
+            asr_calls.append(path)
             assert path == "spanish.wav"
             return {"segments": recognized}
 
@@ -113,6 +117,15 @@ def test_qc_matches_selected_track_rendered_times(monkeypatch, strategy, with_pl
     monkeypatch.setattr(dub_pipeline, "put_job", lambda *a: None)
     monkeypatch.setattr(dub_pipeline, "save_job", lambda *a: None)
 
+    if strategy == "legacy_source":
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as error:
+            asyncio.run(dub_export.dub_qc_pass("test", lang=requested_lang, drift_threshold=0.5))
+        assert error.value.status_code == 409
+        assert error.value.detail["code"] == "dub_qc_timing_identity_missing"
+        assert asr_calls == []
+        assert job == original
+        return
     result = asyncio.run(dub_export.dub_qc_pass("test", lang=requested_lang, drift_threshold=0.5))
     assert result["flagged_count"] == 0
     assert [s["drift"] for s in result["segments"]] == [0.0, 0.0]
@@ -152,3 +165,84 @@ def test_render_source_snapshot_uses_preserved_ids_for_legacy_request():
     req = DubRequest(language_code="es", segments=[DubSegment(start=2.0, end=3.0, text="hola")])
     _sync_job_segments(job, req)
     assert _track_source_segments(job) == [{"id": "saved", "start": 2.0, "end": 3.0}]
+
+
+def _legacy_qc_route(monkeypatch, job, recognized):
+    from api.routers import dub_export
+    from services import asr_backend, dub_pipeline, model_manager
+    calls = []
+    class Backend:
+        id = "test-local-asr"
+        def transcribe(self, path, **kwargs):
+            calls.append(path)
+            return {"segments": recognized}
+    async def guarded(pool, fn, **kwargs):
+        return fn()
+    monkeypatch.setattr(dub_export, "_job_dir_or_400", lambda _: None)
+    monkeypatch.setattr(dub_export, "_get_job", lambda _: job)
+    monkeypatch.setattr(dub_export, "_dub_artifact", lambda path, *a, **kw: path)
+    monkeypatch.setattr(asr_backend, "asr_model_missing_error", lambda: None)
+    monkeypatch.setattr(asr_backend, "load_active_asr_backend", Backend)
+    monkeypatch.setattr(asr_backend, "run_transcribe_guarded", guarded)
+    monkeypatch.setattr(model_manager, "_get_gpu_pool", lambda: None)
+    monkeypatch.setattr(dub_pipeline, "put_job", lambda *a: None)
+    monkeypatch.setattr(dub_pipeline, "save_job", lambda *a: None)
+    return lambda: asyncio.run(dub_export.dub_qc_pass("test", lang="es", drift_threshold=0.5)), calls
+
+
+@pytest.mark.parametrize("fit_ids", [["a", "b"], ["b", "a"], ["a", "a"], ["a"], ["a", None], ["a", "foreign"]])
+def test_legacy_source_uses_only_complete_smart_fit_identity(monkeypatch, fit_ids):
+    from fastapi import HTTPException
+    timings = {"a": (0.0, 1.0), "b": (2.0, 3.0)}
+    fitted = [dict(id=sid, start=timings.get(sid, (0.0, 1.0))[0],
+                   end=timings.get(sid, (0.0, 1.0))[1]) for sid in fit_ids]
+    job = {"segments": [{"id": "b", "start": 10.0, "end": 11.0, "text": "later b"},
+                        {"id": "a", "start": 12.0, "end": 13.0, "text": "later a"}],
+           "segments_i18n": {"es": {"a": "hola", "b": "adios"}}, "seg_order": ["b", "a"],
+           "dubbed_tracks": {"es": {"path": "spanish.wav", "timing_strategy": "smart_fit",
+               "source_segments": [{"start": 0.0, "end": 1.0}, {"start": 2.0, "end": 3.0}]}},
+           "fit_plans": {"es": {"fitted_segments": fitted}}}
+    recognized = [{"start": 0.0, "end": 1.0, "text": "hola"},
+                  {"start": 2.0, "end": 3.0, "text": "adios"}]
+    run, calls = _legacy_qc_route(monkeypatch, job, recognized)
+    if set(fit_ids) == {"a", "b"} and len(fit_ids) == 2:
+        assert run()["flagged_count"] == 0
+        assert calls == ["spanish.wav"]
+    else:
+        original = copy.deepcopy(job)
+        with pytest.raises(HTTPException) as error:
+            run()
+        assert error.value.status_code == 409
+        assert error.value.detail["code"] == "dub_qc_timing_identity_missing"
+        assert calls == []
+        assert job == original
+
+
+@pytest.mark.parametrize("map_id", ["a", "foreign"])
+def test_legacy_single_line_requires_matching_selected_track_identity(monkeypatch, map_id):
+    from fastapi import HTTPException
+    job = {"segments": [{"id": "a", "start": 10.0, "end": 11.0, "text": "later"}],
+           "segments_i18n": {"es": {map_id: "hola"}}, "seg_order": ["a"],
+           "dubbed_tracks": {"es": {"path": "spanish.wav", "timing_strategy": "strict_slot",
+                                     "source_segments": [{"start": 0.0, "end": 1.0}]}}}
+    run, calls = _legacy_qc_route(monkeypatch, job, [{"start": 0.0, "end": 1.0, "text": "hola"}])
+    if map_id == "a":
+        assert run()["flagged_count"] == 0
+        assert calls == ["spanish.wav"]
+        assert job["segments"][0]["start"] == 10.0
+    else:
+        with pytest.raises(HTTPException) as error:
+            run()
+        assert error.value.status_code == 409
+        assert calls == []
+
+
+def test_legacy_source_does_not_infer_strategy_from_another_track():
+    from api.routers.dub_export import _qc_source_segments
+    from fastapi import HTTPException
+    job = {"timing_strategy": "smart_fit",
+           "dubbed_tracks": {"es": {"source_segments": [{"start": 0.0, "end": 1.0}]}},
+           "fit_plans": {"es": {"fitted_segments": [{"id": "a", "start": 0.0, "end": 1.0}]}}}
+    with pytest.raises(HTTPException) as error:
+        _qc_source_segments(job, "es", [{"id": "a", "start": 10.0, "end": 11.0}])
+    assert error.value.status_code == 409

@@ -1624,6 +1624,33 @@ async def dub_preview_segment(job_id: str, segment_index: int, lang: str = Query
 # ── Second-pass ASR QC (Wave 3.3 / Spec 5) ───────────────────────────────────
 
 
+def _qc_source_segments(job: dict, lang: str, segments: list[dict]) -> list[dict] | None:
+    """Resolve source ownership before ASR; legacy ordinal times can be ambiguous."""
+    track = job["dubbed_tracks"][lang]
+    source = track.get("source_segments")
+    if not source or any(row.get("id") is not None for row in source):
+        return source
+    texts = (job.get("segments_i18n") or {}).get(lang) or {}
+    if len(source) == len(segments) == len(texts) == 1:
+        sid = segments[0].get("id")
+        if sid is not None and str(sid) in texts:
+            return [dict(source[0], id=sid)]
+    # A complete Smart Fit cue set proves the final timeline by stable identity
+    # even when the original source snapshot predates identity persistence.
+    if track.get("timing_strategy") == "smart_fit":
+        fitted = ((job.get("fit_plans") or {}).get(lang) or {}).get("fitted_segments") or []
+        segment_ids = [str(seg["id"]) for seg in segments if seg.get("id") is not None]
+        fitted_ids = [str(cue["id"]) for cue in fitted if cue.get("id") is not None]
+        if (len(segment_ids) == len(set(segment_ids)) == len(segments)
+                and len(fitted_ids) == len(set(fitted_ids)) == len(fitted) == len(segments)
+                and set(segment_ids) == set(fitted_ids)):
+            return None
+    raise HTTPException(status_code=409, detail={
+        "code": "dub_qc_timing_identity_missing",
+        "message": "Regenerate the selected track before QC: saved source timings lack segment identities.",
+    })
+
+
 @router.post("/dub/qc/{job_id}")
 async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: float = Query(0.5)):
     """Re-recognize the dubbed audio and flag lines whose recognized text
@@ -1650,6 +1677,7 @@ async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: flo
     segments = job.get("segments") or []
     if not segments:
         raise HTTPException(status_code=400, detail="Job has no segments")
+    source = _qc_source_segments(job, selected_lang, segments)
 
     # TTS-only install: no ASR model on disk → typed 409 with a download CTA,
     # BEFORE any backend load could silently auto-download whisper weights.
@@ -1700,7 +1728,6 @@ async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: flo
     track = tracks[selected_lang]
     # A later generate can replace both the job's text and source timings.
     # The selected track snapshots its own source timeline before fitting.
-    source = track.get("source_segments")
     # Legacy snapshots have no identities: positional pairing can silently
     # assign another line's times after a later render reorders the job.
     if source and any(row.get("id") is not None for row in source):

@@ -115,10 +115,14 @@ track language, including when another language was generated more recently.
 Newly generated tracks save source timing by stable segment identity, so QC
 matches the correct line even after another language reorders the job. Smart Fit
 cues and stretch-video plans are applied for the selected track when available.
-Older source snapshots without segment identities cannot prove line ownership;
-QC retains the job's segment-time fallback for those snapshots. Regenerate that
-track to save identity-aware source timing. QC annotations preserve saved source
-times, text, and track settings. Export errors retain
+Older source snapshots without segment identities cannot prove line ownership
+for multiple lines. QC stops before recognition with a regeneration request when
+those times are ambiguous, instead of scoring against another track's windows.
+Complete Smart Fit cues with matching unique IDs still establish the final
+timeline; a single line with one matching selected-track text ID also establishes
+ownership. Jobs with no saved source snapshot retain their existing fallback.
+Regenerate an ambiguous track to save identity-aware source timing. QC annotations
+preserve saved source times, text, and track settings. Export errors retain
 all choices for retry. Native save filters match the encoded file format.
 Browser fixtures verify MP3/SRT downloads, query options and failed-export retry;
 unit tests cover video/package parameters. Real rendered exports, batch presets
