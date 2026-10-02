@@ -36,20 +36,27 @@ _PRE_0013_JOB_EVENTS = f"""
 """
 
 # (job_id, seq, payload) in insertion order.
-#   raced        — the bug: two callers collided on seq 2, two more on seq 3
-#   clean        — untouched, already distinct
-#   capped       — untouched; its base is above 1 because the per-job cap trimmed
-#                  its oldest rows
-#   trimmed_raced — BOTH: trimmed to base 51 and then raced. Renumbering this one
-#                  down to 1 would drop its retained events below a reconnecting
-#                  client's `?after_seq=` cursor, which is the whole reason the
-#                  repair anchors to each job's own base.
+#   raced         — two callers collided on seq 2, two more on seq 3
+#   clean         — untouched, already distinct
+#   capped        — untouched; its base is above 1 because the per-job cap
+#                   trimmed its oldest rows
+#   trimmed_raced — BOTH trimmed (base 51) and raced
+#   stalled       — a HIGH seq sits first in insertion order: the old writer read
+#                   MAX, then inserted, and another caller could commit in
+#                   between, so seqs are not even non-decreasing by `id`.
+#                   Renumbering this from MIN(seq) yields 53,54,55 and drops the
+#                   first event below a reader at cursor 55.
+#   reordered     — the same shape, longer: renumbering from MIN gives
+#                   50,51,52,53,54 and lowers two rows.
 _SEED = [
     ("raced", 1, "a"), ("raced", 2, "b"), ("raced", 2, "c"), ("raced", 3, "d"), ("raced", 3, "e"),
     ("clean", 1, "p"), ("clean", 2, "q"),
     ("capped", 10, "x"), ("capped", 11, "y"), ("capped", 12, "z"),
     ("trimmed_raced", 51, "k"), ("trimmed_raced", 52, "l"), ("trimmed_raced", 52, "m"),
     ("trimmed_raced", 53, "n"),
+    ("stalled", 55, "s1"), ("stalled", 53, "s2"), ("stalled", 53, "s3"),
+    ("reordered", 51, "r1"), ("reordered", 52, "r2"), ("reordered", 50, "r3"),
+    ("reordered", 53, "r4"), ("reordered", 53, "r5"),
 ]
 
 
@@ -133,9 +140,15 @@ def _assert_converged(db_path: str) -> None:
     assert _rows(db_path, "capped") == [(10, "x"), (11, "y"), (12, "z")]
 
     # A job that was trimmed AND raced keeps its base: 51,52,52,53 -> 51,52,53,54.
-    # Renumbering it to 1..4 would be silent data loss for a live reader; see
-    # test_repair_never_lowers_a_seq below.
     assert _rows(db_path, "trimmed_raced") == [(51, "k"), (52, "l"), (53, "m"), (54, "n")]
+
+    # Out of insertion order. Renumbering from MIN(seq) would give 53,54,55 and
+    # 50,51,52,53,54 — lowering rows a reader may already have passed. The
+    # running maximum lifts the collisions instead of pulling the leader down.
+    assert _rows(db_path, "stalled") == [(55, "s1"), (56, "s2"), (57, "s3")]
+    assert _rows(db_path, "reordered") == [
+        (51, "r1"), (52, "r2"), (53, "r3"), (54, "r4"), (55, "r5"),
+    ]
 
     # And the invariant is now enforced, not merely upheld.
     conn = sqlite3.connect(db_path)
@@ -165,15 +178,19 @@ def test_migration_0013_renumbers_duplicates_and_enforces_uniqueness(tmp_path):
 
 
 def _renumber(conn) -> None:
-    """Apply the migration's own repair SQL once, the way `upgrade()` does.
+    """Apply the migration's own repair once, the way `upgrade()` does.
 
-    Runs the exact strings the migration module defines — sqlite3 understands
-    the same `:name` placeholders SQLAlchemy does — so this cannot drift from
-    what actually ships.
+    Calls the exact functions and SQL the migration module defines — sqlite3
+    understands the same `:name` placeholders SQLAlchemy does — so this cannot
+    drift from what actually ships.
     """
     mod = _load_migration_module()
-    for job_id, base in conn.execute(mod.JOBS_WITH_DUPLICATE_SEQS).fetchall():
-        conn.execute(mod.RENUMBER_ONE_JOB, {"base": base, "job_id": job_id})
+    for (job_id,) in conn.execute(mod.JOBS_WITH_DUPLICATE_SEQS).fetchall():
+        rows = conn.execute(
+            mod.JOB_EVENTS_IN_INSERTION_ORDER, {"job_id": job_id}
+        ).fetchall()
+        for new_seq, row_id in mod.repaired_seqs(rows):
+            conn.execute(mod.SET_SEQ, {"seq": new_seq, "id": row_id})
 
 
 def test_migration_0013_is_idempotent(tmp_path):
@@ -192,6 +209,7 @@ def test_migration_0013_is_idempotent(tmp_path):
     assert _rows(str(db), "raced") == [(1, "a"), (2, "b"), (3, "c"), (4, "d"), (5, "e")]
     assert _rows(str(db), "capped") == [(10, "x"), (11, "y"), (12, "z")]
     assert _rows(str(db), "trimmed_raced") == [(51, "k"), (52, "l"), (53, "m"), (54, "n")]
+    assert _rows(str(db), "stalled") == [(55, "s1"), (56, "s2"), (57, "s3")]
 
 
 def test_repair_never_lowers_a_seq(tmp_path):
@@ -217,6 +235,53 @@ def test_repair_never_lowers_a_seq(tmp_path):
 
     lowered = {i: (before[i], after[i]) for i in before if after[i] < before[i]}
     assert not lowered, f"seq decreased for row id -> (before, after): {lowered}"
+
+
+def test_both_repair_paths_plan_identically():
+    """core/db.py and the migration must agree, or the install paths diverge.
+
+    They hold separate copies on purpose — a migration is a frozen snapshot and
+    must not import live app code — so something has to hold them to the same
+    answer. Covers the shapes that distinguish a correct repair from a plausible
+    one, including the two that renumbering from MIN(seq) gets wrong.
+    """
+    from core.db import repaired_seqs as live
+
+    frozen = _load_migration_module().repaired_seqs
+
+    cases = [
+        [(1, 1), (2, 2), (3, 2), (4, 3), (5, 3)],            # plain race
+        [(1, 51), (2, 52), (3, 52), (4, 53)],                 # trimmed + raced
+        [(1, 55), (2, 53), (3, 53)],                          # high seq first
+        [(1, 51), (2, 52), (3, 50), (4, 53), (5, 53)],        # out of order
+        [(1, 7)],                                             # single row
+        [],                                                   # nothing to do
+    ]
+    for rows in cases:
+        assert live(rows) == frozen(rows), f"repair paths disagree on {rows}"
+
+
+@pytest.mark.parametrize(
+    ("rows", "expected"),
+    [
+        ([(1, 1), (2, 2), (3, 2), (4, 3), (5, 3)], [1, 2, 3, 4, 5]),
+        ([(1, 51), (2, 52), (3, 52), (4, 53)], [51, 52, 53, 54]),
+        ([(1, 55), (2, 53), (3, 53)], [55, 56, 57]),
+        ([(1, 51), (2, 52), (3, 50), (4, 53), (5, 53)], [51, 52, 53, 54, 55]),
+    ],
+)
+def test_repair_plan_rises_and_stays_unique(rows, expected):
+    """Every row's seq rises or holds, and the result is strictly increasing."""
+    from core.db import repaired_seqs
+
+    plan = dict((row_id, new) for new, row_id in repaired_seqs(rows))
+    final = [plan.get(row_id, seq) for row_id, seq in rows]
+
+    assert final == expected
+    assert all(new >= old for new, (_, old) in zip(final, rows)), (
+        f"a seq was lowered: {list(zip([s for _, s in rows], final))}"
+    )
+    assert all(b > a for a, b in zip(final, final[1:])), f"not strictly increasing: {final}"
 
 
 def test_core_db_converges_the_same_way_without_alembic(tmp_path):

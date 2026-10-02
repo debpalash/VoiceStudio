@@ -414,40 +414,53 @@ def _reconcile_additive_columns(conn) -> None:
 _JOB_EVENTS_OLD_INDEX = "idx_job_events_job_seq"
 _JOB_EVENTS_UNIQUE_INDEX = "idx_job_events_job_seq_unique"
 
-# Jobs holding at least one duplicated seq, with the lowest seq each still has.
-# COUNT(*) > COUNT(DISTINCT seq) is the duplicate test; MIN(seq) is the base the
-# renumber has to keep.
+# Jobs holding at least one duplicated seq. COUNT(*) > COUNT(DISTINCT seq) is
+# the duplicate test.
 _JOBS_WITH_DUPLICATE_SEQS = """
-    SELECT job_id, MIN(seq) AS base
+    SELECT job_id
       FROM job_events
      GROUP BY job_id
     HAVING COUNT(*) > COUNT(DISTINCT seq)
 """
 
-# Renumber one job from its own base, in insertion order: the k-th row by `id`
-# becomes base + k - 1. `id` is the INTEGER PRIMARY KEY so the count is distinct
-# per row, which makes the result gapless and unique — and no event is dropped,
-# which a DELETE-the-duplicate repair could not promise.
-#
-# Anchoring to the job's existing base rather than to 1 is what keeps live
-# readers correct. Seqs were handed out as MAX+1, so they are non-decreasing,
-# and the k-th row's old value is therefore at most base + k - 1: every row's
-# seq either rises or stays put, never falls. A client that reconnects with
-# `?after_seq=N` can then only ever see events it has not seen. Rebasing to 1
-# would push the retained events of a job the per-job cap had trimmed BELOW such
-# a cursor, and the client would silently skip them.
-#
-# The subquery reads only `id`/`job_id` and never `seq`, and the base is a bound
-# parameter read before any write, so SQLite applying earlier row updates
-# partway through the statement cannot skew the numbering.
-_RENUMBER_ONE_JOB = """
-    UPDATE job_events
-       SET seq = ? + (SELECT COUNT(*)
-                        FROM job_events AS e2
-                       WHERE e2.job_id = job_events.job_id
-                         AND e2.id <= job_events.id) - 1
-     WHERE job_id = ?
+_JOB_EVENTS_IN_INSERTION_ORDER = """
+    SELECT id, seq FROM job_events WHERE job_id = ? ORDER BY id
 """
+
+_SET_SEQ = "UPDATE job_events SET seq = ? WHERE id = ?"
+
+
+def repaired_seqs(rows) -> list[tuple[int, int]]:
+    """Plan the seq repair for one job's rows, in insertion order.
+
+    Takes (row_id, seq) ordered by `id` and returns the (new_seq, row_id) pairs
+    that need writing. Each row keeps its own seq unless a predecessor already
+    claimed that number, in which case it takes the next one up:
+    ``new = max(seq, previous_new + 1)``.
+
+    The point is that a seq can only ever RISE. `events_since` serves a
+    reconnecting SSE client as ``seq > after_seq``, so lowering a retained
+    event's seq past that cursor would make the client skip it and never learn
+    it existed. Two things can push a seq down if the repair simply renumbers
+    from a base: a job the per-job cap has trimmed starts above 1, and the old
+    writer could land a stale low seq behind a higher one — it read MAX, then
+    inserted, and another caller could commit in between — so the values are not
+    even guaranteed non-decreasing by `id`. ``(55, 53, 53)`` renumbered from
+    MIN(seq) becomes ``(53, 54, 55)`` and loses the first event for a reader at
+    cursor 55; the running maximum makes it ``(55, 56, 57)`` instead.
+
+    Rows are never dropped, so no event is lost — which a
+    DELETE-the-duplicate repair could not promise. The result is strictly
+    increasing, hence unique, which is what lets the UNIQUE index build.
+    """
+    plan: list[tuple[int, int]] = []
+    previous = None
+    for row_id, seq in rows:
+        new = seq if previous is None else max(seq, previous + 1)
+        if new != seq:
+            plan.append((new, row_id))
+        previous = new
+    return plan
 
 
 def _ensure_job_events_seq_unique(conn) -> None:
@@ -475,10 +488,13 @@ def _ensure_job_events_seq_unique(conn) -> None:
         ).fetchone():
             return  # already converged
         repaired = 0
-        # Read every base before writing anything: the UPDATE changes `seq`, so
-        # a base still being derived from it mid-statement could drift.
-        for job_id, base in conn.execute(_JOBS_WITH_DUPLICATE_SEQS).fetchall():
-            repaired += conn.execute(_RENUMBER_ONE_JOB, (base, job_id)).rowcount
+        # Each job's rows are read in full before any of them is written: the
+        # plan depends on the seqs it is about to overwrite.
+        for (job_id,) in conn.execute(_JOBS_WITH_DUPLICATE_SEQS).fetchall():
+            rows = conn.execute(_JOB_EVENTS_IN_INSERTION_ORDER, (job_id,)).fetchall()
+            plan = repaired_seqs(rows)
+            conn.executemany(_SET_SEQ, plan)
+            repaired += len(plan)
         conn.execute(f"DROP INDEX IF EXISTS {_JOB_EVENTS_OLD_INDEX}")
         conn.execute(
             f"CREATE UNIQUE INDEX IF NOT EXISTS {_JOB_EVENTS_UNIQUE_INDEX} "
