@@ -25,6 +25,26 @@ def test_sync_consumes_existing_segment_only_once():
     assert job['segments_i18n']['en'] == {'b': 'translated b', 'seg_1': 'new segment'}
 
 
+def test_sync_reserves_saved_rows_for_later_explicit_ids():
+    from api.routers.dub_generate import _sync_job_segments
+    from schemas.requests import DubRequest
+
+    job = {'segments': [
+        {'id': 'a', 'start': 0, 'end': 1, 'text': 'original a', 'speaker_id': 'speaker-a'},
+        {'id': 'b', 'start': 1, 'end': 2, 'text': 'original b', 'speaker_id': 'speaker-b'},
+    ], 'seg_order': ['x', 'a']}
+    req = DubRequest(segments=[dict(start=0, end=1, text='new x'),
+                               dict(start=1, end=2, text='translated a')],
+                     segment_ids=['x', 'a'], language_code='en')
+    _sync_job_segments(job, req)
+    assert [row['id'] for row in job['segments']] == ['x', 'a']
+    assert 'speaker_id' not in job['segments'][0]
+    assert job['segments'][0]['text_original'] == ''
+    assert job['segments'][1]['speaker_id'] == 'speaker-a'
+    assert job['segments'][1]['text_original'] == 'original a'
+    assert job['segments_i18n']['en'] == {'x': 'new x', 'a': 'translated a'}
+
+
 @pytest.mark.parametrize("requested_lang", ["es", None, "unknown", "bn"])
 def test_qc_uses_selected_track_authoritative_text(monkeypatch, requested_lang):
     from api.routers import dub_export

@@ -196,6 +196,10 @@ def _sync_job_segments(job: dict, req: DubRequest) -> None:
     by_id = {str(s["id"]): i for i, s in enumerate(existing) if s.get("id") is not None}
     used_existing: set[int] = set()
     seg_ids = req.segment_ids or []
+    # An unmatched earlier row must not consume metadata explicitly requested
+    # by a later row. Those stable-ID matches take priority over index fallback.
+    reserved_existing = {by_id[str(sid)] for sid in seg_ids
+                         if sid is not None and str(sid) in by_id}
     # The current render seeds exactly this manifest before synthesis. Only a
     # complete matching vector can supply an otherwise missing row identity.
     render_order = job.get("seg_order")
@@ -218,7 +222,8 @@ def _sync_job_segments(job: dict, req: DubRequest) -> None:
         prev_index = by_id.get(str(seg_id)) if seg_id is not None else None
         if prev_index in used_existing:
             prev_index = None
-        if prev_index is None and i < len(existing) and i not in used_existing:
+        if (prev_index is None and i < len(existing)
+                and i not in used_existing and i not in reserved_existing):
             prev_index = i
         prev = existing[prev_index] if prev_index is not None else None
         if prev_index is not None:

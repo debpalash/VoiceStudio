@@ -182,6 +182,25 @@ def test_partial_ids_render_without_reusing_a_saved_segment(render_dub):
     assert sf.info(render_dub.path / 'dubbed_en.wav').frames > 0
 
 
+def test_explicit_later_id_keeps_saved_metadata_after_render(render_dub):
+    render_dub.job['segments'] = [
+        {'id': 'a', 'start': 0, 'end': 1, 'text': 'original a', 'speaker_id': 'speaker-a'},
+        {'id': 'b', 'start': 1, 'end': 2, 'text': 'original b', 'speaker_id': 'speaker-b'},
+    ]
+    events = render_dub.run(segments=[dict(start=0, end=1, text='new x'),
+                                      dict(start=1, end=2, text='translated a')],
+                            segment_ids=['x', 'a'])
+    assert any(e['type'] == 'done' for e in events)
+    rows = render_dub.job['segments']
+    assert [row['id'] for row in rows] == ['x', 'a']
+    assert 'speaker_id' not in rows[0]
+    assert rows[0]['text_original'] == ''
+    assert rows[1]['speaker_id'] == 'speaker-a'
+    assert rows[1]['text_original'] == 'original a'
+    assert render_dub.job['segments_i18n']['en'] == {'x': 'new x', 'a': 'translated a'}
+    assert sf.info(render_dub.path / 'dubbed_en.wav').frames > 0
+
+
 def test_timing_trims_edge_silence_but_keeps_internal_pauses():
     from services.audio_dsp import trim_speech_padding
     wav = torch.cat((torch.zeros(1, 1000), torch.ones(1, 200)*.1,
