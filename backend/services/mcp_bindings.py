@@ -46,28 +46,24 @@ def upsert_binding(
     if not client_id or not client_id.strip():
         raise ValueError("client_id must be non-empty")
     cid = client_id.strip()
-    existing = get_binding(cid)
     now = time.time()
-    if existing:
-        merged = {
-            "label": existing["label"] if label is None else label,
-            "profile_id": existing["profile_id"] if profile_id is None else (profile_id or None),
-            "default_engine": existing["default_engine"] if default_engine is None else (default_engine or None),
-        }
-        with db_conn() as conn:
-            conn.execute(
-                "UPDATE mcp_client_bindings SET label=?, profile_id=?, default_engine=? WHERE client_id=?",
-                (merged["label"], merged["profile_id"], merged["default_engine"], cid),
-            )
-    else:
-        with db_conn() as conn:
-            conn.execute(
-                "INSERT INTO mcp_client_bindings "
-                "(client_id, label, profile_id, default_engine, last_seen_at, created_at) "
-                "VALUES (?, ?, ?, ?, NULL, ?)",
-                (cid, label or "", profile_id or None, default_engine or None, now),
-            )
-    return get_binding(cid)
+    with db_conn() as conn:
+        # Merge partial edits inside SQLite's write, rather than against a
+        # snapshot from another connection. Concurrent creation is an upsert,
+        # and omitted fields preserve the latest committed values.
+        row = conn.execute(
+            "INSERT INTO mcp_client_bindings "
+            "(client_id, label, profile_id, default_engine, last_seen_at, created_at) "
+            "VALUES (?, ?, ?, ?, NULL, ?) "
+            "ON CONFLICT(client_id) DO UPDATE SET "
+            "label=CASE WHEN ? IS NULL THEN mcp_client_bindings.label ELSE excluded.label END, "
+            "profile_id=CASE WHEN ? IS NULL THEN mcp_client_bindings.profile_id ELSE excluded.profile_id END, "
+            "default_engine=CASE WHEN ? IS NULL THEN mcp_client_bindings.default_engine ELSE excluded.default_engine END "
+            "RETURNING *",
+            (cid, label or "", profile_id or None, default_engine or None, now,
+             label, profile_id, default_engine),
+        ).fetchone()
+    return dict(row)
 
 
 def delete_binding(client_id: str) -> bool:
