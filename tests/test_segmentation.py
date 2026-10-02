@@ -94,6 +94,35 @@ class TestWordsFromWhisper:
         assert [w.text for w in words] == ["hello", "world", "foo"]
         assert words[0].start == 0.0
 
+    @pytest.mark.parametrize("untimed_first", [False, True])
+    def test_partial_word_timing_preserves_untimed_segment(self, untimed_first):
+        timed = {"text": "hello", "start": 0.0, "end": 1.0,
+                 "words": [{"word": "hello", "start": 0.1, "end": 0.8}]}
+        untimed = {"text": "world again", "start": 2.0, "end": 4.0, "words": []}
+        segments = [untimed, timed] if untimed_first else [timed, untimed]
+        result = {"segments": segments, "chunks": [
+            {"text": s["text"], "timestamp": (s["start"], s["end"])} for s in segments
+        ]}
+        words = _words(result)
+        assert [w.text for w in words] == (
+            ["world", "again", "hello"] if untimed_first else ["hello", "world", "again"]
+        )
+        hello = next(w for w in words if w.text == "hello")
+        assert (hello.start, hello.end) == (0.1, 0.8)
+        fallback = [w for w in words if w.text != "hello"]
+        assert [(w.start, w.end) for w in fallback] == [(2.0, 3.0), (3.0, 4.0)]
+
+    def test_all_untimed_segments_keep_the_legacy_chunk_timing_fallback(self):
+        result = {
+            "segments": [{"text": "hello world", "start": 0.0, "end": None, "words": []}],
+            "chunks": [{"text": "hello", "timestamp": (0.0, 1.0)},
+                       {"text": "world", "timestamp": (1.0, 3.0)}],
+        }
+        words = _words(result)
+        assert [(w.text, w.start, w.end) for w in words] == [
+            ("hello", 0.0, 1.0), ("world", 1.0, 3.0),
+        ]
+
     def test_falls_back_to_chunks(self):
         result = _chunks(("one two three", 0.0, 3.0))
         words = _words(result)

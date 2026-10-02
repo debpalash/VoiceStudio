@@ -208,7 +208,9 @@ def _words_from_whisper(result: dict) -> List[Word]:
     words: List[Word] = []
     segs = result.get("segments") if isinstance(result, dict) else None
     if segs:
+        has_precise_words = False
         for seg in segs:
+            segment_words: List[Word] = []
             for w in seg.get("words", []) or []:
                 wt = (w.get("word") or w.get("text") or "").strip()
                 if not wt:
@@ -217,9 +219,26 @@ def _words_from_whisper(result: dict) -> List[Word]:
                 we = float(w.get("end", seg.get("end", ws + 0.1)))
                 if we <= ws:
                     we = ws + 0.05
-                words.append(Word(start=ws, end=we, text=wt))
-        if words:
+                segment_words.append(Word(start=ws, end=we, text=wt))
+            if segment_words:
+                has_precise_words = True
+                words.extend(segment_words)
+            else:
+                # Forced alignment can leave individual segments without word
+                # timings. Preserve their speech using their own chunk span,
+                # without replacing precise timings on neighboring segments.
+                text = _clean(seg.get("text", ""))
+                start = float(seg.get("start") or 0.0)
+                end = float(seg.get("end") or start + 0.1)
+                if text and end > start:
+                    tokens = text.split(" ")
+                    duration = (end - start) / len(tokens)
+                    words.extend(Word(start=start + i * duration,
+                                      end=start + (i + 1) * duration, text=token)
+                                 for i, token in enumerate(tokens))
+        if has_precise_words:
             return words
+        words.clear()  # Keep the legacy chunks fallback when no words are timed.
 
     # Fallback: chunk-level timings (no per-word granularity)
     for chunk in result.get("chunks", []) or []:
