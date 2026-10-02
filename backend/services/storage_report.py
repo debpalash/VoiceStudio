@@ -131,6 +131,8 @@ def _dir_size(path: str, deadline: float) -> tuple[int, bool, str | None]:
     try:
         if not os.path.exists(path):
             return 0, True, None
+        if time.monotonic() >= deadline:
+            return 0, False, None
         if not os.path.isdir(path):
             return os.lstat(path).st_size, True, None
     except OSError:
@@ -139,10 +141,14 @@ def _dir_size(path: str, deadline: float) -> tuple[int, bool, str | None]:
     total = 0
     complete = True
     for root, _dirs, files in os.walk(path, onerror=_onerror):
-        if time.monotonic() > deadline:
+        if time.monotonic() >= deadline:
             complete = False
             break
         for name in files:
+            # A large flat directory yields only one walk root. Checking just
+            # between roots can spend minutes stat'ing that root's files.
+            if time.monotonic() >= deadline:
+                return total, False, err_path
             fp = os.path.join(root, name)
             try:
                 total += os.lstat(fp).st_size
@@ -343,39 +349,52 @@ def build_report(
     })
 
     other_bytes = 0
+    # Unlisted or unclassifiable managed engines may hide bytes owned by Other.
+    other_complete = not (engines_child and engine_err is not None)
     try:
         with os.scandir(data_dir) as it:
             for e in it:
                 if e.name in claimed:
                     continue
+                if time.monotonic() >= deadline:
+                    data_complete = other_complete = False
+                    break
                 if e.is_dir(follow_symlinks=False):
                     size, ok, err = _dir_size(e.path, deadline)
                     other_bytes += size
                     data_complete = data_complete and ok
+                    other_complete = other_complete and ok and err is None
                     data_err = data_err or err
                 else:
                     try:
                         other_bytes += e.stat(follow_symlinks=False).st_size
                     except OSError:
                         data_err = data_err or e.path
+                        other_complete = False
     except OSError:
         if os.path.exists(data_dir):
             data_err = data_err or data_dir
+            other_complete = False
     if engines_child:
         for e in engine_entries:
             if e.path in engine_dirs or e.path in unclassified_engines:
                 continue
+            if time.monotonic() >= deadline:
+                data_complete = other_complete = False
+                break
             try:
                 if e.is_dir(follow_symlinks=False):
                     size, ok, err = _dir_size(e.path, deadline)
                     other_bytes += size
                     data_complete = data_complete and ok
+                    other_complete = other_complete and ok and err is None
                     data_err = data_err or err
                 else:
                     other_bytes += e.stat(follow_symlinks=False).st_size
             except OSError:
                 data_err = data_err or e.path
-    children.append({"id": "other", "path": data_dir, "bytes": other_bytes, "complete": True})
+                other_complete = False
+    children.append({"id": "other", "path": data_dir, "bytes": other_bytes, "complete": other_complete})
 
     data_cat = {
         "id": "data",
