@@ -398,18 +398,36 @@ def sign_on_issue(gh: GitHub, event: dict) -> int:
     return len(new)
 
 
+def set_status(gh: GitHub, sha: str, state: str, description: str, doc_url: str | None = None) -> None:
+    """Require GitHub to acknowledge each transition of the merge gate."""
+    body = {"state": state, "context": STATUS_CONTEXT, "description": description[:140]}
+    if doc_url:
+        body["target_url"] = doc_url
+    status, _, _ = gh.request("POST", f"/repos/{gh.repo}/statuses/{sha}", body)
+    if status != 201:
+        raise RuntimeError(f"Could not write CLA status ({status})")
+
+
 def run(gh: GitHub, event_name: str, event: dict, server_url: str = "https://github.com") -> Evaluation:
-    number = (event.get("pull_request") or event.get("issue") or {}).get("number")
+    event_pr = event.get("pull_request") or {}
+    number = (event_pr or event.get("issue") or {}).get("number")
+    # On PR events the payload supplies the head even if the first API read
+    # fails. Comment events need the PR lookup before its head is available.
+    event_sha = (event_pr.get("head") or {}).get("sha")
+    pending_sha = None
+    if event_sha and event_pr.get("state", "open") == "open":
+        set_status(gh, event_sha, "pending", "Checking contributor signatures")
+        pending_sha = event_sha
     pr = gh.get(f"/repos/{gh.repo}/pulls/{number}")
     if pr.get("state") != "open":
         return Evaluation()
+    if pr["head"]["sha"] != pending_sha:
+        set_status(gh, pr["head"]["sha"], "pending", "Checking contributor signatures")
     opener = Person(pr["user"]["login"], int(pr["user"]["id"]))
     opener_is_bot = pr["user"].get("type") == "Bot" and opener.id in BOT_IDS
     doc_url = f"{server_url}/{gh.repo}/blob/{pr['base']['repo']['default_branch']}/{DOCUMENT_PATH}"
     if OVERRIDE_LABEL in {label.get("name") for label in pr.get("labels") or []}:
-        gh.request("POST", f"/repos/{gh.repo}/statuses/{pr['head']['sha']}", {
-            "state": "success", "context": STATUS_CONTEXT, "target_url": doc_url,
-            "description": "CLA reviewed by a maintainer"})
+        set_status(gh, pr["head"]["sha"], "success", "CLA reviewed by a maintainer", doc_url)
         return Evaluation()
 
     actors, count = pr_actors(gh, number)
@@ -419,8 +437,10 @@ def run(gh: GitHub, event_name: str, event: dict, server_url: str = "https://git
         if ref == number:
             continue
         status, other, _ = gh.request("GET", f"/repos/{gh.repo}/pulls/{ref}")
-        if status != 200:
+        if status == 404:
             continue  # an issue or a missing number, not a pull request
+        if status != 200:
+            raise RuntimeError(f"Could not read superseded PR #{ref} ({status})")
         if (other.get("user") or {}).get("type") == "User":
             actors.append({"name": other["user"]["login"], "email": "",
                            "login": other["user"]["login"], "id": other["user"]["id"]})
@@ -449,10 +469,8 @@ def run(gh: GitHub, event_name: str, event: dict, server_url: str = "https://git
                                   f"and apply `{OVERRIDE_LABEL}`")
     description = ("All contributors have signed the CLA" if evaluation.passed
                    else f"{len(evaluation.unsigned) + len(evaluation.unknown)} contributor(s) still need to sign")
-    gh.request("POST", f"/repos/{gh.repo}/statuses/{pr['head']['sha']}", {
-        "state": "success" if evaluation.passed else "failure", "context": STATUS_CONTEXT,
-        "description": description[:140], "target_url": doc_url})
     upsert_comment(gh, number, render_comment(evaluation, doc_url), create=not evaluation.passed)
+    set_status(gh, pr["head"]["sha"], "success" if evaluation.passed else "failure", description, doc_url)
     return evaluation
 
 

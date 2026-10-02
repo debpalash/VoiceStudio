@@ -18,6 +18,7 @@ AGENT_LOGINS = (
     "copilot-swe-agent", "coderabbitai", "openhands-agent", "sweep-ai",
 )
 _LOGINS = "|".join(re.escape(login) for login in AGENT_LOGINS)
+_BOT_NAMES = rf"{_LOGINS}|devin|gemini|jules"
 
 AGENT_EMAILS = re.compile(
     r"^(noreply@anthropic\.com|cursoragent@cursor\.com|codex@openai\.com|noreply@openai\.com"
@@ -31,7 +32,7 @@ AGENT_EMAILS = re.compile(
 AGENT_TRAILER_NAMES = re.compile(
     r"^((claude (code|opus|sonnet|haiku|fable|\d).*|cursor( agent)?|cursoragent|(github )?copilot"
     r"|(openai )?codex|chatgpt|devin ai|gemini code assist|google jules|aider|cline|coderabbit(ai)?)"
-    rf"(\[bot\])?|({_LOGINS})\[bot\])$",
+    rf"(\[bot\])?|({_BOT_NAMES})\[bot\])$",
     re.IGNORECASE,
 )
 
@@ -40,7 +41,7 @@ AGENT_TRAILER_NAMES = re.compile(
 AGENT_AUTHOR_NAMES = re.compile(
     r"^((claude code( .*)?|claude (opus|sonnet|haiku|fable|instant|\d)\S*( .*)?|cursor agent|cursoragent"
     r"|(github )?copilot|(openai )?codex|chatgpt|devin ai|google jules|openhands( agent)?)(\[bot\])?"
-    rf"|({_LOGINS})\[bot\])$",
+    rf"|({_BOT_NAMES})\[bot\])$",
     re.IGNORECASE,
 )
 

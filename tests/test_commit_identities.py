@@ -361,3 +361,17 @@ def test_remedy_rewrites_only_the_listed_commits():
     assert "git rebase --exec 'git commit --amend --no-edit --reset-author'" not in text
     contributing = (ROOT / ".github" / "CONTRIBUTING.md").read_text(encoding="utf-8")
     assert "mark each listed commit `edit`" in contributing
+
+
+@pytest.mark.parametrize("name", ["Devin[bot]", "Gemini[bot]", "Jules[bot]"])
+@pytest.mark.parametrize("identity", ["author", "trailer"])
+def test_bot_suffixed_first_names_remain_blocked(repo, name, identity):
+    _, commit, check = repo
+    email = "1001+alice@users.noreply.github.com"
+    if identity == "author":
+        sha = commit("fix: thing", author=(name, email))
+    else:
+        sha = commit(f"fix: thing\n\nCo-authored-by: {name} <{email}>")
+    result = check(*_only(sha))
+    assert result.returncode == 1
+    assert "AI agent identity" in result.stdout

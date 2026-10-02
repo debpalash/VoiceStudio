@@ -34,6 +34,13 @@ whose commit already carries passing checks would be accepted. The rule needs
 no approving review, because `@debpalash` is the only maintainer and GitHub
 does not let authors approve their own pull requests.
 
+Each CLA recheck marks the head pending before looking up contributors and
+signatures. Once GitHub accepts that transition, later lookup failures leave it
+pending instead of retaining an older approval. Failed lookups of superseded
+PRs are not treated as absent contributors. Status-write failures fail the
+workflow; retry a failed run after GitHub recovers and verify its CLA status
+before merging.
+
 The `context` values must match the check names shown on a pull request:
 
 - `Tests (backend + frontend)`: the `name:` of the `test` job in `.github/workflows/ci.yml`.

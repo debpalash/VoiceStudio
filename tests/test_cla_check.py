@@ -387,3 +387,61 @@ def test_maintainer_override_label_passes_without_checking():
                     pr={"labels": [{"name": cla.OVERRIDE_LABEL}]})
     assert cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}}).passed
     assert gh.statuses[-1]["state"] == "success" and "maintainer" in gh.statuses[-1]["description"]
+
+
+@pytest.mark.parametrize("failed_step", ["actors", "signatures", "comments", "superseded"])
+def test_recheck_invalidates_old_approval_before_api_evaluation(monkeypatch, failed_step):
+    gh = FakeGitHub([], [actor("alice", 1001)],
+                    store={"version": "1.0", "signatures": [{"id": 1001}]},
+                    pr={"body": "Supersedes #12"} if failed_step == "superseded" else None)
+    gh.statuses.append({"state": "success", "context": "CLA"})
+    original_request = gh.request
+
+    def request(method, path, body=None):
+        if (failed_step == "signatures" and "/contents/" in path
+                or failed_step == "superseded" and path.endswith("/pulls/12")):
+            return 503, {"message": "temporarily unavailable"}, {}
+        return original_request(method, path, body)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("temporary API failure")
+
+    monkeypatch.setattr(gh, "request", request)
+    if failed_step == "actors":
+        monkeypatch.setattr(gh, "graphql", fail)
+    if failed_step == "comments":
+        monkeypatch.setattr(gh, "paginate", fail)
+    with pytest.raises(RuntimeError):
+        cla.run(gh, "issue_comment", {"issue": {"number": 7}})
+    assert gh.statuses[-1]["state"] == "pending"
+
+
+def test_event_head_is_invalidated_even_when_pr_fetch_fails(monkeypatch):
+    gh = FakeGitHub([], [], store=cla.empty_store())
+    gh.statuses.append({"state": "success", "context": "CLA"})
+
+    def fail(path):
+        raise RuntimeError("PR lookup failed")
+
+    monkeypatch.setattr(gh, "get", fail)
+    with pytest.raises(RuntimeError):
+        cla.run(gh, "pull_request_target", {"pull_request": {"number": 7, "head": {"sha": "abc"}}})
+    assert gh.statuses[-1]["state"] == "pending"
+
+
+@pytest.mark.parametrize("rejected_state", ["pending", "success"])
+def test_status_write_failures_are_not_reported_as_success(monkeypatch, rejected_state):
+    gh = FakeGitHub([], [actor("alice", 1001)],
+                    store={"version": "1.0", "signatures": [{"id": 1001}]})
+    original = gh.request
+
+    def request(method, path, body=None):
+        if "/statuses/" in path and body["state"] == rejected_state:
+            return 403, {"message": "not permitted"}, {}
+        return original(method, path, body)
+
+    monkeypatch.setattr(gh, "request", request)
+    with pytest.raises(RuntimeError, match="status"):
+        cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}})
+    if rejected_state == "success":
+        assert gh.statuses[-1]["state"] == "pending"
