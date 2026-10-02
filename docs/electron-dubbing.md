@@ -55,7 +55,11 @@ Interrupted preparation/generation offers Resume, which reads the existing task
 and replays its stream; generation is never resubmitted just because the UI reloaded.
 Interrupted transcription offers an explicit Retry against the existing prepared
 media, without uploading or preparing the source again. ASR restarts from the
-beginning because its backend stream is request-scoped, not a replayable task. Batch language runs and advanced QC controls remain in `electron/PARITY.md`.
+beginning because its backend stream is request-scoped, not a replayable task.
+When only some ASR segments have word timings, dubbing retains text from the
+remaining segments by estimating word spans within their segment bounds.
+Existing precise word timings remain unchanged; fully untimed transcripts keep
+the chunk-based fallback. Batch language runs and advanced QC controls remain in `electron/PARITY.md`.
 
 Verification: `node electron/tests/dub-smoke.mjs` against the development renderer.
 The test mocks backend jobs and never uploads or generates user media. Optionally
