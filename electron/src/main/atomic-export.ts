@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { constants } from 'node:fs';
 import { lstat, open, realpath, rename, rm, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
@@ -11,6 +12,12 @@ export async function writeExportAtomically(path: string, data: Uint8Array): Pro
   // Preserve the normal save-through-symlink behavior. A dangling link fails
   // without replacing the link itself or inventing a different destination.
   const destination = existing?.isSymbolicLink() ? await realpath(path) : path;
+  if (existing) {
+    // Check the same write authorization as the previous direct save, without
+    // truncating the old export. Mode-bit checks would misjudge ACLs and root.
+    const probe = await open(destination, constants.O_WRONLY);
+    await probe.close();
+  }
   const mode = existing ? (await stat(destination)).mode & 0o777 : 0o666;
   const temporary = join(dirname(destination), `.voicestudio-${randomUUID()}.tmp`);
   // Exclusive creation owns this temporary file, even if a later write fails.

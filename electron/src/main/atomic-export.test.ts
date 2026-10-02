@@ -138,3 +138,50 @@ it('preserves a dangling symbolic link when its destination cannot be resolved',
   expect(await readlink(link)).toBe('missing.wav');
   expect(await readdir(directory)).toEqual(['dangling.wav', 'saved.wav']);
 });
+
+
+it.each(requests)('rejects a read-only existing export without replacing it in %s', async (channel, request, context) => {
+  if (process.platform === 'win32' || process.getuid?.() === 0) {
+    context.skip(); // POSIX mode denial requires an unprivileged POSIX process.
+    return;
+  }
+  await chmod(controls.destination, 0o444);
+  await expect(controls.handlers.get(channel)!(event, request)).rejects.toMatchObject({ code: expect.stringMatching(/^(EACCES|EPERM)$/) });
+  expect(await readFile(controls.destination, 'utf8')).toBe('previous complete export');
+  expect((await stat(controls.destination)).mode & 0o777).toBe(0o444);
+  expect(await readdir(directory)).toEqual(['saved.wav']);
+});
+
+it('rejects a read-only symlink target without replacing the target or link', async (context) => {
+  if (process.platform === 'win32' || process.getuid?.() === 0) {
+    context.skip();
+    return;
+  }
+  const target = controls.destination;
+  const link = join(directory, 'linked.wav');
+  await symlink('saved.wav', link);
+  await chmod(target, 0o444);
+  controls.destination = link;
+  await expect(controls.handlers.get(CHANNELS.filesSaveData)!(event, requests[0][1])).rejects.toMatchObject({ code: expect.stringMatching(/^(EACCES|EPERM)$/) });
+  expect(await readFile(target, 'utf8')).toBe('previous complete export');
+  expect(await readlink(link)).toBe('saved.wav');
+  expect(await readdir(directory)).toEqual(['linked.wav', 'saved.wav']);
+});
+
+
+it.each(requests)('leaves the existing export intact when the parent cannot stage a replacement in %s', async (channel, request, context) => {
+  if (process.platform === 'win32' || process.getuid?.() === 0) {
+    context.skip(); // Directory mode denial requires an unprivileged POSIX process.
+    return;
+  }
+  await chmod(directory, 0o500);
+  try {
+    // The existing inode remains writable even though its directory is not.
+    await writeFile(controls.destination, 'previous complete export');
+    await expect(controls.handlers.get(channel)!(event, request)).rejects.toMatchObject({ code: expect.stringMatching(/^(EACCES|EPERM)$/) });
+    expect(await readFile(controls.destination, 'utf8')).toBe('previous complete export');
+    expect(await readdir(directory)).toEqual(['saved.wav']);
+  } finally {
+    await chmod(directory, 0o700);
+  }
+});
