@@ -1,5 +1,7 @@
 # Electron dubbing workspace
 
+Visual-context analysis owns its extracted frames in one background worker. Completed or failed analysis removes its entire temporary frame directory. If the request is cancelled while native work is running, cleanup stays with that worker and occurs when it finishes, so cancellation neither deletes active frames nor leaves them behind after completion.
+
 The idle workspace includes an original/dubbed demo comparison with compact
 player controls. Sync playheads aligns positions without starting both videos.
 Sample transcript edits are retained per language while the demo is mounted;
