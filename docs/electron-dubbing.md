@@ -109,7 +109,27 @@ Export options expand inside the existing sidebar. Users can select included vid
 tracks and the default track, background mixing, burned subtitles, dual layout and
 karaoke (disabled with dual layout). Audio supports WAV or MP3 with bitrate choice;
 SRT/VTT/ASS sidecars and per-language stem/segment ZIPs use the existing backend.
-Each download is explicit and targets the selected language. Export errors retain
+Each download is explicit and targets the selected language.
+Advanced QC compares recognized audio with the translation text for the selected
+track language, including when another language was generated more recently.
+Newly generated tracks save source timing by stable segment identity, so QC
+matches the correct line even after another language reorders the job. Smart Fit
+cues and stretch-video plans are applied for the selected track when available.
+Older source snapshots without segment identities cannot prove line ownership
+for multiple lines. QC stops before recognition with a regeneration request when
+those times are ambiguous, instead of scoring against another track's windows.
+Complete Smart Fit cues with matching unique IDs still establish the final
+timeline; a single line with one matching selected-track text ID also establishes
+ownership. Jobs with no saved source snapshot retain their existing fallback.
+Regenerate an ambiguous track to save identity-aware source timing. Regeneration
+fills missing segment IDs from the validated current-render manifest when the
+request omits IDs, preserving explicit request IDs and existing stable IDs.
+A fallback ID is never assigned when it would collide with a retained or explicit
+ID. Mixed-ID requests that remain ambiguous need explicit unique IDs; QC stops
+before recognition for partial or duplicate source identities. Synchronization
+rejects duplicate language-text keys before loading a backend or starting regeneration, preserving the previous WAV and saved metadata. Each existing segment is matched at most once, so a partial-ID request can use a current-render fallback ID without reusing another line’s source text or speaker.
+QC annotations
+preserve saved source times, text, and track settings. Export errors retain
 all choices for retry. Native save filters match the encoded file format.
 Browser fixtures verify MP3/SRT downloads, query options and failed-export retry;
 unit tests cover video/package parameters. Real rendered exports, batch presets

@@ -170,6 +170,12 @@ GAP_OVERFLOW_MAX_S = 0.25
 GAP_OVERFLOW_BUFFER_S = 0.05
 
 
+def _track_source_segments(job: dict) -> list[dict]:
+    """Snapshot source times by the identities persisted for this render."""
+    return [{"id": seg.get("id"), "start": seg["start"], "end": seg["end"]}
+            for seg in job["segments"]]
+
+
 def _sync_job_segments(job: dict, req: DubRequest) -> None:
     """Persist the segments this dub was actually generated from back onto the job.
 
@@ -187,20 +193,50 @@ def _sync_job_segments(job: dict, req: DubRequest) -> None:
     if not req.segments:
         return
     existing = [s for s in (job.get("segments") or []) if isinstance(s, dict)]
-    by_id = {str(s["id"]): s for s in existing if s.get("id") is not None}
+    by_id = {str(s["id"]): i for i, s in enumerate(existing) if s.get("id") is not None}
+    used_existing: set[int] = set()
     seg_ids = req.segment_ids or []
+    # An unmatched earlier row must not consume metadata explicitly requested
+    # by a later row. Those stable-ID matches take priority over index fallback.
+    reserved_existing = {by_id[str(sid)] for sid in seg_ids
+                         if sid is not None and str(sid) in by_id}
+    # The current render seeds exactly this manifest before synthesis. Only a
+    # complete matching vector can supply an otherwise missing row identity.
+    render_order = job.get("seg_order")
+    expected_order = [seg_ids[i] if i < len(seg_ids) else f"seg_{i}"
+                      for i in range(len(req.segments))]
+    if not (isinstance(render_order, list) and render_order == expected_order
+            and all(isinstance(sid, str) and sid for sid in render_order)
+            and len(set(render_order)) == len(render_order)):
+        render_order = []
+    # Reserve final explicit/prior identities before considering any fallback,
+    # including identities retained by a later row in the current request.
+    reserved_ids = {str(sid) for sid in seg_ids if sid is not None}
+    reserved_ids.update(str(row["id"]) for i, row in enumerate(existing)
+                        if i < len(req.segments) and row.get("id") is not None
+                        and (i >= len(seg_ids) or seg_ids[i] is None))
     merged: list[dict] = []
     vouched: list[str | None] = []
     for i, seg in enumerate(req.segments):
         seg_id = seg_ids[i] if i < len(seg_ids) else None
-        prev = by_id.get(str(seg_id)) if seg_id is not None else None
-        if prev is None and i < len(existing):
-            prev = existing[i]
+        prev_index = by_id.get(str(seg_id)) if seg_id is not None else None
+        if prev_index in used_existing:
+            prev_index = None
+        if (prev_index is None and i < len(existing)
+                and i not in used_existing and i not in reserved_existing):
+            prev_index = i
+        prev = existing[prev_index] if prev_index is not None else None
+        if prev_index is not None:
+            used_existing.add(prev_index)
         row = dict(prev) if prev else {}
         if seg_id is not None:
             # The request id is authoritative — seg_order and the per-segment
             # WAV manifest are keyed by it.
             row["id"] = seg_id
+        elif (row.get("id") is None and i < len(render_order)
+              and str(render_order[i]) not in reserved_ids):
+            row["id"] = render_order[i]
+            reserved_ids.add(str(render_order[i]))
         # Source-language text survives the overwrite so dual-subtitle export
         # keeps working; never let the translation clobber it.
         row["text_original"] = row.get("text_original") or row.get("text") or ""
@@ -211,6 +247,13 @@ def _sync_job_segments(job: dict, req: DubRequest) -> None:
         # still that import's text, never because the text happens to match.
         vouched.append(vouch_cue_source(row, seg.text, seg.cue_source_id))
         merged.append(row)
+    text_keys = [str(row["id"]) if row.get("id") is not None else str(i)
+                 for i, row in enumerate(merged)]
+    if len(set(text_keys)) != len(text_keys):
+        raise HTTPException(status_code=409, detail={
+            "code": "dub_segment_identity_conflict",
+            "message": "Provide explicit unique segment IDs before regenerating: segment identities would overwrite language text.",
+        })
     job["segments"] = merged
 
     # P1.2 — per-language text, additively. `job["segments"]` stays the flat
@@ -523,6 +566,23 @@ async def dub_generate(job_id: str, req: DubRequest):
             detail="This dub session has expired or was never created. Re-upload the video to start a new one.",
         )
 
+    # Validate identities against the manifest this render will seed, before
+    # loading a backend or admitting work that can replace a saved track. The
+    # projection shares only read-only source rows; synchronization rebuilds
+    # its own rows and language maps without publishing any job metadata.
+    seg_ids = req.segment_ids or []
+    expected_order = [seg_ids[i] if i < len(seg_ids) else f"seg_{i}"
+                      for i in range(len(req.segments))]
+    if len(set(expected_order)) != len(expected_order):
+        raise HTTPException(status_code=409, detail={
+            "code": "dub_segment_identity_conflict",
+            "message": "Provide explicit unique segment IDs before regenerating: render identities would overwrite segment audio.",
+        })
+    _sync_job_segments({
+        "segments": job.get("segments"),
+        "seg_order": expected_order,
+    }, req)
+
     # ── Engine resolution (issue #312 class) ────────────────────────────────
     # Every rendered segment clones either source speech or a saved profile, so
     # local execution still requires a cloning-capable engine. Remote execution
@@ -754,7 +814,7 @@ async def dub_generate(job_id: str, req: DubRequest):
         # Manifest: stable segment id per current index. Per-segment WAVs are
         # named by stable id (dub_seg_path) so regen reuses the right audio after
         # reorder; index-keyed readers (preview/export) resolve via this manifest.
-        job["seg_order"] = [seg_ids[k] if k < len(seg_ids) else f"seg_{k}" for k in range(len(req.segments))]
+        job["seg_order"] = list(expected_order)
 
         # Per-segment metadata to persist after the hot loop. Audio itself is
         # written immediately and only file paths are kept, so long videos don't
@@ -1981,13 +2041,15 @@ async def dub_generate(job_id: str, req: DubRequest):
         # mux step needs this to know whether to use the original video as-is
         # or stretch it per the plan.
         track_dur = total_samples / sr if total_samples > 0 else 0.0
+        # Validate synchronized identity/text keys before installing the new
+        # track metadata; a collision must not publish a misleading snapshot.
+        _sync_job_segments(job, req)
         job["dubbed_tracks"][lang_code] = {
             "path": track_path,
             "language": req.language,
             "language_code": lang_code,
             "duration": round(track_dur, 4),
             "timing_strategy": strategy,
-            "source_segments": [{"start": seg.start, "end": seg.end} for seg in req.segments],
         }
 
         # Persist the timing strategy + (for Mode B) the per-segment stretch
@@ -1999,7 +2061,7 @@ async def dub_generate(job_id: str, req: DubRequest):
         job["timing_strategy"] = strategy
         # Keep job segments in lock-step with what was just rendered so
         # subtitle export / burn-in use the translated text (#309).
-        _sync_job_segments(job, req)
+        job["dubbed_tracks"][lang_code]["source_segments"] = _track_source_segments(job)
         if strategy == "stretch_video":
             stretch_plans = job.setdefault("video_stretch_plans", {})
             stretch_plans[lang_code] = {
