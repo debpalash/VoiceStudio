@@ -349,7 +349,8 @@ def build_report(
     })
 
     other_bytes = 0
-    other_complete = True
+    # Unlisted or unclassifiable managed engines may hide bytes owned by Other.
+    other_complete = not (engines_child and engine_err is not None)
     try:
         with os.scandir(data_dir) as it:
             for e in it:

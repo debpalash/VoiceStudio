@@ -1,10 +1,11 @@
 """A flat directory must not defeat the storage report's category budget."""
 import os
 
-from services import storage_report
+import pytest
 
 
 def test_directory_budget_is_checked_between_files(tmp_path, monkeypatch):
+    from services import storage_report
     root = tmp_path / "wide"
     root.mkdir()
     for index in range(30):
@@ -29,6 +30,7 @@ def test_directory_budget_is_checked_between_files(tmp_path, monkeypatch):
 
 
 def test_expired_budget_does_not_stat_a_remaining_file(tmp_path, monkeypatch):
+    from services import storage_report
     file = tmp_path / "remaining.bin"
     file.write_bytes(b"1234")
     monkeypatch.setattr(storage_report.time, "monotonic", lambda: 3.0)
@@ -36,6 +38,7 @@ def test_expired_budget_does_not_stat_a_remaining_file(tmp_path, monkeypatch):
 
 
 def test_loose_data_files_report_partial_usage_after_deadline(tmp_path, monkeypatch):
+    from services import storage_report
     data = tmp_path / "data"
     data.mkdir()
     for index in range(30):
@@ -76,3 +79,34 @@ def test_loose_data_files_report_partial_usage_after_deadline(tmp_path, monkeypa
     assert category["complete"] is False
     assert other["complete"] is False
     assert any(w.get("category_id") == "data" and w.get("reason") == "timeout" for w in report["warnings"])
+
+
+@pytest.mark.parametrize("failure", ["enumeration", "classification"])
+def test_other_is_incomplete_when_managed_engine_ownership_is_unknown(tmp_path, monkeypatch, failure):
+    from services import storage_report
+    data = tmp_path / "data"
+    engines = data / "engines"
+    installed = engines / "installed"
+    (installed / ".venv").mkdir(parents=True)
+    (installed / "weights.bin").write_bytes(b"not measured")
+    original_scandir, original_stat = os.scandir, os.stat
+
+    def scandir(path):
+        if failure == "enumeration" and os.fspath(path) == str(engines):
+            raise PermissionError("engine listing unavailable")
+        return original_scandir(path)
+
+    def stat(path, *args, **kwargs):
+        if failure == "classification" and os.fspath(path) == str(installed / ".venv"):
+            raise PermissionError("venv ownership unavailable")
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(storage_report.os, "scandir", scandir)
+    monkeypatch.setattr(storage_report.os, "stat", stat)
+    report = storage_report.build_report(data_dir=str(data), engines_dir=str(engines),
+        hf_cache_dir=str(tmp_path / "hf"), temp_root=str(tmp_path / "temp"))
+    category = next(c for c in report["categories"] if c["id"] == "data")
+    other = next(c for c in category["children"] if c["id"] == "other")
+    assert category["complete"] is False
+    assert other["complete"] is False
+    assert any(w.get("category_id") == "data" and w.get("reason") == "permission" for w in report["warnings"])
