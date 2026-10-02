@@ -195,6 +195,15 @@ def _sync_job_segments(job: dict, req: DubRequest) -> None:
     existing = [s for s in (job.get("segments") or []) if isinstance(s, dict)]
     by_id = {str(s["id"]): s for s in existing if s.get("id") is not None}
     seg_ids = req.segment_ids or []
+    # The current render seeds exactly this manifest before synthesis. Only a
+    # complete matching vector can supply an otherwise missing row identity.
+    render_order = job.get("seg_order")
+    expected_order = [seg_ids[i] if i < len(seg_ids) else f"seg_{i}"
+                      for i in range(len(req.segments))]
+    if not (isinstance(render_order, list) and render_order == expected_order
+            and all(isinstance(sid, str) and sid for sid in render_order)
+            and len(set(render_order)) == len(render_order)):
+        render_order = []
     merged: list[dict] = []
     vouched: list[str | None] = []
     for i, seg in enumerate(req.segments):
@@ -207,6 +216,8 @@ def _sync_job_segments(job: dict, req: DubRequest) -> None:
             # The request id is authoritative — seg_order and the per-segment
             # WAV manifest are keyed by it.
             row["id"] = seg_id
+        elif row.get("id") is None and i < len(render_order):
+            row["id"] = render_order[i]
         # Source-language text survives the overwrite so dual-subtitle export
         # keeps working; never let the translation clobber it.
         row["text_original"] = row.get("text_original") or row.get("text") or ""

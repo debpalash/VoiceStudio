@@ -246,3 +246,49 @@ def test_legacy_source_does_not_infer_strategy_from_another_track():
     with pytest.raises(HTTPException) as error:
         _qc_source_segments(job, "es", [{"id": "a", "start": 10.0, "end": 11.0}])
     assert error.value.status_code == 409
+
+
+@pytest.mark.parametrize("existing", [[], [{"start": 0.0, "end": 1.0, "text": "old a"},
+                                          {"start": 2.0, "end": 3.0, "text": "old b"}]])
+def test_regenerate_without_request_ids_persists_current_manifest_identity(monkeypatch, existing):
+    from api.routers.dub_generate import _sync_job_segments, _track_source_segments
+    from schemas.requests import DubRequest, DubSegment
+    req = DubRequest(language_code="es", segments=[DubSegment(start=2.0, end=3.0, text="hola"),
+                                                  DubSegment(start=4.0, end=5.0, text="adios")])
+    # Actual current-render contract: dub_generate seeds these same positional
+    # fallback names before rendering and synchronizing an ID-less request.
+    job = {"segments": existing, "seg_order": ["seg_0", "seg_1"]}
+    _sync_job_segments(job, req)
+    job["dubbed_tracks"] = {"es": {"path": "es.wav", "timing_strategy": "strict_slot",
+                                     "source_segments": _track_source_segments(job)}}
+    run, calls = _legacy_qc_route(monkeypatch, job, [{"start": 2.0, "end": 3.0, "text": "hola"},
+                                                  {"start": 4.0, "end": 5.0, "text": "adios"}])
+    assert run()["flagged_count"] == 0
+    assert calls == ["es.wav"]
+    assert [s["id"] for s in job["segments"]] == ["seg_0", "seg_1"]
+    assert job["segments_i18n"]["es"] == {"seg_0": "hola", "seg_1": "adios"}
+
+
+@pytest.mark.parametrize("order", [None, [], ["seg_0"], ["seg_0", "seg_0"],
+                                  ["old_a", "old_b"], [0, 1], ["seg_0", "seg_1", "seg_2"],
+                                  ("seg_0", "seg_1")])
+def test_sync_does_not_invent_ids_from_invalid_render_order(order):
+    from api.routers.dub_generate import _sync_job_segments, _track_source_segments
+    from schemas.requests import DubRequest, DubSegment
+    req = DubRequest(language_code="es", segments=[DubSegment(start=0.0, end=1.0, text="hola"),
+                                                  DubSegment(start=2.0, end=3.0, text="adios")])
+    job = {"segments": [{"text": "old a"}, {"text": "old b"}], "seg_order": order}
+    _sync_job_segments(job, req)
+    assert all(s.get("id") is None for s in job["segments"])
+    assert all(s["id"] is None for s in _track_source_segments(job))
+
+
+def test_sync_request_and_existing_identity_precede_current_manifest_fallback():
+    from api.routers.dub_generate import _sync_job_segments
+    from schemas.requests import DubRequest, DubSegment
+    req = DubRequest(language_code="es", segment_ids=["explicit"], segments=[
+        DubSegment(start=0.0, end=1.0, text="hola"), DubSegment(start=2.0, end=3.0, text="adios")])
+    job = {"segments": [{"id": "old", "text": "old a"}, {"id": "preserved", "text": "old b"}],
+           "seg_order": ["explicit", "seg_1"]}
+    _sync_job_segments(job, req)
+    assert [s["id"] for s in job["segments"]] == ["explicit", "preserved"]

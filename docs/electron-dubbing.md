@@ -121,7 +121,10 @@ those times are ambiguous, instead of scoring against another track's windows.
 Complete Smart Fit cues with matching unique IDs still establish the final
 timeline; a single line with one matching selected-track text ID also establishes
 ownership. Jobs with no saved source snapshot retain their existing fallback.
-Regenerate an ambiguous track to save identity-aware source timing. QC annotations
+Regenerate an ambiguous track to save identity-aware source timing. Regeneration
+fills missing segment IDs from the validated current-render manifest when the
+request omits IDs, preserving explicit request IDs and existing stable IDs.
+QC annotations
 preserve saved source times, text, and track settings. Export errors retain
 all choices for retry. Native save filters match the encoded file format.
 Browser fixtures verify MP3/SRT downloads, query options and failed-export retry;
