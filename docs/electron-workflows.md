@@ -49,3 +49,5 @@ downloaded automatically.
 A branch that goes directly from a Condition to End keeps the incoming text as
 its exportable result. Conditions have one phrase editor; the generic Instructions
 field is hidden for those steps.
+
+Native saves stage the complete replacement in the selected destination directory before replacing an existing export. A write or replacement failure leaves the previous file intact. Existing POSIX permission bits and working symbolic links are preserved; a dangling symbolic link is left unchanged and reports a filesystem error. This does not provide a power-loss recovery guarantee.
