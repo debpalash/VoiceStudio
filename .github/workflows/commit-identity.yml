@@ -5,17 +5,20 @@
 # SHA-256 digests in scripts/blocked_identity_hashes.txt; the job output names
 # the commit and the kind of match, never the address.
 #
-# Only commits new to the PR (origin/<base>..HEAD) are checked, so existing
-# history does not fail the gate.
+# Only commits new to the PR are checked. The native job detects API and
+# execution failures; the separate required Commit identity policy status
+# carries eligibility, which an unprivileged fork workflow cannot overwrite.
 
 name: commit-identity
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
+  pull-requests: read
+  statuses: write
 
 concurrency:
   group: commit-identity-${{ github.event.pull_request.number }}
@@ -33,20 +36,8 @@ jobs:
           persist-credentials: false
 
       - name: Check PR commit identities
+        # The event's base checkout owns all executable policy. PR commits are
+        # fetched only as git objects; their files and workflows never run.
+        run: python3 .github/scripts/identity_check.py
         env:
-          BASE_REF: ${{ github.base_ref }}
-        # Run the base branch's checker and lists, so a pull request cannot
-        # edit the gate it is judged by. Its commits are only read as data.
-        run: |
-          policy="$RUNNER_TEMP/policy"
-          mkdir -p "$policy"
-          files="scripts/check_commit_identities.py scripts/blocked_identity_hashes.txt .github/scripts/agent_identities.py"
-          if git cat-file -e "origin/${BASE_REF}:scripts/check_commit_identities.py" 2>/dev/null; then
-            git archive "origin/${BASE_REF}" $files | tar -x -C "$policy"
-          else
-            # Only the pull request that introduces the gate reaches this branch.
-            tar -c $files | tar -x -C "$policy"
-          fi
-          python3 "$policy/scripts/check_commit_identities.py" \
-            --hash-file "$policy/scripts/blocked_identity_hashes.txt" \
-            --range "origin/${BASE_REF}..HEAD" --event "$GITHUB_EVENT_PATH"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

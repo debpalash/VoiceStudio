@@ -19,7 +19,7 @@ on:
   pull_request_target:
     # unlabeled: removing `cla-override` rechecks; edited: so does changing
     # `Supersedes #N` in the description.
-    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+    types: [opened, synchronize, reopened, closed, labeled, unlabeled, edited]
   issue_comment:
     types: [created]
 

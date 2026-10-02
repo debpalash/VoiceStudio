@@ -72,7 +72,7 @@ def test_pull_request_changes_that_affect_the_result_rerun_the_check():
     types = set(workflow["on"]["pull_request_target"]["types"])
     # New commits, (un)applying `cla-override`, and editing `Supersedes #N`
     # all change who must sign, so each must refresh the CLA status.
-    assert {"opened", "synchronize", "reopened", "labeled", "unlabeled", "edited"} <= types
+    assert {"opened", "synchronize", "reopened", "closed", "labeled", "unlabeled", "edited"} <= types
     assert workflow["jobs"]["cla"]["if"].startswith("github.event_name == 'pull_request_target' ||")
 
 
@@ -135,6 +135,7 @@ def test_main_ruleset_requires_pull_requests_identities_and_the_cla_status():
     # Without the identity gate, agent identities that skip the CLA go unblocked.
     identity_job = next(iter(_load(_WORKFLOWS / "commit-identity.yml")["jobs"].values()))["name"]
     assert identity_job in contexts
+    assert "Commit identity policy" in contexts  # fork jobs cannot forge this privileged status
     assert {"deletion", "non_fast_forward"} <= set(rules)
 
 

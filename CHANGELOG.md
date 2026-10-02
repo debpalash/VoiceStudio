@@ -94,7 +94,7 @@ metadata and the backend fallback mirror it.
 
 - Contributor audits stop on unreadable Git history instead of dropping affected authors (#2556)
 
-- CLA rechecks clear older approvals and require the workflow job to block rejected status updates (#2556)
+- CLA rechecks clear older approvals, reject duplicate PR heads, and block failed status updates (#2556)
 - Keep audiobook chapter boundaries when importing CR-only manuscripts (#2508) — thanks @rudycelekli!
 - Preserve busy sidecars during engine-level unload instead of terminating their active operation (#2507) — thanks @Anuj04432 and @rudycelekli!
 - Exclude downloaded caption comments while preserving spoken metadata words (#2510) — thanks @rudycelekli!
@@ -159,7 +159,7 @@ metadata and the backend fallback mirror it.
 - Pronunciation dictionary entries in Japanese, Chinese and Thai apply inside a sentence, not only to a line that is the key alone (#2392) — thanks @kevin9327!
 
 ### CI
-- Pull requests reject leaked, placeholder, and AI agent identities while allowing human co-authors with names shared by agents (#2556)
+- Trusted base-branch checks reject leaked, placeholder, and AI agent identities while allowing human co-authors with names shared by agents (#2556)
 - GitHub Actions are pinned to exact commits and kept current by Dependabot (#2556)
 
 ## [0.5.6] — 2026-09-23

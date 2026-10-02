@@ -309,7 +309,14 @@ for an AI agent, no "Generated with …" line, no agent session or share links
 (claude.ai, chatgpt.com) and no `Claude-Session:` trailer. The
 `commit-identity` check fails PRs that carry them. Co-authors who are people
 are welcome, including people with first names that also name an agent, such
-as Claude, Jules, or Devin. Known agent email addresses remain blocked.
+as Claude, Jules, or Devin. Known agent email addresses remain blocked. The
+identity workflow runs the base branch's policy and publishes `Commit identity
+policy`; changing the checker or workflow in your PR does not bypass it.
+
+Keep one open PR per head commit. CLA checks reject duplicate heads because
+GitHub commit statuses are shared by SHA, even when PR descriptions or authors
+differ. Close duplicates and comment `recheck` on the survivor, then rerun its
+trusted identity workflow.
 
 One practical tip: this codebase is large, and re-explaining it to your agent
 every session burns context and tokens fast. A persistent memory layer fixes

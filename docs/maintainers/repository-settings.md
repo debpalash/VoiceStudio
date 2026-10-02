@@ -15,7 +15,7 @@ is merged:
 2. Open the public signing issue, label it `cla`, and pin it.
 3. Comment `recheck` on each open pull request, so it gets a `CLA` status.
    Pull requests opened before these workflows existed also need native
-   `Commit identities` and `CLA gate` runs: merge current `main` into them
+   `Commit identities` and `CLA gate` runs, plus `Commit identity policy`: merge current `main` into them
    (the merge protocol asks for that anyway), or close and reopen them. A
    comment-triggered CLA run updates the signature status but does not satisfy
    the native required job.
@@ -30,7 +30,7 @@ the description: the check then asks their authors to sign too.
 ## Ruleset: `main`
 
 Requires a pull request, the backend/frontend test job, the commit-identity
-check, the CLA workflow job and its signature status, and
+workflow and its privileged policy status, the CLA workflow job and its signature status, and
 blocks force-push and deletion. Without the pull request rule, a direct push
 whose commit already carries passing checks would be accepted. The rule needs
 no approving review, because `@debpalash` is the only maintainer and GitHub
@@ -44,11 +44,38 @@ required `CLA gate` job even if GitHub cannot replace an older `CLA` status.
 Rerun that failed pull-request workflow after GitHub recovers; an issue-comment
 run cannot replace its native check. Both checks must pass before merging.
 
+Commit statuses belong to a SHA, not a particular PR. Both eligibility checkers therefore
+reject every head shared by multiple open PRs, including CLA maintainer overrides;
+one PR cannot overwrite another's obligations with a passing result. It scans
+all open PRs, fails closed on listing errors or the 1,000-PR safety cap, and
+checks again before normal success. Closing a duplicate re-evaluates CLA for a remaining
+PR at that SHA. If a duplicate instead moves to another commit, comment `recheck`
+on the surviving old-head PR. After removing duplicates, rerun the survivor's
+trusted identity workflow: duplicate heads leave its status blocked until that
+fresh evaluation succeeds, so a sibling's description result is not reused.
+
+These checks are asynchronous, not an atomic lock on GitHub metadata at merge
+time. Wait for the newest head and metadata checks after edits, including
+closing duplicates. A metadata change detected during evaluation leaves the
+status pending and fails the native job; rerun that target workflow. Initial
+rollout is deliberately manual: land the trusted workflows before making their
+contexts required. Repository writers who can publish commit statuses remain
+inside the administrative trust boundary.
+
 The `context` values must match the check names shown on a pull request:
 
 - `Tests (backend + frontend)`: the `name:` of the `test` job in `.github/workflows/ci.yml`.
-- `Commit identities`: the `name:` of the job in `.github/workflows/commit-identity.yml`.
-  Without it, agent and placeholder identities are reported but not blocked.
+- `Commit identities`: the native job in `.github/workflows/commit-identity.yml`.
+  It runs only base-owned code through `pull_request_target` and fails on API,
+  fetch, or policy-execution errors. PR commits are fetched as git objects;
+  PR files are never checked out and there is no PR-owned bootstrap fallback.
+- `Commit identity policy`: the privileged commit status written by
+  `.github/scripts/identity_check.py`. An unprivileged fork workflow can copy
+  a native job name, but cannot overwrite this status with its read-only token.
+  Require both the native job and this status. The policy reads current PR
+  metadata and checks the head/base/description again before publishing. A
+  stale event cannot approve a newer head, and the policy checkout must match
+  the current base SHA; synchronize the PR with `main` to obtain a fresh run.
 - `CLA gate`: the native job in `.github/workflows/cla.yml`, required from
   GitHub Actions. Pull-request events run this job even when an API call fails,
   so rejected status writes cannot leave the merge gate green.
@@ -61,8 +88,8 @@ checks; `issue_comment` jobs are not eligible. See [GitHub's required-check
 troubleshooting guide](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks#checks-from-some-workflow-jobs-are-not-evaluated).
 
 `integration_id` 15368 is GitHub Actions, so only workflow runs can satisfy the
-test check. The `CLA` entry omits it, so the status counts whichever token the
-workflow uses. `strict_required_status_checks_policy` requires branches to be up
+native checks. The `CLA` and `Commit identity policy` entries omit it, so the
+statuses count whichever token the trusted workflows use. `strict_required_status_checks_policy` requires branches to be up
 to date with `main` before merging.
 
 ```bash
@@ -95,6 +122,7 @@ gh api --method POST repos/debpalash/VoiceStudio/rulesets --input - <<'JSON'
         "required_status_checks": [
           { "context": "Tests (backend + frontend)", "integration_id": 15368 },
           { "context": "Commit identities", "integration_id": 15368 },
+          { "context": "Commit identity policy" },
           { "context": "CLA gate", "integration_id": 15368 },
           { "context": "CLA" }
         ]
@@ -118,7 +146,7 @@ target to the default branch, enable **Restrict deletions**, **Require a pull
 request before merging** (required approvals: 0, all other options off),
 **Block force pushes** and **Require status checks to pass**, then add
 `Tests (backend + frontend)`, `Commit identities`, and `CLA gate` with source
-**GitHub Actions**, plus the `CLA` commit status.
+**GitHub Actions**, plus the `CLA` and `Commit identity policy` commit statuses.
 
 ## Ruleset: `cla-signatures`
 

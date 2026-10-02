@@ -149,14 +149,17 @@ class FakeGitHub:
         self.pr, self.others = pr or {}, others or {}
         self.files = {} if store is None else {cla.SIGNATURE_PATH: store}
         self.branch = store is not None
+        self.open_prs = None
         self.statuses, self.posted, self.patched = [], [], []
 
     def get(self, path):
-        assert path.endswith("/pulls/7")
-        return {"state": "open", "user": {"login": "alice", "id": 1001, "type": "User"},
+        assert path.endswith(f"/pulls/{self.pr.get('number', 7)}")
+        return {"number": 7, "state": "open", "user": {"login": "alice", "id": 1001, "type": "User"},
                 "head": {"sha": "abc"}, "base": {"repo": {"id": 99, "default_branch": "main"}}, **self.pr}
 
     def paginate(self, path, limit=None):
+        if path.endswith('/pulls?state=open'):
+            return self.open_prs if self.open_prs is not None else [self.get(f"/pulls/{self.pr.get('number', 7)}")]
         return self.comments
 
     def graphql(self, query, variables):
@@ -445,3 +448,77 @@ def test_status_write_failures_are_not_reported_as_success(monkeypatch, rejected
         cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}})
     if rejected_state == "success":
         assert gh.statuses[-1]["state"] == "pending"
+
+
+@pytest.mark.parametrize('peer_metadata', [
+    {'user': {'login': 'bob', 'id': 1002, 'type': 'User'}},
+    {'body': 'Supersedes #12'},
+    {'labels': [{'name': 'cla-override'}]},
+])
+def test_same_head_prs_cannot_overwrite_one_anothers_cla_result(peer_metadata):
+    shared_statuses = []
+    prs = [
+        {'number': 7, 'state': 'open', 'head': {'sha': 'abc'}},
+        {'number': 8, 'state': 'open', 'head': {'sha': 'abc'}, **peer_metadata},
+    ]
+    for pr in prs:
+        gh = FakeGitHub([], [actor('alice', 1001)],
+                        store={'signatures': [{'id': 1001}]}, pr=pr)
+        gh.open_prs = prs
+        gh.statuses = shared_statuses
+        result = cla.run(gh, 'pull_request_target', {'pull_request': pr})
+        assert not result.passed
+        assert gh.statuses[-1]['state'] == 'failure'
+        assert 'same head' in gh.posted[-1].lower()
+    assert not any(status['state'] == 'success' for status in shared_statuses)
+
+
+@pytest.mark.parametrize('failure', ['api', 'overflow', 'malformed'])
+def test_duplicate_head_enumeration_fails_closed(monkeypatch, failure):
+    gh = FakeGitHub([], [], store=cla.empty_store(), pr={'labels': [{'name': 'cla-override'}]})
+    original = gh.paginate
+    def paginate(path, limit=None):
+        if path.endswith('/pulls?state=open'):
+            if failure == 'api':
+                raise RuntimeError('listing failed')
+            if failure == 'malformed':
+                return [{'number': 8}]
+            return [dict(gh.get('/pulls/7'), number=i) for i in range(1000)]
+        return original(path, limit)
+    monkeypatch.setattr(gh, 'paginate', paginate)
+    with pytest.raises(RuntimeError):
+        cla.run(gh, 'pull_request_target', {'pull_request': {'number': 7, 'head': {'sha': 'abc'}}})
+    assert gh.statuses[-1]['state'] == 'pending'
+
+
+def test_duplicate_opened_during_evaluation_blocks_final_success(monkeypatch):
+    gh = FakeGitHub([], [actor('alice', 1001)], store={'signatures': [{'id': 1001}]})
+    original = gh.graphql
+    def graphql(*args):
+        gh.open_prs = [gh.get('/pulls/7'), dict(gh.get('/pulls/7'), number=8)]
+        return original(*args)
+    monkeypatch.setattr(gh, 'graphql', graphql)
+    assert not cla.run(gh, 'pull_request_target', {'pull_request': {'number': 7}}).passed
+    assert gh.statuses[-1]['state'] == 'failure'
+
+
+def test_closing_duplicate_refreshes_the_remaining_pr(monkeypatch):
+    gh = FakeGitHub([], [], store={'signatures': [{'id': 1001}]})
+    closed = dict(gh.get('/pulls/7'), state='closed')
+    remaining = dict(gh.get('/pulls/7'), number=8)
+    gh.open_prs = [remaining]
+    monkeypatch.setattr(gh, 'get', lambda path: closed if path.endswith('/7') else remaining)
+    assert cla.run(gh, 'pull_request_target', {'pull_request': closed}).passed
+    assert gh.statuses[-1]['state'] == 'success'
+
+
+def test_metadata_change_during_cla_evaluation_stays_pending(monkeypatch):
+    gh = FakeGitHub([], [actor('alice', 1001)], store={'signatures': [{'id': 1001}]})
+    original = gh.graphql
+    def changed(*args):
+        gh.pr['body'] = 'Supersedes #12'
+        return original(*args)
+    monkeypatch.setattr(gh, 'graphql', changed)
+    with pytest.raises(RuntimeError, match='metadata changed'):
+        cla.run(gh, 'pull_request_target', {'pull_request': {'number': 7}})
+    assert gh.statuses[-1]['state'] == 'pending'
