@@ -1696,7 +1696,28 @@ async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: flo
         raise HTTPException(status_code=500, detail=f"QC transcription failed: {e}")
 
     seg_ids = job.get("seg_order") or [s.get("id", i) for i, s in enumerate(segments)]
-    scored = dub_qc.score_dub(_segments_for_lang(job, selected_lang), recognized,
+    qc_segments = _segments_for_lang(job, selected_lang)
+    track = tracks[selected_lang]
+    # A later generate can replace both the job's text and source timings.
+    # The selected track snapshots its own source timeline before fitting.
+    source = track.get("source_segments")
+    if source:
+        qc_segments = _apply_fitted_times(qc_segments, source)
+    strategy = track.get("timing_strategy") or job.get("timing_strategy")
+    if strategy == "smart_fit":
+        entry = (job.get("fit_plans") or {}).get(selected_lang) or {}
+        fitted = entry.get("fitted_segments")
+        if fitted:
+            qc_segments = _apply_fitted_times(qc_segments, fitted)
+    elif strategy == "stretch_video":
+        entry = (job.get("video_stretch_plans") or {}).get(selected_lang) or {}
+        plan = entry.get("plan")
+        if plan:
+            from services.fitted_subtitles import fitted_cues
+            cues = fitted_cues(qc_segments, plan)
+            qc_segments = [dict(seg, start=start, end=end)
+                           for seg, (start, end) in zip(qc_segments, cues)]
+    scored = dub_qc.score_dub(qc_segments, recognized,
                               drift_threshold=drift_threshold, seg_ids=seg_ids)
 
     # Annotate each segment (non-destructive — content text untouched).
