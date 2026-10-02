@@ -26,12 +26,12 @@ AGENT_EMAILS = re.compile(
     re.IGNORECASE,
 )
 
-# Names an agent signs a Co-authored-by trailer with. Broad on purpose: a
-# trailer naming "Claude" or "Cursor" credits the tool.
+# Unambiguous tool names in trailers. Human first names need the same
+# protection as author names; known agent email addresses are checked separately.
 AGENT_TRAILER_NAMES = re.compile(
-    r"^(claude( (code|opus|sonnet|haiku|fable|\d).*)?|cursor( agent)?|cursoragent|(github )?copilot"
-    r"|(openai )?codex|chatgpt|devin( ai)?|gemini( code assist)?|(google )?jules|aider|cline|coderabbit(ai)?)"
-    r"(\[bot\])?$",
+    r"^((claude (code|opus|sonnet|haiku|fable|\d).*|cursor( agent)?|cursoragent|(github )?copilot"
+    r"|(openai )?codex|chatgpt|devin ai|gemini code assist|google jules|aider|cline|coderabbit(ai)?)"
+    rf"(\[bot\])?|({_LOGINS})\[bot\])$",
     re.IGNORECASE,
 )
 

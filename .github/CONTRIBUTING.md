@@ -308,7 +308,8 @@ credit agents in commits or the PR description: no `Co-authored-by:` trailer
 for an AI agent, no "Generated with …" line, no agent session or share links
 (claude.ai, chatgpt.com) and no `Claude-Session:` trailer. The
 `commit-identity` check fails PRs that carry them. Co-authors who are people
-are welcome.
+are welcome, including people with first names that also name an agent, such
+as Claude, Jules, or Devin. Known agent email addresses remain blocked.
 
 One practical tip: this codebase is large, and re-explaining it to your agent
 every session burns context and tokens fast. A persistent memory layer fixes

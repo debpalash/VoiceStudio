@@ -280,6 +280,36 @@ def test_people_and_ordinary_prose_pass(repo, message):
     assert check(*_only(sha)).returncode == 0
 
 
+@pytest.mark.parametrize("name", ["Claude", "Jules", "Devin", "Gemini"])
+def test_human_first_names_in_commit_trailers_pass(repo, name):
+    _, commit, check = repo
+    sha = commit(
+        f"feat: pair work\n\nCo-authored-by: {name} <human@example.com>\n"
+        f"Signed-off-by: {name} <human@example.com>"
+    )
+    assert check(*_only(sha)).returncode == 0
+
+
+@pytest.mark.parametrize("name", ["Claude", "Jules", "Devin", "Gemini"])
+def test_ambiguous_trailer_name_with_agent_email_stays_blocked(repo, name):
+    _, commit, check = repo
+    sha = commit(f"feat: x\n\nCo-authored-by: {name} <{AGENT_EMAIL}>")
+    result = check(*_only(sha))
+    assert result.returncode == 1
+    assert "Co-authored-by trailer email: AI agent identity" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "name", ["Claude Code 2", "Google Jules", "Devin AI", "Gemini Code Assist", "claude[bot]"]
+)
+def test_unambiguous_agent_trailers_stay_blocked(repo, name):
+    _, commit, check = repo
+    sha = commit(f"feat: x\n\nCo-authored-by: {name} <tool@example.com>")
+    result = check(*_only(sha))
+    assert result.returncode == 1
+    assert "Co-authored-by trailer name: AI agent identity" in result.stdout
+
+
 def test_bot_authors_that_are_not_agents_pass(repo):
     _, commit, check = repo
     sha = commit("chore(deps): bump", author=("dependabot[bot]", "49699333+dependabot[bot]@users.noreply.github.com"))
