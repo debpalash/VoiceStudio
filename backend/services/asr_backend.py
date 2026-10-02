@@ -626,7 +626,10 @@ def forced_align(segments: list, audio, language_code: str, device: str | None =
     for i, dev in enumerate(devices):
         align = load_align_model(language_code, dev)
         if align is None:
-            return segments  # no aligner for this language — not a device problem
+            # Loading can fail during device transfer as well as for an
+            # unsupported language. Try the remaining CPU fallback before
+            # giving up on alignment; load failures are cached per device.
+            continue
         model_a, metadata = align
         try:
             import whisperx
