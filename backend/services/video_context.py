@@ -39,6 +39,7 @@ def _extract_keyframes(
     video_path: str,
     timestamps: list[float],
     max_frames: int = 30,
+    output_dir: str | None = None,
 ) -> list[tuple[float, str]]:
     """Extract frames at specified timestamps using ffmpeg.
 
@@ -57,7 +58,7 @@ def _extract_keyframes(
         logger.warning("ffmpeg not found, skipping frame extraction")
         return []
 
-    tmp_dir = tempfile.mkdtemp(prefix="omnivoice_frames_")
+    tmp_dir = output_dir or tempfile.mkdtemp(prefix="omnivoice_frames_")
     frames = []
 
     # Subsample if too many timestamps
@@ -240,41 +241,21 @@ async def analyse_video(
     Returns:
         VideoContext with per-segment and global visual analysis.
     """
-    loop = asyncio.get_running_loop()
-    ctx = VideoContext()
-
-    # Extract timestamps at segment midpoints
-    timestamps = [
-        (seg.get("start", 0) + seg.get("end", 0)) / 2
-        for seg in segments
-    ]
-
-    # Extract frames (CPU-bound, run in pool)
-    frames = await loop.run_in_executor(
-        _analysis_pool,
-        _extract_keyframes,
-        video_path, timestamps, max_frames,
+    # The executor may outlive a cancelled request. Keep extraction, analysis
+    # and cleanup in the same worker so its files retain one lifetime owner.
+    return await asyncio.get_running_loop().run_in_executor(
+        _analysis_pool, _analyse_video_worker, video_path, segments, max_frames,
     )
 
-    # Analyse each frame
-    for ts, frame_path in frames:
-        analysis = await loop.run_in_executor(
-            _analysis_pool,
-            _analyse_frame_basic,
-            frame_path,
-        )
-        ctx.frame_analyses[ts] = analysis
 
-    # Build segment-level context
-    ctx = _build_segment_context(ctx, segments)
-
-    # Cleanup temp frames
-    for _, frame_path in frames:
-        try:
-            os.remove(frame_path)
-        except Exception:
-            pass
-
+def _analyse_video_worker(video_path: str, segments: list[dict], max_frames: int) -> VideoContext:
+    ctx = VideoContext()
+    timestamps = [(seg.get("start", 0) + seg.get("end", 0)) / 2 for seg in segments]
+    with tempfile.TemporaryDirectory(prefix="omnivoice_frames_") as directory:
+        frames = _extract_keyframes(video_path, timestamps, max_frames, directory)
+        for ts, frame_path in frames:
+            ctx.frame_analyses[ts] = _analyse_frame_basic(frame_path)
+        ctx = _build_segment_context(ctx, segments)
     logger.info(
         "Video analysis complete: %d frames, global_mood=%s, global_brightness=%s",
         len(frames), ctx.global_mood, ctx.global_brightness,
