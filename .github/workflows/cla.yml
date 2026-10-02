@@ -3,7 +3,8 @@
 # Every pull request's opener and commit authors and co-authors sign
 # .github/CLA-1.0.md once, by comment. .github/scripts/cla_check.py records
 # signatures on the `cla-signatures` branch (created on first use) and sets the
-# "CLA" commit status that branch protection requires. Past contributors can
+# "CLA" commit status that branch protection requires alongside the native
+# "CLA gate" job, which blocks merging if a status API write fails. Past contributors can
 # also sign on any issue a maintainer labels `cla`; a maintainer can apply
 # `cla-override` to a pull request after reviewing it by hand.
 #
@@ -27,6 +28,7 @@ permissions:
 
 jobs:
   cla:
+    name: CLA gate
     if: >-
       github.event_name == 'pull_request_target' ||
       contains(github.event.comment.body, 'VoiceStudio CLA') ||

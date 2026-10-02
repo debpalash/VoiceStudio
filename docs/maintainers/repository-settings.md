@@ -14,9 +14,11 @@ is merged:
    review): `gh label create cla` and `gh label create cla-override`.
 2. Open the public signing issue, label it `cla`, and pin it.
 3. Comment `recheck` on each open pull request, so it gets a `CLA` status.
-   Pull requests opened before `commit-identity.yml` existed also need a
-   `Commit identities` run: merge current `main` into them (the merge
-   protocol asks for that anyway), or close and reopen them.
+   Pull requests opened before these workflows existed also need native
+   `Commit identities` and `CLA gate` runs: merge current `main` into them
+   (the merge protocol asks for that anyway), or close and reopen them. A
+   comment-triggered CLA run updates the signature status but does not satisfy
+   the native required job.
 4. Then apply the `main` ruleset below. A required check that never reported
    blocks the merge with "Expected — waiting for status".
 5. Apply the `cla-signatures` ruleset once the first signature creates the
@@ -28,7 +30,7 @@ the description: the check then asks their authors to sign too.
 ## Ruleset: `main`
 
 Requires a pull request, the backend/frontend test job, the commit-identity
-check and the CLA check, and
+check, the CLA workflow job and its signature status, and
 blocks force-push and deletion. Without the pull request rule, a direct push
 whose commit already carries passing checks would be accepted. The rule needs
 no approving review, because `@debpalash` is the only maintainer and GitHub
@@ -38,18 +40,25 @@ Each CLA recheck marks the head pending before looking up contributors and
 signatures. Once GitHub accepts that transition, later lookup failures leave it
 pending instead of retaining an older approval. Failed lookups of superseded
 PRs are not treated as absent contributors. Status-write failures fail the
-workflow; retry a failed run after GitHub recovers and verify its CLA status
-before merging.
+required `CLA gate` job even if GitHub cannot replace an older `CLA` status.
+Rerun that failed pull-request workflow after GitHub recovers; an issue-comment
+run cannot replace its native check. Both checks must pass before merging.
 
 The `context` values must match the check names shown on a pull request:
 
 - `Tests (backend + frontend)`: the `name:` of the `test` job in `.github/workflows/ci.yml`.
 - `Commit identities`: the `name:` of the job in `.github/workflows/commit-identity.yml`.
   Without it, agent and placeholder identities are reported but not blocked.
+- `CLA gate`: the native job in `.github/workflows/cla.yml`, required from
+  GitHub Actions. Pull-request events run this job even when an API call fails,
+  so rejected status writes cannot leave the merge gate green.
 - `CLA`: the commit status that `.github/scripts/cla_check.py` sets on the
-  pull request's head commit. Require this status, not the `cla` job: the job
-  succeeds whenever the checker runs, and comment-triggered runs are not
-  attached to the pull request.
+  pull request's head commit. It checks signature eligibility; the native job
+  alone can succeed while contributors still need to sign. Require both.
+
+GitHub evaluates native jobs triggered by `pull_request_target` as required
+checks; `issue_comment` jobs are not eligible. See [GitHub's required-check
+troubleshooting guide](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks#checks-from-some-workflow-jobs-are-not-evaluated).
 
 `integration_id` 15368 is GitHub Actions, so only workflow runs can satisfy the
 test check. The `CLA` entry omits it, so the status counts whichever token the
@@ -86,6 +95,7 @@ gh api --method POST repos/debpalash/VoiceStudio/rulesets --input - <<'JSON'
         "required_status_checks": [
           { "context": "Tests (backend + frontend)", "integration_id": 15368 },
           { "context": "Commit identities", "integration_id": 15368 },
+          { "context": "CLA gate", "integration_id": 15368 },
           { "context": "CLA" }
         ]
       }
@@ -106,8 +116,9 @@ let authors approve their own pull requests.
 UI: **Settings → Rules → Rulesets → New ruleset → New branch ruleset**. Set the
 target to the default branch, enable **Restrict deletions**, **Require a pull
 request before merging** (required approvals: 0, all other options off),
-**Block force pushes** and **Require status checks to pass**, then add both
-checks with source **GitHub Actions**.
+**Block force pushes** and **Require status checks to pass**, then add
+`Tests (backend + frontend)`, `Commit identities`, and `CLA gate` with source
+**GitHub Actions**, plus the `CLA` commit status.
 
 ## Ruleset: `cla-signatures`
 

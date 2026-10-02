@@ -145,3 +145,12 @@ def test_contributing_states_the_open_source_commitment_limits():
     summary = " ".join(section.split("\n## ")[0].split())
     assert "while your contribution is in the public VoiceStudio repository" in summary
     assert "AGPL-3.0 or another OSI-approved licence" in summary
+
+
+def test_cla_api_errors_block_merging_independently_of_the_commit_status():
+    job = _load(_CLA_WORKFLOW)["jobs"]["cla"]
+    checks = next(rule["parameters"]["required_status_checks"]
+                  for rule in _main_ruleset()["rules"] if rule["type"] == "required_status_checks")
+    assert {"context": job.get("name", "cla"), "integration_id": 15368} in checks
+    assert not job.get("continue-on-error", False)
+    assert all(not step.get("continue-on-error", False) for step in job["steps"])
