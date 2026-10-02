@@ -90,6 +90,7 @@ metadata and the backend fallback mirror it.
 - The Twilio guide and integration directory describe the guided setup and in-app integration pages (#2304)
 
 ### Fixed
+- Contributor audits inspect committed files and exclude submodules, while still stopping on failed file attribution (#2556)
 
 - Contributor audits stop on unreadable Git history instead of dropping affected authors (#2556)
 

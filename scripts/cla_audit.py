@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """List contributors whose code is in the tree but who have not signed the CLA.
 
-Blames every tracked text file at HEAD, credits each line to its commit's
+Blames every tracked text file at HEAD (excluding submodules), credits each line to its commit's
 author and co-authors, maps them to GitHub accounts, and compares the result
 with the signature store that .github/scripts/cla_check.py writes to the
 `cla-signatures` branch.
@@ -85,6 +85,19 @@ def require_full_history() -> None:
     if git("rev-parse", "--is-shallow-repository").strip() == "true":
         raise SystemExit("This clone is shallow, so blame would credit truncated history to the wrong people. "
                          "Run `git fetch --unshallow` and rerun.")
+
+
+def tracked_text_files() -> list[str]:
+    """Inventory the same committed tree we blame, excluding submodule gitlinks."""
+    files = []
+    for entry in git("ls-tree", "-r", "-z", "HEAD").split("\0"):
+        if not entry:
+            continue
+        metadata, path = entry.split("\t", 1)
+        _, object_type, _ = metadata.split()
+        if object_type == "blob" and not BINARY.search(path):
+            files.append(path)
+    return files
 
 
 def blame(path: str) -> collections.Counter:
@@ -234,7 +247,7 @@ def main() -> None:
     require_full_history()
     signed = signed_ids(args.no_signatures)
 
-    files = [f for f in git("ls-files").splitlines() if f and not BINARY.search(f)]
+    files = tracked_text_files()
     blamed: collections.Counter = collections.Counter()
     with ThreadPoolExecutor(16) as pool:
         for counts in pool.map(blame, files):

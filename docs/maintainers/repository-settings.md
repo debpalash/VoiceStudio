@@ -198,3 +198,8 @@ git config --global user.email "ID+USERNAME@users.noreply.github.com"
 Commits keep their GitHub attribution, and `scripts/cla_audit.py` maps no-reply
 addresses to GitHub logins without an API lookup. Commits already pushed
 keep their old address.
+
+The contributor audit inventories text blobs in `HEAD`, independent of staged
+changes. Submodule gitlinks are excluded: their repositories require separate
+licence and contributor audits. A failed blame of an included file stops the
+audit rather than understating unsigned contributions.
