@@ -127,7 +127,7 @@ request omits IDs, preserving explicit request IDs and existing stable IDs.
 A fallback ID is never assigned when it would collide with a retained or explicit
 ID. Mixed-ID requests that remain ambiguous need explicit unique IDs; QC stops
 before recognition for partial or duplicate source identities. Synchronization
-rejects duplicate language-text keys before changing segment or track metadata.
+rejects duplicate language-text keys before loading a backend or starting regeneration, preserving the previous WAV and saved metadata. Each existing segment is matched at most once, so a partial-ID request can use a current-render fallback ID without reusing another line’s source text or speaker.
 QC annotations
 preserve saved source times, text, and track settings. Export errors retain
 all choices for retry. Native save filters match the encoded file format.

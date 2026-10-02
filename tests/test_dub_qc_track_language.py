@@ -5,6 +5,26 @@ import copy
 import pytest
 
 
+def test_sync_consumes_existing_segment_only_once():
+    from api.routers.dub_generate import _sync_job_segments
+    from schemas.requests import DubRequest
+
+    job = {'segments': [
+        {'id': 'a', 'start': 0, 'end': 1, 'text': 'original a', 'speaker_id': 'speaker-a'},
+        {'id': 'b', 'start': 1, 'end': 2, 'text': 'original b', 'speaker_id': 'speaker-b'},
+    ], 'seg_order': ['b', 'seg_1']}
+    req = DubRequest(segments=[dict(start=0, end=1, text='translated b'),
+                               dict(start=1, end=2, text='new segment')],
+                     segment_ids=['b'], language_code='en')
+    _sync_job_segments(job, req)
+    assert [row['id'] for row in job['segments']] == ['b', 'seg_1']
+    assert job['segments'][0]['speaker_id'] == 'speaker-b'
+    assert job['segments'][0]['text_original'] == 'original b'
+    assert 'speaker_id' not in job['segments'][1]
+    assert job['segments'][1]['text_original'] == ''
+    assert job['segments_i18n']['en'] == {'b': 'translated b', 'seg_1': 'new segment'}
+
+
 @pytest.mark.parametrize("requested_lang", ["es", None, "unknown", "bn"])
 def test_qc_uses_selected_track_authoritative_text(monkeypatch, requested_lang):
     from api.routers import dub_export

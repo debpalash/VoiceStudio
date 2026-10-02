@@ -1,5 +1,6 @@
 """A published dub must contain every requested spoken segment, without early clipping."""
 import asyncio
+import copy
 import json
 from types import SimpleNamespace
 
@@ -131,6 +132,53 @@ def test_failed_regeneration_preserves_previous_track(render_dub):
     render_dub.run()
     assert previous.read_bytes() == b'previous successful output'
     assert render_dub.job['dubbed_tracks']['en']['path'] == str(previous)
+
+
+def test_conflicting_regeneration_preserves_saved_audio_and_text(render_dub, monkeypatch):
+    from api.routers import dub_generate as dg
+    from fastapi import HTTPException
+
+    previous = render_dub.path / 'dubbed_en.wav'
+    sf.write(previous, [.2] * 24000, 24000)
+    previous_bytes = previous.read_bytes()
+    render_dub.job.update({
+        'segments': [{'id': 'a', 'start': 0, 'end': 1, 'text': 'saved first'},
+                     {'id': 'b', 'start': 1, 'end': 2, 'text': 'saved second'}],
+        'segments_i18n': {'en': {'a': 'saved first', 'b': 'saved second'}},
+        'dubbed_tracks': {'en': {'path': str(previous)}},
+    })
+    saved = copy.deepcopy(render_dub.job)
+    persisted = render_dub.path / 'job.json'
+    persisted.write_text(json.dumps(saved))
+    monkeypatch.setattr(dg, '_save_job', lambda _, job: persisted.write_text(json.dumps(job)))
+    async def forbidden_resolution():
+        pytest.fail('Conflicting identities must be rejected before loading a backend')
+    monkeypatch.setattr(dg, '_resolve_dub_execution', forbidden_resolution)
+
+    with pytest.raises(HTTPException) as error:
+        render_dub.run(segments=[dict(start=0, end=1, text='replacement first'),
+                                 dict(start=1, end=2, text='replacement second')],
+                       segment_ids=['duplicate', 'duplicate'])
+    assert error.value.status_code == 409
+    assert error.value.detail['code'] == 'dub_segment_identity_conflict'
+    assert previous.read_bytes() == previous_bytes
+    assert json.loads(persisted.read_text()) == saved
+    assert render_dub.job == saved
+    assert not render_dub.generated
+
+
+def test_partial_ids_render_without_reusing_a_saved_segment(render_dub):
+    render_dub.job['segments'] = [
+        {'id': 'a', 'start': 0, 'end': 1, 'text': 'original a'},
+        {'id': 'b', 'start': 1, 'end': 2, 'text': 'original b'},
+    ]
+    events = render_dub.run(segments=[dict(start=0, end=1, text='translated b'),
+                                      dict(start=1, end=2, text='new segment')],
+                            segment_ids=['b'])
+    assert any(e['type'] == 'done' for e in events)
+    assert [row['id'] for row in render_dub.job['segments']] == ['b', 'seg_1']
+    assert render_dub.job['segments_i18n']['en'] == {'b': 'translated b', 'seg_1': 'new segment'}
+    assert sf.info(render_dub.path / 'dubbed_en.wav').frames > 0
 
 
 def test_timing_trims_edge_silence_but_keeps_internal_pauses():

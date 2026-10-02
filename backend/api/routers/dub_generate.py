@@ -193,7 +193,8 @@ def _sync_job_segments(job: dict, req: DubRequest) -> None:
     if not req.segments:
         return
     existing = [s for s in (job.get("segments") or []) if isinstance(s, dict)]
-    by_id = {str(s["id"]): s for s in existing if s.get("id") is not None}
+    by_id = {str(s["id"]): i for i, s in enumerate(existing) if s.get("id") is not None}
+    used_existing: set[int] = set()
     seg_ids = req.segment_ids or []
     # The current render seeds exactly this manifest before synthesis. Only a
     # complete matching vector can supply an otherwise missing row identity.
@@ -214,9 +215,14 @@ def _sync_job_segments(job: dict, req: DubRequest) -> None:
     vouched: list[str | None] = []
     for i, seg in enumerate(req.segments):
         seg_id = seg_ids[i] if i < len(seg_ids) else None
-        prev = by_id.get(str(seg_id)) if seg_id is not None else None
-        if prev is None and i < len(existing):
-            prev = existing[i]
+        prev_index = by_id.get(str(seg_id)) if seg_id is not None else None
+        if prev_index in used_existing:
+            prev_index = None
+        if prev_index is None and i < len(existing) and i not in used_existing:
+            prev_index = i
+        prev = existing[prev_index] if prev_index is not None else None
+        if prev_index is not None:
+            used_existing.add(prev_index)
         row = dict(prev) if prev else {}
         if seg_id is not None:
             # The request id is authoritative — seg_order and the per-segment
@@ -554,6 +560,17 @@ async def dub_generate(job_id: str, req: DubRequest):
             status_code=404,
             detail="This dub session has expired or was never created. Re-upload the video to start a new one.",
         )
+
+    # Validate identities against the manifest this render will seed, before
+    # loading a backend or admitting work that can replace a saved track. The
+    # projection shares only read-only source rows; synchronization rebuilds
+    # its own rows and language maps without publishing any job metadata.
+    seg_ids = req.segment_ids or []
+    _sync_job_segments({
+        "segments": job.get("segments"),
+        "seg_order": [seg_ids[i] if i < len(seg_ids) else f"seg_{i}"
+                      for i in range(len(req.segments))],
+    }, req)
 
     # ── Engine resolution (issue #312 class) ────────────────────────────────
     # Every rendered segment clones either source speech or a saved profile, so
