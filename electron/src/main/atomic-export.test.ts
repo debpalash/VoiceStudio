@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { constants } from 'node:fs';
 import { chmod, lstat, mkdtemp, readFile, readlink, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,7 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const controls = vi.hoisted(() => ({
   handlers: new Map<string, (event: unknown, request: unknown) => Promise<unknown>>(),
-  destination: '', failWrite: false, failRename: false,
+  destination: '', failWrite: false, failRename: false, swapAfterProbeOpen: false,
 }));
 vi.mock('electron', () => ({
   app: {},
@@ -32,6 +33,11 @@ vi.mock('node:fs/promises', async () => {
     },
     open: async (...args: Parameters<typeof real.open>) => {
       const file = await real.open(...args);
+      if (controls.swapAfterProbeOpen && args[0] === controls.destination && args[1] === constants.O_WRONLY) {
+        await real.rename(controls.destination, join(directory, 'authorized-original.wav'));
+        await real.writeFile(controls.destination, 'unrelated replacement', { mode: 0o644 });
+        await real.chmod(controls.destination, 0o644);
+      }
       const write = file.writeFile.bind(file);
       vi.spyOn(file, 'writeFile').mockImplementation(async (...data) => {
         if (controls.failWrite) {
@@ -55,7 +61,7 @@ const owner = { webContents: { mainFrame: frame } };
 const event = { sender: owner.webContents, senderFrame: frame };
 let directory: string;
 beforeEach(async () => {
-  controls.failWrite = false; controls.failRename = false; controls.handlers.clear();
+  controls.failWrite = false; controls.failRename = false; controls.swapAfterProbeOpen = false; controls.handlers.clear();
   directory = await mkdtemp(join(tmpdir(), 'voicestudio-export-'));
   controls.destination = join(directory, 'saved.wav');
   await writeFile(controls.destination, 'previous complete export', { mode: 0o600 });
@@ -140,11 +146,7 @@ it('preserves a dangling symbolic link when its destination cannot be resolved',
 });
 
 
-it.each(requests)('rejects a read-only existing export without replacing it in %s', async (channel, request, context) => {
-  if (process.platform === 'win32' || process.getuid?.() === 0) {
-    context.skip(); // POSIX mode denial requires an unprivileged POSIX process.
-    return;
-  }
+it.skipIf(process.platform === 'win32' || process.getuid?.() === 0).each(requests)('rejects a read-only existing export without replacing it in %s', async (channel, request) => {
   await chmod(controls.destination, 0o444);
   await expect(controls.handlers.get(channel)!(event, request)).rejects.toMatchObject({ code: expect.stringMatching(/^(EACCES|EPERM)$/) });
   expect(await readFile(controls.destination, 'utf8')).toBe('previous complete export');
@@ -169,11 +171,7 @@ it('rejects a read-only symlink target without replacing the target or link', as
 });
 
 
-it.each(requests)('leaves the existing export intact when the parent cannot stage a replacement in %s', async (channel, request, context) => {
-  if (process.platform === 'win32' || process.getuid?.() === 0) {
-    context.skip(); // Directory mode denial requires an unprivileged POSIX process.
-    return;
-  }
+it.skipIf(process.platform === 'win32' || process.getuid?.() === 0).each(requests)('leaves the existing export intact when the parent cannot stage a replacement in %s', async (channel, request) => {
   await chmod(directory, 0o500);
   try {
     // The existing inode remains writable even though its directory is not.
@@ -184,4 +182,14 @@ it.each(requests)('leaves the existing export intact when the parent cannot stag
   } finally {
     await chmod(directory, 0o700);
   }
+});
+
+
+it.skipIf(process.platform === 'win32').each(requests)('uses the authorized descriptor mode when the pathname changes after open in %s', async (channel, request) => {
+  controls.swapAfterProbeOpen = true;
+  await controls.handlers.get(channel)!(event, request);
+  expect((await stat(controls.destination)).mode & 0o777).toBe(0o600);
+  expect([...await readFile(controls.destination)]).toEqual([9, 8, 7, 6]);
+  expect(await readFile(join(directory, 'authorized-original.wav'), 'utf8')).toBe('previous complete export');
+  expect(await readdir(directory)).toEqual(['authorized-original.wav', 'saved.wav']);
 });

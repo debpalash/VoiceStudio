@@ -1,24 +1,37 @@
 import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
-import { lstat, open, realpath, rename, rm, stat } from 'node:fs/promises';
+import { lstat, open, realpath, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 /** Keep a selected existing export intact until all replacement bytes are written. */
 export async function writeExportAtomically(path: string, data: Uint8Array): Promise<void> {
-  const existing = await lstat(path).catch((error: NodeJS.ErrnoException) => {
-    if (error.code === 'ENOENT') return null;
-    throw error;
+  // Authorize the actual opened file before inspecting metadata. A pathname
+  // check followed by open can observe different files after a rename.
+  let missing: NodeJS.ErrnoException | undefined;
+  const existing = await open(path, constants.O_WRONLY).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== 'ENOENT') throw error;
+    missing = error;
+    return null;
   });
-  // Preserve the normal save-through-symlink behavior. A dangling link fails
-  // without replacing the link itself or inventing a different destination.
-  const destination = existing?.isSymbolicLink() ? await realpath(path) : path;
+  let destination = path;
+  let mode = 0o666;
   if (existing) {
-    // Check the same write authorization as the previous direct save, without
-    // truncating the old export. Mode-bit checks would misjudge ACLs and root.
-    const probe = await open(destination, constants.O_WRONLY);
-    await probe.close();
+    try {
+      mode = (await existing.stat()).mode & 0o777;
+      // Resolve a working symlink without replacing the link itself.
+      destination = await realpath(path);
+    } finally {
+      await existing.close();
+    }
+  } else {
+    const present = await lstat(path).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    });
+    // A dangling symlink (or a newly appeared path) must not be overwritten
+    // after the failed authorization open.
+    if (present) throw missing;
   }
-  const mode = existing ? (await stat(destination)).mode & 0o777 : 0o666;
   const temporary = join(dirname(destination), `.voicestudio-${randomUUID()}.tmp`);
   // Exclusive creation owns this temporary file, even if a later write fails.
   const file = await open(temporary, 'wx', existing ? 0o600 : 0o666);
