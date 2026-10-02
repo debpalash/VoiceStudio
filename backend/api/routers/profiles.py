@@ -883,12 +883,12 @@ async def unlock_profile(profile_id: str):
                 "UPDATE voice_profiles SET locked_audio_path='', seed=NULL, is_locked=0 WHERE id=?",
                 (profile_id,)
             )
-        # Unlink only after the row change committed (a rolled-back unlock must
-        # keep its locked take). Holding the lock stops a concurrent re-lock
-        # from installing a take that this unlink would then remove.
-        if locked_path:
-            with contextlib.suppress(OSError):
-                os.remove(locked_path)
+        # Unlink only after the row change committed. An admitted render may
+        # still hold this immutable version; profile deletion reclaims it once
+        # all readers finish. Shared references (including this profile's other
+        # audio fields) must also remain usable after unlocking.
+        if locked_path and not references_in_use([locked_path]):
+            _remove_voice_file(profile["locked_audio_path"], keep="")
     event_bus.emit("profiles", {"action": "unlocked", "id": profile_id})
     return {"unlocked": True, "profile_id": profile_id}
 

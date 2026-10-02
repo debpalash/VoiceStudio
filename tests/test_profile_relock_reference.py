@@ -278,3 +278,87 @@ def test_delete_does_not_adopt_a_shared_path_after_its_precommit_guard(profile, 
     assert moved
     assert Path(path).read_bytes() == original
     assert running['resolve']('voice')['ref_audio'] == path
+
+
+@pytest.mark.parametrize("shared_column", ["ref_audio_path", "locked_audio_path", "consent_audio_path"])
+def test_unlock_preserves_locked_reference_shared_by_another_profile(profile, shared_column):
+    client, db, voices = profile
+    locked = client.post('/profiles/voice/lock', data={'history_id': 'first'}).json()['locked_audio_path']
+    original = Path(voices, locked).read_bytes()
+    with db.db_conn() as conn:
+        conn.execute(f"INSERT INTO voice_profiles(id,name,{shared_column}) VALUES('shared','Shared',?)", (locked,))
+    response = client.post('/profiles/voice/unlock')
+    assert response.status_code == 200, response.text
+    assert Path(voices, locked).read_bytes() == original
+    with db.db_conn() as conn:
+        row = conn.execute("SELECT is_locked,locked_audio_path FROM voice_profiles WHERE id='voice'").fetchone()
+        assert tuple(row) == (0, '')
+
+
+@pytest.mark.parametrize("retained_column", ["ref_audio_path", "consent_audio_path"])
+def test_unlock_preserves_locked_file_retained_by_same_profile(profile, retained_column):
+    client, db, voices = profile
+    locked = client.post('/profiles/voice/lock', data={'history_id': 'first'}).json()['locked_audio_path']
+    original = Path(voices, locked).read_bytes()
+    with db.db_conn() as conn:
+        conn.execute(f"UPDATE voice_profiles SET {retained_column}=? WHERE id='voice'", (locked,))
+    response = client.post('/profiles/voice/unlock')
+    assert response.status_code == 200, response.text
+    assert Path(voices, locked).read_bytes() == original
+
+
+def test_unlock_keeps_pending_render_reference_then_deletion_reclaims_it(profile):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from api.routers.audiobook import _build_synth
+
+    client, db, voices = profile
+    locked = client.post('/profiles/voice/lock', data={'history_id': 'first'}).json()['locked_audio_path']
+    running = _build_synth(default_voice='voice')
+    path = running['resolve']('voice')['ref_audio']
+    original = Path(path).read_bytes()
+    entered, release = threading.Event(), threading.Event()
+
+    def worker(resolve):
+        entered.set()
+        assert release.wait(5)
+        return Path(resolve('voice')['ref_audio']).read_bytes()
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        result = pool.submit(worker, running['resolve'])
+        assert entered.wait(5)
+        del running
+        try:
+            response = client.post('/profiles/voice/unlock')
+            assert response.status_code == 200, response.text
+            assert Path(path).read_bytes() == original
+            assert client.delete('/profiles/voice').status_code == 409
+        finally:
+            release.set()
+        assert result.result(timeout=5) == original
+    assert client.delete('/profiles/voice').status_code == 200
+    assert not Path(voices, locked).exists()
+
+
+def test_unlock_reclaims_unused_locked_file(profile):
+    client, db, voices = profile
+    locked = client.post('/profiles/voice/lock', data={'history_id': 'first'}).json()['locked_audio_path']
+    response = client.post('/profiles/voice/unlock')
+    assert response.status_code == 200, response.text
+    assert not Path(voices, locked).exists()
+
+
+def test_failed_unlock_preserves_locked_reference_and_row(profile):
+    import sqlite3
+    client, db, voices = profile
+    locked = client.post('/profiles/voice/lock', data={'history_id': 'first'}).json()['locked_audio_path']
+    original = Path(voices, locked).read_bytes()
+    with db.db_conn() as conn:
+        conn.execute("CREATE TRIGGER refuse_unlock BEFORE UPDATE OF locked_audio_path ON voice_profiles "
+                     "WHEN NEW.locked_audio_path = '' BEGIN SELECT RAISE(ABORT, 'unlock update failed'); END")
+    with pytest.raises(sqlite3.IntegrityError, match='unlock update failed'):
+        client.post('/profiles/voice/unlock')
+    assert Path(voices, locked).read_bytes() == original
+    with db.db_conn() as conn:
+        row = conn.execute("SELECT is_locked,locked_audio_path FROM voice_profiles WHERE id='voice'").fetchone()
+        assert tuple(row) == (1, locked)
