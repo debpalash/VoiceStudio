@@ -2,6 +2,8 @@
 
 Settings > Storage reads the existing cached disk report, shows volume use/free space, model cache, application data, engine environments and temporary files, and marks incomplete scans explicitly. Largest models and data subtotals expand inline. Warning formatting and byte formatting are shared with Tauri.
 
+Storage scan budgets are checked between files in large flat directories and between loose application-data entries. A scan that exhausts its budget reports partial bytes and a timeout warning, including an incomplete Other subtotal. A single operating-system filesystem call can still take longer than the budget.
+
 Open folder uses Electron's native reveal bridge, with the existing backend reveal route for browser development. Model and log links open their existing management views. Temporary-file cleanup requires explicit confirmation with the running-job warning. A partial deletion reports failure instead of claiming all files were cleared, and refreshes usage. Opening the page never deletes anything.
 
 Database backup status displays the latest pre-migration snapshot and date. This is database backup information, not a claim that source media and generated files are backed up. History retention reuses the confirmed cap editor from Privacy.
