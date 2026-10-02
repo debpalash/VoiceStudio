@@ -108,7 +108,7 @@ def test_relock_keeps_a_reference_still_used_by_another_profile(profile):
 
 def test_existing_longform_voice_snapshot_survives_relock(profile):
     from api.routers.audiobook import _build_synth
-    client, _db, voices = profile
+    client, _db, _voices = profile
     first = client.post('/profiles/voice/lock', data={'history_id': 'first'}).json()
     # Real longform resolver caches the reference before a worker reads it.
     running = _build_synth(default_voice='voice')
@@ -153,7 +153,7 @@ def test_explicit_deletion_preserves_a_retained_version_shared_by_another_profil
 @pytest.mark.parametrize('relock', [False, True])
 def test_profile_deletion_waits_for_live_longform_reference(profile, relock):
     from api.routers.audiobook import _build_synth
-    client, db, voices = profile
+    client, db, _voices = profile
     client.post('/profiles/voice/lock', data={'history_id': 'first'})
     running = _build_synth(default_voice='voice')
     reference = running['resolve']('voice')['ref_audio']
@@ -174,7 +174,7 @@ def test_profile_deletion_waits_for_live_longform_reference(profile, relock):
 
 def test_profile_deletion_waits_for_every_cached_reader_and_ignores_other_profiles(profile):
     from api.routers.audiobook import _build_synth
-    client, db, voices = profile
+    client, db, _voices = profile
     client.post('/profiles/voice/lock', data={'history_id': 'first'})
     first = _build_synth(default_voice='voice')
     old = first['resolve']('voice')['ref_audio']
@@ -312,7 +312,7 @@ def test_unlock_keeps_pending_render_reference_then_deletion_reclaims_it(profile
     from concurrent.futures import ThreadPoolExecutor
     from api.routers.audiobook import _build_synth
 
-    client, db, voices = profile
+    client, _db, voices = profile
     locked = client.post('/profiles/voice/lock', data={'history_id': 'first'}).json()['locked_audio_path']
     running = _build_synth(default_voice='voice')
     path = running['resolve']('voice')['ref_audio']
@@ -341,7 +341,7 @@ def test_unlock_keeps_pending_render_reference_then_deletion_reclaims_it(profile
 
 
 def test_unlock_reclaims_unused_locked_file(profile):
-    client, db, voices = profile
+    client, _db, voices = profile
     locked = client.post('/profiles/voice/lock', data={'history_id': 'first'}).json()['locked_audio_path']
     response = client.post('/profiles/voice/unlock')
     assert response.status_code == 200, response.text
