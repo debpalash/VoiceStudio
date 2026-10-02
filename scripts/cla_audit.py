@@ -90,8 +90,7 @@ def require_full_history() -> None:
 def blame(path: str) -> collections.Counter:
     lines: collections.Counter = collections.Counter()
     commit = name = email = None
-    out = subprocess.run(["git", "-C", str(REPO), "blame", "-w", "-M", "--line-porcelain", "HEAD", "--", path],
-                         capture_output=True, text=True, errors="replace").stdout
+    out = git("blame", "-w", "-M", "--line-porcelain", "HEAD", "--", path)
     for row in out.splitlines():
         if re.match(r"^[0-9a-f]{40} ", row):
             commit = row[:40]

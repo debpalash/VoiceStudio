@@ -74,3 +74,14 @@ def test_unresolved_co_author_gets_no_pr_or_name_fallback():
                                 {"c1": ("opener", 1001, "submitted")}, {"pat": ("pat", 2020)}, {})
     assert set(people) == {CO} and people[CO]["id"] is None
     assert audit.NOTES["unresolved"] in people[CO]["notes"]
+
+
+def test_failed_blame_cannot_silently_remove_contributors(monkeypatch):
+    import subprocess
+
+    def failed(args, **kwargs):
+        return subprocess.CompletedProcess(args, 128, stdout="", stderr="history object unavailable")
+
+    monkeypatch.setattr(audit.subprocess, "run", failed)
+    with pytest.raises(SystemExit, match="git blame.*failed"):
+        audit.blame("contributed.py")

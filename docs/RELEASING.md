@@ -60,7 +60,9 @@ version only after validation.
    `GH_TOKEN=... python scripts/cla_audit.py`. Follow up with each unsigned
    contributor it lists, asking them to sign `.github/CLA-1.0.md` (or their
    employer the Corporate CLA). This step applies once the CLA workflow and
-   `scripts/cla_audit.py` are on `main`.
+   `scripts/cla_audit.py` are on `main`. The audit aborts if Git cannot read
+   any file’s history; restore access to missing objects and rerun before
+   treating its contributor list as complete.
 7. Confirm the version matches the intended tag.
 
 ## Build a release draft

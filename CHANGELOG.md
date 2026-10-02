@@ -91,6 +91,8 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
+- Contributor audits stop on unreadable Git history instead of dropping affected authors (#2556)
+
 - CLA rechecks clear older approvals and require the workflow job to block rejected status updates (#2556)
 - Keep audiobook chapter boundaries when importing CR-only manuscripts (#2508) — thanks @rudycelekli!
 - Preserve busy sidecars during engine-level unload instead of terminating their active operation (#2507) — thanks @Anuj04432 and @rudycelekli!
