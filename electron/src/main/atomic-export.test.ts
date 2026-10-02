@@ -7,7 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const controls = vi.hoisted(() => ({
   handlers: new Map<string, (event: unknown, request: unknown) => Promise<unknown>>(),
-  destination: '', failWrite: false, failRename: false, swapAfterProbeOpen: false,
+  destination: '', failWrite: false, failRename: false, swapAfterProbeOpen: false, swapWithSymlink: false, appearWhileStaging: false,
 }));
 vi.mock('electron', () => ({
   app: {},
@@ -33,10 +33,17 @@ vi.mock('node:fs/promises', async () => {
     },
     open: async (...args: Parameters<typeof real.open>) => {
       const file = await real.open(...args);
-      if (controls.swapAfterProbeOpen && args[0] === controls.destination && args[1] === constants.O_WRONLY) {
+      if (controls.swapAfterProbeOpen && args[1] === constants.O_WRONLY && (args[0] === controls.destination || args[0] === await real.realpath(controls.destination))) {
         await real.rename(controls.destination, join(directory, 'authorized-original.wav'));
-        await real.writeFile(controls.destination, 'unrelated replacement', { mode: 0o644 });
-        await real.chmod(controls.destination, 0o644);
+        if (controls.swapWithSymlink) {
+          const unrelated = join(directory, 'unrelated.wav');
+          await real.writeFile(unrelated, 'unrelated target', { mode: 0o444 });
+          await real.chmod(unrelated, 0o444);
+          await real.symlink('unrelated.wav', controls.destination);
+        } else {
+          await real.writeFile(controls.destination, 'unrelated replacement', { mode: 0o644 });
+          await real.chmod(controls.destination, 0o644);
+        }
       }
       const write = file.writeFile.bind(file);
       vi.spyOn(file, 'writeFile').mockImplementation(async (...data) => {
@@ -44,7 +51,12 @@ vi.mock('node:fs/promises', async () => {
           await write(new Uint8Array([9]));
           throw Object.assign(new Error('injected partial write failure'), { code: 'EIO' });
         }
-        return write(...data);
+        const result = await write(...data);
+        if (controls.appearWhileStaging) {
+          await real.writeFile(controls.destination, 'concurrent new export', { mode: 0o600 });
+          controls.appearWhileStaging = false;
+        }
+        return result;
       });
       return file;
     },
@@ -61,7 +73,7 @@ const owner = { webContents: { mainFrame: frame } };
 const event = { sender: owner.webContents, senderFrame: frame };
 let directory: string;
 beforeEach(async () => {
-  controls.failWrite = false; controls.failRename = false; controls.swapAfterProbeOpen = false; controls.handlers.clear();
+  controls.failWrite = false; controls.failRename = false; controls.swapAfterProbeOpen = false; controls.swapWithSymlink = false; controls.appearWhileStaging = false; controls.handlers.clear();
   directory = await mkdtemp(join(tmpdir(), 'voicestudio-export-'));
   controls.destination = join(directory, 'saved.wav');
   await writeFile(controls.destination, 'previous complete export', { mode: 0o600 });
@@ -185,11 +197,33 @@ it.skipIf(process.platform === 'win32' || process.getuid?.() === 0).each(request
 });
 
 
-it.skipIf(process.platform === 'win32').each(requests)('uses the authorized descriptor mode when the pathname changes after open in %s', async (channel, request) => {
+it.skipIf(process.platform === 'win32').each(requests)('refuses a changed destination inode without overwriting either file in %s', async (channel, request) => {
   controls.swapAfterProbeOpen = true;
-  await controls.handlers.get(channel)!(event, request);
-  expect((await stat(controls.destination)).mode & 0o777).toBe(0o600);
-  expect([...await readFile(controls.destination)]).toEqual([9, 8, 7, 6]);
+  await expect(controls.handlers.get(channel)!(event, request)).rejects.toMatchObject({ code: 'ESTALE' });
+  expect((await stat(controls.destination)).mode & 0o777).toBe(0o644);
+  expect(await readFile(controls.destination, 'utf8')).toBe('unrelated replacement');
   expect(await readFile(join(directory, 'authorized-original.wav'), 'utf8')).toBe('previous complete export');
   expect(await readdir(directory)).toEqual(['authorized-original.wav', 'saved.wav']);
+});
+
+
+it.skipIf(process.platform === 'win32').each(requests)('refuses a symlink substituted after authorization without overwriting its target in %s', async (channel, request) => {
+  controls.swapAfterProbeOpen = true;
+  controls.swapWithSymlink = true;
+  await expect(controls.handlers.get(channel)!(event, request)).rejects.toMatchObject({ code: 'ESTALE' });
+  expect(await readFile(join(directory, 'unrelated.wav'), 'utf8')).toBe('unrelated target');
+  expect((await stat(join(directory, 'unrelated.wav'))).mode & 0o777).toBe(0o444);
+  expect(await readFile(join(directory, 'authorized-original.wav'), 'utf8')).toBe('previous complete export');
+  expect((await lstat(controls.destination)).isSymbolicLink()).toBe(true);
+  expect(await readlink(controls.destination)).toBe('unrelated.wav');
+  expect(await readdir(directory)).toEqual(['authorized-original.wav', 'saved.wav', 'unrelated.wav']);
+});
+
+
+it.each(requests)('preserves a destination that appears while a new export is staged in %s', async (channel, request) => {
+  await rm(controls.destination);
+  controls.appearWhileStaging = true;
+  await expect(controls.handlers.get(channel)!(event, request)).rejects.toMatchObject({ code: 'EEXIST' });
+  expect(await readFile(controls.destination, 'utf8')).toBe('concurrent new export');
+  expect(await readdir(directory)).toEqual(['saved.wav']);
 });
