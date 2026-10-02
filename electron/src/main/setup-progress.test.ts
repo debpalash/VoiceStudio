@@ -77,6 +77,20 @@ describe('concurrent package byte updates', () => {
   it.each([
     ['torch', 'torchvision'],
     ['torchvision', 'torch'],
+  ])('uses the closest planned identifier in a multi-package prefix (%s first)', (first, second) => {
+    const tracker = new SetupProgressTracker();
+    for (const name of [first, second]) {
+      tracker.ingest(`Downloading ${name} (${name === 'torch' ? 10 : 20} MiB)`, 0);
+    }
+    expect(tracker.ingest('torch ... torchvision 2 MiB / 20 MiB', 1000)).toMatchObject({
+      activePackage: 'torchvision',
+      totalBytes: 30 * 1024 ** 2,
+      downloadedBytes: 2 * 1024 ** 2,
+    });
+  });
+  it.each([
+    ['torch', 'torchvision'],
+    ['torchvision', 'torch'],
     ['pydantic', 'pydantic-core'],
     ['lib', 'lib.v2'],
   ])('matches the complete %s / %s package identifiers', (first, second) => {
