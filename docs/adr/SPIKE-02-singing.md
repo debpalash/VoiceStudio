@@ -3,6 +3,11 @@
 
 # SPIKE-02: Adopt `ModelsLab/omnivoice-singing` as singing variant of the existing engine
 
+> **Licence correction (2026-10-03):** the original commercial-compatibility
+> conclusion is withdrawn. See the [source review](SPIKE-01-gguf-research.md#licence-correction-2026-10-03)
+> for separate code, weight, and downstream terms. This engineering decision
+> does not approve the model for Pro.
+
 **Status:** ⚠️ **SUPERSEDED (2026-06-14)** by `specs/006-dubbing-singing-mode/` (spec tree removed 2026-07-12 — feature shipped; see git history)
 **Date:** 2026-05-18 (superseded 2026-06-14)
 **Decision-makers:** [maintainer]
@@ -17,7 +22,7 @@
 
 ## Context
 
-`ModelsLab/omnivoice-singing` (HuggingFace, 1,053 downloads/month, verified 2026-05-18) is a finetune of `k2-fsa/OmniVoice` — same Apache-2.0 license, same Qwen3-0.6B backbone, same Higgs Audio v2 codec at 24 kHz mono, same `omnivoice` PyPI library (0.1.5, 2026-04-28) already shipping in VoiceStudio v0.2.7. Trained on additional singing + emotion-tagged data and activated by a `[singing]` text control tag at generation time.
+`ModelsLab/omnivoice-singing` (HuggingFace, 1,053 downloads/month, verified 2026-05-18) is a finetune of `k2-fsa/OmniVoice` — unresolved commercial rights, same Qwen3-0.6B backbone, same Higgs Audio v2 codec at 24 kHz mono, same `omnivoice` PyPI library (0.1.5, 2026-04-28) already shipping in VoiceStudio v0.2.7. Trained on additional singing + emotion-tagged data and activated by a `[singing]` text control tag at generation time.
 
 VoiceStudio's existing `dub_pipeline.py` runs Demucs to split source audio into vocal and instrumental stems and routes the vocal stem through the default TTS engine. Today this produces speech-like output even on sung source material, which is one of the loudest user complaints when dubbing music-adjacent content.
 

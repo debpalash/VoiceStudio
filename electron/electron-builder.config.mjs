@@ -90,6 +90,8 @@ export default {
     { from: '../uv.lock', to: 'uv.lock' },
     { from: '../README.md', to: 'README.md' },
     { from: '../LICENSE', to: 'LICENSE' },
+    { from: '../LICENSE-NOTICE.md', to: 'LICENSE-NOTICE.md' },
+    { from: 'T3CODE-LICENSE.txt', to: 'electron/T3CODE-LICENSE.txt' },
     ...bundledUvResources,
   ],
   asar: true,

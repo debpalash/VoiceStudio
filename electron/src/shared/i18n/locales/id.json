@@ -833,7 +833,11 @@
     "self_check_attention": "{{count}} pemeriksaan gagal — lihat petunjuk di atas.",
     "save_bundle": "Simpan bundel diagnostik",
     "bundle_saved": "Bundel diagnostik tersimpan: {{filename}}",
-    "bundle_failed": "Tidak dapat membuat bundel diagnostik: {{message}}"
+    "bundle_failed": "Tidak dapat membuat bundel diagnostik: {{message}}",
+    "model_credits": "Kredit model",
+    "model_credits_hint": "Kredit untuk model yang didukung. Ketentuan model dan komponen berlaku secara terpisah; kredit ini tidak memberikan hak penggunaan komersial.",
+    "model_terms": "Ketentuan model",
+    "model_related_sources": "Sumber terkait:"
   },
   "privacy": {
     "desc": "Semuanya berjalan di <1>mesin ini</1>. Audio, video, dan transkrip Anda tidak pernah keluar dari komputer kecuali Anda secara eksplisit menggunakan penerjemah online (Google, DeepL, dll.) atau mendorong ke HuggingFace.",
@@ -1697,11 +1701,11 @@
     "back": "Kembali ke Studio",
     "badge": "Lisensi Komersial",
     "hero_title": "Kirimkan suara AI dalam produksi",
-    "hero_desc": "VoiceStudio adalah perangkat lunak bebas dan open source di bawah GNU Affero General Public License v3 (AGPL-3.0) — gratis digunakan, termasuk untuk penggunaan komersial dan bisnis internal. Lisensi komersial hanya diperlukan jika Anda ingin menyematkan VoiceStudio ke dalam produk atau layanan closed-source atau proprietary tanpa kewajiban copyleft AGPL-3.0.",
+    "hero_desc": "VoiceStudio adalah perangkat lunak bebas dan open source di bawah GNU Affero General Public License v3 (AGPL-3.0) — gratis digunakan, termasuk untuk penggunaan komersial dan bisnis internal. Lisensi komersial hanya diperlukan jika Anda ingin menyematkan VoiceStudio ke dalam produk atau layanan closed-source atau proprietary tanpa kewajiban copyleft AGPL-3.0. Lisensi kami mencakup kode VoiceStudio. Hak atas model dan keluaran yang dihasilkan bergantung pada model yang dipilih beserta ketentuannya.",
     "pricing_desc": "Tingkatan dan harga masih dalam tahap penyelesaian.",
     "request_quote": "Minta penawaran",
-    "benefit_ip": "Kepemilikan IP penuh",
-    "benefit_ip_desc": "Anda memiliki setiap keluaran, setiap model, setiap turunan. Tidak ada sewa bersama, tidak ada kebocoran data.",
+    "benefit_ip": "Lisensi aplikasi",
+    "benefit_ip_desc": "Lisensi kami mencakup kode VoiceStudio. Hak atas model dan keluaran yang dihasilkan bergantung pada model yang dipilih beserta ketentuannya.",
     "benefit_cost": "Nol biaya per menit",
     "benefit_cost_desc": "Tidak ada tagihan API, tidak ada kelebihan yang mengejutkan. Berjalan di perangkat keras Anda sendiri sejak hari pertama.",
     "benefit_team_desc": "Satu lisensi mencakup pengguna tanpa batas dalam organisasi Anda.",
@@ -1709,7 +1713,7 @@
     "benefit_support_desc": "Dukungan email prioritas dan panggilan video dari tim teknik inti.",
     "benefit_source_desc": "Visibilitas penuh ke dalam tumpukan. Audit, fork, dan adaptasi sesuai ketentuan lisensi.",
     "benefit_lang_desc": "Transkripsikan, terjemahkan, dan sulih suara dalam 646 bahasa dengan kualitas setingkat manusia.",
-    "hero_simple": "VoiceStudio gratis dan bersumber terbuka di bawah AGPL-3.0 — termasuk untuk penggunaan komersial dan bisnis internal. Anda hanya memerlukan lisensi komersial untuk menyematkannya dalam produk sumber tertutup tanpa kewajiban copyleft AGPL."
+    "hero_simple": "VoiceStudio gratis dan bersumber terbuka di bawah AGPL-3.0 — termasuk untuk penggunaan komersial dan bisnis internal. Anda hanya memerlukan lisensi komersial untuk menyematkannya dalam produk sumber tertutup tanpa kewajiban copyleft AGPL. Lisensi kami mencakup kode VoiceStudio. Hak atas model dan keluaran yang dihasilkan bergantung pada model yang dipilih beserta ketentuannya."
   },
   "exportModal": {
     "export": "Ekspor",
@@ -1772,8 +1776,8 @@
     "pkg_audio_body_one": "Lompat ke tab Audio untuk mengekspor sulih suara per bahasa dalam WAV atau MP3 (tersedia sulih suara {{count}}).",
     "pkg_audio_body_other": "Lompat ke tab Audio untuk mengekspor sulih suara per bahasa dalam WAV atau MP3 (tersedia sulih suara {{count}}).",
     "pkg_audio_cta": "Buka tab audio",
-    "license_text": "Penggunaan komersial memerlukan a",
-    "license_link": "lisensi",
+    "license_text": "Lisensi kami mencakup kode VoiceStudio. Hak atas model dan keluaran yang dihasilkan bergantung pada model yang dipilih beserta ketentuannya.",
+    "license_link": "Lisensi aplikasi",
     "output": "KELUARAN",
     "nothing_selected": "Tidak ada yang dipilih atau trek tidak tersedia",
     "export_mp4": "Ekspor MP4",

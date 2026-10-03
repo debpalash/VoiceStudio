@@ -833,7 +833,11 @@
     "self_check_attention": "{{count}} 項檢查未通過 — 請參閱上方提示。",
     "save_bundle": "儲存診斷套件",
     "bundle_saved": "診斷套件已儲存：{{filename}}",
-    "bundle_failed": "無法建立診斷套件：{{message}}"
+    "bundle_failed": "無法建立診斷套件：{{message}}",
+    "model_credits": "模型致謝",
+    "model_credits_hint": "支援模型的來源與作者。模型和元件分別適用各自的條款；這些致謝不授予商業使用權。",
+    "model_terms": "模型條款",
+    "model_related_sources": "相關來源："
   },
   "privacy": {
     "desc": "一切都在<1>這台機器</1>上運作。除非您明確使用線上翻譯器（Google、DeepL 等）或推送到 HuggingFace，否則您的音訊、視訊和文字記錄永遠不會離開您的電腦。",
@@ -1697,11 +1701,11 @@
     "back": "返回工作室",
     "badge": "商業許可",
     "hero_title": "在生產中傳送人工智慧聲音",
-    "hero_desc": "VoiceStudio 是基於 GNU Affero 通用公眾授權條款第 3 版（AGPL-3.0）的自由開源軟體——可免費使用，包括商業用途與企業內部用途。只有當您想在不承擔 AGPL-3.0 著佐權（copyleft）義務的情況下，將 VoiceStudio 嵌入閉源或專有產品/服務時，才需要商業授權。",
+    "hero_desc": "VoiceStudio 是基於 GNU Affero 通用公眾授權條款第 3 版（AGPL-3.0）的自由開源軟體——可免費使用，包括商業用途與企業內部用途。只有當您想在不承擔 AGPL-3.0 著佐權（copyleft）義務的情況下，將 VoiceStudio 嵌入閉源或專有產品/服務時，才需要商業授權。 我們的授權適用於 VoiceStudio 程式碼。模型與生成內容的相關權利取決於所選模型及其條款。",
     "pricing_desc": "等級和定價仍在最終確定中。",
     "request_quote": "索取報價",
-    "benefit_ip": "完全IP所有權",
-    "benefit_ip_desc": "您擁有每一個輸出、每一個模型、每一個衍生品。無共享租賃，無資料外洩。",
+    "benefit_ip": "應用程式授權",
+    "benefit_ip_desc": "我們的授權適用於 VoiceStudio 程式碼。模型與生成內容的相關權利取決於所選模型及其條款。",
     "benefit_cost": "每分鐘零成本",
     "benefit_cost_desc": "沒有 API 帳單，也沒有意外超額。從第一天起就在您自己的硬體上運行。",
     "benefit_team_desc": "一份許可證涵蓋您組織內的無限用戶。",
@@ -1709,7 +1713,7 @@
     "benefit_support_desc": "來自核心工程團隊的優先電子郵件和視訊通話支援。",
     "benefit_source_desc": "對堆疊的完全可見性。在許可條款範圍內進行審核、分叉和調整。",
     "benefit_lang_desc": "以人類層次的品質轉錄、翻譯和配音 646 種語言。",
-    "hero_simple": "VoiceStudio 在 AGPL-3.0 下是免費且開源的 — 包括商業和內部業務用途。您只需要商業許可即可將其嵌入閉源產品中，無需 AGPL 的 Copyleft 義務。"
+    "hero_simple": "VoiceStudio 在 AGPL-3.0 下是免費且開源的 — 包括商業和內部業務用途。您只需要商業許可即可將其嵌入閉源產品中，無需 AGPL 的 Copyleft 義務。 我們的授權適用於 VoiceStudio 程式碼。模型與生成內容的相關權利取決於所選模型及其條款。"
   },
   "exportModal": {
     "export": "出口",
@@ -1772,8 +1776,8 @@
     "pkg_audio_body_one": "跳到「音訊」選項卡，以 WAV 或 MP3 格式匯出每種語言的配音（可用 {{count}} 配音）。",
     "pkg_audio_body_other": "跳到「音訊」選項卡，以 WAV 或 MP3 格式匯出每種語言的配音（可用 {{count}} 配音）。",
     "pkg_audio_cta": "開啟音訊選項卡",
-    "license_text": "商業用途需要",
-    "license_link": "許可證",
+    "license_text": "我們的授權適用於 VoiceStudio 程式碼。模型與生成內容的相關權利取決於所選模型及其條款。",
+    "license_link": "應用程式授權",
     "output": "輸出",
     "nothing_selected": "未選擇任何內容或曲目不可用",
     "export_mp4": "匯出MP4",

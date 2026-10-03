@@ -39,6 +39,10 @@ metadata and the backend fallback mirror it.
 
 ### Added
 
+- Track model licence evidence and unresolved commercial-use reviews, with CI coverage for catalogue dependencies and backend repository defaults (#2587)
+
+- About credits supported speech models and conversions, with upstream terms and required Higgs Audio and Llama notices (#2587)
+
 - MCP agents can design a voice from a text description and reuse it by `profile_id` (`describe_voice`, `design_voice`) (#2368) — thanks @thelselutopia!
 - Dictation vocabulary hint in Settings → Dictation shortcut: names and jargon that Faster Whisper, MLX Whisper and OpenAI-compatible engines should expect (#2395) — thanks @m061i6!
 - Cheaper Inference is available as an optional LLM provider (#2325) — thanks @aiapienthusiast!
@@ -54,6 +58,17 @@ metadata and the backend fallback mirror it.
 - Pull requests ask their opener and every commit author and co-author to sign a one-time Contributor License Agreement by comment; the contributing guide explains how (#2556)
 
 ### Changed
+- Keep existing recipes, watch folders and remote compute out of Pro benefit lists, and stop describing voice cloning as a paid unlock (#2587)
+- Keep private licensing-service operations out of the public client protocol draft (#2587)
+- Clarify in Pro, export and enterprise text that the application licence does not grant model or generated-output rights, in all 21 languages (#2587)
+
+- Remove unsupported automatic MIT licence claims from bundled demo metadata and generation scripts (#2587)
+
+- Correct historical OmniVoice commercial-licence claims and require the rights gate as well as technical smoke tests for engine acceptance (#2587)
+
+- Include the application licence notice and T3 Code MIT notice in desktop installers (#2587)
+
+- Remove the unused Remotion player integration and dependency while keeping the existing media playback providers (#2587)
 - Audio quality and Voice controls open as compact popovers from the Synthesize box on Clone and Voice Design (#2419)
 - The Synthesize button shows its keyboard shortcut as key chips inside the button (#2419)
 - The language menu stays within the window instead of clipping at the edges (#2419)
@@ -87,6 +102,7 @@ metadata and the backend fallback mirror it.
 - Removed three hidden settings that nothing could set; the `OMNIVOICE_PRONUNCIATION` and `OMNIVOICE_TEXT_NORMALIZATION` switches remain (#2578)
 
 ### Docs
+- Record the locked PyAV wheels' FFmpeg build flags, bundled codecs and unresolved redistribution terms (#2587)
 - Maintainer guide for repository settings that can't live in code; the licence notice scope and the contributing guide's list of network calls match the current app (#2556)
 - Contact addresses are now hi@voicestudio.sh (general and licensing), partner@voicestudio.sh (partnerships) and security@voicestudio.sh (security reports) (#2556)
 - Chinese README now matches the Electron installation and migration guide (#2377) — thanks @lg114!

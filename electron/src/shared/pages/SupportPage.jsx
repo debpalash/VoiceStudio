@@ -386,10 +386,7 @@ function LicenseView() {
           <span className="lp-hero__sweep" aria-hidden="true" />
         </h2>
         <p className="mx-auto mt-3 max-w-[680px] font-sans text-[0.78rem] leading-[1.5] text-[var(--chrome-fg-muted)]">
-          {t('enterprise.hero_simple', {
-            defaultValue:
-              'VoiceStudio is free and open-source under the AGPL-3.0 — including for commercial and internal business use. You only need a commercial license to embed it in a closed-source product without AGPL’s copyleft obligations.',
-          })}
+          {t('enterprise.hero_simple')}
         </p>
       </header>
 

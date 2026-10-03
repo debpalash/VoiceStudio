@@ -1,0 +1,931 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-10-03",
+  "scope": "Configured model repositories and known dynamic asset families. commercial_use is reviewed clearance for this distribution, not a universal claim about the model; false includes unresolved terms. No runtime enforcement is implemented by this inventory.",
+  "models": [
+    {
+      "id": "k2-fsa/OmniVoice",
+      "license": "CC-BY-NC (version unspecified); Higgs Audio 2; Meta Llama 3",
+      "commercial_use": false,
+      "review_status": "noncommercial",
+      "credit": "OmniVoice — Han Zhu and coauthors; tokenizer by Boson AI / Meta",
+      "source_url": "https://huggingface.co/k2-fsa/OmniVoice",
+      "evidence_url": "https://huggingface.co/k2-fsa/OmniVoice/blob/c5fdb5ccb189668d56333f77ba2629f4cd7535f4/README.md",
+      "revision": "c5fdb5ccb189668d56333f77ba2629f4cd7535f4",
+      "engines": [
+        "omnivoice",
+        "omnivoice-subprocess"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "The pinned card distinguishes Apache-2.0 code from non-commercial weights. The audio tokenizer has separate Boson and Meta terms; see docs/model-credits.md."
+    },
+    {
+      "id": "audio-cpp/audio.cpp-gguf",
+      "license": "other",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "audio-cpp/audio.cpp-gguf",
+      "source_url": "https://huggingface.co/audio-cpp/audio.cpp-gguf",
+      "evidence_url": "https://huggingface.co/audio-cpp/audio.cpp-gguf/blob/351dbab8d8534675ee29440bb402e348b09e55e2/README.md",
+      "revision": "351dbab8d8534675ee29440bb402e348b09e55e2",
+      "engines": [
+        "audiocpp"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "Systran/faster-whisper-large-v3",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Systran/faster-whisper-large-v3",
+      "source_url": "https://huggingface.co/Systran/faster-whisper-large-v3",
+      "evidence_url": "https://huggingface.co/Systran/faster-whisper-large-v3/blob/edaa852ec7e145841d8ffdb056a99866b5f0a478/README.md",
+      "revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478",
+      "engines": [
+        "faster-whisper",
+        "faster-whisper-isolated",
+        "whisperx"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "mlx-community/whisper-large-v3-mlx",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "mlx-community/whisper-large-v3-mlx",
+      "source_url": "https://huggingface.co/mlx-community/whisper-large-v3-mlx",
+      "evidence_url": "https://huggingface.co/mlx-community/whisper-large-v3-mlx/blob/49e6aa286ad60c14352c404340ded53710378a11/README.md",
+      "revision": "49e6aa286ad60c14352c404340ded53710378a11",
+      "engines": [
+        "mlx-whisper"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "mlx-community/whisper-large-v3-turbo",
+      "license": "NOASSERTION",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "mlx-community/whisper-large-v3-turbo",
+      "source_url": "https://huggingface.co/mlx-community/whisper-large-v3-turbo",
+      "evidence_url": "https://huggingface.co/mlx-community/whisper-large-v3-turbo/blob/a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb/README.md",
+      "revision": "a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb",
+      "engines": [
+        "mlx-whisper"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "openai/whisper-large-v3",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "openai/whisper-large-v3",
+      "source_url": "https://huggingface.co/openai/whisper-large-v3",
+      "evidence_url": "https://huggingface.co/openai/whisper-large-v3/blob/06f233fe06e710322aca913c1bc4249a0d71fce1/README.md",
+      "revision": "06f233fe06e710322aca913c1bc4249a0d71fce1",
+      "engines": [
+        "pytorch-whisper"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "mlx-community/whisper-tiny-mlx",
+      "license": "NOASSERTION",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "mlx-community/whisper-tiny-mlx",
+      "source_url": "https://huggingface.co/mlx-community/whisper-tiny-mlx",
+      "evidence_url": "https://huggingface.co/mlx-community/whisper-tiny-mlx/blob/6caf9c55601caafbe6508a8b0d216bdf4783c4e8/README.md",
+      "revision": "6caf9c55601caafbe6508a8b0d216bdf4783c4e8",
+      "engines": [
+        "mlx-whisper"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "deepdml/faster-whisper-large-v3-turbo-ct2",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "deepdml/faster-whisper-large-v3-turbo-ct2",
+      "source_url": "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2",
+      "evidence_url": "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/blob/4df90f75321148c3a29a9e2351b7ddf8f5b115a8/README.md",
+      "revision": "4df90f75321148c3a29a9e2351b7ddf8f5b115a8",
+      "engines": [
+        "faster-whisper",
+        "faster-whisper-isolated",
+        "whisperx"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "Systran/faster-distil-whisper-large-v3",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Systran/faster-distil-whisper-large-v3",
+      "source_url": "https://huggingface.co/Systran/faster-distil-whisper-large-v3",
+      "evidence_url": "https://huggingface.co/Systran/faster-distil-whisper-large-v3/blob/c3058b475261292e64a0412df1d2681c06260fab/README.md",
+      "revision": "c3058b475261292e64a0412df1d2681c06260fab",
+      "engines": [
+        "faster-whisper",
+        "faster-whisper-isolated",
+        "whisperx"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "Systran/faster-whisper-medium",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Systran/faster-whisper-medium",
+      "source_url": "https://huggingface.co/Systran/faster-whisper-medium",
+      "evidence_url": "https://huggingface.co/Systran/faster-whisper-medium/blob/08e178d48790749d25932bbc082711ddcfdfbc4f/README.md",
+      "revision": "08e178d48790749d25932bbc082711ddcfdfbc4f",
+      "engines": [
+        "faster-whisper",
+        "faster-whisper-isolated",
+        "whisperx"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "Systran/faster-whisper-small",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Systran/faster-whisper-small",
+      "source_url": "https://huggingface.co/Systran/faster-whisper-small",
+      "evidence_url": "https://huggingface.co/Systran/faster-whisper-small/blob/536b0662742c02347bc0e980a01041f333bce120/README.md",
+      "revision": "536b0662742c02347bc0e980a01041f333bce120",
+      "engines": [
+        "faster-whisper",
+        "faster-whisper-isolated",
+        "whisperx"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "Systran/faster-whisper-base",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Systran/faster-whisper-base",
+      "source_url": "https://huggingface.co/Systran/faster-whisper-base",
+      "evidence_url": "https://huggingface.co/Systran/faster-whisper-base/blob/ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66/README.md",
+      "revision": "ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66",
+      "engines": [
+        "faster-whisper",
+        "faster-whisper-isolated",
+        "whisperx"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "nvidia/parakeet-tdt-0.6b-v3",
+      "license": "cc-by-4.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "nvidia/parakeet-tdt-0.6b-v3",
+      "source_url": "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3",
+      "evidence_url": "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3/blob/541d1f99c6b0c3cd0b11a95167540bb8edefd82b/README.md",
+      "revision": "541d1f99c6b0c3cd0b11a95167540bb8edefd82b",
+      "engines": [
+        "nemo-parakeet"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "nvidia/parakeet-tdt-0.6b-v2",
+      "license": "cc-by-4.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "nvidia/parakeet-tdt-0.6b-v2",
+      "source_url": "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2",
+      "evidence_url": "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2/blob/ae9ad07059c7c739ffaf932226a8fe64ae2620b0/README.md",
+      "revision": "ae9ad07059c7c739ffaf932226a8fe64ae2620b0",
+      "engines": [
+        "nemo-parakeet"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "mlx-community/parakeet-tdt-0.6b-v3",
+      "license": "cc-by-4.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "mlx-community/parakeet-tdt-0.6b-v3",
+      "source_url": "https://huggingface.co/mlx-community/parakeet-tdt-0.6b-v3",
+      "evidence_url": "https://huggingface.co/mlx-community/parakeet-tdt-0.6b-v3/blob/ed2b7e8c15f9aaa0b5772e2efb986255eaef7e15/README.md",
+      "revision": "ed2b7e8c15f9aaa0b5772e2efb986255eaef7e15",
+      "engines": [
+        "parakeet-mlx"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "UsefulSensors/moonshine-base",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "UsefulSensors/moonshine-base",
+      "source_url": "https://huggingface.co/UsefulSensors/moonshine-base",
+      "evidence_url": "https://huggingface.co/UsefulSensors/moonshine-base/blob/7a73d8d55ac0ba2ef3ae761593f6784b51f96dcf/README.md",
+      "revision": "7a73d8d55ac0ba2ef3ae761593f6784b51f96dcf",
+      "engines": [
+        "moonshine"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "UsefulSensors/moonshine-tiny",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "UsefulSensors/moonshine-tiny",
+      "source_url": "https://huggingface.co/UsefulSensors/moonshine-tiny",
+      "evidence_url": "https://huggingface.co/UsefulSensors/moonshine-tiny/blob/390624ed33d594443aa4aa221f5b9f283b545b5a/README.md",
+      "revision": "390624ed33d594443aa4aa221f5b9f283b545b5a",
+      "engines": [
+        "moonshine"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+      "license": "NOASSERTION",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+      "source_url": "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+      "evidence_url": "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/blob/2bda32ec70b097a55adaa07d9a7173915b43cc78/README.md",
+      "revision": "2bda32ec70b097a55adaa07d9a7173915b43cc78",
+      "engines": [
+        "sherpa-onnx-asr"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review. The raw card could not be retrieved (401/404); metadata alone does not resolve the access gap."
+    },
+    {
+      "id": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
+      "license": "cc-by-4.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
+      "source_url": "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
+      "evidence_url": "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8/blob/1ab9323565ddb038682214b292f588070a538ce2/README.md",
+      "revision": "1ab9323565ddb038682214b292f588070a538ce2",
+      "engines": [
+        "sherpa-onnx-asr"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20",
+      "source_url": "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20",
+      "evidence_url": "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/blob/98590b7ed6443e77b714204da2757d75e1a642f4/README.md",
+      "revision": "98590b7ed6443e77b714204da2757d75e1a642f4",
+      "engines": [
+        "sherpa-onnx-asr"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en",
+      "source_url": "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en",
+      "evidence_url": "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en/blob/8e40c43232a1c5c66c82111efc5820d3accca11b/README.md",
+      "revision": "8e40c43232a1c5c66c82111efc5820d3accca11b",
+      "engines": [
+        "sherpa-onnx-asr"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "csukuangfj/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17",
+      "source_url": "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17",
+      "evidence_url": "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17/blob/d42f2d9f7ca24806fb667456a18a9f1b60f70d16/README.md",
+      "revision": "d42f2d9f7ca24806fb667456a18a9f1b60f70d16",
+      "engines": [
+        "sherpa-onnx-asr"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23",
+      "source_url": "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23",
+      "evidence_url": "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23/blob/204ad334e2e683fd295359930cc16fc0432a23ac/README.md",
+      "revision": "204ad334e2e683fd295359930cc16fc0432a23ac",
+      "engines": [
+        "sherpa-onnx-asr"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "csukuangfj/sherpa-onnx-whisper-tiny",
+      "license": "NOASSERTION",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "csukuangfj/sherpa-onnx-whisper-tiny",
+      "source_url": "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-tiny",
+      "evidence_url": "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-tiny/blob/65176e2deb88badc814a94058666cadccc29b61c/README.md",
+      "revision": "65176e2deb88badc814a94058666cadccc29b61c",
+      "engines": [
+        "sherpa-onnx-asr"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "facebook/nllb-200-distilled-600M",
+      "license": "CC-BY-NC-4.0",
+      "commercial_use": false,
+      "review_status": "noncommercial",
+      "credit": "NLLB-200 — Meta AI",
+      "source_url": "https://huggingface.co/facebook/nllb-200-distilled-600M",
+      "evidence_url": "https://huggingface.co/facebook/nllb-200-distilled-600M/blob/f8d333a098d19b4fd9a8b18f94170487ad3f821d/README.md",
+      "revision": "f8d333a098d19b4fd9a8b18f94170487ad3f821d",
+      "engines": [],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Pinned model card identifies CC-BY-NC-4.0. This record does not grant output or training-data rights."
+    },
+    {
+      "id": "pyannote/speaker-diarization-3.1",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "pyannote/speaker-diarization-3.1",
+      "source_url": "https://huggingface.co/pyannote/speaker-diarization-3.1",
+      "evidence_url": "https://huggingface.co/pyannote/speaker-diarization-3.1/blob/84fd25912480287da0247647c3d2b4853cb3ee5d/README.md",
+      "revision": "84fd25912480287da0247647c3d2b4853cb3ee5d",
+      "engines": [],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "pyannote/segmentation-3.0",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "pyannote/segmentation-3.0",
+      "source_url": "https://huggingface.co/pyannote/segmentation-3.0",
+      "evidence_url": "https://huggingface.co/pyannote/segmentation-3.0/blob/e66f3d3b9eb0873085418a7b813d3b369bf160bb/README.md",
+      "revision": "e66f3d3b9eb0873085418a7b813d3b369bf160bb",
+      "engines": [],
+      "configured_at": "backend/config/models.yaml dependencies of pyannote/speaker-diarization-3.1",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "pyannote/wespeaker-voxceleb-resnet34-LM",
+      "license": "cc-by-4.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "pyannote/wespeaker-voxceleb-resnet34-LM",
+      "source_url": "https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM",
+      "evidence_url": "https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM/blob/837717ddb9ff5507820346191109dc79c958d614/README.md",
+      "revision": "837717ddb9ff5507820346191109dc79c958d614",
+      "engines": [],
+      "configured_at": "backend/config/models.yaml dependencies of pyannote/speaker-diarization-3.1",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "OpenMOSS-Team/MOSS-TTS-Nano-100M",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "OpenMOSS-Team/MOSS-TTS-Nano-100M",
+      "source_url": "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Nano-100M",
+      "evidence_url": "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Nano-100M/blob/44502f80dbf9743528fa921cc544d662c685ebec/README.md",
+      "revision": "44502f80dbf9743528fa921cc544d662c685ebec",
+      "engines": [
+        "moss-tts-nano"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "KittenML/kitten-tts-mini-0.8",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "KittenML/kitten-tts-mini-0.8",
+      "source_url": "https://huggingface.co/KittenML/kitten-tts-mini-0.8",
+      "evidence_url": "https://huggingface.co/KittenML/kitten-tts-mini-0.8/blob/c02725660cea441db4c383af69f1f26f5cd00947/README.md",
+      "revision": "c02725660cea441db4c383af69f1f26f5cd00947",
+      "engines": [
+        "kittentts"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "openbmb/VoxCPM2",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "openbmb/VoxCPM2",
+      "source_url": "https://huggingface.co/openbmb/VoxCPM2",
+      "evidence_url": "https://huggingface.co/openbmb/VoxCPM2/blob/32279effe8c19989596f05d353d1447f51d9e915/README.md",
+      "revision": "32279effe8c19989596f05d353d1447f51d9e915",
+      "engines": [
+        "voxcpm2"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
+      "source_url": "https://huggingface.co/FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
+      "evidence_url": "https://huggingface.co/FunAudioLLM/Fun-CosyVoice3-0.5B-2512/blob/29e01c4e8d000f4bcd70751be16fa94bf3d85a18/README.md",
+      "revision": "29e01c4e8d000f4bcd70751be16fa94bf3d85a18",
+      "engines": [
+        "cosyvoice"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "lj1995/GPT-SoVITS",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "lj1995/GPT-SoVITS",
+      "source_url": "https://huggingface.co/lj1995/GPT-SoVITS",
+      "evidence_url": "https://huggingface.co/lj1995/GPT-SoVITS/blob/336b2ec4e8d4ac74740798dd40af44e74659ecaf/README.md",
+      "revision": "336b2ec4e8d4ac74740798dd40af44e74659ecaf",
+      "engines": [
+        "gpt-sovits"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "mlx-community/Kokoro-82M-bf16",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "mlx-community/Kokoro-82M-bf16",
+      "source_url": "https://huggingface.co/mlx-community/Kokoro-82M-bf16",
+      "evidence_url": "https://huggingface.co/mlx-community/Kokoro-82M-bf16/blob/a71e4d38b236d968966a2002c4c895dbd12b1c3c/README.md",
+      "revision": "a71e4d38b236d968966a2002c4c895dbd12b1c3c",
+      "engines": [
+        "mlx-audio"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "mlx-community/csm-1b-8bit",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "mlx-community/csm-1b-8bit",
+      "source_url": "https://huggingface.co/mlx-community/csm-1b-8bit",
+      "evidence_url": "https://huggingface.co/mlx-community/csm-1b-8bit/blob/fcf0cc857eade3615a60f30722cf5197d4f88406/README.md",
+      "revision": "fcf0cc857eade3615a60f30722cf5197d4f88406",
+      "engines": [
+        "mlx-audio"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-4bit",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-4bit",
+      "source_url": "https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-4bit",
+      "evidence_url": "https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-4bit/blob/5c390979e4b93af5f2932f90742ca99c7dd04687/README.md",
+      "revision": "5c390979e4b93af5f2932f90742ca99c7dd04687",
+      "engines": [
+        "mlx-audio"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "mlx-community/Dia-1.6B",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "mlx-community/Dia-1.6B",
+      "source_url": "https://huggingface.co/mlx-community/Dia-1.6B",
+      "evidence_url": "https://huggingface.co/mlx-community/Dia-1.6B/blob/de4fa8c178ca5cc4e9d884b55b03fcfaa0995162/README.md",
+      "revision": "de4fa8c178ca5cc4e9d884b55b03fcfaa0995162",
+      "engines": [
+        "mlx-audio"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "mlx-community/Llama-OuteTTS-1.0-1B-4bit",
+      "license": "CC-BY-NC-SA-4.0 AND Llama-3.2",
+      "commercial_use": false,
+      "review_status": "noncommercial",
+      "credit": "OuteAI; MLX conversion by mlx-community; Meta. Built with Llama.",
+      "source_url": "https://huggingface.co/mlx-community/Llama-OuteTTS-1.0-1B-4bit",
+      "evidence_url": "https://huggingface.co/mlx-community/Llama-OuteTTS-1.0-1B-4bit/blob/3ac2cff406f7de16a3216c60d0108571a916acc0/README.md",
+      "revision": "3ac2cff406f7de16a3216c60d0108571a916acc0",
+      "engines": [
+        "mlx-audio"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Original model separates Llama 3.2 components from OuteAI non-commercial additions. Conversion card links original; see docs/model-credits.md."
+    },
+    {
+      "id": "mlx-community/Chatterbox-TTS-4bit",
+      "license": "NOASSERTION",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "mlx-community/Chatterbox-TTS-4bit",
+      "source_url": "https://huggingface.co/mlx-community/Chatterbox-TTS-4bit",
+      "evidence_url": "https://huggingface.co/mlx-community/Chatterbox-TTS-4bit/blob/a3c8ded2d711d6395410d645b3a97c79fd563a13/README.md",
+      "revision": "a3c8ded2d711d6395410d645b3a97c79fd563a13",
+      "engines": [
+        "mlx-audio"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "mlx-community/MeloTTS-English-v3-MLX",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "mlx-community/MeloTTS-English-v3-MLX",
+      "source_url": "https://huggingface.co/mlx-community/MeloTTS-English-v3-MLX",
+      "evidence_url": "https://huggingface.co/mlx-community/MeloTTS-English-v3-MLX/blob/837d15fd72bc35a15033234ce5ea242367ca1960/README.md",
+      "revision": "837d15fd72bc35a15033234ce5ea242367ca1960",
+      "engines": [
+        "mlx-audio"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "IndexTeam/IndexTTS-2.5",
+      "license": "other",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "IndexTeam/IndexTTS-2.5",
+      "source_url": "https://huggingface.co/IndexTeam/IndexTTS-2.5",
+      "evidence_url": "https://huggingface.co/IndexTeam/IndexTTS-2.5/blob/c39ce5ba981572cb187443877ff559dfb246ce63/README.md",
+      "revision": "c39ce5ba981572cb187443877ff559dfb246ce63",
+      "engines": [
+        "indextts2"
+      ],
+      "configured_at": "backend/services/sidecar_install.py:411",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "Serveurperso/OmniVoice-GGUF",
+      "license": "CC-BY-NC-4.0; Higgs Audio 2; Meta Llama 3",
+      "commercial_use": false,
+      "review_status": "noncommercial",
+      "credit": "OmniVoice — Han Zhu and coauthors; GGUF conversion by Serveurperso; tokenizer by Boson AI / Meta",
+      "source_url": "https://huggingface.co/Serveurperso/OmniVoice-GGUF",
+      "evidence_url": "https://huggingface.co/Serveurperso/OmniVoice-GGUF/blob/017094167b5c9ed565a5076ac9b3b93c5ecf5c73/README.md",
+      "revision": "017094167b5c9ed565a5076ac9b3b93c5ecf5c73",
+      "engines": [
+        "omnivoice-gguf"
+      ],
+      "configured_at": "backend/engines/omnivoice_gguf/backend.py:76",
+      "notes": "Conversion card names CC-BY-NC-4.0; its codec description does not override the actual tokenizer terms. See docs/model-credits.md."
+    },
+    {
+      "id": "Supertone/supertonic-3",
+      "license": "openrail",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Supertone/supertonic-3",
+      "source_url": "https://huggingface.co/Supertone/supertonic-3",
+      "evidence_url": "https://huggingface.co/Supertone/supertonic-3/blob/3cadd1ee6394adea1bd021217a0e650ede09a323/README.md",
+      "revision": "3cadd1ee6394adea1bd021217a0e650ede09a323",
+      "engines": [
+        "supertonic3"
+      ],
+      "configured_at": "backend/engines/supertonic3/constants.py:31",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "kyutai/pocket-tts",
+      "license": "cc-by-4.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "kyutai/pocket-tts",
+      "source_url": "https://huggingface.co/kyutai/pocket-tts",
+      "evidence_url": "https://huggingface.co/kyutai/pocket-tts/blob/3e82814a68665eec246ff649b14c71331f955c06/README.md",
+      "revision": "3e82814a68665eec246ff649b14c71331f955c06",
+      "engines": [
+        "pockettts"
+      ],
+      "configured_at": "backend/engines/pockettts/main.py:215; SDK selects language/layer variants",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review. The raw card could not be retrieved (401/404); metadata alone does not resolve the access gap."
+    },
+    {
+      "id": "OpenMOSS-Team/MOSS-TTS-v1.5",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "OpenMOSS-Team/MOSS-TTS-v1.5",
+      "source_url": "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-v1.5",
+      "evidence_url": "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-v1.5/blob/cdd3b911b1585e3f2dbc7775ef10f9926f58850a/README.md",
+      "revision": "cdd3b911b1585e3f2dbc7775ef10f9926f58850a",
+      "engines": [
+        "moss-tts-v15"
+      ],
+      "configured_at": "backend/engines/moss_tts_v15/main.py:55",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "rednote-hilab/dots.tts-soar",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "rednote-hilab/dots.tts-soar",
+      "source_url": "https://huggingface.co/rednote-hilab/dots.tts-soar",
+      "evidence_url": "https://huggingface.co/rednote-hilab/dots.tts-soar/blob/2f9b3e18d70d670d4c701da2dc55ded5755815ce/README.md",
+      "revision": "2f9b3e18d70d670d4c701da2dc55ded5755815ce",
+      "engines": [
+        "dots-tts"
+      ],
+      "configured_at": "backend/engines/dots_tts/main.py:53",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "netease-youdao/Confucius4-TTS",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "netease-youdao/Confucius4-TTS",
+      "source_url": "https://huggingface.co/netease-youdao/Confucius4-TTS",
+      "evidence_url": "https://huggingface.co/netease-youdao/Confucius4-TTS/blob/c82f9a7b3706ee3172eb95273daa650a504dccab/README.md",
+      "revision": "c82f9a7b3706ee3172eb95273daa650a504dccab",
+      "engines": [
+        "confucius4-tts"
+      ],
+      "configured_at": "docs/engines/confucius4-tts.md:56",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "facebook/w2v-bert-2.0",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "facebook/w2v-bert-2.0",
+      "source_url": "https://huggingface.co/facebook/w2v-bert-2.0",
+      "evidence_url": "https://huggingface.co/facebook/w2v-bert-2.0/blob/da985ba0987f70aaeb84a80f2851cfac8c697a7b/README.md",
+      "revision": "da985ba0987f70aaeb84a80f2851cfac8c697a7b",
+      "engines": [
+        "confucius4-tts"
+      ],
+      "configured_at": "docs/engines/confucius4-tts.md:59",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "funasr/campplus",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "funasr/campplus",
+      "source_url": "https://huggingface.co/funasr/campplus",
+      "evidence_url": "https://huggingface.co/funasr/campplus/blob/e4b6ede7ce16997aff4ae69fbca1f0175e2afede/README.md",
+      "revision": "e4b6ede7ce16997aff4ae69fbca1f0175e2afede",
+      "engines": [
+        "confucius4-tts"
+      ],
+      "configured_at": "docs/engines/confucius4-tts.md:60",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "nvidia/bigvgan_v2_22khz_80band_256x",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "nvidia/bigvgan_v2_22khz_80band_256x",
+      "source_url": "https://huggingface.co/nvidia/bigvgan_v2_22khz_80band_256x",
+      "evidence_url": "https://huggingface.co/nvidia/bigvgan_v2_22khz_80band_256x/blob/633ff708ed5b74903e86ff1298cf4a98e921c513/README.md",
+      "revision": "633ff708ed5b74903e86ff1298cf4a98e921c513",
+      "engines": [
+        "confucius4-tts"
+      ],
+      "configured_at": "docs/engines/confucius4-tts.md:61",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+    },
+    {
+      "id": "iic/SenseVoiceSmall",
+      "license": "NOASSERTION",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "iic/SenseVoiceSmall",
+      "source_url": "https://modelscope.cn/models/iic/SenseVoiceSmall",
+      "evidence_url": "https://modelscope.cn/models/iic/SenseVoiceSmall",
+      "revision": null,
+      "engines": [
+        "funasr"
+      ],
+      "configured_at": "backend/services/asr_backend.py:2259",
+      "notes": "Runtime uses the FunASR/ModelScope identifier. The matching Hugging Face API returned 401; no governing weight terms have been verified."
+    },
+    {
+      "id": "Systran/faster-whisper-tiny",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Systran/faster-whisper-tiny",
+      "source_url": "https://huggingface.co/Systran/faster-whisper-tiny",
+      "evidence_url": "https://huggingface.co/Systran/faster-whisper-tiny/blob/d90ca5fe260221311c53c58e660288d3deb8d356/README.md",
+      "revision": "d90ca5fe260221311c53c58e660288d3deb8d356",
+      "engines": [
+        "faster-whisper"
+      ],
+      "configured_at": "backend/services/asr_backend.py _fw_repo",
+      "notes": "Runtime fallback outside models.yaml. Licence identifier is model-card metadata; component terms and attribution require review."
+    },
+    {
+      "id": "Systran/faster-whisper-large-v2",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Systran/faster-whisper-large-v2",
+      "source_url": "https://huggingface.co/Systran/faster-whisper-large-v2",
+      "evidence_url": "https://huggingface.co/Systran/faster-whisper-large-v2/blob/f0fe81560cb8b68660e564f55dd99207059c092e/README.md",
+      "revision": "f0fe81560cb8b68660e564f55dd99207059c092e",
+      "engines": [
+        "faster-whisper"
+      ],
+      "configured_at": "backend/services/asr_backend.py _fw_repo",
+      "notes": "Runtime fallback outside models.yaml. Licence identifier is model-card metadata; component terms and attribution require review."
+    },
+    {
+      "id": "openai/whisper-large-v3-turbo",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "OpenAI — Whisper large-v3-turbo",
+      "source_url": "https://huggingface.co/openai/whisper-large-v3-turbo",
+      "evidence_url": "https://huggingface.co/openai/whisper-large-v3-turbo/blob/41f01f3fe87f28c78e2fbf8b568835947dd65ed9/README.md",
+      "revision": "41f01f3fe87f28c78e2fbf8b568835947dd65ed9",
+      "engines": [
+        "pytorch-whisper"
+      ],
+      "configured_at": "backend/services/tts_backend.py OMNIVOICE_PYTORCH_ASR_MODEL fallback",
+      "notes": "Clone-reference ASR fallback outside models.yaml. Model-card licence metadata is recorded; component terms and required notices remain under review."
+    },
+    {
+      "id": "OpenMOSS-Team/MOSS-TTS-Nano",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "OpenMOSS-Team/MOSS-TTS-Nano",
+      "source_url": "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Nano",
+      "evidence_url": "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Nano/blob/44502f80dbf9743528fa921cc544d662c685ebec/README.md",
+      "revision": "44502f80dbf9743528fa921cc544d662c685ebec",
+      "engines": [
+        "moss-tts-nano"
+      ],
+      "configured_at": "backend/services/tts_backend.py OMNIVOICE_MOSS_TTS_MODEL",
+      "notes": "Licence label is upstream metadata only; governing component terms, author credit and required notices remain under review."
+    },
+    {
+      "id": "eustlb/higgs-audio-v2-tokenizer",
+      "license": "NOASSERTION",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "eustlb/higgs-audio-v2-tokenizer",
+      "source_url": "https://huggingface.co/eustlb/higgs-audio-v2-tokenizer",
+      "evidence_url": "https://huggingface.co/eustlb/higgs-audio-v2-tokenizer/blob/528e871c2a26c4f0f7773b9754e2e1acae20899d/README.md",
+      "revision": "528e871c2a26c4f0f7773b9754e2e1acae20899d",
+      "engines": [
+        "omnivoice"
+      ],
+      "configured_at": "backend/services/hf_revisions.py CURATED_REVISIONS; backend/services/model_manager.py repair",
+      "notes": "Licence label is upstream metadata only; governing component terms, author credit and required notices remain under review."
+    }
+  ],
+  "dynamic_assets": [
+    {
+      "id": "OmniVoice text/audio tokenizer components",
+      "license": "NOASSERTION",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Unresolved: record the author and required notice for each selected asset.",
+      "source_url": "https://huggingface.co/k2-fsa/OmniVoice",
+      "evidence_url": "https://huggingface.co/k2-fsa/OmniVoice",
+      "configured_at": "omnivoice/models/omnivoice.py:526-545; LICENSE-NOTICE.md",
+      "notes": "Default repo carries audio_tokenizer/LICENSE; notice already identifies separate Higgs Audio 2 and Meta Llama terms. Review all tokenizer assets at resolved model revision."
+    },
+    {
+      "id": "audioseal_wm_16bits / audioseal_detector_16bits",
+      "license": "NOASSERTION",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Unresolved: record the author and required notice for each selected asset.",
+      "source_url": "https://github.com/facebookresearch/audioseal",
+      "evidence_url": "https://github.com/facebookresearch/audioseal",
+      "configured_at": "backend/services/watermark.py:196,213",
+      "notes": "SDK resolves checkpoint URLs; record generator and detector weight terms separately from SDK."
+    },
+    {
+      "id": "htdemucs",
+      "license": "NOASSERTION",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Unresolved: record the author and required notice for each selected asset.",
+      "source_url": "https://github.com/facebookresearch/demucs",
+      "evidence_url": "https://github.com/facebookresearch/demucs",
+      "configured_at": "backend/services/dub_pipeline.py:1537; backend/api/routers/system.py:1364",
+      "notes": "Demucs resolves actual checkpoint; record bundled/runtime weight revision and terms."
+    },
+    {
+      "id": "WhisperX language-specific alignment models and silero VAD",
+      "license": "NOASSERTION",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Unresolved: record the author and required notice for each selected asset.",
+      "source_url": "https://github.com/m-bain/whisperX",
+      "evidence_url": "https://github.com/m-bain/whisperX",
+      "configured_at": "backend/services/asr_backend.py:576,818",
+      "notes": "SDK language mapping selects models; enumerate resolved installed SDK mapping, not only ASR catalogue repos."
+    },
+    {
+      "id": "fsmn-vad / cam++",
+      "license": "NOASSERTION",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Unresolved: record the author and required notice for each selected asset.",
+      "source_url": "https://github.com/modelscope/FunASR",
+      "evidence_url": "https://github.com/modelscope/FunASR",
+      "configured_at": "backend/services/asr_backend.py:2260,2263",
+      "notes": "FunASR aliases resolve independently of SenseVoice; inspect SDK mappings."
+    },
+    {
+      "id": "Argos language-pair packages",
+      "license": "NOASSERTION",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Unresolved: record the author and required notice for each selected asset.",
+      "source_url": "https://github.com/argosopentech/argospm-index",
+      "evidence_url": "https://github.com/argosopentech/argospm-index",
+      "configured_at": "backend/services/translation_engines.py",
+      "notes": "Language package selection dynamic; capture package identity/version, URL, hashes, terms at install."
+    },
+    {
+      "id": "User-provided Sherpa ONNX / RVC voice models / GPT-SoVITS server / custom MLX and env-overridden repos",
+      "license": "NOASSERTION",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Unresolved: record the author and required notice for each selected asset.",
+      "source_url": "https://github.com/debpalash/VoiceStudio/blob/main/docs/engine-acceptance.md",
+      "evidence_url": "https://github.com/debpalash/VoiceStudio/blob/main/docs/engine-acceptance.md",
+      "configured_at": "backend/services/tts_backend.py; backend/services/rvc.py; backend/services/asr_backend.py",
+      "notes": "Cannot enumerate every user asset from repository; represent unknown/unreviewed state explicitly, with user provenance inputs."
+    }
+  ]
+}

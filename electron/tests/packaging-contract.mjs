@@ -69,7 +69,7 @@ for (const entitlementFile of [config.mac.entitlements, config.mac.entitlementsI
 const project = readFileSync(resolve(root, '../pyproject.toml'), 'utf8');
 const readme = project.match(/^readme\s*=\s*"([^"]+)"/m)?.[1];
 assert(readme, 'Python project declares a README');
-for (const resource of [readme, 'LICENSE', 'pyproject.toml', 'uv.lock', 'backend', 'omnivoice']) {
+for (const resource of [readme, 'LICENSE', 'LICENSE-NOTICE.md', 'electron/T3CODE-LICENSE.txt', 'pyproject.toml', 'uv.lock', 'backend', 'omnivoice']) {
   const entry = config.extraResources.find((item) => item.to === resource);
   assert(entry && existsSync(resolve(root, entry.from)), 'Required resource: ' + resource);
   if (artifactRequested)

@@ -833,7 +833,11 @@
     "self_check_attention": "{{count}} kontroll(er) misslyckades — se tipsen ovan.",
     "save_bundle": "Spara diagnostikpaket",
     "bundle_saved": "Diagnostikpaket sparat: {{filename}}",
-    "bundle_failed": "Kunde inte skapa diagnostikpaketet: {{message}}"
+    "bundle_failed": "Kunde inte skapa diagnostikpaketet: {{message}}",
+    "model_credits": "Modellernas upphovspersoner",
+    "model_credits_hint": "Upphovsuppgifter för modeller som stöds. Modeller och komponenter har separata villkor; dessa uppgifter ger inga rättigheter till kommersiell användning.",
+    "model_terms": "Modellvillkor",
+    "model_related_sources": "Relaterade källor:"
   },
   "privacy": {
     "desc": "Allt körs på <1>denna maskin</1>. Ditt ljud, video och transkriptioner lämnar aldrig din dator om du inte uttryckligen använder en onlineöversättare (Google, DeepL, etc.) eller trycker till HuggingFace.",
@@ -1697,11 +1701,11 @@
     "back": "Tillbaka till Studio",
     "badge": "Kommersiell licens",
     "hero_title": "Ship AI-röster i produktion",
-    "hero_desc": "VoiceStudio är fri programvara med öppen källkod under GNU Affero General Public License v3 (AGPL-3.0) — gratis att använda, även för kommersiellt och internt företagsbruk. En kommersiell licens behövs bara om du vill bädda in VoiceStudio i en proprietär produkt eller tjänst med stängd källkod utan AGPL-3.0:s copyleft-skyldigheter.",
+    "hero_desc": "VoiceStudio är fri programvara med öppen källkod under GNU Affero General Public License v3 (AGPL-3.0) — gratis att använda, även för kommersiellt och internt företagsbruk. En kommersiell licens behövs bara om du vill bädda in VoiceStudio i en proprietär produkt eller tjänst med stängd källkod utan AGPL-3.0:s copyleft-skyldigheter. Vår licens omfattar koden i VoiceStudio. Rättigheter till modeller och genererat innehåll beror på de valda modellerna och deras villkor.",
     "pricing_desc": "Nivåer och prissättning håller fortfarande på att slutföras.",
     "request_quote": "Begär en offert",
-    "benefit_ip": "Fullt IP-ägande",
-    "benefit_ip_desc": "Du äger varje utgång, varje modell, varje derivat. Ingen delad hyresrätt, inga dataläckor.",
+    "benefit_ip": "Programlicens",
+    "benefit_ip_desc": "Vår licens omfattar koden i VoiceStudio. Rättigheter till modeller och genererat innehåll beror på de valda modellerna och deras villkor.",
     "benefit_cost": "Noll kostnad per minut",
     "benefit_cost_desc": "Inga API-räkningar, inga överraskande överskott. Körs på din egen hårdvara från dag ett.",
     "benefit_team_desc": "En licens täcker obegränsade användare inom din organisation.",
@@ -1709,7 +1713,7 @@
     "benefit_support_desc": "Prioriterad support för e-post och videosamtal från kärnteknikteamet.",
     "benefit_source_desc": "Full insyn i stapeln. Granska, fördela och anpassa inom licensvillkoren.",
     "benefit_lang_desc": "Transkribera, översätt och dubba på 646 språk med kvalitet på mänsklig nivå.",
-    "hero_simple": "VoiceStudio är gratis och öppen källkod enligt AGPL-3.0 – inklusive för kommersiellt och internt affärsbruk. Du behöver bara en kommersiell licens för att bädda in den i en produkt med sluten källkod utan AGPL:s copyleft-skyldigheter."
+    "hero_simple": "VoiceStudio är gratis och öppen källkod enligt AGPL-3.0 – inklusive för kommersiellt och internt affärsbruk. Du behöver bara en kommersiell licens för att bädda in den i en produkt med sluten källkod utan AGPL:s copyleft-skyldigheter. Vår licens omfattar koden i VoiceStudio. Rättigheter till modeller och genererat innehåll beror på de valda modellerna och deras villkor."
   },
   "exportModal": {
     "export": "Exportera",
@@ -1772,8 +1776,8 @@
     "pkg_audio_body_one": "Hoppa till fliken Ljud för att exportera dubbar per språk i WAV eller MP3 ({{count}} dub tillgänglig).",
     "pkg_audio_body_other": "Hoppa till fliken Ljud för att exportera dubbar per språk i WAV eller MP3 ({{count}} dubbar tillgängliga).",
     "pkg_audio_cta": "Öppna fliken ljud",
-    "license_text": "Kommersiell användning kräver en",
-    "license_link": "licens",
+    "license_text": "Vår licens omfattar koden i VoiceStudio. Rättigheter till modeller och genererat innehåll beror på de valda modellerna och deras villkor.",
+    "license_link": "Programlicens",
     "output": "UTGÅNG",
     "nothing_selected": "Inget valt eller spåret är inte tillgängligt",
     "export_mp4": "Exportera MP4",

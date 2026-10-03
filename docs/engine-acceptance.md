@@ -35,12 +35,17 @@ which is a property of the bar, not a judgement of the contributor.
 1. **A job, named.** Which row above it takes or adds, and why the incumbent
    does not cover it. Latency, language, hardware envelope or quality tier —
    something a user would choose it *for*.
-2. **Licence clean for commercial use.** Model weights *and* code. No
-   research-only weights or ambiguous provenance. The single approved
-   exception is `audiocpp` with Breeze-TTS-2 research/non-commercial weights,
-   approved by the owner on 2026-09-08 for its requested bilingual voice-design
-   and direction workflow. It remains opt-in and discloses the restriction
-   before selection and download; `@debpalash` is its named steward.
+2. **Documented rights for each component.** Record the code, model weights,
+   tokenizer and other required assets separately, including their licence,
+   source/revision, commercial permission and required credits. Unknown or
+   conflicting terms do not count as commercial approval. A restricted engine
+   may be accepted for the free app only with explicit owner approval and a
+   first-use acceptance step that discloses its terms. Pro must reject
+   non-commercial or uncleared assets on the backend unless the necessary
+   rights are obtained. The application licence does not grant model or output
+   rights. Existing integrations also need this audit; the controls remain
+   tracked in #2587. The previously approved `audiocpp` / Breeze-TTS-2 exception
+   remains restricted and stewarded by `@debpalash`.
 3. **Every platform, or explicitly opt-in.** macOS (Apple Silicon and Intel),
    Windows, Linux. A CPU path is required — an engine that only runs on one
    accelerator is fine, but it must degrade rather than break, and a

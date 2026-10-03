@@ -16,7 +16,7 @@ What it produces:
   * backend/assets/samples/demo_voice.wav             (clone reference)
   * backend/assets/samples/demo_clone_output.wav      (clone pre-rendered)
   * backend/assets/samples/voice_design/demo_voice_design_<slug>.wav (7)
-  * Updated manifest with rendered_by="omnivoice@<git_sha>"
+  * Existing dubbing manifest marked for separate licence review
 
   * backend/assets/samples/dictation/*.wav (3 replay scripts)
 
@@ -41,7 +41,6 @@ import json
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -101,16 +100,6 @@ DICTATION_SCRIPTS = [
         "text": "Bonjour, je voudrais réserver une table pour deux personnes à vingt heures.",
     },
 ]
-
-
-def _git_sha() -> str:
-    try:
-        return subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=REPO_ROOT, text=True,
-        ).strip()
-    except Exception:
-        return "unknown"
 
 
 def watermark_file(path: Path, sample_rate: int, *, context: str) -> None:
@@ -335,15 +324,17 @@ def render_dictation(model, args):
 
 
 def update_manifest(args):
-    """Update the existing manifest with rendered_by + rendered_at."""
+    """Mark existing demo terms unreviewed without claiming a new dub render."""
     print("\n── Manifest ─────────────────────────────────────────")
     mpath = SAMPLES_DIR / "demo" / "dubbing" / "manifest.json"
     if not mpath.exists():
         print(f"  ! manifest not found at {mpath} — run scripts/build_dub_demo.sh first")
         return
     data = json.loads(mpath.read_text())
-    data["rendered_by"] = f"omnivoice@{_git_sha()}"
-    data["rendered_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    # This script does not render the dubbing files described by this manifest.
+    # Preserve their recorded renderer and timestamp instead of relabelling them.
+    data["license"] = "NOASSERTION"
+    data["license_review_required"] = True
     mpath.write_text(json.dumps(data, indent=2, ensure_ascii=False))
     print(f"  ✓ {mpath.name}")
 

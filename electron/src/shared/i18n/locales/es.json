@@ -833,7 +833,11 @@
     "self_check_attention": "{{count}} comprobación(es) fallaron — consulta las pistas de arriba.",
     "save_bundle": "Guardar paquete de diagnóstico",
     "bundle_saved": "Paquete de diagnóstico guardado: {{filename}}",
-    "bundle_failed": "No se pudo crear el paquete de diagnóstico: {{message}}"
+    "bundle_failed": "No se pudo crear el paquete de diagnóstico: {{message}}",
+    "model_credits": "Créditos de modelos",
+    "model_credits_hint": "Créditos de los modelos compatibles. Los modelos y componentes tienen condiciones propias; estos créditos no conceden derechos de uso comercial.",
+    "model_terms": "Condiciones del modelo",
+    "model_related_sources": "Fuentes relacionadas:"
   },
   "privacy": {
     "desc": "Todo se ejecuta en <1>esta máquina</1>. Su audio, video y transcripciones nunca salen de su computadora a menos que utilice explícitamente un traductor en línea (Google, DeepL, etc.) o acceda a HuggingFace.",
@@ -1697,11 +1701,11 @@
     "back": "Volver al estudio",
     "badge": "Licencia Comercial",
     "hero_title": "Enviar voces de IA en producción",
-    "hero_desc": "VoiceStudio es software libre y de código abierto bajo la GNU Affero General Public License v3 (AGPL-3.0): gratuito para cualquier uso, incluido el uso comercial y empresarial interno. Solo necesitas una licencia comercial si quieres integrar VoiceStudio en un producto o servicio propietario o de código cerrado sin las obligaciones copyleft de la AGPL-3.0.",
+    "hero_desc": "VoiceStudio es software libre y de código abierto bajo la GNU Affero General Public License v3 (AGPL-3.0): gratuito para cualquier uso, incluido el uso comercial y empresarial interno. Solo necesitas una licencia comercial si quieres integrar VoiceStudio en un producto o servicio propietario o de código cerrado sin las obligaciones copyleft de la AGPL-3.0. Nuestra licencia cubre el código de VoiceStudio. Los derechos sobre los modelos y los resultados generados dependen de los modelos seleccionados y sus condiciones.",
     "pricing_desc": "Los niveles y los precios aún se están ultimando.",
     "request_quote": "Solicitar una cotización",
-    "benefit_ip": "Propiedad total de propiedad intelectual",
-    "benefit_ip_desc": "Eres dueño de cada producto, cada modelo, cada derivado. Sin arrendamiento compartido, sin fugas de datos.",
+    "benefit_ip": "Licencia de la aplicación",
+    "benefit_ip_desc": "Nuestra licencia cubre el código de VoiceStudio. Los derechos sobre los modelos y los resultados generados dependen de los modelos seleccionados y sus condiciones.",
     "benefit_cost": "Costos cero por minuto",
     "benefit_cost_desc": "Sin facturas de API, sin excedentes sorpresa. Se ejecuta en su propio hardware desde el primer día.",
     "benefit_team_desc": "Una licencia cubre usuarios ilimitados dentro de su organización.",
@@ -1709,7 +1713,7 @@
     "benefit_support_desc": "Soporte prioritario por correo electrónico y videollamada del equipo central de ingeniería.",
     "benefit_source_desc": "Visibilidad total de la pila. Audite, bifurque y adapte dentro de los términos de la licencia.",
     "benefit_lang_desc": "Transcribe, traduce y dobla en 646 idiomas con calidad de nivel humano.",
-    "hero_simple": "VoiceStudio es gratuito y de código abierto según AGPL-3.0, incluso para uso comercial y empresarial interno. Sólo necesita una licencia comercial para integrarlo en un producto de código cerrado sin las obligaciones de copyleft de AGPL."
+    "hero_simple": "VoiceStudio es gratuito y de código abierto según AGPL-3.0, incluso para uso comercial y empresarial interno. Sólo necesita una licencia comercial para integrarlo en un producto de código cerrado sin las obligaciones de copyleft de AGPL. Nuestra licencia cubre el código de VoiceStudio. Los derechos sobre los modelos y los resultados generados dependen de los modelos seleccionados y sus condiciones."
   },
   "exportModal": {
     "export": "Exportar",
@@ -1772,8 +1776,8 @@
     "pkg_audio_body_one": "Vaya a la pestaña Audio para exportar doblajes por idioma en WAV o MP3 ({{count}} doblaje disponible).",
     "pkg_audio_body_other": "Vaya a la pestaña Audio para exportar doblajes por idioma en WAV o MP3 ({{count}} doblajes disponibles).",
     "pkg_audio_cta": "Abrir pestaña de audio",
-    "license_text": "El uso comercial requiere un",
-    "license_link": "licencia",
+    "license_text": "Nuestra licencia cubre el código de VoiceStudio. Los derechos sobre los modelos y los resultados generados dependen de los modelos seleccionados y sus condiciones.",
+    "license_link": "Licencia de la aplicación",
     "output": "SALIDA",
     "nothing_selected": "No hay nada seleccionado o pista no disponible",
     "export_mp4": "Exportar MP4",

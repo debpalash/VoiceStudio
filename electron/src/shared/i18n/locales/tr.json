@@ -833,7 +833,11 @@
     "self_check_attention": "{{count}} denetim başarısız — yukarıdaki ipuçlarına bakın.",
     "save_bundle": "Tanılama paketini kaydet",
     "bundle_saved": "Tanılama paketi kaydedildi: {{filename}}",
-    "bundle_failed": "Tanılama paketi oluşturulamadı: {{message}}"
+    "bundle_failed": "Tanılama paketi oluşturulamadı: {{message}}",
+    "model_credits": "Model katkıları",
+    "model_credits_hint": "Desteklenen modellerin katkı bilgileri. Model ve bileşen koşulları ayrı ayrı geçerlidir; bu bilgiler ticari kullanım hakkı vermez.",
+    "model_terms": "Model koşulları",
+    "model_related_sources": "İlgili kaynaklar:"
   },
   "privacy": {
     "desc": "Her şey <1>bu makine</1> üzerinde çalışıyor. Açıkça bir çevrimiçi çevirmen (Google, DeepL vb.) kullanmadığınız veya HuggingFace'e aktarmadığınız sürece ses, video ve transkriptleriniz asla bilgisayarınızdan ayrılmaz.",
@@ -1697,11 +1701,11 @@
     "back": "Studio'ya geri dön",
     "badge": "Ticari Lisans",
     "hero_title": "Üretimde yapay zeka seslerini gönderin",
-    "hero_desc": "VoiceStudio, GNU Affero Genel Kamu Lisansı v3 (AGPL-3.0) kapsamında özgür ve açık kaynaklı bir yazılımdır — ticari ve kurum içi iş kullanımı dahil, kullanımı ücretsizdir. Ticari lisans yalnızca VoiceStudio'yu AGPL-3.0'ın copyleft yükümlülükleri olmadan kapalı kaynaklı veya tescilli bir ürün ya da hizmete gömmek istediğinizde gereklidir.",
+    "hero_desc": "VoiceStudio, GNU Affero Genel Kamu Lisansı v3 (AGPL-3.0) kapsamında özgür ve açık kaynaklı bir yazılımdır — ticari ve kurum içi iş kullanımı dahil, kullanımı ücretsizdir. Ticari lisans yalnızca VoiceStudio'yu AGPL-3.0'ın copyleft yükümlülükleri olmadan kapalı kaynaklı veya tescilli bir ürün ya da hizmete gömmek istediğinizde gereklidir. Lisansımız VoiceStudio kodunu kapsar. Modeller ve üretilen çıktılar üzerindeki haklar, seçilen modellere ve bunların koşullarına bağlıdır.",
     "pricing_desc": "Katmanlar ve fiyatlandırma henüz kesinleşme aşamasındadır.",
     "request_quote": "Fiyat teklifi isteyin",
-    "benefit_ip": "Tam IP sahipliği",
-    "benefit_ip_desc": "Her çıktının, her modelin, her türevinin sahibi sizsiniz. Paylaşılan kiracılık yok, veri sızıntısı yok.",
+    "benefit_ip": "Uygulama lisansı",
+    "benefit_ip_desc": "Lisansımız VoiceStudio kodunu kapsar. Modeller ve üretilen çıktılar üzerindeki haklar, seçilen modellere ve bunların koşullarına bağlıdır.",
     "benefit_cost": "Dakika başına sıfır maliyet",
     "benefit_cost_desc": "API faturası yok, sürpriz aşımlar yok. İlk günden itibaren kendi donanımınızda çalışır.",
     "benefit_team_desc": "Bir lisans, kuruluşunuzdaki sınırsız kullanıcıyı kapsar.",
@@ -1709,7 +1713,7 @@
     "benefit_support_desc": "Çekirdek mühendislik ekibinden öncelikli e-posta ve görüntülü arama desteği.",
     "benefit_source_desc": "Yığına tam görünürlük. Lisans koşulları dahilinde denetleyin, çatallayın ve uyarlayın.",
     "benefit_lang_desc": "646 dilde insan düzeyinde kaliteyle metne dönüştürün, tercüme edin ve dublaj yapın.",
-    "hero_simple": "VoiceStudio, ticari ve dahili iş kullanımı da dahil olmak üzere, AGPL-3.0 kapsamında ücretsiz ve açık kaynaktır. AGPL'nin copyleft yükümlülükleri olmadan kapalı kaynaklı bir ürüne yerleştirmek için yalnızca ticari bir lisansa ihtiyacınız vardır."
+    "hero_simple": "VoiceStudio, ticari ve dahili iş kullanımı da dahil olmak üzere, AGPL-3.0 kapsamında ücretsiz ve açık kaynaktır. AGPL'nin copyleft yükümlülükleri olmadan kapalı kaynaklı bir ürüne yerleştirmek için yalnızca ticari bir lisansa ihtiyacınız vardır. Lisansımız VoiceStudio kodunu kapsar. Modeller ve üretilen çıktılar üzerindeki haklar, seçilen modellere ve bunların koşullarına bağlıdır."
   },
   "exportModal": {
     "export": "İhracat",
@@ -1772,8 +1776,8 @@
     "pkg_audio_body_one": "Dil başına dublajları WAV veya MP3 olarak dışa aktarmak için Ses sekmesine geçin ({{count}} dub mevcuttur).",
     "pkg_audio_body_other": "Dil başına dublajları WAV veya MP3 olarak dışa aktarmak için Ses sekmesine geçin ({{count}} dublajlar mevcuttur).",
     "pkg_audio_cta": "Ses sekmesini aç",
-    "license_text": "Ticari kullanım gerektirir",
-    "license_link": "lisans",
+    "license_text": "Lisansımız VoiceStudio kodunu kapsar. Modeller ve üretilen çıktılar üzerindeki haklar, seçilen modellere ve bunların koşullarına bağlıdır.",
+    "license_link": "Uygulama lisansı",
     "output": "ÇIKTI",
     "nothing_selected": "Hiçbir şey seçilmedi veya parça mevcut değil",
     "export_mp4": "MP4'ü dışa aktar",

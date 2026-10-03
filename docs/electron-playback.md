@@ -16,8 +16,7 @@ The test uses synthetic WAV/profile/generation responses and never saves user da
 Set `PLAYWRIGHT_CHANNEL` or `VOICESTUDIO_UI_URL` for another installed browser/server.
 
 HLS and DASH libraries are bundled and lazy-loaded. The shared provider includes
-Vidstack's native audio/video, HLS, DASH, YouTube and Vimeo selection plus the
-Remotion loader. Gallery search previews exercise the embedded YouTube provider;
+Vidstack's native audio/video, HLS, DASH, YouTube and Vimeo selection. Gallery search previews exercise the embedded YouTube provider;
 Dubbing uses the custom Vidstack video controls for local and normalized URL imports.
 Native video MIME hints select a provider before its `<video>` element connects, and
 extensionless Dubbing routes use the backend's normalized MP4 type. Those endpoints
