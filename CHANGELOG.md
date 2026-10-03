@@ -108,6 +108,7 @@ metadata and the backend fallback mirror it.
 - Streaming reuses warm engines, follows model changes and protects active streams during eviction (#2391, #2400) — thanks @DeepanshuPal and @Kishore-MR!
 - VoxCPM2 performs one complete generation attempt with the requested sampling effort and enough time for CPU and MPS inference (#2412) — thanks @strauss-visuals!
 - Voice Clone explains when the selected model cannot clone instead of silently ignoring the reference (#2419)
+- Compare voices warns when a generated preview omits speech, while keeping the surviving audio playable (#2548) — thanks @rudycelekli!
 - GitHub Star count refreshes from the repository API, and macOS tray icons keep the intended menu-bar size (#2419)
 - MLX-Audio OuteTTS generates again with a reference clip or its default voice (#2419)
 - MLX Qwen3-TTS receives the selected language correctly; MeloTTS explains missing text resources without downloading during generation (#2419)
