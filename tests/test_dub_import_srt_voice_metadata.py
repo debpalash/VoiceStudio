@@ -189,3 +189,24 @@ def test_import_srt_scopes_matched_speaker_clone_to_the_matched_cue(monkeypatch)
     assert job["segment_clones"] == {"0": speaker_clone}
     assert "1" not in job["segment_clones"]
     assert job["cast_sources"]["Speaker 1"]["kind"] == "segment"
+
+
+def test_import_does_not_restore_job_deleted_during_upload(monkeypatch):
+    import pytest
+    from fastapi import HTTPException
+    from api.routers import dub_core
+
+    job = {'duration': 2, 'segments': []}
+    current = [job]
+    saved = []
+    monkeypatch.setattr(dub_core, '_get_job', lambda _: current[0])
+    monkeypatch.setattr(dub_core, '_save_job', lambda *args: saved.append(args))
+    class Upload:
+        async def read(self):
+            current[0] = None
+            return b'1\n00:00:00,000 --> 00:00:01,000\nNew text\n'
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(dub_core.dub_import_srt('deleted', Upload()))
+    assert error.value.status_code == 404
+    assert job['segments'] == []
+    assert saved == []

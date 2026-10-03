@@ -21,6 +21,7 @@ epub/pdf ingest, ACX mastering shipped; the resume UI surface remains a follow-u
 """
 
 import asyncio
+import anyio
 import json
 import logging
 import os
@@ -587,8 +588,11 @@ def _build_synth(
     from services.tts_backend import OmniVoiceBackend, active_backend_id, get_backend_class
 
     opts = opts or ExpressiveOptions()
+    from core.voice_reference_snapshots import VoiceReferenceSnapshot, voice_file_lock
+
     cache: dict = {}
     token_cache: dict = {}
+    references = VoiceReferenceSnapshot()
 
     def resolve(voice_id):
         # Translate the span token ([voice:NAME] / exact id / None) to a profile
@@ -598,9 +602,13 @@ def _build_synth(
         if voice_id not in token_cache:
             token_cache[voice_id] = _map_span_voice(voice_id, default_voice, voice_map)
         key = token_cache[voice_id]
-        if key not in cache:
-            cache[key] = _resolve_voice(key)
-        return cache[key]
+        # Resolve and claim custody atomically with profile file deletion.
+        # The closure keeps the snapshot alive for any pending render worker.
+        with voice_file_lock:
+            if key not in cache:
+                cache[key] = _resolve_voice(key)
+                references.retain(cache[key]["ref_audio"])
+            return cache[key]
 
     engine_id = active_backend_id()
     cls = get_backend_class(engine_id)
@@ -778,6 +786,12 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
     seg_extra_sig = f"{lex_sig}\x00{expr_sig}" if expr_sig else lex_sig
     if vmap_sig:
         seg_extra_sig = f"{seg_extra_sig}\x00{vmap_sig}"
+    # Language reaches the engine even when normalization leaves text unchanged.
+    # Partition both layers; unknown-language legacy audio cannot satisfy an
+    # explicit language. Autodetect keeps its released cache derivation.
+    if language:
+        sig["\x00language"] = language
+        seg_extra_sig = f"{seg_extra_sig}\x00language={json.dumps(language)}"
     marking = will_mark()
     if marking:
         # Provenance-marked chapters cache under their own key (#1169): a
@@ -808,7 +822,7 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
     inputs: dict = {
         "sample rate": sr, "engine": engine_id, "normalized text": spans_tuples,
         "pronunciation lexicon": lex_sig, "expressive settings": expr_sig,
-        "voice map": vmap_sig, "watermark": marking,
+        "voice map": vmap_sig, "watermark": marking, "language": language,
     }
     for k, v in resolved.items():
         label = f"voice {re.sub(r'[^A-Za-z0-9_-]', '', k)[:40] or '(default)'}"
@@ -1116,35 +1130,41 @@ async def _render_longform_sse(
 
     def _emit(payload: dict) -> str:
         if job_store is not None:
+            if payload.get("type") == "error":
+                try:
+                    if (job_store.get(job_id) or {}).get("status") in ("pending", "running"):
+                        job_store.mark_failed(job_id, payload.get("error") or "render failed")
+                except Exception:
+                    pass  # terminal setup errors must still reach the client
             try:
                 job_store.append_event(job_id, json.dumps(payload))
             except Exception:
                 pass  # best-effort job history; never block the stream
         return f"data: {json.dumps(payload)}\n\n"
 
-    if not plan.chapters:
-        yield _emit({"type": "error", "error": "nothing to render (no chapters)"})
-        return
-    ffmpeg = find_ffmpeg()
-    if not ffmpeg:
-        yield _emit({"type": "error", "error": "ffmpeg not available; the output needs it"})
-        return
-
-    # Confined work dir (job_id is already token-sanitized above; work_dir adds
-    # the basename + realpath barrier so CodeQL sees a clean path).
-    work = longform_resume.work_dir(job_type, job_id)
-    if work is None:
-        yield _emit({"type": "error", "error": "invalid job id"})
-        return
-    os.makedirs(work, exist_ok=True)
-    # Chapter WAVs are content-addressed in a shared cache so a re-run (after a
-    # failure or interruption) reuses what already rendered — only the
-    # missing/changed chapters synthesize again (resume). Shared across both
-    # front doors: an identical chapter renders once.
-    cache_dir = os.path.join(OUTPUTS_DIR, LONGFORM_CACHE_SUBDIR)
-    os.makedirs(cache_dir, exist_ok=True)
-    prune_cache_dir(cache_dir)  # bound disk before this job adds its chapters
     try:
+        if not plan.chapters:
+            yield _emit({"type": "error", "error": "nothing to render (no chapters)"})
+            return
+        ffmpeg = find_ffmpeg()
+        if not ffmpeg:
+            yield _emit({"type": "error", "error": "ffmpeg not available; the output needs it"})
+            return
+
+        # Confined work dir (job_id is already token-sanitized above; work_dir adds
+        # the basename + realpath barrier so CodeQL sees a clean path).
+        work = longform_resume.work_dir(job_type, job_id)
+        if work is None:
+            yield _emit({"type": "error", "error": "invalid job id"})
+            return
+        os.makedirs(work, exist_ok=True)
+        # Chapter WAVs are content-addressed in a shared cache so a re-run (after a
+        # failure or interruption) reuses what already rendered — only the
+        # missing/changed chapters synthesize again (resume). Shared across both
+        # front doors: an identical chapter renders once.
+        cache_dir = os.path.join(OUTPUTS_DIR, LONGFORM_CACHE_SUBDIR)
+        os.makedirs(cache_dir, exist_ok=True)
+        prune_cache_dir(cache_dir)  # bound disk before this job adds its chapters
         resolved_lang = _resolve_default_language(language, default_voice)
         operation = "audiobook" if job_type == "audiobook" else "longform"
         decision = gpu_gateway.decide(operation)
@@ -1285,7 +1305,7 @@ async def _render_longform_sse(
 
         yield _emit({"type": "assembling"})
         meta_path = os.path.join(work, "chapters.ffmeta")
-        with open(meta_path, "w", encoding="utf-8") as f:
+        with open(meta_path, "w", encoding="utf-8", newline="") as f:
             f.write(build_ffmetadata(chapters_meta, global_meta=metadata))
         concat_path = os.path.join(work, "concat.txt")
         with open(concat_path, "w", encoding="utf-8") as f:
@@ -1356,6 +1376,16 @@ async def _render_longform_sse(
                 "measured_i": measured.input_i if measured else None,
             }
         yield _emit(done)
+    except (asyncio.CancelledError, GeneratorExit):
+        # Transport cancellation/iterator closure bypass Exception; keep the
+        # checkpoint, but do not leave this finished response recorded as live.
+        if job_store is not None:
+            try:
+                if (job_store.get(job_id) or {}).get("status") in ("pending", "running"):
+                    job_store.mark_cancelled(job_id)
+            except Exception:
+                pass  # job history is best-effort, including during shutdown
+        raise
     except Exception as e:  # surface, don't 500 the stream
         logger.exception("[%s] longform render failed", job_id)
         if job_store is not None:
@@ -1369,8 +1399,10 @@ async def _render_longform_sse(
 
 async def _public_longform_stream(plan, **render_kwargs):
     """Keep generator diagnostics local if setup fails before its own guard."""
+    stream = None
     try:
-        async for event in _render_longform_sse(plan, **render_kwargs):
+        stream = _render_longform_sse(plan, **render_kwargs)
+        async for event in stream:
             yield event
     except asyncio.CancelledError:
         raise
@@ -1385,6 +1417,19 @@ async def _public_longform_stream(plan, **render_kwargs):
         )
         yield f"data: {json.dumps({'type': 'error', 'error': error})}\n\n"
 
+    finally:
+        if stream is not None:
+            await stream.aclose()
+
+class _ClosingLongformResponse(StreamingResponse):
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            # Older ASGI disconnects and outer AnyIO scopes can cancel cleanup.
+            with anyio.CancelScope(shield=True):
+                await self.body_iterator.aclose()
+
 
 @router.post("/audiobook")
 async def audiobook_synthesize(req: AudiobookRequest, request: Request = None):
@@ -1393,7 +1438,7 @@ async def audiobook_synthesize(req: AudiobookRequest, request: Request = None):
     # `request` is injected by FastAPI on the HTTP path (the default only applies
     # to a direct in-process call, e.g. a unit test); its disconnect poll is what
     # lets Stop cancel the render mid-book (#1216).
-    return StreamingResponse(
+    return _ClosingLongformResponse(
         _public_longform_stream(
             plan, default_voice=req.default_voice, language=req.language,
             fmt=req.format, bitrate=req.bitrate,
@@ -1458,7 +1503,7 @@ async def longform_render(req: LongformRenderRequest, request: Request = None):
         if spans:
             chapters.append(Chapter(title=c.title or f"Chapter {i + 1}", spans=spans))
     plan = AudiobookPlan(chapters=chapters)
-    return StreamingResponse(
+    return _ClosingLongformResponse(
         _public_longform_stream(
             plan, default_voice=req.default_voice, language=req.language,
             fmt=req.format, bitrate=req.bitrate,
@@ -1553,7 +1598,7 @@ async def resume_longform(job_id: str, request: Request = None):
     # job id), so the already-rendered chapters still hit instantly — only the
     # unrendered ones synthesize. Using a fresh id means the request's job_id
     # never names a work dir / output file (defence-in-depth path-injection).
-    return StreamingResponse(
+    return _ClosingLongformResponse(
         _public_longform_stream(
             plan, default_voice=p.get("default_voice"), language=p.get("language"),
             fmt=p.get("fmt", "m4b"), bitrate=p.get("bitrate", "128k"),

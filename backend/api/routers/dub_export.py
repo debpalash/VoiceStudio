@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import io
 import json
 import logging
@@ -17,6 +18,7 @@ from core.path_security import UnsafePath, portable_filename, resolve_within
 from core.tasks import task_manager
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
+from services.dub_pipeline import _dub_jobs_lock
 from services.ffmpeg_utils import (
     bed_mix_filter,
     explain_ffmpeg_failure,
@@ -354,7 +356,7 @@ async def cancel_task(task_id: str):
 
 @router.get("/dub/tracks/{job_id}")
 async def dub_list_tracks(job_id: str):
-    job = _get_job(job_id)
+    job = await asyncio.to_thread(_get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return {"tracks": job.get("dubbed_tracks", {})}
@@ -372,7 +374,7 @@ async def dub_segments_text(job_id: str, lang: str = Query(...)):
     transcript. Empty map when the job predates segments_i18n or the track
     was never generated — the client keeps whatever it has.
     """
-    job = _get_job(job_id)
+    job = await asyncio.to_thread(_get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     i18n = job.get("segments_i18n") or {}
@@ -684,7 +686,7 @@ async def dub_download(
     # path or ffmpeg argv (export dir, retime work path, slice paths). Real
     # job ids are short uuid slices — alnum/hyphen/underscore only.
     job_dir = _job_dir_or_400(job_id)
-    job = _get_job(job_id)
+    job = await asyncio.to_thread(_get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -861,7 +863,7 @@ async def dub_download(
         )
         # A fresh export is a fresh user intent — clear any sticky abort flag
         # from a previous /dub/abort so it can't kill this run's first batch.
-        job.pop("aborted", None)
+        await asyncio.to_thread(_clear_export_abort, job)
         # realpath-normalised + containment-checked inline at the sink (the
         # file's established pattern — CodeQL does not track the guard
         # through a helper's return value).
@@ -887,7 +889,7 @@ async def dub_download(
                 raise HTTPException(status_code=409, detail="Export aborted")
             from core.failure import build_failure
             retime_warning = build_failure(e, stage="video-retime", include_diagnostic=False)
-            job["last_export_warning"] = {"type": "video_retime_fallback", **retime_warning}
+            await asyncio.to_thread(_set_export_warning, job, retime_warning)
             logger.exception(
                 "Smart Fit video retime failed for job %s — exporting "
                 "without per-segment retime",
@@ -1116,7 +1118,7 @@ _MEDIA_TYPES = {
 @router.api_route("/dub/media/{job_id}", methods=["GET", "HEAD"])
 async def dub_get_media(job_id: str, request: Request):
     _job_dir_or_400(job_id)
-    job = _get_job(job_id)
+    job = await asyncio.to_thread(_get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     video_path = _dub_artifact(job["video_path"], job_id, missing_detail="Media file not found")
@@ -1169,7 +1171,7 @@ async def dub_preview_video(
     # boundary check as dub_download.
     job_dir = _job_dir_or_400(job_id)
     lang = _safe_lang_or_400(lang)
-    job = _get_job(job_id)
+    job = await asyncio.to_thread(_get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -1241,7 +1243,7 @@ async def dub_preview_video(
             smart_track_dur = float(
                 retime_entry.get("total_duration") or track_info.get("duration") or 0.0
             )
-            job.pop("aborted", None)  # fresh user intent — clear sticky abort
+            await asyncio.to_thread(_clear_export_abort, job)
             # realpath-normalised + containment-checked inline at the sink
             # (same pattern as preview_path above — _base is the realpath
             # of DUB_DIR from the top of this endpoint).
@@ -1438,7 +1440,7 @@ async def dub_get_onsets(job_id: str):
     newer than the cache (e.g. re-ingest into the same job dir).
     """
     job_dir = _job_dir_or_400(job_id)
-    job = _get_job(job_id)
+    job = await asyncio.to_thread(_get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -1503,7 +1505,7 @@ async def dub_prosody_mirror(job_id: str, req: ProsodyMirrorRequest):
     about the job changes.
     """
     _job_dir_or_400(job_id)
-    job = _get_job(job_id)
+    job = await asyncio.to_thread(_get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -1539,7 +1541,7 @@ async def dub_prosody_mirror(job_id: str, req: ProsodyMirrorRequest):
 async def dub_get_thumb(job_id: str):
     """Serve the extracted dub video thumbnail (jpg). 404 if not generated."""
     job_dir = _job_dir_or_400(job_id)
-    job = _get_job(job_id)
+    job = await asyncio.to_thread(_get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     # Resolve under DUB_DIR to prevent traversal.
@@ -1551,7 +1553,7 @@ async def dub_get_thumb(job_id: str):
 @router.get("/dub/audio/{job_id}")
 async def dub_get_audio(job_id: str):
     _job_dir_or_400(job_id)
-    job = _get_job(job_id)
+    job = await asyncio.to_thread(_get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     audio = _dub_artifact(job.get("audio_path"), job_id, missing_detail="Audio file not found")
@@ -1603,7 +1605,7 @@ def _existing_segment_artifact(job_id: str, candidate_ids: list) -> str | None:
 async def dub_preview_segment(job_id: str, segment_index: int, lang: str = Query(None)):
     _job_dir_or_400(job_id)
     lang = _safe_lang_or_400(lang)
-    job = _get_job(job_id)
+    job = await asyncio.to_thread(_get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     # Resolve the stable-id-named WAV via the render manifest — language-keyed
@@ -1624,6 +1626,70 @@ async def dub_preview_segment(job_id: str, segment_index: int, lang: str = Query
 # ── Second-pass ASR QC (Wave 3.3 / Spec 5) ───────────────────────────────────
 
 
+def _qc_snapshot(job: dict, lang: str) -> dict:
+    """Freeze the selected track's scoring inputs across an ASR await."""
+    return copy.deepcopy({
+        "segments": job.get("segments"),
+        "seg_order": job.get("seg_order"),
+        "timing_strategy": job.get("timing_strategy"),
+        **{key: {lang: (job.get(key) or {}).get(lang)} for key in (
+            "dubbed_tracks", "segments_i18n", "segments_i18n_cue_sources",
+            "fit_plans", "video_stretch_plans",
+        )},
+    })
+
+
+def _qc_audio_revision(path: str) -> tuple | None:
+    # Regeneration writes the same WAV path before publishing new metadata.
+    try:
+        stat = os.stat(path)
+        return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+    except OSError:
+        return None
+
+
+def _qc_source_segments(job: dict, lang: str, segments: list[dict]) -> list[dict] | None:
+    """Resolve source ownership before ASR; legacy ordinal times can be ambiguous."""
+    track = job["dubbed_tracks"][lang]
+    source = track.get("source_segments")
+    if not source:
+        return source
+    segment_ids = [str(seg["id"]) for seg in segments if seg.get("id") is not None]
+    source_ids = [str(row["id"]) for row in source if row.get("id") is not None]
+    if (len(segment_ids) == len(set(segment_ids)) == len(segments)
+            and len(source_ids) == len(set(source_ids)) == len(source) == len(segments)
+            and set(segment_ids) == set(source_ids)):
+        return source
+    texts = (job.get("segments_i18n") or {}).get(lang) or {}
+    if not source_ids and len(source) == len(segments) == len(texts) == 1:
+        sid = segments[0].get("id")
+        if sid is not None and str(sid) in texts:
+            return [dict(source[0], id=sid)]
+    # A complete Smart Fit cue set proves the final timeline by stable identity
+    # even when the original source snapshot predates identity persistence.
+    if track.get("timing_strategy") == "smart_fit":
+        fitted = ((job.get("fit_plans") or {}).get(lang) or {}).get("fitted_segments") or []
+        fitted_ids = [str(cue["id"]) for cue in fitted if cue.get("id") is not None]
+        if (len(segment_ids) == len(set(segment_ids)) == len(segments)
+                and len(fitted_ids) == len(set(fitted_ids)) == len(fitted) == len(segments)
+                and set(segment_ids) == set(fitted_ids)):
+            return None
+    raise HTTPException(status_code=409, detail={
+        "code": "dub_qc_timing_identity_missing",
+        "message": "Regenerate the selected track with explicit unique segment IDs before QC: saved source timing identities are ambiguous.",
+    })
+
+
+def _clear_export_abort(job):
+    with _dub_jobs_lock:
+        job.pop("aborted", None)
+
+
+def _set_export_warning(job, warning):
+    with _dub_jobs_lock:
+        job["last_export_warning"] = {"type": "video_retime_fallback", **warning}
+
+
 @router.post("/dub/qc/{job_id}")
 async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: float = Query(0.5)):
     """Re-recognize the dubbed audio and flag lines whose recognized text
@@ -1633,23 +1699,31 @@ async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: flo
     re-dub. The generated text stays authoritative (design delta from
     pyvideotrans, which overwrites subtitles)."""
     from services import dub_qc
-    from services.dub_pipeline import put_job, save_job
+    from services.dub_pipeline import put_and_save_job
 
     _job_dir_or_400(job_id)
     lang = _safe_lang_or_400(lang)
-    job = _get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    tracks = job.get("dubbed_tracks", {})
-    if lang and lang in tracks:
-        wav_path = _dub_artifact(tracks[lang].get("path"), job_id, missing_detail="Dubbed audio file not found")
-    elif tracks:
-        wav_path = _dub_artifact(list(tracks.values())[0].get("path"), job_id, missing_detail="Dubbed audio file not found")
-    else:
-        raise HTTPException(status_code=400, detail="No dubbed audio track generated yet")
+
+    def snapshot_track():
+        with _dub_jobs_lock:
+            job = _get_job(job_id)
+            if not job:
+                raise HTTPException(status_code=404, detail="Job not found")
+            tracks = job.get("dubbed_tracks", {})
+            if not tracks:
+                raise HTTPException(status_code=400, detail="No dubbed audio track generated yet")
+            # Resolve the text against the same track chosen for recognition, including
+            # the legacy first-track fallback when no matching language is requested.
+            selected_lang = lang if lang and lang in tracks else next(iter(tracks))
+            wav_path = _dub_artifact(tracks[selected_lang].get("path"), job_id, missing_detail="Dubbed audio file not found")
+            return job, _qc_snapshot(job, selected_lang), selected_lang, wav_path, _qc_audio_revision(wav_path)
+
+    live_job, job, selected_lang, wav_path, audio_revision = await asyncio.to_thread(snapshot_track)
+    tracks = job["dubbed_tracks"]
     segments = job.get("segments") or []
     if not segments:
         raise HTTPException(status_code=400, detail="Job has no segments")
+    source = _qc_source_segments(job, selected_lang, segments)
 
     # TTS-only install: no ASR model on disk → typed 409 with a download CTA,
     # BEFORE any backend load could silently auto-download whisper weights.
@@ -1696,23 +1770,67 @@ async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: flo
         raise HTTPException(status_code=500, detail=f"QC transcription failed: {e}")
 
     seg_ids = job.get("seg_order") or [s.get("id", i) for i, s in enumerate(segments)]
-    scored = dub_qc.score_dub(segments, recognized, drift_threshold=drift_threshold, seg_ids=seg_ids)
+    qc_segments = _segments_for_lang(job, selected_lang)
+    track = tracks[selected_lang]
+    # A later generate can replace both the job's text and source timings.
+    # The selected track snapshots its own source timeline before fitting.
+    # Legacy snapshots have no identities: positional pairing can silently
+    # assign another line's times after a later render reorders the job.
+    if source and any(row.get("id") is not None for row in source):
+        qc_segments = _apply_fitted_times(qc_segments, source)
+    strategy = track.get("timing_strategy") or job.get("timing_strategy")
+    if strategy == "smart_fit":
+        entry = (job.get("fit_plans") or {}).get(selected_lang) or {}
+        fitted = entry.get("fitted_segments")
+        if fitted:
+            qc_segments = _apply_fitted_times(qc_segments, fitted)
+    elif strategy == "stretch_video":
+        entry = (job.get("video_stretch_plans") or {}).get(selected_lang) or {}
+        plan = entry.get("plan")
+        if plan:
+            from services.fitted_subtitles import map_time_to_fitted
+            # QC follows stable ids, not chronological list order; the subtitle
+            # helper's monotonic-list guard would corrupt reordered lines.
+            qc_segments = [dict(seg, start=map_time_to_fitted(seg["start"], plan),
+                                end=map_time_to_fitted(seg["end"], plan))
+                           for seg in qc_segments]
+    scored = dub_qc.score_dub(qc_segments, recognized,
+                              drift_threshold=drift_threshold, seg_ids=seg_ids)
 
-    # Annotate each segment (non-destructive — content text untouched).
-    by_id = {q.seg_id: q for q in scored}
-    for i, s in enumerate(segments):
-        sid = str(seg_ids[i]) if i < len(seg_ids) else str(s.get("id", i))
-        q = by_id.get(sid)
-        if q is None:
-            continue
-        s["qc_drift"] = q.drift
-        s["qc_flagged"] = q.flagged
-        s["qc_recognized"] = q.recognized_text
-        if q.new_start is not None:
-            s["qc_measured_start"] = q.new_start
-            s["qc_measured_end"] = q.new_end
-    put_job(job_id, job)
-    save_job(job_id, job)
+    # Scoring uses the frozen inputs, but a render/edit/deletion can complete
+    # while ASR runs. Publish only into that same revision, under the same lock
+    # as history deletion so QC cannot resurrect a withdrawn job.
+    def publish_qc():
+        with _dub_jobs_lock:
+            current = _get_job(job_id)
+            if (current is not live_job
+                    or _qc_snapshot(current, selected_lang) != job
+                    or _qc_audio_revision(wav_path) != audio_revision):
+                raise HTTPException(status_code=409, detail={
+                    "code": "dub_qc_track_changed",
+                    "message": "The dub changed during QC. Run QC again on the current track.",
+                })
+            # Annotate each segment (non-destructive — content text untouched).
+            by_id = {q.seg_id: q for q in scored}
+            for i, s in enumerate(segments):
+                sid = str(seg_ids[i]) if i < len(seg_ids) else str(s.get("id", i))
+                q = by_id.get(sid)
+                if q is None:
+                    continue
+                s["qc_drift"] = q.drift
+                s["qc_flagged"] = q.flagged
+                s["qc_recognized"] = q.recognized_text
+                if q.new_start is not None:
+                    s["qc_measured_start"] = q.new_start
+                    s["qc_measured_end"] = q.new_end
+            current["segments"] = segments
+            if not put_and_save_job(job_id, current):
+                raise HTTPException(status_code=409, detail={
+                    "code": "dub_qc_track_changed",
+                    "message": "The dub changed during QC. Run QC again on the current track.",
+                })
+
+    await asyncio.to_thread(publish_qc)
 
     flagged = [q for q in scored if q.flagged]
     payload = json.dumps({"event": "qc_done", "engine": engine_id,
@@ -1748,7 +1866,7 @@ async def dub_download_audio(
 ):
     job_dir = _existing_job_dir_or_404(job_id)
     lang = _safe_lang_or_400(lang)
-    job = _get_job(job_id)
+    job = await asyncio.to_thread(_get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -1857,7 +1975,7 @@ async def dub_export_srt(
 ):
     _job_dir_or_400(job_id)
     lang = _safe_lang_or_400(lang)
-    job = _get_job(job_id)
+    job = await asyncio.to_thread(_get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -1908,7 +2026,7 @@ async def dub_export_vtt(
 ):
     _job_dir_or_400(job_id)
     lang = _safe_lang_or_400(lang)
-    job = _get_job(job_id)
+    job = await asyncio.to_thread(_get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -1968,7 +2086,7 @@ async def dub_export_ass(
     """
     _job_dir_or_400(job_id)
     lang = _safe_lang_or_400(lang)
-    job = _get_job(job_id)
+    job = await asyncio.to_thread(_get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -2004,7 +2122,7 @@ async def dub_export_segments_zip(job_id: str, lang: str = Query(None)):
     import zipfile
     _job_dir_or_400(job_id)
     lang = _safe_lang_or_400(lang)
-    job = _get_job(job_id)
+    job = await asyncio.to_thread(_get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -2048,7 +2166,7 @@ async def dub_download_mp3(
 ):
     job_dir = _existing_job_dir_or_404(job_id)
     lang = _safe_lang_or_400(lang)
-    job = _get_job(job_id)
+    job = await asyncio.to_thread(_get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -2132,7 +2250,7 @@ async def dub_export_stems(job_id: str, lang: str = Query(None)):
     import zipfile
     _job_dir_or_400(job_id)
     lang = _safe_lang_or_400(lang)
-    job = _get_job(job_id)
+    job = await asyncio.to_thread(_get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 

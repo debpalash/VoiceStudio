@@ -16,6 +16,7 @@ import { describeError } from '@/lib/api/client';
 import { PRESETS } from '@shared/utils/constants';
 import { beginAppActivity } from '@/lib/app-activity';
 import { useTtsReadiness } from '@/hooks/use-tts-readiness';
+import { toast } from 'sonner';
 
 export function CompareVoices() {
   const { t } = useTranslation();
@@ -90,6 +91,16 @@ export function CompareVoices() {
           { signal: controller.signal },
         );
         if (controller.signal.aborted) break;
+        if (result.dropped) {
+          const preview = result.dropped.text.trim().slice(0, 120);
+          const count = result.dropped.count;
+          toast.warning(
+            preview
+              ? t('tts.droppedChunksWithText', { count, text: preview })
+              : t('tts.droppedChunks', { count }),
+            { duration: 8000 },
+          );
+        }
         const url = URL.createObjectURL(result.blob);
         setUrls((current) => current.map((old, index) => (index === side ? url : old)));
         void client.invalidateQueries({ queryKey: queryKeys.history });

@@ -65,6 +65,11 @@ Live Dictation now streams mono 16 kHz PCM through the shared Tauri AudioWorklet
 and anti-alias capture graph. Record remains the separate clip-preview workflow.
 Dictation checks the selected model is enabled and installed before requesting
 a microphone; pause, stop and cancel preserve explicit session boundaries.
+New history rows keep distinct numeric identities even when utterances arrive
+together or the wall clock moves backwards. Deleting one newly saved row preserves the
+other saved utterances; existing history records and the 200-entry limit remain
+unchanged.
+
 Live utterances enter history once, including repeated speech, and EOF summaries
 avoid duplicate entries. Legacy fallback finals also finish normally. Failed
 history writes retain visible text for copying. Leaving the page releases capture.
@@ -83,7 +88,9 @@ by a dedicated, non-activating recorder window. It captures the output target
 before revealing the recorder, queues startup/stop events until registration,
 and uses the shared native delivery helper. The main app frame cannot invoke
 recorder-only output IPC. Cancellation/navigation/crash invalidate pending work;
-sequence numbers reject duplicate deliveries. Clipboard fallback retains the
+sequence numbers reject duplicate deliveries. A late WebSocket URL or remote
+ticket from a cancelled start cannot reconnect or replace the next dictation
+session. Clipboard fallback retains the
 complete transcript and is labeled as copied, not inserted.
 
 Native Windows smoke checks cover helper acceptance, pause/resume, no-speech,

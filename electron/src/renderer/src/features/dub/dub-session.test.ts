@@ -790,3 +790,31 @@ it.each([
     resetDubSession();
   }
 });
+
+
+it.each(['done', 'error'] as const)('replaces old audio QC only after generation succeeds (%s)', async (terminal) => {
+  const segment = {
+    id: 'qc-row', start: 0, end: 1, text: 'Hello', text_original: 'Hello',
+    qc_drift: 0.4, qc_flagged: true, qc_recognized: 'Old audio',
+    qc_measured_start: 0.2, qc_measured_end: 1.4,
+  };
+  dubSession.setState((current) => ({
+    ...current, jobId: 'qc-replacement', phase: 'editing', recovery: null,
+    quality: 'fast', segments: [segment],
+  }));
+  vi.mocked(apiJson).mockReset().mockResolvedValueOnce({ task_id: 'qc-render' });
+  vi.mocked(consumeTaskStream).mockReset().mockImplementationOnce(async (_path, emit) => {
+    emit(terminal === 'done'
+      ? { type: 'done', tracks: ['en'], sync_scores: [1] }
+      : { type: 'error', message: 'Render failed' });
+  });
+  await generateDub('English', 'en');
+  const row = dubSession.state.segments[0];
+  expect(row.text).toBe('Hello');
+  if (terminal === 'done') {
+    expect(dubSession.state.phase).toBe('done');
+    expect(Object.keys(row).filter((key) => key.startsWith('qc_'))).toEqual([]);
+  } else {
+    expect(row).toMatchObject(segment);
+  }
+});

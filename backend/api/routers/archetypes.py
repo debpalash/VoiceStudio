@@ -306,7 +306,7 @@ def _is_unusable_audio(audio_tensor) -> bool:
     return flatness is not None and flatness < _DEGENERATE_FLATNESS
 
 
-async def _render_archetype_wav(a: dict, out_path: Path) -> None:
+async def _render_archetype_wav(a: dict, out_path: Path, *, allow_model_load: bool = True) -> None:
     """Render an archetype's sample script to ``out_path`` using the live engine.
 
     Reuses generation.py's inference primitives so there is exactly one TTS code
@@ -321,7 +321,9 @@ async def _render_archetype_wav(a: dict, out_path: Path) -> None:
         _safe_torchaudio_save,
     )
 
-    model = await get_model()
+    # Save-time samples are optional: an unload after the residency probe must
+    # not turn persistence into a cold load. Explicit previews retain loading.
+    model = await get_model() if allow_model_load else await get_model(allow_load=False)
     language = a["language"]
     if language in (None, "", "Auto"):
         language = None

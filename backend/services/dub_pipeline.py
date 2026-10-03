@@ -27,6 +27,8 @@ moving them is a follow-up.
 from __future__ import annotations
 
 import asyncio
+import contextvars
+import functools
 import hashlib
 import json
 import logging
@@ -303,27 +305,58 @@ def find_cached_job(content_hash: str, exclude_job_id: str) -> Optional[dict]:
 # ── Job state (in-memory + SQLite fallback) ────────────────────────────────
 
 
+async def run_job_operation(operation, *args, on_cancel=None, **kwargs):
+    """Wait for blocking job work to settle before cancellation can clean up.
+
+    The shared lock may be held during audio replacement and SQLite writes.
+    Async callers must acquire it in a worker, retaining that worker through
+    cancellation so it cannot publish after the caller removes its files.
+    """
+    work = functools.partial(operation, *args, **kwargs)
+    pending = asyncio.get_running_loop().run_in_executor(
+        None, contextvars.copy_context().run, work,
+    )
+    try:
+        return await asyncio.shield(pending)
+    except (asyncio.CancelledError, GeneratorExit):
+        if on_cancel is not None:
+            on_cancel()
+        while not pending.done():
+            try:
+                await asyncio.shield(pending)
+            except asyncio.CancelledError:
+                continue
+            except Exception:
+                break
+        if not pending.cancelled():
+            pending.exception()
+        raise
+
+
 def get_job(job_id: str) -> Optional[dict]:
     """Look up a job. Checks the in-memory cache first, then falls back to
     `dub_history.job_data` so saved projects still resolve after restart.
     """
+    # Keep lookup + hydration in the same transaction boundary as deletion
+    # and explicit same-id revival. Async callers dispatch this to a worker.
     with _dub_jobs_lock:
         if job_id in _dub_jobs:
             return _dub_jobs[job_id]
-    with db_conn() as conn:
-        row = conn.execute("SELECT job_data FROM dub_history WHERE id=?", (job_id,)).fetchone()
-    if row and row["job_data"]:
-        try:
-            job = json.loads(row["job_data"])
-            with _dub_jobs_lock:
+        if job_id in _withdrawn_jobs:
+            return None
+        with db_conn() as conn:
+            row = conn.execute("SELECT job_data FROM dub_history WHERE id=?", (job_id,)).fetchone()
+        if row and row["job_data"]:
+            try:
+                job = json.loads(row["job_data"])
                 _dub_jobs[job_id] = job
-            return job
-        except json.JSONDecodeError:
-            # job_id arrives from request paths — strip newlines so a crafted
-            # id can't forge extra log lines (py/log-injection).
-            safe_id = str(job_id).replace("\r", "").replace("\n", "")
-            logger.exception("Failed to decode dub_history.job_data for %s", safe_id)
-    return None
+                return job
+            except json.JSONDecodeError:
+                # job_id arrives from request paths — strip newlines so a crafted
+                # id can't forge extra log lines (py/log-injection).
+                safe_id = str(job_id).replace("\r", "").replace("\n", "")
+                logger.exception("Failed to decode dub_history.job_data for %s", safe_id)
+        return None
 
 
 def put_job(job_id: str, job: dict) -> None:
@@ -448,8 +481,8 @@ def merge_and_save_job(
     WAL, but up to sqlite3's 5 s default busy timeout if another writer is
     holding the write lock. The alternative — releasing the lock before the
     write — is the resurrection race this exists to close, so a rare latency
-    blip is the better trade. No locked region here calls another locked
-    function, so the plain (non-reentrant) ``_dub_jobs_lock`` cannot deadlock.
+    blip is the better trade. Async callers dispatch this operation to a
+    worker; the reentrant job lock also covers the nested save.
     """
     with _dub_jobs_lock:
         job = _dub_jobs.get(job_id)
@@ -488,9 +521,10 @@ def purge_jobs(job_ids, *, delete_rows, include_inflight: bool = False) -> None:
         _expire_withdrawn(now, protected=len(targets))
 
 
-def save_job(job_id: str, job: dict, filename: str = "", duration: float = 0.0, content_hash: str = "") -> None:
+def save_job(job_id: str, job: dict, filename: str = "", duration: float = 0.0, content_hash: str = "", *, strict: bool = False) -> None:
     """Persist dub job state to SQLite so it survives restarts. Uses UPSERT
     on `id` so repeated saves in a session keep the latest snapshot.
+    ``strict`` propagates failures when the caller must roll back audio files.
 
     language / language_code / content_hash only update when the incoming
     value is non-empty: the ingest-time insert runs before the target
@@ -507,14 +541,21 @@ def save_job(job_id: str, job: dict, filename: str = "", duration: float = 0.0, 
         # post-ingest save able to resurrect a dub the user deleted mid-render.
         # One choke point closes the class and the ninth caller inherits it.
         if job_id in _withdrawn_jobs:
+            if strict:
+                raise RuntimeError("Cannot publish a withdrawn dub job")
             logger.info(
                 "Dub job %s was deleted while it was still running — not persisting", log_safe(job_id),
             )
             return
-        _persist_job(job_id, job, filename, duration, content_hash)
+        _persist_job(job_id, job, filename, duration, content_hash, strict=strict)
 
 
-def _persist_job(job_id: str, job: dict, filename: str, duration: float, content_hash: str) -> None:
+def save_job_strict(job_id: str, job: dict) -> None:
+    """Persist a publication or raise so its staged artifacts can roll back."""
+    save_job(job_id, job, strict=True)
+
+
+def _persist_job(job_id: str, job: dict, filename: str, duration: float, content_hash: str, *, strict: bool = False) -> None:
     """The actual write. Callers go through :func:`save_job`, which gates it."""
     try:
         segments = job.get("segments") or []
@@ -540,6 +581,8 @@ def _persist_job(job_id: str, job: dict, filename: str, duration: float, content
             )
     except Exception as exc:
         logger.error("Failed to persist dub job %s: %s", log_safe(job_id), log_safe(exc))
+        if strict:
+            raise
         return
     event_bus.emit("dub_history", {"action": "saved", "id": job_id})
 
@@ -1270,6 +1313,18 @@ def parse_vtt_segments(vtt_path: str) -> list[dict]:
     return segments
 
 
+def _discard_cancelled_ingest(job_id: str, job_dir: str) -> None:
+    """Withdraw persisted state before removing the files it references."""
+    def delete_rows():
+        with db_conn() as conn:
+            conn.execute("DELETE FROM dub_history WHERE id=?", (job_id,))
+
+    with _dub_jobs_lock:
+        purge_jobs([job_id], delete_rows=delete_rows)
+        # A database failure leaves the files intact for the retained row.
+        shutil.rmtree(job_dir, ignore_errors=True)
+
+
 async def ingest_pipeline(
     job_id: str,
     job_dir: str,
@@ -1287,8 +1342,8 @@ async def ingest_pipeline(
     input_type = (source.get("input_type") or "video").lower()
     # Declare the run so a "clear history" arriving before this job's first
     # persistence can still withdraw it (#1252 review).
-    begin_ingest(job_id)
     try:
+        await run_job_operation(begin_ingest, job_id)
         if source.get("kind") == "url":
             url = source["url"]
             fetch_subs = bool(source.get("fetch_subs"))
@@ -1490,7 +1545,7 @@ async def ingest_pipeline(
                 "input_type": input_type,
                 "source_lang_override": source.get("source_lang"),
             }
-            if not put_and_save_job(
+            if not await run_job_operation(put_and_save_job,
                 job_id, full_job, filename=filename, duration=dur, content_hash=content_hash,
             ):
                 logger.info("Dub job %s was deleted during ingest — discarding its result", log_safe(job_id))
@@ -1519,7 +1574,7 @@ async def ingest_pipeline(
                 "input_type": input_type,
                 "source_lang_override": source.get("source_lang"),
             }
-            if not put_and_save_job(
+            if not await run_job_operation(put_and_save_job,
                 job_id, partial, filename=filename, duration=dur, content_hash=content_hash,
             ):
                 logger.info("Dub job %s was deleted during ingest — discarding its result", log_safe(job_id))
@@ -1625,7 +1680,7 @@ async def ingest_pipeline(
             # Merge and persist as one step: a delete landing BETWEEN them
             # would remove the row and then have it written straight back, so
             # the dub the user deleted reappears in history (#1252 review).
-            if not merge_and_save_job(
+            if not await run_job_operation(merge_and_save_job,
                 job_id,
                 {
                     "vocals_path": vocals_path,
@@ -1645,10 +1700,7 @@ async def ingest_pipeline(
     except asyncio.CancelledError:
         logger.info("Dub prep cancelled for job %s; killing subprocesses and cleaning up", log_safe(job_id))
         kill_job_procs(job_id)
-        try:
-            shutil.rmtree(job_dir, ignore_errors=True)
-        finally:
-            _dub_jobs.pop(job_id, None)
+        await run_job_operation(_discard_cancelled_ingest, job_id, job_dir)
         yield prep_event("cancelled")
         raise
     except Exception as e:
@@ -1664,6 +1716,6 @@ async def ingest_pipeline(
         # cancellation; never copy it into the project/job directory.
         cookie_file = source.get("cookie_file")
         _delete_cookie_export(cookie_file)
-        end_ingest(job_id)
+        await run_job_operation(end_ingest, job_id)
         with _active_procs_lock:
             _active_procs.pop(job_id, None)

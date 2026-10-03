@@ -6,12 +6,15 @@ configurable models directory (#64): the Settings endpoint upserts
 ``OMNIVOICE_CACHE_DIR`` here, which main.py then maps to
 ``HF_HOME`` / ``HF_HUB_CACHE`` / ``TORCH_HOME``.
 
-Format is dotenv-style ``KEY=value`` lines. Upsert preserves other keys (e.g. a
-persisted ``HF_TOKEN``) and writes the file ``0600`` (it can hold secrets).
+Format is dotenv-style ``KEY=value`` lines, with single-quoted escaping for
+values containing comment, quote, whitespace or backslash characters. This
+matches Electron's durable data-directory format. Upsert preserves other keys
+(e.g. a persisted ``HF_TOKEN``) and writes the file ``0600`` (it can hold secrets).
 """
 from __future__ import annotations
 
 import os
+import re
 from typing import Optional
 
 USER_ENV_PATH = os.path.expanduser("~/.config/omnivoice/env")
@@ -56,7 +59,10 @@ def get_user_env(key: str, path: Optional[str] = None) -> Optional[str]:
     prefix = f"{key}="
     for line in _read_lines(path):
         if line.startswith(prefix):
-            return line[len(prefix):]
+            value = line[len(prefix):]
+            if len(value) >= 2 and value.startswith("'") and value.endswith("'"):
+                return re.sub(r"\\(['\\])", r"\1", value[1:-1])
+            return value
     return None
 
 
@@ -64,6 +70,8 @@ def set_user_env(key: str, value: str, path: Optional[str] = None) -> None:
     """Upsert ``KEY=value``, preserving all other lines."""
     path = path or os.environ.get("OMNIVOICE_ENV_FILE") or USER_ENV_PATH
     prefix = f"{key}="
+    if any(char.isspace() or char in "#'\"\\" for char in value):
+        value = "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
     lines = _read_lines(path)
     replaced = False
     for i, line in enumerate(lines):

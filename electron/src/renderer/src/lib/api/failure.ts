@@ -19,11 +19,17 @@ export function publicFailureFromEvent(
   const localized = generationFailureMessage(event, i18next.t);
   return {
     reason:
-      (event.error_code === 'dub_speech_missing'
-        ? i18next.t('dubIntegrity.missingSpeech')
-        : event.error_code === 'dub_timing_overflow'
-          ? i18next.t('dubIntegrity.timingOverflow')
-          : undefined) ||
+      (event.error_code === 'dub_source_changed'
+        ? i18next.t('dub.source_changed')
+        : event.error_code === 'dub_transcription_source_changed'
+          ? i18next.t('dub.transcription_source_changed')
+          : event.error_code === 'dub_segment_identity_conflict'
+            ? i18next.t('dub.qc_identity_missing')
+            : event.error_code === 'dub_speech_missing'
+              ? i18next.t('dubIntegrity.missingSpeech')
+              : event.error_code === 'dub_timing_overflow'
+                ? i18next.t('dubIntegrity.timingOverflow')
+                : undefined) ||
       localized ||
       text(event.reason) ||
       text(event.detail) ||

@@ -3120,7 +3120,7 @@ async def _load_model_with_timeout():
         ) from exc
 
 
-async def get_model():
+async def get_model(*, allow_load: bool = True):
     global model, _last_used
     _last_used = time.time()
     if model is not None:
@@ -3140,6 +3140,11 @@ async def get_model():
         # + cache drop + ASR teardown that can block for hundreds of ms.
         await asyncio.get_running_loop().run_in_executor(None, make_room_before_generate)
         return model
+
+    # Opportunistic profile samples must never load weights, including when
+    # ASR or idle cleanup evicted them after the caller's residency check.
+    if not allow_load:
+        raise RuntimeError("VoiceStudio model is not loaded")
 
     if running_on_gpu_pool():
         # Same reasoning as _heal_tts_placement below, applied to the COLD

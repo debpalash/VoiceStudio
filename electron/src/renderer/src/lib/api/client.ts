@@ -74,6 +74,15 @@ export function describeError(err: unknown): string {
 function detailToString(detail: unknown): string {
   const localized = languageRejectionMessage(detail, tr) || generationFailureMessage(detail, tr);
   if (localized) return localized;
+  if (detail && typeof detail === 'object' && 'code' in detail) {
+    if (detail.code === 'dub_qc_track_changed') return tr('dub.qc_track_changed');
+    if (
+      detail.code === 'dub_qc_timing_identity_missing' ||
+      detail.code === 'dub_segment_identity_conflict'
+    ) {
+      return tr('dub.qc_identity_missing');
+    }
+  }
   if (
     detail &&
     typeof detail === 'object' &&

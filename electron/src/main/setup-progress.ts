@@ -18,6 +18,10 @@ export interface SetupProgress {
 const ANSI_ESCAPE = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g;
 const SIZE = '(\\d+(?:\\.\\d+)?)\\s*(B|KB|KiB|MB|MiB|GB|GiB)';
 
+function packageKey(name: string): string {
+  return name.trim().toLowerCase().replace(/[-_.]+/g, '-');
+}
+
 export function cleanProcessLine(line: string): string {
   return line.replace(ANSI_ESCAPE, '').trim();
 }
@@ -73,7 +77,7 @@ export class SetupProgressTracker {
 
     const starting = line.match(new RegExp(`^Downloading\\s+(.+?)\\s+\\(${SIZE}\\)`, 'i'));
     if (starting) {
-      const name = starting[1].trim();
+      const name = packageKey(starting[1]);
       this.planned.set(name, parseByteSize(starting[2], starting[3]));
       this.completed.delete(name);
       this.progress.downloadsComplete = false;
@@ -83,7 +87,7 @@ export class SetupProgressTracker {
 
     const finished = line.match(/^Downloaded\s+(.+?)\s*$/i);
     if (finished) {
-      const name = finished[1].trim();
+      const name = packageKey(finished[1]);
       this.completed.add(name);
       const size = this.planned.get(name);
       if (size !== undefined) this.received.set(name, size);
@@ -96,7 +100,9 @@ export class SetupProgressTracker {
     if (bytePair) {
       const received = parseByteSize(bytePair[1], bytePair[2]);
       const total = parseByteSize(bytePair[3], bytePair[4]);
-      const name = [...this.planned.keys()].find((candidate) => line.includes(candidate));
+      // Match complete package identifiers, so torchvision cannot update torch.
+      const identifiers = line.slice(0, bytePair.index).match(/[a-zA-Z0-9][a-zA-Z0-9_.-]*/g) ?? [];
+      const name = identifiers.reverse().map(packageKey).find((candidate) => this.planned.has(candidate));
       if (name) {
         this.planned.set(name, total);
         this.received.set(name, Math.min(received, total));

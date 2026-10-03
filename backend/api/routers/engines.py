@@ -329,7 +329,7 @@ def argos_pack_status(request: ArgosPackRequest):
     dependencies=[Depends(require_admin)],
 )
 async def install_argos_packs(request: ArgosPackRequest):
-    source, targets = _argos_pack_request(request)
+    source, targets = await asyncio.to_thread(_argos_pack_request, request)
     try:
         return await asyncio.to_thread(
             translation_engines.install_argos_packs,

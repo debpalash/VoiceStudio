@@ -185,7 +185,7 @@ async def analyse_video_context(job_id: str):
         job_dir = resolve_within(DUB_DIR, job_id)
     except UnsafePath as exc:
         raise HTTPException(status_code=400, detail="Invalid job id") from exc
-    job = _get_job(job_id)
+    job = await asyncio.to_thread(_get_job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 

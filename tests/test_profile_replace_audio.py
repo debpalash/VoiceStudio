@@ -3,6 +3,7 @@
 import io
 import os
 import wave
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -82,6 +83,26 @@ def test_replace_writes_new_versioned_file_and_removes_old(env):
     assert served.status_code == 200 and served.content == wav_bytes(6000)
     assert events[-1] == ("profiles", {"action": "updated", "id": created["id"]})
     assert client.get("/profiles").json()[0]["audio_url"] == updated["audio_url"]
+
+
+@pytest.mark.parametrize("versioned", [False, True])
+def test_replace_keeps_reference_owned_by_render_until_profile_deletion(env, monkeypatch, versioned):
+    from core import config
+    from api.routers.audiobook import _build_synth
+    client, _profiles, _db, voices, created, _transcribed, _events = env
+    monkeypatch.setattr(config, 'VOICES_DIR', str(voices))
+    if versioned:
+        created = replace(client, created['id'], text='first replacement').json()
+    running = _build_synth(default_voice=created['id'])
+    path = running['resolve'](created['id'])['ref_audio']
+    original = Path(path).read_bytes()
+    response = replace(client, created['id'], text='new reference')
+    assert response.status_code == 200, response.text
+    assert Path(path).read_bytes() == original
+    assert client.delete(f"/profiles/{created['id']}").status_code == 409
+    del running
+    assert client.delete(f"/profiles/{created['id']}").status_code == 200
+    assert not os.path.exists(path)
 
 
 def test_blank_transcript_is_auto_transcribed_not_carried_over(env):

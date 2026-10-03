@@ -23,8 +23,12 @@ export function loadTranscriptions() {
 
 /** Append a completed transcript using the existing 200-entry storage contract. */
 export function addTranscription(entry) {
+  const history = loadTranscriptions();
+  const ids = new Set(history.map((row) => row?.id));
+  let id = Date.now();
+  while (ids.has(id)) id += 1;
   const newEntry = {
-    id: Date.now(),
+    id,
     text: entry.text || '',
     language: entry.language || 'unknown',
     duration_s: entry.duration_s || 0,
@@ -34,7 +38,7 @@ export function addTranscription(entry) {
       ? { refined_text: entry.refined_text }
       : {}),
   };
-  const list = [newEntry, ...loadTranscriptions()].slice(0, 200);
+  const list = [newEntry, ...history].slice(0, 200);
   localStorage.setItem(TRANSCRIPTIONS_KEY, JSON.stringify(list));
   window.dispatchEvent(new CustomEvent(TRANSCRIPTION_EVENT, { detail: newEntry }));
   return newEntry;

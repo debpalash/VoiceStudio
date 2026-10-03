@@ -148,7 +148,7 @@ def test_get_shape(env):
 def test_path_with_spaces_survives_the_full_persistence_chain(env, tmp_path, monkeypatch):
     """#1186 class: the wizard/Settings dirs regularly contain spaces
     ('D:\\Program Data\\OmniVoice\\Model Cache'). The durable env file stores
-    the value as an UNQUOTED dotenv line and main.py re-reads it through
+    the value as a dotenv-compatible line and main.py re-reads it through
     python-dotenv, so a writer/parser quoting regression would truncate at the
     first space and silently redirect every model download while Settings
     still shows the chosen folder. Pin the whole chain byte-for-byte:
@@ -165,6 +165,28 @@ def test_path_with_spaces_survives_the_full_persistence_chain(env, tmp_path, mon
     assert user_env.load_into_environ() is True
     assert os.environ["OMNIVOICE_CACHE_DIR"] == abs_target
     assert s.get_models_dir()["configured"] == abs_target
+
+
+@pytest.mark.parametrize("folder", ["Books #1", "Model's #1", r"Models\fonts #1"])
+def test_models_directory_comment_characters_survive_route_and_startup(env, tmp_path, monkeypatch, folder):
+    from fastapi.testclient import TestClient
+    from api.routers.settings import router
+    from core import user_env
+
+    target = str(tmp_path / folder)
+    body = _body(target)
+    app = fastapi.FastAPI()
+    app.include_router(router)
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        response = client.put("/api/settings/storage/models-dir", json={"authorization": body.authorization})
+        assert response.status_code == 200
+        assert response.json()["configured"] == target
+        assert client.get("/api/settings/storage/models-dir").json()["configured"] == target
+        monkeypatch.setenv("OMNIVOICE_CACHE_DIR", "/stale/launcher/value")
+        assert user_env.load_into_environ() is True
+        assert os.environ["OMNIVOICE_CACHE_DIR"] == target
+        assert client.get("/api/settings/storage/models-dir").json()["configured"] == target
+    assert os.path.isdir(target)
 
 
 def test_windows_drive_paths_with_spaces_round_trip_verbatim(env):

@@ -255,7 +255,7 @@ def test_dub_generate_unknown_job(client):
     # Hitting /dub/generate/{id} with a non-existent id should surface the
     # rewritten 404 copy.
     r = client.post("/dub/generate/__nonexistent__", json={
-        "segments": [],
+        "segments": [{"start": 0, "end": 1, "text": "hello"}],
         "language": "Auto",
         "language_code": "und",
         "num_step": 16,

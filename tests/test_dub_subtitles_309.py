@@ -130,7 +130,7 @@ class TestSyncJobSegments:
         from api.routers.dub_generate import _sync_job_segments
         from schemas.requests import DubRequest
         job = {"segments": [{"id": "a1", "start": 0.0, "end": 1.0, "text": "keep me"}]}
-        _sync_job_segments(job, DubRequest(segments=[]))
+        _sync_job_segments(job, DubRequest.model_construct(segments=[]))
         assert job["segments"][0]["text"] == "keep me"
 
     def test_request_timing_wins(self):

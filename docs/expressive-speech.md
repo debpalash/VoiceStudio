@@ -64,6 +64,10 @@ for your engine below.
 
 Pronunciation dictionary matching uses Unicode case-insensitive literal matches. Each matched term uses its own respelling; distinct terms such as Straße and STRASSE can have different respellings. Longer terms win overlaps, and later equal-length case variants retain precedence.
 
+Pronunciation scopes accept picker names such as Spanish, their bundled ISO IDs such as `es` or `kbt`, and regional forms such as `es-MX`; names resolve to the existing picker IDs. Explicit Chinese script scopes (`cmn-Hans`/`cmn-Hant` and `zho-Hans`/`zho-Hant`) remain distinct when saved or exported. A script-tagged request uses its own script scope before its base `cmn` or `zho` fallback, then the global scope; underscore spellings of these known script tags are equivalent. Unknown suffixes on `cmn`/`zho` remain literal scopes. Other alternate codes absent from the bundled engine map remain literal scopes (for example `spa` is not remapped to `es`). Global scopes still apply with Auto. The old Spanish picker scope `sp` remains compatible with Spanish/`es` requests: it is the only bundled language name with that prefix, and `sp` is not a language code. Reading or exporting existing rows does not rewrite them; saving or importing that scope writes canonical `es`. Other prefixes are not inferred from picker absence, because an absent code can still identify another language. Existing ambiguous truncated codes (for example `po` or `ge`) keep their literal meaning: edit them to the intended name or ISO code rather than relying on an automatic migration.
+
+Dictionary lists, previews, synthesis and exports use creation time, then insertion order for tied timestamps. A bulk import therefore keeps its authored entry order, and exporting/restoring the dictionary preserves duplicate and case-variant precedence.
+
 ### Default engine (VoiceStudio)
 
 **Non-verbal tags.** The bundled model natively tokenizes 13 reaction tags

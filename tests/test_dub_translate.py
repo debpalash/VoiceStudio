@@ -944,3 +944,15 @@ async def test_argos_batch_retry_reports_unsupported_script(tmp_path, monkeypatc
         await batch.retry_batch_job("retry-script")
     assert err.value.status_code == 422
     assert "NLLB" in err.value.detail
+
+
+@pytest.mark.parametrize("text", ["東京都新宿区都庁前駅", "会議は東京駅前で開催します。", "𠮷野家", "々"])
+def test_japanese_kanji_translation_passes_primary_script_guard(text):
+    from api.routers.dub_translate import _script_ratio, _looks_like_target
+    assert _script_ratio(text, "ja") == 1.0
+    assert _looks_like_target(text, "ja")
+
+
+def test_japanese_primary_script_guard_still_rejects_latin_only_output():
+    from api.routers.dub_translate import _looks_like_target
+    assert not _looks_like_target("this is English", "ja")

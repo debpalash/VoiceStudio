@@ -60,7 +60,7 @@ class FitOptions(BaseModel):
     allow_video_retime: Optional[bool] = None    # default True
 
 class DubRequest(BaseModel):
-    segments: List[DubSegment]
+    segments: List[DubSegment] = Field(min_length=1)
     language: str = "Auto"
     language_code: str = "und"  # ISO 639-1 for ffmpeg metadata (e.g. "es", "fr", "de")
     instruct: str = ""

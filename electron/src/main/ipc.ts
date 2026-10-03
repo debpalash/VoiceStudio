@@ -8,7 +8,7 @@ import {
   authorizeModelsDirectory,
 } from './media-authorization';
 import { isTrustedRenderer } from './trusted-renderer';
-import { writeFile } from 'node:fs/promises';
+import { writeExportAtomically } from './atomic-export';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -583,7 +583,7 @@ export function registerIpc(
       bypassCustomProtocolHandlers: true,
     });
     if (!res.ok) throw new Error(`Could not download the audio (HTTP ${res.status})`);
-    await writeFile(picked.filePath, Buffer.from(await res.arrayBuffer()));
+    await writeExportAtomically(picked.filePath, Buffer.from(await res.arrayBuffer()));
     return { canceled: false, path: picked.filePath };
   });
 
@@ -596,7 +596,7 @@ export function registerIpc(
       filters: saveFiltersFor(req.suggestedName),
     });
     if (picked.canceled || !picked.filePath) return { canceled: true };
-    await writeFile(picked.filePath, req.data);
+    await writeExportAtomically(picked.filePath, req.data);
     return { canceled: false, path: picked.filePath };
   });
 

@@ -16,8 +16,8 @@ Endpoints (admin-gated; loopback or authenticated server mode):
     GET    /pronunciation/export       → all entries as JSON (round-trips import)
     POST   /pronunciation/import       → bulk add entries from JSON
 
-Scope: ``language='*'`` is global (applies to every request); a 2-letter code
-(``'en'``, ``'de'``) applies only when the request language matches.
+Scope: ``language='*'`` is global (applies to every request); a canonical language
+ID (``'en'``, ``'de'``, ``'kbt'``) applies only when the request language matches.
 """
 from __future__ import annotations
 
@@ -36,6 +36,7 @@ from services.pronunciation import (
     apply_pronunciation,
     entries_for_language,
     inert_entries_for_language,
+    normalize_language_scope,
 )
 
 logger = logging.getLogger("omnivoice.pronunciation")
@@ -88,13 +89,8 @@ def _validate_type_replacement(etype: str, replacement: str) -> None:
 
 
 def _norm_language(language: Optional[str]) -> str:
-    """Normalize a scope to '*' (global) or a lowercase 2-letter code."""
-    if not language:
-        return _ALL_LANG
-    s = str(language).strip()
-    if not s or s == _ALL_LANG or s.lower() == "auto":
-        return _ALL_LANG
-    return s.lower()[:2]
+    """Normalize a saved scope using the same resolver as synthesis requests."""
+    return normalize_language_scope(language) or _ALL_LANG
 
 
 def _row_to_dict(r) -> dict:
@@ -142,7 +138,7 @@ def list_entries():
     with db_conn() as conn:
         rows = conn.execute(
             "SELECT id, term, replacement, type, language, enabled, created_at "
-            "FROM pronunciation_entries ORDER BY created_at ASC, id ASC"
+            "FROM pronunciation_entries ORDER BY created_at ASC, rowid ASC"
         ).fetchall()
     return [_row_to_dict(r) for r in rows]
 
@@ -250,7 +246,7 @@ def test_substitution(req: PronTestRequest):
     with db_conn() as conn:
         rows = conn.execute(
             "SELECT id, term, replacement, type, language, enabled, created_at "
-            "FROM pronunciation_entries"
+            "FROM pronunciation_entries ORDER BY created_at ASC, rowid ASC"
         ).fetchall()
     substituted = apply_pronunciation(req.text, rows, req.language)
     applied = entries_for_language(rows, req.language)
@@ -275,7 +271,7 @@ def export_entries():
     with db_conn() as conn:
         rows = conn.execute(
             "SELECT term, replacement, type, language, enabled "
-            "FROM pronunciation_entries ORDER BY created_at ASC, id ASC"
+            "FROM pronunciation_entries ORDER BY created_at ASC, rowid ASC"
         ).fetchall()
     return {"entries": [
         {"term": r["term"], "replacement": r["replacement"], "type": r["type"],

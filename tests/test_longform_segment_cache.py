@@ -89,6 +89,41 @@ def test_chapter_key_golden_unchanged_by_segment_layer():
     assert key == "ce2accacf51a70d04da0"
 
 
+@pytest.mark.parametrize("keep_chapter", [True, False])
+@pytest.mark.parametrize("languages", [("English", "French"), (None, "English")])
+def test_language_change_invalidates_chapter_and_segment_audio(tmp_path, keep_chapter, languages):
+    """Identical normalized words can be synthesized in different languages."""
+    import soundfile as sf
+
+    chapter = _chapter("Hello.")
+    calls = []
+
+    def render(language, amplitude):
+        def synth(text, voice_id, speed=None):
+            calls.append((language, text))
+            return torch.full((2400,), amplitude)
+        return _render_chapter_cached(chapter, synth, _SR, "eng", _resolve,
+                                      str(tmp_path), language=language)
+
+    first_language, second_language = languages
+    first, *_ = render(first_language, 0.1)
+    if not keep_chapter:
+        os.remove(first)  # Force the second render to consult its segment layer.
+    second, _dur, cached, stats = render(second_language, 0.2)
+    assert cached is False
+    assert stats == {"total": 1, "cached": 0}
+    assert calls == [(first_language, "Hello."), (second_language, "Hello.")]
+    assert first != second
+    audio, _ = sf.read(second)
+    # Compare the middle of the 2400-sample take: resampling can overshoot
+    # its edges, and the chapter may append silence after it.
+    assert audio[600:1800].mean() == pytest.approx(0.2, abs=0.001)
+    _path, _dur, cached, stats = render(second_language, 0.3)
+    assert cached is True
+    assert stats is None
+    assert len(calls) == 2
+
+
 # ── one-sentence edit → one segment re-renders ──────────────────────────────
 
 def test_one_sentence_edit_rerenders_exactly_one_segment(tmp_path):

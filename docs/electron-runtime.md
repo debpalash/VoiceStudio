@@ -102,6 +102,8 @@ On Linux Wayland systems where Chromium logs `eglCreateImage failed` / `OzoneIma
 
 Secondary workspace sidebars resize from their right edge up to 40% wider than the previous limits (515 / 616 / 750 px by size), while reserving space for the main workspace. Widths are saved per size in the app profile’s local storage and restored on navigation and restart. Double-click the divider to reset the width; focus it and use arrow keys for keyboard resizing. Sidebar sections fill the resized width, and video controls adapt to the player width.
 
+Runtime download byte progress matches complete package identifiers, so concurrent downloads such as `torch` and `torchvision` retain separate received bytes and totals. Package names use the same case-insensitive, hyphen/underscore/dot normalization for planned, active and finished downloads. Unknown package progress does not change another package’s planned size.
+
 ### Windows proxy bootstrap
 
 Electron translates enabled WinINET `ProxyServer` maps (`http=…`, `https=…`,

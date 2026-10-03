@@ -3,6 +3,13 @@
 Voice Design mode lets you describe the desired speaker through speaker attributes (`instruct` parameter) — no reference audio needed. The model
 generates a matching voice on the fly.
 
+Saving a design does not load or download a voice engine. If the engine is
+already loaded, Save also renders its identity sample. Otherwise the design
+is saved with its attributes and the sample is generated when you preview it.
+If the engine unloads before rendering starts, Save keeps the sample pending
+instead of loading the engine again.
+Until that preview exists, synthesis uses the saved attributes directly.
+
 ## Quick Example
 
 ```python

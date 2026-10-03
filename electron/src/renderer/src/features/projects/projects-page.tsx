@@ -50,6 +50,7 @@ import { runRendererTask } from '@/lib/global-error-recovery';
 import { isImeComposing } from '@/lib/ime';
 import { useProfiles } from '@/hooks/use-profiles';
 import { useHistory } from '@/hooks/use-history';
+import { reuseTake as restoreTake } from '@/lib/store/takes';
 import { patchCloneSettings } from '@/lib/store/clone-settings';
 import { selectCloneProfile } from '@/lib/store/reference';
 import type { HistoryItem, Profile } from '@/lib/api/types';
@@ -463,12 +464,7 @@ export function ProjectsPage() {
     await navigate({ to: '/clone' });
   };
   const reuseTake = async (take: HistoryItem) => {
-    patchCloneSettings({
-      text: take.text,
-      language: take.language || 'Auto',
-      selectedProfileId: take.profile_id,
-      instruct: take.instruct || '',
-    });
+    await restoreTake(take);
     await navigate({ to: '/clone' });
   };
   const reveal = async (record: ExportRecord) => {

@@ -4,6 +4,10 @@ The **Audio quality** controls apply to the next generated take. Existing files
 stay unchanged. Normal defaults remain 16-bit WAV, 16 sampling steps and
 broadcast mastering; model-specific limits still apply.
 
+When reusing a Clone take with saved local generation settings, its WAV precision
+and mastering choice are restored with its other controls. Older takes without
+these settings retain the current quality selection.
+
 The compact slider sits below the script in Clone and Design. **More options**
 reveals voice refinement (sampling steps), volume balancing and format guidance.
 The three plain-language choices are **Standard**, **For editing**, and
@@ -51,7 +55,7 @@ the existing provenance watermark setting remain in effect. An engine that
 performs its own mastering continues to skip the app's mastering pre-stage.
 
 The final playback response uses the saved WAV itself. Streaming previews still
-use PCM16; their completed take uses the selected precision. Updated remote
+use PCM16; their completed take uses the selected precision. The Electron renderer schedules a short lead before playback and drains its final PCM buffer before ending the preview. After a pause in chunk delivery, a crossfade applies only while the previous chunk is still playing. Updated remote
 workers honor the requested precision before returning audio. Older workers or
 engines that only deliver PCM16 cannot recover extra detail through a larger export.
 OmniVoice and VoxCPM2 subprocesses negotiate float32 transport; legacy PCM16

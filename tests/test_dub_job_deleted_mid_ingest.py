@@ -69,7 +69,7 @@ def test_the_ingest_pipeline_no_longer_blind_subscripts_the_job():
 
     src = inspect.getsource(dub_pipeline.ingest_pipeline)
     assert "_dub_jobs[job_id].update(" not in src
-    assert "merge_and_save_job(" in src
+    assert "run_job_operation(merge_and_save_job," in src
 
 
 # ── the message ──────────────────────────────────────────────────────────
@@ -216,7 +216,7 @@ def test_the_create_checkpoints_are_atomic_too(monkeypatch):
     import inspect
 
     src = inspect.getsource(dub_pipeline.ingest_pipeline)
-    assert "put_and_save_job(" in src
+    assert "run_job_operation(put_and_save_job," in src
     assert "put_job(job_id," not in src, "the unlocked pair is the race"
 
     saved = []
@@ -244,7 +244,7 @@ def test_the_ingest_pipeline_persists_atomically():
     import inspect
 
     src = inspect.getsource(dub_pipeline.ingest_pipeline)
-    assert "merge_and_save_job(" in src
+    assert "run_job_operation(merge_and_save_job," in src
     # The two-step form is what the race lived in.
     assert "save_job(job_id, get_job(" not in src
 
@@ -435,11 +435,11 @@ def test_the_pipeline_registers_and_releases_its_run():
     import inspect
 
     src = inspect.getsource(dub_pipeline.ingest_pipeline)
-    assert "begin_ingest(job_id)" in src
-    assert "end_ingest(job_id)" in src, "a leaked tombstone would block a later run"
+    assert "run_job_operation(begin_ingest, job_id)" in src
+    assert "run_job_operation(end_ingest, job_id)" in src, "a leaked tombstone would block a later run"
     # Released in `finally`, so a crash or cancel can't leak it.
     finally_block = src[src.rindex("finally:"):]
-    assert "end_ingest(job_id)" in finally_block
+    assert "run_job_operation(end_ingest, job_id)" in finally_block
 
 
 def test_clear_history_sweeps_inflight_jobs():

@@ -9,6 +9,7 @@ import {
   realpath,
   rename,
   rm,
+  rmdir,
   statfs,
   writeFile,
 } from 'node:fs/promises';
@@ -168,7 +169,7 @@ export async function prepareDataRelocation(
       throw new Error('verification_failed');
     }
     try {
-      await rm(plan.target, { recursive: false });
+      await rmdir(plan.target);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }

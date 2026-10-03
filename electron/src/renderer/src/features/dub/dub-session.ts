@@ -1364,7 +1364,7 @@ async function watchGeneration(taskId: string, signal: AbortSignal) {
           tracks: Array.isArray(event.tracks) ? (event.tracks as string[]) : [],
           generatedTiming: dubSession.state.pendingTiming || 'strict_slot',
           segments: dubSession.state.segments.map((segment, index) => ({
-            ...segment,
+            ...invalidateQc(segment),
             sync_ratio:
               typeof syncScores[index] === 'number' ? (syncScores[index] as number) : undefined,
             fit_status:

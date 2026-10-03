@@ -400,3 +400,15 @@ def test_chat_keeps_a_closing_tag_quoted_from_the_source(monkeypatch):
     monkeypatch.setattr(tr, "_llm_model", lambda: "test-model")
     out = tr._chat(client, system="s", user="Use </think> to close the block.")
     assert out == "Usa </think> para cerrar el bloque."
+
+
+@pytest.mark.parametrize("text", ["東京都新宿区都庁前駅", "会議は東京駅前で開催します。", "𠮷野家", "々"])
+def test_japanese_kanji_translation_passes_script_guard(text):
+    from services.translator import _looks_like_target_script, refine_output_ok
+    assert _looks_like_target_script(text, "ja")
+    assert refine_output_ok(text, text, "ja") == (True, None)
+
+
+def test_japanese_script_guard_still_rejects_latin_only_output():
+    from services.translator import _looks_like_target_script
+    assert not _looks_like_target_script("this is English", "ja")

@@ -6,6 +6,8 @@
 > now lives in `electron/src/shared/`. Existing Tauri installs: see the
 > [migration guide](electron-migration.md).
 
+Visual-context analysis owns its extracted frames in one background worker. Completed or failed analysis removes its entire temporary frame directory. If the request is cancelled while native work is running, cleanup stays with that worker and occurs when it finishes, so cancellation neither deletes active frames nor leaves them behind after completion.
+
 The idle workspace includes an original/dubbed demo comparison with compact
 player controls. Sync playheads aligns positions without starting both videos.
 Sample transcript edits are retained per language while the demo is mounted;
@@ -13,7 +15,10 @@ they do not regenerate the prerecorded audio. Edit on the dubbed card imports
 that sample video into the normal upload/transcription and editing workflow.
 
 Open Dub from the cloning sidebar or command search. Upload or drop audio/video, or explicitly submit a video URL;
-preparation completes before transcription starts. The editor shows source text,
+preparation completes before transcription starts.
+On Apple Silicon, forced alignment retries on CPU if its alignment model cannot
+load on MPS. If neither device can load the language aligner, transcription keeps
+the existing segment timings. The editor shows source text,
 editable translated text, and per-segment voice/timing controls. Translation uses
 the selected Settings > Models > Translation provider. Choose a target language,
 translate, review the text, then generate. Completed tracks can be previewed and
@@ -61,7 +66,11 @@ Interrupted preparation/generation offers Resume, which reads the existing task
 and replays its stream; generation is never resubmitted just because the UI reloaded.
 Interrupted transcription offers an explicit Retry against the existing prepared
 media, without uploading or preparing the source again. ASR restarts from the
-beginning because its backend stream is request-scoped, not a replayable task. Batch language runs and advanced QC controls remain in `electron/PARITY.md`.
+beginning because its backend stream is request-scoped, not a replayable task.
+When only some ASR segments have word timings, dubbing retains text from the
+remaining segments by estimating word spans within their segment bounds.
+Existing precise word timings remain unchanged; fully untimed transcripts keep
+the chunk-based fallback. Batch language runs and advanced QC controls remain in `electron/PARITY.md`.
 
 Verification: `node electron/tests/dub-smoke.mjs` against the development renderer.
 The test mocks backend jobs and never uploads or generates user media. Optionally
@@ -93,6 +102,10 @@ URL import runs only after clicking Ingest; it uses the backend's existing yt-dl
 pipeline. Explicit cookies.txt selection is available under URL sign-in options; optional caption downloads are available.
 
 Translation quality uses the existing backend Fast, Autofit and Cinematic modes.
+Japanese script checks accept kana and Han letters, including kanji-heavy place
+names and supplementary Han characters, in both ordinary translation and the
+Autofit/Cinematic quality pass. Latin-only responses still fail the Japanese
+script check.
 The choice persists in the working draft and saved project (`translateQuality`),
 including legacy project imports. New media preserves the user's quality choice.
 If the backend reports that no LLM is configured, the UI selects Fast and shows
@@ -115,7 +128,27 @@ Export options expand inside the existing sidebar. Users can select included vid
 tracks and the default track, background mixing, burned subtitles, dual layout and
 karaoke (disabled with dual layout). Audio supports WAV or MP3 with bitrate choice;
 SRT/VTT/ASS sidecars and per-language stem/segment ZIPs use the existing backend.
-Each download is explicit and targets the selected language. Export errors retain
+Each download is explicit and targets the selected language.
+Advanced QC compares recognized audio with the translation text for the selected
+track language, including when another language was generated more recently.
+Newly generated tracks save source timing by stable segment identity, so QC
+matches the correct line even after another language reorders the job. Smart Fit
+cues and stretch-video plans are applied for the selected track when available.
+Older source snapshots without segment identities cannot prove line ownership
+for multiple lines. QC stops before recognition with a regeneration request when
+those times are ambiguous, instead of scoring against another track's windows.
+Complete Smart Fit cues with matching unique IDs still establish the final
+timeline; a single line with one matching selected-track text ID also establishes
+ownership. Jobs with no saved source snapshot retain their existing fallback.
+Regenerate an ambiguous track to save identity-aware source timing. Regeneration
+fills missing segment IDs from the validated current-render manifest when the
+request omits IDs, preserving explicit request IDs and existing stable IDs.
+A fallback ID is never assigned when it would collide with a retained or explicit
+ID. Mixed-ID requests that remain ambiguous need explicit unique IDs; QC stops
+before recognition for partial or duplicate source identities. Synchronization
+rejects duplicate language-text keys before loading a backend or starting regeneration, preserving the previous WAV and saved metadata. Each existing segment is matched at most once, so a partial-ID request can use a current-render fallback ID without reusing another line’s source text or speaker.
+QC annotations
+preserve saved source times, text, and track settings. Export errors retain
 all choices for retry. Native save filters match the encoded file format.
 Browser fixtures verify MP3/SRT downloads, query options and failed-export retry;
 unit tests cover video/package parameters. Real rendered exports, batch presets
@@ -377,3 +410,49 @@ audio if a later import fails validation or runs out of space.
 
 Cancelling an upload waits for its copy worker to stop before closing the input
 and clearing the reserved job, so the same upload can be retried safely.
+
+Advanced QC keeps the selected track's text and timing fixed while recognition
+runs. If the track, transcript, timing, or audio changes during that pass, QC
+asks you to run it again instead of publishing stale scores. Deleting the job
+during QC also discards the result and keeps it out of history.
+
+Generation revalidates its segment text and identity snapshot after synthesis, before publishing fingerprints or replacing the previous track. An identity collision caused by a concurrent edit is reported through the task stream; the previous track and published metadata remain available. The source snapshot is checked again after asynchronous fitting and before replacing audio: subtitle imports made during generation or assembly survive, and the user can regenerate from the corrected subtitles. Fresh segment WAVs and the assembled track stay in a private staging directory until this check passes. Rejection or cancellation before publication removes the staging files and preserves the reusable segment cache. Publication backs up existing files and rolls back ordinary installation failures; it does not promise a multi-file transaction across power loss. Fingerprints and the segment manifest publish only with a completed track. Empty generation requests are rejected before loading a voice engine.
+
+QC annotations arriving during generation do not count as source edits: a completed
+render can still publish. Publishing replacement audio clears QC annotations measured
+against the old audio; a failed publication retains the old track and its QC. Source text, timing, identity,
+voice bindings, and imported-cue changes still invalidate the admitted snapshot.
+
+Cancellation before publication or a failed render preserves the previous
+committed track and its segment cache. Newly synthesized, unpublished segments are discarded and must be
+synthesized again on retry. Resume reconnects to an existing running task; it does
+not recover a cancelled task's unpublished speech. Reusing that speech would require
+a separate resume cache with validated engine and reference revisions, rather than
+replacing the committed cache with partial output.
+
+Track publication runs in a worker thread so file backups and SQLite waits do
+not occupy the async event loop. The shared job retains its source fields while
+completed metadata is applied, including for readers holding an existing job
+reference. Source validation, file installation and the
+strict database save share the job lock; a failed save rolls back the audio
+replacement. Once that publication transaction has started, cancellation
+waits for its commit or rollback before removing staging files. A completed
+commit stays published and reports a completed task even if cancellation arrives
+during it. Async reads, export/QC updates and ingest persistence wait for the
+shared lock in workers, so they cannot prevent the event loop from handling
+cancellation while publication is waiting on disk. Deleting a job
+serializes with publication and cannot leave a resurrected history row. Cold
+reads hold the same lock through SQLite hydration, including when a deleted
+ID is explicitly revived for a new ingest. Cancelling
+an ingest waits for an in-flight save, then withdraws its history row before
+removing files.
+
+Subtitle imports re-read the current job when applying uploaded cues. Imports,
+caption cleanup, transcription source updates, and QC share the publication
+lock, so an edit arriving during publication is applied afterward. Transcription
+keeps new source fields private until completion and refuses to publish into a
+deleted or replaced job. If source text, timing or speaker assignments change
+during transcription, the result is rejected with a localized message and the
+newer edits remain intact. Queued transcription updates are cancelled before
+admission; an already-admitted source commit settles before cancellation
+returns. Concurrently completed dub tracks are preserved.

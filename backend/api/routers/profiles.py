@@ -7,7 +7,6 @@ import uuid
 import weakref
 import time
 import shutil
-import threading
 from typing import Optional
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException
 from fastapi.responses import FileResponse, Response
@@ -21,6 +20,7 @@ from core.personalities import get_personalities
 from omnivoice.utils.voice_design import heal_design_instruct, sanitize_instruct
 from core.path_security import UnsafePath, resolve_within
 from core.profile_images import MAX_IMAGE_BYTES, normalize_portrait
+from core.voice_reference_snapshots import voice_file_lock as _voice_file_lock, references_in_use
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 router = APIRouter()
@@ -187,41 +187,35 @@ async def create_profile(
             ref_text = await _auto_transcribe_reference(audio_path)
         used_seed = seed
     else:
-        # Saving a design profile is a pure persistence operation — it must not
-        # depend on a loaded TTS model (issue #476: on a fresh model-less Docker
-        # image the render forced a full model load + inference that 503'd, so
-        # the save failed). We try the deterministic identity sample opportunist-
-        # ically through the one shared TTS path (archetypes' renderer, never a
-        # second inference code path); if the engine isn't ready it's rendered
-        # lazily on first preview/use. The row carries vd_states + instruct, so
-        # the voice is fully usable without the sample (synthesis falls back to
-        # instruct-only conditioning — see generation.py's design path).
+        # Saving must not start a cold model load or download (#2583).
+        # Preserve the identity sample for an already resident engine; otherwise
+        # use the existing pending-sample path, rendered on explicit preview.
         from pathlib import Path
         from api.routers.archetypes import _render_archetype_wav
-        audio_filename = f"{profile_id}.wav"
-        audio_path = os.path.join(VOICES_DIR, audio_filename)
-        try:
-            await _render_archetype_wav(
-                {
-                    "language": language,
-                    "sample_script": ref_text,  # optional custom sample line
-                    "instruct": instruct,
-                },
-                Path(audio_path),
-            )
-        except Exception:
-            # Engine unavailable / OOM / inference failure — defer the sample.
-            # Store the row with no ref_audio_path; the identity sample is
-            # rendered on first preview or use. Never let this block the save.
-            import logging
-            logging.getLogger("omnivoice.profiles").info(
-                "Design profile %s saved with sample pending — "
-                "voice engine not ready; will render on first use", profile_id,
-            )
-            if os.path.exists(audio_path):  # partial/blank render: don't keep it
-                with __import__("contextlib").suppress(OSError):
-                    os.remove(audio_path)
-            audio_filename = None
+        from services.model_manager import get_model_status
+        audio_path = os.path.join(VOICES_DIR, f"{profile_id}.wav")
+        audio_filename = None
+        if get_model_status()["loaded"]:
+            try:
+                await _render_archetype_wav(
+                    {
+                        "language": language,
+                        "sample_script": ref_text,  # optional custom sample line
+                        "instruct": instruct,
+                    },
+                    Path(audio_path),
+                    allow_model_load=False,
+                )
+                audio_filename = f"{profile_id}.wav"
+            except Exception:
+                # OOM / inference failure — defer the sample, clearing partials.
+                logging.getLogger("omnivoice.profiles").info(
+                    "Design profile %s saved with sample pending — "
+                    "voice engine not ready; will render on preview", profile_id,
+                )
+                if os.path.exists(audio_path):
+                    with contextlib.suppress(OSError):
+                        os.remove(audio_path)
         used_seed = seed if seed is not None else _DESIGN_SEED
 
     try:
@@ -622,8 +616,11 @@ async def replace_profile_audio(
                 with contextlib.suppress(OSError):
                     os.remove(leftover)
             raise
-        for column in ("ref_audio_path", "locked_audio_path", "consent_audio_path"):
-            _remove_voice_file(row[column], keep=new_filename)
+        with _voice_file_lock:
+            for column in ("ref_audio_path", "locked_audio_path", "consent_audio_path"):
+                path = _voices_path(row[column]) if row[column] else None
+                if path and not references_in_use([path]):
+                    _remove_voice_file(row[column], keep=new_filename)
     event_bus.emit("profiles", {"action": "updated", "id": profile_id})
     return _profile_record(updated)
 
@@ -770,10 +767,6 @@ async def _materialize_design_sample(profile_id: str, row) -> Optional[str]:
         )
     return audio_filename
 
-# Serializes the lock/unlock/consent file swaps so one request's cleanup can
-# never unlink audio another request just installed.
-_voice_file_lock = threading.RLock()
-
 
 def _install_staged(staged: str, target: str):
     """Move ``staged`` onto ``target``, keeping any previous ``target`` as a
@@ -834,7 +827,8 @@ async def lock_profile(
         if not src_path.is_file():
             raise HTTPException(status_code=404, detail="Audio file not found on disk")
 
-        locked_filename = f"{profile_id}_locked.wav"
+        # A new take must change reference identity even if text and seed match.
+        locked_filename = f"{profile_id}_locked_{uuid.uuid4().hex}.wav"
         locked_path = _voices_path(locked_filename)
         if locked_path is None:
             raise HTTPException(status_code=400, detail="Invalid profile id")
@@ -862,6 +856,9 @@ async def lock_profile(
             with contextlib.suppress(OSError):
                 os.remove(staged_path)
         finalize()
+        # Existing renders may have cached the previous filename before their
+        # engine reads it. Keep immutable locked versions until profile deletion;
+        # a database reference check cannot identify those in-flight readers.
     event_bus.emit("profiles", {"action": "locked", "id": profile_id})
     return {"locked": True, "profile_id": profile_id, "locked_audio_path": locked_filename}
 
@@ -883,12 +880,12 @@ async def unlock_profile(profile_id: str):
                 "UPDATE voice_profiles SET locked_audio_path='', seed=NULL, is_locked=0 WHERE id=?",
                 (profile_id,)
             )
-        # Unlink only after the row change committed (a rolled-back unlock must
-        # keep its locked take). Holding the lock stops a concurrent re-lock
-        # from installing a take that this unlink would then remove.
-        if locked_path:
-            with contextlib.suppress(OSError):
-                os.remove(locked_path)
+        # Unlink only after the row change committed. An admitted render may
+        # still hold this immutable version; profile deletion reclaims it once
+        # all readers finish. Shared references (including this profile's other
+        # audio fields) must also remain usable after unlocking.
+        if locked_path and not references_in_use([locked_path]):
+            _remove_voice_file(profile["locked_audio_path"], keep="")
     event_bus.emit("profiles", {"action": "unlocked", "id": profile_id})
     return {"unlocked": True, "profile_id": profile_id}
 
@@ -1018,6 +1015,11 @@ def revoke_consent(profile_id: str):
 
 @router.delete("/profiles/{profile_id}")
 def delete_profile(profile_id: str):
+    with _voice_file_lock:
+        return _delete_profile(profile_id)
+
+
+def _delete_profile(profile_id: str):
     paths = []
     with db_conn() as conn:
         row = conn.execute("SELECT ref_audio_path, locked_audio_path, consent_audio_path FROM voice_profiles WHERE id=?", (profile_id,)).fetchone()
@@ -1027,15 +1029,53 @@ def delete_profile(profile_id: str):
                     path = _voices_path(row[col])
                     if path:
                         paths.append(path)
+        if row:
+            # Relocking/replacement retains versions for admitted renders.
+            # Reclaim this profile's generated reference/locked/consent names,
+            # including a first upload with no filename extension.
+            versions = re.compile(re.escape(profile_id) +
+                r"(?:_locked(?:_[0-9a-f]{32})?\.wav|_consent\.[^./\\]+|"
+                r"(?:-[0-9a-f]{8})?(?:\.[^./\\]+)?)")
+            if os.path.isdir(VOICES_DIR):
+                for filename in os.listdir(VOICES_DIR):
+                    if versions.fullmatch(filename):
+                        path = _voices_path(filename)
+                        if path:
+                            paths.append(path)
         portrait_path = _voices_path(f"{profile_id}.portrait.jpg")
         if portrait_path and os.path.isfile(portrait_path):
             paths.append(portrait_path)
+        # A live longform resolver may still read an earlier immutable version.
+        # Reject deletion before changing either the record or its assets. Files
+        # shared by another profile will not be removed and need no such guard.
+        exclusive_paths = []
+        for path in dict.fromkeys(paths):
+            filename = os.path.basename(path)
+            shared = conn.execute(
+                "SELECT 1 FROM voice_profiles WHERE id<>? AND "
+                "(ref_audio_path=? OR locked_audio_path=? OR consent_audio_path=?) LIMIT 1",
+                (profile_id, filename, filename, filename),
+            ).fetchone()
+            if not shared:
+                exclusive_paths.append(path)
+        if references_in_use(exclusive_paths):
+            raise HTTPException(409, "Wait for renders using this voice to finish before deleting the profile")
         # Commit the database change before removing assets: a failed write or
         # commit must leave the rolled-back profile's files usable.
         conn.execute("UPDATE generation_history SET profile_id = NULL WHERE profile_id=?", (profile_id,))
         conn.execute("DELETE FROM voice_profiles WHERE id=?", (profile_id,))
     failed_assets = []
-    for path in dict.fromkeys(paths):
+    # A shared path excluded from the guarded decision must not become a new
+    # deletion candidate if the other profile changes after our commit.
+    for path in exclusive_paths:
+        filename = os.path.basename(path)
+        with db_conn() as conn:
+            shared = conn.execute(
+                "SELECT 1 FROM voice_profiles WHERE ref_audio_path=? OR locked_audio_path=? "
+                "OR consent_audio_path=? LIMIT 1", (filename, filename, filename),
+            ).fetchone()
+        if shared:
+            continue
         try:
             os.remove(path)
         except FileNotFoundError:

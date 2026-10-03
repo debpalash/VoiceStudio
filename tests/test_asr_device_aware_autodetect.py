@@ -140,6 +140,32 @@ def test_alignment_retries_on_cpu_before_giving_up_on_timing(monkeypatch):
     assert out == aligned  # timing preserved
 
 
+def test_alignment_load_failure_on_mps_retries_the_cpu_model(monkeypatch):
+    """A failed device transfer during loading must not skip the CPU retry."""
+    import sys
+    import types
+    loaded = []
+    segments = [{"text": "hi", "start": 0.0, "end": 1.0}]
+    aligned = [dict(segments[0], words=[{"word": "hi", "start": 0.1, "end": 0.8}])]
+
+    def load_align_model(language_code, device):
+        loaded.append(device)
+        if device == "mps":
+            raise RuntimeError("MPS device transfer failed")
+        return "cpu model", "metadata"
+
+    monkeypatch.setattr(ab, "_mps_available", lambda: True)
+    monkeypatch.setitem(sys.modules, "whisperx", types.SimpleNamespace(
+        load_align_model=load_align_model,
+        align=lambda *a, **kw: {"segments": aligned},
+    ))
+    assert ab.forced_align(segments, object(), "en") == aligned
+    assert loaded == ["mps", "cpu"]
+    # The failed MPS load is cached; another call still reaches cached CPU.
+    assert ab.forced_align(segments, object(), "en") == aligned
+    assert loaded == ["mps", "cpu"]
+
+
 def test_a_language_with_no_aligner_keeps_its_native_timestamps(monkeypatch):
     """~20 languages have wav2vec2 aligners. The other 626 must still transcribe."""
     segments = [{"text": "x", "start": 0.0, "end": 1.0, "words": [{"word": "x", "start": 0.0}]}]

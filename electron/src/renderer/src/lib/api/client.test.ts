@@ -28,6 +28,18 @@ afterEach(() => {
 });
 
 describe('errorFromResponse', () => {
+  it.each([
+    ['dub_qc_track_changed', 'dub.qc_track_changed'],
+    ['dub_qc_timing_identity_missing', 'dub.qc_identity_missing'],
+    ['dub_segment_identity_conflict', 'dub.qc_identity_missing'],
+  ])('localizes %s recovery guidance and retains diagnostics', async (code, key) => {
+    const translate = vi.spyOn(i18next, 't').mockReturnValue('Localized recovery guidance');
+    const detail = { code, message: 'Raw backend diagnostic' };
+    const err = await errorFromResponse(new Response(JSON.stringify({ detail }), { status: 409 }));
+    expect(err.detail).toBe('Localized recovery guidance');
+    expect(translate).toHaveBeenCalledWith(key);
+    expect(err.payload?.detail).toEqual(detail);
+  });
   it('localizes Argos runtime errors and retains diagnostics', async () => {
     const translate = vi.spyOn(i18next, 't').mockReturnValue('Localized recovery guidance');
     const detail = { code: 'argos_runtime_unavailable', message: 'Raw native diagnostic' };

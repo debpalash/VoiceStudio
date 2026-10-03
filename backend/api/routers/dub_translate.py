@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from schemas.requests import AgentFitRequest, TranslateRequest
 from services.model_manager import _cpu_pool, _gpu_pool
 from services.hf_revisions import revision_for
-from services.translator import cinematic_available, cinematic_refine_many, _cinematic_budget
+from services.translator import cinematic_available, cinematic_refine_many, _cinematic_budget, _is_japanese_han
 from api.routers.dub_core import _get_job, _save_job
 
 router = APIRouter()
@@ -178,7 +178,8 @@ def _script_ratio(text: str, code: str) -> float:
     letters = [c for c in text if c.isalpha()]
     if not letters:
         return 1.0
-    inside = sum(1 for c in letters if lo <= ord(c) <= hi)
+    inside = sum(1 for c in letters if lo <= ord(c) <= hi
+                 or (code == "ja" and _is_japanese_han(ord(c))))
     return inside / len(letters)
 
 
@@ -341,8 +342,11 @@ def _resolve_translation_context(req, client, model_name: str, timeout: float,
     ctx = {**ctx, "fingerprint": fp}
     if job is not None:
         try:
-            job.setdefault("translation_context", {})[req.target_lang] = ctx
-            _save_job(req.job_id, job)
+            from services.dub_pipeline import _dub_jobs_lock
+            with _dub_jobs_lock:
+                if _get_job(req.job_id) is job:
+                    job.setdefault("translation_context", {})[req.target_lang] = ctx
+                    _save_job(req.job_id, job)
         except Exception:  # noqa: BLE001 — persistence is best-effort
             logger.debug("translation context persist skipped", exc_info=True)
     return ctx
@@ -391,7 +395,7 @@ async def dub_translate(req: TranslateRequest):
         lang_code = TRANSLATE_CODES.get(req.target_lang, req.target_lang)
         api_key = os.environ.get("TRANSLATE_API_KEY", "")
         loop = asyncio.get_running_loop()
-        src_lang = _resolve_source_lang(req)
+        src_lang = await asyncio.to_thread(_resolve_source_lang, req)
 
         # Offline NLLB Transformer Translation
         if provider == "nllb":
@@ -1046,7 +1050,7 @@ async def _apply_condense_pass(rows, req, loop) -> None:
 
         calib = None
         if getattr(req, "job_id", None):
-            job = _get_job(req.job_id)
+            job = await asyncio.to_thread(_get_job, req.job_id)
             if job:
                 calib = calibration_from_job(job, req.target_lang)
         source_by_id = {str(s.id): s.text for s in req.segments}
@@ -1085,7 +1089,7 @@ async def _apply_condense_pass(rows, req, loop) -> None:
 
 async def _finalize_duration_plan(rows, req, loop) -> None:
     """Stamp plan verdicts on the FINAL row texts, then (opt-in) condense."""
-    _stamp_duration_plan(rows, req)
+    await asyncio.to_thread(_stamp_duration_plan, rows, req)
     if getattr(req, "condense", False):
         await _apply_condense_pass(rows, req, loop)
 

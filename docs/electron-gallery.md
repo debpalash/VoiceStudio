@@ -34,3 +34,5 @@ Separate real smokes cover upload, trim, persona import/export, and profile
 materialization without retaining disposable profiles. The packaged Ubuntu app
 also completed profile creation, native `.ovsvoice` Save As, bundle inspection
 and cleanup against a reused installed runtime without downloading anything.
+
+Inline trimming decodes the source directly with Web Audio at 22,050 Hz. It does not wait for a separate media-element duration probe; files still need to be supported by the desktop audio decoder.

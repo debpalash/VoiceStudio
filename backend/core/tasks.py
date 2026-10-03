@@ -2,6 +2,7 @@ import asyncio
 import time
 import json
 import logging
+from contextlib import aclosing
 
 from core import job_store
 from core import failure
@@ -29,6 +30,19 @@ def _stream_failure(update):
     if isinstance(detail, dict):
         detail = detail.get("message") or detail.get("reason")
     return detail if isinstance(detail, str) and detail else "Task failed"
+
+
+def _stream_committed(update):
+    """A completed durable commit wins over a cancellation that arrived late."""
+    if isinstance(update, bytes):
+        update = update.decode("utf-8", errors="replace")
+    if not isinstance(update, str):
+        return False
+    try:
+        payload = json.loads("\n".join(line[5:].strip() for line in update.splitlines() if line.startswith("data:")))
+    except (ValueError, TypeError):
+        return False
+    return isinstance(payload, dict) and payload.get("type") == "done" and payload.get("committed") is True
 
 
 class TaskManager:
@@ -138,24 +152,24 @@ class TaskManager:
                 import inspect
                 res = func(*args, **kwargs)
                 if inspect.isasyncgen(res):
-                    async for update in res:
-                        if t.get("cancelled"):
-                            await self._push_event(task_id, f"data: {json.dumps({'type': 'cancelled'})}\n\n")
-                            t["status"] = "cancelled"
-                            try: job_store.mark_cancelled(task_id)
-                            except Exception: logger.exception("job_store.mark_cancelled failed")
-                            break
-                        await self._push_event(task_id, update)
-                        stream_error = _stream_failure(update)
-                        if stream_error is not None:
-                            t["status"] = "failed"
-                            t["error"] = stream_error
-                            try:
-                                job_store.mark_failed(task_id, stream_error)
-                            except Exception:
-                                logger.exception("job_store.mark_failed failed")
-                            await res.aclose()
-                            break
+                    async with aclosing(res):
+                        async for update in res:
+                            if t.get("cancelled") and not _stream_committed(update):
+                                await self._push_event(task_id, f"data: {json.dumps({'type': 'cancelled'})}\n\n")
+                                t["status"] = "cancelled"
+                                try: job_store.mark_cancelled(task_id)
+                                except Exception: logger.exception("job_store.mark_cancelled failed")
+                                break
+                            await self._push_event(task_id, update)
+                            stream_error = _stream_failure(update)
+                            if stream_error is not None:
+                                t["status"] = "failed"
+                                t["error"] = stream_error
+                                try:
+                                    job_store.mark_failed(task_id, stream_error)
+                                except Exception:
+                                    logger.exception("job_store.mark_failed failed")
+                                break
                 elif inspect.iscoroutine(res):
                     await res
                 if t["status"] not in {"cancelled", "failed"}:
