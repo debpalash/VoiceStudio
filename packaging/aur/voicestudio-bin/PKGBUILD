@@ -1,0 +1,46 @@
+# Maintainer: debpalash <https://github.com/debpalash>
+pkgname=voicestudio-bin
+_name=VoiceStudio
+pkgver=0.5.6
+pkgrel=1
+pkgdesc='Local, offline voice cloning, voice design, video dubbing and dictation (Electron desktop app)'
+arch=('x86_64')
+url='https://github.com/debpalash/VoiceStudio'
+license=('AGPL-3.0-only')
+depends=('gtk3' 'libnotify' 'nss' 'libxss' 'libxtst' 'xdg-utils' 'at-spi2-core' 'util-linux-libs' 'libsecret')
+optdepends=('libappindicator-gtk3: tray icon'
+            'ffmpeg: video dubbing and audio conversion'
+            'nvidia-utils: CUDA acceleration on NVIDIA GPUs')
+provides=('voicestudio')
+conflicts=('voicestudio')
+# The app ships its own Electron runtime and fetches its Python runtime and
+# models on first launch; stripping would only damage the bundled binaries.
+options=('!strip' '!debug')
+source=("$_name-Electron-$pkgver-linux-x64.deb::$url/releases/download/v$pkgver/$_name-Electron-$pkgver-linux-x64.deb"
+        'voicestudio.sh')
+noextract=("$_name-Electron-$pkgver-linux-x64.deb")
+sha256sums=('1e25b412cb78f46e86baffb12eb73018592b6c2085609628d6e82e918fd05f9b'
+            '05f5698024a70bd2dcf97f5e621e8a68ed9cf8d922d8b538277f3178c7ab3f7c')
+
+prepare() {
+  mkdir -p deb
+  bsdtar -xf "$_name-Electron-$pkgver-linux-x64.deb" -C deb data.tar.xz
+  bsdtar -xf deb/data.tar.xz -C deb
+}
+
+package() {
+  cd deb
+  install -d "$pkgdir/opt"
+  cp -a "opt/$_name" "$pkgdir/opt/$_name"
+  # Setuid sandbox helper, same mode the upstream .deb uses.
+  chmod 4755 "$pkgdir/opt/$_name/chrome-sandbox"
+
+  install -Dm755 "$srcdir/voicestudio.sh" "$pkgdir/usr/bin/voicestudio"
+
+  install -Dm644 usr/share/applications/VoiceStudio.desktop \
+    "$pkgdir/usr/share/applications/voicestudio.desktop"
+  sed -i 's|^Exec=.*|Exec=voicestudio %U|' "$pkgdir/usr/share/applications/voicestudio.desktop"
+
+  cp -a usr/share/icons "$pkgdir/usr/share/icons"
+  install -Dm644 "opt/$_name/resources/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

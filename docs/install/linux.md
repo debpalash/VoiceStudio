@@ -27,6 +27,16 @@ existing install keeps working untouched. Source installs (`bun run setup:api`)
 follow the lockfile and still fetch the CUDA build; use the packaged app on a
 CPU-only machine.
 
+### Arch Linux (AUR)
+
+```bash
+yay -S voicestudio-bin   # or paru -S voicestudio-bin
+```
+
+`voicestudio-bin` repackages the release `.deb` into `/opt/VoiceStudio` and
+launches with `VOICESTUDIO_DISABLE_UPDATER=1`, so `pacman` handles updates
+instead of the in-app updater. Recipe: `packaging/aur/voicestudio-bin/`.
+
 ## ChromeOS, iPad and other devices
 
 There is no native ChromeOS or iPadOS app, and VoiceStudio does not run

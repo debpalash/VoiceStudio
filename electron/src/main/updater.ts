@@ -166,6 +166,11 @@ function writeChannel(channel: UpdateChannel): void {
   renameSync(temporary, path);
 }
 
+/** Packaged builds update in-app unless a package manager owns the install. */
+function updatesSupported(): boolean {
+  return app.isPackaged && process.env.VOICESTUDIO_DISABLE_UPDATER !== '1';
+}
+
 export class DesktopUpdater {
   private listeners = new Set<(state: UpdateState) => void>();
   private state: UpdateState;
@@ -173,7 +178,7 @@ export class DesktopUpdater {
   private downloadInFlight: Promise<UpdateState> | null = null;
 
   constructor(private readonly fetcher: typeof fetch = fetch) {
-    const supported = app.isPackaged;
+    const supported = updatesSupported();
     this.state = {
       status: supported ? 'idle' : 'unsupported',
       currentVersion: app.getVersion(),
@@ -269,7 +274,7 @@ export class DesktopUpdater {
   }
 
   async check(quiet = false): Promise<UpdateState> {
-    if (!app.isPackaged || ['downloading', 'downloaded'].includes(this.state.status))
+    if (!updatesSupported() || ['downloading', 'downloaded'].includes(this.state.status))
       return this.snapshot();
     if (this.checkInFlight) return this.checkInFlight;
     const operation = (async () => {
@@ -297,7 +302,7 @@ export class DesktopUpdater {
   }
 
   async download(): Promise<UpdateState> {
-    if (!app.isPackaged || this.state.status !== 'available') return this.snapshot();
+    if (!updatesSupported() || this.state.status !== 'available') return this.snapshot();
     if (this.downloadInFlight) return this.downloadInFlight;
     const operation = (async () => {
       this.patch({
@@ -340,7 +345,7 @@ export class DesktopUpdater {
   }
 
   install(): void {
-    if (!app.isPackaged || this.state.status !== 'downloaded') return;
+    if (!updatesSupported() || this.state.status !== 'downloaded') return;
     autoUpdater.quitAndInstall(false, true);
   }
 
@@ -348,19 +353,19 @@ export class DesktopUpdater {
     if (channel !== 'stable' && channel !== 'preview') throw new Error('Invalid update channel');
     writeChannel(channel);
     this.state = {
-      status: app.isPackaged ? 'idle' : 'unsupported',
+      status: updatesSupported() ? 'idle' : 'unsupported',
       currentVersion: app.getVersion(),
       channel,
       progress: 0,
     };
     this.configureFeed();
     this.emit();
-    if (app.isPackaged) await this.check();
+    if (updatesSupported()) await this.check();
     return this.snapshot();
   }
 
   private configureFeed(feed: UpdateChannel = this.state.channel): void {
-    if (!app.isPackaged) return;
+    if (!updatesSupported()) return;
     autoUpdater.allowPrerelease = this.state.channel === 'preview';
     const feedChannel = feedChannelName(feed);
     autoUpdater.channel = feedChannel;
