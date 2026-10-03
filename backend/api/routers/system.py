@@ -45,6 +45,10 @@ try:
     _is_xpu = hasattr(torch, "xpu") and torch.xpu.is_available()
 except Exception:
     _is_xpu = False
+try:
+    _is_npu = hasattr(torch, "npu") and torch.npu.is_available()
+except Exception:
+    _is_npu = False
 # Prime psutil's internal CPU counter so the first non-blocking call returns useful data
 psutil.cpu_percent(interval=None)
 
@@ -147,20 +151,37 @@ def _detect_os_gpu_name() -> str:
     return ""
 
 
+def _active_accelerator():
+    """(module, name) of the accelerator this host runs on, or (None, "").
+
+    One resolution shared by device detection, ``/sysinfo`` and the post-flush
+    snapshot, so a host's backend is decided in a single place. CUDA, Intel XPU
+    and Ascend NPU all expose ``get_device_name`` / ``get_device_properties`` /
+    ``memory_allocated`` / ``memory_reserved`` through the same shape, so the
+    same code covers them. MPS is unified-memory and keeps its own branch (it
+    reports no device-side total).
+    """
+    if _is_cuda:
+        return torch.cuda, "cuda"
+    if _is_xpu:
+        return torch.xpu, "xpu"
+    if _is_npu:
+        return torch.npu, "npu"
+    return None, ""
+
+
 def _detect_gpu() -> tuple[str, float]:
     """(gpu_name, vram_total_gb) — static for the process lifetime.
 
     MPS has unified memory, so there's no separate VRAM figure to report;
     the name alone tells a bug-report reader what hardware this is.
     """
+    backend, _ = _active_accelerator()
     try:
-        if _is_cuda:
-            props = torch.cuda.get_device_properties(0)
-            return torch.cuda.get_device_name(0), round(props.total_memory / (1024 ** 3), 1)
-        if _is_xpu:
-            props = torch.xpu.get_device_properties(0)
+        if backend is not None:
+            props = backend.get_device_properties(0)
             total_memory = float(getattr(props, "total_memory", 0.0))
-            return torch.xpu.get_device_name(0), round(total_memory / (1024 ** 3), 1)
+            return backend.get_device_name(0), round(total_memory / (1024 ** 3), 1)
         if _is_mac:
             return "Apple Silicon (MPS)", 0.0
     except Exception:
@@ -807,6 +828,7 @@ def get_sys_info():
     total_vram = 0.0
     gpu_active = False
 
+    backend, _ = _active_accelerator()
     try:
         if _is_mac:
             alloc = getattr(torch.mps, "current_allocated_memory", None)
@@ -815,13 +837,10 @@ def get_sys_info():
                 vram = driver() / (1024**3)
             elif alloc:
                 vram = alloc() / (1024**3)
-        elif _is_cuda:
-            vram = torch.cuda.memory_allocated() / (1024**3)
-            total_vram = torch.cuda.get_device_properties(torch.cuda.current_device()).total_memory / (1024**3)
-        elif _is_xpu:
-            vram = torch.xpu.memory_allocated() / (1024**3)
+        elif backend is not None:
+            vram = backend.memory_allocated() / (1024**3)
             total_vram = float(
-                getattr(torch.xpu.get_device_properties(0), "total_memory", 0.0)
+                getattr(backend.get_device_properties(backend.current_device()), "total_memory", 0.0)
             ) / (1024**3)
     except Exception:
         pass
@@ -893,6 +912,7 @@ async def flush_memory(unload_model: bool = False):
     # CUDA context plus kernel workspaces, which no in-process call can return.
     vram_after = 0.0
     vram_reserved = 0.0
+    backend, _ = _active_accelerator()
     try:
         if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             driver = getattr(torch.mps, "driver_allocated_memory", None)
@@ -900,9 +920,9 @@ async def flush_memory(unload_model: bool = False):
                 vram_after = driver() / (1024**3)
             current = getattr(torch.mps, "current_allocated_memory", None)
             vram_reserved = (current() / (1024**3)) if current else vram_after
-        elif torch.cuda.is_available():
-            vram_after = torch.cuda.memory_allocated() / (1024**3)
-            vram_reserved = torch.cuda.memory_reserved() / (1024**3)
+        elif backend is not None:
+            vram_after = backend.memory_allocated() / (1024**3)
+            vram_reserved = backend.memory_reserved() / (1024**3)
     except Exception:
         pass
 
