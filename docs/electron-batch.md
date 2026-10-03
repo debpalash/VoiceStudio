@@ -25,3 +25,5 @@ and confirmed deletion. The enqueue unit regression covers partial failure and
 language/voice fields. The native helper smoke verifies confined streaming,
 authorization replacement, rename detection and revocation. No test yet establishes
 real model-backed batch completion or a separate remote-machine transfer.
+
+Retry and deletion reserve the same job while admission or file cleanup is in progress. Concurrent actions return 409 instead of queuing a second attempt or removing its upload. Active jobs must be cancelled and finish stopping before their records and files can be deleted; settled terminal jobs retain normal deletion.
