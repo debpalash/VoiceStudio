@@ -27,6 +27,7 @@ import asyncio
 import inspect
 import ipaddress
 import logging
+import math
 import os
 import re
 import contextlib
@@ -2412,9 +2413,16 @@ def resolve_openai_compat_asr_timeout() -> float:
     handler promptly.
     """
     try:
-        return float(os.environ.get("ASR_OPENAI_COMPAT_TIMEOUT", "45"))
+        value = float(os.environ.get("ASR_OPENAI_COMPAT_TIMEOUT", "45"))
     except ValueError:
         return 45.0
+    # httpx passes the read timeout straight to socket.settimeout(): 0 makes
+    # the socket non-blocking rather than disabling the timeout, and a
+    # negative/NaN/inf value is nonsensical here. Reject all of those rather
+    # than let a malformed override break every transcription.
+    if not math.isfinite(value) or value <= 0:
+        return 45.0
+    return value
 
 
 def openai_compat_asr_has_key() -> bool:

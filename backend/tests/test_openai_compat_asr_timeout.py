@@ -40,6 +40,15 @@ def test_malformed_env_timeout_falls_back_to_default(monkeypatch):
     assert resolve_openai_compat_asr_timeout() == 45.0
 
 
+@pytest.mark.parametrize("raw", ["0", "-5", "nan", "inf", "-inf"])
+def test_non_positive_or_non_finite_env_timeout_falls_back_to_default(monkeypatch, raw):
+    # httpx passes the read timeout straight to socket.settimeout(): 0 makes
+    # the socket non-blocking instead of disabling the timeout, and
+    # negative/NaN/inf values are nonsensical here (#2595 review).
+    monkeypatch.setenv("ASR_OPENAI_COMPAT_TIMEOUT", raw)
+    assert resolve_openai_compat_asr_timeout() == 45.0
+
+
 def test_client_passes_a_bounded_timeout_to_the_http_client(monkeypatch):
     """The regression itself: _client() must not fall through to the SDK's
     unbounded (600s) default. Spying on DefaultHttpxClient rather than
