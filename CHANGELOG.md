@@ -96,6 +96,7 @@ metadata and the backend fallback mirror it.
 
 - CLA rechecks clear older approvals, reject duplicate PR heads, and block failed status updates (#2556)
 - Keep audiobook chapter boundaries when importing CR-only manuscripts (#2508) — thanks @rudycelekli!
+- Buffered dictation utterances receive distinct saved-history IDs so deleting one preserves the others (#2538) — thanks @rudycelekli!
 - Preserve busy sidecars during engine-level unload instead of terminating their active operation (#2507) — thanks @Anuj04432 and @rudycelekli!
 - Exclude downloaded caption comments while preserving spoken metadata words (#2510) — thanks @rudycelekli!
 
