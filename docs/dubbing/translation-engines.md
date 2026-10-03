@@ -162,7 +162,7 @@ and with no LLM configured (or on any LLM error) it simply does nothing.
 
 **Settings → System → LLM Providers** is the one place to set up the LLM. Pick a
 provider, paste its API key, choose a model, **Test** it, and "use for
-translation." Supported: OpenAI, OpenRouter, OrcaRouter, Cheaper Inference, Groq,
+translation." Supported: OpenAI, OpenRouter, OrcaRouter, Cheaper Inference, API Route, Groq,
 Cerebras, Google AI (Gemini), Mistral, Cohere, NVIDIA, GitHub Models, Cloudflare,
 Hugging Face, SambaNova, SiliconFlow, iFLYTEK Astron MaaS, **local Ollama / LM Studio**
 (offline, no key), and a **Custom** OpenAI-compatible endpoint.
@@ -183,6 +183,14 @@ Pricing varies by model and request; check the [current provider catalog](https:
 It can be configured without the UI with `CHEAPER_INFERENCE_API_KEY`, and its
 defaults can be overridden with `CHEAPER_INFERENCE_BASE_URL` and
 `CHEAPER_INFERENCE_MODEL`.
+
+[API Route](https://www.api-route.com) uses the OpenAI-compatible endpoint
+`https://global.api-route.com/v1` and defaults to `deepseek-v4.1-flash`.
+Choose **API Route** in the provider settings and enter your API key, or set
+`API_ROUTE_API_KEY`. Override the endpoint and model with `API_ROUTE_BASE_URL`
+and `API_ROUTE_MODEL`. To pin the active provider, set
+`LLM_DEFAULT_PROVIDER=api-route`. Cloud requests require explicit selection
+and a configured key, just like the other hosted providers.
 
 iFLYTEK Astron MaaS uses `IFLYTEK_API_KEY`, `IFLYTEK_BASE_URL` and
 `IFLYTEK_MODEL`. It has no default model: copy the model ID (for example Spark
