@@ -205,3 +205,58 @@ it('preserves a main-issued ticket for authenticated remote dictation', async ()
   expect(Socket.instances[0].url.searchParams.get('ws_ticket')).toMatch(/^ovs_ws_ticket_/);
   expect(Socket.instances[0].url.searchParams.get('model')).toBe('sherpa-test');
 });
+
+function delayedMainTicket() {
+  let resolve!: (url: string) => void;
+  let reject!: (error: Error) => void;
+  const ticket = new Promise<string>((yes, no) => { resolve = yes; reject = no; });
+  const websocketUrl = vi.fn()
+    .mockReturnValueOnce(ticket)
+    .mockResolvedValue('ws://127.0.0.1:3900/ws/transcribe?session=current');
+  mocks.bridge = { backend: { websocketUrl } };
+  vi.stubGlobal('window', {
+    location: { href: 'app://voicestudio/index.html#/capture', protocol: 'app:' },
+  });
+  return { websocketUrl, resolve, reject };
+}
+
+it('does not create a socket when a cancelled main ticket arrives late', async () => {
+  const ticket = delayedMainTicket();
+  const pending = live.start(vi.fn());
+  await vi.waitFor(() => expect(ticket.websocketUrl).toHaveBeenCalledOnce());
+  live.cancel();
+  ticket.resolve('ws://127.0.0.1:3900/ws/transcribe?session=cancelled');
+  await pending;
+  expect(Socket.instances).toHaveLength(0);
+  expect(stopTrack).toHaveBeenCalledOnce();
+  expect(live.getSnapshot().stage).toBe('idle');
+});
+
+it('keeps EOF on the current socket after a superseded ticket resolves', async () => {
+  const ticket = delayedMainTicket();
+  const old = live.start(vi.fn());
+  await vi.waitFor(() => expect(ticket.websocketUrl).toHaveBeenCalledOnce());
+  live.cancel();
+  await live.start(vi.fn());
+  const current = Socket.instances[0]!;
+  ticket.resolve('ws://127.0.0.1:3900/ws/transcribe?session=cancelled');
+  await old;
+  expect(Socket.instances).toHaveLength(1);
+  expect(live.getSnapshot().stage).toBe('recording');
+  await live.stop();
+  expect(current.send).toHaveBeenLastCalledWith('EOF');
+  expect(current.close).not.toHaveBeenCalled();
+});
+
+it('keeps the replacement recording after a cancelled ticket rejects', async () => {
+  const ticket = delayedMainTicket();
+  const old = live.start(vi.fn());
+  await vi.waitFor(() => expect(ticket.websocketUrl).toHaveBeenCalledOnce());
+  live.cancel();
+  await live.start(vi.fn());
+  ticket.reject(new Error('Expired cancelled ticket'));
+  await old;
+  expect(Socket.instances).toHaveLength(1);
+  expect(live.getSnapshot()).toMatchObject({ stage: 'recording', issue: undefined });
+  expect(Socket.instances[0]!.close).not.toHaveBeenCalled();
+});
