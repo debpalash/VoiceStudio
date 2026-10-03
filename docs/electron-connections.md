@@ -48,3 +48,8 @@ Sharing exposes the backend only after an inline confirmation. It shows the acti
 Remote backend configuration is owned by Electron main. Connection tests validate a VoiceStudio health response and exchange an optional server master key once for a scoped, expiring session. The renderer clears the key immediately; only the URL is persisted. Main injects the session into production and development HTTP proxy traffic, native watch-folder uploads, and path-bound dictation WebSocket tickets. Switching back to the local backend is always available.
 
 Remote-worker routing was exercised against an Ubuntu 26.04 WSL worker with an RTX 4090. A real profile-backed TTS request returned a WAV with `X-OmniVoice-Routing: remote`; stopping the worker changed the same selected target to an explicit local fallback, and a second request returned `X-OmniVoice-Routing: local_fallback`. Restarting the worker restored remote readiness without re-enrollment. Dubbing and Batch also completed real multi-segment worker tasks: the Batch proof returned two exact indexed, non-silent mono WAVs at 24 kHz in one committed bundle. The selected target was returned to Local after verification.
+
+Remote backend URLs may include a reverse-proxy path prefix. HTTP connection
+checks and WebSocket handshakes both retain that prefix, including nested paths
+and trailing-slash normalization. Ticket requests bind the backend's canonical
+WebSocket route; only the opaque ticket is added to the connection URL.

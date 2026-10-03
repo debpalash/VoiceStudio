@@ -8,6 +8,34 @@ function json(body: unknown, init: ResponseInit = {}): Response {
   });
 }
 
+it.each(['/ws/transcribe', '/ws/events', '/ws/tts'] as const)(
+  'preserves remote base prefixes and canonical ticket binding for %s',
+  async (path) => {
+    for (const base of ['https://gpu-box:3900/voice', 'https://gpu-box:3900/nested/voice/']) {
+      const session = { token: `ovs_admin_session_${'a'.repeat(43)}`, expiresAt: 3601 };
+      const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        expect(String(input)).toBe(`${base.replace(/\/+$/, '')}/api/auth/ws-ticket`);
+        expect(init?.body).toBe(JSON.stringify({ path }));
+        expect(new Headers(init?.headers).get('authorization')).toBe(`Bearer ${session.token}`);
+        return json({ ticket: `ovs_ws_ticket_${'b'.repeat(43)}`, expires_in: 30 }, { status: 201 });
+      });
+      const expected = `wss://gpu-box:3900${new URL(base).pathname.replace(/\/+$/, '')}${path}`;
+      const anonymous = await remoteWebSocketUrl(base, path, null);
+      expect(anonymous).toBe(expected);
+      const authorized = new URL(await remoteWebSocketUrl(base, path, session, {
+        fetcher, now: () => 1000,
+      }));
+      expect(authorized.origin + authorized.pathname).toBe(expected);
+      expect([...authorized.searchParams.keys()]).toEqual(['ws_ticket']);
+      expect(authorized.searchParams.get('ws_ticket')).toBe(`ovs_ws_ticket_${'b'.repeat(43)}`);
+      expect(authorized.href).not.toContain(session.token);
+    }
+    expect(await remoteWebSocketUrl('http://gpu-box:3900/voice', path, null)).toBe(
+      `ws://gpu-box:3900/voice${path}`,
+    );
+  },
+);
+
 it('accepts only credential-free absolute HTTP backend bases', () => {
   expect(normalizeRemoteUrl(' https://gpu-box:3900/ ')).toBe('https://gpu-box:3900');
   for (const value of [
