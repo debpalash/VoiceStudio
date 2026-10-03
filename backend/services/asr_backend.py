@@ -2399,6 +2399,24 @@ def resolve_openai_compat_asr_api_key() -> Optional[str]:
     )
 
 
+def resolve_openai_compat_asr_timeout() -> float:
+    """Per-call timeout (seconds) for the remote OpenAI-compatible ASR client.
+
+    Mirrors ``llm_skills._default_timeout`` / ``OMNIVOICE_LLM_TIMEOUT``'s
+    env-overridable-default shape. Without this, ``OpenAICompatASRBackend``
+    fell back to the SDK's own 600s default — fine for an explicit, user
+    -initiated transcription, but this backend is also reached from
+    ``transcribe_reference``'s silent, best-effort path during profile save
+    (#2583): offline or with an unreachable server, that call blocked the
+    save for up to ten minutes instead of hitting its own except-and-degrade
+    handler promptly.
+    """
+    try:
+        return float(os.environ.get("ASR_OPENAI_COMPAT_TIMEOUT", "45"))
+    except ValueError:
+        return 45.0
+
+
 def openai_compat_asr_has_key() -> bool:
     """Whether a key is configured, without ever decrypting it — mirrors
     llm_providers.has_key()'s no-plaintext-round-trip contract."""
@@ -2561,17 +2579,26 @@ class OpenAICompatASRBackend(ASRBackend):
         return True, "ready"
 
     def _client(self):
+        import httpx
         from openai import DefaultHttpxClient, OpenAI
         api_key = resolve_openai_compat_asr_api_key() or "not-needed"
         # max_retries=0: mirrors llm_skills.resolve_skill_client — a
         # rate-limited/slow server retrying inside the SDK would blow past
         # whatever bounded timeout the caller (dub transcribe, dictation)
         # expects from a single call.
+        #
+        # Explicit timeout, short `connect` leg (#2583, same split as
+        # probe_openai_compat_server): the SDK's own default is 600s, so an
+        # unreachable server — no network, wrong host — doesn't fail fast.
+        # transcribe_reference's silent, best-effort call during profile
+        # save then blocks the save instead of hitting its own
+        # except-and-degrade handler promptly.
+        timeout = httpx.Timeout(resolve_openai_compat_asr_timeout(), connect=5.0)
         return OpenAI(
             base_url=self._base_url,
             api_key=api_key,
             max_retries=0,
-            http_client=DefaultHttpxClient(follow_redirects=False),
+            http_client=DefaultHttpxClient(follow_redirects=False, timeout=timeout),
         )
 
     def supports_translation(self) -> bool:
