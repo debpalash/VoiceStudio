@@ -4,6 +4,10 @@ The **Audio quality** controls apply to the next generated take. Existing files
 stay unchanged. Normal defaults remain 16-bit WAV, 16 sampling steps and
 broadcast mastering; model-specific limits still apply.
 
+When reusing a Clone take with saved local generation settings, its WAV precision
+and mastering choice are restored with its other controls. Older takes without
+these settings retain the current quality selection.
+
 The compact slider sits below the script in Clone and Design. **More options**
 reveals voice refinement (sampling steps), volume balancing and format guidance.
 The three plain-language choices are **Standard**, **For editing**, and
