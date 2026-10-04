@@ -1,5 +1,9 @@
 # VoiceStudio — WhisperX Engine
 
+> Native Windows ROCm changes on this branch are **DRAFT / not fully validated**.
+> Earlier hardware checks do not certify this selective integration; full
+> WhisperX remains unavailable. See the [draft scope and path limitations](../install/windows-rocm.md).
+
 WhisperX is the default ASR engine on CUDA and plain-CPU hosts: faster-whisper
 (CTranslate2) transcription plus a **wav2vec2 forced-alignment** pass that
 snaps word boundaries to ±10–30 ms (Whisper's own timestamps are ±100–300 ms).
@@ -26,7 +30,8 @@ prefers it wherever CTranslate2 can use the GPU.
 | NVIDIA CUDA | GPU, float16 (degrades automatically, see below) |
 | CPU (any OS) | int8 — works, but slow for large-v3 |
 | Apple Silicon | CPU only — CTranslate2 has no Metal build, so auto-detect prefers [mlx-whisper](mlx-whisper.md) there ([#1127](https://github.com/debpalash/VoiceStudio/issues/1127)) |
-| AMD ROCm | CPU only — CTranslate2 has no HIP build, so auto-detect prefers [pytorch-whisper](pytorch-whisper.md) there ([#1529](https://github.com/debpalash/VoiceStudio/issues/1529)) |
+| AMD ROCm on Windows | The full WhisperX engine is **unavailable**: its ASR import via pyannote fails on this torchaudio stack. Auto-detect selects [faster-whisper](faster-whisper.md) with verified HIP CTranslate2 and invokes the independent alignment module on word-timestamp requests for languages with a built-in aligner. English, Polish and French were tested on GPU; other languages have not been verified end to end. Without a verified HIP wheel, auto-detect prefers [pytorch-whisper](pytorch-whisper.md) for HIP ([#1529](https://github.com/debpalash/VoiceStudio/issues/1529)). Ordinary PyPI CT2 CUDA wheels are **not** HIP-compatible. Explicit WhisperX selection reports unavailable. |
+| AMD ROCm on Linux | The CTranslate2 HIP wheel check is Windows-only; auto-detect prefers [pytorch-whisper](pytorch-whisper.md) for GPU transcription. |
 
 ## Model selection
 
@@ -35,7 +40,8 @@ prefers it wherever CTranslate2 can use the GPU.
   download on first load — see [downloading-models](../downloading-models.md).
 - `OMNIVOICE_ALIGN_DEVICE` — force the wav2vec2 aligner's device. Aligners
   exist for ~20 major languages; other languages keep Whisper's native word
-  timestamps instead of failing.
+  timestamps instead of failing. On ROCm, forced alignment is a separate
+  torch/torchaudio operation and is not verified by CTranslate2 GPU detection.
 
 ## VRAM preflight and degradation
 
@@ -62,6 +68,24 @@ Two more fallback chains run at load time:
   process fast-fails with no traceback, so the engine is reported unavailable
   up front and selection falls through to pytorch-whisper, which uses torch's
   own cuDNN 9 ([#1371](https://github.com/debpalash/VoiceStudio/issues/1371)).
+- **Windows ROCm WhisperX engine is not yet validated.** CTranslate2 HIP
+  successfully transcribes with faster-whisper and native word timestamps.
+  The WhisperX wav2vec2 **alignment module** separately aligned all 22 English
+  words of the demo WAV on the RX 9070 XT after explicitly caching its English
+  checkpoint and NLTK data for the test. This does not prove
+  the full WhisperX ASR-and-alignment pipeline. A separately cached Polish
+  checkpoint also aligned 8/8 words in a short sample on the Radeon GPU;
+  a French recording aligned 12/12 words and passed a fully offline rerun.
+  WhisperX 3.7.4 requires pyannote.audio below 4 (3.4.0 is the newest allowed)
+  and torchaudio 2.8, while the tested ROCm runtime has torchaudio 2.9.1.
+  Its lazy ASR import fails because pyannote.audio references the removed
+  `torchaudio.AudioMetaData`.
+  Auto-detect excludes the full WhisperX engine on Windows ROCm and surfaces
+  the import error for explicit selection. Faster-whisper's independent
+  supported-language alignment path loads on transcription requests only.
+  English, Polish and French samples were validated, but short Polish
+  transcription was imperfect and other languages and models remain untested.
+  Do not interpret a passing HIP CT2 probe as proof of full WhisperX support.
 - On Linux kernels that refuse an executable stack, CTranslate2's native
   library (4.4.0 and older — what whisperx 3.4.5 pins on Python 3.11) is
   rejected with "cannot enable executable stack". VoiceStudio now clears that

@@ -1495,7 +1495,7 @@
     "gpu_report_state_intel_unsupported": "عُثر على {{gpu}}، لكن لا يوجد محرك مثبّت يستطيع استخدام وحدات Intel، لذلك يعمل كل شيء على CPU.",
     "gpu_report_state_unknown": "تعذّر تحديد حالة GPU.",
     "gpu_report_option_vulkan_engines": "استخدم محركًا له بيئة تشغيل GPU خاصة: يعمل audio.cpp على وحدات AMD Radeon عبر Vulkan (الإعدادات ← النماذج ← تثبيت بيئة التشغيل).",
-    "gpu_report_option_rocm_windows_manual": "لا يثبّت VoiceStudio نسخة PyTorch مع ROCm على Windows. تنشر AMD حزم wheel منفصلة لبطاقات Radeon الحديثة، لكنها تحتاج إلى PyTorch أحدث مما اختُبرت به المحركات هنا، وتتعطل بعض المحركات. جرّب ذلك فقط إذا كنت مرتاحًا في حل المشكلات (راجع دليل التثبيت على Windows).",
+    "gpu_report_option_rocm_windows_manual": "على أجهزة Radeon المدعومة بنظام Windows 11 ‏x64، يمكن لإعداد بيئة تشغيل VoiceStudio تثبيت حزمة AMD ROCm الأصلية. اختر «تلقائي» أو «AMD ROCm» أثناء الإعداد. قد تظل البطاقات غير المدعومة وبعض المحركات تستخدم CPU؛ راجع دليل تثبيت Windows.",
     "gpu_report_option_rocm_variant_linux": "عيّن OMNIVOICE_TORCH_VARIANT=rocm وشغّل الإعداد مجددًا لتثبيت إصدار ROCm من PyTorch.",
     "gpu_report_option_rocm_device_access": "تحقق من تحميل برنامج التشغيل amdgpu ومن قدرة المستخدم على فتح /dev/kfd (المجموعتان render وvideo).",
     "gpu_report_option_reinstall_cuda_torch": "أعد تثبيت بيئة التشغيل ليثبّت إصدار CUDA من PyTorch.",
@@ -2168,7 +2168,15 @@
     "region_global": "عالمي (مباشر)",
     "region_china": "الصين (المرآة)",
     "region_russia": "روسيا (مرآة)",
-    "region_restricted": "مقيد (مرآة)"
+    "region_restricted": "مقيد (مرآة)",
+    "torch_label": "واجهة الحوسبة",
+    "torch_auto": "تلقائي",
+    "torch_default": "NVIDIA CUDA أو المعالج المركزي",
+    "torch_rocm": "AMD ROCm (وحدات الرسوميات المدعومة)",
+    "torch_hint": "الاختيار اليدوي لا يضيف دعمًا لبطاقة رسوميات غير متوافقة.",
+    "torch_device": "الجهاز المكتشف: {{device}}",
+    "torch_variant": "بيئة التشغيل المراد تثبيتها: {{variant}}",
+    "torch_error": "تعذر حفظ واجهة الحوسبة. حاول مجددًا."
   },
   "capture": {
     "no_speech": "لم يتم اكتشاف أي كلام",

@@ -4024,24 +4024,26 @@ def get_diarization_pipeline(return_error: bool = False):
     # local bundle remains usable after a token expires or is removed.
     hf_token = resolved.token if resolved else False
     try:
-        torch = _lazy_torch()
-        _ensure_pyannote_hf_token_compat()  # #167: use_auth_token -> token
-        # PyTorch 2.6 flipped torch.load's default to weights_only=True, whose
-        # secure unpickler rejects the pyannote checkpoint's metadata globals
-        # (torch_version.TorchVersion, omegaconf nodes, …) — surfacing as
-        # "Weights only load failed / Unsupported global" and breaking
-        # diarization on torch>=2.6 even after the license is accepted (#270).
-        # Reuse the exact allowlist the WhisperX VAD load registers so the
-        # secure load path succeeds; it is idempotent and per-process.
-        try:
-            from services.asr_backend import WhisperXBackend
-            WhisperXBackend._allow_vad_pickle_globals()
-        except Exception as _glob_e:
-            logger.debug("pyannote safe-globals allowlist skipped: %s", _glob_e)
-        from pyannote.audio import Pipeline
-        logger.info("Loading Pyannote Diarization Pipeline...")
         from services.diarization_local import local_pipeline_config
         with local_pipeline_config() as config_path:
+            torch = _lazy_torch()
+            from services.pyannote_audio_compat import ensure_pyannote_audio_compat
+            ensure_pyannote_audio_compat()
+            _ensure_pyannote_hf_token_compat()  # #167: use_auth_token -> token
+            # PyTorch 2.6 flipped torch.load's default to weights_only=True, whose
+            # secure unpickler rejects the pyannote checkpoint's metadata globals
+            # (torch_version.TorchVersion, omegaconf nodes, …) — surfacing as
+            # "Weights only load failed / Unsupported global" and breaking
+            # diarization on torch>=2.6 even after the license is accepted (#270).
+            # Reuse the exact allowlist the WhisperX VAD load registers so the
+            # secure load path succeeds; it is idempotent and per-process.
+            try:
+                from services.asr_backend import WhisperXBackend
+                WhisperXBackend._allow_vad_pickle_globals()
+            except Exception as _glob_e:
+                logger.debug("pyannote safe-globals allowlist skipped: %s", _glob_e)
+            from pyannote.audio import Pipeline
+            logger.info("Loading Pyannote Diarization Pipeline...")
             pipeline = Pipeline.from_pretrained(config_path, use_auth_token=hf_token)
         if pipeline is None:
             raise RuntimeError("The installed diarisation pipeline could not be loaded")

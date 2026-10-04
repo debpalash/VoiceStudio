@@ -25,14 +25,18 @@ import { Spinner } from '@/components/ui/spinner';
 import { ConfirmDialog } from '@/features/clone/confirm-dialog';
 import { RemoteBackendSettings } from '@/features/settings/remote-backend-settings';
 import { useBackendStatus } from '@/hooks/use-backend-status';
+// @ts-expect-error shared JSX component has no declaration file
+import SearchableSelect from '@shared/components/SearchableSelect';
 import { isBackendBusy } from '@shared/utils/backendStage';
 import { backendFailureHints } from '@shared/utils/backendHint';
 import { scrubText } from '@shared/utils/scrub';
 import i18n, { APP_LANGUAGE_ITEMS, APP_LANGUAGES, setAppLanguage, type AppLocale } from '@/i18n';
 import { brandIcon } from '@/lib/brand';
 import { cn } from '@/lib/utils';
-import type { RuntimeRegion } from '../../../preload/index.d';
+import type { BackendStatus, RuntimeRegion } from '../../../preload/index.d';
 import { getBridge, isMac } from './bridge';
+
+type RuntimeTorchPreference = NonNullable<BackendStatus['runtimeTorchPreference']>;
 
 interface BackendGateProps {
   children: ReactNode;
@@ -96,6 +100,10 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
   const [restarting, setRestarting] = useState(false);
   const [choosingLocation, setChoosingLocation] = useState(false);
   const [choosingRegion, setChoosingRegion] = useState(false);
+  const [choosingTorchPreference, setChoosingTorchPreference] = useState(false);
+  const [selectedTorchPreference, setSelectedTorchPreference] =
+    useState<RuntimeTorchPreference | null>(null);
+  const [torchPreferenceError, setTorchPreferenceError] = useState(false);
   const [cleanConfirmOpen, setCleanConfirmOpen] = useState(false);
   const setup = status.stage === 'setup_required';
   const regionItems = (['auto', 'global', 'china', 'russia', 'restricted'] as const).map(
@@ -104,6 +112,10 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
       label: t(region === 'auto' ? 'bootstrap.auto_detect' : `bootstrap.region_${region}`),
     }),
   );
+  const torchPreferenceItems = (['auto', 'default', 'rocm'] as const).map((preference) => ({
+    value: preference,
+    label: t(`bootstrap.torch_${preference}`),
+  }));
   const installing = status.stage === 'installing';
   const setupFailed = setup && Boolean(status.message);
   // Intel Macs can never resolve the runtime (#2365): the setup screen
@@ -116,9 +128,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
   const progress = status.setupProgress;
   const downloadedBytes = progress?.downloadedBytes ?? 0;
   const remainingBytes = Math.max(0, (progress?.totalBytes ?? 0) - downloadedBytes);
-  const downloadsComplete = Boolean(
-    progress?.downloadsComplete || progress?.preparedPackages || progress?.installedPackages,
-  );
+  const downloadsComplete = Boolean(progress?.downloadsComplete);
   const downloadPercent = progress?.totalBytes
     ? downloadsComplete
       ? 100
@@ -142,6 +152,10 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
   useEffect(() => {
     if (status.stage === 'ready') setReachedReady(true);
   }, [status.stage]);
+  useEffect(() => {
+    setSelectedTorchPreference(null);
+    setTorchPreferenceError(false);
+  }, [status.runtimeTorchPreference]);
 
   if (status.stage === 'ready' || busy)
     return (
@@ -421,6 +435,68 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                   </Select>
                 </label>
               </div>
+              {status.runtimeTorchPreference !== undefined && (
+                <div
+                  className="w-full space-y-1 text-left text-xs text-muted-foreground"
+                  role="group"
+                  aria-labelledby="torch-backend-label"
+                  aria-describedby="torch-backend-details"
+                >
+                  <div className="space-y-1">
+                    <span id="torch-backend-label">{t('bootstrap.torch_label')}</span>
+                    <SearchableSelect
+                      options={torchPreferenceItems}
+                      value={selectedTorchPreference ?? status.runtimeTorchPreference}
+                      disabled={choosingTorchPreference || restarting}
+                      ariaLabel={t('bootstrap.torch_label')}
+                      buttonClassName="input-base bg-muted/20"
+                      menuPortal
+                      onChange={async (value: string) => {
+                        if (
+                          !value ||
+                          value === (selectedTorchPreference ?? status.runtimeTorchPreference)
+                        )
+                          return;
+                        setChoosingTorchPreference(true);
+                        setTorchPreferenceError(false);
+                        try {
+                          const bridge = getBridge();
+                          if (!bridge) throw new Error('Backend bridge unavailable');
+                          const saved = await bridge.backend.setRuntimeTorchPreference(
+                            value as RuntimeTorchPreference,
+                          );
+                          setSelectedTorchPreference(saved);
+                        } catch {
+                          setTorchPreferenceError(true);
+                        } finally {
+                          setChoosingTorchPreference(false);
+                        }
+                      }}
+                    />
+                  </div>
+                  <div id="torch-backend-details" aria-live="polite">
+                    <p>{t('bootstrap.torch_hint')}</p>
+                    {status.runtimeTorchDevice && (
+                      <p>{t('bootstrap.torch_device', { device: status.runtimeTorchDevice })}</p>
+                    )}
+                    {status.runtimeTorchVariant &&
+                      !choosingTorchPreference &&
+                      (!selectedTorchPreference ||
+                        selectedTorchPreference === status.runtimeTorchPreference) && (
+                        <p>
+                          {t('bootstrap.torch_variant', {
+                            variant: t(`bootstrap.torch_${status.runtimeTorchVariant}`),
+                          })}
+                        </p>
+                      )}
+                  </div>
+                  {torchPreferenceError && (
+                    <p role="alert" className="text-destructive">
+                      {t('bootstrap.torch_error')}
+                    </p>
+                  )}
+                </div>
+              )}
               {status.runtimePath && (
                 <div className="w-full rounded-xl border border-border/60 bg-muted/20 p-3 text-left">
                   <div className="flex items-start gap-3">
@@ -476,7 +552,10 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                 </div>
               )}
               {!unsupportedPlatform && (
-                <Button disabled={restarting || choosingLocation} onClick={() => void runSetup()}>
+                <Button
+                  disabled={restarting || choosingLocation || choosingTorchPreference}
+                  onClick={() => void runSetup()}
+                >
                   {status.runtimeInterrupted
                     ? t('common.resume')
                     : setupFailed
@@ -487,7 +566,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
               {setupFailed ? (
                 <Button
                   variant="outline"
-                  disabled={restarting || choosingLocation}
+                  disabled={restarting || choosingLocation || choosingTorchPreference}
                   onClick={() => setCleanConfirmOpen(true)}
                 >
                   <RotateCcwIcon data-icon="inline-start" />

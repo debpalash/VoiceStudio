@@ -9,6 +9,12 @@ metadata and the backend fallback mirror it.
 ## [Unreleased]
 
 **Highlights**
+- Preserve sequential-only audio decoding and cropping in the torchaudio 2.9 compatibility adapter (#2607) — thanks @Pates2004!
+- Honor both offline switches before optional ROCm word-alignment downloads (#2607) — thanks @Pates2004!
+- Publish engine readiness atomically so interrupted marker writes remain repairable (#2607) — thanks @Pates2004!
+- Skip locked CUDA packages during native Windows ROCm setup and repair (#2607) — thanks @Pates2004!
+- Preserve complete ROCm transcripts when forced alignment splits sentences (#2607) — thanks @Pates2004!
+- Draft native Windows ROCm desktop and engine integration shares the reviewed recipe; full WhisperX remains unavailable (#2468) — thanks @Pates2004!
 - Reserve migration snapshot counters atomically (#2453) — thanks @rudycelekli!
 - Ask VoiceStudio Agent adds chat, harness selection, feature presets, read-only planning and autopilot app actions without a source checkout (#2407)
 - Home credits contributors with over 10 commits in three responsive rows of round avatars stacked from right to left with an All contributors link, with GitHub and X links on Palash's hover card (#2407)
@@ -38,6 +44,7 @@ metadata and the backend fallback mirror it.
 - Workflows can branch: a Condition step sends each item down one of two routes by what its text says (#2380) — thanks @shivsin25!
 
 ### Added
+- Opt-in native Windows ROCm source bootstrap with a reusable pinned recipe, hash-checked CTranslate2 wheels and offline GPU smoke; the separate desktop integration remains a draft (#2468)
 
 - `VOICESTUDIO_DISABLE_UPDATER=1` turns off the in-app updater for package-managed installs, and the Linux guide lists the community AUR package (#2557)
 - MCP agents can design a voice from a text description and reuse it by `profile_id` (`describe_voice`, `design_voice`) (#2368) — thanks @thelselutopia!
@@ -102,6 +109,9 @@ metadata and the backend fallback mirror it.
 - License notice: commercial use is free under the AGPL; the paid licence is for closed-source use, with Pro plans linked (#2578)
 
 ### Fixed
+- Restore pyannote audio metadata and soundfile reads on torchaudio 2.9 without changing GPU tensor execution (#2468)
+- Dubbing reports readiness for the selected diarization backend instead of the first catalogue model (#2468)
+- Diarization reports missing local models before loading optional runtime dependencies (#2468)
 - Elevated Windows app removal stops before deleting data and points to a normal PowerShell window or Settings (#2578)
 - Contributor audits inspect committed files and exclude submodules, while still stopping on failed file attribution (#2556)
 

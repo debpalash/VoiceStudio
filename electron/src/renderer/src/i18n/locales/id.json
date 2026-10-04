@@ -1487,7 +1487,7 @@
     "gpu_report_state_intel_unsupported": "{{gpu}} ditemukan, tetapi tidak ada mesin terpasang yang dapat memakai GPU Intel, jadi semuanya berjalan di CPU.",
     "gpu_report_state_unknown": "Status GPU tidak dapat ditentukan.",
     "gpu_report_option_vulkan_engines": "Pakai mesin dengan runtime GPU sendiri: audio.cpp berjalan di GPU AMD Radeon lewat Vulkan (Pengaturan → Model → pasang runtime).",
-    "gpu_report_option_rocm_windows_manual": "VoiceStudio tidak memasang PyTorch dengan ROCm di Windows. AMD menerbitkan wheel terpisah untuk kartu Radeon terbaru, tetapi memerlukan PyTorch yang lebih baru daripada yang diuji dengan mesin di sini, dan beberapa mesin rusak. Coba hanya jika Anda nyaman memecahkan masalah (lihat panduan instalasi Windows).",
+    "gpu_report_option_rocm_windows_manual": "Pada sistem Radeon yang didukung dengan Windows 11 x64, penyiapan runtime VoiceStudio dapat memasang komponen AMD ROCm native. Pilih Otomatis atau AMD ROCm saat penyiapan. Kartu yang tidak didukung dan beberapa mesin mungkin tetap menggunakan CPU; lihat panduan instalasi Windows.",
     "gpu_report_option_rocm_variant_linux": "Setel OMNIVOICE_TORCH_VARIANT=rocm lalu jalankan penyiapan lagi untuk memasang build ROCm dari PyTorch.",
     "gpu_report_option_rocm_device_access": "Pastikan driver amdgpu dimuat dan pengguna Anda dapat membuka /dev/kfd (grup render dan video).",
     "gpu_report_option_reinstall_cuda_torch": "Pasang ulang runtime agar memasang build CUDA dari PyTorch.",
@@ -2160,7 +2160,15 @@
     "region_global": "Global (langsung)",
     "region_china": "Cina (cermin)",
     "region_russia": "Rusia (cermin)",
-    "region_restricted": "Dibatasi (cermin)"
+    "region_restricted": "Dibatasi (cermin)",
+    "torch_label": "Backend komputasi",
+    "torch_auto": "Otomatis",
+    "torch_default": "NVIDIA CUDA atau CPU",
+    "torch_rocm": "AMD ROCm (GPU yang didukung)",
+    "torch_hint": "Pilihan manual tidak menambahkan dukungan untuk GPU yang tidak kompatibel.",
+    "torch_device": "Perangkat terdeteksi: {{device}}",
+    "torch_variant": "Runtime yang akan dipasang: {{variant}}",
+    "torch_error": "Backend komputasi gagal disimpan. Coba lagi."
   },
   "capture": {
     "no_speech": "Tidak ada ucapan yang terdeteksi",

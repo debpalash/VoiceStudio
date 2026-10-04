@@ -20,6 +20,32 @@ import pytest
 _MAIN = Path(__file__).resolve().parents[1] / "backend/engines/voxcpm2_subprocess/main.py"
 
 
+def test_managed_voxcpm2_advertises_rocm_only_after_gpu_probe(monkeypatch, tmp_path):
+    from core.device_caps import HostCaps
+    from engines.voxcpm2_subprocess import VoxCPM2SubprocessBackend
+    from services.sidecar_install import _INSTALL_COMPLETE_MARKER, _venv_python
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    py = _venv_python(tmp_path / ".venv")
+    py.parent.mkdir(parents=True)
+    py.write_text("fake interpreter")
+    monkeypatch.setenv("OMNIVOICE_VOXCPM2_DIR", str(tmp_path))
+    marker = tmp_path / _INSTALL_COMPLETE_MARKER
+    marker.write_text("voxcpm\n", encoding="utf-8")
+    caps = HostCaps(family="rocm", available_families=("rocm", "cpu"))
+
+    cpu_profile = VoxCPM2SubprocessBackend.runtime_compute_profile(caps)
+    assert cpu_profile["routing_status"] == "cpu_fallback"
+    assert cpu_profile["effective_device"] == "cpu"
+    assert "rocm" not in cpu_profile["gpu_compat"]
+
+    marker.write_text("voxcpm\nwindows-rocm7.2.1-verified\n", encoding="utf-8")
+    rocm_profile = VoxCPM2SubprocessBackend.runtime_compute_profile(caps)
+    assert rocm_profile["routing_status"] == "accelerated"
+    assert rocm_profile["effective_device"] == "rocm"
+    assert "rocm" in rocm_profile["gpu_compat"]
+
+
 def _load_sidecar(monkeypatch, calls):
     class FakeModel:
         sample_rate = 48000

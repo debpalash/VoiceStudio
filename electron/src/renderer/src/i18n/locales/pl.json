@@ -1491,7 +1491,7 @@
     "gpu_report_state_intel_unsupported": "Znaleziono {{gpu}}, ale żaden zainstalowany silnik nie obsługuje GPU Intel, więc wszystko działa na CPU.",
     "gpu_report_state_unknown": "Nie udało się ustalić stanu GPU.",
     "gpu_report_option_vulkan_engines": "Użyj silnika z własnym środowiskiem GPU: audio.cpp działa na GPU AMD Radeon przez Vulkan (Ustawienia → Modele → zainstaluj środowisko).",
-    "gpu_report_option_rocm_windows_manual": "VoiceStudio nie instaluje PyTorch z ROCm w systemie Windows. AMD publikuje osobne pakiety wheel dla nowszych kart Radeon, ale wymagają one nowszej wersji PyTorch niż ta, z którą testowano tutejsze silniki, a niektóre silniki przestają działać. Próbuj tylko, jeśli potrafisz rozwiązywać problemy (zobacz przewodnik instalacji dla Windows).",
+    "gpu_report_option_rocm_windows_manual": "Na obsługiwanych komputerach z Radeonem i Windows 11 x64 konfigurator środowiska VoiceStudio może zainstalować natywny pakiet AMD ROCm. Podczas konfiguracji wybierz Automatycznie lub AMD ROCm. Nieobsługiwane karty i niektóre silniki mogą nadal korzystać z CPU; zobacz instrukcję instalacji dla Windows.",
     "gpu_report_option_rocm_variant_linux": "Ustaw OMNIVOICE_TORCH_VARIANT=rocm i uruchom konfigurację ponownie, aby zainstalować kompilację ROCm biblioteki PyTorch.",
     "gpu_report_option_rocm_device_access": "Sprawdź, czy sterownik amdgpu jest załadowany, a użytkownik może otworzyć /dev/kfd (grupy render i video).",
     "gpu_report_option_reinstall_cuda_torch": "Zainstaluj środowisko ponownie, aby zainstalowało kompilację CUDA biblioteki PyTorch.",
@@ -2164,7 +2164,15 @@
     "region_global": "Globalny (bezpośredni)",
     "region_china": "Chiny (lustro)",
     "region_russia": "Rosja (lustro)",
-    "region_restricted": "Ograniczone (lustro)"
+    "region_restricted": "Ograniczone (lustro)",
+    "torch_label": "Środowisko obliczeniowe",
+    "torch_auto": "Automatycznie",
+    "torch_default": "NVIDIA CUDA lub CPU",
+    "torch_rocm": "AMD ROCm (obsługiwane karty GPU)",
+    "torch_hint": "Ręczny wybór nie zapewni obsługi niezgodnej karty GPU.",
+    "torch_device": "Wykryte urządzenie: {{device}}",
+    "torch_variant": "Środowisko do zainstalowania: {{variant}}",
+    "torch_error": "Nie udało się zapisać środowiska obliczeniowego. Spróbuj ponownie."
   },
   "capture": {
     "no_speech": "Nie wykryto mowy",

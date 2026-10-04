@@ -1487,7 +1487,7 @@
     "gpu_report_state_intel_unsupported": "Đã tìm thấy {{gpu}}, nhưng không engine nào đã cài dùng được GPU Intel nên mọi thứ chạy trên CPU.",
     "gpu_report_state_unknown": "Không xác định được trạng thái GPU.",
     "gpu_report_option_vulkan_engines": "Dùng engine có runtime GPU riêng: audio.cpp chạy trên GPU AMD Radeon qua Vulkan (Cài đặt → Mô hình → cài runtime).",
-    "gpu_report_option_rocm_windows_manual": "VoiceStudio không cài PyTorch với ROCm trên Windows. AMD phát hành các gói wheel riêng cho card Radeon mới, nhưng chúng cần PyTorch mới hơn bản mà các engine ở đây được kiểm thử, và một số engine sẽ hỏng. Chỉ thử nếu bạn quen xử lý sự cố (xem hướng dẫn cài đặt Windows).",
+    "gpu_report_option_rocm_windows_manual": "Trên hệ thống Radeon được hỗ trợ chạy Windows 11 x64, trình thiết lập môi trường chạy VoiceStudio có thể cài đặt bộ thành phần AMD ROCm gốc. Chọn Tự động hoặc AMD ROCm trong quá trình thiết lập. Các card không được hỗ trợ và một số bộ máy vẫn có thể dùng CPU; xem hướng dẫn cài đặt Windows.",
     "gpu_report_option_rocm_variant_linux": "Đặt OMNIVOICE_TORCH_VARIANT=rocm rồi chạy lại phần thiết lập để cài bản dựng ROCm của PyTorch.",
     "gpu_report_option_rocm_device_access": "Kiểm tra trình điều khiển amdgpu đã được nạp và người dùng của bạn mở được /dev/kfd (nhóm render và video).",
     "gpu_report_option_reinstall_cuda_torch": "Cài lại runtime để nó cài bản dựng CUDA của PyTorch.",
@@ -2160,7 +2160,15 @@
     "region_global": "Toàn cầu (trực tiếp)",
     "region_china": "Trung Quốc (gương)",
     "region_russia": "Nga (gương)",
-    "region_restricted": "Bị hạn chế (gương)"
+    "region_restricted": "Bị hạn chế (gương)",
+    "torch_label": "Hệ thống tính toán",
+    "torch_auto": "Tự động",
+    "torch_default": "NVIDIA CUDA hoặc CPU",
+    "torch_rocm": "AMD ROCm (GPU được hỗ trợ)",
+    "torch_hint": "Chọn thủ công không giúp GPU không tương thích được hỗ trợ.",
+    "torch_device": "Thiết bị được phát hiện: {{device}}",
+    "torch_variant": "Môi trường sẽ cài đặt: {{variant}}",
+    "torch_error": "Không thể lưu hệ thống tính toán. Hãy thử lại."
   },
   "capture": {
     "no_speech": "Không phát hiện thấy giọng nói nào",

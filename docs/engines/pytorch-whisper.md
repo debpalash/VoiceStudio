@@ -1,10 +1,15 @@
 # VoiceStudio — PyTorch Whisper Engine
 
+> Native Windows ROCm changes on this branch are **DRAFT / not fully validated**.
+> Earlier hardware checks do not certify this selective integration; full
+> WhisperX remains unavailable. See the [draft scope and path limitations](../install/windows-rocm.md).
+
 Whisper through the plain `transformers` pipeline, riding torch itself. No
 extra install — transformers ships with the app — and because it runs on
 torch's own stack (including torch's bundled cuDNN 9), it works on machines
 where the CTranslate2 engines can't load. It is also the engine that
-genuinely uses **AMD ROCm** GPUs, so auto-detect picks it on ROCm hosts
+genuinely uses **AMD ROCm** GPUs. Auto-detect picks it on ROCm hosts without
+a verified CTranslate2 HIP build
 ([#1529](https://github.com/debpalash/VoiceStudio/issues/1529)).
 
 ## Selecting it
@@ -13,12 +18,14 @@ genuinely uses **AMD ROCm** GPUs, so auto-detect picks it on ROCm hosts
   row, or `OMNIVOICE_ASR_BACKEND=pytorch-whisper`.
 - `OMNIVOICE_ASR_BACKEND=omnivoice` is accepted as a compatibility alias and
   selects this same PyTorch-native ASR path on ROCm hosts.
-- Auto-detect picks it on ROCm, and as the last resort everywhere else.
+- Auto-detect picks it on Linux ROCm and on Windows ROCm without a verified
+  CTranslate2 HIP build; otherwise it is the last resort.
 
 ## Best at
 
-- **ROCm dubbing/transcription** — the only Whisper engine that uses the HIP
-  GPU (CTranslate2 has no HIP build, MLX is Apple-only).
+- **ROCm dubbing/transcription** — the PyTorch fallback uses the HIP GPU even
+  when a CTranslate2 HIP wheel is unavailable (MLX is Apple-only). On Windows,
+  the verified CTranslate2 HIP wheel runs faster-whisper on the GPU too.
 - **Rescue engine** when whisperx/faster-whisper can't load — e.g. the
   missing-cuDNN-8 case
   ([#255](https://github.com/debpalash/VoiceStudio/issues/255)) — since it
@@ -32,6 +39,12 @@ timestamps.
 
 CUDA, Apple Silicon (MPS), ROCm (HIP), and CPU — wherever torch runs, on
 macOS, Windows, and Linux.
+
+The `openai/whisper-large-v3-turbo` pipeline generated 19 word chunks offline
+on a Radeon RX 9070 XT with PyTorch ROCm 7.2.1; both the pipeline and model
+weights stayed on `cuda:0` (PyTorch's device name for the HIP GPU). The
+`gpu_compat` routing inventory therefore reports ROCm acceleration. This is
+not evidence that every Whisper checkpoint or AMD GPU works.
 
 ## Model selection
 

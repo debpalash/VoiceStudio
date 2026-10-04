@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -60,6 +61,21 @@ class VoxCPM2SubprocessBackend(SubprocessBackend):
                 "voxcpm package not installed. Install it from Model Catalogue."
             )
         return True, "ready"
+
+    @classmethod
+    def runtime_compute_profile(cls, caps) -> dict:
+        profile = super().runtime_compute_profile(caps)
+        if sys.platform != "win32" or caps.family != "rocm":
+            return profile
+        from services.sidecar_install import voxcpm2_rocm_verified
+
+        if voxcpm2_rocm_verified():
+            from services.engine_routing import resolve_routing
+
+            compat = ("cuda", "rocm", "mps", "cpu")
+            profile["gpu_compat"] = compat
+            profile.update(resolve_routing(compat, caps, profile["min_vram_gb"]))
+        return profile
 
     @classmethod
     def venv_python(cls) -> Path:

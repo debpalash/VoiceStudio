@@ -1,6 +1,7 @@
 import { downloadProxyEnv } from './proxy-env';
-import { downloadRuntimeInstaller } from './runtime-download';
+import { downloadRuntimeArchive, downloadRuntimeInstaller } from './runtime-download';
 import { asciiSafePthFiles } from './pth-ascii';
+import windowsRocmRecipe from '../../../scripts/windows-rocm-recipe.json';
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
@@ -15,7 +16,7 @@ import {
   statfs,
   writeFile,
 } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
 
 const SOURCES = [
   'backend',
@@ -34,19 +35,73 @@ export const ROCM_TORCH_PINS = [
   'torchaudio==2.8.0',
   'torchvision==0.23.0',
 ] as const;
-/**
- * Whether this OS can have the ROCm torch stack at all.
- *
- * PyTorch's ROCm index (`ROCM_TORCH_INDEX`) publishes Linux wheels only. On
- * Windows `uv pip install --index-url <rocm6.4> torch==2.8.0` finds nothing and
- * the whole runtime bootstrap fails, leaving the app unusable instead of merely
- * CPU-bound - so the opt-in is ignored there and the host resolves like any
- * other (Settings > Performance explains which engines can still use a Radeon).
- * Windows ROCm needs AMD's own wheels and a validated engine matrix; it is
- * deliberately not wired into this recipe.
- */
-export function rocmTorchApplies(platform: NodeJS.Platform = process.platform): boolean {
-  return platform !== 'win32' && platform !== 'darwin';
+export const WINDOWS_ROCM_FIND_LINKS = windowsRocmRecipe.torch.find_links;
+export const WINDOWS_ROCM_TORCH_PINS: readonly string[] = windowsRocmRecipe.torch.packages;
+export const WINDOWS_ROCM_CT2_ARCHIVE = windowsRocmRecipe.ctranslate2.archive_url;
+export const WINDOWS_ROCM_CT2_ARCHIVE_SHA256 = windowsRocmRecipe.ctranslate2.archive_sha256;
+export const WINDOWS_ROCM_CT2_WHEEL = posix.basename(windowsRocmRecipe.ctranslate2.wheel_member);
+export const WINDOWS_ROCM_CT2_WHEEL_SHA256 = windowsRocmRecipe.ctranslate2.wheel_sha256;
+const WINDOWS_ROCM_CT2_EXTRACT = [
+  'import hashlib, pathlib, sys, zipfile',
+  'with zipfile.ZipFile(sys.argv[1]) as package:',
+  '    if package.namelist().count(sys.argv[2]) != 1:',
+  '        raise RuntimeError("Expected ROCm wheel missing or duplicated")',
+  '    wheel = package.read(sys.argv[2])',
+  'if hashlib.sha256(wheel).hexdigest() != sys.argv[3]:',
+  '    raise RuntimeError("Invalid ROCm wheel checksum")',
+  'pathlib.Path(sys.argv[4]).write_bytes(wheel)',
+].join('\n');
+export const WINDOWS_ROCM_CT2_PROBE = [
+  'import importlib.util, mmap, os',
+  'from contextlib import ExitStack',
+  'from pathlib import Path',
+  'ct2_spec = importlib.util.find_spec("ctranslate2")',
+  'if ct2_spec is None or not ct2_spec.submodule_search_locations:',
+  '    raise RuntimeError("CTranslate2 package is missing")',
+  'ct2_dir = Path(next(iter(ct2_spec.submodule_search_locations)))',
+  'library = ct2_dir / "ctranslate2.dll"',
+  'if not library.is_file():',
+  '    raise RuntimeError("CTranslate2 has no native Windows DLL")',
+  'with library.open("rb") as source:',
+  '    if os.fstat(source.fileno()).st_size == 0:',
+  '        raise RuntimeError("CTranslate2 lacks the required HIP DLL markers")',
+  '    with mmap.mmap(source.fileno(), 0, access=mmap.ACCESS_READ) as binary:',
+  `        required_dlls = ${JSON.stringify(windowsRocmRecipe.ctranslate2.required_dlls)}`,
+  '        if any(binary.find(name.encode("ascii") + b"\\0") < 0 for name in required_dlls):',
+  '            raise RuntimeError("CTranslate2 lacks the required HIP DLL markers")',
+  'torch_spec = importlib.util.find_spec("torch")',
+  'if torch_spec is None or not torch_spec.submodule_search_locations:',
+  '    raise RuntimeError("PyTorch package is missing")',
+  'torch_dir = Path(next(iter(torch_spec.submodule_search_locations)))',
+  'directories = [',
+  '    ct2_dir,',
+  '    ct2_dir.parent / "_rocm_sdk_core" / "bin",',
+  '    ct2_dir.parent / "_rocm_sdk_libraries_custom" / "bin",',
+  '    torch_dir / "lib",',
+  ']',
+  'with ExitStack() as stack:',
+  '    for directory in dict.fromkeys(path.resolve() for path in directories):',
+  '        if directory.is_dir():',
+  '            stack.enter_context(os.add_dll_directory(str(directory)))',
+  '    import ctranslate2',
+  `    if ctranslate2.__version__ != ${JSON.stringify(windowsRocmRecipe.ctranslate2.version)}:`,
+  '        raise RuntimeError("Unsupported CTranslate2 ROCm version")',
+  '    if ctranslate2.get_cuda_device_count() <= 0:',
+  '        raise RuntimeError("CTranslate2 cannot access the AMD GPU")',
+  '    if "float16" not in ctranslate2.get_supported_compute_types("cuda", 0):',
+  '        raise RuntimeError("CTranslate2 HIP float16 unavailable")',
+].join('\n');
+export type RuntimeTorchVariant = TorchVariant;
+
+export function runtimeTorchVariantFromEnv(): RuntimeTorchVariant {
+  return resolveTorchVariant().variant;
+}
+
+export function rocmTorchApplies(
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+): boolean {
+  return platform !== 'darwin' && (platform !== 'win32' || arch === 'x64');
 }
 /** The user explicitly asked for ROCm torch AND this OS can have it. */
 export function rocmTorchOptIn(platform: NodeJS.Platform = process.platform): boolean {
@@ -81,6 +136,15 @@ export const RUNTIME_REPAIR_PACKAGES = ['torch', 'torchaudio', 'torchvision'] as
 export const RUNTIME_NATIVE_IMPORT_PROBE = 'import torch, torchaudio, torchvision';
 export const RUNTIME_IMPORT_PROBE =
   'import fastapi, uvicorn, omnivoice, faster_whisper, sentencepiece, torch, torchaudio, torchvision';
+const WINDOWS_ROCM_PROBE = [
+  'import torch',
+  'if not torch.version.hip or not torch.cuda.is_available():',
+  '    raise RuntimeError("ROCm cannot access the AMD GPU")',
+  'tensor = torch.ones((4, 4), device="cuda")',
+  'result = (tensor @ tensor)[0, 0].item()',
+  'if result != 4:',
+  '    raise RuntimeError("ROCm GPU matrix multiplication returned an invalid result")',
+].join('\n');
 const RUNTIME_SCHEMA = 'electron-runtime-v2-cudnn8';
 const CUDNN8_PROBE_PREFIX = 'VOICESTUDIO_CUDNN8_PROBE=';
 const REQUIRED_ENV_BYTES = 9 * 1024 ** 3;
@@ -148,6 +212,37 @@ export function runtimePython(root: string, platform = process.platform): string
     : join(root, '.venv', 'bin', 'python');
 }
 
+export function rocmTorchInstallArgs(python: string, platform = process.platform): string[] {
+  if (platform === 'win32') {
+    return [
+      '--no-config',
+      'pip',
+      'install',
+      '--python',
+      python,
+      ...WINDOWS_ROCM_TORCH_PINS,
+      '--reinstall-package',
+      'torch',
+      '--reinstall-package',
+      'torchaudio',
+      '--reinstall-package',
+      'torchvision',
+      '--find-links',
+      process.env.OMNIVOICE_WINDOWS_ROCM_FIND_LINKS || WINDOWS_ROCM_FIND_LINKS,
+    ];
+  }
+  return [
+    'pip',
+    'install',
+    '--reinstall',
+    '--python',
+    python,
+    ...ROCM_TORCH_PINS,
+    '--index-url',
+    process.env.OMNIVOICE_TORCH_INDEX || ROCM_TORCH_INDEX,
+  ];
+}
+
 export type TorchVariant = 'default' | 'cpu' | 'rocm';
 export interface TorchChoice {
   variant: TorchVariant;
@@ -209,9 +304,8 @@ export function resolveTorchVariant(
   hasNvidia: () => boolean = () => nvidiaDriverPresent(platform),
 ): TorchChoice {
   const raw = env.OMNIVOICE_TORCH_VARIANT?.trim().toLowerCase() ?? '';
-  // ROCm wheels exist for Linux only; elsewhere the opt-in is ignored (the
-  // host is resolved like any other, never a failed bootstrap).
-  if (raw === 'rocm' && rocmTorchApplies(platform)) return { variant: 'rocm', explicit: true };
+  if (raw === 'rocm' && rocmTorchApplies(platform, arch))
+    return { variant: 'rocm', explicit: true };
   if (raw === 'cuda' || raw === 'default') return { variant: 'default', explicit: true };
   if (raw === 'cpu') {
     return { variant: cpuTorchApplies(platform, arch) ? 'cpu' : 'default', explicit: true };
@@ -225,7 +319,10 @@ export function resolveTorchVariant(
 export function managedPythonRequest(
   platform: NodeJS.Platform = process.platform,
   arch: string = process.arch,
+  variant: TorchVariant = resolveTorchVariant(process.env, platform, arch).variant,
 ): string {
+  if (platform === 'win32' && arch === 'x64' && variant === 'rocm')
+    return windowsRocmRecipe.python.version;
   return platform === 'win32' && arch === 'arm64' ? WIN_ARM64_PYTHON_REQUEST : '3.11';
 }
 
@@ -238,13 +335,27 @@ export function cudaOnlyPackages(lockText: string): string[] {
   return [...names].sort();
 }
 
+function runtimeTorchChoice(selection?: RuntimeTorchVariant | TorchChoice): TorchChoice {
+  if (typeof selection === 'string') return { variant: selection, explicit: true };
+  return selection ?? resolveTorchVariant();
+}
+
 async function dependencyStamp(
   bundle: string,
   variant: TorchVariant = resolveTorchVariant().variant,
 ): Promise<string> {
   const hash = createHash('sha256');
   hash.update(RUNTIME_SCHEMA);
-  if (variant === 'rocm') hash.update(':torch=rocm');
+  if (variant === 'rocm') {
+    hash.update(':torch=rocm');
+    if (process.platform === 'win32')
+      hash.update(`:windows-rocm=${JSON.stringify(windowsRocmRecipe)}`);
+    hash.update(
+      process.platform === 'win32'
+        ? process.env.OMNIVOICE_WINDOWS_ROCM_FIND_LINKS || WINDOWS_ROCM_FIND_LINKS
+        : process.env.OMNIVOICE_TORCH_INDEX || ROCM_TORCH_INDEX,
+    );
+  }
   if (variant === 'cpu') hash.update(':torch=cpu');
   for (const file of ['pyproject.toml', 'uv.lock']) hash.update(await readFile(join(bundle, file)));
   return hash.digest('hex');
@@ -257,8 +368,7 @@ async function dependencyStamp(
  * to pick a smaller download. The reverse is not true: a CPU environment on a
  * host that has since gained an NVIDIA driver is stale and needs reinstalling.
  */
-async function acceptedStamps(bundle: string): Promise<string[]> {
-  const choice = resolveTorchVariant();
+async function acceptedStamps(bundle: string, choice: TorchChoice): Promise<string[]> {
   const stamps = [await dependencyStamp(bundle, choice.variant)];
   if (choice.variant === 'cpu' && !choice.explicit) {
     stamps.push(await dependencyStamp(bundle, 'default'));
@@ -479,13 +589,17 @@ export async function runtimeDependenciesReady(project: string): Promise<boolean
   });
 }
 
-export async function runtimeReady(bundle: string, project: string): Promise<boolean> {
+export async function runtimeReady(
+  bundle: string,
+  project: string,
+  selection?: RuntimeTorchVariant | TorchChoice,
+): Promise<boolean> {
   if (await runtimeIncomplete(project)) return false;
   try {
     return (
       (await stat(runtimePython(project))).isFile() &&
       (await stat(join(project, '.venv', 'pyvenv.cfg'))).isFile() &&
-      (await acceptedStamps(bundle)).includes(
+      (await acceptedStamps(bundle, runtimeTorchChoice(selection))).includes(
         await readFile(join(project, '.runtime-ready'), 'utf8'),
       )
     );
@@ -500,8 +614,13 @@ export async function runtimeReady(bundle: string, project: string): Promise<boo
  * match this Electron bundle. The Electron marker is intentionally optional:
  * Tauri predates it and owns the same frozen Python graph.
  */
-export async function runtimeCompatible(bundle: string, project: string): Promise<boolean> {
+export async function runtimeCompatible(
+  bundle: string,
+  project: string,
+  selection?: RuntimeTorchVariant | TorchChoice,
+): Promise<boolean> {
   if (await runtimeIncomplete(project)) return false;
+  const choice = runtimeTorchChoice(selection);
   try {
     const [python, config, bundledProject, installedProject, bundledLock, installedLock, marker] =
       await Promise.all([
@@ -524,8 +643,8 @@ export async function runtimeCompatible(bundle: string, project: string): Promis
       (marker === null
         ? // A Tauri environment carries the lock's default (CUDA) torch: fine for
           // inferred CPU hosts, wrong for an explicit ROCm or CPU request.
-          !resolveTorchVariant().explicit || resolveTorchVariant().variant === 'default'
-        : (await acceptedStamps(bundle)).includes(marker))
+          choice.variant === 'default' || (choice.variant === 'cpu' && !choice.explicit)
+        : (await acceptedStamps(bundle, choice)).includes(marker))
     );
   } catch {
     return false;
@@ -571,6 +690,7 @@ export async function installRuntime(
   signal: AbortSignal,
   phase: (value: RuntimePhase) => void = () => {},
   region: RuntimeRegion = 'auto',
+  selection?: RuntimeTorchVariant | TorchChoice,
 ): Promise<void> {
   signal.throwIfAborted();
   phase('checking');
@@ -578,7 +698,7 @@ export async function installRuntime(
     throw Object.assign(new Error('INTEL_MAC_UNSUPPORTED'), { code: 'INTEL_MAC_UNSUPPORTED' });
   }
   await mkdir(project, { recursive: true });
-  const torch = resolveTorchVariant();
+  const torch = runtimeTorchChoice(selection);
   const requiredBytes = torch.variant === 'cpu' ? REQUIRED_CPU_ENV_BYTES : REQUIRED_ENV_BYTES;
   const disk = await statfs(project);
   if (disk.bavail * disk.bsize < requiredBytes) {
@@ -654,6 +774,10 @@ export async function installRuntime(
     () => false,
   );
   let existingPython = false;
+  const windowsRocm = process.platform === 'win32' && torch.variant === 'rocm';
+  const expectedPython = windowsRocm
+    ? `tuple(map(int, ${JSON.stringify(windowsRocmRecipe.python.version)}.split(".")))`
+    : '(3, 11)';
   const repairPackages: string[] = [];
   if (interpreterExists) {
     try {
@@ -661,10 +785,10 @@ export async function installRuntime(
         runtimePython(project),
         [
           '-c',
-          'import sys; assert sys.version_info[:2] == (3, 11)' +
+          `import sys\nif sys.version_info[:2] != ${expectedPython}:\n    raise RuntimeError("Unsupported runtime Python version")` +
             // A native ARM64 interpreter cannot install torchaudio/torchvision.
             (managedPythonRequest() === WIN_ARM64_PYTHON_REQUEST
-              ? "; import platform; assert platform.machine().upper() in ('AMD64', 'X86_64')"
+              ? '\nimport platform\nif platform.machine().upper() not in ("AMD64", "X86_64"):\n    raise RuntimeError("Windows ARM requires an x64 runtime interpreter")'
               : ''),
         ],
         project,
@@ -700,15 +824,20 @@ export async function installRuntime(
   }
   const pythonArgs = existingPython
     ? ['--python', runtimePython(project)]
-    : ['--managed-python', '--python', managedPythonRequest()];
+    : [
+        '--managed-python',
+        '--python',
+        managedPythonRequest(process.platform, process.arch, torch.variant),
+      ];
   const cpuTorch = torch.variant === 'cpu';
+  const skipLockedTorch = cpuTorch || windowsRocm;
   // A failed native import may leave distribution metadata intact, so uv's
   // ordinary sync would otherwise consider the broken wheel already satisfied.
   const torchPackages: readonly string[] = RUNTIME_REPAIR_PACKAGES;
-  // A CPU install never syncs the lock's CUDA torch, so its repair goes through
-  // the CPU pip install below instead of `uv sync --reinstall-package`.
+  // CPU and Windows ROCm repairs use their variant-specific install below,
+  // never the lock's CUDA torch through `uv sync --reinstall-package`.
   const repairArgs = repairPackages
-    .filter((name) => !cpuTorch || !torchPackages.includes(name))
+    .filter((name) => !skipLockedTorch || !torchPackages.includes(name))
     .flatMap((name) => ['--reinstall-package', name]);
   signal.throwIfAborted();
   if (repairPackages.length) {
@@ -719,9 +848,9 @@ export async function installRuntime(
     signal.throwIfAborted();
   }
   // The lock resolves torch to the CUDA build (and, on Linux, ~3 GB of nvidia-*
-  // runtime wheels) for every Linux/Windows x64 host. Keep those out of a CPU
-  // install; the CPU wheels are laid down right after the frozen sync.
-  const skipArgs = cpuTorch
+  // runtime wheels) for every Linux/Windows x64 host. CPU and Windows ROCm
+  // install their own wheels right after the frozen sync instead.
+  const skipArgs = skipLockedTorch
     ? [
         ...torchPackages,
         ...cudaOnlyPackages(await readFile(join(project, 'uv.lock'), 'utf8')),
@@ -754,22 +883,58 @@ export async function installRuntime(
     signal.throwIfAborted();
   }
   if (torch.variant === 'rocm') {
-    await run(
-      uv,
-      [
-        'pip',
-        'install',
-        '--reinstall',
-        '--python',
-        runtimePython(project),
-        ...ROCM_TORCH_PINS,
-        '--index-url',
-        process.env.OMNIVOICE_TORCH_INDEX || ROCM_TORCH_INDEX,
-      ],
-      project,
-      env,
-    );
+    phase('installing_deps');
+    await run(uv, rocmTorchInstallArgs(runtimePython(project)), project, env);
     signal.throwIfAborted();
+    if (windowsRocm) {
+      await run(runtimePython(project), ['-c', WINDOWS_ROCM_PROBE], project);
+      signal.throwIfAborted();
+      const cache = join(project, '..', '.uv-cache');
+      await mkdir(cache, { recursive: true });
+      const archive = join(
+        cache,
+        `${posix.basename(new URL(WINDOWS_ROCM_CT2_ARCHIVE).pathname, '.zip')}-v${windowsRocmRecipe.ctranslate2.version}.zip`,
+      );
+      const wheel = join(cache, WINDOWS_ROCM_CT2_WHEEL);
+      const pendingWheel = `${wheel}.incoming-${randomUUID()}`;
+      phase('installing_deps');
+      await downloadRuntimeArchive(
+        WINDOWS_ROCM_CT2_ARCHIVE,
+        archive,
+        WINDOWS_ROCM_CT2_ARCHIVE_SHA256,
+        env,
+        signal,
+      );
+      signal.throwIfAborted();
+      try {
+        await run(
+          runtimePython(project),
+          [
+            '-c',
+            WINDOWS_ROCM_CT2_EXTRACT,
+            archive,
+            windowsRocmRecipe.ctranslate2.wheel_member,
+            WINDOWS_ROCM_CT2_WHEEL_SHA256,
+            pendingWheel,
+          ],
+          project,
+          env,
+        );
+        signal.throwIfAborted();
+        await rename(pendingWheel, wheel);
+      } finally {
+        await rm(pendingWheel, { force: true });
+      }
+      await run(
+        uv,
+        ['--no-config', 'pip', 'install', '--python', runtimePython(project), '--no-deps', wheel],
+        project,
+        env,
+      );
+      signal.throwIfAborted();
+      await run(runtimePython(project), ['-c', WINDOWS_ROCM_CT2_PROBE], project);
+      signal.throwIfAborted();
+    }
   }
   await ensureCudnn8Compat(uv, project, run, env, signal);
   signal.throwIfAborted();

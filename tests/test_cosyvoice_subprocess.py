@@ -11,6 +11,7 @@ import re
 import struct
 import sys
 import types
+import wave
 from pathlib import Path
 
 import pytest
@@ -66,6 +67,7 @@ def _load_sidecar(monkeypatch, tmp_path, calls, *, model_class="CosyVoice3", sam
     spec = importlib.util.spec_from_file_location("_cosy_sidecar_under_test", _MAIN)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    monkeypatch.setattr(module, '_windows_rocm', lambda: False)
     return module, checkout
 
 
@@ -278,6 +280,158 @@ def test_load_uses_full_precision_without_cuda(monkeypatch, tmp_path, cuda):
         assert part.weight.dtype == (torch.bfloat16 if cuda else torch.float32)
         if not cuda:
             assert torch.isfinite(part(torch.ones(1, 2))).all()
+
+
+def test_windows_rocm_reads_wav_and_mp3_without_torchcodec(monkeypatch, tmp_path):
+    import soundfile
+    import torchaudio
+
+    sidecar, _ = _load_sidecar(monkeypatch, tmp_path, [])
+    monkeypatch.setattr(sidecar, '_windows_rocm', lambda: True)
+    wav_path = tmp_path / 'reference.wav'
+    with wave.open(str(wav_path), 'wb') as audio:
+        audio.setnchannels(2)
+        audio.setsampwidth(2)
+        audio.setframerate(32000)
+        audio.writeframes(struct.pack('<hhhh', 8192, -8192, 4096, -4096))
+
+    calls = []
+
+    def original(uri, *, backend=None):
+        calls.append((uri, backend))
+        return torch.ones(1, 2), 24000
+
+    monkeypatch.setattr(torchaudio, 'load', original)
+    sidecar._install_windows_rocm_audio_adapter()
+    samples, rate = torchaudio.load(str(wav_path), backend='soundfile')
+    assert (rate, samples.shape, samples.dtype) == (32000, (2, 2), torch.float32)
+    assert samples[:, 0].tolist() == pytest.approx([0.25, -0.25])
+    assert calls == []
+
+    mp3_path = tmp_path / 'reference.mp3'
+    soundfile.write(str(mp3_path), [0.25] * 4800, 24000, format='MP3')
+    mp3_samples, mp3_rate = torchaudio.load(str(mp3_path), backend='soundfile')
+    assert (mp3_rate, mp3_samples.shape, mp3_samples.dtype) == (24000, (1, 4800), torch.float32)
+    assert calls == []
+
+    other = tmp_path / 'reference.flac'
+    soundfile.write(str(other), [0.25] * 4800, 24000, format='FLAC')
+    assert torchaudio.load(str(other), backend='soundfile')[1] == 24000
+    assert calls == []
+
+
+@pytest.mark.parametrize('extension', ['m4a', 'aac', 'opus', 'ogg', 'oga', 'webm'])
+def test_windows_rocm_decodes_reference_formats_without_torchcodec(monkeypatch, tmp_path, extension):
+    import imageio_ffmpeg
+    import torchaudio
+
+    sidecar, _ = _load_sidecar(monkeypatch, tmp_path, [])
+    monkeypatch.setattr(sidecar, '_windows_rocm', lambda: True)
+    monkeypatch.setattr(imageio_ffmpeg, 'get_ffmpeg_exe', lambda: 'bundled-ffmpeg')
+    original_calls = []
+    monkeypatch.setattr(torchaudio, 'load', lambda *args, **kw: original_calls.append(args))
+    commands = []
+
+    def fake_decode(argv, **kwargs):
+        commands.append(argv)
+        return types.SimpleNamespace(returncode=0, stdout=bytes(24000 * 4), stderr=b'')
+
+    monkeypatch.setattr(sidecar.subprocess, 'run', fake_decode)
+    reference = tmp_path / f'reference.{extension}'
+    reference.write_bytes(b'unsupported by soundfile')
+    sidecar._install_windows_rocm_audio_adapter()
+    samples, rate = torchaudio.load(str(reference), backend='soundfile')
+    assert (rate, samples.shape, samples.dtype) == (24000, (1, 24000), torch.float32)
+    assert commands[0][0] == 'bundled-ffmpeg'
+    assert str(reference) in commands[0]
+    assert commands[0][commands[0].index('-protocol_whitelist') + 1] == 'file,pipe'
+    assert original_calls == []
+
+
+def test_windows_rocm_adapter_never_changes_other_hosts(monkeypatch, tmp_path):
+    import torchaudio
+
+    sidecar, _ = _load_sidecar(monkeypatch, tmp_path, [])
+    monkeypatch.setattr(sidecar, '_windows_rocm', lambda: False)
+    original = torchaudio.load
+    sidecar._install_windows_rocm_audio_adapter()
+    assert torchaudio.load is original
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='Windows AMD reference decoding')
+def test_windows_rocm_real_ffmpeg_round_trip_of_all_reference_formats(monkeypatch, tmp_path):
+    sidecar, _ = _load_sidecar(monkeypatch, tmp_path, [])
+    monkeypatch.setattr(sidecar, '_windows_rocm', lambda: True)
+    sidecar._verify_windows_rocm_audio()
+
+
+@pytest.mark.parametrize('component_name', ['llm', 'flow', 'hift'])
+def test_windows_rocm_rejects_any_model_component_left_on_cpu(monkeypatch, tmp_path, component_name):
+    sidecar, _ = _load_sidecar(monkeypatch, tmp_path, [])
+
+    def component(device):
+        parameter = types.SimpleNamespace(device=types.SimpleNamespace(type=device))
+        return types.SimpleNamespace(parameters=lambda: iter([parameter]))
+
+    components = types.SimpleNamespace(**{
+        name: component('cpu' if name == component_name else 'cuda')
+        for name in ('llm', 'flow', 'hift')
+    })
+    with pytest.raises(RuntimeError, match=component_name):
+        sidecar._verify_windows_rocm_model_device(types.SimpleNamespace(model=components))
+
+
+def test_windows_rocm_never_falls_back_to_incompatible_torchcodec(monkeypatch, tmp_path):
+    import imageio_ffmpeg
+    import torchaudio
+
+    sidecar, _ = _load_sidecar(monkeypatch, tmp_path, [])
+    monkeypatch.setattr(sidecar, '_windows_rocm', lambda: True)
+    monkeypatch.setattr(imageio_ffmpeg, 'get_ffmpeg_exe', lambda: 'bundled-ffmpeg')
+    monkeypatch.setattr(torchaudio, 'load', lambda *args, **kw: pytest.fail('TorchCodec used'))
+    monkeypatch.setattr(sidecar.subprocess, 'run', lambda *args, **kw: types.SimpleNamespace(
+        returncode=1, stdout=b'', stderr=b'invalid audio',
+    ))
+    sidecar._install_windows_rocm_audio_adapter()
+    with pytest.raises(RuntimeError, match='could not be decoded'):
+        torchaudio.load(io.BytesIO(b'bad audio'), backend='soundfile')
+    with pytest.raises(ValueError, match='does not support'):
+        torchaudio.load('any.wav', frame_offset=1)
+
+
+def test_windows_rocm_does_not_advertise_an_unverified_install(monkeypatch):
+    from core.device_caps import HostCaps
+    from engines.cosyvoice_subprocess import CosyVoiceSubprocessBackend
+    from services import sidecar_install
+
+    monkeypatch.setattr(sidecar_install.sys, 'platform', 'win32')
+    monkeypatch.setattr(sidecar_install, '_host_family', lambda: 'rocm')
+    spec = sidecar_install.get_spec('cosyvoice')
+    assert spec.venv_args == ('--python', '3.10')
+    assert sidecar_install._torch_pin_args(spec)[:2] == [
+        'torch==2.7.0+cpu', 'torchaudio==2.7.0+cpu',
+    ]
+    profile = CosyVoiceSubprocessBackend.runtime_compute_profile(
+        HostCaps('rocm', ('rocm', 'cpu'), device_name='AMD Radeon RX 9070 XT')
+    )
+    assert profile['routing_status'] == 'cpu_fallback'
+    assert 'rocm' not in profile['gpu_compat']
+
+
+def test_windows_rocm_advertises_gpu_only_after_managed_model_smoke(monkeypatch):
+    from core.device_caps import HostCaps
+    from engines.cosyvoice_subprocess import CosyVoiceSubprocessBackend
+    from services import sidecar_install
+
+    monkeypatch.setattr(sidecar_install.sys, 'platform', 'win32')
+    monkeypatch.setattr(sidecar_install, 'cosyvoice_rocm_verified', lambda: True)
+    caps = HostCaps('rocm', ('rocm', 'cpu'), device_name='AMD Radeon RX 9070 XT')
+    profile = CosyVoiceSubprocessBackend.runtime_compute_profile(caps)
+    assert profile['effective_device'] == 'rocm'
+    assert 'rocm' in profile['gpu_compat']
+    monkeypatch.setattr(sidecar_install, 'cosyvoice_rocm_verified', lambda: False)
+    profile = CosyVoiceSubprocessBackend.runtime_compute_profile(caps)
+    assert profile['routing_status'] == 'cpu_fallback'
 
 
 def test_managed_install_probes_late_imports_and_restores_dependencies():

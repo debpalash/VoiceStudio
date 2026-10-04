@@ -18,6 +18,7 @@ import { PasteTranslation } from './paste-translation';
 import { GlossaryPanel } from './glossary-panel';
 import { CastingBoard } from './casting-board';
 import { DubbingDemo } from './dubbing-demo';
+import { isDiarisationReady, type DiarisationStatus } from './diarisation-readiness';
 import { CheckpointBanner, type CheckpointStage } from './checkpoint-banner';
 import { ConfirmDialog } from '../clone/confirm-dialog';
 import { useDubOnsets } from './use-dub-onsets';
@@ -277,6 +278,11 @@ export function DubPage() {
   const engines = useTranslationEngines();
   const llmSkills = useLlmSkills();
   const modelCatalogue = useModelCatalogue();
+  const diarisation = useQuery({
+    queryKey: ['diarisation-status'],
+    queryFn: () => apiJson<DiarisationStatus>('/engines/diarisation'),
+    enabled: modelCatalogue.isSuccess,
+  });
   const profiles = useProfiles();
   const navigate = useNavigate();
   const longform = useLongformSession();
@@ -457,14 +463,7 @@ export function DubPage() {
       (model.repo_id.startsWith('Systran/faster-') ||
         model.repo_id === 'deepdml/faster-whisper-large-v3-turbo-ct2'),
   );
-  const diarisationModel = modelCatalogue.data?.models.find((model) =>
-    ['diarisation', 'diarization'].includes(model.role.toLowerCase()),
-  );
-  const diarisationReady = Boolean(
-    diarisationModel?.installed &&
-    diarisationModel.supported !== false &&
-    !diarisationModel.incomplete,
-  );
+  const diarisationReady = isDiarisationReady(modelCatalogue.data?.models, diarisation.data);
   const job = encodeURIComponent(session.jobId || '');
   const previewRevision = useMemo(
     () =>
@@ -1131,7 +1130,7 @@ export function DubPage() {
               <p className="text-xs leading-5 text-muted-foreground">
                 {t('dub.num_speakers_help')}
               </p>
-              {modelCatalogue.isSuccess && (
+              {modelCatalogue.isSuccess && diarisation.isSuccess && (
                 <div
                   role="status"
                   className="flex items-center gap-2 rounded-lg border border-border/60 bg-background/35 px-2.5 py-2 text-xs"

@@ -1489,7 +1489,7 @@
     "gpu_report_state_intel_unsupported": "Se encontró {{gpu}}, pero ningún motor instalado puede usar GPU de Intel, así que todo se ejecuta en la CPU.",
     "gpu_report_state_unknown": "No se pudo determinar el estado de la GPU.",
     "gpu_report_option_vulkan_engines": "Usa un motor con su propio runtime de GPU: audio.cpp se ejecuta en GPU AMD Radeon mediante Vulkan (Ajustes → Modelos → instalar el runtime).",
-    "gpu_report_option_rocm_windows_manual": "VoiceStudio no instala PyTorch con ROCm en Windows. AMD publica wheels aparte para tarjetas Radeon recientes, pero requieren un PyTorch más nuevo que el probado con los motores de aquí, y algunos motores fallan. Inténtalo solo si te sientes cómodo resolviendo problemas (consulta la guía de instalación de Windows).",
+    "gpu_report_option_rocm_windows_manual": "En sistemas Radeon compatibles con Windows 11 x64, la configuración del entorno de VoiceStudio puede instalar los componentes nativos de AMD ROCm. Elige Automático o AMD ROCm durante la configuración. Las tarjetas no compatibles y algunos motores pueden seguir usando la CPU; consulta la guía de instalación de Windows.",
     "gpu_report_option_rocm_variant_linux": "Define OMNIVOICE_TORCH_VARIANT=rocm y vuelve a ejecutar la configuración para instalar la compilación ROCm de PyTorch.",
     "gpu_report_option_rocm_device_access": "Comprueba que el controlador amdgpu esté cargado y que tu usuario pueda abrir /dev/kfd (grupos render y video).",
     "gpu_report_option_reinstall_cuda_torch": "Reinstala el runtime para que instale la compilación CUDA de PyTorch.",
@@ -2162,7 +2162,15 @@
     "region_global": "Global (directo)",
     "region_china": "China (espejo)",
     "region_russia": "Rusia (espejo)",
-    "region_restricted": "Restringido (espejo)"
+    "region_restricted": "Restringido (espejo)",
+    "torch_label": "Motor de cálculo",
+    "torch_auto": "Automático",
+    "torch_default": "NVIDIA CUDA o CPU",
+    "torch_rocm": "AMD ROCm (GPU compatibles)",
+    "torch_hint": "La elección manual no añade compatibilidad con una GPU incompatible.",
+    "torch_device": "Dispositivo detectado: {{device}}",
+    "torch_variant": "Entorno que se instalará: {{variant}}",
+    "torch_error": "No se pudo guardar el motor de cálculo. Inténtalo de nuevo."
   },
   "capture": {
     "no_speech": "No se detectó voz",

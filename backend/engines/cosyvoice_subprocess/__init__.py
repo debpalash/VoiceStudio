@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 from pathlib import Path
 
 from services.subprocess_backend import SubprocessBackend
@@ -40,6 +41,24 @@ class CosyVoiceSubprocessBackend(SubprocessBackend):
     display_name = "CosyVoice 3 (9 langs, zero-shot, instruct, Apache-2.0)"
     gpu_compat = ("cuda", "cpu")
     _DEFAULT_SAMPLE_RATE = 24_000
+
+    @classmethod
+    def runtime_compute_profile(cls, caps) -> dict:
+        profile = super().runtime_compute_profile(caps)
+        if sys.platform != 'win32' or caps.family != 'rocm':
+            return profile
+        from services.sidecar_install import cosyvoice_rocm_verified
+
+        if not cosyvoice_rocm_verified():
+            return profile
+        from services.engine_routing import resolve_routing
+
+        gpu_compat = ('cuda', 'rocm', 'cpu')
+        return {
+            **profile,
+            'gpu_compat': gpu_compat,
+            **resolve_routing(gpu_compat, caps, cls.min_vram_gb),
+        }
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:

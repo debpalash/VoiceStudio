@@ -6,9 +6,17 @@ import {
   runtimeInstallInterrupted,
   runtimeReady,
   runtimePython,
+  runtimeTorchVariantFromEnv,
+  resolveTorchVariant,
   stageRuntimeSources,
   type RuntimeRegion,
+  type TorchChoice,
 } from './runtime-project';
+import {
+  supportedWindowsRocmGpu,
+  type RuntimeTorchPreference,
+  type WindowsGpuDevice,
+} from './runtime-torch';
 import { asciiSafePthFiles } from './pth-ascii';
 import { CrashJournal } from './crash-journal';
 import { availableBackendPort } from './backend-port';
@@ -74,6 +82,7 @@ const TAURI_APP_ID = 'com.debpalash.omnivoice-studio';
 const RUNTIME_LOCATION_FILE = 'runtime-location.json';
 const RUNTIME_PREFERENCES_FILE = 'runtime-preferences.json';
 const RUNTIME_REGIONS = new Set<RuntimeRegion>(['auto', 'global', 'china', 'russia', 'restricted']);
+const RUNTIME_TORCH_PREFERENCES = new Set<RuntimeTorchPreference>(['auto', 'default', 'rocm']);
 
 /** Pipe closures emitted while a child is exiting are lifecycle signals, not failures. */
 export function isExpectedPipeClose(error: unknown): boolean {
@@ -91,16 +100,31 @@ function runtimePreferencesPath(): string {
   return join(app.getPath('userData'), RUNTIME_PREFERENCES_FILE);
 }
 
-function loadRuntimeRegion(): RuntimeRegion {
+function loadRuntimePreferences(): {
+  region: RuntimeRegion;
+  torchPreference: RuntimeTorchPreference;
+} {
+  const fallbackPreference: RuntimeTorchPreference =
+    runtimeTorchVariantFromEnv() === 'rocm' ? 'rocm' : 'auto';
+  const defaults = { region: 'auto' as RuntimeRegion, torchPreference: fallbackPreference };
   try {
     const value = JSON.parse(readFileSync(runtimePreferencesPath(), 'utf8')) as {
       region?: unknown;
+      torchPreference?: unknown;
     };
-    return typeof value.region === 'string' && RUNTIME_REGIONS.has(value.region as RuntimeRegion)
-      ? (value.region as RuntimeRegion)
-      : 'auto';
+    return {
+      region:
+        typeof value.region === 'string' && RUNTIME_REGIONS.has(value.region as RuntimeRegion)
+          ? (value.region as RuntimeRegion)
+          : defaults.region,
+      torchPreference:
+        typeof value.torchPreference === 'string' &&
+        RUNTIME_TORCH_PREFERENCES.has(value.torchPreference as RuntimeTorchPreference)
+          ? (value.torchPreference as RuntimeTorchPreference)
+          : defaults.torchPreference,
+    };
   } catch {
-    return 'auto';
+    return defaults;
   }
 }
 
@@ -425,6 +449,7 @@ function childEnv(
   if (!env.OMNIVOICE_BUNDLED_UV) {
     const uv = findUv();
     if (uv) env.OMNIVOICE_BUNDLED_UV = uv;
+    else delete env.OMNIVOICE_BUNDLED_UV;
   }
   if (region === 'china') env.HF_ENDPOINT ??= 'https://hf-mirror.com';
   if (platform === 'win32') {
@@ -532,7 +557,11 @@ export class BackendSupervisor extends EventEmitter<{
   private installation: AbortController | null = null;
   private cleaningRuntime = false;
   private runtimeProject: string | null = null;
-  private runtimeRegion: RuntimeRegion = loadRuntimeRegion();
+  private readonly runtimePreferences = loadRuntimePreferences();
+  private runtimeRegion: RuntimeRegion = this.runtimePreferences.region;
+  private runtimeTorchPreference: RuntimeTorchPreference = this.runtimePreferences.torchPreference;
+  private runtimeTorchChoice: TorchChoice = resolveTorchVariant();
+  private runtimeTorchDevice: string | undefined;
 
   get baseUrl(): string {
     return this.remoteUrl || `http://127.0.0.1:${this.port}`;
@@ -577,6 +606,16 @@ export class BackendSupervisor extends EventEmitter<{
               defaultRuntimeRoot(),
             ),
             runtimeRegion: this.runtimeRegion,
+            ...(process.platform === 'win32'
+              ? {
+                  runtimeTorchPreference: this.runtimeTorchPreference,
+                  runtimeTorchVariant:
+                    this.runtimeTorchChoice.variant === 'rocm' ? 'rocm' : 'default',
+                  ...(this.runtimeTorchDevice
+                    ? { runtimeTorchDevice: this.runtimeTorchDevice }
+                    : {}),
+                }
+              : {}),
           }
         : {}),
     };
@@ -751,9 +790,10 @@ export class BackendSupervisor extends EventEmitter<{
     this.setupProgress.reset();
     this.setStage('installing', { message: undefined });
     try {
+      await this.resolveRuntimeTorchVariant();
       const reusable =
-        ((await runtimeReady(backendRoot(), project)) ||
-          (await runtimeCompatible(backendRoot(), project))) &&
+        ((await runtimeReady(backendRoot(), project, this.runtimeTorchChoice)) ||
+          (await runtimeCompatible(backendRoot(), project, this.runtimeTorchChoice))) &&
         (await runtimeDependenciesReady(project));
       if (gen !== this.generation || controller.signal.aborted) return;
       if (reusable) {
@@ -781,8 +821,8 @@ export class BackendSupervisor extends EventEmitter<{
         );
         this.emitStatus();
         const fallbackReusable =
-          ((await runtimeReady(backendRoot(), project)) ||
-            (await runtimeCompatible(backendRoot(), project))) &&
+          ((await runtimeReady(backendRoot(), project, this.runtimeTorchChoice)) ||
+            (await runtimeCompatible(backendRoot(), project, this.runtimeTorchChoice))) &&
           (await runtimeDependenciesReady(project));
         if (gen !== this.generation || controller.signal.aborted) return;
         if (fallbackReusable) {
@@ -840,10 +880,12 @@ export class BackendSupervisor extends EventEmitter<{
         controller.signal,
         (phase) => {
           if (gen !== this.generation) return;
+          if (phase === 'installing_deps') this.setupProgress.reset();
           this.setupPhase = phase;
           this.emitStatus();
         },
         this.runtimeRegion,
+        this.runtimeTorchChoice,
       );
       if (gen === this.generation) await this.start();
     } catch (error) {
@@ -1025,10 +1067,36 @@ export class BackendSupervisor extends EventEmitter<{
     this.runtimeRegion = raw as RuntimeRegion;
     writeFileSync(
       runtimePreferencesPath(),
-      JSON.stringify({ region: this.runtimeRegion }, null, 2),
+      JSON.stringify(
+        { region: this.runtimeRegion, torchPreference: this.runtimeTorchPreference },
+        null,
+        2,
+      ),
     );
     this.emitStatus();
     return this.runtimeRegion;
+  }
+
+  async setRuntimeTorchPreference(raw: unknown): Promise<RuntimeTorchPreference> {
+    if (
+      !app.isPackaged ||
+      process.platform !== 'win32' ||
+      this.stage !== 'setup_required' ||
+      this.installation ||
+      this.cleaningRuntime
+    )
+      throw new Error('runtime_torch_preference_unavailable');
+    if (typeof raw !== 'string' || !RUNTIME_TORCH_PREFERENCES.has(raw as RuntimeTorchPreference))
+      throw new Error('invalid_runtime_torch_preference');
+    const preference = raw as RuntimeTorchPreference;
+    writeFileSync(
+      runtimePreferencesPath(),
+      JSON.stringify({ region: this.runtimeRegion, torchPreference: preference }, null, 2),
+    );
+    this.runtimeTorchPreference = preference;
+    await this.resolveRuntimeTorchVariant();
+    this.emitStatus();
+    return preference;
   }
 
   /** A custom runtime is removable only when this Electron install created it. */
@@ -1053,7 +1121,40 @@ export class BackendSupervisor extends EventEmitter<{
     this.emitStatus();
   }
 
+  private async resolveRuntimeTorchVariant(): Promise<void> {
+    this.runtimeTorchDevice = undefined;
+    this.runtimeTorchChoice = resolveTorchVariant();
+    if (!app.isPackaged || process.platform !== 'win32') return;
+    if (this.runtimeTorchPreference !== 'auto') {
+      this.runtimeTorchChoice = resolveTorchVariant({
+        ...process.env,
+        OMNIVOICE_TORCH_VARIANT: this.runtimeTorchPreference === 'rocm' ? 'rocm' : 'auto',
+      });
+    }
+    if (
+      this.runtimeTorchPreference !== 'auto' ||
+      this.runtimeTorchChoice.explicit ||
+      process.arch !== 'x64'
+    )
+      return;
+    try {
+      const info = await app.getGPUInfo('basic');
+      const devices =
+        info && typeof info === 'object' && 'gpuDevice' in info && Array.isArray(info.gpuDevice)
+          ? (info.gpuDevice as WindowsGpuDevice[])
+          : [];
+      const device = supportedWindowsRocmGpu(devices);
+      if (device) {
+        this.runtimeTorchChoice = { variant: 'rocm', explicit: false };
+        this.runtimeTorchDevice = device.deviceString;
+      }
+    } catch {
+      this.runtimeTorchChoice = resolveTorchVariant();
+    }
+  }
+
   private async resolveRuntimeProject(): Promise<{ project: string; ready: boolean }> {
+    await this.resolveRuntimeTorchVariant();
     const bundle = backendRoot();
     const own = join(defaultRuntimeRoot(), 'project');
     const configuredRoot = storedRuntimeRoot();
@@ -1064,7 +1165,8 @@ export class BackendSupervisor extends EventEmitter<{
     ).filter((candidate): candidate is string => Boolean(candidate));
     for (const project of new Set(candidates.map((candidate) => resolve(candidate)))) {
       if (
-        ((await runtimeReady(bundle, project)) || (await runtimeCompatible(bundle, project))) &&
+        ((await runtimeReady(bundle, project, this.runtimeTorchChoice)) ||
+          (await runtimeCompatible(bundle, project, this.runtimeTorchChoice))) &&
         (await runtimeDependenciesReady(project))
       ) {
         this.runtimeProject = project;

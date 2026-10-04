@@ -71,9 +71,13 @@ export interface BackendStatus {
   runtimePath?: string;
   runtimeCustom?: boolean;
   runtimeRegion?: RuntimeRegion;
+  runtimeTorchPreference?: RuntimeTorchPreference;
+  runtimeTorchVariant?: 'default' | 'rocm';
+  runtimeTorchDevice?: string;
 }
 
 export type RuntimeRegion = 'auto' | 'global' | 'china' | 'russia' | 'restricted';
+export type RuntimeTorchPreference = 'auto' | 'default' | 'rocm';
 
 export interface RuntimeLocation {
   path: string;
@@ -351,6 +355,7 @@ export interface VoiceStudioBridge {
     setupRuntime(): Promise<void>;
     cleanSetupRuntime(): Promise<void>;
     setRuntimeRegion(region: RuntimeRegion): Promise<RuntimeRegion>;
+    setRuntimeTorchPreference(preference: RuntimeTorchPreference): Promise<RuntimeTorchPreference>;
     chooseRuntimeLocation(title: string): Promise<RuntimeLocation | null>;
     useDefaultRuntimeLocation(): Promise<RuntimeLocation>;
     getConnection(): Promise<BackendConnection>;

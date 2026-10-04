@@ -1602,7 +1602,7 @@
     "gpu_report_state_intel_unsupported": "{{gpu}} was found, but no installed engine can use Intel GPUs, so everything runs on the CPU.",
     "gpu_report_state_unknown": "GPU status could not be determined.",
     "gpu_report_option_vulkan_engines": "Use an engine with its own GPU runtime: audio.cpp runs on AMD Radeon GPUs through Vulkan (Settings → Models → install the runtime).",
-    "gpu_report_option_rocm_windows_manual": "PyTorch with ROCm on Windows is not installed by VoiceStudio. AMD publishes separate wheels for recent Radeon cards, but they need a newer PyTorch than the engines here are tested with, and some engines break. Only try it if you are comfortable troubleshooting (see the Windows install guide).",
+    "gpu_report_option_rocm_windows_manual": "On supported Windows 11 x64 Radeon systems, VoiceStudio runtime setup can install the native AMD ROCm stack. Choose Automatic or AMD ROCm during setup. Unsupported cards and some engines may still use CPU; see the Windows install guide.",
     "gpu_report_option_rocm_variant_linux": "Set OMNIVOICE_TORCH_VARIANT=rocm and run setup again to install the ROCm build of PyTorch.",
     "gpu_report_option_rocm_device_access": "Check that the amdgpu driver is loaded and your user can open /dev/kfd (render and video groups).",
     "gpu_report_option_reinstall_cuda_torch": "Reinstall the runtime so it installs the CUDA build of PyTorch.",
@@ -2236,7 +2236,15 @@
     "region_global": "Global (direct)",
     "region_china": "China (mirror)",
     "region_russia": "Russia (mirror)",
-    "region_restricted": "Restricted (mirror)"
+    "region_restricted": "Restricted (mirror)",
+    "torch_label": "Compute backend",
+    "torch_auto": "Automatic",
+    "torch_default": "NVIDIA CUDA or CPU",
+    "torch_rocm": "AMD ROCm (supported GPUs)",
+    "torch_hint": "A manual choice does not add support for an incompatible GPU.",
+    "torch_device": "Detected device: {{device}}",
+    "torch_variant": "Runtime to install: {{variant}}",
+    "torch_error": "Could not save the compute backend. Try again."
   },
   "capture": {
     "no_speech": "No speech detected",

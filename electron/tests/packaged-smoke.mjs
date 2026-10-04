@@ -1,5 +1,5 @@
 import { _electron as electron } from 'playwright';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -44,8 +44,21 @@ const profile = existing || mkdtempSync(join(tmpdir(), 'voicestudio-packaged-che
 const keepProfile = process.env.VOICESTUDIO_KEEP_TEST_PROFILE === '1';
 const setup = process.argv.includes('--setup');
 const firstSound = process.argv.includes('--first-sound');
+const asrSmoke = process.argv.includes('--asr-smoke');
+const voxcpmInstallSmoke = process.argv.includes('--voxcpm-install-smoke');
+const voxcpmSmoke = process.argv.includes('--voxcpm-smoke') || voxcpmInstallSmoke;
+const cosyvoiceInstallSmoke = process.argv.includes('--cosyvoice-install-smoke');
+const cosyvoiceReferenceSmoke = process.argv.includes('--cosyvoice-reference-smoke');
 const quitDuringStartup = process.argv.includes('--quit-during-startup');
 const install = process.argv.includes('--install') || firstSound;
+if (asrSmoke && (!existing || !process.env.VOICESTUDIO_TEST_ASR_AUDIO || !process.env.VOICESTUDIO_TEST_ASR_CACHE))
+  throw new Error('--asr-smoke requires a managed test profile, audio file, and model cache');
+if (voxcpmSmoke && (!existing || !process.env.VOICESTUDIO_TEST_VOXCPM_MODEL || (!voxcpmInstallSmoke && !process.env.VOICESTUDIO_TEST_VOXCPM_DIR)))
+  throw new Error('--voxcpm-smoke requires a managed test profile, cached model, and installed sidecar unless installing');
+if (cosyvoiceInstallSmoke && !existing)
+  throw new Error('--cosyvoice-install-smoke requires a managed test profile');
+if (cosyvoiceReferenceSmoke && (!existing || !process.env.VOICESTUDIO_TEST_COSYVOICE_REFERENCE))
+  throw new Error('--cosyvoice-reference-smoke requires a managed profile and reference audio');
 const wayland = process.platform === 'linux' && process.env.VOICESTUDIO_TEST_WAYLAND === '1';
 const scaleFactor = Number(process.env.VOICESTUDIO_TEST_SCALE_FACTOR);
 const extractAndRun = process.env.APPIMAGE_EXTRACT_AND_RUN === '1';
@@ -67,13 +80,35 @@ if (setup || install || existing) {
     VOICESTUDIO_SKIP_BACKEND: '',
     HF_HOME: join(profile, 'hf-home'),
     HF_HUB_CACHE: join(profile, 'hf-home', 'hub'),
-    HF_HUB_OFFLINE: firstSound ? '0' : '1',
-    TRANSFORMERS_OFFLINE: firstSound ? '0' : '1',
+    HF_HUB_OFFLINE: firstSound || cosyvoiceInstallSmoke ? '0' : '1',
+    TRANSFORMERS_OFFLINE: firstSound || cosyvoiceInstallSmoke ? '0' : '1',
     UV_CACHE_DIR: join(profile, 'uv-cache'),
     OMNIVOICE_DATA_DIR: join(profile, 'data'),
     OMNIVOICE_PRELOAD_TTS_ASR: '0',
     OMNIVOICE_PRELOAD_CAPTURE_ASR: '0',
     OMNIVOICE_PRELOAD_WATERMARK: '0',
+    ...(asrSmoke
+      ? {
+          HF_HOME: process.env.VOICESTUDIO_TEST_ASR_CACHE,
+          HF_HUB_CACHE: join(process.env.VOICESTUDIO_TEST_ASR_CACHE, 'hub'),
+          TORCH_HOME: process.env.VOICESTUDIO_TEST_ASR_TORCH_CACHE || join(profile, 'torch-cache'),
+          NLTK_DATA: process.env.VOICESTUDIO_TEST_ASR_NLTK_CACHE || join(profile, 'nltk_data'),
+          ASR_MODEL_FASTER: process.env.VOICESTUDIO_TEST_ASR_MODEL || 'Systran/faster-whisper-tiny',
+        }
+      : {}),
+    ...(voxcpmSmoke
+      ? {
+          ...(voxcpmInstallSmoke ? {} : { OMNIVOICE_VOXCPM2_DIR: process.env.VOICESTUDIO_TEST_VOXCPM_DIR }),
+          OMNIVOICE_VOXCPM_MODEL: process.env.VOICESTUDIO_TEST_VOXCPM_MODEL,
+          OMNIVOICE_MODEL_LOAD_RETRIES: '1',
+          ...(process.env.VOICESTUDIO_TEST_VOXCPM_UV_CACHE
+            ? { UV_CACHE_DIR: process.env.VOICESTUDIO_TEST_VOXCPM_UV_CACHE }
+            : {}),
+        }
+      : {}),
+    ...(cosyvoiceInstallSmoke || cosyvoiceReferenceSmoke
+      ? { OMNIVOICE_COSYVOICE_MODEL: '', OMNIVOICE_MODEL_LOAD_RETRIES: '1' }
+      : {}),
   };
 }
 const app = await electron.launch({
@@ -200,6 +235,47 @@ try {
       'Setup gate must not overflow horizontally',
     );
     const setupStatus = await waitForRuntimeGate(window, 30_000);
+    if (process.env.VOICESTUDIO_EXPECT_ROCM === '1') {
+      assert.equal(process.platform, 'win32');
+      assert.equal(setupStatus.runtimeTorchPreference, 'auto');
+      assert.equal(setupStatus.runtimeTorchVariant, 'rocm');
+      const polish = (await window.locator('html').getAttribute('lang'))?.startsWith('pl');
+      const backendSelect = window.getByRole('combobox', {
+        name: polish ? 'Środowisko obliczeniowe' : 'Compute backend',
+      });
+      await backendSelect.press('Enter');
+      await window.getByRole('option', {
+        name: polish ? 'NVIDIA CUDA lub CPU' : 'NVIDIA CUDA or CPU',
+      }).press('Enter');
+      await assertEventually(
+        async () =>
+          (await window.evaluate(() => window.voicestudio.backend.getStatus()))
+            .runtimeTorchVariant === 'default',
+        5_000,
+        'Manual NVIDIA/CPU backend was not saved',
+      );
+      if (polish) {
+        await window.getByRole('combobox', { name: 'Język' }).press('Enter');
+        await window.getByRole('option', { name: 'English' }).press('Enter');
+        await window.getByRole('combobox', { name: 'Compute backend' }).waitFor();
+      }
+      await window.getByRole('combobox', { name: 'Compute backend' }).press('Enter');
+      await window.getByRole('option', { name: 'Automatic' }).press('Enter');
+      await assertEventually(
+        async () =>
+          (await window.evaluate(() => window.voicestudio.backend.getStatus()))
+            .runtimeTorchVariant === 'rocm',
+        5_000,
+        'Automatic AMD backend was not restored',
+      );
+      const saved = JSON.parse(readFileSync(join(profile, 'runtime-preferences.json'), 'utf8'));
+      assert.equal(saved.torchPreference, 'auto');
+      console.log('PASS: packaged Windows GPU autodetection and keyboard backend selection');
+    }
+    if ((await window.locator('html').getAttribute('lang')) !== 'en') {
+      await window.getByRole('combobox').first().press('Enter');
+      await window.getByRole('option', { name: 'English' }).press('Enter');
+    }
     const installButton = window.getByRole('button', { name: 'Install local runtime', exact: true });
     if (process.platform === 'darwin' && targetArch === 'x64') {
       assert.equal(setupStatus.setupIssue, 'unsupported_platform');
@@ -264,15 +340,19 @@ try {
     );
     assert.deepEqual(errors, []);
     console.log(
-      'PASS: packaged first-run setup awaits explicit action and its native location picker changes/restores the destination without installing',
+      'PASS: packaged first-run setup awaits explicit action; runtime-location IPC changes/restores/cancels without installing (dialog responses mocked)',
     );
   } else {
     if (install) {
       console.log('Testing explicit installation in', profile);
       let state = await waitForRuntimeGate(window, firstSound ? 120_000 : 30_000);
       if (state.stage !== 'ready') {
+        if ((await window.locator('html').getAttribute('lang')) !== 'en') {
+          await window.getByRole('combobox').first().press('Enter');
+          await window.getByRole('option', { name: 'English' }).press('Enter');
+        }
         const installButton = window.getByRole('button', {
-          name: 'Install local runtime',
+          name: state.runtimeInterrupted ? 'Resume' : 'Install local runtime',
           exact: true,
         });
         // WSLg/Wayland can report a stable DOM box while Playwright's native
@@ -423,6 +503,157 @@ try {
     assert.equal(state.status, 200);
     assert.equal(state.bridge, 'object');
     assert(state.version);
+    if (asrSmoke) {
+      const audioBase64 = readFileSync(process.env.VOICESTUDIO_TEST_ASR_AUDIO).toString('base64');
+      const transcription = await window.evaluate(async ({ base64, language }) => {
+        const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+        const form = new FormData();
+        form.set('audio', new Blob([bytes], { type: 'audio/wav' }), 'rocm-test.wav');
+        form.set('mode', 'accurate');
+        if (language) form.set('language', language);
+        const response = await fetch('/api/transcribe', { method: 'POST', body: form });
+        return { status: response.status, result: await response.json() };
+      }, { base64: audioBase64, language: process.env.VOICESTUDIO_TEST_ASR_LANGUAGE });
+      assert.equal(transcription.status, 200, JSON.stringify(transcription.result));
+      assert.equal(transcription.result.engine, 'faster-whisper');
+      if (process.env.VOICESTUDIO_TEST_ASR_LANGUAGE)
+        assert.equal(transcription.result.language, process.env.VOICESTUDIO_TEST_ASR_LANGUAGE);
+      assert(transcription.result.text?.trim(), 'The packaged ASR returned an empty transcript');
+      assert(transcription.result.segments?.length, 'The packaged ASR returned no segments');
+      console.log('PASS: packaged same-origin ROCm ASR transcribed audio:', transcription.result.text);
+    }
+    if (voxcpmInstallSmoke) {
+      const install = await window.evaluate(async () => {
+        const response = await fetch('/api/engines/sidecar/voxcpm2/install', { method: 'POST' });
+        return { status: response.status, result: await response.json() };
+      });
+      assert.equal(install.status, 200, JSON.stringify(install));
+      assert.equal(install.result.status, 'started', JSON.stringify(install));
+      const deadline = Date.now() + 600_000;
+      for (;;) {
+        const status = await window.evaluate(async () => {
+          const response = await fetch('/api/engines/sidecar/voxcpm2/install/status');
+          return { status: response.status, result: await response.json() };
+        });
+        assert.equal(status.status, 200, JSON.stringify(status));
+        if (status.result.job?.state === 'succeeded') {
+          assert.equal(status.result.installed, true);
+          console.log('PASS: packaged one-click VoxCPM2 sidecar installation completed');
+          break;
+        }
+        if (status.result.job?.state === 'failed') throw new Error(JSON.stringify(status.result));
+        assert(Date.now() < deadline, 'Packaged VoxCPM2 sidecar installation timed out');
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+    if (voxcpmSmoke) {
+      const result = await window.evaluate(async (text) => {
+        const inventoryResponse = await fetch('/api/engines/tts');
+        const inventory = await inventoryResponse.json();
+        const backend = inventory.backends?.find((entry) => entry.id === 'voxcpm2');
+        const form = new FormData();
+        form.set('engine', 'voxcpm2');
+        form.set('text', text);
+        form.set('num_step', '6');
+        const response = await fetch('/api/generate', { method: 'POST', body: form });
+        if (!response.ok) return { status: response.status, detail: await response.text(), backend };
+        const wav = await response.arrayBuffer();
+        const view = new DataView(wav);
+        return {
+          status: response.status,
+          backend,
+          bytes: wav.byteLength,
+          riff: String.fromCharCode(...new Uint8Array(wav.slice(0, 4))),
+          sampleRate: view.getUint32(24, true),
+        };
+      }, process.env.VOICESTUDIO_TEST_VOXCPM_TEXT || 'This packaged application uses AMD acceleration.');
+      assert.equal(result.status, 200, JSON.stringify(result));
+      assert.equal(result.backend?.routing_status, 'accelerated', JSON.stringify(result.backend));
+      assert.equal(result.backend?.effective_device, 'rocm');
+      assert.equal(result.riff, 'RIFF');
+      assert.equal(result.sampleRate, 48_000);
+      assert(result.bytes > 10_000, 'The packaged sidecar returned an empty WAV');
+      console.log('PASS: packaged same-origin ROCm VoxCPM2 synthesized 48-kHz audio');
+    }
+    if (cosyvoiceInstallSmoke) {
+      const install = await window.evaluate(async () => {
+        const response = await fetch('/api/engines/sidecar/cosyvoice/install', { method: 'POST' });
+        return { status: response.status, result: await response.json() };
+      });
+      assert.equal(install.status, 200, JSON.stringify(install));
+      assert.equal(install.result.status, 'started', JSON.stringify(install));
+      const deadline = Date.now() + 1_800_000;
+      for (;;) {
+        const status = await window.evaluate(async () => {
+          const response = await fetch('/api/engines/sidecar/cosyvoice/install/status');
+          return { status: response.status, result: await response.json() };
+        });
+        assert.equal(status.status, 200, JSON.stringify(status));
+        if (status.result.job?.state === 'succeeded') {
+          assert.equal(status.result.installed, true);
+          break;
+        }
+        if (status.result.job?.state === 'failed') throw new Error(JSON.stringify(status.result));
+        assert(Date.now() < deadline, 'Packaged CosyVoice ROCm installation timed out');
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      const result = await window.evaluate(async () => {
+        const inventoryResponse = await fetch('/api/engines/tts');
+        const inventory = await inventoryResponse.json();
+        const backend = inventory.backends?.find((entry) => entry.id === 'cosyvoice');
+        const form = new FormData();
+        form.set('engine', 'cosyvoice');
+        form.set('text', 'A Radeon can speak without a terminal.');
+        const response = await fetch('/api/generate', { method: 'POST', body: form });
+        if (!response.ok) return { status: response.status, detail: await response.text(), backend };
+        const wav = await response.arrayBuffer();
+        const view = new DataView(wav);
+        return {
+          status: response.status,
+          backend,
+          bytes: wav.byteLength,
+          riff: String.fromCharCode(...new Uint8Array(wav.slice(0, 4))),
+          sampleRate: view.getUint32(24, true),
+        };
+      });
+      assert.equal(result.status, 200, JSON.stringify(result));
+      assert.equal(result.backend?.routing_status, 'accelerated', JSON.stringify(result.backend));
+      assert.equal(result.backend?.effective_device, 'rocm');
+      assert.equal(result.riff, 'RIFF');
+      assert.equal(result.sampleRate, 24_000);
+      assert(result.bytes > 10_000, 'The packaged CosyVoice returned an empty WAV');
+      console.log('PASS: packaged same-origin CosyVoice installed and synthesized on Radeon');
+    }
+    if (cosyvoiceReferenceSmoke) {
+      const reference = readFileSync(process.env.VOICESTUDIO_TEST_COSYVOICE_REFERENCE).toString('base64');
+      const result = await window.evaluate(async (base64) => {
+        const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+        const inventoryResponse = await fetch('/api/engines/tts');
+        const inventory = await inventoryResponse.json();
+        const backend = inventory.backends?.find((entry) => entry.id === 'cosyvoice');
+        const form = new FormData();
+        form.set('engine', 'cosyvoice');
+        form.set('text', 'A Radeon can clone this voice from an MP3 file.');
+        form.set('ref_audio', new Blob([bytes], { type: 'audio/mpeg' }), 'reference.mp3');
+        const response = await fetch('/api/generate', { method: 'POST', body: form });
+        if (!response.ok) return { status: response.status, detail: await response.text(), backend };
+        const wav = await response.arrayBuffer();
+        return {
+          status: response.status,
+          backend,
+          bytes: wav.byteLength,
+          riff: String.fromCharCode(...new Uint8Array(wav.slice(0, 4))),
+          sampleRate: new DataView(wav).getUint32(24, true),
+        };
+      }, reference);
+      assert.equal(result.status, 200, JSON.stringify(result));
+      assert.equal(result.backend?.routing_status, 'accelerated', JSON.stringify(result.backend));
+      assert.equal(result.backend?.effective_device, 'rocm');
+      assert.equal(result.riff, 'RIFF');
+      assert.equal(result.sampleRate, 24_000);
+      assert(result.bytes > 10_000, 'The packaged CosyVoice reference returned an empty WAV');
+      console.log('PASS: packaged same-origin CosyVoice synthesized with MP3 reference on Radeon');
+    }
     await window.goto('app://voicestudio/#/settings/models');
     await window.getByRole('textbox', { name: 'Custom mirror URL', exact: true }).waitFor();
     assert.deepEqual(errors, []);

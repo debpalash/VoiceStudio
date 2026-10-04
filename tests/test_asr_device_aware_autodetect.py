@@ -100,6 +100,19 @@ def test_explicit_omnivoice_alias_routes_shared_asr_to_pytorch(monkeypatch):
     assert selected._pipe is attached_pipeline
 
 
+def test_pytorch_whisper_routes_rocm_to_the_pytorch_gpu():
+    from core.device_caps import HostCaps
+    from services.engine_routing import resolve_routing
+
+    route = resolve_routing(
+        ab.PyTorchWhisperBackend.gpu_compat,
+        HostCaps(family='rocm', available_families=('rocm', 'cpu')),
+    )
+
+    assert route['effective_device'] == 'rocm'
+    assert route['routing_status'] == 'accelerated'
+
+
 # ── we did not buy speed with lip-sync accuracy ─────────────────────────────
 
 
@@ -414,10 +427,9 @@ def test_parakeet_mlx_real_transcribe_smoke(tmp_path):
 
 # ── ROCm (#1529): the Apple lesson repeated on the AMD axis ─────────────────
 # ROCm torch masquerades as CUDA (torch.cuda.is_available() is True, devices
-# are "cuda"), but CTranslate2 has no HIP backend — whisperx handed "cuda" to
-# NVIDIA's runtime on an RX 7900 XTX and died with "CUDA driver version is
-# insufficient for CUDA runtime version". pytorch-whisper rides torch itself,
-# so it is the engine that actually uses the HIP GPU.
+# are "cuda"). An ordinary NVIDIA-only CTranslate2 wheel handed "cuda" to
+# NVIDIA's runtime on an RX 7900 XTX and died. Without a verified Windows HIP
+# wheel, pytorch-whisper uses the HIP GPU instead.
 
 
 def test_rocm_host_picks_pytorch_whisper_not_ctranslate2(monkeypatch):

@@ -1,5 +1,9 @@
 # VoiceStudio — VoxCPM2 Engine
 
+> Native Windows ROCm changes on this branch are **DRAFT / not fully validated**.
+> Earlier hardware checks do not certify this selective integration; full
+> WhisperX remains unavailable. See the [draft scope and path limitations](../install/windows-rocm.md).
+
 VoxCPM2 (OpenBMB) is the studio-quality option: native 48 kHz output,
 zero-shot voice cloning, and — uniquely among VoiceStudio's engines —
 **voice design**: creating a synthetic voice from a text description
@@ -79,9 +83,22 @@ now retried once with a fresh client. See
 
 Click **Install** in **Model Catalogue → VoxCPM2**. VoiceStudio
 puts VoxCPM2 in its own Python environment under its data directory and runs
-it there, in a separate process. It installs the CUDA build of PyTorch on an
-NVIDIA GPU, the CPU build on other Windows and Linux machines, and the
-regular build on Apple Silicon.
+it there, in a separate process. On supported Windows 11 Radeon hosts, the installer
+selects Python 3.12 and pinned ROCm 7.2.1 dependencies and verifies an actual
+GPU kernel before marking the installation complete. Direct and reference-
+conditioned synthesis ran on an RX 9070 XT at 48 kHz; an NSIS-installed app
+also synthesized through its API with this pre-existing verified sidecar.
+In a separate profile the packaged app started a fresh install through the
+same-origin sidecar API, verified GPU execution and synthesized Polish audio.
+Other Radeon cards and a click on the Model Catalogue Install button are not
+yet validated. An existing CPU
+sidecar remains usable and is reported as CPU, not GPU accelerated.
+Outside the native Windows ROCm path, it installs CUDA PyTorch on NVIDIA hosts,
+CPU PyTorch on other Windows and Linux machines, and regular PyTorch on Apple Silicon.
+
+The completion marker is published atomically after verification. An interrupted
+marker write cannot expose an empty or partial marker as a completed CPU or GPU
+install. If writing fails, retry Install; existing model weights remain reusable.
 
 Nothing it installs touches VoiceStudio itself or any other engine, and
 **Uninstall** in the same row removes only that folder. An existing

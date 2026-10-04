@@ -1487,7 +1487,7 @@
     "gpu_report_state_intel_unsupported": "{{gpu}} wurde gefunden, aber keine installierte Engine kann Intel-GPUs nutzen, daher läuft alles auf der CPU.",
     "gpu_report_state_unknown": "Der GPU-Status konnte nicht ermittelt werden.",
     "gpu_report_option_vulkan_engines": "Nutzen Sie eine Engine mit eigener GPU-Laufzeit: audio.cpp läuft über Vulkan auf AMD-Radeon-GPUs (Einstellungen → Modelle → Laufzeit installieren).",
-    "gpu_report_option_rocm_windows_manual": "PyTorch mit ROCm unter Windows wird von VoiceStudio nicht installiert. AMD veröffentlicht separate Wheels für aktuelle Radeon-Karten, sie benötigen aber ein neueres PyTorch, als die Engines hier getestet sind, und manche Engines funktionieren dann nicht. Probieren Sie es nur, wenn Sie Fehler selbst beheben können (siehe Windows-Installationsanleitung).",
+    "gpu_report_option_rocm_windows_manual": "Auf unterstützten Radeon-Systemen mit Windows 11 x64 kann die VoiceStudio-Laufzeiteinrichtung den nativen AMD-ROCm-Stack installieren. Wähle bei der Einrichtung „Automatisch“ oder „AMD ROCm“. Nicht unterstützte Karten und manche Engines nutzen möglicherweise weiterhin die CPU; siehe die Windows-Installationsanleitung.",
     "gpu_report_option_rocm_variant_linux": "Setzen Sie OMNIVOICE_TORCH_VARIANT=rocm und führen Sie die Einrichtung erneut aus, um den ROCm-Build von PyTorch zu installieren.",
     "gpu_report_option_rocm_device_access": "Prüfen Sie, ob der amdgpu-Treiber geladen ist und Ihr Benutzer /dev/kfd öffnen kann (Gruppen render und video).",
     "gpu_report_option_reinstall_cuda_torch": "Installieren Sie die Laufzeit neu, damit der CUDA-Build von PyTorch installiert wird.",
@@ -2160,7 +2160,15 @@
     "region_global": "Global (direkt)",
     "region_china": "China (Spiegel)",
     "region_russia": "Russland (Spiegel)",
-    "region_restricted": "Eingeschränkt (Spiegel)"
+    "region_restricted": "Eingeschränkt (Spiegel)",
+    "torch_label": "Rechen-Backend",
+    "torch_auto": "Automatisch",
+    "torch_default": "NVIDIA CUDA oder CPU",
+    "torch_rocm": "AMD ROCm (unterstützte GPUs)",
+    "torch_hint": "Die manuelle Auswahl macht eine inkompatible GPU nicht kompatibel.",
+    "torch_device": "Erkanntes Gerät: {{device}}",
+    "torch_variant": "Zu installierende Laufzeitumgebung: {{variant}}",
+    "torch_error": "Das Rechen-Backend konnte nicht gespeichert werden. Bitte erneut versuchen."
   },
   "capture": {
     "no_speech": "Keine Sprache erkannt",

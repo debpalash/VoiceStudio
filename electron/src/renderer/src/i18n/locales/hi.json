@@ -1487,7 +1487,7 @@
     "gpu_report_state_intel_unsupported": "{{gpu}} मिला, लेकिन कोई इंस्टॉल किया हुआ इंजन Intel GPU का उपयोग नहीं कर सकता, इसलिए सब कुछ CPU पर चलता है।",
     "gpu_report_state_unknown": "GPU की स्थिति तय नहीं की जा सकी।",
     "gpu_report_option_vulkan_engines": "अपने GPU रनटाइम वाले इंजन का उपयोग करें: audio.cpp, Vulkan के ज़रिए AMD Radeon GPU पर चलता है (सेटिंग्स → मॉडल → रनटाइम इंस्टॉल करें)।",
-    "gpu_report_option_rocm_windows_manual": "VoiceStudio Windows पर ROCm वाला PyTorch इंस्टॉल नहीं करता। AMD नए Radeon कार्ड के लिए अलग wheel जारी करता है, लेकिन उन्हें यहाँ के इंजनों की जाँच वाले PyTorch से नया PyTorch चाहिए और कुछ इंजन टूट जाते हैं। केवल तभी आज़माएँ जब आप समस्याएँ खुद सुलझा सकते हों (Windows इंस्टॉल गाइड देखें)।",
+    "gpu_report_option_rocm_windows_manual": "समर्थित Windows 11 x64 Radeon सिस्टम पर VoiceStudio रनटाइम सेटअप मूल AMD ROCm घटक इंस्टॉल कर सकता है। सेटअप के दौरान स्वचालित या AMD ROCm चुनें। असमर्थित कार्ड और कुछ इंजन अब भी CPU का उपयोग कर सकते हैं; Windows इंस्टॉलेशन गाइड देखें।",
     "gpu_report_option_rocm_variant_linux": "PyTorch का ROCm बिल्ड इंस्टॉल करने के लिए OMNIVOICE_TORCH_VARIANT=rocm सेट करें और सेटअप फिर से चलाएँ।",
     "gpu_report_option_rocm_device_access": "जाँचें कि amdgpu ड्राइवर लोड है और आपका उपयोगकर्ता /dev/kfd खोल सकता है (render और video समूह)।",
     "gpu_report_option_reinstall_cuda_torch": "रनटाइम दोबारा इंस्टॉल करें ताकि वह PyTorch का CUDA बिल्ड इंस्टॉल करे।",
@@ -2160,7 +2160,15 @@
     "region_global": "वैश्विक (प्रत्यक्ष)",
     "region_china": "चीन (दर्पण)",
     "region_russia": "रूस (दर्पण)",
-    "region_restricted": "प्रतिबंधित (दर्पण)"
+    "region_restricted": "प्रतिबंधित (दर्पण)",
+    "torch_label": "कंप्यूट बैकएंड",
+    "torch_auto": "स्वचालित",
+    "torch_default": "NVIDIA CUDA या CPU",
+    "torch_rocm": "AMD ROCm (समर्थित GPU)",
+    "torch_hint": "मैन्युअल चयन असंगत GPU को समर्थित नहीं बनाता।",
+    "torch_device": "पहचाना गया डिवाइस: {{device}}",
+    "torch_variant": "इंस्टॉल किया जाने वाला रनटाइम: {{variant}}",
+    "torch_error": "कंप्यूट बैकएंड सहेजा नहीं जा सका। फिर कोशिश करें।"
   },
   "capture": {
     "no_speech": "कोई भाषण नहीं मिला",

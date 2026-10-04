@@ -24,15 +24,22 @@ faster-whisper because it's available on every platform we ship to).
 from __future__ import annotations
 
 import asyncio
+from functools import lru_cache
+import importlib.util
 import inspect
 import ipaddress
 import logging
+import mmap
 import os
+from pathlib import Path
 import re
 import contextlib
+import subprocess
+import sys
 import threading
 import time
 import weakref
+from urllib.error import URLError
 from urllib.parse import urlsplit
 from utils.containment import contain_system_exit
 
@@ -434,9 +441,8 @@ class ASRBackend(ABC):
     # TTSBackend.gpu_compat contract so engine_routing.resolve_routing() can
     # surface the effective device per host (no silent CPU fallback). The
     # conservative default is CPU-only; subclasses declare what they really run
-    # on. (ROCm is intentionally NOT claimed yet for any ASR engine — see the
-    # per-engine notes; an unverified `rocm` claim would route ROCm hosts to a
-    # broken GPU path, strictly worse than the honest `cpu_fallback`.)
+    # on. ROCm compatibility for CTranslate2 is calculated from the installed
+    # Windows HIP wheel and an isolated device probe, not assumed here.
     gpu_compat: tuple[str, ...] = ("cpu",)
 
     def execution_evidence_loaded(self) -> bool:
@@ -649,9 +655,6 @@ def forced_align(segments: list, audio, language_code: str, device: str | None =
 class WhisperXBackend(ASRBackend):
     id = "whisperx"
     display_name = "WhisperX (faster-whisper + wav2vec2 forced alignment)"
-    # CTranslate2 backend: CUDA fp16 or CPU int8 (see _pick_device). ROCm not
-    # claimed — CTranslate2 has no upstream HIP build, so a ROCm host honestly
-    # gets cpu_fallback rather than a false GPU promise.
     gpu_compat = ("cuda", "cpu")
 
     def __init__(self):
@@ -665,7 +668,7 @@ class WhisperXBackend(ASRBackend):
         # CUDA fp16 when available; otherwise CPU int8 (fastest CPU path,
         # negligible WER regression vs fp32 for whisper-large-v3).
         # _ctranslate2_cuda_ok, not torch.cuda.is_available: ROCm torch also
-        # answers True there, and CTranslate2 has no HIP backend (#1529).
+        # answers True with ordinary NVIDIA-only CTranslate2 wheels (#1529).
         if _ctranslate2_cuda_ok():
             return "cuda", "float16"
         return "cpu", "int8"
@@ -755,7 +758,12 @@ class WhisperXBackend(ASRBackend):
             # availability probe must REPORT 'unusable here', never raise, so
             # engine selection falls back instead of crashing the ASR preflight.
             return False, f"whisperx failed to load ({type(e).__name__}): {e}"
-        return _ctranslate2_cudnn_ok()
+        cudnn_ok, cudnn_reason = _ctranslate2_cudnn_ok()
+        if not cudnn_ok:
+            return False, cudnn_reason
+        if _needs_windows_rocm_whisperx_probe():
+            return _windows_rocm_whisperx_status()
+        return True, cudnn_reason
 
     def ensure_loaded(self) -> None:
         # Surface a whisperx/CTranslate2/torch load failure at preflight (once,
@@ -767,6 +775,10 @@ class WhisperXBackend(ASRBackend):
     def _ensure_asr(self):
         if self._asr is not None:
             return
+        if _needs_windows_rocm_whisperx_probe():
+            ready, reason = _windows_rocm_whisperx_status()
+            if not ready:
+                raise RuntimeError(reason)
         # Patch speechbrain's lazy-import guard BEFORE whisperx pulls in pyannote
         # → speechbrain, or a stray k2_fsa redirect import aborts ASR on Windows
         # (#630/#611/#647). No-op on macOS/Linux and when speechbrain is absent.
@@ -1107,7 +1119,6 @@ class WhisperXBackend(ASRBackend):
 class FasterWhisperBackend(ASRBackend):
     id = "faster-whisper"
     display_name = "Faster-Whisper (CTranslate2 — Linux/Windows/macOS)"
-    # CTranslate2: CUDA or CPU (no upstream ROCm/HIP build — see WhisperX note).
     gpu_compat = ("cuda", "cpu")
 
     def __init__(self, model_name: str | None = None):
@@ -1122,6 +1133,7 @@ class FasterWhisperBackend(ASRBackend):
         self._compute_type: str | None = None
         self._fallback_reason: str | None = None
         self._fallback_stage: str | None = None
+        self._hip_align_models: dict[str, tuple] = {}
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:
@@ -1152,7 +1164,7 @@ class FasterWhisperBackend(ASRBackend):
         #     WER regression vs fp32 for whisper-large-v3)
         device, compute_type = "cpu", "int8"
         # _ctranslate2_cuda_ok, not torch.cuda.is_available: ROCm torch also
-        # answers True there, and CTranslate2 has no HIP backend (#1529).
+        # answers True with ordinary NVIDIA-only CTranslate2 wheels (#1529).
         if _ctranslate2_cuda_ok():
             device, compute_type = "cuda", "float16"
         logger.info(
@@ -1221,6 +1233,10 @@ class FasterWhisperBackend(ASRBackend):
                    language: str | None = None, initial_prompt: str | None = None,
                    temperature: float | None = None,
                    task: str = "transcribe") -> dict:
+        align_on_rocm = (
+            word_timestamps and task == "transcribe"
+            and _windows_rocm_fast_align_requested()
+        )
         self._ensure_model()
         logger.info(
             "faster-whisper transcribing %s (word_timestamps=%s)",
@@ -1273,6 +1289,37 @@ class FasterWhisperBackend(ASRBackend):
             "language_probability": info.language_probability,
             "duration": info.duration,
         }
+        if align_on_rocm and out["segments"]:
+            align_device = "cuda" if self._device == "cuda" else "cpu"
+            if info.language not in self._hip_align_models:
+                try:
+                    self._hip_align_models[info.language] = _load_installed_align_model(info.language, align_device)
+                except _UnsupportedAlignmentLanguage:
+                    return out
+                except _OptionalAlignmentUnavailable as exc:
+                    logger.warning("Optional ROCm alignment unavailable; using faster-whisper word timestamps: %s", exc)
+                    return out
+            align_module, align_model, metadata = self._hip_align_models[info.language]
+            audio = _decode_audio_16k_mono(audio_path)
+            aligned = align_module.align(
+                out["segments"], align_model, metadata, audio, align_device,
+                return_char_alignments=False,
+            )["segments"]
+            source_text = "".join("".join(segment["text"].split()) for segment in out["segments"])
+            aligned_text = "".join("".join(segment["text"].split()) for segment in aligned)
+            if not aligned or aligned_text != source_text or any(
+                not segment.get("words") or any(
+                    word.get("start") is None or word.get("end") is None
+                    for word in segment["words"]
+                )
+                for segment in aligned
+            ):
+                raise RuntimeError("ROCm forced alignment did not produce timed words for every segment")
+            out["segments"] = aligned
+            out["chunks"] = [
+                {"text": segment["text"], "timestamp": (segment["start"], segment["end"])}
+                for segment in aligned
+            ]
         return out
 
     def unload(self) -> None:
@@ -1282,6 +1329,7 @@ class FasterWhisperBackend(ASRBackend):
         # Clear the real handle so the model is released.
         self._model = None
         self._asr = None  # harmless if a subclass ever used it; keeps idempotence
+        self._hip_align_models.clear()
         import gc
         gc.collect()
         try:
@@ -1428,9 +1476,7 @@ class MLXWhisperBackend(ASRBackend):
 class PyTorchWhisperBackend(ASRBackend):
     id = "pytorch-whisper"
     display_name = "PyTorch Whisper (CUDA / CPU via transformers pipeline)"
-    # Pure transformers pipeline → runs wherever torch does (CUDA, MPS, CPU).
-    # ROCm-via-HIP would also work but is left unclaimed pending verification.
-    gpu_compat = ("cuda", "mps", "cpu")
+    gpu_compat = ("cuda", "rocm", "mps", "cpu")
 
     def __init__(self, asr_pipe=None):
         # Reuses the `_asr_pipe` attached to the TTS model when available.
@@ -2829,7 +2875,7 @@ def list_backends() -> list[dict]:
         else:
             _LAST_ERRORS[bid] = scrub_text(msg)
         isolation = "subprocess" if getattr(cls, "_is_subprocess_isolated", False) else "in-process"
-        gpu_compat = getattr(cls, "gpu_compat", ("cpu",))
+        gpu_compat = _asr_gpu_compat(cls, caps)
         routing = routing_fields(gpu_compat, caps)
         # Cached load-time facts are valid only while their exact backend still
         # owns live model state. Recompute from that instance so unload/reaping
@@ -2927,15 +2973,204 @@ def _rocm_torch() -> bool:
         return False
 
 
+def _ct2_hip_dll() -> Path | None:
+    if sys.platform != "win32":
+        return None
+    try:
+        package = importlib.util.find_spec("ctranslate2")
+        if package is None or not package.submodule_search_locations:
+            return None
+        return Path(next(iter(package.submodule_search_locations))) / "ctranslate2.dll"
+    except (ImportError, OSError, StopIteration, ValueError):
+        return None
+
+
+@lru_cache(maxsize=1)
+def _windows_ct2_hip_ready() -> bool:
+    """Check the HIP wheel and device without loading native CT2 in this process."""
+    library = _ct2_hip_dll()
+    if library is None:
+        return False
+    try:
+        with library.open("rb") as source, mmap.mmap(source.fileno(), 0, access=mmap.ACCESS_READ) as binary:
+            if binary.find(b"hipblas.dll\x00") < 0 or binary.find(b"amdhip64_7.dll\x00") < 0:
+                return False
+    except (OSError, ValueError):
+        return False
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", "import ctranslate2; print(int(ctranslate2.get_cuda_device_count() > 0))"],
+            capture_output=True, text=True, timeout=15,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and result.stdout.strip() == "1"
+
+
+def _windows_rocm_fast_align_requested() -> bool:
+    return (
+        sys.platform == "win32" and _rocm_torch()
+        and _ctranslate2_cuda_ok()
+    )
+
+
+class _OptionalAlignmentUnavailable(RuntimeError):
+    pass
+
+
+class _UnsupportedAlignmentLanguage(ValueError):
+    pass
+
+
+def _load_installed_align_model(language: str, device: str):
+    """Load a supported aligner on request, without WhisperX's pyannote ASR."""
+    import importlib
+    import nltk
+    from core.config import DATA_DIR
+
+    offline = any(
+        os.environ.get(name, "").strip().upper() in {"1", "ON", "YES", "TRUE"}
+        for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")
+    )
+    align_module = importlib.import_module("whisperx.alignment")
+    torch_models = align_module.DEFAULT_ALIGN_MODELS_TORCH
+    hf_models = align_module.DEFAULT_ALIGN_MODELS_HF
+    if language not in torch_models and language not in hf_models:
+        raise _UnsupportedAlignmentLanguage(f"Windows ROCm alignment is not configured for {language!r}")
+    label = {'en': 'English', 'pl': 'Polish'}.get(language, language)
+    if language in torch_models:
+        import torch
+        import torchaudio
+
+        model_name = torch_models[language]
+        bundle = getattr(torchaudio.pipelines, model_name)
+        checkpoint = Path(torch.hub.get_dir()) / "checkpoints" / bundle._path
+        if not checkpoint.is_file() and offline:
+            raise _OptionalAlignmentUnavailable(
+                f"{label} forced-alignment checkpoint is missing while offline; "
+                "connect to download it on the next word-timestamp transcription"
+            )
+        kwargs = {"model_name": model_name, "model_dir": str(checkpoint.parent)}
+    else:
+        from huggingface_hub import snapshot_download
+
+        repo_id = hf_models[language]
+        alignment_files = (
+            'config.json', 'preprocessor_config.json', 'vocab.json',
+            'special_tokens_map.json', 'tokenizer_config.json',
+            'pytorch_model.bin', 'model.safetensors',
+        )
+
+        def snapshot_complete(snapshot_path: str) -> bool:
+            root = Path(snapshot_path)
+            return (
+                all((root / filename).is_file() for filename in (
+                    "config.json", "preprocessor_config.json", "vocab.json",
+                ))
+                and any((root / filename).is_file() for filename in (
+                    "pytorch_model.bin", "model.safetensors",
+                ))
+            )
+
+        try:
+            snapshot = snapshot_download(
+                repo_id, local_files_only=True, allow_patterns=alignment_files,
+            )
+            if not snapshot_complete(snapshot):
+                raise FileNotFoundError(f"cached {label} alignment snapshot is incomplete")
+        except (OSError, FileNotFoundError) as exc:
+            if offline:
+                raise _OptionalAlignmentUnavailable(
+                    f"{label} forced-alignment checkpoint is missing while offline; "
+                    "connect to download it on the next word-timestamp transcription"
+                ) from exc
+            logger.info("%s forced-alignment checkpoint not cached (%s); downloading on transcription request", label, exc)
+            try:
+                snapshot = snapshot_download(repo_id, allow_patterns=alignment_files)
+            except Exception as download_exc:
+                raise _OptionalAlignmentUnavailable(
+                    f"{label} forced-alignment checkpoint could not be downloaded ({download_exc}); "
+                    "check the connection and retry transcription"
+                ) from download_exc
+            if not snapshot_complete(snapshot):
+                raise _OptionalAlignmentUnavailable(f"downloaded {label} alignment snapshot is incomplete")
+        kwargs = {"model_name": snapshot}
+
+    nltk_dir = Path(DATA_DIR) / "nltk_data"
+    if str(nltk_dir) not in nltk.data.path:
+        nltk.data.path.insert(0, str(nltk_dir))
+    try:
+        nltk.data.load("tokenizers/punkt/english.pickle")
+    except LookupError:
+        if offline:
+            raise _OptionalAlignmentUnavailable(
+                "NLTK punkt_tab is missing while offline; "
+                "connect to download it on the next word-timestamp transcription"
+            )
+        nltk_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            downloaded = nltk.download("punkt_tab", download_dir=str(nltk_dir), quiet=True)
+            if not downloaded:
+                raise _OptionalAlignmentUnavailable("NLTK punkt_tab download returned no data")
+            nltk.data.load("tokenizers/punkt/english.pickle")
+        except (LookupError, OSError, RuntimeError) as exc:
+            raise _OptionalAlignmentUnavailable(
+                f"Forced alignment needs NLTK punkt_tab data ({exc}); "
+                "check the connection and retry transcription"
+            ) from exc
+    try:
+        model, metadata = align_module.load_align_model(language, device, **kwargs)
+    except Exception as exc:
+        if language in torch_models and not checkpoint.is_file() and isinstance(
+            exc, (URLError, ConnectionError, TimeoutError, FileNotFoundError),
+        ):
+            raise _OptionalAlignmentUnavailable(
+                f"{label} forced-alignment checkpoint could not be downloaded ({exc}); "
+                "check the connection and retry transcription"
+            ) from exc
+        raise RuntimeError(
+            f"{language} forced-alignment model could not load or download ({exc}); "
+            "check the connection, free GPU memory, and retry transcription"
+        ) from exc
+    return align_module, model, metadata
+
+
+def _needs_windows_rocm_whisperx_probe() -> bool:
+    """Deep-probe installed WhisperX, not an in-memory replacement without a spec."""
+    package = sys.modules.get("whisperx")
+    return (
+        sys.platform == "win32" and _rocm_torch()
+        and (package is None or getattr(package, "__spec__", None) is not None)
+    )
+
+
+@lru_cache(maxsize=1)
+def _windows_rocm_whisperx_status() -> tuple[bool, str]:
+    """Isolate WhisperX's lazy ASR import before advertising ROCm alignment."""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", "import whisperx.asr; import whisperx.alignment"],
+            capture_output=True, text=True, timeout=30,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, UnicodeError, subprocess.SubprocessError) as exc:
+        return False, f"WhisperX ASR import probe failed on Windows ROCm ({type(exc).__name__}); use faster-whisper for HIP transcription"
+    if result.returncode != 0:
+        lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
+        errors = [line for line in lines if line.startswith(("AttributeError:", "ImportError:", "RuntimeError:"))]
+        detail = (errors[-1] if errors else (lines[-1] if lines else f"exit {result.returncode}"))[:300]
+        return False, f"WhisperX ASR import failed on Windows ROCm ({detail}); use faster-whisper for HIP transcription"
+    return False, "WhisperX full ASR-and-alignment pipeline on Windows ROCm is not yet validated; use faster-whisper for verified HIP transcription"
+
+
 def _ctranslate2_cuda_ok() -> bool:
     """Whether CTranslate2 (whisperx / faster-whisper) may use ``"cuda"``.
 
-    CTranslate2 has NO HIP backend. On a ROCm host torch says cuda is
-    available (HIP), the device string is handed to CTranslate2, and its
-    NVIDIA CUDA runtime dies with "CUDA driver version is insufficient for
-    CUDA runtime version" — the #1529 report, an AMD RX 7900 XTX in the
-    :rocm Docker image. Real CUDA only; ROCm hosts take the CPU path here
-    (auto-detect prefers pytorch-whisper there, which does use HIP).
+    ROCm torch reports CUDA available, even with a NVIDIA-only CTranslate2
+    wheel (the #1529 failure). Admit HIP only with a Windows wheel linked to
+    HIP libraries and a successful, isolated native CT2 device probe. Other
+    ROCm hosts use the CPU path (auto-detect prefers pytorch-whisper).
 
     Also honors the user compute-device override (Settings → Performance /
     ``OMNIVOICE_DEVICE``): a host pinned to cpu (or any non-cuda family)
@@ -2945,7 +3180,8 @@ def _ctranslate2_cuda_ok() -> bool:
     try:
         from core.device_caps import detect_host_caps
 
-        if detect_host_caps().family != "cuda":
+        family = detect_host_caps().family
+        if family not in ("cuda", "rocm"):
             return False
     except Exception:  # noqa: BLE001 — fail SAFE, not fast
         # Without a working probe we can't know whether an override or a
@@ -2953,7 +3189,20 @@ def _ctranslate2_cuda_ok() -> bool:
         # the #1529 crash. CPU always works.
         logger.warning("device probe failed — CTranslate2 taking the CPU path", exc_info=True)
         return False
-    return _cuda_reported_available() and not _rocm_torch()
+    if not _cuda_reported_available():
+        return False
+    if _rocm_torch():
+        return family == "rocm" and _windows_ct2_hip_ready()
+    return family == "cuda"
+
+
+def _asr_gpu_compat(cls: type[ASRBackend], caps) -> tuple[str, ...]:
+    compat = getattr(cls, "gpu_compat", ("cpu",))
+    if cls in (WhisperXBackend, FasterWhisperBackend) and caps.family == "rocm" and _ctranslate2_cuda_ok():
+        if cls is WhisperXBackend and sys.platform == "win32" and not _windows_rocm_whisperx_status()[0]:
+            return compat
+        return ("cuda", "rocm", "cpu")
+    return compat
 
 
 def _auto_detect() -> str:
@@ -2977,8 +3226,9 @@ def _auto_detect() -> str:
       2. whisperx       — everywhere else: faster-whisper + wav2vec2 forced
                           alignment (±10-30 ms word timing). On CUDA it uses the
                           GPU, so it remains the right default there.
-      3. faster-whisper — transcription only (no forced alignment); safe fallback
-                          when whisperx isn't installed.
+      3. faster-whisper — fallback when whisperx isn't installed; on verified
+                          Windows ROCm, English/Polish word-timestamp requests
+                          use the independent alignment module.
       4. pytorch-whisper — last resort; requires the TTS model to be loaded so it
                           can reuse `_asr_pipe`.
 
@@ -2987,13 +3237,9 @@ def _auto_detect() -> str:
     """
     if _mps_available() and _probe_available(MLXWhisperBackend):
         return "mlx-whisper"
-    # Same class as the Apple case, on the ROCm axis (#1529): whisperx and
-    # faster-whisper are CTranslate2, which has no HIP backend — on a ROCm
-    # host they run on the CPU while the GPU sits idle (and before
-    # _ctranslate2_cuda_ok they died outright trying NVIDIA's runtime).
-    # pytorch-whisper is a pure transformers pipeline riding torch itself,
-    # so it genuinely uses the HIP GPU there.
-    if _rocm_torch() and _cuda_reported_available() and _probe_available(PyTorchWhisperBackend):
+    # Ordinary CTranslate2 wheels cannot use ROCm; choose torch's HIP path
+    # rather than CPU CTranslate2 if native HIP CT2 is unverified (#1529).
+    if _rocm_torch() and _cuda_reported_available() and not _ctranslate2_cuda_ok() and _probe_available(PyTorchWhisperBackend):
         return "pytorch-whisper"
     if _probe_available(WhisperXBackend):
         return "whisperx"
@@ -3120,7 +3366,7 @@ def load_active_asr_backend(
 
             cls = type(backend)
             caps = detect_host_caps()
-            routing = routing_fields(getattr(cls, "gpu_compat", ("cpu",)), caps)
+            routing = routing_fields(_asr_gpu_compat(cls, caps), caps)
             _RUNTIME_EVIDENCE[bid] = execution_snapshot(
                 engine_id=bid,
                 engine_cls=cls,

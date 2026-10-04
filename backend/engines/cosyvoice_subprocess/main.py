@@ -21,6 +21,7 @@ import json
 import os
 import re
 import struct
+import subprocess
 import sys
 import threading
 import traceback
@@ -204,6 +205,136 @@ def _repair_qwen_cache(model):
     encoder.forward_one_step = forward_one_step
 
 
+def _windows_rocm() -> bool:
+    if sys.platform != 'win32':
+        return False
+    import torch
+
+    return bool(torch.version.hip)
+
+
+def _decode_windows_rocm_audio(uri):
+    import imageio_ffmpeg
+    import numpy as np
+    import torch
+
+    if isinstance(uri, (str, bytes, os.PathLike)):
+        source = os.path.abspath(os.fsdecode(uri))
+        input_audio = None
+    elif hasattr(uri, 'read') and hasattr(uri, 'seek'):
+        uri.seek(0)
+        source = 'pipe:0'
+        input_audio = uri.read()
+    else:
+        raise TypeError('CosyVoice reference audio must be a local file or readable stream')
+    result = subprocess.run(
+        [imageio_ffmpeg.get_ffmpeg_exe(), '-nostdin', '-v', 'error',
+         '-protocol_whitelist', 'file,pipe', '-i', source,
+         '-map', '0:a:0', '-vn', '-ar', '24000', '-ac', '1', '-f', 'f32le', 'pipe:1'],
+        input=input_audio, capture_output=True, timeout=120, check=False,
+    )
+    if result.returncode or not result.stdout or len(result.stdout) % 4:
+        error = result.stderr.decode('utf-8', errors='replace')[-500:]
+        raise RuntimeError(f'CosyVoice reference audio could not be decoded by FFmpeg: {error}')
+    samples = np.frombuffer(result.stdout, dtype='<f4').copy()
+    return torch.from_numpy(samples).reshape(1, -1), 24000
+
+
+def _install_windows_rocm_audio_adapter() -> None:
+    if not _windows_rocm():
+        return
+    import soundfile
+    import torch
+    import torchaudio
+
+    original_load = torchaudio.load
+    if getattr(original_load, '_cosyvoice_rocm_audio', False):
+        return
+
+    def load(uri, *, backend=None, **kwargs):
+        if backend not in (None, 'soundfile') or kwargs:
+            raise ValueError('CosyVoice Windows ROCm audio load does not support these options')
+        try:
+            audio = soundfile.SoundFile(uri)
+        except soundfile.SoundFileError:
+            return _decode_windows_rocm_audio(uri)
+        with audio:
+            samples = torch.from_numpy(audio.read(dtype='float32', always_2d=True).T.copy())
+            return samples, audio.samplerate
+
+    load._cosyvoice_rocm_audio = True
+    torchaudio.load = load
+
+
+def _verify_windows_rocm_audio() -> None:
+    import imageio_ffmpeg
+    import tempfile
+    import torchaudio
+
+    formats = {
+        'wav': ('wav', 'pcm_s16le'), 'mp3': ('mp3', 'libmp3lame'),
+        'm4a': ('ipod', 'aac'), 'flac': ('flac', 'flac'),
+        'ogg': ('ogg', 'libvorbis'), 'oga': ('ogg', 'libvorbis'),
+        'opus': ('opus', 'libopus'), 'aac': ('adts', 'aac'),
+        'webm': ('webm', 'libopus'),
+    }
+    ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    raw_audio = struct.pack('<h', 8192) * 12000 + struct.pack('<h', -8192) * 12000
+    _install_windows_rocm_audio_adapter()
+    with tempfile.TemporaryDirectory(prefix='cosyvoice-rocm-audio-') as folder:
+        for extension, (container, codec) in formats.items():
+            path = os.path.join(folder, f'reference.{extension}')
+            result = subprocess.run(
+                [ffmpeg, '-nostdin', '-v', 'error', '-f', 's16le', '-ar', '24000',
+                 '-ac', '1', '-i', 'pipe:0', '-c:a', codec, '-f', container, path],
+                input=raw_audio, capture_output=True, timeout=30, check=False,
+            )
+            if result.returncode:
+                error = result.stderr.decode('utf-8', errors='replace')[-500:]
+                raise RuntimeError(f'FFmpeg could not create {extension} reference: {error}')
+            samples, rate = torchaudio.load(path, backend='soundfile')
+            if rate < 16000 or samples.numel() < 2400 or not samples.abs().max().item():
+                raise RuntimeError(f'{extension} reference did not decode to usable audio')
+
+
+def _verify_windows_rocm_dependencies() -> None:
+    import importlib
+    import importlib.metadata
+    import torch
+
+    checkout = _checkout()
+    for path in (os.path.join(checkout, 'third_party', 'Matcha-TTS'), checkout):
+        if path not in sys.path:
+            sys.path.insert(0, path)
+    for module in ('cosyvoice.cli.cosyvoice', 'cosyvoice.dataset.processor', 'matcha.utils'):
+        importlib.import_module(module)
+
+    versions = {
+        'torch': '2.9.1+rocm7.2.1',
+        'torchaudio': '2.9.1+rocm7.2.1',
+        'torchvision': '0.24.1+rocm7.2.1',
+        'rocm': '7.2.1',
+        'imageio-ffmpeg': '0.6.0',
+    }
+    if any(importlib.metadata.version(name) != version for name, version in versions.items()):
+        raise RuntimeError('CosyVoice Windows ROCm dependencies do not match the reviewed recipe')
+    if not _windows_rocm() or not torch.cuda.is_available():
+        raise RuntimeError('CosyVoice Windows ROCm GPU is not available')
+    tensor = torch.ones((4, 4), device='cuda')
+    if (tensor @ tensor)[0, 0].item() != 4:
+        raise RuntimeError('CosyVoice Windows ROCm GPU kernel failed')
+    _verify_windows_rocm_audio()
+
+
+def _verify_windows_rocm_model_device(model) -> None:
+    components = getattr(model, 'model', None)
+    for name in ('llm', 'flow', 'hift'):
+        component = getattr(components, name, None)
+        parameter = next(component.parameters(), None) if component is not None else None
+        if parameter is None or parameter.device.type != 'cuda':
+            raise RuntimeError(f'CosyVoice {name} weights are not on the Radeon GPU')
+
+
 def _load_model(stdout):
     global _MODEL
     if _MODEL is not None:
@@ -222,6 +353,7 @@ def _load_model(stdout):
             sys.path.insert(0, path)
     _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 0})
     with _heartbeat(stdout, "loading_model"):
+        _install_windows_rocm_audio_adapter()
         from cosyvoice.cli.cosyvoice import AutoModel  # type: ignore[import-not-found]  # noqa: PLC0415
 
         import torch  # noqa: PLC0415
@@ -237,6 +369,8 @@ def _load_model(stdout):
                 component = getattr(components, name, None)
                 if component is not None and hasattr(component, "float"):
                     component.float()
+        if _windows_rocm():
+            _verify_windows_rocm_model_device(model)
         _MODEL = model
     _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 100})
     return _MODEL
@@ -330,6 +464,25 @@ def _handle_synthesize(msg: dict, stdout) -> None:
     })
 
 
+def _verify_windows_rocm_install() -> None:
+    import io
+    import torch
+
+    _verify_windows_rocm_dependencies()
+    output = io.BytesIO()
+    _handle_synthesize({'text': 'Hello from CosyVoice.', 'op': 'synthesize'}, output)
+    output.seek(0)
+    audio = None
+    while (message := _recv(output)) is not None:
+        if message.get('op') == 'audio':
+            audio = message
+    if audio is None or audio['sample_rate'] != 24000 or audio['n_samples'] < 4800:
+        raise RuntimeError('CosyVoice Windows ROCm produced no usable speech')
+    if not any(base64.b64decode(audio['audio_pcm_b64'], validate=True)):
+        raise RuntimeError('CosyVoice Windows ROCm speech was silent')
+    torch.cuda.synchronize()
+
+
 # -- main loop ---------------------------------------------------------------
 
 
@@ -377,4 +530,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    if sys.argv[1:] == ['--verify-windows-rocm-deps']:
+        _verify_windows_rocm_dependencies()
+    elif sys.argv[1:] == ['--verify-windows-rocm']:
+        _verify_windows_rocm_install()
+    else:
+        sys.exit(main())

@@ -1487,7 +1487,7 @@
     "gpu_report_state_intel_unsupported": "{{gpu}} bulundu, ancak kurulu hiçbir motor Intel GPU'larını kullanamaz, bu yüzden her şey CPU'da çalışır.",
     "gpu_report_state_unknown": "GPU durumu belirlenemedi.",
     "gpu_report_option_vulkan_engines": "Kendi GPU çalışma zamanına sahip bir motor kullanın: audio.cpp, AMD Radeon GPU'larda Vulkan üzerinden çalışır (Ayarlar → Modeller → çalışma zamanını kur).",
-    "gpu_report_option_rocm_windows_manual": "VoiceStudio, Windows'ta ROCm'lu PyTorch kurmaz. AMD yeni Radeon kartlar için ayrı wheel paketleri yayımlıyor, ancak bunlar buradaki motorların test edildiğinden daha yeni bir PyTorch gerektiriyor ve bazı motorlar bozuluyor. Yalnızca sorun gidermeye hazırsanız deneyin (Windows kurulum kılavuzuna bakın).",
+    "gpu_report_option_rocm_windows_manual": "Desteklenen Windows 11 x64 Radeon sistemlerinde VoiceStudio çalışma ortamı kurulumu, yerel AMD ROCm bileşenlerini yükleyebilir. Kurulum sırasında Otomatik veya AMD ROCm seçeneğini seçin. Desteklenmeyen kartlar ve bazı motorlar CPU kullanmaya devam edebilir; Windows kurulum kılavuzuna bakın.",
     "gpu_report_option_rocm_variant_linux": "PyTorch'un ROCm derlemesini kurmak için OMNIVOICE_TORCH_VARIANT=rocm ayarlayın ve kurulumu yeniden çalıştırın.",
     "gpu_report_option_rocm_device_access": "amdgpu sürücüsünün yüklü olduğunu ve kullanıcınızın /dev/kfd'yi açabildiğini kontrol edin (render ve video grupları).",
     "gpu_report_option_reinstall_cuda_torch": "Çalışma zamanını yeniden kurun; böylece PyTorch'un CUDA derlemesi kurulur.",
@@ -2160,7 +2160,15 @@
     "region_global": "Küresel (doğrudan)",
     "region_china": "Çin (ayna)",
     "region_russia": "Rusya (ayna)",
-    "region_restricted": "Kısıtlanmış (ayna)"
+    "region_restricted": "Kısıtlanmış (ayna)",
+    "torch_label": "Hesaplama arka ucu",
+    "torch_auto": "Otomatik",
+    "torch_default": "NVIDIA CUDA veya CPU",
+    "torch_rocm": "AMD ROCm (desteklenen GPU'lar)",
+    "torch_hint": "Elle seçim uyumsuz bir GPU'yu desteklenir hâle getirmez.",
+    "torch_device": "Algılanan aygıt: {{device}}",
+    "torch_variant": "Yüklenecek çalışma ortamı: {{variant}}",
+    "torch_error": "Hesaplama arka ucu kaydedilemedi. Tekrar deneyin."
   },
   "capture": {
     "no_speech": "Konuşma algılanmadı",

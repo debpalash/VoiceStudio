@@ -31,6 +31,12 @@ _FP16_ERR = (
 )
 
 
+@pytest.fixture(autouse=True)
+def cuda_runtime(monkeypatch):
+    """Exercise mocked CUDA loaders independently of the host's HIP stack."""
+    monkeypatch.setattr("services.asr_backend._rocm_torch", lambda: False)
+
+
 def test_cuda_oom_falls_back_to_cpu(monkeypatch):
     calls = []
 

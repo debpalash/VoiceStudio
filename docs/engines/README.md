@@ -1,5 +1,9 @@
 # Engine guides
 
+> Native Windows ROCm changes on this branch are **DRAFT / not fully validated**.
+> Earlier hardware checks do not certify this selective integration; full
+> WhisperX remains unavailable. See the [draft scope and path limitations](../install/windows-rocm.md).
+
 One page per engine: what it's for, what it needs, how to enable it, and its
 quirks. Select engines in **Model Catalogue** (or quick-switch with
 <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>E</kbd>), or pin one with
@@ -72,10 +76,10 @@ an engine runs in its own environment.
 | Engine | Guide | Runs on | Best at | Enabled by |
 |---|---|---|---|---|
 | WhisperX | [whisperx](whisperx.md) | CUDA · CPU | dubbing (word timestamps + diarization) | installed by default |
-| Faster-Whisper | [faster-whisper](faster-whisper.md) | CUDA · CPU | general transcription | installed by default |
+| Faster-Whisper | [faster-whisper](faster-whisper.md) | CUDA · Windows ROCm · CPU | general transcription | installed by default |
 | Faster-Whisper (isolated) | [faster-whisper-isolated](faster-whisper-isolated.md) | CUDA · CPU | unattended batches | opt-in pick |
 | MLX Whisper | [mlx-whisper](mlx-whisper.md) | Apple Silicon | Mac default | `pip install mlx-whisper` |
-| PyTorch Whisper | [pytorch-whisper](pytorch-whisper.md) | CUDA · MPS · CPU | ROCm hosts | installed by default |
+| PyTorch Whisper | [pytorch-whisper](pytorch-whisper.md) | CUDA · ROCm · MPS · CPU | ROCm fallback | installed by default |
 | Parakeet TDT (NeMo) | [nemo-parakeet](nemo-parakeet.md) | CUDA · CPU | 25 languages, fast CPU | separate venv (never the app's) |
 | Parakeet TDT (MLX) | [parakeet-mlx](parakeet-mlx.md) | Apple Silicon | dictation, 25 EU languages | default on mac-ARM source installs |
 | Moonshine | [moonshine](moonshine.md) | CPU | edge/low-power, no timestamps | `pip install` (see guide) |

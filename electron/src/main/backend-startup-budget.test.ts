@@ -52,13 +52,14 @@ vi.mock('node:net', () => ({
   },
 }));
 
-vi.mock('./runtime-project', () => {
+vi.mock('./runtime-project', async (importOriginal) => {
   // Both pre-spawn steps are genuinely slow on a cold, scanner-contended
   // install, and both complete before the backend process exists.
   const burn = async (): Promise<void> => {
     if (mocks.prespawnMs > 0) await vi.advanceTimersByTimeAsync(mocks.prespawnMs);
   };
   return {
+    ...(await importOriginal<typeof import('./runtime-project')>()),
     runtimeReady: async () => mocks.runtimeReadyNow,
     runtimeCompatible: async () => false,
     runtimeDependenciesReady: async () => {

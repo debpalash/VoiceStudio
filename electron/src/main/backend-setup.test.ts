@@ -6,10 +6,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const mocks = vi.hoisted(() => ({
   runtimeConfig: null as { root: string; owned: boolean } | null,
+  runtimePreferences: null as { region: string; torchPreference: string } | null,
+  osRelease: '10.0.26300',
+  nvidiaDriver: false,
+  gpuInfo: vi.fn(async () => ({
+    gpuDevice: [] as Array<{ vendorId: number; deviceId: number; deviceString: string }>,
+  })),
   existingProject: false,
   existingRoot: false,
   dependencies: vi.fn(async (_project?: string) => true),
-  ready: vi.fn(async () => false),
+  ready: vi.fn<typeof import('./runtime-project').runtimeReady>(async () => false),
   compatible: vi.fn(async () => false),
   interrupted: vi.fn(async () => false),
   install: vi.fn(),
@@ -18,7 +24,13 @@ const mocks = vi.hoisted(() => ({
   stage: vi.fn(),
   spawn: vi.fn(),
 }));
-vi.mock('electron', () => ({ app: { isPackaged: true, getPath: () => '/private/voicestudio' } }));
+vi.mock('electron', () => ({
+  app: { isPackaged: true, getPath: () => '/private/voicestudio', getGPUInfo: mocks.gpuInfo },
+}));
+vi.mock('node:os', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:os')>()),
+  release: () => mocks.osRelease,
+}));
 vi.mock('node:child_process', () => ({ spawn: mocks.spawn, spawnSync: vi.fn() }));
 vi.mock('node:fs', async (importOriginal) => {
   const original = await importOriginal<typeof import('node:fs')>();
@@ -27,10 +39,16 @@ vi.mock('node:fs', async (importOriginal) => {
     readFileSync: (...args: Parameters<typeof original.readFileSync>) =>
       String(args[0]).endsWith('runtime-location.json') && mocks.runtimeConfig
         ? JSON.stringify(mocks.runtimeConfig)
-        : original.readFileSync(...args),
+        : String(args[0]).endsWith('runtime-preferences.json') && mocks.runtimePreferences
+          ? JSON.stringify(mocks.runtimePreferences)
+          : original.readFileSync(...args),
     writeFileSync: (...args: Parameters<typeof original.writeFileSync>) => {
       if (String(args[0]).endsWith('runtime-location.json')) {
         mocks.runtimeConfig = JSON.parse(String(args[1]));
+        return;
+      }
+      if (String(args[0]).endsWith('runtime-preferences.json')) {
+        mocks.runtimePreferences = JSON.parse(String(args[1]));
         return;
       }
       return original.writeFileSync(...args);
@@ -38,15 +56,18 @@ vi.mock('node:fs', async (importOriginal) => {
     mkdirSync: (...args: Parameters<typeof original.mkdirSync>) =>
       String(args[0]).includes('private') ? undefined : original.mkdirSync(...args),
     existsSync: (path: Parameters<typeof original.existsSync>[0]) =>
-      String(path).includes('selected')
-        ? String(path).endsWith('project')
-          ? mocks.existingProject
-          : mocks.existingRoot
-        : original.existsSync(path),
+      /nvcuda\.dll|nvml\.dll|nvidia-smi|\/nvidia|libcuda/.test(String(path))
+        ? mocks.nvidiaDriver
+        : String(path).includes('selected')
+          ? String(path).endsWith('project')
+            ? mocks.existingProject
+            : mocks.existingRoot
+          : original.existsSync(path),
   };
 });
 vi.mock('node:fs/promises', () => ({ rm: mocks.rm }));
-vi.mock('./runtime-project', () => ({
+vi.mock('./runtime-project', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./runtime-project')>()),
   runtimeDependenciesReady: mocks.dependencies,
   runtimeReady: mocks.ready,
   runtimeCompatible: mocks.compatible,
@@ -74,6 +95,10 @@ afterEach(() => {
   vi.unstubAllEnvs();
   vi.clearAllMocks();
   mocks.runtimeConfig = null;
+  mocks.runtimePreferences = null;
+  mocks.osRelease = '10.0.26300';
+  mocks.nvidiaDriver = false;
+  mocks.gpuInfo.mockResolvedValue({ gpuDevice: [] });
   mocks.existingProject = false;
   mocks.existingRoot = false;
   mocks.dependencies.mockResolvedValue(true);
@@ -107,6 +132,124 @@ it('reports a resumable runtime when startup finds an interrupted install marker
   expect(supervisor.status.stage).toBe('setup_required');
   expect(supervisor.status.runtimeInterrupted).toBe(true);
   expect(mocks.install).not.toHaveBeenCalled();
+  await supervisor.shutdown();
+});
+
+it('auto-selects a supported Windows AMD GPU and persists a manual NVIDIA/CPU choice', async () => {
+  vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+  vi.spyOn(process, 'arch', 'get').mockReturnValue('x64');
+  vi.stubEnv('OMNIVOICE_TORCH_VARIANT', '');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      throw new Error('no backend');
+    }),
+  );
+  mocks.gpuInfo.mockResolvedValue({
+    gpuDevice: [{ vendorId: 0x1002, deviceId: 0x7550, deviceString: 'AMD Radeon RX 9070 XT' }],
+  });
+  mocks.install.mockRejectedValueOnce(new Error('offline'));
+  const supervisor = new BackendSupervisor();
+  await supervisor.start();
+  expect(supervisor.status.runtimeTorchPreference).toBe('auto');
+  expect(supervisor.status.runtimeTorchVariant).toBe('rocm');
+  expect(supervisor.status.runtimeTorchDevice).toBe('AMD Radeon RX 9070 XT');
+  await supervisor.setupRuntime();
+  expect(mocks.install.mock.calls[0]?.[7]).toEqual({ variant: 'rocm', explicit: false });
+  await expect(supervisor.setRuntimeTorchPreference('invalid')).rejects.toThrow(
+    'invalid_runtime_torch_preference',
+  );
+  await supervisor.setRuntimeTorchPreference('default');
+  expect(mocks.runtimePreferences).toEqual({ region: 'auto', torchPreference: 'default' });
+  expect(supervisor.status.runtimeTorchVariant).toBe('default');
+  await supervisor.shutdown();
+  const restarted = new BackendSupervisor();
+  await restarted.start();
+  expect(restarted.status.runtimeTorchPreference).toBe('default');
+  expect(restarted.status.runtimeTorchVariant).toBe('default');
+  expect(mocks.ready.mock.lastCall?.[2]).toEqual({ variant: 'cpu', explicit: false });
+  await restarted.shutdown();
+});
+
+it.each([
+  ['x64', '', false, 'cpu', false],
+  ['x64', '', true, 'default', false],
+  ['arm64', '', true, 'cpu', false],
+  ['arm64', 'rocm', false, 'cpu', false],
+  ['x64', 'cpu', true, 'cpu', true],
+  ['x64', 'cuda', false, 'default', true],
+] as const)(
+  'preserves upstream runtime selection on Windows %s with %s',
+  async (arch, variant, nvidiaDriver, expected, explicit) => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    vi.spyOn(process, 'arch', 'get').mockReturnValue(arch);
+    vi.stubEnv('OMNIVOICE_TORCH_VARIANT', variant);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('no backend');
+      }),
+    );
+    mocks.nvidiaDriver = nvidiaDriver;
+    mocks.install.mockRejectedValueOnce(new Error('offline'));
+    const supervisor = new BackendSupervisor();
+    await supervisor.start();
+    expect(mocks.ready.mock.lastCall?.[2]).toEqual({ variant: expected, explicit });
+    await supervisor.setupRuntime();
+    expect(mocks.install.mock.calls[0]?.[7]).toEqual({ variant: expected, explicit });
+    await supervisor.shutdown();
+  },
+);
+
+it('does not replace an explicit CPU request with automatically detected ROCm', async () => {
+  vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+  vi.spyOn(process, 'arch', 'get').mockReturnValue('x64');
+  vi.stubEnv('OMNIVOICE_TORCH_VARIANT', 'cpu');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      throw new Error('no backend');
+    }),
+  );
+  mocks.gpuInfo.mockResolvedValue({
+    gpuDevice: [{ vendorId: 0x1002, deviceId: 0x7550, deviceString: 'AMD Radeon RX 9070 XT' }],
+  });
+  const supervisor = new BackendSupervisor();
+  await supervisor.start();
+  expect(mocks.gpuInfo).not.toHaveBeenCalled();
+  expect(mocks.ready.mock.lastCall?.[2]).toEqual({ variant: 'cpu', explicit: true });
+  await supervisor.shutdown();
+});
+
+it('resets package progress between managed runtime download stages', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      throw new Error('no backend');
+    }),
+  );
+  const supervisor = new BackendSupervisor();
+  await supervisor.start();
+  expect(supervisor.status.stage).toBe('setup_required');
+  let preparedAfterReset: number | undefined = -1;
+  mocks.install.mockImplementationOnce(async (...args: unknown[]) => {
+    const phase = args[5] as (value: 'installing_deps') => void;
+    const pushLog = (
+      supervisor as unknown as {
+        pushLog: (kind: 'out', line: string) => void;
+      }
+    ).pushLog.bind(supervisor);
+    phase('installing_deps');
+    pushLog('out', 'Prepared 227 packages in 90s');
+    expect(supervisor.status.setupProgress?.preparedPackages).toBe(227);
+    phase('installing_deps');
+    preparedAfterReset = supervisor.status.setupProgress?.preparedPackages;
+    throw new Error('offline');
+  });
+
+  await supervisor.setupRuntime();
+  expect(mocks.install).toHaveBeenCalledOnce();
+  expect(preparedAfterReset).toBeUndefined();
   await supervisor.shutdown();
 });
 

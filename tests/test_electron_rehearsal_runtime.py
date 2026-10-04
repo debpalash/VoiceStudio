@@ -6,7 +6,7 @@ import yaml
 
 def test_rehearsal_installs_runtime_in_a_separate_packaged_launch():
     workflow = yaml.safe_load(
-        (Path(__file__).parents[1] / '.github/workflows/electron-build.yml').read_text()
+        (Path(__file__).parents[1] / '.github/workflows/electron-build.yml').read_text(encoding='utf-8')
     )
     steps = workflow['jobs']['package']['steps']
     runtime = [step for step in steps if '--install' in step.get('run', '')]
@@ -43,16 +43,17 @@ def test_windows_on_arm_leg_builds_natively_and_installs_the_runtime():
 
 def test_install_smoke_uses_an_offline_fresh_model_cache():
     """Fresh installation must not reuse models or trigger model downloads."""
-    smoke = (Path(__file__).parents[1] / 'electron/tests/packaged-smoke.mjs').read_text()
+    smoke = (Path(__file__).parents[1] / 'electron/tests/packaged-smoke.mjs').read_text(encoding='utf-8')
     assert "mkdtempSync(join(tmpdir(), 'voicestudio-packaged-check-'))" in smoke
     assert "if (setup || install || existing)" in smoke
     assert "HF_HUB_CACHE: join(profile, 'hf-home', 'hub')" in smoke
-    assert "HF_HUB_OFFLINE: firstSound ? '0' : '1'" in smoke
-    assert "TRANSFORMERS_OFFLINE: firstSound ? '0' : '1'" in smoke
+    assert "HF_HUB_OFFLINE: firstSound || cosyvoiceInstallSmoke ? '0' : '1'" in smoke
+    assert "TRANSFORMERS_OFFLINE: firstSound || cosyvoiceInstallSmoke ? '0' : '1'" in smoke
     workflow = yaml.safe_load(
-        (Path(__file__).parents[1] / '.github/workflows/electron-build.yml').read_text()
+        (Path(__file__).parents[1] / '.github/workflows/electron-build.yml').read_text(encoding='utf-8')
     )
     for step in workflow['jobs']['package']['steps']:
         if '--install' in step.get('run', ''):
             assert '--first-sound' not in step['run']
+            assert '--cosyvoice-install-smoke' not in step['run']
             assert 'VOICESTUDIO_TEST_PROFILE' not in step.get('env', {})

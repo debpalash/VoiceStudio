@@ -6,6 +6,7 @@
     "lib": ["ES2023"],
     "module": "esnext",
     "moduleResolution": "bundler",
+    "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "types": ["node", "electron-vite/node"],
     "skipLibCheck": true,
@@ -25,6 +26,7 @@
     "src/main/**/*",
     "src/preload/**/*",
     "src/shared/web-api-routing.ts",
-    "src/shared/repair-request.ts"
+    "src/shared/repair-request.ts",
+    "../scripts/windows-rocm-recipe.json"
   ]
 }

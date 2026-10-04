@@ -11,8 +11,8 @@ import sys
 from pathlib import Path
 
 import pytest
+import soundfile as sf
 import torch
-import torchaudio
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -26,9 +26,9 @@ class TestSuccessPath:
         atomic_save_wav(str(target), audio, 24000)
 
         assert target.exists()
-        loaded, sr = torchaudio.load(str(target))
+        loaded, sr = sf.read(target, always_2d=True)
         assert sr == 24000
-        assert loaded.shape == audio.shape
+        assert loaded.T.shape == audio.shape
 
     def test_no_temp_leaks_on_success(self, tmp_path: Path):
         target = tmp_path / "out.wav"
@@ -40,15 +40,15 @@ class TestSuccessPath:
     def test_overwrites_existing_target(self, tmp_path: Path):
         target = tmp_path / "out.wav"
         # Pre-populate with a different-length WAV
-        torchaudio.save(str(target), torch.zeros(1, 1000), 24000)
-        old_samples = torchaudio.load(str(target))[0].shape[-1]
+        sf.write(target, torch.zeros(1000, 1).numpy(), 24000)
+        old_samples = sf.info(target).frames
 
         new_audio = torch.randn(1, 5000)
         atomic_save_wav(str(target), new_audio, 24000)
 
-        loaded, _ = torchaudio.load(str(target))
-        assert loaded.shape[-1] == 5000
-        assert loaded.shape[-1] != old_samples
+        loaded, _ = sf.read(target, always_2d=True)
+        assert loaded.shape[0] == 5000
+        assert loaded.shape[0] != old_samples
 
 
 class TestAtomicity:

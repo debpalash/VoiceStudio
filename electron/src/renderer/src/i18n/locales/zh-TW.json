@@ -1487,7 +1487,7 @@
     "gpu_report_state_intel_unsupported": "找到了 {{gpu}}，但已安裝的引擎都無法使用 Intel GPU，因此所有工作都在 CPU 上執行。",
     "gpu_report_state_unknown": "無法判斷 GPU 狀態。",
     "gpu_report_option_vulkan_engines": "使用自帶 GPU 執行環境的引擎：audio.cpp 透過 Vulkan 在 AMD Radeon GPU 上執行（設定 → 模型 → 安裝執行環境）。",
-    "gpu_report_option_rocm_windows_manual": "VoiceStudio 不會在 Windows 上安裝帶 ROCm 的 PyTorch。AMD 為較新的 Radeon 顯示卡另外發布了 wheel，但它們需要比這裡引擎測試所用版本更新的 PyTorch，部分引擎會因此無法運作。僅在你能自行排除問題時再嘗試（請參閱 Windows 安裝指南）。",
+    "gpu_report_option_rocm_windows_manual": "在支援的 Windows 11 x64 Radeon 系統上，VoiceStudio 執行環境設定可以安裝原生 AMD ROCm 元件。設定時請選擇「自動」或「AMD ROCm」。不支援的顯示卡和部分引擎可能仍會使用 CPU；請參閱 Windows 安裝指南。",
     "gpu_report_option_rocm_variant_linux": "設定 OMNIVOICE_TORCH_VARIANT=rocm 並重新執行安裝程式，即可安裝 ROCm 版 PyTorch。",
     "gpu_report_option_rocm_device_access": "請確認 amdgpu 驅動程式已載入，且目前使用者可以開啟 /dev/kfd（render 和 video 群組）。",
     "gpu_report_option_reinstall_cuda_torch": "重新安裝執行環境，讓它安裝 CUDA 版 PyTorch。",
@@ -2160,7 +2160,15 @@
     "region_global": "全球（直接）",
     "region_china": "中國（鏡子）",
     "region_russia": "俄羅斯（鏡子）",
-    "region_restricted": "受限（鏡像）"
+    "region_restricted": "受限（鏡像）",
+    "torch_label": "運算後端",
+    "torch_auto": "自動",
+    "torch_default": "NVIDIA CUDA 或 CPU",
+    "torch_rocm": "AMD ROCm（支援的 GPU）",
+    "torch_hint": "手動選擇無法讓不相容的 GPU 獲得支援。",
+    "torch_device": "偵測到的裝置：{{device}}",
+    "torch_variant": "將安裝的執行環境：{{variant}}",
+    "torch_error": "無法儲存運算後端，請再試一次。"
   },
   "capture": {
     "no_speech": "未偵測到語音",

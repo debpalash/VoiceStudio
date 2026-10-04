@@ -1489,7 +1489,7 @@
     "gpu_report_state_intel_unsupported": "È stata trovata {{gpu}}, ma nessun motore installato può usare le GPU Intel, quindi tutto viene eseguito sulla CPU.",
     "gpu_report_state_unknown": "Impossibile determinare lo stato della GPU.",
     "gpu_report_option_vulkan_engines": "Usa un motore con un proprio runtime GPU: audio.cpp funziona sulle GPU AMD Radeon tramite Vulkan (Impostazioni → Modelli → installa il runtime).",
-    "gpu_report_option_rocm_windows_manual": "VoiceStudio non installa PyTorch con ROCm su Windows. AMD pubblica wheel separate per le schede Radeon recenti, ma richiedono un PyTorch più recente di quello con cui i motori sono testati e alcuni motori smettono di funzionare. Provaci solo se sai risolvere i problemi (vedi la guida all'installazione di Windows).",
+    "gpu_report_option_rocm_windows_manual": "Sui sistemi Radeon supportati con Windows 11 x64, la configurazione dell’ambiente di esecuzione di VoiceStudio può installare i componenti nativi AMD ROCm. Scegli Automatico o AMD ROCm durante la configurazione. Le schede non supportate e alcuni motori potrebbero continuare a usare la CPU; consulta la guida all’installazione per Windows.",
     "gpu_report_option_rocm_variant_linux": "Imposta OMNIVOICE_TORCH_VARIANT=rocm ed esegui di nuovo la configurazione per installare la build ROCm di PyTorch.",
     "gpu_report_option_rocm_device_access": "Verifica che il driver amdgpu sia caricato e che il tuo utente possa aprire /dev/kfd (gruppi render e video).",
     "gpu_report_option_reinstall_cuda_torch": "Reinstalla il runtime in modo che installi la build CUDA di PyTorch.",
@@ -2162,7 +2162,15 @@
     "region_global": "Globale (diretto)",
     "region_china": "Cina (specchio)",
     "region_russia": "Russia (specchio)",
-    "region_restricted": "Limitato (specchio)"
+    "region_restricted": "Limitato (specchio)",
+    "torch_label": "Backend di calcolo",
+    "torch_auto": "Automatico",
+    "torch_default": "NVIDIA CUDA o CPU",
+    "torch_rocm": "AMD ROCm (GPU supportate)",
+    "torch_hint": "La scelta manuale non rende compatibile una GPU non supportata.",
+    "torch_device": "Dispositivo rilevato: {{device}}",
+    "torch_variant": "Ambiente da installare: {{variant}}",
+    "torch_error": "Impossibile salvare il backend di calcolo. Riprova."
   },
   "capture": {
     "no_speech": "Nessun parlato rilevato",

@@ -1487,7 +1487,7 @@
     "gpu_report_state_intel_unsupported": "{{gpu}} hittades, men ingen installerad motor kan använda Intel-GPU:er, så allt körs på CPU:n.",
     "gpu_report_state_unknown": "GPU-statusen kunde inte fastställas.",
     "gpu_report_option_vulkan_engines": "Använd en motor med egen GPU-runtime: audio.cpp körs på AMD Radeon-GPU:er via Vulkan (Inställningar → Modeller → installera runtime).",
-    "gpu_report_option_rocm_windows_manual": "VoiceStudio installerar inte PyTorch med ROCm på Windows. AMD publicerar separata wheels för nyare Radeon-kort, men de kräver en nyare PyTorch än den motorerna här är testade med, och vissa motorer slutar fungera. Försök bara om du är bekväm med felsökning (se installationsguiden för Windows).",
+    "gpu_report_option_rocm_windows_manual": "På Radeon-system som stöds med Windows 11 x64 kan VoiceStudios runtime-installation installera de inbyggda AMD ROCm-komponenterna. Välj Automatiskt eller AMD ROCm under installationen. Kort som inte stöds och vissa motorer kan fortsätta använda CPU; se installationsguiden för Windows.",
     "gpu_report_option_rocm_variant_linux": "Ange OMNIVOICE_TORCH_VARIANT=rocm och kör installationen igen för att installera ROCm-bygget av PyTorch.",
     "gpu_report_option_rocm_device_access": "Kontrollera att amdgpu-drivrutinen är laddad och att din användare kan öppna /dev/kfd (grupperna render och video).",
     "gpu_report_option_reinstall_cuda_torch": "Installera om runtime så att CUDA-bygget av PyTorch installeras.",
@@ -2160,7 +2160,15 @@
     "region_global": "Global (direkt)",
     "region_china": "Kina (spegel)",
     "region_russia": "Ryssland (spegel)",
-    "region_restricted": "Begränsad (spegel)"
+    "region_restricted": "Begränsad (spegel)",
+    "torch_label": "Beräkningsbackend",
+    "torch_auto": "Automatiskt",
+    "torch_default": "NVIDIA CUDA eller CPU",
+    "torch_rocm": "AMD ROCm (GPU:er som stöds)",
+    "torch_hint": "Ett manuellt val ger inte stöd för en inkompatibel GPU.",
+    "torch_device": "Identifierad enhet: {{device}}",
+    "torch_variant": "Körmiljö som installeras: {{variant}}",
+    "torch_error": "Det gick inte att spara beräkningsbackend. Försök igen."
   },
   "capture": {
     "no_speech": "Inget tal upptäckt",

@@ -38,16 +38,16 @@ irm https://voicestudio.sh/install | iex
 
 ### PCs without an NVIDIA GPU
 
-VoiceStudio is fully usable without a dedicated GPU: laptops with Intel or AMD
-integrated graphics, Ryzen/Ryzen AI parts and older desktops all run the whole
-app on the CPU, just slower (integrated graphics are not used for AI work).
-On first run the runtime installer detects that no NVIDIA driver is present and
+Released builds remain usable on the CPU without a dedicated NVIDIA GPU.
+This draft branch additionally detects supported Windows 11 x64 Radeons for
+[experimental native ROCm setup](windows-rocm.md); it is not a validated release.
+On other PCs without an NVIDIA driver or a supported Radeon, the runtime installer
 installs the small CPU build of PyTorch instead of the multi-GB CUDA one, so
 the download is much smaller and needs about 5 GiB free instead of 9 GiB. For
 the best experience on a CPU, pick a light voice engine (KittenTTS,
 Supertonic-3, PocketTTS) and a small Whisper model in the Model Catalogue; the
 setup screen lists them as its CPU preset. Set `OMNIVOICE_TORCH_VARIANT=cuda`
-(or `cpu`) before launching to override the detection.
+(or `cpu`, or `rocm` on this draft branch) before launching to override the detection.
 
 ### Windows on ARM (Snapdragon X etc.)
 
@@ -82,32 +82,27 @@ The drive must be connected when VoiceStudio starts.
 
 <a id="gpu-support"></a>
 
-**PyTorch GPU acceleration on Windows is NVIDIA/CUDA-only.** The Windows install
-ships the CUDA build of PyTorch; with an NVIDIA GPU and a regular NVIDIA
-driver it's picked up automatically (no CUDA Toolkit install needed).
+**NVIDIA CUDA** remains supported with a compatible NVIDIA driver; no separate
+CUDA Toolkit installation is required.
 
-**AMD GPUs — including Ryzen / Ryzen AI integrated Radeon graphics — do not
-accelerate PyTorch engines on Windows.** The runtime has PyTorch 2.8 as either
-the NVIDIA CUDA build or (with no NVIDIA driver present) the CPU-only build;
-neither can drive a Radeon card, so those engines run on the CPU. pytorch.org publishes no Windows ROCm wheels, and VoiceStudio's ROCm
-option (`OMNIVOICE_TORCH_VARIANT=rocm`) is Linux-only — it is ignored on Windows
-rather than failing setup. (The Ryzen AI NPU is likewise not used.) Everything
-still works on CPU, just slower. What you can do today:
+**Native AMD ROCm desktop integration is DRAFT, not fully validated.** On this
+branch, supported Windows 11 x64 Radeons can select the reviewed Python 3.12 /
+ROCm 7.2.1 runtime and separate CTranslate2 HIP wheel. See the
+[native AMD draft guide](windows-rocm.md) ([po polsku](windows-rocm.pl.md)).
+The official v0.5.6 installer does not include this integration. Unsupported
+hardware retains the existing CPU path; the Ryzen AI NPU is not used.
 
-- **Use an engine with its own GPU runtime.** [audio.cpp](../engines/audio-cpp.md)
-  (Breeze-TTS-2) ships a Vulkan build that runs on Radeon GPUs: install the
-  runtime from **Settings → Models**. VoiceStudio picks the discrete GPU
-  automatically.
-- **Run on Linux** (native, or the ROCm Docker image) for ROCm acceleration of
-  the PyTorch engines — see [linux.md — AMD GPU (ROCm)](linux.md#amd-gpu-rocm).
-- **Advanced / unsupported: AMD's own Windows ROCm wheels.** AMD publishes
-  PyTorch ROCm wheels for Windows (`https://repo.amd.com/rocm/whl-multi-arch/`,
-  Python 3.11–3.14, RDNA 3 / RDNA 4 cards such as the RX 7000 and RX 9000 series).
-  They are PyTorch 2.9 or newer, not the 2.8 the engines here are validated
-  against, and faster-whisper (CTranslate2) needs its own separate HIP build for
-  the GPU, so expect parts of the app (WhisperX is a reported example) to break. VoiceStudio does not install them, and no engine
-  parity is claimed. DirectML is not an option either: `torch-directml` needs
-  PyTorch 2.4.
+The independent [source-only recipe](windows-rocm-source.md) from PR #2600
+remains available. Its bootstrap/smoke checks do not certify Electron, every
+speech engine, or full WhisperX/diarization. This desktop draft depends on that
+recipe and keeps full WhisperX unavailable. Native MIOpen has a known non-ASCII
+path failure in current diagnostics; the development SDK is not installed by
+the production recipe.
+
+[audio.cpp](../engines/audio-cpp.md) supplies its own **Vulkan** GPU runtime,
+independent of PyTorch. [Linux ROCm](linux.md#amd-gpu-rocm) remains supported
+through its existing recipe; Windows and Linux wheels are not interchangeable.
+DirectML is not an alternative for this stack: `torch-directml` needs PyTorch 2.4.
 
 **Settings → Performance → GPU acceleration** shows exactly what applies to your
 machine: the GPUs Windows reports, which PyTorch build is installed, and a

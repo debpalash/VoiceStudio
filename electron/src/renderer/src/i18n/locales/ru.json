@@ -1491,7 +1491,7 @@
     "gpu_report_state_intel_unsupported": "Найден {{gpu}}, но ни один установленный движок не умеет использовать GPU Intel, поэтому всё выполняется на CPU.",
     "gpu_report_state_unknown": "Не удалось определить состояние GPU.",
     "gpu_report_option_vulkan_engines": "Используйте движок со своей средой выполнения для GPU: audio.cpp работает на GPU AMD Radeon через Vulkan (Настройки → Модели → установить среду выполнения).",
-    "gpu_report_option_rocm_windows_manual": "VoiceStudio не устанавливает PyTorch с ROCm в Windows. AMD публикует отдельные wheel-пакеты для современных карт Radeon, но им нужен более новый PyTorch, чем тот, с которым тестировались здешние движки, и часть движков перестаёт работать. Пробуйте, только если умеете устранять неполадки (см. руководство по установке для Windows).",
+    "gpu_report_option_rocm_windows_manual": "На поддерживаемых системах Radeon с Windows 11 x64 настройка среды VoiceStudio может установить нативные компоненты AMD ROCm. Выберите «Автоматически» или «AMD ROCm» при настройке. Неподдерживаемые карты и некоторые движки могут по-прежнему использовать CPU; см. руководство по установке для Windows.",
     "gpu_report_option_rocm_variant_linux": "Задайте OMNIVOICE_TORCH_VARIANT=rocm и снова запустите настройку, чтобы установить сборку PyTorch с ROCm.",
     "gpu_report_option_rocm_device_access": "Убедитесь, что драйвер amdgpu загружен и ваш пользователь может открыть /dev/kfd (группы render и video).",
     "gpu_report_option_reinstall_cuda_torch": "Переустановите среду выполнения, чтобы она установила сборку PyTorch с CUDA.",
@@ -2164,7 +2164,15 @@
     "region_global": "Глобальный (прямой)",
     "region_china": "Китай (зеркало)",
     "region_russia": "Россия (зеркало)",
-    "region_restricted": "Ограничено (зеркало)"
+    "region_restricted": "Ограничено (зеркало)",
+    "torch_label": "Вычислительный движок",
+    "torch_auto": "Автоматически",
+    "torch_default": "NVIDIA CUDA или ЦП",
+    "torch_rocm": "AMD ROCm (поддерживаемые видеокарты)",
+    "torch_hint": "Ручной выбор не добавит поддержку несовместимой видеокарты.",
+    "torch_device": "Обнаруженное устройство: {{device}}",
+    "torch_variant": "Среда для установки: {{variant}}",
+    "torch_error": "Не удалось сохранить вычислительный движок. Повторите попытку."
   },
   "capture": {
     "no_speech": "Речь не обнаружена",

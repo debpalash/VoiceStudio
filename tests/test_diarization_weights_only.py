@@ -9,6 +9,7 @@ accepted.
 """
 import sys
 import types
+from unittest.mock import Mock
 
 import pytest
 
@@ -21,14 +22,19 @@ def reset_diar(monkeypatch):
     monkeypatch.setattr(mm, "_diar_pipeline", None, raising=False)
 
 
-def test_loads_pyannote_after_registering_safe_globals(reset_diar, monkeypatch):
+@pytest.mark.parametrize("token", ["hf_test", None])
+def test_loads_pyannote_after_registering_safe_globals(reset_diar, monkeypatch, token):
     mm = reset_diar
     order = []
 
-    # Token present (App source).
+    monkeypatch.setattr(
+        "services.pyannote_audio_compat.ensure_pyannote_audio_compat",
+        lambda: order.append("audio"),
+    )
+
     monkeypatch.setattr(
         "services.token_resolver.resolve",
-        lambda: types.SimpleNamespace(token="hf_test", source="app", user="u"),
+        lambda: types.SimpleNamespace(token=token, source="app", user="u") if token else None,
     )
 
     # Spy on the shared allowlister; must run BEFORE from_pretrained.
@@ -40,7 +46,8 @@ def test_loads_pyannote_after_registering_safe_globals(reset_diar, monkeypatch):
 
     fake_pipe = object()
 
-    def _from_pretrained(*a, **k):
+    def _from_pretrained(*args, **kwargs):
+        assert kwargs["use_auth_token"] == (token or False)
         order.append("load")
         return fake_pipe
 
@@ -60,7 +67,7 @@ def test_loads_pyannote_after_registering_safe_globals(reset_diar, monkeypatch):
     result = mm.get_diarization_pipeline()
 
     assert result is fake_pipe
-    assert order == ["allow", "load"], f"allowlist must precede load, got {order}"
+    assert order == ["audio", "allow", "load"], f"compatibility must precede load, got {order}"
 
 
 def test_no_token_short_circuits_without_loading(reset_diar, monkeypatch):
@@ -69,3 +76,28 @@ def test_no_token_short_circuits_without_loading(reset_diar, monkeypatch):
     pipe, err = mm.get_diarization_pipeline(return_error=True)
     assert pipe is None
     assert err == mm.DIARIZATION_ERR_NO_TOKEN
+
+
+@pytest.mark.parametrize("token", ["hf_test", None])
+def test_missing_bundle_is_checked_before_loading_the_runtime(reset_diar, monkeypatch, token):
+    manager = reset_diar
+    monkeypatch.setattr(
+        "services.token_resolver.resolve",
+        lambda: types.SimpleNamespace(token=token) if token else None,
+    )
+
+    def missing_bundle():
+        raise FileNotFoundError("Diarization model is not installed")
+
+    monkeypatch.setattr("services.diarization_local.local_pipeline_config", missing_bundle)
+    runtime_loader = Mock(side_effect=RuntimeError("Runtime must not initialize"))
+    monkeypatch.setattr(manager, "_lazy_torch", runtime_loader)
+    audio_compat = Mock(side_effect=RuntimeError("Audio compatibility must not initialize"))
+    monkeypatch.setattr("services.pyannote_audio_compat.ensure_pyannote_audio_compat", audio_compat)
+
+    pipeline, error = manager.get_diarization_pipeline(return_error=True)
+
+    assert pipeline is None
+    assert error == (manager.DIARIZATION_ERR_MISSING if token else manager.DIARIZATION_ERR_NO_TOKEN)
+    runtime_loader.assert_not_called()
+    audio_compat.assert_not_called()

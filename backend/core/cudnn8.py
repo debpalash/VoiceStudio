@@ -1,7 +1,7 @@
 """cuDNN 8 side-load, and — the point of this module — a *probe* for it.
 
-CTranslate2 (pinned at 4.4.0; the engine under WhisperX and faster-whisper)
-links against **cuDNN 8**, while PyTorch 2.8+ ships cuDNN 9. The two coexist:
+NVIDIA CUDA CTranslate2 builds (the engine under WhisperX and faster-whisper)
+link against **cuDNN 8**, while newer PyTorch ships cuDNN 9. The two coexist:
 the Rust bootstrap side-loads ``nvidia-cudnn-cu12==8.9.7.29`` into a
 ``cudnn8_compat/`` directory beside the venv's real site-packages (#827/#869),
 and we ``ctypes``-preload those libraries at startup so CTranslate2's own
@@ -132,10 +132,10 @@ def _torch_wants_cudnn8() -> tuple[bool, str]:
 
     cuDNN is a CUDA library: with no CUDA device, CTranslate2 runs on the CPU
     and never touches it, so a missing side-load is harmless and must not
-    disqualify the engine. ROCm is excluded for the same reason and one more —
-    ``torch.cuda.is_available()`` is True on a HIP build, but CTranslate2 has
-    no ROCm backend, so it is CPU-only there regardless. Without this branch a
-    Windows/CUDA fix would silently downgrade every ROCm user's ASR engine.
+    disqualify the engine. ROCm is excluded because HIP CTranslate2 uses HIP
+    libraries instead of NVIDIA cuDNN, while ordinary CTranslate2 wheels
+    run on the CPU there. ``torch.cuda.is_available()`` is True on HIP too;
+    checking it alone would silently downgrade ROCm users' ASR engine.
     Mirrors ``bootstrap.rs::classify_cuda_probe``, which likewise declines to
     install cuDNN 8 on HIP hosts (#124).
     """
@@ -144,7 +144,7 @@ def _torch_wants_cudnn8() -> tuple[bool, str]:
     except Exception as e:  # noqa: BLE001 — no torch: nothing will run anyway
         return False, f"torch unavailable ({type(e).__name__})"
     if getattr(getattr(torch, "version", None), "hip", None):
-        return False, "ROCm build — CTranslate2 has no ROCm backend, runs on CPU"
+        return False, "ROCm build uses HIP, not NVIDIA CUDA"
     try:
         if not torch.cuda.is_available():
             return False, "no CUDA device — CTranslate2 runs on CPU"

@@ -2,8 +2,6 @@
 huggingface_hub.hf_hub_download (HF Hub 1.x only accepts `token`), breaking
 diarization. Verify the compat shim translates the kwarg and that pyannote
 actually binds the wrapped function."""
-import pytest
-
 from services.model_manager import _ensure_pyannote_hf_token_compat
 
 
@@ -50,12 +48,10 @@ def test_shim_is_idempotent(monkeypatch):
 def test_pyannote_binds_the_shim():
     """The real proof: after the shim, pyannote's own `hf_hub_download`
     reference translates `use_auth_token` rather than raising."""
+    from services.pyannote_audio_compat import ensure_pyannote_audio_compat
+    ensure_pyannote_audio_compat()
     _ensure_pyannote_hf_token_compat()
-    # importorskip imports the module (or skips) — and since the shim patched
-    # huggingface_hub first, pyannote's `from huggingface_hub import
-    # hf_hub_download` (pipeline.py:34) binds the wrapped fn. (Also avoids the
-    # CodeQL "possibly-uninitialized local" false positive from a try/skip.)
-    _pp = pytest.importorskip("pyannote.audio.core.pipeline")
-    assert getattr(_pp.hf_hub_download, "_ov_uat_shim", False), (
+    import pyannote.audio.core.pipeline as pipeline
+    assert getattr(pipeline.hf_hub_download, "_ov_uat_shim", False), (
         "pyannote.audio.core.pipeline.hf_hub_download is not the use_auth_token shim"
     )

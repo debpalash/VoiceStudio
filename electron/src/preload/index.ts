@@ -92,6 +92,8 @@ const bridge: VoiceStudioBridge = {
     setupRuntime: () => ipcRenderer.invoke('backend:setupRuntime') as Promise<void>,
     cleanSetupRuntime: () => ipcRenderer.invoke('backend:cleanSetupRuntime') as Promise<void>,
     setRuntimeRegion: (region) => ipcRenderer.invoke('backend:setRuntimeRegion', region),
+    setRuntimeTorchPreference: (preference) =>
+      ipcRenderer.invoke('backend:setRuntimeTorchPreference', preference),
     chooseRuntimeLocation: (title) => ipcRenderer.invoke('backend:chooseRuntimeLocation', title),
     useDefaultRuntimeLocation: () => ipcRenderer.invoke('backend:useDefaultRuntimeLocation'),
     restart: () => ipcRenderer.invoke('backend:restart') as Promise<void>,

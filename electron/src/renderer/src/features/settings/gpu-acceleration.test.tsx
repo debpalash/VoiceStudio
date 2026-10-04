@@ -79,7 +79,10 @@ it('tells a Radeon owner why the GPU is idle and which engines can still use it'
     'AMD Radeon RX 9070 XT was found, but this install uses the NVIDIA CUDA build of PyTorch (2.8.0+cu128)',
   );
   expect(screen.getByText(/audio\.cpp runs on AMD Radeon GPUs through Vulkan/)).toBeInTheDocument();
-  expect(screen.getByText(/not installed by VoiceStudio/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/runtime setup can install the native AMD ROCm stack/),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/not installed by VoiceStudio/)).not.toBeInTheDocument();
   // Unknown future codes are hidden rather than rendered as raw keys; 1 of 2 known engines is on the GPU.
   expect(screen.getByText('1 of 2 engines use the GPU')).toBeInTheDocument();
   expect(screen.getByText('Uses the GPU (vulkan)')).toBeInTheDocument();
@@ -88,6 +91,30 @@ it('tells a Radeon owner why the GPU is idle and which engines can still use it'
   ).toBeInTheDocument();
   expect(screen.queryByText(/settings\.gpu_report/)).not.toBeInTheDocument();
   expect(mock.api).toHaveBeenCalledWith('/api/settings/gpu-report', expect.anything());
+});
+
+it('reports native Windows ROCm acceleration without suggesting another runtime install', async () => {
+  mock.api.mockResolvedValueOnce({
+    ...amdWindows,
+    torch: { kind: 'rocm', version: '2.9.1+rocm7.2.1' },
+    state: 'accelerated',
+    params: { device: 'AMD ROCm' },
+    options: [],
+    engines: [
+      { ...amdWindows.engines[0], code: 'gpu', params: { device: 'rocm' } },
+      {
+        ...amdWindows.engines[1],
+        id: 'faster-whisper',
+        name: 'Faster Whisper',
+        kind: 'asr',
+        params: { device: 'rocm' },
+      },
+    ],
+  });
+  renderIt();
+  expect(await screen.findByText('2 of 2 engines use the GPU')).toBeInTheDocument();
+  expect(screen.getAllByText('Uses the GPU (rocm)')).toHaveLength(2);
+  expect(screen.queryByText(/runtime setup can install/)).not.toBeInTheDocument();
 });
 
 it('renders nothing for an empty payload', async () => {

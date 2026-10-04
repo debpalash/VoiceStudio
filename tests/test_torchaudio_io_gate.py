@@ -6,8 +6,9 @@ torchaudio 2.9 removed ``info`` and routes ``load``/``save`` through TorchCodec
 sites were worse because their ``except Exception`` blocks turned the resulting
 ``AttributeError`` into "segment not cached", silently re-rendering every
 cached segment. All backend code reads and writes audio through the
-``services.audio_io`` helpers (soundfile/ffmpeg fallbacks); this gate keeps the
-whole class from coming back.
+``services.audio_io`` helpers (soundfile/ffmpeg fallbacks), except isolated
+sidecars with their own tested audio adapters; this gate keeps the whole class
+from coming back and restricts compatibility exceptions to audited adapters.
 """
 from __future__ import annotations
 
@@ -23,6 +24,27 @@ GATED = {"load", "info", "save"}
 # audio_io wraps the calls; the IndexTTS sidecar cannot import parent services
 # and carries its own guarded soundfile fallback.
 ALLOWED = {"services/audio_io.py", "engines/indextts/main.py"}
+AUDIO_ADAPTERS = {
+    "services/pyannote_audio_compat.py": {"ensure_pyannote_audio_compat"},
+    "engines/cosyvoice_subprocess/main.py": {
+        "_install_windows_rocm_audio_adapter", "_verify_windows_rocm_audio",
+    },
+}
+
+
+def _direct_audio_calls(source: str, relative_path: str) -> list[str]:
+    tree = ast.parse(source)
+    allowed_lines = set()
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name in AUDIO_ADAPTERS.get(relative_path, set()):
+            allowed_lines.update(range(node.lineno, node.end_lineno + 1))
+    return [
+        f"{relative_path}:{node.lineno} torchaudio.{node.attr}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute) and node.attr in GATED
+        and isinstance(node.value, ast.Name) and node.value.id in {"torchaudio", "ta"}
+        and node.lineno not in allowed_lines
+    ]
 
 
 def test_backend_never_calls_torchaudio_io_directly():
@@ -31,18 +53,27 @@ def test_backend_never_calls_torchaudio_io_directly():
         rel = path.relative_to(BACKEND).as_posix()
         if rel in ALLOWED or rel.startswith("tests/"):
             continue
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if (
-                isinstance(node, ast.Attribute)
-                and node.attr in GATED
-                and isinstance(node.value, ast.Name)
-                and node.value.id in {"torchaudio", "ta"}
-            ):
-                offenders.append(f"{rel}:{node.lineno} torchaudio.{node.attr}")
+        offenders.extend(_direct_audio_calls(path.read_text(encoding="utf-8"), rel))
     assert not offenders, (
         "Use services.audio_io.load_audio / audio_info / _safe_torchaudio_save "
         f"(TorchCodec-independent) instead of: {offenders}"
     )
+
+
+def test_cosyvoice_exception_is_limited_to_its_isolated_audio_adapter():
+    source = "def _install_windows_rocm_audio_adapter():\n    torchaudio.load = adapter\ntorchaudio.load('unsafe.wav')\n"
+    assert _direct_audio_calls(source, "engines/cosyvoice_subprocess/main.py") == [
+        "engines/cosyvoice_subprocess/main.py:3 torchaudio.load",
+    ]
+    assert len(_direct_audio_calls(source, "services/unrelated.py")) == 2
+
+
+def test_pyannote_exception_is_limited_to_dispatcher_registration():
+    source = "def ensure_pyannote_audio_compat():\n    torchaudio.load = adapter\ntorchaudio.load('unsafe.wav')\n"
+    assert _direct_audio_calls(source, "services/pyannote_audio_compat.py") == [
+        "services/pyannote_audio_compat.py:3 torchaudio.load",
+    ]
+    assert len(_direct_audio_calls(source, "services/unrelated.py")) == 2
 
 
 def _write_wav(path, frames=2400, rate=24000, channels=1):

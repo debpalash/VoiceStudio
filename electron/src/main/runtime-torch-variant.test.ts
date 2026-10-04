@@ -119,6 +119,25 @@ describe('resolveTorchVariant', () => {
   it('always uses CPU torch on Windows on ARM, GPU probe or not', () => {
     expect(resolveTorchVariant({}, 'win32', 'arm64', gpu).variant).toBe('cpu');
   });
+  it('selects the native Windows ROCm recipe only on x64', () => {
+    const env = { OMNIVOICE_TORCH_VARIANT: 'rocm' };
+    expect(resolveTorchVariant(env, 'win32', 'x64', noGpu)).toEqual({
+      variant: 'rocm',
+      explicit: true,
+    });
+    expect(resolveTorchVariant(env, 'win32', 'arm64', gpu)).toEqual({
+      variant: 'cpu',
+      explicit: false,
+    });
+    expect(resolveTorchVariant(env, 'darwin', 'arm64', noGpu)).toEqual({
+      variant: 'default',
+      explicit: false,
+    });
+    expect(managedPythonRequest('win32', 'x64', 'rocm')).toBe('3.12');
+    expect(managedPythonRequest('win32', 'arm64', 'cpu')).toBe(WIN_ARM64_PYTHON_REQUEST);
+    expect(managedPythonRequest('win32', 'x64', 'cpu')).toBe('3.11');
+    expect(managedPythonRequest('linux', 'x64', 'rocm')).toBe('3.11');
+  });
   it('honours an explicit variant over detection', () => {
     expect(
       resolveTorchVariant({ OMNIVOICE_TORCH_VARIANT: ' CUDA ' }, 'linux', 'x64', noGpu),
@@ -288,6 +307,31 @@ describe('Windows on ARM runtime install', () => {
 });
 
 describe('runtime markers across torch flavours', () => {
+  it('retains CPU inference when the supervisor passes its resolved choice', async () => {
+    host('win32', 'x64');
+    const { bundle, project } = await fixture();
+    const run = fakeRun(project);
+    await installRuntime(
+      bundle,
+      project,
+      'uv',
+      run,
+      new AbortController().signal,
+      undefined,
+      'global',
+      'default',
+    );
+    const inferred = { variant: 'cpu', explicit: false } as const;
+    expect(await runtimeReady(bundle, project, inferred)).toBe(true);
+    expect(await runtimeCompatible(bundle, project, inferred)).toBe(true);
+    expect(await runtimeReady(bundle, project, 'cpu')).toBe(false);
+    await rm(join(project, '.runtime-ready'));
+    expect(await runtimeCompatible(bundle, project, inferred)).toBe(true);
+    expect(await runtimeCompatible(bundle, project, { variant: 'rocm', explicit: false })).toBe(
+      false,
+    );
+    expect(await runtimeCompatible(bundle, project, 'cpu')).toBe(false);
+  });
   it('keeps a pre-existing CUDA runtime on a host that now infers CPU', async () => {
     host('linux', 'x64');
     const { bundle, project } = await fixture();

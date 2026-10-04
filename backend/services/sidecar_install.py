@@ -84,6 +84,7 @@ _TARBALL_TIMEOUT_S = 600
 _UV_VENV_TIMEOUT_S = 300
 _UV_PIP_INSTALL_TIMEOUT_S = 3600
 _IMPORT_PROBE_TIMEOUT_S = 120
+_COSYVOICE_GPU_SMOKE_TIMEOUT_S = 600
 
 
 # ── Spec ───────────────────────────────────────────────────────────────────
@@ -174,7 +175,7 @@ class SidecarSpec:
     # to the resolver, PyPI's newest torch (CPU-only on Windows) pairs with a
     # CUDA torchaudio from the other index. The host picks the build of the
     # pinned pair: `+cu128` on a CUDA host, `+cpu` on other Windows and Linux
-    # hosts, plain on macOS.
+    # hosts, plain on macOS. VoxCPM2 has a separate native Windows ROCm recipe.
     torch_pins: tuple[str, ...] = ()
     # Submodule trees the upstream repository needs (see ExtraSource).
     extra_sources: tuple[ExtraSource, ...] = ()
@@ -255,6 +256,42 @@ def _torch_pin_args(spec: "SidecarSpec") -> list[str]:
     return list(spec.torch_pins)
 
 
+_VOXCPM2_WINDOWS_ROCM_WHEELS = 'https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/'
+_VOXCPM2_WINDOWS_ROCM_PINS = (
+    'torch==2.9.1+rocm7.2.1',
+    'torchaudio==2.9.1+rocm7.2.1',
+    'rocm[libraries]==7.2.1',
+    'torchcodec==0.8.1',
+)
+_VOXCPM2_WINDOWS_ROCM_PROBE = '''
+import importlib.metadata
+import torch
+import torchaudio
+import librosa
+import voxcpm
+from voxcpm.model.utils import resolve_runtime_device
+
+versions = {
+    'voxcpm': '2.0.3',
+    'torch': '2.9.1+rocm7.2.1',
+    'torchaudio': '2.9.1+rocm7.2.1',
+    'rocm': '7.2.1',
+    'torchcodec': '0.8.1',
+}
+if any(importlib.metadata.version(name) != version for name, version in versions.items()):
+    raise RuntimeError('VoxCPM2 Windows ROCm dependency versions do not match the reviewed recipe')
+if not torch.version.hip or not torch.cuda.is_available() or resolve_runtime_device(None) != 'cuda':
+    raise RuntimeError('VoxCPM2 Windows ROCm GPU is not available')
+tensor = torch.ones((4, 4), device='cuda')
+if (tensor @ tensor)[0, 0].item() != 4:
+    raise RuntimeError('VoxCPM2 Windows ROCm GPU kernel probe failed')
+'''
+
+
+def _voxcpm2_windows_rocm(spec: 'SidecarSpec') -> bool:
+    return spec.engine_id == 'voxcpm2' and sys.platform == 'win32' and _host_family() == 'rocm'
+
+
 def _rocm_index_url() -> Optional[str]:
     """The ROCm wheel index when this sidecar should take a ROCm torch, else None.
 
@@ -262,10 +299,8 @@ def _rocm_index_url() -> Optional[str]:
     the host probe reports family ``rocm`` (the main venv's torch exposes HIP),
     or the user opted in with ``OMNIVOICE_TORCH_VARIANT=rocm`` (covers a swap
     that has not landed yet). ``OMNIVOICE_TORCH_INDEX`` overrides the index
-    exactly as it does for the main venv. Linux only: ROCm wheels ship for
-    Linux (incl. WSL2) nowhere else, and the main venv's swap degrades to a
-    warning on other platforms — a sidecar install must not hard-fail where
-    the main venv quietly keeps its default torch.
+    exactly as it does for the main venv. This index is Linux-only; native
+    Windows engines use separately reviewed AMD wheel recipes.
     """
     if sys.platform != "linux":
         return None
@@ -315,7 +350,11 @@ def venv_torch_hip(venv_dir: Path) -> Optional[bool]:
 
     Reads the wheel's generated ``version.py`` instead of importing torch, so it
     is safe on every engine-list refresh."""
-    matches = sorted((venv_dir / "lib").glob("python*/site-packages/torch/version.py"))
+    windows_version = venv_dir / "Lib" / "site-packages" / "torch" / "version.py"
+    matches = (
+        [windows_version] if windows_version.is_file()
+        else sorted((venv_dir / "lib").glob("python*/site-packages/torch/version.py"))
+    )
     if not matches:
         return None
     try:
@@ -386,6 +425,21 @@ def _in_app_env(module: str) -> Callable[[], bool]:
 _COSYVOICE_REQUIREMENTS = str(
     Path(__file__).resolve().parents[1] / "engines" / "cosyvoice_subprocess" / "requirements.txt"
 )
+
+
+_COSYVOICE_WORKER = Path(__file__).resolve().parents[1] / 'engines' / 'cosyvoice_subprocess' / 'main.py'
+_COSYVOICE_WINDOWS_ROCM_WHEELS = _VOXCPM2_WINDOWS_ROCM_WHEELS
+_COSYVOICE_WINDOWS_ROCM_PINS = (
+    'torch==2.9.1+rocm7.2.1',
+    'torchaudio==2.9.1+rocm7.2.1',
+    'torchvision==0.24.1+rocm7.2.1',
+    'rocm[libraries]==7.2.1',
+    'imageio-ffmpeg==0.6.0',
+)
+
+
+def _cosyvoice_windows_rocm(spec: 'SidecarSpec') -> bool:
+    return spec.engine_id == 'cosyvoice' and sys.platform == 'win32' and _host_family() == 'rocm'
 
 
 SPECS: dict[str, SidecarSpec] = {
@@ -560,7 +614,9 @@ SPECS: dict[str, SidecarSpec] = {
     # Run in a sidecar from its own venv (engines/voxcpm2_subprocess). voxcpm
     # leaves torch unpinned, so the pair is pinned here; each build of it was
     # resolved with voxcpm==2.0.3 on 2026-09-10 (Windows and Linux: +cu128 and
-    # +cpu; Apple Silicon: plain). Weights download on first synthesis.
+    # +cpu; Apple Silicon: plain). Native Windows ROCm uses Python 3.12 and
+    # the ROCm 7.2.1 wheels verified by its sidecar GPU probe. Weights download
+    # on first synthesis.
     "voxcpm2": SidecarSpec(
         engine_id="voxcpm2",
         display_name="VoxCPM2",
@@ -777,6 +833,34 @@ def engine_venv_python(env_var: str) -> Optional[Path]:
         if not _install_marker_valid(spec, Path(env_dir)):
             return None
     return py
+
+
+def voxcpm2_rocm_verified() -> bool:
+    """Whether this installed sidecar passed the native Windows ROCm kernel probe."""
+    env_dir = os.environ.get("OMNIVOICE_VOXCPM2_DIR")
+    if not env_dir or engine_venv_python("OMNIVOICE_VOXCPM2_DIR") is None:
+        return False
+    try:
+        marker = (Path(env_dir) / _INSTALL_COMPLETE_MARKER).read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return False
+    return marker.splitlines() == ["voxcpm", _VOXCPM2_WINDOWS_ROCM_VERIFIED]
+
+
+def cosyvoice_rocm_verified() -> bool:
+    spec = SPECS['cosyvoice']
+    if not _cosyvoice_windows_rocm(spec) or not _healthy(spec):
+        return False
+    checkout = managed_checkout(spec)
+    if os.environ.get(spec.env_var) != str(checkout):
+        return False
+    try:
+        marker = (checkout / _INSTALL_COMPLETE_MARKER).read_text(encoding='utf-8')
+    except (OSError, UnicodeError):
+        return False
+    return marker.splitlines() == [
+        spec.probe_module, spec.install_revision, _COSYVOICE_WINDOWS_ROCM_VERIFIED,
+    ]
 
 
 def _legacy_managed_checkouts(spec: SidecarSpec) -> tuple[Path, ...]:
@@ -1166,6 +1250,13 @@ def _healthy(spec: SidecarSpec) -> bool:
 def _install_marker_valid(spec: SidecarSpec, checkout: Path) -> bool:
     """Share the completion verdict between inventory and runtime selection."""
     marker = checkout / _INSTALL_COMPLETE_MARKER
+    if spec.engine_id == 'cosyvoice':
+        try:
+            lines = marker.read_text(encoding='utf-8').splitlines()
+        except (OSError, UnicodeError):
+            return False
+        expected = [spec.probe_module, spec.install_revision]
+        return lines in (expected, [*expected, _COSYVOICE_WINDOWS_ROCM_VERIFIED])
     if not spec.install_revision:
         return marker.is_file()
     try:
@@ -1174,6 +1265,19 @@ def _install_marker_valid(spec: SidecarSpec, checkout: Path) -> bool:
         ]
     except (OSError, UnicodeError):
         return False
+
+
+def _write_install_marker(checkout: Path, marker_text: str) -> None:
+    """Publish readiness only after the complete marker has been written."""
+    with tempfile.NamedTemporaryFile(
+        dir=checkout, prefix=f"{_INSTALL_COMPLETE_MARKER}.", delete=False,
+    ) as marker_file:
+        temporary = Path(marker_file.name)
+    try:
+        temporary.write_text(marker_text, encoding="utf-8")
+        temporary.replace(checkout / _INSTALL_COMPLETE_MARKER)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _persist(spec: SidecarSpec) -> None:
@@ -1398,6 +1502,10 @@ _SOURCE_REVISION_MARKER = ".voicestudio_source_revision"
 # download, the venv interpreter existing proves nothing: a dependency
 # install that died halfway leaves one behind.
 _INSTALL_COMPLETE_MARKER = ".voicestudio_install_complete"
+_VOXCPM2_WINDOWS_ROCM_VERIFIED = "windows-rocm7.2.1-verified"
+
+
+_COSYVOICE_WINDOWS_ROCM_VERIFIED = 'windows-rocm7.2.1-audio-and-model-verified'
 
 
 def _source_layout_ok(spec: SidecarSpec, checkout: Path) -> bool:
@@ -1542,9 +1650,11 @@ def _safe_extract_members(tf: "tarfile.TarFile", dest: str) -> None:
 
 
 def _existing_venv_compatible(spec: SidecarSpec, py: Path) -> bool:
-    if not spec.compatible_python:
+    accepted = ('3.12',) if (
+        _voxcpm2_windows_rocm(spec) or _cosyvoice_windows_rocm(spec)
+    ) else spec.compatible_python
+    if not accepted:
         return True
-    accepted = spec.compatible_python
     try:
         result = subprocess.run(
             [str(py), "-I", "-c", "import sys; print('%s.%s' % sys.version_info[:2])"],
@@ -1599,7 +1709,10 @@ def _step_create_venv(spec: SidecarSpec, job: dict) -> None:
     # uv_subprocess_env. The cache parent is the shared engines root, so
     # every sidecar engine reuses one cache.
     uv_env = uv_subprocess_env(Path(DATA_DIR) / "engines")
-    rc = _run_logged(job, [uv, "venv", str(venv_dir), *spec.venv_args],
+    venv_args = ('--python', '3.12') if (
+        _voxcpm2_windows_rocm(spec) or _cosyvoice_windows_rocm(spec)
+    ) else spec.venv_args
+    rc = _run_logged(job, [uv, "venv", str(venv_dir), *venv_args],
                      timeout=_UV_VENV_TIMEOUT_S, env=uv_env)
     if rc != 0 or not py.is_file():
         raise _StepError(
@@ -1629,7 +1742,12 @@ def _step_install_deps(spec: SidecarSpec, job: dict) -> None:
         from engines.dots_tts.install import compatible_constraints
         constraint = compatible_constraints(checkout / "constraints" / "recommended.txt")
         target[target.index("-c") + 1] = constraint.resolve().as_uri()
-    if _rocm_index_url() and spec.uses_rocm_index:
+    windows_rocm = _voxcpm2_windows_rocm(spec)
+    if windows_rocm:
+        target += [*_VOXCPM2_WINDOWS_ROCM_PINS, '--find-links', _VOXCPM2_WINDOWS_ROCM_WHEELS]
+    elif _cosyvoice_windows_rocm(spec):
+        target += [*_COSYVOICE_WINDOWS_ROCM_PINS, '--find-links', _COSYVOICE_WINDOWS_ROCM_WHEELS]
+    elif _rocm_index_url() and spec.uses_rocm_index:
         target += _rocm_pin_args()
     elif spec.torch_pins:
         target += _torch_pin_args(spec)
@@ -1679,16 +1797,26 @@ def _step_install_deps(spec: SidecarSpec, job: dict) -> None:
 def _step_verify(spec: SidecarSpec, job: dict) -> None:
     checkout = managed_checkout(spec)
     py = _venv_python(checkout / ".venv")
+    windows_rocm = _voxcpm2_windows_rocm(spec)
+    cosyvoice_rocm = _cosyvoice_windows_rocm(spec)
     _log(job, f"Verifying `import {spec.probe_module}` inside the venv …")
     try:
-        probe = (
-            _expand(spec.probe_code, checkout)
-            if spec.probe_code
-            else f"import {spec.probe_module}"
-        )
+        if windows_rocm:
+            probe = _VOXCPM2_WINDOWS_ROCM_PROBE
+        else:
+            probe = (
+                _expand(spec.probe_code, checkout)
+                if spec.probe_code
+                else f"import {spec.probe_module}"
+            )
+        argv = [str(py), '-c', probe]
+        probe_env = None
+        if cosyvoice_rocm:
+            argv = [str(py), str(_COSYVOICE_WORKER), '--verify-windows-rocm-deps']
+            probe_env = {**os.environ, spec.env_var: str(checkout), 'HF_HUB_OFFLINE': '1'}
         proc = subprocess.run(
-            [str(py), "-c", probe],
-            capture_output=True, timeout=_IMPORT_PROBE_TIMEOUT_S,
+            argv,
+            capture_output=True, timeout=_IMPORT_PROBE_TIMEOUT_S, env=probe_env,
         )
     except (subprocess.TimeoutExpired, OSError) as exc:
         raise _StepError(
@@ -1698,17 +1826,35 @@ def _step_verify(spec: SidecarSpec, job: dict) -> None:
         ) from exc
     if proc.returncode != 0:
         tail = proc.stderr.decode("utf-8", errors="replace")[-500:]
+        if cosyvoice_rocm:
+            raise _StepError(
+                f'CosyVoice Windows ROCm dependency/GPU/audio probe failed: {tail}',
+                'Check the ROCm 7.2.1 driver and AMD GPU, then retry. The bundled '
+                'FFmpeg must decode all supported reference formats; a failed probe '
+                'never marks this GPU install complete.',
+            )
+        if windows_rocm:
+            raise _StepError(
+                f'VoxCPM2 Windows ROCm GPU probe failed: {tail}',
+                'Check the ROCm 7.2.1 driver and supported AMD GPU, then retry. '
+                'The install is not marked complete until a GPU kernel runs.',
+            )
         raise _StepError(
             f"`import {spec.probe_module}` failed in the new venv: {tail}",
             "Re-run the install — dependency resolution resumes and repairs "
             "partial installs. If it keeps failing, use the manual install in "
             "the engine docs.",
         )
-    _job_step(job, "verify")["detail"] = f"import {spec.probe_module} OK"
+    _job_step(job, "verify")["detail"] = (
+        'voxcpm + ROCm GPU OK' if windows_rocm else f'import {spec.probe_module} OK'
+    )
     marker_text = f"{spec.probe_module}\n"
     if spec.install_revision:
         marker_text += f"{spec.install_revision}\n"
-    (checkout / _INSTALL_COMPLETE_MARKER).write_text(marker_text, encoding="utf-8")
+    if windows_rocm:
+        marker_text += f"{_VOXCPM2_WINDOWS_ROCM_VERIFIED}\n"
+    if not cosyvoice_rocm:
+        _write_install_marker(checkout, marker_text)
     _log(job, "Venv verified.")
 
 
@@ -1849,6 +1995,26 @@ def _step_fetch_weights(spec: SidecarSpec, job: dict) -> None:
 
 
 def _step_persist(spec: SidecarSpec, job: dict) -> None:
+    if _cosyvoice_windows_rocm(spec):
+        checkout = managed_checkout(spec)
+        py = _venv_python(checkout / '.venv')
+        env = {**os.environ, spec.env_var: str(checkout), 'HF_HUB_OFFLINE': '1'}
+        env.pop('OMNIVOICE_COSYVOICE_MODEL', None)
+        rc = _run_logged(
+            job, [str(py), str(_COSYVOICE_WORKER), '--verify-windows-rocm'],
+            timeout=_COSYVOICE_GPU_SMOKE_TIMEOUT_S, env=env,
+        )
+        if rc != 0:
+            raise _StepError(
+                f'CosyVoice Windows ROCm model synthesis failed (exit {rc}).',
+                'Inspect the install log for the GPU or reference-audio failure, '
+                'then retry. The managed install is not marked ready until real '
+                'model speech runs on the Radeon.',
+            )
+        _write_install_marker(
+            checkout,
+            f'{spec.probe_module}\n{spec.install_revision}\n{_COSYVOICE_WINDOWS_ROCM_VERIFIED}\n',
+        )
     _persist(spec)
     _job_step(job, "persist")["detail"] = f"{spec.env_var}={managed_checkout(spec)}"
     _log(job, f"Saved {spec.env_var} — the engine is ready to use, no restart needed.")

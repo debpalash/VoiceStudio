@@ -7,6 +7,7 @@ cover: the happy path, the disk-space preflight, the git-absent tarball
 fallback, partial-install repair, already-installed detection, uninstall
 safety (never delete a user's own clone), and the router wiring.
 """
+import errno
 import io
 import os
 import subprocess
@@ -1534,9 +1535,21 @@ _ROCM_TORCH_VERSION_PY = (
 )
 
 
+@pytest.mark.parametrize("torch_version, expected", [
+    (_CUDA_TORCH_VERSION_PY, False),
+    (_ROCM_TORCH_VERSION_PY, True),
+])
+def test_venv_torch_hip_reads_windows_layout(tmp_path, torch_version, expected):
+    torch_dir = tmp_path / "Lib" / "site-packages" / "torch"
+    torch_dir.mkdir(parents=True)
+    (torch_dir / "version.py").write_text(torch_version, encoding="utf-8")
+    assert si.venv_torch_hip(tmp_path) is expected
+
+
 def _mk_complete_indextts2_install(monkeypatch, torch_version_py: str):
     """A COMPLETE managed indextts2 install whose venv's torch `version.py`
     says which build it carries."""
+    monkeypatch.setattr(si.sys, "platform", "linux")
     monkeypatch.delenv("OMNIVOICE_INDEXTTS_DIR", raising=False)
     monkeypatch.delenv("OMNIVOICE_TORCH_VARIANT", raising=False)
     spec = si.get_spec("indextts2")
@@ -1606,6 +1619,341 @@ def test_non_rocm_hosts_keep_installed_means_installed(monkeypatch):
 
 
 # ── Submodule trees, partial weights, and optional post-install data ──────
+
+
+def test_cosyvoice_windows_rocm_uses_python312_and_gpu_wheels(monkeypatch):
+    spec = si.get_spec('cosyvoice')
+    monkeypatch.setattr(si.sys, 'platform', 'win32')
+    monkeypatch.setattr(si, '_host_family', lambda: 'rocm')
+    monkeypatch.setattr(si, '_locate_uv', lambda: '/fake/uv')
+    calls = []
+    monkeypatch.setattr(si, '_run_logged', _fake_run_logged(calls))
+
+    job = si._new_job(spec.engine_id)
+    si._step_create_venv(spec, job)
+    si._step_install_deps(spec, job)
+
+    assert calls[0][-2:] == ['--python', '3.12']
+    pip = calls[1]
+    for pin in si._COSYVOICE_WINDOWS_ROCM_PINS:
+        assert pin in pip
+    assert pip[-2:] == ['--find-links', si._COSYVOICE_WINDOWS_ROCM_WHEELS]
+    assert not any('+cpu' in part or '+cu128' in part or 'torchcodec' in part for part in pip)
+
+
+def test_cosyvoice_windows_rocm_probe_requires_gpu_and_audio_before_install(monkeypatch):
+    spec = si.get_spec('cosyvoice')
+    monkeypatch.setattr(si.sys, 'platform', 'win32')
+    monkeypatch.setattr(si, '_host_family', lambda: 'rocm')
+    checkout = si.managed_checkout(spec)
+    checkout.mkdir(parents=True)
+    py = si._venv_python(checkout / '.venv')
+    py.parent.mkdir(parents=True)
+    py.write_text('venv Python')
+    commands = []
+
+    def failing_probe(argv, **kwargs):
+        commands.append(argv)
+        return SimpleNamespace(returncode=1, stderr=b'audio decoder failed')
+
+    monkeypatch.setattr(si.subprocess, 'run', failing_probe)
+    with pytest.raises(si._StepError, match='CosyVoice Windows ROCm'):
+        si._step_verify(spec, si._new_job(spec.engine_id))
+    assert commands[0][0] == str(py)
+    assert commands[0][2] == '--verify-windows-rocm-deps'
+    assert not (checkout / si._INSTALL_COMPLETE_MARKER).exists()
+
+def test_cosyvoice_windows_rocm_requires_model_smoke_before_gpu_marker(monkeypatch):
+    spec = si.get_spec('cosyvoice')
+    monkeypatch.setattr(si.sys, 'platform', 'win32')
+    monkeypatch.setattr(si, '_host_family', lambda: 'rocm')
+    checkout = si.managed_checkout(spec)
+    checkout.mkdir(parents=True)
+    py = si._venv_python(checkout / '.venv')
+    py.parent.mkdir(parents=True)
+    py.write_text('venv Python')
+    monkeypatch.setenv(spec.env_var, str(checkout))
+    monkeypatch.setattr(si, '_source_present', lambda *_: True)
+    monkeypatch.setattr(si, '_weights_present', lambda *_: True)
+    monkeypatch.setattr(si.subprocess, 'run', lambda *args, **kwargs: SimpleNamespace(returncode=0))
+    job = si._new_job(spec.engine_id)
+    si._step_verify(spec, job)
+    assert not (checkout / si._INSTALL_COMPLETE_MARKER).exists()
+    assert not si.cosyvoice_rocm_verified()
+
+    commands = []
+    monkeypatch.setattr(si, '_run_logged', lambda job, argv, *, timeout, env=None: commands.append((argv, env)) or 1)
+    with pytest.raises(si._StepError, match='CosyVoice Windows ROCm'):
+        si._step_persist(spec, job)
+    assert not (checkout / si._INSTALL_COMPLETE_MARKER).exists()
+    assert commands[0][0] == [str(py), str(si._COSYVOICE_WORKER), '--verify-windows-rocm']
+    assert commands[0][1]['HF_HUB_OFFLINE'] == '1'
+
+    monkeypatch.setattr(si, '_run_logged', lambda job, argv, *, timeout, env=None: 0)
+    monkeypatch.setattr(si, '_persist', lambda spec: None)
+    si._step_persist(spec, job)
+    assert (checkout / si._INSTALL_COMPLETE_MARKER).read_text().splitlines() == [
+        spec.probe_module, spec.install_revision, si._COSYVOICE_WINDOWS_ROCM_VERIFIED,
+    ]
+    assert si.cosyvoice_rocm_verified()
+
+
+def test_cosyvoice_legacy_cpu_install_on_amd_is_not_rebuilt(monkeypatch):
+    spec = si.get_spec('cosyvoice')
+    monkeypatch.setattr(si.sys, 'platform', 'win32')
+    monkeypatch.setattr(si, '_host_family', lambda: 'rocm')
+    checkout = si.managed_checkout(spec)
+    checkout.mkdir(parents=True)
+    py = si._venv_python(checkout / '.venv')
+    py.parent.mkdir(parents=True)
+    py.write_text('existing CPU venv')
+    marker = checkout / si._INSTALL_COMPLETE_MARKER
+    marker.write_text(f'{spec.probe_module}\n{spec.install_revision}\n')
+    monkeypatch.setenv(spec.env_var, str(checkout))
+    monkeypatch.setattr(si, '_source_present', lambda *_: True)
+    monkeypatch.setattr(si, '_weights_present', lambda *_: True)
+    monkeypatch.setattr(si, '_persist', lambda *_: None)
+    assert si.start_install(spec.engine_id)['status'] == 'already_installed'
+    assert si.engine_venv_python(spec.env_var) == py
+    assert not si.cosyvoice_rocm_verified()
+    assert py.read_text() == 'existing CPU venv'
+
+
+@pytest.mark.parametrize(('family', 'platform'), [
+    ('cuda', 'win32'), ('cpu', 'win32'), ('rocm', 'linux'), ('mps', 'darwin'),
+])
+def test_cosyvoice_other_platform_recipes_remain_unchanged(monkeypatch, family, platform):
+    spec = si.get_spec('cosyvoice')
+    monkeypatch.setattr(si.sys, 'platform', platform)
+    monkeypatch.setattr(si, '_host_family', lambda: family)
+    monkeypatch.setattr(si, '_locate_uv', lambda: '/fake/uv')
+    calls = []
+    monkeypatch.setattr(si, '_run_logged', _fake_run_logged(calls))
+    job = si._new_job(spec.engine_id)
+    si._step_create_venv(spec, job)
+    si._step_install_deps(spec, job)
+    assert calls[0][-2:] == ['--python', '3.10']
+    for pin in si._torch_pin_args(spec):
+        assert pin in calls[1]
+    assert '--find-links' not in calls[1]
+    assert 'imageio-ffmpeg==0.6.0' not in calls[1]
+
+
+def test_voxcpm2_windows_rocm_installs_reviewed_python_and_wheels(monkeypatch):
+    spec = si.get_spec('voxcpm2')
+    monkeypatch.setattr(si.sys, 'platform', 'win32')
+    monkeypatch.setattr(si, '_host_family', lambda: 'rocm')
+    monkeypatch.setattr(si, '_locate_uv', lambda: '/fake/uv')
+    calls = []
+
+    def fake_run(job, argv, *, timeout, env=None):
+        calls.append((argv, env))
+        return _fake_run_logged([])(job, argv, timeout=timeout, env=env)
+
+    monkeypatch.setattr(si, '_run_logged', fake_run)
+    job = si._new_job(spec.engine_id)
+    si._step_create_venv(spec, job)
+    si._step_install_deps(spec, job)
+
+    venv = si.managed_checkout(spec) / '.venv'
+    assert calls[0][0] == ['/fake/uv', 'venv', str(venv), '--python', '3.12']
+    pip, env = calls[1]
+    assert pip[:5] == ['/fake/uv', 'pip', 'install', '--python', str(si._venv_python(venv))]
+    assert pip[5:10] == ['voxcpm==2.0.3', *si._VOXCPM2_WINDOWS_ROCM_PINS]
+    assert pip[10:] == ['--find-links', si._VOXCPM2_WINDOWS_ROCM_WHEELS]
+    assert env['UV_NO_CONFIG'] == '1'
+    assert not any('+cpu' in arg or '+cu128' in arg for arg in pip)
+
+
+def test_voxcpm2_windows_rocm_requires_python312_for_partial_venv(monkeypatch):
+    spec = si.get_spec('voxcpm2')
+    monkeypatch.setattr(si.sys, 'platform', 'win32')
+    monkeypatch.setattr(si, '_host_family', lambda: 'rocm')
+    monkeypatch.setattr(si, '_locate_uv', lambda: '/fake/uv')
+    checkout = si.managed_checkout(spec)
+    py = si._venv_python(checkout / '.venv')
+    py.parent.mkdir(parents=True)
+    py.write_text('old Python 3.11')
+    monkeypatch.setattr(si.subprocess, 'run', lambda *a, **k: SimpleNamespace(
+        returncode=0, stdout='3.11\n', stderr=''))
+    calls = []
+    monkeypatch.setattr(si, '_run_logged', _fake_run_logged(calls))
+    si._step_create_venv(spec, si._new_job(spec.engine_id))
+    assert calls[0][-2:] == ['--python', '3.12']
+    assert py.read_text() == '#!fake python\n'
+
+
+def test_voxcpm2_windows_rocm_preserves_complete_legacy_cpu_install(monkeypatch):
+    spec = si.get_spec('voxcpm2')
+    monkeypatch.setattr(si.sys, 'platform', 'win32')
+    monkeypatch.setattr(si, '_host_family', lambda: 'rocm')
+    checkout = si.managed_checkout(spec)
+    py = si._venv_python(checkout / '.venv')
+    py.parent.mkdir(parents=True)
+    py.write_text('working CPU sidecar')
+    marker = checkout / si._INSTALL_COMPLETE_MARKER
+    marker.write_text('voxcpm\n')
+    monkeypatch.setenv(spec.env_var, str(checkout))
+    monkeypatch.setattr(si, '_persist', lambda _: None)
+    assert si.start_install('voxcpm2')['status'] == 'already_installed'
+    assert py.read_text() == 'working CPU sidecar'
+    assert marker.read_text() == 'voxcpm\n'
+    assert not si._jobs
+
+
+def test_voxcpm2_windows_rocm_gpu_probe_prevents_false_complete_install(monkeypatch):
+    spec = si.get_spec('voxcpm2')
+    monkeypatch.setattr(si.sys, 'platform', 'win32')
+    monkeypatch.setattr(si, '_host_family', lambda: 'rocm')
+    checkout = si.managed_checkout(spec)
+    checkout.mkdir(parents=True)
+    py = si._venv_python(checkout / '.venv')
+    py.parent.mkdir(parents=True)
+    py.write_text('venv Python')
+    monkeypatch.setenv(spec.env_var, str(checkout))
+    commands = []
+
+    def gpu_failure(argv, **kwargs):
+        commands.append(argv)
+        return SimpleNamespace(returncode=1, stderr=b'no ROCm kernel for this GPU')
+
+    monkeypatch.setattr(si.subprocess, 'run', gpu_failure)
+    with pytest.raises(si._StepError, match='ROCm GPU probe failed') as error:
+        si._step_verify(spec, si._new_job(spec.engine_id))
+    assert 'supported AMD GPU' in error.value.remediation
+    assert commands[0][0] == str(py)
+    code = commands[0][2]
+    compile(code, '<rocm-probe>', 'exec', optimize=2)
+    assert all(part in code for part in ('voxcpm', 'torchaudio', 'librosa',
+                                         'torch.version.hip', 'resolve_runtime_device',
+                                         'tensor @ tensor'))
+    assert not (checkout / si._INSTALL_COMPLETE_MARKER).exists()
+    assert si.engine_venv_python(spec.env_var) is None
+    assert not si._healthy(spec)
+
+
+@pytest.mark.parametrize(('family', 'platform'), [
+    ('cuda', 'win32'), ('cpu', 'win32'), ('rocm', 'linux'), ('mps', 'darwin'),
+])
+def test_voxcpm2_non_windows_rocm_recipe_and_probe_unchanged(monkeypatch, family, platform):
+    spec = si.get_spec('voxcpm2')
+    monkeypatch.setattr(si.sys, 'platform', platform)
+    argvs = _capture_install_argvs(monkeypatch, family=family)
+    job = si._new_job(spec.engine_id)
+    si._step_create_venv(spec, job)
+    si._step_install_deps(spec, job)
+    assert argvs[0][-2:] == ['--python', '3.11']
+    assert '--find-links' not in argvs[1]
+    assert 'torchcodec==0.8.1' not in argvs[1]
+    probes = []
+
+    def fake_probe(argv, **kwargs):
+        probes.append(argv)
+        return SimpleNamespace(returncode=0, stderr=b'')
+
+    monkeypatch.setattr(si.subprocess, 'run', fake_probe)
+    si._step_verify(spec, job)
+    assert probes[0][2] == 'import voxcpm'
+
+
+@pytest.mark.parametrize("engine_id", ["voxcpm2", "cosyvoice"])
+@pytest.mark.parametrize("partial_marker", ["empty", "legacy"])
+@pytest.mark.parametrize("failure", [None, "write", "replace"])
+def test_windows_rocm_completion_marker_is_published_atomically(
+    monkeypatch: pytest.MonkeyPatch,
+    engine_id: str,
+    partial_marker: str,
+    failure: str | None,
+) -> None:
+    spec = si.get_spec(engine_id)
+    monkeypatch.setattr(si.sys, "platform", "win32")
+    monkeypatch.setattr(si, "_host_family", lambda: "rocm")
+    monkeypatch.setattr(si, "DATA_DIR", str(Path(si.DATA_DIR) / "GPU \u0141"))
+    checkout = si.managed_checkout(spec)
+    python = si._venv_python(checkout / ".venv")
+    python.parent.mkdir(parents=True)
+    python.write_text("verified venv Python")
+    monkeypatch.setenv(spec.env_var, str(checkout))
+    monkeypatch.setattr(si, "_source_present", lambda *args: True)
+    monkeypatch.setattr(si, "_weights_present", lambda *args: True)
+    monkeypatch.setattr(si, "_persist", lambda spec: None)
+    monkeypatch.setattr(si, "_run_logged", lambda *args, **kwargs: 0)
+    _stub_verify_ok(monkeypatch)
+    marker = checkout / si._INSTALL_COMPLETE_MARKER
+    legacy_marker = f"{spec.probe_module}\n"
+    if spec.install_revision:
+        legacy_marker += f"{spec.install_revision}\n"
+    prefix = legacy_marker if partial_marker == "legacy" else ""
+    observed_readiness = []
+    write_text = Path.write_text
+    replace = Path.replace
+
+    def write_marker(path: Path, text: str, *args, **kwargs) -> int:
+        if path.parent == checkout and path.name.startswith(si._INSTALL_COMPLETE_MARKER):
+            write_text(path, prefix, *args, **kwargs)
+            observed_readiness.append((si._healthy(spec), si.engine_venv_python(spec.env_var)))
+            if failure == "write":
+                raise OSError(errno.ENOSPC, "No space left on device")
+        return write_text(path, text, *args, **kwargs)
+
+    def replace_marker(path: Path, target: Path) -> Path:
+        if target == marker and failure == "replace":
+            raise PermissionError(errno.EACCES, "Permission denied")
+        return replace(path, target)
+
+    monkeypatch.setattr(Path, "write_text", write_marker)
+    monkeypatch.setattr(Path, "replace", replace_marker)
+    job = si._new_job(engine_id)
+    complete = si._step_persist if engine_id == "cosyvoice" else si._step_verify
+    if failure:
+        error_message = "No space left on device" if failure == "write" else "Permission denied"
+        with pytest.raises(OSError, match=error_message):
+            complete(spec, job)
+    else:
+        complete(spec, job)
+
+    assert observed_readiness == [(False, None)]
+    assert not list(checkout.glob(f"{si._INSTALL_COMPLETE_MARKER}.*"))
+    if failure:
+        assert not marker.exists()
+        assert not si._healthy(spec)
+        assert si.engine_venv_python(spec.env_var) is None
+        monkeypatch.setattr(Path, "write_text", write_text)
+        monkeypatch.setattr(Path, "replace", replace)
+        complete(spec, job)
+    assert si._healthy(spec)
+    assert si.engine_venv_python(spec.env_var) == python
+    if engine_id == "cosyvoice":
+        assert si.cosyvoice_rocm_verified()
+    else:
+        assert si.voxcpm2_rocm_verified()
+
+
+def test_voxcpm2_windows_rocm_verified_venv_is_healthy(monkeypatch):
+    spec = si.get_spec('voxcpm2')
+    monkeypatch.setattr(si.sys, 'platform', 'win32')
+    monkeypatch.setattr(si, '_host_family', lambda: 'rocm')
+    checkout = si.managed_checkout(spec)
+    py = si._venv_python(checkout / '.venv')
+    py.parent.mkdir(parents=True)
+    py.write_text('verified venv Python')
+    monkeypatch.setenv(spec.env_var, str(checkout))
+    commands = []
+
+    def fake_probe(argv, **kwargs):
+        commands.append(argv)
+        return SimpleNamespace(returncode=0, stderr=b'')
+
+    monkeypatch.setattr(si.subprocess, 'run', fake_probe)
+    job = si._new_job(spec.engine_id)
+    si._step_verify(spec, job)
+    assert commands[0][0] == str(py)
+    assert si._job_step(job, 'verify')['detail'] == 'voxcpm + ROCm GPU OK'
+    assert (checkout / si._INSTALL_COMPLETE_MARKER).read_text() == (
+        'voxcpm\nwindows-rocm7.2.1-verified\n'
+    )
+    assert si.engine_venv_python(spec.env_var) == py
+    assert si._healthy(spec)
 
 
 def _submodule_tarball() -> bytes:

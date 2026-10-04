@@ -18,7 +18,7 @@ _EXPECTED = {
     "whisperx": ("cuda", "cpu"),
     "faster-whisper": ("cuda", "cpu"),
     "mlx-whisper": ("mps", "cpu"),
-    "pytorch-whisper": ("cuda", "mps", "cpu"),
+    "pytorch-whisper": ("cuda", "rocm", "mps", "cpu"),
     "nemo-parakeet": ("cuda", "cpu"),
     # MLX runs on Apple Silicon's unified-memory GPU only; is_available
     # hard-gates on mlx_supported(), so claiming cpu would be false.
@@ -64,10 +64,12 @@ def test_compat_values_are_valid(engine_id):
         assert "cpu" not in compat  # would be a false claim — is_available gates on CUDA
 
 
-def test_no_asr_engine_falsely_claims_rocm():
-    # ROCm is intentionally unclaimed until verified per engine (see ABC note).
-    for engine_id in _EXPECTED:
-        assert "rocm" not in _cls(engine_id).gpu_compat
+def test_only_verified_asr_engines_claim_unconditional_rocm_support():
+    declared_rocm_engines = {
+        engine_id for engine_id in _EXPECTED
+        if "rocm" in _cls(engine_id).gpu_compat
+    }
+    assert declared_rocm_engines == {"pytorch-whisper"}
 
 
 def test_nemo_parakeet_has_no_cuda_gate(monkeypatch):

@@ -1,5 +1,9 @@
 # VoiceStudio — Speaker Diarization
 
+> Native Windows ROCm changes on this branch are **DRAFT / not fully validated**.
+> Earlier hardware checks do not certify this selective integration; full
+> WhisperX remains unavailable. See the [draft scope and path limitations](../install/windows-rocm.md).
+
 Diarization splits a single audio stream into per-speaker tracks: who said
 what, and when. VoiceStudio uses **pyannote** + **WhisperX** under the hood —
 the same stack the original WhisperX paper used.
@@ -63,7 +67,7 @@ inference works offline without retaining the token. See
 
 Install pyannote from Settings > Models > Diarisation after completing the access steps above. The install includes its segmentation and speaker-embedding checkpoints. A pipeline configuration alone is not a complete installation; repair also retrieves missing dependencies.
 
-Dubbing resolves all three files from the local cache and does not download models during a job. Once installed, the bundle can run without retaining an HF token. Missing files prompt installation or repair; transcription continues with the existing silence-gap fallback and its accuracy caveat. A runtime load failure is reported separately from missing files.
+Dubbing resolves all three files from the local cache and does not download models during a job. Once installed, the bundle can run without retaining an HF token. Missing files prompt installation or repair; transcription continues with the existing silence-gap fallback and its accuracy caveat. The local bundle is checked before importing the optional runtime, so missing models or a missing installation token are not disguised by a dependency import error. A runtime load failure is reported separately from missing files.
 
 ## Native Sortformer adapter
 
@@ -77,5 +81,16 @@ to verify process cancellation. The smoke writes only a normalized temporary cli
 downloads models or changes app data. On the maintained Windows RTX 4090 fixture, v0.7.4
 processed a real 60-second Dubbing source through Vulkan in 3.27 seconds, returned 16 bounded
 turns, and cancelled the 120-second variant in 1.2 seconds without leaving a registered process.
+
+On Windows with an RX 9070 XT (AMD driver 26.10.44), the pinned v0.7.4 Vulkan
+release lists the card as `Vulkan:0`. With the release and Q8 GGUF in a local
+diagnostic directory, the adapter selects `--backend vulkan --device 0` in
+auto mode and when `OMNIVOICE_DEVICE=rocm` is requested; this is Vulkan on AMD,
+not the HIP backend. A 24.72-second clip assembled from two bundled voice
+samples yielded the same two-speaker turns on Vulkan and CPU. Repeating a
+bundled speech sample yielded bounded turns at 60 and 120 seconds; cancellation
+of the 120-second run left no native process registered. These checks confirm
+native inference and routing, not an end-to-end Settings installation, a
+head-to-head accuracy comparison with the RTX fixture, or a pyannote fix.
 
 audio.cpp v0.7.4 contains the newer Sortformer v2.1 streaming runtime. Its NVIDIA Open Model License checkpoint currently has no redistributable GGUF package, so VoiceStudio does not advertise a download that upstream cannot legally supply. A locally converted mixed F16/F32 checkpoint is the planned long-recording path once the model can be offered through an explicit local-package workflow.

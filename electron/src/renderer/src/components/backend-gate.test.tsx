@@ -1,11 +1,11 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import i18n from '@/i18n';
 import type { BackendStatus } from '../../../preload/index.d';
 import { BackendGate, delimitedDiagnostic } from './backend-gate';
 
-const { backendStatus, platform } = vi.hoisted(() => ({
+const { backendStatus, platform, setRuntimeTorchPreference } = vi.hoisted(() => ({
   backendStatus: {
     stage: 'setup_required',
     baseUrl: 'http://127.0.0.1:3900',
@@ -19,6 +19,7 @@ const { backendStatus, platform } = vi.hoisted(() => ({
     runtimeRegion: 'auto',
   } as BackendStatus,
   platform: { current: 'linux' },
+  setRuntimeTorchPreference: vi.fn(),
 }));
 
 vi.mock('@/hooks/use-backend-status', () => ({
@@ -26,9 +27,26 @@ vi.mock('@/hooks/use-backend-status', () => ({
 }));
 
 vi.mock('./bridge', () => ({
-  getBridge: () => null,
+  getBridge: () => ({ backend: { setRuntimeTorchPreference } }),
   isMac: () => platform.current === 'darwin',
 }));
+
+const scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
+
+beforeAll(() => {
+  Object.defineProperty(Element.prototype, 'scrollIntoView', {
+    configurable: true,
+    value: vi.fn(),
+  });
+});
+
+afterAll(() => {
+  if (scrollIntoViewDescriptor) {
+    Object.defineProperty(Element.prototype, 'scrollIntoView', scrollIntoViewDescriptor);
+  } else {
+    Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+  }
+});
 
 beforeEach(() => {
   backendStatus.stage = 'setup_required';
@@ -38,6 +56,10 @@ beforeEach(() => {
   delete backendStatus.setupIssue;
   delete backendStatus.setupPhase;
   delete backendStatus.setupProgress;
+  delete backendStatus.runtimeTorchPreference;
+  delete backendStatus.runtimeTorchVariant;
+  delete backendStatus.runtimeTorchDevice;
+  setRuntimeTorchPreference.mockReset();
   platform.current = 'linux';
 });
 
@@ -113,6 +135,28 @@ it('shows package installation after the last large download instead of a stale 
   expect(screen.getByText(i18n.t('bootstrap.downloads_complete'))).toBeInTheDocument();
   expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '100');
   expect(screen.queryByText('Downloaded scipy')).not.toBeInTheDocument();
+});
+
+it('does not report ROCm downloads complete from stale prepared packages', () => {
+  backendStatus.stage = 'installing';
+  backendStatus.setupPhase = 'installing_deps';
+  backendStatus.setupProgress = {
+    preparedPackages: 227,
+    completedDownloads: 1,
+    downloadedBytes: 1024 ** 3,
+    totalBytes: 4 * 1024 ** 3,
+    downloadsComplete: false,
+    activePackage: 'torch',
+  };
+
+  render(
+    <BackendGate>
+      <div>workspace</div>
+    </BackendGate>,
+  );
+
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25');
+  expect(screen.queryByText(i18n.t('bootstrap.downloads_complete'))).not.toBeInTheDocument();
 });
 
 // #2430 — a live-but-busy backend is not a failure.
@@ -252,6 +296,177 @@ it('offers a remote backend instead of a doomed local install on Intel Macs', ()
   ).toBeVisible();
 });
 
+it('shows the compute backend only during setup when the native status offers it', () => {
+  const content = (
+    <BackendGate>
+      <div>workspace</div>
+    </BackendGate>
+  );
+  const { rerender } = render(content);
+  const label = i18n.t('bootstrap.torch_label');
+  expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument();
+
+  backendStatus.runtimeTorchPreference = 'auto';
+  backendStatus.runtimeTorchVariant = 'rocm';
+  backendStatus.runtimeTorchDevice = 'AMD Radeon RX 7900 XT';
+  rerender(
+    <BackendGate>
+      <div>workspace</div>
+    </BackendGate>,
+  );
+
+  const select = screen.getByRole('button', { name: label });
+  expect(select).toHaveAttribute('aria-haspopup', 'listbox');
+  expect(screen.getByRole('group', { name: label })).toHaveAttribute(
+    'aria-describedby',
+    'torch-backend-details',
+  );
+  expect(screen.getByText(i18n.t('bootstrap.torch_hint'))).toBeVisible();
+  expect(
+    screen.getByText(
+      i18n.t('bootstrap.torch_device', { device: backendStatus.runtimeTorchDevice }),
+    ),
+  ).toBeVisible();
+  expect(
+    screen.getByText(
+      i18n.t('bootstrap.torch_variant', { variant: i18n.t('bootstrap.torch_rocm') }),
+    ),
+  ).toBeVisible();
+
+  backendStatus.stage = 'installing';
+  rerender(
+    <BackendGate>
+      <div>workspace</div>
+    </BackendGate>,
+  );
+  expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument();
+});
+
+it('saves a keyboard-selected ROCm preference before allowing installation', async () => {
+  backendStatus.runtimeTorchPreference = 'auto';
+  let resolvePreference: (preference: 'auto' | 'default' | 'rocm') => void = () => {};
+  const pending = new Promise<'auto' | 'default' | 'rocm'>((resolve) => {
+    resolvePreference = resolve;
+  });
+  setRuntimeTorchPreference.mockReturnValue(pending);
+
+  const { container } = render(
+    <BackendGate>
+      <div>workspace</div>
+    </BackendGate>,
+  );
+  const select = screen.getByRole('button', { name: i18n.t('bootstrap.torch_label') });
+  fireEvent.click(select);
+  const search = screen.getByRole('textbox', { name: i18n.t('common.search') });
+  await waitFor(() => expect(search).toHaveFocus());
+  expect(select).toHaveAttribute('aria-expanded', 'true');
+  expect(container).not.toContainElement(screen.getByRole('listbox'));
+  expect(screen.getAllByRole('option')).toHaveLength(3);
+  expect(screen.getByRole('option', { name: i18n.t('bootstrap.torch_auto') })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  fireEvent.keyDown(search, { key: 'ArrowDown' });
+  fireEvent.keyDown(search, { key: 'ArrowDown' });
+  fireEvent.keyDown(search, { key: 'Enter' });
+
+  await waitFor(() => expect(setRuntimeTorchPreference).toHaveBeenCalledWith('rocm'));
+  expect(screen.getByRole('button', { name: i18n.t('common.resume') })).toBeDisabled();
+  expect(select).toBeDisabled();
+  expect(select).toHaveTextContent(i18n.t('bootstrap.torch_auto'));
+  expect(select).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(select);
+  expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  expect(setRuntimeTorchPreference).toHaveBeenCalledTimes(1);
+
+  await act(async () => {
+    resolvePreference('rocm');
+    await pending;
+  });
+  expect(screen.getByRole('button', { name: i18n.t('common.resume') })).toBeEnabled();
+  expect(select).toBeEnabled();
+  expect(select).toHaveTextContent(i18n.t('bootstrap.torch_rocm'));
+});
+
+it('cancels a compute preference with Escape and restores trigger focus', async () => {
+  backendStatus.runtimeTorchPreference = 'auto';
+  render(
+    <BackendGate>
+      <div>workspace</div>
+    </BackendGate>,
+  );
+
+  const select = screen.getByRole('button', { name: i18n.t('bootstrap.torch_label') });
+  fireEvent.click(select);
+  const search = screen.getByRole('textbox', { name: i18n.t('common.search') });
+  await waitFor(() => expect(search).toHaveFocus());
+  fireEvent.keyDown(search, { key: 'ArrowDown' });
+  fireEvent.keyDown(search, { key: 'Escape' });
+
+  expect(select).toHaveFocus();
+  expect(select).toHaveAttribute('aria-expanded', 'false');
+  expect(select).toHaveTextContent(i18n.t('bootstrap.torch_auto'));
+  expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  expect(setRuntimeTorchPreference).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: i18n.t('common.resume') })).toBeEnabled();
+});
+
+it('does not save when the current compute preference is selected again', async () => {
+  backendStatus.runtimeTorchPreference = 'auto';
+  render(
+    <BackendGate>
+      <div>workspace</div>
+    </BackendGate>,
+  );
+
+  const select = screen.getByRole('button', { name: i18n.t('bootstrap.torch_label') });
+  fireEvent.click(select);
+  const search = screen.getByRole('textbox', { name: i18n.t('common.search') });
+  await waitFor(() => expect(search).toHaveFocus());
+  fireEvent.keyDown(search, { key: 'Enter' });
+
+  expect(select).toHaveFocus();
+  expect(select).toBeEnabled();
+  expect(select).toHaveAttribute('aria-expanded', 'false');
+  expect(setRuntimeTorchPreference).not.toHaveBeenCalled();
+});
+
+it('restores the selected backend, announces a failed save and allows a keyboard retry', async () => {
+  backendStatus.runtimeTorchPreference = 'auto';
+  setRuntimeTorchPreference.mockRejectedValueOnce(new Error('IPC unavailable'));
+
+  render(
+    <BackendGate>
+      <div>workspace</div>
+    </BackendGate>,
+  );
+  const select = screen.getByRole('button', { name: i18n.t('bootstrap.torch_label') });
+  fireEvent.click(select);
+  const defaultOption = await screen.findByRole('option', {
+    name: i18n.t('bootstrap.torch_default'),
+  });
+  fireEvent.mouseDown(defaultOption);
+
+  expect(await screen.findByRole('alert')).toHaveTextContent(i18n.t('bootstrap.torch_error'));
+  expect(select).toHaveTextContent(i18n.t('bootstrap.torch_auto'));
+  expect(select).toBeEnabled();
+  expect(setRuntimeTorchPreference).toHaveBeenCalledWith('default');
+  expect(screen.getByRole('button', { name: i18n.t('common.resume') })).toBeEnabled();
+
+  setRuntimeTorchPreference.mockResolvedValueOnce('rocm');
+  fireEvent.click(select);
+  const search = screen.getByRole('textbox', { name: i18n.t('common.search') });
+  await waitFor(() => expect(search).toHaveFocus());
+  fireEvent.change(search, { target: { value: i18n.t('bootstrap.torch_rocm') } });
+  fireEvent.keyDown(search, { key: 'Enter' });
+
+  await waitFor(() => expect(select).toHaveTextContent(i18n.t('bootstrap.torch_rocm')));
+  expect(setRuntimeTorchPreference).toHaveBeenLastCalledWith('rocm');
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(select).toBeEnabled();
+  expect(screen.getByRole('button', { name: i18n.t('common.resume') })).toBeEnabled();
+});
+
 it.each([
   [
     'Could not start C:\\runtime\\python.exe: spawn UNKNOWN. Install or repair the local runtime.',
@@ -261,14 +476,17 @@ it.each([
     'Backend did not answer on port 3900 within 600 s (OMNIVOICE_STARTUP_BUDGET_S). It printed no output.',
     'backend.hint_slow_start',
   ],
-])('adds localized, actionable advice under a recognised failure (#2440, #2445)', (message, key) => {
-  backendStatus.message = message;
+])(
+  'adds localized, actionable advice under a recognised failure (#2440, #2445)',
+  (message, key) => {
+    backendStatus.message = message;
 
-  renderGate('failed');
+    renderGate('failed');
 
-  expect(screen.getByText(message)).toBeInTheDocument();
-  expect(screen.getByTestId('backend-hint')).toHaveTextContent(i18n.t(key));
-});
+    expect(screen.getByText(message)).toBeInTheDocument();
+    expect(screen.getByTestId('backend-hint')).toHaveTextContent(i18n.t(key));
+  },
+);
 
 it('shows no advice for a failure it cannot classify', () => {
   backendStatus.message = 'Backend exited unexpectedly (exit code 1).';

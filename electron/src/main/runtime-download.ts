@@ -1,4 +1,11 @@
+import { createHash, randomUUID } from 'node:crypto';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdir, rename, rm, stat } from 'node:fs/promises';
+import type { IncomingMessage } from 'node:http';
 import { get } from 'node:https';
+import { basename, dirname, join } from 'node:path';
+import { Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { ProxyAgent } from 'proxy-agent';
 
 /** Resolve the setup environment without changing the desktop process environment. */
@@ -155,4 +162,126 @@ async function downloadOnce(url: string, agent: ProxyAgent, signal: AbortSignal)
     });
   }
   return download(url);
+}
+
+const MAX_ARCHIVE_BYTES = 200 * 1024 * 1024;
+
+export async function downloadRuntimeArchive(
+  url: string,
+  destination: string,
+  expectedSha256: string,
+  env: NodeJS.ProcessEnv,
+  signal: AbortSignal,
+): Promise<void> {
+  function archiveUrl(raw: string, base?: URL): URL {
+    let parsed: URL;
+    try {
+      parsed = new URL(raw, base);
+    } catch {
+      throw new Error('Invalid runtime archive URL');
+    }
+    if (parsed.protocol !== 'https:') throw new Error('Runtime archive requires HTTPS');
+    if (parsed.username || parsed.password)
+      throw new Error('Runtime archive URL cannot contain credentials');
+    return parsed;
+  }
+
+  archiveUrl(url);
+  if (!/^[a-f\d]{64}$/i.test(expectedSha256)) throw new Error('Invalid runtime archive SHA-256');
+  signal.throwIfAborted();
+
+  const cached = await stat(destination).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (cached?.isFile() && cached.size <= MAX_ARCHIVE_BYTES) {
+    const digest = createHash('sha256');
+    let size = 0;
+    for await (const chunk of createReadStream(destination, { signal })) {
+      size += chunk.length;
+      if (size > MAX_ARCHIVE_BYTES) break;
+      digest.update(chunk);
+    }
+    signal.throwIfAborted();
+    if (size <= MAX_ARCHIVE_BYTES && digest.digest('hex') === expectedSha256.toLowerCase()) return;
+  }
+
+  const agent = new ProxyAgent({ getProxyForUrl: (target) => setupProxyForUrl(target, env) });
+  async function responseFor(raw: string, base?: URL, redirects = 0): Promise<IncomingMessage> {
+    const target = archiveUrl(raw, base);
+    signal.throwIfAborted();
+    return new Promise((resolve, reject) => {
+      try {
+        const request = get(target, { agent, signal }, (response) => {
+          const status = response.statusCode ?? 0;
+          if ([301, 302, 303, 307, 308].includes(status)) {
+            response.destroy();
+            if (!response.headers.location || redirects >= 5) {
+              reject(new Error('Runtime archive redirect limit exceeded'));
+            } else {
+              resolve(responseFor(response.headers.location, target, redirects + 1));
+            }
+            return;
+          }
+          if (status !== 200) {
+            response.destroy();
+            reject(new Error(`Runtime archive download failed (${status})`));
+            return;
+          }
+          resolve(response);
+        });
+        request.on('error', () => {
+          reject(signal.aborted ? signal.reason : new Error('Runtime archive request failed'));
+        });
+      } catch {
+        reject(new Error('Runtime archive request failed'));
+      }
+    });
+  }
+
+  try {
+    const response = await responseFor(url);
+    if (Number(response.headers['content-length']) > MAX_ARCHIVE_BYTES) {
+      response.destroy();
+      throw new Error('Runtime archive exceeds size limit');
+    }
+    await mkdir(dirname(destination), { recursive: true });
+    const temporary = join(dirname(destination), `.${basename(destination)}.${randomUUID()}.tmp`);
+    const digest = createHash('sha256');
+    const limitError = new Error('Runtime archive exceeds size limit');
+    let size = 0;
+    try {
+      try {
+        await pipeline(
+          response,
+          new Transform({
+            transform(chunk: Buffer, _encoding, callback) {
+              size += chunk.length;
+              if (size > MAX_ARCHIVE_BYTES) {
+                callback(limitError);
+              } else {
+                digest.update(chunk);
+                callback(null, chunk);
+              }
+            },
+          }),
+          createWriteStream(temporary, { flags: 'wx' }),
+          { signal },
+        );
+      } catch (error) {
+        if (error === limitError) throw error;
+        signal.throwIfAborted();
+        throw new Error('Runtime archive transfer failed');
+      }
+      signal.throwIfAborted();
+      if (digest.digest('hex') !== expectedSha256.toLowerCase()) {
+        throw new Error('Runtime archive SHA-256 mismatch');
+      }
+      await rename(temporary, destination);
+    } finally {
+      await rm(temporary, { force: true });
+    }
+  } finally {
+    agent.destroy();
+  }
 }

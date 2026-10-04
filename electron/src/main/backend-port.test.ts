@@ -38,7 +38,8 @@ vi.mock('node:net', () => ({
     return server;
   },
 }));
-vi.mock('./runtime-project', () => ({
+vi.mock('./runtime-project', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./runtime-project')>()),
   runtimeReady: async () => true,
   runtimeDependenciesReady: async () => true,
   stageRuntimeSources: async () => {},

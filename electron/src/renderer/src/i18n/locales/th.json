@@ -1487,7 +1487,7 @@
     "gpu_report_state_intel_unsupported": "พบ {{gpu}} แต่ไม่มีเอนจินที่ติดตั้งไว้ตัวใดใช้ GPU ของ Intel ได้ ทุกอย่างจึงทำงานบน CPU",
     "gpu_report_state_unknown": "ไม่สามารถระบุสถานะของ GPU ได้",
     "gpu_report_option_vulkan_engines": "ใช้เอนจินที่มีรันไทม์ GPU ของตัวเอง: audio.cpp ทำงานบน GPU AMD Radeon ผ่าน Vulkan (การตั้งค่า → โมเดล → ติดตั้งรันไทม์)",
-    "gpu_report_option_rocm_windows_manual": "VoiceStudio ไม่ติดตั้ง PyTorch ที่ใช้ ROCm บน Windows AMD เผยแพร่ไฟล์ wheel แยกสำหรับการ์ด Radeon รุ่นใหม่ แต่ต้องใช้ PyTorch ที่ใหม่กว่าที่เอนจินที่นี่ทดสอบไว้ และบางเอนจินจะใช้งานไม่ได้ ลองเฉพาะเมื่อคุณแก้ปัญหาเองได้ (ดูคู่มือติดตั้งสำหรับ Windows)",
+    "gpu_report_option_rocm_windows_manual": "บนระบบ Radeon ที่รองรับซึ่งใช้ Windows 11 x64 การตั้งค่ารันไทม์ของ VoiceStudio สามารถติดตั้งชุด AMD ROCm แบบเนทีฟได้ เลือกอัตโนมัติหรือ AMD ROCm ระหว่างการตั้งค่า การ์ดที่ไม่รองรับและบางเอนจินอาจยังใช้ CPU โปรดดูคู่มือการติดตั้ง Windows",
     "gpu_report_option_rocm_variant_linux": "ตั้งค่า OMNIVOICE_TORCH_VARIANT=rocm แล้วรันการตั้งค่าอีกครั้งเพื่อติดตั้ง PyTorch บิลด์ ROCm",
     "gpu_report_option_rocm_device_access": "ตรวจสอบว่าโหลดไดรเวอร์ amdgpu แล้ว และผู้ใช้ของคุณเปิด /dev/kfd ได้ (กลุ่ม render และ video)",
     "gpu_report_option_reinstall_cuda_torch": "ติดตั้งรันไทม์ใหม่เพื่อให้ติดตั้ง PyTorch บิลด์ CUDA",
@@ -2160,7 +2160,15 @@
     "region_global": "ทั่วโลก (โดยตรง)",
     "region_china": "จีน (กระจก)",
     "region_russia": "รัสเซีย (กระจก)",
-    "region_restricted": "ถูกจำกัด (มิเรอร์)"
+    "region_restricted": "ถูกจำกัด (มิเรอร์)",
+    "torch_label": "ระบบประมวลผล",
+    "torch_auto": "อัตโนมัติ",
+    "torch_default": "NVIDIA CUDA หรือ CPU",
+    "torch_rocm": "AMD ROCm (GPU ที่รองรับ)",
+    "torch_hint": "การเลือกด้วยตนเองไม่ได้ทำให้ GPU ที่ไม่รองรับใช้งานได้",
+    "torch_device": "อุปกรณ์ที่ตรวจพบ: {{device}}",
+    "torch_variant": "สภาพแวดล้อมที่จะติดตั้ง: {{variant}}",
+    "torch_error": "บันทึกระบบประมวลผลไม่ได้ โปรดลองอีกครั้ง"
   },
   "capture": {
     "no_speech": "ไม่พบคำพูด",

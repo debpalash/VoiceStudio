@@ -1489,7 +1489,7 @@
     "gpu_report_state_intel_unsupported": "{{gpu}} a été trouvé, mais aucun moteur installé ne peut utiliser les GPU Intel, tout s'exécute donc sur le CPU.",
     "gpu_report_state_unknown": "L'état du GPU n'a pas pu être déterminé.",
     "gpu_report_option_vulkan_engines": "Utilisez un moteur doté de son propre runtime GPU : audio.cpp s'exécute sur les GPU AMD Radeon via Vulkan (Réglages → Modèles → installer le runtime).",
-    "gpu_report_option_rocm_windows_manual": "VoiceStudio n'installe pas PyTorch avec ROCm sous Windows. AMD publie des wheels distincts pour les cartes Radeon récentes, mais ils exigent un PyTorch plus récent que celui avec lequel les moteurs sont testés, et certains moteurs cessent de fonctionner. N'essayez que si vous savez résoudre les problèmes (voir le guide d'installation Windows).",
+    "gpu_report_option_rocm_windows_manual": "Sur les systèmes Radeon compatibles sous Windows 11 x64, la configuration de l’environnement VoiceStudio peut installer les composants natifs AMD ROCm. Choisissez Automatique ou AMD ROCm pendant la configuration. Les cartes non prises en charge et certains moteurs peuvent continuer à utiliser le CPU ; consultez le guide d’installation Windows.",
     "gpu_report_option_rocm_variant_linux": "Définissez OMNIVOICE_TORCH_VARIANT=rocm et relancez la configuration pour installer la version ROCm de PyTorch.",
     "gpu_report_option_rocm_device_access": "Vérifiez que le pilote amdgpu est chargé et que votre utilisateur peut ouvrir /dev/kfd (groupes render et video).",
     "gpu_report_option_reinstall_cuda_torch": "Réinstallez le runtime pour qu'il installe la version CUDA de PyTorch.",
@@ -2162,7 +2162,15 @@
     "region_global": "Mondial (direct)",
     "region_china": "Chine (miroir)",
     "region_russia": "Russie (miroir)",
-    "region_restricted": "Restreint (miroir)"
+    "region_restricted": "Restreint (miroir)",
+    "torch_label": "Moteur de calcul",
+    "torch_auto": "Automatique",
+    "torch_default": "NVIDIA CUDA ou processeur",
+    "torch_rocm": "AMD ROCm (GPU compatibles)",
+    "torch_hint": "Le choix manuel ne rend pas compatible un GPU qui ne l’est pas.",
+    "torch_device": "Périphérique détecté : {{device}}",
+    "torch_variant": "Environnement à installer : {{variant}}",
+    "torch_error": "Impossible d’enregistrer le moteur de calcul. Réessayez."
   },
   "capture": {
     "no_speech": "Aucune parole détectée",
