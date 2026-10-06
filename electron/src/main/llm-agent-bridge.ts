@@ -86,7 +86,10 @@ export async function startLlmAgentBridge(
       queued += 1;
       const task = tail.then(async () => {
         const remaining = deadline - Date.now();
-        if (closed || res.destroyed || remaining < 1000) throw new Error('Agent request expired');
+        if (closed || res.destroyed) throw new Error('Agent request expired');
+        if (remaining < 1000) throw Object.assign(new Error('Agent request expired'), {
+          name: 'AgentTimeoutError',
+        });
         return complete({ ...body, timeoutMs: remaining });
       });
       tail = task

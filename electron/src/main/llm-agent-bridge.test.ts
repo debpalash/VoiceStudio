@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { channel } from 'node:diagnostics_channel';
+import type { IncomingMessage } from 'node:http';
 import {
   startLlmAgentBridge,
   validateAgentCompletion,
@@ -129,5 +131,52 @@ it('expires a queued completion at its own deadline while an earlier call is sti
     await first;
     await second;
     bridge.close();
+  }
+});
+
+it('classifies a queued completion with too little time to start as a timeout', async () => {
+  let releaseFirst!: () => void;
+  let enteredFirst!: () => void;
+  const entered = new Promise<void>((resolve) => { enteredFirst = resolve; });
+  const waiting = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  const complete = vi.fn(async () => { enteredFirst(); await waiting; return 'ok'; });
+  const bridge = await startLlmAgentBridge(complete);
+  const call = (timeoutMs: number) => fetch(bridge.url + '/complete', {
+    method: 'POST', headers: { Authorization: 'Bearer ' + bridge.token },
+    body: JSON.stringify({ ...request, timeoutMs }),
+  });
+  const first = call(5000);
+  let second: Promise<Response> | undefined;
+  let receivedSecond!: () => void;
+  const received = new Promise<void>((resolve) => { receivedSecond = resolve; });
+  const incoming = channel('http.server.request.start');
+  const observe = (message: unknown) => {
+    const { request } = message as { request: IncomingMessage };
+    if (request.headers.authorization === 'Bearer ' + bridge.token) {
+      request.once('end', receivedSecond);
+    }
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await entered;
+    incoming.subscribe(observe);
+    second = call(1000);
+    await Promise.race([received, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Queued request did not reach the native HTTP server')), 2000);
+    })]);
+    clearTimeout(timer);
+    // The real HTTP server received the entire second body while the first
+    // runner is held. Release it with less than one second left to start.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    releaseFirst();
+    expect((await first).status).toBe(200);
+    expect((await second).status).toBe(504);
+    expect(complete).toHaveBeenCalledOnce();
+  } finally {
+    clearTimeout(timer);
+    incoming.unsubscribe(observe);
+    releaseFirst();
+    bridge.close();
+    await Promise.allSettled([first, ...(second ? [second] : [])]);
   }
 });
