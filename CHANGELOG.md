@@ -14,6 +14,8 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
+- Carry rounded dubbing timestamp seconds into minutes, avoiding invalid labels such as `0:60.0` — thanks @rudycelekli! (#2660)
+
 - MCP speech tools wait through model loading and progress-extended CPU renders instead of timing out before the backend (#2609)
 
 ## [0.5.7] — 2026-10-05

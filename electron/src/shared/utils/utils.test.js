@@ -23,6 +23,10 @@ describe('format utils', () => {
     expect(formatTime(0)).toBe('0:00.0');
     expect(formatTime(61)).toBe('1:01.0');
     expect(formatTime(3661)).toBe('61:01.0');
+    expect(formatTime(59.94)).toBe('0:59.9');
+    expect(formatTime(59.96)).toBe('1:00.0');
+    expect(formatTime(119.96)).toBe('2:00.0');
+    expect(formatTime(3599.96)).toBe('60:00.0');
   });
 });
 

@@ -23,3 +23,5 @@ filters; POSIX filenames keep literal backslashes. Two caption styles are availa
 Smart Fit exports burn captions after the video retime, so both styles follow
 the fitted timeline. The karaoke script can also be downloaded on its own from
 `GET /dub/ass/{job_id}` as an `.ass` sidecar.
+
+The dubbing timeline displays elapsed times in minutes and tenths of seconds. A rounded second carries into the minute, so a boundary such as 59.96 seconds displays as `1:00.0`, keeping timestamp labels consistent in the timeline and segment editor. Display rounding does not change segment timing or exported timestamps.
