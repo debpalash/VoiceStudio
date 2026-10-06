@@ -1,12 +1,8 @@
 export function hasCompleteTranslation(segments, languageCode) {
-  return (
-    !!languageCode &&
-    segments.length > 0 &&
-    segments.every((segment) => {
-      const text = segment.translations?.[languageCode];
-      return typeof text === 'string' && text.trim().length > 0;
-    })
-  );
+  if (!languageCode) return false;
+  // Match the progress indicator: empty spoken cues need no translation.
+  const { ready, total } = translationProgressByCode(segments, [{ code: languageCode }])[languageCode];
+  return total > 0 && ready === total;
 }
 
 export function multiLangTargets(activeLanguage, activeCode, selected) {

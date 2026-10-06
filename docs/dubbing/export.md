@@ -23,3 +23,5 @@ filters; POSIX filenames keep literal backslashes. Two caption styles are availa
 Smart Fit exports burn captions after the video retime, so both styles follow
 the fitted timeline. The karaoke script can also be downloaded on its own from
 `GET /dub/ass/{job_id}` as an `.ass` sidecar.
+
+A cached multi-language translation is complete when every nonempty spoken cue has text for that language. Empty cues do not block a fully translated target or cause its cache to be translated again; a job with no spoken cues is not considered ready. This uses the same cue set as the translation progress indicator.
