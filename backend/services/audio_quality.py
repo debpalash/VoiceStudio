@@ -1,4 +1,5 @@
 """Read-only, model-free advisory checks; never a perceptual quality score."""
+from bisect import insort
 from pathlib import Path
 from typing import Literal
 
@@ -70,10 +71,10 @@ def analyze_audio(path: str | Path, *, max_seconds: float = 7200) -> AudioQualit
             begin, finish = start * step, min(end * step, analyzed)
             if finish - begin + 1e-8 < minimum:
                 continue
-            if len(warnings) >= 100:
+            insort(warnings, AudioWarning(kind=kind, start=round(begin, 3), end=round(finish, 3)),
+                   key=lambda item: (item.start, item.kind))
+            if len(warnings) > 100:
+                warnings.pop()  # retain the earliest intervals across all kinds
                 truncated = True
-                break
-            warnings.append(AudioWarning(kind=kind, start=round(begin, 3), end=round(finish, 3)))
-    warnings.sort(key=lambda item: (item.start, item.kind))
     return AudioQuality(duration=duration, analyzed_seconds=analyzed,
                         truncated=truncated, warnings=warnings)

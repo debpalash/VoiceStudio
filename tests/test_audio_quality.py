@@ -63,6 +63,16 @@ def test_warning_cap_and_short_clip(tmp_path):
     assert not check(tmp_path, tone(.04)).warnings
 
 
+def test_warning_cap_keeps_earliest_intervals_across_kinds(tmp_path):
+    later_clips = np.tile(np.concatenate([np.ones(800), tone(.1)]), 110)
+    result = check(tmp_path, np.concatenate([np.zeros(16000), later_clips]))
+    assert len(result.warnings) == 100
+    assert result.truncated
+    assert result.warnings[0].kind == 'silence'
+    assert (result.warnings[0].start, result.warnings[0].end) == (0, 2)
+    assert max(w.start for w in result.warnings) == pytest.approx(21.6)
+
+
 def test_api_confines_paths_and_returns_analysis(tmp_path, monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
