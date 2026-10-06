@@ -379,3 +379,5 @@ audio if a later import fails validation or runs out of space.
 
 Cancelling an upload waits for its copy worker to stop before closing the input
 and clearing the reserved job, so the same upload can be retried safely.
+
+Cancellation keeps any subprocess started while another process is being stopped in the job registry, so a subsequent stop can still cancel it.

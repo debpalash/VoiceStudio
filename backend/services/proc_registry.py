@@ -53,7 +53,15 @@ def kill_job_procs(job_id: str) -> None:
                 job_id.replace("\n", " ").replace("\r", " "), e,
             )
     with _active_procs_lock:
-        _active_procs.pop(job_id, None)
+        tracked = _active_procs.get(job_id)
+        if tracked is not None:
+            # A new subprocess may register while kill() is in progress.
+            # Retire only the snapshot this cancellation actually owned.
+            for proc in procs:
+                if proc in tracked:
+                    tracked.remove(proc)
+            if not tracked:
+                _active_procs.pop(job_id, None)
 
 
 def has_active_procs(job_id: str) -> bool:
