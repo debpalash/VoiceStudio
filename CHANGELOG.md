@@ -14,7 +14,7 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
-- Dubbing keeps newly started media processes cancellable during an overlapping stop (#0) — thanks @rudycelekli!
+- Dubbing keeps newly started media processes cancellable during an overlapping stop (#2632) — thanks @rudycelekli!
 
 - MCP speech tools wait through model loading and progress-extended CPU renders instead of timing out before the backend (#2609)
 
