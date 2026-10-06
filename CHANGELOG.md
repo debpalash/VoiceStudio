@@ -14,7 +14,7 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
-- Parallel downloads stop sibling range requests before a failure returns (#0) — thanks @rudycelekli!
+- Parallel downloads stop sibling range requests before a failure returns (#2642) — thanks @rudycelekli!
 
 - MCP speech tools wait through model loading and progress-extended CPU renders instead of timing out before the backend (#2609)
 
