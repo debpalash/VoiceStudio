@@ -15,6 +15,23 @@ import pytest
 from services import longform_import as li
 
 
+@pytest.mark.parametrize("tag", ["p", "div", "li", "tr", "section", "blockquote", "dd", "h4"])
+def test_block_edges_separate_adjacent_prose(tag):
+    _, body = li._html_to_title_body(f"<body>Before<{tag}>Inside</{tag}>After</body>")
+    assert body.splitlines() == ["Before", "Inside", "After"]
+
+
+def test_inline_markup_keeps_word_fragments_joined():
+    _, body = li._html_to_title_body("<body><p>un<em>break</em>able</p></body>")
+    assert body == "unbreakable"
+
+
+def test_heading_and_pagebreak_do_not_become_body_text():
+    title, body = li._html_to_title_body('<body><h1>Chapter <em>One</em></h1><p>First<span role="doc-pagebreak">20</span> word.</p>After.</body>')
+    assert title == "Chapter One"
+    assert body.splitlines() == ["First word.", "After."]
+
+
 def _make_epub(n_chapters: int = 3) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
@@ -50,6 +67,7 @@ def _make_epub(n_chapters: int = 3) -> bytes:
 def test_clean_epub_yields_all_chapters():
     script = li.epub_to_chapter_script(_make_epub())
     assert script.count("# Chapter") == 3
+    assert "Opening paragraph of chapter 1.\n\nClosing paragraph of chapter 1." in script
 
 
 def test_mid_chapter_parse_failure_keeps_partial_text(monkeypatch, caplog):

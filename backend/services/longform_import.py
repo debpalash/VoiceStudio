@@ -129,7 +129,12 @@ class _TextExtractor(HTMLParser):
     whitespace. First <h1>/<h2>/<title> seen is kept as the chapter title."""
 
     _SKIP = {"script", "style", "head"}
-    _BREAK = {"p", "br", "div", "h1", "h2", "h3", "li", "tr"}
+    _BREAK = {
+        "p", "br", "hr", "div", "h1", "h2", "h3", "h4", "h5", "h6",
+        "li", "tr", "td", "th", "table", "ul", "ol", "dl", "dt", "dd",
+        "section", "article", "main", "header", "footer", "aside",
+        "blockquote", "pre", "address", "figure", "figcaption",
+    }
     #: A print page number carried into the EPUB (EPUB 3 ``epub:type="pagebreak"``,
     #: ARIA ``role="doc-pagebreak"``, or a publisher class such as
     #: ``pagebreak-rw``). Inline, it glues onto prose ("happily as 2Zoe threw");
@@ -223,6 +228,11 @@ class _TextExtractor(HTMLParser):
         if self._in_title and tag == self._title_tag:
             self._in_title = False
             self.title = " ".join("".join(self._title_parts).split())
+        if tag in self._BREAK and not self._skip_depth:
+            if self._in_title:
+                self._title_parts.append(" ")
+            else:
+                self._parts.append("\n")
 
     def handle_data(self, data):
         if self._skip_depth or self._pagebreak_stack:
