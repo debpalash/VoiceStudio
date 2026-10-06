@@ -2,8 +2,23 @@
 from pathlib import Path
 
 import yaml
+import pytest
 
 from services import hf_revisions
+
+
+@pytest.mark.parametrize("invalid", [b"\xff\xfe", b"\xef\xbb\xbf" + b"a" * 40, b"\x80"])
+@pytest.mark.parametrize("legacy_valid", [True, False])
+def test_unreadable_revision_marker_uses_legacy_ref_or_pin(tmp_path, invalid, legacy_valid):
+    repo_id = "k2-fsa/OmniVoice"
+    repo_dir = tmp_path / "models--k2-fsa--OmniVoice"
+    repo_dir.mkdir()
+    (repo_dir / "voicestudio-revision").write_bytes(invalid)
+    ref = repo_dir / "refs" / "main"
+    ref.parent.mkdir()
+    ref.write_bytes(b"e" * 40 + b"\n" if legacy_valid else invalid)
+    expected = "e" * 40 if legacy_valid else hf_revisions.revision_for(repo_id)
+    assert hf_revisions.installed_revision(repo_id, str(tmp_path)) == expected
 
 
 def test_every_catalog_repo_has_an_immutable_revision():

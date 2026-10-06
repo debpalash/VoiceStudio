@@ -1361,3 +1361,5 @@ is affected; it does not diagnose or repair the original environment.
 ## Concurrent migration backups
 
 Concurrent pre-migration database snapshots reserve distinct backup counters before copying. Reservation files are not recovery backups. A reservation left by an interrupted writer is skipped by subsequent snapshots rather than reused.
+
+When a model revision marker cannot be decoded, repair uses a valid legacy Hugging Face reference if available, then the curated revision pin. An unreadable marker does not make an unreviewed repository eligible for repair.
