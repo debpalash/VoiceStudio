@@ -1,9 +1,12 @@
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { execFileSync } from 'node:child_process';
 import { basename, join, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 // This is a Node launcher shared with the package script, so it intentionally
 // remains plain ESM rather than being compiled into Electron's main process.
 // @ts-expect-error JavaScript launcher has no separate declaration file.
-import { createMacDevBundlePlan, launchElectronVite } from '../../scripts/dev.mjs';
+import { createMacDevBundlePlan, launchElectronVite, prepareMacDevElectron } from '../../scripts/dev.mjs';
 
 it('watches main and preload changes so renderer updates cannot leave stale browser IPC running', () => {
   const spawn = vi.fn(() => ({ on: vi.fn() }));
@@ -127,4 +130,36 @@ describe('macOS development bundle branding', () => {
       join('VoiceStudio.app', 'Contents', 'MacOS', 'Electron'),
     );
   });
+});
+
+
+it.skipIf(process.platform !== 'darwin')('rebuilds an incomplete macOS development cache with native bundle tools', () => {
+  const root = mkdtempSync(join(tmpdir(), 'vs-dev-cache-'));
+  try {
+    const contents = join(root, 'Electron.app', 'Contents');
+    mkdirSync(join(contents, 'MacOS'), { recursive: true });
+    mkdirSync(join(contents, 'Resources'));
+    const executable = join(contents, 'MacOS', 'Electron');
+    copyFileSync('/bin/echo', executable);
+    writeFileSync(join(contents, 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>Electron</string>
+<key>CFBundleIdentifier</key><string>org.example.vs-dev-cache</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+</dict></plist>`);
+    const iconPath = join(root, 'icon.icns');
+    writeFileSync(iconPath, 'icns');
+    const options = {
+      electronExecutable: executable, electronVersion: 'test', appVersion: '1.0.0',
+      iconPath, cacheRoot: join(root, 'cache'),
+    };
+    const cached = prepareMacDevElectron(options);
+    rmSync(cached);
+    const rebuilt = prepareMacDevElectron(options);
+    expect(rebuilt).toBe(cached);
+    expect(readFileSync(rebuilt).subarray(0, 4)).toEqual(readFileSync(executable).subarray(0, 4));
+    expect(() => execFileSync('/usr/bin/codesign', ['--verify', '--deep', resolve(rebuilt, '../../..')])).not.toThrow();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

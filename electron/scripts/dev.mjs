@@ -98,6 +98,9 @@ export function prepareMacDevElectron({
     return plan.destinationExecutable;
   }
 
+  // An interrupted copy or a removed executable can leave the key occupied.
+  // Retire that invalid cache before publishing a rebuilt bundle at the same key.
+  rmSync(plan.destinationRoot, { recursive: true, force: true });
   mkdirSync(cacheRoot, { recursive: true });
   const stagingRoot = mkdtempSync(join(cacheRoot, '.staging-'));
   const stagingBundle = join(stagingRoot, `${APP_NAME}.app`);

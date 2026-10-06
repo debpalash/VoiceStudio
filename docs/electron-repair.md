@@ -125,3 +125,5 @@ Automatic renderer-crash repair uses the source workspace. Without an attached
 checkout, it opens the source-folder controls and preserves the request; choose
 a checkout and press Send to continue. Explicit app action requests continue to
 use the app workspace without a checkout.
+
+On macOS, the development launcher rebuilds an incomplete branded Electron cache before launching. A missing executable no longer leaves the cache key permanently occupied; a complete cache still reuses its existing bundle.
