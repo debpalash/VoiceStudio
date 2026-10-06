@@ -73,3 +73,5 @@ Resuming starts a fresh job while preserving the original checkpoint until all c
 Cache pruning evicts the oldest chapter and segment audio, including interrupted partial files, while retaining JSON bookkeeping needed to locate older cache entries after moving the data directory. Bookkeeping contributes to the reported cache size; if it alone exceeds the budget, pruning remains best effort.
 
 EPUB block elements separate adjacent prose at both their opening and closing edges. Inline emphasis keeps word fragments joined, and heading text stays in chapter metadata.
+
+EPUB line breaks such as `<br/>` remain single line breaks inside a paragraph; separate paragraph elements retain their paragraph boundaries.

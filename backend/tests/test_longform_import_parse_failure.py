@@ -110,3 +110,31 @@ def test_chapter_failing_before_any_text_is_skipped_not_fatal(monkeypatch):
     script = li.epub_to_chapter_script(_make_epub())
     assert "# Chapter 1" in script and "# Chapter 3" in script
     assert "chapter 2" not in script.lower()
+
+
+@pytest.mark.parametrize("line_break", ["<br>", "<br/>", "<br />", "<BR/>"])
+def test_void_line_break_is_not_a_paragraph_break(line_break):
+    from services import longform_import
+
+    _, body = longform_import._html_to_title_body(f"<body><p>Line one.{line_break}Line two.</p>After.</body>")
+
+    assert body == "Line one.\nLine two.\nAfter."
+
+
+@pytest.mark.parametrize("line_break", ["<br>", "<br/>"])
+def test_epub_preserves_line_break_inside_paragraph(line_break):
+    from services import longform_import
+
+    # Repack the actual EPUB fixture with one multiline opening paragraph.
+    packed = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(_make_epub(1))) as source, zipfile.ZipFile(packed, "w") as dest:
+        for info in source.infolist():
+            content = source.read(info.filename)
+            if info.filename == "OEBPS/ch1.xhtml":
+                content = content.replace(b"Opening paragraph of chapter 1.",
+                                          f"Line one.{line_break}Line two.".encode())
+            dest.writestr(info, content)
+
+    script = longform_import.epub_to_chapter_script(packed.getvalue())
+
+    assert "Line one.\nLine two.\n\nClosing paragraph of chapter 1." in script

@@ -228,7 +228,7 @@ class _TextExtractor(HTMLParser):
         if self._in_title and tag == self._title_tag:
             self._in_title = False
             self.title = " ".join("".join(self._title_parts).split())
-        if tag in self._BREAK and not self._skip_depth:
+        if tag in self._BREAK and tag not in self._VOID and not self._skip_depth:
             if self._in_title:
                 self._title_parts.append(" ")
             else:
