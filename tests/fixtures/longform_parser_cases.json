@@ -1601,5 +1601,11 @@
         ]
       }
     ]
+  },
+  {
+    "name": "ssml_spell_supplementary_unicode",
+    "input": "[spell]A\ud801\udc00 \ud83d\ude00B[/spell]",
+    "default_voice": "v",
+    "expected": [{"title": "Chapter 1", "spans": [{"voice_id": "v", "text": "A \ud801\udc00 \ud83d\ude00 B", "pause_ms_after": 0, "speed": null}]}]
   }
 ]

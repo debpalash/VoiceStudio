@@ -92,5 +92,5 @@ export function parseSsmlLite(text) {
 
 /** Space out a run for [spell]: "USA" → "U S A". */
 export function spellOut(word) {
-  return (word || '').split(/\s+/).join('').split('').join(' ');
+  return Array.from((word || '').split(/\s+/).join('')).join(' ');
 }

@@ -51,6 +51,10 @@ describe('parseSsmlLite (client port — parity with ssml_lite.py)', () => {
     expect(spellOut('go USA')).toBe('g o U S A');
   });
 
+  it('spaces supplementary Unicode characters without splitting surrogate pairs', () => {
+    expect(spellOut('A\u{10400} \u{1F600}B')).toBe('A \u{10400} \u{1F600} B');
+  });
+
   it('is linear-time on pathological input (no ReDoS)', () => {
     const big = '[slow]'.repeat(5000);
     const t0 = Date.now();

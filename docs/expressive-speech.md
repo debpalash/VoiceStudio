@@ -258,3 +258,6 @@ promised date — when each lands, this page gets updated in the same PR.
 
 Omitted API join options keep legacy hard joins (zero gaps, no edge trim).
 Clients enable seamless joins by sending their chosen gaps and trim explicitly.
+
+In Stories previews, `[spell]` separates Unicode code points, keeping
+supplementary characters intact, with the same text as the audiobook parser.
