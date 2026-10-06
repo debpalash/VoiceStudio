@@ -12,8 +12,8 @@ function nvmBinDirs(home: string): string[] {
   const root = join(home, '.nvm', 'versions', 'node');
   try {
     return readdirSync(root)
-      .sort()
-      .reverse()
+      .filter((version) => /^v\d+\.\d+\.\d+$/.test(version))
+      .sort((left, right) => right.localeCompare(left, 'en', { numeric: true }))
       .map((version) => join(root, version, 'bin'));
   } catch {
     return [];

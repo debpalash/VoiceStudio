@@ -43,3 +43,22 @@ describe('toolSearchDirs', () => {
     expect(env.Path).toContain('npm');
   });
 });
+
+it('searches NVM releases by numeric version, keeping an inherited Node first', async () => {
+  const { mkdtempSync, mkdirSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const home = mkdtempSync(join(tmpdir(), 'voice-tool-path-'));
+  try {
+    for (const version of ['v9.11.2', 'v22.9.0', 'v22.10.0', 'v24.1.0'])
+      mkdirSync(join(home, '.nvm', 'versions', 'node', version, 'bin'), { recursive: true });
+    const dirs = toolSearchDirs({ env: { PATH: '/chosen/node/bin' }, platform: 'darwin', home });
+    expect(dirs[0]).toBe('/chosen/node/bin');
+    expect(dirs.filter((path) => path.includes('/.nvm/'))).toEqual(
+      ['v24.1.0', 'v22.10.0', 'v22.9.0', 'v9.11.2'].map((version) =>
+        join(home, '.nvm', 'versions', 'node', version, 'bin'),
+      ),
+    );
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
