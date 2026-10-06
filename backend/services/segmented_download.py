@@ -213,7 +213,17 @@ async def segmented_download(
                     await _fetch(seg)
 
             if segments:
-                await asyncio.gather(*(_fetch_limited(s) for s in segments))
+                tasks = [asyncio.create_task(_fetch_limited(s)) for s in segments]
+                try:
+                    await asyncio.gather(*tasks)
+                except BaseException:
+                    # gather propagates one failed range without stopping its
+                    # siblings. Retire every writer before releasing the client
+                    # or letting a retry reuse the partial file and manifest.
+                    for task in tasks:
+                        task.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                    raise
 
         # ── verify ──────────────────────────────────────────────────────
         actual = os.path.getsize(part)

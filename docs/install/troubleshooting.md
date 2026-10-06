@@ -1361,3 +1361,5 @@ is affected; it does not diagnose or repair the original environment.
 ## Concurrent migration backups
 
 Concurrent pre-migration database snapshots reserve distinct backup counters before copying. Reservation files are not recovery backups. A reservation left by an interrupted writer is skipped by subsequent snapshots rather than reused.
+
+When one segmented request fails, the downloader stops and drains its other range requests before returning the error. A retry can then reuse verified checkpoints without an earlier request continuing to write the partial file or report progress.

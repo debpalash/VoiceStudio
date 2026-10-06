@@ -230,3 +230,110 @@ def test_dropped_connection_resumes_from_manifest(tmp_path, monkeypatch):
     # Resumed, not restarted: total bytes served stay below two full copies.
     assert sum(served) < 2 * len(PAYLOAD)
     assert sum(served) >= len(PAYLOAD)
+
+
+@pytest.mark.parametrize("reject_range", [True, False])
+def test_range_requests_are_drained_before_return(tmp_path, reject_range):
+    """Use native HTTPX and a local range server to keep one response open."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    size = 8 * 1024 * 1024
+    received = threading.Event()
+    release_response = threading.Event()
+    progress = []
+
+    class Origin(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_HEAD(self):
+            self.send_response(200)
+            self.send_header("Content-Length", str(size))
+            self.send_header("Accept-Ranges", "bytes")
+            self.end_headers()
+
+        def do_GET(self):
+            lo, hi = map(int, self.headers["Range"].removeprefix("bytes=").split("-"))
+            if lo:
+                # Fail the second range only once the first has actually
+                # reached the downloader and is awaiting its remaining bytes.
+                if not received.wait(5):
+                    self.send_error(504)
+                    return
+                if reject_range:
+                    self.send_response(200)  # refuses Range; must fail validation
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                else:
+                    self.send_response(206)
+                    self.send_header("Content-Range", f"bytes {lo}-{hi}/{size}")
+                    self.send_header("Content-Length", str(hi - lo + 1))
+                    self.end_headers()
+                    release_response.set()
+                    self.wfile.write(b"C" * (hi - lo + 1))
+                return
+            self.send_response(206)
+            self.send_header("Content-Range", f"bytes {lo}-{hi}/{size}")
+            self.send_header("Content-Length", str(hi - lo + 1))
+            self.end_headers()
+            try:
+                self.wfile.write(b"A" * (1024 * 1024))
+                self.wfile.flush()
+                release_response.wait(10)
+                self.wfile.write(b"B" * (hi - lo + 1 - 1024 * 1024))
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # the failed download has closed its sibling response
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Origin)
+    server.daemon_threads = True
+    serving = threading.Thread(target=server.serve_forever)
+    serving.start()
+    dest = str(tmp_path / "native-ranges.bin")
+
+    def on_bytes(delta):
+        progress.append(delta)
+        received.set()
+
+    async def run():
+        async with httpx.AsyncClient(trust_env=False) as client:
+            try:
+                download = segmented_download(
+                    f"http://127.0.0.1:{server.server_port}/model.bin", dest,
+                    client=client, num_connections=2, on_bytes=on_bytes)
+                if reject_range:
+                    with pytest.raises(ValueError, match="invalid response range"):
+                        await asyncio.wait_for(download, 10)
+                else:
+                    assert await asyncio.wait_for(download, 10) == dest
+                pending = [task for task in asyncio.all_tasks()
+                           if task is not asyncio.current_task() and not task.done()]
+                assert not pending, "a sibling range is still running after failure"
+                assert received.is_set()
+                if reject_range:
+                    assert sum(progress) == 1024 * 1024
+                    assert not os.path.exists(dest)
+                    assert os.path.isfile(dest + ".part")
+                else:
+                    assert sum(progress) == size
+                    with open(dest, "rb") as payload:
+                        assert payload.read() == (b"A" * (1024 * 1024)
+                            + b"B" * (3 * 1024 * 1024) + b"C" * (4 * 1024 * 1024))
+                    assert not os.path.exists(dest + ".part")
+            finally:
+                # Also reclaim leaked tasks on the failing baseline so the
+                # test never leaves an HTTP request or event loop behind.
+                pending = [task for task in asyncio.all_tasks()
+                           if task is not asyncio.current_task() and not task.done()]
+                for task in pending:
+                    task.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
+                release_response.set()
+
+    try:
+        asyncio.run(run())
+    finally:
+        release_response.set()
+        server.shutdown()
+        server.server_close()
+        serving.join(5)
