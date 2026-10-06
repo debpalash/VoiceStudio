@@ -14,7 +14,7 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
-- EPUB imports preserve word and paragraph boundaries around block elements (#0) — thanks @rudycelekli!
+- EPUB imports preserve word and paragraph boundaries around block elements (#2630) — thanks @rudycelekli!
 
 - MCP speech tools wait through model loading and progress-extended CPU renders instead of timing out before the backend (#2609)
 
