@@ -295,4 +295,4 @@ New WebVTT imports retain source cue syntax alongside decoded text, preserving l
 
 ### Project glossary deduplication
 
-Glossary auto-extraction keeps an existing manual or automatic source term when the proposal differs only in Unicode letter case, including accented Latin and Cyrillic names. Deduplication is scoped to the current project, so a term saved in another project does not suppress a new proposal.
+Glossary auto-extraction keeps an existing manual or automatic source term when the proposal differs only in Unicode letter case, including accented Latin and Cyrillic names. Comparison keys use Unicode case folding, so `Straße`/`STRASSE` and Greek sigma variants also match; the saved source spelling and human target remain unchanged. Deduplication is scoped to the current project, so a term saved in another project does not suppress a new proposal.

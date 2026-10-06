@@ -274,20 +274,20 @@ def auto_extract(project_id: str, req: AutoExtractRequest):
             (project_id,),
         ).fetchall()
         # SQLite LOWER only folds ASCII in the bundled build; apply the same
-        # Unicode casing to saved and proposed terms so manual entries win.
-        existing_srcs = {r["source"].lower() for r in existing}
+        # Unicode case folding to saved and proposed terms so manual entries win.
+        existing_srcs = {r["source"].casefold() for r in existing}
 
         inserted = 0
         now = time.time()
         for src, tgt, note in proposed:
-            if src.lower() in existing_srcs:
+            if src.casefold() in existing_srcs:
                 continue
             conn.execute(
                 "INSERT INTO glossary_terms (id, project_id, source, target, note, auto, created_at) "
                 "VALUES (?, ?, ?, ?, ?, 1, ?)",
                 (str(uuid.uuid4())[:12], project_id, src, tgt, note, now),
             )
-            existing_srcs.add(src.lower())
+            existing_srcs.add(src.casefold())
             inserted += 1
 
         rows = conn.execute(

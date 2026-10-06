@@ -110,6 +110,10 @@ def test_auto_extract_ignores_terms_inside_reasoning(monkeypatch):
     ("МОСКВА", "Москва"),
     ("München", "MÜNCHEN"),
     ("Marcus", "MARCUS"),
+    ("Straße", "STRASSE"),
+    ("STRASSE", "Straße"),
+    ("ΟΣ", "οσ"),
+    ("οσ", "ος"),
 ])
 def test_auto_extract_preserves_existing_unicode_term(monkeypatch, tmp_path, source, proposed_source):
     """Both sides of source deduplication must use Unicode-aware casing."""
@@ -143,3 +147,30 @@ def test_auto_extract_preserves_existing_unicode_term(monkeypatch, tmp_path, sou
     assert terms[source]["auto"] is False
     assert terms["Rudy"]["auto"] is True
     assert glossary.list_terms("another-project") == [other]
+
+
+@pytest.mark.parametrize("first, second", [("Straße", "STRASSE"), ("οσ", "ος")])
+def test_auto_extract_deduplicates_unicode_variants_in_same_batch(monkeypatch, tmp_path, first, second):
+    import sqlite3
+    from types import SimpleNamespace
+    from api.routers import glossary
+    from core import db
+    from services import llm_skills
+
+    path = tmp_path / "glossary.db"
+    with sqlite3.connect(path) as conn:
+        conn.executescript(db._BASE_SCHEMA)
+    monkeypatch.setattr(db, "DB_PATH", path)
+    body = f"{first} || first choice || term\n{second} || second choice || variant\n"
+    completion = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=body))])
+    handle = SimpleNamespace(model="test", timeout=1, client=SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=lambda **kwargs: completion))))
+    monkeypatch.setattr(llm_skills, "resolve_skill_client", lambda sid: handle)
+
+    result = glossary.auto_extract("project", _req(target_lang="en", segments=[{"text": first}]))
+
+    assert result["proposed"] == 2
+    assert result["inserted"] == 1
+    assert len(result["terms"]) == 1
+    assert result["terms"][0]["source"] == first
+    assert result["terms"][0]["target"] == "first choice"
