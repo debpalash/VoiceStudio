@@ -14,7 +14,7 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
-- Audio analysis retains the earliest warnings when its result limit is reached (#0) — thanks @rudycelekli!
+- Audio analysis retains the earliest warnings when its result limit is reached (#2636) — thanks @rudycelekli!
 
 - MCP speech tools wait through model loading and progress-extended CPU renders instead of timing out before the backend (#2609)
 
