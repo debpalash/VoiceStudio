@@ -42,26 +42,27 @@ export async function consumeLongformStream(res, onEvent, { isAborted, signal } 
   // Releasing the reader cancels the underlying stream (closes the fetch), so
   // the server sees the disconnect. Best-effort: a stream already closed/errored
   // — or a caller's fake reader without cancel() — must not throw here.
-  const releaseStream = async () => {
+  let cancellation;
+  const releaseStream = () => (cancellation ??= (async () => {
     try {
       await reader.cancel();
     } catch {
       /* already closed/errored, or no cancel() — nothing to release */
     }
-  };
+  })());
+  const onAbort = () => { void releaseStream(); };
+  signal?.addEventListener('abort', onAbort, { once: true });
 
   try {
     while (true) {
-      if (aborted()) {
-        await releaseStream();
-        return;
-      }
+      if (aborted()) return;
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       const { lines, rest } = splitSSEBuffer(buffer);
       buffer = rest;
       for (const line of lines) {
+        if (aborted()) return;
         const evt = parseSSELine(line);
         if (evt) onEvent(evt);
       }
@@ -70,10 +71,11 @@ export async function consumeLongformStream(res, onEvent, { isAborted, signal } 
     // An abort mid-read (AbortController.abort() / reader.cancel()) rejects the
     // pending read() — swallow it when WE initiated the stop; re-throw a genuine
     // stream/transport error so callers still surface it.
-    if (aborted()) {
-      await releaseStream();
-      return;
-    }
+    if (aborted()) return;
     throw e;
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
+    await releaseStream();
+    reader.releaseLock?.();
   }
 }

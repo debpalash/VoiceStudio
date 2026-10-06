@@ -258,3 +258,5 @@ promised date — when each lands, this page gets updated in the same PR.
 
 Omitted API join options keep legacy hard joins (zero gaps, no edge trim).
 Clients enable seamless joins by sending their chosen gaps and trim explicitly.
+
+Stories and Audiobook stream consumers cancel and unlock their response reader when an event handler fails or rendering stops. A supplied abort signal also wakes a pending read, so the backend can observe the disconnect and stop scheduling chapters.

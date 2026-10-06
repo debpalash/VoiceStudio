@@ -62,6 +62,42 @@ describe('consumeLongformStream', () => {
     expect(events.length).toBe(1);
   });
 
+  it('cancels and unlocks the native stream when an event handler rejects a render', async () => {
+    let cancelled = false;
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(sse({ type: 'error', error: 'render failed' })));
+      },
+      cancel() { cancelled = true; },
+    });
+    const failure = new Error('render failed');
+    await expect(consumeLongformStream(new Response(body), () => { throw failure; }))
+      .rejects.toBe(failure);
+    expect(cancelled).toBe(true);
+    expect(body.locked).toBe(false);
+  });
+
+  it('unlocks a native stream after normal completion', async () => {
+    const body = new ReadableStream({ start(controller) { controller.close(); } });
+    await consumeLongformStream(new Response(body), () => {});
+    expect(body.locked).toBe(false);
+  });
+
+  it('wakes a pending native read when the supplied signal aborts', async () => {
+    const ctrl = new AbortController();
+    let cancelled = false;
+    const body = new ReadableStream({ cancel() { cancelled = true; } });
+    const promise = consumeLongformStream(new Response(body), () => {}, { signal: ctrl.signal });
+    await Promise.resolve();
+    ctrl.abort();
+    await expect(Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('read stayed pending')), 50)),
+    ])).resolves.toBeUndefined();
+    expect(cancelled).toBe(true);
+    expect(body.locked).toBe(false);
+  });
+
   it('throws when the response has no body', async () => {
     await expect(consumeLongformStream({}, () => {})).rejects.toThrow(/no response stream/);
   });
