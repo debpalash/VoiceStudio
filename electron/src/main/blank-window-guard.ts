@@ -99,6 +99,7 @@ export function installBlankWindowGuard(
   let stopped = false;
   let showingFallback = false;
   let repairRunning = false;
+  let revision = 0;
 
   const schedule = (delay: number) => {
     if (stopped || win.isDestroyed()) return;
@@ -107,7 +108,12 @@ export function installBlankWindowGuard(
   };
   const inspect = async () => {
     if (stopped || showingFallback || win.isDestroyed()) return;
-    if (await hasRenderedRoot(win)) {
+    const generation = revision;
+    const rendered = await hasRenderedRoot(win);
+    // A probe belongs to the document it inspected, never to a replacement
+    // navigation or a guard/window that was retired while Chromium answered.
+    if (stopped || win.isDestroyed() || showingFallback || generation !== revision) return;
+    if (rendered) {
       reloads = 0;
       schedule(HEARTBEAT_MS);
       return;
@@ -125,9 +131,15 @@ export function installBlankWindowGuard(
   };
   const loaded = (_event: Electron.Event, url: string) => {
     if (!isTrustedRenderer(url, devOrigin)) return;
+    revision++;
     const manualRecovery = showingFallback;
     showingFallback = false;
     if (manualRecovery) reloads = 0;
+    schedule(reloads ? RETRY_BASE_MS * reloads : FIRST_CHECK_MS);
+  };
+  const navigationStarted = (_event: Electron.Event, _url: string, _inPlace: boolean, isMainFrame: boolean) => {
+    if (!isMainFrame) return;
+    revision++;
     schedule(reloads ? RETRY_BASE_MS * reloads : FIRST_CHECK_MS);
   };
   const closed = () => stop();
@@ -144,15 +156,18 @@ export function installBlankWindowGuard(
   const stop = () => {
     if (stopped) return;
     stopped = true;
+    revision++;
     if (timer) clearTimeout(timer);
     if (!contents.isDestroyed()) {
       contents.off('did-navigate', loaded);
+      contents.off('did-start-navigation', navigationStarted);
       contents.off('will-navigate', repairRequested);
     }
     win.off('closed', closed);
   };
 
   contents.on('did-navigate', loaded);
+  contents.on('did-start-navigation', navigationStarted);
   contents.on('will-navigate', repairRequested);
   win.on('closed', closed);
   schedule(FIRST_CHECK_MS);

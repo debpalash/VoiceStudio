@@ -113,3 +113,31 @@ describe('blank window fallback', () => {
     expect(() => stop()).not.toThrow();
   });
 });
+
+it.each(['disposed', 'closed', 'navigating', 'navigated', 'subframe'])('drops a pending blank probe after it is %s', async (action) => {
+  vi.useFakeTimers();
+  let finish!: (rendered: boolean) => void;
+  let destroyed = false;
+  const contents = Object.assign(new EventEmitter(), {
+    isDestroyed: () => destroyed,
+    executeJavaScript: vi.fn(() => new Promise<boolean>((resolve) => { finish = resolve; })),
+  });
+  const win = Object.assign(new EventEmitter(), {
+    isDestroyed: () => destroyed,
+    webContents: contents,
+    loadURL: vi.fn().mockResolvedValue(undefined),
+  });
+  const stop = installBlankWindowGuard(win as never, 'app://voicestudio/index.html', 'en');
+  await vi.advanceTimersByTimeAsync(12_000);
+  expect(contents.executeJavaScript).toHaveBeenCalledOnce();
+  if (action === 'disposed') stop();
+  else if (action === 'closed') { destroyed = true; win.emit('closed'); }
+  else if (action === 'subframe') contents.emit('did-start-navigation', {}, 'https://foreign.invalid/frame', false, false);
+  else if (action === 'navigating') contents.emit('did-start-navigation', {}, 'app://voicestudio/new-page', false, true);
+  else contents.emit('did-navigate', {}, 'app://voicestudio/new-page');
+  finish(false);
+  await vi.advanceTimersByTimeAsync(0);
+  if (action === 'subframe') expect(win.loadURL).toHaveBeenCalledWith('app://voicestudio/index.html');
+  else expect(win.loadURL).not.toHaveBeenCalled();
+  stop();
+});

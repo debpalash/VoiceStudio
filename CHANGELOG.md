@@ -14,6 +14,8 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
+- Late blank-window checks no longer reload a replacement page or a closed desktop window — thanks @rudycelekli! (#2648)
+
 - MCP speech tools wait through model loading and progress-extended CPU renders instead of timing out before the backend (#2609)
 
 ## [0.5.7] — 2026-10-05

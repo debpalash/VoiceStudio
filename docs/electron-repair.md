@@ -125,3 +125,7 @@ Automatic renderer-crash repair uses the source workspace. Without an attached
 checkout, it opens the source-folder controls and preserves the request; choose
 a checkout and press Send to continue. Explicit app action requests continue to
 use the app workspace without a checkout.
+
+Blank-window checks are scoped to the document they inspect. Results arriving
+after navigation, window closure, or guard disposal cannot reload a replacement
+page or the retired window.
