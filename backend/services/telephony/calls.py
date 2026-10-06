@@ -259,11 +259,13 @@ def store_save(session: CallSession) -> None:
             session.recording_path, session.error, session.created_at, session.started_at,
             session.ended_at, session.duration_s if session.finalized else None,
         )
-    try:
-        with db_conn() as conn:
-            conn.execute(_UPSERT_SQL, values)
-    except Exception:  # noqa: BLE001 — a DB hiccup must not drop a live call
-        logger.warning("Could not save call %s", session.id, exc_info=True)
+        # Keep the snapshot and its commit in one session operation. A delayed
+        # older save must not overwrite the terminal record from a later one.
+        try:
+            with db_conn() as conn:
+                conn.execute(_UPSERT_SQL, values)
+        except Exception:  # noqa: BLE001 — a DB hiccup must not drop a live call
+            logger.warning("Could not save call %s", session.id, exc_info=True)
 
 
 def _row_record(row, *, transcript: bool) -> dict:

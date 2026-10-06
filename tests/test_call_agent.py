@@ -951,3 +951,91 @@ def test_migration_adds_call_sessions_and_matches_the_base_schema(tmp_path, monk
     fresh = [(r[1], r[2].upper(), r[3], r[5]) for r in canon.execute("PRAGMA table_info(call_sessions)")]
     norm = lambda cols: [(n, {"FLOAT": "REAL"}.get(t, t), nn, pk) for n, t, nn, pk in cols]  # noqa: E731
     assert norm(migrated) == norm(fresh)
+
+
+def test_call_store_save_cannot_publish_an_older_snapshot_after_completion(tmp_path, monkeypatch):
+    """Provider callbacks and finalization must commit in session order."""
+    from contextlib import contextmanager
+    from core import db
+    from services.telephony import calls
+
+    path = tmp_path / "call-order.db"
+    with sqlite3.connect(path) as conn:
+        conn.executescript(db._BASE_SCHEMA)
+    monkeypatch.setattr(db, "DB_PATH", path)
+    real_db_conn = db.db_conn
+    first_entered = threading.Event()
+    release_first = threading.Event()
+    finalized = threading.Event()
+    errors = []
+
+    @contextmanager
+    def delayed_first_save():
+        # Delay the first writer before opening its real SQLite connection,
+        # exactly where a blocked thread-pool callback can lag a later save.
+        if threading.current_thread().name == "old-call-save":
+            first_entered.set()
+            if not release_first.wait(10):
+                raise TimeoutError("first save was not released")
+        with real_db_conn() as conn:
+            yield conn
+
+    monkeypatch.setattr(db, "db_conn", delayed_first_save)
+    session = calls.CallSession(id="call-order", direction="outbound",
+        remote_number="+15550001111", from_number=FROM, brief="test", profile_id="voice")
+
+    def save_old():
+        try:
+            calls.store_save(session)
+        except BaseException as exc:
+            errors.append(exc)
+
+    def complete():
+        try:
+            calls.finish_unconnected(session, "completed")
+        except BaseException as exc:
+            errors.append(exc)
+        finally:
+            finalized.set()
+
+    old = threading.Thread(target=save_old, name="old-call-save")
+    latest = threading.Thread(target=complete, name="latest-call-save")
+    old.start()
+    try:
+        assert first_entered.wait(5)
+        latest.start()
+        # An unserialized later save can commit while the first is held. With
+        # serialization it waits, then commits after the first is released.
+        finalized.wait(5)
+    finally:
+        release_first.set()
+        old.join(5)
+        if latest.ident is not None:
+            latest.join(5)
+    assert not old.is_alive() and not latest.is_alive()
+    assert not errors
+    assert session.finalized is True
+    with real_db_conn() as conn:
+        row = conn.execute("SELECT status, outcome, ended_at FROM call_sessions WHERE id=?",
+                           (session.id,)).fetchone()
+    assert row["status"] == "completed"
+    assert row["outcome"] == "not_done"
+    assert row["ended_at"] is not None
+
+
+def test_call_store_save_keeps_independent_session_records(tmp_path, monkeypatch):
+    from core import db
+    from services.telephony import calls
+
+    path = tmp_path / "call-independent.db"
+    with sqlite3.connect(path) as conn:
+        conn.executescript(db._BASE_SCHEMA)
+    monkeypatch.setattr(db, "DB_PATH", path)
+    for call_id in ("one", "two"):
+        session = calls.CallSession(id=call_id, direction="outbound",
+            remote_number="+15550001111", from_number=FROM, brief="test", profile_id="voice")
+        calls.store_save(session)
+        calls.finish_unconnected(session, "completed")
+    with db.db_conn() as conn:
+        rows = conn.execute("SELECT id, status FROM call_sessions ORDER BY id").fetchall()
+    assert [tuple(row) for row in rows] == [("one", "completed"), ("two", "completed")]

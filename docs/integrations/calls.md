@@ -196,3 +196,5 @@ turn the other person talked over.
   resampled to 8 kHz μ-law and sent as 20 ms frames. On barge-in (about 200 ms
   of the other person's speech while the agent talks), VoiceStudio sends Twilio
   a `clear` to drop buffered audio.
+
+Call-history snapshots commit in session order. A delayed provider callback cannot overwrite the completed record after the call ends; other calls retain their own independent records.
