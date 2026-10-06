@@ -1,12 +1,12 @@
 """Cancellation snapshots retain subprocesses registered during a kill."""
+import importlib
 import subprocess
 import sys
 import threading
 
-from services import proc_registry as registry
-
 
 def test_registration_during_native_kill_remains_cancellable():
+    registry = importlib.import_module("services.proc_registry")
     entered = threading.Event()
     release = threading.Event()
     job = "registry-overlapping-kill"
@@ -57,6 +57,7 @@ def test_registration_during_native_kill_remains_cancellable():
 
 
 def test_completed_and_absent_processes_are_safe_to_cancel():
+    registry = importlib.import_module("services.proc_registry")
     job = "registry-completed-kill"
     completed = subprocess.Popen([sys.executable, "-c", "pass"])
     completed.wait(timeout=5)
