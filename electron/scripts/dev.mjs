@@ -1,16 +1,19 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import {
+  closeSync,
   copyFileSync,
   existsSync,
   mkdtempSync,
   mkdirSync,
+  openSync,
   readFileSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { hostname } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -66,29 +69,64 @@ function replacePlistValue(infoPlist, key, value) {
   run('plutil', ['-replace', key, '-string', value, infoPlist]);
 }
 
-// mkdir is atomic across launcher processes. Hold custody from validation
-// through publication so an invalid-cache repair cannot delete a new winner.
+// Keep the custody file: unlinking it would let different launchers lock
+// different inodes. lockf locks the parent's shared descriptor, so process exit
+// releases custody even if a launcher cannot run its finally block.
 function withMacCacheLock(destinationRoot, prepare) {
   mkdirSync(dirname(destinationRoot), { recursive: true });
+  const custody = openSync(`${destinationRoot}.custody`, 'a+', 0o600);
   const lockRoot = `${destinationRoot}.lock`;
+  const ownerPath = join(lockRoot, 'owner.json');
+  const owner = JSON.stringify({ pid: process.pid, hostname: hostname() });
+  let owned = false;
   const deadline = Date.now() + 60_000;
-  const pause = new Int32Array(new SharedArrayBuffer(4));
-  while (true) {
-    try {
-      mkdirSync(lockRoot);
-      break;
-    } catch (error) {
-      if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error;
-      if (Date.now() >= deadline) {
-        throw new Error('Timed out waiting for macOS development cache lock; stop all development launchers before removing a stale lock');
-      }
-      Atomics.wait(pause, 0, 0, 100);
-    }
-  }
   try {
+    const result = spawnSync('/usr/bin/lockf', ['-t', '60', '3'], {
+      stdio: ['ignore', 'pipe', 'pipe', custody],
+      encoding: 'utf8',
+    });
+    if (result.error) throw result.error;
+    if (result.status !== 0) throw new Error('Timed out acquiring macOS development cache custody');
+    const pause = new Int32Array(new SharedArrayBuffer(4));
+    while (true) {
+      try {
+        mkdirSync(lockRoot);
+        owned = true;
+        writeFileSync(ownerPath, owner);
+        break;
+      } catch (error) {
+        if (owned || !(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error;
+        // OS custody serializes both reclamation and replacement, avoiding a
+        // check/delete race between launchers. Legacy or unreadable ownership
+        // remains unknown; permission errors and reused live PIDs are not dead.
+        let dead = false;
+        try {
+          const previous = JSON.parse(readFileSync(ownerPath, 'utf8'));
+          if (previous.hostname === hostname() && Number.isSafeInteger(previous.pid) && previous.pid > 0) {
+            try {
+              process.kill(previous.pid, 0);
+            } catch (error) {
+              dead = error instanceof Error && 'code' in error && error.code === 'ESRCH';
+            }
+          }
+        } catch { /* Missing or malformed owner metadata cannot establish death. */ }
+        if (dead) {
+          rmSync(lockRoot, { recursive: true, force: true });
+          continue;
+        }
+        if (Date.now() >= deadline) {
+          throw new Error('Timed out waiting for macOS development cache lock; stop all development launchers before removing a stale lock');
+        }
+        Atomics.wait(pause, 0, 0, 100);
+      }
+    }
     return prepare();
   } finally {
-    rmSync(lockRoot, { recursive: true, force: true });
+    try {
+      if (owned) rmSync(lockRoot, { recursive: true, force: true });
+    } finally {
+      closeSync(custody);
+    }
   }
 }
 

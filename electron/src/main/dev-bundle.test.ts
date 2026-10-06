@@ -211,6 +211,7 @@ it.skipIf(process.platform !== 'darwin')('concurrent launchers retain the same p
     const attempt = join(root, 'attempt');
     const worker = join(root, 'worker.mjs');
     writeFileSync(worker, `import fs from 'node:fs';
+import childProcess from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
 const [config, destinationRoot, barrier, release, result, attempt, launcher] = process.argv.slice(2);
 if (barrier) {
@@ -231,7 +232,15 @@ if (barrier) {
 } else {
   const makeDirectory = fs.mkdirSync;
   const remove = fs.rmSync;
+  const run = childProcess.spawnSync;
   let acknowledged = false;
+  childProcess.spawnSync = function(command, args, options) {
+    if (command === '/usr/bin/lockf' && !acknowledged) {
+      acknowledged = true;
+      fs.writeFileSync(attempt, 'lock-contended');
+    }
+    return run(command, args, options);
+  };
   fs.mkdirSync = function(path, options) {
     try {
       return makeDirectory(path, options);
@@ -319,3 +328,143 @@ fs.writeFileSync(result, JSON.stringify({ executable, inode: fs.statSync(executa
     rmSync(root, { recursive: true, force: true });
   }
 }, 15_000);
+
+
+it.skipIf(process.platform !== 'darwin')('recovers interrupted launchers without retiring live or unknown owners', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'vs-dev-cache-interrupted-'));
+  const children: ReturnType<typeof spawn>[] = [];
+  const exits: Promise<void>[] = [];
+  const worker = join(root, 'worker.mjs');
+  const launcher = fileURLToPath(new URL('../../scripts/dev.mjs', import.meta.url));
+  const waitForFile = async (path: string) => {
+    const deadline = Date.now() + 3000;
+    while (!existsSync(path)) {
+      if (Date.now() >= deadline) throw new Error(`Native worker did not reach ${basename(path)}`);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  };
+  const launch = (stage: string, marker: string, result: string, config: string) => {
+    const child = spawn(process.execPath, [worker, launcher, config, stage, marker, result]);
+    children.push(child);
+    child.stdout.resume();
+    let stderr = '';
+    child.stderr.setEncoding('utf8').on('data', (chunk) => { stderr += chunk; });
+    const exit = new Promise<void>((resolve, reject) => {
+      child.once('error', reject);
+      child.once('close', (code, signal) => code === 0 || signal === 'SIGKILL'
+        ? resolve() : reject(new Error(stderr || `Native worker exited ${code}`)));
+    });
+    exit.catch(() => {});
+    exits.push(exit);
+    return { child, exit };
+  };
+  try {
+    const contents = join(root, 'Electron.app', 'Contents');
+    mkdirSync(join(contents, 'MacOS'), { recursive: true });
+    mkdirSync(join(contents, 'Resources'));
+    const executable = join(contents, 'MacOS', 'Electron');
+    copyFileSync('/bin/echo', executable);
+    writeFileSync(join(contents, 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>Electron</string>
+<key>CFBundleIdentifier</key><string>org.example.vs-dev-interrupted</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+</dict></plist>`);
+    const iconPath = join(root, 'icon.icns');
+    writeFileSync(iconPath, 'icns');
+    const options = { electronExecutable: executable, electronVersion: 'test', appVersion: '1.0.0',
+      iconPath, cacheRoot: join(root, 'cache') };
+    const config = join(root, 'options.json');
+    writeFileSync(config, JSON.stringify(options));
+    const cached = prepareMacDevElectron(options);
+    const destinationRoot = resolve(cached, '../../../..');
+    const lockRoot = destinationRoot + '.lock';
+    writeFileSync(worker, `import fs from 'node:fs';
+import childProcess from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
+const [launcher, config, stage, marker, result] = process.argv.slice(2);
+const options = JSON.parse(fs.readFileSync(config, 'utf8'));
+const destination = ${JSON.stringify(destinationRoot)};
+const run = childProcess.spawnSync;
+childProcess.spawnSync = function(command, args, options) {
+  if (stage === 'recover' && command === '/usr/bin/lockf') fs.writeFileSync(marker, 'attempted');
+  return run(command, args, options);
+};
+const pause = () => {
+  fs.writeFileSync(marker, 'entered');
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
+};
+const remove = fs.rmSync;
+fs.rmSync = function(path, options) {
+  if (stage === 'retiring' && path === destination) pause();
+  return remove(path, options);
+};
+const rename = fs.renameSync;
+fs.renameSync = function(from, to) {
+  const value = rename(from, to);
+  if (stage === 'published' && to === destination) pause();
+  return value;
+};
+const make = fs.mkdirSync;
+fs.mkdirSync = function(path, options) {
+  try { return make(path, options); }
+  catch (error) {
+    if ((stage === 'unknown' || stage === 'recover') && path === destination + '.lock' && error.code === 'EEXIST') {
+      fs.writeFileSync(marker, 'contended');
+    }
+    throw error;
+  }
+};
+syncBuiltinESMExports();
+const { prepareMacDevElectron } = await import(launcher);
+const executable = prepareMacDevElectron(options);
+fs.writeFileSync(result, JSON.stringify({ executable, inode: fs.statSync(executable).ino }));
+`);
+    for (const stage of ['retiring', 'published']) {
+      rmSync(cached);
+      const marker = join(root, stage + '-marker');
+      const blocked = launch(stage, marker, join(root, stage + '-unused'), config);
+      await waitForFile(marker);
+      expect(existsSync(lockRoot)).toBe(true);
+      // A live owner must retain the lock. The contender uses the real launcher
+      // and cannot retire the directory or publish while the producer is alive.
+      const markerInode = statSync(lockRoot).ino;
+      const result = join(root, stage + '-result');
+      const attempt = join(root, stage + '-attempt');
+      const contender = launch('recover', attempt, result, config);
+      await waitForFile(attempt);
+      expect(existsSync(result)).toBe(false);
+      expect(statSync(lockRoot).ino).toBe(markerInode);
+      const publishedInode = stage === 'published' ? statSync(cached).ino : undefined;
+      blocked.child.kill('SIGKILL');
+      await blocked.exit;
+      // Actual child death, not a synthetic PID, establishes reclaimability.
+      await waitForFile(result);
+      await contender.exit;
+      const recovered = JSON.parse(readFileSync(result, 'utf8'));
+      expect(recovered.executable).toBe(cached);
+      if (publishedInode !== undefined) expect(recovered.inode).toBe(publishedInode);
+      expect(existsSync(lockRoot)).toBe(false);
+      expect(() => execFileSync('/usr/bin/codesign', ['--verify', '--deep', resolve(cached, '../../..')])).not.toThrow();
+    }
+    for (const metadata of [undefined, '{invalid', JSON.stringify({ pid: process.pid, hostname: 'different-host' }), JSON.stringify({ pid: process.pid, hostname: (await import('node:os')).hostname() })]) {
+      mkdirSync(lockRoot);
+      if (metadata !== undefined) writeFileSync(join(lockRoot, 'owner.json'), metadata);
+      const inode = statSync(lockRoot).ino;
+      const marker = join(root, 'unknown-' + children.length);
+      const result = marker + '-result';
+      const blocked = launch('unknown', marker, result, config);
+      await waitForFile(marker);
+      expect(existsSync(result)).toBe(false);
+      expect(statSync(lockRoot).ino).toBe(inode);
+      if (metadata !== undefined) expect(readFileSync(join(lockRoot, 'owner.json'), 'utf8')).toBe(metadata);
+      blocked.child.kill('SIGKILL');
+      await blocked.exit;
+      rmSync(lockRoot, { recursive: true });
+    }
+  } finally {
+    for (const child of children) child.kill('SIGKILL');
+    await Promise.allSettled(exits);
+    rmSync(root, { recursive: true, force: true });
+  }
+}, 20_000);
