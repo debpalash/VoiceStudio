@@ -126,4 +126,4 @@ checkout, it opens the source-folder controls and preserves the request; choose
 a checkout and press Send to continue. Explicit app action requests continue to
 use the app workspace without a checkout.
 
-On macOS, the development launcher rebuilds an incomplete branded Electron cache before launching. A missing executable no longer leaves the cache key permanently occupied; a complete cache still reuses its existing bundle.
+On macOS, the development launcher rebuilds an incomplete branded Electron cache before launching. A missing executable no longer leaves the cache key permanently occupied; a complete cache still reuses its existing bundle. Launchers coordinate each cache key with an atomic `.lock` directory through validation, rebuilding and publication, so a repair cannot delete another launcher's complete bundle. Waiting for custody is bounded to 60 seconds. If a launcher is forcibly terminated, stop all development launchers and remove only the stale `<cache-key>.lock` directory under `electron/node_modules/.cache/voicestudio-electron-dev/` before retrying; unknown or live locks are never removed automatically.

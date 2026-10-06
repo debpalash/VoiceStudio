@@ -66,6 +66,32 @@ function replacePlistValue(infoPlist, key, value) {
   run('plutil', ['-replace', key, '-string', value, infoPlist]);
 }
 
+// mkdir is atomic across launcher processes. Hold custody from validation
+// through publication so an invalid-cache repair cannot delete a new winner.
+function withMacCacheLock(destinationRoot, prepare) {
+  mkdirSync(dirname(destinationRoot), { recursive: true });
+  const lockRoot = `${destinationRoot}.lock`;
+  const deadline = Date.now() + 60_000;
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  while (true) {
+    try {
+      mkdirSync(lockRoot);
+      break;
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error;
+      if (Date.now() >= deadline) {
+        throw new Error('Timed out waiting for macOS development cache lock; stop all development launchers before removing a stale lock');
+      }
+      Atomics.wait(pause, 0, 0, 100);
+    }
+  }
+  try {
+    return prepare();
+  } finally {
+    rmSync(lockRoot, { recursive: true, force: true });
+  }
+}
+
 export function prepareMacDevElectron({
   electronExecutable,
   electronVersion,
@@ -90,63 +116,65 @@ export function prepareMacDevElectron({
     iconModified: icon.mtimeMs,
   });
 
-  if (
-    existsSync(plan.destinationExecutable) &&
-    existsSync(plan.manifest) &&
-    readFileSync(plan.manifest, 'utf8') === expectedManifest
-  ) {
-    return plan.destinationExecutable;
-  }
+  return withMacCacheLock(plan.destinationRoot, () => {
+    if (
+      existsSync(plan.destinationExecutable) &&
+      existsSync(plan.manifest) &&
+      readFileSync(plan.manifest, 'utf8') === expectedManifest
+    ) {
+      return plan.destinationExecutable;
+    }
 
-  // An interrupted copy or a removed executable can leave the key occupied.
-  // Retire that invalid cache before publishing a rebuilt bundle at the same key.
-  rmSync(plan.destinationRoot, { recursive: true, force: true });
-  mkdirSync(cacheRoot, { recursive: true });
-  const stagingRoot = mkdtempSync(join(cacheRoot, '.staging-'));
-  const stagingBundle = join(stagingRoot, `${APP_NAME}.app`);
-  rmSync(stagingRoot, { recursive: true, force: true });
-  mkdirSync(stagingRoot);
-
-  try {
-    // APFS clone-copy keeps this fast and avoids duplicating Electron's full
-    // framework bundle. The copied bundle is then re-signed after branding.
-    run('cp', ['-cR', plan.sourceBundle, stagingBundle]);
-    const infoPlist = join(stagingBundle, 'Contents', 'Info.plist');
-    replacePlistValue(infoPlist, 'CFBundleDisplayName', APP_NAME);
-    replacePlistValue(infoPlist, 'CFBundleName', APP_NAME);
-    replacePlistValue(infoPlist, 'CFBundleIdentifier', 'com.voicestudio.desktop.dev');
-    replacePlistValue(infoPlist, 'CFBundleIconFile', `${APP_NAME}.icns`);
-    replacePlistValue(infoPlist, 'CFBundleShortVersionString', appVersion);
-    replacePlistValue(infoPlist, 'CFBundleVersion', appVersion);
-    copyFileSync(iconPath, join(stagingBundle, 'Contents', 'Resources', `${APP_NAME}.icns`));
-    run('codesign', ['--force', '--deep', '--sign', '-', stagingBundle]);
-    writeFileSync(join(stagingRoot, 'brand-manifest.json'), expectedManifest);
+    // An interrupted copy or a removed executable can leave the key occupied.
+    // Retire that invalid cache before publishing a rebuilt bundle at the same key.
+    rmSync(plan.destinationRoot, { recursive: true, force: true });
+    mkdirSync(cacheRoot, { recursive: true });
+    const stagingRoot = mkdtempSync(join(cacheRoot, '.staging-'));
+    const stagingBundle = join(stagingRoot, `${APP_NAME}.app`);
+    rmSync(stagingRoot, { recursive: true, force: true });
+    mkdirSync(stagingRoot);
 
     try {
-      renameSync(stagingRoot, plan.destinationRoot);
-    } catch (error) {
-      if (
-        !(
-          error instanceof Error &&
-          'code' in error &&
-          (error.code === 'EEXIST' || error.code === 'ENOTEMPTY')
-        )
-      ) {
-        throw error;
-      }
-      if (
-        !existsSync(plan.destinationExecutable) ||
-        !existsSync(plan.manifest) ||
-        readFileSync(plan.manifest, 'utf8') !== expectedManifest
-      ) {
-        throw new Error('Concurrent macOS development bundle creation produced an invalid cache');
-      }
-    }
-  } finally {
-    rmSync(stagingRoot, { recursive: true, force: true });
-  }
+      // APFS clone-copy keeps this fast and avoids duplicating Electron's full
+      // framework bundle. The copied bundle is then re-signed after branding.
+      run('cp', ['-cR', plan.sourceBundle, stagingBundle]);
+      const infoPlist = join(stagingBundle, 'Contents', 'Info.plist');
+      replacePlistValue(infoPlist, 'CFBundleDisplayName', APP_NAME);
+      replacePlistValue(infoPlist, 'CFBundleName', APP_NAME);
+      replacePlistValue(infoPlist, 'CFBundleIdentifier', 'com.voicestudio.desktop.dev');
+      replacePlistValue(infoPlist, 'CFBundleIconFile', `${APP_NAME}.icns`);
+      replacePlistValue(infoPlist, 'CFBundleShortVersionString', appVersion);
+      replacePlistValue(infoPlist, 'CFBundleVersion', appVersion);
+      copyFileSync(iconPath, join(stagingBundle, 'Contents', 'Resources', `${APP_NAME}.icns`));
+      run('codesign', ['--force', '--deep', '--sign', '-', stagingBundle]);
+      writeFileSync(join(stagingRoot, 'brand-manifest.json'), expectedManifest);
 
-  return plan.destinationExecutable;
+      try {
+        renameSync(stagingRoot, plan.destinationRoot);
+      } catch (error) {
+        if (
+          !(
+            error instanceof Error &&
+            'code' in error &&
+            (error.code === 'EEXIST' || error.code === 'ENOTEMPTY')
+          )
+        ) {
+          throw error;
+        }
+        if (
+          !existsSync(plan.destinationExecutable) ||
+          !existsSync(plan.manifest) ||
+          readFileSync(plan.manifest, 'utf8') !== expectedManifest
+        ) {
+          throw new Error('Concurrent macOS development bundle creation produced an invalid cache');
+        }
+      }
+    } finally {
+      rmSync(stagingRoot, { recursive: true, force: true });
+    }
+
+    return plan.destinationExecutable;
+  });
 }
 
 export function launchElectronVite(
