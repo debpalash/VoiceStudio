@@ -967,6 +967,8 @@ def test_call_store_save_cannot_publish_an_older_snapshot_after_completion(tmp_p
     first_entered = threading.Event()
     release_first = threading.Event()
     finalized = threading.Event()
+    latest_attempted_lock = threading.Event()
+    latest_blocked_on_lock = threading.Event()
     errors = []
 
     @contextmanager
@@ -983,6 +985,25 @@ def test_call_store_save_cannot_publish_an_older_snapshot_after_completion(tmp_p
     monkeypatch.setattr(db, "db_conn", delayed_first_save)
     session = calls.CallSession(id="call-order", direction="outbound",
         remote_number="+15550001111", from_number=FROM, brief="test", profile_id="voice")
+
+    real_session_lock = session._lock
+
+    class ObservedLock:
+        def __enter__(self):
+            if threading.current_thread().name == "latest-call-save":
+                acquired = real_session_lock.acquire(blocking=False)
+                if not acquired:
+                    latest_blocked_on_lock.set()
+                latest_attempted_lock.set()
+                if acquired:
+                    return self
+            real_session_lock.acquire()
+            return self
+
+        def __exit__(self, *exc):
+            real_session_lock.release()
+
+    session._lock = ObservedLock()
 
     def save_old():
         try:
@@ -1004,9 +1025,16 @@ def test_call_store_save_cannot_publish_an_older_snapshot_after_completion(tmp_p
     try:
         assert first_entered.wait(5)
         latest.start()
-        # An unserialized later save can commit while the first is held. With
-        # serialization it waits, then commits after the first is released.
-        finalized.wait(5)
+        # Confirm the latest writer actually contests the lock while the old
+        # SQLite save is held. A delayed thread must not miss the interleaving.
+        assert latest_attempted_lock.wait(5)
+        blocked_before_release = latest_blocked_on_lock.is_set()
+        if blocked_before_release:
+            assert not finalized.is_set()
+        else:
+            # On the unfixed source, prove the later snapshot commits before
+            # releasing the old writer so the lost terminal row is reproducible.
+            assert finalized.wait(5)
     finally:
         release_first.set()
         old.join(5)
@@ -1021,6 +1049,7 @@ def test_call_store_save_cannot_publish_an_older_snapshot_after_completion(tmp_p
     assert row["status"] == "completed"
     assert row["outcome"] == "not_done"
     assert row["ended_at"] is not None
+    assert blocked_before_release
 
 
 def test_call_store_save_keeps_independent_session_records(tmp_path, monkeypatch):
