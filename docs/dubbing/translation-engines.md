@@ -292,3 +292,7 @@ Pasted, picked, and downloaded captions, and SubRip files imported into Stories,
 Downloaded rolling captions are deduplicated across their brief repeated bridge cues before translation. Ordinary consecutive cues keep intentional repeated words and phrases, even when their timestamps touch.
 
 New WebVTT imports retain source cue syntax alongside decoded text, preserving literal escaped tags and entities on unchanged exports. Edited text and older projects retain the legacy markup interpretation.
+
+### Project glossary deduplication
+
+Glossary auto-extraction keeps an existing manual or automatic source term when the proposal differs only in Unicode letter case, including accented Latin and Cyrillic names. Deduplication is scoped to the current project, so a term saved in another project does not suppress a new proposal.

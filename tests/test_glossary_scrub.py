@@ -102,3 +102,44 @@ def test_auto_extract_ignores_terms_inside_reasoning(monkeypatch):
     out = glossary.auto_extract("proj-reasoning", _req(target_lang="es", segments=[{"text": "Hello Marcus"}]))
     assert out["proposed"] == 1
     assert [t["target"] for t in out["terms"] if t["source"] == "Marcus"] == ["Marcus"]
+
+
+@pytest.mark.parametrize("source, proposed_source", [
+    ("École", "École"),
+    ("ÉCOLE", "école"),
+    ("МОСКВА", "Москва"),
+    ("München", "MÜNCHEN"),
+    ("Marcus", "MARCUS"),
+])
+def test_auto_extract_preserves_existing_unicode_term(monkeypatch, tmp_path, source, proposed_source):
+    """Both sides of source deduplication must use Unicode-aware casing."""
+    import sqlite3
+    from types import SimpleNamespace
+    from api.routers import glossary
+    from core import db
+    from services import llm_skills
+
+    path = tmp_path / "glossary.db"
+    with sqlite3.connect(path) as conn:
+        conn.executescript(db._BASE_SCHEMA)
+    monkeypatch.setattr(db, "DB_PATH", path)
+    original = glossary.add_term("project", glossary.GlossaryTerm(
+        source=source, target="manual choice", note="keep this"))
+    other = glossary.add_term("another-project", glossary.GlossaryTerm(
+        source="Rudy", target="other project"))
+    body = f"{proposed_source} || automatic choice || candidate\nRudy || Rudy || name\n"
+    completion = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=body))])
+    handle = SimpleNamespace(model="test", timeout=1, client=SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=lambda **kwargs: completion))))
+    monkeypatch.setattr(llm_skills, "resolve_skill_client", lambda sid: handle)
+
+    result = glossary.auto_extract("project", _req(target_lang="en", segments=[{"text": source}]))
+
+    assert result["proposed"] == 2
+    assert result["inserted"] == 1
+    terms = {term["source"]: term for term in result["terms"]}
+    assert set(terms) == {source, "Rudy"}
+    assert terms[source] == original
+    assert terms[source]["auto"] is False
+    assert terms["Rudy"]["auto"] is True
+    assert glossary.list_terms("another-project") == [other]

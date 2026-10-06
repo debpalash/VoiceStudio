@@ -270,10 +270,12 @@ def auto_extract(project_id: str, req: AutoExtractRequest):
     # Dedupe against existing (case-insensitive on source).
     with db_conn() as conn:
         existing = conn.execute(
-            "SELECT LOWER(source) AS src FROM glossary_terms WHERE project_id = ?",
+            "SELECT source FROM glossary_terms WHERE project_id = ?",
             (project_id,),
         ).fetchall()
-        existing_srcs = {r["src"] for r in existing}
+        # SQLite LOWER only folds ASCII in the bundled build; apply the same
+        # Unicode casing to saved and proposed terms so manual entries win.
+        existing_srcs = {r["source"].lower() for r in existing}
 
         inserted = 0
         now = time.time()

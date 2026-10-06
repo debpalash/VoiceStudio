@@ -14,6 +14,8 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
+- Glossary auto-extraction preserves existing terms across Unicode case variants (#0) — thanks @rudycelekli!
+
 - MCP speech tools wait through model loading and progress-extended CPU renders instead of timing out before the backend (#2609)
 
 ## [0.5.7] — 2026-10-05
