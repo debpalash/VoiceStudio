@@ -125,3 +125,5 @@ Automatic renderer-crash repair uses the source workspace. Without an attached
 checkout, it opens the source-folder controls and preserves the request; choose
 a checkout and press Send to continue. Explicit app action requests continue to
 use the app workspace without a checkout.
+
+Shared CLI completion requests retain their own HTTP deadline while waiting for another agent call. An expired queued request returns a timeout without starting a second CLI runner or waiting for the first call to finish.

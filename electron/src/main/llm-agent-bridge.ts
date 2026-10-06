@@ -97,8 +97,22 @@ export async function startLlmAgentBridge(
         .finally(() => {
           queued -= 1;
         });
-      const text = await task;
-      send(200, { text });
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        // A queued request must expire independently of the running CLI call.
+        // Keep `tail` attached to the real task so expiry never overlaps runners.
+        const text = await Promise.race([
+          task,
+          new Promise<never>((_, reject) => {
+            timeout = setTimeout(() => reject(Object.assign(new Error('Agent request expired'), {
+              name: 'AgentTimeoutError',
+            })), Math.max(0, deadline - Date.now()));
+          }),
+        ]);
+        send(200, { text });
+      } finally {
+        clearTimeout(timeout);
+      }
     } catch (error) {
       // Never expose subprocess output, login tokens, or source dialogue in errors.
       const status =
@@ -108,6 +122,7 @@ export async function startLlmAgentBridge(
                 AgentAuthenticationError: 401,
                 AgentRateLimitError: 429,
                 AgentModelError: 404,
+                AgentTimeoutError: 504,
               } as Record<string, number>
             )[error.name]
           : undefined;

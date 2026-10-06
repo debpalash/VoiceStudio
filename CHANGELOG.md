@@ -14,6 +14,8 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
+- Honor queued agent completion deadlines while another CLI call is still running — thanks @rudycelekli! (#2658)
+
 - MCP speech tools wait through model loading and progress-extended CPU renders instead of timing out before the backend (#2609)
 
 ## [0.5.7] — 2026-10-05
