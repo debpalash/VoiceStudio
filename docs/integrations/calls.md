@@ -196,3 +196,5 @@ turn the other person talked over.
   resampled to 8 kHz μ-law and sent as 20 ms frames. On barge-in (about 200 ms
   of the other person's speech while the agent talks), VoiceStudio sends Twilio
   a `clear` to drop buffered audio.
+
+Call speech may start at a clause boundary for the first utterance of each turn. After a complete short reply has played, later speech waits for normal sentence boundaries.

@@ -478,6 +478,7 @@ class SentenceChunker:
                 return []
 
         self._buffer = ""
+        self._is_first_flush = False
         return [stripped]
 
     def _maybe_aggressive_first_flush(self) -> str | None:

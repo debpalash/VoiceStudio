@@ -69,3 +69,19 @@ def test_single_sentence_request_stays_whole():
 def test_italian_language_disables_aggressive_flush():
     chunker = SentenceChunker(language="it", aggressive_first_flush=True)
     assert chunker._aggressive_first_flush is False
+
+
+def test_short_flush_retires_first_clause_window_until_next_turn():
+    chunker = SentenceChunker(aggressive_first_flush=True)
+    assert chunker.push("Hello!") == ["Hello!"]
+    second = "Here is a longer follow-up with more information, "
+    assert chunker.push(second) == []
+    assert chunker.flush() == [second.strip()]
+    assert chunker.push(second) == [second.strip()]
+
+
+def test_short_flush_disabled_threshold_keeps_first_clause_window():
+    chunker = SentenceChunker(aggressive_first_flush=True, min_words_for_short_flush=2)
+    assert chunker.push("Hello!") == []
+    rest = " Here is a longer follow-up with more information, "
+    assert chunker.push(rest) == [("Hello!" + rest).strip()]
