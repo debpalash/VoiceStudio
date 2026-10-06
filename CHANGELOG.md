@@ -14,7 +14,7 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
-- Model repair recovers from revision markers containing invalid text bytes (#0) — thanks @rudycelekli!
+- Model repair recovers from revision markers containing invalid text bytes (#2634) — thanks @rudycelekli!
 
 - MCP speech tools wait through model loading and progress-extended CPU renders instead of timing out before the backend (#2609)
 
