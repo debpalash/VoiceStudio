@@ -14,7 +14,7 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
-- Call replies use sentence boundaries after their first short utterance (#0) — thanks @rudycelekli!
+- Call replies use sentence boundaries after their first short utterance (#2628) — thanks @rudycelekli!
 
 - MCP speech tools wait through model loading and progress-extended CPU renders instead of timing out before the backend (#2609)
 
