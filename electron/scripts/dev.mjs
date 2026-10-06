@@ -1,12 +1,10 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import {
-  closeSync,
   copyFileSync,
   existsSync,
   mkdtempSync,
   mkdirSync,
-  openSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -69,25 +67,57 @@ function replacePlistValue(infoPlist, key, value) {
   run('plutil', ['-replace', key, '-string', value, infoPlist]);
 }
 
-// Keep the custody file: unlinking it would let different launchers lock
-// different inodes. lockf locks the parent's shared descriptor, so process exit
-// releases custody even if a launcher cannot run its finally block.
+// Classic file-and-command lockf works on older macOS too. Its command stays
+// alive throughout preparation, and retires its entire dedicated process group
+// if the launcher dies. Keep the custody file so all launchers lock one inode.
+const cacheCustodyHolder = `
+import { writeFileSync, renameSync, rmSync } from 'node:fs';
+const [parent, ready, handshake] = process.argv.slice(1);
+const group = process.ppid;
+if (group <= 1) process.exit(1);
+const retireIfDead = () => {
+  try { process.kill(Number(parent), 0); }
+  catch (error) {
+    if (error.code === 'ESRCH') {
+      rmSync(handshake, { recursive: true, force: true });
+      process.kill(-group, 'SIGKILL');
+    }
+  }
+};
+retireIfDead();
+writeFileSync(ready + '.tmp', JSON.stringify({ group, pid: process.pid }));
+renameSync(ready + '.tmp', ready);
+setInterval(retireIfDead, 100);
+`;
+
 function withMacCacheLock(destinationRoot, prepare) {
   mkdirSync(dirname(destinationRoot), { recursive: true });
-  const custody = openSync(`${destinationRoot}.custody`, 'a+', 0o600);
+  const handshake = mkdtempSync(join(dirname(destinationRoot), '.custody-ready-'));
+  const ready = join(handshake, 'ready.json');
+  let holder;
   const lockRoot = `${destinationRoot}.lock`;
   const ownerPath = join(lockRoot, 'owner.json');
   const owner = JSON.stringify({ pid: process.pid, hostname: hostname() });
   let owned = false;
   const deadline = Date.now() + 60_000;
   try {
-    const result = spawnSync('/usr/bin/lockf', ['-t', '60', '3'], {
-      stdio: ['ignore', 'pipe', 'pipe', custody],
-      encoding: 'utf8',
+    holder = spawn('/usr/bin/lockf', ['-k', '-t', '60', `${destinationRoot}.custody`,
+      process.execPath, '--input-type=module', '-e', cacheCustodyHolder,
+      String(process.pid), ready, handshake], {
+      detached: true,
+      stdio: 'ignore',
     });
-    if (result.error) throw result.error;
-    if (result.status !== 0) throw new Error('Timed out acquiring macOS development cache custody');
+    holder.on('error', () => {});
+    holder.unref();
+    if (!holder.pid) throw new Error('Could not start macOS development cache custody');
     const pause = new Int32Array(new SharedArrayBuffer(4));
+    while (!existsSync(ready)) {
+      if (Date.now() >= deadline) throw new Error('Timed out acquiring macOS development cache custody');
+      Atomics.wait(pause, 0, 0, 10);
+    }
+    if (JSON.parse(readFileSync(ready, 'utf8')).group !== holder.pid) {
+      throw new Error('macOS development cache custody holder exited');
+    }
     while (true) {
       try {
         mkdirSync(lockRoot);
@@ -125,7 +155,15 @@ function withMacCacheLock(destinationRoot, prepare) {
     try {
       if (owned) rmSync(lockRoot, { recursive: true, force: true });
     } finally {
-      closeSync(custody);
+      // Killing only lockf could orphan its Node command. This group belongs
+      // exclusively to this acquisition, including while waiting for the lock.
+      try {
+        if (holder?.pid) process.kill(-holder.pid, 'SIGKILL');
+      } catch (error) {
+        if (!(error instanceof Error && 'code' in error && error.code === 'ESRCH')) throw error;
+      } finally {
+        rmSync(handshake, { recursive: true, force: true });
+      }
     }
   }
 }

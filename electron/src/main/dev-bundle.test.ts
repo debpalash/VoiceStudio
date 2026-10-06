@@ -1,6 +1,6 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { basename, join, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -232,9 +232,9 @@ if (barrier) {
 } else {
   const makeDirectory = fs.mkdirSync;
   const remove = fs.rmSync;
-  const run = childProcess.spawnSync;
+  const run = childProcess.spawn;
   let acknowledged = false;
-  childProcess.spawnSync = function(command, args, options) {
+  childProcess.spawn = function(command, args, options) {
     if (command === '/usr/bin/lockf' && !acknowledged) {
       acknowledged = true;
       fs.writeFileSync(attempt, 'lock-contended');
@@ -385,11 +385,18 @@ import { syncBuiltinESMExports } from 'node:module';
 const [launcher, config, stage, marker, result] = process.argv.slice(2);
 const options = JSON.parse(fs.readFileSync(config, 'utf8'));
 const destination = ${JSON.stringify(destinationRoot)};
-const run = childProcess.spawnSync;
-childProcess.spawnSync = function(command, args, options) {
-  if (stage === 'recover' && command === '/usr/bin/lockf') fs.writeFileSync(marker, 'attempted');
-  return run(command, args, options);
-};
+// Compatibility runs substitute a compiled official older Apple lockf binary,
+// preserving real process/file locking rather than simulating the command.
+for (const method of ['spawn', 'spawnSync']) {
+  const run = childProcess[method];
+  childProcess[method] = function(command, args, options) {
+    if (command === '/usr/bin/lockf') {
+      if (stage === 'recover') fs.writeFileSync(marker, 'attempted');
+      command = process.env.VOICESTUDIO_TEST_LOCKF || command;
+    }
+    return run(command, args, options);
+  };
+}
 const pause = () => {
   fs.writeFileSync(marker, 'entered');
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
@@ -426,6 +433,12 @@ fs.writeFileSync(result, JSON.stringify({ executable, inode: fs.statSync(executa
       const blocked = launch(stage, marker, join(root, stage + '-unused'), config);
       await waitForFile(marker);
       expect(existsSync(lockRoot)).toBe(true);
+      const readyDirectory = readdirSync(options.cacheRoot).find((name) => name.startsWith('.custody-ready-'));
+      expect(readyDirectory).toBeDefined();
+      const holder = JSON.parse(readFileSync(join(options.cacheRoot, readyDirectory!, 'ready.json'), 'utf8'));
+      expect(() => process.kill(holder.pid, 0)).not.toThrow();
+      expect(spawnSync(process.env.VOICESTUDIO_TEST_LOCKF || '/usr/bin/lockf',
+        ['-k', '-t', '0', destinationRoot + '.custody', '/usr/bin/true']).status).toBe(75);
       // A live owner must retain the lock. The contender uses the real launcher
       // and cannot retire the directory or publish while the producer is alive.
       const markerInode = statSync(lockRoot).ino;
@@ -438,6 +451,18 @@ fs.writeFileSync(result, JSON.stringify({ executable, inode: fs.statSync(executa
       const publishedInode = stage === 'published' ? statSync(cached).ino : undefined;
       blocked.child.kill('SIGKILL');
       await blocked.exit;
+      const retirementDeadline = Date.now() + 3000;
+      for (const pid of [holder.pid, holder.group]) {
+        while (true) {
+          try { process.kill(pid, 0); }
+          catch (error) {
+            if (error instanceof Error && 'code' in error && error.code === 'ESRCH') break;
+            throw error;
+          }
+          if (Date.now() >= retirementDeadline) throw new Error('Custody process group did not retire');
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      }
       // Actual child death, not a synthetic PID, establishes reclaimability.
       await waitForFile(result);
       await contender.exit;
@@ -460,6 +485,10 @@ fs.writeFileSync(result, JSON.stringify({ executable, inode: fs.statSync(executa
       if (metadata !== undefined) expect(readFileSync(join(lockRoot, 'owner.json'), 'utf8')).toBe(metadata);
       blocked.child.kill('SIGKILL');
       await blocked.exit;
+      // The holder must release OS custody even when the owner directory is
+      // deliberately left intact. A real independent lockf command confirms it.
+      expect(() => execFileSync(process.env.VOICESTUDIO_TEST_LOCKF || '/usr/bin/lockf',
+        ['-k', '-t', '2', destinationRoot + '.custody', '/usr/bin/true'])).not.toThrow();
       rmSync(lockRoot, { recursive: true });
     }
   } finally {

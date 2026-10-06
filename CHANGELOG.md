@@ -14,7 +14,7 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
-- Rebuild incomplete macOS development bundles and recover locks from demonstrably exited launchers — thanks @rudycelekli! (#2656)
+- Rebuild incomplete macOS development bundles and recover locks from demonstrably exited launchers using the older-compatible lockf interface — thanks @rudycelekli! (#2656)
 
 - MCP speech tools wait through model loading and progress-extended CPU renders instead of timing out before the backend (#2609)
 
