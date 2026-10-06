@@ -45,38 +45,44 @@ export function startInputLevelMonitor(
   if (!AudioContextClass || !requestFrame || !cancelFrame) return () => {};
 
   const context = new AudioContextClass();
-  const source = context.createMediaStreamSource(stream);
-  const analyser = context.createAnalyser();
-  const silentGain = context.createGain();
-  const samples = new Float32Array(512);
-  analyser.fftSize = 1024;
-  analyser.smoothingTimeConstant = 0.72;
-  silentGain.gain.value = 0;
-  source.connect(analyser);
-  analyser.connect(silentGain);
-  silentGain.connect(context.destination);
-  void Promise.resolve(context.resume?.()).catch(() => {});
+  try {
+    const source = context.createMediaStreamSource(stream);
+    const analyser = context.createAnalyser();
+    const silentGain = context.createGain();
+    const samples = new Float32Array(512);
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.72;
+    silentGain.gain.value = 0;
+    source.connect(analyser);
+    analyser.connect(silentGain);
+    silentGain.connect(context.destination);
+    void Promise.resolve(context.resume?.()).catch(() => {});
 
-  let frameId;
-  let stopped = false;
-  const sample = () => {
-    if (stopped) return;
-    analyser.getFloatTimeDomainData(samples);
-    let energy = 0;
-    for (const value of samples) energy += value * value;
-    onLevel(Math.min(1, Math.sqrt(energy / samples.length) * 4));
+    let frameId;
+    let stopped = false;
+    const sample = () => {
+      if (stopped) return;
+      analyser.getFloatTimeDomainData(samples);
+      let energy = 0;
+      for (const value of samples) energy += value * value;
+      onLevel(Math.min(1, Math.sqrt(energy / samples.length) * 4));
+      frameId = requestFrame(sample);
+    };
     frameId = requestFrame(sample);
-  };
-  frameId = requestFrame(sample);
 
-  return () => {
-    if (stopped) return;
-    stopped = true;
-    cancelFrame(frameId);
-    source.disconnect();
-    analyser.disconnect();
-    silentGain.disconnect();
+    return () => {
+      if (stopped) return;
+      stopped = true;
+      cancelFrame(frameId);
+      source.disconnect();
+      analyser.disconnect();
+      silentGain.disconnect();
+      void Promise.resolve(context.close?.()).catch(() => {});
+      onLevel(0);
+    };
+  } catch (error) {
+    // The recording hook tolerates meter failures, so release its context here.
     void Promise.resolve(context.close?.()).catch(() => {});
-    onLevel(0);
-  };
+    throw error;
+  }
 }

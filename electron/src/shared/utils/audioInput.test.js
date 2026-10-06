@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { startInputLevelMonitor as startElectronMonitor } from '../../renderer/src/lib/audio/recorder';
 import {
   buildAudioInputConstraints,
   createInputLevelStore,
@@ -84,4 +85,44 @@ describe('audio input utilities', () => {
     expect(context.close).toHaveBeenCalled();
     expect(levels.at(-1)).toBe(0);
   });
+});
+
+
+describe.each([
+  ['shared', startInputLevelMonitor],
+  ['Electron', startElectronMonitor],
+])('%s meter setup cleanup', (_name, startMonitor) => {
+  afterEach(() => vi.unstubAllGlobals());
+  it.each(['createSource', 'connectGraph', 'scheduleFrame'])(
+    'closes the audio context when %s fails',
+    (stage) => {
+      const failure = new Error('meter unavailable');
+      const source = { connect: () => { if (stage === 'connectGraph') throw failure; } };
+      const analyser = { connect: () => {} };
+      const gain = { gain: { value: 1 }, connect: () => {} };
+      const context = {
+        destination: {},
+        createMediaStreamSource: () => {
+          if (stage === 'createSource') throw failure;
+          return source;
+        },
+        createAnalyser: () => analyser,
+        createGain: () => gain,
+        resume: async () => {},
+        close: vi.fn(async () => {}),
+      };
+      function AudioContextClass() { return context; }
+      const requestFrame = () => {
+        if (stage === 'scheduleFrame') throw failure;
+        return 1;
+      };
+      vi.stubGlobal('AudioContext', AudioContextClass);
+      vi.stubGlobal('requestAnimationFrame', requestFrame);
+      vi.stubGlobal('cancelAnimationFrame', () => {});
+      expect(() => startMonitor({}, () => {}, {
+        AudioContextClass, requestFrame, cancelFrame: () => {},
+      })).toThrow(failure);
+      expect(context.close).toHaveBeenCalledOnce();
+    },
+  );
 });

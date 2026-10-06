@@ -119,3 +119,7 @@ Generated WAV reads use a shared TorchCodec fallback, including dub assembly,
 cached segments, watermark detection, longform and persona previews. Voice Clone
 blocks models that explicitly report no cloning support and explains how to select
 a capable model; plain text-to-speech remains available.
+
+## Microphone input metering
+
+Microphone metering is optional during recording. If the Web Audio graph or animation frame cannot start, the meter closes the context before reporting the failure, so retrying recording does not retain an unused audio context.

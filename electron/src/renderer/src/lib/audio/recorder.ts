@@ -126,43 +126,49 @@ export function startInputLevelMonitor(
     return () => {};
   }
   const context = new AudioContext();
-  const source = context.createMediaStreamSource(stream);
-  const analyser = context.createAnalyser();
-  // Route through a muted gain so the graph stays "connected to a destination"
-  // (some engines never pull data from a dangling analyser) without echoing
-  // the microphone to the speakers.
-  const silentGain = context.createGain();
-  analyser.fftSize = 1024;
-  analyser.smoothingTimeConstant = 0.72;
-  silentGain.gain.value = 0;
-  source.connect(analyser);
-  analyser.connect(silentGain);
-  silentGain.connect(context.destination);
-  void context.resume().catch(() => {});
+  try {
+    const source = context.createMediaStreamSource(stream);
+    const analyser = context.createAnalyser();
+    // Route through a muted gain so the graph stays "connected to a destination"
+    // (some engines never pull data from a dangling analyser) without echoing
+    // the microphone to the speakers.
+    const silentGain = context.createGain();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.72;
+    silentGain.gain.value = 0;
+    source.connect(analyser);
+    analyser.connect(silentGain);
+    silentGain.connect(context.destination);
+    void context.resume().catch(() => {});
 
-  const samples = new Float32Array(analyser.fftSize / 2);
-  let frameId = 0;
-  let stopped = false;
-  const sample = (): void => {
-    if (stopped) return;
-    analyser.getFloatTimeDomainData(samples);
-    let energy = 0;
-    for (const value of samples) energy += value * value;
-    onLevel(Math.min(1, Math.sqrt(energy / samples.length) * 4));
+    const samples = new Float32Array(analyser.fftSize / 2);
+    let frameId = 0;
+    let stopped = false;
+    const sample = (): void => {
+      if (stopped) return;
+      analyser.getFloatTimeDomainData(samples);
+      let energy = 0;
+      for (const value of samples) energy += value * value;
+      onLevel(Math.min(1, Math.sqrt(energy / samples.length) * 4));
+      frameId = requestAnimationFrame(sample);
+    };
     frameId = requestAnimationFrame(sample);
-  };
-  frameId = requestAnimationFrame(sample);
 
-  return () => {
-    if (stopped) return;
-    stopped = true;
-    cancelAnimationFrame(frameId);
-    source.disconnect();
-    analyser.disconnect();
-    silentGain.disconnect();
+    return () => {
+      if (stopped) return;
+      stopped = true;
+      cancelAnimationFrame(frameId);
+      source.disconnect();
+      analyser.disconnect();
+      silentGain.disconnect();
+      void context.close().catch(() => {});
+      onLevel(0);
+    };
+  } catch (error) {
+    // The recording hook tolerates meter failures, so release its context here.
     void context.close().catch(() => {});
-    onLevel(0);
-  };
+    throw error;
+  }
 }
 
 export interface MicErrorDescription {
