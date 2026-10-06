@@ -29,6 +29,29 @@ function error(id: JsonRpcRequest['id'], code: number, message: string): void {
   send({ jsonrpc: '2.0', id, error: { code, message } });
 }
 
+/** Stop reading diagnostics at the limit, including a body that never finishes. */
+async function boundedResponseText(response: Response): Promise<string> {
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  let remaining = MAX_RESPONSE;
+  try {
+    while (remaining > 0) {
+      const { done, value } = await reader.read();
+      if (done) return text + decoder.decode();
+      const prefix = value.subarray(0, remaining);
+      text += decoder.decode(prefix, { stream: true });
+      remaining -= prefix.byteLength;
+    }
+    // Leave an incomplete UTF-8 sequence at the boundary out of the prefix.
+    return text;
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+}
+
 async function callApi(args: Record<string, unknown>) {
   const path = typeof args.path === 'string' ? args.path : '';
   if (!path.startsWith('/') || path.startsWith('//')) throw new Error('path must start with /');
@@ -45,7 +68,7 @@ async function callApi(args: Record<string, unknown>) {
     body: hasBody ? JSON.stringify(args.body) : undefined,
     signal: AbortSignal.timeout(120_000),
   });
-  const text = (await response.text()).slice(0, MAX_RESPONSE);
+  const text = await boundedResponseText(response);
   return {
     content: [
       {

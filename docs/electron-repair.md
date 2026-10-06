@@ -125,3 +125,7 @@ Automatic renderer-crash repair uses the source workspace. Without an attached
 checkout, it opens the source-folder controls and preserves the request; choose
 a checkout and press Send to continue. Explicit app action requests continue to
 use the app workspace without a checkout.
+
+The repair MCP tool reads at most 1 MB from each API response and closes the
+response stream at that limit. Large audio or diagnostic bodies therefore do not
+need to finish downloading before the tool returns its text prefix.

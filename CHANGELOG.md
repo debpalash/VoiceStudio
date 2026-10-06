@@ -14,6 +14,8 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
+- Agent repair diagnostics stop reading at their response limit instead of downloading the full body — thanks @rudycelekli! (#2646)
+
 - MCP speech tools wait through model loading and progress-extended CPU renders instead of timing out before the backend (#2609)
 
 ## [0.5.7] — 2026-10-05
