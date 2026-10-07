@@ -563,6 +563,8 @@ def _harden_speechbrain_lazy_imports() -> None:
 #: aligner is independent of whatever produced the segments, so MLX (which
 #: transcribes on the GPU) reuses exactly the aligner WhisperX would have used.
 _ALIGN_CACHE: dict[tuple[str, str], object] = {}
+#: Last aligner use, on the monotonic clock (idle release, like the capture ASR).
+_align_last_used: float = 0.0
 
 #: Forced alignment is torch/wav2vec2 (not CTranslate2), so unlike Whisper itself
 #: it *can* run on MPS — measured on an M2: 20.3 s vs 28.4 s for a 30 s chunk, with
@@ -580,6 +582,8 @@ def load_align_model(language_code: str, device: str):
     language — WhisperX bundles them for ~20 major languages only — or it
     cannot be loaded on ``device``. The caller then keeps Whisper's own
     (looser) word timestamps, after trying any fallback device."""
+    global _align_last_used
+    _align_last_used = time.monotonic()
     key = (language_code, device)
     if key in _ALIGN_CACHE:
         return _ALIGN_CACHE[key]
@@ -598,6 +602,38 @@ def load_align_model(language_code: str, device: str):
         )
         _ALIGN_CACHE[key] = None
     return _ALIGN_CACHE[key]
+
+
+def release_align_models() -> int:
+    """Drop every loaded aligner; returns how many were released.
+
+    Keeps the ``None`` entries: those record that a language has no aligner
+    (or none that loads on that device) and hold no memory, and forgetting
+    them would only make the next transcription probe again. A transcription
+    mid-alignment keeps its own reference and finishes.
+    """
+    released = 0
+    for key, value in list(_ALIGN_CACHE.items()):
+        if value is not None:
+            _ALIGN_CACHE.pop(key, None)
+            released += 1
+    return released
+
+
+def release_idle_align_models(idle_s: float, *, now: float | None = None) -> bool:
+    """Release the aligners once none has been used for ``idle_s`` seconds.
+
+    They load on the first aligned transcription — up to ~1.2 GB per language
+    — and were otherwise kept for the life of the process. Returns True when
+    any were released; the caller flushes the device cache.
+    """
+    now = time.monotonic() if now is None else now
+    if now - _align_last_used < idle_s:
+        return False
+    released = release_align_models()
+    if released:
+        logger.info("Idle timeout reached. Released %d forced-alignment model(s).", released)
+    return released > 0
 
 
 def forced_align(segments: list, audio, language_code: str, device: str | None = None) -> list:
@@ -666,7 +702,6 @@ class WhisperXBackend(ASRBackend):
     def __init__(self):
         self._model_name = os.environ.get("ASR_MODEL_WHISPERX", "large-v3")
         self._asr = None
-        self._align_cache = {}  # language_code → (align_model, metadata)
         self._device, self._compute_type = self._pick_device()
 
     @staticmethod
@@ -1100,7 +1135,10 @@ class WhisperXBackend(ASRBackend):
 
     def unload(self) -> None:
         self._asr = None
-        self._align_cache.clear()
+        # The aligners live in the module cache, shared with MLX Whisper; a
+        # per-instance dict here was cleared on every unload but never filled,
+        # so they stayed resident.
+        release_align_models()
         import gc
         gc.collect()
         try:
@@ -1417,6 +1455,8 @@ class MLXWhisperBackend(ASRBackend):
 
 
     def unload(self) -> None:
+        # The wav2vec2 aligners forced_align() loaded for this backend.
+        release_align_models()
         # mlx-whisper owns the weights in a library-level singleton, not on
         # this wrapper. Dropping the wrapper alone retains unified memory.
         import sys

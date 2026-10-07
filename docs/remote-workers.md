@@ -356,7 +356,7 @@ same model and they are configured separately:
 | Timer | Default | Set with |
 |---|---|---|
 | Engine registry — drops the cached engine instance and, for VoiceStudio, the shared model with it | 600 s | `OMNIVOICE_ENGINE_IDLE_UNLOAD_SECONDS` |
-| In-process model reaper — the backstop, also releases the dictation ASR and the watermark models | 900 s | `OMNIVOICE_IDLE_TIMEOUT` (or Settings) |
+| In-process model reaper — the backstop, also releases the dictation ASR, the watermark models, the word-alignment models and the speaker-diarization pipeline | 900 s | `OMNIVOICE_IDLE_TIMEOUT` (or Settings) |
 
 In practice the first one gets there first and the second finds nothing to do.
 Shortening only `OMNIVOICE_ENGINE_IDLE_UNLOAD_SECONDS` is the right move when

@@ -35,7 +35,8 @@ prefers it wherever CTranslate2 can use the GPU.
   download on first load — see [downloading-models](../downloading-models.md).
 - `OMNIVOICE_ALIGN_DEVICE` — force the wav2vec2 aligner's device. Aligners
   exist for ~20 major languages; other languages keep Whisper's native word
-  timestamps instead of failing.
+  timestamps instead of failing. Loaded aligners are released when the engine
+  unloads and after the idle timeout (`OMNIVOICE_IDLE_TIMEOUT_S`).
 
 ## VRAM preflight and degradation
 

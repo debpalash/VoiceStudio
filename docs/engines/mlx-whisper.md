@@ -40,7 +40,8 @@ platforms use the CUDA/CPU engines instead.
 - `OMNIVOICE_ALIGN_DEVICE` — force the wav2vec2 aligner's device. The aligner
   runs on MPS when it can and falls back to CPU; languages without a bundled
   aligner (~20 major languages have one) keep Whisper's native word
-  timestamps.
+  timestamps. Loaded aligners are released when the engine unloads and after
+  the idle timeout (`OMNIVOICE_IDLE_TIMEOUT_S`).
 
 ## Quirks
 

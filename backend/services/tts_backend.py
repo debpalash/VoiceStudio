@@ -22,6 +22,7 @@ import functools
 import logging
 import os
 import re
+import sys
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -1503,28 +1504,47 @@ class OmniVoiceBackend(TTSBackend):
     ref_strategy = "best_window"
 
     def __init__(self, model=None):
-        # The live OmniVoice instance. Reuses the singleton owned by
-        # model_manager so memory isn't doubled.
+        # Set only for a per-call view: the native routes pass the model they
+        # just got from get_model(). A cached adapter (_active_instance,
+        # _ENGINE_INSTANCES, a TTS stream) leaves it None and never fills it:
+        # model_manager owns the shared model, and a second owner is how an
+        # idle-unloaded model stayed resident — and kept generating — while
+        # /model/status said idle.
         self._model = model
+
+    def _resident_model(self):
+        """The model this adapter would run on now, without loading one.
+
+        Looked up through ``sys.modules``: a diagnostic read must not import
+        model_manager, and if it was never imported nothing is resident.
+        """
+        if self._model is not None:
+            return self._model
+        return getattr(sys.modules.get("services.model_manager"), "model", None)
+
+    def execution_evidence_loaded(self) -> bool:
+        return self._resident_model() is not None
 
     @property
     def execution_device(self) -> str | None:
         """Actual device of the shared model, for live engine diagnostics."""
-        if self._model is None:
+        model = self._resident_model()
+        if model is None:
             return None
         try:
-            return str(next(self._model.parameters()).device)
+            return str(next(model.parameters()).device)
         except Exception:  # noqa: BLE001 - third-party model wrappers vary
-            device = getattr(self._model, "device", None)
+            device = getattr(model, "device", None)
             return str(device) if device is not None else None
 
     @property
     def dtype(self) -> str | None:
         """Actual parameter precision of the shared model when resident."""
-        if self._model is None:
+        model = self._resident_model()
+        if model is None:
             return None
         try:
-            return str(next(self._model.parameters()).dtype)
+            return str(next(model.parameters()).dtype)
         except Exception:  # noqa: BLE001 - diagnostics must remain best effort
             return None
 
@@ -1540,9 +1560,10 @@ class OmniVoiceBackend(TTSBackend):
 
     @property
     def sample_rate(self) -> int:
-        if self._model is None:
+        model = self._resident_model()
+        if model is None:
             return self._DEFAULT_SAMPLE_RATE  # canonical OmniVoice rate
-        return getattr(self._model, "sampling_rate", 24000)
+        return getattr(model, "sampling_rate", 24000)
 
     @property
     def supported_languages(self) -> list[str]:
@@ -1550,17 +1571,26 @@ class OmniVoiceBackend(TTSBackend):
         return ["multi"]
 
     def _ensure_loaded(self):
+        """Return the model to run this call on — never stored on ``self``.
+
+        The next unload has to be able to free it, and the call after that has
+        to run on whatever model_manager holds then, not on the copy this
+        adapter saw first.
+        """
         if self._model is not None:
-            # The cached instance skips get_model(), and with it the placement
-            # heal: put the shared model back on its device if the opt-in
-            # post-generation offload (#2618) or an unbalanced ASR offload
-            # (#1191) left it in RAM. One parameter probe when it is in place.
+            # A per-call view skips get_model() from here on, and with it the
+            # placement heal: put the shared model back on its device if the
+            # opt-in post-generation offload (#2618) or an unbalanced ASR
+            # offload (#1191) left it in RAM. One parameter probe when in place.
             from services.model_manager import ensure_tts_on_device
 
             ensure_tts_on_device()
-            return
-        # Reuse model_manager's cached instance so we don't double-load.
-        from services.model_manager import get_model
+            return self._model
+        from services.model_manager import acquire_resident_model, get_model
+
+        model = acquire_resident_model()
+        if model is not None:
+            return model
         import asyncio
         # Caller is sync; spin up a fresh loop if needed. get_running_loop()
         # raises only when *no* loop is running — that's the safe path where
@@ -1568,15 +1598,14 @@ class OmniVoiceBackend(TTSBackend):
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            self._model = asyncio.run(get_model())
-            return
+            return asyncio.run(get_model())
         raise RuntimeError(
             "OmniVoiceBackend.generate() called inside an async context without a pre-loaded model. "
             "Pass `model=await get_model()` to the constructor."
         )
 
     def generate(self, text, **kw) -> torch.Tensor:
-        self._ensure_loaded()
+        model = self._ensure_loaded()
         language = kw.get("language")
         ref_audio = kw.get("ref_audio")
         ref_text = kw.get("ref_text")
@@ -1603,7 +1632,7 @@ class OmniVoiceBackend(TTSBackend):
         # one place here and a subtly different one there is exactly how the cache
         # came to be wired into the adapter and nowhere else.
         audios = generate_with_cached_ref(
-            self._model, ref_audio=ref_audio, ref_text=ref_text, **gen_kw
+            model, ref_audio=ref_audio, ref_text=ref_text, **gen_kw
         )
         return audios[0]
 
@@ -1615,7 +1644,7 @@ class OmniVoiceBackend(TTSBackend):
         model together; an incomplete prompt batch falls back to the proven
         single-item path instead of changing synthesis semantics.
         """
-        self._ensure_loaded()
+        model = self._ensure_loaded()
         if not texts:
             return []
         from services.model_manager import tts_inference
@@ -1623,9 +1652,9 @@ class OmniVoiceBackend(TTSBackend):
         # Holds the shared model in place for prompt encoding + the batch
         # generate (an offload can't move it mid-batch; #2618).
         with tts_inference():
-            return self._generate_batch_on_model(texts, **kw)
+            return self._generate_batch_on_model(model, texts, **kw)
 
-    def _generate_batch_on_model(self, texts: list[str], **kw) -> list[torch.Tensor]:
+    def _generate_batch_on_model(self, model, texts: list[str], **kw) -> list[torch.Tensor]:
         def _items(value):
             if isinstance(value, list):
                 return value
@@ -1648,7 +1677,7 @@ class OmniVoiceBackend(TTSBackend):
                     prompts = []
                     break
                 prompt = _get_clone_prompt(
-                    self._model,
+                    model,
                     ref_audio,
                     ref_text,
                     preprocess_prompt,
@@ -1679,7 +1708,7 @@ class OmniVoiceBackend(TTSBackend):
         else:
             gen_kw["ref_audio"] = None
             gen_kw["ref_text"] = None
-        return self._model.generate(text=texts, **gen_kw)
+        return model.generate(text=texts, **gen_kw)
 
     def unload(self) -> None:
         """Release the OmniVoice model (MM2-02). OmniVoice shares the singleton
