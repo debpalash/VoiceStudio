@@ -15,6 +15,8 @@ metadata and the backend fallback mirror it.
 ### Added
 
 - Add API Route as an optional LLM provider (#2596) — thanks @DennyHo0917!
+- The OpenAI-compatible speech API accepts a voice-profile name as `voice`, and the voice list shows which names work (#2617) — thanks @HuntingSuccubus!
+- New opt-in setting moves the voice model to system RAM after generation, freeing GPU memory for other apps such as a local LLM (#2618) — thanks @HuntingSuccubus!
 - Settings → About credits the speech models VoiceStudio can install, with links to their upstream terms and the required Higgs Audio and Llama notices (#2587)
 
 ### Changed
@@ -30,6 +32,27 @@ metadata and the backend fallback mirror it.
 ### Fixed
 
 - MCP speech tools wait through model loading and progress-extended CPU renders instead of timing out before the backend (#2609)
+- On Windows, the GPU report finds your graphics card again, and CPU-only hosts with integrated graphics are no longer told to fix an NVIDIA driver (#2620) — thanks @creatorliao!
+- Stretch Video exports that keep the original background no longer fail with HTTP 409 when subtitle cues sit close together or have no length (#2616) — thanks @quan0pek!
+- Failed desktop saves and exports show the app's explanation instead of a bare "HTTP 409" (#2616) — thanks @quan0pek!
+- Failed model downloads stop every parallel range writer instead of leaving them writing in the background (#2642) — thanks @rudycelekli!
+- A finished call's status can no longer be overwritten by a delayed save, so call history shows the true outcome (#2640) — thanks @rudycelekli!
+- Cancelling a dub keeps track of processes started while it was being stopped (#2632) — thanks @rudycelekli!
+- Auto-extracted glossary terms with accents or Cyrillic letters are no longer duplicated (#2638) — thanks @rudycelekli!
+- Audio quality warnings keep the earliest problems on the timeline when there are more than 100 (#2636) — thanks @rudycelekli!
+- A corrupt model revision or install marker falls back cleanly instead of blocking model repair and installs (#2634) — thanks @rudycelekli!
+- EPUB import keeps paragraphs, list items and table cells separate (#2630) — thanks @rudycelekli!
+- Streaming speech no longer splits a later sentence at a comma after a short first reply such as "Yes." (#2628) — thanks @rudycelekli!
+- Queued AI-agent completions time out at their own deadline instead of waiting behind the running request (#2658) — thanks @rudycelekli!
+- Blank-window recovery no longer reloads a newer page or a closed window after a slow check (#2648) — thanks @rudycelekli!
+- The repair assistant's API tool stops reading oversized responses at its size limit (#2646) — thanks @rudycelekli!
+- Node tools installed through NVM are found newest-first, so v24 wins over v9 (#2644) — thanks @rudycelekli!
+- `bun run dev` on macOS rebuilds a broken cached development app instead of failing on every launch (#2656) — thanks @rudycelekli!
+- Dub and timeline timestamps near a minute boundary read "1:00.0" instead of "0:60.0", and batch durations and update times no longer show "60s" (#2660) — thanks @rudycelekli!
+- Multi-language dubbing no longer counts empty cues as missing translations, so progress and "ready to render" agree (#2662) — thanks @rudycelekli!
+- The microphone level meter releases the audio device if it fails to start (#2654) — thanks @rudycelekli!
+- Stopping or failing a long-form render always releases the stream connection (#2652) — thanks @rudycelekli!
+- Spelled-out text keeps emoji and rare characters whole (#2650) — thanks @rudycelekli!
 - Dubbing keeps the previous track when subtitles are imported or the render is cancelled before it finishes, and asks you to generate again for the new subtitles (#2585)
 - Cancelled, superseded or failed dubs leave segment previews and cached speech untouched, so previews and partial regeneration never use rejected audio (#2585)
 - A regenerated dub drops quality-check marks measured on the previous track (#2585)

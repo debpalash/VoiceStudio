@@ -11,10 +11,14 @@ interface ToolPathOptions {
 function nvmBinDirs(home: string): string[] {
   const root = join(home, '.nvm', 'versions', 'node');
   try {
+    // Newest numeric release first: a lexical sort would put v9 ahead of v24.
     return readdirSync(root)
-      .sort()
-      .reverse()
-      .map((version) => join(root, version, 'bin'));
+      .flatMap((name) => {
+        const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(name);
+        return match ? [{ name, parts: match.slice(1).map(Number) }] : [];
+      })
+      .sort((a, b) => b.parts[0] - a.parts[0] || b.parts[1] - a.parts[1] || b.parts[2] - a.parts[2])
+      .map(({ name }) => join(root, name, 'bin'));
   } catch {
     return [];
   }

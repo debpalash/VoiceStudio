@@ -126,42 +126,73 @@ export function startInputLevelMonitor(
     return () => {};
   }
   const context = new AudioContext();
-  const source = context.createMediaStreamSource(stream);
-  const analyser = context.createAnalyser();
-  // Route through a muted gain so the graph stays "connected to a destination"
-  // (some engines never pull data from a dangling analyser) without echoing
-  // the microphone to the speakers.
-  const silentGain = context.createGain();
-  analyser.fftSize = 1024;
-  analyser.smoothingTimeConstant = 0.72;
-  silentGain.gain.value = 0;
-  source.connect(analyser);
-  analyser.connect(silentGain);
-  silentGain.connect(context.destination);
-  void context.resume().catch(() => {});
-
-  const samples = new Float32Array(analyser.fftSize / 2);
+  let source: MediaStreamAudioSourceNode | undefined;
+  let analyser: AnalyserNode | undefined;
+  let silentGain: GainNode | undefined;
   let frameId = 0;
   let stopped = false;
-  const sample = (): void => {
-    if (stopped) return;
-    analyser.getFloatTimeDomainData(samples);
-    let energy = 0;
-    for (const value of samples) energy += value * value;
-    onLevel(Math.min(1, Math.sqrt(energy / samples.length) * 4));
-    frameId = requestAnimationFrame(sample);
+  const closeContext = (): void => {
+    try {
+      void context.close().catch(() => {});
+    } catch {
+      // Already closed; nothing left to release.
+    }
   };
-  frameId = requestAnimationFrame(sample);
+  const disconnectGraph = (): void => {
+    for (const node of [source, analyser, silentGain]) {
+      try {
+        node?.disconnect();
+      } catch {
+        // Node never connected or already torn down.
+      }
+    }
+  };
+  try {
+    source = context.createMediaStreamSource(stream);
+    const levelAnalyser = context.createAnalyser();
+    analyser = levelAnalyser;
+    // Route through a muted gain so the graph stays "connected to a destination"
+    // (some engines never pull data from a dangling analyser) without echoing
+    // the microphone to the speakers.
+    silentGain = context.createGain();
+    levelAnalyser.fftSize = 1024;
+    levelAnalyser.smoothingTimeConstant = 0.72;
+    silentGain.gain.value = 0;
+    source.connect(levelAnalyser);
+    levelAnalyser.connect(silentGain);
+    silentGain.connect(context.destination);
+    void context.resume().catch(() => {});
+
+    const samples = new Float32Array(levelAnalyser.fftSize / 2);
+    const sample = (): void => {
+      if (stopped) return;
+      levelAnalyser.getFloatTimeDomainData(samples);
+      let energy = 0;
+      for (const value of samples) energy += value * value;
+      onLevel(Math.min(1, Math.sqrt(energy / samples.length) * 4));
+      frameId = requestAnimationFrame(sample);
+    };
+    frameId = requestAnimationFrame(sample);
+  } catch (error) {
+    // Setup failed after the context exists: an unclosed AudioContext keeps
+    // the audio device open, and nobody holds a stop handle to release it.
+    stopped = true;
+    if (frameId) cancelAnimationFrame(frameId);
+    disconnectGraph();
+    closeContext();
+    throw error;
+  }
 
   return () => {
     if (stopped) return;
     stopped = true;
-    cancelAnimationFrame(frameId);
-    source.disconnect();
-    analyser.disconnect();
-    silentGain.disconnect();
-    void context.close().catch(() => {});
-    onLevel(0);
+    try {
+      cancelAnimationFrame(frameId);
+    } finally {
+      disconnectGraph();
+      closeContext();
+      onLevel(0);
+    }
   };
 }
 

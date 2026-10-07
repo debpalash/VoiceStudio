@@ -34,6 +34,7 @@ export default defineConfig({
       'src/main/**/*.test.{ts,tsx}',
       'src/renderer/**/*.test.{ts,tsx}',
       'src/shared/repair-request.test.ts',
+      'src/shared/download-failure.test.ts',
     ],
     css: false,
   },

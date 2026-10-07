@@ -84,4 +84,72 @@ describe('audio input utilities', () => {
     expect(context.close).toHaveBeenCalled();
     expect(levels.at(-1)).toBe(0);
   });
+
+  describe('setup failure', () => {
+    const makeContext = () => {
+      const node = () => ({ connect: vi.fn(), disconnect: vi.fn() });
+      return {
+        destination: {},
+        createMediaStreamSource: vi.fn(node),
+        createAnalyser: vi.fn(() => ({
+          ...node(),
+          getFloatTimeDomainData: vi.fn(),
+        })),
+        createGain: vi.fn(() => ({ ...node(), gain: { value: 1 } })),
+        resume: vi.fn(async () => {}),
+        close: vi.fn(async () => {}),
+      };
+    };
+
+    it('closes the AudioContext when graph setup throws', () => {
+      const context = makeContext();
+      context.createMediaStreamSource.mockImplementation(() => {
+        throw new Error('bad stream');
+      });
+      expect(() =>
+        startInputLevelMonitor({}, vi.fn(), {
+          AudioContextClass: function Ctx() {
+            return context;
+          },
+          requestFrame: vi.fn(),
+          cancelFrame: vi.fn(),
+        }),
+      ).toThrow('bad stream');
+      expect(context.close).toHaveBeenCalledOnce();
+    });
+
+    it('closes the AudioContext when frame scheduling throws', () => {
+      const context = makeContext();
+      expect(() =>
+        startInputLevelMonitor({}, vi.fn(), {
+          AudioContextClass: function Ctx() {
+            return context;
+          },
+          requestFrame: vi.fn(() => {
+            throw new Error('no frames');
+          }),
+          cancelFrame: vi.fn(),
+        }),
+      ).toThrow('no frames');
+      expect(context.close).toHaveBeenCalledOnce();
+    });
+
+    it('still closes the context when teardown disconnect throws', () => {
+      const context = makeContext();
+      const source = context.createMediaStreamSource();
+      source.disconnect.mockImplementation(() => {
+        throw new Error('already disconnected');
+      });
+      context.createMediaStreamSource.mockImplementation(() => source);
+      const stop = startInputLevelMonitor({}, vi.fn(), {
+        AudioContextClass: function Ctx() {
+          return context;
+        },
+        requestFrame: vi.fn(() => 1),
+        cancelFrame: vi.fn(),
+      });
+      expect(() => stop()).not.toThrow();
+      expect(context.close).toHaveBeenCalledOnce();
+    });
+  });
 });

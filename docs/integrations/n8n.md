@@ -8,8 +8,8 @@ not activate a schedule, install n8n, expose your backend, or include credential
 2. Choose **Save as…** on the n8n detail page. Import `voicestudio-n8n.json`
    through n8n's workflow import menu. You can also copy its JSON into n8n.
 3. Open the **VoiceStudio** HTTP Request node. Edit `input` in its JSON body.
-   `voice: "default"` uses the engine's default; use a saved voice profile ID for
-   cloning. `model: "tts-1"` selects VoiceStudio's active engine.
+   `voice: "default"` uses the engine's default; use a saved voice profile's ID
+   or name for cloning. `model: "tts-1"` selects VoiceStudio's active engine.
 4. Run the workflow manually. The request returns WAV audio in the binary
    `audio` field, ready for a following n8n node or download.
 

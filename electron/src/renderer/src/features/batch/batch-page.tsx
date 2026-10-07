@@ -1,3 +1,4 @@
+import { splitRoundedMinutes } from '@shared/utils/timeFormat';
 import {
   ActivityIcon,
   AlertCircleIcon,
@@ -637,9 +638,8 @@ function formatTimestamp(value: number, locale?: string) {
 }
 
 function formatDuration(seconds: number) {
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remainder = Math.round(seconds % 60);
+  if (seconds < 59.95) return `${seconds.toFixed(1)}s`;
+  const { minutes, seconds: remainder } = splitRoundedMinutes(seconds);
   if (minutes < 60) return `${minutes}m ${remainder}s`;
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }

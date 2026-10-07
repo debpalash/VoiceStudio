@@ -44,6 +44,7 @@ GET /api/settings/llm-endpoint
 GET /api/settings/llm-providers
 GET /api/settings/llm-providers/{provider_id}/models
 GET /api/settings/llm-skills
+GET /api/settings/perf/offload-after-generation
 GET /api/settings/perf/torch-compile-disabled
 GET /api/settings/performance-profile
 GET /api/settings/storage
@@ -331,6 +332,7 @@ PUT /api/settings/history-retention
 PUT /api/settings/llm-endpoint
 PUT /api/settings/llm-providers/{provider_id}
 PUT /api/settings/llm-skills/{skill_id}
+PUT /api/settings/perf/offload-after-generation
 PUT /api/settings/perf/torch-compile-disabled
 PUT /api/settings/performance-profile
 PUT /api/settings/storage/models-dir

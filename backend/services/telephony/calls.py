@@ -99,6 +99,12 @@ class CallSession:
 
     def __post_init__(self) -> None:
         self._lock = threading.RLock()
+        # Snapshot writes are ordered: each snapshot takes a sequence number
+        # under ``_lock``; ``store_save`` writes under ``_write_lock`` and skips
+        # a snapshot that a newer one has already superseded.
+        self._write_lock = threading.Lock()
+        self._snapshot_seq = 0
+        self._written_seq = 0
         self._subscribers: list[tuple[asyncio.AbstractEventLoop, asyncio.Queue]] = []
         self._agent = None
         self.timeline.append({"status": self.status, "t": round(time.time(), 3)})
@@ -251,6 +257,8 @@ def store_save(session: CallSession) -> None:
     from core.db import db_conn
 
     with session._lock:
+        session._snapshot_seq += 1
+        seq = session._snapshot_seq
         values = (
             session.id, session.direction, session.remote_number, mask_number(session.remote_number),
             session.from_number, "twilio", session.provider_call_id, session.status, session.brief,
@@ -259,11 +267,15 @@ def store_save(session: CallSession) -> None:
             session.recording_path, session.error, session.created_at, session.started_at,
             session.ended_at, session.duration_s if session.finalized else None,
         )
-    try:
-        with db_conn() as conn:
-            conn.execute(_UPSERT_SQL, values)
-    except Exception:  # noqa: BLE001 — a DB hiccup must not drop a live call
-        logger.warning("Could not save call %s", session.id, exc_info=True)
+    with session._write_lock:
+        if seq <= session._written_seq:
+            return  # a newer snapshot already landed; never roll the row back
+        try:
+            with db_conn() as conn:
+                conn.execute(_UPSERT_SQL, values)
+            session._written_seq = seq
+        except Exception:  # noqa: BLE001 — a DB hiccup must not drop a live call
+            logger.warning("Could not save call %s", session.id, exc_info=True)
 
 
 def _row_record(row, *, transcript: bool) -> dict:

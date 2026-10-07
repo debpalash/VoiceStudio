@@ -127,4 +127,59 @@ describe('consumeLongformStream', () => {
     expect(events.map((e) => e.type)).toEqual(['started']);
     expect(cancelled).toBe(true);
   });
+
+  it('cancels the reader when onEvent throws', async () => {
+    const enc = new TextEncoder();
+    let cancelled = 0;
+    const res = {
+      body: {
+        getReader: () => ({
+          read: () =>
+            Promise.resolve({ done: false, value: enc.encode(sse({ type: 'started', chapters: 1 })) }),
+          cancel: () => {
+            cancelled += 1;
+            return Promise.resolve();
+          },
+        }),
+      },
+    };
+    await expect(
+      consumeLongformStream(res, () => {
+        throw new Error('handler boom');
+      }),
+    ).rejects.toThrow('handler boom');
+    expect(cancelled).toBe(1);
+  });
+
+  it('cancels the reader when the transport errors, and not after a clean end', async () => {
+    let cancelled = 0;
+    const failing = {
+      body: {
+        getReader: () => ({
+          read: () => Promise.reject(new Error('socket reset')),
+          cancel: () => {
+            cancelled += 1;
+            return Promise.resolve();
+          },
+        }),
+      },
+    };
+    await expect(consumeLongformStream(failing, () => {})).rejects.toThrow('socket reset');
+    expect(cancelled).toBe(1);
+
+    cancelled = 0;
+    const clean = {
+      body: {
+        getReader: () => ({
+          read: () => Promise.resolve({ done: true, value: undefined }),
+          cancel: () => {
+            cancelled += 1;
+            return Promise.resolve();
+          },
+        }),
+      },
+    };
+    await consumeLongformStream(clean, () => {});
+    expect(cancelled).toBe(0);
+  });
 });

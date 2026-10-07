@@ -30,13 +30,13 @@ service root: `http://localhost:3900/.well-known/voicestudio-speech`.
 
 | OpenAI route | VoiceStudio support |
 |---|---|
-| `POST /v1/audio/speech` | TTS. `model` = an installed engine id, or an OpenAI model id (`tts-1`, `tts-1-hd`, `gpt-4o-mini-tts` and its dated snapshots) for the active engine. `voice` = a voice-profile id (your clone), an engine preset, or an OpenAI voice name (`alloy`, `ash`, `coral`, … — the engine's default voice). `instructions` becomes the engine's style instruction; OmniVoice keeps only its voice-design tags (such as `female, whisper`) and ignores other prose, and VoiceStudio's own `instruct` wins when both are sent. `speed`, and `stream_format` `audio` (chunked bytes) or `sse` (`speech.audio.delta` events). |
+| `POST /v1/audio/speech` | TTS. `model` = an installed engine id, or an OpenAI model id (`tts-1`, `tts-1-hd`, `gpt-4o-mini-tts` and its dated snapshots) for the active engine. `voice` = a voice-profile id (your clone), a voice-profile name (case-insensitive; an id always wins, and a name shared by several profiles returns 409 `ambiguous_voice` listing their ids — rename one, or pass an id), an engine preset, or an OpenAI voice name in any case (`alloy`, `ash`, `coral`, … — the engine's default voice). `instructions` becomes the engine's style instruction; OmniVoice keeps only its voice-design tags (such as `female, whisper`) and ignores other prose, and VoiceStudio's own `instruct` wins when both are sent. `speed`, and `stream_format` `audio` (chunked bytes) or `sse` (`speech.audio.delta` events). |
 | `POST /v1/audio/transcriptions` | STT with the active speech-recognition engine; any OpenAI model id works, while a VoiceStudio engine id must name the active engine (400 `model_not_active` otherwise); a file with no audio stream returns 400 `no_audio_track`. `language`, `prompt` and `temperature` reach engines that support them (the Whisper family). `response_format` `json`, `text`, `verbose_json` (OpenAI segments, plus `words` with `timestamp_granularities[]=word`), `srt`, `vtt`. `stream=true` is not supported — use the WebSocket below. |
 | `POST /v1/audio/translations` | Speech → English text. Needs a Whisper-family engine (faster-whisper, WhisperX, MLX Whisper, PyTorch Whisper) running a multilingual checkpoint such as `large-v3`. Turbo, Distil-Whisper and English-only (`.en`) checkpoints are transcription-only, and like other engines they return a clear 400 instead of untranslated text. |
 | `WS /v1/audio/transcriptions/stream` | Live partial/final STT from PCM or WebM. |
 | `GET /v1/models`, `GET /v1/models/{id}` | OpenAI's model list: the OpenAI aliases above, every installed TTS engine, and the active STT engine. |
 | `GET /.well-known/voicestudio-speech` | Machine-readable transport discovery. |
-| `GET /v1/audio/voices` | list available voices (VoiceStudio extension). |
+| `GET /v1/audio/voices` | List available voices (VoiceStudio extension). Each profile has its `voice_id` and `name`; `addressable_by_name: true` means the name works as `voice`. A profile named like an OpenAI voice or `default` keeps that word's built-in meaning, so call it by id. |
 
 Speech `response_format` returns exactly the format asked for:
 
@@ -74,7 +74,7 @@ from pipecat.services.openai.stt import OpenAISTTService
 tts = OpenAITTSService(
     base_url="http://localhost:3900/v1",
     api_key="not-needed-locally",        # any string; VoiceStudio ignores it unless OMNIVOICE_API_KEY is set
-    voice="<your-voice-profile-id>",     # from GET /v1/audio/voices, or "default"
+    voice="<your-voice-profile-id>",     # or its name; see GET /v1/audio/voices, or "default"
     model="omnivoice",                   # or any installed engine id
     sample_rate=24000,                   # matches VoiceStudio's default output
 )
@@ -147,7 +147,7 @@ pipeline = VoicePipeline(
     config=VoicePipelineConfig(
         model_provider=OpenAIVoiceModelProvider(openai_client=voicestudio),
         stt_settings=STTModelSettings(language="en"),
-        tts_settings=TTSModelSettings(voice="alloy"),  # or a voice-profile id
+        tts_settings=TTSModelSettings(voice="alloy"),  # or a voice-profile id or name
     ),
 )
 ```

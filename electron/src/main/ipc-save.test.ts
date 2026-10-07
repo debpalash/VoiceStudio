@@ -63,6 +63,7 @@ vi.mock('./site-browser', () => ({ registerSiteBrowser: vi.fn() }));
 
 import { CHANNELS, registerIpc } from './ipc';
 import type { BackendSupervisor } from './backend';
+import { decodeDownloadFailure } from '../shared/download-failure';
 
 let directory: string;
 const event = { sender: owner.webContents, senderFrame: owner.webContents.mainFrame };
@@ -121,3 +122,27 @@ it.each(saves)(
     expect(await readdir(directory)).toEqual(['take.wav']);
   },
 );
+
+it('carries the backend error body when a backend download fails (#2616)', async () => {
+  const { net } = await import('electron');
+  const detail = {
+    code: 'dub_background_unavailable',
+    message: 'Separated background is incomplete',
+  };
+  vi.mocked(net.fetch).mockResolvedValueOnce(
+    new Response(JSON.stringify({ detail }), { status: 409, statusText: 'Conflict' }),
+  );
+  await writeFile(native.savePath, 'complete previous export');
+  const error = await native.handlers.get(CHANNELS.filesSaveAudio)!(event, {
+    url: '/api/dub/export/x',
+    suggestedName: 'take.wav',
+  }).catch((cause: unknown) => cause);
+  expect(error).toBeInstanceOf(Error);
+  expect((error as Error).message).toMatch(/^Could not download the file \(HTTP 409\)/);
+  expect(decodeDownloadFailure(error)).toEqual({
+    status: 409,
+    statusText: 'Conflict',
+    body: JSON.stringify({ detail }),
+  });
+  expect(await readFile(native.savePath, 'utf8')).toBe('complete previous export');
+});

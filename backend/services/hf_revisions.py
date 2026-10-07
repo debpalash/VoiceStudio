@@ -95,8 +95,8 @@ def installed_revision(repo_id: str, cache_dir: str) -> str:
     for marker in (repo_dir / "voicestudio-revision", repo_dir / "refs" / "main"):
         try:
             revision = marker.read_text(encoding="ascii").strip()
-        except OSError:
-            continue
+        except (OSError, UnicodeError):
+            continue  # unreadable or corrupt marker: try the next, then the pin
         if _SHA.fullmatch(revision):
             return revision
     return curated_revision

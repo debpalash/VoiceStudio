@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import math
 import os
@@ -308,6 +309,12 @@ class _ResilientGpuPool(Executor):
                         elapsed if self._avg_job_s <= 0
                         else 0.7 * self._avg_job_s + 0.3 * elapsed
                     )
+                    idle = self._running == 0 and self._queued == 0
+                if idle:
+                    # Opt-in offload to RAM (#2618) arms its grace timer here:
+                    # the one place that sees the pool drain, whichever route
+                    # dispatched the last job. Never raises.
+                    _note_gpu_pool_idle()
 
         with self._stats_lock:
             self._queued += 1
@@ -3718,10 +3725,11 @@ def unload_shared_model() -> bool:
     GIL-atomic, so the worst a race costs is a redundant reload. Idempotent —
     returns False when nothing was resident.
     """
-    global model
+    global model, _ram_offload
     if model is None:
         return False
     model = None
+    _ram_offload = None
     release_tts_side_caches()
     free_vram()
     return True
@@ -3808,18 +3816,23 @@ def offload_tts_for_asr():
                 return
     except Exception:
         pass
+    m = model
+    if not _acquire_exclusive_placement(_ASR_PLACEMENT_WAIT_S):
+        logger.warning("TTS offload for ASR skipped: a generation is still using the model.")
+        return
     try:
         logger.info("Offloading TTS model to CPU to free VRAM for ASR...")
-        model.to("cpu")
-        free_vram()
+        _relocate_shared_model(m, "cpu")
         logger.info("TTS model offloaded. VRAM freed for ASR.")
     except Exception as e:
         logger.warning("TTS offload failed: %s", e)
+    finally:
+        _release_exclusive_placement()
 
 
 def restore_tts_after_asr():
     """Move TTS model back to the GPU after ASR completes."""
-    global model
+    global model, _ram_offload
     torch = _lazy_torch()
     if model is None:
         return
@@ -3832,9 +3845,17 @@ def restore_tts_after_asr():
     try:
         device = get_best_device()
         if device in ("cuda", "xpu"):
-            logger.info("Restoring TTS model to %s...", device)
-            model.to(device)
-            free_vram()
+            m = model
+            if not _acquire_exclusive_placement(_ASR_PLACEMENT_WAIT_S):
+                # The next inference restores placement before it runs.
+                logger.warning("TTS restore after ASR deferred: the model is in use.")
+                return
+            try:
+                logger.info("Restoring TTS model to %s...", device)
+                _relocate_shared_model(m, device)
+                _ram_offload = None  # back on the device, whoever moved it off
+            finally:
+                _release_exclusive_placement()
     except Exception as e:
         logger.warning("TTS restore to %s failed: %s", get_best_device(), e)
 
@@ -3874,6 +3895,15 @@ def _stranded_tts_target():
     m = model
     if m is None:
         return None
+    # Offloaded to RAM by the opt-in post-generation offload (#2618): restore
+    # to the recorded device. Checked BEFORE the parameter probe so a caller
+    # arriving mid-move (some weights still on the GPU) still waits for the
+    # move and restores, instead of generating on a half-moved model. Also
+    # the only way MPS gets restored — the unified-memory bail below is for
+    # the ASR offload, which releases the model there instead of moving it.
+    offloaded = _ram_offload
+    if offloaded is not None and offloaded[0] == id(m):
+        return offloaded[1]
     dev = _first_param_device(m)
     if dev is None or getattr(dev, "type", None) != "cpu":
         return None
@@ -3888,29 +3918,58 @@ def _stranded_tts_target():
     return target if target in ("cuda", "xpu") else None
 
 
-def ensure_tts_on_device() -> bool:
-    """Move the TTS model back onto its target device if it was stranded on CPU.
-
-    Returns True when a move actually happened. Never raises — a failed move
-    just leaves the model on CPU, which is exactly the pre-fix behaviour
-    (slow), never a failed generation.
-    """
+def _restore_tts_placement() -> bool:
+    """Move the stranded/offloaded shared model back. Caller holds exclusive
+    placement (see :func:`tts_inference`). Never raises."""
+    global _ram_offload
     target = _stranded_tts_target()
     m = model
     if target is None or m is None:
         return False
+    planned = _ram_offload is not None and _ram_offload[0] == id(m)
     try:
-        logger.warning(
-            "TTS model found stranded on CPU (an ASR offload was never restored) — "
-            "moving it back to %s; generation would otherwise run 10-50x slower (#1191).",
-            target,
-        )
-        m.to(target)
-        free_vram()
+        if planned:
+            logger.info("Restoring the TTS model from system RAM to %s for this generation.", target)
+        else:
+            logger.warning(
+                "TTS model found stranded on CPU (an ASR offload was never restored) — "
+                "moving it back to %s; generation would otherwise run 10-50x slower (#1191).",
+                target,
+            )
+        _relocate_shared_model(m, target)
+        if planned:
+            _ram_offload = None
         return True
     except Exception as e:  # noqa: BLE001
-        logger.warning("TTS placement self-heal to %s failed (staying on CPU): %s", target, e)
+        logger.warning("TTS placement restore to %s failed (staying on CPU): %s", target, e)
+        # A move that fails part-way (the GPU filled up meanwhile) leaves
+        # weights split across devices, which fails every generate. Put
+        # it all back on CPU so generation still works, just slower; a
+        # planned offload keeps its record so the next generation retries.
+        try:
+            _relocate_shared_model(m, "cpu")
+        except Exception:  # noqa: BLE001
+            logger.debug("TTS fallback move to CPU failed", exc_info=True)
         return False
+
+
+def ensure_tts_on_device() -> bool:
+    """Move the TTS model back onto its target device if it was stranded on CPU
+    (an unbalanced ASR offload, #1191) or offloaded to RAM after generation
+    (#2618).
+
+    Returns True when a move actually happened. Never raises and never waits
+    for a running inference: while one holds the model, the move is left to
+    the next :func:`tts_inference` entry, which restores before it runs.
+    """
+    if _stranded_tts_target() is None:
+        return False  # hot path: one probe, no lock
+    if not _acquire_exclusive_placement(0.0):
+        return False
+    try:
+        return _restore_tts_placement()
+    finally:
+        _release_exclusive_placement()
 
 
 async def _heal_tts_placement() -> None:
@@ -3943,6 +4002,336 @@ async def _heal_tts_placement() -> None:
             )
         except Exception as e:  # noqa: BLE001
             logger.warning("TTS placement self-heal could not run: %s", e)
+
+# ── Placement guard: inference vs. moving the shared model ────────────────
+# Every inference on the shared TTS model (generate_with_cached_ref and
+# OmniVoiceBackend.generate_batch in services.tts_backend) holds a shared slot
+# through tts_inference(). Every move of the model between devices (ASR
+# offload/restore, the post-generation offload, the placement restore) needs
+# EXCLUSIVE placement, granted only while no inference holds a slot, and new
+# inference waits until the move ends. A GPU-pool slot is not that exclusion:
+# a multi-worker CUDA pool runs several generations at once, and moving
+# weights under one of them fails it (or worse, mixes devices mid-step).
+_placement_cond = threading.Condition()
+_inference_active = 0
+_placement_exclusive = False
+# How long the dub's ASR offload/restore wait for a running generation to
+# finish before skipping the move (the next inference heals placement).
+_ASR_PLACEMENT_WAIT_S = 30.0
+
+
+def _acquire_exclusive_placement(wait_s: float) -> bool:
+    """Exclusive right to move the shared model; False if not granted within
+    ``wait_s`` (0 = don't wait) because inference holds it or another move runs."""
+    global _placement_exclusive
+    deadline = time.monotonic() + max(0.0, wait_s)
+    with _placement_cond:
+        while _placement_exclusive or _inference_active > 0:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            _placement_cond.wait(remaining)
+        _placement_exclusive = True
+        return True
+
+
+def _release_exclusive_placement() -> None:
+    global _placement_exclusive
+    with _placement_cond:
+        _placement_exclusive = False
+        _placement_cond.notify_all()
+
+
+@contextlib.contextmanager
+def tts_inference():
+    """Hold the shared TTS model in place for one inference call.
+
+    Waits while a move is in progress; the first inference to arrive with the
+    model off its device (offloaded to RAM, or stranded by an ASR offload)
+    restores it before running, so a generation that passed ``get_model()``
+    just before an offload still runs on the device. Re-entrant across
+    threads: nested calls while a slot is held just share it.
+    """
+    global _inference_active, _placement_exclusive
+    restore = False
+    with _placement_cond:
+        while _placement_exclusive:
+            _placement_cond.wait()
+        if _inference_active == 0 and _stranded_tts_target() is not None:
+            _placement_exclusive = True
+            restore = True
+        else:
+            _inference_active += 1
+    if restore:
+        try:
+            _restore_tts_placement()
+        finally:
+            with _placement_cond:
+                _placement_exclusive = False
+                _inference_active += 1
+                _placement_cond.notify_all()
+    try:
+        yield
+    finally:
+        with _placement_cond:
+            _inference_active -= 1
+            if _inference_active == 0:
+                _placement_cond.notify_all()
+
+
+# FlashInfer keeps device state outside the module's parameters: fused weight
+# copies (_fi_w_qkv / _fi_w_gate_up), its attention runner's workspace and,
+# in graph mode, captured CUDA graphs bound to the old weight storage.
+# ``.to()`` moves none of it, so a model moved off and back would keep that
+# VRAM while offloaded and replay stale graphs afterwards. Tear it down before
+# leaving the GPU; re-apply once the model is back on CUDA.
+def _suspend_flashinfer(m) -> None:
+    if "_fi_runner" not in vars(m):
+        return
+    state = (
+        bool(getattr(m, "_fi_enable_cuda_graph", False)),
+        getattr(m, "_fi_graph_buckets", None),
+        getattr(m, "_fi_overhead_budget", 512),
+        getattr(m, "_fi_orig_attn_impl", None) or "sdpa",
+    )
+    _unapply_flashinfer(m)
+    m._fi_suspended = state
+
+
+def _resume_flashinfer(m) -> None:
+    state = vars(m).pop("_fi_suspended", None)
+    if state is None:
+        return
+    graph, buckets, budget, orig_attn = state
+    try:
+        from omnivoice.models.omnivoice_flashinfer import apply_flashinfer
+
+        m._fi_orig_attn_impl = orig_attn
+        apply_flashinfer(
+            m, enable_cuda_graph=graph, cuda_graph_buckets=buckets, overhead_budget=budget,
+        )
+    except Exception as exc:  # noqa: BLE001 — perf opt: fall back to the standard path
+        logger.warning("FlashInfer could not be re-applied after a model move (%s); "
+                       "continuing without it.", exc)
+        from services.engine_env import mark_flashinfer_runtime_failure
+
+        mark_flashinfer_runtime_failure(f"{type(exc).__name__}: {exc}")
+        _unapply_flashinfer(m)
+
+
+def _relocate_shared_model(m, device: str) -> None:
+    """Move ``m`` to ``device`` with its out-of-module accelerator state. The
+    caller holds exclusive placement. Raises on a failed move."""
+    if str(device).split(":", 1)[0] == "cpu":
+        _suspend_flashinfer(m)
+    m.to(device)
+    free_vram()
+    if str(device).split(":", 1)[0] == "cuda":
+        _resume_flashinfer(m)
+
+
+# ── Opt-in: offload the TTS model to RAM after generation (#2618) ─────────
+# For users who share the GPU with something else VRAM-heavy (a local LLM, a
+# game, an image model): once generation finishes and the GPU pool has been
+# idle for a short grace period, the resident in-process TTS model moves to
+# system RAM, and the next generation moves it back (tts_inference() restores
+# before the model runs). A RAM -> VRAM move takes seconds; a cold reload from
+# disk takes much longer, which is the point of offloading rather than
+# unloading. Default OFF, so default behaviour is unchanged. CUDA (NVIDIA +
+# ROCm), XPU, NPU and MPS move the model; on CPU it already lives in RAM and
+# this is a no-op.
+
+OFFLOAD_AFTER_GENERATION_PREF = "offload_tts_after_generation"
+OFFLOAD_AFTER_GENERATION_ENV = "OMNIVOICE_OFFLOAD_AFTER_GENERATION"
+_OFFLOAD_GRACE_ENV = "OMNIVOICE_OFFLOAD_AFTER_GENERATION_GRACE_S"
+_OFFLOAD_GRACE_DEFAULT_S = 3.0
+# While a dub/batch/audiobook job is active the offload re-checks this often,
+# so the setting still applies after the job finishes without a GPU drain.
+_OFFLOAD_JOB_POLL_S = 10.0
+
+# (id(model), device) while the model sits in RAM because of this feature;
+# the device is where the next generation restores it. Cleared on restore and
+# on unload, and keyed by identity so a reloaded model never inherits it.
+_ram_offload: "tuple[int, str] | None" = None
+
+
+class _OffloadTimer:
+    """The one pending offload check; arming it again replaces it, so each
+    GPU drain restarts the grace period."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._timer: "threading.Timer | None" = None
+
+    def arm(self, delay_s: float) -> None:
+        timer = threading.Timer(delay_s, _offload_when_idle)
+        timer.daemon = True
+        with self._lock:
+            if self._timer is not None:
+                self._timer.cancel()
+            self._timer = timer
+        timer.start()
+
+    def cancel(self) -> None:
+        with self._lock:
+            if self._timer is not None:
+                self._timer.cancel()
+            self._timer = None
+
+    @property
+    def pending(self) -> "threading.Timer | None":
+        with self._lock:
+            return self._timer
+
+
+_offload_timer = _OffloadTimer()
+
+
+def _truthy_setting(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def offload_after_generation_enabled() -> bool:
+    """Env ``OMNIVOICE_OFFLOAD_AFTER_GENERATION`` > prefs.json > False.
+    Resolved per call so a Settings change applies without a restart."""
+    try:
+        # Imported by name at call time: core.prefs reaches this module back
+        # through services.settings_store, and only this lazy edge keeps the
+        # dependency one-way at import time.
+        import importlib
+
+        prefs = importlib.import_module("core.prefs")
+        return _truthy_setting(prefs.resolve(
+            OFFLOAD_AFTER_GENERATION_PREF, env=OFFLOAD_AFTER_GENERATION_ENV, default=False,
+        ))
+    except Exception:  # noqa: BLE001 — an unreadable setting means "off"
+        return False
+
+
+def _offload_grace_s() -> float:
+    try:
+        return max(0.0, float(os.environ.get(_OFFLOAD_GRACE_ENV, _OFFLOAD_GRACE_DEFAULT_S)))
+    except ValueError:
+        return _OFFLOAD_GRACE_DEFAULT_S
+
+
+def _on_accelerator(m) -> bool:
+    dev = _first_param_device(m)
+    return dev is not None and getattr(dev, "type", "cpu") not in ("cpu", "meta")
+
+
+def offload_tts_to_ram(*, still_idle=None) -> bool:
+    """Move the resident TTS model from its accelerator to system RAM.
+
+    Takes exclusive placement without waiting, so it never moves weights under
+    a running inference. ``still_idle`` is re-checked once exclusive placement
+    is held, so the idle decision and the move are atomic against new work.
+    Returns True when the model moved. No-op (False) when nothing is loaded,
+    the model is already on CPU (every CPU-only host), or the model is busy.
+    Never raises.
+    """
+    global _ram_offload
+    m = model
+    if m is None:
+        return False
+    if not _acquire_exclusive_placement(0.0):
+        return False
+    try:
+        if model is not m or _ram_offload is not None or not _on_accelerator(m):
+            return False
+        if still_idle is not None and not still_idle():
+            return False
+        dev = _first_param_device(m)
+        index = getattr(dev, "index", None)
+        target = dev.type if index is None else f"{dev.type}:{index}"
+        _ram_offload = (id(m), target)
+        try:
+            _relocate_shared_model(m, "cpu")
+            logger.info("Generation finished: TTS model moved from %s to system RAM.", target)
+            return True
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Offloading the TTS model to RAM failed (keeping it on %s): %s", target, e)
+            try:
+                _relocate_shared_model(m, target)
+                _ram_offload = None
+            except Exception:  # noqa: BLE001 — record stays, so the next generate restores
+                logger.debug("TTS move back after a failed offload failed", exc_info=True)
+            return False
+    finally:
+        _release_exclusive_placement()
+
+
+def _generation_jobs_active() -> bool:
+    """True while a dub/batch/audiobook (or other background task) is queued
+    or running. Their GPU jobs come in waves with idle gaps between them, so
+    the pool alone can't tell "finished" from "between segments"."""
+    try:
+        from core import job_store
+
+        if job_store.list_jobs(status="active", limit=1):
+            return True
+    except Exception:  # noqa: BLE001 — unknown means busy: never offload blind
+        return True
+    batch = sys.modules.get("api.routers.batch")
+    lister = getattr(batch, "list_batch_jobs", None)
+    if callable(lister):
+        try:
+            return bool(lister(status="active", limit=1))
+        except Exception:  # noqa: BLE001
+            return True
+    return False
+
+
+def _pool_is_idle(*, own_jobs: int = 0) -> bool:
+    stats = gpu_pool_stats()
+    return int(stats.get("queued") or 0) == 0 and int(stats.get("running") or 0) <= own_jobs
+
+
+def _offload_job() -> bool:
+    """Runs on the GPU pool, so it is ordered behind work queued before it."""
+    if not offload_after_generation_enabled():
+        return False
+    return offload_tts_to_ram(
+        still_idle=lambda: _pool_is_idle(own_jobs=1) and not _generation_jobs_active()
+    )
+
+
+def _offload_when_idle() -> None:
+    """Grace-timer callback: offload only if the pool is still idle, no
+    generation job is pending, and the model is resident on an accelerator.
+    While a background job is active it re-checks every few seconds, because
+    a job can finish (final mix, export) without another GPU drain."""
+    try:
+        if model is None or _ram_offload is not None:
+            return
+        if not offload_after_generation_enabled() or is_shutting_down():
+            return
+        if not _pool_is_idle():
+            return  # that work's own drain re-arms the check
+        if _generation_jobs_active():
+            _offload_timer.arm(_OFFLOAD_JOB_POLL_S)
+            return
+        if not _on_accelerator(model):
+            return
+        _get_gpu_pool().submit(_offload_job).add_done_callback(_swallow_abandoned)
+    except Exception:  # noqa: BLE001 — an offload attempt must never surface
+        logger.debug("post-generation TTS offload skipped", exc_info=True)
+
+
+def _note_gpu_pool_idle() -> None:
+    """The GPU pool just drained: (re)arm the grace timer. Each drain restarts
+    it, so back-to-back generations never pay a move between them."""
+    try:
+        if model is None or _ram_offload is not None:
+            return
+        if not offload_after_generation_enabled():
+            return
+        _offload_timer.arm(_offload_grace_s())
+    except Exception:  # noqa: BLE001 — called from the pool's finally block
+        logger.debug("could not arm the post-generation offload", exc_info=True)
+
 
 _diar_pipeline = None
 

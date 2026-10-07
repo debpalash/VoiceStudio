@@ -478,6 +478,9 @@ class SentenceChunker:
                 return []
 
         self._buffer = ""
+        # A short flush is an emission too: it ends the first-flush window, or
+        # a comma later in the same turn would still trigger a clause flush.
+        self._is_first_flush = False
         return [stripped]
 
     def _maybe_aggressive_first_flush(self) -> str | None:

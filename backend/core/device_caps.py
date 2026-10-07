@@ -366,6 +366,17 @@ def why_no_gpu(torch, gpus=None) -> tuple[str, ...]:
                 f"{note}. A CUDA build only drives NVIDIA GPUs; this machine "
                 "has none, so PyTorch engines run on the CPU",
             )
+        # Only GPUs not worth a marker (a plain Intel iGPU): still not a
+        # driver problem, so name the hardware instead of sending the user
+        # after an NVIDIA driver (#2620). No UNUSABLE_GPU_MARKER — routing for
+        # such a host stays the benign ``cpu_only``.
+        names = ", ".join(dict.fromkeys(g.name for g in gpus if g.name))
+        return (
+            f"this is a CUDA {cuda} build but no CUDA device was found — this "
+            f"machine has no NVIDIA GPU (installed graphics: {names or 'none'}). "
+            "A CUDA build only drives NVIDIA GPUs, so PyTorch engines run on "
+            "the CPU",
+        )
     return (
         f"this is a CUDA {cuda} build but no CUDA device was found — the "
         "NVIDIA driver is missing or too old, or (in Docker) the container "

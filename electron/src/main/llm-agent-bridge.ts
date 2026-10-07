@@ -84,20 +84,47 @@ export async function startLlmAgentBridge(
       }
       const deadline = Date.now() + body.timeoutMs;
       queued += 1;
+      let started = false;
+      let expired = false;
+      let counted = true;
+      const uncount = () => {
+        if (counted) queued -= 1;
+        counted = false;
+      };
       const task = tail.then(async () => {
         const remaining = deadline - Date.now();
-        if (closed || res.destroyed || remaining < 1000) throw new Error('Agent request expired');
+        if (expired || closed || res.destroyed || remaining < 1000)
+          throw new Error('Agent request expired');
+        started = true;
         return complete({ ...body, timeoutMs: remaining });
       });
+      // The real task keeps its place so CLI runs never overlap; an expired
+      // request that never started is skipped (and frees its slot) at once.
       tail = task
         .then(
           () => {},
           () => {},
         )
-        .finally(() => {
-          queued -= 1;
-        });
-      const text = await task;
+        .finally(uncount);
+      task.catch(() => {});
+      let timer: NodeJS.Timeout | undefined;
+      const deadlineHit = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => {
+            expired = true;
+            if (!started) uncount();
+            reject(new Error('Agent request expired'));
+          },
+          Math.max(0, deadline - Date.now()),
+        );
+      });
+      deadlineHit.catch(() => {});
+      let text: string;
+      try {
+        text = await Promise.race([task, deadlineHit]);
+      } finally {
+        clearTimeout(timer);
+      }
       send(200, { text });
     } catch (error) {
       // Never expose subprocess output, login tokens, or source dialogue in errors.

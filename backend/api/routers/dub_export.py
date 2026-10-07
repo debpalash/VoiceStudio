@@ -63,6 +63,9 @@ async def _preserved_background(job: dict, job_id: str, lang: str, *, prepare: b
     try:
         return await surgical_background(source, bed, directory, segments, entry.get("plan") or [], float(entry.get("orig_duration") or job.get("duration") or 0))
     except (ValueError, RuntimeError) as exc:
+        # The client shows localized recovery guidance for this code; keep the
+        # concrete cause in the log so a diagnostic bundle explains it.
+        logger.warning("Preserved background unavailable for job %s (%s): %s", log_safe(job_id), log_safe(lang), log_safe(str(exc)[-500:]))
         raise HTTPException(status_code=409, detail={"code": "dub_background_unavailable", "message": str(exc)}) from exc
 
 

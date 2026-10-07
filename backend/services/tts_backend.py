@@ -1431,7 +1431,11 @@ def generate_with_cached_ref(model, *, ref_audio, ref_text, **gen_kw):
     # look the cache up, but never insert — see _get_clone_prompt(store=). MUST
     # be popped: the model's generate() has an explicit signature and would
     # TypeError on an unknown kwarg.
-    with engine_in_use(OmniVoiceBackend(model=model)):
+    from services.model_manager import tts_inference
+
+    # tts_inference: no device move of the shared model while this runs, and
+    # it is restored first if an offload left it in RAM (#2618).
+    with engine_in_use(OmniVoiceBackend(model=model)), tts_inference():
         cache_ref = bool(gen_kw.pop("cache_ref", True))
         # Stays in gen_kw too: the model needs it on the inline branch, and it is inert
         # on the prompt branch (that prompt is already encoded).
@@ -1547,6 +1551,13 @@ class OmniVoiceBackend(TTSBackend):
 
     def _ensure_loaded(self):
         if self._model is not None:
+            # The cached instance skips get_model(), and with it the placement
+            # heal: put the shared model back on its device if the opt-in
+            # post-generation offload (#2618) or an unbalanced ASR offload
+            # (#1191) left it in RAM. One parameter probe when it is in place.
+            from services.model_manager import ensure_tts_on_device
+
+            ensure_tts_on_device()
             return
         # Reuse model_manager's cached instance so we don't double-load.
         from services.model_manager import get_model
@@ -1607,7 +1618,14 @@ class OmniVoiceBackend(TTSBackend):
         self._ensure_loaded()
         if not texts:
             return []
+        from services.model_manager import tts_inference
 
+        # Holds the shared model in place for prompt encoding + the batch
+        # generate (an offload can't move it mid-batch; #2618).
+        with tts_inference():
+            return self._generate_batch_on_model(texts, **kw)
+
+    def _generate_batch_on_model(self, texts: list[str], **kw) -> list[torch.Tensor]:
         def _items(value):
             if isinstance(value, list):
                 return value

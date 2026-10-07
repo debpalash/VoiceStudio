@@ -69,3 +69,13 @@ def test_single_sentence_request_stays_whole():
 def test_italian_language_disables_aggressive_flush():
     chunker = SentenceChunker(language="it", aggressive_first_flush=True)
     assert chunker._aggressive_first_flush is False
+
+
+def test_short_flush_ends_the_first_flush_window():
+    """#2628: after a short reply flushes, a later comma must not clause-flush."""
+    chunker = SentenceChunker(aggressive_first_flush=True)
+    assert chunker.push("Yes.") == ["Yes."]
+    assert chunker._is_first_flush is False
+    clause = "However, the remaining answer keeps going for quite a while, and then"
+    assert chunker.push(clause) == []
+    assert chunker.flush() == [clause]

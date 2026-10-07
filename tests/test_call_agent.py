@@ -951,3 +951,42 @@ def test_migration_adds_call_sessions_and_matches_the_base_schema(tmp_path, monk
     fresh = [(r[1], r[2].upper(), r[3], r[5]) for r in canon.execute("PRAGMA table_info(call_sessions)")]
     norm = lambda cols: [(n, {"FLOAT": "REAL"}.get(t, t), nn, pk) for n, t, nn, pk in cols]  # noqa: E731
     assert norm(migrated) == norm(fresh)
+
+
+def test_a_delayed_snapshot_write_never_overwrites_the_final_status(mods, monkeypatch):
+    """#2640: an older snapshot stuck in the DB write must not land after 'completed'."""
+    import contextlib
+
+    from core import db
+
+    session = M.calls.CallSession(
+        id="y" * 32, direction="outbound", remote_number="+14155550123", from_number=FROM, brief="b", profile_id="p"
+    )
+    session.set_status("ringing")
+    real = db.db_conn
+    entered, release = threading.Event(), threading.Event()
+    first = [True]
+
+    @contextlib.contextmanager
+    def slow_conn():
+        if first[0]:
+            first[0] = False
+            entered.set()
+            release.wait(5)
+        with real() as conn:
+            yield conn
+
+    monkeypatch.setattr(db, "db_conn", slow_conn)
+    stale = threading.Thread(target=M.calls.store_save, args=(session,))
+    stale.start()
+    assert entered.wait(5)
+    session.set_status("completed")
+    final = threading.Thread(target=M.calls.store_save, args=(session,))
+    final.start()
+    time.sleep(0.1)
+    release.set()
+    stale.join(5)
+    final.join(5)
+    with real() as conn:
+        row = conn.execute("SELECT status FROM call_sessions WHERE id=?", (session.id,)).fetchone()
+    assert row["status"] == "completed"

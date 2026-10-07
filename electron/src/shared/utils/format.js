@@ -1,7 +1,7 @@
+import { formatTimestamp } from './timeFormat.js';
+
 export function formatTime(s) {
-  const m = Math.floor(s / 60);
-  const sec = (s % 60).toFixed(1);
-  return `${m}:${sec.padStart(4, '0')}`;
+  return formatTimestamp(s, { decimals: 1 });
 }
 
 // Contract: settles with a number or null, NEVER rejects. null means

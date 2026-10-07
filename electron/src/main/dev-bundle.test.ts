@@ -1,9 +1,23 @@
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 // This is a Node launcher shared with the package script, so it intentionally
 // remains plain ESM rather than being compiled into Electron's main process.
-// @ts-expect-error JavaScript launcher has no separate declaration file.
-import { createMacDevBundlePlan, launchElectronVite } from '../../scripts/dev.mjs';
+import {
+  createMacDevBundlePlan,
+  launchElectronVite,
+  prepareMacDevElectron,
+  // @ts-expect-error JavaScript launcher has no separate declaration file.
+} from '../../scripts/dev.mjs';
 
 it('watches main and preload changes so renderer updates cannot leave stale browser IPC running', () => {
   const spawn = vi.fn(() => ({ on: vi.fn() }));
@@ -126,5 +140,48 @@ describe('macOS development bundle branding', () => {
     expect(plan.destinationExecutable).toContain(
       join('VoiceStudio.app', 'Contents', 'MacOS', 'Electron'),
     );
+  });
+});
+
+describe('macOS development bundle cache repair', () => {
+  // cp/plutil/codesign are macOS tools; the fake runner materialises the same layout.
+  const fakeRun = (command: string, args: string[]) => {
+    if (command !== 'cp') return;
+    const target = args[args.length - 1];
+    mkdirSync(join(target, 'Contents', 'MacOS'), { recursive: true });
+    mkdirSync(join(target, 'Contents', 'Resources'), { recursive: true });
+    writeFileSync(join(target, 'Contents', 'MacOS', 'Electron'), 'binary');
+  };
+
+  it('replaces a cached bundle that lost its executable instead of failing with ENOTEMPTY', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vs-dev-cache-'));
+    try {
+      const icon = join(dir, 'icon.icns');
+      writeFileSync(icon, 'icon');
+      const options = {
+        electronExecutable: join(dir, 'src', 'Electron.app', 'Contents', 'MacOS', 'Electron'),
+        electronVersion: '44.3.0',
+        appVersion: '0.5.6',
+        iconPath: icon,
+        cacheRoot: join(dir, 'cache'),
+        runCommand: fakeRun,
+      };
+      const executable = prepareMacDevElectron(options);
+      expect(readFileSync(executable, 'utf8')).toBe('binary');
+
+      rmSync(executable);
+      writeFileSync(join(executable, '..', 'stale-leftover'), 'x');
+      expect(existsSync(executable)).toBe(false);
+
+      expect(prepareMacDevElectron(options)).toBe(executable);
+      expect(readFileSync(executable, 'utf8')).toBe('binary');
+      expect(existsSync(join(executable, '..', 'stale-leftover'))).toBe(false);
+      // No staging directories are left behind.
+      expect(
+        readdirSync(join(dir, 'cache')).filter((name: string) => name.startsWith('.staging-')),
+      ).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

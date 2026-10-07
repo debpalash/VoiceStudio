@@ -90,6 +90,8 @@ None of them are required — the defaults are chosen for the common case.
 | `OMNIVOICE_FLASHINFER` | `0` | CUDA-only accelerated decoding for the default engine via [FlashInfer](https://github.com/flashinfer-ai/flashinfer) kernels (packed CFG attention, fused RMSNorm/RoPE/GEMM) — ~2x on upstream's benchmarks. `1` enables it; `graph` also captures CUDA graphs (best when you render one thing at a time). Requires installing the optional `flashinfer-python` package into the backend environment first (`uv pip install flashinfer-python flashinfer-jit-cache --extra-index-url https://flashinfer.ai/whl/cu128/`, matching your CUDA build). Replaces `torch.compile` for that session, pins inference to a single GPU thread (the FlashInfer attention plan is per-generation state), and keeps fused copies of the attention/MLP weights resident (~roughly half the LLM's weight size extra VRAM) — leave it off on tight-VRAM cards. If the package is missing or a FlashInfer/CUDA-graph kernel fails at runtime, the app logs the reason and falls back to the standard path; failures outside those kernels (e.g. a genuine out-of-memory) surface normally. |
 | `OMNIVOICE_PROMPT_DISK_CACHE` | `1` | Persist encoded voice-clone references (`prompt_cache/` in the app data dir, ~10 KB per voice, 32 newest kept) so the first generation with a known voice after a restart skips the reference re-encode and any auto-transcription. Set `0` to keep the cache in memory only. |
 | `OMNIVOICE_IDLE_TIMEOUT_S` | `900` | Seconds of idle before the TTS model unloads to free memory. Raise it (e.g. `3600`) if you generate in bursts and dislike the ~8 s reload; lower it on tight-memory machines. |
+| `OMNIVOICE_OFFLOAD_AFTER_GENERATION` | off | `1` moves the built-in TTS model to system RAM once generation finishes, and back on the next generation. Same toggle as **Settings → Performance & Device → Memory management** (the env var wins over the UI). See [Offload to RAM after generation](#offload-to-ram-after-generation). |
+| `OMNIVOICE_OFFLOAD_AFTER_GENERATION_GRACE_S` | `3` | How long the GPU must stay idle after a generation before that offload runs. |
 | `OMNIVOICE_SIDECAR_IDLE_TIMEOUT_S` | `300` | Same idea for sidecar engines (IndexTTS 2.5 etc.). |
 | `MIOPEN_FIND_MODE` | `FAST` | MIOpen (ROCm) algorithm search. The default exhaustive search costs ~18 s every time it sees a new convolution shape — shape-varying vocoders like IndexTTS's BigVGAN paid it on nearly every chunk. `FAST` finds a near-optimal kernel in well under a second; the backend sets it at startup, only MIOpen reads it (ROCm on Linux or Windows; inert on CUDA/MPS/CPU), and an exported value always wins over the default. |
 | `OMNIVOICE_LLM_CONCURRENCY` | `6` | Parallel LLM translation calls during a dub. Raise for a fast API endpoint, lower if your provider rate-limits. |
@@ -274,6 +276,38 @@ component. Believe the message; Flush only fixes memory contention. Also
 note the app already frees memory on its own when idle
 (`OMNIVOICE_IDLE_TIMEOUT_S`) — Flush is for when you need the memory *now*,
 between jobs.
+
+## Offload to RAM after generation
+
+For machines that share the GPU with something else that needs a lot of VRAM,
+such as a local LLM, a game or an image model. **Settings → Performance &
+Device → Memory management → Move the voice model to system RAM after
+generation** (off by default; `OMNIVOICE_OFFLOAD_AFTER_GENERATION=1` does the
+same and wins over the toggle).
+
+- When a generation finishes and the GPU has been idle for
+  `OMNIVOICE_OFFLOAD_AFTER_GENERATION_GRACE_S` (3 s), the built-in OmniVoice
+  model moves from the GPU to system RAM. The next generation moves it back
+  first. That takes a few seconds, much less than the ~8 s reload after
+  **Unload**.
+- Nothing moves while another generation is running or queued, or while a
+  dub, batch or audiobook job is active; during such a job the check repeats
+  every 10 s, so the model still moves once the job finishes. A run of
+  back-to-back generations pays for one move at the end, not one per
+  generation.
+- With `OMNIVOICE_FLASHINFER` on, its fused weights and captured CUDA graphs
+  are released with the move and rebuilt when the model is back on the GPU.
+  The dub's transcription offload does the same.
+- NVIDIA (CUDA), AMD (ROCm), Intel XPU and Apple Silicon (MPS) are supported.
+  On Apple Silicon memory is unified: the move frees the GPU's working set for
+  other GPU apps, not total RAM. On CPU the model already lives in RAM, so the
+  setting does nothing.
+- If another app has taken the VRAM when the next generation starts, the move
+  back fails. That generation then runs on the CPU (slower, not an error), and
+  the next one tries again.
+- Engines that run in their own process (sidecars such as IndexTTS) are not
+  moved. They release their memory on their own idle timeout
+  (`OMNIVOICE_SIDECAR_IDLE_TIMEOUT_S`).
 
 If the timeout error keeps recurring even right after an unload, see
 [troubleshooting §14](install/troubleshooting.md#14-cant-reach-the-local-backend-during-generation--transcription--dubbing)

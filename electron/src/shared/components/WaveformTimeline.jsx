@@ -1,3 +1,4 @@
+import { formatTimestamp } from '../utils/timeFormat';
 import React, {
   useEffect,
   useRef,
@@ -821,11 +822,7 @@ function WaveformTimeline(
     [ready],
   );
 
-  const fmt = (t) => {
-    const m = Math.floor(t / 60);
-    const s = (t % 60).toFixed(1);
-    return `${m}:${s.padStart(4, '0')}`;
-  };
+  const fmt = (t) => formatTimestamp(t, { decimals: 1 });
 
   // ── Keyboard shortcuts (J/K/L video-editor style) ──────────────────────────
   useEffect(() => {

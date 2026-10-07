@@ -395,7 +395,60 @@ function MemoryManagement() {
           {t('header.unload_all_flush')}
         </Button>
       </SettingsRow>
+      <OffloadAfterGeneration />
     </SettingsSection>
+  );
+}
+interface OffloadState {
+  enabled: boolean;
+  env_pinned: boolean;
+  device: string;
+}
+// #2618: opt-in — move the in-process voice model to system RAM once
+// generation finishes, so a local LLM (or anything else) can use the VRAM.
+function OffloadAfterGeneration() {
+  const { t } = useTranslation();
+  const client = useQueryClient();
+  const action = useSettingsAction();
+  const query = useQuery({
+    queryKey: ['offload-after-generation'],
+    queryFn: ({ signal }) =>
+      apiJson<OffloadState>('/api/settings/perf/offload-after-generation', { signal }),
+  });
+  const state = query.data;
+  return (
+    <>
+      <SettingsRow
+        id="offload-after-generation"
+        title={t('settings.offload_after_generation')}
+        description={
+          state?.device === 'cpu'
+            ? t('settings.offload_after_generation_cpu')
+            : t('settings.offload_after_generation_note')
+        }
+      >
+        <Switch
+          aria-label={t('settings.offload_after_generation')}
+          checked={!!state?.enabled}
+          disabled={!state || action.busy || state.env_pinned}
+          onCheckedChange={(enabled) =>
+            void action.run(async () => {
+              const saved = await apiJson<OffloadState>(
+                '/api/settings/perf/offload-after-generation',
+                { method: 'PUT', body: JSON.stringify({ enabled }) },
+              );
+              client.setQueryData(['offload-after-generation'], saved);
+            })
+          }
+        />
+      </SettingsRow>
+      {state?.env_pinned && (
+        <p className="p-4 text-sm text-muted-foreground">
+          {t('settings.generate_timeout_shadowed_note')}
+        </p>
+      )}
+      {(action.error || query.isError) && <ErrorRow retry={() => void query.refetch()} />}
+    </>
   );
 }
 function ErrorRow({ retry }: { retry: () => void }) {

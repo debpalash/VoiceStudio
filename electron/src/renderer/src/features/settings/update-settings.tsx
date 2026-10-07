@@ -1,3 +1,4 @@
+import { splitRoundedMinutes } from '@shared/utils/timeFormat';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -65,8 +66,7 @@ function formatBytes(bytes: number): string {
 }
 
 function formatEta(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const remainder = Math.max(0, Math.round(seconds % 60));
+  const { minutes, seconds: remainder } = splitRoundedMinutes(seconds);
   return `${minutes}:${String(remainder).padStart(2, '0')}`;
 }
 

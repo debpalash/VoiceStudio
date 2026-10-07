@@ -1907,3 +1907,25 @@ def test_runtime_rejects_old_managed_recipe_but_preserves_external_installs(monk
     (external / si._INSTALL_COMPLETE_MARKER).write_text('external-version\n')
     monkeypatch.setenv(spec.env_var, str(external))
     assert si.engine_venv_python(spec.env_var) == external_py
+
+
+def test_corrupt_non_utf8_markers_read_as_absent_not_crash(monkeypatch):
+    """#2634: a marker with undecodable bytes must mean 'not installed', not raise."""
+    spec = _mk_spec(source_revision="rev", weights_repo_id="Example/Weights")
+    checkout = si.managed_checkout(spec)
+    checkout.mkdir(parents=True, exist_ok=True)
+    (checkout / "pyproject.toml").write_text("[project]\nname='fake'\n")
+    (checkout / si._SOURCE_REVISION_MARKER).write_bytes(b"\xff\xfe\x80rev")
+    assert si._source_present(spec, checkout) is False
+
+    wdir = checkout / spec.weights_subdir
+    wdir.mkdir(parents=True, exist_ok=True)
+    (wdir / si._WEIGHTS_COMPLETE_MARKER).write_bytes(b"\xff\xfe\x80")
+    assert si._weights_present(spec) is False
+
+    extra_dir = checkout / "extra"
+    extra_dir.mkdir()
+    (extra_dir / "needed.txt").write_text("x")
+    (extra_dir / si._SOURCE_REVISION_MARKER).write_bytes(b"\xff\xfe\x80")
+    extra = si.ExtraSource("extra", "rev", "https://example.invalid/x.tar.gz", "needed.txt")
+    assert si._extra_source_present(extra, extra_dir) is False

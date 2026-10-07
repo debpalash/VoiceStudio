@@ -129,7 +129,16 @@ class _TextExtractor(HTMLParser):
     whitespace. First <h1>/<h2>/<title> seen is kept as the chapter title."""
 
     _SKIP = {"script", "style", "head"}
-    _BREAK = {"p", "br", "div", "h1", "h2", "h3", "li", "tr"}
+    #: Block-level elements: each starts a new line when it opens AND when it
+    #: closes, so text after ``</p>`` / ``</td>`` / ``</li>`` never joins the
+    #: previous paragraph. ``br`` is void, so only its start tag breaks.
+    _BREAK = {
+        "p", "br", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "ul", "ol",
+        "tr", "td", "th", "table", "caption", "thead", "tbody", "tfoot",
+        "blockquote", "pre", "hr", "section", "article", "aside", "header",
+        "footer", "nav", "main", "figure", "figcaption", "dl", "dt", "dd",
+        "address", "details", "summary", "fieldset", "form",
+    }
     #: A print page number carried into the EPUB (EPUB 3 ``epub:type="pagebreak"``,
     #: ARIA ``role="doc-pagebreak"``, or a publisher class such as
     #: ``pagebreak-rw``). Inline, it glues onto prose ("happily as 2Zoe threw");
@@ -223,6 +232,11 @@ class _TextExtractor(HTMLParser):
         if self._in_title and tag == self._title_tag:
             self._in_title = False
             self.title = " ".join("".join(self._title_parts).split())
+        if tag in self._BREAK and tag not in self._VOID:
+            if self._in_title:
+                self._title_parts.append(" ")  # a block closing inside the title
+            else:
+                self._parts.append("\n")
 
     def handle_data(self, data):
         if self._skip_depth or self._pagebreak_stack:

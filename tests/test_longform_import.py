@@ -401,3 +401,24 @@ def test_epub_wide_document_with_leading_whitespace(wide, whitespace):
     script = epub_to_chapter_script(_make_epub_raw([document]))
     assert _ACCENTED in script
     assert "\x00" not in script
+
+
+def test_text_after_block_end_tags_starts_a_new_line():
+    """#2630: text following a closing block tag must not join the previous one."""
+    from services.longform_import import _html_to_title_body
+
+    _, body = _html_to_title_body("<body><p>One.</p>Two.<ul><li>Three</li>Four</ul></body>")
+    lines = [ln for ln in body.split("\n") if ln]
+    assert lines == ["One.", "Two.", "Three", "Four"]
+
+    _, table = _html_to_title_body("<table><tr><td>A1</td><td>B1</td></tr><tr><th>A2</th>B2</tr></table>")
+    assert [ln for ln in table.split("\n") if ln] == ["A1", "B1", "A2", "B2"]
+
+    _, blocks = _html_to_title_body(
+        "<div>x<blockquote>quote</blockquote>y</div><section>s</section>z<h4>h</h4>w"
+    )
+    assert [ln for ln in blocks.split("\n") if ln] == ["x", "quote", "y", "s", "z", "h", "w"]
+
+    title, body = _html_to_title_body("<h1>Chapter <p>One</p></h1><p>Body</p>after")
+    assert title == "Chapter One"
+    assert [ln for ln in body.split("\n") if ln] == ["Body", "after"]

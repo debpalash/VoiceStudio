@@ -159,7 +159,7 @@ Engines** — the choice applies everywhere synthesis happens.
 
 * **OpenAI-compatible REST API** — the backend serves
   `POST /v1/audio/speech` on `http://localhost:3900/v1`; the `voice`
-  field accepts your saved voice-profile IDs. Existing OpenAI-SDK
+  field accepts your saved voice-profile IDs or names. Existing OpenAI-SDK
   code points at it with a one-line `base_url` change.
 * **CLI** — from a source checkout, `omnivoice-infer` (and
   `omnivoice-infer-batch`) run the bundled engine directly.

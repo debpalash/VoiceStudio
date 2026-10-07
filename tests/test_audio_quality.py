@@ -63,6 +63,18 @@ def test_warning_cap_and_short_clip(tmp_path):
     assert not check(tmp_path, tone(.04)).warnings
 
 
+def test_warning_cap_keeps_earliest_warnings_across_checks(tmp_path):
+    # #2636: 110 late 'invalid' windows must not crowd out the early silence.
+    bad = tone(.1)
+    bad[0] = np.nan
+    signal = np.concatenate([np.zeros(12000), np.tile(np.concatenate([bad, tone(.1)]), 110)])
+    result = check(tmp_path, signal)
+    assert len(result.warnings) == 100
+    assert result.truncated
+    assert (result.warnings[0].kind, result.warnings[0].start) == ('silence', 0)
+    assert [w.start for w in result.warnings] == sorted(w.start for w in result.warnings)
+
+
 def test_api_confines_paths_and_returns_analysis(tmp_path, monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient

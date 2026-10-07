@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { getBridge } from '@/components/bridge';
 import { apiFetch, apiPath, ApiError } from '@/lib/api/client';
+import { saveBackendFile } from '@/lib/native-save';
 
 function exportPath(profileId: string, includeReference: boolean): string {
   return (
@@ -44,7 +45,7 @@ export function PersonaExport({
           .slice(0, 100) || 'persona') + '.ovsvoice';
       const bridge = getBridge();
       if (bridge) {
-        const saved = await bridge.files.saveAudio({
+        const saved = await saveBackendFile({
           url: apiPath(exportPath(profile.id, includeReference)),
           suggestedName,
           method: 'POST',

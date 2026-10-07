@@ -206,6 +206,50 @@ def set_torch_compile_disabled(body: _TorchCompileBody):
     return _torch_compile_state()
 
 
+# ── Offload the TTS model to RAM after generation (#2618) ─────────────────
+
+
+class _OffloadAfterGenerationBody(BaseModel):
+    enabled: bool = Field(..., description="True to move the TTS model to system RAM after each generation")
+
+
+def _offload_after_generation_state() -> dict:
+    """`enabled` is the effective value (env > saved > off). `env_pinned` means
+    OMNIVOICE_OFFLOAD_AFTER_GENERATION decides and a saved value is ignored.
+    `device` is the TTS device: on `cpu` the setting has nothing to move."""
+    from services import model_manager as mm
+
+    try:
+        device = str(mm.get_best_device()).split(":", 1)[0]
+    except Exception:  # noqa: BLE001 — a device probe must not break Settings
+        device = "cpu"
+    return {
+        "enabled": mm.offload_after_generation_enabled(),
+        "env_pinned": bool(os.environ.get(mm.OFFLOAD_AFTER_GENERATION_ENV)),
+        "device": device,
+    }
+
+
+@router.get("/perf/offload-after-generation")
+def get_offload_after_generation():
+    """Whether the in-process TTS model moves to system RAM after generation."""
+    return _offload_after_generation_state()
+
+
+@router.put("/perf/offload-after-generation")
+def set_offload_after_generation(body: _OffloadAfterGenerationBody):
+    """Persist the toggle. Applies from the next generation, no restart."""
+    from core import prefs
+    from services import model_manager as mm
+
+    try:
+        prefs.set_(mm.OFFLOAD_AFTER_GENERATION_PREF, bool(body.enabled))
+    except Exception:
+        logger.exception("set_offload_after_generation failed")
+        raise HTTPException(status_code=500, detail="Failed to persist setting")
+    return _offload_after_generation_state()
+
+
 # ── Compute-device override (Settings → Performance) ──────────────────────
 
 

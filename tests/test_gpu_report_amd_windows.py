@@ -52,8 +52,18 @@ def _cpu_caps(*notes: str, **kw) -> HostCaps:
 # ── inventory readers ─────────────────────────────────────────────────────
 
 
+# GUID_DEVCLASS_DISPLAY (devguid.h), written out independently of the module
+# constant so a typo there cannot also pass here (#2620).
+_REAL_DISPLAY_CLASS = (
+    "SYSTEM\\CurrentControlSet\\Control\\Class"
+    "\\{4d36e968-e325-11ce-bfc1-08002be10318}"
+)
+
+
 class _FakeWinreg:
-    """Just enough of ``winreg`` for the display-adapter class key."""
+    """Just enough of ``winreg`` for the display-adapter class key. Like the
+    real registry, it only opens the real Display class path - the previous
+    fake accepted any path, which let a typo'd GUID ship (#2620)."""
 
     HKEY_LOCAL_MACHINE = object()
 
@@ -72,6 +82,8 @@ class _FakeWinreg:
 
     def OpenKey(self, parent, name):
         if parent is self.HKEY_LOCAL_MACHINE:
+            if name.lower() != _REAL_DISPLAY_CLASS.lower():
+                raise FileNotFoundError(2, "The system cannot find the file specified", name)
             return self._Ctx(("class", None))
         return self._Ctx(("adapter", self._subkeys[name]))
 
@@ -118,6 +130,32 @@ def test_windows_registry_vram_blob_from_older_drivers():
     })
     (gpu,) = _m("core.gpu_inventory")._read_windows(reg)
     assert (gpu.vendor, gpu.vram_gb) == ("nvidia", 8.0)
+
+
+def test_detect_host_gpus_reads_the_real_windows_display_class(monkeypatch):
+    """End to end through ``detect_host_gpus`` on a faked Windows host: the
+    never-raises wrapper must not be what hides a wrong key path (#2620)."""
+    reg = _FakeWinreg({
+        "0000": {
+            "DriverDesc": "Intel(R) Arc(TM) Graphics",
+            "MatchingDeviceId": "PCI\\VEN_8086&DEV_7D55",
+        },
+    })
+    monkeypatch.delenv("OMNIVOICE_DISABLE_GPU_INVENTORY", raising=False)
+    monkeypatch.setattr("sys.platform", "win32")
+    monkeypatch.setitem(__import__("sys").modules, "winreg", reg)
+    inv = _m("core.gpu_inventory")
+    try:
+        (gpu,) = inv.refresh()
+        assert (gpu.vendor, gpu.name, gpu.pci_device_id, gpu.discrete) == (
+            "intel", "Intel(R) Arc(TM) Graphics", "7d55", False,
+        )
+    finally:
+        inv.detect_host_gpus.cache_clear()
+
+
+def test_windows_display_class_guid_is_the_real_one():
+    assert _m("core.gpu_inventory")._WIN_DISPLAY_CLASS.lower() == _REAL_DISPLAY_CLASS.lower()
 
 
 def test_linux_sysfs_lists_cards_not_connectors(tmp_path):
@@ -169,6 +207,15 @@ def test_cuda_wheel_with_an_nvidia_card_keeps_the_driver_advice():
 def test_cuda_wheel_on_gpu_less_host_keeps_the_driver_advice():
     msg = " ".join(_m("core.device_caps").why_no_gpu(_torch(cuda="12.8"), gpus=()))
     assert "NVIDIA driver is missing or too old" in msg
+
+
+def test_cuda_wheel_on_intel_igpu_only_host_names_the_hardware():
+    """A plain iGPU is not an unusable-GPU candidate, but the host still has no
+    NVIDIA card - the driver advice is wrong there too (#2620)."""
+    msg = " ".join(_m("core.device_caps").why_no_gpu(_torch(cuda="12.8"), gpus=(IGPU,)))
+    assert "NVIDIA driver" not in msg
+    assert "no NVIDIA GPU" in msg and "Intel(R) UHD Graphics" in msg
+    assert UNUSABLE_GPU_MARKER not in msg  # routing stays benign cpu_only
 
 
 # ── the probe + routing ───────────────────────────────────────────────────

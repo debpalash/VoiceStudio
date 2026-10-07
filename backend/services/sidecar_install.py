@@ -1422,7 +1422,7 @@ def _source_present(spec: SidecarSpec, checkout: Path) -> bool:
         return True
     try:
         marker = (checkout / _SOURCE_REVISION_MARKER).read_text(encoding="utf-8").strip()
-    except OSError:
+    except (OSError, UnicodeError):
         return False
     return marker == spec.source_revision
 
@@ -1482,7 +1482,7 @@ def _extra_source_present(extra: ExtraSource, dest: Path) -> bool:
         return False
     try:
         marker = (dest / _SOURCE_REVISION_MARKER).read_text(encoding="utf-8").strip()
-    except OSError:
+    except (OSError, UnicodeError):
         return False
     return marker == extra.revision
 
@@ -1727,7 +1727,7 @@ def _weights_present(spec: SidecarSpec) -> bool:
     wdir = managed_checkout(spec) / spec.weights_subdir
     try:
         marker = (wdir / _WEIGHTS_COMPLETE_MARKER).read_text(encoding="utf-8").splitlines()
-    except OSError:
+    except (OSError, UnicodeError):
         return False
     expected = [spec.weights_repo_id or "", spec.weights_revision or ""]
     actual = marker[:2] if len(marker) >= 2 else marker + [""]
