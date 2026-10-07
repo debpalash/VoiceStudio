@@ -30,6 +30,10 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
+- The voice model really leaves GPU memory after the idle timeout when the OpenAI-compatible speech API, an engine self-test or a remote worker used it last, instead of keeping about 3 GB while showing as unloaded (#2677)
+- Steady OpenAI-compatible speech traffic no longer counts as idle, so the voice model is not unloaded under it and then loaded a second time (#2677)
+- Unloading a voice model compiled with CUDA graphs, or running FlashInfer, also frees its graph memory and attention workspace (#2677)
+- Word-alignment models and the speaker-diarization pipeline are released after the idle timeout, and alignment models also when transcription unloads (#2677)
 - MCP speech tools wait through model loading and progress-extended CPU renders instead of timing out before the backend (#2609)
 - On Windows, the GPU report finds your graphics card again, and CPU-only hosts with integrated graphics are no longer told to fix an NVIDIA driver (#2620) — thanks @creatorliao!
 - Stretch Video exports that keep the original background no longer fail with HTTP 409 when subtitle cues sit close together or have no length (#2616) — thanks @quan0pek!
