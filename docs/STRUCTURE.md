@@ -93,6 +93,7 @@ VoiceStudio/
 │   ├── install.sh / install.ps1 shell + PowerShell installers served at voicestudio.sh/install
 │   ├── dev-backend.mjs          `bun run dev:api` backend supervisor
 │   ├── setup.py                 `bun run setup:api` post-sync platform setup (incl. ROCm opt-in)
+│   ├── windows-rocm-recipe.json  reviewed native-Windows Python, Torch and CT2 artifact contract
 │   ├── electron-smoke-test.mjs  `bun run smoke-test` packaged-app launch check
 │   ├── prepare_electron_release.py, check_electron_release_assets.py   release asset gates
 │   ├── check-docs-drift.py      the docs-drift.yml checker (docs/features.yaml is canonical)

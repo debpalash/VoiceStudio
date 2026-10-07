@@ -102,14 +102,13 @@ still works on CPU, just slower. What you can do today:
   automatically.
 - **Run on Linux** (native, or the ROCm Docker image) for ROCm acceleration of
   the PyTorch engines — see [linux.md — AMD GPU (ROCm)](linux.md#amd-gpu-rocm).
-- **Advanced / unsupported: AMD's own Windows ROCm wheels.** AMD publishes
-  PyTorch ROCm wheels for Windows (`https://repo.amd.com/rocm/whl-multi-arch/`,
-  Python 3.11–3.14, RDNA 3 / RDNA 4 cards such as the RX 7000 and RX 9000 series).
-  They are PyTorch 2.9 or newer, not the 2.8 the engines here are validated
-  against, and faster-whisper (CTranslate2) needs its own separate HIP build for
-  the GPU, so expect parts of the app (WhisperX is a reported example) to break. VoiceStudio does not install them, and no engine
-  parity is claimed. DirectML is not an option either: `torch-directml` needs
-  PyTorch 2.4.
+- **Advanced / unsupported: opt-in Windows ROCm source bootstrap.** The
+  [pinned source recipe](windows-rocm-source.md) uses x64 Python 3.12, AMD
+  PyTorch 2.9.1+rocm7.2.1 and a hash-checked CTranslate2 4.8.2 HIP wheel on
+  supported Radeon hardware. It does not change Electron's installer or GPU
+  detection; backend compatibility limitations remain, including ASR. A
+  standalone smoke pass is not an app GPU-support or engine-parity claim.
+  DirectML is not an option either: `torch-directml` needs PyTorch 2.4.
 
 **Settings → Performance → GPU acceleration** shows exactly what applies to your
 machine: the GPUs Windows reports, which PyTorch build is installed, and a

@@ -13,6 +13,7 @@ metadata and the backend fallback mirror it.
 - MCP speech tools stay connected through cold starts and slow, progressing renders (#2612)
 
 ### Added
+- Opt-in native Windows ROCm source bootstrap with a reusable pinned recipe, hash-checked CTranslate2 wheels and offline GPU smoke; packaged setup and app GPU support are unchanged (#2468)
 
 - The OpenAI-compatible speech API accepts a voice-profile name as `voice`, and the voice list shows which names work (#2617) — thanks @HuntingSuccubus!
 - New opt-in setting moves the voice model to system RAM after generation, freeing GPU memory for other apps such as a local LLM (#2618) — thanks @HuntingSuccubus!
