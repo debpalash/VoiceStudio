@@ -13,6 +13,15 @@ Thanks for your interest in improving VoiceStudio! This guide covers everything 
 
 ---
 
+> **Before your first pull request:** sign the [Contributor License Agreement](CLA-1.0.md)
+> once. GitHub cannot stop you opening a pull request first, so it is checked at
+> merge instead: an unsigned pull request cannot merge. You can sign now on the
+> [signing issue (#2586)](https://github.com/debpalash/VoiceStudio/issues/2586) and
+> the check then passes on every pull request you open. Details are in
+> [Contribution licensing](#contribution-licensing).
+
+---
+
 ## Adding a TTS or ASR engine
 
 New engines are hired for a **named job**, not added to a list — the bar, the current job map,
@@ -412,7 +421,9 @@ I have read the VoiceStudio CLA 1.0 and I hereby sign it.
 ```
 
 The signature covers your earlier and future contributions, and the check
-turns green on its own. If a maintainer folds your pull request into another
+turns green on its own. New contributors can sign first: post the same line on the
+[signing issue (#2586)](https://github.com/debpalash/VoiceStudio/issues/2586)
+before opening a pull request, or on the pull request itself if you prefer. If a maintainer folds your pull request into another
 one, you sign once there too. Contributed before and have no open pull request? Post
 the same line on the [issue labelled `cla`](https://github.com/debpalash/VoiceStudio/issues?q=label%3Acla). If it lists a commit it cannot link to a GitHub
 account, either add that commit email to your account (Settings → Emails), or

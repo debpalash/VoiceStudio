@@ -26,6 +26,7 @@ metadata and the backend fallback mirror it.
 
 ### Docs
 
+- New contributors are told up front to sign the CLA once, before their first pull request, from the README, CONTRIBUTING guide and pull request template (#2586)
 - Model licence records list which models are non-commercial or still unreviewed, and the docs no longer claim MIT terms for bundled demo audio or commercial terms for OmniVoice (#2587)
 
 ### Fixed

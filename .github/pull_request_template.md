@@ -1,3 +1,9 @@
+<!--
+First pull request? Sign the Contributor License Agreement once, before or after
+opening it: https://github.com/debpalash/VoiceStudio/issues/2586
+It is required before merge and covers every pull request you open later.
+-->
+
 ## Summary
 
 <!-- Brief description of what this PR does. -->

@@ -60,6 +60,21 @@ def test_sign_phrase_matches_the_agreement_and_contributing():
         assert cla.SIGN_PHRASE in path.read_text(encoding="utf-8"), path
 
 
+def test_new_contributors_are_told_to_sign_before_their_first_pull_request():
+    """GitHub cannot block opening a pull request, so the docs must say that the
+    merge is gated and where to sign first: the maintainer-labelled signing issue
+    that ``sign_on_issue`` records for anyone."""
+    signing_issue = "https://github.com/debpalash/VoiceStudio/issues/2586"
+    contributing = (_REPO / ".github" / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    template = (_REPO / ".github" / "pull_request_template.md").read_text(encoding="utf-8")
+    readme = (_REPO / "README.md").read_text(encoding="utf-8")
+    assert "Before your first pull request" in contributing
+    assert contributing.count(signing_issue) >= 2
+    assert signing_issue in template
+    assert "contribution-licensing" in readme
+    assert cla.SIGNING_LABEL == "cla"
+
+
 def test_workflow_comment_filter_admits_the_sign_phrase_and_recheck():
     job_filter = _load(_CLA_WORKFLOW)["jobs"]["cla"]["if"]
     needles = re.findall(r"contains\(github\.event\.comment\.body, '([^']+)'\)", job_filter)
