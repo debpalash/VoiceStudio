@@ -21,8 +21,23 @@ def provider_failure(kind: str) -> dict[str, str]:
     return {"kind": safe_kind, "detail": _PROVIDER_DETAILS[safe_kind]}
 
 
-def stream_failure(code: str) -> dict[str, object]:
-    """Return stable stream metadata selected only from an internal code."""
+_CPU_GENERATION_TIMEOUT_DETAIL = (
+    "Generation ran out of time on this computer's CPU, which renders much "
+    "more slowly than a GPU. The backend is still running. To get it through: "
+    "try a shorter passage, pick a CPU-tuned engine (OmniVoice GGUF or "
+    "Supertonic-3), or raise \"CPU budget\" in Settings → Performance & Device "
+    "and restart the backend."
+)
+
+
+def stream_failure(code: str, *, device: str | None = None) -> dict[str, object]:
+    """Return stable stream metadata selected only from an internal code.
+
+    ``device`` (the dispatch's effective device family) only selects between
+    fixed VoiceStudio-owned wordings — it is never echoed. A CPU timeout is
+    "this machine is slow", not "your passage is too long", so it names the
+    concrete remedies for that case (#2609).
+    """
     failures: dict[str, dict[str, object]] = {
         "generation_busy": {
             "code": "generation_busy",
@@ -91,7 +106,10 @@ def stream_failure(code: str) -> dict[str, object]:
             "retryable": True,
         },
     }
-    return dict(failures.get(code, failures["generation_failed"]))
+    failure = dict(failures.get(code, failures["generation_failed"]))
+    if code == "generation_timeout" and str(device or "").lower() == "cpu":
+        failure["detail"] = _CPU_GENERATION_TIMEOUT_DETAIL
+    return failure
 
 
 def _exception_chain(error: object, limit: int = 8):

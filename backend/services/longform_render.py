@@ -65,8 +65,14 @@ _GLOBAL_TAG_KEYS: list[tuple[str, str]] = [
 
 
 def _escape_meta(value: str) -> str:
-    """Escape an FFMETADATA value (``=``, ``;``, ``#``, ``\\``, newline)."""
-    return re.sub(r"([=;#\\\n])", r"\\\1", value or "")
+    """Escape an FFMETADATA value (``=``, ``;``, ``#``, ``\\``, newline).
+
+    CRLF and lone CR are folded to LF first: FFmpeg's parser ends a metadata
+    line at a bare CR, so only LF is escapable and an unescaped CR silently
+    truncated every description paragraph after the first (#2528).
+    """
+    value = re.sub(r"\r\n?", "\n", value or "")
+    return re.sub(r"([=;#\\\n])", r"\\\1", value)
 
 
 def prune_cache_dir(cache_dir: str, max_bytes: int = _CACHE_MAX_BYTES) -> tuple[int, int]:
@@ -653,6 +659,15 @@ def build_ffmetadata(
         ]
         start = end
     return "\n".join(lines) + "\n"
+
+
+def write_lf_text(path: str, text: str) -> None:
+    """Write an ffmpeg-parsed text file (FFMETADATA, concat list) as UTF-8 with
+    bare LF endings. Text mode would turn the LF in an escaped ``\\<LF>``
+    paragraph break into CRLF on Windows, where FFmpeg then ends the tag at that
+    line and drops the rest (#2528)."""
+    with open(path, "wb") as f:
+        f.write(text.encode("utf-8"))
 
 
 def build_concat_list(wav_paths: Iterable[str]) -> str:

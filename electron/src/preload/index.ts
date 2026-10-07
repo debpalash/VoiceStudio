@@ -36,7 +36,7 @@ const bridge: VoiceStudioBridge = {
     deactivate: () => ipcRenderer.invoke('pro:deactivate'),
   },
   repair: {
-    list: () => ipcRenderer.invoke('repair:list'),
+    list: (options) => ipcRenderer.invoke('repair:list', options),
     getState: () => ipcRenderer.invoke('repair:getState'),
     chooseWorkspace: () => ipcRenderer.invoke('repair:chooseWorkspace'),
     start: (request) => ipcRenderer.invoke('repair:start', request),

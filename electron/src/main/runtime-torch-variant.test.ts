@@ -84,10 +84,16 @@ function host(platform: NodeJS.Platform, arch: typeof process.arch) {
 }
 
 beforeEach(() => {
+  // Runtime fixtures must not depend on live region-probe latency.
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: true })),
+  );
   vi.stubEnv('OMNIVOICE_TORCH_VARIANT', '');
 });
 afterEach(async () => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   vi.mocked(statfs).mockClear();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));

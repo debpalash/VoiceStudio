@@ -833,7 +833,11 @@
     "self_check_attention": "{{count}} kiểm tra thất bại — xem gợi ý ở trên.",
     "save_bundle": "Lưu gói chẩn đoán",
     "bundle_saved": "Đã lưu gói chẩn đoán: {{filename}}",
-    "bundle_failed": "Không thể tạo gói chẩn đoán: {{message}}"
+    "bundle_failed": "Không thể tạo gói chẩn đoán: {{message}}",
+    "model_credits": "Ghi công mô hình",
+    "model_credits_hint": "Ghi công các mô hình được hỗ trợ. Mô hình và thành phần có điều khoản riêng; phần ghi công này không cấp quyền sử dụng thương mại.",
+    "model_terms": "Điều khoản mô hình",
+    "model_related_sources": "Nguồn liên quan:"
   },
   "privacy": {
     "desc": "Mọi thứ đều chạy trên <1>máy này</1>. Âm thanh, video và bản ghi của bạn không bao giờ rời khỏi máy tính của bạn trừ khi bạn sử dụng một cách rõ ràng một trình dịch trực tuyến (Google, DeepL, v.v.) hoặc đẩy tới HuggingFace.",
@@ -1697,11 +1701,11 @@
     "back": "Quay lại Studio",
     "badge": "Giấy phép thương mại",
     "hero_title": "Vận chuyển giọng nói AI trong quá trình sản xuất",
-    "hero_desc": "VoiceStudio là phần mềm tự do, mã nguồn mở theo giấy phép GNU Affero General Public License v3 (AGPL-3.0) — miễn phí sử dụng, bao gồm cả mục đích thương mại và sử dụng nội bộ doanh nghiệp. Bạn chỉ cần giấy phép thương mại nếu muốn nhúng VoiceStudio vào sản phẩm hoặc dịch vụ mã nguồn đóng hay độc quyền mà không chịu các nghĩa vụ copyleft của AGPL-3.0.",
+    "hero_desc": "VoiceStudio là phần mềm tự do, mã nguồn mở theo giấy phép GNU Affero General Public License v3 (AGPL-3.0) — miễn phí sử dụng, bao gồm cả mục đích thương mại và sử dụng nội bộ doanh nghiệp. Bạn chỉ cần giấy phép thương mại nếu muốn nhúng VoiceStudio vào sản phẩm hoặc dịch vụ mã nguồn đóng hay độc quyền mà không chịu các nghĩa vụ copyleft của AGPL-3.0. Giấy phép của chúng tôi áp dụng cho mã nguồn VoiceStudio. Quyền đối với mô hình và đầu ra được tạo phụ thuộc vào mô hình đã chọn và các điều khoản của chúng.",
     "pricing_desc": "Các cấp độ và giá cả vẫn đang được hoàn thiện.",
     "request_quote": "Yêu cầu báo giá",
-    "benefit_ip": "Quyền sở hữu IP đầy đủ",
-    "benefit_ip_desc": "Bạn sở hữu mọi đầu ra, mọi mô hình, mọi công cụ phái sinh. Không có thuê chung, không có rò rỉ dữ liệu.",
+    "benefit_ip": "Giấy phép ứng dụng",
+    "benefit_ip_desc": "Giấy phép của chúng tôi áp dụng cho mã nguồn VoiceStudio. Quyền đối với mô hình và đầu ra được tạo phụ thuộc vào mô hình đã chọn và các điều khoản của chúng.",
     "benefit_cost": "Không có chi phí mỗi phút",
     "benefit_cost_desc": "Không có hóa đơn API, không có tình trạng dư thừa bất ngờ. Chạy trên phần cứng của riêng bạn ngay từ ngày đầu tiên.",
     "benefit_team_desc": "Một giấy phép bao gồm số lượng người dùng không giới hạn trong tổ chức của bạn.",
@@ -1709,7 +1713,7 @@
     "benefit_support_desc": "Hỗ trợ qua email và cuộc gọi video ưu tiên từ nhóm kỹ thuật cốt lõi.",
     "benefit_source_desc": "Hiển thị đầy đủ vào ngăn xếp. Kiểm tra, phân nhánh và điều chỉnh theo các điều khoản cấp phép.",
     "benefit_lang_desc": "Phiên âm, dịch và lồng tiếng trên 646 ngôn ngữ với chất lượng ngang tầm con người.",
-    "hero_simple": "VoiceStudio là nguồn mở và miễn phí theo AGPL-3.0 — bao gồm cả mục đích sử dụng cho mục đích thương mại và nội bộ doanh nghiệp. Bạn chỉ cần giấy phép thương mại để nhúng nó vào sản phẩm nguồn đóng mà không có nghĩa vụ về bản quyền của AGPL."
+    "hero_simple": "VoiceStudio là nguồn mở và miễn phí theo AGPL-3.0 — bao gồm cả mục đích sử dụng cho mục đích thương mại và nội bộ doanh nghiệp. Bạn chỉ cần giấy phép thương mại để nhúng nó vào sản phẩm nguồn đóng mà không có nghĩa vụ về bản quyền của AGPL. Giấy phép của chúng tôi áp dụng cho mã nguồn VoiceStudio. Quyền đối với mô hình và đầu ra được tạo phụ thuộc vào mô hình đã chọn và các điều khoản của chúng."
   },
   "exportModal": {
     "export": "Xuất khẩu",
@@ -1772,8 +1776,8 @@
     "pkg_audio_body_one": "Chuyển tới tab Âm thanh để xuất bản lồng tiếng theo từng ngôn ngữ ở dạng WAV hoặc MP3 (có sẵn bản lồng tiếng {{count}}).",
     "pkg_audio_body_other": "Chuyển tới tab Âm thanh để xuất bản lồng tiếng theo từng ngôn ngữ ở định dạng WAV hoặc MP3 (có sẵn {{count}} bản lồng tiếng).",
     "pkg_audio_cta": "Mở tab âm thanh",
-    "license_text": "Việc sử dụng thương mại đòi hỏi một",
-    "license_link": "giấy phép",
+    "license_text": "Giấy phép của chúng tôi áp dụng cho mã nguồn VoiceStudio. Quyền đối với mô hình và đầu ra được tạo phụ thuộc vào mô hình đã chọn và các điều khoản của chúng.",
+    "license_link": "Giấy phép ứng dụng",
     "output": "ĐẦU RA",
     "nothing_selected": "Không có gì được chọn hoặc không có bản nhạc",
     "export_mp4": "Xuất MP4",
@@ -2852,6 +2856,7 @@
   "dubIntegrity": {
     "missingSpeech": "Lời nói bị thiếu hoặc không đọc được. Hãy tạo lại đoạn bị ảnh hưởng trước khi xuất.",
     "timingOverflow": "Lời nói vượt quá thời gian được phân bổ. Hãy rút ngắn bản dịch hoặc chọn khung thời gian nghiêm ngặt hay kéo dài video.",
+    "sourceChanged": "Phụ đề đã thay đổi trong khi bản lồng tiếng này đang được tạo. Bản âm thanh trước được giữ nguyên; hãy tạo lại để dùng phụ đề mới.",
     "backgroundUnavailable": "Không thể giữ âm thanh gốc. Hãy kiểm tra việc tách âm nền và thời gian hội thoại rồi thử lại, hoặc chọn chỉ xuất giọng nói."
   },
   "dubStyle": {

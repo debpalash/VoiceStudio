@@ -1,9 +1,11 @@
-import { startTranslationRun, appendTranslationLog, updateTranslationRun, finishTranslationRun } from './translation-activity';
-import type { DubExportPreferences } from './dub-export';
 import {
-  MAX_COOKIE_EXPORT_BYTES,
-  _cookieTransportAllowed,
-} from '@shared/utils/cookieExport';
+  startTranslationRun,
+  appendTranslationLog,
+  updateTranslationRun,
+  finishTranslationRun,
+} from './translation-activity';
+import type { DubExportPreferences } from './dub-export';
+import { MAX_COOKIE_EXPORT_BYTES, _cookieTransportAllowed } from '@shared/utils/cookieExport';
 import { projectSession, type DubProject } from '../projects/project-format';
 import { DUB_DRAFT_KEY, restoreDubDraft } from './dub-draft';
 import { Store } from '@tanstack/store';
@@ -316,7 +318,10 @@ export const setDubQuality = (quality: DubSession['quality']) => {
     patch({ quality, ...(quality === 'agent' ? {} : { agentCli: undefined }) });
 };
 export const setDubTranslationOptions = (
-  value: Pick<Partial<DubSession>, 'autoGlossary' | 'reflectPass' | 'condenseSuggest' | 'dialect' | 'translationInstructions'>,
+  value: Pick<
+    Partial<DubSession>,
+    'autoGlossary' | 'reflectPass' | 'condenseSuggest' | 'dialect' | 'translationInstructions'
+  >,
 ) => {
   if (['idle', 'editing', 'done'].includes(dubSession.state.phase) && !dubSession.state.recovery)
     patch(value);
@@ -1095,8 +1100,11 @@ async function runLocalTranslationAgent(
     throw new DOMException('Cancelled', 'AbortError');
   }
   const id = startTranslationRun({
-    jobId: dubSession.state.jobId || '', agent: request.agent,
-    target: request.targetLanguage, purpose: request.purpose, retry,
+    jobId: dubSession.state.jobId || '',
+    agent: request.agent,
+    target: request.targetLanguage,
+    purpose: request.purpose,
+    retry,
     rows: request.segments.map((segment) => ({ id: segment.id, source: segment.sourceText })),
   });
   const unsubscribe = bridge.onTranslationEvent?.((event) => {
@@ -1108,13 +1116,20 @@ async function runLocalTranslationAgent(
     if (signal.aborted) throw new DOMException('Cancelled', 'AbortError');
     const texts = new Map(result.translations.map((row) => [row.id, row.text]));
     updateTranslationRun(id, {
-      rows: request.segments.map((segment) => ({ id: segment.id, source: segment.sourceText, text: texts.get(segment.id) })),
+      rows: request.segments.map((segment) => ({
+        id: segment.id,
+        source: segment.sourceText,
+        text: texts.get(segment.id),
+      })),
     });
     finishTranslationRun(id, 'complete');
     return result;
   } catch (error) {
-    finishTranslationRun(id, signal.aborted ? 'cancelled' : 'failed',
-      signal.aborted ? undefined : (error instanceof Error ? error.message : String(error)));
+    finishTranslationRun(
+      id,
+      signal.aborted ? 'cancelled' : 'failed',
+      signal.aborted ? undefined : error instanceof Error ? error.message : String(error),
+    );
     throw error;
   } finally {
     unsubscribe?.();
@@ -1214,11 +1229,28 @@ export async function translateDub(
   try {
     const completed = await run('translating', async (signal) => {
       activityId = startTranslationRun({
-        jobId: snapshot.jobId!, agent: provider, target, purpose: 'translate',
-        rows: requestedSegments.map((segment) => ({ id: segment.id, source: segment.text_original || segment.text })),
-        retry: () => translateDub(target, provider, { retryFailed: Boolean(dubSession.state.segments.some((s) => s.translate_errors?.[target])) }),
+        jobId: snapshot.jobId!,
+        agent: provider,
+        target,
+        purpose: 'translate',
+        rows: requestedSegments.map((segment) => ({
+          id: segment.id,
+          source: segment.text_original || segment.text,
+        })),
+        retry: () =>
+          translateDub(target, provider, {
+            retryFailed: Boolean(
+              dubSession.state.segments.some((s) => s.translate_errors?.[target]),
+            ),
+          }),
       });
-      signal.addEventListener('abort', () => { activityAborted = true; }, { once: true });
+      signal.addEventListener(
+        'abort',
+        () => {
+          activityAborted = true;
+        },
+        { once: true },
+      );
 
       const glossary = await apiJson<Array<{ source: string; target: string; note?: string }>>(
         `/glossary/${encodeURIComponent(snapshot.jobId!)}`,
@@ -1279,7 +1311,12 @@ export async function translateDub(
       updateTranslationRun(activityId!, {
         rows: requestedSegments.map((segment) => {
           const row = translated.translated.find((r) => String(r.id) === segment.id);
-          return { id: segment.id, source: segment.text_original || segment.text, text: row?.error ? undefined : row?.text, error: row?.error };
+          return {
+            id: segment.id,
+            source: segment.text_original || segment.text,
+            text: row?.error ? undefined : row?.text,
+            error: row?.error,
+          };
         }),
       });
       const fallback = translated.cinematic_skipped === 'no-llm-configured';
@@ -1325,9 +1362,12 @@ export async function translateDub(
       if (translated.translated.some((row) => row.error))
         throw new Error('Some translation segments failed');
     });
-    if (activityId) finishTranslationRun(activityId,
-      activityAborted ? 'cancelled' : completed && !agentFallback ? 'complete' : 'failed',
-      completed && !agentFallback ? undefined : dubSession.state.error || undefined);
+    if (activityId)
+      finishTranslationRun(
+        activityId,
+        activityAborted ? 'cancelled' : completed && !agentFallback ? 'complete' : 'failed',
+        completed && !agentFallback ? undefined : dubSession.state.error || undefined,
+      );
     return completed && !agentFallback;
   } finally {
     finishActivity();
@@ -1363,8 +1403,9 @@ async function watchGeneration(taskId: string, signal: AbortSignal) {
         patch({
           tracks: Array.isArray(event.tracks) ? (event.tracks as string[]) : [],
           generatedTiming: dubSession.state.pendingTiming || 'strict_slot',
+          // QC marks measured the previous track; the new one is unchecked.
           segments: dubSession.state.segments.map((segment, index) => ({
-            ...segment,
+            ...invalidateQc(segment),
             sync_ratio:
               typeof syncScores[index] === 'number' ? (syncScores[index] as number) : undefined,
             fit_status:
@@ -1408,7 +1449,12 @@ export async function generateDub(
         const current = dubSession.state;
         const selected = regenOnly?.length ? new Set(regenOnly) : null;
         const languages = current.segments
-          .filter((segment) => (!selected || selected.has(segment.id)) && segment.text.trim() && segment.end - segment.start > 0.05)
+          .filter(
+            (segment) =>
+              (!selected || selected.has(segment.id)) &&
+              segment.text.trim() &&
+              segment.end - segment.start > 0.05,
+          )
           .map((segment) => segment.target_lang || language);
         if (!cachedTtsLanguagesSupported(queryClient, 'dub', languages)) {
           throw new Error(tr('languagePicker.chooseSupported'));
@@ -1529,7 +1575,11 @@ export async function generateDub(
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               signal,
-              body: JSON.stringify({ target_lang: languageCode, segments: misses, translation_instructions: current.translationInstructions }),
+              body: JSON.stringify({
+                target_lang: languageCode,
+                segments: misses,
+                translation_instructions: current.translationInstructions,
+              }),
             });
         if (fitted.segments.some((row) => AGENT_FIT_BLOCKING_ERRORS.has(row.error || '')))
           throw new Error(DUB_AGENT_UNAVAILABLE);
@@ -1817,6 +1867,16 @@ export function discardDubRecovery(): void {
   persist();
 }
 
+/** Whether the source can be removed so a new file or link can start. An
+ * interrupted or failed job (``recovery``) qualifies too: its only other exit
+ * was a file picker, so link import stayed unreachable (#2584). */
+export function dubSourceRemovable(
+  state: Pick<DubSession, 'phase'>,
+  isCancelling: boolean,
+): boolean {
+  return !isCancelling && ['idle', 'editing', 'done'].includes(state.phase);
+}
+
 /** Drop the current source so a new video or URL can be started. Production
  * preferences (target, quality, voice, timing, …) are kept; everything
  * source-specific (job, segments, transcript, errors) is cleared. */
@@ -1848,6 +1908,19 @@ export function resetDubSession(): boolean {
   }));
   persist();
   return true;
+}
+
+/** Remove the source from the UI. An interrupted run may still be executing
+ * on the backend (the window was reloaded mid-generation), so it is cancelled
+ * through ``cancelDub`` first; if the backend cannot confirm the stop the
+ * source is kept and ``cancelDub`` has already surfaced the error. */
+export async function removeDubSource(): Promise<boolean> {
+  if (controller || cancelling) return false;
+  if (dubSession.state.recovery) {
+    await cancelDub();
+    if (dubSession.state.recovery) return false;
+  }
+  return resetDubSession();
 }
 
 export async function resumeDub() {

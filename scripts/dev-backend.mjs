@@ -148,14 +148,11 @@ export function buildExitBanner({ code, signal, logTail, logPath, platform = pro
   return lines.join("\n");
 }
 
-// `uv run` re-syncs the venv to uv.lock before launching — which would undo
-// the opt-in ROCm torch swap `scripts/setup.py` just performed (the lock pins
-// the CUDA build). `bun run setup:api` already did the sync, so skip it here
-// whenever the ROCm variant is requested (#1665).
+// Setup is explicit and chooses the CPU/CUDA wheel graph. Never let launch or
+// restart silently restore the default CUDA group (or undo a ROCm swap).
 export function uvRunArgs(env = process.env) {
   const args = uvicornArgs(env);
-  const rocm = (env.OMNIVOICE_TORCH_VARIANT || "").trim().toLowerCase() === "rocm";
-  return rocm ? [args[0], "--no-sync", ...args.slice(1)] : args;
+  return [args[0], "--no-sync", ...args.slice(1)];
 }
 
 /**

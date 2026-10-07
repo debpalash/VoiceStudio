@@ -16,6 +16,7 @@ import { acquireSynthesis } from '@/lib/synthesis-lock';
 import { queryKeys } from '@/lib/query';
 import { beginAppActivity } from '@/lib/app-activity';
 import type { TtsReadinessBlocker } from '@/hooks/use-tts-readiness';
+import { announceDroppedSpeech } from '@/lib/dropped-speech';
 
 export function ProfilePreview({
   profile,
@@ -65,6 +66,7 @@ export function ProfilePreview({
         { signal: controller.signal },
       );
       if (controller.signal.aborted) return;
+      announceDroppedSpeech(result.dropped);
       setUrl(URL.createObjectURL(result.blob));
       setTake(result.id ? { id: result.id, seed: result.seed } : null);
       toast.success(t('tts.generationComplete'));

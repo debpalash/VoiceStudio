@@ -90,6 +90,8 @@ export default {
     { from: '../uv.lock', to: 'uv.lock' },
     { from: '../README.md', to: 'README.md' },
     { from: '../LICENSE', to: 'LICENSE' },
+    { from: '../LICENSE-NOTICE.md', to: 'LICENSE-NOTICE.md' },
+    { from: 'T3CODE-LICENSE.txt', to: 'electron/T3CODE-LICENSE.txt' },
     ...bundledUvResources,
   ],
   asar: true,
@@ -97,8 +99,10 @@ export default {
   win: {
     icon: 'build/icons/icon.ico',
     // The CLI matrix selects one architecture per runner and updater feed
-    // (--x64 / --arm64); this default only applies to an unflagged local build.
-    target: [{ target: 'nsis', arch: ['x64'] }],
+    // (--x64 / --arm64); an unflagged local build uses the host's. Never pin
+    // `arch` here: electron-builder unions it with the CLI flag, so
+    // `--win --arm64` would also build x64 (tests/packaging-contract.mjs).
+    target: ['nsis'],
   },
   nsis: {
     oneClick: false,
@@ -114,10 +118,9 @@ export default {
     hardenedRuntime: notarizeMac,
     notarize: notarizeMac,
     extendInfo: {
-      NSMicrophoneUsageDescription: readFileSync(
-        resolve(here, 'build/Info.plist'),
-        'utf8',
-      ).match(/<key>NSMicrophoneUsageDescription<\/key>\s*<string>([^<]+)<\/string>/)[1],
+      NSMicrophoneUsageDescription: readFileSync(resolve(here, 'build/Info.plist'), 'utf8').match(
+        /<key>NSMicrophoneUsageDescription<\/key>\s*<string>([^<]+)<\/string>/,
+      )[1],
     },
     // The CLI matrix selects one architecture per runner and updater feed.
     target: ['dmg', 'zip'],

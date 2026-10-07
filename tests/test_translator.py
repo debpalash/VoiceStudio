@@ -400,3 +400,69 @@ def test_chat_keeps_a_closing_tag_quoted_from_the_source(monkeypatch):
     monkeypatch.setattr(tr, "_llm_model", lambda: "test-model")
     out = tr._chat(client, system="s", user="Use </think> to close the block.")
     assert out == "Usa </think> para cerrar el bloque."
+
+
+# ── #2576: Japanese is written in kana AND kanji ─────────────────────────────
+# Escaped so the CJK guard (tests/test_no_hardcoded_cjk.py) stays untouched.
+_JA_KANJI_MAJORITY = "\u6771\u4eac\u90fd\u5e81\u306b\u884c\u304f\u3002"  # Tokyo city hall ni iku.
+_JA_ALL_KANJI = "日本語教室"                                # nihongo kyoushitsu
+_JA_SUPPLEMENTARY = "\U00020b9fる。人々"                        # rare Han + iteration mark
+
+
+@pytest.mark.parametrize("text", [_JA_KANJI_MAJORITY, _JA_ALL_KANJI, _JA_SUPPLEMENTARY])
+def test_japanese_han_letters_count_as_target_script(text):
+    from api.routers.dub_translate import _looks_like_target
+
+    assert tr._looks_like_target_script(text, "ja")
+    assert _looks_like_target(text, "ja")
+
+
+@pytest.mark.parametrize("text", ["This is English.", "Это русский.", "هذا عربي"])
+def test_japanese_gate_still_rejects_other_scripts(text):
+    from api.routers.dub_translate import _looks_like_target
+
+    assert not tr._looks_like_target_script(text, "ja")
+    assert not _looks_like_target(text, "ja")
+
+
+# Chinese sentence: "We go to the store today to buy things, then cook at home."
+_ZH_SENTENCE = "\u6211\u4eec\u4eca\u5929\u53bb\u5546\u5e97\u4e70\u4e1c\u897f\uff0c\u7136\u540e\u56de\u5bb6\u505a\u996d\u3002"
+_JA_SENTENCE = "\u4eca\u65e5\u306f\u5546\u5e97\u3067\u8cb7\u3044\u7269\u3092\u3057\u3066\u3001\u5bb6\u3067\u6599\u7406\u3092\u3057\u307e\u3059\u3002"
+_JA_NAME = "\u6771\u4eac"
+
+
+def test_japanese_gate_rejects_chinese_output():
+    from api.routers.dub_translate import _looks_like_target
+
+    assert tr.script_ratio(_ZH_SENTENCE, "ja") == 0.0
+    assert not tr._looks_like_target_script(_ZH_SENTENCE, "ja")
+    assert not _looks_like_target(_ZH_SENTENCE, "ja")
+    assert tr.script_ratio(_ZH_SENTENCE, "zh") == 1.0
+
+
+@pytest.mark.parametrize("text", [_JA_SENTENCE, _JA_NAME, _JA_ALL_KANJI])
+def test_japanese_gate_accepts_kana_and_short_kanji(text):
+    from api.routers.dub_translate import _looks_like_target
+
+    assert tr.script_ratio(text, "ja") == 1.0
+    assert _looks_like_target(text, "ja")
+
+
+def test_hindi_and_chinese_gates_unchanged_by_shared_ranges():
+    from api.routers.dub_translate import LANG_REQUIRED_SCRIPT, _script_ratio
+
+    assert _script_ratio("नमस्ते दोस्त.", "hi") == 1.0
+    assert _script_ratio("Hello friend", "hi") == 0.0
+    assert _script_ratio(_JA_ALL_KANJI, "zh") == 1.0
+    assert _script_ratio("Hello", "es") == 1.0
+    assert LANG_REQUIRED_SCRIPT["ja"][0] == "JAPANESE"
+
+
+def test_cinematic_accepts_kanji_majority_japanese(monkeypatch):
+    literal = "私は東京へ行く。"
+    _mock_chain(monkeypatch, "fine", _JA_KANJI_MAJORITY)
+    res = tr.cinematic_refine_sync(
+        "I am going to Tokyo.", literal, source_lang="en", target_lang="ja",
+    )
+    assert res["text"] == _JA_KANJI_MAJORITY
+    assert "degraded" not in res

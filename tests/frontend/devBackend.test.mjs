@@ -26,6 +26,19 @@ import {
   uvicornArgs,
 } from '../../scripts/dev-backend.mjs';
 
+test('CPU/CUDA/ROCm restarts skip sync while preserving bind-host and port overrides', () => {
+  for (const variant of ['auto', 'cpu', 'cuda', 'rocm']) {
+    const args = uvRunArgs({
+      OMNIVOICE_TORCH_VARIANT: variant,
+      OMNIVOICE_BIND_HOST: '192.0.2.10',
+      OMNIVOICE_PORT: '4321',
+    });
+    assert.deepEqual(args.slice(0, 2), ['run', '--no-sync']);
+    assert.equal(args[args.indexOf('--host') + 1], '192.0.2.10');
+    assert.equal(args[args.indexOf('--port') + 1], '4321');
+  }
+});
+
 function supervisorHarness(overrides = {}) {
   const children = [];
   const timers = [];

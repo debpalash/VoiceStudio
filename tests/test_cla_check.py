@@ -32,6 +32,7 @@ def actor(login=None, id=None, name="Someone", email="someone@example.com"):
     "  " + cla.SIGN_PHRASE.upper() + "  ",
     "Thanks!\n\n" + cla.SIGN_PHRASE + "\n\nCheers",
     cla.SIGN_PHRASE.replace(" ", "  "),
+    cla.SIGN_PHRASE.removesuffix("."),  # a missing full stop changes nothing
 ])
 def test_sign_phrase_is_recognised_on_its_own_line(body):
     assert cla.is_sign_comment(body)
@@ -522,3 +523,53 @@ def test_metadata_change_during_cla_evaluation_stays_pending(monkeypatch):
     with pytest.raises(RuntimeError, match='metadata changed'):
         cla.run(gh, 'pull_request_target', {'pull_request': {'number': 7}})
     assert gh.statuses[-1]['state'] == 'pending'
+
+
+# ── Near misses ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("comment,reason", [
+    (_comment(edited=True), "edited after it was posted"),
+    (_comment(body="I have read the VoiceStudio CLA and I hereby sign it"), "exact line"),
+    (_comment(body="> " + cla.SIGN_PHRASE), "exact line"),
+])
+def test_near_misses_get_one_reply_saying_why(comment, reason):
+    gh = _with_reactions(FakeGitHub([comment], [], store=cla.empty_store()))
+    assert cla.sign_on_issue(gh, _issue_event(["cla"])) == 0
+    assert len(gh.posted) == 1 and reason in gh.posted[0] and "@alice" in gh.posted[0]
+    assert cla.SIGN_PHRASE in gh.posted[0]
+    # The bot's reply is on the issue now, so the next scan does not repeat it.
+    gh.comments.append({"id": 99, "user": {"id": 1, "login": "github-actions[bot]", "type": "Bot"},
+                        "body": gh.posted[0]})
+    cla.sign_on_issue(gh, _issue_event(["cla"]))
+    assert len(gh.posted) == 1
+
+
+@pytest.mark.parametrize("comment", [
+    _comment(body="Thanks for the CLA, happy to sign once I read it."),
+    _comment(body="Thanks everyone"),
+    _comment(user_type="Bot", edited=True),
+    _comment(),  # a valid signature
+])
+def test_no_reply_to_ordinary_comments_bots_or_valid_signatures(comment):
+    gh = _with_reactions(FakeGitHub([comment], [], store=cla.empty_store()))
+    cla.sign_on_issue(gh, _issue_event(["cla"]))
+    assert gh.posted == []
+
+
+@pytest.mark.parametrize("comment", [
+    {**_comment(body="To sign, post: `" + cla.SIGN_PHRASE + "`"), "author_association": "COLLABORATOR"},
+    {**_comment(body="Post this line: " + cla.SIGN_PHRASE), "author_association": "MEMBER"},
+    _comment(user_id=4178343, login="debpalash", body="Please post exactly: " + cla.SIGN_PHRASE),
+])
+def test_maintainers_explaining_how_to_sign_get_no_reply(comment):
+    gh = _with_reactions(FakeGitHub([comment], [], store=cla.empty_store()))
+    cla.sign_on_issue(gh, _issue_event(["cla"]))
+    assert gh.posted == []
+
+
+def test_signed_people_get_no_reply_for_a_later_near_miss():
+    gh = _with_reactions(FakeGitHub([_comment(edited=True)], [],
+                                    store={**cla.empty_store(), "signatures": [{"id": 1001}]}))
+    cla.sign_on_issue(gh, _issue_event(["cla"]))
+    assert gh.posted == []

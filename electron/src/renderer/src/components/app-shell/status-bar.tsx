@@ -48,6 +48,7 @@ import {
   batchStatusPollMs,
   loadedModelsPollMs,
   modelStatusPollMs,
+  relaxWhenBackendBusy,
 } from '@/lib/status-polling';
 
 type BackendStage = ReturnType<typeof useBackendStatus>['stage'];
@@ -254,7 +255,7 @@ export function StatusBar({
   const diarisation = useQuery({
     queryKey: ['diarisation-status'],
     enabled: isBackendReachable(status.stage),
-    refetchInterval: IDLE_STATUS_POLL_MS,
+    refetchInterval: () => relaxWhenBackendBusy(IDLE_STATUS_POLL_MS),
     queryFn: () =>
       apiJson<{
         active: string;
@@ -359,7 +360,13 @@ export function StatusBar({
     status.stage !== 'ready'
       ? status.stage === 'port_in_use'
         ? t('backend.port_in_use_short', { port: status.port })
-        : t(`backend.${status.stage}`)
+        : status.diagnosis === 'remote_unreachable'
+          ? t('backend.unresponsive_remote')
+          : status.diagnosis === 'unhealthy'
+            ? t('backend.unhealthy')
+            : status.diagnosis === 'auth_required'
+              ? t('backend.auth_required')
+              : t(`backend.${status.stage}`)
       : runtimeHealth === 'checking'
         ? t('preferences.loading')
         : runtimeHealth === 'unavailable'

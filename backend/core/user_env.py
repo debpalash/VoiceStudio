@@ -12,6 +12,7 @@ persisted ``HF_TOKEN``) and writes the file ``0600`` (it can hold secrets).
 from __future__ import annotations
 
 import os
+import re
 from typing import Optional
 
 USER_ENV_PATH = os.path.expanduser("~/.config/omnivoice/env")
@@ -51,12 +52,37 @@ def _write_lines(path: str, lines: list[str]) -> None:
         pass  # best-effort; some filesystems/Windows don't support chmod
 
 
+# Characters that never need quoting; ordinary values (URLs, tokens, simple
+# paths) stay unquoted exactly as older versions wrote them.
+_PLAIN_VALUE = re.compile(r"^[A-Za-z0-9_\-./:@%+=,~]*$")
+
+
+def _encode_value(value: str) -> str:
+    """Render ``value`` so dotenv reads back exactly the same string.
+
+    An unquoted ``Books #1`` is cut at `` #`` as a comment, so anything outside
+    the plain set is single-quoted with backslash and apostrophe escaped (the
+    same scheme Electron uses for ``OMNIVOICE_DATA_DIR``).
+    """
+    if re.search(r"[\0\r\n]", value):
+        raise ValueError("value must not contain NUL or line breaks")
+    if _PLAIN_VALUE.match(value):
+        return value
+    return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+
+def _decode_value(raw: str) -> str:
+    if len(raw) >= 2 and raw[0] == "'" and raw[-1] == "'":
+        return re.sub(r"\\(['\\])", r"\1", raw[1:-1])
+    return raw
+
+
 def get_user_env(key: str, path: Optional[str] = None) -> Optional[str]:
     path = path or os.environ.get("OMNIVOICE_ENV_FILE") or USER_ENV_PATH  # resolved at call time so tests can monkeypatch
     prefix = f"{key}="
     for line in _read_lines(path):
         if line.startswith(prefix):
-            return line[len(prefix):]
+            return _decode_value(line[len(prefix):])
     return None
 
 
@@ -64,15 +90,16 @@ def set_user_env(key: str, value: str, path: Optional[str] = None) -> None:
     """Upsert ``KEY=value``, preserving all other lines."""
     path = path or os.environ.get("OMNIVOICE_ENV_FILE") or USER_ENV_PATH
     prefix = f"{key}="
+    encoded = _encode_value(value)
     lines = _read_lines(path)
     replaced = False
     for i, line in enumerate(lines):
         if line.startswith(prefix):
-            lines[i] = f"{key}={value}"
+            lines[i] = f"{key}={encoded}"
             replaced = True
             break
     if not replaced:
-        lines.append(f"{key}={value}")
+        lines.append(f"{key}={encoded}")
     _write_lines(path, lines)
 
 
@@ -105,9 +132,39 @@ def load_into_environ(path: Optional[str] = None) -> bool:
         import dotenv
     except ImportError:
         return False
-    dotenv.load_dotenv(path, override=True)
+    # dotenv expands ``${...}`` even inside single quotes, which would corrupt
+    # a folder name containing it (#2519). Single-quoted values (the form
+    # set_user_env writes for anything non-plain) stay literal; unquoted and
+    # double-quoted ones — e.g. a hand-written ``HF_HOME=${HOME}/models`` —
+    # keep their usual expansion. App-written unquoted values never hold ``$``.
+    literal = dotenv.dotenv_values(path, interpolate=False, encoding="utf-8")
+    expanded = dotenv.dotenv_values(path, interpolate=True, encoding="utf-8")
+    single_quoted = _single_quoted_keys(path)
+    for key, value in literal.items():
+        if value is None:
+            continue
+        if key not in single_quoted and expanded.get(key) is not None:
+            value = expanded[key]
+        os.environ[key] = value
     _drop_invalid_path_keys()
     return True
+
+
+def _single_quoted_keys(path: str) -> set[str]:
+    """Keys whose effective (last) assignment in ``path`` is single-quoted."""
+    from dotenv.parser import parse_stream
+
+    keys: set[str] = set()
+    with open(path, encoding="utf-8") as f:
+        for binding in parse_stream(f):
+            if binding.key is None:
+                continue
+            rhs = binding.original.string.split("=", 1)[-1].lstrip()
+            if rhs.startswith("'"):
+                keys.add(binding.key)
+            else:
+                keys.discard(binding.key)
+    return keys
 
 
 #: Path-valued keys this file can persist. A reinstall that skipped uninstall

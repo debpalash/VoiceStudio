@@ -146,11 +146,18 @@ export function prepareMacDevElectron({
   return plan.destinationExecutable;
 }
 
-export function launchElectronVite(args = process.argv.slice(2), spawnProcess = spawn) {
+export function launchElectronVite(
+  args = process.argv.slice(2),
+  spawnProcess = spawn,
+  resolveElectronExecutable = () => require('electron'),
+) {
   const electronVitePackage = require.resolve('electron-vite/package.json');
   const { bin } = JSON.parse(readFileSync(electronVitePackage, 'utf8'));
   const electronViteBin = resolve(dirname(electronVitePackage), bin['electron-vite']);
   const env = { ...process.env };
+  // Electron 42+ downloads lazily through its public entry point. electron-vite
+  // reads path.txt directly, so resolve the binary before it starts on every OS.
+  env.ELECTRON_EXEC_PATH ||= resolveElectronExecutable();
 
   if (process.platform === 'darwin') {
     const electronPackage = require.resolve('electron/package.json');
@@ -159,7 +166,7 @@ export function launchElectronVite(args = process.argv.slice(2), spawnProcess = 
       readFileSync(join(repoRoot, 'package.json'), 'utf8'),
     );
     env.ELECTRON_EXEC_PATH = prepareMacDevElectron({
-      electronExecutable: require('electron'),
+      electronExecutable: env.ELECTRON_EXEC_PATH,
       electronVersion,
       appVersion,
       iconPath: join(electronRoot, 'build', 'icons', 'icon.icns'),

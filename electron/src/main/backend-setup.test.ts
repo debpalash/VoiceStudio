@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, afterEach, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, expect, it, onTestFinished, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { chmodSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -59,10 +59,13 @@ vi.mock('./runtime-project', () => ({
 import {
   BackendSupervisor,
   bundledUvPath,
+  bundledWebUiPath,
   isExpectedPipeClose,
   isUnsupportedPlatform,
   managedBackendSpawnOptions,
+  platformSetupIssue,
 } from './backend';
+import { app } from 'electron';
 
 beforeEach(() => {
   // Generic installation fixtures need a supported host. Intel cases override it.
@@ -632,6 +635,40 @@ it('only ever names a uv that is really there', () => {
   }
 });
 
+// ── #2599: LAN devices need the web UI this app version ships ──────────────
+//
+// The runtime project holds only the Python sources, so a backend left to
+// find the web build beside itself had none and redirected LAN devices to
+// their own localhost. The managed launch must point it at the packaged build.
+
+function stubResourcesPath(path: string): void {
+  const previous = Object.getOwnPropertyDescriptor(process, 'resourcesPath');
+  Object.defineProperty(process, 'resourcesPath', { value: path, configurable: true });
+  onTestFinished(() => {
+    if (previous) Object.defineProperty(process, 'resourcesPath', previous);
+    else delete (process as { resourcesPath?: string }).resourcesPath;
+  });
+}
+
+it('serves LAN devices the web UI packaged with this app version', () => {
+  vi.stubEnv('OMNIVOICE_FRONTEND_DIST', '');
+  stubResourcesPath(join('/opt', 'VoiceStudio', 'resources'));
+
+  const { env } = managedBackendSpawnOptions(3900);
+
+  expect(env.OMNIVOICE_FRONTEND_DIST).toBe(
+    join('/opt', 'VoiceStudio', 'resources', 'frontend', 'dist'),
+  );
+  expect(bundledWebUiPath()).toBe(env.OMNIVOICE_FRONTEND_DIST);
+});
+
+it('keeps a web UI directory the user pinned themselves', () => {
+  vi.stubEnv('OMNIVOICE_FRONTEND_DIST', '/custom/web');
+  stubResourcesPath(join('/opt', 'VoiceStudio', 'resources'));
+
+  expect(managedBackendSpawnOptions(3900).env.OMNIVOICE_FRONTEND_DIST).toBe('/custom/web');
+});
+
 it('exposes the current process signal separately from the durable crash journal', async () => {
   vi.useFakeTimers();
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
@@ -701,4 +738,36 @@ it('does not gate Apple Silicon or other platforms', () => {
   expect(isUnsupportedPlatform('darwin', 'arm64')).toBe(false);
   expect(isUnsupportedPlatform('win32', 'x64')).toBe(false);
   expect(isUnsupportedPlatform('linux', 'x64')).toBe(false);
+});
+
+it('tells Apple Silicon users running the Intel build to install the arm64 build (#2598)', async () => {
+  expect(platformSetupIssue('darwin', 'x64', true)).toBe('wrong_architecture');
+  expect(platformSetupIssue('darwin', 'x64', false)).toBe('unsupported_platform');
+  expect(platformSetupIssue('darwin', 'arm64', false)).toBeUndefined();
+  // Windows on ARM emulating the x64 build is a different, supported path.
+  expect(platformSetupIssue('win32', 'x64', true)).toBeUndefined();
+
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      throw new Error('no backend');
+    }),
+  );
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  vi.stubEnv('VOICESTUDIO_SKIP_BACKEND', '');
+  const restore = stubIntelMac();
+  const electronApp = app as { runningUnderARM64Translation?: boolean };
+  electronApp.runningUnderARM64Translation = true;
+  try {
+    const supervisor = new BackendSupervisor();
+    await supervisor.start();
+    expect(supervisor.status.stage).toBe('setup_required');
+    expect(supervisor.status.setupIssue).toBe('wrong_architecture');
+    await supervisor.setupRuntime();
+    expect(mocks.install).not.toHaveBeenCalled();
+    await supervisor.shutdown();
+  } finally {
+    delete electronApp.runningUnderARM64Translation;
+    restore();
+  }
 });

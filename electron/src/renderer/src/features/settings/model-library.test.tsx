@@ -186,7 +186,7 @@ it('keeps the disk reserve guard when a performance pack still needs downloads',
 
   const installPack = await screen.findByRole('button', { name: 'models.pack_install' });
   expect(installPack).toBeDisabled();
-  expect(screen.getByRole('alert')).toHaveTextContent('models.reco_low_disk');
+  expect(screen.getByRole('alert')).toHaveTextContent('models.pack_low_disk');
   fireEvent.click(installPack);
   expect(mock.api.mock.calls.every(([path]) => path !== '/models/install')).toBe(true);
 });
@@ -712,3 +712,48 @@ it('labels installed recommendations and distinguishes the active model', async 
   expect(screen.getByText('modelMaintenance.installed')).toBeInTheDocument();
   expect(screen.getByText('Optional voice')).toBeInTheDocument();
 });
+
+it.each([
+  // Fits the raw download but not the headroom the backend keeps (#2597).
+  { free: 8, headroom: undefined, warns: true },
+  { free: 8, headroom: 2, warns: false },
+  { free: 20, headroom: 10, warns: false },
+])(
+  'warns about the full bundle with the backend disk rule (free $free GB, headroom $headroom)',
+  async ({ free, headroom, warns }) => {
+    mock.api.mockImplementation((path: string) => {
+      if (path === '/models') {
+        return Promise.resolve({ models: [], disk_free_gb: free, disk_headroom_gb: headroom });
+      }
+      if (path === '/setup/recommendations') {
+        return Promise.resolve({
+          device: { label: 'Test device' },
+          models: [
+            {
+              repo_id: 'owner/required',
+              label: 'Required voice',
+              role: 'TTS',
+              size_gb: 4,
+              required: true,
+              installed: false,
+            },
+          ],
+          download_gb_remaining: 4,
+          total_gb: 4,
+          all_installed: false,
+        });
+      }
+      if (path === '/models/install/status') return Promise.resolve({ jobs: [] });
+      return Promise.resolve({});
+    });
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <SystemRecommendations />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText('models.reco_disk_free');
+    expect(screen.queryByRole('alert') !== null).toBe(warns);
+  },
+);

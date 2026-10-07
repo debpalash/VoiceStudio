@@ -46,28 +46,30 @@ def upsert_binding(
     if not client_id or not client_id.strip():
         raise ValueError("client_id must be non-empty")
     cid = client_id.strip()
-    existing = get_binding(cid)
-    now = time.time()
-    if existing:
-        merged = {
-            "label": existing["label"] if label is None else label,
-            "profile_id": existing["profile_id"] if profile_id is None else (profile_id or None),
-            "default_engine": existing["default_engine"] if default_engine is None else (default_engine or None),
-        }
-        with db_conn() as conn:
-            conn.execute(
-                "UPDATE mcp_client_bindings SET label=?, profile_id=?, default_engine=? WHERE client_id=?",
-                (merged["label"], merged["profile_id"], merged["default_engine"], cid),
-            )
-    else:
-        with db_conn() as conn:
-            conn.execute(
-                "INSERT INTO mcp_client_bindings "
-                "(client_id, label, profile_id, default_engine, last_seen_at, created_at) "
-                "VALUES (?, ?, ?, ?, NULL, ?)",
-                (cid, label or "", profile_id or None, default_engine or None, now),
-            )
-    return get_binding(cid)
+    # One statement, one transaction: SQLite resolves the insert/update race
+    # itself and an omitted field keeps whatever the row holds at write time.
+    # Reading a snapshot on another connection first and writing it back for
+    # the omitted fields reverted a concurrent client's edit to those fields,
+    # and two first saves could both choose INSERT and hit the primary key
+    # (#2568). ``""`` still clears profile/engine to NULL.
+    with db_conn() as conn:
+        conn.execute(
+            "INSERT INTO mcp_client_bindings "
+            "(client_id, label, profile_id, default_engine, last_seen_at, created_at) "
+            "VALUES (?, ?, ?, ?, NULL, ?) "
+            "ON CONFLICT(client_id) DO UPDATE SET "
+            "label = CASE WHEN ? THEN excluded.label ELSE label END, "
+            "profile_id = CASE WHEN ? THEN excluded.profile_id ELSE profile_id END, "
+            "default_engine = CASE WHEN ? THEN excluded.default_engine ELSE default_engine END",
+            (
+                cid, label or "", profile_id or None, default_engine or None, time.time(),
+                label is not None, profile_id is not None, default_engine is not None,
+            ),
+        )
+        row = conn.execute(
+            "SELECT * FROM mcp_client_bindings WHERE client_id=?", (cid,)
+        ).fetchone()
+    return dict(row)
 
 
 def delete_binding(client_id: str) -> bool:

@@ -20,9 +20,11 @@ translate, review the text, then generate. Completed tracks can be previewed and
 exported through the native save dialog.
 
 The import card can clear a pasted URL and its cookie attachment before ingest.
-After loading a source, Remove video returns to the import card, discarding the
-transcript and edit history while retaining production settings. It asks for
-confirmation when transcript edits or segments would be discarded.
+After loading a source, Remove video (Remove audio for audio sources) returns to
+the import card, with its file and URL options, discarding the transcript and edit
+history while retaining production settings. It stays available after an
+interrupted or failed run, and asks for confirmation when transcript edits or
+segments would be discarded.
 
 Segment rows scan as compact source/translation pairs: speaker, voice, fit state,
 selection and timestamp stay visible, while row actions reveal on hover or keyboard
@@ -57,6 +59,14 @@ TTS, fitting, mixing and export. Electron reuses Tauri's speaker binding and
 segment generation helpers. A stream close without a terminal event is a failure,
 not success. Cancellation aborts the HTTP stream and requests backend task/job
 cancellation. Edits, target language, track metadata and task IDs persist locally across reloads.
+A generation publishes its track only once it finishes: cancelling it, or importing or
+re-transcribing subtitles while it runs, keeps the previous track (the latter asks for a new
+generation). Fresh segment speech enters the cache behind segment previews and partial
+regeneration only when its track is published, together with its fingerprint; a new track starts
+without the previous track's QC marks, and a dub that finishes as cancellation arrives reports
+done. Subtitles imported, or a dub published, during transcription replace its result, and
+imported cues keep their matched voice references: each transcription writes its references to
+its own folder.
 Interrupted preparation/generation offers Resume, which reads the existing task
 and replays its stream; generation is never resubmitted just because the UI reloaded.
 Interrupted transcription offers an explicit Retry against the existing prepared

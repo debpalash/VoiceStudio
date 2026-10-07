@@ -127,6 +127,8 @@ _unregister_proc   = dub_pipeline.unregister_proc
 _kill_job_procs    = dub_pipeline.kill_job_procs
 _get_job           = dub_pipeline.get_job
 _save_job          = dub_pipeline.save_job
+replace_source_segments = dub_pipeline.replace_source_segments
+segments_revision = dub_pipeline.segments_revision
 
 # Pasted subtitle text is a transcript, not a media file: a feature-length
 # film's .srt is ~150 KB. 2 MB of characters is ~13x the worst realistic case
@@ -313,36 +315,38 @@ async def dub_import_srt(job_id: str, file: UploadFile = File(...)):
     else:
         segments = result.segments
 
-    prior_segments = [
-        segment for segment in (job.get("segments") or []) if isinstance(segment, dict)
-    ]
-    segments, segment_clones = _carry_srt_voice_metadata(
-        segments,
-        prior_segments,
-        job.get("segment_clones"),
-        job.get("speaker_clones"),
-    )
-    job["segments"] = segments
-    job["segment_clones"] = segment_clones
-    # A pooled speaker clone is keyed only by a display label. Replacement
-    # cues can reuse that label without overlapping the original speaker, so
-    # retain matched pooled references as segment-specific clones above and
-    # drop the global map before rebuilding the cast.
-    job["speaker_clones"] = {}
-    if segment_clones:
-        from services.speaker_clone import build_cast_sources
+    from services.speaker_clone import build_cast_sources
 
-        job["cast_sources"] = build_cast_sources(
+    # Select the references to keep and save them in one locked step. Selected
+    # outside the lock, they could come from a transcript that a finishing
+    # transcription replaces, and whose reference folder it then deletes,
+    # before this import saves them. Under the lock a render or transcription
+    # finishing meanwhile sees either the old subtitles or all imported ones.
+    with dub_pipeline._dub_jobs_lock:
+        prior_segments = [
+            segment for segment in (job.get("segments") or []) if isinstance(segment, dict)
+        ]
+        segments, segment_clones = _carry_srt_voice_metadata(
             segments,
-            None,
-            segment_clones,
+            prior_segments,
+            job.get("segment_clones"),
+            job.get("speaker_clones"),
         )
-    else:
-        job.pop("cast_sources", None)
-    # `source_lang` stays whatever the user (or the upload step) set; we
-    # don't try to language-detect off the cue text — that's noisy and the
-    # user usually knows what their .srt is.
-    _save_job(job_id, job)
+        replace_source_segments(job, segments)
+        job["segment_clones"] = segment_clones
+        # A pooled speaker clone is keyed only by a display label. Replacement
+        # cues can reuse that label without overlapping the original speaker, so
+        # retain matched pooled references as segment-specific clones above and
+        # drop the global map before rebuilding the cast.
+        job["speaker_clones"] = {}
+        if segment_clones:
+            job["cast_sources"] = build_cast_sources(segments, None, segment_clones)
+        else:
+            job.pop("cast_sources", None)
+        # `source_lang` stays whatever the user (or the upload step) set; we
+        # don't try to language-detect off the cue text — that's noisy and the
+        # user usually knows what their .srt is.
+        _save_job(job_id, job)
     logger.info(
         "Imported %d cue(s) from .srt for job %s (skipped=%d, overlap_shifted=%d, clamped=%d)",
         len(segments), log_safe(job_id), result.skipped_cues, result.dropped_overlaps, clamped,
@@ -486,16 +490,17 @@ def dub_use_downloaded_captions(job_id: str):
         raise HTTPException(status_code=422, detail="Downloaded captions contain no usable cues")
 
     source_lang = job.get("source_lang_override") or _detected_source_lang(caption_lang)
-    job["segments"] = segments
-    job["source_lang"] = source_lang
-    job["full_transcript"] = " ".join(segment["text"] for segment in segments)
-    # Caption files contain timing and text, but no trustworthy speaker or
-    # reference-audio attribution. Never retain stale clone maps from a prior
-    # transcript on the same job.
-    job["segment_clones"] = {}
-    job["speaker_clones"] = {}
-    job.pop("cast_sources", None)
-    _save_job(job_id, job)
+    with dub_pipeline._dub_jobs_lock:
+        replace_source_segments(job, segments)
+        job["source_lang"] = source_lang
+        job["full_transcript"] = " ".join(segment["text"] for segment in segments)
+        # Caption files contain timing and text, but no trustworthy speaker or
+        # reference-audio attribution. Never retain stale clone maps from a
+        # prior transcript on the same job.
+        job["segment_clones"] = {}
+        job["speaker_clones"] = {}
+        job.pop("cast_sources", None)
+        _save_job(job_id, job)
     return {
         "segments": segments,
         "source_lang": source_lang,
@@ -520,10 +525,11 @@ def dub_cleanup_segments(job_id: str, req: Optional[CleanupSegmentsRequest] = No
     if req is not None:
         cleaned = clean_up_segments(req.segments)
         return {"segments": cleaned, "before": len(req.segments), "after": len(cleaned)}
-    segments = job.get("segments") or []
-    cleaned = clean_up_segments(segments)
-    job["segments"] = cleaned
-    _save_job(job_id, job)
+    with dub_pipeline._dub_jobs_lock:
+        segments = job.get("segments") or []
+        cleaned = clean_up_segments(segments)
+        replace_source_segments(job, cleaned)
+        _save_job(job_id, job)
     return {"segments": cleaned, "before": len(segments), "after": len(cleaned)}
 
 
@@ -1213,6 +1219,9 @@ async def dub_transcribe_stream(
     # every subsequent /generate run on CPU. Set on a successful offload,
     # cleared by the normal restore, honoured by gen()'s `finally` on EVERY exit.
     _tts_offloaded: dict = {"v": False}
+    # This pass's voice-reference folder; gen()'s `finally` deletes it unless
+    # the pass committed, so discarded and aborted passes leave no clips.
+    _ref_run: dict = {"dir": None, "committed": False}
 
     def _log_bg_failure(f, what):
         """Retrieve a fire-and-forget future's exception so it isn't swallowed."""
@@ -1268,6 +1277,9 @@ async def dub_transcribe_stream(
         touch_activity("transcribe", "dub")
 
         job = _get_job(job_id)
+        # Subtitles imported or a dub published while this pass runs win over
+        # its result.
+        start_rev = segments_revision(job) if job else 0
 
         # The durable job is written before the terminal SSE events below. If
         # the renderer, proxy, or backend connection drops in that narrow
@@ -2041,7 +2053,22 @@ async def dub_transcribe_stream(
 
         from services.segmentation import deduplicate_chunk_segments
         final_segs = deduplicate_chunk_segments(final_segs)
-        job["segments"] = final_segs
+        # Everything this pass derives is committed together at the end, so an
+        # SRT import that lands while references are extracted is never mixed
+        # with, or overwritten by, this transcript. The clone maps are replaced
+        # wholesale: references cut for the previous transcript are keyed by
+        # that transcript's segment ids and must not attach to this one's.
+        commit: dict = {"segment_clones": {}, "speaker_clones": {}, "cast_sources": {}}
+
+        def _ref_run_dir(fallback_dir: str) -> str:
+            # One private folder per pass (see REFERENCE_RUNS_DIRNAME): an SRT
+            # import landing mid-extraction keeps clips that this pass would
+            # otherwise overwrite under the same names.
+            if _ref_run["dir"] is None:
+                _ref_run["dir"] = dub_pipeline.new_reference_run_dir(
+                    _safe_job_dir(job_id) or fallback_dir
+                )
+            return _ref_run["dir"]
 
         # Auto-speaker-clone: sample each detected speaker's voice from the
         # Demucs-isolated vocals track and assign `auto:speaker_N` as the
@@ -2079,8 +2106,7 @@ async def dub_transcribe_stream(
                 # new job's clone refs into a directory the user can delete by
                 # removing that older history entry — after which every
                 # single-segment regen silently rendered in the default voice.
-                _clone_dir = _safe_job_dir(job_id) or os.path.dirname(vocals_for_clone)
-                os.makedirs(_clone_dir, exist_ok=True)
+                _clone_dir = _ref_run_dir(os.path.dirname(vocals_for_clone))
                 fut_clones = loop.run_in_executor(
                     _cpu_pool, lambda: extract_speaker_clones(
                         vocals_for_clone, final_segs,
@@ -2118,7 +2144,7 @@ async def dub_transcribe_stream(
             # per-speaker clone below. Default on; the user can force
             # per-speaker by disabling it (job["per_segment_refs"]).
             seg_clones = {}
-            job["per_segment_refs"] = per_segment_refs
+            commit["per_segment_refs"] = per_segment_refs
             if per_segment_refs:
                 try:
                     from services.speaker_clone import extract_segment_refs
@@ -2128,8 +2154,7 @@ async def dub_transcribe_stream(
                     # live in THIS job's dir, or a cache-hit job's clips die
                     # with the older job they were written next to (both
                     # reviewers, on the first version of this fix).
-                    _seg_clone_dir = _safe_job_dir(job_id) or os.path.dirname(vocals_for_clone)
-                    os.makedirs(_seg_clone_dir, exist_ok=True)
+                    _seg_clone_dir = _ref_run_dir(os.path.dirname(vocals_for_clone))
                     fut_seg_refs = loop.run_in_executor(
                         _cpu_pool, lambda: extract_segment_refs(
                             vocals_for_clone, final_segs,
@@ -2157,15 +2182,15 @@ async def dub_transcribe_stream(
                             logger.warning(
                                 "segment ref-text refine timed out; keeping original ref_text: %s", e
                             )
-                        job["segment_clones"] = seg_clones
+                        commit["segment_clones"] = seg_clones
                 except Exception as e:
                     logger.warning("per-segment clone refs skipped: %s", e)
 
             cast_sources = build_cast_sources(final_segs, clones, seg_clones)
-            job["cast_sources"] = cast_sources
+            commit["cast_sources"] = cast_sources
             if cast_sources:
                 if clones:
-                    job["speaker_clones"] = clones
+                    commit["speaker_clones"] = clones
                 # Default each segment's profile_id to its detected speaker's
                 # auto-clone — but only if the user hasn't already assigned
                 # something. (#486)
@@ -2193,12 +2218,40 @@ async def dub_transcribe_stream(
         except Exception as e:
             logger.warning("speaker_clone extraction skipped: %s", e)
 
-        job["source_lang"] = job.get("source_lang_override") or _detected_source_lang(
-            detected_lang
-        )
-        job["full_transcript"] = " ".join(s.get("text", "") for s in final_segs)
-        job["transcription_complete"] = True
-        _save_job(job_id, job)
+        previous_ref_run = None
+        with dub_pipeline._dub_jobs_lock:
+            superseded = segments_revision(job) != start_rev
+            if not superseded:
+                previous_ref_run = job.get("ref_run")
+                commit["ref_run"] = (
+                    os.path.basename(_ref_run["dir"]) if _ref_run["dir"] else None
+                )
+                replace_source_segments(job, final_segs)
+                job.update(commit)
+                job["source_lang"] = job.get("source_lang_override") or _detected_source_lang(
+                    detected_lang
+                )
+                job["full_transcript"] = " ".join(s.get("text", "") for s in final_segs)
+                job["transcription_complete"] = True
+                _save_job(job_id, job)
+            else:
+                # Report the subtitles the job now holds, so the editor shows
+                # what a later dub will actually use.
+                final_segs = job.get("segments") or []
+        if superseded:
+            logger.info(
+                "Transcription result for %s discarded: subtitles were replaced while it ran",
+                log_safe(job_id),
+            )
+        else:
+            _ref_run["committed"] = True
+            # The job no longer references the previous pass's clips.
+            _job_dir = _safe_job_dir(job_id)
+            if _job_dir and previous_ref_run and previous_ref_run != commit["ref_run"]:
+                dub_pipeline.discard_reference_run(os.path.join(
+                    _job_dir, dub_pipeline.REFERENCE_RUNS_DIRNAME,
+                    os.path.basename(str(previous_ref_run)),
+                ), job)
 
         # Restore TTS model to GPU now that ASR is done. unload() blocks
         # (gc.collect + CUDA cache drop) — run it on the GPU pool so the
@@ -2234,8 +2287,8 @@ async def dub_transcribe_stream(
 
         yield _sse_event("final", {
             "segments": final_segs,
-            "source_lang": job["source_lang"],
-            "full_transcript": job["full_transcript"],
+            "source_lang": job.get("source_lang") or "",
+            "full_transcript": job.get("full_transcript") or "",
             # The client only needs labels and durations. Never send host
             # paths or reference transcripts through this public event.
             "speaker_clones": job.get("cast_sources", {}),
@@ -2267,6 +2320,8 @@ async def dub_transcribe_stream(
             yield _sse_event("done", {})
         finally:
             _asr_work.stop()
+            if _ref_run["dir"] and not _ref_run["committed"]:
+                dub_pipeline.discard_reference_run(_ref_run["dir"], _get_job(job_id))
             # Last-resort VRAM release (see _loaded_asr above): covers crashes,
             # early terminal-error returns, and client disconnects
             # (GeneratorExit bypasses the except, never this finally).
@@ -2330,6 +2385,13 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
     job = _get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    # Subtitles imported or a dub published while this pass runs win over its
+    # result.
+    start_rev = segments_revision(job)
+    # Committed with the segments. This pass cuts no voice references, and the
+    # previous transcript's are keyed by its segment ids, which the new
+    # segments reuse for other lines.
+    detected: dict = {"segment_clones": {}, "speaker_clones": {}, "cast_sources": {}}
     # Same as the streaming preflight: the only use of the TTS core here is the
     # last-resort `_model._asr_pipe` fallback below, which exists solely under
     # OMNIVOICE_PRELOAD_TTS_ASR — and when it is off, that branch raises "fallback
@@ -2405,7 +2467,7 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
             except Exception as e:
                 logger.warning("Failed to unload ASR backend: %s", e)
 
-        job["source_lang"] = job.get("source_lang_override") or _detected_source_lang(
+        detected["source_lang"] = job.get("source_lang_override") or _detected_source_lang(
             detected_lang
         )
 
@@ -2450,7 +2512,7 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
 
         for s in segments:
             s.setdefault("text_original", s.get("text", ""))
-        job["full_transcript"] = " ".join(s["text"] for s in segments)
+        detected["full_transcript"] = " ".join(s["text"] for s in segments)
 
         # Transcription is done with the resident TTS model still offloaded;
         # release the accelerator cache the offload freed, on whichever
@@ -2475,9 +2537,18 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
             raise HTTPException(status_code=499, detail="Transcription aborted")
         from services.segmentation import deduplicate_chunk_segments
         segments_result = deduplicate_chunk_segments(segments_result)
-        job["segments"] = segments_result
+        with dub_pipeline._dub_jobs_lock:
+            if segments_revision(job) == start_rev:
+                replace_source_segments(job, segments_result)
+                job.update(detected)
+                _save_job(job_id, job)
+            else:
+                logger.info(
+                    "Transcription result for %s discarded: subtitles were replaced while it ran",
+                    log_safe(job_id),
+                )
+                segments_result = job.get("segments") or []
         source_lang = job.get("source_lang")
-        _save_job(job_id, job)
         return {
             "job_id": job_id,
             "segments": segments_result,

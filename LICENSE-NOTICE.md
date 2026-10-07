@@ -55,8 +55,24 @@ weights as CC-BY-NC. Its `audio_tokenizer/LICENSE` contains separate Boson
 Higgs Audio 2 and Meta Llama community terms. A commercial license for
 VoiceStudio-owned code does not replace any of those terms.
 
+The maintained About panel displays selected model credits and required literal
+Higgs Audio and Llama attribution text. See [model credit sources](docs/model-credits.md)
+for evidence and remaining gaps. These visible credits do not establish complete
+notice compliance or permission for a particular use.
+
+The [model licence records](backend/config/model_licenses.json) distinguish
+inspected non-commercial terms from unreviewed upstream metadata. A false
+commercial-use flag includes unresolved review; it is not a claim that every
+listed model forbids commercial use. No commercial clearance is asserted by
+the initial inventory.
+
 Third-party dependencies retain their own licenses. See `bun.lock`, `uv.lock`,
 and `native/desktop-bridge/Cargo.lock` for the resolved set.
+
+The locked PyAV 15.1.0 wheels bundle FFmpeg and x264/x265 libraries. PyAV's source
+licence alone does not describe those binaries' terms. The
+[wheel audit](docs/licensing/pyav-15.1.0-audit.md) records their hashes, build flags,
+upstream licence-label patch, and unresolved redistribution requirements.
 
 ### Reference
 

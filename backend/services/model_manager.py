@@ -93,6 +93,11 @@ def _lazy_omnivoice():
 
 
 from core.config import IDLE_TIMEOUT_SECONDS, CPU_POOL_WORKERS
+from core.generate_budget import (
+    automatic_cpu_ceiling_s,
+    cpu_auto_budget_s,
+    length_bonus_s,
+)
 
 logger = logging.getLogger("omnivoice.model")
 
@@ -547,6 +552,21 @@ class GpuPoolBusyError(TimeoutError):
         self.retry_after = max(1, int(round(retry_after)))
 
 
+def _explicit_budget_flags() -> "tuple[bool, bool]":
+    """(universal_explicit, cpu_explicit): is the accelerated / CPU budget set
+    by the user (env, or changed at runtime)? The single definition shared by
+    ``generate_timeout_s`` and ``generate_budget_s``."""
+    universal = (
+        _GENERATE_TIMEOUT_EXPLICIT
+        or GPU_JOB_TIMEOUT_S != _CONFIGURED_GPU_JOB_TIMEOUT_S
+    )
+    cpu_explicit = (
+        _CPU_GENERATE_TIMEOUT_EXPLICIT
+        or CPU_JOB_TIMEOUT_S != _CONFIGURED_CPU_JOB_TIMEOUT_S
+    )
+    return universal, cpu_explicit
+
+
 def generate_timeout_s(
     text: "str | None", *, engine: object = None, execution_device: "str | None" = None,
     min_vram_gb: float = 0.0, hardware_family: "str | None" = None,
@@ -567,9 +587,17 @@ def generate_timeout_s(
     hosts) or OMNIVOICE_CPU_GENERATE_TIMEOUT_S (CPU hosts — the latter wins
     for CPU whenever it is itself explicit, even if the former also is; see
     the #1787 comment on the module-level constants), plus 1s per 40
-    characters past a 1200-character free allowance — generous enough for
-    CPU-class hardware, still bounded (a wedged job is caught in minutes, not
-    hours).
+    characters past a 1200-character free allowance — a wedged job is caught
+    in minutes, not hours.
+
+    #2609: that length term is nothing next to CPU speed (a render is often
+    10-50x slower than on a GPU), so a CPU dispatch on the DEFAULT CPU budget
+    instead scales at ``core.generate_budget.CPU_SECONDS_PER_CHAR`` per
+    character, capped at ``CPU_AUTO_CAP_S`` (still finite, so a wedged engine
+    is caught). Any explicit budget keeps the formula above untouched. The
+    model cold-load is NOT part of this clock (it has its own budget, see the
+    prewarm in the generate router), and each streamed chunk is budgeted from
+    its own text.
 
     #1804: "accelerated" is not one performance class. A card with less VRAM
     than the engine declares it needs pages to system RAM over PCIe and renders
@@ -588,6 +616,10 @@ def generate_timeout_s(
     """
     base = GPU_JOB_TIMEOUT_S
     explicit_budget = _GENERATE_TIMEOUT_EXPLICIT or GPU_JOB_TIMEOUT_S != _CONFIGURED_GPU_JOB_TIMEOUT_S
+    # True only for a CPU dispatch running on the DEFAULT CPU budget: that case
+    # scales with input length at CPU speed (#2609). Any explicit budget —
+    # either row — stays authoritative and keeps the legacy formula.
+    cpu_auto_scaled = False
     try:
         from core.device_caps import detect_host_caps
         caps = detect_host_caps()
@@ -601,20 +633,14 @@ def generate_timeout_s(
             min_vram_gb = profile["min_vram_gb"]
             hardware_family = profile.get("runtime_hardware_family")
             vram_gb = profile.get("runtime_vram_gb")
-        universal_override = (
-            _GENERATE_TIMEOUT_EXPLICIT
-            or GPU_JOB_TIMEOUT_S != _CONFIGURED_GPU_JOB_TIMEOUT_S
-        )
+        universal_override, cpu_explicit = _explicit_budget_flags()
         # An explicit (env-set, or runtime-changed the same way tests do)
         # CPU budget is more specific than the universal override and always
         # wins for CPU dispatches — see the #1787 comment above.
-        cpu_explicit = (
-            _CPU_GENERATE_TIMEOUT_EXPLICIT
-            or CPU_JOB_TIMEOUT_S != _CONFIGURED_CPU_JOB_TIMEOUT_S
-        )
         if family == "cpu" and (cpu_explicit or not universal_override):
             base = CPU_JOB_TIMEOUT_S
             explicit_budget = cpu_explicit
+            cpu_auto_scaled = not cpu_explicit
         elif not universal_override and family in (
             "cuda", "rocm", "vulkan", "xpu",
         ):
@@ -653,7 +679,10 @@ def generate_timeout_s(
         except (TypeError, ValueError):
             pass  # Invalid optional engine metadata cannot disable the outer guard.
 
-    return base + (max(0, len(text or "") - 1200) / 40.0) + sidecar_grace
+    chars = len(text or "")
+    if cpu_auto_scaled:
+        return cpu_auto_budget_s(base, chars) + sidecar_grace
+    return base + length_bonus_s(chars) + sidecar_grace
 
 
 def _retry_after_estimate(stats: dict) -> float:
@@ -1204,8 +1233,9 @@ def _timeout_guidance(
             "this machine renders on CPU, where long generations are "
             "compute-bound. For a durable fix try shorter text or a lighter "
             "engine (OmniVoice GGUF and Supertonic-3 are CPU-tuned). If you "
-            "expect very long single generations, raise "
-            "the compute-time budget in Settings → Performance & Device."
+            "expect very long single generations, raise \"CPU budget\" "
+            "(the compute-time budget) in Settings → Performance & Device "
+            "and restart the backend."
         )
     # #1226/#1222: two users on 4 GB cards were told, generically, that the GPU
     # "is VRAM-starved" — true, but it read as a transient contention problem
@@ -3120,7 +3150,7 @@ async def _load_model_with_timeout():
         ) from exc
 
 
-async def get_model():
+async def get_model(*, allow_load: bool = True):
     global model, _last_used
     _last_used = time.time()
     if model is not None:
@@ -3140,6 +3170,11 @@ async def get_model():
         # + cache drop + ASR teardown that can block for hundreds of ms.
         await asyncio.get_running_loop().run_in_executor(None, make_room_before_generate)
         return model
+
+    # Opportunistic profile samples must never load weights, including when
+    # ASR or idle cleanup evicted them after the caller's residency check.
+    if not allow_load:
+        raise RuntimeError("VoiceStudio model is not loaded")
 
     if running_on_gpu_pool():
         # Same reasoning as _heal_tts_placement below, applied to the COLD
@@ -4080,16 +4115,50 @@ def unload_diarization_pipeline() -> bool:
     return True
 
 
-def generate_budget_s() -> dict[str, float]:
+def _local_route_is_cpu(engine_id: "str | None" = None) -> bool:
+    """Does a local /generate for this engine (default: the active one) end up
+    computing on the CPU? True for a CPU host AND for an accelerated host whose
+    engine is CPU-only or falls back to CPU — the same routing decision the
+    generate dispatch budgets from. A failed lookup falls back to the host
+    family, which is what an engine-less budget uses."""
+    from core.device_caps import detect_host_caps
+
+    caps = detect_host_caps()
+    try:
+        from services.engine_routing import runtime_compute_profile
+        from services.tts_backend import active_backend_id, get_backend_class
+
+        cls = get_backend_class(engine_id or active_backend_id())
+        return runtime_compute_profile(cls, caps)["effective_device"] == "cpu"
+    except Exception:  # noqa: BLE001 — routing lookup is advisory
+        return caps.family == "cpu"
+
+
+def generate_budget_s(engine_id: "str | None" = None) -> dict[str, float]:
     """The active /generate budgets, including operator overrides.
 
     The client backstop (electron/src/shared/utils/generateBudget.ts) takes the
     larger of these and its built-in defaults, so raising a timeout through the
     environment never makes the UI give up on a job that is still running.
+
+    ``cpuAutoCeiling`` is the most the AUTOMATIC CPU budget can grant any text
+    (#2609). The client cannot see the normalized text the backend budgets, so
+    when the effective local route for this engine computes on the CPU and the
+    budget is the default one, it waits for this ceiling instead of guessing
+    from the typed length. 0 for GPU-routed jobs and explicit budgets, so the
+    GPU backstop does not grow.
     """
+    ceiling = 0.0
+    try:
+        universal, cpu_explicit = _explicit_budget_flags()
+        if not cpu_explicit and not universal and _local_route_is_cpu(engine_id):
+            ceiling = automatic_cpu_ceiling_s(CPU_JOB_TIMEOUT_S)
+    except Exception:  # noqa: BLE001 — a failed probe just omits the hint
+        pass
     return {
         "modelLoad": _model_load_timeout(),
         "queueWait": GPU_QUEUE_TIMEOUT_S,
         "executionBase": max(GPU_JOB_TIMEOUT_S, CPU_JOB_TIMEOUT_S),
         "progressExtensionCap": progress_extension_cap_s(),
+        "cpuAutoCeiling": ceiling,
     }

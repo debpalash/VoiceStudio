@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { EventEmitter } from 'node:events';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 /**
  * #2445 — "Backend did not answer on port 3900 within 300 s".
@@ -124,7 +124,14 @@ function stubEnv(): void {
   vi.stubEnv('OMNIVOICE_STARTUP_BUDGET_S', BUDGET_S);
 }
 
+beforeEach(() => {
+  // setupRuntime() refuses an Intel Mac outright (#2365), so these fixtures
+  // would never spawn on a darwin/x64 runner. Pin a supported host.
+  if (process.platform === 'darwin') vi.spyOn(process, 'arch', 'get').mockReturnValue('arm64');
+});
+
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();

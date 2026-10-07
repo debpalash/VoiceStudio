@@ -98,3 +98,29 @@ it('treats only ready and unresponsive as able to answer a request (#2430)', asy
     expect(isBackendReachable(stage)).toBe(false);
   }
 });
+
+// #2594: a busy backend answers every poll late. The supervisor stage must
+// reach the poll-interval helpers so background polls back off during a stall.
+it('lengthens background status polls while the backend is busy', async () => {
+  let push!: (status: unknown) => void;
+  vi.stubGlobal('voicestudio', {
+    backend: {
+      onStatus: (callback: typeof push) => {
+        push = callback;
+        return () => {};
+      },
+      getStatus: () => new Promise(() => {}),
+    },
+  });
+
+  const status = await import('./use-backend-status');
+  const polling = await import('@/lib/status-polling');
+  const stop = status.subscribeBackendStatus(() => {});
+  push({ ...status.FALLBACK_BACKEND_STATUS, stage: 'ready' });
+  expect(polling.modelStatusPollMs(1, 'ready')).toBe(polling.ACTIVE_STATUS_POLL_MS);
+  push({ ...status.FALLBACK_BACKEND_STATUS, stage: 'unresponsive' });
+  expect(polling.modelStatusPollMs(1, 'ready')).toBe(polling.BUSY_BACKEND_POLL_MS);
+  push({ ...status.FALLBACK_BACKEND_STATUS, stage: 'ready' });
+  expect(polling.modelStatusPollMs(1, 'ready')).toBe(polling.ACTIVE_STATUS_POLL_MS);
+  stop();
+});

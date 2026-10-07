@@ -70,6 +70,8 @@ export interface EngineBackend {
   reason: string | null;
   hint?: string | null;
   supports_cloning?: boolean | null;
+  /** False: needs a reference clip, so Voice Design is unavailable. Null/absent: undeclared. */
+  supports_voice_design?: boolean | null;
   /** "tags" = OmniVoice's closed design vocabulary; "freeform" = sent as written (#2389). */
   instruct_vocabulary?: InstructVocabulary;
   /** Seconds of a clone reference the engine uses; null when not verified (#2281). */

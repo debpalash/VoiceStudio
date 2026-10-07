@@ -64,9 +64,10 @@ of PyTorch rather than the CUDA build and its ~3 GB of `nvidia-*` packages,
 and needs about 5 GiB of free disk instead of 9 GiB. Pick a light voice engine
 (KittenTTS, Supertonic-3, PocketTTS) and a small Whisper model for the best
 speed. `OMNIVOICE_TORCH_VARIANT=cuda|cpu|rocm` overrides the detection, and an
-existing install keeps working untouched. Source installs (`bun run setup:api`)
-follow the lockfile and still fetch the CUDA build; use the packaged app on a
-CPU-only machine.
+existing install keeps working untouched. Source setup (`bun run setup:api`)
+also selects the locked CPU wheels on x86-64 hosts without NVIDIA. Linux ARM
+source installs keep their native PyPI wheels. See
+[CPU setup and overrides](../../electron/README.md#running-without-a-gpu).
 
 ## Building from source
 
@@ -126,6 +127,17 @@ already listening on port 3900, otherwise it starts its own. Other commands:
 See [Electron setup](../../electron/README.md) for backend configuration and
 quality gates. The first launch downloads model weights only when you install
 a model.
+
+### Arch Linux (AUR)
+
+```bash
+yay -S voicestudio-bin   # or paru -S voicestudio-bin
+```
+
+`voicestudio-bin` is a community-maintained AUR package that installs the
+release `.deb`; report packaging problems on its AUR page. Package-managed
+installs should set `VOICESTUDIO_DISABLE_UPDATER=1` so `pacman` handles
+updates instead of the in-app updater.
 
 ## ChromeOS, iPad and other devices
 

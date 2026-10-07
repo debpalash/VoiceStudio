@@ -30,6 +30,7 @@ def _source_default(path: Path, env: str) -> float:
 def test_client_budget_mirrors_backend_defaults(monkeypatch):
     from services import model_manager
     from worker import deadlines
+    import mcp_server
 
     monkeypatch.delenv("OMNIVOICE_MODEL_LOAD_TIMEOUT", raising=False)
     manager = ROOT / "backend/services/model_manager.py"
@@ -39,8 +40,16 @@ def test_client_budget_mirrors_backend_defaults(monkeypatch):
     assert client["queueWait"] == _source_default(manager, "OMNIVOICE_GPU_QUEUE_TIMEOUT_S")
     assert client["progressExtensionCap"] == model_manager.progress_extension_cap_s({})
     assert client["progressExtensionBudgets"] == model_manager.PROGRESS_EXTENSION_BUDGETS
+    assert mcp_server._GENERATE_PROGRESS_BUDGETS == model_manager.PROGRESS_EXTENSION_BUDGETS
+    assert mcp_server._GENERATE_SIDECAR_FLOOR_S == client["executionBase"]
+    assert mcp_server._GENERATE_SIDECAR_GRACE_S == client["sidecarGrace"]
     assert client["freeChars"] == deadlines._FREE_CHARS
     assert client["charsPerSecond"] == deadlines._CHARS_PER_SECOND
+    from core import generate_budget as gb
+
+    assert client["cpuSecondsPerChar"] == gb.CPU_SECONDS_PER_CHAR
+    assert client["cpuAutoCap"] == gb.CPU_AUTO_CAP_S
+    assert client["textExpansionFactor"] == gb.TEXT_EXPANSION_FACTOR
     grace = re.search(r"sidecar_grace = ([\d.]+) if _include_sidecar_grace", manager.read_text())
     assert grace and client["sidecarGrace"] >= float(grace.group(1))
 
@@ -64,3 +73,4 @@ def test_client_execution_base_covers_every_default_execution_budget():
         ]
     assert len(bases) > 3, "receive-timeout scan found nothing; fix the regex"
     assert _client_budget()["executionBase"] >= max(bases)
+

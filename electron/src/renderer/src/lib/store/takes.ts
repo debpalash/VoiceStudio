@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import type { HistoryItem } from '@/lib/api/types';
 import type { CloneSettings } from './clone-settings';
-import { patchCloneSettings } from './clone-settings';
+import { acceptsCloneSetting, DEFAULT_CLONE_SETTINGS, patchCloneSettings } from './clone-settings';
 import { setReferenceFile } from './reference';
 
 const listeners = new Set<() => void>();
@@ -22,6 +22,8 @@ export function useSelectedTake() {
   );
 }
 const key = 'voicestudio.take-settings.v1';
+/** Application preferences, not generation controls: never stored or restored per take. */
+const PREFERENCES = new Set<keyof CloneSettings>(['autoPlay', 'showOverrides']);
 type TakeSettings = Omit<CloneSettings, 'autoPlay' | 'showOverrides'>;
 export function rememberTake(id: string | null, settings: CloneSettings) {
   if (!id) return;
@@ -48,13 +50,12 @@ export function takeSettings(item: HistoryItem): Partial<TakeSettings> {
   try {
     const raw = JSON.parse(localStorage.getItem(key) ?? '{}')?.[item.id];
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return fallback;
+    // Validate every generation control with the settings store's own rules,
+    // so a control added to CloneSettings is restored without a second list.
     const safe: Record<string, unknown> = {};
-    for (const name of ['steps', 'cfg', 'speed', 'tShift', 'posTemp', 'classTemp', 'layerPenalty'])
-      if (typeof raw[name] === 'number' && Number.isFinite(raw[name])) safe[name] = raw[name];
-    for (const name of ['denoise', 'postprocess'])
-      if (typeof raw[name] === 'boolean') safe[name] = raw[name];
-    for (const name of ['refText', 'duration'])
-      if (typeof raw[name] === 'string') safe[name] = raw[name];
+    for (const name of Object.keys(DEFAULT_CLONE_SETTINGS) as Array<keyof CloneSettings>)
+      if (!PREFERENCES.has(name) && name in raw && acceptsCloneSetting(name, raw[name]))
+        safe[name] = raw[name];
     return { ...safe, ...fallback };
   } catch {
     return fallback;

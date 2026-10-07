@@ -5,6 +5,9 @@ import {
   designDraftFromTake,
   designInstruct,
   designRecipe,
+  editVoice,
+  designRequestSeed,
+  linkedDesignProfile,
   pickDetail,
   readDraft,
   replaceRecipe,
@@ -54,6 +57,62 @@ describe('designed voice drafts', () => {
       seed: 9,
       attrs: { Gender: 'female', Pitch: 'low pitch' },
     });
+  });
+});
+
+describe('saved design voice link', () => {
+  // A linked draft sends its profile, and the backend re-renders the saved
+  // sample. Edits must unlink it, or new attributes, gender and seed are
+  // barely heard ("always a female voice", reported on Discord).
+  const restored = () => {
+    const saved = restoreDesignProfile(profile, 9);
+    return replaceRecipe(readDraft(), {
+      attrs: saved.attrs,
+      seed: saved.seed,
+      profileId: saved.profileId,
+    });
+  };
+
+  it('re-renders the saved voice while the draft is unchanged', () => {
+    const draft = restored();
+    expect(draft.profileId).toBe('designed-voice');
+    expect(linkedDesignProfile(draft, [profile])?.id).toBe('designed-voice');
+  });
+
+  it('unlinks on a detail, seed or description edit', () => {
+    const draft = restored();
+    expect(pickDetail(draft, 'Gender', 'female').draft.profileId).toBeNull();
+    expect(editVoice(draft, { seed: 43 }).profileId).toBeNull();
+    expect(editVoice(draft, { description: 'a deep voice' }).profileId).toBeNull();
+  });
+
+  it('stays linked when a value is set to what it already is', () => {
+    const draft = restored();
+    expect(pickDetail(draft, 'Gender', 'male').draft.profileId).toBe('designed-voice');
+    expect(editVoice(draft, { seed: 42 }).profileId).toBe('designed-voice');
+  });
+
+  it('starts an unsaved design from a preset, personality or demo', () => {
+    expect(replaceRecipe(restored(), { attrs: { Gender: 'female' } }).profileId).toBeNull();
+  });
+
+  it('does not send a profile the draft no longer matches (stale persisted drafts)', () => {
+    const draft = restored();
+    expect(linkedDesignProfile({ ...draft, seed: 7 }, [profile])).toBeNull();
+    expect(
+      linkedDesignProfile({ ...draft, attrs: { ...draft.attrs, Gender: 'female' } }, [profile]),
+    ).toBeNull();
+    expect(linkedDesignProfile(draft, [{ ...profile, kind: 'clone' }])).toBeNull();
+    expect(linkedDesignProfile(draft, undefined)).toBeNull();
+  });
+
+  it('keeps a seedless saved voice seedless so it re-renders instead of redesigning', () => {
+    const seedless = { ...profile, seed: null };
+    const draft = { ...restored(), seed: 9 };
+    expect(linkedDesignProfile(draft, [seedless])?.id).toBe('designed-voice');
+    expect(designRequestSeed(draft, seedless)).toBeUndefined();
+    expect(designRequestSeed(draft, profile)).toBe(9);
+    expect(designRequestSeed(draft, null)).toBe(9);
   });
 });
 

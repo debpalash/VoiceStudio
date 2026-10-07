@@ -833,7 +833,11 @@
     "self_check_attention": "{{count}} controle(s) mislukt — zie de hints hierboven.",
     "save_bundle": "Diagnosepakket opslaan",
     "bundle_saved": "Diagnosepakket opgeslagen: {{filename}}",
-    "bundle_failed": "Kon het diagnosepakket niet maken: {{message}}"
+    "bundle_failed": "Kon het diagnosepakket niet maken: {{message}}",
+    "model_credits": "Modelvermeldingen",
+    "model_credits_hint": "Vermeldingen voor ondersteunde modellen. Voor modellen en componenten gelden afzonderlijke voorwaarden; deze vermeldingen verlenen geen commerciële gebruiksrechten.",
+    "model_terms": "Modelvoorwaarden",
+    "model_related_sources": "Gerelateerde bronnen:"
   },
   "privacy": {
     "desc": "Alles draait op <1>deze machine</1>. Uw audio, video en transcripties verlaten uw computer nooit, tenzij u expliciet een online vertaler (Google, DeepL, enz.) gebruikt of naar HuggingFace pusht.",
@@ -1697,11 +1701,11 @@
     "back": "Terug naar Studio",
     "badge": "Commerciële licentie",
     "hero_title": "Verzend AI-stemmen in productie",
-    "hero_desc": "VoiceStudio is vrije en open-source software onder de GNU Affero General Public License v3 (AGPL-3.0) — gratis te gebruiken, ook voor commercieel en intern zakelijk gebruik. Een commerciële licentie is alleen nodig als je VoiceStudio wilt inbouwen in een closed-source of propriëtair product of dienst zonder de copyleft-verplichtingen van de AGPL-3.0.",
+    "hero_desc": "VoiceStudio is vrije en open-source software onder de GNU Affero General Public License v3 (AGPL-3.0) — gratis te gebruiken, ook voor commercieel en intern zakelijk gebruik. Een commerciële licentie is alleen nodig als je VoiceStudio wilt inbouwen in een closed-source of propriëtair product of dienst zonder de copyleft-verplichtingen van de AGPL-3.0. Onze licentie geldt voor de code van VoiceStudio. Rechten op modellen en gegenereerde uitvoer hangen af van de gekozen modellen en hun voorwaarden.",
     "pricing_desc": "Niveaus en prijzen worden nog afgerond.",
     "request_quote": "Vraag een offerte aan",
-    "benefit_ip": "Volledig IP-eigendom",
-    "benefit_ip_desc": "U bezit elke output, elk model, elke afgeleide. Geen gedeelde huur, geen datalekken.",
+    "benefit_ip": "Applicatielicentie",
+    "benefit_ip_desc": "Onze licentie geldt voor de code van VoiceStudio. Rechten op modellen en gegenereerde uitvoer hangen af van de gekozen modellen en hun voorwaarden.",
     "benefit_cost": "Geen kosten per minuut",
     "benefit_cost_desc": "Geen API-facturen, geen onverwachte overschrijdingen. Draait vanaf dag één op uw eigen hardware.",
     "benefit_team_desc": "Eén licentie geldt voor een onbeperkt aantal gebruikers binnen uw organisatie.",
@@ -1709,7 +1713,7 @@
     "benefit_support_desc": "Prioritaire e-mail- en videogesprekondersteuning van het kerntechnische team.",
     "benefit_source_desc": "Volledig zicht op de stapel. Audit, fork en pas aan binnen de licentievoorwaarden.",
     "benefit_lang_desc": "Transcribeer, vertaal en kopieer in 646 talen met kwaliteit op menselijk niveau.",
-    "hero_simple": "VoiceStudio is gratis en open-source onder AGPL-3.0 — ook voor commercieel en intern zakelijk gebruik. U hebt alleen een commerciële licentie nodig om het in een gesloten bronproduct in te sluiten, zonder de copyleft-verplichtingen van AGPL."
+    "hero_simple": "VoiceStudio is gratis en open-source onder AGPL-3.0 — ook voor commercieel en intern zakelijk gebruik. U hebt alleen een commerciële licentie nodig om het in een gesloten bronproduct in te sluiten, zonder de copyleft-verplichtingen van AGPL. Onze licentie geldt voor de code van VoiceStudio. Rechten op modellen en gegenereerde uitvoer hangen af van de gekozen modellen en hun voorwaarden."
   },
   "exportModal": {
     "export": "Exporteren",
@@ -1772,8 +1776,8 @@
     "pkg_audio_body_one": "Ga naar het tabblad Audio om dubs per taal te exporteren in WAV of MP3 ({{count}} dub beschikbaar).",
     "pkg_audio_body_other": "Ga naar het tabblad Audio om dubs per taal te exporteren in WAV of MP3 ({{count}} dubs beschikbaar).",
     "pkg_audio_cta": "Open het audiotabblad",
-    "license_text": "Commercieel gebruik vereist een",
-    "license_link": "licentie",
+    "license_text": "Onze licentie geldt voor de code van VoiceStudio. Rechten op modellen en gegenereerde uitvoer hangen af van de gekozen modellen en hun voorwaarden.",
+    "license_link": "Applicatielicentie",
     "output": "UITGANG",
     "nothing_selected": "Niets geselecteerd of nummer niet beschikbaar",
     "export_mp4": "MP4 exporteren",
@@ -2852,6 +2856,7 @@
   "dubIntegrity": {
     "missingSpeech": "Spraak ontbreekt of is onleesbaar. Genereer het betreffende segment opnieuw voordat je exporteert.",
     "timingOverflow": "De spraak overschrijdt het tijdvak. Verkort de vertaling of kies een strikt tijdvak of het uitrekken van de video.",
+    "sourceChanged": "De ondertitels zijn gewijzigd terwijl deze nasynchronisatie werd gemaakt. Het vorige spoor is behouden; genereer opnieuw om de nieuwe ondertitels te gebruiken.",
     "backgroundUnavailable": "Het oorspronkelijke geluid kon niet behouden blijven. Controleer de achtergrondscheiding en dialoogtijden en probeer opnieuw, of kies expliciet voor alleen spraak exporteren."
   },
   "dubStyle": {

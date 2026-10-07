@@ -44,6 +44,7 @@ it('rejects a non-web documentation URL and uses the shared safe fallback', () =
 it.each([
   ['dub_speech_missing', 'dubIntegrity.missingSpeech'],
   ['dub_timing_overflow', 'dubIntegrity.timingOverflow'],
+  ['dub_source_changed', 'dubIntegrity.sourceChanged'],
 ])('localizes %s while retaining diagnostics', (errorCode, key) => {
   const translate = vi.spyOn(i18next, 't').mockReturnValue('Localized recovery instructions');
   try {

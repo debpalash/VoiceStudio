@@ -43,18 +43,27 @@ export async function startDevBackendProxy(
   port = 3903,
 ): Promise<DevBackendProxy> {
   const server = createServer((incoming, response) => {
+    let base: URL;
     let target: URL;
     try {
-      target = new URL(incoming.url || '/', `${getBaseUrl().replace(/\/+$/, '')}/`);
+      base = new URL(`${getBaseUrl().replace(/\/+$/, '')}/`);
+      // Resolve relative to the base: a leading slash would drop a reverse-proxy
+      // path prefix, and `//host` would leave the configured backend entirely.
+      target = new URL((incoming.url || '/').replace(/^\/+/, ''), base);
+      if (target.origin !== base.origin) throw new Error('cross-origin target');
     } catch {
       response.writeHead(502, { 'content-type': 'application/json' });
       response.end('{"detail":"Invalid backend target"}');
       return;
     }
-    const send = target.protocol === 'https:' ? httpsRequest : httpRequest;
+    const send = base.protocol === 'https:' ? httpsRequest : httpRequest;
+    // Host and port come only from the main-owned base; the renderer picks the path.
     const upstream = send(
-      target,
       {
+        protocol: base.protocol,
+        hostname: base.hostname.replace(/^\[|\]$/g, ''),
+        port: base.port,
+        path: `${target.pathname}${target.search}`,
         method: incoming.method,
         headers: proxyRequestHeaders(incoming.headers, getTrustedHeaders()),
       },

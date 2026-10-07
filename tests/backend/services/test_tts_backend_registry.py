@@ -199,6 +199,9 @@ def test_list_backends_shape(registry_sandbox):
         # Graded-emotion capability (#1208): bool from the class attr; drives
         # the Audiobook expressive panel's emotion gate.
         "supports_emotion",
+        # Voice Design capability: False = needs a reference clip, so the
+        # Design workspace and /generate refuse design; None = undeclared.
+        "supports_voice_design",
         # "tags" (OmniVoice design vocabulary) or "freeform" (#2389).
         "instruct_vocabulary",
         # Reference-length truth (#2281): seconds of a clone clip the engine

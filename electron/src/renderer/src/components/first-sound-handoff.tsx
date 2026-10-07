@@ -24,7 +24,14 @@ export function FirstSoundHandoff() {
 
   useEffect(() => {
     const run = async () => {
-      if (running.current || !pending.current || designBlocker) return;
+      if (running.current || !pending.current) return;
+      if (designBlocker === 'design') {
+        // Waiting would never end: show the workspace that explains why.
+        pending.current = false;
+        await router.navigate({ to: '/design' });
+        return;
+      }
+      if (designBlocker) return;
       pending.current = false;
       running.current = true;
       const text = t('demo.clone_prompt');

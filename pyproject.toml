@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnivoice"
-version = "0.5.6"
+version = "0.5.7"
 description = "VoiceStudio — a private, local-first studio for voice cloning, speech generation, dubbing, transcription, and audiobooks"
 readme = "README.md"
 # Free and open-source under the GNU Affero General Public License v3 (see
@@ -273,18 +273,29 @@ Documentation = "https://github.com/debpalash/VoiceStudio/tree/main/docs"
 "Upstream TTS Model" = "https://github.com/k2-fsa/OmniVoice"
 
 [tool.uv.sources]
-# Install PyTorch with CUDA support on Linux/Windows (CUDA doesn't exist for Mac).
-# NOTE: We must explicitly request them as `dependencies` above. These improved
-# versions will not be selected if they're only third-party dependencies.
+# Keep both compute variants in the lockfile. Source and packaged setup select
+# CPU when no NVIDIA driver is detected; plain `uv sync` preserves the CUDA default.
+# macOS keeps the PyPI build (including MPS) regardless of the selected group.
 torch = [
-  { index = "pytorch-cuda", marker = "platform_machine != 'aarch64' and platform_machine != 'arm64' and (sys_platform == 'linux' or sys_platform == 'win32')" },
+  { index = "pypi", marker = "(sys_platform != 'linux' and sys_platform != 'win32') or ((platform_machine == 'aarch64' or platform_machine == 'arm64') and sys_platform == 'linux')" },
+  { index = "pytorch-cuda", group = "cuda", marker = "platform_machine != 'aarch64' and platform_machine != 'arm64' and (sys_platform == 'linux' or sys_platform == 'win32')" },
+  { index = "pytorch-cpu", group = "cpu", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and sys_platform == 'linux') or sys_platform == 'win32'" },
 ]
 torchaudio = [
-  { index = "pytorch-cuda", marker = "platform_machine != 'aarch64' and platform_machine != 'arm64' and (sys_platform == 'linux' or sys_platform == 'win32')" },
+  { index = "pypi", marker = "(sys_platform != 'linux' and sys_platform != 'win32') or ((platform_machine == 'aarch64' or platform_machine == 'arm64') and sys_platform == 'linux')" },
+  { index = "pytorch-cuda", group = "cuda", marker = "platform_machine != 'aarch64' and platform_machine != 'arm64' and (sys_platform == 'linux' or sys_platform == 'win32')" },
+  { index = "pytorch-cpu", group = "cpu", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and sys_platform == 'linux') or sys_platform == 'win32'" },
 ]
 torchvision = [
-  { index = "pytorch-cuda", marker = "platform_machine != 'aarch64' and platform_machine != 'arm64' and (sys_platform == 'linux' or sys_platform == 'win32')" },
+  { index = "pypi", marker = "(sys_platform != 'linux' and sys_platform != 'win32') or ((platform_machine == 'aarch64' or platform_machine == 'arm64') and sys_platform == 'linux')" },
+  { index = "pytorch-cuda", group = "cuda", marker = "platform_machine != 'aarch64' and platform_machine != 'arm64' and (sys_platform == 'linux' or sys_platform == 'win32')" },
+  { index = "pytorch-cpu", group = "cpu", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and sys_platform == 'linux') or sys_platform == 'win32'" },
 ]
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+default = true
 
 [[tool.uv.index]]
 name = "pytorch-cuda"
@@ -294,7 +305,14 @@ url = "https://download.pytorch.org/whl/cu128"
 # Only use this index when explicitly requested by `tool.uv.sources`.
 explicit = true
 
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
 [tool.uv]
+default-groups = ["dev", "cuda"]
+conflicts = [[{ group = "cpu" }, { group = "cuda" }]]
 constraint-dependencies = [
     "mako>=1.3.12",
     "msgpack>=1.2.1",
@@ -320,6 +338,17 @@ include = ["omnivoice"]
 packages = ["omnivoice"]
 
 [dependency-groups]
+# The matched stack must move together to avoid native extension ABI mismatches.
+cpu = [
+    "torch>=2.4 ; sys_platform == 'linux' or sys_platform == 'win32'",
+    "torchaudio>=2.4 ; sys_platform == 'linux' or sys_platform == 'win32'",
+    "torchvision>=0.19 ; sys_platform == 'linux' or sys_platform == 'win32'",
+]
+cuda = [
+    "torch>=2.4 ; platform_machine != 'aarch64' and platform_machine != 'arm64' and (sys_platform == 'linux' or sys_platform == 'win32')",
+    "torchaudio>=2.4 ; platform_machine != 'aarch64' and platform_machine != 'arm64' and (sys_platform == 'linux' or sys_platform == 'win32')",
+    "torchvision>=0.19 ; platform_machine != 'aarch64' and platform_machine != 'arm64' and (sys_platform == 'linux' or sys_platform == 'win32')",
+]
 dev = [
     "httpx>=0.28.1",
     "pytest>=9.0.3",

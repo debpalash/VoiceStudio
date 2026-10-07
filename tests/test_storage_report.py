@@ -373,3 +373,78 @@ def test_clear_temp_endpoint_clears_and_invalidates_cache(roots, monkeypatch, tm
     assert res["freed_bytes"] == 40
     assert not (tmp / "omnivoice_job").exists()
     assert storage_report._cache["report"] is None  # cache invalidated
+
+
+# ── Deadline is enforced between file entries (#2564) ───────────────────────
+
+class _TickingClock:
+    """time stand-in whose monotonic() advances one second per call, so a scan's
+    budget is spent by how many entries it examines — no sleeps, no real time."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def monotonic(self):
+        self.now += 1.0
+        return self.now
+
+    time = staticmethod(__import__("time").time)
+
+
+@pytest.fixture
+def ticking(monkeypatch):
+    clock = _TickingClock()
+    monkeypatch.setattr(storage_report, "time", clock)
+    return clock
+
+
+def test_flat_directory_scan_stops_at_the_deadline(tmp_path, ticking):
+    flat = tmp_path / "flat"
+    for i in range(60):
+        _write(str(flat / f"f{i}.bin"), 10)
+    total, complete, _err = storage_report._dir_size(str(flat), deadline=10.5)
+    assert complete is False
+    assert 0 < total < 600, "partial measured total, not the whole directory"
+
+
+def test_flat_directory_within_budget_is_complete(tmp_path, ticking):
+    flat = tmp_path / "flat"
+    for i in range(5):
+        _write(str(flat / f"f{i}.bin"), 10)
+    assert storage_report._dir_size(str(flat), deadline=1000) == (50, True, None)
+
+
+def test_loose_data_entries_respect_the_budget_and_mark_other_incomplete(roots, ticking):
+    for i in range(40):
+        _write(os.path.join(roots["data_dir"], f"loose{i}.bin"), 100)
+    r = _build(roots, category_timeout=20.5)
+    data = _cat(r, "data")
+    other = next(c for c in data["children"] if c["id"] == "other")
+    assert other["complete"] is False
+    assert 0 < other["bytes"] < 7 + 40 * 100
+    assert data["complete"] is False
+    assert any(
+        w["kind"] == "unreadable" and w["category_id"] == "data" and w["reason"] == "timeout"
+        for w in r["warnings"]
+    )
+
+
+def test_other_is_complete_when_every_entry_is_measured(roots):
+    other = next(c for c in _cat(_build(roots), "data")["children"] if c["id"] == "other")
+    assert other["complete"] is True and other["bytes"] == 7
+
+
+def test_unreadable_entry_marks_other_incomplete(roots, monkeypatch):
+    _write(os.path.join(roots["data_dir"], "mystery", "x.bin"), 5)
+    real = storage_report._dir_size
+
+    def fake(path, deadline):
+        if os.path.basename(path) == "mystery":
+            return 3, True, path
+        return real(path, deadline)
+
+    monkeypatch.setattr(storage_report, "_dir_size", fake)
+    r = _build(roots)
+    other = next(c for c in _cat(r, "data")["children"] if c["id"] == "other")
+    assert other["complete"] is False and other["bytes"] == 7 + 3
+    assert any(w["reason"] == "permission" for w in r["warnings"])

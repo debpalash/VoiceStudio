@@ -70,23 +70,46 @@ function transportKind(target: string, error: unknown): RemoteProbeKind {
   return /certificate|cert_|ssl|tls/.test(message) ? 'tls' : 'network';
 }
 
-async function fetchWithin(
+/**
+ * Run one request and its response handling under a single deadline. The
+ * timer must stay armed until `consume` finishes: `fetch()` resolves at the
+ * response headers, so a backend that stalls mid-body would otherwise leave
+ * the caller waiting forever.
+ */
+async function fetchWithin<T>(
   fetcher: typeof fetch,
   url: string,
   init: RequestInit,
   timeoutMs: number,
-): Promise<Response> {
+  consume: (response: Response) => Promise<T> | T,
+): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetcher(url, {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error('Remote request timed out');
+      error.name = 'TimeoutError';
+      controller.abort(error);
+      reject(error);
+    }, timeoutMs);
+  });
+  const run = async () => {
+    const response = await fetcher(url, {
       ...init,
       cache: 'no-store',
       redirect: 'error',
       signal: controller.signal,
     });
+    return consume(response);
+  };
+  try {
+    // Race as well as abort: a fetcher that ignores the signal still cannot
+    // outlive the deadline.
+    return await Promise.race([run(), deadline]);
   } finally {
     clearTimeout(timer);
+    // Release any body the consumer chose not to read (error statuses).
+    controller.abort();
   }
 }
 
@@ -103,11 +126,21 @@ export async function probeRemoteBackend(
   }
 
   try {
-    const healthResponse = await fetchWithin(fetcher, `${target}/health`, {}, timeoutMs);
-    if (!healthResponse.ok) {
-      return { ok: false, kind: 'http', status: healthResponse.status, target };
+    const healthResult = await fetchWithin(
+      fetcher,
+      `${target}/health`,
+      {},
+      timeoutMs,
+      async (response) => ({
+        ok: response.ok,
+        status: response.status,
+        body: response.ok ? await readObject(response) : null,
+      }),
+    );
+    if (!healthResult.ok) {
+      return { ok: false, kind: 'http', status: healthResult.status, target };
     }
-    const health = await readObject(healthResponse);
+    const health = healthResult.body;
     if (
       !health ||
       health.status !== 'ok' ||
@@ -133,6 +166,10 @@ export async function probeRemoteBackend(
           body: JSON.stringify({ transport: 'bearer' }),
         },
         timeoutMs,
+        async (response) => ({
+          status: response.status,
+          payload: response.status === 201 ? await readObject(response) : null,
+        }),
       );
       if (exchange.status !== 201) {
         return {
@@ -142,7 +179,7 @@ export async function probeRemoteBackend(
           target,
         };
       }
-      const payload = await readObject(exchange);
+      const payload = exchange.payload;
       const token = payload?.token;
       const relative = payload?.expires_in;
       if (
@@ -159,21 +196,26 @@ export async function probeRemoteBackend(
     }
 
     const headers = session ? { Authorization: `Bearer ${session.token}` } : undefined;
-    const infoResponse = await fetchWithin(
+    const infoResult = await fetchWithin(
       fetcher,
       `${target}/system/info`,
       { headers },
       timeoutMs,
+      async (response) => ({
+        ok: response.ok,
+        status: response.status,
+        body: response.ok ? await readObject(response) : null,
+      }),
     );
-    if (!infoResponse.ok) {
+    if (!infoResult.ok) {
       return {
         ok: false,
-        kind: infoResponse.status === 401 || infoResponse.status === 403 ? 'auth' : 'http',
-        status: infoResponse.status,
+        kind: infoResult.status === 401 || infoResult.status === 403 ? 'auth' : 'http',
+        status: infoResult.status,
         target,
       };
     }
-    const info = await readObject(infoResponse);
+    const info = infoResult.body;
     if (!info || typeof info.app_version !== 'string') {
       return { ok: false, kind: 'wrong_port', target };
     }
@@ -195,7 +237,9 @@ export async function remoteWebSocketUrl(
   { fetcher = fetch, now = Date.now, timeoutMs = 5000 }: ProbeOptions = {},
 ): Promise<string> {
   const target = normalizeRemoteUrl(rawUrl);
-  const url = new URL(path, `${target}/`);
+  // Resolve the route relative to the base so a reverse-proxy path prefix
+  // (`https://host/studio`) survives; a leading slash would replace it.
+  const url = new URL(path.replace(/^\/+/, ''), `${target}/`);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   if (!session) return url.toString();
   if (session.expiresAt <= now() / 1000) throw new Error('Remote session expired');
@@ -211,10 +255,14 @@ export async function remoteWebSocketUrl(
       body: JSON.stringify({ path }),
     },
     timeoutMs,
+    async (reply) => ({
+      status: reply.status,
+      payload: reply.status === 201 ? await readObject(reply) : null,
+    }),
   );
   if (response.status !== 201)
     throw new Error(`Could not authorize WebSocket (HTTP ${response.status})`);
-  const payload = await readObject(response);
+  const payload = response.payload;
   const expiresIn = payload?.expires_in;
   if (
     typeof payload?.ticket !== 'string' ||

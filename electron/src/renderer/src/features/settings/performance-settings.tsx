@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { apiJson, describeError } from '@/lib/api/client';
 import { useAppActivities } from '@/lib/app-activity';
+import { relaxWhenBackendBusy } from '@/lib/status-polling';
 import { SettingsSection, SettingsRow } from './settings-layout';
 import { useSettingsAction } from './use-settings-action';
 // @ts-expect-error shared JSX component has no declaration file
@@ -97,7 +98,7 @@ export function PerformanceSettings() {
   const hardware = useQuery({
     queryKey: ['sysinfo'],
     queryFn: ({ signal }) => apiJson<HardwareState>('/sysinfo', { signal }),
-    refetchInterval: 5000,
+    refetchInterval: () => relaxWhenBackendBusy(5000),
   });
   const gb = (value: number | undefined) =>
     value == null || !Number.isFinite(value) ? '-' : value.toFixed(2) + ' GB';

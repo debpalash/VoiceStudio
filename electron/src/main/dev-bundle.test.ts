@@ -10,7 +10,7 @@ it('watches main and preload changes so renderer updates cannot leave stale brow
   const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
   Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
   try {
-    launchElectronVite(['--', '--disable-gpu-compositing'], spawn);
+    launchElectronVite(['--', '--disable-gpu-compositing'], spawn, () => '/electron/dist/electron');
     expect(spawn).toHaveBeenCalledWith(
       process.execPath,
       [
@@ -25,6 +25,86 @@ it('watches main and preload changes so renderer updates cannot leave stale brow
   } finally {
     Object.defineProperty(process, 'platform', platform);
   }
+});
+
+describe('Electron binary resolution', () => {
+  it.each(['linux', 'win32'])('resolves Electron before launching on %s', (platformName) => {
+    const events: string[] = [];
+    const spawn = vi.fn(() => {
+      events.push('launch');
+      return { on: vi.fn() };
+    });
+    const resolveElectron = vi.fn(() => {
+      events.push('resolve');
+      return '/electron/dist/electron';
+    });
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    const previousExecutable = process.env.ELECTRON_EXEC_PATH;
+    delete process.env.ELECTRON_EXEC_PATH;
+    Object.defineProperty(process, 'platform', { value: platformName, configurable: true });
+    try {
+      launchElectronVite([], spawn, resolveElectron);
+      expect(events).toEqual(['resolve', 'launch']);
+      expect(spawn).toHaveBeenCalledWith(
+        process.execPath,
+        expect.any(Array),
+        expect.objectContaining({
+          env: expect.objectContaining({ ELECTRON_EXEC_PATH: '/electron/dist/electron' }),
+        }),
+      );
+      expect(process.env.ELECTRON_EXEC_PATH).toBeUndefined();
+    } finally {
+      Object.defineProperty(process, 'platform', platform);
+      if (previousExecutable === undefined) delete process.env.ELECTRON_EXEC_PATH;
+      else process.env.ELECTRON_EXEC_PATH = previousExecutable;
+    }
+  });
+
+  it('preserves an explicit executable override without downloading Electron', () => {
+    const spawn = vi.fn(() => ({ on: vi.fn() }));
+    const resolveElectron = vi.fn(() => {
+      throw new Error('must not download');
+    });
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    const previousExecutable = process.env.ELECTRON_EXEC_PATH;
+    process.env.ELECTRON_EXEC_PATH = '/custom/electron';
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    try {
+      launchElectronVite([], spawn, resolveElectron);
+      expect(resolveElectron).not.toHaveBeenCalled();
+      expect(spawn).toHaveBeenCalledWith(
+        process.execPath,
+        expect.any(Array),
+        expect.objectContaining({
+          env: expect.objectContaining({ ELECTRON_EXEC_PATH: '/custom/electron' }),
+        }),
+      );
+    } finally {
+      Object.defineProperty(process, 'platform', platform);
+      if (previousExecutable === undefined) delete process.env.ELECTRON_EXEC_PATH;
+      else process.env.ELECTRON_EXEC_PATH = previousExecutable;
+    }
+  });
+
+  it('does not launch Vite when binary resolution fails', () => {
+    const spawn = vi.fn(() => ({ on: vi.fn() }));
+    const failure = new Error('Electron binary download failed');
+    const resolveElectron = () => {
+      throw failure;
+    };
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    const previousExecutable = process.env.ELECTRON_EXEC_PATH;
+    delete process.env.ELECTRON_EXEC_PATH;
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    try {
+      expect(() => launchElectronVite([], spawn, resolveElectron)).toThrow(failure);
+      expect(spawn).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(process, 'platform', platform);
+      if (previousExecutable === undefined) delete process.env.ELECTRON_EXEC_PATH;
+      else process.env.ELECTRON_EXEC_PATH = previousExecutable;
+    }
+  });
 });
 
 describe('macOS development bundle branding', () => {

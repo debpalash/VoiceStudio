@@ -4,6 +4,8 @@
 # The backend loads it at startup via `load_model_catalog()`.
 #
 # To add a model: append an entry with the fields below.
+# Add its licence/evidence record to model_licenses.json in the same change;
+# CI checks top-level entries, nested dependencies and source-code defaults.
 # To remove: delete the entry. The UI will stop showing it immediately.
 #
 # Fields:

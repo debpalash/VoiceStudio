@@ -1,14 +1,14 @@
 # Commercial License client: verify, check status, test
 
-**Status:** Draft for implementation
+**Status:** Candidate protocol; provider selection and production implementation pending
 
 **Date:** 2026-09-29
 
-**Scope:** How the VoiceStudio desktop client verifies a License Certificate offline, checks with vssaas whether the license is still good, what vssaas records about each seat, and how to test all of it end to end on a local vssaas.
+**Scope:** Public client-side verification and refresh contract for the candidate vssaas licensing integration. This document does not select the payment/licensing provider or claim that the maintained client implements this protocol.
 
-This guide follows the vssaas code on branch `velixio-background-sessions` at commit `a802cca`, which is authoritative wherever it differs from the prose spec (see [§5](#5-spec-and-code-differences)). Paths starting with `internal/`, `cmd/`, `api/` or `docs/` below are in the vssaas repository.
+Private service implementation paths, operator procedures, database layouts and local service setup belong in the private service documentation. They are intentionally absent from this public client contract. Removing them here does not remove earlier Git history.
 
-The vocabulary comes from vssaas `CONTEXT.md`:
+Public protocol vocabulary:
 
 - **Commercial License**: the grant.
 - **License Seat**: one counted Installation.
@@ -20,7 +20,7 @@ The vocabulary comes from vssaas `CONTEXT.md`:
 
 ### 1.1 Algorithm
 
-The reference is `internal/licensing/certificate/certificate.go` (`Verify`) and `endorsement.go` (`VerifyEndorsement`). The order matters, because the golden vectors expect a specific error for each case. `now` is whole Unix seconds.
+The verification order is part of the proposed wire contract; conformance vectors expect a specific error for each case. `now` is whole Unix seconds.
 
 **Envelope rules.** These apply to both the certificate and the endorsement.
 
@@ -60,15 +60,15 @@ Verify the endorsement at the same `now` as the certificate. vssaas never issues
 
 **Checks the application must add around the verifier.** `verifyCertificate` / `verify_certificate` and the CLI wrappers below prove only that vssaas signed the certificate. They are a reference and a test harness, not the whole gate. The client must also do both of these before it turns Pro on:
 
-- **Bind to this installation.** Compare the verified `inst` claim with this installation's own licensing identifier, the 32 bytes it sent as `installation_id_hash` at claim time ([§3.1](#31-what-is-recorded-today)). On a mismatch, treat the certificate as invalid and do not enable Pro. Without this, a valid certificate copied to another machine would work offline until its `hard_exp` without owning a seat.
+- **Bind to this installation.** Compare the verified `inst` claim with this installation's own licensing identifier, the 32 bytes it sent as `installation_id_hash` at claim time (a random licensing-only identifier, independent of analytics and hardware identifiers). On a mismatch, treat the certificate as invalid and do not enable Pro. Without this, a valid certificate copied to another machine would work offline until its `hard_exp` without owning a seat.
 - **Persist a time floor.** Store the highest `now` the client has accepted (system time or a refresh response's `server_time`, whichever is larger) and use `max(system time, stored floor)` as `now` on every start. The CLIs take `now` from the command line or the system clock for testing only. Production code that restarts and reads the raw clock would let a rolled-back clock stretch the 44-day offline limit ([§2.4](#24-the-offline-limit)).
 
 ### 1.2 Where the root keys come from
 
 Trust starts from one or two **root public keys compiled into the client build**, one set per environment. They are public values, so they can be committed or injected by CI. A good format mirrors vssaas `LICENSE_ROOT_PUBLIC_KEYS`: comma-separated unpadded base64url, 32 bytes each, supplied through a build-time define such as `VOICESTUDIO_LICENSE_ROOT_PUBLIC_KEYS`, next to the existing `VOICESTUDIO_PRO_*` defines in `electron/electron.vite.config.ts`.
 
-- **Production roots.** These come from the offline key ceremony. ADR 0075 requires the ceremony before production signing, and the roots do not exist yet. A production build contains only production roots.
-- **Development and staging roots.** These are whatever the vssaas operators endorse keys with. For local testing, the root is the one you generate in [§4](#4-end-to-end-test-on-a-local-vssaas).
+- **Production roots.** These come from the offline key ceremony. A production signing-key ceremony is required before production signing; no production roots are established by this draft. A production build contains only production roots.
+- **Development and staging roots.** Use dedicated non-production roots supplied through the private service setup process; never trust those roots in production.
 - **Never the golden root.** No build trusts the golden-vector root `A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg`, which is labelled TEST ONLY.
 - **Not from the network.** `GET /v1/license-signing-keys` supplies endorsements, not roots. Trust comes only from the compiled roots.
 - **Two roots.** Retiring one root needs a client release, and having two means clients stay anchored meanwhile.
@@ -78,7 +78,7 @@ Trust starts from one or two **root public keys compiled into the client build**
 Save this as `license-certificate.ts`. It runs as-is with `node --experimental-strip-types` (Node 22.6 or later) or `bun`, and needs no dependencies. `JSON.parse` keeps the last duplicate key and `Buffer.from(…, 'base64url')` is lenient, so the file scans tokens itself.
 
 ```ts
-// Verifies vssaas License Certificates offline. Mirrors internal/licensing/certificate.
+// Verifies vssaas License Certificates offline.
 import { createHash, createPublicKey, verify, type KeyObject } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -259,7 +259,7 @@ This has one deliberate difference from Go. Integers outside ±(2^53−1) are `m
 Save this as `license_certificate.py`. `cryptography` is already a direct VoiceStudio dependency. Outside the project venv, run it with `uv run --no-project --with cryptography python license_certificate.py …`.
 
 ```python
-"""Verifies vssaas License Certificates offline. Mirrors internal/licensing/certificate."""
+"""Verifies vssaas License Certificates offline."""
 from __future__ import annotations
 
 import base64
@@ -435,14 +435,14 @@ if __name__ == "__main__":  # <certificate or response.json> <signing-keys.json>
 
 ### 1.5 Golden-vector tests
 
-Copy `internal/licensing/certificate/testdata/golden.json` byte for byte next to the tests; in VoiceStudio the suggested place is `tests/fixtures/licensing/golden.json`. Its SHA-256 is `f9008f69434581a3941700680955cac7669c8963a7d88d10d87dba08e23edbec`, from vssaas commit `1178dc6`. The file holds:
+The examples below require an approved conformance fixture, copied byte for byte to `tests/fixtures/licensing/golden.json`; that fixture is not bundled by this draft. The referenced fixture has SHA-256 `f9008f69434581a3941700680955cac7669c8963a7d88d10d87dba08e23edbec` and contains:
 
 - a TEST ONLY root and signing key;
 - one endorsement, verified at its own `now`;
 - 3 valid envelopes (`active`, `in_grace`, `clamped_to_term`);
 - 8 invalid ones, one per error.
 
-A changed byte in an existing vector is a format change under ADR 0075, not an update. Both tests below pass against the snippets above.
+Treat changes to existing conformance vectors as protocol changes. The snippets below are candidate test harnesses, not evidence that the maintained application implements this protocol.
 
 TypeScript: `node --experimental-strip-types --test license-certificate.test.ts`. The same assertions port directly to Vitest.
 
@@ -562,7 +562,7 @@ Content-Type: application/json
 ```
 
 - The bearer is the Installation Credential that the client generated and hashed at claim time. The server compares `SHA-256` of the whole `vsic_…` string in constant time.
-- The body is optional. It may be empty or `{}`, and unknown fields are rejected. When a serial is sent, it must be 16 Base62 characters. A serial that differs from the seat's latest one records `license_seat.replay_suspected` and the request continues; this is a signal only.
+- The body is optional. It may be empty or `{}`, and unknown fields are rejected. When a serial is sent, it must be 16 Base62 characters. A serial that differs from the latest one does not by itself reject the refresh.
 - There is no `Idempotency-Key`.
 
 A `200` has the same shape as a claim, and carries `Cache-Control: no-store`:
@@ -595,9 +595,9 @@ Every error uses `{"error": {"code", "message", "request_id", "details"}}`. Map 
 | — | 200 | Seat and license are good | Verify and store the new certificate, then schedule the next refresh (§2.3) |
 | `license_revoked` | 403 | Revoked (terminal) | Turn Pro off now and delete the certificate. Stop refreshing. Offer "use a different License Key". Release still works. |
 | `license_suspended` | 403 | Suspended by an operator | Turn Pro off now and delete the certificate. Keep retrying every 6 hours and on the user's "Check now"; a reinstated license refreshes normally. |
-| `license_expired` | 403 | now ≥ `ends_at` | Turn Pro off now, delete the certificate, and stop scheduled refreshes. Terms are fixed at issuance in M1, so continuing needs a new license and License Key. |
+| `license_expired` | 403 | now ≥ `ends_at` | Turn Pro off now, delete the certificate, and stop scheduled refreshes. Under this candidate contract, terms are fixed at issuance, so continuing needs a new license and License Key. |
 | `license_not_active` | 403 | `starts_at` is in the future | Turn Pro off now and delete the certificate. Seen on claim in practice; retry after the start date. |
-| `seat_released` | 409 | The seat was released by this Installation or by a superadmin, and the credential is correct | Turn Pro off. Delete the seat, certificate and credential. Claiming again needs the License Key. |
+| `seat_released` | 409 | The seat was released by this Installation or by an operator, and the credential is correct | Turn Pro off. Delete the seat, certificate and credential. Claiming again needs the License Key. |
 | `invalid_installation_credential` | 401 | Unknown seat or wrong credential. The body is identical for both causes. | Keep the current certificate until its `hard_exp`, and stop refreshing. Ask for the License Key to claim again; a `409 installation_conflict` then means an operator must release the old seat. |
 | `license_authority_unavailable` | 503 | No usable active signing key, the endorsement is too short, or the signer failed | Keep the certificate and back off |
 | `dependency_unavailable` | 503 | Database unavailable | Keep the certificate and back off |
@@ -612,16 +612,13 @@ The rule: a definitive answer (a `403`, or `seat_released`) takes effect immedia
 
 - **Schedule** the next refresh at `min(refresh_after, exp)` from the verified claims. The server sets `refresh_after = iat + 24h + uniform[0, 6h)`, so it already includes jitter. Within 30 days of `ends_at`, `exp` and `hard_exp` both equal `ends_at`: there is no grace, and `refresh_after` can fall after `exp`.
 - **Also refresh** at app start when a refresh is due or overdue, after the system wakes, and when the network comes back.
-- **Reissue window.** A refresh or replayed claim within 10 minutes of the seat's last issued certificate returns that same certificate: same serial and same `refresh_after`, as long as its signing key is still `active` or `retiring`. This is not an error. Polling cannot mint certificates, and such a refresh leaves no trace (no event, and `last_refreshed_at` is unchanged).
-- **429.** Wait exactly `Retry-After`. The budgets are fixed one-hour windows, and failed attempts count:
-  - 60 refresh and release requests per hour per seat and presented credential (refresh and release share it);
-  - 600 per hour per client IP, where an IPv6 address counts by its /64;
-  - claims: 30 per hour per IP and 20 per hour per key prefix.
+- **Reissue window.** A refresh or replayed claim may return the same certificate and `refresh_after`; the client must accept a valid unchanged certificate without assuming a new one will be issued for every request.
+- **429.** Honour `Retry-After`; do not rely on private service rate-limit budgets or retry immediately.
 - **503, 404 or network failure.** Back off exponentially from 1 minute, doubling up to 6 hours (up to 1 hour while in grace), with jitter.
 
 ### 2.4 The offline limit
 
-An installation learns about a revocation or suspension only when a refresh reaches vssaas. An online installation normally learns within 24 to 30 hours, at its next `refresh_after`. An offline installation keeps a certificate that verifies until that certificate's `hard_exp`. `hard_exp = min(exp + 14 days, ends_at)`, and `exp = min(iat + 30 days, ends_at)`, so this is **at most 44 days after the certificate was issued**. ADR 0075 documents this as the maximum offline exposure. The client cannot shorten it without a network call. The non-decreasing clock in §1.1 stops users from stretching it by rolling the clock back.
+An installation learns about a revocation or suspension only when a refresh reaches vssaas. An online installation normally learns within 24 to 30 hours, at its next `refresh_after`. An offline installation keeps a certificate that verifies until that certificate's `hard_exp`. `hard_exp = min(exp + 14 days, ends_at)`, and `exp = min(iat + 30 days, ends_at)`, so this is **at most 44 days after the certificate was issued**. This is the candidate protocol limit, not a published product promise; the selected provider and paid terms must agree before launch. The client cannot shorten it without a network call. The non-decreasing clock in §1.1 stops users from stretching it by rolling the clock back.
 
 ### 2.5 Signing-key rotation check
 
@@ -640,281 +637,17 @@ GET /v1/license-signing-keys
 - If a successful fetch no longer lists the held certificate's `kid`, refresh at once. The key was retired or compromised, and vssaas answers with a certificate from the active key; its reissue window never returns a certificate signed by a compromised key.
 - A retiring key stays published until its last certificate has passed `hard_exp`, so ordinary rotation never strands an offline client.
 
-## 3. Seat data visible to vssaas
+## 3. Client privacy and production prerequisites
 
-### 3.1 What is recorded today
+Generate a random identifier solely for licensing; do not derive it from an OS
+machine identifier, hostname, username, hardware attributes, analytics identifier
+or application encryption key. Keep licence, seat, organisation and installation
+values out of analytics. The activation UI and reviewed privacy policy must
+explain the selected provider, submitted fields and retention before release.
+This draft makes no claim about private service storage or operational logging.
 
-These tables come from migration `000027_commercial_licenses` and are all tenant-scoped under row-level security.
-
-**`license_seats`**: one row per claim. A new claim after a release creates a new row.
-
-| Column | Content |
-| --- | --- |
-| `installation_id_hash` | The 32 bytes the client sent: an opaque hash of a random, licensing-only identifier |
-| `installation_credential_hash` | SHA-256 of the Installation Credential. The credential itself is never stored. |
-| `platform` | `windows`, `macos` or `linux` |
-| `app_version` | As sent at claim; matches `^[0-9A-Za-z.+-]{1,32}$`. It is not updated by refresh. |
-| `state` | `active` or `released` |
-| `claimed_at` | Claim time |
-| `last_refreshed_at` | Set at claim, then updated only when a refresh **issues a new certificate**. A refresh answered from the 10-minute reissue window does not update it. |
-| `last_certificate_serial` | Serial of the latest certificate issued to the seat |
-| `released_at`, `released_by` | Release time, and `installation` or `superadmin` |
-
-**`license_certificates`**: an append-only record of every issued certificate, with `id` (the serial), `license_id`, `seat_id`, `key_id`, the full `envelope`, `payload_sha256`, `issued_at`, `expires_at` and `hard_expires_at`. It shows which seats still hold a certificate from a given signing key.
-
-**`license_events`**: append-only. The seat events are:
-
-| `event_type` | When | `actor_type` / `actor_id` | `metadata` |
-| --- | --- | --- | --- |
-| `license_seat.claimed` | A new seat row, never on a replayed claim | `license_key` / license ID | `platform`, `app_version`, `certificate_serial` |
-| `license_seat.released` | The first release | `installation` / seat ID, or `superadmin` / superadmin ID | `license_id`, `platform`, `app_version` |
-| `license_seat.replay_suspected` | A refresh presented a stale `last_certificate_serial` | `installation` / seat ID | `presented_serial`, `current_serial` |
-
-The license events `license.issued`, `license.suspended`, `license.reinstated`, `license.revoked` and `license.key_rotated` are recorded alongside them.
-
-**`license_request_rate_limits`**: hourly counters keyed by `HMAC-SHA256` digests of the client IP (an IPv6 address by its /64), of the seat plus the presented credential, and of the key prefix. They expire. No raw IP is stored anywhere.
-
-### 3.2 How an operator views it
-
-These surfaces are available to a local superadmin only, in the Admin Console (`cmd/admin`, `http://127.0.0.1:8082` by default).
-
-| Surface | Shows |
-| --- | --- |
-| `GET /commercial-licenses` | A list of licenses |
-| `GET /commercial-licenses/{license_id}` | The license (state, term, seat limit, active count). A seat table with Seat, State, Platform, App version, Claimed, Last refreshed and Released. An event table with Event, Actor, Seat, Reason and When. The Suspend, Reinstate, Revoke, License Key rotation and per-seat Release forms. |
-| `GET /organizations/{organization_id}` | The Organization's Commercial Licenses section and the issue form |
-| `GET /admin/v1/commercial-licenses?organization_id=…&limit=1..100` | JSON `{"items": [license…]}`, newest first |
-| `GET /admin/v1/commercial-licenses/{license_id}` | JSON `{"license", "seats", "events"}`. It covers every active seat plus the most recent released ones (up to 2000 seats) and the last 200 events. |
-
-Both JSON routes need the signed-in console session. Without it, the browser is redirected to `/sign-in`. Every read is recorded in the console audit chain. No console page or admin API exposes the License Key, its prefix or hash, installation or credential hashes, certificate envelopes, or `license_certificates` rows. Certificate history is readable only with SQL ([§4](#4-end-to-end-test-on-a-local-vssaas), step 9). A seat from the JSON detail route looks like this (from a local run):
-
-```json
-{ "id": "kTcG7HiBMtmbYDPl", "organization_id": "LicTestOrg000001", "license_id": "8MNl5x7q8xom9oxy",
-  "platform": "linux", "app_version": "0.5.6", "state": "active",
-  "claimed_at": "2026-09-29T13:31:53Z", "last_refreshed_at": "2026-09-29T13:31:53Z",
-  "released_at": null, "released_by": "" }
-```
-
-### 3.3 What is not collected
-
-- **No usage telemetry.** There is no feature usage, generation, job, project, audio, voice or session telemetry. The seat routes receive only the four claim fields (`installation_id_hash`, `installation_credential_hash`, `platform`, `app_version`) and an optional certificate serial.
-- **No raw identifiers.** No machine identifier, hostname, username or hardware attribute is ever sent. The installation hash comes from a random licensing-only value. The client must not derive it from `backend/core/analytics.py` `installation_id()`, the OS machine ID, or the key material in `backend/services/_secret_key.py`.
-- **No link to analytics.** Licensing is separate from the consent-gated PostHog analytics. No license, seat, Organization or installation value goes to analytics, and licensing traffic goes only to vssaas.
-- **No IP addresses.** vssaas stores no raw IP address, License Key, Installation Credential or private key.
-
-### 3.4 Open question: richer usage telemetry
-
-Richer telemetry, such as which Pro features a seat uses, active-use time or per-seat activity, does not exist and needs decisions first:
-
-- a product decision on what is needed;
-- a privacy decision: consent, retention and lawful basis, with VoiceStudio's local-first rule that nothing leaves the machine without the user's explicit yes and the app keeps working with everything declined;
-- a vssaas ADR and schema.
-
-Until then, the seat record above is the complete picture.
-
-## 4. End-to-end test on a local vssaas
-
-Every command below was run end to end against the code at the commit above. Run them from the vssaas repository root.
-
-The recipe uses two disposable databases because the down migration of `000027_commercial_licenses` refuses to run while any license or signing key exists; this keeps test keys out of your development database.
-
-**Prerequisites:**
-
-- Go and `curl`.
-- `python3`, plus Node 22.6 or later or `uv` for the verifier.
-- The compose PostgreSQL: `docker compose up -d postgres`. Its `vssaas` role is a superuser there.
-- Ports 8080 and 8082 free. Run `make kill` if the dev stack holds them.
-- `license-certificate.ts` (§1.3) and `license_certificate.py` (§1.4) saved in the repository root. Delete them afterwards.
-
-**1. Environment** (run once; later terminals only source the file)
-
-```sh
-export E2E="$PWD/.run/license-e2e"          # .run/ is gitignored
-mkdir -p "$E2E" && chmod 700 "$E2E"
-cat > "$E2E/env.sh" <<EOF
-export E2E='$E2E'
-export VSSAAS_ENV=development
-export DATABASE_URL='postgres://vssaas:vssaas@localhost:5432/vssaas_license_e2e?sslmode=disable'
-export SUPERADMIN_DATABASE_URL='postgres://vssaas:vssaas@localhost:5432/vssaas_license_e2e_admin?sslmode=disable'
-export ADMIN_ALLOW_INSECURE_DEVELOPMENT_HTTP=true
-export LICENSE_AGREEMENT_VERSIONS=dev-1
-export API=http://127.0.0.1:8080
-EOF
-. "$E2E/env.sh"
-```
-
-Every `cmd/admin` command, including `migrate`, refuses the default `http://127.0.0.1:8082` public URL unless `ADMIN_ALLOW_INSECURE_DEVELOPMENT_HTTP=true` is set. Process variables override your `.env`.
-
-**2. Databases, superadmin and an Organization**
-
-```sh
-psql 'postgres://vssaas:vssaas@localhost:5432/postgres' \
-  -c 'CREATE DATABASE vssaas_license_e2e' -c 'CREATE DATABASE vssaas_license_e2e_admin'
-go run ./cmd/migrate -direction up
-go run ./cmd/admin migrate
-go run ./cmd/admin bootstrap-superadmin -username alice -reason 'license client e2e test'   # prints a one-time password
-psql "$DATABASE_URL" -c "INSERT INTO organizations (id, slug, display_name) VALUES ('LicE2eOrg0000001', 'license-e2e', 'License e2e')"
-```
-
-**3. Root key, signing key, endorsement, registration, promotion.** `license-keys generate` writes any Ed25519 PKCS#8 key, so a locally generated key stands in for the offline ceremony root. Promotion, and signing by `cmd/api`, both need at least 44 days of endorsement left, so this uses 120 days.
-
-```sh
-ROOT=$(go run ./cmd/admin license-keys generate -output "$E2E/root.pem")
-SIGNING=$(go run ./cmd/admin license-keys generate -output "$E2E/signing.pem")
-ROOT_PUB=$(printf '%s\n' "$ROOT" | awk '/public_key:/ {print $2}')
-SIGNING_PUB=$(printf '%s\n' "$SIGNING" | awk '/public_key:/ {print $2}')
-SIGNING_KID=$(printf '%s\n' "$SIGNING" | awk '/kid:/ {print $2}')
-NOT_AFTER=$(date -u -d '+120 days' +%Y-%m-%dT%H:%M:%SZ)   # macOS: date -u -v+120d +%Y-%m-%dT%H:%M:%SZ
-ENDORSEMENT=$(go run ./cmd/admin license-keys endorse -root-key-file "$E2E/root.pem" \
-  -public-key "$SIGNING_PUB" -environment development -not-after "$NOT_AFTER")
-go run ./cmd/admin license-keys register -roots "$ROOT_PUB" -environment development \
-  -endorsement "$ENDORSEMENT" -reason 'license client e2e test'        # "Signing key <kid> registered as staged."
-go run ./cmd/admin license-keys transition -kid "$SIGNING_KID" -to active -reason 'license client e2e test'
-head -c 32 /dev/urandom > "$E2E/rate-limit.key" && chmod 600 "$E2E/rate-limit.key"
-echo "export ROOT_PUB='$ROOT_PUB'" >> "$E2E/env.sh"
-```
-
-**4. Start `cmd/api`** in terminal A. The four `LICENSE_*` variables are all-or-nothing.
-
-```sh
-. .run/license-e2e/env.sh
-LICENSE_SIGNING_KEY_FILE="$E2E/signing.pem" \
-LICENSE_ROOT_PUBLIC_KEYS="$ROOT_PUB" \
-LICENSE_CERTIFICATE_ENVIRONMENT=development \
-LICENSE_RATE_LIMIT_HMAC_KEY_FILE="$E2E/rate-limit.key" \
-go run ./cmd/api
-```
-
-Expect the log line `"Commercial License seat routes enabled"` with your `signing_key_id`. If the log says `signing authority unavailable` instead, the key is not `active` or its endorsement has less than 44 days left. Fix that, then restart `cmd/api`; it loads the key only at startup.
-
-**5. Issue a license in the console.** In terminal B, run `. .run/license-e2e/env.sh && go run ./cmd/admin serve`. Then:
-
-1. Open `http://127.0.0.1:8082` and sign in as `alice` with the one-time password.
-2. Set a new password, then sign in again.
-3. Open `http://127.0.0.1:8082/organizations/LicE2eOrg0000001`.
-4. In **Commercial Licenses**, fill in:
-   - Agreement version: `dev-1`
-   - Seat limit: `2`
-   - Starts: today
-   - Ends and Updates until: one year out
-   - Reason: `license client e2e test`
-5. Submit. The `201` page shows the License Key **once**. Copy it, and note the license ID from the page's `/commercial-licenses/<id>` link.
-
-**6. Claim a seat with curl** in terminal C.
-
-```sh
-. .run/license-e2e/env.sh
-LICENSE_KEY='VSLK-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX'   # from step 5
-LICENSE_ID='XXXXXXXXXXXXXXXX'                            # from step 5
-
-cert_claim() {  # cert_claim <response.json> <claim>: print one claim of the returned certificate
-  python3 -c 'import base64,json,sys
-p = json.load(open(sys.argv[1]))["certificate"].split(".")[1]
-print(json.loads(base64.urlsafe_b64decode(p + "=" * (-len(p) % 4)))[sys.argv[2]])' "$1" "$2"
-}
-
-eval "$(python3 - <<'EOF'
-import base64, hashlib, secrets
-b64 = lambda b: base64.urlsafe_b64encode(b).rstrip(b"=").decode()
-credential = "vsic_" + b64(secrets.token_bytes(32))
-print(f"CREDENTIAL={credential}")
-print(f"CREDENTIAL_HASH={b64(hashlib.sha256(credential.encode()).digest())}")
-print(f"INSTALLATION_HASH={b64(secrets.token_bytes(32))}")
-EOF
-)"
-
-curl -sS -X POST "$API/v1/license-seats" \
-  -H "Authorization: Bearer $LICENSE_KEY" -H 'Content-Type: application/json' \
-  -d "{\"installation_id_hash\":\"$INSTALLATION_HASH\",\"installation_credential_hash\":\"$CREDENTIAL_HASH\",\"platform\":\"linux\",\"app_version\":\"0.5.6\"}" \
-  | tee "$E2E/claim.json"
-SEAT_ID=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["seat"]["id"])' "$E2E/claim.json")
-SERIAL=$(cert_claim "$E2E/claim.json" serial)
-```
-
-The first claim is `201`. Repeating the same `curl` with the same hashes replays as `200` with the same seat. The same installation hash with a different credential hash is `409 installation_conflict`.
-
-**7. Verify the certificate offline**
-
-```sh
-curl -sS "$API/v1/license-signing-keys" > "$E2E/keys.json"
-node --experimental-strip-types license-certificate.ts "$E2E/claim.json" "$E2E/keys.json" "$ROOT_PUB" development
-uv run --no-project --with cryptography python license_certificate.py "$E2E/claim.json" "$E2E/keys.json" "$ROOT_PUB" development
-```
-
-Both commands print `{"valid": true, "in_grace": false, "claims": {…}}`. With `production` in place of `development` they print `{"valid":false,"error":"unknown_key"}`, because no endorsement exists for that environment.
-
-**8. Refresh**
-
-```sh
-curl -sS -X POST "$API/v1/license-seats/$SEAT_ID/certificates" \
-  -H "Authorization: Bearer $CREDENTIAL" -H 'Content-Type: application/json' \
-  -d "{\"last_certificate_serial\":\"$SERIAL\"}" > "$E2E/refresh.json"
-cert_claim "$E2E/refresh.json" serial    # equals $SERIAL inside the 10-minute reissue window
-```
-
-Sending `{"last_certificate_serial":"AAAAAAAAAAAAAAAA"}` still returns `200`, and records `license_seat.replay_suspected`.
-
-**9. Inspect the seat data**
-
-- In the console, open `http://127.0.0.1:8082/commercial-licenses/$LICENSE_ID` for the seat and event tables, and `http://127.0.0.1:8082/admin/v1/commercial-licenses/$LICENSE_ID` for the JSON.
-- For certificate history, use SQL. The `SET` passes row-level security for a non-superuser role:
-
-```sh
-psql "$DATABASE_URL" -c "SET app.platform_scope = 'on'" \
-  -c "SELECT id AS serial, seat_id, key_id, issued_at, expires_at, hard_expires_at FROM license_certificates ORDER BY issued_at"
-```
-
-**10. Revoke, then refresh again.** On the console license page, submit **Revoke** with a reason code and a reason. Then:
-
-```sh
-curl -sS -w '\nHTTP %{http_code}\n' -X POST "$API/v1/license-seats/$SEAT_ID/certificates" \
-  -H "Authorization: Bearer $CREDENTIAL" -H 'Content-Type: application/json' -d '{}'
-# {"error":{"code":"license_revoked",...}}
-# HTTP 403
-```
-
-Suspending instead of revoking gives `403 license_suspended`. A claim with the License Key of a revoked license also gets `403 license_revoked`.
-
-**11. The offline check.** The certificate issued before the revocation still verifies until its `hard_exp`:
-
-```sh
-HARD_EXP=$(cert_claim "$E2E/claim.json" hard_exp)
-node --experimental-strip-types license-certificate.ts "$E2E/claim.json" "$E2E/keys.json" "$ROOT_PUB" development                      # valid
-node --experimental-strip-types license-certificate.ts "$E2E/claim.json" "$E2E/keys.json" "$ROOT_PUB" development $((HARD_EXP - 1))  # valid, "in_grace": true
-node --experimental-strip-types license-certificate.ts "$E2E/claim.json" "$E2E/keys.json" "$ROOT_PUB" development "$HARD_EXP"        # {"valid":false,"error":"expired"}
-```
-
-**12. Release and clean up.** Release works in every license state, including revoked.
-
-```sh
-curl -sS -X POST "$API/v1/license-seats/$SEAT_ID/release" -H "Authorization: Bearer $CREDENTIAL"
-# {"seat":{"id":"…","state":"released","released_at":"…"}}; a second release returns the same 200
-# stop cmd/api and cmd/admin (Ctrl-C), then:
-psql 'postgres://vssaas:vssaas@localhost:5432/postgres' \
-  -c 'DROP DATABASE vssaas_license_e2e' -c 'DROP DATABASE vssaas_license_e2e_admin'
-rm -rf .run/license-e2e license-certificate.ts license_certificate.py
-```
-
-## 5. Spec and code differences
-
-This guide followed the vssaas code in each case below, against vssaas commit
-`a802cca`. All eleven were corrected in vssaas commit
-`f45874c4665c1047bd8cd1e23c578adddff4a1a9` (PR #125): the vssaas spec,
-`docs/api/license-seats.md` and `v1.yaml` now match the code, and vssaas's Go
-behavior did not change, except that the OpenAPI enums were tightened to
-match what the code and database already accept. One line each, for the
-historical record:
-
-1. **Refresh and release bearer check.** `docs/specs/commercial-licensing.md` (refresh check 1) said a `vsic_` bearer was rejected with `401`; the code (`requireInstallationCredentialBearerShape`) actually rejects every bearer that does **not** start with `vsic_`. Fixed in the spec.
-2. **Claim check order.** The spec put the body before the client-IP rate limit and did not mention `platform`/`app_version` as a separate, later step, or that a bad `last_certificate_serial` on refresh is `400` after the rate limits. Fixed in the spec, `v1.yaml`'s operation descriptions and the check-order comment in `internal/platform/httpapi/license_seats.go`.
-3. **Verifier rules.** The spec's verifier steps listed only `v`, `iss`, `aud` and `env`. Fixed to also name the distinct `wrong_audience` and `wrong_environment` errors and the extra claim invariants in §1.1 step 5, plus `0 < nbf < exp` and the `root_kid` shape for endorsements.
-4. **OpenAPI claim request.** `LicenseSeatClaimRequest` accepted any 1–32-character `platform` and any `app_version`. Fixed to the enum `windows|macos|linux` and the pattern `^[0-9A-Za-z.+-]{1,32}$`, asserted by `api/openapi/v1_test.go`.
-5. **OpenAPI `LicenseAuthorityUnavailable`.** It listed only "no active signing key or the signer failed". Fixed to also name: this process's key not being the active one, an endorsement that does not verify, and a certificate that would outlive its endorsement.
-6. **Refresh visibility.** The spec said refreshes are visible through `last_refreshed_at` and `license_certificates` unconditionally. Fixed to say a refresh inside the 10-minute reissue window updates neither, and that `last_refreshed_at` is set at claim time, never `null`.
-7. **Admin JSON example.** The spec's example showed seats without `organization_id` and `license_id`, and `released_by` and event `reason` as `null`. Fixed to include `organization_id` and `license_id` on seats, `""` for an active seat's `released_by`, for event `reason`, and for a license event's `seat_id`, and a `metadata` object on every event.
-8. **API guide: replay.** `docs/api/license-seats.md` said a `200` claim replay returns the certificate "unchanged". Fixed to state the reissue rule: unchanged only inside 10 minutes and while its key is `active` or `retiring`.
-9. **API guide: refresh timing.** Step 3 was headed "Refresh after `refresh_after`" but its text said "Before that instant". Fixed to "Refresh at `refresh_after`", matching the text.
-10. **API guide: 403 handling.** `docs/api/license-seats.md` called `license_revoked` terminal, while its closing paragraph said to keep the last certificate through grace after any `403`. Fixed so the guide and the spec both state the ADR 0075 ruling consistently: any `403` (`license_revoked`, `license_suspended`, `license_expired`, `license_not_active`) is definitive and discards the certificate at once; grace until `hard_exp` covers only an unreachable authority (network failure, a timeout, or `5xx`, `429` or `license_authority_unavailable`) — matching §2.2 above. The guide also now links back to this VoiceStudio path.
-11. **Open question number.** ADR 0074 and `docs/decisions/current-dilemmas.md` §9 cited "open question 5" for how seats map to people. Fixed to "open question 6", matching `docs/decisions/open-questions.md`.
-
-Related: `docs/specs/commercial-licensing.md` and `docs/api/license-seats.md` in vssaas cover claiming, key formats, superadmin actions and configuration beyond what this guide needs.
+Before enabling this protocol, select the provider, publish approved conformance
+fixtures, validate installation binding and persisted clock handling, complete the
+production signing-key ceremony, and document the actual offline period. Private
+operator runbooks and service internals must remain in the private service's
+controlled documentation.

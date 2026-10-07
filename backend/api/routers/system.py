@@ -21,6 +21,7 @@ import shlex
 from core.config import OUTPUTS_DIR, DATA_DIR, CRASH_LOG_PATH, LOG_PATH, IDLE_TIMEOUT_SECONDS
 from core.version import APP_VERSION
 from core.logging_utils import log_safe
+from core.poll_guard import PollGuard
 from core.nvidia_smi import find_nvidia_smi
 from core.public_errors import public_failure
 from services.model_manager import get_model_status, get_best_device, resolve_omnivoice_checkpoint
@@ -291,19 +292,30 @@ def _has_hf_token() -> bool:
         # Resolver must never break /system/info — fall back to False.
         return False
 
+def _list_loaded_snapshot():
+    from services import model_lifecycle
+    return model_lifecycle.list_loaded()
+
+
+# Polled every second by several widgets while work runs: each gets a private
+# single-thread executor (see core.poll_guard) so a stalled driver/DB call can
+# never occupy the shared worker pool the rest of the API runs on.
+_model_status_poll = PollGuard("model-status", lambda: get_model_status())
+_loaded_models_poll = PollGuard("model-loaded", _list_loaded_snapshot)
+
+
 @router.get("/model/status", response_model=ModelStatusResponse)
-def model_status():
+async def model_status():
     """Report model loading state for frontend warm-up indicators."""
-    return get_model_status()
+    return await _model_status_poll.get()
 
 
 @router.get("/model/loaded")
-def loaded_models():
+async def loaded_models():
     """List all currently loaded models for the flush dropdown (MM2-04).
     Thin delegation to the model_lifecycle facade — shape unchanged:
     ``{models, count}``."""
-    from services import model_lifecycle
-    return model_lifecycle.list_loaded()
+    return await _loaded_models_poll.get()
 
 
 @router.post("/model/unload/{model_id}")

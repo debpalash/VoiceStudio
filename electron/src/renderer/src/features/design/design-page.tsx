@@ -15,6 +15,9 @@ import {
   applyDescription,
   designInstruct,
   designRecipe,
+  designRequestSeed,
+  editVoice,
+  linkedDesignProfile,
   pickDetail,
   readDraft,
   replaceRecipe,
@@ -23,6 +26,7 @@ import {
 } from './design-draft';
 import { useDescription } from './use-description';
 import { useProfiles } from '@/hooks/use-profiles';
+import { useEngines } from '@/hooks/use-engines';
 import { AudioPreviewButton } from '@/components/audio-preview-button';
 import { apiJson, describeError, profileAudioUrl } from '@/lib/api/client';
 import { useEffect, useRef, useState } from 'react';
@@ -44,7 +48,8 @@ import {
   XIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { Link } from '@tanstack/react-router';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useGenerateClone } from '@/hooks/use-generate';
 import { OutputPanel } from '@/features/clone/output-panel';
@@ -77,13 +82,17 @@ export function DesignPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const generation = useGenerateClone();
+  const activeEngine = useEngines().activeTts;
   const freeform = generation.instructVocabulary === 'freeform';
   const description = draft.description;
   const client = useQueryClient();
   const profiles = useProfiles();
   const savedProfilesRef = useRef<HTMLDetailsElement>(null);
   const designProfiles = profiles.data?.filter((profile) => profile.kind === 'design') ?? [];
-  const activeProfile = designProfiles.find((profile) => profile.id === draft.profileId);
+  // The saved voice this draft still is; any edit turns it into a new design.
+  const activeProfile = linkedDesignProfile(draft, profiles.data);
+  // Re-rendering a saved sample is cloning, which any ready engine can do.
+  const designBlocker = generation.designBlockerFor(activeProfile);
   const editingProfile = profiles.data?.find((profile) => profile.id === editingId);
   useEffect(() => {
     const restore = (event: Event) => {
@@ -190,7 +199,7 @@ export function DesignPage() {
                   disabled={generation.isGenerating || mapper.pending}
                   onClick={() => {
                     // Reset drops the picks so the description alone decides again.
-                    setDraft((current) => ({ ...current, picks: {} }));
+                    setDraft((current) => ({ ...current, picks: {}, profileId: null }));
                     mapper.reset(description);
                   }}
                 >
@@ -208,7 +217,7 @@ export function DesignPage() {
               placeholder={t('clone.describe_placeholder')}
               onChange={(event) => {
                 const value = event.target.value;
-                setDraft((current) => ({ ...current, description: value }));
+                setDraft((current) => editVoice(current, { description: value }));
                 // Mapping runs for every engine so the details stay in step
                 // with the description when switching back to OmniVoice.
                 mapper.describe(value);
@@ -246,9 +255,9 @@ export function DesignPage() {
                 <div key={profile.id} className="flex items-center gap-1">
                   <Button
                     className="min-w-0 flex-1 justify-start truncate"
-                    variant={draft.profileId === profile.id ? 'secondary' : 'ghost'}
+                    variant={activeProfile?.id === profile.id ? 'secondary' : 'ghost'}
                     size="sm"
-                    aria-pressed={draft.profileId === profile.id}
+                    aria-pressed={activeProfile?.id === profile.id}
                     disabled={generation.isGenerating}
                     onClick={() => {
                       mapper.cancel();
@@ -280,7 +289,13 @@ export function DesignPage() {
                     source={'design-profile-' + profile.id}
                     activity={!profile.ref_audio_path ? 'synthesis' : undefined}
                     disabled={!profile.ref_audio_path && Boolean(generation.designBlocker)}
-                    disabledLabel={t('engines.none_ready_title')}
+                    disabledLabel={
+                      generation.designBlocker === 'design'
+                        ? t('designWorkspace.engine_cannot_design', {
+                            engine: activeEngine?.display_name ?? '',
+                          })
+                        : t('engines.none_ready_title')
+                    }
                     onReady={
                       !profile.ref_audio_path
                         ? () =>
@@ -387,7 +402,7 @@ export function DesignPage() {
                   onChange={(event) => {
                     const seed = Number(event.target.value);
                     if (Number.isInteger(seed) && seed >= 0 && seed <= 2147483647)
-                      setDraft((current) => ({ ...current, seed }));
+                      setDraft((current) => editVoice(current, { seed }));
                   }}
                 />
                 <Button
@@ -396,10 +411,7 @@ export function DesignPage() {
                   disabled={generation.isGenerating}
                   aria-label={t('clone.seed_reroll')}
                   onClick={() =>
-                    setDraft((current) => ({
-                      ...current,
-                      seed: pickDesignSeed(false, null),
-                    }))
+                    setDraft((current) => editVoice(current, { seed: pickDesignSeed(false, null) }))
                   }
                 >
                   <ShuffleIcon />
@@ -499,12 +511,28 @@ export function DesignPage() {
             />
           </div>
           <div className="mx-auto w-full max-w-4xl shrink-0 px-6 pb-4">
-            {generation.designBlocker === 'engine' && !generation.isGenerating && (
+            {designBlocker === 'engine' && !generation.isGenerating && (
               <div className="mb-3">
                 <EngineNotice operation="design" compact />
               </div>
             )}
-            {generation.designBlocker === 'loading' && !generation.isGenerating && (
+            {(designBlocker === 'design' || designBlocker === 'cloning') && !generation.isGenerating && (
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 px-1 text-sm text-muted-foreground">
+                <p role="status">
+                  {t(designBlocker === 'cloning' ? 'designWorkspace.engine_cannot_reuse_sample' : 'designWorkspace.engine_cannot_design', {
+                    engine: activeEngine?.display_name ?? '',
+                  })}
+                </p>
+                <Link
+                  to="/settings/models/$family"
+                  params={{ family: 'tts' }}
+                  className={buttonVariants({ variant: 'ghost', size: 'xs' })}
+                >
+                  {t('engineSidebar.tts')}
+                </Link>
+              </div>
+            )}
+            {designBlocker === 'loading' && !generation.isGenerating && (
               <p className="mb-3 px-1 text-sm text-muted-foreground" role="status">
                 {t('preferences.loading')}
               </p>
@@ -539,7 +567,8 @@ export function DesignPage() {
                     !draft.text.trim() ||
                     // Free-form engines take the description itself, not its mapping.
                     (!freeform && mapper.pending) ||
-                    !generation.canGenerateDesign
+                    generation.isGenerating ||
+                    designBlocker !== null
                   }
                   aria-busy={generation.isGenerating}
                   aria-label={generationLabel}
@@ -548,12 +577,8 @@ export function DesignPage() {
                       text: draft.text,
                       instruct: designInstruct(draft, generation.instructVocabulary),
                       recipe: designRecipe(draft),
-                      seed: draft.seed,
-                      profileId: profiles.data?.some(
-                        (profile) => profile.id === draft.profileId && profile.kind === 'design',
-                      )
-                        ? draft.profileId
-                        : null,
+                      seed: designRequestSeed(draft, activeProfile),
+                      profileId: activeProfile?.id ?? null,
                     })
                   }
                 >

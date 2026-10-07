@@ -1138,7 +1138,11 @@
     "self_check_attention": "{{count}} check(s) failed — see the hints above.",
     "save_bundle": "Save diagnostic bundle",
     "bundle_saved": "Diagnostic bundle saved: {{filename}}",
-    "bundle_failed": "Could not build the diagnostic bundle: {{message}}"
+    "bundle_failed": "Could not build the diagnostic bundle: {{message}}",
+    "model_credits": "Model credits",
+    "model_credits_hint": "Credits for supported models. Model and component terms apply separately; these credits do not grant commercial rights.",
+    "model_terms": "Model terms",
+    "model_related_sources": "Related sources:"
   },
   "privacy": {
     "desc": "Everything runs on <1>this machine</1>. Your audio, video, and transcripts never leave your computer unless you explicitly use an online translator (Google, DeepL, etc.) or push to HuggingFace.",
@@ -1977,13 +1981,13 @@
     "desc": "Professional licensing and technical support for commercial users.",
     "back": "Back to Studio",
     "badge": "Commercial License",
-    "hero_simple": "VoiceStudio is free and open-source under the AGPL-3.0 — including for commercial and internal business use. You only need a commercial license to embed it in a closed-source product without AGPL’s copyleft obligations.",
+    "hero_simple": "VoiceStudio is free and open-source under the AGPL-3.0 — including for commercial and internal business use. You only need a commercial license to embed it in a closed-source product without AGPL’s copyleft obligations. Our licence covers VoiceStudio code. Rights to models and generated output depend on the selected models and their terms.",
     "hero_title": "Ship AI voices in production",
-    "hero_desc": "VoiceStudio is free and open-source software under the GNU Affero General Public License v3 (AGPL-3.0) — free to use, including for commercial and internal business use. A commercial license is needed only if you want to embed VoiceStudio in a closed-source or proprietary product or service without AGPL-3.0's copyleft obligations.",
+    "hero_desc": "VoiceStudio is free and open-source software under the GNU Affero General Public License v3 (AGPL-3.0) — free to use, including for commercial and internal business use. A commercial license is needed only if you want to embed VoiceStudio in a closed-source or proprietary product or service without AGPL-3.0's copyleft obligations. Our licence covers VoiceStudio code. Rights to models and generated output depend on the selected models and their terms.",
     "pricing_desc": "Tiers and pricing are still being finalized.",
     "request_quote": "Request a quote",
-    "benefit_ip": "Full IP ownership",
-    "benefit_ip_desc": "You own every output, every model, every derivative. No shared tenancy, no data leaks.",
+    "benefit_ip": "Application licence",
+    "benefit_ip_desc": "Our licence covers VoiceStudio code. Rights to models and generated output depend on the selected models and their terms.",
     "benefit_cost": "Zero per-minute costs",
     "benefit_cost_desc": "No API bills, no surprise overages. Runs on your own hardware from day one.",
     "benefit_team_desc": "One license covers unlimited users within your organization.",
@@ -2053,8 +2057,8 @@
     "pkg_audio_body_one": "Jump to the Audio tab to export per-language dubs in WAV or MP3 ({{count}} dub available).",
     "pkg_audio_body_other": "Jump to the Audio tab to export per-language dubs in WAV or MP3 ({{count}} dubs available).",
     "pkg_audio_cta": "Open audio tab",
-    "license_text": "Commercial use requires a",
-    "license_link": "license",
+    "license_text": "Our licence covers VoiceStudio code. Rights to models and generated output depend on the selected models and their terms.",
+    "license_link": "Application licence",
     "output": "OUTPUT",
     "nothing_selected": "Nothing selected or track unavailable",
     "export_mp4": "Export MP4",
@@ -3322,6 +3326,7 @@
   "dubIntegrity": {
     "missingSpeech": "Speech is missing or unreadable. Regenerate the affected segment before exporting.",
     "timingOverflow": "Speech exceeds its time slot. Shorten the translation or choose Strict Slot or Stretch Video.",
+    "sourceChanged": "The subtitles changed while this dub was rendering. The previous track was kept; generate again to use the new subtitles.",
     "backgroundUnavailable": "Original sound could not be preserved. Check background separation and dialogue timing, then retry, or explicitly export speech only."
   },
   "dubStyle": {

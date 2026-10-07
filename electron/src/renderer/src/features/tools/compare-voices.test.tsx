@@ -2,7 +2,8 @@ import { clearComparison } from './comparison-state';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
-const mock = vi.hoisted(() => ({ generate: vi.fn() }));
+const mock = vi.hoisted(() => ({ generate: vi.fn(), warning: vi.fn() }));
+vi.mock('sonner', () => ({ toast: { warning: mock.warning } }));
 vi.mock('@/lib/api/generate', () => ({ generateClone: mock.generate }));
 vi.mock('@/hooks/use-tts-readiness', () => ({ useTtsReadiness: () => null }));
 vi.mock('@/hooks/use-profiles', () => ({
@@ -89,4 +90,38 @@ it('keeps completed comparison text, voices and playback across remounts', async
   expect(screen.getByTestId('compare-0')).toBeInTheDocument();
   expect(screen.getByTestId('compare-1')).toBeInTheDocument();
   expect(mock.generate).toHaveBeenCalledTimes(2);
+});
+
+it('discloses dropped speech for each affected comparison side and stays quiet otherwise', async () => {
+  mock.generate
+    .mockResolvedValueOnce({ blob: new Blob(['a']), dropped: null })
+    .mockResolvedValueOnce({
+      blob: new Blob(['b']),
+      dropped: { count: 1, text: 'The missing sentence.' },
+    });
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: 'compare.compare_btn' }));
+  await screen.findByTestId('compare-1');
+  expect(screen.getByTestId('compare-0')).toBeInTheDocument();
+  expect(mock.warning).toHaveBeenCalledTimes(1);
+  expect(mock.warning).toHaveBeenCalledWith(
+    'tts.droppedChunksWithText',
+    expect.objectContaining({ description: 'compare.voice_b · Beta' }),
+  );
+});
+
+it('does not announce dropped speech from a cancelled comparison', async () => {
+  let finish!: (value: unknown) => void;
+  mock.generate.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const view = mount();
+  fireEvent.click(screen.getByRole('button', { name: 'compare.compare_btn' }));
+  view.unmount();
+  finish({ blob: new Blob(), dropped: { count: 2, text: '' } });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(mock.warning).not.toHaveBeenCalled();
 });

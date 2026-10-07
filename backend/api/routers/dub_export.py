@@ -7,6 +7,7 @@ import os
 import re
 import time
 import uuid
+import weakref
 from pathlib import Path, PureWindowsPath
 from typing import Optional
 
@@ -1641,15 +1642,17 @@ async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: flo
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     tracks = job.get("dubbed_tracks", {})
-    if lang and lang in tracks:
-        wav_path = _dub_artifact(tracks[lang].get("path"), job_id, missing_detail="Dubbed audio file not found")
-    elif tracks:
-        wav_path = _dub_artifact(list(tracks.values())[0].get("path"), job_id, missing_detail="Dubbed audio file not found")
-    else:
+    track_lang = lang if (lang and lang in tracks) else next(iter(tracks), None)
+    if track_lang is None:
         raise HTTPException(status_code=400, detail="No dubbed audio track generated yet")
+    wav_path = _dub_artifact(tracks[track_lang].get("path"), job_id, missing_detail="Dubbed audio file not found")
     segments = job.get("segments") or []
     if not segments:
         raise HTTPException(status_code=400, detail="Job has no segments")
+    # Score the recognized audio against THAT track's text. `job["segments"]`
+    # holds whichever language was generated last, so QC of an earlier track
+    # compared its speech with another language and flagged every line (#2574).
+    scored_segments = _segments_for_lang(job, track_lang)
 
     # TTS-only install: no ASR model on disk → typed 409 with a download CTA,
     # BEFORE any backend load could silently auto-download whisper weights.
@@ -1696,7 +1699,7 @@ async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: flo
         raise HTTPException(status_code=500, detail=f"QC transcription failed: {e}")
 
     seg_ids = job.get("seg_order") or [s.get("id", i) for i, s in enumerate(segments)]
-    scored = dub_qc.score_dub(segments, recognized, drift_threshold=drift_threshold, seg_ids=seg_ids)
+    scored = dub_qc.score_dub(scored_segments, recognized, drift_threshold=drift_threshold, seg_ids=seg_ids)
 
     # Annotate each segment (non-destructive — content text untouched).
     by_id = {q.seg_id: q for q in scored}
@@ -1738,6 +1741,114 @@ async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: flo
     }
 
 
+# Weak values: a lock lives only while a request holds or awaits it.
+_mixed_audio_locks: "weakref.WeakValueDictionary[str, asyncio.Lock]" = weakref.WeakValueDictionary()
+_LEGACY_MIX = re.compile(r"mixed_dub_[0-9A-Za-z-]+\.wav")
+# Mix paths a request has chosen but not finished serving, and superseded
+# mixes whose deletion waits for their last reader.
+_mix_readers: dict[str, int] = {}
+_mix_superseded: set[str] = set()
+
+
+def _release_mix(path: str) -> None:
+    left = _mix_readers.get(path, 0) - 1
+    if left > 0:
+        _mix_readers[path] = left
+        return
+    _mix_readers.pop(path, None)
+    if path in _mix_superseded:
+        _mix_superseded.discard(path)
+        try:
+            os.remove(path)
+        except OSError:
+            pass  # still open (Windows); the next mix of this track prunes it
+
+
+class _LeasedMixResponse(FileResponse):
+    """Serve a leased mix and release the lease once the body is sent."""
+
+    def __init__(self, path: str, **kwargs):
+        super().__init__(path, **kwargs)
+        self._lease = path
+
+    async def __call__(self, scope, receive, send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            _release_mix(self._lease)
+
+
+async def _mixed_dub_audio(exports_dir: str, lang: str, bg_audio: str, track_path: str) -> str:
+    """One reusable background + dub WAV per (background, track) version.
+
+    The audio preview streams this route with HTTP range requests, and every
+    request used to re-run the full mix into a new ``mixed_dub_<stamp>.wav``
+    that was never deleted. On a 70-minute dub each seek or buffer refill
+    wrote another ~0.8 GB file until the disk filled and the preview reported
+    the audio as missing (#2581). Identical inputs now reuse one file; an
+    older mix of the same track and the legacy per-request files are pruned.
+
+    The returned path is leased: the caller must ``_release_mix`` it once
+    served, and pruning defers a leased mix until its last reader is done.
+    """
+    import hashlib
+
+    _base = os.path.realpath(DUB_DIR)
+    exports = os.path.realpath(exports_dir)
+    if not exports.startswith(_base + os.sep):
+        raise HTTPException(status_code=400, detail="Invalid export path")
+    identity = [
+        (os.path.basename(path), info.st_size, info.st_mtime_ns)
+        for path, info in ((bg_audio, os.stat(bg_audio)), (track_path, os.stat(track_path)))
+    ]
+    key = hashlib.sha256(json.dumps(identity).encode()).hexdigest()[:16]
+    target = os.path.realpath(os.path.join(exports, f"mixed_{lang}_{key}.wav"))
+    if not target.startswith(exports + os.sep):
+        raise HTTPException(status_code=400, detail="Invalid export path")
+    lock = _mixed_audio_locks.get(target)
+    if lock is None:
+        lock = _mixed_audio_locks[target] = asyncio.Lock()
+    async with lock:
+        if not (os.path.isfile(target) and os.path.getsize(target) > 0):
+            partial = target + ".tmp.wav"
+            cmd = [
+                find_ffmpeg(), "-i", bg_audio, "-i", track_path,
+                "-filter_complex", bed_mix_filter("0:a", "1:a", bed_gain=1.0),
+                "-map", "[aout]", "-c:a", "pcm_s16le", "-f", "wav", "-y", partial,
+            ]
+            try:
+                rc, _, stderr = await run_ffmpeg(cmd, timeout=900.0)
+                if rc != 0:
+                    raise RuntimeError(stderr.decode(errors="replace") if stderr else "ffmpeg mix non-zero")
+                if not os.path.isfile(partial) or os.path.getsize(partial) == 0:
+                    raise RuntimeError("ffmpeg mix produced no output file")
+                os.replace(partial, target)
+            finally:
+                if os.path.exists(partial):
+                    try:
+                        os.remove(partial)
+                    except OSError:
+                        pass  # best-effort temp cleanup; the next mix overwrites it
+            logger.info("Dub audio mix completed")
+            # A mix another request has chosen is deleted by its last reader.
+            # Windows refuses to unlink a file open elsewhere; the next mix of
+            # this track retries it.
+            stale = re.compile(rf"mixed_{re.escape(lang)}_[0-9a-f]{{16}}\.wav")
+            for entry in os.scandir(exports):
+                if entry.path != target and entry.is_file(follow_symlinks=False) and (
+                    stale.fullmatch(entry.name) or _LEGACY_MIX.fullmatch(entry.name)
+                ):
+                    if entry.path in _mix_readers:
+                        _mix_superseded.add(entry.path)
+                        continue
+                    try:
+                        os.remove(entry.path)
+                    except OSError:
+                        pass  # still open (Windows); the next mix of this track retries
+        _mix_readers[target] = _mix_readers.get(target, 0) + 1
+    return target
+
+
 @router.get("/dub/download-audio/{job_id}")
 @router.get("/dub/download-audio/{job_id}/{filename}")
 async def dub_download_audio(
@@ -1767,22 +1878,10 @@ async def dub_download_audio(
     os.makedirs(exports_dir, exist_ok=True)
 
     bg_audio = await _preserved_background(job, job_id, lang_label) if preserve_bg else None
+    leased = None
     if bg_audio:
-        ffmpeg = find_ffmpeg()
-        final_audio_path = os.path.join(exports_dir, f"mixed_dub_{stamp}.wav")
-        cmd = [
-            ffmpeg, "-i", bg_audio, "-i", wav_path,
-            "-filter_complex", bed_mix_filter("0:a", "1:a", bed_gain=1.0),
-            "-map", "[aout]", "-c:a", "pcm_s16le", "-y", final_audio_path
-        ]
         try:
-            rc, _, stderr = await run_ffmpeg(cmd, timeout=900.0)
-            if rc != 0:
-                raise Exception(stderr.decode(errors="replace") if stderr else "ffmpeg mix non-zero")
-            if not os.path.exists(final_audio_path) or os.path.getsize(final_audio_path) == 0:
-                raise Exception("ffmpeg mix produced no output file")
-            wav_path = final_audio_path
-            logger.info("Dub audio mix completed")
+            wav_path = leased = await _mixed_dub_audio(exports_dir, lang_label, bg_audio, wav_path)
         except Exception as exc:
             logger.exception("Failed to mix audio")
             raise HTTPException(status_code=500, detail={"code": "dub_background_unavailable", "message": "Could not preserve background audio"}) from exc
@@ -1790,16 +1889,22 @@ async def dub_download_audio(
     base_name = os.path.splitext(job.get('filename', 'audio'))[0]
     safe_name = ''.join(c for c in base_name if c.isalnum() or c in '-_ ').strip() or 'audio'
     dl_name = f"dubbed_audio_{lang_label}_{safe_name}_{stamp}.wav"
-    save_path = _consume_native_save(save_authorization)
-    if save_path:
-        return _native_save(wav_path, save_path, dl_name, media_type="audio/wav")
-    return FileResponse(
-        wav_path, media_type="audio/wav",
-        headers={
-            "Cache-Control": "no-store",
-            "Content-Disposition": content_disposition(dl_name),
-        },
-    )
+    headers = {
+        "Cache-Control": "no-store",
+        "Content-Disposition": content_disposition(dl_name),
+    }
+    try:
+        save_path = _consume_native_save(save_authorization)
+        if save_path:
+            return _native_save(wav_path, save_path, dl_name, media_type="audio/wav")
+        if leased is None:
+            return FileResponse(wav_path, media_type="audio/wav", headers=headers)
+        response = _LeasedMixResponse(leased, media_type="audio/wav", headers=headers)
+        leased = None  # the response releases it once the body is sent
+        return response
+    finally:
+        if leased is not None:
+            _release_mix(leased)
 
 
 def _format_srt_time(seconds):

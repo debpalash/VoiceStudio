@@ -4,6 +4,7 @@ import {
   ACTIVE_STATUS_POLL_MS,
   IDLE_STATUS_POLL_MS,
   computeTargetPollMs,
+  relaxWhenBackendBusy,
 } from '@/lib/status-polling';
 
 export interface ComputeTarget {
@@ -93,7 +94,7 @@ export function useComputeRuntime(
         { signal },
       ),
     enabled: enabled && Boolean(target && engine),
-    refetchInterval: busy ? ACTIVE_STATUS_POLL_MS : IDLE_STATUS_POLL_MS,
+    refetchInterval: () => relaxWhenBackendBusy(busy ? ACTIVE_STATUS_POLL_MS : IDLE_STATUS_POLL_MS),
     refetchIntervalInBackground: false,
     retry: false,
   });

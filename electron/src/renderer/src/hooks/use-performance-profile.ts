@@ -2,7 +2,7 @@ import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/
 import { apiJson } from '@/lib/api/client';
 import { useBackendStatus } from './use-backend-status';
 import { isBackendReachable } from '@shared/utils/backendStage';
-import { IDLE_STATUS_POLL_MS } from '@/lib/status-polling';
+import { IDLE_STATUS_POLL_MS, relaxWhenBackendBusy } from '@/lib/status-polling';
 
 export const performanceTiers = ['fast', 'balanced', 'quality', 'max'] as const;
 export type PerformanceTier = (typeof performanceTiers)[number];
@@ -74,7 +74,7 @@ export function usePerformanceProfile() {
     queryKey: ['performance-profile'],
     enabled: isBackendReachable(backend.stage),
     staleTime: 30_000,
-    refetchInterval: IDLE_STATUS_POLL_MS,
+    refetchInterval: () => relaxWhenBackendBusy(IDLE_STATUS_POLL_MS),
     queryFn: () => apiJson<PerformanceProfileState>('/api/settings/performance-profile'),
   });
   const mutation = useMutation({

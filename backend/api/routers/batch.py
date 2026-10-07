@@ -12,6 +12,7 @@ import os
 import json
 import shutil
 import uuid
+import threading
 import time
 import asyncio
 import logging
@@ -22,7 +23,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from core.config import DATA_DIR
-from core import failure
+from core import failure, voice_leases
 from core.logging_utils import log_safe
 from core.path_security import portable_filename
 from core.file_cleanup import FileCleanupError, unlink_if_present
@@ -55,6 +56,14 @@ _BATCH_PRESET_INSTRUCT = {
 _queue: asyncio.Queue = None       # Lazily initialised
 _worker_task: asyncio.Task = None  # Background consumer
 _processing_job_ids: set[str] = set()
+# Jobs whose retry is being admitted. Admission awaits (voice/ASR/provider
+# preflight, output reset), so without a reservation two retries both pass the
+# terminal-state check and double-queue the job, and a delete can remove the
+# upload mid-admission (#2547).
+_job_reservations: set[str] = set()
+# Retry runs on the event loop, delete in the threadpool: the reserve step of
+# both is atomic under this lock.
+_reservation_lock = threading.Lock()
 _jobs: dict = {}                   # job_id → status dict
 
 
@@ -273,6 +282,14 @@ def _batch_voice(voice_id: str | None) -> dict:
 
 async def _run_batch_pipeline(job_id: str, job: dict):
     """Full batch dub pipeline: extract → transcribe → translate → generate → mix → export."""
+    # The queue-wide voice is resolved once and its reference re-read for every
+    # segment, so hold it until the job ends: the retired-voice sweep must not
+    # delete a take this job still uses (#2535).
+    with voice_leases.VoiceFileLease() as lease:
+        await _run_batch_pipeline_leased(job_id, job, lease)
+
+
+async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases.VoiceFileLease):
     import subprocess
 
     loop = asyncio.get_running_loop()
@@ -382,6 +399,7 @@ async def _run_batch_pipeline(job_id: str, job: dict):
     # propagates to _worker()'s existing except-Exception handling, which
     # already records a structured job failure via core.failure.build_failure.
     voice = _batch_voice(job.get("voice_id"))
+    lease.hold(voice.get("ref_audio"))
     engine_id, execution_target, backend = await _resolve_batch_execution(voice)
     sr = backend.sample_rate if backend is not None else 0
     from services.performance_profiles import tts_defaults
@@ -1039,6 +1057,18 @@ async def retry_batch_job(job_id: str):
         raise HTTPException(409, f"Job is {job['status']}, not retryable")
     if job_id in _processing_job_ids or not job.get("retry_ready", True):
         raise HTTPException(409, "The cancelled job is still stopping")
+    # Reserve before the first await so a concurrent retry/delete is refused.
+    with _reservation_lock:
+        if job_id in _job_reservations:
+            raise HTTPException(409, "This job is already being retried or deleted")
+        _job_reservations.add(job_id)
+    try:
+        return await _admit_retry(job_id, job)
+    finally:
+        _job_reservations.discard(job_id)
+
+
+async def _admit_retry(job_id: str, job: dict):
     if not os.path.isfile(job.get("video_path") or ""):
         raise HTTPException(409, "The original batch input is no longer available")
 
@@ -1118,6 +1148,28 @@ def delete_batch_job(job_id: str):
     job = _jobs.get(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
+    # Never pull files from under a pipeline (queued, running, or cancelled but
+    # still stopping) or a retry being admitted (#2547). The reservation also
+    # stops a retry from starting while the files are being removed.
+    with _reservation_lock:
+        if (
+            job.get("status") in ("queued", "running")
+            or job_id in _processing_job_ids
+            or job_id in _job_reservations
+            or not job.get("retry_ready", True)
+        ):
+            raise HTTPException(
+                409,
+                "The job is still active. Cancel it and wait for it to stop before deleting.",
+            )
+        _job_reservations.add(job_id)
+    try:
+        return _delete_job_files(job_id, job)
+    finally:
+        _job_reservations.discard(job_id)
+
+
+def _delete_job_files(job_id: str, job: dict):
     if job.get("video_path"):
         try:
             unlink_if_present(job["video_path"])

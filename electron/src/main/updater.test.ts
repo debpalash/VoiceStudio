@@ -228,6 +228,19 @@ describe('DesktopUpdater', () => {
     expect(mocks.autoUpdater.checkForUpdates).not.toHaveBeenCalled();
   });
 
+  test('stays unsupported when a package manager owns the install', async () => {
+    vi.stubEnv('VOICESTUDIO_DISABLE_UPDATER', '1');
+    try {
+      const updater = new DesktopUpdater();
+      expect(updater.snapshot()).toMatchObject({ status: 'unsupported' });
+      await updater.check();
+      expect(mocks.autoUpdater.setFeedURL).not.toHaveBeenCalled();
+      expect(mocks.autoUpdater.checkForUpdates).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   test('loads and validates native release history without trusting GitHub response fields', async () => {
     const fetcher = vi.fn().mockResolvedValue(
       new Response(

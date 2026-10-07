@@ -48,6 +48,8 @@ the best experience on a CPU, pick a light voice engine (KittenTTS,
 Supertonic-3, PocketTTS) and a small Whisper model in the Model Catalogue; the
 setup screen lists them as its CPU preset. Set `OMNIVOICE_TORCH_VARIANT=cuda`
 (or `cpu`) before launching to override the detection.
+Source setup (`bun run setup:api`) also selects locked CPU wheels when NVIDIA
+is absent. See [CPU setup and overrides](../../electron/README.md#running-without-a-gpu).
 
 ### Windows on ARM (Snapdragon X etc.)
 

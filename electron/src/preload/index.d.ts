@@ -30,7 +30,7 @@ export interface NativeCrashRecord {
 export interface BackendStatus {
   lastCrash?: NativeCrashRecord;
   stage: BackendStage;
-  setupIssue?: 'space' | 'access' | 'unsupported_platform';
+  setupIssue?: 'space' | 'access' | 'unsupported_platform' | 'wrong_architecture';
   /** Free disk (GiB) the failed install needed; the CPU-only install needs less than the CUDA one. */
   setupRequiredGib?: number;
   /** A prior explicit install stopped after creating its resumable project/cache. */
@@ -60,6 +60,12 @@ export interface BackendStatus {
   remote: boolean;
   /** Human-readable detail for failed/crashed/port_in_use. */
   message?: string;
+  /**
+   * Machine-readable reason behind `message` for the two connectivity states
+   * whose wording the renderer localizes: a remote backend whose health checks
+   * time out, and a backend that keeps answering /health unhealthy.
+   */
+  diagnosis?: 'remote_unreachable' | 'unhealthy' | 'auth_required';
   exitCode?: number | null;
   /** Termination signal for the current backend run, never the persisted crash journal. */
   exitSignal?: string | null;
@@ -295,7 +301,8 @@ export interface VoiceStudioBridge {
     }>;
   };
   repair: {
-    list(): Promise<RepairAgentInfo[]>;
+    /** Cached for a short TTL; `refresh` rescans for CLIs installed since. */
+    list(options?: { refresh?: boolean }): Promise<RepairAgentInfo[]>;
     getState(): Promise<RepairAgentState>;
     chooseWorkspace(): Promise<RepairAgentState>;
     start(request: RepairAgentRunRequest): Promise<{ sessionId: string }>;

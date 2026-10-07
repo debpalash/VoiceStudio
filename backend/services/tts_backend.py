@@ -249,7 +249,11 @@ class TTSBackend(ABC):
 
     #: Whether this engine supports voice design from a text description
     #: (e.g. "young female, warm tone, British accent") without reference audio.
-    supports_voice_design: bool = False
+    #: ``False`` engines need a reference clip for the timbre, so Voice Design
+    #: is refused up front (UI and ``/generate``) instead of failing inside the
+    #: engine. ``None`` = not declared: design stays allowed and the engine
+    #: decides. Read through :func:`voice_design_support`.
+    supports_voice_design: Optional[bool] = None
 
     #: Whether this engine understands the graded-emotion generate kwargs
     #: (``emo_vector`` / ``emo_text`` + ``use_emo_text`` / ``emo_alpha``).
@@ -1219,6 +1223,27 @@ def _reuse_or_rank_passage(ref_audio: str) -> Optional[tuple[str, str]]:
     return _omnivoice_installed_passage(ref_audio)
 
 
+def omnivoice_inline_reference(ref_audio, ref_text):
+    """``(ref_audio, ref_text, owned_path)`` for a direct ``model.generate()``.
+
+    Paths that bypass the prompt cache — the sidecar request and the inline
+    retry after a failed precompute — must condition on the same installed-
+    recognizer passage as the cache. Passing the whole long clip with no
+    transcript instead reached OmniVoice's bundled Whisper and failed with
+    "needs an installed speech-to-text model" although one was installed
+    (#2579). ``owned_path`` is a temporary window the caller deletes.
+    """
+    if isinstance(ref_audio, str):
+        from omnivoice.utils.audio import CLONE_REF_TEXT_MAX_SECONDS
+
+        duration = reference_duration_s(ref_audio)
+        if duration is not None and duration > CLONE_REF_TEXT_MAX_SECONDS:
+            selected = _reuse_or_rank_passage(ref_audio)
+            if selected is not None:
+                return selected[0], selected[1], selected[0]
+    return ref_audio, omnivoice_ref_text(ref_audio, ref_text), None
+
+
 def _speech_score(text: str) -> int:
     """Spoken-character count, matching OmniVoice's window ranking."""
     return len(re.sub(r"[^\w]+", "", text or "", flags=re.UNICODE))
@@ -1420,9 +1445,15 @@ def generate_with_cached_ref(model, *, ref_audio, ref_text, **gen_kw):
                 return model.generate(voice_clone_prompt=prompt, **gen_kw)
             except Exception as e:  # noqa: BLE001 — fall back to the inline ref
                 logger.warning("voice_clone_prompt generate failed; retrying inline ref: %s", e)
-        return model.generate(
-            ref_audio=ref_audio, ref_text=omnivoice_ref_text(ref_audio, ref_text), **gen_kw
-        )
+        inline_audio, inline_text, passage = omnivoice_inline_reference(ref_audio, ref_text)
+        try:
+            return model.generate(ref_audio=inline_audio, ref_text=inline_text, **gen_kw)
+        finally:
+            if passage is not None:
+                try:
+                    os.remove(passage)
+                except OSError:
+                    logger.debug("failed to remove reference window")
 
 
 def clear_clone_prompt_cache() -> None:
@@ -1451,6 +1482,7 @@ class OmniVoiceBackend(TTSBackend):
     id = "omnivoice"
     display_name = "VoiceStudio (k2-fsa/OmniVoice, 600+ languages)"
     instruct_vocabulary = "tags"
+    supports_voice_design = True
     gpu_compat = ("cuda", "rocm", "mps", "cpu")
     # Derived from the pool's own per-job budget (_GPU_VRAM_PER_JOB_GB = 5.0 in
     # model_manager, itself measured from the ~1.6 GB forward + autoregressive
@@ -1983,6 +2015,7 @@ class MossTTSNanoBackend(TTSBackend):
 
     id = "moss-tts-nano"
     display_name = "MOSS-TTS-Nano (20 langs, CPU realtime, 48 kHz)"
+    supports_voice_design = False  # strictly reference-cloning
     gpu_compat = ("cuda", "cpu")
 
     def __init__(self):
@@ -2960,6 +2993,7 @@ class GPTSoVITSBackend(TTSBackend):
 
     id = "gpt-sovits"
     display_name = "GPT-SoVITS (5 langs, zero-shot, RTF 0.014, MIT)"
+    supports_voice_design = False  # api_v2 needs a reference clip for every request
     # Server-side; whichever device GPT-SoVITS itself uses (CUDA preferred).
     gpu_compat = ("cuda", "cpu")
 
@@ -3485,6 +3519,13 @@ def _sidecar_installable_ids() -> frozenset[str]:
         return frozenset()
 
 
+def voice_design_support(cls) -> Optional[bool]:
+    """``supports_voice_design`` as reported to clients: a declared bool, or
+    None when the engine never declared it (or it depends on the model)."""
+    value = getattr(cls, "supports_voice_design", None)
+    return value if isinstance(value, bool) else None
+
+
 def list_backends(*, include_hidden: bool = False) -> list[dict]:
     """Enumerate the engine catalogue with each backend's availability state.
 
@@ -3515,6 +3556,8 @@ def list_backends(*, include_hidden: bool = False) -> list[dict]:
           "supports_cloning": Optional[bool],       # True/False from the class attr; None when
                                                     #   model-dependent (property, e.g. mlx-audio)
           "instruct_vocabulary": "tags" | "freeform",  # OmniVoice tag set vs model-native text
+          "supports_voice_design": Optional[bool],  # False = needs a reference clip;
+                                                    #   None = undeclared (design allowed)
           "max_ref_seconds": Optional[float],       # seconds of a clone clip the engine uses
           "ref_strategy": Optional[str],            # "best_window" | "head" | "full"; None = unverified
           "effective_device": str,                  # device this engine uses on THIS host
@@ -3641,6 +3684,8 @@ def list_backends(*, include_hidden: bool = False) -> list[dict]:
             # "tags" = OmniVoice's closed design vocabulary; "freeform" = the
             # text reaches the model as written (#2389).
             "instruct_vocabulary": getattr(cls, "instruct_vocabulary", "freeform"),
+            # Voice Design gate: False hides Design for reference-only engines.
+            "supports_voice_design": voice_design_support(cls),
             # Reference-length truth (#2281): how much of a clone clip the
             # engine really uses and how it picks it. None = not verified.
             "max_ref_seconds": getattr(cls, "max_ref_seconds", None),

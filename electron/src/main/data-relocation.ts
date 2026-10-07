@@ -8,6 +8,7 @@ import {
   readlink,
   realpath,
   rename,
+  rmdir,
   rm,
   statfs,
   writeFile,
@@ -168,7 +169,9 @@ export async function prepareDataRelocation(
       throw new Error('verification_failed');
     }
     try {
-      await rm(plan.target, { recursive: false });
+      // rm() rejects directories without `recursive`; rmdir removes only an
+      // empty one and refuses (ENOTEMPTY) if content appeared since inspection.
+      await rmdir(plan.target);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }

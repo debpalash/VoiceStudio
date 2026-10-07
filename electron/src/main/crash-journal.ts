@@ -3,20 +3,28 @@ import type { NativeCrashRecord } from '../preload/index.d';
 import { nativeCrashExcerpt } from '../shared/utils/crashReport';
 import { scrubText } from '../shared/utils/scrub';
 
+/** Bounds a buffered fault dump: four GPU workers plus server threads at
+ * Python's 100-frame faulthandler depth stay well inside it. */
+const MAX_DUMP_LINES = 2000;
+
 /** Small version-scoped local journal. Read failures must never block startup. */
 export class CrashJournal {
   private records: NativeCrashRecord[] = [];
   private nativeLines: string[] = [];
   private captureOpen = false;
-  private sawThread = false;
   private streaming = false;
   resetCapture(streaming = true): void {
     this.nativeLines = [];
     this.captureOpen = false;
-    this.sawThread = false;
     this.streaming = streaming;
   }
-  /** Capture before the supervisor ring evicts the start of an all-thread dump. */
+  /**
+   * Buffer the whole all-thread dump before the supervisor ring evicts its
+   * start. It is condensed only at record time (#2382): keeping the first 40
+   * raw lines of the faulting thread used to fill the record with one
+   * recursive torch frame and drop both the VoiceStudio frames that say what
+   * was loading and every other thread.
+   */
   captureLine(line: string): void {
     line = scrubText(line);
     this.streaming = true;
@@ -27,19 +35,12 @@ export class CrashJournal {
       this.captureOpen = true;
       return;
     }
-    if (!this.nativeLines.length) return;
-    if (/^Current thread\b/.test(trimmed)) {
-      this.nativeLines = [this.nativeLines[0]];
-      this.captureOpen = true;
-      this.sawThread = true;
-    } else if (/^Thread\b/.test(trimmed)) {
-      if (this.sawThread) this.captureOpen = false;
-      this.sawThread = true;
-    } else if (trimmed.startsWith('Extension modules:')) {
+    if (!this.captureOpen) return;
+    if (trimmed.startsWith('Extension modules:')) {
       this.captureOpen = false;
+      return;
     }
-    if (this.captureOpen && this.nativeLines.length < 40)
-      this.nativeLines.push(line.slice(0, 4096));
+    if (this.nativeLines.length < MAX_DUMP_LINES) this.nativeLines.push(line.slice(0, 4096));
   }
   constructor(
     private path: string,
@@ -89,14 +90,14 @@ export class CrashJournal {
     signal: string | null,
     uptimeMs: number,
     logTail: string[],
-  ): void {
+  ): NativeCrashRecord | undefined {
     logTail = logTail.map(scrubText);
-    const native = this.streaming
-      ? this.nativeLines.join('\n')
-      : nativeCrashExcerpt(logTail.join('\n'));
+    const native = nativeCrashExcerpt(
+      this.streaming ? this.nativeLines.join('\n') : logTail.join('\n'),
+    );
     this.resetCapture(false);
     // EX_CONFIG is a port collision; Windows debugger termination is not a backend fault.
-    if (exitCode === 78 || exitCode === 0x40010004) return;
+    if (exitCode === 78 || exitCode === 0x40010004) return undefined;
     this.records.unshift({
       timestamp: Date.now(),
       version: this.version,
@@ -113,6 +114,7 @@ export class CrashJournal {
     });
     this.records = this.records.slice(0, 3);
     this.persist();
+    return this.records[0];
   }
   private persist(): void {
     try {

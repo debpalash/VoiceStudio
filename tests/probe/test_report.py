@@ -63,3 +63,12 @@ def test_should_open_respects_env(monkeypatch):
     monkeypatch.setenv("CI", "true")
     assert R._should_open(None) is False
     assert R._should_open(True) is True  # explicit override wins
+
+
+def test_report_never_opens_by_default_even_with_a_display(monkeypatch):
+    for name in ("PROBE_NO_OPEN", "PROBE_OPEN", "CI"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("DISPLAY", ":0")
+    assert R._should_open(None) is False
+    monkeypatch.setenv("PROBE_OPEN", "1")
+    assert R._should_open(None) is True

@@ -56,6 +56,12 @@ bun run dev
 
 This launches Electron with hot reload. Run source dependency setup explicitly before launching; the supervisor manages backend
 startup; do not launch a second backend. See [Electron setup](../electron/README.md).
+CPU-only Linux/Windows hosts automatically select CPU wheels; see
+[CPU setup and overrides](../electron/README.md#running-without-a-gpu).
+When regenerating `uv.lock` for compute variants, preserve unrelated package
+versions: NumPy remains 2.0.2 on Python 3.12 Linux/Windows and 2.2.6 elsewhere.
+Validate both frozen CPU/CUDA exports with `tests/test_cpu_install.py`; a NumPy
+upgrade needs its own compatibility review.
 
 ```bash
 bun run build       # build Electron

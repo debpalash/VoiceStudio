@@ -4,6 +4,7 @@ import { execFile } from 'node:child_process';
 import {
   RUNTIME_IMPORT_PROBE,
   RUNTIME_PROBE_TIMEOUT_MS,
+  probeFailureDetail,
   runtimeDependenciesReady,
   runtimePython,
 } from './runtime-project';
@@ -112,4 +113,39 @@ it('still rejects a probe that exited with a real import failure', async () => {
 
 it('gives a cold import far more than the old 30 s ceiling', () => {
   expect(RUNTIME_PROBE_TIMEOUT_MS).toBeGreaterThanOrEqual(120_000);
+});
+
+it('reports the final exception line of a failed probe and nothing for a ready one (#2555)', async () => {
+  const stderr = [
+    'Traceback (most recent call last):',
+    '  File "<string>", line 1, in <module>',
+    "ModuleNotFoundError: No module named 'sentencepiece'",
+    '',
+  ].join('\r\n');
+  vi.mocked(execFile).mockImplementation(((
+    _command: unknown,
+    _args: unknown,
+    _options: unknown,
+    callback: (error: Error | null, stdout: string, stderr: string) => void,
+  ) => callback(new Error('Command failed'), '', stderr)) as never);
+  const failures: string[] = [];
+  expect(await runtimeDependenciesReady('/broken', (detail) => failures.push(detail))).toBe(false);
+  expect(failures).toEqual(["ModuleNotFoundError: No module named 'sentencepiece'"]);
+
+  vi.mocked(execFile).mockImplementation(((
+    _command: unknown,
+    _args: unknown,
+    _options: unknown,
+    callback: (error: Error | null, stdout: string, stderr: string) => void,
+  ) => callback(null, '', '')) as never);
+  expect(await runtimeDependenciesReady('/ready', (detail) => failures.push(detail))).toBe(true);
+  expect(failures).toHaveLength(1);
+});
+
+it('describes an interpreter that never started', () => {
+  expect(
+    probeFailureDetail(Object.assign(new Error('spawn x ENOENT'), { code: 'ENOENT' }), ''),
+  ).toBe('the interpreter could not be started (ENOENT)');
+  expect(probeFailureDetail(new Error('first\nsecond'), undefined)).toBe('first');
+  expect(probeFailureDetail(null, `E: ${'x'.repeat(500)}`)).toHaveLength(300);
 });

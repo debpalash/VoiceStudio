@@ -27,7 +27,7 @@ def _resolve(_voice_id):
 
 
 def _stub_build_synth():
-    def _factory(default_voice=None, language=None, opts=None, voice_map=None):
+    def _factory(default_voice=None, language=None, opts=None, voice_map=None, lease=None):
         def synth(text, voice_id, speed=None):
             return torch.zeros(2400)  # 0.1s @ 24k, 1-D float32
         return {"mode": "generic", "resolve": _resolve, "engine_id": "stub",

@@ -139,19 +139,43 @@ editor, profile previews, and streaming).
 | The host synthesizes on the CPU **and** the text is over 1200 characters | A heads-up that this generation may exceed the time budget |
 | The host synthesizes on Apple Silicon (MPS) **and** the text is over 1200 characters | The same heads-up — MPS gets the accelerated-host budget (`OMNIVOICE_GENERATE_TIMEOUT_S`), which a long render can still legitimately exceed |
 
-**Why 1200 characters:** it is the same figure the budget itself uses. The first
-1200 characters get the flat base budget, and only past that does the budget
-start growing (+1 s per 40 characters). Below the threshold you are inside a
-budget the backend already considers generous, so ordinary sentences on a CPU
-laptop stay quiet.
+**Why 1200 characters:** this advisory threshold matches the free allowance in
+the legacy accelerated/explicit-budget rule: the first 1200 characters get the
+flat base, then the budget grows by 1 s per 40 characters. Default CPU budgeting
+uses a separate rule: its 4 s per character exceeds the 600 s floor above 150
+characters, so a 400-character passage receives 1600 s even though no length
+warning appears. The warning threshold itself is unchanged.
 
 **Which base applies:**
 
 | Host | Base budget |
 | --- | --- |
-| Renders on the CPU | `OMNIVOICE_CPU_GENERATE_TIMEOUT_S` |
+| Renders on the CPU | `OMNIVOICE_CPU_GENERATE_TIMEOUT_S` (see below: with the default value it also scales with the input at CPU speed) |
 | CUDA/ROCm GPU below the engine's declared VRAM floor, when `OMNIVOICE_GENERATE_TIMEOUT_S` is not explicitly set | `OMNIVOICE_CPU_GENERATE_TIMEOUT_S` (whichever of the two is larger) |
 | Any other accelerated host, MPS included | `OMNIVOICE_GENERATE_TIMEOUT_S` |
+
+**CPU hosts scale much faster than the +1 s per 40 characters.** A CPU render is
+often 10-50x slower than on a GPU, so while `OMNIVOICE_CPU_GENERATE_TIMEOUT_S` is
+left at its default the budget grows at 4 s per input character (a 400-character
+passage gets about 27 minutes), capped at 2 hours of base compute allowance.
+Queueing, model loading and the existing progress-extension allowance are
+separate. Each streamed chunk is budgeted from its own text; a silent, wedged job
+exhausts its compute allowance. Setting the CPU budget explicitly turns this
+scaling off and uses your value as the floor (plus the standard +1 s per 40
+characters) — an explicit setting is always authoritative.
+
+The desktop backstop accounts for the reported automatic CPU ceiling on local
+CPU-routed jobs with the default budget. MCP tools conservatively allow that
+ceiling whenever the CPU budget is not explicitly set. Both waits also include
+model-load, queue, sidecar and progress-extension allowances. The ceiling avoids
+guessing the compute budget from typed text that number normalization or
+pronunciation rules can expand before synthesis.
+
+MCP generation also allows a separate reference-transcription job before
+synthesis for clone profiles without a cached transcript. That job uses the
+generation base budget, its own queue and progress extension; it does not use
+the standalone transcription timeout. MCP includes this allowance conservatively
+because it cannot inspect the backend's cached reference transcript.
 
 Both rows above can be overridden, and the two vars are independent:
 

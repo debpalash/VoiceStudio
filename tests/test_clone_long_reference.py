@@ -326,12 +326,46 @@ def test_inline_fallback_drops_whole_clip_transcript(tmp_path, monkeypatch):
             return [torch.zeros(1, 10)]
 
     monkeypatch.setattr(_tts(), "_get_clone_prompt", lambda *a, **k: None)
+    monkeypatch.setattr(_tts(), "_reuse_or_rank_passage", lambda _path: None)
     path = _wav(tmp_path / "long.wav", 25)
 
     _tts().generate_with_cached_ref(_Model(), ref_audio=path, ref_text="whole clip", text="hi")
 
     assert seen["ref_audio"] == path
     assert seen["ref_text"] is None
+
+
+def test_inline_fallback_uses_the_installed_passage(tmp_path, monkeypatch):
+    """#2579: after a failed precompute the inline retry passed the whole 32 s
+    clip with no transcript, so OmniVoice's bundled Whisper was asked and
+    failed although Faster-Whisper was installed and selected."""
+    import shutil
+
+    seen = {}
+
+    class _Model:
+        def generate(self, **kw):
+            seen.update(kw)
+            seen["existed"] = os.path.exists(kw["ref_audio"])
+            return [torch.zeros(1, 10)]
+
+    window = _wav(tmp_path / "window.wav", 10)
+
+    def _selected(_path):
+        owned = tmp_path / "owned.wav"
+        shutil.copy(window, owned)
+        return str(owned), "best passage words"
+
+    monkeypatch.setattr(_tts(), "_get_clone_prompt", lambda *a, **k: None)
+    monkeypatch.setattr(_tts(), "_reuse_or_rank_passage", _selected)
+    path = _wav(tmp_path / "long.wav", 32)
+
+    _tts().generate_with_cached_ref(_Model(), ref_audio=path, ref_text="", text="hi")
+
+    assert seen["ref_text"] == "best passage words"
+    assert seen["ref_audio"] == str(tmp_path / "owned.wav")
+    assert seen["existed"] is True
+    assert not os.path.exists(seen["ref_audio"])
 
 
 def test_sidecar_request_drops_whole_clip_transcript(tmp_path, monkeypatch):
@@ -574,6 +608,7 @@ def test_inline_fallback_drops_blank_transcript_on_long_reference(tmp_path, monk
             return [torch.zeros(1, 10)]
 
     monkeypatch.setattr(_tts(), "_get_clone_prompt", lambda *a, **k: None)
+    monkeypatch.setattr(_tts(), "_reuse_or_rank_passage", lambda _path: None)
     path = _wav(tmp_path / "long.wav", 25)
     _tts().generate_with_cached_ref(_Model(), ref_audio=path, ref_text="", text="hi")
     assert seen["ref_text"] is None
@@ -891,3 +926,22 @@ def test_ref_upload_suffix_allowlist(filename, suffix):
     from api.routers.generation import _ref_upload_suffix
 
     assert _ref_upload_suffix(filename) == suffix
+
+
+@pytest.mark.parametrize("ref_text", [None, "whole clip"])
+def test_subprocess_engine_still_speaks_the_requested_text(tmp_path, monkeypatch, ref_text):
+    """Choosing the reference passage must never replace the text to speak."""
+    from engines import omnivoice_subprocess
+
+    engine = omnivoice_subprocess.OmniVoiceSubprocessBackend
+    # Patch the base the engine really inherits from: other tests reload
+    # `services.subprocess_backend`, so a fresh import can be a different class.
+    base = next(c for c in engine.__mro__[1:] if "generate" in vars(c))
+    sent = {}
+    monkeypatch.setattr(base, "generate", lambda self, text, **kw: sent.update(text=text, **kw))
+    monkeypatch.setattr(_tts(), "omnivoice_inline_reference", lambda audio, text: (audio, text, None))
+    path = _wav(tmp_path / "ref.wav", 5)
+
+    engine.generate(object.__new__(engine), "Say this.", ref_audio=path, ref_text=ref_text)
+
+    assert sent["text"] == "Say this."

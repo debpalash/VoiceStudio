@@ -100,8 +100,60 @@ export function writeDraft(draft: DesignDraft) {
  * recipe's details are explicit choices.
  */
 export function replaceRecipe(current: DesignDraft, recipe: Partial<DesignDraft>): DesignDraft {
-  const next = { ...current, ...recipe, description: '', mapped: {} };
+  // Only a saved voice links the draft; a preset, personality or demo starts
+  // a new, unsaved design.
+  const next = { ...current, ...recipe, profileId: recipe.profileId ?? null, description: '', mapped: {} };
   return { ...next, picks: explicitDetails(next.attrs) };
+}
+
+/**
+ * Change part of the voice (description, seed, details). The draft no longer
+ * is the saved voice it came from, so it stops sending that voice: the
+ * backend would otherwise keep cloning the saved sample and the edit would
+ * barely be heard. Setting a value it already has changes nothing.
+ */
+export function editVoice(
+  current: DesignDraft,
+  patch: Partial<Pick<DesignDraft, 'attrs' | 'seed' | 'description' | 'picks'>>,
+): DesignDraft {
+  const changed = (Object.keys(patch) as (keyof typeof patch)[]).some(
+    (key) => JSON.stringify(patch[key]) !== JSON.stringify(current[key]),
+  );
+  return changed ? { ...current, ...patch, profileId: null } : current;
+}
+
+function sameAttrs(left: Record<string, string>, right: Record<string, string>): boolean {
+  return [...new Set([...Object.keys(left), ...Object.keys(right)])].every(
+    (category) => (left[category] ?? 'Auto') === (right[category] ?? 'Auto'),
+  );
+}
+
+/**
+ * The saved design voice a take should re-render, or null. A draft links to
+ * a design profile only while its details and seed are still the profile's,
+ * so an edit made before linking was enforced (or restored from an older
+ * draft) designs a new voice instead of cloning the saved sample.
+ */
+export function linkedDesignProfile(
+  draft: Pick<DesignDraft, 'attrs' | 'seed' | 'profileId'>,
+  profiles: readonly Profile[] | undefined,
+): Profile | null {
+  const profile = profiles?.find((item) => item.id === draft.profileId && item.kind === 'design');
+  if (!profile) return null;
+  const saved = restoreDesignProfile(profile, draft.seed);
+  return saved.seed === draft.seed && sameAttrs(saved.attrs, draft.attrs) ? profile : null;
+}
+
+/**
+ * The seed a take sends. A linked voice saved without a seed keeps its own
+ * (none): the draft's placeholder would read as an edit and design a new
+ * voice instead of re-rendering the saved one.
+ */
+export function designRequestSeed(
+  draft: Pick<DesignDraft, 'seed'>,
+  linked: Profile | null,
+): number | undefined {
+  return linked && linked.seed == null ? undefined : draft.seed;
 }
 
 /**
@@ -143,7 +195,8 @@ export function pickDetail(
     [category]: { value, description: current.description.trim() },
   };
   if (clearedCategory) delete picks[clearedCategory];
-  return { draft: { ...current, attrs: vdStates, picks }, clearedCategory };
+  const profileId = sameAttrs(vdStates, current.attrs) ? current.profileId : null;
+  return { draft: { ...current, attrs: vdStates, picks, profileId }, clearedCategory };
 }
 
 /**

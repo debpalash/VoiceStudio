@@ -22,9 +22,9 @@
 #   backend/assets/samples/voice_design/demo_voice_design_*.wav  (7 design presets)
 #   backend/assets/samples/dictation/{en_conversational,en_technical,fr_reservation}.wav
 #
-# License: all `say`-rendered output is synthetic speech from Apple's bundled
-# TTS voices, redistributable under the VoiceStudio MIT license per Apple's
-# Voices for Accessibility EULA. No third-party voice IP is used.
+# Generated speech is not automatically covered by the application's licence.
+# Review the exact voice/model and output terms before redistribution; this
+# script does not establish commercial rights for any generated asset.
 
 set -e
 
@@ -174,7 +174,8 @@ cat > "${SAMPLES_DIR}/demo/manifest.json" <<EOF
   "version": "0.3.0",
   "rendered_by": "macOS say (bootstrap)",
   "rendered_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "license": "MIT (synthetic speech, no third-party voice IP)",
+  "license": "NOASSERTION",
+  "license_review_required": true,
   "assets": {
     "clone": {
       "reference": "samples/demo_voice.wav",

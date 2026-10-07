@@ -13,7 +13,9 @@ check with instructions.
 
 Each run rescans every comment on the pull request (or signing issue) and
 records any valid signature not yet stored, so the next run picks up anything a
-run cancelled while queued missed. Edited comments never count. The result is a
+run cancelled while queued missed. Edited comments never count; the check
+replies once to a comment that looks like a signature but cannot be recorded,
+saying why. The result is a
 commit status named "CLA" on the head commit, which branch protection can
 require. A maintainer can apply the `cla-override` label after reviewing a pull
 request by hand, for example one that folds in commits from agent identities.
@@ -41,6 +43,8 @@ DOCUMENT_PATH = f".github/CLA-{CLA_VERSION}.md"
 SIGNATURE_BRANCH = "cla-signatures"
 SIGNATURE_PATH = f"signatures/v{CLA_VERSION}/cla.json"
 STATUS_CONTEXT = "CLA"
+NEAR_MISS_MARKER = "<!-- voicestudio-cla-near-miss:{} -->"
+NEAR_MISS_ID = re.compile(r"<!-- voicestudio-cla-near-miss:(\d+) -->")
 # Issues carrying this label (only maintainers can apply labels) accept
 # signatures from anyone, so past contributors can sign without a pull request.
 SIGNING_LABEL = "cla"
@@ -92,16 +96,45 @@ class Evaluation:
         return not self.unsigned and not self.unknown and not self.blockers
 
 
+def _normal(text: str) -> str:
+    """Case, spacing and a final full stop do not change what was signed."""
+    return " ".join(text.lower().split()).removesuffix(".")
+
+
 def is_sign_comment(body: str) -> bool:
     """True when a line of the comment is exactly the sign phrase (not a quote)."""
-    target = " ".join(SIGN_PHRASE.lower().split())
-    return any(" ".join(line.lower().split()) == target for line in (body or "").splitlines())
+    target = _normal(SIGN_PHRASE)
+    return any(_normal(line) == target for line in (body or "").splitlines())
+
+
+def _edited(comment: dict) -> bool:
+    return bool(comment.get("updated_at") and comment.get("updated_at") != comment.get("created_at"))
 
 
 def is_valid_signature(comment: dict) -> bool:
     """A signing comment that was never edited after it was posted."""
-    edited = comment.get("updated_at") and comment.get("updated_at") != comment.get("created_at")
-    return is_sign_comment(comment.get("body")) and not edited
+    return is_sign_comment(comment.get("body")) and not _edited(comment)
+
+
+# People who explain how to sign, quoting the line; they never get a near-miss reply.
+STAFF_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
+
+
+def near_miss(comment: dict) -> str | None:
+    """Why a comment that looks like a signature cannot be recorded, or None."""
+    if comment.get("author_association") in STAFF_ASSOCIATIONS:
+        return None
+    if int((comment.get("user") or {}).get("id") or 0) in MAINTAINER_IDS:
+        return None
+    body = comment.get("body") or ""
+    text = " ".join(body.lower().split())
+    if "hereby sign" not in text or "voicestudio cla" not in text:
+        return None
+    if not is_sign_comment(body):
+        return "it does not contain the exact line on a line of its own"
+    if _edited(comment):
+        return "it was edited after it was posted, and an edited comment cannot be recorded"
+    return None
 
 
 def superseded_numbers(body: str) -> list[int]:
@@ -222,6 +255,13 @@ def render_comment(evaluation: Evaluation, doc_url: str) -> str:
         lines += ["", "**Checks to resolve:**", *[f"- {reason}" for reason in evaluation.blockers]]
     lines += ["", "Comment `recheck` to run the check again."]
     return "\n".join(lines)
+
+
+def render_near_miss(login: str, comment_id: int, reason: str) -> str:
+    return "\n".join([NEAR_MISS_MARKER.format(comment_id),
+                      (f"@{login}, thank you. Your comment could not be recorded because {reason}. "
+                       "Please post a new comment, and do not edit it, with this line:"),
+                      "", "```text", SIGN_PHRASE, "```"])
 
 
 # ── GitHub API ──────────────────────────────────────────────────────────
@@ -378,6 +418,39 @@ def upsert_comment(gh: GitHub, number: int, body: str, create: bool) -> None:
         gh.request("POST", f"/repos/{gh.repo}/issues/{number}/comments", {"body": body})
 
 
+def scan_comments(gh: GitHub, number: int, repo_id, where: dict,
+                  signers: set[int] | None = None) -> tuple[list[dict], list[int]]:
+    """Collect and save new signatures from an issue's or pull request's comments.
+
+    `signers` limits signatures to those account IDs (a pull request records
+    only the people it waits on). Replies once to each comment that looks like a
+    signature but cannot be recorded, saying why. Returns (signatures, IDs of
+    the comments recorded).
+    """
+    have = {int(s["id"]) for s in load_store(gh)[0]["signatures"]}
+    comments = gh.paginate(f"/repos/{gh.repo}/issues/{number}/comments")
+    answered = {int(found) for c in comments if (c.get("user") or {}).get("type") == "Bot"
+                for found in NEAR_MISS_ID.findall(c.get("body") or "")}
+    new, recorded = [], []
+    for comment in comments:
+        user = comment.get("user") or {}
+        if user.get("type") != "User":
+            continue
+        uid = int(user.get("id") or 0)
+        if uid in have or (signers is not None and uid not in signers):
+            continue
+        if is_valid_signature(comment):
+            have.add(uid)
+            new.append(signature(user, comment, repo_id, **where))
+            recorded.append(comment["id"])
+        elif comment["id"] not in answered and (reason := near_miss(comment)):
+            gh.request("POST", f"/repos/{gh.repo}/issues/{number}/comments",
+                       {"body": render_near_miss(user["login"], comment["id"], reason)})
+    if new:
+        save_signatures(gh, new, number)
+    return new, recorded
+
+
 def sign_on_issue(gh: GitHub, event: dict) -> int:
     """Record every valid signature on a maintainer-labelled signing issue.
 
@@ -387,19 +460,10 @@ def sign_on_issue(gh: GitHub, event: dict) -> int:
     issue = event.get("issue") or {}
     if SIGNING_LABEL not in {label.get("name") for label in issue.get("labels") or []}:
         return 0
-    store, _ = load_store(gh)
-    have = {int(s["id"]) for s in store["signatures"]}
-    new, comment_ids = [], []
-    for comment in gh.paginate(f"/repos/{gh.repo}/issues/{issue['number']}/comments"):
-        user = comment.get("user") or {}
-        if user.get("type") == "User" and int(user.get("id") or 0) not in have and is_valid_signature(comment):
-            have.add(int(user["id"]))
-            new.append(signature(user, comment, (event.get("repository") or {}).get("id"), issue=issue["number"]))
-            comment_ids.append(comment["id"])
-    if new:
-        save_signatures(gh, new, issue["number"])
-        for comment_id in comment_ids:
-            gh.request("POST", f"/repos/{gh.repo}/issues/comments/{comment_id}/reactions", {"content": "+1"})
+    new, recorded = scan_comments(gh, issue["number"], (event.get("repository") or {}).get("id"),
+                                  {"issue": issue["number"]})
+    for comment_id in recorded:
+        gh.request("POST", f"/repos/{gh.repo}/issues/comments/{comment_id}/reactions", {"content": "+1"})
     return len(new)
 
 
@@ -508,15 +572,9 @@ def run(gh: GitHub, event_name: str, event: dict, server_url: str = "https://git
     evaluation = evaluate(opener, opener_is_bot, actors, signed_ids)
 
     # Record signatures from any comment by someone who still has to sign.
-    pending = {p.id: p for p in evaluation.unsigned}
-    new = []
-    for comment in gh.paginate(f"/repos/{gh.repo}/issues/{number}/comments"):
-        user = comment.get("user") or {}
-        if user.get("id") in pending and is_valid_signature(comment):
-            pending.pop(user["id"])
-            new.append(signature(user, comment, pr["base"]["repo"]["id"], pull_request=number))
+    new, _ = scan_comments(gh, number, pr["base"]["repo"]["id"], {"pull_request": number},
+                           signers={p.id for p in evaluation.unsigned})
     if new:
-        save_signatures(gh, new, number)
         evaluation = evaluate(opener, opener_is_bot, actors, signed_ids | {s["id"] for s in new})
 
     for ref in overflow:

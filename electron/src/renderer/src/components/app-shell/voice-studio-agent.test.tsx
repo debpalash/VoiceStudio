@@ -154,3 +154,27 @@ it('keeps crash repair ready for Send until a source checkout is attached', asyn
     expect.objectContaining({ workspace: 'source', report: 'Renderer crashed unexpectedly' }),
   ));
 });
+it('keeps the newest CLI scan when an older one answers last', async () => {
+  let answerMount!: (agents: unknown) => void;
+  mocks.repair.list.mockImplementation((options?: { refresh?: boolean }) =>
+    options?.refresh
+      ? Promise.resolve([
+          { id: 'codex', label: 'Codex', available: true },
+          { id: 'claude', label: 'Claude Code', available: true },
+        ])
+      : new Promise((resolve) => {
+          answerMount = resolve;
+        }),
+  );
+  render(<VoiceStudioAgent />);
+  fireEvent.click(screen.getByRole('button', { name: 'repairAgent.title' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Claude Code' })).toBeEnabled());
+  // The mount scan started first but answers after the refresh: it is stale.
+  await act(async () => {
+    answerMount([
+      { id: 'codex', label: 'Codex', available: true },
+      { id: 'claude', label: 'Claude Code', available: false },
+    ]);
+  });
+  expect(screen.getByRole('button', { name: 'Claude Code' })).toBeEnabled();
+});

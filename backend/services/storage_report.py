@@ -143,12 +143,20 @@ def _dir_size(path: str, deadline: float) -> tuple[int, bool, str | None]:
             complete = False
             break
         for name in files:
+            # Checked per file, not only per directory: one flat directory of
+            # millions of files is a single walk step and would otherwise run
+            # far past the budget while still reporting a complete total.
+            if time.monotonic() > deadline:
+                complete = False
+                break
             fp = os.path.join(root, name)
             try:
                 total += os.lstat(fp).st_size
             except OSError:
                 if err_path is None:
                     err_path = fp
+        if not complete:
+            break
     return total, complete, err_path
 
 
@@ -343,39 +351,49 @@ def build_report(
     })
 
     other_bytes = 0
+    other_complete = True
+
+    def _other_entry(e: os.DirEntry) -> bool:
+        """Add one loose data entry to Other. False once the budget is spent
+        (the entry is not measured) or the entry could not be read."""
+        nonlocal other_bytes, other_complete, data_complete, data_err
+        if time.monotonic() > deadline:
+            other_complete = data_complete = False
+            return False
+        try:
+            if e.is_dir(follow_symlinks=False):
+                size, ok, err = _dir_size(e.path, deadline)
+                other_bytes += size
+                other_complete = other_complete and ok and err is None
+                data_complete = data_complete and ok
+                data_err = data_err or err
+            else:
+                other_bytes += e.stat(follow_symlinks=False).st_size
+        except OSError:
+            other_complete = False
+            data_err = data_err or e.path
+        return True
+
     try:
         with os.scandir(data_dir) as it:
             for e in it:
                 if e.name in claimed:
                     continue
-                if e.is_dir(follow_symlinks=False):
-                    size, ok, err = _dir_size(e.path, deadline)
-                    other_bytes += size
-                    data_complete = data_complete and ok
-                    data_err = data_err or err
-                else:
-                    try:
-                        other_bytes += e.stat(follow_symlinks=False).st_size
-                    except OSError:
-                        data_err = data_err or e.path
+                if not _other_entry(e):
+                    break
     except OSError:
         if os.path.exists(data_dir):
+            other_complete = False
             data_err = data_err or data_dir
     if engines_child:
         for e in engine_entries:
             if e.path in engine_dirs or e.path in unclassified_engines:
                 continue
-            try:
-                if e.is_dir(follow_symlinks=False):
-                    size, ok, err = _dir_size(e.path, deadline)
-                    other_bytes += size
-                    data_complete = data_complete and ok
-                    data_err = data_err or err
-                else:
-                    other_bytes += e.stat(follow_symlinks=False).st_size
-            except OSError:
-                data_err = data_err or e.path
-    children.append({"id": "other", "path": data_dir, "bytes": other_bytes, "complete": True})
+            if not _other_entry(e):
+                break
+    children.append({
+        "id": "other", "path": data_dir, "bytes": other_bytes, "complete": other_complete,
+    })
 
     data_cat = {
         "id": "data",

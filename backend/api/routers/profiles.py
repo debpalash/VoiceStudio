@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from core.db import db_conn
 from core.config import VOICES_DIR, OUTPUTS_DIR
-from core import event_bus
+from core import event_bus, voice_leases
 from core.scrub import scrub_text
 from core.personalities import get_personalities
 from omnivoice.utils.voice_design import heal_design_instruct, sanitize_instruct
@@ -47,6 +47,23 @@ def _profile_record(row):
     return result
 
 
+# Wall-clock bound on the best-effort transcript taken while a reference is
+# saved. A cold model load or a stalled network read must not hold the save
+# open (#2583); a late result still lands in transcribe_reference's content
+# cache, so the first generation with this voice reuses it.
+_REFERENCE_TRANSCRIBE_TIMEOUT_S = 60.0
+
+
+def _reference_transcribe_timeout() -> float:
+    try:
+        value = float(os.environ.get(
+            "OMNIVOICE_PROFILE_TRANSCRIBE_TIMEOUT_S", _REFERENCE_TRANSCRIBE_TIMEOUT_S,
+        ))
+    except (TypeError, ValueError):
+        return _REFERENCE_TRANSCRIBE_TIMEOUT_S
+    return value if value > 0 and value != float("inf") else _REFERENCE_TRANSCRIBE_TIMEOUT_S
+
+
 async def _auto_transcribe_reference(audio_path: str) -> str:
     """Best-effort local transcript for a new reference clip, or "".
 
@@ -58,10 +75,19 @@ async def _auto_transcribe_reference(audio_path: str) -> str:
     including the first, uses stable conditioning. Local-only:
     transcribe_reference considers only already-installed ASR/dictation models.
     """
+    timeout = _reference_transcribe_timeout()
     try:
         from services.asr_backend import transcribe_reference
 
-        return (await asyncio.to_thread(transcribe_reference, audio_path) or "").strip()
+        return (await asyncio.wait_for(
+            asyncio.to_thread(transcribe_reference, audio_path), timeout,
+        ) or "").strip()
+    except asyncio.TimeoutError:
+        logger.warning(
+            "reference transcription during profile save exceeded %.0fs; "
+            "saving without a transcript", timeout,
+        )
+        return ""
     except Exception as exc:  # noqa: BLE001 — profile save remains usable
         logger.warning("reference transcription during profile save failed: %s", exc)
         return ""
@@ -187,41 +213,35 @@ async def create_profile(
             ref_text = await _auto_transcribe_reference(audio_path)
         used_seed = seed
     else:
-        # Saving a design profile is a pure persistence operation — it must not
-        # depend on a loaded TTS model (issue #476: on a fresh model-less Docker
-        # image the render forced a full model load + inference that 503'd, so
-        # the save failed). We try the deterministic identity sample opportunist-
-        # ically through the one shared TTS path (archetypes' renderer, never a
-        # second inference code path); if the engine isn't ready it's rendered
-        # lazily on first preview/use. The row carries vd_states + instruct, so
-        # the voice is fully usable without the sample (synthesis falls back to
-        # instruct-only conditioning — see generation.py's design path).
+        # Saving must not start a cold model load or download (#2583).
+        # Preserve the identity sample for an already resident engine; otherwise
+        # use the existing pending-sample path, rendered on explicit preview.
         from pathlib import Path
         from api.routers.archetypes import _render_archetype_wav
-        audio_filename = f"{profile_id}.wav"
-        audio_path = os.path.join(VOICES_DIR, audio_filename)
-        try:
-            await _render_archetype_wav(
-                {
-                    "language": language,
-                    "sample_script": ref_text,  # optional custom sample line
-                    "instruct": instruct,
-                },
-                Path(audio_path),
-            )
-        except Exception:
-            # Engine unavailable / OOM / inference failure — defer the sample.
-            # Store the row with no ref_audio_path; the identity sample is
-            # rendered on first preview or use. Never let this block the save.
-            import logging
-            logging.getLogger("omnivoice.profiles").info(
-                "Design profile %s saved with sample pending — "
-                "voice engine not ready; will render on first use", profile_id,
-            )
-            if os.path.exists(audio_path):  # partial/blank render: don't keep it
-                with __import__("contextlib").suppress(OSError):
-                    os.remove(audio_path)
-            audio_filename = None
+        from services.model_manager import get_model_status
+        audio_path = os.path.join(VOICES_DIR, f"{profile_id}.wav")
+        audio_filename = None
+        if get_model_status()["loaded"]:
+            try:
+                await _render_archetype_wav(
+                    {
+                        "language": language,
+                        "sample_script": ref_text,  # optional custom sample line
+                        "instruct": instruct,
+                    },
+                    Path(audio_path),
+                    allow_model_load=False,
+                )
+                audio_filename = f"{profile_id}.wav"
+            except Exception:
+                # OOM / inference failure — defer the sample, clearing partials.
+                logging.getLogger("omnivoice.profiles").info(
+                    "Design profile %s saved with sample pending — "
+                    "voice engine not ready; will render on preview", profile_id,
+                )
+                if os.path.exists(audio_path):
+                    with contextlib.suppress(OSError):
+                        os.remove(audio_path)
         used_seed = seed if seed is not None else _DESIGN_SEED
 
     try:
@@ -458,16 +478,92 @@ async def _is_decodable_audio(path: str) -> bool:
     return _sndfile_decodes(path) or await _ffmpeg_decodes(path)
 
 
+def _voice_file_referenced(conn, filename: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM voice_profiles WHERE ref_audio_path=? OR locked_audio_path=? "
+        "OR consent_audio_path=? LIMIT 1",
+        (filename, filename, filename),
+    ).fetchone() is not None
+
+
+# A superseded reference/locked take is not deleted when the profile moves off
+# it: a render already running (audiobook, Stories, dub, batch) resolved the
+# voice's path once and re-reads that file for every segment. The file is
+# marked under voices/.retired/ instead and swept once the marker is older
+# than the grace period, no profile references it again and no running render
+# holds it (core.voice_leases).
+_RETIRED_DIRNAME = ".retired"
+_RETIRED_GRACE_S = 24 * 3600
+
+
+def _retire_voice_file(filename: Optional[str], *, keep: Optional[str] = None) -> None:
+    """Schedule a superseded voices/ file for a later sweep instead of deleting it."""
+    if not filename or filename == keep:
+        return
+    path = _voices_path(filename)
+    if not path or not os.path.isfile(path):
+        return
+    marker = os.path.join(VOICES_DIR, _RETIRED_DIRNAME, filename)
+    try:
+        os.makedirs(os.path.dirname(marker), exist_ok=True)
+        with open(marker, "a"):
+            pass
+        os.utime(marker, None)  # the grace period counts from this retirement
+    except OSError as exc:
+        logger.warning("could not mark superseded voice file for cleanup: %s", exc)
+
+
+def sweep_retired_voice_files(grace_s: float = _RETIRED_GRACE_S) -> int:
+    """Delete retired voices/ files whose grace period passed and that no
+    profile references any more. Returns how many files were removed."""
+    marker_dir = os.path.join(VOICES_DIR, _RETIRED_DIRNAME)
+    try:
+        markers = [e for e in os.scandir(marker_dir) if e.is_file()]
+    except OSError:
+        return 0
+    cutoff = time.time() - grace_s
+    removed = 0
+    with db_conn() as conn:
+        for marker in markers:
+            try:
+                if marker.stat().st_mtime > cutoff:
+                    continue
+            except OSError:
+                continue
+            path = None if _voice_file_referenced(conn, marker.name) else _voices_path(marker.name)
+            if path:
+                try:
+                    # A render still holding the take outlives any grace
+                    # period: keep the marker and retry on a later sweep.
+                    if not voice_leases.remove_if_unused(path):
+                        continue
+                    removed += 1
+                except FileNotFoundError:
+                    pass  # already gone; nothing left to retire
+                except OSError as exc:  # e.g. still open on Windows: retry next sweep
+                    logger.warning("could not remove retired voice file: %s", exc)
+                    continue
+            with contextlib.suppress(OSError):
+                os.remove(marker.path)
+    return removed
+
+
+async def _sweep_retired_off_loop() -> None:
+    """Run the retired-file sweep after a retirement, outside any lock or DB
+    transaction and off the event loop. Each retirement triggers one, so the
+    retired set stays bounded on a long-running server, not only at startup."""
+    try:
+        await asyncio.to_thread(sweep_retired_voice_files)
+    except Exception:
+        logger.warning("retired voice sweep failed", exc_info=True)
+
+
 def _remove_voice_file(filename: Optional[str], *, keep: str) -> None:
     """Delete a superseded voices/ file unless it is still referenced."""
     if not filename or filename == keep:
         return
     with db_conn() as conn:
-        shared = conn.execute(
-            "SELECT 1 FROM voice_profiles WHERE ref_audio_path=? OR locked_audio_path=? "
-            "OR consent_audio_path=? LIMIT 1",
-            (filename, filename, filename),
-        ).fetchone()
+        shared = _voice_file_referenced(conn, filename)
     path = None if shared else _voices_path(filename)
     if path and os.path.isfile(path):
         try:
@@ -622,8 +718,12 @@ async def replace_profile_audio(
                 with contextlib.suppress(OSError):
                     os.remove(leftover)
             raise
-        for column in ("ref_audio_path", "locked_audio_path", "consent_audio_path"):
-            _remove_voice_file(row[column], keep=new_filename)
+        # Render inputs are retired (a running render may still read them);
+        # the consent recording is never one, so it goes now.
+        for column in ("ref_audio_path", "locked_audio_path"):
+            _retire_voice_file(row[column], keep=new_filename)
+        _remove_voice_file(row["consent_audio_path"], keep=new_filename)
+    await _sweep_retired_off_loop()
     event_bus.emit("profiles", {"action": "updated", "id": profile_id})
     return _profile_record(updated)
 
@@ -834,7 +934,13 @@ async def lock_profile(
         if not src_path.is_file():
             raise HTTPException(status_code=404, detail="Audio file not found on disk")
 
-        locked_filename = f"{profile_id}_locked.wav"
+        # Every lock gets a fresh filename: longform caches key a voice by its
+        # reference path, so overwriting one fixed `<id>_locked.wav` let a
+        # re-locked profile with the same text/seed replay the previous take's
+        # cached audio (#2535). The superseded take is retired after commit,
+        # not deleted, so a render still reading it keeps working.
+        previous_locked = profile["locked_audio_path"]
+        locked_filename = f"{profile_id}_locked-{uuid.uuid4().hex[:8]}.wav"
         locked_path = _voices_path(locked_filename)
         if locked_path is None:
             raise HTTPException(status_code=400, detail="Invalid profile id")
@@ -862,6 +968,9 @@ async def lock_profile(
             with contextlib.suppress(OSError):
                 os.remove(staged_path)
         finalize()
+    # Only after the row points at the new take; shared/referenced files stay.
+    _retire_voice_file(previous_locked, keep=locked_filename)
+    await _sweep_retired_off_loop()
     event_bus.emit("profiles", {"action": "locked", "id": profile_id})
     return {"locked": True, "profile_id": profile_id, "locked_audio_path": locked_filename}
 
@@ -876,19 +985,14 @@ async def unlock_profile(profile_id: str):
                     detail="Voice profile not found. It may have been deleted from another window — refresh the sidebar to see the current list.",
                 )
 
-            locked_path = (
-                _voices_path(profile["locked_audio_path"]) if profile["locked_audio_path"] else None
-            )
             conn.execute(
                 "UPDATE voice_profiles SET locked_audio_path='', seed=NULL, is_locked=0 WHERE id=?",
                 (profile_id,)
             )
-        # Unlink only after the row change committed (a rolled-back unlock must
-        # keep its locked take). Holding the lock stops a concurrent re-lock
-        # from installing a take that this unlink would then remove.
-        if locked_path:
-            with contextlib.suppress(OSError):
-                os.remove(locked_path)
+        # Retire only after the row change committed (a rolled-back unlock must
+        # keep its locked take); a render still reading it keeps working.
+        _retire_voice_file(profile["locked_audio_path"])
+    await _sweep_retired_off_loop()
     event_bus.emit("profiles", {"action": "unlocked", "id": profile_id})
     return {"unlocked": True, "profile_id": profile_id}
 

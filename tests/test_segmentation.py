@@ -393,3 +393,42 @@ class TestSegmentDictContract:
             assert isinstance(s["end"], float)
             assert isinstance(s["text"], str)
             assert s["end"] > s["start"]
+
+
+# ── #2572: segments without word timings keep their speech ──────────────────
+
+@pytest.mark.parametrize("unaligned_first", [True, False])
+def test_mixed_aligned_and_unaligned_segments_keep_all_speech(unaligned_first):
+    aligned = {
+        "start": 2.0, "end": 3.0, "text": "exact words",
+        "words": [
+            {"word": "exact", "start": 2.05, "end": 2.4},
+            {"word": "words", "start": 2.5, "end": 2.95},
+        ],
+    }
+    unaligned = {"start": 0.0, "end": 1.5, "text": " kept speech here ", "words": []}
+    if not unaligned_first:
+        unaligned = {"start": 4.0, "end": 5.5, "text": "kept speech here"}
+    segs = [unaligned, aligned] if unaligned_first else [aligned, unaligned]
+
+    words = _words_from_whisper({"segments": segs, "chunks": []})
+
+    texts = [w.text for w in words]
+    expected = ["kept", "speech", "here", "exact", "words"]
+    assert texts == (expected if unaligned_first else expected[3:] + expected[:3])
+    exact = [(w.start, w.end) for w in words if w.text in ("exact", "words")]
+    assert exact == [(2.05, 2.4), (2.5, 2.95)]
+    spread = [w for w in words if w.text in ("kept", "speech", "here")]
+    base = 0.0 if unaligned_first else 4.0
+    assert spread[0].start == pytest.approx(base)
+    assert spread[-1].end == pytest.approx(base + 1.5)
+    assert all(w.end > w.start for w in spread)
+
+
+def test_unaligned_segment_without_a_usable_span_is_skipped():
+    segs = [
+        {"start": 0.0, "end": 1.0, "words": [{"word": "hi", "start": 0.1, "end": 0.4}]},
+        {"start": None, "end": None, "text": "untimed"},
+        {"start": 2.0, "end": 2.0, "text": "zero span"},
+    ]
+    assert [w.text for w in _words_from_whisper({"segments": segs})] == ["hi"]

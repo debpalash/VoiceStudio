@@ -3,21 +3,41 @@
 
 # Phase 4: Adaptive & Specialty Engines (spike-first) — Research
 
+## Licence correction (2026-10-03)
+
+This correction supersedes the original commercial-compatibility conclusions below.
+The [upstream OmniVoice card](https://huggingface.co/k2-fsa/OmniVoice#license)
+distinguishes Apache-2.0 code from CC-BY-NC pretrained weights. The
+[GGUF card](https://huggingface.co/Serveurperso/OmniVoice-GGUF#license) now lists
+CC-BY-NC-4.0 for its converted weights. The
+[singing card](https://huggingface.co/ModelsLab/omnivoice-singing) still advertises
+Apache-2.0 and identifies OmniVoice as its base; that label does not resolve the
+conflicting upstream terms. Commercial clearance for the singing weights remains
+unverified. Tokenizer/component terms also require separate review; see
+[LICENSE-NOTICE.md](../../LICENSE-NOTICE.md).
+
+These historical engineering decisions do not approve any model for Pro. Model
+rights must be recorded separately from runtime-code rights, with unresolved or
+non-commercial weights excluded from Pro unless the necessary rights are obtained.
+The required acceptance and backend enforcement work is tracked in #2587; this
+correction does not claim those controls are already implemented.
+
+
 **Researched:** 2026-05-18
 **Domain:** TTS engine integration — quantized GGUF runtime + singing-voice variant, both descending from the same `k2-fsa/OmniVoice` lineage already shipping as VoiceStudio's default cloning engine
-**Confidence:** HIGH for model identity, license, runtime requirements, and GO/NO-GO calls (model cards confirmed, lineage chain verified end-to-end). MEDIUM for performance/latency numbers (no public benchmarks). MEDIUM for the heuristic singing/spoken segmentation strategy (SING-03 — feasible from existing toolkit but unbenchmarked).
+**Confidence:** HIGH for model identity and runtime requirements. Original licence and commercial GO/NO-GO conclusions are superseded by the correction above. MEDIUM for performance/latency numbers (no public benchmarks). MEDIUM for the heuristic singing/spoken segmentation strategy (SING-03 — feasible from existing toolkit but unbenchmarked).
 
 ---
 
 ## Summary
 
-Both spike URLs are **real, live, and the intended artifacts**. The "VoiceStudio" name is not overloaded in the wild — both `Serveurperso/OmniVoice-GGUF` and `ModelsLab/omnivoice-singing` are direct descendants of `k2-fsa/OmniVoice` (the same upstream model VoiceStudio already ships as its default cloning engine). License chain is clean: Qwen3-0.6B-Base → k2-fsa/OmniVoice (Apache-2.0) → both downstream variants (Apache-2.0). Both use the **same Higgs Audio v2 codec at 24 kHz mono**, the same Qwen3-0.6B language model backbone, and the same overall architecture — they differ only in (a) quantization + runtime (GGUF/`omnivoice.cpp`) and (b) finetune dataset + emotion/singing control tags (ModelsLab).
+Both spike URLs are **real, live, and the intended artifacts**. The "VoiceStudio" name is not overloaded in the wild — both `Serveurperso/OmniVoice-GGUF` and `ModelsLab/omnivoice-singing` are direct descendants of `k2-fsa/OmniVoice` (the same upstream model VoiceStudio already ships as its default cloning engine). Their shared lineage does not establish commercial permission; see the licence correction above. Both use the **same Higgs Audio v2 codec at 24 kHz mono**, the same Qwen3-0.6B language model backbone, and the same overall architecture — they differ only in (a) quantization + runtime (GGUF/`omnivoice.cpp`) and (b) finetune dataset + emotion/singing control tags (ModelsLab).
 
 **The framing changes once that's confirmed.** SPIKE-01 is not "adopt a new engine" — it is "ship a quantized runtime variant of the engine already inside VoiceStudio, selectable by hardware probe." SPIKE-02 is not "adopt a new engine architecture" — it is "ship a domain-adapted finetune of the same VoiceStudio model with singing-mode tags, callable through the existing `VoiceStudioBackend` API surface with a different `from_pretrained` ID."
 
 **Primary recommendations:**
 
-- **SPIKE-01 (OmniVoice-GGUF): GO**, conditional on a Phase 4-internal Apple Silicon `buildmetal.sh` smoke (no published Metal build script visible in `omnivoice.cpp/README.md`; only Vulkan and CPU are documented). The integration shape is `SubprocessBackend` wrapping the `omnivoice-tts` C++ CLI, with quant selected by a `detect_capabilities()` hardware probe.
+- **SPIKE-01 (OmniVoice-GGUF): technical GO**, conditional on a Phase 4-internal Apple Silicon `buildmetal.sh` smoke (no published Metal build script visible in `omnivoice.cpp/README.md`; only Vulkan and CPU are documented). The integration shape is `SubprocessBackend` wrapping the `omnivoice-tts` C++ CLI, with quant selected by a `detect_capabilities()` hardware probe.
 - **SPIKE-02 (omnivoice-singing): GO with reduced scope**, treating it as a **second `from_pretrained` ID against the existing `VoiceStudioBackend`** rather than a new backend class — it is the same `omnivoice` PyPI library, same `transformers` pipeline, same model interface. The dubbing-pipeline "singing mode" toggle (SING-02) and Demucs vocal-stem routing (SING-03) remain real work, but they're pipeline integration, not engine integration. Net: 5 SING-* requirements stay in scope; SING-01's framing simplifies.
 
 **Phase 2 dependency:** Both engines build on the `SubprocessBackend` primitive from Phase 2. Phase 4 cannot finalize PLAN.md until Phase 2 RESEARCH.md exists and confirms the subprocess + venv + `mp.get_context("spawn")` + `HF_HOME` inheritance contract. **Capture this as a planner gate, not as research blocked-on-Phase-2** — research can proceed using `SubprocessBackend` as a stable contract (the ROADMAP and SUMMARY both define it). PLAN.md cannot reference its internals until Phase 2 RESEARCH lands.
@@ -90,8 +110,8 @@ Both spike URLs are **real, live, and the intended artifacts**. The "VoiceStudio
 
 # Confirmed live on HuggingFace (verified 2026-05-18 via WebFetch):
 #   Serveurperso/OmniVoice-GGUF — 10,603 downloads last month, 4 quant variants
-#   ModelsLab/omnivoice-singing — 1,053 downloads last month, Apache-2.0
-#   k2-fsa/OmniVoice (upstream) — Apache-2.0, arXiv 2604.00688
+#   ModelsLab/omnivoice-singing — historical download count; commercial rights unresolved
+#   k2-fsa/OmniVoice (upstream) — separate code/weight terms; arXiv 2604.00688
 
 # Confirmed live on GitHub (verified 2026-05-18 via WebFetch):
 #   ServeurpersoCom/omnivoice.cpp — MIT, 38 stars, 59 commits on master, 6 open issues
@@ -324,7 +344,7 @@ class VoiceStudioGGUFBackend(TTSBackend):
 | Problem | Don't Build | Use Instead | Why |
 |---------|-------------|-------------|-----|
 | GGUF inference | A custom `llama.cpp` fork that adds the `omnivoice-lm` arch | `omnivoice.cpp` binary (upstream, MIT, by the quant author) | The author of the quants is the author of the runtime. Forking llama.cpp ourselves would add a permanent maintenance burden and zero capability over upstream. |
-| Singing voice cloning model architecture | A trained-from-scratch singing model | `ModelsLab/omnivoice-singing` (same arch, finetuned) | The finetune already exists, license is clean, runtime is what we already ship. |
+| Singing voice cloning model architecture | A trained-from-scratch singing model | `ModelsLab/omnivoice-singing` (same arch, finetuned) | The finetune exists and reuses the current runtime; commercial rights remain unresolved. |
 | Vocal stem isolation for singing-mode routing | A custom source-separation network | Demucs (already in dubbing pipeline) | Already a dep, already integrated, results are good enough for routing decisions. |
 | Speech-vs-singing classifier | A trained classification model for SING-03 v0.3 | Pitch-stability + energy heuristic on Demucs vocal stem; per-segment user override in UI | REQUIREMENTS.md already defers model-based classifier to v2. Heuristic is sufficient with override. |
 | Hardware probe / VRAM bucketing | A new GPU-detection library | Extend the existing `backend/services/gpu_sandbox.py` probe | Already detects CUDA/MPS/ROCm/CPU; just adds VRAM bucketing on top. |
@@ -637,7 +657,7 @@ _REGISTRY.update({
 | SING-01 | `VoiceStudioSingingBackend` loads, generates 1s with `[singing]` tag auto-injected | unit | `pytest tests/engines/test_omnivoice_singing.py::test_generate_with_auto_tag -x` | ❌ Wave 0 |
 | SING-02 | Dubbing pipeline routes vocal stem → singing engine when toggle is on; instrumental preserved | integration | `pytest tests/services/test_dub_pipeline_singing.py::test_singing_mode_preserves_instrumental -x` | ❌ Wave 0 |
 | SING-03 | Segment detector returns valid `Segment` list with kind + confidence on a known mixed clip | unit | `pytest tests/services/test_segment_detector.py::test_mixed_clip_routing -x` | ❌ Wave 0 |
-| SING-04 | License surfacing endpoint returns Apache-2.0 + ModelsLab URL; first-use acceptance is gated | unit + UI | `pytest tests/engines/test_omnivoice_singing.py::test_license_gate -x` | ❌ Wave 0 |
+| SING-04 | License surfacing must distinguish code, weights and upstream restrictions; acceptance/enforcement remains to be implemented | unit + UI | `pytest tests/engines/test_omnivoice_singing.py::test_license_gate -x` | ❌ Wave 0 |
 | SING-05 | 30s mixed speech+singing clip dubs end-to-end; both segments intelligible, instrumental preserved | smoke | `scripts/smoke-singing.sh tests/fixtures/mixed-30s.wav` | ❌ Wave 0 |
 
 ### Sampling Rate
@@ -689,7 +709,7 @@ _REGISTRY.update({
 
 ### How this research executed the SPIKE protocol
 
-1. **Web-fetch model cards** [DONE 2026-05-18]: Confirmed both `Serveurperso/OmniVoice-GGUF` and `ModelsLab/omnivoice-singing` exist, are public, are descendants of `k2-fsa/OmniVoice`, and use compatible licenses. Verified the upstream chain via `huggingface.co/k2-fsa/OmniVoice`.
+1. **Web-fetch model cards** [DONE 2026-05-18]: Confirmed both `Serveurperso/OmniVoice-GGUF` and `ModelsLab/omnivoice-singing` exist, are public, are descendants of `k2-fsa/OmniVoice`, with shared upstream lineage. The original licence-compatibility conclusion is withdrawn; see the correction above and `huggingface.co/k2-fsa/OmniVoice`.
 2. **Web-fetch runtime repo** [DONE 2026-05-18]: Confirmed `github.com/ServeurpersoCom/omnivoice.cpp` is the only runtime for the quants; documented MIT license, build script set, CLI invocation pattern, and maintenance state (38 stars, 59 commits, 6 open issues).
 3. **PyPI package verification** [DONE 2026-05-18]: Confirmed `omnivoice` 0.1.5 on PyPI (2026-04-28, Apache-2.0) — already a project dep, no new dependency for SPIKE-02.
 4. **Architecture compatibility check** [DONE]: Both downstream models share the same architecture as the project's existing default `VoiceStudioBackend` (Qwen3-0.6B + Higgs Audio v2 codec, 24 kHz mono). This is the load-bearing finding that re-frames both spikes from "new engines" to "variants of the engine already shipping."
@@ -707,12 +727,14 @@ _REGISTRY.update({
 
 ## GO / NO-GO Recommendations
 
-### SPIKE-01 (Serveurperso/OmniVoice-GGUF): **GO** ✓
+### SPIKE-01 (Serveurperso/OmniVoice-GGUF): **TECHNICAL GO**
+
+This establishes technical feasibility only. Free-app acceptance also requires the rights gate in [engine acceptance](../engine-acceptance.md), including owner approval and first-use disclosure for restricted engines.
 
 **Rationale:**
-- ✓ Model card, runtime repo, license, lineage all verified live (2026-05-18).
+- Historical model/runtime/lineage review dated 2026-05-18; commercial clearance superseded above.
 - ✓ Same underlying model as VoiceStudio's existing default — this is *quantization of what we already ship*, not a new engine architecture. Worst case it just doesn't beat the in-process Python path on a given hardware class, and we keep that path as the fallback.
-- ✓ License chain clean: Apache-2.0 (model) + MIT (runtime).
+- Commercial model clearance withdrawn; runtime and weight terms require separate records.
 - ✓ Cross-platform via CUDA / Vulkan / Metal / CPU per `omnivoice.cpp` build matrix [with **Assumption A1** caveat — Metal build script not in published README, must validate Wave 1].
 - ✓ Hardware adaptation is a natural fit for the user-stated value of "first-run that actually works" on a wide range of hardware — Q4_K_M ~659 MB VRAM gets the engine running on 4 GB GPUs that today fall back to CPU on the in-process Python path.
 
@@ -725,9 +747,9 @@ _REGISTRY.update({
 ### SPIKE-02 (ModelsLab/omnivoice-singing): **GO** with reduced scope ✓
 
 **Rationale:**
-- ✓ Model card, license, runtime path verified live (2026-05-18).
+- Historical model/runtime review dated 2026-05-18; commercial clearance superseded above.
 - ✓ Same `omnivoice` PyPI library, same architecture, same codec — load-bearing finding: this is *not* a new engine, it's a new model ID consumed by the engine class we already have. `VoiceStudioSingingBackend` is a ≤30-line subclass.
-- ✓ License clean: Apache-2.0 with documented training-data downstream compliance (training datasets carry CC BY-NC-SA / ODbL constraints, which propagate to commercial *training* but not to *use* of the model under Apache-2.0).
+- The former training-versus-use licence conclusion is withdrawn. The singing model requires upstream clarification before commercial approval.
 - ✓ Hardware: same footprint as existing VoiceStudio; runs on existing-engine-compatible hardware.
 
 **Scope reductions captured by this research:**
@@ -763,20 +785,20 @@ Two files, written by the planner after Phase 4 PLAN.md is locked, using this re
 
 ## Context
 
-VoiceStudio v0.2.7 ships `k2-fsa/OmniVoice` (Apache-2.0, 0.6B Qwen3 backbone, Higgs Audio v2 codec) as its default voice-cloning engine via `backend/services/tts_backend.py:VoiceStudioBackend`. The Python in-process path requires PyTorch + CUDA / MPS / CPU.
+VoiceStudio v0.2.7 ships `k2-fsa/OmniVoice` (separate code/weight terms; 0.6B Qwen3 backbone, Higgs Audio v2 codec) as its default voice-cloning engine via `backend/services/tts_backend.py:VoiceStudioBackend`. The Python in-process path requires PyTorch + CUDA / MPS / CPU.
 
 `Serveurperso/OmniVoice-GGUF` publishes 4 quantizations of the same model (Q4_K_M / Q8_0 / BF16 / F32) consumable through the MIT-licensed `omnivoice.cpp` runtime (a custom GGML-based C++ inference binary). This decision is whether to integrate the GGUF engine as a hardware-adaptive default with overridable fallback.
 
 ## Decision
 
-**GO** — integrate per GGUF-01..06.
+**Technical GO only** — integrate per GGUF-01..06; engine acceptance remains conditional on the rights gate in `docs/engine-acceptance.md`.
 
 ## Consequences
 
 **Positive:**
 - 4 GB-VRAM GPUs (currently falling back to CPU on the in-process path) get GPU-backed cloning via Q4_K_M.
 - Smaller VRAM footprint = stays out of the way of other engines when users run multiple in one session.
-- License chain unchanged (Apache-2.0 model + MIT runtime).
+- Model licensing needs separate review from the runtime licence; see the correction above.
 
 **Negative / risk:**
 - Adds a maintained-by-others C++ runtime to the dependency graph (`omnivoice.cpp`, 38 stars at decision time).
@@ -793,7 +815,7 @@ VoiceStudio v0.2.7 ships `k2-fsa/OmniVoice` (Apache-2.0, 0.6B Qwen3 backbone, Hi
 - `.planning/phases/04-adaptive-specialty-engines-spike-first/04-RESEARCH.md` (this research)
 - https://huggingface.co/Serveurperso/OmniVoice-GGUF (verified 2026-05-18)
 - https://github.com/ServeurpersoCom/omnivoice.cpp (verified 2026-05-18)
-- https://huggingface.co/k2-fsa/OmniVoice (upstream, Apache-2.0)
+- https://huggingface.co/k2-fsa/OmniVoice (upstream; separate code/weight terms)
 ```
 
 ### `.planning/decisions/SPIKE-02-singing.md`
@@ -808,7 +830,7 @@ VoiceStudio v0.2.7 ships `k2-fsa/OmniVoice` (Apache-2.0, 0.6B Qwen3 backbone, Hi
 
 ## Context
 
-`ModelsLab/omnivoice-singing` is a finetune of `k2-fsa/OmniVoice` (same Apache-2.0, same Qwen3-0.6B backbone, same Higgs Audio v2 codec, same `omnivoice` PyPI library) trained on additional singing + emotion-tagged data. Activated by a `[singing]` text control tag at generation time.
+`ModelsLab/omnivoice-singing` is a finetune of `k2-fsa/OmniVoice` (commercial rights unresolved; same Qwen3-0.6B backbone, same Higgs Audio v2 codec, same `omnivoice` PyPI library) trained on additional singing + emotion-tagged data. Activated by a `[singing]` text control tag at generation time.
 
 VoiceStudio's dubbing pipeline currently routes vocal stems (via Demucs) through the default TTS engine, which produces speech output even on sung source material. This decision is whether to integrate the singing finetune as a routed alternative for sung segments.
 

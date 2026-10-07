@@ -350,7 +350,7 @@ def test_audiobook_preview_route_output_is_watermarked(tmp_path, monkeypatch, ma
     outdir.mkdir()
     monkeypatch.setattr(cfg, "OUTPUTS_DIR", str(outdir))
 
-    async def _fake_prepare(default_voice, language=None, opts=None, voice_map=None):
+    async def _fake_prepare(default_voice, language=None, opts=None, voice_map=None, lease=None):
         return _fake_synth, SR, _resolve, "eng"
 
     monkeypatch.setattr(ab, "_prepare_synth", _fake_prepare)

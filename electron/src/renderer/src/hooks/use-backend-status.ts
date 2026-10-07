@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { onlineManager } from '@tanstack/react-query';
 import { isBackendReachable } from '@shared/utils/backendStage';
+import { noteBackendStage } from '@/lib/status-polling';
 
 // Derived from the global `Window.voicestudio` declaration (src/preload/index.d.ts,
 // included by tsconfig.web.json) rather than imported by path: with
@@ -48,6 +49,7 @@ let bridgeUnsubscribe: (() => void) | null = null;
 function publish(status: BackendStatus): void {
   revision++;
   current = status;
+  noteBackendStage(status.stage);
   if (nativeBackend) onlineManager.setOnline(isBackendReachable(status.stage));
   for (const listener of listeners) listener();
 }

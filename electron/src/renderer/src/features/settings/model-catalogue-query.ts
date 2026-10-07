@@ -30,6 +30,8 @@ export interface ModelCatalogueResponse {
   models: CatalogueModel[];
   total_installed_bytes?: number;
   disk_free_gb?: number;
+  /** Free space the backend keeps on top of every model download. */
+  disk_headroom_gb?: number;
 }
 
 export function useModelCatalogue() {

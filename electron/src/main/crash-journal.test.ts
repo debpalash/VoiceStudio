@@ -100,3 +100,26 @@ it.each([
   expect(stored).toContain('voice.py');
   expect(stored).toContain('REDACTED');
 });
+
+it('records the loading frame below deep recursion and the other threads (#2382)', () => {
+  const path = join(mkdtempSync(join(tmpdir(), 'voice-crash-')), 'crashes.json');
+  const journal = new CrashJournal(path, '1');
+  for (const line of [
+    'Windows fatal exception: access violation',
+    'Current thread 0x222 (most recent call first):',
+    '  File "/venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1355 in convert',
+    ...Array(300).fill(
+      '  File "/venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 928 in _apply',
+    ),
+    '  File "/app/backend/services/model_manager.py", line 2901 in _load_model_sync',
+    'Thread 0x111 (most recent call first):',
+    '  File "/app/backend/services/asr_backend.py", line 812 in _transcribe_chunk',
+    `Extension modules: ${'torch._C, '.repeat(600)}`,
+  ])
+    journal.captureLine(line);
+  journal.record(3221225477, null, 100, []);
+  const kept = new CrashJournal(path, '1').latest()!.logTail.join('\n');
+  expect(kept).toContain('[Previous line repeated 299 more times]');
+  expect(kept).toContain('backend/services/model_manager.py", line 2901 in _load_model_sync');
+  expect(kept).toContain('backend/services/asr_backend.py", line 812 in _transcribe_chunk');
+});

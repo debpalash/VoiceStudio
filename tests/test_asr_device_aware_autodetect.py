@@ -140,6 +140,42 @@ def test_alignment_retries_on_cpu_before_giving_up_on_timing(monkeypatch):
     assert out == aligned  # timing preserved
 
 
+def test_alignment_retries_on_cpu_when_the_mps_aligner_fails_to_load(monkeypatch):
+    """#2570: a model that cannot LOAD on MPS is a device failure, not a
+    language without an aligner; the CPU must still get its turn."""
+    loaded: list[str] = []
+    aligned_on: list[str] = []
+    aligned = [{"text": "hi", "start": 0.0, "end": 1.0, "words": [{"word": "hi", "start": 0.0}]}]
+
+    def load(lang, dev):
+        loaded.append(dev)
+        return None if dev == "mps" else ("model", "meta")
+
+    def align(segs, model, meta, audio, device, **kw):
+        aligned_on.append(device)
+        return {"segments": aligned}
+
+    monkeypatch.delenv(ab._ALIGN_DEVICE_ENV, raising=False)
+    monkeypatch.setattr(ab, "_mps_available", lambda: True)
+    monkeypatch.setattr(ab, "load_align_model", load)
+    fake = type("W", (), {"align": staticmethod(align)})
+    monkeypatch.setitem(__import__("sys").modules, "whisperx", fake)
+
+    out = ab.forced_align([{"text": "hi", "start": 0.0, "end": 1.0}], object(), "en")
+    assert (loaded, aligned_on) == (["mps", "cpu"], ["cpu"])
+    assert out == aligned
+
+
+def test_a_language_with_no_aligner_on_any_device_keeps_native_timestamps(monkeypatch):
+    segments = [{"text": "x", "start": 0.0, "end": 1.0, "words": [{"word": "x", "start": 0.0}]}]
+    loaded: list[str] = []
+    monkeypatch.delenv(ab._ALIGN_DEVICE_ENV, raising=False)
+    monkeypatch.setattr(ab, "_mps_available", lambda: True)
+    monkeypatch.setattr(ab, "load_align_model", lambda lang, dev: loaded.append(dev))
+    assert ab.forced_align(segments, object(), "yue") == segments
+    assert loaded == ["mps", "cpu"]
+
+
 def test_a_language_with_no_aligner_keeps_its_native_timestamps(monkeypatch):
     """~20 languages have wav2vec2 aligners. The other 626 must still transcribe."""
     segments = [{"text": "x", "start": 0.0, "end": 1.0, "words": [{"word": "x", "start": 0.0}]}]

@@ -22,7 +22,10 @@ vi.mock('node:fs', async (importOriginal) => ({
 }));
 vi.mock('./runtime-project', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./runtime-project')>()),
-  runtimeDependenciesReady: vi.fn(async () => state.ready),
+  runtimeDependenciesReady: vi.fn(async (_root: string, onFailure?: (detail: string) => void) => {
+    if (!state.ready) onFailure?.("ModuleNotFoundError: No module named 'sentencepiece'");
+    return state.ready;
+  }),
 }));
 vi.mock('./legacy-storage', () => ({
   legacyStorageEnv: () => ({
@@ -77,6 +80,22 @@ it('requires setup when an interpreter exists but required imports fail', async 
   expect(await resolveSpawnPlan(3900)).toEqual({
     error: expect.stringContaining('bun run setup:api'),
   });
+});
+
+it('names the failing import or the absent interpreter instead of one vague message (#2555)', async () => {
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  state.ready = false;
+  const incomplete = await resolveSpawnPlan(3900);
+  if (!('error' in incomplete)) throw new Error('expected a setup error');
+  expect(incomplete.error).toContain(
+    "is incomplete: ModuleNotFoundError: No module named 'sentencepiece'.",
+  );
+
+  state.installed = false;
+  const missing = await resolveSpawnPlan(3900);
+  if (!('error' in missing)) throw new Error('expected a setup error');
+  expect(missing.error).toContain('is missing (no .venv');
+  expect(missing.error).not.toContain('incomplete');
 });
 
 it('keeps native fault frames when the production log ring overflows', async () => {

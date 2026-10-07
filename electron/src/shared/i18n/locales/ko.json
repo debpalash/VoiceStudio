@@ -1063,7 +1063,11 @@
     "save_bundle": "진단 번들 저장",
     "bundle_saved": "진단 번들 저장됨: {{filename}}",
     "bundle_failed": "진단 번들을 만들 수 없습니다: {{message}}",
-    "open_fix_category": "{{category}} 열기"
+    "open_fix_category": "{{category}} 열기",
+    "model_credits": "모델 크레딧",
+    "model_credits_hint": "지원 모델의 크레딧입니다. 모델과 구성 요소에는 각각 별도의 약관이 적용되며, 이 크레딧은 상업적 이용 권한을 부여하지 않습니다.",
+    "model_terms": "모델 이용 약관",
+    "model_related_sources": "관련 출처:"
   },
   "privacy": {
     "desc": "모든 것이 <1>이 머신</1>에서 실행됩니다. 온라인 번역기(Google, DeepL 등)를 명시적으로 사용하거나 HuggingFace에 푸시하지 않는 한 귀하의 오디오, 비디오 및 전사본은 컴퓨터를 떠나지 않습니다.",
@@ -2003,11 +2007,11 @@
     "back": "스튜디오로 돌아가기",
     "badge": "상업용 라이선스",
     "hero_title": "프로덕션에 AI 음성 전달",
-    "hero_desc": "VoiceStudio는 GNU Affero General Public License v3(AGPL-3.0)에 따라 제공되는 자유 오픈소스 소프트웨어입니다. 상업적 이용과 사내 업무 이용을 포함해 무료로 사용할 수 있습니다. 상업용 라이선스는 AGPL-3.0의 카피레프트 의무 없이 VoiceStudio를 클로즈드 소스 또는 독점 제품·서비스에 포함하려는 경우에만 필요합니다.",
+    "hero_desc": "VoiceStudio는 GNU Affero General Public License v3(AGPL-3.0)에 따라 제공되는 자유 오픈소스 소프트웨어입니다. 상업적 이용과 사내 업무 이용을 포함해 무료로 사용할 수 있습니다. 상업용 라이선스는 AGPL-3.0의 카피레프트 의무 없이 VoiceStudio를 클로즈드 소스 또는 독점 제품·서비스에 포함하려는 경우에만 필요합니다. 당사 라이선스는 VoiceStudio 코드에 적용됩니다. 모델과 생성된 출력에 대한 권리는 선택한 모델과 해당 이용 약관에 따라 달라집니다.",
     "pricing_desc": "등급과 가격은 아직 확정 중입니다.",
     "request_quote": "견적 요청",
-    "benefit_ip": "전체 IP 소유권",
-    "benefit_ip_desc": "귀하는 모든 산출물, 모든 모델, 모든 파생물을 소유합니다. 공유 테넌시가 없고 데이터 유출도 없습니다.",
+    "benefit_ip": "앱 라이선스",
+    "benefit_ip_desc": "당사 라이선스는 VoiceStudio 코드에 적용됩니다. 모델과 생성된 출력에 대한 권리는 선택한 모델과 해당 이용 약관에 따라 달라집니다.",
     "benefit_cost": "분당 비용이 없습니다.",
     "benefit_cost_desc": "API 청구서가 없고 예상치 못한 초과분도 없습니다. 첫날부터 자체 하드웨어에서 실행됩니다.",
     "benefit_team_desc": "하나의 라이선스로 조직 내 사용자 수 제한 없이 이용할 수 있습니다.",
@@ -2015,7 +2019,7 @@
     "benefit_support_desc": "핵심 엔지니어링 팀의 우선 이메일 및 화상 통화 지원.",
     "benefit_source_desc": "스택에 대한 완전한 가시성. 라이선스 조건 내에서 감사, 분기 및 조정합니다.",
     "benefit_lang_desc": "인간 수준의 품질로 646개 언어로 전사, 번역, 더빙하세요.",
-    "hero_simple": "VoiceStudio는 상업용 및 내부 업무용을 포함하여 AGPL-3.0에 따른 무료 오픈 소스입니다. AGPL의 카피레프트 의무 없이 비공개 소스 제품에 포함하려면 상용 라이선스만 필요합니다."
+    "hero_simple": "VoiceStudio는 상업용 및 내부 업무용을 포함하여 AGPL-3.0에 따른 무료 오픈 소스입니다. AGPL의 카피레프트 의무 없이 비공개 소스 제품에 포함하려면 상용 라이선스만 필요합니다. 당사 라이선스는 VoiceStudio 코드에 적용됩니다. 모델과 생성된 출력에 대한 권리는 선택한 모델과 해당 이용 약관에 따라 달라집니다."
   },
   "exportModal": {
     "export": "내보내기",
@@ -2078,8 +2082,8 @@
     "pkg_audio_body_one": "언어별 더빙을 WAV 또는 MP3로 내보내려면 오디오 탭으로 이동하세요({{count}} 더빙 가능).",
     "pkg_audio_body_other": "언어별 더빙을 WAV 또는 MP3로 내보내려면 오디오 탭으로 이동하세요({{count}} 더빙 가능).",
     "pkg_audio_cta": "오디오 탭 열기",
-    "license_text": "상업적인 사용에는",
-    "license_link": "라이선스",
+    "license_text": "당사 라이선스는 VoiceStudio 코드에 적용됩니다. 모델과 생성된 출력에 대한 권리는 선택한 모델과 해당 이용 약관에 따라 달라집니다.",
+    "license_link": "앱 라이선스",
     "output": "출력",
     "nothing_selected": "선택한 항목이 없거나 트랙을 사용할 수 없습니다.",
     "export_mp4": "MP4 내보내기",
@@ -3322,6 +3326,7 @@
   "dubIntegrity": {
     "missingSpeech": "음성이 없거나 읽을 수 없습니다. 내보내기 전에 해당 구간을 다시 생성하세요.",
     "timingOverflow": "음성이 할당된 시간을 초과합니다. 번역을 줄이거나 엄격한 시간 구간 또는 비디오 늘이기를 선택하세요.",
+    "sourceChanged": "이 더빙을 생성하는 동안 자막이 변경되었습니다. 이전 트랙은 유지되었습니다. 새 자막을 사용하려면 다시 생성하세요.",
     "backgroundUnavailable": "원본 소리를 보존할 수 없습니다. 배경음 분리와 대사 타이밍을 확인한 후 다시 시도하거나 음성만 내보내기를 선택하세요."
   },
   "dubStyle": {

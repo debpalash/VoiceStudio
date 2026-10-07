@@ -1,11 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
 import { beforeEach, expect, it, vi } from 'vitest';
 import i18n from '@/i18n';
 import type { BackendStatus } from '../../../preload/index.d';
 import { BackendGate, delimitedDiagnostic } from './backend-gate';
 
-const { backendStatus, platform } = vi.hoisted(() => ({
+const { backendStatus, platform, bridgeStub } = vi.hoisted(() => ({
+  bridgeStub: { current: null as unknown },
   backendStatus: {
     stage: 'setup_required',
     baseUrl: 'http://127.0.0.1:3900',
@@ -26,15 +27,18 @@ vi.mock('@/hooks/use-backend-status', () => ({
 }));
 
 vi.mock('./bridge', () => ({
-  getBridge: () => null,
+  getBridge: () => bridgeStub.current,
   isMac: () => platform.current === 'darwin',
 }));
 
 beforeEach(() => {
+  bridgeStub.current = null;
+  onlineManager.setOnline(true);
   backendStatus.stage = 'setup_required';
   backendStatus.elapsedMs = 0;
   backendStatus.logTail = [];
   delete backendStatus.message;
+  delete backendStatus.diagnosis;
   delete backendStatus.setupIssue;
   delete backendStatus.setupPhase;
   delete backendStatus.setupProgress;
@@ -157,6 +161,17 @@ it('still takes over the workspace for a real failure', () => {
   expect(screen.getByRole('button', { name: i18n.t('backend.retry') })).toBeInTheDocument();
 });
 
+it('describes a backend that answers unhealthy from the catalog, not the English detail', () => {
+  backendStatus.message = 'The backend at http://x answers /health but reports that it is not healthy.';
+  backendStatus.diagnosis = 'unhealthy';
+
+  renderGate('failed');
+
+  expect(screen.getByText(i18n.t('backend.unhealthy'))).toBeInTheDocument();
+  expect(screen.queryByText(/answers \/health but reports/)).not.toBeInTheDocument();
+  expect(screen.queryByText(i18n.t('backend.failed'))).not.toBeInTheDocument();
+});
+
 it('keeps agent repair available when the backend is down', () => {
   backendStatus.stage = 'failed';
 
@@ -229,6 +244,59 @@ it('explains unsupported Windows proxy bypass rules before retrying setup', () =
   expect(i18n.t('backend.proxy_bypass_help')).toMatch(
     /quit VoiceStudio.*launch VoiceStudio from that terminal/,
   );
+});
+
+const RELEASES_URL = 'https://github.com/debpalash/VoiceStudio/releases/latest';
+it('sends Apple Silicon users on the Intel build to the arm64 download (#2598)', () => {
+  backendStatus.setupIssue = 'wrong_architecture';
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <BackendGate>
+        <div>workspace</div>
+      </BackendGate>
+    </QueryClientProvider>,
+  );
+
+  expect(screen.getByText(i18n.t('backend.setup_wrong_architecture'))).toBeVisible();
+  expect(
+    screen.getByRole('link', { name: i18n.t('backend.download_apple_silicon') }),
+  ).toHaveAttribute('href', RELEASES_URL);
+  expect(
+    screen.queryByRole('button', { name: i18n.t('backend.setup_required') }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText(i18n.t('backend.setup_unsupported_platform'))).not.toBeInTheDocument();
+  expect(
+    screen.getByRole('textbox', { name: i18n.t('settings.remote_backend_url') }),
+  ).toBeVisible();
+});
+
+it('shows a populated, usable reconnect form for an expired remote session while queries are paused', async () => {
+  backendStatus.message = 'The remote backend at http://gpu-box:3900 no longer accepts this app’s credentials.';
+  backendStatus.diagnosis = 'auth_required';
+  backendStatus.remote = true;
+  // A failed backend takes React Query offline (use-backend-status); the saved
+  // URL must still load because it comes from IPC, not the network.
+  onlineManager.setOnline(false);
+  bridgeStub.current = {
+    backend: {
+      getConnection: async () => ({
+        remote: true,
+        url: 'http://gpu-box:3900',
+        authenticated: false,
+      }),
+    },
+  };
+  try {
+    renderGate('failed');
+    expect(screen.getByText(i18n.t('backend.auth_required'))).toBeVisible();
+    // Fresh renderer: the URL arrives from the saved connection, and Test/Save work.
+    expect(await screen.findByDisplayValue('http://gpu-box:3900')).toBeEnabled();
+    expect(screen.getByRole('button', { name: i18n.t('settings.remote_backend_test') })).toBeEnabled();
+  } finally {
+    backendStatus.remote = false;
+  }
 });
 
 it('offers a remote backend instead of a doomed local install on Intel Macs', () => {

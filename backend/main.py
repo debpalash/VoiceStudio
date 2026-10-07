@@ -793,10 +793,17 @@ def _phase_a_finalize() -> None:
         app.mount("/demo_audio", StaticFiles(directory=_demo_dir), name="demo_audio")
 
     # SPA shell LAST so the "/" StaticFiles mount can't shadow any router.
-    from core.spa_inject import frontend_dist_dir, is_valid_public_api_base, inject_api_base
+    from core.spa_inject import (
+        dev_ui_redirect,
+        frontend_available,
+        frontend_dist_dir,
+        inject_api_base,
+        is_valid_public_api_base,
+        web_ui_missing_body,
+    )
 
     _frontend_path = frontend_dist_dir()
-    if os.path.exists(_frontend_path):
+    if frontend_available(_frontend_path):
         # Runtime API-base override (Docker / reverse-proxy): inject
         # OMNIVOICE_PUBLIC_API_BASE into index.html; unset → untouched.
 
@@ -827,9 +834,21 @@ def _phase_a_finalize() -> None:
         app.mount("/", StaticFiles(directory=_frontend_path, html=True), name="frontend")
     else:
 
+        logging.getLogger("omnivoice.api").info(
+            "No web UI build at %s; \"/\" serves an explanation to other devices.",
+            _frontend_path,
+        )
+
         @app.get("/", include_in_schema=False)
-        def _dev_fallback():
-            return RedirectResponse(url=f"http://localhost:{_ui_port()}")
+        def _no_web_ui(request: Request):
+            # Only a local browser may be sent to the local dev UI; a LAN
+            # device redirected to localhost reaches itself, not us (#2599).
+            client = request.client.host if request.client else None
+            target = dev_ui_redirect(client, request.headers.get("host", ""), _ui_port())
+            if target:
+                return RedirectResponse(url=target)
+            media_type, body = web_ui_missing_body(request.headers.get("accept", ""))
+            return Response(body, status_code=503, media_type=media_type)
 
     # An early /docs or /openapi.json hit may have cached a schema without
     # the routers — bust it so the next request rebuilds the full one.
@@ -912,6 +931,13 @@ async def _phase_b(app: FastAPI) -> None:
             logger.info("Startup: marked %d orphaned job(s) as failed.", swept)
     except Exception:
         logger.exception("Startup job-sweep failed (non-fatal).")
+    # Superseded voice takes kept for in-flight renders (#2535) past their grace.
+    try:
+        from api.routers.profiles import sweep_retired_voice_files
+
+        sweep_retired_voice_files()
+    except Exception:
+        logger.exception("Startup retired-voice sweep failed (non-fatal).")
     # #2279: note the voices root in the longform cache before anything can
     # move the data dir, so legacy-keyed chapters stay findable after a move.
     from services.longform_render import record_startup_voices_root
@@ -1333,10 +1359,10 @@ def prepare_deliberate_shutdown_during_startup(request: Request):
     a false crash sentinel behind.  Keep this one tiny control route available
     from socket bind; its authorization remains identical to the system router.
     """
-    from api.dependencies import require_admin
+    from api.dependencies import check_admin
     from core import run_sentinel
 
-    require_admin(request)
+    check_admin(request)
     return {"prepared": run_sentinel.clear_sentinel()}
 
 

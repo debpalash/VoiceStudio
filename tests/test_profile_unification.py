@@ -47,11 +47,13 @@ def app_client(tmp_path_factory):
 @pytest.fixture()
 def fake_render(monkeypatch):
     """Stub the design sample renderer — CI has no TTS engine."""
-    async def _fake(a, out_path):
+    async def _fake(a, out_path, **kwargs):
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_bytes(_FAKE_AUDIO)
 
     from api.routers import archetypes as _arch
+    from services import model_manager
+    monkeypatch.setattr(model_manager, "get_model_status", lambda: {"loaded": True})
     monkeypatch.setattr(_arch, "_render_archetype_wav", _fake)
     return _fake
 

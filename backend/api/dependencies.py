@@ -172,7 +172,7 @@ def require_loopback(request: Request) -> None:
             # Defense in depth. Privileged routers should declare
             # ``require_admin`` directly, but a missed migration must not turn
             # into an unauthenticated Docker write primitive.
-            require_admin(request)
+            check_admin(request)
             return
         if not _admin_credential_configured(request):
             return
@@ -206,7 +206,18 @@ def _admin_gate_403() -> None:
     )
 
 
-def require_admin(request: Request) -> None:
+async def require_admin(request: Request) -> None:
+    """FastAPI dependency form of :func:`check_admin`.
+
+    ``async`` on purpose: the check is pure in-memory work, and a sync
+    dependency is dispatched through the shared worker pool, so every request
+    on every admin router (including the one-per-second status polls) queued
+    behind whatever blocked sync route had filled it (#2594 class).
+    """
+    check_admin(request)
+
+
+def check_admin(request: Request) -> None:
     """Gate RCE/filesystem-capable admin routers.
 
     Desktop callers keep the loopback-only contract. Docker cannot reliably

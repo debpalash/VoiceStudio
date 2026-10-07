@@ -833,7 +833,11 @@
     "self_check_attention": "{{count}} vérification(s) en échec — voir les indications ci-dessus.",
     "save_bundle": "Enregistrer le paquet de diagnostic",
     "bundle_saved": "Paquet de diagnostic enregistré : {{filename}}",
-    "bundle_failed": "Impossible de créer le paquet de diagnostic : {{message}}"
+    "bundle_failed": "Impossible de créer le paquet de diagnostic : {{message}}",
+    "model_credits": "Crédits des modèles",
+    "model_credits_hint": "Crédits des modèles pris en charge. Les modèles et composants ont leurs propres conditions ; ces crédits ne confèrent aucun droit d’utilisation commerciale.",
+    "model_terms": "Conditions du modèle",
+    "model_related_sources": "Sources associées :"
   },
   "privacy": {
     "desc": "Tout fonctionne sur <1>cette machine</1>. Votre audio, vidéo et transcriptions ne quittent jamais votre ordinateur, sauf si vous utilisez explicitement un traducteur en ligne (Google, DeepL, etc.) ou si vous poussez vers HuggingFace.",
@@ -1697,11 +1701,11 @@
     "back": "Retour à l'Atelier",
     "badge": "Licence commerciale",
     "hero_title": "Expédier les voix de l'IA en production",
-    "hero_desc": "VoiceStudio est un logiciel libre et open source sous licence GNU Affero General Public License v3 (AGPL-3.0) — gratuit pour tout usage, y compris commercial et interne en entreprise. Une licence commerciale n'est nécessaire que si vous souhaitez intégrer VoiceStudio dans un produit ou service propriétaire ou à code fermé, sans les obligations copyleft de l'AGPL-3.0.",
+    "hero_desc": "VoiceStudio est un logiciel libre et open source sous licence GNU Affero General Public License v3 (AGPL-3.0) — gratuit pour tout usage, y compris commercial et interne en entreprise. Une licence commerciale n'est nécessaire que si vous souhaitez intégrer VoiceStudio dans un produit ou service propriétaire ou à code fermé, sans les obligations copyleft de l'AGPL-3.0. Notre licence couvre le code de VoiceStudio. Les droits sur les modèles et les contenus générés dépendent des modèles choisis et de leurs conditions.",
     "pricing_desc": "Les niveaux et les tarifs sont encore en cours de finalisation.",
     "request_quote": "Demander un devis",
-    "benefit_ip": "Propriété IP complète",
-    "benefit_ip_desc": "Vous possédez chaque sortie, chaque modèle, chaque dérivé. Pas de location partagée, pas de fuite de données.",
+    "benefit_ip": "Licence de l’application",
+    "benefit_ip_desc": "Notre licence couvre le code de VoiceStudio. Les droits sur les modèles et les contenus générés dépendent des modèles choisis et de leurs conditions.",
     "benefit_cost": "Zéro coût par minute",
     "benefit_cost_desc": "Pas de factures API, pas de dépassements surprises. Fonctionne sur votre propre matériel dès le premier jour.",
     "benefit_team_desc": "Une licence couvre un nombre illimité d'utilisateurs au sein de votre organisation.",
@@ -1709,7 +1713,7 @@
     "benefit_support_desc": "Assistance prioritaire par e-mail et par appel vidéo de la part de l'équipe d'ingénierie principale.",
     "benefit_source_desc": "Visibilité totale sur la pile. Auditez, forkez et adaptez selon les termes de la licence.",
     "benefit_lang_desc": "Transcrivez, traduisez et doublez dans 646 langues avec une qualité humaine.",
-    "hero_simple": "VoiceStudio est gratuit et open source sous AGPL-3.0, y compris pour un usage commercial et interne. Vous n’avez besoin que d’une licence commerciale pour l’intégrer dans un produit à source fermée sans les obligations de copyleft de l’AGPL."
+    "hero_simple": "VoiceStudio est gratuit et open source sous AGPL-3.0, y compris pour un usage commercial et interne. Vous n’avez besoin que d’une licence commerciale pour l’intégrer dans un produit à source fermée sans les obligations de copyleft de l’AGPL. Notre licence couvre le code de VoiceStudio. Les droits sur les modèles et les contenus générés dépendent des modèles choisis et de leurs conditions."
   },
   "exportModal": {
     "export": "Exporter",
@@ -1772,8 +1776,8 @@
     "pkg_audio_body_one": "Accédez à l'onglet Audio pour exporter les doublages par langue au format WAV ou MP3 (doublage {{count}} disponible).",
     "pkg_audio_body_other": "Accédez à l'onglet Audio pour exporter les doublages par langue au format WAV ou MP3 ({{count}} doublages disponibles).",
     "pkg_audio_cta": "Ouvrir l'onglet audio",
-    "license_text": "L'utilisation commerciale nécessite un",
-    "license_link": "licence",
+    "license_text": "Notre licence couvre le code de VoiceStudio. Les droits sur les modèles et les contenus générés dépendent des modèles choisis et de leurs conditions.",
+    "license_link": "Licence de l’application",
     "output": "SORTIE",
     "nothing_selected": "Rien de sélectionné ou piste indisponible",
     "export_mp4": "Exporter MP4",
@@ -2852,6 +2856,7 @@
   "dubIntegrity": {
     "missingSpeech": "La parole est absente ou illisible. Régénérez le segment concerné avant l’exportation.",
     "timingOverflow": "La parole dépasse son créneau. Raccourcissez la traduction ou choisissez un créneau strict ou l’étirement vidéo.",
+    "sourceChanged": "Les sous-titres ont changé pendant la génération de ce doublage. La piste précédente a été conservée ; relancez la génération pour utiliser les nouveaux sous-titres.",
     "backgroundUnavailable": "Le son original n’a pas pu être préservé. Vérifiez la séparation du fond et les temps du dialogue, puis réessayez, ou exportez explicitement la voix seule."
   },
   "dubStyle": {

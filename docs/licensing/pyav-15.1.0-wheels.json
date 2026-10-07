@@ -1,0 +1,671 @@
+{
+  "pyav_version": "15.1.0",
+  "scope": "Exact locked cp311 wheels; static inspection of embedded FFmpeg shared-library strings, not platform execution or full transitive/source-offer compliance.",
+  "wheels": [
+    {
+      "wheel": "av-15.1.0-cp311-cp311-macosx_13_0_arm64.whl",
+      "source_url": "https://files.pythonhosted.org/packages/47/58/4e44cf6939be7aba96a4abce024e1be11ba7539ecac74d09369b8c03aa05/av-15.1.0-cp311-cp311-macosx_13_0_arm64.whl",
+      "sha256": "b785948762a8d45fc58fc24a20251496829ace1817e9a7a508a348d6de2182c3",
+      "sha256_matches_lock": true,
+      "libraries": [
+        {
+          "member": "av/.dylibs/libavcodec.61.19.101.dylib",
+          "sha256": "1be4cc86892a5007b83092e56559eaaab04d3d6fc50886bf397092841e6be27a",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-videotoolbox --enable-audiotoolbox --extra-ldflags='-Wl,-ld_classic' --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavcodec license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av/.dylibs/libavdevice.61.3.100.dylib",
+          "sha256": "7fa5b8643fa63d1df28274320a2252aca1bef7f5ac833b73f7911f2c696ef64a",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-videotoolbox --enable-audiotoolbox --extra-ldflags='-Wl,-ld_classic' --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavdevice license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av/.dylibs/libavfilter.10.4.100.dylib",
+          "sha256": "a55057f5b0c3ab8d9a3f8781e4947442d3178fbdc7f597ec57e9976e75749016",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-videotoolbox --enable-audiotoolbox --extra-ldflags='-Wl,-ld_classic' --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavfilter license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av/.dylibs/libavformat.61.7.100.dylib",
+          "sha256": "ad8b450c72838e0d325c8f9ff5a70723abfd7503f1dc0745fa0d2dbfc8cf2b63",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-videotoolbox --enable-audiotoolbox --extra-ldflags='-Wl,-ld_classic' --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavformat license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av/.dylibs/libswresample.5.3.100.dylib",
+          "sha256": "bac83ed612e2765d3742b301856a1b53aa5eb0a3d94a8f618ca73fd858f122e5",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-videotoolbox --enable-audiotoolbox --extra-ldflags='-Wl,-ld_classic' --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libswresample license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av/.dylibs/libavutil.59.39.100.dylib",
+          "sha256": "0799121f99ecd867b83cb4b73d5d33abc789cd569197b726fa118c3630c524cf",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-videotoolbox --enable-audiotoolbox --extra-ldflags='-Wl,-ld_classic' --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavutil license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av/.dylibs/libswscale.8.3.100.dylib",
+          "sha256": "30254ebb62d5c9715597089af7aa73987a7d2773a708f31d09c4242273711086",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-videotoolbox --enable-audiotoolbox --extra-ldflags='-Wl,-ld_classic' --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libswscale license: LGPL version 3 or later"
+          ]
+        }
+      ],
+      "codec_libraries": [
+        {
+          "member": "av/.dylibs/libx264.165.dylib",
+          "sha256": "2e017468bebb893362a310ff9f1147c79303413ad2963f05490558762f33bf1b"
+        },
+        {
+          "member": "av/.dylibs/libx265.215.dylib",
+          "sha256": "d25e561da987b9a662757d71ea64f9039e31b7350bc8191bf8a4a403e1e7ee92"
+        }
+      ],
+      "notices": [
+        {
+          "member": "av-15.1.0.dist-info/licenses/LICENSE.txt",
+          "sha256": "76af0461ffb92e19f1c14449e95557d83a2dfaa1baf202d49e5f1d8746c0da19",
+          "size": 1505
+        }
+      ]
+    },
+    {
+      "wheel": "av-15.1.0-cp311-cp311-macosx_13_0_x86_64.whl",
+      "source_url": "https://files.pythonhosted.org/packages/9b/f6/a946544cdb49f6d892d2761b1d61a8bc6ce912fe57ba06769bdc640c0a7f/av-15.1.0-cp311-cp311-macosx_13_0_x86_64.whl",
+      "sha256": "9c7131494a3a318612b4ee4db98fe5bc50eb705f6b6536127c7ab776c524fd8b",
+      "sha256_matches_lock": true,
+      "libraries": [
+        {
+          "member": "av/.dylibs/libavcodec.61.19.101.dylib",
+          "sha256": "692070c0d39f36c99ee0f2864a4b44c03a614993247cd86f762aa7e1ca2aae2d",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-videotoolbox --enable-audiotoolbox --extra-ldflags='-Wl,-ld_classic' --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavcodec license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av/.dylibs/libavdevice.61.3.100.dylib",
+          "sha256": "997953d60ce30b213f7ceb2596bf948a6b13df0caecea3cd18ec1aa277e03607",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-videotoolbox --enable-audiotoolbox --extra-ldflags='-Wl,-ld_classic' --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavdevice license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av/.dylibs/libavfilter.10.4.100.dylib",
+          "sha256": "1585d1cddf5440004ab343b97e90f5ebc9d2f36bcad9c2e935415793a72fdc8e",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-videotoolbox --enable-audiotoolbox --extra-ldflags='-Wl,-ld_classic' --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavfilter license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av/.dylibs/libavformat.61.7.100.dylib",
+          "sha256": "cae93d7e10d237a0d03b0b539fa037bfaafc3e8319d75b2bb9e0891db5a642f3",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-videotoolbox --enable-audiotoolbox --extra-ldflags='-Wl,-ld_classic' --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavformat license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av/.dylibs/libswresample.5.3.100.dylib",
+          "sha256": "6fffeb85b2f030a0acbe1c60b15f4dcd0bb260ff9003e071201d80caa5bf75bc",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-videotoolbox --enable-audiotoolbox --extra-ldflags='-Wl,-ld_classic' --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libswresample license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av/.dylibs/libavutil.59.39.100.dylib",
+          "sha256": "bb32d4bf0449d7e21a76761168f0a55ee2a5740ac0c3e076857b5dc10d41078a",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-videotoolbox --enable-audiotoolbox --extra-ldflags='-Wl,-ld_classic' --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavutil license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av/.dylibs/libswscale.8.3.100.dylib",
+          "sha256": "fc4a41a337fb6ae14949031c0a9585032742375218d09c9802addaad4cf92187",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-videotoolbox --enable-audiotoolbox --extra-ldflags='-Wl,-ld_classic' --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libswscale license: LGPL version 3 or later"
+          ]
+        }
+      ],
+      "codec_libraries": [
+        {
+          "member": "av/.dylibs/libx264.165.dylib",
+          "sha256": "154412bb5e64b6216f92f6937196e50db8a54d7631f4880b9ae98310e193a42d"
+        },
+        {
+          "member": "av/.dylibs/libx265.215.dylib",
+          "sha256": "fc591284692c45ae19f4a2ba812fc2a00ab689cd9d8be2d59dab8b766db89364"
+        }
+      ],
+      "notices": [
+        {
+          "member": "av-15.1.0.dist-info/licenses/LICENSE.txt",
+          "sha256": "76af0461ffb92e19f1c14449e95557d83a2dfaa1baf202d49e5f1d8746c0da19",
+          "size": 1505
+        }
+      ]
+    },
+    {
+      "wheel": "av-15.1.0-cp311-cp311-manylinux_2_28_aarch64.whl",
+      "source_url": "https://files.pythonhosted.org/packages/70/7c/b33513c0af73d0033af59a98f035b521c5b93445a6af7e9efbf41a6e8383/av-15.1.0-cp311-cp311-manylinux_2_28_aarch64.whl",
+      "sha256": "2b9623ae848625c59213b610c8665817924f913580c7c5c91e0dc18936deb00d",
+      "sha256_matches_lock": true,
+      "libraries": [
+        {
+          "member": "av.libs/libavcodec-b09587ce.so.61.19.101",
+          "sha256": "dfc0537955045dfe96f5c08f5d15a57c16aed136abf4b5853ff9f5d92bf85a48",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavcodec license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libavdevice-0a2ef5e6.so.61.3.100",
+          "sha256": "a03a119f4cd13875bb711b093fcfe065d35df76356bdb0367653aa624fcf2e23",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavdevice license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libavfilter-76429107.so.10.4.100",
+          "sha256": "7823895ba046c3fcdb598b97dc3e18423a29bd537a4197018ad207ede0a970ed",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavfilter license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libavformat-bdb5daae.so.61.7.100",
+          "sha256": "e33a20c3145a4dbe7a66644c449915ad44716832ecdf5bc8f5698a9683b263d8",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavformat license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libavutil-2a27f4d8.so.59.39.100",
+          "sha256": "43d24e2dcba3a36232202b5ef27de89c1cb10dbef2a0a9525d5147ccdbf929b2",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavutil license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libswresample-e8b21d30.so.5.3.100",
+          "sha256": "d0cf7f195b8b7d0b053efcb4910b53526f408f56f9b729c47d18e722073cf4ae",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libswresample license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libswscale-53858ebe.so.8.3.100",
+          "sha256": "49663f356712610a1a96853be0274f92b665b1e0ee7a10a0784b069e8f897dbb",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libswscale license: LGPL version 3 or later"
+          ]
+        }
+      ],
+      "codec_libraries": [
+        {
+          "member": "av.libs/libx264-0e25dc1b.so.165",
+          "sha256": "d9b20dd6fcd21a3d697f2d802e68497688b3fa11af7ebd7e749efbaf01dc3c43"
+        },
+        {
+          "member": "av.libs/libx265-4d032ea2.so.215",
+          "sha256": "6e41a6f6260722f34db06117e57eab3c4a46211d593ca1b39c9aa3779426cf74"
+        }
+      ],
+      "notices": [
+        {
+          "member": "av-15.1.0.dist-info/licenses/LICENSE.txt",
+          "sha256": "76af0461ffb92e19f1c14449e95557d83a2dfaa1baf202d49e5f1d8746c0da19",
+          "size": 1505
+        }
+      ]
+    },
+    {
+      "wheel": "av-15.1.0-cp311-cp311-manylinux_2_28_x86_64.whl",
+      "source_url": "https://files.pythonhosted.org/packages/5e/95/31b7fb34f9fea7c7389240364194f4f56ad2d460095038cc720f50a90bb3/av-15.1.0-cp311-cp311-manylinux_2_28_x86_64.whl",
+      "sha256": "c8ef597087db560514617143532b1fafc4825ebb2dda9a22418f548b113a0cc7",
+      "sha256_matches_lock": true,
+      "libraries": [
+        {
+          "member": "av.libs/libavcodec-7ee0753d.so.61.19.101",
+          "sha256": "ea371be1b2711cf7f1b38a6f97beab079cbf932b691f0a2d480fcf73d53b842a",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavcodec license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libavdevice-0a717e7d.so.61.3.100",
+          "sha256": "431b66d130a55e3c9ed6ad19ddc7b3d57f705173b5562a5f10ea38a8e41deffb",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavdevice license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libavfilter-7ceaa51a.so.10.4.100",
+          "sha256": "4bbf737a05eb9ecccc080861b6204d4b115569b2d37000495311d1e213b212f0",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavfilter license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libavformat-f6caa08d.so.61.7.100",
+          "sha256": "ff4c0c69c5a2ecfb60cee596dc79a5501edb6dc3056ec40e7662944eaf9c4382",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavformat license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libavutil-a63ffd27.so.59.39.100",
+          "sha256": "58199bb31a37f51b4fc50ba28275a3a3bf2eefe11d515d6a903ff939682b304d",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavutil license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libswresample-f1bdf0d4.so.5.3.100",
+          "sha256": "69ed02c6961b52aab847fe87ea0879c866fb5f0977d1ac27b485c43972971470",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libswresample license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libswscale-5efb2ca5.so.8.3.100",
+          "sha256": "bce7ad4ae62bd14fedf353b5616dc4004c2fe4668d092a32f72414cd91bda79d",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libswscale license: LGPL version 3 or later"
+          ]
+        }
+      ],
+      "codec_libraries": [
+        {
+          "member": "av.libs/libx264-b1bb65f5.so.165",
+          "sha256": "ad37c702ddcb95fc43e86a74a2574cb669b85771b88774efaad9ca26ee77689f"
+        },
+        {
+          "member": "av.libs/libx265-169666e3.so.215",
+          "sha256": "ddaf403eb0709d4471dd74760d12d9b13e0cb5b0532b27841c971a33c1001dfd"
+        }
+      ],
+      "notices": [
+        {
+          "member": "av-15.1.0.dist-info/licenses/LICENSE.txt",
+          "sha256": "76af0461ffb92e19f1c14449e95557d83a2dfaa1baf202d49e5f1d8746c0da19",
+          "size": 1505
+        }
+      ]
+    },
+    {
+      "wheel": "av-15.1.0-cp311-cp311-musllinux_1_2_aarch64.whl",
+      "source_url": "https://files.pythonhosted.org/packages/e7/b0/7b0b45474a4e90c35c11d0032947d8b3c7386872957ce29c6f12add69a74/av-15.1.0-cp311-cp311-musllinux_1_2_aarch64.whl",
+      "sha256": "08eac47a90ebae1e2bd5935f400dd515166019bab4ff5b03c4625fa6ac3a0a5e",
+      "sha256_matches_lock": true,
+      "libraries": [
+        {
+          "member": "av.libs/libavcodec-75605b14.so.61.19.101",
+          "sha256": "f71904a4765c9e83929e031e6beb7b4f04a6e29ea0e146d6d42e1c7388d3ee38",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavcodec license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libavdevice-d134ac6e.so.61.3.100",
+          "sha256": "15e1f86cebf77a1fd9c0a469d01d0c5781a0aab3909cd088b6414e2e81429acd",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavdevice license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libavfilter-2b333401.so.10.4.100",
+          "sha256": "50b4e0e58ddec2855592ebd10089565d5221b9d37bc6ba148eabc2d2e809c1ad",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavfilter license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libavformat-06899618.so.61.7.100",
+          "sha256": "59efe2989b8b114847152ee0f62f6322ee4d74d597869bdaacdc0afa9f3699fb",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavformat license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libavutil-6f5212e1.so.59.39.100",
+          "sha256": "0ce1239c81e30e4e8b85ae72e94c0e1acb2c1b8e48252fd24e563c037cb63a24",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavutil license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libswresample-e0f3b26e.so.5.3.100",
+          "sha256": "82d732491c35362abceaf7376377177f643c5d36e561ebac14566e1efe01185b",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libswresample license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libswscale-0fc0e72b.so.8.3.100",
+          "sha256": "3b4d6294eb864d79a4aa20045b52a425f44d5e1af56f12b742a96ee761e516d8",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libswscale license: LGPL version 3 or later"
+          ]
+        }
+      ],
+      "codec_libraries": [
+        {
+          "member": "av.libs/libx264-956f45c8.so.165",
+          "sha256": "66c031c6520068a06af7a0a3bc49b4b6c5ad3e5f5a43aeab20a2f77fe6ca1c3e"
+        },
+        {
+          "member": "av.libs/libx265-3bb3eb91.so.215",
+          "sha256": "3210148c11577f5886bf3777dac6d54229cf6f50a678f5f3f4bb4432cf73c012"
+        }
+      ],
+      "notices": [
+        {
+          "member": "av-15.1.0.dist-info/licenses/LICENSE.txt",
+          "sha256": "76af0461ffb92e19f1c14449e95557d83a2dfaa1baf202d49e5f1d8746c0da19",
+          "size": 1505
+        }
+      ]
+    },
+    {
+      "wheel": "av-15.1.0-cp311-cp311-musllinux_1_2_x86_64.whl",
+      "source_url": "https://files.pythonhosted.org/packages/aa/04/038b94bc9a1ee10a451c867d4a2fc91e845f83bfc2dae9df25893abcb57f/av-15.1.0-cp311-cp311-musllinux_1_2_x86_64.whl",
+      "sha256": "d3f66ff200ea166e606cb3c5cb1bd2fc714effbec2e262a5d67ce60450c8234a",
+      "sha256_matches_lock": true,
+      "libraries": [
+        {
+          "member": "av.libs/libavcodec-3c3286b2.so.61.19.101",
+          "sha256": "1ddc828b3262b2dbd714fae4133ac957ff7fc9c8381ed341e1070801c073a0e2",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavcodec license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libavdevice-b2d08d36.so.61.3.100",
+          "sha256": "48e5a1395fc260681e202e96eefa7f0454f05ab199b3879a85e1f3d6b9a67f8a",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavdevice license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libavfilter-f49efc42.so.10.4.100",
+          "sha256": "8eef816724e9e5d825376d9cc0dfa71daa35bbd400a3b8e6a64ee4aa50cf0439",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavfilter license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libavformat-fb394167.so.61.7.100",
+          "sha256": "05eaf80ae235208fd34d92dc8bca339458b0157d14b2201bcff185b632ef3bdb",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavformat license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libavutil-7247585e.so.59.39.100",
+          "sha256": "d10fab4f47e7ad22f7b30e358a41c06dc18f24325396de25d9bfe2d3e03db889",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavutil license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libswresample-9e6f42ea.so.5.3.100",
+          "sha256": "447145a9757b91f2181a0f193edfb8cc65e2d49795e1fc522e2d467181f936d7",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libswresample license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/libswscale-827af3b5.so.8.3.100",
+          "sha256": "b77fda598a5f3c0138e34a1dbcd1d51a9f064b5ca998cbcf4f0bbcd58c4aa044",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/tmp/vendor/lib --prefix=/tmp/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --disable-mediafoundation --enable-version3 --enable-gmp --enable-alsa --enable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --enable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libswscale license: LGPL version 3 or later"
+          ]
+        }
+      ],
+      "codec_libraries": [
+        {
+          "member": "av.libs/libx264-943a1c59.so.165",
+          "sha256": "b20912d406d8853110e388a9f815f76c17bb37467c5a2fb01ce4d9e9db0df344"
+        },
+        {
+          "member": "av.libs/libx265-a25a33a0.so.215",
+          "sha256": "a4b1fb7bad7e66caf45ccbb19b270e0d44d55bba89333e6f2bcfc735bc9603b3"
+        }
+      ],
+      "notices": [
+        {
+          "member": "av-15.1.0.dist-info/licenses/LICENSE.txt",
+          "sha256": "76af0461ffb92e19f1c14449e95557d83a2dfaa1baf202d49e5f1d8746c0da19",
+          "size": 1505
+        }
+      ]
+    },
+    {
+      "wheel": "av-15.1.0-cp311-cp311-win_amd64.whl",
+      "source_url": "https://files.pythonhosted.org/packages/1d/3d/9f8f96c0deeaaf648485a3dbd1699b2f0580f2ce8a36cb616c0138ba7615/av-15.1.0-cp311-cp311-win_amd64.whl",
+      "sha256": "57b99544d91121b8bea570e4ddf61700f679a6b677c1f37966bc1a22e1d4cd5c",
+      "sha256_matches_lock": true,
+      "libraries": [
+        {
+          "member": "av.libs/avcodec-61-1306a7df8fab62262dd7797a8fb9f1cc.dll",
+          "sha256": "86b100542ee64b8809704c0229cc2680c785102dfe1acce48fddb6216ebd4dd3",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/c/cibw/vendor/lib --prefix=/c/cibw/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --enable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavcodec license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/avdevice-61-e0c82e5e3858696da14be9b630536084.dll",
+          "sha256": "18b38b33cfca2c355bc4ccdfc9f6f32a26f8171d9d066bb0918b2ed809675608",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/c/cibw/vendor/lib --prefix=/c/cibw/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --enable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavdevice license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/avfilter-10-5bb04f06744e3b5f87175efe782a982e.dll",
+          "sha256": "e4fee3ed637edf3f6ccbbee6d3e7f59ff69ba05de42bd91f6ffdbc131c6a2b5e",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/c/cibw/vendor/lib --prefix=/c/cibw/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --enable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavfilter license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/avformat-61-acf30bd58e2953bb891c8d1e8a95ef10.dll",
+          "sha256": "4f119f37d8d7ec410cb238bc26e05ba1b292a46b7c305cc42412238ed7ee2be7",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/c/cibw/vendor/lib --prefix=/c/cibw/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --enable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavformat license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/avutil-59-7a7ccc29eb93e5eb7c701b6318a81c68.dll",
+          "sha256": "dc671467a8bf479b5a55456fac81fa2ff482c21da82e069ff14b8ff989ca5744",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/c/cibw/vendor/lib --prefix=/c/cibw/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --enable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libavutil license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/swresample-5-bbeb9e2dd6ddd813d957e3c146229694.dll",
+          "sha256": "fb892075110831e1d4551b3d3e2ce7da1c4c0181641f76402af7f83247b395ec",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/c/cibw/vendor/lib --prefix=/c/cibw/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --enable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libswresample license: LGPL version 3 or later"
+          ]
+        },
+        {
+          "member": "av.libs/swscale-8-116e15521dab35ea4f71b8893caad3ac.dll",
+          "sha256": "74f0d8627a144bbef5ac91dd521bbdfe1909625bdde4f08c948229c105e0dc03",
+          "configuration_strings": [
+            "--disable-static --enable-shared --libdir=/c/cibw/vendor/lib --prefix=/c/cibw/vendor --disable-programs --disable-doc --disable-libxml2 --disable-lzma --disable-libtheora --disable-libfreetype --disable-libfontconfig --disable-libbluray --disable-libopenjpeg --enable-mediafoundation --enable-version3 --enable-gmp --disable-alsa --disable-gnutls --enable-libaom --enable-libdav1d --enable-libmp3lame --enable-libopencore-amrnb --enable-libopencore-amrwb --enable-libopus --enable-libspeex --enable-libsvtav1 --enable-libsrt --enable-libtwolame --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libopenh264 --disable-libxcb --enable-zlib --enable-libx264 --enable-libx265 --enable-nvenc --enable-nvdec --disable-encoder='avui,dca,mlp,opus,s302m,sonic,sonic_ls,truehd,vorbis' --disable-decoder=sonic --disable-libjack --disable-indev=jack"
+          ],
+          "license_strings": [
+            "libswscale license: LGPL version 3 or later"
+          ]
+        }
+      ],
+      "codec_libraries": [
+        {
+          "member": "av.libs/libx264-165-61acd10b62783aea048e2d39227c2895.dll",
+          "sha256": "61acd10b62783aea048e2d39227c2895def27b5b3a3b2d8fbf071f87be805611"
+        },
+        {
+          "member": "av.libs/libx265-9e24aa06f62577bd43f0ac3911a2841c.dll",
+          "sha256": "c09a295b2204f6954288dacd6b6a8caf5e449c584d7e5392653b2eba6c60e14e"
+        }
+      ],
+      "notices": [
+        {
+          "member": "av-15.1.0.dist-info/licenses/LICENSE.txt",
+          "sha256": "f32ebcb6007dcc05eea369b3820e6391b0a7ef1ed763f30f1aca15dfdbacbe96",
+          "size": 1528
+        }
+      ]
+    }
+  ]
+}

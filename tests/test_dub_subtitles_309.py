@@ -127,10 +127,14 @@ class TestSyncJobSegments:
         assert job["segments"][1]["id"] == "a1b"
 
     def test_empty_request_keeps_existing_segments(self):
+        from pydantic import ValidationError
         from api.routers.dub_generate import _sync_job_segments
         from schemas.requests import DubRequest
+        # The API refuses an empty render, which would publish a silent track.
+        with pytest.raises(ValidationError):
+            DubRequest(segments=[])
         job = {"segments": [{"id": "a1", "start": 0.0, "end": 1.0, "text": "keep me"}]}
-        _sync_job_segments(job, DubRequest(segments=[]))
+        _sync_job_segments(job, DubRequest.model_construct(segments=[]))
         assert job["segments"][0]["text"] == "keep me"
 
     def test_request_timing_wins(self):

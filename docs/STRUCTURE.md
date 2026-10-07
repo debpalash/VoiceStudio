@@ -70,7 +70,7 @@ VoiceStudio/
 ├── native/desktop-bridge/       ⟵ Rust helper used by Electron
 │
 ├── frontend/dist/               ⟵ build output of `bun run build:web` (gitignored): the web UI
-│                                   the backend serves in Docker, bundled into Electron packages
+│                                   the backend serves in Docker and, from Electron packages, to LAN devices
 │
 ├── omnivoice/                   ⟵ the underlying TTS model package
 │   ├── models/

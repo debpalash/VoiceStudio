@@ -18,6 +18,14 @@
  * - progressExtensionCap / progressExtensionBudgets: heartbeat extension,
  *   max(OMNIVOICE_PROGRESS_EXTENSION_CAP_S, budgets x execution budget)
  * - freeChars / charsPerSecond: the execution budget's length scaling
+ * - cpuSecondsPerChar / cpuAutoCap: the default CPU budget's scaling and its
+ *   ceiling (#2609), from backend/core/generate_budget.py
+ * - textExpansionFactor: sizes the legacy length bonus for text the backend
+ *   will lengthen (normalization, pronunciation rules)
+ * - cpuAutoCeiling (reported only): the backend budgets the NORMALIZED text,
+ *   whose expansion is unbounded (a six-digit number grows ~11x), so a CPU
+ *   host running the default budget reports the automatic ceiling and the
+ *   client waits for it instead of guessing from the typed length
  *
  * Operators can raise those budgets through the environment; the backend
  * reports its active values at GET /generate/budget, and the larger of each
@@ -32,17 +40,25 @@ export const BACKEND_GENERATE_BUDGET_S = {
   progressExtensionBudgets: 3,
   freeChars: 1200,
   charsPerSecond: 40,
+  cpuSecondsPerChar: 4,
+  cpuAutoCap: 7200,
+  textExpansionFactor: 16,
 } as const;
 
 const CLIENT_MARGIN_S = 60;
 
 export type ReportedGenerateBudget = Partial<
-  Record<'modelLoad' | 'queueWait' | 'executionBase' | 'progressExtensionCap', unknown>
+  Record<
+    'modelLoad' | 'queueWait' | 'executionBase' | 'progressExtensionCap' | 'cpuAutoCeiling',
+    unknown
+  >
 >;
 
 /** Milliseconds before the client gives up on a /generate for this text. */
 export function generateAbortMs(textLength = 0, reported: ReportedGenerateBudget = {}): number {
-  const raise = (key: keyof ReportedGenerateBudget): number => {
+  const raise = (
+    key: 'modelLoad' | 'queueWait' | 'executionBase' | 'progressExtensionCap',
+  ): number => {
     const value = reported[key];
     const base = BACKEND_GENERATE_BUDGET_S[key];
     return typeof value === 'number' && Number.isFinite(value) ? Math.max(base, value) : base;
@@ -54,10 +70,18 @@ export function generateAbortMs(textLength = 0, reported: ReportedGenerateBudget
     executionBase: raise('executionBase'),
     progressExtensionCap: raise('progressExtensionCap'),
   };
-  const execution =
-    budget.executionBase +
-    budget.sidecarGrace +
-    Math.max(0, textLength - budget.freeChars) / budget.charsPerSecond;
+  // Mirrors client_execution_budget_s in backend/core/generate_budget.py: the
+  // larger of the legacy length bonus and the default CPU budget's scaling.
+  const chars = Math.max(0, textLength) * budget.textExpansionFactor;
+  const legacy = budget.executionBase + Math.max(0, chars - budget.freeChars) / budget.charsPerSecond;
+  const cpuAuto = Math.min(
+    Math.max(legacy, budget.cpuSecondsPerChar * chars),
+    Math.max(budget.cpuAutoCap, budget.executionBase),
+  );
+  const reportedCeiling = reported.cpuAutoCeiling;
+  const ceiling =
+    typeof reportedCeiling === 'number' && Number.isFinite(reportedCeiling) ? reportedCeiling : 0;
+  const execution = Math.max(legacy, cpuAuto, ceiling) + budget.sidecarGrace;
   const extension = Math.max(
     budget.progressExtensionCap,
     budget.progressExtensionBudgets * execution,

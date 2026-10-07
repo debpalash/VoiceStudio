@@ -48,8 +48,12 @@ double-click to mount it, and drag **VoiceStudio.app** into `/Applications`.
 | Intel | `VoiceStudio-Electron-<version>-mac-x64.dmg` — **UI only**: the local backend cannot run on Intel ([#889](https://github.com/debpalash/VoiceStudio/issues/889)) |
 
 The architectures are **not** interchangeable: an Intel Mac cannot run the
-`arm64` build (Rosetta 2 only translates the other direction). Compare the
-download with the release's `SHA256SUMS.txt` before opening it.
+`arm64` build (Rosetta 2 only translates the other direction). An Apple
+Silicon Mac *can* open the `x64` build through Rosetta, but its local backend
+then needs the Intel-only PyTorch wheels that no longer exist, so setup stops
+and offers the Apple Silicon download instead. Install the `arm64` DMG over it;
+your voices and projects are kept. Compare the download with the release's
+`SHA256SUMS.txt` before opening it.
 
 Or install the latest release from Terminal with the
 [shell installer](script.md), which picks the right DMG, verifies its
@@ -175,6 +179,15 @@ Hit a wall? See [docs/install/troubleshooting.md](troubleshooting.md).
 
 The in-app error UI includes an **"Open docs for this error"** button that
 deeplinks back into this docs tree at the right section for the error class.
+
+### `torch` "doesn't have a source distribution or wheel for the current platform"
+
+If setup fails with `You're on macOS (macosx_…_x86_64), but torch … only has
+wheels for … macosx_11_0_arm64`, the runtime is being built for Intel. On an
+Apple Silicon Mac that means the `x64` DMG (or a Rosetta terminal for source
+installs) is in use: install the `mac-arm64` DMG, or run `bun run setup:api`
+from a native arm64 terminal (`uname -m` prints `arm64`). On an Intel Mac the
+local backend is unsupported; connect to a remote backend instead.
 
 ### Fast process shutdown
 

@@ -74,6 +74,6 @@ def test_dev_backend_skips_resync_when_rocm_requested():
     )
     observed = json.loads(completed.stdout)
     base = observed["base"]
-    assert observed["unset"] == base
-    assert observed["auto"] == base
+    assert observed["unset"] == [base[0], "--no-sync", *base[1:]]
+    assert observed["auto"] == [base[0], "--no-sync", *base[1:]]
     assert observed["rocm"] == [base[0], "--no-sync", *base[1:]]

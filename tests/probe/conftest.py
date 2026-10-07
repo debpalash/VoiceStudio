@@ -1,5 +1,5 @@
 """probe pytest plumbing: a session-scoped result recorder that emits an HTML
-report (and opens it) when the probe suite finishes.
+report when the probe suite finishes (opened only with PROBE_OPEN=1).
 
 Tests record outcomes via the ``probe_report`` fixture. At session end the
 recorded outcomes are rendered to ``tests/probe/reports/report-*.html`` and
@@ -75,6 +75,6 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
             report.issue_url = triage(report).url
         except Exception:  # noqa: BLE001 — triage is best-effort, never break reporting
             pass
-    # Writes the HTML and opens it in the browser. Opening is auto-suppressed in
-    # CI / headless / when PROBE_NO_OPEN is set (see report._should_open).
+    # Writes the HTML; opens it in the browser only with PROBE_OPEN=1
+    # (see report._should_open).
     save_and_open(report)

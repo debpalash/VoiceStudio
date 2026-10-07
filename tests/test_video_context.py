@@ -50,7 +50,6 @@ def test_keyframe_extraction_spawns_the_resolved_ffmpeg(tmp_path, monkeypatch):
     frames_dir = tmp_path / "frames"
     frames_dir.mkdir()
     monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: bundled)
-    monkeypatch.setattr(module.tempfile, "mkdtemp", lambda **kw: str(frames_dir))
 
     spawned = []
 
@@ -61,7 +60,7 @@ def test_keyframe_extraction_spawns_the_resolved_ffmpeg(tmp_path, monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", _record)
 
-    frames = module._extract_keyframes("clip.mp4", [0.0, 1.5])
+    frames = module._extract_keyframes("clip.mp4", [0.0, 1.5], str(frames_dir))
 
     assert [ts for ts, _ in frames] == [0.0, 1.5]
     assert spawned and all(cmd[0] == bundled for cmd in spawned)
@@ -77,8 +76,107 @@ def test_keyframe_extraction_skips_when_no_ffmpeg_resolves(tmp_path, monkeypatch
     spawned = []
     monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: spawned.append(cmd))
 
-    assert module._extract_keyframes("clip.mp4", [0.0]) == []
+    assert module._extract_keyframes("clip.mp4", [0.0], str(tmp_path)) == []
     assert not spawned
+
+
+# ── #2566: the frame directory never outlives the analysis worker ────────────
+
+
+def _frame_fixture(tmp_path, monkeypatch, run=None):
+    """One-worker pool, frame dirs created under ``tmp_path/frames`` and an
+    ffmpeg stand-in that writes a real JPEG (or calls ``run`` first)."""
+    import subprocess
+    import tempfile
+    from concurrent.futures import ThreadPoolExecutor
+
+    from services import ffmpeg_utils
+
+    module = importlib.import_module("services.video_context")
+    root = tmp_path / "frames"
+    root.mkdir()
+    real_mkdtemp = tempfile.mkdtemp
+    monkeypatch.setattr(
+        module.tempfile, "mkdtemp", lambda **kw: real_mkdtemp(dir=str(root), **kw)
+    )
+    monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: "ffmpeg")
+
+    def _ffmpeg(cmd, **kw):
+        if run is not None:
+            run(cmd)
+        Image.new("RGB", (8, 8), (10, 10, 10)).save(cmd[-1], format="JPEG")
+        return subprocess.CompletedProcess(cmd, 0, b"", b"")
+
+    monkeypatch.setattr(subprocess, "run", _ffmpeg)
+    pool = ThreadPoolExecutor(max_workers=1)
+    monkeypatch.setattr(module, "_analysis_pool", pool)
+    return module, root, pool
+
+
+_SEGMENTS = [{"start": 0.0, "end": 1.0}, {"start": 1.0, "end": 2.0}, {"start": 2.0, "end": 3.0}]
+
+
+def test_analysis_removes_its_frame_directory(tmp_path, monkeypatch):
+    import asyncio
+
+    module, root, pool = _frame_fixture(tmp_path, monkeypatch)
+    ctx = asyncio.run(module.analyse_video("clip.mp4", _SEGMENTS))
+    pool.shutdown(wait=True)
+
+    assert ctx.to_dict()["frame_count"] == 3
+    assert list(root.iterdir()) == []
+
+
+def test_analysis_failure_removes_its_frames(tmp_path, monkeypatch):
+    import asyncio
+
+    import pytest
+
+    module, root, pool = _frame_fixture(tmp_path, monkeypatch)
+
+    def _boom(_path):
+        raise RuntimeError("analysis failed")
+
+    monkeypatch.setattr(module, "_analyse_frame_basic", _boom)
+    with pytest.raises(RuntimeError, match="analysis failed"):
+        asyncio.run(module.analyse_video("clip.mp4", _SEGMENTS))
+    pool.shutdown(wait=True)
+
+    assert list(root.iterdir()) == []
+
+
+def test_cancelled_analysis_stops_and_removes_its_frames(tmp_path, monkeypatch):
+    import asyncio
+    import threading
+
+    started, release = threading.Event(), threading.Event()
+    calls = []
+
+    def _block_first(cmd):
+        calls.append(cmd)
+        if len(calls) == 1:
+            started.set()
+            assert release.wait(10)
+
+    module, root, pool = _frame_fixture(tmp_path, monkeypatch, run=_block_first)
+
+    async def _cancel_mid_extraction():
+        task = asyncio.create_task(module.analyse_video("clip.mp4", _SEGMENTS))
+        assert await asyncio.to_thread(started.wait, 10)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        else:
+            raise AssertionError("analysis was not cancelled")
+
+    asyncio.run(_cancel_mid_extraction())
+    release.set()
+    pool.submit(lambda: None).result(timeout=10)  # the one worker has finished
+
+    assert len(calls) == 1
+    assert list(root.iterdir()) == []
 
 
 def _save_jpeg(tmp_path, name: str, image: Image.Image):

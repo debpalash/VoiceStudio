@@ -282,6 +282,12 @@ async def _write_output(audio_id: str, raw: bytes, format: str = "wav") -> str:
 # client-side timeout (#2040).
 _BACKEND_GRACE_S = 30.0
 
+# Torch-free mirrors of the desktop backstop and model_manager's guard.
+# tests/test_generate_abort_budget.py keeps these in sync with their sources.
+_GENERATE_SIDECAR_FLOOR_S = 900.0
+_GENERATE_SIDECAR_GRACE_S = 5.0
+_GENERATE_PROGRESS_BUDGETS = 3.0
+
 
 def _env_seconds(name: str, default: float) -> float:
     raw = os.environ.get(name, "").strip()
@@ -312,11 +318,39 @@ def _backend_budget_s(kind: str, text: str = "") -> float | None:
             _env_seconds("OMNIVOICE_GENERATE_TIMEOUT_S", 300.0),
             _env_seconds("OMNIVOICE_CPU_GENERATE_TIMEOUT_S", 600.0),
         )
-        # As model_manager.generate_timeout_s: +1 s per 40 characters past 1200.
-        execution = base + max(0, len(text or "") - 1200) / 40.0
-        # A generation first waits in the GPU pool's queue, on its own clock
-        # (model_manager.GPU_QUEUE_TIMEOUT_S), before that budget starts.
-        return _env_seconds("OMNIVOICE_GPU_QUEUE_TIMEOUT_S", 1800.0) + execution
+        # Shared with the backend's rule (core.generate_budget): covers the
+        # legacy length bonus AND the automatic CPU ceiling (the backend budgets
+        # the NORMALIZED text, whose length this tool cannot see) — the tool
+        # must never give up before the backend does (#2609).
+        from core.generate_budget import client_execution_budget_s
+
+        execution = client_execution_budget_s(
+            max(base, _GENERATE_SIDECAR_FLOOR_S), len(text or ""),
+            cpu_auto_possible=not os.environ.get("OMNIVOICE_CPU_GENERATE_TIMEOUT_S", "").strip(),
+        ) + _GENERATE_SIDECAR_GRACE_S
+        # Classic /generate sends no response until the whole render finishes.
+        # Cold loading and queueing have separate clocks; fresh chunk-progress
+        # heartbeats can then extend execution by up to three more budgets.
+        # Waiting only for queue + execution cuts off healthy CPU renders.
+        model_load = max(30.0, _env_seconds("OMNIVOICE_MODEL_LOAD_TIMEOUT", 1200.0))
+        extension_cap = _env_seconds(
+            "OMNIVOICE_PROGRESS_EXTENSION_CAP_S",
+            _env_seconds("OMNIVOICE_MODEL_LOAD_TIMEOUT_S", 1800.0),
+        )
+        extension = max(extension_cap, _GENERATE_PROGRESS_BUDGETS * execution)
+        queue = _env_seconds("OMNIVOICE_GPU_QUEUE_TIMEOUT_S", 1800.0)
+        # A clone without a cached reference transcript first runs a separate
+        # guarded ASR job. That job uses generate_timeout_s("") without an
+        # engine: no length bonus or sidecar grace, but its own queue and
+        # progress extension. MCP cannot see whether the profile needs it.
+        reference = queue + base + max(extension_cap, _GENERATE_PROGRESS_BUDGETS * base)
+        return (
+            model_load
+            + reference
+            + queue
+            + execution
+            + extension
+        )
     return None
 
 

@@ -123,6 +123,9 @@ def test_unlock_removes_locked_take_after_commit(profile):
     with db.db_conn() as conn:
         conn.execute("DROP TRIGGER reject_update")
     asyncio.run(profiles.unlock_profile("voice"))
+    # Retired, not deleted: a running render may still read it (#2535).
+    assert (profile / ".retired" / "voice_locked.wav").exists()
+    profiles.sweep_retired_voice_files(grace_s=0)
     assert not (profile / "voice_locked.wav").exists()
 
 
@@ -193,7 +196,7 @@ def test_first_lock_failure_leaves_no_orphan_take(profile, monkeypatch):
     assert sorted(p.name for p in profile.iterdir() if "locked" in p.name) == []
 
 
-def test_successful_relock_installs_new_take_and_drops_backup(profile, monkeypatch):
+def test_successful_relock_installs_new_take_and_drops_previous(profile, monkeypatch):
     import asyncio
     from core import db
     from api.routers import profiles
@@ -208,8 +211,13 @@ def test_successful_relock_installs_new_take_and_drops_backup(profile, monkeypat
             "INSERT INTO generation_history(id, text, audio_path) VALUES('h','t','take.wav')"
         )
     asyncio.run(profiles.lock_profile("voice", history_id="h", seed=1))
-    assert (profile / "voice_locked.wav").read_bytes() == b"new-take"
-    assert sorted(p.name for p in profile.iterdir() if "locked" in p.name) == ["voice_locked.wav"]
+    with db.db_conn() as conn:
+        name = conn.execute("SELECT locked_audio_path FROM voice_profiles").fetchone()[0]
+    assert name != "voice_locked.wav"  # new identity, so longform caches re-key (#2535)
+    assert (profile / name).read_bytes() == b"new-take"
+    assert (profile / "voice_locked.wav").read_bytes() == b"old-locked"  # retired
+    profiles.sweep_retired_voice_files(grace_s=0)
+    assert sorted(p.name for p in profile.iterdir() if "locked" in p.name) == [name]
 
 
 def test_install_staged_restores_previous_file(tmp_path):

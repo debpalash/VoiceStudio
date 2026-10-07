@@ -88,7 +88,7 @@ the live backends (`FasterWhisperTranscriber`, a Resemblyzer/ECAPA embedder).
 ## HTML report
 
 Every probe session writes a **self-contained HTML report** (inline CSS+JS, no
-external assets) to `tests/probe/reports/` and **opens it in the browser**:
+external assets) to `tests/probe/reports/`:
 
 ```
 tests/probe/reports/report-YYYYMMDD-HHMMSS.html   # this run
@@ -100,8 +100,9 @@ The report shows the verdict (blocking failures only), summary cards
 measured values, filter buttons, and the honest-ceiling note. The `advisory`
 lane and `SKIP`s are visually separated and never affect the verdict.
 
-Auto-open is suppressed automatically in CI, on headless Linux (no `DISPLAY`),
-or when `PROBE_NO_OPEN=1`. Override the output location with `PROBE_REPORT_DIR`.
+Set `PROBE_OPEN=1` to open the report in your browser when the run ends; it
+never opens otherwise (and never in CI or with `PROBE_NO_OPEN=1`). Override the
+output location with `PROBE_REPORT_DIR`.
 
 Tests feed the report via the session-scoped `probe_report` fixture:
 

@@ -287,6 +287,102 @@ def _profile_instruct(row):
     return heal_design_instruct(row["instruct"], vd)
 
 
+def _design_instruct_key(value):
+    """Order-, case- and spacing-insensitive identity of an instruct.
+
+    Clients rebuild a design voice's tags in their own order (the sanitizer
+    sorts by category), so string equality would call an unchanged voice
+    edited.
+    """
+    return frozenset(
+        item.strip().casefold()
+        for item in re.split(r"[,\uff0c]", str(value or ""))  # ASCII or full-width comma
+        if item.strip()
+    )
+
+
+def _design_request_diverges(row, *, instruct=None, seed=None):
+    """True when a request edits a design profile instead of re-rendering it.
+
+    A design profile's rendered sample *is* the voice it was saved with. A
+    request that sends a different instruct or seed asks for a different
+    voice; cloning the old sample would drown the new attributes, which is
+    how "Male" kept coming back female once a design was saved. An omitted
+    instruct or seed means "the profile's", so it never diverges; an explicit
+    seed on a profile saved without one asks for a specific voice the saved
+    sample was never rendered with, so it does.
+    """
+    if instruct and str(instruct).strip():
+        requested = _design_instruct_key(instruct)
+        stored = {
+            _design_instruct_key(row["instruct"]),
+            _design_instruct_key(_profile_instruct(row)),
+        }
+        if requested not in stored:
+            return True
+    if seed is None:
+        return False
+    return row["seed"] is None or int(seed) != int(row["seed"])
+
+
+def _conditioning_refusal(backend_cls, *, profile_id=None, has_ref_audio=False,
+                          instruct=None, seed=None, design_recipe=None):
+    """Why this request can't run on ``backend_cls``, else None.
+
+    Two conditioning mismatches would otherwise fail deep inside the engine
+    or, worse, render the wrong voice without a word:
+
+    * designing on an engine that declares it can't
+      (``supports_voice_design = False``): a request with no reference clip
+      that describes a voice (an instruct or a Voice Design recipe) or names
+      a design profile without a saved sample;
+    * a reference clip on an engine that declares it can't clone
+      (``supports_cloning = False``): an uploaded clip, or a profile whose
+      conditioning resolves to its saved sample. Such engines ignore
+      ``ref_audio``, so re-rendering a saved voice there would silently use
+      a preset voice instead.
+
+    Plain preset-voice TTS (no reference, no description) stays allowed, and
+    a model-dependent ``supports_cloning`` property is judged by the loaded
+    model later, not here. Refusing before any model load turns both into an
+    actionable 422.
+    """
+    from services.tts_backend import voice_design_support
+
+    designing = bool(
+        (instruct and str(instruct).strip())
+        or (design_recipe and str(design_recipe).strip())
+    )
+    # /generate ignores an upload when a profile is named.
+    reference = has_ref_audio and not profile_id
+    if profile_id:
+        with db_conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM voice_profiles WHERE id=?", (profile_id,)
+            ).fetchone()
+        if row is not None:
+            cond = _resolve_profile_conditioning(row, instruct=instruct, seed=seed)
+            reference = bool(cond["ref_audio_path"])
+            designing = designing or cond["kind"] == "design"
+    name = getattr(backend_cls, "display_name", None) or getattr(backend_cls, "id", "This engine")
+    if reference:
+        if getattr(backend_cls, "supports_cloning", True) is False:
+            return (
+                f"{name} can't use reference audio: it only speaks with its own "
+                "preset voices, so it can't render this voice from its sample. "
+                "Choose an engine that supports voice cloning (for example "
+                "OmniVoice)."
+            )
+        return None
+    if not designing or voice_design_support(backend_cls) is not False:
+        return None
+    return (
+        f"{name} can't design a voice from a description: it needs a reference "
+        "clip for the timbre. Choose an engine that supports Voice Design "
+        "(for example OmniVoice), or clone a voice from a reference clip instead."
+    )
+
+
 def _resolve_profile_conditioning(row, *, ref_text=None, instruct=None,
                                   seed=None, language=None):
     """Resolve a ``voice_profiles`` row into generation conditioning.
@@ -306,6 +402,9 @@ def _resolve_profile_conditioning(row, *, ref_text=None, instruct=None,
         "ref_audio_path": None, "ref_text": ref_text, "instruct": instruct,
         "seed": seed, "language": language, "kind": None,
         "persist_ref_text": False, "language_from_profile": False,
+        # True when the request edits a design profile rather than
+        # re-rendering it: its saved sample no longer describes the voice.
+        "diverged": False,
     }
     # `kind` is authoritative (0005): 'design' profiles condition on their
     # deterministic rendered sample + instruct; 'clone' on the user's
@@ -319,7 +418,17 @@ def _resolve_profile_conditioning(row, *, ref_text=None, instruct=None,
             row["instruct"] and not row["is_locked"] and not row["ref_audio_path"]
         ) else "clone"
     out["kind"] = profile_kind
-    if row["is_locked"] and row["locked_audio_path"]:
+    if profile_kind == "design" and _design_request_diverges(
+        row, instruct=instruct, seed=seed,
+    ):
+        # Design from the request's attributes and seed; only the gaps it
+        # left (an omitted instruct or seed) come from the profile.
+        out["diverged"] = True
+        if not out["instruct"]:
+            out["instruct"] = _profile_instruct(row)
+        if out["seed"] is None and row["seed"] is not None:
+            out["seed"] = row["seed"]
+    elif row["is_locked"] and row["locked_audio_path"]:
         out["ref_audio_path"] = os.path.join(VOICES_DIR, row["locked_audio_path"])
         if not out["ref_text"]:
             out["ref_text"] = row["ref_text"]
@@ -1685,11 +1794,14 @@ def _apply_routing_headers(headers, engine_notice, decision):
 
 
 @router.get("/generate/budget")
-def generate_budget():
-    """Active generate budgets, so the UI's backstop follows operator overrides."""
+def generate_budget(engine: Optional[str] = None):
+    """Active generate budgets, so the UI's backstop follows operator overrides.
+
+    ``engine`` (default: the active engine) selects the local route the
+    CPU-ceiling hint is reported for."""
     from services.model_manager import generate_budget_s
 
-    return generate_budget_s()
+    return generate_budget_s(engine)
 
 
 @router.post("/generate")
@@ -1772,6 +1884,16 @@ async def generate_speech(
                 "See GET /engines/tts for the list of valid engine ids."
             ),
         )
+
+    # A design request on an engine that needs a reference clip would only
+    # fail inside the engine, after a model load, and a reference on an
+    # engine that can't clone would be silently dropped. Say so before any work.
+    _refused = _conditioning_refusal(
+        backend_cls, profile_id=profile_id, has_ref_audio=ref_audio is not None,
+        instruct=instruct, seed=seed, design_recipe=design_recipe,
+    )
+    if _refused:
+        raise HTTPException(status_code=422, detail=_refused)
 
     # Crash forensics (#1164): a generate is exactly the kind of work an OOM
     # kill lands on — record it (engine id only, never the text) so an
@@ -1949,7 +2071,6 @@ async def generate_speech(
         with db_conn() as conn:
             row = conn.execute("SELECT * FROM voice_profiles WHERE id=?", (profile_id,)).fetchone()
         if row:
-            resolved_profile_id = profile_id
             # Shared with POST /convert — see _resolve_profile_conditioning
             # for the resolution rules (kind-authoritative, lock wins, #533
             # language fill, #1032 transcript-cache signal).
@@ -1957,6 +2078,8 @@ async def generate_speech(
                 row, ref_text=ref_text, instruct=instruct, seed=used_seed,
                 language=language,
             )
+            # An edited design is a new voice, not a take of this profile.
+            resolved_profile_id = None if _cond["diverged"] else profile_id
             history_mode = _cond["kind"]
             ref_audio_path = _cond["ref_audio_path"]
             ref_text = _cond["ref_text"]
@@ -2604,7 +2727,10 @@ async def generate_speech(
                 # is compute time, not queue pressure (#1588).
                 logger.error("Streaming generation exceeded its compute budget")
                 from core.public_errors import stream_failure
-                failure = stream_failure("generation_timeout")
+                failure = stream_failure(
+                    "generation_timeout",
+                    device=_routing.get("effective_device"),
+                )
                 failure["retry_after"] = 30
                 yield _line({"type": "error", **failure})
             except ValueError as e:

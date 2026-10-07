@@ -136,6 +136,9 @@ export async function errorFromResponse(res: Response): Promise<ApiError> {
   return new ApiError(res.status, detail || statusLine, payload);
 }
 
+/** Fired after a successful `POST /engines/select`. */
+export const ENGINE_SELECTED_EVENT = 'ov:engine-selected';
+
 /**
  * fetch() against the API. Throws ApiError on any non-2xx response and an
  * ApiError with status 0 when the backend is unreachable. Deliberate aborts
@@ -193,6 +196,10 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
     }
     throw error;
   }
+  // The active engine decides which compute route (and so which generate
+  // budget) a take gets; consumers re-read their derived state on this event.
+  if (typeof window !== 'undefined' && path === '/engines/select' && init?.method === 'POST')
+    window.dispatchEvent(new CustomEvent(ENGINE_SELECTED_EVENT));
   return res;
 }
 

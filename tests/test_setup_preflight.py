@@ -557,3 +557,39 @@ def client_factory():
     ``patch()`` context managers."""
     from main import app
     return TestClient(app)
+
+
+@pytest.mark.parametrize("vendor,available,expected", [
+    ("none", False, "warn"),
+    ("nvidia", False, "warn"),
+    ("nvidia", True, "pass"),
+])
+def test_optional_gpu_never_blocks_cpu_setup(monkeypatch, tmp_path, vendor, available, expected):
+    from api.routers.setup import wizard
+    from services import media_tools
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(wizard.sys, "platform", "linux")
+    monkeypatch.setattr(wizard._platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(wizard, "_ram_gb", lambda: 32)
+    monkeypatch.setattr(wizard, "_disk_free_gb", lambda _: 100)
+    monkeypatch.setattr(wizard, "hf_cache_dir", lambda: str(tmp_path / "hf"))
+    monkeypatch.setattr(wizard, "_network_check", lambda: {
+        "id": "network", "label": "Network", "status": "pass", "detail": "Test", "fix": None,
+    })
+    monkeypatch.setattr(wizard, "_detect_gpu", lambda: {
+        "vendor": vendor, "available": available, "backend": "cuda" if available else "cpu",
+        "driver": "test", "device_name": "Test device", "notes": [],
+    })
+    monkeypatch.setattr(media_tools, "summary", lambda **_: {"ready": True})
+    monkeypatch.setitem(sys.modules, "services.tts_backend", SimpleNamespace(gpu_routing_verdict=lambda: {
+        "engine": "omnivoice", "routing_status": "accelerated" if available else "cpu_only",
+        "effective_device": "cuda" if available else "cpu", "host_family": "cuda" if available else "cpu",
+    }))
+    result = wizard.preflight()
+    gpu = next(check for check in result["checks"] if check["id"] == "gpu")
+    assert gpu["status"] == expected
+    assert result["ok"] is True
+    if vendor == "nvidia" and not available:
+        assert "CPU-only" in gpu["fix"]
+        assert "GPU-only engines remain unavailable" in gpu["fix"]

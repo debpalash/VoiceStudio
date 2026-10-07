@@ -544,7 +544,9 @@ def preflight():
         gpu_status, gpu_fix = "pass", None
         gpu_detail = f"{gpu['device_name']} (driver {gpu['driver']}) — CUDA ready"
     elif gpu["vendor"] == "nvidia" and not gpu["available"]:
-        gpu_status = "fail"
+        # Acceleration is optional: CPU wheels or an unusable driver must not
+        # block CPU-capable engines. Active-engine compatibility is checked below.
+        gpu_status = "warn"
         gpu_detail = (
             f"{gpu['device_name']} found but CUDA not usable "
             f"(driver {gpu['driver']}). " + " ".join(gpu["notes"])
@@ -552,7 +554,8 @@ def preflight():
         gpu_fix = (
             f"Update NVIDIA drivers to ≥ R{'.'.join(map(str, _min_nvidia_driver()))} "
             "(https://www.nvidia.com/Download/index.aspx). Or run CPU-only "
-            "by continuing past this step — dubbing will be ~10× slower."
+            "by continuing past this step. CPU inference is slower; GPU-only "
+            "engines remain unavailable."
         )
     elif gpu["vendor"] == "amd":
         gpu_status = "warn"

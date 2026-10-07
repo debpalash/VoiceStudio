@@ -101,6 +101,11 @@ export function forgetSavedUpdateChannel(userData: string = app.getPath('userDat
   }
 }
 
+/** Packaged builds update in-app unless a package manager owns the install. */
+function updatesSupported(): boolean {
+  return app.isPackaged && process.env.VOICESTUDIO_DISABLE_UPDATER !== '1';
+}
+
 export class DesktopUpdater {
   private listeners = new Set<(state: UpdateState) => void>();
   private state: UpdateState;
@@ -108,7 +113,7 @@ export class DesktopUpdater {
   private downloadInFlight: Promise<UpdateState> | null = null;
 
   constructor() {
-    const supported = app.isPackaged;
+    const supported = updatesSupported();
     this.state = {
       status: supported ? 'idle' : 'unsupported',
       currentVersion: app.getVersion(),
@@ -204,7 +209,7 @@ export class DesktopUpdater {
   }
 
   async check(quiet = false): Promise<UpdateState> {
-    if (!app.isPackaged || ['downloading', 'downloaded'].includes(this.state.status))
+    if (!updatesSupported() || ['downloading', 'downloaded'].includes(this.state.status))
       return this.snapshot();
     if (this.checkInFlight) return this.checkInFlight;
     const operation = (async () => {
@@ -230,7 +235,7 @@ export class DesktopUpdater {
   }
 
   async download(): Promise<UpdateState> {
-    if (!app.isPackaged || this.state.status !== 'available') return this.snapshot();
+    if (!updatesSupported() || this.state.status !== 'available') return this.snapshot();
     if (this.downloadInFlight) return this.downloadInFlight;
     const operation = (async () => {
       this.patch({
@@ -272,12 +277,12 @@ export class DesktopUpdater {
   }
 
   install(): void {
-    if (!app.isPackaged || this.state.status !== 'downloaded') return;
+    if (!updatesSupported() || this.state.status !== 'downloaded') return;
     autoUpdater.quitAndInstall(false, true);
   }
 
   private configureFeed(): void {
-    if (!app.isPackaged) return;
+    if (!updatesSupported()) return;
     autoUpdater.allowPrerelease = false;
     const feedChannel = feedChannelName();
     autoUpdater.channel = feedChannel;

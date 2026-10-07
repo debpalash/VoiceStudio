@@ -116,7 +116,8 @@ import {
   redoDubEdit,
   resumeDub,
   discardDubRecovery,
-  resetDubSession,
+  removeDubSource,
+  dubSourceRemovable,
   dismissDubError,
   applyDubQc,
   applyDubTranslationRows,
@@ -649,8 +650,11 @@ export function DubPage() {
     };
   }, [warmPreviewPaths]);
 
-  const removeVideo = () => {
-    if (busy || cancelling || session.recovery || !resetDubSession()) return;
+  const sourceRemovable = dubSourceRemovable(session, cancelling);
+  const isAudioSource = session.inputType === 'audio';
+  const removeSourceLabel = t(isAudioSource ? 'dub.remove_audio' : 'dub.remove_video');
+  const removeVideo = async () => {
+    if (!sourceRemovable || !(await removeDubSource())) return;
     livePreview.stop();
     segmentPreviewAbort.current?.abort();
     segmentPreviewAbort.current = null;
@@ -1070,23 +1074,29 @@ export function DubPage() {
                 <ConfirmDialog
                   open={removeVideoOpen}
                   onOpenChange={setRemoveVideoOpen}
-                  title={t('dub.remove_video')}
-                  description={t('dub.remove_video_confirm')}
-                  confirmLabel={t('dub.remove_video')}
-                  onConfirm={removeVideo}
+                  title={removeSourceLabel}
+                  description={t(
+                    session.recovery
+                      ? 'dub.remove_interrupted_confirm'
+                      : isAudioSource
+                        ? 'dub.remove_audio_confirm'
+                        : 'dub.remove_video_confirm',
+                  )}
+                  confirmLabel={removeSourceLabel}
+                  onConfirm={() => void removeVideo()}
                 />
                 <Button
                   size="xs"
                   variant="ghost"
-                  aria-label={t('dub.remove_video')}
-                  disabled={busy || cancelling || Boolean(session.recovery)}
+                  aria-label={removeSourceLabel}
+                  disabled={!sourceRemovable}
                   onClick={() => {
-                    if (session.segments.length > 0 || editHistory.undoDepth > 0)
+                    if (session.recovery || session.segments.length > 0 || editHistory.undoDepth > 0)
                       setRemoveVideoOpen(true);
-                    else removeVideo();
+                    else void removeVideo();
                   }}
                 >
-                  {t('dub.remove_video')}
+                  {removeSourceLabel}
                 </Button>
               </div>
             )}

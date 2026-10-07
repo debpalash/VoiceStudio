@@ -245,22 +245,15 @@ def _default_dir() -> Path:
 
 
 def _should_open(explicit: bool | None) -> bool:
+    """Open the report only when asked: `open_browser=True` or `PROBE_OPEN=1`.
+
+    Test runs (local, agent or CI) must never pop a browser window by default.
+    """
     if explicit is not None:
         return explicit
-    if os.environ.get("PROBE_NO_OPEN"):
+    if os.environ.get("PROBE_NO_OPEN") or os.environ.get("CI"):
         return False
-    if os.environ.get("PROBE_OPEN", "").strip() == "0":
-        return False
-    if os.environ.get("CI"):  # CI runners are headless
-        return False
-    # Headless POSIX desktop check (macOS always has a display via `open`).
-    import sys
-
-    if sys.platform.startswith("linux") and not (
-        os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
-    ):
-        return False
-    return True
+    return os.environ.get("PROBE_OPEN", "").strip() == "1"
 
 
 def open_in_browser(path: str | Path) -> bool:

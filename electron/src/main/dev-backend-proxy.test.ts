@@ -51,6 +51,29 @@ it('streams requests to the current backend with only main-owned authorization',
   });
 });
 
+it('keeps the backend path prefix and never leaves the configured host', async () => {
+  const paths: string[] = [];
+  const upstream = createServer((request, response) => {
+    paths.push(request.url || '');
+    response.end('ok');
+  });
+  await new Promise<void>((resolve) => upstream.listen(0, '127.0.0.1', resolve));
+  cleanup.push(() => new Promise<void>((resolve) => upstream.close(() => resolve())));
+  const address = upstream.address();
+  if (!address || typeof address === 'string') throw new Error('upstream did not bind');
+
+  const proxy = await startDevBackendProxy(
+    () => `http://127.0.0.1:${address.port}/studio/`,
+    () => ({}),
+    0,
+  );
+  cleanup.push(proxy.close);
+  await fetch(`${proxy.url}/system/info?full=1`);
+  await fetch(`${proxy.url}//elsewhere.invalid/health`);
+
+  expect(paths).toEqual(['/studio/system/info?full=1', '/studio/elsewhere.invalid/health']);
+});
+
 it('closes while a renderer keeps a streaming backend response open', async () => {
   const upstream = createServer((_request, response) => {
     response.writeHead(200, { 'content-type': 'text/plain' });

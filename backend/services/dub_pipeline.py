@@ -194,6 +194,73 @@ def safe_job_dir(job_id: str) -> Optional[str]:
     return candidate
 
 
+#: Voice references (``voice_*.wav``, ``seg_ref_*.wav``) cut by one
+#: transcription live in ``<job dir>/refs/<run>/``. File names repeat between
+#: runs, so a shared folder let a transcription still extracting overwrite the
+#: clips that subtitles imported meanwhile point to. Jobs written before this
+#: layout keep their references in the job dir itself; those paths are stored
+#: absolute in the job and are left untouched.
+REFERENCE_RUNS_DIRNAME = "refs"
+
+
+def new_reference_run_dir(base_dir: str) -> str:
+    """Create and return a private folder for one transcription's references."""
+    run_dir = os.path.join(base_dir, REFERENCE_RUNS_DIRNAME, uuid.uuid4().hex[:12])
+    os.makedirs(run_dir, exist_ok=True)
+    return run_dir
+
+
+def _job_reference_paths(job: dict) -> set[str]:
+    paths = set()
+    for key in ("segment_clones", "speaker_clones"):
+        clones = job.get(key)
+        if not isinstance(clones, dict):
+            continue
+        for info in clones.values():
+            ref = info.get("ref_audio") if isinstance(info, dict) else None
+            if isinstance(ref, str) and ref:
+                paths.add(os.path.normcase(os.path.realpath(ref)))
+    return paths
+
+
+def discard_reference_run(run_dir: Optional[str], job: Optional[dict] = None) -> None:
+    """Delete one transcription's reference folder, sparing files in use.
+
+    Only folders created by :func:`new_reference_run_dir` are touched. Runs
+    under ``_dub_jobs_lock``, the lock an SRT import holds while it selects and
+    saves the references it keeps, and checks ``job`` at deletion time: a
+    folder any of its saved references still points into is kept whole. A
+    file a running render holds (``core.voice_leases``) survives too, and with
+    it the folder; it goes with the job directory instead.
+    """
+    if not run_dir:
+        return
+    if os.path.basename(os.path.dirname(os.path.normpath(run_dir))) != REFERENCE_RUNS_DIRNAME:
+        return
+    from core import voice_leases
+
+    with _dub_jobs_lock:
+        root = os.path.normcase(os.path.realpath(run_dir)) + os.sep
+        if job is not None and any(p.startswith(root) for p in _job_reference_paths(job)):
+            return
+        try:
+            entries = list(os.scandir(run_dir))
+        except OSError:
+            return
+        for entry in entries:
+            try:
+                if entry.is_file(follow_symlinks=False):
+                    voice_leases.remove_if_unused(entry.path)
+            except OSError:
+                # Best effort: a file that vanished or is still locked stays for the next sweep.
+                pass
+        try:
+            os.rmdir(run_dir)
+        except OSError:
+            # Not empty yet (a leased file was kept) or already gone; either is fine.
+            pass
+
+
 def job_dir_referenced_by_others(job_id: str) -> "list[str]":
     """History ids of OTHER jobs whose persisted paths point into ``job_id``'s
     directory (#1331, the deletion half).
@@ -330,6 +397,65 @@ def put_job(job_id: str, job: dict) -> None:
     """Insert / replace the in-memory job record. Does NOT persist."""
     with _dub_jobs_lock:
         _dub_jobs[job_id] = job
+
+
+def _revision(job: dict, key: str) -> int:
+    try:
+        return int(job.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def source_segments_revision(job: dict) -> int:
+    """How many times the job's source subtitles have been replaced.
+
+    A dub render reads its segments from the request once and publishes
+    minutes later. Comparing this counter at publication tells it whether an
+    SRT import, caption seed, cleanup or transcription replaced the subtitles
+    meanwhile, so it cannot publish over the newer ones. Another render
+    publishing its own segments does not count: both were rendered from what
+    the editor held.
+    """
+    return _revision(job, "segments_rev")
+
+
+def segments_revision(job: dict) -> int:
+    """How many times ``job["segments"]`` has been replaced by any writer.
+
+    Counts source replacements and render publications alike. Transcription
+    checks this one: a dub that published edited segments while it ran is
+    newer than the transcript it produced.
+    """
+    return _revision(job, "segments_write_rev")
+
+
+def _replace_segments(job: dict, segments: list, *, source: bool) -> None:
+    with _dub_jobs_lock:
+        job["segments"] = segments
+        job["segments_write_rev"] = segments_revision(job) + 1
+        if source:
+            job["segments_rev"] = source_segments_revision(job) + 1
+
+
+def replace_source_segments(job: dict, segments: list) -> None:
+    """Replace the job's source subtitles and advance both revisions.
+
+    Every writer of ``job["segments"]`` goes through this or
+    :func:`publish_rendered_segments` (enforced by
+    ``tests/test_dub_source_revision.py``). Annotations made in place (QC
+    marks) are not replacements and leave the revisions alone.
+    """
+    _replace_segments(job, segments, source=True)
+
+
+def publish_rendered_segments(job: dict, segments: list) -> None:
+    """Store the segments a finished render was generated from.
+
+    Advances :func:`segments_revision` so a transcription still running cannot
+    commit over them, but not :func:`source_segments_revision`, so a concurrent
+    render of another language is not rejected.
+    """
+    _replace_segments(job, segments, source=False)
 
 
 def merge_job(job_id: str, updates: dict) -> bool:
@@ -980,6 +1106,24 @@ def _delete_cookie_export(cookie_file: str | None) -> bool:
     return True
 
 
+class _YtdlpLogger:
+    """Route yt-dlp output to ``logger`` so a missing/broken stdio can't fail a download."""
+
+    def debug(self, msg):
+        # yt-dlp sends both debug and info messages here ("[debug] " prefixed).
+        if not str(msg).startswith("[debug] "):
+            logger.info("yt-dlp: %s", log_safe(msg))
+
+    def info(self, msg):
+        logger.info("yt-dlp: %s", log_safe(msg))
+
+    def warning(self, msg):
+        logger.warning("yt-dlp: %s", log_safe(msg))
+
+    def error(self, msg):
+        logger.error("yt-dlp: %s", log_safe(msg))
+
+
 def yt_download_sync(
     url: str,
     job_dir: str,
@@ -1041,6 +1185,13 @@ def yt_download_sync(
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
+        # `quiet` alone still lets yt-dlp draw its progress bar on stdout and
+        # print errors to stderr. In the packaged app those are dead or closed
+        # pipes (Windows `[Errno 22] Invalid argument`, macOS `[Errno 32]
+        # Broken pipe`), which fails a download that was otherwise fine. Send
+        # every yt-dlp message to our logger and never write progress to stdio.
+        "noprogress": True,
+        "logger": _YtdlpLogger(),
         "restrictfilenames": True,
         # Don't stamp the downloaded file's mtime with the video's upload date
         # (#642): on Windows an out-of-range/invalid timestamp makes the os.utime

@@ -31,6 +31,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from api.dependencies import require_admin
+from core.poll_guard import PollGuard
 from worker import registry, routing, service
 from worker.async_utils import drain_task, to_thread_and_defer_cancellation
 
@@ -104,8 +105,15 @@ def list_workers() -> dict:
     return service.control_plane.snapshot()
 
 
+# Polled every second while work runs: it reads SQLite, so it must not be able
+# to occupy the shared worker pool. ONE target-wide snapshot serves every `op`
+# (routing.status_for_operation), so the guard has a single in-flight key that
+# no caller-chosen value can multiply or exhaust.
+_target_poll = PollGuard("workers-target", lambda: routing.status())
+
+
 @router.get("/target")
-def get_target(op: str = "") -> dict:
+async def get_target(op: str = "") -> dict:
     """What the GPU picker shows: the choice, the resolved answer, the options.
 
     `active` is the same answer the generation path uses, so the badge cannot
@@ -113,7 +121,13 @@ def get_target(op: str = "") -> dict:
     surface being rendered — omitting it answers for the target as a whole,
     which is what the picker's own menu asks.
     """
-    return routing.status(op=op.strip() or None)
+    chosen = op.strip()
+    # Surface names are open-ended, so validate their shape
+    # (routing.OPERATION_NAME) rather than enumerate them. The name only labels
+    # the answer; it never selects or multiplies the work done.
+    if chosen and not routing.valid_operation_name(chosen):
+        raise HTTPException(status_code=422, detail="invalid operation name")
+    return routing.status_for_operation(await _target_poll.get(), chosen)
 
 
 @router.get("/runtime")

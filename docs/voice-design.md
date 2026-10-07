@@ -3,6 +3,13 @@
 Voice Design mode lets you describe the desired speaker through speaker attributes (`instruct` parameter) — no reference audio needed. The model
 generates a matching voice on the fly.
 
+Saving a design does not load or download a voice engine. If the engine is
+already loaded, Save also renders its identity sample. Otherwise the design
+is saved with its attributes and the sample is generated when you preview it.
+If the engine unloads before rendering starts, Save keeps the sample pending
+instead of loading the engine again.
+Until that preview exists, synthesis uses the saved attributes directly.
+
 ## Quick Example
 
 ```python
@@ -140,9 +147,27 @@ mapped from your description are not re-sent. The engine catalogue reports
 this as `instruct_vocabulary`: `"tags"` for the OmniVoice family,
 `"freeform"` for everything else.
 
+IndexTTS2, MOSS-TTS v1.5, MOSS-TTS-Nano, dots.tts, Confucius4, GPT-SoVITS,
+Supertonic-3 and OmniVoice GGUF take their timbre from a reference clip or a
+preset voice, so they can't design one. With one of them selected, the Design
+workspace says so and links to the engine settings, and `/generate` answers a
+design request (an `instruct`, a Voice Design recipe or a design voice with no
+saved sample) with a 422. Cloning a saved design voice's sample still works on
+them. The engine catalogue reports this as `supports_voice_design`: `false`
+for these engines, `true` for engines that design, and `null` when an engine
+doesn't declare it.
+
 On every engine, a detail you pick holds until your description says something
 different about it, and **Reset to description** drops all picks. Choosing a
 saved voice or a starting point replaces the description.
+
+Choosing a saved designed voice re-renders it from its saved sample, so it
+sounds the same every time. Changing a detail, the description or the seed
+turns the draft back into an unsaved design: takes follow your new settings,
+and you can save them as a new voice. Through the API, a `/generate` request
+whose `instruct` or `seed` differs from the design profile's designs from the
+request instead of cloning the saved sample, and the take is not filed under
+that profile.
 
 Reopening a take restores the description, picks and details it was made with;
 they are kept with the take in your local history. Takes made before this was

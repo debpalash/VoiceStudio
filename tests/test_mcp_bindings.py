@@ -52,6 +52,57 @@ def test_upsert_creates_then_updates(db):
     assert b2["label"] == "Claude Code"
 
 
+def _interleave(db, monkeypatch, other_edit):
+    """Run ``other_edit`` (another Settings client) at the moment this upsert
+    stamps its time: after any read it does, before its write lands."""
+    import time as _time
+    import types
+
+    fired = []
+
+    def _now():
+        if not fired:
+            fired.append(True)
+            other_edit()
+        return _time.time()
+
+    monkeypatch.setattr(db, "time", types.SimpleNamespace(time=_now))
+    return fired
+
+
+def test_concurrent_partial_edits_keep_each_others_fields(db, monkeypatch):
+    """#2568: an omitted field must keep the value the row holds when this
+    edit writes, not a snapshot read before another client's edit."""
+    db.upsert_binding("cursor", label="Cursor", profile_id="morgan", default_engine="kokoro")
+    fired = _interleave(db, monkeypatch, lambda: db.upsert_binding("cursor", label="Cursor IDE"))
+
+    b = db.upsert_binding("cursor", profile_id="scarlett")
+
+    assert fired
+    assert (b["label"], b["profile_id"], b["default_engine"]) == ("Cursor IDE", "scarlett", "kokoro")
+    assert db.get_binding("cursor") == b
+
+
+def test_concurrent_first_saves_merge_instead_of_failing(db, monkeypatch):
+    fired = _interleave(
+        db, monkeypatch, lambda: db.upsert_binding("agent", label="Agent", default_engine="kokoro"),
+    )
+
+    b = db.upsert_binding("agent", profile_id="morgan")
+
+    assert fired
+    assert (b["label"], b["profile_id"], b["default_engine"]) == ("Agent", "morgan", "kokoro")
+
+
+def test_partial_upsert_clears_only_the_fields_sent_empty(db):
+    db.upsert_binding("a", label="A", profile_id="p", default_engine="e")
+    b = db.upsert_binding("a", profile_id="", label="")
+    assert (b["label"], b["profile_id"], b["default_engine"]) == ("", None, "e")
+    created = db.upsert_binding("new")
+    assert (created["label"], created["profile_id"], created["default_engine"]) == ("", None, None)
+    assert created["last_seen_at"] is None and created["created_at"] is not None
+
+
 def test_empty_client_id_rejected(db):
     with pytest.raises(ValueError):
         db.upsert_binding("   ", profile_id="x")

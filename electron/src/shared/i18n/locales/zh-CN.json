@@ -1015,7 +1015,11 @@
     "self_check_attention": "{{count}} 项检查未通过 — 请查看上方提示。",
     "save_bundle": "保存诊断包",
     "bundle_saved": "诊断包已保存：{{filename}}",
-    "bundle_failed": "无法生成诊断包：{{message}}"
+    "bundle_failed": "无法生成诊断包：{{message}}",
+    "model_credits": "模型致谢",
+    "model_credits_hint": "受支持模型的来源与作者。模型和组件分别适用各自的条款；这些致谢不授予商业使用权。",
+    "model_terms": "模型条款",
+    "model_related_sources": "相关来源："
   },
   "privacy": {
     "desc": "所有数据都在<1>本机</1>运行。您的音频、视频和转录内容不会离开您的电脑，除非您显式使用在线翻译器（Google、DeepL 等）或推送到 HuggingFace。",
@@ -1955,11 +1959,11 @@
     "back": "返回工作室",
     "badge": "商业许可",
     "hero_title": "在生产环境中部署 AI 语音",
-    "hero_desc": "VoiceStudio 是基于 GNU Affero 通用公共许可证第 3 版（AGPL-3.0）的自由开源软件——可免费使用，包括商业用途和企业内部用途。只有当您希望在不承担 AGPL-3.0 著佐权（copyleft）义务的情况下，将 VoiceStudio 嵌入闭源或专有产品/服务时，才需要商业许可证。",
+    "hero_desc": "VoiceStudio 是基于 GNU Affero 通用公共许可证第 3 版（AGPL-3.0）的自由开源软件——可免费使用，包括商业用途和企业内部用途。只有当您希望在不承担 AGPL-3.0 著佐权（copyleft）义务的情况下，将 VoiceStudio 嵌入闭源或专有产品/服务时，才需要商业许可证。 我们的许可适用于 VoiceStudio 代码。模型和生成内容的相关权利取决于所选模型及其条款。",
     "pricing_desc": "定价层级仍在确定中。",
     "request_quote": "请求报价",
-    "benefit_ip": "完全 IP 所有权",
-    "benefit_ip_desc": "您拥有所有输出、模型和衍生作品。无共享租户，无数据泄露。",
+    "benefit_ip": "应用许可",
+    "benefit_ip_desc": "我们的许可适用于 VoiceStudio 代码。模型和生成内容的相关权利取决于所选模型及其条款。",
     "benefit_cost": "零按分钟计费",
     "benefit_cost_desc": "无 API 账单，无意外超额。从第一天起就在自己的硬件上运行。",
     "benefit_team_desc": "一个许可证涵盖您组织内的无限用户。",
@@ -1967,7 +1971,7 @@
     "benefit_support_desc": "核心工程团队提供优先邮件和视频通话支持。",
     "benefit_source_desc": "完全可见的技术栈。在许可条款内审计、分叉和适配。",
     "benefit_lang_desc": "以人类级质量转录、翻译和配音 646 种语言。",
-    "hero_simple": "VoiceStudio 在 AGPL-3.0 下是免费和开源的 — 包括商业和内部业务用途。您只需要商业许可即可将其嵌入闭源产品中，无需 AGPL 的 Copyleft 义务。"
+    "hero_simple": "VoiceStudio 在 AGPL-3.0 下是免费和开源的 — 包括商业和内部业务用途。您只需要商业许可即可将其嵌入闭源产品中，无需 AGPL 的 Copyleft 义务。 我们的许可适用于 VoiceStudio 代码。模型和生成内容的相关权利取决于所选模型及其条款。"
   },
   "exportModal": {
     "export": "导出",
@@ -2030,8 +2034,8 @@
     "pkg_audio_body_one": "跳转到音频标签页以导出 WAV 或 MP3 格式的每个语言配音（{{count}} 个配音可用）。",
     "pkg_audio_body_other": "跳转到音频标签页以导出 WAV 或 MP3 格式的每个语言配音（{{count}} 个配音可用）。",
     "pkg_audio_cta": "打开音频标签页",
-    "license_text": "商业使用需要",
-    "license_link": "许可证",
+    "license_text": "我们的许可适用于 VoiceStudio 代码。模型和生成内容的相关权利取决于所选模型及其条款。",
+    "license_link": "应用许可",
     "output": "输出",
     "nothing_selected": "未选择内容或音轨不可用",
     "export_mp4": "导出 MP4",
@@ -3322,6 +3326,7 @@
   "dubIntegrity": {
     "missingSpeech": "语音缺失或无法读取。请在导出前重新生成受影响的片段。",
     "timingOverflow": "语音超出分配的时长。请缩短译文，或选择严格时间段或拉伸视频。",
+    "sourceChanged": "生成此配音时字幕已更改。已保留之前的音轨；请重新生成以使用新字幕。",
     "backgroundUnavailable": "无法保留原始声音。请检查背景音分离和对白时间后重试，或明确选择仅导出语音。"
   },
   "dubStyle": {

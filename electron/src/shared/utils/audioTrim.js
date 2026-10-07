@@ -166,45 +166,16 @@ export async function computePeaksAsync(channel, buckets = DEFAULT_PEAK_BUCKETS,
   return peaks;
 }
 
-async function probeDuration(file) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const a = new Audio();
-    a.preload = 'metadata';
-    const cleanup = () => {
-      try {
-        URL.revokeObjectURL(url);
-      } catch {}
-    };
-    a.addEventListener(
-      'loadedmetadata',
-      () => {
-        const d = a.duration;
-        cleanup();
-        resolve(isFinite(d) ? d : 0);
-      },
-      { once: true },
-    );
-    a.addEventListener(
-      'error',
-      () => {
-        cleanup();
-        reject(new Error('metadata failed'));
-      },
-      { once: true },
-    );
-    a.src = url;
-  });
-}
-
+// decodeAudioData returns the WHOLE decoded file resampled to the context's
+// sample rate; the offline context's own render length plays no part. So the
+// decode needs no duration up front. It used to wait for a media element's
+// metadata event first, with no timeout, and a source that never emitted
+// metadata or error left the trimmer decoding forever (#2558).
 export async function decodeToMonoLowRate(file, targetSR = 22050) {
-  const duration = await probeDuration(file);
   const arr = await file.arrayBuffer();
-  const len = Math.max(1, Math.ceil(Math.max(0.001, duration) * targetSR));
   const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-  const offline = new Offline(1, len, targetSR);
-  const buf = await offline.decodeAudioData(arr);
-  return buf;
+  const offline = new Offline(1, 1, targetSR);
+  return offline.decodeAudioData(arr);
 }
 
 // Playhead position for a selection [startSec, endSec] that has been playing

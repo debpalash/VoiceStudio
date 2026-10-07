@@ -26,6 +26,10 @@ bun run setup:api  # prepare Python dependencies before starting Electron
 bun run dev        # electron-vite: main + preload + renderer with HMR
 ```
 
+The development launcher resolves Electron's binary before starting Vite.
+Electron 42+ downloads it on the first launch, so that launch needs network
+access; subsequent launches reuse the installed binary.
+
 On launch the shell probes `http://127.0.0.1:3900`. If a backend is already
 running (for example `bun run dev:api` from the repo root) it **attaches**;
 otherwise it checks the prepared `.venv` imports, **spawns** its Python interpreter directly, and
@@ -39,6 +43,45 @@ whitespace-separated), `OMNIVOICE_STARTUP_BUDGET_S` (default 300, or 600 on a
 host with four or fewer cores or 8 GB of RAM or less; measured from the spawn so
 a slow launch never spends the backend's window, and extended while the backend
 is still printing, up to three times the budget).
+
+## Running without a GPU
+
+`bun run setup:api` and packaged setup choose CPU-only PyTorch on supported
+Linux/Windows hosts without an NVIDIA driver. Source setup also checks
+`nvidia-smi`. CPU setup avoids downloading CUDA libraries; macOS and Linux ARM
+keep their native wheels. Windows ARM source setup uses x64 Python under
+emulation, matching the packaged runtime.
+
+To choose CPU wheels explicitly on Linux:
+
+```sh
+OMNIVOICE_TORCH_VARIANT=cpu bun run setup:api
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:OMNIVOICE_TORCH_VARIANT = "cpu"
+bun run setup:api
+```
+
+Set the variant to `cuda` for an undetected NVIDIA GPU or a GPU-enabled
+container, or opt into `rocm` on Linux. Source setup also honors
+`OMNIVOICE_DEVICE=cpu` unless an explicit wheel variant overrides it. The
+Settings device selection still controls where inference runs.
+
+For direct uv use on Linux/Windows x64, choose the locked CPU graph with
+`uv sync --no-group cuda --group cpu`, then launch commands with
+`uv run --no-sync`. Plain `uv sync` keeps the CUDA default. Electron and
+`bun run dev:api` reuse the prepared environment without silently restoring
+CUDA wheels on startup or restart.
+
+CPU inference still needs model downloads and enough system RAM. OmniVoice
+uses float32 on CPU by default; the existing `OMNIVOICE_CPU_DTYPE` override
+is unchanged. An unusable NVIDIA driver produces a setup warning so
+CPU-capable engines remain available; GPU-only engines remain unavailable.
+Linux source setup applies the same CTranslate2 executable-stack compatibility
+repair as packaged setup, without changing operating-system security settings.
 
 ## Same-origin API
 

@@ -268,15 +268,26 @@ def test_linux_arm_build_falls_back_to_cpu(
 def test_cuda_sources_exclude_both_linux_arm64_spellings():
     sources = tomllib.loads((REPO / "pyproject.toml").read_text())["tool"]["uv"]["sources"]
     for package in ("torch", "torchaudio", "torchvision"):
-        marker = Marker(sources[package][0]["marker"])
+        # Native PyPI and CPU sources can precede CUDA. Validate the named
+        # index rather than depending on incidental source-array ordering.
+        markers = [
+            Marker(source["marker"])
+            for source in sources[package]
+            if source.get("index") == "pytorch-cuda"
+        ]
+        assert markers, f"{package} has no CUDA source"
         for machine in ("aarch64", "arm64"):
             environment = default_environment()
             environment.update({"sys_platform": "linux", "platform_machine": machine})
-            assert not marker.evaluate(environment), f"{package} selected CUDA on {machine}"
+            assert not any(marker.evaluate(environment) for marker in markers), (
+                f"{package} selected CUDA on {machine}"
+            )
         for system in ("linux", "win32"):
             environment = default_environment()
             environment.update({"sys_platform": system, "platform_machine": "x86_64"})
-            assert marker.evaluate(environment), f"{package} skipped CUDA on {system}/x86_64"
+            assert any(marker.evaluate(environment) for marker in markers), (
+                f"{package} skipped CUDA on {system}/x86_64"
+            )
 
 
 def test_build_script_copies_shared_libs_on_every_platform_branch():

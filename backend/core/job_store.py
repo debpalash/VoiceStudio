@@ -62,6 +62,23 @@ def mark_cancelled(job_id: str) -> None:
     _update_status(job_id, "cancelled", finished=True)
 
 
+def retire_if_active(job_id: str, status: str, error: Optional[str] = None) -> bool:
+    """Move a still ``pending``/``running`` job to a terminal ``status``.
+
+    For exit paths that cannot know whether the job already settled (a
+    cancelled or closed response): a job that already finished, failed or was
+    cancelled keeps its terminal status. Returns True if a row was changed.
+    """
+    now = time.time()
+    with db_conn() as conn:
+        cur = conn.execute(
+            "UPDATE jobs SET status=?, updated_at=?, finished_at=?, error=? "
+            "WHERE id=? AND status IN ('pending', 'running')",
+            (status, now, now, error, job_id),
+        )
+        return cur.rowcount > 0
+
+
 def _update_status(job_id: str, status: str, *, finished: bool = False, error: Optional[str] = None) -> None:
     now = time.time()
     with db_conn() as conn:
