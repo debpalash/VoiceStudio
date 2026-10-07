@@ -39,8 +39,8 @@ def lp(monkeypatch, clean_llm_env):
 
 def test_registry_has_all_providers(lp):
     ids = {p.id for p in lp.all_providers()}
-    # 14 cloud + 2 local + custom + openai
-    for expected in ("openai", "openrouter", "orcarouter", "cheaperinference",
+    # Named cloud providers, local servers and a custom endpoint.
+    for expected in ("openai", "openrouter", "orcarouter", "cheaperinference", "api-route",
                      "groq", "cerebras", "google-ai",
                      "mistral", "cohere", "nvidia", "github-models", "cloudflare",
                      "huggingface", "sambanova", "siliconflow", "ollama",
@@ -132,6 +132,33 @@ def test_cheaperinference_provider_contract(lp, monkeypatch):
     assert lp.resolve_api_key(p) == "sk-ci-test"
     assert lp.resolve_base_url(p) == "https://cheaperinference.example/v1"
     assert lp.resolve_model(p) == "gpt-5.4"
+
+
+def test_api_route_provider_contract(lp, monkeypatch):
+    p = lp.get_provider("api-route")
+    assert p.display_name == "API Route"
+    assert p.default_base_url == "https://global.api-route.com/v1"
+    assert p.default_model == "deepseek-v4.1-flash"
+    assert p.key_envs == ("API_ROUTE_API_KEY",)
+    assert p.base_url_env == "API_ROUTE_BASE_URL"
+    assert p.model_env == "API_ROUTE_MODEL"
+    assert p.transport == "openai" and not p.local
+    assert not lp.is_configured(p)
+    assert lp.active_provider_id() != p.id
+
+    lp.set_active_provider("openai")
+    lp.save_key(p.id, "stored-api-route-key")
+    assert lp.is_configured(p)
+    assert "stored-api-route-key" not in json.dumps(lp.describe(p))
+    assert lp.active_provider_id() == "openai"
+
+    monkeypatch.setenv("API_ROUTE_API_KEY", "env-api-route-key")
+    monkeypatch.setenv("API_ROUTE_BASE_URL", "https://gateway.example/v1")
+    monkeypatch.setenv("API_ROUTE_MODEL", "test-model")
+    assert lp.resolve_api_key(p) == "env-api-route-key"
+    assert lp.resolve_base_url(p) == "https://gateway.example/v1"
+    assert lp.resolve_model(p) == "test-model"
+    assert "env-api-route-key" not in json.dumps(lp.describe(p))
 
 
 def test_iflytek_provider_contract(lp, monkeypatch):
