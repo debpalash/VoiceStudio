@@ -91,6 +91,12 @@ _PROVIDERS: tuple[Provider, ...] = (
              base_url_env="CHEAPER_INFERENCE_BASE_URL",
              model_env="CHEAPER_INFERENCE_MODEL",
              signup_url="https://cheaperinference.com/signup"),
+    # No base_url_env: Opper's own SDKs read OPPER_BASE_URL as the API root,
+    # not this OpenAI-compatible path. The URL can still be changed in Settings.
+    Provider("opper", "Opper", "https://api.opper.ai/v3/compat",
+             "claude-sonnet-4-6",
+             key_envs=("OPPER_API_KEY",), model_env="OPPER_MODEL",
+             signup_url="https://platform.opper.ai"),
     Provider("groq", "Groq", "https://api.groq.com/openai/v1",
              "llama-3.3-70b-versatile",
              key_envs=("GROQ_API_KEY",), base_url_env="GROQ_BASE_URL",

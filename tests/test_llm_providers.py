@@ -41,7 +41,7 @@ def test_registry_has_all_providers(lp):
     ids = {p.id for p in lp.all_providers()}
     # 14 cloud + 2 local + custom + openai
     for expected in ("openai", "openrouter", "orcarouter", "cheaperinference",
-                     "groq", "cerebras", "google-ai",
+                     "opper", "groq", "cerebras", "google-ai",
                      "mistral", "cohere", "nvidia", "github-models", "cloudflare",
                      "huggingface", "sambanova", "siliconflow", "ollama",
                      "lmstudio", "iflytek", "custom"):
@@ -132,6 +132,25 @@ def test_cheaperinference_provider_contract(lp, monkeypatch):
     assert lp.resolve_api_key(p) == "sk-ci-test"
     assert lp.resolve_base_url(p) == "https://cheaperinference.example/v1"
     assert lp.resolve_model(p) == "gpt-5.4"
+
+
+def test_opper_provider_contract(lp, monkeypatch):
+    p = lp.get_provider("opper")
+    assert p.display_name == "Opper"
+    assert p.default_base_url == "https://api.opper.ai/v3/compat"
+    assert p.default_model == "claude-sonnet-4-6"
+    assert p.key_envs == ("OPPER_API_KEY",)
+    assert p.base_url_env is None
+    assert p.model_env == "OPPER_MODEL"
+
+    monkeypatch.setenv("OPPER_API_KEY", "op-test")
+    monkeypatch.setenv("OPPER_MODEL", "gpt-5.4-mini")
+    # Opper's SDKs read OPPER_BASE_URL as the API root, so it must not
+    # replace the OpenAI-compatible endpoint here.
+    monkeypatch.setenv("OPPER_BASE_URL", "https://api.opper.ai")
+    assert lp.resolve_api_key(p) == "op-test"
+    assert lp.resolve_model(p) == "gpt-5.4-mini"
+    assert lp.resolve_base_url(p) == "https://api.opper.ai/v3/compat"
 
 
 def test_iflytek_provider_contract(lp, monkeypatch):

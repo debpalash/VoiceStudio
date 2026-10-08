@@ -162,7 +162,7 @@ and with no LLM configured (or on any LLM error) it simply does nothing.
 
 **Settings → System → LLM Providers** is the one place to set up the LLM. Pick a
 provider, paste its API key, choose a model, **Test** it, and "use for
-translation." Supported: OpenAI, OpenRouter, OrcaRouter, Cheaper Inference, Groq,
+translation." Supported: OpenAI, OpenRouter, OrcaRouter, Cheaper Inference, Opper, Groq,
 Cerebras, Google AI (Gemini), Mistral, Cohere, NVIDIA, GitHub Models, Cloudflare,
 Hugging Face, SambaNova, SiliconFlow, iFLYTEK Astron MaaS, **local Ollama / LM Studio**
 (offline, no key), and a **Custom** OpenAI-compatible endpoint.
@@ -184,6 +184,13 @@ It can be configured without the UI with `CHEAPER_INFERENCE_API_KEY`, and its
 defaults can be overridden with `CHEAPER_INFERENCE_BASE_URL` and
 `CHEAPER_INFERENCE_MODEL`.
 
+[Opper](https://opper.ai) is an EU-hosted AI gateway with 700+ models from 50+
+providers behind one OpenAI-compatible API and one key (default model
+`claude-sonnet-4-6`). Enter a key from [platform.opper.ai](https://platform.opper.ai)
+in the provider settings, or set `OPPER_API_KEY`, and override the model with
+`OPPER_MODEL`. The endpoint can only be changed in the provider settings,
+because Opper's own tools use `OPPER_BASE_URL` for a different URL.
+
 iFLYTEK Astron MaaS uses `IFLYTEK_API_KEY`, `IFLYTEK_BASE_URL` and
 `IFLYTEK_MODEL`. It has no default model: copy the model ID (for example Spark
 X2.5) from the service's model card in the [MaaS console](https://maas.xfyun.cn).
@@ -204,7 +211,7 @@ shared machine — set the `LLM_DEFAULT_PROVIDER` environment variable to a
 provider id before launching the backend:
 
 ```
-LLM_DEFAULT_PROVIDER=groq        # or openai, openrouter, orcarouter, cheaperinference, cerebras, iflytek, ollama, custom, …
+LLM_DEFAULT_PROVIDER=groq        # or openai, openrouter, orcarouter, cheaperinference, opper, cerebras, iflytek, ollama, custom, …
 ```
 
 Resolution order for the active provider is: `LLM_DEFAULT_PROVIDER` (env) →
