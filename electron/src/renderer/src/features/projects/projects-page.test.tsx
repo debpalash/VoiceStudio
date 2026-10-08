@@ -181,6 +181,24 @@ it('renaming a dub never issues a deletion', async () => {
   expect(deletions()).toHaveLength(0);
 });
 
+it('the Enter that commits an IME composition does not submit a rename', async () => {
+  await mount();
+  fireEvent.click(screen.getByRole('button', { name: /Rename Dub project/i }));
+  const input = screen.getByRole('textbox');
+  fireEvent.change(input, { target: { value: 'Renamed' } });
+  fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+  fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 });
+  expect(mocks.api.mock.calls.filter(([, options]) => options?.method === 'PATCH')).toHaveLength(0);
+  expect(screen.getByRole('textbox')).toBe(input);
+  fireEvent.keyDown(input, { key: 'Enter' });
+  await waitFor(() =>
+    expect(mocks.api).toHaveBeenCalledWith('/projects/same', {
+      method: 'PATCH',
+      body: JSON.stringify({ name: 'Renamed' }),
+    }),
+  );
+});
+
 it('prevents duplicate submissions and cancellation while deletion is pending', async () => {
   await mount();
   const original = mocks.api.getMockImplementation()!;

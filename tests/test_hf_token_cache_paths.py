@@ -48,7 +48,7 @@ assert Path(constants.HF_TOKEN_PATH) == expected, (constants.HF_TOKEN_PATH, str(
 assert Path(constants.HF_STORED_TOKENS_PATH) == expected.parent / "stored_tokens"
 # Real Hub persistence with only its remote identity request stubbed.
 from huggingface_hub import hf_api
-hf_api.whoami = lambda token: {"name": "test", "auth": {"accessToken": {"role": "read", "displayName": "synthetic"}}}
+hf_api.HfApi.whoami = lambda self, token=None, **kw: {"name": "test", "auth": {"accessToken": {"role": "read", "displayName": "synthetic"}}}
 from core import db
 db.init_db()
 from services import token_resolver as resolver

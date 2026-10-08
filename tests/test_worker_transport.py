@@ -1284,13 +1284,14 @@ async def test_registration_refuses_an_unknown_key(harness, db):
     ) as channel:
         stub = pb_grpc.WorkerServiceStub(channel)
         stranger = WorkerKeypair.generate()
+        issued = await stub.IssueChallenge(pb.ChallengeRequest())
         response = await stub.Register(
             pb.RegisterRequest(
                 features=sorted(REQUIRED_FEATURES),
                 protocol_version_min=PROTOCOL_VERSION,
                 protocol_version_max=PROTOCOL_VERSION,
                 public_key=stranger.public_bytes(),
-                challenge=b"c" * 32,
+                challenge=issued.challenge,
                 challenge_signature=b"x" * 64,
                 nonce=b"n" * 32,
             )

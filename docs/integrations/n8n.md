@@ -8,8 +8,8 @@ not activate a schedule, install n8n, expose your backend, or include credential
 2. Choose **Save as…** on the n8n detail page. Import `voicestudio-n8n.json`
    through n8n's workflow import menu. You can also copy its JSON into n8n.
 3. Open the **VoiceStudio** HTTP Request node. Edit `input` in its JSON body.
-   `voice: "default"` uses the engine's default; use a saved voice profile ID for
-   cloning. `model: "tts-1"` selects VoiceStudio's active engine.
+   `voice: "default"` uses the engine's default; use a saved voice profile's ID
+   or name for cloning. `model: "tts-1"` selects VoiceStudio's active engine.
 4. Run the workflow manually. The request returns WAV audio in the binary
    `audio` field, ready for a following n8n node or download.
 
@@ -18,7 +18,9 @@ not activate a schedule, install n8n, expose your backend, or include credential
 The exported address is correct for a native n8n process on the same computer.
 Inside Docker, `127.0.0.1` refers to the container, not your desktop. Replace the
 node URL with the address your n8n process can actually reach; Docker Desktop
-commonly provides `host.docker.internal`. Linux container networking may require
+commonly provides `host.docker.internal` (Podman: `host.containers.internal`).
+VoiceStudio accepts requests addressed to those names out of the box, so no
+`OMNIVOICE_ALLOWED_HOSTS` entry is needed for them. Linux container networking may require
 an explicit host-gateway mapping. A cloud n8n instance cannot reach a private
 loopback address. Configure remote access deliberately using the
 [API authentication guide](../api-auth.md), rather than exposing a desktop port

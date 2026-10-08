@@ -242,9 +242,13 @@ def test_auto_select_rejects_one_sample_over_limit_before_asr():
     model.transcribe = lambda candidate: calls.append(candidate) or "Speech."
     audio = torch.full((1, 75 * 100 + 1), 0.1)
 
-    with pytest.raises(ValueError, match=r"\[clone_ref_too_long\].*at most 75 seconds"):
+    with pytest.raises(
+        ValueError, match=r"\[clone_ref_too_long\].*at most 75 seconds"
+    ) as caught:
         model.create_voice_clone_prompt((audio, 100), ref_text=None)
 
+    # Over 20 s a typed transcript is refused, so it must not be suggested.
+    assert "matching transcript" not in str(caught.value)
     assert calls == []
 
 
@@ -277,5 +281,19 @@ def test_auto_select_rejects_punctuation_only_transcripts_before_tokenizer():
     model.transcribe = lambda _candidate: "...?!"
     audio = torch.full((1, 21 * 100), 0.1)
 
-    with pytest.raises(ValueError, match=r"\[clone_ref_no_speech\].*could not find spoken words"):
+    with pytest.raises(
+        ValueError, match=r"\[clone_ref_no_speech\].*could not find spoken words"
+    ) as caught:
+        model.create_voice_clone_prompt((audio, 100), ref_text=None)
+    assert "matching transcript" not in str(caught.value)
+
+
+def test_auto_select_no_speech_within_transcript_limit_still_offers_transcript():
+    model = _model(reject_tokenization=True)
+    model.sampling_rate = 100
+    model._asr_pipe = object()
+    model.transcribe = lambda _candidate: "...?!"
+    audio = torch.full((1, 18 * 100), 0.1)
+
+    with pytest.raises(ValueError, match=r"\[clone_ref_no_speech\].*matching transcript"):
         model.create_voice_clone_prompt((audio, 100), ref_text=None)

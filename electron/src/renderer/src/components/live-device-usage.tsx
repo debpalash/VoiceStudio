@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useDeviceUsage } from '@/hooks/use-device-usage';
 import { useBackendStatus } from '@/hooks/use-backend-status';
+import { isBackendReachable } from '@shared/utils/backendStage';
 
 function valid(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
@@ -11,7 +12,7 @@ export function LiveDeviceUsage({ open }: { open: boolean }) {
   const query = useDeviceUsage(open);
   const backend = useBackendStatus();
   // Don't keep presenting an old successful sample as live after an error.
-  const data = !query.isError && backend.stage === 'ready' ? query.data : undefined;
+  const data = !query.isError && isBackendReachable(backend.stage) ? query.data : undefined;
   const number = new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 });
   const percent = new Intl.NumberFormat(i18n.language, {
     style: 'percent',
@@ -74,7 +75,7 @@ export function LiveDeviceUsage({ open }: { open: boolean }) {
         ) : (
           <span className="text-muted-foreground">
             {t(
-              backend.stage !== 'ready'
+              !isBackendReachable(backend.stage)
                 ? 'modelSettings.unavailable'
                 : !data
                   ? 'preferences.loading'

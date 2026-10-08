@@ -165,7 +165,8 @@ async def start() -> dict:
     # Belt-and-braces — engine_env already did this when a token resolved,
     # but spelling the assignment out keeps the source-level test green and
     # keeps the intent visible at the launcher seam:
-    if resolved and resolved.token:
+    from services.hf_auth import env_allows_token
+    if resolved and resolved.token and env_allows_token(env):
         env["HF_TOKEN"] = resolved.token
         env["YOUR_HF_TOKEN"] = resolved.token
 
@@ -239,6 +240,9 @@ async def dub_video(
     from services import token_resolver
     _resolved_for_soni = token_resolver.resolve()
     _hf_token_for_soni = _resolved_for_soni.token if _resolved_for_soni else ""
+    from services.hf_auth import env_allows_token
+    if not env_allows_token(os.environ):
+        _hf_token_for_soni = ""  # a mirror never receives the HF token
 
     # The main function is `batch_multilingual_media_conversion`
     # which is exposed as the first API endpoint

@@ -16,6 +16,7 @@ import {
 import { ConfirmDialog } from '@/features/clone/confirm-dialog';
 import { useProfiles } from '@/hooks/use-profiles';
 import { apiFetch, apiJson, describeError } from '@/lib/api/client';
+import { isImeComposing } from '@/lib/ime';
 import { SettingsActionError } from './settings-action-error';
 import { SettingsRow, SettingsSection } from './settings-layout';
 
@@ -159,7 +160,7 @@ export function McpBindingsSettings() {
               disabled={saving}
               onChange={(event) => setClientId(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter') void save();
+                if (event.key === 'Enter' && !isImeComposing(event)) void save();
               }}
             />
             <Input
@@ -169,7 +170,7 @@ export function McpBindingsSettings() {
               disabled={saving}
               onChange={(event) => setLabel(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter') void save();
+                if (event.key === 'Enter' && !isImeComposing(event)) void save();
               }}
             />
             <Select

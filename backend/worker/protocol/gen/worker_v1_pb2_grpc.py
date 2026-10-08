@@ -41,6 +41,11 @@ class WorkerServiceStub:
                 request_serializer=worker__v1__pb2.RegisterRequest.SerializeToString,
                 response_deserializer=worker__v1__pb2.RegisterResponse.FromString,
                 _registered_method=True)
+        self.IssueChallenge = channel.unary_unary(
+                '/omnivoice.worker.v1.WorkerService/IssueChallenge',
+                request_serializer=worker__v1__pb2.ChallengeRequest.SerializeToString,
+                response_deserializer=worker__v1__pb2.ChallengeResponse.FromString,
+                _registered_method=True)
         self.Control = channel.stream_stream(
                 '/omnivoice.worker.v1.WorkerService/Control',
                 request_serializer=worker__v1__pb2.WorkerMessage.SerializeToString,
@@ -65,6 +70,15 @@ class WorkerServiceServicer:
 
     def Register(self, request, context):
         """Enrollment / authentication. Returns a session token and epoch.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def IssueChallenge(self, request, context):
+        """A fresh, single-use, short-lived challenge for the next Register to sign
+        (feature "server_challenge_v1"). A challenge the worker picks itself
+        proves nothing about freshness: a recorded Register would verify forever.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -98,6 +112,11 @@ def add_WorkerServiceServicer_to_server(servicer, server):
                     servicer.Register,
                     request_deserializer=worker__v1__pb2.RegisterRequest.FromString,
                     response_serializer=worker__v1__pb2.RegisterResponse.SerializeToString,
+            ),
+            'IssueChallenge': grpc.unary_unary_rpc_method_handler(
+                    servicer.IssueChallenge,
+                    request_deserializer=worker__v1__pb2.ChallengeRequest.FromString,
+                    response_serializer=worker__v1__pb2.ChallengeResponse.SerializeToString,
             ),
             'Control': grpc.stream_stream_rpc_method_handler(
                     servicer.Control,
@@ -144,6 +163,33 @@ class WorkerService:
             '/omnivoice.worker.v1.WorkerService/Register',
             worker__v1__pb2.RegisterRequest.SerializeToString,
             worker__v1__pb2.RegisterResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def IssueChallenge(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/omnivoice.worker.v1.WorkerService/IssueChallenge',
+            worker__v1__pb2.ChallengeRequest.SerializeToString,
+            worker__v1__pb2.ChallengeResponse.FromString,
             options,
             channel_credentials,
             insecure,

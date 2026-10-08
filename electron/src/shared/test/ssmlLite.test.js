@@ -51,6 +51,14 @@ describe('parseSsmlLite (client port — parity with ssml_lite.py)', () => {
     expect(spellOut('go USA')).toBe('g o U S A');
   });
 
+  it('spellOut keeps supplementary characters and emoji whole', () => {
+    expect(spellOut('A😀B')).toBe('A 😀 B');
+    expect(spellOut('𝒜𝒷')).toBe('𝒜 𝒷');
+    expect(spellOut('👨‍👩‍👧 x')).toBe('👨‍👩‍👧 x');
+    expect(spellOut('e\u0301a')).toBe('e\u0301 a');
+    expect(spellOut('😀😀')).toBe('😀 😀');
+  });
+
   it('is linear-time on pathological input (no ReDoS)', () => {
     const big = '[slow]'.repeat(5000);
     const t0 = Date.now();

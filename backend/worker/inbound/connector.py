@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import hmac
 import logging
 import os
 import socket
@@ -29,7 +30,7 @@ import grpc
 from worker import identity, registry, tls
 from worker.async_utils import to_thread_and_drain_on_cancel
 from worker.inbound.connection_string import Connection
-from worker.inbound.listener import KEY_METADATA_KEY
+from worker.inbound.listener import CHALLENGE_METADATA_KEY, KEY_METADATA_KEY
 from worker.protocol.gen import worker_v1_pb2 as pb
 from worker.protocol.gen import worker_v1_pb2_grpc as pb_grpc
 from worker.transport.client import (
@@ -166,6 +167,9 @@ class NodeConnection:
         self._registration_ready = asyncio.Event()
         self._remote_protocol_retained = False
         self._last_error = ""
+        # The single-use challenge sent on the current Attach. The node must
+        # sign exactly this, so a recorded registration cannot be replayed.
+        self._attach_challenge = b""
 
     @property
     def worker_id(self) -> str:
@@ -299,10 +303,12 @@ class NodeConnection:
             certificate_pem = await asyncio.to_thread(
                 _fetch_pinned_certificate, self._connection
             )
+            challenge = identity.new_challenge()
             async with self._channel(certificate_pem) as channel:
                 stub = pb_grpc.NodeServiceStub(channel)
-                metadata = ((KEY_METADATA_KEY, self._connection.secret),)
-                stream = stub.Attach(self._outbound(), metadata=metadata)
+                stream = stub.Attach(
+                    self._outbound(), metadata=self._attach_metadata(challenge)
+                )
                 try:
                     first = await asyncio.wait_for(
                         stream.read(),
@@ -342,7 +348,9 @@ class NodeConnection:
                 "This GPU machine was removed from this app. Add it again to use it."
             )
         known = registry.get_by_key_id(key_id)
-        if known is not None and not self._proves_key_possession(request, known):
+        if not _is_challenge(request, challenge) or (
+            known is not None and not self._proves_key_possession(request, known)
+        ):
             raise InboundConnectionError(
                 "That machine could not prove its saved identity."
             )
@@ -361,10 +369,13 @@ class NodeConnection:
         certificate_pem = await asyncio.to_thread(
             _fetch_pinned_certificate, self._connection
         )
+        self._attach_challenge = identity.new_challenge()
         async with self._channel(certificate_pem) as channel:
             stub = pb_grpc.NodeServiceStub(channel)
-            metadata = ((KEY_METADATA_KEY, self._connection.secret),)
-            stream = stub.Attach(self._outbound(), metadata=metadata)
+            stream = stub.Attach(
+                self._outbound(),
+                metadata=self._attach_metadata(self._attach_challenge),
+            )
 
             # The node speaks first: it is the side with capabilities to
             # declare, whichever side dialled.
@@ -486,12 +497,25 @@ class NodeConnection:
             worker, request, address=self._connection.endpoint
         )
 
+    def _attach_metadata(self, challenge: bytes) -> tuple[tuple[str, str], ...]:
+        return (
+            (KEY_METADATA_KEY, self._connection.secret),
+            (CHALLENGE_METADATA_KEY, challenge.hex()),
+        )
+
     def _authenticate_registration(self, request: pb.RegisterRequest):
         """Resolve inbound identity without running SQLite on the app loop."""
         public_key = bytes(request.public_key)
         if len(public_key) != 32:
             return None, self._servicer._refuse(
                 "AUTH_FAILED", "That machine sent no usable identity."
+            )
+        # Spent here: one Attach, one registration.
+        challenge, self._attach_challenge = self._attach_challenge, b""
+        if not _is_challenge(request, challenge):
+            return None, self._servicer._refuse(
+                "AUTH_FAILED",
+                "That machine did not sign this connection's challenge.",
             )
         key_id = identity.key_id_for(public_key)
         if registry.is_revoked(key_id):
@@ -785,3 +809,8 @@ class _OutboundFrames:
                 ):
                     continue
             return message
+
+
+def _is_challenge(request: pb.RegisterRequest, challenge: bytes) -> bool:
+    """Did the node sign the challenge this panel sent on this Attach?"""
+    return bool(challenge) and hmac.compare_digest(bytes(request.challenge), challenge)

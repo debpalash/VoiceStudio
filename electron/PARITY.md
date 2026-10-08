@@ -103,7 +103,7 @@ A route or a screenshot alone does not count as parity.
   their diagnostic detail; the focused backend status suite covers both transitions.
 
 - The Electron skeleton now resolves against the current published dependency set:
-  `cn` 0.3, PostHog 1.430.3, Remotion 4.0.524, JSDOM 30.0.1, TanStack Router
+  `cn` 0.3, PostHog 1.430.3, JSDOM 30.0.1, TanStack Router
   1.170.36 and React i18next 17.0.14, with Bun 1.4.2 recorded as the workspace
   package manager. `bun outdated --latest` reports only Node 26 typings; the
   project intentionally stays on the current Node 24 typings that match Electron
@@ -260,7 +260,7 @@ behavior-parity decision.
 - Window close, application quit and update installation now request a bounded renderer persistence flush before native teardown. Working Stories/Audiobook drafts drain synchronously and queued IndexedDB project mutations settle before acknowledgement; older live preload bridges remain safe during development HMR.
 - Electron startup and its managed backend were exercised together on Windows: the ESM main bundle now loads the CommonJS updater safely, the supervisor reaches `ready`, and the core model/profile/history/translation/dictation routes return 200 through the renderer proxy. Dictation warmup no longer overwrites the TTS model status; `/model/status` remains `Model ready` across the delayed ASR preload.
 - Vidstack owns all Electron playback; WaveSurfer renders waveforms only. The shared provider
-  selects native audio/video, HLS, DASH, YouTube, Vimeo and Remotion sources, lazy-loading the
+  selects native audio/video, HLS, DASH, YouTube, and Vimeo sources, lazy-loading the
   streaming libraries. Gallery search results use the YouTube provider for in-place preview.
 - A current source audit confirms every Electron play/pause path still reaches `StudioMediaPlayer`; no feature renders native audio/video controls or asks WaveSurfer to play. The sole `new Audio()` use is the metadata-only duration probe, which never starts playback.
 - Browser regression: manual play, pause, actual seek position, exclusive profile preview,
@@ -293,7 +293,7 @@ behavior-parity decision.
   listing are implemented; per-skill routing is implemented; non-LLM DeepL/Microsoft credentials implemented in Settings > Credentials. Installed Python dependencies are not proof of downloaded weights.
 - Renderer test suite, typecheck, lint, production build and frozen Electron lockfile passed at their recorded checkpoints; rerun affected checks before landing.
 - Four backend regressions cover download status and installed-only translation selection.
-- YouTube is connected to a migrated workflow. Vimeo, HLS, DASH and Remotion have working shared
+- YouTube is connected to a migrated workflow. Vimeo, HLS and DASH have working shared
   provider selection but still need live sources from their eventual migrated workflows for
   end-to-end verification.
 

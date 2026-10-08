@@ -8,7 +8,7 @@ points here. Complete the setup, not just a plan.
 
 - Install the **Electron** desktop app. Tauri is archived; never install or launch it.
 - Reuse existing data, settings and models. Ask before downloading a model: state its size and license.
-- Keep cloud services and analytics opt-in.
+- Keep cloud services and analytics opt-in. Leave the first-run analytics consent prompt to the user; never answer it for them.
 - Verify the actual compute device; do not assume GPU support.
 - Name any permission or manual step you cannot perform instead of skipping it.
 
@@ -23,7 +23,8 @@ points here. Complete the setup, not just a plan.
    existing VoiceStudio install, backend or downloaded models.
 3. **Install.**
    - Default: the latest stable release asset named `VoiceStudio-Electron-*` for this
-     OS and architecture, or the [install script](script.md).
+     OS and architecture (macOS `.dmg`, Windows `.exe`, Linux `.AppImage` or `.deb`),
+     or the [install script](script.md).
    - From source: follow [`electron/README.md`](../../electron/README.md) —
      `bun install`, `bun run setup:api`, `bun run dev` from the repository root. Let
      Electron supervise the backend; do not start a second one.

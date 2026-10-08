@@ -23,6 +23,10 @@ export function RemoteBackendSettings({
     queryKey: ['backend-connection'],
     queryFn: () => bridge!.backend.getConnection(),
     enabled: Boolean(bridge),
+    // An IPC read of the saved URL, not a network request. Query's default
+    // `online` mode pauses it whenever the backend is down, which is exactly
+    // when the gate shows this form to recover a failed remote.
+    networkMode: 'always',
   });
   const dirty = useRef(false);
   const [url, setUrl] = useState('');

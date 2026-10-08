@@ -15,6 +15,7 @@ import { queryKeys } from '@/lib/query';
 import { describeError } from '@/lib/api/client';
 import { PRESETS } from '@shared/utils/constants';
 import { beginAppActivity } from '@/lib/app-activity';
+import { announceDroppedSpeech } from '@/lib/dropped-speech';
 import { useTtsReadiness } from '@/hooks/use-tts-readiness';
 
 export function CompareVoices() {
@@ -90,6 +91,10 @@ export function CompareVoices() {
           { signal: controller.signal },
         );
         if (controller.signal.aborted) break;
+        announceDroppedSpeech(
+          result.dropped,
+          t(side === 0 ? 'compare.voice_a' : 'compare.voice_b') + ' · ' + voice.name,
+        );
         const url = URL.createObjectURL(result.blob);
         setUrls((current) => current.map((old, index) => (index === side ? url : old)));
         void client.invalidateQueries({ queryKey: queryKeys.history });

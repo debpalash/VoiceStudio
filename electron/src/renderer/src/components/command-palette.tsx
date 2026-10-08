@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { runRendererTask } from '@/lib/global-error-recovery';
+import { isImeComposing } from '@/lib/ime';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useHistory } from '@/hooks/use-history';
@@ -38,6 +39,7 @@ import {
 import {
   designDraftFromTake,
   readDraft,
+  replaceRecipe,
   restoreDesignProfile,
   writeDraft,
 } from '@/features/design/design-draft';
@@ -68,7 +70,7 @@ export function CommandPalette() {
       setOpen(true);
     };
     const key = (event: KeyboardEvent) => {
-      if (event.isComposing || event.repeat) return;
+      if (isImeComposing(event) || event.repeat) return;
       const target = event.target;
       const editing =
         target instanceof HTMLElement &&
@@ -254,12 +256,13 @@ export function CommandPalette() {
         if (profile.kind === 'design') {
           const current = readDraft();
           const restored = restoreDesignProfile(profile, current.seed);
-          writeDraft({
-            ...current,
-            attrs: restored.attrs,
-            seed: restored.seed,
-            profileId: restored.profileId,
-          });
+          writeDraft(
+            replaceRecipe(current, {
+              attrs: restored.attrs,
+              seed: restored.seed,
+              profileId: restored.profileId,
+            }),
+          );
           patchCloneSettings({ language: restored.language });
           await navigate({ to: '/design' });
           return;
@@ -315,7 +318,7 @@ export function CommandPalette() {
             }}
             className="mr-8 h-10 w-[calc(100%-2rem)]"
             onKeyDown={(event) => {
-              if (event.nativeEvent.isComposing) return;
+              if (isImeComposing(event)) return;
               if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                 event.preventDefault();
                 const next =

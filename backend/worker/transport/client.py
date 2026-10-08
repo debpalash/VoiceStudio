@@ -59,7 +59,12 @@ from worker.identity import EnrollmentToken, WorkerKeypair
 from worker.protocol.gen import worker_v1_pb2 as pb
 from worker.protocol.gen import worker_v1_pb2_grpc as pb_grpc
 from worker.transport import codec
-from worker.transport.server import PROTOCOL_VERSION, REQUIRED_FEATURES, SESSION_METADATA_KEY
+from worker.transport.server import (
+    CHALLENGE_EXPIRED,
+    PROTOCOL_VERSION,
+    REQUIRED_FEATURES,
+    SESSION_METADATA_KEY,
+)
 
 logger = logging.getLogger("omnivoice.worker")
 
@@ -546,9 +551,25 @@ class WorkerClient:
                 self._capability_probe_task = None
         return list(capabilities or [])
 
-    async def build_register_request(self) -> pb.RegisterRequest:
-        """This worker's self-description. Identical in both modes."""
-        challenge = identity.new_challenge()
+    async def build_register_request(
+        self,
+        challenge: Optional[bytes] = None,
+        *,
+        issue_challenge: Optional[Callable[[], Awaitable[Optional[bytes]]]] = None,
+    ) -> pb.RegisterRequest:
+        """This worker's self-description. Identical in both modes.
+
+        ``challenge`` is the control plane's (Attach metadata inbound);
+        ``issue_challenge`` fetches one (IssueChallenge outbound) and runs only
+        after the capability probe, so a slow probe cannot outlive its expiry.
+        A self-chosen challenge remains only for control planes that predate
+        server-issued ones; current ones refuse it.
+        """
+        capabilities = await self._probe_capabilities()
+        self.config.capabilities = capabilities
+        if not challenge and issue_challenge is not None:
+            challenge = await issue_challenge()
+        challenge = bytes(challenge or identity.new_challenge())
         nonce = identity.new_challenge()
         signature = self.config.keypair.sign(
             identity.challenge_message(
@@ -558,8 +579,6 @@ class WorkerClient:
                 nonce=nonce,
             )
         )
-        capabilities = await self._probe_capabilities()
-        self.config.capabilities = capabilities
         return pb.RegisterRequest(
             envelope=pb.Envelope(sequence=self._epoch),
             protocol_version_min=PROTOCOL_VERSION,
@@ -586,6 +605,9 @@ class WorkerClient:
 
     async def accept_registration(self, response: pb.RegisterResponse) -> None:
         """Adopt the control plane's answer and recover in-flight state."""
+        if response.error.code == CHALLENGE_EXPIRED:
+            # Not a verdict on this worker: reconnect fetches a fresh one.
+            raise RuntimeError(f"{response.error.code}: {response.error.message}")
         if response.error.code:
             raise TerminalRegistrationError(
                 f"{response.error.code}: {response.error.message}"
@@ -683,7 +705,18 @@ class WorkerClient:
         await self._on_server_message(message)
 
     async def _register(self, stub) -> pb.RegisterResponse:
-        return await stub.Register(await self.build_register_request())
+        async def issue_challenge() -> Optional[bytes]:
+            try:
+                response = await stub.IssueChallenge(pb.ChallengeRequest())
+            except grpc.aio.AioRpcError as exc:
+                if exc.code() == grpc.StatusCode.UNIMPLEMENTED:
+                    return None  # an older control plane; it accepts our own
+                raise
+            return bytes(response.challenge)
+
+        return await stub.Register(
+            await self.build_register_request(issue_challenge=issue_challenge)
+        )
 
     # ── Outbound ──────────────────────────────────────────────────────────
 

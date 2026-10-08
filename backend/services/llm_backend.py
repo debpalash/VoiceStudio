@@ -42,9 +42,22 @@ _THINK_TAG_RE = re.compile(r"^\s*<(think|thinking|reasoning)>.*?</\1>", re.DOTAL
 #: Output truncated mid-thought (token cap, or a stop that never came) leaves
 #: the block unclosed. Still not an answer: drop from the tag to the end.
 _OPEN_THINK_RE = re.compile(r"^\s*<(think|thinking|reasoning)>.*\Z", re.DOTALL | re.IGNORECASE)
+#: Some chat templates open the block themselves (Spark-X2.5, Qwen3 thinking
+#: variants, DeepSeek-R1-0528 put ``<think>`` in the generation prompt), so a
+#: server without a reasoning parser returns only ``…reasoning</think>answer``.
+#: A closing tag with no opening tag before it marks the end of that block,
+#: unless the prompt itself contains the tag (see _strip_reasoning).
+_PREFILLED_THINK_RE = re.compile(
+    r"^(?:(?!<(?:think|thinking|reasoning)>).)*?</(think|thinking|reasoning)>",
+    re.DOTALL | re.IGNORECASE,
+)
 
 
-def _strip_reasoning(raw: str) -> str:
+def _prompt_text(messages: list[dict]) -> str:
+    return "\n".join(m["content"] for m in messages if isinstance(m.get("content"), str))
+
+
+def _strip_reasoning(raw: str, prompt: str = "") -> str:
     """Return the answer with any reasoning block removed.
 
     Returns ``""`` when the response was *only* reasoning. That is deliberate:
@@ -52,7 +65,19 @@ def _strip_reasoning(raw: str) -> str:
     input (dictation keeps the raw transcript, translation keeps the source),
     whereas handing back the model's private monologue as if it were the answer
     would silently overwrite the user's words with it.
+
+    ``prompt`` is the text the reply answers. A bare closing tag only ends a
+    prefilled block when the reply has more of that tag than the prompt does:
+    an answer that translates or quotes input with a literal ``</think>`` must
+    keep it, yet reasoning that ends in the same tag is still removed.
     """
+    prefilled = _PREFILLED_THINK_RE.match(raw)
+    if prefilled:
+        tag = f"</{prefilled.group(1)}>".lower()
+        # Quoted tags the answer legitimately repeats from the prompt are
+        # kept; the reasoning boundary is the first tag beyond that count.
+        if raw.lower().count(tag) > prompt.lower().count(tag):
+            raw = raw[prefilled.end():]
     while match := _THINK_TAG_RE.match(raw):
         raw = raw[match.end():]
     cleaned = _OPEN_THINK_RE.sub("", raw)
@@ -191,8 +216,8 @@ class OpenAICompatBackend(LLMBackend):
         if p is None:
             return False, (
                 "No LLM configured. Add a provider key in Settings → LLM Providers "
-                "(OpenAI/OpenRouter/OrcaRouter/Groq/… or a local Ollama), or set "
-                "TRANSLATE_BASE_URL (+ TRANSLATE_API_KEY)."
+                "(OpenAI/OpenRouter/OrcaRouter/Cheaper Inference/Groq/… or a local "
+                "Ollama), or set TRANSLATE_BASE_URL (+ TRANSLATE_API_KEY)."
             )
         error = llm_providers.configuration_error(p)
         if error:
@@ -285,7 +310,8 @@ class OpenAICompatBackend(LLMBackend):
             kw.pop("reasoning_effort", None)
             res = _create(**kw)
 
-        return _strip_reasoning(res.choices[0].message.content or "")
+        return _strip_reasoning(res.choices[0].message.content or "",
+                                prompt=_prompt_text(messages))
 
     def chat_messages_stream(self, *, messages: list[dict], timeout: Optional[float] = None,
                              temperature: Optional[float] = None) -> Iterator[str]:

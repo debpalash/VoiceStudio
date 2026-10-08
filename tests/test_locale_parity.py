@@ -1,9 +1,11 @@
 """Locale key parity — all 21 i18n files stay in lockstep with en.json.
 
-Replaces the manual locale sweeps: CLAUDE.md's Localization rule routes every
-UI string through ``electron/src/shared/i18n/locales/*.json``, which only works if
-every file parses, carries no keys en.json doesn't have, and preserves en's
-``{{placeholder}}`` tokens. Real bug classes this pins down:
+Two catalogs exist. ``electron/src/renderer/src/i18n/locales`` is the one the
+app loads at runtime; it must have full key parity (see the ``renderer``
+tests at the end). ``electron/src/shared/i18n/locales`` is loaded only by the
+transitional shared modules' tests and is ratcheted below. Both must parse,
+carry no keys en.json doesn't have, and preserve en's ``{{placeholder}}``
+tokens. Real bug classes this pins down:
 
 * a translation that drops ``{{message}}`` shows users a bare error with the
   detail silently lost (six ``gallery.*`` keys drifted this way in all 20
@@ -99,10 +101,10 @@ _ENGINE_AGNOSTIC_KEYS = (
 # Never raise one: if this fails after adding en.json keys, add the keys to
 # every locale (translated) in the same change instead.
 _MISSING_BASELINE = {
-    "ar": 475, "de": 475, "es": 475, "fr": 475, "hi": 475, "id": 475,
-    "it": 475, "ja": 475, "ko": 0, "nl": 475, "pl": 475, "pt": 475,
-    "ru": 475, "sv": 475, "th": 475, "tr": 475, "uk": 475, "vi": 475,
-    "zh-CN": 0, "zh-TW": 475,
+    "ar": 464, "de": 464, "es": 464, "fr": 464, "hi": 464, "id": 464,
+    "it": 464, "ja": 464, "ko": 0, "nl": 464, "pl": 464, "pt": 464,
+    "ru": 464, "sv": 464, "th": 464, "tr": 464, "uk": 464, "vi": 464,
+    "zh-CN": 0, "zh-TW": 464,
 }
 
 #: Keys every locale must carry regardless of the aggregate ratchet above.
@@ -474,3 +476,70 @@ def test_locale_objects_have_no_duplicate_keys():
                     result[key] = value
                 return result
             json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_object)
+
+
+# ── Runtime catalog (electron/src/renderer/src/i18n/locales) ─────────────
+# The catalog the app actually loads gets the same integrity checks, and full
+# parity rather than a ratchet: missing keys and orphans (zh-CN once carried
+# four player.* keys English never defined) both fail.
+_RENDERER_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "electron", "src", "renderer", "src", "i18n", "locales",
+)
+_RENDERER_LOCALES = sorted(f[:-5] for f in os.listdir(_RENDERER_DIR) if f.endswith(".json"))
+_CLDR_PLURAL = re.compile(r"^(.*)_(?:zero|one|two|few|many|other)$")
+
+
+def _renderer(name):
+    with open(os.path.join(_RENDERER_DIR, f"{name}.json"), encoding="utf-8") as fh:
+        return _flatten(json.load(fh, object_pairs_hook=_no_duplicates_hook))
+
+
+def _english_key(key, en):
+    """The en.json key a translation answers to; CLDR plural forms English
+    lacks (ar ``_few``, ru ``_many``) map to the English ``_other`` form."""
+    if key in en:
+        return key
+    match = _CLDR_PLURAL.match(key)
+    if match and f"{match.group(1)}_other" in en:
+        return f"{match.group(1)}_other"
+    return None
+
+
+def test_renderer_catalog_has_the_same_locales():
+    assert _RENDERER_LOCALES == _LOCALES
+
+
+@pytest.mark.parametrize("locale", [loc for loc in _RENDERER_LOCALES if loc != _EN])
+def test_renderer_locale_has_full_parity(locale):
+    en, loc = _renderer(_EN), _renderer(locale)
+    missing = sorted(set(en) - set(loc))
+    orphans = sorted(k for k in loc if _english_key(k, en) is None)
+    assert not missing, f"{locale}.json lacks {len(missing)} en.json keys: {missing[:20]}"
+    assert not orphans, f"{locale}.json has keys en.json never defines: {orphans[:20]}"
+
+
+@pytest.mark.parametrize("locale", _RENDERER_LOCALES)
+def test_renderer_values_keep_their_placeholders(locale):
+    en, loc = _renderer(_EN), _renderer(locale)
+    problems = []
+    for key, value in sorted(loc.items()):
+        english = _english_key(key, en)
+        if not isinstance(value, str) or english is None:
+            continue
+        want = set(_PLACEHOLDER.findall(en[english]))
+        got = set(_PLACEHOLDER.findall(value))
+        dropped = want - got
+        if key.endswith(("_zero", "_one", "_two")):
+            dropped -= {"count"}
+        if key in _PLACEHOLDER_ALLOWLIST:
+            dropped = got = want = set()
+        if dropped or got - want:
+            problems.append(f"  {key}: en={en[english]!r} vs {locale}={value!r}")
+        if _CORRUPTED_TOKEN.search(value):
+            problems.append(f"  {key}: corrupted token in {value!r}")
+        if _PLACEHOLDER.search(value) and not re.search(r"\w", _PLACEHOLDER.sub("", value)):
+            problems.append(f"  {key}: placeholder-only value {value!r}")
+        if key in _ENGINE_AGNOSTIC_KEYS and _ENGINE_BRANDS.search(value):
+            problems.append(f"  {key}: stage label names an engine: {value!r}")
+    assert not problems, f"{locale}.json:\n" + "\n".join(problems[:25])

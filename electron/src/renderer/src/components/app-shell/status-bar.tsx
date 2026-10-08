@@ -15,7 +15,6 @@ import {
   BrainCircuitIcon,
   KeyboardIcon,
   UsersRoundIcon,
-  SlidersHorizontalIcon,
   ListIcon,
   LayersIcon,
   CodeXmlIcon,
@@ -28,6 +27,7 @@ import { useIsFetching, useQuery } from '@tanstack/react-query';
 import { apiJson } from '@/lib/api/client';
 import { useTranslation } from 'react-i18next';
 import { useBackendStatus } from '@/hooks/use-backend-status';
+import { isBackendReachable } from '@shared/utils/backendStage';
 import { engineFamilyState, useEngines } from '@/hooks/use-engines';
 import { useDeviceUsage } from '@/hooks/use-device-usage';
 import { useDictationSelection } from '@/hooks/use-dictation-selection';
@@ -48,6 +48,7 @@ import {
   batchStatusPollMs,
   loadedModelsPollMs,
   modelStatusPollMs,
+  relaxWhenBackendBusy,
 } from '@/lib/status-polling';
 
 type BackendStage = ReturnType<typeof useBackendStatus>['stage'];
@@ -145,6 +146,9 @@ const DOT: Record<BackendStage, string> = {
   attaching: 'bg-warning animate-pulse motion-reduce:animate-none',
   starting: 'bg-warning animate-pulse motion-reduce:animate-none',
   ready: 'bg-success',
+  // Alive but busy (#2430): transient and self-recovering, so it pulses as a
+  // warning rather than sitting on the app as a destructive red failure.
+  unresponsive: 'bg-warning animate-pulse motion-reduce:animate-none',
   crashed: 'bg-destructive',
   port_in_use: 'bg-destructive',
   failed: 'bg-destructive',
@@ -161,13 +165,12 @@ export function StatusBar({
 }) {
   const { t } = useTranslation();
   const { level, chooseLevel } = useEngineDetailLevel();
-  const [viewOpen, setViewOpen] = useState(false);
   const [deviceOpen, setDeviceOpen] = useState(false);
   const profile = usePerformanceProfile();
   const [appliedProfile, setAppliedProfile] = useState<PerformanceProfileState | null>(null);
   const enginesRefreshing = useIsFetching({ queryKey: ['engines'] }) > 0;
   const status = useBackendStatus();
-  const computeTarget = useComputeTarget(status.stage === 'ready');
+  const computeTarget = useComputeTarget(isBackendReachable(status.stage));
   const activeComputeTarget = computeTarget.data?.active;
   const activeRemoteTarget = activeComputeTarget?.remote
     ? computeTarget.data?.targets.find((item) => item.id === activeComputeTarget.worker_id)
@@ -185,13 +188,13 @@ export function StatusBar({
     activeRemoteTarget?.id,
     selectedTts?.id,
     'tts',
-    status.stage === 'ready' && Boolean(activeRemoteTarget),
+    isBackendReachable(status.stage) && Boolean(activeRemoteTarget),
     activityCount > 0,
   );
   const model = useQuery({
     queryKey: ['sidebar-model-status'],
     queryFn: () => apiJson<SidebarModelStatus>('/model/status'),
-    enabled: status.stage === 'ready',
+    enabled: isBackendReachable(status.stage),
     refetchInterval: (query) => modelStatusPollMs(activityCount, query.state.data?.status),
   });
   const translation = useTranslationEngines();
@@ -201,7 +204,7 @@ export function StatusBar({
   const dictation = useDictationSelection();
   const modelCatalogue = useQuery({
     queryKey: ['model-catalogue'],
-    enabled: status.stage === 'ready',
+    enabled: isBackendReachable(status.stage),
     staleTime: 30_000,
     queryFn: () =>
       apiJson<{
@@ -215,7 +218,7 @@ export function StatusBar({
   });
   const batchJobs = useQuery({
     queryKey: ['batch-jobs', 'active'],
-    enabled: status.stage === 'ready',
+    enabled: isBackendReachable(status.stage),
     queryFn: ({ signal }) => apiJson<BatchJob[]>('/batch/jobs?status=active&limit=100', { signal }),
     staleTime: 1_000,
     refetchInterval: (query) => batchStatusPollMs(query.state.data?.length ?? 0),
@@ -232,7 +235,7 @@ export function StatusBar({
   const batchTtsActive = runningBatchStages.has('generate');
   const loadedModels = useQuery({
     queryKey: ['loaded-models'],
-    enabled: status.stage === 'ready',
+    enabled: isBackendReachable(status.stage),
     staleTime: 5_000,
     refetchInterval: loadedModelsPollMs(activityCount > 0 || hasBatchWork),
     queryFn: () =>
@@ -251,8 +254,8 @@ export function StatusBar({
   const loadedDiarisation = loadedModels.data?.models.find((entry) => entry.id === 'diarization');
   const diarisation = useQuery({
     queryKey: ['diarisation-status'],
-    enabled: status.stage === 'ready',
-    refetchInterval: IDLE_STATUS_POLL_MS,
+    enabled: isBackendReachable(status.stage),
+    refetchInterval: () => relaxWhenBackendBusy(IDLE_STATUS_POLL_MS),
     queryFn: () =>
       apiJson<{
         active: string;
@@ -357,7 +360,13 @@ export function StatusBar({
     status.stage !== 'ready'
       ? status.stage === 'port_in_use'
         ? t('backend.port_in_use_short', { port: status.port })
-        : t(`backend.${status.stage}`)
+        : status.diagnosis === 'remote_unreachable'
+          ? t('backend.unresponsive_remote')
+          : status.diagnosis === 'unhealthy'
+            ? t('backend.unhealthy')
+            : status.diagnosis === 'auth_required'
+              ? t('backend.auth_required')
+              : t(`backend.${status.stage}`)
       : runtimeHealth === 'checking'
         ? t('preferences.loading')
         : runtimeHealth === 'unavailable'
@@ -667,55 +676,36 @@ export function StatusBar({
         ),
   );
   const viewControl = (
-    <Popover open={viewOpen} onOpenChange={setViewOpen}>
-      <PopoverTrigger
-        render={
+    <div
+      role="radiogroup"
+      data-slot="engine-view-toggle"
+      aria-label={t('sidebarTools.title')}
+      className="flex shrink-0 items-center gap-0.5 rounded-md bg-sidebar-accent/35 p-0.5 ring-1 ring-inset ring-sidebar-border/50"
+    >
+      {engineDetailLevels.map((value) => {
+        const label = t(value === 'models' ? 'modelSettings.models' : 'sidebarTools.' + value);
+        const Icon = value === 'simple' ? ListIcon : value === 'models' ? LayersIcon : CodeXmlIcon;
+        return (
           <button
+            key={value}
             type="button"
-            data-slot="engine-view-toggle"
-            aria-label={
-              t('sidebarTools.title') +
-              ': ' +
-              t(level === 'models' ? 'modelSettings.models' : 'sidebarTools.' + level)
-            }
-            title={t('sidebarTools.title')}
-            className="grid size-8 shrink-0 place-items-center rounded-md outline-none hover:bg-sidebar-accent/60 focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        }
-      >
-        <SlidersHorizontalIcon className="size-3.5" aria-hidden="true" />
-      </PopoverTrigger>
-      <PopoverContent side="right" className="w-36 p-1">
-        <div role="group" aria-label={t('sidebarTools.title')}>
-          {engineDetailLevels.map((value) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={level === value}
-              onClick={() => {
-                chooseLevel(value);
-                setViewOpen(false);
-              }}
-              className={cn(
-                'flex min-h-9 w-full items-center gap-2 rounded px-3 text-start text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                level === value
-                  ? 'bg-sidebar-accent font-medium text-foreground'
-                  : 'hover:bg-sidebar-accent/50',
-              )}
-            >
-              {value === 'simple' ? (
-                <ListIcon className="size-3.5" aria-hidden="true" />
-              ) : value === 'models' ? (
-                <LayersIcon className="size-3.5" aria-hidden="true" />
-              ) : (
-                <CodeXmlIcon className="size-3.5" aria-hidden="true" />
-              )}
-              {t(value === 'models' ? 'modelSettings.models' : 'sidebarTools.' + value)}
-            </button>
-          ))}
-        </div>
-      </PopoverContent>
-    </Popover>
+            role="radio"
+            aria-checked={level === value}
+            aria-label={label}
+            title={label}
+            onClick={() => chooseLevel(value)}
+            className={cn(
+              'grid size-6 place-items-center rounded-[5px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
+              level === value
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <Icon className="size-3.5" aria-hidden="true" />
+          </button>
+        );
+      })}
+    </div>
   );
   const iconDevicePopover = (
     <Popover open={deviceOpen} onOpenChange={setDeviceOpen}>
@@ -784,7 +774,7 @@ export function StatusBar({
             {viewControl}
           </div>
         )}
-        {status.stage === 'ready' && (
+        {isBackendReachable(status.stage) && (
           <PerformanceProfile
             onApplied={(applied) => {
               appliedRefreshStarted.current = presetRefreshing;
@@ -810,7 +800,7 @@ export function StatusBar({
                 key={row.family}
                 row={row}
                 level={level}
-                online={status.stage === 'ready'}
+                online={isBackendReachable(status.stage)}
                 dotClass={engineStateClass(row.state)}
                 open={selectedDetail === row.family}
                 onToggle={() =>

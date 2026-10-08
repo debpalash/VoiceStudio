@@ -10,9 +10,8 @@ since v0.3.5; unmasked by #947's fresh-process spawning (the parent process no
 longer masked the proxy env).
 
 Three layers, each covered here:
-  (a) ship socksio — pyproject dependency + backend.spec hiddenimports
-      (httpx imports it lazily in try/except, so PyInstaller's tracer misses
-      it: nothing imports it statically, hence the recurrence guard);
+  (a) ship socksio — pyproject dependency (httpx imports it lazily in
+      try/except, so nothing imports it statically, hence the recurrence guard);
   (b) cache-first model resolution — a complete local cache resolves with
       ``local_files_only=True`` (no HTTP session constructed), so no
       session-construction failure can break synthesis of an installed model;
@@ -52,21 +51,6 @@ def test_socksio_declared_in_pyproject_dependencies():
         "#959 regression: socksio must be a [project] dependency — without it "
         "any socks5:// ALL_PROXY/HTTPS_PROXY env breaks every httpx client "
         "construction (model downloads, hub probes, OpenAI-compat LLM clients)."
-    )
-
-
-def test_socksio_in_backend_spec_hiddenimports():
-    # httpx imports socksio lazily inside try/except — PyInstaller's static
-    # tracer never sees it, so a pyproject dep alone leaves the FROZEN
-    # installers broken. Comments are stripped so a mention in a comment
-    # can't satisfy the check.
-    code_lines = [
-        line.split("#", 1)[0]
-        for line in (PROJECT_ROOT / "backend.spec").read_text().splitlines()
-    ]
-    assert any("'socksio'" in line or '"socksio"' in line for line in code_lines), (
-        "#959 regression: 'socksio' must be listed in backend.spec "
-        "hiddenimports or the frozen installers ship without SOCKS support."
     )
 
 

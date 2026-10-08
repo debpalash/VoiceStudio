@@ -242,11 +242,7 @@ export default function Settings() {
       `- **Outputs directory:** ${info?.outputs_dir || '—'}`,
       `- **Crash log:** ${info?.crash_log_path || '—'}`,
       `- **Update channel:** ${updateChannel}`,
-      `- **Update endpoint:** ${
-        updateChannel === 'preview'
-          ? 'https://github.com/debpalash/VoiceStudio/releases/download/preview/latest.json'
-          : 'https://github.com/debpalash/VoiceStudio/releases/latest/download/latest.json'
-      }`,
+      `- **Update endpoint:** https://github.com/debpalash/VoiceStudio/releases/latest/download/latest.json`,
       `- **User agent:** ${ua}`,
     ];
     try {

@@ -7,6 +7,7 @@ file would make every Gallery open pay the model stack's import cost.
 from __future__ import annotations
 
 import os
+import struct
 import wave
 from pathlib import Path
 from typing import Optional
@@ -31,6 +32,40 @@ def resolve_regular_file(root: os.PathLike[str] | str, value: object) -> Optiona
         return None
 
 
+def _complete_wav_container(path: Path, file_size: int) -> bool:
+    """Check declared RIFF chunks before decoders repair truncated lengths.
+
+    SoundFile reports only physically available frames for an interrupted
+    float WAV, so its adjusted frame count cannot prove the write completed.
+    Walk fixed-size chunk headers without allocating their declared payloads.
+    """
+    with path.open("rb") as stream:
+        header = stream.read(12)
+        if len(header) != 12 or header[8:] != b"WAVE":
+            return False
+        if header[:4] not in (b"RIFF", b"RIFX"):
+            return False
+        endian = "<" if header[:4] == b"RIFF" else ">"
+        end = struct.unpack(endian + "I", header[4:8])[0] + 8
+        if end > file_size or end < 12:
+            return False
+        offset = 12
+        while offset < end:
+            stream.seek(offset)
+            chunk = stream.read(8)
+            if len(chunk) != 8 or offset + 8 > end:
+                return False
+            size = struct.unpack(endian + "I", chunk[4:])[0]
+            payload_end = offset + 8 + size
+            if payload_end > end:
+                return False
+            # Some PCM writers omit padding on an odd final data chunk.
+            if payload_end == end:
+                return True
+            offset = payload_end + (size & 1)
+        return offset == end
+
+
 def is_playable_wav(path: Optional[Path]) -> bool:
     """Return true only for a regular, decodable WAV with audio frames."""
     if path is None:
@@ -39,6 +74,8 @@ def is_playable_wav(path: Optional[Path]) -> bool:
         if not path.is_file() or path.is_symlink():
             return False
         file_size = path.stat().st_size
+        if not _complete_wav_container(path, file_size):
+            return False
         with wave.open(str(path), "rb") as wav:
             channels = wav.getnchannels()
             sample_rate = wav.getframerate()

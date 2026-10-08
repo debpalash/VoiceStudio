@@ -38,8 +38,13 @@ Live dictation uses a WebSocket, which cannot pass through the app protocol HTTP
   Remove PYTHONHOME / PYTHONPATH from the child env.
 - stdio: ['pipe','pipe','pipe'] — stdin MUST stay open (never write, never end)
   until quit; closing it is the liveness signal. `windowsHide: true`.
-- Readiness: poll `/system/info` every 500 ms, budget 300 s
-  (OMNIVOICE_STARTUP_BUDGET_S). Then poll every 2 s as a supervisor.
+- Readiness: poll `/health` every 500 ms, budget 300 s
+  (OMNIVOICE_STARTUP_BUDGET_S). The budget is measured from the spawn, not
+  from the start of the launch, so resolving the runtime, staging the sources
+  and selecting a port never spend the backend's window. The default doubles to
+  600 s on a host with four or fewer cores or 8 GB of RAM or less, and a backend
+  that keeps printing extends the deadline to half a budget past its last line
+  (never beyond three budgets). Then poll every 2 s as a supervisor.
 - Exit code 78 = port in use (stage `port_in_use`), not a crash.
 - Quit: Windows `taskkill /pid <pid> /T /F`; POSIX spawn `detached: true` and
   `process.kill(-pid, 'SIGTERM')`, SIGKILL after 2 s; then end stdin.

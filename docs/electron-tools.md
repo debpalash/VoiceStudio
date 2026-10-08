@@ -1,5 +1,11 @@
 # Electron tools workspace
 
+> **Historical context:** this page was written while the Electron and Tauri apps
+> coexisted. Mentions of Tauri helpers, pages, tests and regression results describe
+> that migration period; the Tauri shell has since been removed and the shared code
+> now lives in `electron/src/shared/`. Existing Tauri installs: see the
+> [migration guide](electron-migration.md).
+
 Tools in the cloning sidebar or command search opens three utility panes:
 
 - Directorial AI parses direction into instruction, translation hint, rate bias,

@@ -23,13 +23,24 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
+
+it('keeps the preview badge offline when requested', async () => {
+  vi.stubEnv('VITE_PREVIEW_OFFLINE', '1');
+  const fetchCount = vi.fn();
+  vi.stubGlobal('fetch', fetchCount);
+  const client = mount();
+  expect(screen.getByText('43,638')).toBeVisible();
+  expect(fetchCount).not.toHaveBeenCalled();
+  client.clear();
 });
 
 it('shows an exact live count and refreshes it every 20 minutes', async () => {
   const fetchCount = vi
     .fn()
-    .mockResolvedValueOnce({ ok: true, json: async () => ({ count: 43_768 }) })
-    .mockResolvedValueOnce({ ok: true, json: async () => ({ count: 43_769 }) });
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ stargazers_count: 43_768 }) })
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ stargazers_count: 43_769 }) });
   vi.stubGlobal('fetch', fetchCount);
   vi.useFakeTimers();
   const client = mount();
@@ -41,7 +52,7 @@ it('shows an exact live count and refreshes it every 20 minutes', async () => {
   expect(screen.getByText('43,768')).toBeVisible();
   expect(fetchCount).toHaveBeenCalledOnce();
   expect(fetchCount.mock.calls[0][0]).toBe(
-    'https://api.github.com/repos/debpalash/VoiceStudio/stargazers/count',
+    'https://api.github.com/repos/debpalash/VoiceStudio',
   );
   expect(fetchCount.mock.calls[0][1]).toMatchObject({
     credentials: 'omit',
@@ -67,7 +78,7 @@ it('shows an exact live count and refreshes it every 20 minutes', async () => {
 it('keeps the last live count when a later request fails', async () => {
   const fetchCount = vi
     .fn()
-    .mockResolvedValueOnce({ ok: true, json: async () => ({ count: 45_001 }) })
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ stargazers_count: 45_001 }) })
     .mockRejectedValueOnce(new Error('offline'));
   vi.stubGlobal('fetch', fetchCount);
   vi.useFakeTimers();

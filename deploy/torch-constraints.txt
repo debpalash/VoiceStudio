@@ -23,8 +23,9 @@
 # install path stops passing --constraint.
 #
 # The versions carry no local segment on purpose: PEP 440 matches `==2.8.0`
-# against `2.8.0+cu128` and `2.8.0+rocm6.4` alike, so one file serves the CUDA
-# image, the ROCm image, and Colab without clobbering a vendor build.
+# against `2.8.0+cu128` and the ROCm 7.2.4 base's `2.8.0+rocm7.2.4...` build
+# alike, so one file serves the CUDA image, the ROCm image, and Colab without
+# clobbering a vendor build.
 #
 # Side effect, deliberate: torch 2.8.0 publishes no cp314 wheels, so on Python
 # 3.14 the install now FAILS with an unsatisfiable-resolution message instead

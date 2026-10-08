@@ -97,6 +97,20 @@ describe('cloneSettingsStore persistence', () => {
     expect(cloneSettingsStore.state.denoise).toBe(true);
   });
 
+  it('resets voice controls without changing audio quality or the draft', async () => {
+    const { cloneSettingsStore, patchCloneSettings, resetVoiceControls, DEFAULT_CLONE_SETTINGS } =
+      await loadModule();
+    const preserved = { text: 'Keep script', refText: 'Keep transcript', instruct: 'Keep style',
+      language: 'French', selectedProfileId: 'voice-123', showOverrides: true, autoPlay: true,
+      wavBits: 32 as const, effectPreset: 'raw' as const, steps: 64 };
+    patchCloneSettings({ ...preserved, cfg: 4, speed: 1.5, tShift: 0.9, posTemp: 1,
+      classTemp: 2, layerPenalty: 1, duration: '5', denoise: false, postprocess: false });
+    resetVoiceControls();
+    expect(cloneSettingsStore.state).toEqual({ ...DEFAULT_CLONE_SETTINGS, ...preserved });
+    await vi.advanceTimersByTimeAsync(300);
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '{}')).toEqual(cloneSettingsStore.state);
+  });
+
   it('setCloneSetting is a no-op for an unchanged value', async () => {
     const { cloneSettingsStore, setCloneSetting } = await loadModule();
     const before = cloneSettingsStore.state;

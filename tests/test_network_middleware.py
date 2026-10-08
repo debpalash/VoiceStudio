@@ -91,19 +91,19 @@ def test_cors_wraps_both_auth_gates_and_answers_credentialless_preflight(monkeyp
     monkeypatch.setenv("OMNIVOICE_API_KEY", "master-key")
     c = TestClient(_app_with_pin("654321"), client=("10.0.0.5", 1))
     cors = {
-        "Origin": "tauri://localhost",
+        "Origin": "app://voicestudio",
         "Access-Control-Request-Method": "GET",
         "Access-Control-Request-Headers": "authorization,x-omnivoice-pin",
     }
 
     preflight = c.options("/api/voices", headers=cors)
-    rejected = c.get("/api/voices", headers={"Origin": "tauri://localhost"})
+    rejected = c.get("/api/voices", headers={"Origin": "app://voicestudio"})
 
     assert preflight.status_code == 200
-    assert preflight.headers["access-control-allow-origin"] == "tauri://localhost"
+    assert preflight.headers["access-control-allow-origin"] == "app://voicestudio"
     assert "authorization" in preflight.headers["access-control-allow-headers"].lower()
     assert rejected.status_code == 401
-    assert rejected.headers["access-control-allow-origin"] == "tauri://localhost"
+    assert rejected.headers["access-control-allow-origin"] == "app://voicestudio"
 
 
 def test_middleware_is_plain_asgi_not_buffering():

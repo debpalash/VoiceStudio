@@ -21,6 +21,7 @@ epub/pdf ingest, ACX mastering shipped; the resume UI surface remains a follow-u
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -30,6 +31,7 @@ import uuid
 
 from collections.abc import Awaitable, Callable
 
+from core import voice_leases
 from core.render_trace import call as trace_call, stage as trace_stage
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
@@ -50,6 +52,7 @@ from services.longform_render import (
     build_ffmetadata,
     build_render_cmd,
     prune_cache_dir,
+    write_lf_text,
 )
 from services import longform_resume  # pure (no torch) — durable resume manifest
 
@@ -264,6 +267,7 @@ def _resolve_voice(profile_id: str | None) -> dict:
         return out
     from core.config import VOICES_DIR
     from core.db import db_conn
+    from core.path_security import contained_join
 
     with db_conn() as conn:
         row = conn.execute("SELECT * FROM voice_profiles WHERE id=?", (profile_id,)).fetchone()
@@ -274,15 +278,15 @@ def _resolve_voice(profile_id: str | None) -> dict:
     except (KeyError, IndexError):
         kind = "clone"
     if row["is_locked"] and row["locked_audio_path"]:
-        out["ref_audio"] = os.path.join(VOICES_DIR, row["locked_audio_path"])
+        out["ref_audio"] = contained_join(VOICES_DIR, row["locked_audio_path"])
         out["ref_text"] = row["ref_text"]
         out["instruct"] = row["instruct"]
     elif kind == "design":
-        out["ref_audio"] = os.path.join(VOICES_DIR, row["ref_audio_path"]) if row["ref_audio_path"] else None
+        out["ref_audio"] = contained_join(VOICES_DIR, row["ref_audio_path"])
         out["ref_text"] = row["ref_text"] if out["ref_audio"] else None
         out["instruct"] = row["instruct"]
     else:
-        out["ref_audio"] = os.path.join(VOICES_DIR, row["ref_audio_path"]) if row["ref_audio_path"] else None
+        out["ref_audio"] = contained_join(VOICES_DIR, row["ref_audio_path"])
         out["ref_text"] = row["ref_text"]
         out["instruct"] = row["instruct"]
     try:
@@ -567,6 +571,7 @@ def _build_synth(
     language: str | None = None,
     opts: ExpressiveOptions | None = None,
     voice_map: dict | None = None,
+    lease: "voice_leases.VoiceFileLease | None" = None,
 ) -> dict:
     """Describe how to synthesize for the active TTS engine.
 
@@ -583,6 +588,9 @@ def _build_synth(
 
     ``opts`` (#1208) carries the expressive/quality knobs + cache opt-out. A
     default instance reproduces today's exact synth call and caching.
+
+    ``lease`` (#2535) holds every resolved reference file for the render, so
+    the retired-voice sweep never removes a take this job still reads.
     """
     from services.tts_backend import OmniVoiceBackend, active_backend_id, get_backend_class
 
@@ -600,6 +608,7 @@ def _build_synth(
         key = token_cache[voice_id]
         if key not in cache:
             cache[key] = _resolve_voice(key)
+            voice_leases.hold(lease, cache[key].get("ref_audio"))
         return cache[key]
 
     engine_id = active_backend_id()
@@ -635,6 +644,7 @@ async def _prepare_synth(
     language: str | None = None,
     opts: ExpressiveOptions | None = None,
     voice_map: dict | None = None,
+    lease: "voice_leases.VoiceFileLease | None" = None,
 ):
     """Resolve :func:`_build_synth` into ``(synth, sample_rate, resolve,
     engine_id)`` — awaiting the VoiceStudio model load when needed. Shared by the
@@ -642,7 +652,8 @@ async def _prepare_synth(
     chunk so a non-English clone holds its language (#505 B2). ``opts`` (#1208)
     carries the expressive knobs; a default instance reproduces today exactly."""
     opts = opts or ExpressiveOptions()
-    info = _build_synth(default_voice, language=language, opts=opts, voice_map=voice_map)
+    info = _build_synth(default_voice, language=language, opts=opts, voice_map=voice_map,
+                        lease=lease)
     resolve, engine_id = info["resolve"], info["engine_id"]
     if info["mode"] == "omnivoice":
         lang = info["language"]
@@ -778,6 +789,13 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
     seg_extra_sig = f"{lex_sig}\x00{expr_sig}" if expr_sig else lex_sig
     if vmap_sig:
         seg_extra_sig = f"{seg_extra_sig}\x00{vmap_sig}"
+    # The resolved synthesis language reaches every engine call, and
+    # normalization can leave two languages' text identical, so it must key
+    # BOTH layers or a French render replays the English audio (#2524). Genuine
+    # autodetect (None) adds nothing: its keys stay byte-identical.
+    if language:
+        sig["\x00language"] = language
+        seg_extra_sig = f"{seg_extra_sig}\x00language={language}"
     marking = will_mark()
     if marking:
         # Provenance-marked chapters cache under their own key (#1169): a
@@ -810,6 +828,8 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
         "pronunciation lexicon": lex_sig, "expressive settings": expr_sig,
         "voice map": vmap_sig, "watermark": marking,
     }
+    if language:
+        inputs["language"] = language
     for k, v in resolved.items():
         label = f"voice {re.sub(r'[^A-Za-z0-9_-]', '', k)[:40] or '(default)'}"
         inputs[f"{label} reference audio"] = _portable_ref_audio(v.get("ref_audio"))
@@ -868,7 +888,7 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
 
 
 def _remote_chapter_call(chapter, *, engine_id, default_voice, voice_map,
-                         language, lexicon, opts, cache_dir):
+                         language, lexicon, opts, cache_dir, lease=None):
     """Build one opaque remote chapter task without loading a local TTS model."""
     import hashlib
 
@@ -880,6 +900,7 @@ def _remote_chapter_call(chapter, *, engine_id, default_voice, voice_map,
     for span in chapter.spans:
         profile_id = _map_span_voice(span.voice_id, default_voice, voice_map)
         voice = _resolve_voice(profile_id)
+        voice_leases.hold(lease, voice.get("ref_audio"))
         rows.append({
             "text": normalize_for_tts(span.text, language),
             "pause_ms_after": span.pause_ms_after,
@@ -944,8 +965,10 @@ def _remote_chapter_call(chapter, *, engine_id, default_voice, voice_map,
 
 
 async def _run_chapter(chapter, *, operation="audiobook", decision, job, default_voice, language, opts,
-                       voice_map, lexicon, cache_dir):
-    """Run one chapter through the gateway; local preparation stays lazy."""
+                       voice_map, lexicon, cache_dir, lease=None):
+    """Run one chapter through the gateway; local preparation stays lazy.
+
+    ``lease`` holds the reference files the chapter resolves (#2535)."""
     from services import gpu_gateway
     from services.tts_backend import active_backend_id, get_backend_class
 
@@ -953,7 +976,7 @@ async def _run_chapter(chapter, *, operation="audiobook", decision, job, default
     remote, remote_cache = _remote_chapter_call(
         chapter, engine_id=engine_id, default_voice=default_voice,
         voice_map=voice_map, language=language, lexicon=lexicon,
-        opts=opts, cache_dir=cache_dir,
+        opts=opts, cache_dir=cache_dir, lease=lease,
     )
     from services.longform_render import wav_is_complete
 
@@ -966,7 +989,8 @@ async def _run_chapter(chapter, *, operation="audiobook", decision, job, default
         from services.model_manager import generate_timeout_s
 
         synth, sr, resolve, local_engine = await _prepare_synth(
-            default_voice, language=language, opts=opts, voice_map=voice_map
+            default_voice, language=language, opts=opts, voice_map=voice_map,
+            lease=lease,
         )
         try:
             timeout_engine = get_backend_class(local_engine)
@@ -1026,11 +1050,12 @@ async def audiobook_preview(req: AudiobookPreviewRequest) -> dict:
     resolved_lang = _resolve_default_language(req.language, req.default_voice)
     opts = _expressive_opts(req)
     decision = gpu_gateway.decide("audiobook")
-    wav_path, dur, was_cached, _seg_stats = await _run_chapter(
-        chapter, decision=decision, job=None, default_voice=req.default_voice,
-        language=resolved_lang, opts=opts, voice_map=req.voice_map,
-        lexicon=req.lexicon, cache_dir=cache_dir,
-    )
+    with voice_leases.VoiceFileLease() as lease:
+        wav_path, dur, was_cached, _seg_stats = await _run_chapter(
+            chapter, decision=decision, job=None, default_voice=req.default_voice,
+            language=resolved_lang, opts=opts, voice_map=req.voice_map,
+            lexicon=req.lexicon, cache_dir=cache_dir, lease=lease,
+        )
     return {
         "output": os.path.relpath(wav_path, OUTPUTS_DIR),  # served via /audio
         "duration_s": round(dur, 2),
@@ -1056,6 +1081,7 @@ async def _render_longform_sse(
     job_id: str | None = None,
     resume: bool = False,
     is_disconnected: Callable[[], Awaitable[bool]] | None = None,
+    on_completed: Callable[[], None] | None = None,
 ):
     """Shared chapterized-render SSE generator for Audiobook *and* Stories.
 
@@ -1113,6 +1139,14 @@ async def _render_longform_sse(
     except Exception:  # resume durability is an enhancement; never block the render
         logger.debug("[%s] resume manifest write skipped", job_id, exc_info=True)
 
+    def _retire_failed(store, jid: str, reason: str) -> None:
+        """A pre-render refusal ends the job; it must not stay `running`."""
+        if store is not None:
+            try:
+                store.retire_if_active(jid, "failed", reason)
+            except Exception:
+                pass  # best-effort job history
+
     def _emit(payload: dict) -> str:
         if job_store is not None:
             try:
@@ -1122,10 +1156,12 @@ async def _render_longform_sse(
         return f"data: {json.dumps(payload)}\n\n"
 
     if not plan.chapters:
+        _retire_failed(job_store, job_id, "nothing to render (no chapters)")
         yield _emit({"type": "error", "error": "nothing to render (no chapters)"})
         return
     ffmpeg = find_ffmpeg()
     if not ffmpeg:
+        _retire_failed(job_store, job_id, "ffmpeg not available; the output needs it")
         yield _emit({"type": "error", "error": "ffmpeg not available; the output needs it"})
         return
 
@@ -1133,6 +1169,7 @@ async def _render_longform_sse(
     # the basename + realpath barrier so CodeQL sees a clean path).
     work = longform_resume.work_dir(job_type, job_id)
     if work is None:
+        _retire_failed(job_store, job_id, "invalid job id")
         yield _emit({"type": "error", "error": "invalid job id"})
         return
     os.makedirs(work, exist_ok=True)
@@ -1143,6 +1180,9 @@ async def _render_longform_sse(
     cache_dir = os.path.join(OUTPUTS_DIR, LONGFORM_CACHE_SUBDIR)
     os.makedirs(cache_dir, exist_ok=True)
     prune_cache_dir(cache_dir)  # bound disk before this job adds its chapters
+    # Every reference take this render resolves stays held until it ends, so a
+    # re-lock mid-book never lets the retired-voice sweep delete it (#2535).
+    voice_lease = voice_leases.VoiceFileLease()
     try:
         resolved_lang = _resolve_default_language(language, default_voice)
         operation = "audiobook" if job_type == "audiobook" else "longform"
@@ -1185,7 +1225,7 @@ async def _render_longform_sse(
                     chapter, operation=operation, decision=decision, job=chapter_run,
                     default_voice=default_voice, language=resolved_lang,
                     opts=opts, voice_map=voice_map, lexicon=lexicon,
-                    cache_dir=cache_dir,
+                    cache_dir=cache_dir, lease=voice_lease,
                 )
             except Exception as e:  # isolate a bad chapter — keep going
                 logger.warning("[%s] chapter %d (%s) failed to render",
@@ -1284,11 +1324,9 @@ async def _render_longform_sse(
 
         yield _emit({"type": "assembling"})
         meta_path = os.path.join(work, "chapters.ffmeta")
-        with open(meta_path, "w", encoding="utf-8") as f:
-            f.write(build_ffmetadata(chapters_meta, global_meta=metadata))
+        write_lf_text(meta_path, build_ffmetadata(chapters_meta, global_meta=metadata))
         concat_path = os.path.join(work, "concat.txt")
-        with open(concat_path, "w", encoding="utf-8") as f:
-            f.write(build_concat_list(chapter_files))
+        write_lf_text(concat_path, build_concat_list(chapter_files))
         ext = "mp3" if (fmt or "").lower() == "mp3" else "m4b"
         out_name = f"{job_type}_{job_id}.{ext}"
         out_path = os.path.join(OUTPUTS_DIR, out_name)
@@ -1323,6 +1361,12 @@ async def _render_longform_sse(
         # The render finished — drop the resume manifest so this job is no longer
         # offered for resume.
         longform_resume.clear_manifest(job_type, job_id)
+        # A partial output still needs the original plan for failed chapters.
+        if on_completed is not None and not failed:
+            try:
+                on_completed()
+            except Exception:
+                logger.debug("[%s] previous resume checkpoint cleanup skipped", job_id, exc_info=True)
         total_s = sum(d for _, d in chapters_meta) / 1000.0
         done = {"type": "done", "output": out_name,
                 "chapters": len(chapter_files), "duration_s": round(total_s, 2),
@@ -1349,6 +1393,18 @@ async def _render_longform_sse(
                 "measured_i": measured.input_i if measured else None,
             }
         yield _emit(done)
+    except (asyncio.CancelledError, GeneratorExit):
+        # The response was cancelled (transport dropped mid-render) or its
+        # iterator was closed. Neither is an `Exception`, so the handler below
+        # never saw them and the job stayed `running` for history/job consumers
+        # (#2536). Retire it as cancelled — a no-op once it is already
+        # done/failed — keep the resume manifest, and let the cancel propagate.
+        if job_store is not None:
+            try:
+                job_store.retire_if_active(job_id, "cancelled")
+            except Exception:
+                pass  # best-effort job history
+        raise
     except Exception as e:  # surface, don't 500 the stream
         logger.exception("[%s] longform render failed", job_id)
         if job_store is not None:
@@ -1358,13 +1414,19 @@ async def _render_longform_sse(
                 pass  # best-effort job history
         # Generic message only — don't leak the stack/exception text to the client.
         yield _emit({"type": "error", "error": "render failed (see backend log)"})
+    finally:
+        voice_lease.release()
 
 
 async def _public_longform_stream(plan, **render_kwargs):
     """Keep generator diagnostics local if setup fails before its own guard."""
     try:
-        async for event in _render_longform_sse(plan, **render_kwargs):
-            yield event
+        # aclosing: closing this stream must finalize the renderer now, not
+        # whenever the garbage collector gets to it, so its job is retired
+        # before the response is considered finished (#2536).
+        async with contextlib.aclosing(_render_longform_sse(plan, **render_kwargs)) as events:
+            async for event in events:
+                yield event
     except asyncio.CancelledError:
         raise
     except Exception as exc:
@@ -1513,7 +1575,7 @@ async def resume_longform(job_id: str, request: Request = None):
     """Resume an interrupted longform render from its persisted manifest. The
     already-rendered chapters are content-addressed in the shared cache, so they
     return instantly — only the unrendered chapters synthesize again. Streams the
-    same SSE event shape as the original render, under the original job_id."""
+    same SSE event shape as the original render, under a fresh job_id."""
     from services.audiobook import AudiobookPlan, Chapter, Span
 
     # Find the requested job among the trusted filesystem scan (every path there
@@ -1536,9 +1598,11 @@ async def resume_longform(job_id: str, request: Request = None):
     ]
     plan = AudiobookPlan(chapters=chapters)
     p = manifest.get("params", {})
-    # Retire the interrupted job's manifest (trusted scan path) so it stops
-    # showing as resumable once we've kicked off the fresh-id resume.
-    longform_resume.discard_manifest_file(entry["manifest_path"])
+    # The response generator is lazy and checkpoint sync is best-effort. Keep
+    # the original plan until rendering succeeds, even when a new checkpoint
+    # was published: that write cannot confirm durability on every filesystem.
+    def retire_checkpoint():
+        longform_resume.discard_manifest_file(entry["manifest_path"])
     # Resume under a FRESH job id (job_id=None → a server uuid in the renderer).
     # The chapter cache is content-addressed (keyed by chapter content, not the
     # job id), so the already-rendered chapters still hit instantly — only the
@@ -1553,6 +1617,7 @@ async def resume_longform(job_id: str, request: Request = None):
             opts=ExpressiveOptions.from_manifest(p.get("expressive")),
             voice_map=p.get("voice_map"),
             job_type=entry["job_type"],
+            on_completed=retire_checkpoint,
             is_disconnected=request.is_disconnected if request is not None else None,
         ),
         media_type="text/event-stream",

@@ -137,7 +137,7 @@ def build_longform_library(
 
     Pure over the two job-store callables so tests can pass them directly:
 
-    * ``list_jobs(status="done", limit=...)`` → all done jobs, newest-first.
+    * ``list_jobs(status="done", types=(...), limit=...)`` → done longform jobs, newest-first.
     * ``events_since(job_id)`` → that job's persisted SSE events.
 
     Returns ``[{job_id, type, title?, summary?, output, duration_s, chapters,
@@ -147,9 +147,9 @@ def build_longform_library(
     """
     limit = max(1, min(_coerce_int(limit, 50), 500))
     try:
-        # Over-fetch: non-longform done jobs (dub, etc.) get filtered out below,
-        # so ask for more rows than the caller's limit to still fill the page.
-        rows = list_jobs(status="done", limit=limit * 4)
+        # Filter types before limiting so newer dub jobs cannot hide finished
+        # books. Over-fetch still allows for missing or malformed done events.
+        rows = list_jobs(status="done", types=tuple(_LONGFORM_TYPES), limit=limit * 4)
     except Exception:
         # The route deliberately never 500s, but an unreadable job store is a
         # real failure, not an empty library — log it loudly (error + stack),

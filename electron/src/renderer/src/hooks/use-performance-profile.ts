@@ -1,7 +1,8 @@
 import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiJson } from '@/lib/api/client';
 import { useBackendStatus } from './use-backend-status';
-import { IDLE_STATUS_POLL_MS } from '@/lib/status-polling';
+import { isBackendReachable } from '@shared/utils/backendStage';
+import { IDLE_STATUS_POLL_MS, relaxWhenBackendBusy } from '@/lib/status-polling';
 
 export const performanceTiers = ['fast', 'balanced', 'quality', 'max'] as const;
 export type PerformanceTier = (typeof performanceTiers)[number];
@@ -14,6 +15,8 @@ export interface PerformanceProfileState {
   families: PerformanceFamily[];
   implemented_families: PerformanceFamily[];
   applicable_families?: PerformanceFamily[];
+  /** TTS engines whose sampling the tiers tune (backend-owned list). */
+  tts_tiered_engines?: string[];
   targets: Record<
     PerformanceFamily,
     {
@@ -69,9 +72,9 @@ export function usePerformanceProfile() {
   const saving = useIsMutating({ mutationKey: ['performance-profile'] }) > 0;
   const query = useQuery({
     queryKey: ['performance-profile'],
-    enabled: backend.stage === 'ready',
+    enabled: isBackendReachable(backend.stage),
     staleTime: 30_000,
-    refetchInterval: IDLE_STATUS_POLL_MS,
+    refetchInterval: () => relaxWhenBackendBusy(IDLE_STATUS_POLL_MS),
     queryFn: () => apiJson<PerformanceProfileState>('/api/settings/performance-profile'),
   });
   const mutation = useMutation({
@@ -93,7 +96,8 @@ export function usePerformanceProfile() {
       });
       const target = state.targets.tts;
       if (
-        ['omnivoice', 'omnivoice-isolated'].includes(state.selections.tts.engine) &&
+        // Backends before 0.5.7 don't report the list; they tier only OmniVoice.
+        (state.tts_tiered_engines ?? ['omnivoice', 'omnivoice-subprocess']).includes(state.selections.tts.engine) &&
         typeof target.steps === 'number' &&
         typeof target.postprocess === 'boolean'
       ) {

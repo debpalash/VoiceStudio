@@ -55,4 +55,18 @@ describe('loopWindow', () => {
     expect(loopEnd).toBeLessThanOrEqual(8);
     expect(loopEnd).toBeGreaterThan(loopStart);
   });
+
+  it('keeps a clicked selection at the buffer end from collapsing', () => {
+    const { loopStart, loopEnd, seg } = loopWindow(8, 8, 8);
+    expect(loopEnd).toBe(8);
+    expect(loopStart).toBeCloseTo(8 - MIN_LOOP_SEC, 6);
+    expect(seg).toBeCloseTo(MIN_LOOP_SEC, 6);
+  });
+
+  it('uses the available audio when the buffer is shorter than the minimum loop', () => {
+    const { loopStart, loopEnd, seg } = loopWindow(0.005, 0.005, 0.005);
+    expect(loopStart).toBe(0);
+    expect(loopEnd).toBe(0.005);
+    expect(seg).toBeCloseTo(0.005, 6);
+  });
 });

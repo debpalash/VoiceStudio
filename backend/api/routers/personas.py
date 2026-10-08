@@ -139,7 +139,7 @@ async def import_persona(file: UploadFile = File(...)):
     if not name.endswith(".ovsvoice") and not name.endswith(".omnivoice"):
         raise HTTPException(status_code=400, detail="File must be a .ovsvoice or .omnivoice bundle")
 
-    content = await file.read()
+    content = await file.read(pb.MAX_BUNDLE_BYTES + 1)  # parse rejects anything larger
     try:
         parsed = pb.parse_persona_bundle(content)
     except pb.BundleError as e:
@@ -306,7 +306,7 @@ async def inspect_persona(file: UploadFile = File(...)):
     name = (file.filename or "").lower()
     if not name.endswith(".ovsvoice") and not name.endswith(".omnivoice"):
         raise HTTPException(status_code=400, detail="File must be a .ovsvoice or .omnivoice bundle")
-    content = await file.read()
+    content = await file.read(pb.MAX_BUNDLE_BYTES + 1)  # parse rejects anything larger
     try:
         parsed = pb.parse_persona_bundle(content)
     except pb.BundleError as e:

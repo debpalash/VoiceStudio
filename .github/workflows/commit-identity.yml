@@ -1,0 +1,43 @@
+# Commit identity gate — fails a PR when any of its commits carries a blocked
+# author/committer/trailer identity (hashed personal emails, placeholder and
+# hostname-style tool identities, AI agents) or when a commit message or the
+# PR description carries AI agent attribution. The blocked emails are stored only as
+# SHA-256 digests in scripts/blocked_identity_hashes.txt; the job output names
+# the commit and the kind of match, never the address.
+#
+# Only commits new to the PR are checked. The native job detects API and
+# execution failures; the separate required Commit identity policy status
+# carries eligibility, which an unprivileged fork workflow cannot overwrite.
+
+name: commit-identity
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: commit-identity-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  identities:
+    name: Commit identities
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check PR commit identities
+        # The event's base checkout owns all executable policy. PR commits are
+        # fetched only as git objects; their files and workflows never run.
+        run: python3 .github/scripts/identity_check.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

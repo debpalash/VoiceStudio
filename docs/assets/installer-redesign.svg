@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1110" viewBox="0 0 1600 1110" role="img" aria-labelledby="title desc">
+<title id="title">Proposed VoiceStudio installation experience</title>
+<desc id="desc">Three illustrative screens: review a target-bound installation plan, follow persistent download progress, and recover from a failure while retaining completed downloads. This is a design mockup, not a screenshot of implemented software. All storage numbers are illustrative.</desc>
+<rect width="1600" height="1110" fill="#101b21"/>
+<style>text{font-family:Inter,Arial,sans-serif} .muted{fill:#52646b}</style>
+<text x="40" y="58" font-size="34" fill="#ecf6ef" font-weight="700">A first run that makes sense</text>
+<text x="40" y="91" font-size="18" fill="#9eb6bb" font-weight="400">VoiceStudio installer redesign · proposed layouts · illustrative data, not an implemented screen</text>
+<text x="40" y="143" font-size="24" fill="#eff8f5" font-weight="600">1  Review the plan</text>
+<rect x="40" y="165" width="470" height="755" rx="20" fill="#f5f8f4"/>
+<rect x="40" y="165" width="470" height="64" rx="20" fill="#e6efea"/>
+<rect x="40" y="205" width="470" height="24" rx="0" fill="#e6efea"/>
+<text x="62" y="204" font-size="20" fill="#183e3b" font-weight="700">VoiceStudio</text>
+<text x="350" y="204" font-size="14" fill="#395b5c" font-weight="400">Help  ·  English</text>
+<text x="565" y="143" font-size="24" fill="#eff8f5" font-weight="600">2  See real progress</text>
+<rect x="565" y="165" width="470" height="755" rx="20" fill="#f5f8f4"/>
+<rect x="565" y="165" width="470" height="64" rx="20" fill="#e6efea"/>
+<rect x="565" y="205" width="470" height="24" rx="0" fill="#e6efea"/>
+<text x="587" y="204" font-size="20" fill="#183e3b" font-weight="700">VoiceStudio</text>
+<text x="875" y="204" font-size="14" fill="#395b5c" font-weight="400">Help  ·  English</text>
+<text x="1090" y="143" font-size="24" fill="#eff8f5" font-weight="600">3  Recover in place</text>
+<rect x="1090" y="165" width="470" height="755" rx="20" fill="#f5f8f4"/>
+<rect x="1090" y="165" width="470" height="64" rx="20" fill="#e6efea"/>
+<rect x="1090" y="205" width="470" height="24" rx="0" fill="#e6efea"/>
+<text x="1112" y="204" font-size="20" fill="#183e3b" font-weight="700">VoiceStudio</text>
+<text x="1400" y="204" font-size="14" fill="#395b5c" font-weight="400">Help  ·  English</text>
+<text x="64" y="266" font-size="27" fill="#152d35" font-weight="700">Your first voice</text>
+<text x="64" y="295" font-size="18" fill="#152d35" font-weight="400">Goal: clone a voice</text>
+<rect x="64" y="315" width="422" height="66" rx="10" fill="#e7efea"/>
+<text x="80" y="341" font-size="13" fill="#345d58" font-weight="700">THIS COMPUTER  ·  LINUX x64</text>
+<text x="80" y="365" font-size="15" fill="#152d35" font-weight="400">CPU runtime · compatible voice-cloning model</text>
+<text x="64" y="414" font-size="19" fill="#152d35" font-weight="700">Selected components</text>
+<text x="64" y="449" font-size="18" fill="#152d35" font-weight="400">Local runtime</text>
+<text x="370" y="449" font-size="15" fill="#08685b" font-weight="600">Verified</text>
+<text x="64" y="483" font-size="18" fill="#152d35" font-weight="400">Voice-cloning model</text>
+<text x="358" y="483" font-size="16" fill="#152d35" font-weight="400">3.0 GiB*</text>
+<text x="64" y="516" font-size="18" fill="#152d35" font-weight="400">Speech recognition</text>
+<text x="344" y="516" font-size="14" fill="#52646b" font-weight="400">Not selected</text>
+<rect x="64" y="540" width="422" height="1" rx="0" fill="#d8e1df"/>
+<text x="64" y="576" font-size="25" fill="#152d35" font-weight="700">3.0 GiB to download*</text>
+<text x="64" y="607" font-size="16" fill="#52646b" font-weight="400">0.8 GiB verified and reusable*</text>
+<text x="64" y="634" font-size="16" fill="#52646b" font-weight="400">4.2 GiB peak + 10 GiB reserve = 14.2 GiB*</text>
+<text x="64" y="661" font-size="16" fill="#52646b" font-weight="400">18.0 GiB free on that drive*</text>
+<rect x="64" y="684" width="422" height="68" rx="10" fill="#fff" stroke="#d8e1df"/>
+<text x="78" y="711" font-size="15" fill="#152d35" font-weight="400">Models: /media/ssd/VoiceStudio</text>
+<text x="78" y="736" font-size="14" fill="#08685b" font-weight="400">Change location   ·   View files and licenses</text>
+<text x="64" y="782" font-size="15" fill="#52646b" font-weight="400">Only these selected components will install</text>
+<rect x="64" y="806" width="422" height="44" rx="10" fill="#0c695f"/>
+<text x="80" y="834" font-size="16" fill="#fff" font-weight="600">Install selected components</text>
+<text x="64" y="885" font-size="13" fill="#52646b" font-weight="400">*Illustrative totals. Actual plan resolves file bytes.</text>
+<text x="589" y="266" font-size="27" fill="#152d35" font-weight="700">Installing your tools</text>
+<text x="589" y="295" font-size="17" fill="#52646b" font-weight="400">This computer · Plan 1042</text>
+<text x="589" y="337" font-size="24" fill="#152d35" font-weight="700">2.1 / 3.0 GiB downloaded*</text>
+<rect x="589" y="357" width="422" height="10" rx="5" fill="#d6e3dd"/>
+<rect x="589" y="357" width="295" height="10" rx="5" fill="#0c695f"/>
+<text x="589" y="395" font-size="16" fill="#52646b" font-weight="400">70%  ·  12 MiB/s  ·  about 80 seconds*</text>
+<rect x="589" y="418" width="422" height="72" rx="12" fill="#e7efea"/>
+<text x="605" y="452" font-size="21" fill="#0c695f" font-weight="700">1</text>
+<text x="643" y="447" font-size="18" fill="#152d35" font-weight="600">Prepare runtime</text>
+<text x="643" y="472" font-size="15" fill="#52646b" font-weight="400">Verified · kept after restart</text>
+<rect x="589" y="505" width="422" height="72" rx="12" fill="#e2efeb"/>
+<text x="605" y="539" font-size="21" fill="#0c695f" font-weight="700">2</text>
+<text x="643" y="534" font-size="18" fill="#152d35" font-weight="600">Download model</text>
+<text x="643" y="559" font-size="15" fill="#52646b" font-weight="400">2.1 GiB retained · verification pending*</text>
+<rect x="589" y="592" width="422" height="72" rx="12" fill="#edf0eb"/>
+<text x="605" y="626" font-size="21" fill="#0c695f" font-weight="700">3</text>
+<text x="643" y="621" font-size="18" fill="#152d35" font-weight="600">Verify files</text>
+<text x="643" y="646" font-size="15" fill="#52646b" font-weight="400">Checks every selected artifact</text>
+<rect x="589" y="679" width="422" height="72" rx="12" fill="#edf0eb"/>
+<text x="605" y="713" font-size="21" fill="#0c695f" font-weight="700">4</text>
+<text x="643" y="708" font-size="18" fill="#152d35" font-weight="600">Try a voice</text>
+<text x="643" y="733" font-size="15" fill="#52646b" font-weight="400">Generate a short local test</text>
+<rect x="589" y="806" width="203" height="44" rx="10" fill="#ffffff" stroke="#d5dfdf"/>
+<text x="605" y="834" font-size="16" fill="#24464b" font-weight="600">Cancel</text>
+<rect x="808" y="806" width="203" height="44" rx="10" fill="#ffffff" stroke="#d5dfdf"/>
+<text x="824" y="834" font-size="16" fill="#24464b" font-weight="600">View details</text>
+<text x="589" y="885" font-size="14" fill="#52646b" font-weight="400">Completed work stays visible and counted</text>
+<text x="1114" y="266" font-size="25" fill="#152d35" font-weight="700">Connection interrupted</text>
+<text x="1114" y="295" font-size="17" fill="#52646b" font-weight="400">This computer · Plan 1042</text>
+<rect x="1114" y="318" width="422" height="114" rx="12" fill="#fff0d7"/>
+<text x="1130" y="351" font-size="21" fill="#694309" font-weight="600">Your downloads are saved</text>
+<text x="1130" y="382" font-size="16" fill="#694309" font-weight="400">The model transfer stopped. Retry continues</text>
+<text x="1130" y="407" font-size="16" fill="#694309" font-weight="400">from compatible partial data on this drive.</text>
+<text x="1114" y="476" font-size="18" fill="#152d35" font-weight="600">Local runtime</text>
+<text x="1422" y="476" font-size="15" fill="#08685b" font-weight="600">Verified</text>
+<text x="1114" y="510" font-size="18" fill="#152d35" font-weight="600">Voice-cloning model</text>
+<text x="1114" y="537" font-size="16" fill="#916213" font-weight="400">Interrupted · 2.1 GiB retained*</text>
+<rect x="1114" y="563" width="422" height="1" rx="0" fill="#d8e1df"/>
+<text x="1114" y="603" font-size="22" fill="#152d35" font-weight="700">No need to start again</text>
+<text x="1114" y="636" font-size="16" fill="#52646b" font-weight="400">Keep the same model, target and location.</text>
+<text x="1114" y="663" font-size="16" fill="#52646b" font-weight="400">Check network settings if retries fail.</text>
+<text x="1114" y="690" font-size="16" fill="#52646b" font-weight="400">Your voices and projects are untouched.</text>
+<text x="1114" y="751" font-size="15" fill="#08685b" font-weight="400">Network settings  ·  View local diagnostics</text>
+<rect x="1114" y="806" width="251" height="44" rx="10" fill="#0c695f"/>
+<text x="1130" y="834" font-size="16" fill="#fff" font-weight="600">Retry interrupted transfer</text>
+<rect x="1381" y="806" width="155" height="44" rx="10" fill="#ffffff" stroke="#d5dfdf"/>
+<text x="1397" y="834" font-size="16" fill="#24464b" font-weight="600">Finish later</text>
+<text x="1114" y="885" font-size="14" fill="#52646b" font-weight="400">Recovery never requires Advanced mode</text>
+<text x="40" y="967" font-size="25" fill="#ecf6ef" font-weight="600">One contract. Existing executors. Honest evidence.</text>
+<rect x="40" y="987" width="470" height="85" rx="13" fill="#1b2e35"/>
+<text x="60" y="1018" font-size="14" fill="#a8d7c7" font-weight="700">NATIVE BOOTSTRAP</text>
+<text x="60" y="1047" font-size="16" fill="#d7e8e7" font-weight="400">Runs before Python · owns runtime journal</text>
+<rect x="565" y="987" width="470" height="85" rx="13" fill="#1b2e35"/>
+<text x="585" y="1018" font-size="14" fill="#a8d7c7" font-weight="700">PYTHON COORDINATOR</text>
+<text x="585" y="1047" font-size="16" fill="#d7e8e7" font-weight="400">Owns models / sidecars · selected target</text>
+<rect x="1090" y="987" width="470" height="85" rx="13" fill="#1b2e35"/>
+<text x="1110" y="1018" font-size="14" fill="#a8d7c7" font-weight="700">SHARED VIEW</text>
+<text x="1110" y="1047" font-size="16" fill="#d7e8e7" font-weight="400">Approved plan · inventory · operation state</text>
+</svg>

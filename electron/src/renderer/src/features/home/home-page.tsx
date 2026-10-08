@@ -18,7 +18,12 @@ import type { DubProject } from '@/features/projects/project-format';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { apiJson } from '@/lib/api/client';
-import { readDraft, restoreDesignProfile, writeDraft } from '@/features/design/design-draft';
+import {
+  readDraft,
+  replaceRecipe,
+  restoreDesignProfile,
+  writeDraft,
+} from '@/features/design/design-draft';
 import {
   ArrowRightIcon,
   AudioLinesIcon,
@@ -164,12 +169,13 @@ export function HomePage() {
     if (profile.kind === 'design') {
       const current = readDraft();
       const restored = restoreDesignProfile(profile, current.seed);
-      writeDraft({
-        ...current,
-        attrs: restored.attrs,
-        seed: restored.seed,
-        profileId: restored.profileId,
-      });
+      writeDraft(
+        replaceRecipe(current, {
+          attrs: restored.attrs,
+          seed: restored.seed,
+          profileId: restored.profileId,
+        }),
+      );
       patchCloneSettings({ language: restored.language });
       await navigate({ to: '/design' });
       return;
@@ -200,42 +206,44 @@ export function HomePage() {
                 className="pointer-events-none absolute inset-y-0 right-0 -z-10 h-full w-1/2 object-cover object-right opacity-25 [mask-image:linear-gradient(90deg,transparent,black)]"
               />
               <div className="home-heading-row">
-                <h2
-                  id="home-new-projects"
-                  className="flex flex-wrap items-center gap-x-3 gap-y-2 text-3xl font-semibold tracking-[-0.035em]"
-                >
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <a
-                          href="https://voicestudio.sh"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="rounded-md transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-ring"
-                          onClick={(event) => {
-                            const browser = getBridge()?.browser;
-                            if (!browser) return;
-                            event.preventDefault();
-                            event.currentTarget.focus();
-                            runRendererTask('Preview official website', () =>
-                              browser.open('https://voicestudio.sh'),
-                            );
-                          }}
-                        />
-                      }
-                    >
-                      {t('homeUi.title')}
-                    </TooltipTrigger>
-                    <TooltipContent surface="theme" side="bottom">
-                      {t('siteBrowser.preview')}
-                    </TooltipContent>
-                  </Tooltip>
-                </h2>
+                <div className="home-heading-copy">
+                  <h2
+                    id="home-new-projects"
+                    className="flex flex-wrap items-center gap-x-3 gap-y-2 text-3xl font-semibold tracking-[-0.035em]"
+                  >
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <a
+                            href="https://voicestudio.sh"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="rounded-md transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-ring"
+                            onClick={(event) => {
+                              const browser = getBridge()?.browser;
+                              if (!browser) return;
+                              event.preventDefault();
+                              event.currentTarget.focus();
+                              runRendererTask('Preview official website', () =>
+                                browser.open('https://voicestudio.sh'),
+                              );
+                            }}
+                          />
+                        }
+                      >
+                        {t('homeUi.title')}
+                      </TooltipTrigger>
+                      <TooltipContent surface="theme" side="bottom">
+                        {t('siteBrowser.preview')}
+                      </TooltipContent>
+                    </Tooltip>
+                  </h2>
+                  <p className="mt-3 max-w-[80ch] text-sm leading-relaxed text-foreground/65">
+                    {t('homeUi.subtitle')}
+                  </p>
+                </div>
                 <HomeContributors />
               </div>
-              <p className="mt-3 max-w-[80ch] text-sm leading-relaxed text-foreground/65">
-                {t('homeUi.subtitle')}
-              </p>
             </div>
             {[destinations.slice(0, 3), destinations.slice(3)].map((group, groupIndex) => (
               <div

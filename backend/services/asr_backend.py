@@ -24,6 +24,7 @@ faster-whisper because it's available on every platform we ship to).
 from __future__ import annotations
 
 import asyncio
+import inspect
 import ipaddress
 import logging
 import os
@@ -332,28 +333,28 @@ def _decode_audio_16k_mono(audio_path: str):
 
     import numpy as np
 
-    from services.ffmpeg_utils import find_ffmpeg
+    from services.ffmpeg_utils import MediaToolUnavailableError, find_ffmpeg, local_inputs_only
 
     ffmpeg = find_ffmpeg()
     if not ffmpeg:
-        raise RuntimeError(
+        raise MediaToolUnavailableError(
             "Cannot transcribe: ffmpeg is missing or not runnable. Install "
             "ffmpeg (or let VoiceStudio's bundled binary download), then retry. "
             "On Windows a '[WinError 193]' here means the ffmpeg binary is "
             "corrupt or the wrong architecture — reinstall it or clear the "
             "imageio-ffmpeg cache."
         )
-    cmd = [
+    cmd = local_inputs_only([
         ffmpeg, "-nostdin", "-threads", "0", "-i", audio_path,
         "-f", "s16le", "-ac", "1", "-acodec", "pcm_s16le", "-ar", "16000", "-",
-    ]
+    ], tool="ffmpeg")
     try:
         out = subprocess.run(cmd, capture_output=True, check=True).stdout
     except OSError as e:
         # Belt-and-suspenders: find_ffmpeg() already -version-validated this
         # binary, so a WinError 193 here is unexpected — surface it clearly
         # rather than letting it become "no segments".
-        raise RuntimeError(
+        raise MediaToolUnavailableError(
             f"ffmpeg at {ffmpeg!r} could not be executed ({e}). Reinstall "
             "ffmpeg or clear the imageio-ffmpeg cache."
         ) from e
@@ -373,10 +374,25 @@ def _decode_audio_16k_mono(audio_path: str):
 
 #: Per-request decode options a backend may accept as keyword arguments on
 #: ``transcribe()``. Callers exposing OpenAI's transcription parameters
-#: (``/v1/audio/transcriptions`` and ``/translations``) pass only the ones a
-#: backend's signature declares, so an engine that cannot honour one is never
+#: (``/v1/audio/transcriptions`` and ``/translations``) and the dictation
+#: vocabulary prompt pass only the ones a backend's signature declares (see
+#: ``transcribe_request_kwargs``), so an engine that cannot honour one is never
 #: handed it and never fails on an unexpected keyword.
 TRANSCRIBE_REQUEST_OPTIONS = ("language", "initial_prompt", "temperature", "task")
+
+
+def transcribe_request_kwargs(backend, options: dict) -> dict:
+    """The subset of per-request decode ``options`` this backend's
+    ``transcribe()`` declares. An engine that can't honour one (e.g. a
+    CTC model has no prompt) is simply not handed it."""
+    try:
+        params = inspect.signature(backend.transcribe).parameters
+    except (TypeError, ValueError):
+        return {}
+    return {
+        k: v for k, v in options.items()
+        if k in TRANSCRIBE_REQUEST_OPTIONS and k in params and v is not None
+    }
 
 
 def whisper_request_options(language, initial_prompt, temperature, task) -> dict:
@@ -561,8 +577,9 @@ def load_align_model(language_code: str, device: str):
     """Lazy-load (and cache) the wav2vec2 aligner for a language.
 
     Returns ``(model, metadata)``, or ``None`` when no aligner exists for the
-    language — WhisperX bundles them for ~20 major languages only, and the
-    caller then keeps Whisper's own (looser) word timestamps."""
+    language — WhisperX bundles them for ~20 major languages only — or it
+    cannot be loaded on ``device``. The caller then keeps Whisper's own
+    (looser) word timestamps, after trying any fallback device."""
     key = (language_code, device)
     if key in _ALIGN_CACHE:
         return _ALIGN_CACHE[key]
@@ -575,9 +592,9 @@ def load_align_model(language_code: str, device: str):
         _ALIGN_CACHE[key] = (model, metadata)
     except Exception as e:  # noqa: BLE001 — missing aligner is normal, not fatal
         logger.info(
-            "no wav2vec2 aligner for language=%r (%s); "
+            "no wav2vec2 aligner for language=%r on %s (%s); "
             "falling back to Whisper's native word timestamps",
-            language_code, e,
+            language_code, device, e,
         )
         _ALIGN_CACHE[key] = None
     return _ALIGN_CACHE[key]
@@ -608,9 +625,18 @@ def forced_align(segments: list, audio, language_code: str, device: str | None =
         devices = ["cpu"]
 
     for i, dev in enumerate(devices):
+        last = i == len(devices) - 1
         align = load_align_model(language_code, dev)
         if align is None:
-            return segments  # no aligner for this language — not a device problem
+            # ``None`` means the aligner could not be loaded on THIS device: an
+            # unsupported language, but just as well an MPS load failure. Only
+            # the always-works device can tell the two apart, so a failed load
+            # on the fast device falls through to it like a failed align does
+            # (#2570). An unsupported language fails fast on every device.
+            if last:
+                return segments
+            logger.info("aligner load failed on %s — retrying on %s", dev, devices[i + 1])
+            continue
         model_a, metadata = align
         try:
             import whisperx
@@ -620,7 +646,6 @@ def forced_align(segments: list, audio, language_code: str, device: str | None =
             )
             return result.get("segments", segments)
         except Exception as e:  # noqa: BLE001
-            last = i == len(devices) - 1
             if last:
                 logger.warning(
                     "forced alignment failed on %s: %s — using native word timestamps", dev, e,
@@ -796,7 +821,7 @@ class WhisperXBackend(ASRBackend):
         self._allow_vad_pickle_globals()
         try:
             self._asr = whisperx.load_model(
-                self._model_name,
+                _local_model_source(self._model_name),
                 device=self._device,
                 compute_type=self._compute_type,
                 # vad_method="silero" is the default; keep it so short gaps
@@ -824,7 +849,7 @@ class WhisperXBackend(ASRBackend):
                     self._compute_type = ct
                     try:
                         self._asr = whisperx.load_model(
-                            self._model_name,
+                            _local_model_source(self._model_name),
                             device=self._device,
                             compute_type=self._compute_type,
                         )
@@ -855,7 +880,7 @@ class WhisperXBackend(ASRBackend):
                     pass
                 self._device, self._compute_type = "cpu", "int8"
                 self._asr = whisperx.load_model(
-                    self._model_name,
+                    _local_model_source(self._model_name),
                     device=self._device,
                     compute_type=self._compute_type,
                 )
@@ -1157,7 +1182,7 @@ class FasterWhisperBackend(ASRBackend):
             for ct in candidates:
                 try:
                     self._model = WhisperModel(
-                        self._model_name, device=device, compute_type=ct
+                        _local_model_source(self._model_name), device=device, compute_type=ct
                     )
                     self._device, self._compute_type = device, ct
                     return
@@ -1340,7 +1365,7 @@ class MLXWhisperBackend(ASRBackend):
         audio = _decode_audio_16k_mono(audio_path)
         result = mlx_whisper.transcribe(
             audio,
-            path_or_hf_repo=self._model_name,
+            path_or_hf_repo=_local_model_source(self._model_name),
             word_timestamps=word_timestamps,
             **whisper_request_options(language, initial_prompt, temperature, task),
         )
@@ -1373,6 +1398,8 @@ class MLXWhisperBackend(ASRBackend):
         mlx_whisper internally caches via a class-level ModelHolder singleton.
         Calling ``load_model`` triggers the download (if needed) and loads
         weights onto the GPU — subsequent transcribe() calls hit the warm cache.
+        It must warm the same source ``transcribe`` passes: the singleton is
+        keyed by that string, and a repo id asks the Hub for ``main`` (#2583).
         """
         import time
         t0 = time.perf_counter()
@@ -1381,7 +1408,7 @@ class MLXWhisperBackend(ASRBackend):
             import mlx.core as mx
             # load_model populates the class-level singleton; after this call
             # the model is resident in unified memory.
-            ModelHolder.get_model(self._model_name, dtype=mx.float16)
+            ModelHolder.get_model(_local_model_source(self._model_name), dtype=mx.float16)
             dt = time.perf_counter() - t0
             logger.info("MLX Whisper model '%s' warmed up in %.1fs", self._model_name, dt)
         except Exception as e:
@@ -1537,7 +1564,7 @@ class PyTorchWhisperBackend(ASRBackend):
         try:
             self._pipe = hf_pipeline(
                 "automatic-speech-recognition",
-                model=model_name,
+                model=_local_model_source(model_name),
                 dtype=asr_dtype,
                 # `device_map="cpu"` only controls weight placement; the
                 # pipeline can still choose CUDA as its execution device.
@@ -1840,7 +1867,7 @@ class ParakeetMLXBackend(ASRBackend):
             return
         import parakeet_mlx
         logger.info("parakeet-mlx loading %s", self._model_name)
-        self._model = parakeet_mlx.from_pretrained(self._model_name)
+        self._model = parakeet_mlx.from_pretrained(_local_model_source(self._model_name))
 
     def ensure_loaded(self) -> None:
         self._ensure_model()
@@ -3775,6 +3802,29 @@ def _fw_repo(name: str) -> str | None:
     """HF repo for a faster-whisper/WhisperX model name (alias or repo id)."""
     name = (name or "").strip()
     return name if "/" in name else _FW_ALIAS_REPOS.get(name.lower())
+
+
+def _local_model_source(name: str) -> str:
+    """What an ASR backend should hand its loader: the installed snapshot
+    directory when ``name`` (repo id or faster-whisper alias) is installed,
+    otherwise ``name`` unchanged.
+
+    Loading by repo id asks the Hub for ``main`` first — an untimed request
+    that stalls on a packet-dropping network and cannot resolve a pinned
+    install offline — so profile saves and every other transcription hung or
+    failed without internet even though the weights were on disk (#2583).
+    A not-installed or custom name keeps its previous by-name behaviour.
+    """
+    if not name or os.path.isdir(name):
+        return name
+    repo = _fw_repo(name)
+    if repo is None:
+        return name
+    try:
+        from api.routers.setup.models import installed_snapshot_path
+        return installed_snapshot_path(repo) or name
+    except Exception:  # noqa: BLE001 — never block a load on the lookup
+        return name
 
 
 def _offline_asr_repo(backend_id: str | None = None) -> str | None:

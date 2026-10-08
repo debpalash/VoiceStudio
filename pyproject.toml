@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnivoice"
-version = "0.5.6"
+version = "0.5.7"
 description = "VoiceStudio — a private, local-first studio for voice cloning, speech generation, dubbing, transcription, and audiobooks"
 readme = "README.md"
 # Free and open-source under the GNU Affero General Public License v3 (see
 # LICENSE). A commercial license is available for proprietary/closed-source use
-# without AGPL obligations — contact OmniVoice@palash.dev. The bundled omnivoice/
+# without AGPL obligations — contact hi@voicestudio.sh. The bundled omnivoice/
 # TTS model by Han Zhu remains Apache-2.0 upstream (Apache-2.0 is AGPL-compatible).
 license = "AGPL-3.0-only"
 requires-python = ">=3.11"
@@ -59,7 +59,6 @@ dependencies = [
     # with TypeError. whisperx tests against pyannote 3.3.2+, so we track
     # that range and revisit when whisperx releases a 4-compatible build.
     "pyannote-audio>=3.3.2,<4.0",
-    "pyinstaller>=6.19.0",
     "imageio-ffmpeg>=0.6.0",
     # Directly used by video_context; 12.1 adds get_flattened_data(), the
     # replacement for getdata() ahead of its Pillow 14 removal.
@@ -148,7 +147,7 @@ dependencies = [
     # deps → identical behaviour on macOS/Windows/Linux (default-parity rule).
     # EPUB + plaintext stay stdlib-only; only PDF needs a real parser, and
     # pypdf is the lightest one that ships no C extensions.
-    "pypdf>=4.0",
+    "pypdf>=6.19.0",
     # LLM client for Cinematic dub refinement, glossary auto-extract, and
     # LLM-based translation (services.llm_backend / translator / dub_translate
     # all `from openai import OpenAI`). Talks to any OpenAI-compatible endpoint —
@@ -179,9 +178,7 @@ dependencies = [
     # model load/download 500'd for SOCKS-proxy users ("Using SOCKS proxy, but
     # the 'socksio' package is not installed"). Same failure shape for the
     # OpenAI SDK's client. Pure-Python, MIT, zero transitive deps, ~13 KB —
-    # identical on macOS/Windows/Linux. Also in backend.spec hiddenimports:
-    # httpx imports it lazily inside try/except, so PyInstaller's tracer
-    # misses it and frozen installers would stay broken without the entry.
+    # identical on macOS/Windows/Linux.
     "socksio>=1.0",
     # OS trust store for TLS (#976). Users behind a corporate/antivirus proxy
     # that TLS-inspects traffic get a raw "[SSL: SSLV3_ALERT_HANDSHAKE_FAILURE]"
@@ -204,13 +201,11 @@ dependencies = [
     "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
     # Remote GPU workers (backend/worker/). A core dependency rather than an
     # extra even though the feature is opt-in: an installer user who enables a
-    # remote worker in Settings cannot run `uv pip install` inside a frozen
-    # app bundle, so shipping the transport separately would make the feature
+    # remote worker in Settings cannot run `uv pip install` inside the
+    # installed app, so shipping the transport separately would make the feature
     # source-installs-only — a platform/packaging split the parity rule does
     # not allow. Ships prebuilt wheels for every target we build (cp311
-    # macOS arm64/x86_64, Windows x64, manylinux) and PyInstaller has a
-    # first-party hook, so the frozen build needs no spec changes beyond the
-    # protobuf runtime already present transitively.
+    # macOS arm64/x86_64, Windows x64, manylinux).
     "grpcio>=1.60",
     "protobuf>=5.29.6",
     # Security floors for pyannote-audio's checkpoint loader (GHSA-qqmf-gpg7-g8gw).
@@ -278,18 +273,29 @@ Documentation = "https://github.com/debpalash/VoiceStudio/tree/main/docs"
 "Upstream TTS Model" = "https://github.com/k2-fsa/OmniVoice"
 
 [tool.uv.sources]
-# Install PyTorch with CUDA support on Linux/Windows (CUDA doesn't exist for Mac).
-# NOTE: We must explicitly request them as `dependencies` above. These improved
-# versions will not be selected if they're only third-party dependencies.
+# Keep both compute variants in the lockfile. Source and packaged setup select
+# CPU when no NVIDIA driver is detected; plain `uv sync` preserves the CUDA default.
+# macOS keeps the PyPI build (including MPS) regardless of the selected group.
 torch = [
-  { index = "pytorch-cuda", marker = "platform_machine != 'aarch64' and platform_machine != 'arm64' and (sys_platform == 'linux' or sys_platform == 'win32')" },
+  { index = "pypi", marker = "(sys_platform != 'linux' and sys_platform != 'win32') or ((platform_machine == 'aarch64' or platform_machine == 'arm64') and sys_platform == 'linux')" },
+  { index = "pytorch-cuda", group = "cuda", marker = "platform_machine != 'aarch64' and platform_machine != 'arm64' and (sys_platform == 'linux' or sys_platform == 'win32')" },
+  { index = "pytorch-cpu", group = "cpu", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and sys_platform == 'linux') or sys_platform == 'win32'" },
 ]
 torchaudio = [
-  { index = "pytorch-cuda", marker = "platform_machine != 'aarch64' and platform_machine != 'arm64' and (sys_platform == 'linux' or sys_platform == 'win32')" },
+  { index = "pypi", marker = "(sys_platform != 'linux' and sys_platform != 'win32') or ((platform_machine == 'aarch64' or platform_machine == 'arm64') and sys_platform == 'linux')" },
+  { index = "pytorch-cuda", group = "cuda", marker = "platform_machine != 'aarch64' and platform_machine != 'arm64' and (sys_platform == 'linux' or sys_platform == 'win32')" },
+  { index = "pytorch-cpu", group = "cpu", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and sys_platform == 'linux') or sys_platform == 'win32'" },
 ]
 torchvision = [
-  { index = "pytorch-cuda", marker = "platform_machine != 'aarch64' and platform_machine != 'arm64' and (sys_platform == 'linux' or sys_platform == 'win32')" },
+  { index = "pypi", marker = "(sys_platform != 'linux' and sys_platform != 'win32') or ((platform_machine == 'aarch64' or platform_machine == 'arm64') and sys_platform == 'linux')" },
+  { index = "pytorch-cuda", group = "cuda", marker = "platform_machine != 'aarch64' and platform_machine != 'arm64' and (sys_platform == 'linux' or sys_platform == 'win32')" },
+  { index = "pytorch-cpu", group = "cpu", marker = "(platform_machine != 'aarch64' and platform_machine != 'arm64' and sys_platform == 'linux') or sys_platform == 'win32'" },
 ]
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+default = true
 
 [[tool.uv.index]]
 name = "pytorch-cuda"
@@ -299,7 +305,14 @@ url = "https://download.pytorch.org/whl/cu128"
 # Only use this index when explicitly requested by `tool.uv.sources`.
 explicit = true
 
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
 [tool.uv]
+default-groups = ["dev", "cuda"]
+conflicts = [[{ group = "cpu" }, { group = "cuda" }]]
 constraint-dependencies = [
     "mako>=1.3.12",
     "msgpack>=1.2.1",
@@ -325,6 +338,17 @@ include = ["omnivoice"]
 packages = ["omnivoice"]
 
 [dependency-groups]
+# The matched stack must move together to avoid native extension ABI mismatches.
+cpu = [
+    "torch>=2.4 ; sys_platform == 'linux' or sys_platform == 'win32'",
+    "torchaudio>=2.4 ; sys_platform == 'linux' or sys_platform == 'win32'",
+    "torchvision>=0.19 ; sys_platform == 'linux' or sys_platform == 'win32'",
+]
+cuda = [
+    "torch>=2.4 ; platform_machine != 'aarch64' and platform_machine != 'arm64' and (sys_platform == 'linux' or sys_platform == 'win32')",
+    "torchaudio>=2.4 ; platform_machine != 'aarch64' and platform_machine != 'arm64' and (sys_platform == 'linux' or sys_platform == 'win32')",
+    "torchvision>=0.19 ; platform_machine != 'aarch64' and platform_machine != 'arm64' and (sys_platform == 'linux' or sys_platform == 'win32')",
+]
 dev = [
     "httpx>=0.28.1",
     "pytest>=9.0.3",

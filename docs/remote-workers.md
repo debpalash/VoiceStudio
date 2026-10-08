@@ -269,7 +269,10 @@ what is genuinely still in flight.
 **Version or feature mismatch.** Release numbers alone do not prove that a
 worker understands every additive command. Registration negotiates an explicit
 protocol range and declares named features for task inputs, progress leases,
-remote model downloads, and the voice-identity render pipeline. Durable
+remote model downloads, the voice-identity render pipeline, and signing a
+single-use registration challenge issued by the app (so a recorded
+registration cannot be replayed). An updated worker still connects to an older
+app; an older worker connecting to an updated app is asked to update. Durable
 enrollment changed the handshake from protocol v1 to v2, so that boundary is
 intentionally incompatible in either direction. A worker outside the supported
 protocol range, or one missing a required feature, is refused with

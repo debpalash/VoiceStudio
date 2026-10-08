@@ -49,6 +49,16 @@ Dotty.
     assert result.segments[0]["end"] == 3.25
 
 
+@pytest.mark.parametrize("separator", [",", "."])
+def test_short_millisecond_fields_are_milliseconds(separator):
+    # Leniently accepted 1- and 2-digit fields are millisecond counts,
+    # not decimal fractions of a second.
+    subtitle = f"1\n00:00:01{separator}5 --> 00:00:02{separator}50\nHello\n"
+    segment = parse_srt(subtitle).segments[0]
+    assert segment["start"] == pytest.approx(1.005)
+    assert segment["end"] == pytest.approx(2.050)
+
+
 def test_handles_utf8_bom_at_start_of_file():
     srt = "﻿1\n00:00:01,000 --> 00:00:02,000\nBOM cue.\n"
     result = parse_srt(srt)
@@ -387,9 +397,15 @@ def test_webvtt_note_words_inside_dialogue_are_retained():
     assert parse_srt(text).segments[0]['text'] == 'NOTE this is spoken\nSTYLE\nREGION'
 
 
-@pytest.mark.parametrize('identifier', ['STYLE', 'REGION', 'NOTE', 'NOTE identifier'])
+@pytest.mark.parametrize('identifier', ['STYLE', 'REGION'])
 def test_webvtt_metadata_words_can_identify_a_cue(identifier):
     text = f'WEBVTT\n\n{identifier}\n00:01.000 --> 00:02.000\nSpoken text\n'
+    assert [cue['text'] for cue in parse_srt(text).segments] == ['Spoken text']
+
+
+@pytest.mark.parametrize('identifier', ['NOTE', 'NOTE identifier'])
+def test_webvtt_note_block_is_never_a_cue_even_with_a_timing_line(identifier):
+    text = f'WEBVTT\n\n{identifier}\n00:01.000 --> 00:02.000\nprivate note\n\n00:03.000 --> 00:04.000\nSpoken text\n'
     assert [cue['text'] for cue in parse_srt(text).segments] == ['Spoken text']
 
 

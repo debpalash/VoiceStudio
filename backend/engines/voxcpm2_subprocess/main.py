@@ -15,6 +15,7 @@ while a cold load runs so the parent's watchdog stays armed.
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import os
 import re
@@ -105,31 +106,47 @@ def _with_retries(load):
     raise AssertionError("unreachable")
 
 
+@contextlib.contextmanager
+def _heartbeating(stdout, stage: str):
+    """Emit ``progress`` frames while a long native call runs.
+
+    The parent's recv watchdog is re-armed by every frame, so a healthy sidecar
+    that is simply slow - a multi-GB cold download, or a CPU / small-GPU host
+    synthesising a long passage - is never killed for being quiet, while a
+    sidecar that truly died (no frames at all) is still caught quickly. The
+    request's own generate budget bounds the total either way.
+    """
+    stop = threading.Event()
+
+    def _beat() -> None:
+        pct = 1
+        while not stop.wait(_HEARTBEAT_S):
+            pct = min(pct + 1, 99)
+            _send(stdout, {"op": "progress", "stage": stage, "percent": pct})
+
+    thread = threading.Thread(target=_beat, daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join(timeout=_HEARTBEAT_S + 1)
+
+
 def _load_model(stdout):
     global _MODEL
     if _MODEL is not None:
         return _MODEL
     _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 0})
-    stop = threading.Event()
-
-    def _heartbeat() -> None:
-        pct = 1
-        while not stop.wait(_HEARTBEAT_S):
-            pct = min(pct + 1, 99)
-            _send(stdout, {"op": "progress", "stage": "loading_model", "percent": pct})
-
-    hb = threading.Thread(target=_heartbeat, daemon=True)
-    hb.start()
-    try:
+    with _heartbeating(stdout, "loading_model"):
         from voxcpm import VoxCPM  # type: ignore[import-not-found]  # noqa: PLC0415
 
         checkpoint = os.environ.get("OMNIVOICE_VOXCPM_MODEL", "openbmb/VoxCPM2")
         _MODEL = _with_retries(
-            lambda: VoxCPM.from_pretrained(checkpoint, load_denoiser=False)
+            lambda: VoxCPM.from_pretrained(
+                checkpoint, load_denoiser=False, optimize=False
+            )
         )
-    finally:
-        stop.set()
-        hb.join(timeout=_HEARTBEAT_S + 1)
     _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 100})
     return _MODEL
 
@@ -197,10 +214,32 @@ def generation_kwargs(text: str, **options) -> dict:
     control = " ".join(control.replace("(", " ").replace(")", " ").split())
     ref_text = (options.get("ref_text") or "").strip()
     continuation = bool(ref_audio and ref_text and not control)
+    # Bound work per request. VoxCPM's default token cap (4096) can keep one
+    # desktop request running for many minutes on a short line, so scale the
+    # cap with utterance size. 6 tokens per character is deliberately generous
+    # (CJK is the densest case), so a legitimate render is never truncated.
+    max_len = min(4096, max(256, len(text) * 6))
+    # Steps come from the UI's sampling slider (1-64 for VoxCPM2); keep the
+    # upstream default of 10 when a caller sends none. The requested value is
+    # honoured: silently running fewer steps than the quality preset the user
+    # picked would change the output without telling them.
+    try:
+        inference_timesteps = int(options.get("num_step", 10))
+    except (TypeError, ValueError):
+        inference_timesteps = 10
+    inference_timesteps = min(64, max(1, inference_timesteps))
     return {
         "text": f"({control}){text}" if control else text,
         "cfg_value": options.get("guidance_scale", 2.0),
-        "inference_timesteps": options.get("num_step", 10),
+        "max_len": max_len,
+        "inference_timesteps": inference_timesteps,
+        # Upstream retries a "bad case" up to three whole generations, which
+        # could keep one desktop request running for many minutes.
+        "retry_badcase": False,
+        # One attempt, no bad-case retries. VoxCPM runs `while attempts <
+        # max_times`, so 0 skipped generation entirely and crashed with
+        # UnboundLocalError: 'latent_pred' on every request.
+        "retry_badcase_max_times": 1,
         "reference_wav_path": ref_audio,
         "prompt_wav_path": ref_audio if continuation else None,
         "prompt_text": ref_text if continuation else None,
@@ -223,7 +262,8 @@ def _handle_synthesize(msg: dict, stdout) -> None:
 
         torch.manual_seed(int(msg["seed"]))
     options = {key: value for key, value in msg.items() if key != "text"}
-    wav = model.generate(**generation_kwargs(text, **options))
+    with _heartbeating(stdout, "generating"):
+        wav = model.generate(**generation_kwargs(text, **options))
     audio_format = msg.get("audio_format", "s16le")
     pcm_b64, n_samples = _to_pcm_b64(_at_engine_rate(wav, _sample_rate(model)), audio_format)
     _send(stdout, {

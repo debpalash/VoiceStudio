@@ -13,6 +13,12 @@ model formats, the UI shows the actual size after generation instead of guessing
 speed, duration and cleanup; technical model controls are collapsed under
 **Advanced model tuning** with plain-language names and guidance.
 
+Both popover headers have a **Reset to defaults** icon. Audio quality resets
+WAV precision, sampling steps and mastering; Voice controls resets speed,
+duration, cleanup and advanced model tuning. Each reset preserves the other
+panel's settings, script, language and selected voice. Audio-quality reset is
+disabled while generation is running. Existing audio files are never modified.
+
 ## Normal to maximum export precision
 
 | WAV slider | Use | Approximate size per minute, 24 kHz mono |
@@ -108,3 +114,8 @@ arguments for TTS only; use `--text`, `--steps` and `--seed` to vary the experim
 Keep private recordings and generated voice comparisons outside Git. The original
 [audio investigation](audio-quality-handoff.md) remains available as historical
 evidence; this work does not establish a cause for the historical reverb report.
+
+Generated WAV reads use a shared TorchCodec fallback, including dub assembly,
+cached segments, watermark detection, longform and persona previews. Voice Clone
+blocks models that explicitly report no cloning support and explains how to select
+a capable model; plain text-to-speech remains available.

@@ -1,7 +1,7 @@
 name: 🐛 Bug report
 description: Something works incorrectly or crashes (not a first-run/install problem — use the install template for those).
 title: "[Bug] "
-labels: ["bug", "triage"]
+labels: ["bug", "needs-triage"]
 body:
   - type: markdown
     attributes:

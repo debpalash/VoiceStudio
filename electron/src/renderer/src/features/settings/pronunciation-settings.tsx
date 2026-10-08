@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { apiFetch, apiJson, describeError } from '@/lib/api/client';
+import { isImeComposing } from '@/lib/ime';
 import { saveLocalFile } from '@/lib/local-export';
 import { SettingsRow, SettingsSection } from './settings-layout';
 
@@ -304,6 +305,7 @@ export function PronunciationSettings() {
           className="w-40"
           onChange={(event) => setLanguage(event.target.value)}
           onKeyDown={(event) => {
+            if (isImeComposing(event)) return;
             if (event.key === 'Enter' && term.trim()) {
               event.preventDefault();
               void add();

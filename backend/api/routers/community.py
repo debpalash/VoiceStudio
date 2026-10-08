@@ -34,12 +34,13 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urljoin, urlparse
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import FileResponse
 
 from core import archetypes
 from core.audio_validation import is_playable_wav, resolve_regular_file
 from core.config import DATA_DIR, VOICES_DIR
+from core.browser_guard import reject_cross_site_get
 
 logger = logging.getLogger("omnivoice.community")
 router = APIRouter()
@@ -385,13 +386,13 @@ def community_sources():
     return {"sources": configured_sources()}
 
 
-@router.get("/community/manifest")
+@router.get("/community/manifest", dependencies=[Depends(reject_cross_site_get)])
 def community_manifest(refresh: bool = Query(False)):
     srcs, items, packs, offline = _load(refresh)
     return {"sources": srcs, "packs": packs, "items": items, "count": len(items), "offline": offline}
 
 
-@router.get("/community/items")
+@router.get("/community/items", dependencies=[Depends(reject_cross_site_get)])
 def community_items(
     use_case: Optional[str] = None,
     gender: Optional[str] = None,
@@ -622,7 +623,7 @@ def _copy_atomic(source: Path, destination: Path) -> None:
         raise
 
 
-@router.get("/community/items/{item_id}/preview")
+@router.get("/community/items/{item_id}/preview", dependencies=[Depends(reject_cross_site_get)])
 async def community_preview(
     item_id: str,
     local: bool = Query(False, description="Bypass canonical gallery audio after decode failure"),

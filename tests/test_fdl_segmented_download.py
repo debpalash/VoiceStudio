@@ -39,7 +39,7 @@ def _ranged_handler(payload=PAYLOAD, *, accept_ranges=True, record=None):
         if rng and accept_ranges:
             lo, hi = rng.replace("bytes=", "").split("-")
             lo, hi = int(lo), int(hi)
-            return httpx.Response(206, content=payload[lo:hi + 1])
+            return httpx.Response(206, headers={"Content-Range": f"bytes {lo}-{hi}/{len(payload)}"}, content=payload[lo:hi + 1])
         return httpx.Response(200, content=payload)
     return handler
 
@@ -177,7 +177,7 @@ def test_concurrency_stays_at_num_connections(tmp_path, monkeypatch):
                 except asyncio.TimeoutError:
                     pass
                 lo, hi = request.headers["range"].replace("bytes=", "").split("-")
-                return httpx.Response(206, content=PAYLOAD[int(lo):int(hi) + 1])
+                return httpx.Response(206, headers={"Content-Range": f"bytes {lo}-{hi}/{len(PAYLOAD)}"}, content=PAYLOAD[int(lo):int(hi) + 1])
             finally:
                 state["inflight"] -= 1
 
@@ -215,7 +215,7 @@ def test_dropped_connection_resumes_from_manifest(tmp_path, monkeypatch):
                 raise httpx.RemoteProtocolError("peer closed connection", request=request)
         lo, hi = request.headers["range"].replace("bytes=", "").split("-")
         served.append(int(hi) - int(lo) + 1)
-        return httpx.Response(206, content=PAYLOAD[int(lo):int(hi) + 1])
+        return httpx.Response(206, headers={"Content-Range": f"bytes {lo}-{hi}/{len(PAYLOAD)}"}, content=PAYLOAD[int(lo):int(hi) + 1])
 
     with pytest.raises(httpx.RemoteProtocolError):
         _download(handler, dest, expected_size=len(PAYLOAD), num_connections=2)
@@ -230,3 +230,57 @@ def test_dropped_connection_resumes_from_manifest(tmp_path, monkeypatch):
     # Resumed, not restarted: total bytes served stay below two full copies.
     assert sum(served) < 2 * len(PAYLOAD)
     assert sum(served) >= len(PAYLOAD)
+
+
+def test_failed_segment_cancels_and_awaits_sibling_writers():
+    """#2642: after one range fails, no sibling may still be running/writing."""
+    state = {"ticks": 0, "cancelled": False}
+
+    async def writer():
+        try:
+            while True:
+                state["ticks"] += 1
+                await asyncio.sleep(0.005)
+        except asyncio.CancelledError:
+            state["cancelled"] = True
+            await asyncio.sleep(0.01)  # cleanup that must be awaited
+            state["cleaned"] = True
+            raise
+
+    async def failing():
+        await asyncio.sleep(0.02)
+        raise ValueError("boom")
+
+    async def _do():
+        with pytest.raises(ValueError, match="boom"):
+            await sd._gather_or_cancel([writer(), writer(), failing()])
+        seen = state["ticks"]
+        await asyncio.sleep(0.05)
+        return seen
+
+    seen = asyncio.run(_do())
+    assert state["cancelled"] and state.get("cleaned")
+    assert state["ticks"] == seen
+
+
+def test_segment_http_error_stops_other_segments(tmp_path):
+    """#2642 end to end: a 500 on one range leaves no stray writers."""
+    calls = []
+
+    def handler(request):
+        if request.method == "HEAD":
+            return httpx.Response(200, headers={"content-length": str(len(PAYLOAD)), "accept-ranges": "bytes"})
+        calls.append(request.headers["range"])
+        if len(calls) == 1:
+            return httpx.Response(500)
+        lo, hi = map(int, request.headers["range"].replace("bytes=", "").split("-"))
+        return httpx.Response(206, headers={"Content-Range": f"bytes {lo}-{hi}/{len(PAYLOAD)}"}, content=PAYLOAD[lo:hi + 1])
+
+    async def _do():
+        with pytest.raises(httpx.HTTPStatusError):
+            async with _client(handler) as client:
+                await segmented_download("https://cdn.example.com/f.bin", str(tmp_path / "f.bin"),
+                                         client=client, num_connections=4)
+        return [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+
+    assert asyncio.run(_do()) == []

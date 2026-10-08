@@ -4,9 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.5.x (latest release + `main` previews) | ✅ Current — all fixes land here |
-| 0.2.7 | ⚠️ Legacy stable — security fixes only, upgrade recommended |
-| < 0.2.7 | ❌ No longer supported |
+| Latest 0.5.x release (and `main`) | ✅ All fixes, including security fixes, land here |
+| Older releases, including final Tauri builds (≤ 0.5.3) | ❌ No backports — upgrade ([Tauri migration guide](../docs/electron-migration.md)) |
 
 ## Model supply chain
 
@@ -24,7 +23,7 @@ download, and never run executables bundled with model archives.
 Instead, report them privately via one of these channels:
 
 1. **GitHub Security Advisories** (preferred) — [Report a vulnerability](https://github.com/debpalash/VoiceStudio/security/advisories/new)
-2. **Email** — Send details to **security@palash.dev**
+2. **Email** — Send details to **security@voicestudio.sh**
 
 ### What to include
 
@@ -59,9 +58,9 @@ VoiceStudio runs **100% locally** by default. The primary attack surface is:
 
 ## Automated scanning
 
-Every pull request and push to `main` runs [`.github/workflows/security.yml`](.github/workflows/security.yml):
+Every pull request and push to `main` runs [`.github/workflows/security.yml`](workflows/security.yml):
 
-- **gitleaks** — secret scanning (blocks merge on a leaked credential)
+- **gitleaks** — secret scanning (fails CI on a leaked credential)
 - **CodeQL** — Python + JavaScript/TypeScript static analysis → Security tab
 - **bandit** — Python static analysis → Security tab
 - **pip-audit** / **bun audit** — dependency advisory checks (reporting)
@@ -71,6 +70,8 @@ GitHub Apps on creation.
 
 ## Security Best Practices for Users
 
-- **Do not expose VoiceStudio to the internet without authentication.** The API has no built-in auth. Use a reverse proxy (Caddy, nginx, Tailscale) if you need remote access.
+- **Do not expose VoiceStudio beyond loopback without authentication.** The API is unauthenticated on loopback by default. Before remote access, set `OMNIVOICE_API_KEY` (or enable the in-app share PIN for LAN guests) as described in [API authentication](../docs/api-auth.md), and use TLS through a reverse proxy or a private network such as Tailscale.
+- **Browser access is limited to VoiceStudio's own interface.** Other websites cannot send requests to the local API, and requests must address it by `localhost`, an IP address or a configured host name (`OMNIVOICE_ALLOWED_HOSTS`); see [API authentication](../docs/api-auth.md#requests-from-other-websites-and-host-names).
+- **URL imports fetch public addresses only.** Set `OMNIVOICE_ALLOW_PRIVATE_URL_IMPORTS=1` only if you need to import from a server on your own network.
 - **Keep your installation updated.** The desktop app auto-checks for updates via the built-in updater.
 - **Review model sources.** Only download models from trusted Hugging Face repositories.

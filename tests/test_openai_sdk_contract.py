@@ -187,7 +187,7 @@ def test_explicit_instruct_wins_over_instructions(client, engine):
     ("female, whisper", "female, whisper"),
 ])
 def test_omnivoice_family_gets_only_design_tags(client, engine, monkeypatch, instructions, expected):
-    monkeypatch.setattr(engine, "supports_native_omnivoice_controls", True, raising=False)
+    monkeypatch.setattr(engine, "instruct_vocabulary", "tags", raising=False)
     client.audio.speech.create(
         model="gpt-4o-mini-tts", voice="ash", input="Hi.", response_format="wav",
         instructions=instructions,

@@ -85,6 +85,12 @@ _PROVIDERS: tuple[Provider, ...] = (
              key_envs=("ORCAROUTER_API_KEY",), base_url_env="ORCAROUTER_BASE_URL",
              model_env="ORCAROUTER_MODEL",
              signup_url="https://www.orcarouter.ai"),
+    Provider("cheaperinference", "Cheaper Inference",
+             "https://api.cheaperinference.com/v1", "gpt-5.4-mini",
+             key_envs=("CHEAPER_INFERENCE_API_KEY",),
+             base_url_env="CHEAPER_INFERENCE_BASE_URL",
+             model_env="CHEAPER_INFERENCE_MODEL",
+             signup_url="https://cheaperinference.com/signup"),
     Provider("groq", "Groq", "https://api.groq.com/openai/v1",
              "llama-3.3-70b-versatile",
              key_envs=("GROQ_API_KEY",), base_url_env="GROQ_BASE_URL",
@@ -183,6 +189,14 @@ _PROVIDERS: tuple[Provider, ...] = (
              key_envs=("MINIMAX_API_KEY",), model_env="MINIMAX_MODEL"),
     Provider("zai", "Z.AI (GLM)", "https://api.z.ai/api/paas/v4", "",
              key_envs=("ZAI_API_KEY",), model_env="ZAI_MODEL"),
+    # No default model: MaaS model IDs come from each service's model card and
+    # can differ per deployment. Token Plan keys only work on maas-token-api.
+    Provider("iflytek", "iFLYTEK Astron MaaS", "https://maas-api.cn-huabei-1.xf-yun.com/v2", "",
+             key_envs=("IFLYTEK_API_KEY",), base_url_env="IFLYTEK_BASE_URL",
+             model_env="IFLYTEK_MODEL", signup_url="https://maas.xfyun.cn",
+             notes="Spark X2.5 and hosted open models. Use the model ID from the "
+                   "model card; for a Token Plan key, set the Base URL to "
+                   "https://maas-token-api.cn-huabei-1.xf-yun.com/v2."),
     Provider("azure", "Azure OpenAI", "", "",
              key_envs=("AZURE_API_KEY",), base_url_env="AZURE_OPENAI_BASE_URL", model_env="AZURE_DEPLOYMENT"),
     Provider("bedrock", "Amazon Bedrock", "", "",

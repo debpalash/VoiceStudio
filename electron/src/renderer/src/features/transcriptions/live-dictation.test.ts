@@ -205,3 +205,42 @@ it('preserves a main-issued ticket for authenticated remote dictation', async ()
   expect(Socket.instances[0].url.searchParams.get('ws_ticket')).toMatch(/^ovs_ws_ticket_/);
   expect(Socket.instances[0].url.searchParams.get('model')).toBe('sherpa-test');
 });
+it('drops a cancelled start whose WebSocket URL resolves after a newer session opened', async () => {
+  const pendingUrls: Array<(value: string) => void> = [];
+  mocks.bridge = {
+    backend: {
+      websocketUrl: vi.fn(
+        () =>
+          new Promise<string>((resolve) => {
+            pendingUrls.push(resolve);
+          }),
+      ),
+    },
+  };
+  vi.stubGlobal('window', {
+    location: { href: 'app://voicestudio/index.html#/capture', protocol: 'app:' },
+    voicestudio: mocks.bridge,
+  });
+  const cancelled = live.start(vi.fn());
+  await vi.waitFor(() => expect(pendingUrls).toHaveLength(1));
+  live.cancel();
+
+  const result = vi.fn();
+  const current = live.start(result);
+  await vi.waitFor(() => expect(pendingUrls).toHaveLength(2));
+  pendingUrls[1]!('wss://gpu-box:3900/ws/transcribe?ws_ticket=current');
+  await current;
+  expect(live.getSnapshot().stage).toBe('recording');
+
+  pendingUrls[0]!('wss://gpu-box:3900/ws/transcribe?ws_ticket=stale');
+  await cancelled;
+  expect(Socket.instances.map((socket) => socket.url.searchParams.get('ws_ticket'))).toEqual([
+    'current',
+  ]);
+
+  await live.stop();
+  expect(Socket.instances[0]!.send).toHaveBeenLastCalledWith('EOF');
+  Socket.instances[0]!.frame({ type: 'final', final_kind: 'summary', text: 'Mine.' });
+  expect(result).toHaveBeenCalledWith(expect.objectContaining({ text: 'Mine.' }));
+  expect(live.getSnapshot().stage).toBe('done');
+});

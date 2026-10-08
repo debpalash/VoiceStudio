@@ -31,6 +31,11 @@ service WorkerService {
   // Enrollment / authentication. Returns a session token and epoch.
   rpc Register(RegisterRequest) returns (RegisterResponse);
 
+  // A fresh, single-use, short-lived challenge for the next Register to sign
+  // (feature "server_challenge_v1"). A challenge the worker picks itself
+  // proves nothing about freshness: a recorded Register would verify forever.
+  rpc IssueChallenge(ChallengeRequest) returns (ChallengeResponse);
+
   // Persistent bidirectional control stream. Small messages only.
   rpc Control(stream WorkerMessage) returns (stream ServerMessage);
 
@@ -187,7 +192,7 @@ message RegisterRequest {
   string worker_id = 5;             // empty on first enrollment
   bytes public_key = 6;             // Ed25519, bound at enrollment
   bytes challenge_signature = 7;    // signature over the server's challenge
-  bytes challenge = 8;
+  bytes challenge = 8;              // as issued by IssueChallenge / Attach metadata
 
   HostInfo host = 9;
   repeated ModelCapability capabilities = 10;
@@ -204,6 +209,18 @@ message RegisterRequest {
   // Behavioural capabilities, independent of release/version skew. A peer
   // must never infer wire semantics from protocol_version alone.
   repeated string features = 17;
+}
+
+// WorkerService.IssueChallenge. Inbound mode (NodeService.Attach) carries the
+// panel's challenge in call metadata instead, because the node speaks first.
+message ChallengeRequest {
+  Envelope envelope = 1;
+}
+
+message ChallengeResponse {
+  Envelope envelope = 1;
+  bytes challenge = 2;
+  uint32 expires_in_seconds = 3;
 }
 
 message RegisterResponse {

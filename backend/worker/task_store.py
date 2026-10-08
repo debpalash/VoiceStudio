@@ -35,6 +35,7 @@ from worker.clock import resolve
 from worker.errors import ErrorClass, WorkerError
 from worker.deadlines import Deadlines
 from worker.lifecycle import Attempt, AttemptState, PriorityClass, Task, TaskState
+from worker.params import INPUT_PARAM_KEYS
 
 logger = logging.getLogger("omnivoice.worker")
 
@@ -119,16 +120,8 @@ def _row_to_task(row, attempts: list[Attempt]) -> Task:
 # a hundred times keeps exactly one copy on disk and lets the worker's own
 # cache skip the transfer entirely on every clone after the first.
 
-INPUT_PARAM_KEYS: tuple[str, ...] = (
-    "ref_audio",
-    "reference_audio",
-    "prompt_audio",
-    "prompt_wav",
-    "source_audio",
-    "audio_path",
-    "source_video",
-    "video_path",
-)
+# ``INPUT_PARAM_KEYS`` (imported above) is shared with the worker, which
+# refuses any file value that did not arrive as a declared input.
 
 # Where staged inputs live under the artifact root, and the key under which a
 # task records what was staged for it. The record is what makes the purge

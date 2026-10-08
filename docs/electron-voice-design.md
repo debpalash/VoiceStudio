@@ -1,5 +1,11 @@
 # Electron voice design
 
+> **Historical context:** this page was written while the Electron and Tauri apps
+> coexisted. Mentions of Tauri helpers, pages, tests and regression results describe
+> that migration period; the Tauri shell has since been removed and the shared code
+> now lives in `electron/src/shared/`. Existing Tauri installs: see the
+> [migration guide](electron-migration.md).
+
 Open Design from the cloning sidebar or command search. Choose a preset or adjust
 voice traits, write a script, and synthesize. The existing Tauri category, conflict
 resolution and seed helpers build the request; clone references are never forwarded.

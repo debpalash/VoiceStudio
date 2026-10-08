@@ -79,7 +79,9 @@ function readRecents(key: string) {
 }
 
 type Row = { label: string } | { items: SearchOption[]; start: number };
-const HEIGHT = 56;
+const HEIGHT = 38;
+const HEADER_HEIGHT = 28;
+const LIST_MAX_HEIGHT = 320;
 
 /** Opt-in virtual surface for SearchableSelect; classic consumers retain their contract. */
 export function VirtualSearchableSelect({
@@ -132,7 +134,7 @@ export function VirtualSearchableSelect({
     count: rows.length,
     getScrollElement: () => list,
     enabled: open && !disabled,
-    estimateSize: (index) => ('label' in rows[index] ? 32 : HEIGHT),
+    estimateSize: (index) => ('label' in rows[index] ? HEADER_HEIGHT : HEIGHT),
     getItemKey: (index) =>
       'label' in rows[index] ? 'disabled-header' : rows[index].items[0].value,
     overscan: 3,
@@ -143,7 +145,7 @@ export function VirtualSearchableSelect({
   });
   useEffect(() => {
     if (!list) return;
-    const measure = () => setColumns(Math.max(1, Math.min(3, Math.floor(list.clientWidth / 220))));
+    const measure = () => setColumns(Math.max(1, Math.min(3, Math.floor(list.clientWidth / 200))));
     measure();
     if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(measure);
@@ -211,15 +213,20 @@ export function VirtualSearchableSelect({
         </span>
       )}
       <Popover.Portal>
-        <Popover.Positioner sideOffset={8} className="z-[1000] isolate outline-none">
+        <Popover.Positioner
+          sideOffset={6}
+          align="start"
+          collisionPadding={12}
+          className="z-[1000] isolate outline-none"
+        >
           <Popover.Popup
             initialFocus={input}
             aria-label={ariaLabel}
             data-slot="language-menu"
-            className="flex max-h-[min(560px,var(--available-height))] w-[min(720px,calc(100vw-32px))] flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-xl outline-none"
+            className="flex max-h-[min(440px,var(--available-height))] w-[min(640px,calc(100vw-24px))] flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-xl outline-none"
             dir={rtl ? 'rtl' : 'ltr'}
           >
-            <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 focus-within:ring-2 focus-within:ring-inset focus-within:ring-ring">
+            <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 transition-colors focus-within:bg-muted/30">
               <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               <input
                 ref={input}
@@ -234,7 +241,7 @@ export function VirtualSearchableSelect({
                 spellCheck={false}
                 placeholder={t('clone.search_languages', { count: options.length })}
                 value={query}
-                className="h-10 w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                className="h-10 w-full min-w-0 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
                 onChange={(event) => {
                   setQuery(event.target.value);
                   setActiveValue('');
@@ -284,7 +291,7 @@ export function VirtualSearchableSelect({
                 </button>
               )}
             </div>
-            <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2 text-xs text-muted-foreground">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 pt-2 pb-1 text-[11px] text-muted-foreground">
               {header}
               <span id={`${id}-status`} role="status" aria-live="polite" aria-atomic="true">
                 {t('languagePicker.results', { enabled: enabled.length, total: sorted.length })}
@@ -297,12 +304,17 @@ export function VirtualSearchableSelect({
               tabIndex={-1}
               aria-label={ariaLabel}
               data-columns={columns}
-              className="min-h-0 overflow-y-auto overscroll-contain px-1"
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pb-1"
               style={{
-                height:
+                // A max, not a fixed height: the popup shrinks the list to the
+                // space the positioner has, so the search field never clips.
+                maxHeight:
                   Math.min(
-                    392,
-                    rows.reduce((height, row) => height + ('label' in row ? 32 : HEIGHT), 0),
+                    LIST_MAX_HEIGHT,
+                    rows.reduce(
+                      (height, row) => height + ('label' in row ? HEADER_HEIGHT : HEIGHT),
+                      0,
+                    ),
                   ) || HEIGHT,
               }}
             >
@@ -329,7 +341,7 @@ export function VirtualSearchableSelect({
                         </div>
                       ) : (
                         <div
-                          className="grid h-full gap-1"
+                          className="grid h-full gap-0.5"
                           style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
                         >
                           {row.items.map((option, index) => (
@@ -350,7 +362,7 @@ export function VirtualSearchableSelect({
                               aria-setsize={sorted.length}
                               disabled={option.disabled}
                               tabIndex={-1}
-                              className={`my-0.5 flex min-w-0 items-center gap-2 rounded-lg px-2 text-start text-sm outline-none disabled:cursor-not-allowed disabled:text-muted-foreground ${active?.value === option.value ? 'bg-accent ring-1 ring-inset ring-border' : 'enabled:hover:bg-muted'} `}
+                              className={`my-0.5 flex min-w-0 items-center gap-2 rounded-md px-2 text-start text-[13px] outline-none disabled:cursor-not-allowed disabled:text-muted-foreground ${active?.value === option.value ? 'bg-accent ring-1 ring-inset ring-border' : 'enabled:hover:bg-muted'} `}
                               onPointerMove={(event) => {
                                 if (event.pointerType === 'mouse' && !option.disabled)
                                   setActiveValue(option.value);
@@ -378,7 +390,7 @@ export function VirtualSearchableSelect({
               </div>
             </div>
             {footer && (
-              <div className="shrink-0 border-t border-border px-3 py-2 text-xs text-muted-foreground">
+              <div className="shrink-0 border-t border-border px-3 py-1.5 text-[11px] text-muted-foreground">
                 {footer}
               </div>
             )}

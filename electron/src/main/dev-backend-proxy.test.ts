@@ -1,7 +1,11 @@
 // @vitest-environment node
 import { createServer } from 'node:http';
 import { afterEach, expect, it } from 'vitest';
-import { startDevBackendProxy, type DevBackendProxy } from './dev-backend-proxy';
+import {
+  proxyRequestRefused,
+  startDevBackendProxy,
+  type DevBackendProxy,
+} from './dev-backend-proxy';
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -33,6 +37,7 @@ it('streams requests to the current backend with only main-owned authorization',
     () => `http://127.0.0.1:${address.port}`,
     () => ({ Authorization: 'Bearer scoped-session' }),
     0,
+    ['http://localhost:3902'],
   );
   cleanup.push(proxy.close);
   const response = await fetch(`${proxy.url}/system/info?full=1`, {
@@ -49,6 +54,29 @@ it('streams requests to the current backend with only main-owned authorization',
     authorization: 'Bearer scoped-session',
     origin: undefined,
   });
+});
+
+it('keeps the backend path prefix and never leaves the configured host', async () => {
+  const paths: string[] = [];
+  const upstream = createServer((request, response) => {
+    paths.push(request.url || '');
+    response.end('ok');
+  });
+  await new Promise<void>((resolve) => upstream.listen(0, '127.0.0.1', resolve));
+  cleanup.push(() => new Promise<void>((resolve) => upstream.close(() => resolve())));
+  const address = upstream.address();
+  if (!address || typeof address === 'string') throw new Error('upstream did not bind');
+
+  const proxy = await startDevBackendProxy(
+    () => `http://127.0.0.1:${address.port}/studio/`,
+    () => ({}),
+    0,
+  );
+  cleanup.push(proxy.close);
+  await fetch(`${proxy.url}/system/info?full=1`);
+  await fetch(`${proxy.url}//elsewhere.invalid/health`);
+
+  expect(paths).toEqual(['/studio/system/info?full=1', '/studio/elsewhere.invalid/health']);
 });
 
 it('closes while a renderer keeps a streaming backend response open', async () => {
@@ -76,4 +104,23 @@ it('closes while a renderer keeps a streaming backend response open', async () =
   await expect(proxy.close()).resolves.toBeUndefined();
   await expect(proxy.close()).resolves.toBeUndefined();
   await response.body?.cancel().catch(() => {});
+});
+
+it('refuses other websites and rebound host names before injecting credentials', () => {
+  const renderer = ['http://localhost:3902'];
+  expect(proxyRequestRefused({ host: '127.0.0.1:3903' }, renderer)).toBe(false);
+  expect(
+    proxyRequestRefused({ host: 'localhost:3903', 'sec-fetch-site': 'same-origin' }, renderer),
+  ).toBe(false);
+  expect(
+    proxyRequestRefused({ host: '127.0.0.1:3903', origin: 'http://localhost:3902' }, renderer),
+  ).toBe(false);
+  expect(proxyRequestRefused({ host: 'evil.example:3903' }, renderer)).toBe(true);
+  expect(
+    proxyRequestRefused({ host: '127.0.0.1:3903', origin: 'https://evil.example' }, renderer),
+  ).toBe(true);
+  expect(proxyRequestRefused({ host: '127.0.0.1:3903', origin: 'null' }, renderer)).toBe(true);
+  expect(
+    proxyRequestRefused({ host: '127.0.0.1:3903', 'sec-fetch-site': 'cross-site' }, renderer),
+  ).toBe(true);
 });

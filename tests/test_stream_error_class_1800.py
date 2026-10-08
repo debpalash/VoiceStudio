@@ -21,9 +21,15 @@ def test_unclassified_failure_carries_its_exception_class():
 
 
 def test_two_unrelated_failures_are_distinguishable():
-    # The whole point: these used to be the same report.
+    # The whole point: these used to be the same report. Both must be failures
+    # the taxonomy still cannot classify — that is the condition #1800 is about.
+    # (`MemoryError` used to stand in here and no longer can: #2462 made it a
+    # classified class, so it is no longer an example of the unclassified case.
+    # Its own test covers it.) These two are still unclassified and still differ
+    # only by type name.
     a = stream_generation_failure(RuntimeError("boom"))
-    b = stream_generation_failure(MemoryError("out of memory"))
+    b = stream_generation_failure(ValueError("tensor shape mismatch"))
+    assert a.get("docs_topic") is None and b.get("docs_topic") is None
     assert a["detail"] == b["detail"]
     assert a["error_class"] != b["error_class"]
 

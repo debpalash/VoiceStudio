@@ -1,5 +1,11 @@
 # Electron privacy and retention
 
+> **Historical context:** this page was written while the Electron and Tauri apps
+> coexisted. Mentions of Tauri helpers, pages, tests and regression results describe
+> that migration period; the Tauri shell has since been removed and the shared code
+> now lives in `electron/src/shared/`. Existing Tauri installs: see the
+> [migration guide](electron-migration.md).
+
 Settings > Privacy exposes the existing invisible-watermark setting, analytics consent and generation-history retention.
 
 Watermark controls appear when the backend reports AudioSeal available and affect new audio through the existing marking path. No audio producer bypasses `mark_synthetic`. Analytics consent uses the existing backend opt-in endpoint and remains unchanged until the user explicitly switches it. After consent, the renderer records fixed screen labels and workflow action labels (clone, design, dubbing, transcription); the backend records lifecycle/error events. Privacy-safe manual pageviews use fixed app paths under `app.voicestudio.sh`, enabling aggregate Web Analytics without sending renderer URLs or dynamic route segments. Uncaught renderer errors also reach PostHog Error Tracking with their message replaced and credentials, home paths, extension frames, text, audio, filenames, and user-named content removed. Raw exception autocapture, DOM autocapture, automatic pageviews, and session recordings remain disabled. Unavailable features do not display inert toggles, and failed saves preserve confirmed state.

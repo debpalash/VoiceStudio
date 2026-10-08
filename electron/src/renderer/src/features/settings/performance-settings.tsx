@@ -6,6 +6,7 @@ import {
   Trash2Icon,
   ZapIcon,
 } from 'lucide-react';
+import { GpuAcceleration } from './gpu-acceleration';
 import { SystemPreflight } from './system-preflight';
 import { PerformanceProfile } from '@/components/performance-profile';
 import { familyIcons, modelFamilies } from './model-family';
@@ -18,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { apiJson, describeError } from '@/lib/api/client';
 import { useAppActivities } from '@/lib/app-activity';
+import { relaxWhenBackendBusy } from '@/lib/status-polling';
 import { SettingsSection, SettingsRow } from './settings-layout';
 import { useSettingsAction } from './use-settings-action';
 // @ts-expect-error shared JSX component has no declaration file
@@ -96,7 +98,7 @@ export function PerformanceSettings() {
   const hardware = useQuery({
     queryKey: ['sysinfo'],
     queryFn: ({ signal }) => apiJson<HardwareState>('/sysinfo', { signal }),
-    refetchInterval: 5000,
+    refetchInterval: () => relaxWhenBackendBusy(5000),
   });
   const gb = (value: number | undefined) =>
     value == null || !Number.isFinite(value) ? '-' : value.toFixed(2) + ' GB';
@@ -130,6 +132,7 @@ export function PerformanceSettings() {
         })}
       </SettingsSection>
       <ComputeDevice />
+      <GpuAcceleration />
       <CompileSetting />
       <MemoryManagement />
       <SettingsSection icon={CpuIcon} title={t('settings.generate_budget_title')}>
@@ -392,7 +395,60 @@ function MemoryManagement() {
           {t('header.unload_all_flush')}
         </Button>
       </SettingsRow>
+      <OffloadAfterGeneration />
     </SettingsSection>
+  );
+}
+interface OffloadState {
+  enabled: boolean;
+  env_pinned: boolean;
+  device: string;
+}
+// #2618: opt-in — move the in-process voice model to system RAM once
+// generation finishes, so a local LLM (or anything else) can use the VRAM.
+function OffloadAfterGeneration() {
+  const { t } = useTranslation();
+  const client = useQueryClient();
+  const action = useSettingsAction();
+  const query = useQuery({
+    queryKey: ['offload-after-generation'],
+    queryFn: ({ signal }) =>
+      apiJson<OffloadState>('/api/settings/perf/offload-after-generation', { signal }),
+  });
+  const state = query.data;
+  return (
+    <>
+      <SettingsRow
+        id="offload-after-generation"
+        title={t('settings.offload_after_generation')}
+        description={
+          state?.device === 'cpu'
+            ? t('settings.offload_after_generation_cpu')
+            : t('settings.offload_after_generation_note')
+        }
+      >
+        <Switch
+          aria-label={t('settings.offload_after_generation')}
+          checked={!!state?.enabled}
+          disabled={!state || action.busy || state.env_pinned}
+          onCheckedChange={(enabled) =>
+            void action.run(async () => {
+              const saved = await apiJson<OffloadState>(
+                '/api/settings/perf/offload-after-generation',
+                { method: 'PUT', body: JSON.stringify({ enabled }) },
+              );
+              client.setQueryData(['offload-after-generation'], saved);
+            })
+          }
+        />
+      </SettingsRow>
+      {state?.env_pinned && (
+        <p className="p-4 text-sm text-muted-foreground">
+          {t('settings.generate_timeout_shadowed_note')}
+        </p>
+      )}
+      {(action.error || query.isError) && <ErrorRow retry={() => void query.refetch()} />}
+    </>
   );
 }
 function ErrorRow({ retry }: { retry: () => void }) {

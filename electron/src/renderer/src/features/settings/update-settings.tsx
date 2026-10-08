@@ -1,3 +1,4 @@
+import { splitRoundedMinutes } from '@shared/utils/timeFormat';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -20,13 +21,12 @@ import { appVersion, getBridge } from '@/components/bridge';
 import { dubSession, flushDubDraft, useDubSession } from '@/features/dub/dub-session';
 import { hasActiveAppWork, useAppActivityCount } from '@/lib/app-activity';
 import { apiJson, describeError } from '@/lib/api/client';
-import { SettingsRow, SettingsSection } from './settings-layout';
-import type { UpdateChannel, UpdateReleaseInfo, UpdateState } from '../../../../preload/index.d';
+import { SettingsSection } from './settings-layout';
+import type { UpdateReleaseInfo, UpdateState } from '../../../../preload/index.d';
 
 const initial: UpdateState = {
   status: 'unsupported',
   currentVersion: appVersion(),
-  channel: 'stable',
   progress: 0,
 };
 
@@ -66,17 +66,12 @@ function formatBytes(bytes: number): string {
 }
 
 function formatEta(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const remainder = Math.max(0, Math.round(seconds % 60));
+  const { minutes, seconds: remainder } = splitRoundedMinutes(seconds);
   return `${minutes}:${String(remainder).padStart(2, '0')}`;
 }
 
 export function UpdateSettings() {
   const { t } = useTranslation();
-  const channelLabels = {
-    stable: t('about.channel_stable'),
-    preview: t('about.channel_preview'),
-  } as const;
   const updates = getBridge()?.updates;
   const canListReleases = typeof updates?.listReleases === 'function';
   const dub = useDubSession();
@@ -111,13 +106,14 @@ export function UpdateSettings() {
     staleTime: 300_000,
   });
   const releaseHistory = useQuery({
-    queryKey: ['desktop-release-history', state.channel],
-    queryFn: () => updates!.listReleases(state.channel),
+    queryKey: ['desktop-release-history'],
+    queryFn: () => updates!.listReleases(),
     enabled: canListReleases,
     staleTime: 15 * 60_000,
   });
   const releaseRows = (releaseHistory.data || [])
-    .filter((release) => state.channel === 'preview' || !release.prerelease)
+    // Updates follow tagged releases only, so the history lists those.
+    .filter((release) => !release.prerelease)
     .slice()
     .sort((left, right) => right.date.localeCompare(left.date))
     .map((release) => ({
@@ -155,9 +151,6 @@ export function UpdateSettings() {
     } finally {
       setAction(false);
     }
-  };
-  const setChannel = (channel: UpdateChannel) => {
-    if (updates && channel !== state.channel) void run(() => updates.setChannel(channel));
   };
   const restart = async () => {
     setAction(true);
@@ -323,32 +316,6 @@ export function UpdateSettings() {
         </div>
       </SettingsSection>
 
-      <SettingsSection icon={ShieldCheckIcon} title={t('about.update_channel')}>
-        <SettingsRow
-          id="update-channel"
-          title={t('about.update_channel')}
-          description={state.channel === 'preview' ? t('about.channel_preview_hint') : undefined}
-        >
-          {(['stable', 'preview'] as const).map((channel) => (
-            <Button
-              key={channel}
-              size="sm"
-              variant={state.channel === channel ? 'secondary' : 'ghost'}
-              aria-pressed={state.channel === channel}
-              disabled={
-                !updates ||
-                action ||
-                state.status === 'downloading' ||
-                state.status === 'downloaded'
-              }
-              onClick={() => setChannel(channel)}
-            >
-              {channelLabels[channel]}
-            </Button>
-          ))}
-        </SettingsRow>
-      </SettingsSection>
-
       {state.notes && (
         <SettingsSection
           icon={DownloadIcon}
@@ -448,11 +415,6 @@ export function UpdateSettings() {
                     {release.current && (
                       <span className="rounded-full bg-primary/12 px-1.5 py-0.5 text-[10px] font-medium text-primary">
                         {t('updates.current')}
-                      </span>
-                    )}
-                    {release.prerelease && (
-                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                        {t('updates.prerelease')}
                       </span>
                     )}
                     <time className="ml-auto text-xs text-muted-foreground">

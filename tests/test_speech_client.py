@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 
 
 def test_url_join_does_not_duplicate_slashes():
     from speech_client.__main__ import _join_url
 
-    assert _join_url("http://127.0.0.1:3902/", "/v1/status") == (
-        "http://127.0.0.1:3902/v1/status"
+    assert _join_url("http://127.0.0.1:3900/", "/v1/audio/transcriptions") == (
+        "http://127.0.0.1:3900/v1/audio/transcriptions"
     )
 
 
@@ -30,13 +28,6 @@ def test_multipart_matches_openai_audio_contract():
     assert b"Content-Type: audio/wav" in body
     assert b"RIFF-audio" in body
     assert body.endswith(b"--fixed-boundary--\r\n")
-
-
-def test_json_transcription_response_extracts_insertable_text():
-    from speech_client.__main__ import _response_text
-
-    assert _response_text(b'{"text":"hello"}', "application/json") == "hello"
-    assert _response_text(b"hello", "text/plain") == "hello"
 
 
 def test_client_rejects_non_http_url_handlers():
@@ -94,39 +85,35 @@ def test_credentialed_redirects_are_rejected():
         handler.redirect_request(None, None, 307, "redirect", {}, "https://other.test")
 
 
-def test_interrupt_releases_focused_output_session(monkeypatch):
+@pytest.mark.parametrize(
+    "argv",
+    [["start"], ["stop"], ["toggle"], ["status"], ["transcribe", "x.wav", "--insert"]],
+)
+def test_retired_native_control_fails_clearly_without_network(monkeypatch, capsys, argv):
+    """These targeted the retired Tauri control server on :3902 — now the
+    Electron dev server's port. They must explain instead of calling it."""
+    from speech_client import __main__ as client
+
+    def no_network(*_args, **_kwargs):
+        raise AssertionError("retired commands must not reach the network")
+
+    monkeypatch.setattr(client, "_open", no_network)
+    monkeypatch.setattr(client, "_json_request", no_network)
+    monkeypatch.setattr(client, "_read_audio", no_network)
+
+    assert client.main(argv) == 2
+    assert "native dictation control is not available" in capsys.readouterr().err
+
+
+def test_capabilities_reads_the_backend_discovery_document(monkeypatch, capsys):
     from speech_client import __main__ as client
 
     calls = []
-
-    def fake_json(method, url, payload=None):
-        calls.append((method, url, payload))
-        if method == "POST" and url.endswith("/v1/output/sessions"):
-            return {"session_id": 42}
-        return {"ok": True}
-
-    monkeypatch.setattr(client, "_read_audio", lambda *_args: (b"audio", "audio.wav"))
-    monkeypatch.setattr(client, "_json_request", fake_json)
-    def interrupt(*_args, **_kwargs):
-        raise KeyboardInterrupt
-
-    monkeypatch.setattr(client, "_open", interrupt)
-    args = SimpleNamespace(
-        audio="ignored.wav",
-        stdin_filename="audio.wav",
-        model="whisper-1",
-        response_format="text",
-        language=None,
-        insert=True,
-        control_url="http://127.0.0.1:3902",
-        engine_url="http://127.0.0.1:3900",
+    monkeypatch.setattr(
+        client, "_json_request", lambda method, url, payload=None: calls.append((method, url)) or {"ok": 1}
     )
-
-    with pytest.raises(KeyboardInterrupt):
-        client._transcribe(args)
-
-    assert calls[-1][0] == "DELETE"
-    assert calls[-1][1].endswith("/v1/output/sessions/42")
+    assert client.main(["--engine-url", "http://127.0.0.1:3912", "capabilities"]) == 0
+    assert calls == [("GET", "http://127.0.0.1:3912/.well-known/voicestudio-speech")]
 
 
 @pytest.mark.parametrize("env,expected", [
@@ -143,4 +130,4 @@ def test_engine_url_follows_the_backend_port(monkeypatch, env, expected):
         monkeypatch.setenv(name, value)
     from speech_client.__main__ import _parser
 
-    assert _parser().parse_args(["status"]).engine_url == expected
+    assert _parser().parse_args(["capabilities"]).engine_url == expected

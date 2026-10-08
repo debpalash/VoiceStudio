@@ -129,6 +129,12 @@ def resolve(key: str, *, env: Optional[str] = None, default: Any = None) -> Any:
 _EXTERNALLY_PROVIDED: frozenset[str] = frozenset()
 
 
+# Ports older versions persisted although the process that binds them never
+# reads prefs.json. Restoring one made the backend report a port it was not
+# listening on (Settings → Sharing, LAN share and Tailscale targets).
+UNRESTORED_ENV_KEYS = frozenset({"OMNIVOICE_PORT", "OMNIVOICE_UI_PORT"})
+
+
 def restore_env(data: dict) -> None:
     """Restore ``env.*`` prefs into ``os.environ`` (startup only).
 
@@ -144,6 +150,8 @@ def restore_env(data: dict) -> None:
     # Ordinary settings must restore even if the encrypted store is unavailable.
     for k, v in data.items():
         if not k.startswith("env.") or not v or k[len("env."):] in SECRET_ENV_KEYS:
+            continue
+        if k[len("env."):] in UNRESTORED_ENV_KEYS:
             continue
         os.environ.setdefault(k[len("env."):], str(v))
     for key in SECRET_ENV_KEYS:

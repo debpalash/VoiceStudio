@@ -1,5 +1,11 @@
 # Electron network and credentials
 
+> **Historical context:** this page was written while the Electron and Tauri apps
+> coexisted. Mentions of Tauri helpers, pages, tests and regression results describe
+> that migration period; the Tauri shell has since been removed and the shared code
+> now lives in `electron/src/shared/`. Existing Tauri installs: see the
+> [migration guide](electron-migration.md).
+
 Settings now exposes Network and Credentials in the shared settings shell. Sidebar search includes proxy, Hugging Face, DeepL and Microsoft labels.
 
 Network reads the configured proxy from `/system/info`. Save and Clear update all six upper/lowercase HTTP, HTTPS and ALL proxy variables using the same helper as Tauri. Writes run sequentially; failures stop the sequence and do not show success. A partial failure can be retried or cleared. Saving does not modify the audio-tool executable setting; its link opens Audio tools.

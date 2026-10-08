@@ -80,6 +80,9 @@ class _FakeYDL:
     def __exit__(self, *a):
         return False
 
+    def add_post_processor(self, *_args, **_kwargs):
+        pass  # the media-URL guard; not exercised by this fake
+
     def extract_info(self, url, download=True):
         idx = len(_FakeYDL.calls)
         _FakeYDL.calls.append(url)

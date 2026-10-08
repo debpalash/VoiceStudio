@@ -67,6 +67,17 @@ your launch environment. An ordinary “address already in use” conflict still
 the existing backend-attachment/conflict flow; VoiceStudio does not stop unrelated
 processes or change firewall rules.
 
+If the backend log ends with `FATAL: the operating system refused to let
+VoiceStudio listen on port …` (`[Errno 13]` / WinError 10013), the OS denied the
+bind rather than reporting a taken port. On Windows a possible cause is a
+reserved range (Hyper-V, WSL, Docker and WinNAT reserve them); another process
+holding the port exclusively gives the same error. List the reserved ranges with
+`netsh interface ipv4 show excludedportrange protocol=tcp` and set
+`OMNIVOICE_PORT` to a port outside every range that no other app uses. On
+macOS and Linux, ports below 1024 need elevated rights. A default launch already
+skips reserved ports on its own; this message appears only when the port was
+chosen explicitly.
+
 ## Generation failure diagnosis
 
 OmniVoice's in-process and subprocess engines both reuse an installed speech
@@ -89,14 +100,17 @@ receive a stable `docs_topic` and a safe fallback message, never private excepti
 | Topic | Recovery |
 | --- | --- |
 | `GPU_ARCH_UNSUPPORTED` | The installed PyTorch build cannot run kernels on this GPU. Select CPU in Settings → Performance & Device, or use a PyTorch build compatible with the GPU. |
+| `HOST_MEMORY_EXHAUSTED` | The machine ran out of system memory, so the engine could not finish. Close other memory-heavy apps, unload unused models with **Flush models**, render a shorter passage, or select a lighter TTS engine. On Windows, enlarging the page file also helps. A CPU-only machine has no GPU memory to free — this is RAM, not VRAM. |
 | `WINDOWS_APP_CONTROL_BLOCKED` | Windows application control blocked a required file. Ask the administrator to allow the trusted VoiceStudio runtime, then restart the app. |
 | `AUDIO_IO_FAILED` | Check the audio format, free disk space, and file permissions; review the folder in Settings → Storage. |
 | `HF_MIRROR_UNREACHABLE` | The configured Hugging Face mirror could not be reached while fetching the engine's weights. Restore the official endpoint in Settings → Models → Hugging Face mirror, then retry. |
 
 Unsupported GPU builds and application-control blocks are terminal for the current
 stream: the client does not automatically render the whole passage again. After
-correcting the cause, start a new generation. Unknown failures retain generic
-guidance; a report with only `RuntimeError` does not establish which cause applies.
+correcting the cause, start a new generation. Host RAM exhaustion is *not*
+terminal — freeing memory genuinely repairs it, so a retry can succeed.
+Unknown failures retain generic guidance; a report with only `RuntimeError` does
+not establish which cause applies.
 
 An engine downloads its weights the first time it is used, so the first
 generation with a newly selected engine can fail on the download rather than on
@@ -111,7 +125,7 @@ retry.
 
 <a id="pkg_resources-missing"></a>
 
-**Symptom:** the splash screen shows `ModuleNotFoundError: No module named
+**Symptom:** the setup screen shows `ModuleNotFoundError: No module named
 'pkg_resources'` during WhisperX import, and the app never advances past the
 "Setting up models" step.
 
@@ -286,28 +300,26 @@ itself does not grant access.
 
 **Symptom:** "VoiceStudio.app is damaged and can't be opened."
 
-**Cause:** the app is not yet notarised (signing is wired in `release.yml` and
-activates once the maintainer adds the Apple cert secrets) — until then macOS
-quarantines every download.
+**Cause:** Gatekeeper cannot verify the app's Apple Developer identity — the
+build is unsigned or ad-hoc signed (local `bun run dist` packages, or a release
+published without notarization; signing and notarization run in
+`electron-release.yml` when the Apple credentials are configured).
 
 **Fix:** see [macos.md#gatekeeper-quarantine](macos.md#gatekeeper-quarantine).
 
-## 4. AppImage white screen / EGL errors (Fedora 44, Ubuntu 24.04+, 26.04)
+## 4. Linux: blank window or GPU errors
 
-**Symptom:** the AppImage window opens fully white. No UI ever appears. On
-newer distros (Ubuntu 24.04 and later, incl. 26.04) the terminal often shows
-`Could not create default EGL display: EGL_BAD_PARAMETER`.
+**Symptom:** the Linux app window opens blank, or the terminal shows GPU
+process errors.
 
-**Cause:** WebKitGTK rendering regressions — the DMA-BUF renderer on modern
-WebKitGTK (2.48+), or the 2.44 / 2.46 compositing mode.
+**Cause:** the Electron app renders with Chromium; some GPU driver and
+compositor combinations fail to initialise hardware acceleration. (The
+`WEBKIT_*` variables from older versions of this entry applied only to the
+archived Tauri app, which rendered with WebKitGTK.)
 
-**Fix:** try `WEBKIT_DISABLE_DMABUF_RENDERER=1` first (modern WebKitGTK / the
-EGL error), then `WEBKIT_DISABLE_COMPOSITING_MODE=1` — full walkthrough incl.
-the software-rendering last resort:
+**Fix:** launch once with `--disable-gpu` (and on Wayland, optionally
+`--ozone-platform=x11`) — see
 [linux.md#appimage-white-screen-on-fedora-44--ubuntu-2404](linux.md#appimage-white-screen-on-fedora-44--ubuntu-2404).
-
-**Linked issues:** [#62](https://github.com/debpalash/VoiceStudio/issues/62),
-[#961](https://github.com/debpalash/VoiceStudio/issues/961)
 
 ## 5. Windows Triton / torch.compile OOM
 
@@ -481,6 +493,14 @@ If a running install ever reports "Media engine unavailable":
    `sudo apt install ffmpeg`, `winget install ffmpeg`) also works — press
    **Use system copy** afterwards.
 
+Transcription tells these apart from other failures. If a dub transcription
+reports that it needs ffmpeg, follow the steps above; VoiceStudio also exposes
+its resolved FFmpeg under the bare name `ffmpeg` to the engines it launches, so
+a library that runs plain `ffmpeg` no longer fails with `[Errno 2] No such file
+or directory: 'ffmpeg'`. A "lost its output pipe" (`[Errno 32] Broken pipe`)
+reply means the app that launched the backend closed or relaunched; restart
+VoiceStudio.
+
 The same panel updates **yt-dlp** (video imports): site support changes
 faster than app releases, so when video-URL imports start failing, press
 **Update** there — the new version survives app updates, and **Restore tested
@@ -515,7 +535,8 @@ URLs, which is wrong when the UI is reached from a different LAN host.
 **Fix:** the frontend derives its API/media base from the page's own origin.
 When running behind a reverse proxy where the UI and API are on different
 origins, set the runtime override `OMNIVOICE_PUBLIC_API_BASE` (works on the
-prebuilt image via `docker run -e`) — see
+prebuilt image via `docker run -e`) and list the UI's origin in
+`OMNIVOICE_ALLOWED_ORIGINS` — see
 [docker.md#lan-access](docker.md#lan-access).
 
 ## 9. Apple Silicon `mlx-whisper` unavailable on Intel mac
@@ -634,9 +655,40 @@ redirect, so the generic mirror trick doesn't help here.
      rest of the (small) dependencies still come from PyPI/your mirror.
 
 If you don't have an NVIDIA GPU, you don't need the CUDA build at all — a CPU /
-Apple-Silicon install skips this index entirely.
+Apple-Silicon install skips this index entirely. Electron source and packaged
+setup select CPU wheels when no NVIDIA driver is detected. Set
+`OMNIVOICE_TORCH_VARIANT=cpu` before `bun run setup:api` or the packaged install
+action to choose them explicitly; see [CPU setup](../../electron/README.md#running-without-a-gpu).
+An unusable NVIDIA driver is a setup warning for CPU-capable engines;
+GPU-only engines still require supported hardware.
 
 **Linked issue:** [#569](https://github.com/debpalash/VoiceStudio/issues/569)
+
+## 12b. My AMD Radeon GPU is not used (CPU is busy, GPU is idle)
+
+**Symptom:** generation or transcription is slow, Task Manager shows the CPU
+busy and the Radeon idle, and **Settings → About → Run self-check** says the
+compute device is `cpu`.
+
+**Cause:** the default install has the NVIDIA CUDA build of PyTorch (or the
+CPU-only build when no NVIDIA driver is present), and neither can drive AMD GPUs. This is not a driver problem on your side. Open
+**Settings → Performance → GPU acceleration**: it names your card, the installed
+PyTorch build and, for every engine, whether it uses the GPU.
+
+**Fix, by platform:**
+
+- **Windows:** PyTorch engines stay on the CPU (no ROCm wheels exist for the
+  PyTorch version VoiceStudio ships). Engines with their own GPU runtime — today
+  audio.cpp (Vulkan) — do use a Radeon: install its runtime from **Settings →
+  Models**. Details and the advanced, unsupported AMD-wheels route:
+  [windows.md — GPU support](windows.md#gpu-support).
+- **Linux:** set `OMNIVOICE_TORCH_VARIANT=rocm` and run setup again, or use the
+  ROCm Docker image — [linux.md — AMD GPU (ROCm)](linux.md#amd-gpu-rocm). If the
+  panel says PyTorch has ROCm but cannot open the device, check that the `amdgpu`
+  driver is loaded and your user can open `/dev/kfd` (`render` and `video`
+  groups).
+
+**Linked issue:** [#2468](https://github.com/debpalash/VoiceStudio/issues/2468)
 
 ## 13. Stuck on the download page / incomplete model cache ("only `refs/`")
 
@@ -682,6 +734,14 @@ order:
   set it as an env var before launching and relaunch:
   - macOS/Linux: `export HF_ENDPOINT=https://hf-mirror.com`
   - Windows (PowerShell): `[Environment]::SetEnvironmentVariable("HF_ENDPOINT","https://hf-mirror.com","User")`
+
+A segmented download refuses a response whose status or Content-Range does not match the requested bytes and file size. An invalid response is not published as the model file; retry through a server or mirror that supports correct byte ranges.
+
+Segmented download resume records are reused only with an existing partial file of the expected size and valid byte-range entries. If a partial file is missing, truncated, or oversized, or its sidecar is malformed, the download fetches those bytes again instead of treating preallocated zeros as completed data. Oversized partial files are resized before restarting so old trailing bytes cannot prevent verification of the new download. Stale checkpoints are removed before resizing or recreating partial files, so a failed fetch cannot make the next retry trust stale or zero-filled bytes. If that stale checkpoint cannot be removed, the restart stops before changing the partial file or destination.
+
+**Disk filled up mid-install.** A model or engine install that runs out of space stops immediately (it is not retried with backoff) and reports how much space is free and where; free space or move the model cache to a larger volume, then retry. The download resumes from the part that already finished. During first-run setup, the one-time `uv` installer download is attempted up to three times (two retries) on connection resets, timeouts, and HTTP 5xx/429 before it reports failure.
+
+**Exports named after a video title.** Download and export names built from a video title replace characters Windows rejects (`< > : " / \ | ? *`, control characters, trailing dots/spaces, device names such as `CON`) with `_` on every OS, so `How to X: a guide?` exports as `How to X_ a guide_` instead of failing with `[Errno 22] Invalid argument`.
 
 **Manual fallback** (if downloads keep failing), pull the weights yourself into
 the same cache, then relaunch:
@@ -746,6 +806,12 @@ and `OMNIVOICE_GENERATE_TIMEOUT_S` (generation) — both in seconds, default 300
 default 120). **Raise** them for very long single files/generations, **lower**
 them to fail faster on a small machine.
 
+Saving a cloned voice without a transcript transcribes the reference with an
+installed speech-to-text model for at most 60 seconds
+(`OMNIVOICE_PROFILE_TRANSCRIBE_TIMEOUT_S`). After that the voice is saved
+without a transcript, and the first generation with it reuses the finished
+transcription. Installed models load from disk, so saving works offline.
+
 CPU-only hosts use a bounded 600-second generation floor because correct CPU
 synthesis can take longer than the accelerated five-minute budget. Override it
 with `OMNIVOICE_CPU_GENERATE_TIMEOUT_S` — an explicit value here always
@@ -763,6 +829,16 @@ states — and if an external env var (shell profile, `.env`, Docker `-e`,
 systemd unit, …) is already providing the same key, the panel says so instead,
 since that external value keeps winning on every future restart too, not just
 this one.
+
+**While the backend is busy, the app now stays usable.** The desktop shell polls
+the backend's `/health` endpoint while you work, and a long GPU job can hold the
+Python event loop long enough to miss those probes. The shell knows the process
+is still alive (it checks for an exit before reacting), so it now shows a
+**recoverable busy state** instead of an error: the status-bar dot pulses amber,
+your workspace stays open, and requests wait for the current job to finish
+rather than failing with "Can't reach the local backend". Nothing to do — it
+clears itself as soon as the job releases the event loop. If the dot turns
+**red** and names an exit code, that is a real crash; use the sections above.
 
 **Two things changed here** ([#1190](https://github.com/debpalash/VoiceStudio/issues/1190)):
 
@@ -936,63 +1012,23 @@ because the backend could not start, you get:
 The reason is also **retained** across a Retry or an automatic respawn, so a
 later attempt can't erase the diagnosis of the first one.
 
-**From source (`bun desktop`)?** If the app builds but the window never comes
-up, the shell now prints the exit code and where to look (the cargo/tauri
-output above it, plus `omnivoice.log` and `backend_err.log` in your VoiceStudio
-data folder) instead of exiting silently.
-
-If Cargo stops before the window is built with `Package gdk-3.0 was not found`,
-`pango.pc` missing, `libsoup-3.0` missing, or `javascriptcoregtk-4.1` missing,
-the Ubuntu/Debian WebKitGTK development packages are absent. Install the full
-package block in the [Linux source-build guide](linux.md#building-from-source),
-then rerun `source "$HOME/.cargo/env"` and `bun desktop`. Do not set a custom
-`PKG_CONFIG_PATH` unless the libraries were deliberately installed outside the
-system package manager.
+**From source (`bun run dev`)?** Run `bun run setup:api` first so the
+backend's Python environment exists. If the window never comes up, read the
+terminal output plus `omnivoice.log` and `backend_err.log` in your VoiceStudio
+data folder. If a packaging build (`bun run dist`) stops while compiling the
+Rust native helper with a missing `pkg-config` library, install the package
+block in the [Linux source-build guide](linux.md#building-from-source).
 
 **Still stuck?** Open the details, copy the output, and file it with **Report**
 — that output is the thing that makes the failure diagnosable.
 
-## 15. Stuck at "preparing" forever after a crash / BSOD (Windows)
+## 15. Archived Tauri app: stuck at "preparing" after a crash (Windows)
 
-**Symptom:** after an unclean shutdown (Windows BSOD, forced power-off), every
-launch sits on the "preparing" splash indefinitely — even though the backend is
-actually healthy (its log shows models loaded, and
-`http://127.0.0.1:3900/health` answers `{"status":"ok"}` in a browser). The
-WebView log contains:
-
-```
-IPC custom protocol failed, Tauri will now use the postMessage interface instead
-TypeError: Failed to fetch
-```
-
-**Cause:** the crash corrupted cache directories inside the WebView2 profile at
-`%LOCALAPPDATA%\com.debpalash.omnivoice-studio\EBWebView`. Both the IPC custom
-protocol *and* its postMessage fallback break, so the splash never hears the
-"ready" signal from the app shell (issue #879).
-
-**Fix:** current builds handle this automatically — if the splash gets no IPC
-signal within ~10 s it checks the backend over plain HTTP and proceeds on its
-own; if the backend isn't up either, after ~45 s a recovery panel appears with
-**Repair and restart** (Windows), which clears cache-only directories and
-relaunches. It deliberately preserves `Default\Local Storage` and
-`Default\IndexedDB`, where browser-owned settings and long-form projects live.
-
-On older builds (≤ 0.3.8), or if the automatic repair fails, do it manually:
-quit VoiceStudio, delete only the cache directories below, then start the app
-again. Do not delete the whole `EBWebView` profile; doing so also deletes
-browser-owned projects and settings.
-
-<!-- validate: skip -->
-```powershell
-$voiceStudioWebView = "$env:LOCALAPPDATA\com.debpalash.omnivoice-studio\EBWebView"
-@(
-  "Default\Cache", "Default\Code Cache", "Default\GPUCache", "Default\DawnCache",
-  "Default\Service Worker\CacheStorage", "Default\Service Worker\ScriptCache",
-  "GPUCache", "DawnCache", "ShaderCache", "GrShaderCache", "GraphiteDawnCache"
-) | ForEach-Object {
-  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $voiceStudioWebView $_)
-}
-```
+This entry covered a corrupted WebView2 profile in the archived Tauri app
+(`IPC custom protocol failed, Tauri will now use the postMessage interface
+instead`, issue #879). The Electron app does not use WebView2. Install Electron
+with the [migration guide](../electron-migration.md); if the Electron app hangs
+at startup, see [14d](#14d-cant-reach-the-local-voicestudio-backend-when-the-backend-never-started).
 
 ## 16. macOS: microphone permission never prompts, VoiceStudio never appears in System Settings
 
@@ -1001,26 +1037,23 @@ System Settings → Privacy & Security → Microphone and enable VoiceStudio" �
 but VoiceStudio never appears in that list, so there's nothing to enable.
 `NSMicrophoneUsageDescription` is present in the app's `Info.plist`, and
 resetting the permission (`tccutil reset Microphone
-com.debpalash.omnivoice-studio`) followed by a relaunch changes nothing — no
+com.voicestudio.desktop`) followed by a relaunch changes nothing — no
 system prompt ever appears.
 
 **Cause:** the app bundle was missing the Hardened Runtime *entitlement* for
-microphone access. An earlier revision of this section blamed an upstream
-Tauri/WebKit limitation — that was wrong (a community contributor,
-[@MahdiHedhli](https://github.com/MahdiHedhli), read the sources more
-carefully and found the real gap). wry's `WKUIDelegate` already grants the
-WebKit-layer media-capture request; but Tauri's macOS bundler enables
-Hardened Runtime by default, and Hardened Runtime blocks microphone hardware
-access unless `com.apple.security.device.audio-input` is present in the
-signed binary's entitlements — regardless of `Info.plist`'s
-`NSMicrophoneUsageDescription` (that only supplies the prompt *text*).
-Without the entitlement, macOS's TCC layer never registers a request, which
-is exactly why the app never appears in the System Settings list.
+microphone access. Hardened Runtime blocks microphone hardware access unless
+`com.apple.security.device.audio-input` is present in the signed binary's
+entitlements — regardless of `Info.plist`'s `NSMicrophoneUsageDescription`
+(that only supplies the prompt *text*). Without the entitlement, macOS's TCC
+layer never registers a request, which is exactly why the app never appears in
+the System Settings list. (Diagnosed in the archived Tauri app by
+[@MahdiHedhli](https://github.com/MahdiHedhli).)
 
-**Fix:** ships in the release after v0.3.12 (the bundle now carries
-`src-tauri/entitlements.plist` — [#1016](https://github.com/debpalash/VoiceStudio/pull/1016),
-contributed by the same person who diagnosed it). Update and live recording
-works, with a normal macOS permission prompt on first use.
+**Fix:** fixed since the release after v0.3.12
+([#1016](https://github.com/debpalash/VoiceStudio/pull/1016)); the Electron app
+signs with the same entitlement (`electron/build/entitlements.mac.plist`).
+Update and live recording works, with a normal macOS permission prompt on
+first use.
 
 **Workaround on older builds (≤ v0.3.12):** record your voice sample in any
 other app (Voice Memos, QuickTime, etc.) and upload the resulting file in
@@ -1054,51 +1087,22 @@ install `.pth` embeds that path in UTF-8, which is rarely a valid byte
 sequence in the active ANSI code page (`gbk`, `shift_jis`, etc.), and the
 interpreter can never start (#1783).
 
-**Fix:** current builds resolve the managed environment through Windows' 8.3
-short filename for any path containing non-ASCII bytes (the same trick
-already used for the HuggingFace cache — see
-[`backend/core/config.py`](../../backend/core/config.py)) whenever there is
-no usable environment yet, or an existing one shows exactly this crash — so
-a first-time install, and an install already broken by this bug, both land
-at an ASCII-safe path automatically with no user action needed. The old
-broken environment (if any) is left in place, not deleted, in case manual
-recovery is ever needed. An existing environment that already works — ASCII
-path or not — is never touched or relocated.
+**Fix:** VoiceStudio now rewrites those `.pth` entries to ASCII-only paths after
+each runtime install and before each launch, so existing environments recover
+on the next start. If the backend still cannot start, keep the app
+environment on an ASCII-only path. On the first-run
+setup screen, press **Change…** beside **App environment** and pick a folder
+such as `C:\VoiceStudio` before setup starts. An environment that cannot start
+fails VoiceStudio's runtime check, so setup opens again: choose an ASCII-only
+App environment location there. The broken environment is left in place for
+manual removal.
 
-**Prevention, on a brand new install:** on the first-run setup screen (before
-clicking through it), the **Change…** button on the "App environment" row
-(or "Portable folder" in portable mode) lets you pick an ASCII-only path up
-front — nothing below is needed if you do this before setup completes.
-
-If it still happens — most likely because Windows' 8.3 short filenames are
-off on the system drive, or the affected folder already existed before this
-fix shipped — the app names this cause specifically rather than the generic
-"backend never reported ready." By the time this message can appear, setup
-has already been confirmed (it's only reached after the first-run screen
-hands off to the installer), so the error screen you're actually looking at
-offers only **Retry** and **Clean & Retry** — neither changes where the
-environment is stored, so both fail identically, and the first-run picker
-above is no longer reachable either. The right fix depends on which install
-mode you're in:
-
-- **Standard (non-portable) install:** quit VoiceStudio, open (creating it
-  if it doesn't exist) `%LOCALAPPDATA%\com.debpalash.omnivoice-studio\config.json`
-  in a text editor, add `"env_dir": "C:/VoiceStudio/env"` (any path using
-  only English letters/numbers — forward slashes are fine on Windows), save,
-  and relaunch.
-- **Portable install:** the `env_dir` config key above does **not** apply —
-  portable mode resolves its own environment folder from the portable
-  location and never consults it. Quit VoiceStudio, then either move the
-  whole VoiceStudio folder (the app plus its `OmniVoiceStudio-Data` folder)
-  to an ASCII-only path and run it from there, or create a `portable.path`
-  text file beside the app containing one line — an absolute ASCII-only path
-  for the data folder (e.g. `C:\VoiceStudio\Data`) — and relaunch.
+The archived Tauri app's automatic 8.3 short-path relocation and its
+`env_dir` / `portable.path` overrides do not apply to the Electron app.
 
 Re-enabling 8.3 short filenames (`fsutil 8dot3name`) is deliberately **not**
-recommended here: the setting is per-volume and only affects directories
-created *after* it's changed, so toggling it does nothing for a folder that
-already exists — it would not actually fix this without also recreating the
-folder, which the ASCII-path options above already do more reliably.
+recommended: the setting is per-volume and only affects directories created
+*after* it's changed, so it does nothing for a folder that already exists.
 
 **Linked issue:** [#1783](https://github.com/debpalash/VoiceStudio/issues/1783) (auto-captured from [#1771](https://github.com/debpalash/VoiceStudio/issues/1771))
 
@@ -1247,7 +1251,7 @@ VoiceStudio pins pedalboard to `>=0.9.14,<0.9.21` while [upstream portable-wheel
 
 ### TorchCodec unavailable
 
-When torchaudio requires an unavailable TorchCodec installation, VoiceStudio writes through soundfile and reads reference audio through its FFmpeg fallback. Reference amplitude is normalized using the decoded sample representation, including 8-, 24-, and 32-bit PCM.
+When torchaudio requires an unavailable TorchCodec installation, VoiceStudio writes through soundfile and reads audio (reference clips, dub segments, cached-segment headers) through soundfile or its FFmpeg fallback, so dub assembly works on torchaudio 2.9 without TorchCodec. Reference amplitude is normalized using the decoded sample representation, including 8-, 24-, and 32-bit PCM.
 
 ### Isolated engine timeouts
 
@@ -1302,6 +1306,49 @@ Python traceback may not exist; include the captured crash details and system/GP
 information when reporting them. The name identifies the failure category, not
 its cause: it does not by itself prove a driver, model, or memory problem.
 
+### Backend would not start (Windows: `spawn UNKNOWN`, "did not answer", "environment incomplete")
+
+Three different startup failures share the same screen. The app now names the
+program it tried to launch, quotes what the backend last printed (or says it
+printed nothing, or that nothing was spawned), and adds a localized hint under
+the message:
+
+- **`Could not start <program>: spawn UNKNOWN`** — Windows (or your security
+  software) refused to run the Python runtime; `UNKNOWN` is how the OS reports a
+  blocked executable. Add VoiceStudio's runtime folder to your antivirus
+  exclusions (Windows Security → Virus & threat protection → Manage settings →
+  Exclusions) and make sure it is not inside OneDrive, then retry.
+- **`Backend did not answer on port 3900 within N s`** — the wait for the
+  backend ran out. The budget (`OMNIVOICE_STARTUP_BUDGET_S`) now starts when the
+  backend process is spawned, not when the launch began, defaults to 300 s (600 s
+  on a machine with four or fewer cores or 8 GB of RAM or less, where a PC
+  without a dedicated GPU is usually found), and is extended while the backend is
+  still printing, up to three times the budget. The runtime health probe that
+  runs before the launch also gets 180 s instead of 30 s, and a probe that merely
+  ran out of time is treated as inconclusive instead of sending an intact
+  runtime back to the setup screen. The first start after an install is the
+  slowest because antivirus scans every new file; later starts are much faster.
+- **`The Python environment in <folder> is missing`** or **`… is incomplete:
+  <reason>`** (running from a source checkout) — run `bun run setup:api` in the
+  repository and let it finish. *Missing* means no `.venv` exists yet.
+  *Incomplete* quotes the import that failed, e.g. `ModuleNotFoundError: No
+  module named 'sentencepiece'` (setup did not finish: rerun it) or `ImportError:
+  DLL load failed` (Windows: rerun setup, which installs the Visual C++
+  runtime). If the folder is inside OneDrive, Dropbox, iCloud Drive or Google
+  Drive, move the checkout to a plain local folder first: online-only
+  placeholders and file locking break the Python environment.
+
+A native crash (`3221225477`, `-1073741819`) right after pressing Generate
+shortly after launch was caused by the startup preload and the first generation
+loading the TTS model at the same time. Cold loads are now serialized across both
+paths; if a load ever wedges past its deadline, retries fail immediately with a
+"restart the backend" message instead of queueing behind it. If a native crash
+persists, attach the full faulthandler dump (the `Windows fatal exception` block
+including every `Thread` section) from Settings → Logs → Backend. Bug reports
+already carry a condensed copy: the crash message names the faulting frame, and
+the report keeps the faulting thread's VoiceStudio frames (which model or job
+was loading) plus the frame each other thread was running.
+
 ### ASR initialization errors
 
 A PyTorch Whisper initialization failure can come from an import, checkpoint,
@@ -1311,3 +1358,7 @@ prove that torch and torchvision versions are mismatched. Save the diagnostic
 bundle and check package versions in the environment running the backend before
 reinstalling anything. Faster Whisper is an alternative when only transcription
 is affected; it does not diagnose or repair the original environment.
+
+## Concurrent migration backups
+
+Concurrent pre-migration database snapshots reserve distinct backup counters before copying. Reservation files are not recovery backups. A reservation left by an interrupted writer is skipped by subsequent snapshots rather than reused.

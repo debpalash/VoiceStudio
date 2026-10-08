@@ -31,6 +31,7 @@ from typing import Any, Awaitable, Callable, Optional
 
 from worker.async_utils import drain_task
 from worker.errors import ErrorClass, WorkerError
+from worker.params import rewrite_inputs, undeclared_inputs
 
 logger = logging.getLogger("omnivoice.worker")
 
@@ -543,6 +544,19 @@ class TaskExecutor:
             )
 
         refs = [ref for ref in (getattr(assignment, "inputs", None) or []) if ref.artifact_id]
+        # A file-valued parameter may only name an input declared on this
+        # assignment. Anything else is a string the panel chose, and handing
+        # it to the audio loader would open that path on THIS machine.
+        if undeclared_inputs(params, {ref.artifact_id for ref in refs}):
+            raise TaskFailure(
+                WorkerError(
+                    error_class=ErrorClass.TERMINAL,
+                    code="INVALID_TASK_PARAMS",
+                    message="The task named a file that was not sent as a task input.",
+                    hint="Update VoiceStudio on the control plane so files travel "
+                    "as task inputs, then try again.",
+                )
+            )
         if not refs:
             return params, []
         if fetch is None:
@@ -568,7 +582,7 @@ class TaskExecutor:
                 )
                 local[ref.artifact_id] = path
                 leased.append(path)
-            return _rewrite_params(params, local), leased
+            return rewrite_inputs(params, local), leased
         except BaseException:
             for path in leased:
                 _release_input_cache_path(path)
@@ -1315,17 +1329,6 @@ def _prune_input_cache(
             total -= size
     except OSError:  # pragma: no cover — a full cache is not a failed task
         logger.debug("Could not prune the worker input cache", exc_info=True)
-
-
-def _rewrite_params(params: dict, local: dict[str, str]):
-    """Replace every artifact id in the params with its local path."""
-    if isinstance(params, dict):
-        return {key: _rewrite_params(value, local) for key, value in params.items()}
-    if isinstance(params, list):
-        return [_rewrite_params(item, local) for item in params]
-    if isinstance(params, str):
-        return local.get(params, params)
-    return params
 
 
 def _mark(audio, sample_rate: int, params: dict):

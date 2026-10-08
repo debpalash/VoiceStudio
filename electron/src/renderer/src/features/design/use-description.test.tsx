@@ -52,6 +52,6 @@ it('newest description wins even if an old request ignores cancellation', async 
   await act(async () =>
     resolves[0]({ attrs: { Age: 'child' }, matched: ['child'], unmatched: [] }),
   );
-  expect(apply).toHaveBeenCalledExactlyOnceWith({ Age: 'elderly' });
+  expect(apply).toHaveBeenCalledExactlyOnceWith({ Age: 'elderly' }, 'new');
   expect(result.current.unmatched).toEqual(['raspy']);
 });

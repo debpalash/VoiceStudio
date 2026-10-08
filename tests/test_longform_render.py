@@ -348,7 +348,7 @@ def test_apply_filter_none_cases(preset, measured):
 def test_measure_cmd_exact_argv():
     assert build_loudnorm_measure_cmd("ffmpeg", "c.txt", "FILT") == [
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "info",
-        "-f", "concat", "-safe", "0", "-i", "c.txt",
+        "-f", "concat", "-safe", "0", "-protocol_whitelist", "file,pipe", "-i", "c.txt",
         "-af", "FILT", "-f", "null", "-",
     ]
 

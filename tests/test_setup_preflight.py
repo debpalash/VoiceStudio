@@ -225,6 +225,40 @@ def test_preflight_nvidia_driver_below_min_flags_fail():
     assert any("driver" in n.lower() for n in info["notes"])
 
 
+@pytest.mark.parametrize(
+    "platform_, driver, flagged",
+    [
+        ("linux", "524.99", True),
+        ("linux", "525.60.13", False),
+        ("linux", "550.54.14", False),
+        ("win32", "527.56", True),   # 527 < 528.33 Windows floor (#2489)
+        ("win32", "528.33", False),
+        ("win32", "551.23", False),
+    ],
+)
+def test_nvidia_driver_floor_is_cuda12_minor_compat(monkeypatch, platform_, driver, flagged):
+    """525 (Linux) / 528.33 (Windows) is enough for the bundled CUDA 12.8 runtime."""
+    from api.routers.setup import wizard as setup_mod
+
+    monkeypatch.setattr(
+        setup_mod, "_min_nvidia_driver",
+        lambda platform=None, _f=setup_mod._min_nvidia_driver: _f(platform_),
+    )
+
+    def fake_run_cmd(args, timeout=2.0):
+        if args and args[0] == "nvidia-smi":
+            return 0, f"{driver}, NVIDIA GeForce RTX 3090\n"
+        return -1, ""
+
+    monkeypatch.setattr(setup_mod, "_run_cmd", fake_run_cmd)
+    import platform as _p
+    if sys.platform == "darwin" and _p.machine() == "arm64":
+        pytest.skip("apple-silicon branch returns before nvidia-smi")
+    info = setup_mod._detect_gpu()
+    assert info["vendor"] == "nvidia"
+    assert any("driver" in n.lower() for n in info["notes"]) is flagged
+
+
 def test_preflight_amd_flags_warn_when_no_rocm_torch():
     """AMD GPU + torch without HIP → warn with ROCm install instructions."""
     import platform as _p
@@ -244,6 +278,43 @@ def test_preflight_amd_flags_warn_when_no_rocm_torch():
     # The bundled CUDA torch has no .version.hip → must be flagged
     if info["backend"] != "rocm":
         assert any("rocm" in n.lower() for n in info["notes"])
+
+
+@pytest.mark.parametrize("platform_, expect", [
+    ("win32", "audio.cpp"),
+    ("linux", "OMNIVOICE_TORCH_VARIANT=rocm"),
+])
+def test_preflight_sees_a_radeon_without_rocm_smi(monkeypatch, platform_, expect):
+    """Windows ships no rocm-smi: the old probe reported "No compatible GPU" for
+    an RX 9070 XT. The OS adapter inventory must still find it, and the advice
+    must name an option that exists on THAT OS."""
+    import platform as _p
+    if sys.platform == "darwin" and _p.machine() == "arm64":
+        pytest.skip("apple-silicon branch returns before the AMD probe")
+    from core import gpu_inventory
+    from api.routers.setup import wizard as setup_mod
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(setup_mod, "_run_cmd", lambda args, timeout=2.0: (-1, ""))
+    monkeypatch.setattr(
+        gpu_inventory, "detect_host_gpus",
+        lambda: (gpu_inventory.HostGPU("amd", "AMD Radeon RX 9070 XT", 16.0),),
+    )
+    monkeypatch.setattr(setup_mod.sys, "platform", platform_)
+    cuda_torch = SimpleNamespace(
+        cuda=SimpleNamespace(is_available=lambda: False),
+        version=SimpleNamespace(hip=None, cuda="12.8"),
+        backends=SimpleNamespace(mps=SimpleNamespace(is_available=lambda: False)),
+    )
+    with patch.dict("sys.modules", {"torch": cuda_torch}):
+        info = setup_mod._detect_gpu()
+
+    assert info["vendor"] == "amd"
+    assert info["device_name"] == "AMD Radeon RX 9070 XT"
+    assert info["available"] is False
+    note = " ".join(info["notes"])
+    assert expect in note
+    assert "rocm6.1" not in note  # the old, wrong advice
 
 
 # ── Docker / container GPU fallback ──────────────────────────────────────
@@ -486,3 +557,39 @@ def client_factory():
     ``patch()`` context managers."""
     from main import app
     return TestClient(app)
+
+
+@pytest.mark.parametrize("vendor,available,expected", [
+    ("none", False, "warn"),
+    ("nvidia", False, "warn"),
+    ("nvidia", True, "pass"),
+])
+def test_optional_gpu_never_blocks_cpu_setup(monkeypatch, tmp_path, vendor, available, expected):
+    from api.routers.setup import wizard
+    from services import media_tools
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(wizard.sys, "platform", "linux")
+    monkeypatch.setattr(wizard._platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(wizard, "_ram_gb", lambda: 32)
+    monkeypatch.setattr(wizard, "_disk_free_gb", lambda _: 100)
+    monkeypatch.setattr(wizard, "hf_cache_dir", lambda: str(tmp_path / "hf"))
+    monkeypatch.setattr(wizard, "_network_check", lambda: {
+        "id": "network", "label": "Network", "status": "pass", "detail": "Test", "fix": None,
+    })
+    monkeypatch.setattr(wizard, "_detect_gpu", lambda: {
+        "vendor": vendor, "available": available, "backend": "cuda" if available else "cpu",
+        "driver": "test", "device_name": "Test device", "notes": [],
+    })
+    monkeypatch.setattr(media_tools, "summary", lambda **_: {"ready": True})
+    monkeypatch.setitem(sys.modules, "services.tts_backend", SimpleNamespace(gpu_routing_verdict=lambda: {
+        "engine": "omnivoice", "routing_status": "accelerated" if available else "cpu_only",
+        "effective_device": "cuda" if available else "cpu", "host_family": "cuda" if available else "cpu",
+    }))
+    result = wizard.preflight()
+    gpu = next(check for check in result["checks"] if check["id"] == "gpu")
+    assert gpu["status"] == expected
+    assert result["ok"] is True
+    if vendor == "nvidia" and not available:
+        assert "CPU-only" in gpu["fix"]
+        assert "GPU-only engines remain unavailable" in gpu["fix"]

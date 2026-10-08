@@ -17,6 +17,9 @@ const BASE = 'https://github.com/debpalash/VoiceStudio/blob/main';
 
 export const ERROR_DOCS: Record<string, string> = {
   GPU_ARCH_UNSUPPORTED: `${BASE}/docs/install/troubleshooting.md#generation-failure-diagnosis`,
+  // #2462 — the host ran out of system RAM (the only memory class a
+  // CPU-only machine can produce).
+  HOST_MEMORY_EXHAUSTED: `${BASE}/docs/install/troubleshooting.md#generation-failure-diagnosis`,
   WINDOWS_APP_CONTROL_BLOCKED: `${BASE}/docs/install/troubleshooting.md#generation-failure-diagnosis`,
   AUDIO_IO_FAILED: `${BASE}/docs/install/troubleshooting.md#generation-failure-diagnosis`,
   INVALID_MEDIA_FILE: `${BASE}/docs/electron-dubbing.md#unreadable-source-file`,
@@ -44,6 +47,7 @@ export const TRANSLATION_ENGINES_DOCS = `${BASE}/docs/dubbing/translation-engine
 // same time (`backend/core/error_docs_map.py`).
 export const ERROR_CLASS_KEYS = [
   'GPU_ARCH_UNSUPPORTED',
+  'HOST_MEMORY_EXHAUSTED',
   'WINDOWS_APP_CONTROL_BLOCKED',
   'AUDIO_IO_FAILED',
   'INVALID_MEDIA_FILE',

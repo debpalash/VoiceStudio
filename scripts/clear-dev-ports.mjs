@@ -76,11 +76,12 @@ function normalized(value, windows = process.platform === "win32") {
   return path.posix.resolve(String(value || ""));
 }
 
-// The app's own reverse-DNS identity (tauri.conf.json `identifier`). A backend
-// the Tauri shell spawned lives under a per-app directory named after this —
+// The retired Tauri shell's reverse-DNS identifier. A backend a final Tauri
+// install spawned lives under a per-app directory named after it —
 // `…/com.debpalash.omnivoice-studio/project/.venv/…` — so its path names
 // VoiceStudio as unambiguously as the checkout path does, just from the other
-// direction.
+// direction. The Electron app's managed runtime is matched by
+// ELECTRON_RUNTIME_VENV below.
 //
 // Without this the ownership test only recognised a listener running out of
 // the git checkout, so an app-managed backend left holding the port was
@@ -91,6 +92,12 @@ function normalized(value, windows = process.platform === "win32") {
 // A reverse-DNS bundle id is specific enough to be safe here: nothing else
 // on the machine carries it, which is the whole point of the namespace.
 export const APP_BUNDLE_ID = "com.debpalash.omnivoice-studio";
+
+// The Electron app's managed runtime venv: `<userData>/runtime/project/.venv`
+// where userData is the `VoiceStudio` app folder, or a custom runtime location,
+// which the app always roots in a folder named `VoiceStudio`
+// (electron/src/main/backend.ts defaultRuntimeRoot / selectedRuntimeRoot).
+export const ELECTRON_RUNTIME_VENV = /[\\/]voicestudio[\\/](?:runtime[\\/])?project[\\/]\.venv[\\/]/i;
 
 export function belongsToCheckout(
   cwd,
@@ -110,7 +117,8 @@ export function belongsToCheckout(
   // App-managed backend: the bundle id appears in the executable path or in
   // the command line, whichever the platform gave us.
   for (const value of [cwd, executable, command]) {
-    if (String(value || "").toLowerCase().includes(APP_BUNDLE_ID)) return true;
+    const text = String(value || "");
+    if (text.toLowerCase().includes(APP_BUNDLE_ID) || ELECTRON_RUNTIME_VENV.test(text)) return true;
   }
   const haystack = windows
     ? String(command || "")

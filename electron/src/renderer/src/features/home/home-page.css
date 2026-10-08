@@ -10,12 +10,12 @@
 .home-heading-row {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px 24px;
 }
 
-.home-heading-row h2 {
+.home-heading-copy {
   min-width: 0;
   overflow-wrap: anywhere;
   flex: 1 1 280px;

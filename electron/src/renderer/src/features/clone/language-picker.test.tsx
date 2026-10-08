@@ -120,10 +120,11 @@ it('does not select while an IME composition is in progress', async () => {
   const onValueChange = vi.fn();
   render(<LanguagePicker onValueChange={onValueChange} />);
   fireEvent.click(screen.getByRole('button', { name: 'Language' }));
-  fireEvent.keyDown(await screen.findByRole('combobox'), {
-    key: 'Enter',
-    isComposing: true,
-    keyCode: 229,
-  });
+  await screen.findAllByRole('option', { name: 'English' });
+  const search = screen.getByRole('combobox');
+  fireEvent.keyDown(search, { key: 'Enter', isComposing: true });
+  fireEvent.keyDown(search, { key: 'Enter', keyCode: 229 });
   expect(onValueChange).not.toHaveBeenCalled();
+  fireEvent.keyDown(search, { key: 'Enter' });
+  expect(onValueChange).toHaveBeenCalledTimes(1);
 });

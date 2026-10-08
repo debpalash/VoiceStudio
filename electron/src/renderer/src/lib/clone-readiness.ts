@@ -1,5 +1,5 @@
 import type { Profile } from '@/lib/api/types';
-export type CloneBlocker = 'engine' | 'reference' | 'text' | 'loading' | 'preparing' | null;
+export type CloneBlocker = 'engine' | 'cloning' | 'reference' | 'text' | 'loading' | 'preparing' | null;
 export function cloneBlocker({
   text,
   profileId,

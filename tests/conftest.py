@@ -45,6 +45,12 @@ if not os.environ.get("OMNIVOICE_ENV_FILE"):
 # need a different value monkeypatch it explicitly.
 os.environ["OMNIVOICE_MODEL"] = "test"
 
+# Starlette's TestClient addresses the app as "http://testserver". The backend
+# refuses unrecognized Host names (DNS-rebinding guard, core.browser_guard),
+# so the suite registers that name the way a deployment registers its own.
+# Tests of the host check itself clear this with monkeypatch.
+os.environ.setdefault("OMNIVOICE_ALLOWED_HOSTS", "testserver")
+
 # Background warm-ups must not fire mid-suite: many tests boot the app
 # lifespan via TestClient, and any that exits without a lifespan shutdown
 # leaves the deferred preload task pending — 35s later (mid-suite, in
@@ -53,6 +59,12 @@ os.environ["OMNIVOICE_MODEL"] = "test"
 # prefetch cold-start tests). Unconditional: a stray export from the runner
 # shell must not re-enable it; a test that wants the warm-up monkeypatches.
 os.environ["OMNIVOICE_PRELOAD_WATERMARK"] = "0"
+
+# Physical-GPU inventory (core.gpu_inventory) reads the OS registry / sysfs. A
+# developer's own AMD/NVIDIA card must not change what a routing or probe test
+# resolves, so the suite sees a GPU-less inventory; the inventory's own tests
+# call its readers directly with fakes.
+os.environ["OMNIVOICE_DISABLE_GPU_INVENTORY"] = "1"
 
 
 # ── Test fixtures ──────────────────────────────────────────────────────────

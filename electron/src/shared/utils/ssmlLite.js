@@ -90,7 +90,19 @@ export function parseSsmlLite(text) {
   return segments;
 }
 
+// Grapheme clusters when the runtime has them (so ZWJ emoji, flags and
+// combining marks stay whole); otherwise code points. Never UTF-16 code
+// units, which tear surrogate pairs into lone surrogates.
+const graphemes =
+  typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
+    ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+    : null;
+
+function splitCharacters(text) {
+  return graphemes ? Array.from(graphemes.segment(text), (part) => part.segment) : Array.from(text);
+}
+
 /** Space out a run for [spell]: "USA" → "U S A". */
 export function spellOut(word) {
-  return (word || '').split(/\s+/).join('').split('').join(' ');
+  return splitCharacters((word || '').split(/\s+/).join('')).join(' ');
 }

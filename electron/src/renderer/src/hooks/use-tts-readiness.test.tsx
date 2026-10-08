@@ -5,6 +5,7 @@ import { useTtsReadiness } from './use-tts-readiness';
 const state = vi.hoisted(() => ({
   backendStage: 'ready',
   localReady: false,
+  supportsCloning: true,
   remoteTarget: undefined as string | undefined,
   remotePending: false,
   remoteError: false,
@@ -14,9 +15,13 @@ const state = vi.hoisted(() => ({
   computeTargetCalls: [] as Array<[boolean, string]>,
 }));
 
-vi.mock('./use-backend-status', () => ({
-  useBackendStatus: () => ({ stage: state.backendStage }),
-}));
+vi.mock('./use-backend-status', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./use-backend-status')>();
+  return {
+    ...actual,
+    useBackendStatus: () => ({ stage: state.backendStage }),
+  };
+});
 
 vi.mock('./use-engines', () => ({
   engineFamilyState: (data: Record<string, unknown> | undefined, family: string) => data?.[family],
@@ -25,7 +30,7 @@ vi.mock('./use-engines', () => ({
       tts: {
         active: 'omnivoice',
         active_model: 'k2-fsa/OmniVoice',
-        backends: [{ id: 'omnivoice', available: state.localReady }],
+        backends: [{ id: 'omnivoice', available: state.localReady, supports_cloning: state.supportsCloning }],
       },
     },
     activeTtsReady: state.localReady,
@@ -88,10 +93,17 @@ vi.mock('./use-compute-target', () => ({
 }));
 
 describe('target-aware TTS readiness', () => {
+  it('blocks cloning with a model that would ignore the reference', () => {
+    state.localReady = true;
+    state.supportsCloning = false;
+    const { result } = renderHook(() => useTtsReadiness('clone'));
+    expect(result.current).toBe('cloning');
+  });
   beforeEach(() => {
     Object.assign(state, {
       backendStage: 'ready',
       localReady: false,
+      supportsCloning: true,
       remoteTarget: undefined,
       remotePending: false,
       remoteError: false,
@@ -143,5 +155,23 @@ describe('target-aware TTS readiness', () => {
 
     expect(renderHook(() => useTtsReadiness('clone')).result.current).toBeNull();
     expect(state.computeTargetCalls).toContainEqual([true, 'clone']);
+  });
+
+  // #2430: a busy backend is mid-job, not a loading state. Reporting
+  // 'loading' here left the workspace visible with every generation control
+  // disabled for the whole length of a long generation.
+  it('keeps generation available while a live backend is only busy', () => {
+    state.backendStage = 'unresponsive';
+    state.localReady = true;
+
+    expect(renderHook(() => useTtsReadiness()).result.current).toBeNull();
+    expect(state.computeTargetCalls).toContainEqual([true, 'tts']);
+  });
+
+  it('still blocks generation when the backend is terminally gone', () => {
+    state.backendStage = 'crashed';
+    state.localReady = true;
+
+    expect(renderHook(() => useTtsReadiness()).result.current).toBe('loading');
   });
 });

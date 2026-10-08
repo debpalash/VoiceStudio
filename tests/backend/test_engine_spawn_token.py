@@ -58,11 +58,10 @@ def test_post_hf_token_loopback_succeeds(fresh_app, monkeypatch):
     """A loopback-origin POST persists the token and returns the updated
     cascade state."""
     import huggingface_hub
-    monkeypatch.setattr(huggingface_hub, "login", lambda **kw: None)
     monkeypatch.setattr(
-        huggingface_hub,
+        huggingface_hub.HfApi,
         "whoami",
-        lambda token=None, **kw: {"name": "alice"},
+        lambda self, token=None, **kw: {"name": "alice"},
     )
     monkeypatch.setattr(huggingface_hub, "get_token", lambda: None)
 
@@ -92,12 +91,14 @@ def test_post_hf_token_non_loopback_returns_403(fresh_app):
 
 def test_delete_hf_token_clears_store(fresh_app, monkeypatch):
     import huggingface_hub
-    monkeypatch.setattr(huggingface_hub, "login", lambda **kw: None)
+    from services import token_resolver
+    # Only the app source is under test; keep the Hub token file untouched.
+    monkeypatch.setattr(token_resolver, "persist_hub_token", lambda token: None)
     monkeypatch.setattr(huggingface_hub, "logout", lambda: None)
     monkeypatch.setattr(
-        huggingface_hub,
+        huggingface_hub.HfApi,
         "whoami",
-        lambda token=None, **kw: {"name": "alice"},
+        lambda self, token=None, **kw: {"name": "alice"},
     )
     monkeypatch.setattr(huggingface_hub, "get_token", lambda: None)
 
@@ -120,9 +121,9 @@ def test_get_hf_token_state_returns_three_rows(fresh_app, monkeypatch):
     import huggingface_hub
     monkeypatch.setattr(huggingface_hub, "get_token", lambda: None)
     monkeypatch.setattr(
-        huggingface_hub,
+        huggingface_hub.HfApi,
         "whoami",
-        lambda token=None, **kw: {"name": "alice"},
+        lambda self, token=None, **kw: {"name": "alice"},
     )
 
     c = _client(fresh_app)
@@ -147,13 +148,13 @@ def test_get_hf_token_state_fresh_busts_whoami_cache(fresh_app, monkeypatch):
     calls = {"n": 0}
     verdict = {"ok": False}
 
-    def fake_whoami(token=None, **kw):
+    def fake_whoami(self, token=None, **kw):
         calls["n"] += 1
         if not verdict["ok"]:
             raise RuntimeError("simulated network failure")
         return {"name": "alice"}
 
-    monkeypatch.setattr(huggingface_hub, "whoami", fake_whoami)
+    monkeypatch.setattr(huggingface_hub.HfApi, "whoami", fake_whoami)
 
     c = _client(fresh_app)
 
@@ -296,7 +297,7 @@ def test_token_state_reads_never_contact_hugging_face(fresh_app, monkeypatch, en
     monkeypatch.setenv("HF_TOKEN", SAMPLE_TOKEN)
     monkeypatch.setattr(huggingface_hub, "get_token", lambda: None)
     whoami = MagicMock(side_effect=AssertionError("unexpected outbound validation"))
-    monkeypatch.setattr(huggingface_hub, "whoami", whoami)
+    monkeypatch.setattr(huggingface_hub.HfApi, "whoami", whoami)
     if endpoint == "/system/hf-token/state":
         from api.routers.system import router
         fresh_app.include_router(router)
@@ -312,8 +313,7 @@ def test_canonical_save_replaces_the_existing_app_source(fresh_app, monkeypatch)
     from services import settings_store, token_resolver
     settings_store.set_hf_token("hf_old_app")
     monkeypatch.setenv("HF_TOKEN", "hf_old_env")
-    monkeypatch.setattr(huggingface_hub, "login", lambda **kwargs: None)
-    monkeypatch.setattr(huggingface_hub, "whoami", lambda token: {"name": token})
+    monkeypatch.setattr(huggingface_hub.HfApi, "whoami", lambda self, token=None, **kw: {"name": token})
     response = _client(fresh_app).post("/api/settings/hf-token", json={"token": SAMPLE_TOKEN})
     assert response.status_code == 200
     assert settings_store.get_hf_token() == SAMPLE_TOKEN

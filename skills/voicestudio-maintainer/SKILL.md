@@ -58,18 +58,23 @@ bun run dist             # local installers; publishing disabled
 `electron/src/main/` owns lifecycle, IPC, native helpers, and backend supervision;
 `electron/src/preload/` exposes the renderer bridge; `electron/src/renderer/src/`
 contains the React app. Keep privileged filesystem/process work out of the renderer.
-`backend/` supplies the shared Python API; `native/desktop-bridge/` supplies native
-capabilities. `frontend/` still serves the browser UI and legacy Tauri shell: do not
-remove it or rename internal `omnivoice` packages, environment keys, or data paths
-as a branding cleanup.
+`electron/src/shared/` holds modules shared with the browser build; it is not a
+runnable app. `backend/` supplies the shared Python API; `native/desktop-bridge/`
+supplies native capabilities. `frontend/` only receives the browser build output
+(`bun run build:web` → `frontend/dist/`, served by the backend in Docker). Do not
+rename internal `omnivoice` packages, environment keys, or data paths as a
+branding cleanup.
 
-Electron is the default desktop. Tauri is retained for its final sunset update.
-Use `electron-build.yml` for artifact-only four-platform packaging rehearsals;
-inspect its results for Windows, Linux, macOS Intel, and macOS Apple Silicon.
+Electron is the only desktop app and web UI. The Tauri shell is removed; do not
+restore it. Its final v0.5.3 updater feeds are immutable compatibility assets,
+and old Tauri installs move over with `docs/electron-migration.md`.
+Use `electron-build.yml` for artifact-only packaging rehearsals; inspect its
+results for Windows x64, Linux, macOS Intel, and macOS Apple Silicon (Windows
+ARM64 is an experimental leg that may fail without blocking).
 Do not dispatch release/publishing workflows to test packaging. Signing, updater
 migration, and successful installation are separate checks from a green build.
-The app version still comes from `frontend/package.json`; do not move or bump it
-without an explicit versioning task.
+The app version comes from the root `package.json` (mirrored in `pyproject.toml`
+and `backend/core/version.py`); do not bump it without an explicit versioning task.
 
 For backend tests, use the repo's CI dependencies and an empty temporary
 `HF_HUB_CACHE` with `HF_HUB_OFFLINE=1`; installed developer models must not hide

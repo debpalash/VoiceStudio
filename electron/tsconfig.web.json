@@ -29,6 +29,7 @@
     "src/renderer/env.d.ts",
     "src/shared/utils/languageRejection.ts",
     "src/shared/utils/generationFailureMessage.ts",
+    "src/shared/utils/generateBudget.ts",
     "src/shared/utils/coalescedJsonStorage.ts",
     "src/shared/utils/indexedDbLongformStore.ts",
     "src/shared/utils/cookieExport.ts",
@@ -38,12 +39,15 @@
     "src/shared/utils/runCrashRecord.ts",
     "src/shared/utils/nativeExit.ts",
     "src/shared/utils/backendContact.ts",
+    "src/shared/utils/backendStage.ts",
+    "src/shared/utils/backendHint.ts",
     "src/shared/utils/deploymentMode.ts",
     "src/shared/utils/errorDocsMap.ts",
     "src/shared/utils/analytics.ts",
     "src/shared/api/external.ts",
     "src/shared/api/dialects.ts",
     "src/shared/repair-request.ts",
+    "src/shared/download-failure.ts",
     "src/shared/components/VirtualSearchableSelect.tsx",
     "src/shared/web-api-routing.ts"
   ]

@@ -100,7 +100,7 @@ export function ReportBug({ error }: { error?: Error | string }) {
       const signal = AbortSignal.timeout(2500);
       const [system, engines, previous, nativeStatus, currentLogs] = await Promise.allSettled([
         apiJson<Record<string, unknown>>('/system/info', { signal }),
-        apiJson<{ tts?: { active?: string } }>('/engines', { signal }),
+        apiJson<{ tts?: { active?: string }; asr?: { active?: string } }>('/engines', { signal }),
         apiJson<{ record: LastRunCrashRecord | null; acknowledged: boolean }>(
           '/system/last-run-crash',
           { signal },
@@ -123,6 +123,7 @@ export function ReportBug({ error }: { error?: Error | string }) {
       if (system.status === 'fulfilled') {
         for (const key of [
           'platform',
+          'arch',
           'os_version',
           'python',
           'device',
@@ -130,6 +131,7 @@ export function ReportBug({ error }: { error?: Error | string }) {
           'cpu_model',
           'ram_total_gb',
           'vram_total_gb',
+          'disk_free_gb',
         ]) {
           const value = system.value[key];
           if (typeof value === 'string' || typeof value === 'number')
@@ -138,6 +140,8 @@ export function ReportBug({ error }: { error?: Error | string }) {
       }
       if (engines.status === 'fulfilled' && engines.value.tts?.active)
         context.push('TTS: ' + engines.value.tts.active);
+      if (engines.status === 'fulfilled' && engines.value.asr?.active)
+        context.push('ASR: ' + scrubText(String(engines.value.asr.active)));
       const failure = backend && ['failed', 'crashed', 'port_in_use'].includes(backend.stage);
       const crashSection = failure
         ? [

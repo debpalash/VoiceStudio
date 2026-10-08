@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -21,7 +22,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from core import prefs
-from core.failure import is_hf_connectivity_error
+from core.failure import is_disk_full_error, is_hf_connectivity_error
+from core.path_security import UnsafePath, contained_child, safe_relative_path
+from services.hf_auth import token_for_endpoint
 from services.hf_revisions import revision_for
 from utils import hf_progress
 from utils import download_aggregator
@@ -33,6 +36,7 @@ from .models import (  # noqa: F401
     KNOWN_MODELS,
     invalidate_cache,
     snapshot_is_complete,
+    disk_full_message,
     disk_space_error,
     _MIN_WEIGHT_BYTES,
     _WEIGHT_FLOORS,
@@ -104,16 +108,17 @@ def _download_max_workers() -> int:
         return 8
 
 
-def _download_endpoint() -> "str | None":
+def _download_endpoint(gated: bool = False) -> "str | None":
     """Optional HF endpoint override, per-call ``endpoint=`` rather than a
     process-wide HF_ENDPOINT mutation. Explicit configuration (FDL-10 mirror
     path: HF_ENDPOINT env / ``hf_endpoint`` pref / Settings) always wins; when
     nothing was chosen, the automatic endpoint selection's cached pick applies
     (services.endpoint_race — probe-based, cached, never probes here). A
     mirror routes through the classic LFS path (no Xet) — documented in
-    docs/downloading-models.md."""
+    docs/downloading-models.md. A gated repository needs the token, so it
+    ignores an automatically picked mirror (only an explicit one applies)."""
     from services import endpoint_race
-    return endpoint_race.effective_endpoint()
+    return endpoint_race.download_endpoint(gated=gated)
 
 
 def apply_xet_env() -> None:
@@ -215,6 +220,11 @@ def _create_cache_pointer(blob_path: str, pointer: str) -> None:
     _create_symlink(blob_path, pointer, new_blob=False)
 
 
+# Hub etags name blob files: a git blob SHA-1 or an LFS SHA-256, nothing else.
+_ETAG_RE = re.compile(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}")
+_COMMIT_RE = re.compile(r"[0-9a-f]{40}")
+
+
 def _segmented_snapshot(repo_id: str, *, endpoint: "str | None", revision: str) -> str:
     """Fetch every file of a repo via the segmented downloader into the HF
     cache, mirroring hf_hub_download's blob+snapshot+refs layout so the result
@@ -239,13 +249,24 @@ def _segmented_snapshot(repo_id: str, *, endpoint: "str | None", revision: str) 
     # segmented_download interpolates it into `f"Bearer {token}"` and sends a
     # malformed header carrying the raw secret. Unwrap once, here.
     _resolved = _resolve_token()
-    token = _resolved.token if _resolved else None
-    api = HfApi(endpoint=endpoint, token=token)
+    # Mirrors never receive the token; False also stops huggingface_hub from
+    # sending one it finds on its own.
+    hub_token = token_for_endpoint(endpoint, _resolved.token if _resolved else None)
+    token = hub_token or None
+    api = HfApi(endpoint=endpoint, token=hub_token)
     info = api.repo_info(repo_id, repo_type="model", revision=revision)
     commit = info.sha
     files = [s.rfilename for s in (info.siblings or [])]
-    if commit != revision or not files:
+    if commit != revision or not files or not _COMMIT_RE.fullmatch(str(commit)):
         raise RuntimeError("repo_info returned no commit/siblings")
+    # File names and etags come from the endpoint. Validate every one before
+    # touching the disk; any refusal raises so the caller falls back to
+    # snapshot_download, which applies huggingface_hub's own checks.
+    for rel in files:
+        try:
+            safe_relative_path(rel)
+        except UnsafePath as exc:
+            raise RuntimeError("repo_info listed a file outside the repository") from exc
 
     repo_dir = os.path.join(_C.HF_HUB_CACHE, repo_folder_name(repo_id=repo_id, repo_type="model"))
     blobs_dir = os.path.join(repo_dir, "blobs")
@@ -258,12 +279,15 @@ def _segmented_snapshot(repo_id: str, *, endpoint: "str | None", revision: str) 
         if _repo_cancelled(repo_id):
             raise _InstallCancelled()
         url = hf_hub_url(repo_id, rel, endpoint=endpoint, revision=commit)
-        meta = get_hf_file_metadata(url, token=token)
+        meta = get_hf_file_metadata(url, token=hub_token)
         etag = (meta.etag or "").strip('"')
-        if not etag:
-            raise RuntimeError(f"no etag for {rel}")
-        blob_path = os.path.join(blobs_dir, etag)
-        pointer = os.path.join(snap_dir, rel)
+        if not _ETAG_RE.fullmatch(etag):
+            raise RuntimeError("file metadata returned an invalid etag")
+        try:
+            blob_path = str(contained_child(blobs_dir, etag))
+            pointer = str(contained_child(snap_dir, rel))
+        except UnsafePath as exc:
+            raise RuntimeError("download target is outside the model cache") from exc
         os.makedirs(os.path.dirname(pointer), exist_ok=True)
         if not os.path.exists(blob_path):
             _asyncio.run(segmented_download(
@@ -476,6 +500,10 @@ def _is_retryable_download_error(exc: BaseException) -> bool:
 
     if isinstance(exc, _InstallCancelled):
         return False
+    if is_disk_full_error(exc):
+        # A full volume does not heal between backoff sleeps; five retries only
+        # delay the actionable message (and re-preallocate the whole file).
+        return False
     if isinstance(exc, HfHubHTTPError):
         # An auth / not-found / gone answer from the Hub is a settled verdict:
         # the token is wrong, the repo is gated, or it isn't there. Retrying
@@ -587,6 +615,8 @@ async def install_model(req: InstallModelRequest):
         # Failure handling must work even when imports, token resolution or
         # revision lookup fail before the heartbeat thread is started.
         _resolving = threading.Event()
+        _gated = bool(model_spec.get("gated"))
+        _endpoint = None
         token = hf_progress.current_repo_id.set(req.repo_id)
         target_token = hf_progress.current_target.set("local")
         hf_progress.emit({
@@ -615,16 +645,19 @@ async def install_model(req: InstallModelRequest):
             }
             from services.token_resolver import resolve as resolve_token
             resolved_token = resolve_token()
-            if resolved_token:
-                dl_kwargs["token"] = resolved_token.token
+            _bearer = resolved_token.token if resolved_token else None
             if allow_patterns:
                 dl_kwargs["allow_patterns"] = allow_patterns
             _tqdm_cls = hf_progress.tracked_tqdm_class()
             if _tqdm_cls is not None:
                 dl_kwargs["tqdm_class"] = _tqdm_cls
-            _endpoint = _download_endpoint()
+            _endpoint = _download_endpoint(gated=_gated)
             if _endpoint:
                 dl_kwargs["endpoint"] = _endpoint
+            # The token goes to Hugging Face only, never to a mirror.
+            _hub_token = token_for_endpoint(_endpoint, _bearer)
+            if _hub_token is not None:
+                dl_kwargs["token"] = _hub_token
             if sys.platform == "win32":
                 dl_kwargs["local_dir_use_symlinks"] = False
 
@@ -664,8 +697,8 @@ async def install_model(req: InstallModelRequest):
                 _preflight_kwargs["allow_patterns"] = allow_patterns
             if _endpoint:
                 _preflight_kwargs["endpoint"] = _endpoint
-            if resolved_token:
-                _preflight_kwargs["token"] = resolved_token.token
+            if _hub_token is not None:
+                _preflight_kwargs["token"] = _hub_token
             try:
                 _plan = list(snapshot_download(**_preflight_kwargs))  # nosec B615 -- immutable revision_for pin
                 for dependency in model_spec.get("dependencies") or ():
@@ -770,6 +803,8 @@ async def install_model(req: InstallModelRequest):
                         except _InstallCancelled:
                             raise
                         except Exception as _seg_err:
+                            if is_disk_full_error(_seg_err):
+                                raise  # the plain path would hit the same wall
                             _segmented_off, _seg_reraise = _segmented_retry_plan(
                                 _seg_err, _attempt, _max_attempts
                             )
@@ -839,11 +874,16 @@ async def install_model(req: InstallModelRequest):
                     # user endpoints are never switched.
                     from services import endpoint_race
                     if endpoint_race.reselect_after_failure(req.repo_id, str(net_err)):
-                        _endpoint = _download_endpoint()
+                        _endpoint = _download_endpoint(gated=_gated)
                         if _endpoint:
                             dl_kwargs["endpoint"] = _endpoint
                         else:
                             dl_kwargs.pop("endpoint", None)
+                        _hub_token = token_for_endpoint(_endpoint, _bearer)
+                        if _hub_token is None:
+                            dl_kwargs.pop("token", None)
+                        else:
+                            dl_kwargs["token"] = _hub_token
                         logger.info(
                             "model install %s: endpoint failover — retrying on %s",
                             req.repo_id, _endpoint or "https://huggingface.co",
@@ -915,6 +955,9 @@ async def install_model(req: InstallModelRequest):
             from core.failure import append_hint, classify
             _error = append_hint(str(e))
             _docs_topic = classify(str(e))
+            if is_disk_full_error(e):
+                _error = disk_full_message()
+                _docs_topic = "DISK_SPACE_LOW"
             # Gated catalogue entries own their recovery topic. Hugging Face
             # uses several exception wordings for the same access verdict, so
             # the UI must not depend on parsing an English 401/403 message.
@@ -925,12 +968,32 @@ async def install_model(req: InstallModelRequest):
                 "PYANNOTE_LICENSE_REQUIRED",
             }:
                 _docs_topic = _catalogue_topic
+            # A mirror the user chose never receives the token, so no token or
+            # accepted terms can make a gated install succeed there. Say so
+            # instead of sending the user to the token settings.
+            from services.endpoint_race import explicit_mirror
+            if (
+                _gated
+                and _endpoint
+                and _endpoint == explicit_mirror()
+                and _docs_topic in {
+                    "",
+                    "HF_AUTH_FAILED",
+                    "PYANNOTE_LICENSE_REQUIRED",
+                    "POCKETTTS_GATED_WEIGHTS",
+                }
+            ):
+                from core.failure import public_hint_for_topic
+                _docs_topic = "HF_MIRROR_GATED"
+                _error = f"{e} — {public_hint_for_topic(_docs_topic)}"
             # Waiting cannot fix an access/token verdict. Let the user accept
             # the terms or update the token and retry immediately.
             if _docs_topic in {
                 "HF_AUTH_FAILED",
+                "HF_MIRROR_GATED",
                 "PYANNOTE_LICENSE_REQUIRED",
                 "POCKETTTS_GATED_WEIGHTS",
+                "DISK_SPACE_LOW",  # freeing space, not waiting, is the fix
             }:
                 _install_cooldowns.pop(req.repo_id, None)
             _install_failures[req.repo_id] = {

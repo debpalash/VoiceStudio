@@ -246,6 +246,9 @@ def repair_repo_cache(repo_id: str, cache_dir: str | None = None) -> dict:
         endpoint = os.environ.get("HF_ENDPOINT")
         if endpoint:
             dl_kwargs["endpoint"] = endpoint
+        from services.hf_auth import token_for_endpoint
+        if token_for_endpoint(endpoint, None) is False:
+            dl_kwargs["token"] = False  # a mirror never receives the HF token
         snapshot_download(**dl_kwargs)  # nosec B615 -- installed immutable revision
         summary["restored"] = True
 

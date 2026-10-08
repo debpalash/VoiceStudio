@@ -7,7 +7,8 @@ and ships a script that finds and removes them for you (with a dry-run first).
 
 > **TL;DR (the space hogs):** the two folders worth deleting are the **model
 > cache** (the Hugging Face weights — several GB) and the **managed Python
-> environment** (`project/.venv` — a few GB). Everything else is small.
+> environment** (`runtime/project/.venv` inside the app folder — a few GB).
+> Everything else is small.
 
 ## In the app (easiest — no repo needed)
 
@@ -19,8 +20,8 @@ The Electron build finishes deletion through its signed desktop helper after the
 window exits, because Chromium keeps parts of its profile directory locked while
 the app is open. The same ownership checks and model-cache opt-in still apply.
 
-This is the right path if you installed the **.dmg / .msi / AppImage** — you
-don't have the repo, so the script below isn't available to you.
+This is the right path if you installed the **.dmg / .exe / AppImage / .deb** —
+you don't have the repo, so the script below isn't available to you.
 
 > **You may not need to uninstall.** Right above it, **Reset & remove** does the
 > same job at any scale you like — and leaves you with a working app instead of
@@ -83,13 +84,25 @@ so on the console. Best-effort with a 2-second timeout: a dead network never
 blocks the uninstall. If you never opted in (the default), nothing is sent and
 nothing is printed; the dry-run never sends anything either way.
 
+It covers the current desktop app and anything a final Tauri-era install
+(`com.debpalash.omnivoice-studio`) left behind. Add `--app` (macOS/Linux) or
+`-RemoveApp` (Windows) to also remove the installed app itself. On Windows,
+run `-Yes -RemoveApp` from a normal PowerShell window, without administrator
+rights. An elevated request stops before removing app data or launching an
+uninstaller; a dry run still lists the plan. If the installed app needs
+administrator approval, its own uninstaller asks for it. Alternatively, remove
+VoiceStudio through **Settings → Apps**, then run `-Yes` without `-RemoveApp`
+to clean up its remaining data.
+
 The script honors your custom locations: if you set `OMNIVOICE_DATA_DIR`,
 `OMNIVOICE_CACHE_DIR`, `HF_HOME`, or `HF_HUB_CACHE` (or picked custom
 data/model folders during setup), export the same variables before running it
 and it will target those instead of the defaults. It never touches anything
-outside the VoiceStudio folders, and it does **not** delete the app binary itself
-(see "Remove the app" below) — so it's safe to run even if you only want to
-reclaim disk space and keep the app installed.
+outside the VoiceStudio folders, and without `--app` / `-RemoveApp` it does
+**not** delete the app itself (see "Remove the app" below) — so it's safe to run
+even if you only want to reclaim disk space and keep the app installed. A
+runtime you moved to a custom folder is removed only if the app created it
+there; an existing environment it merely reused is left alone.
 
 ## What VoiceStudio writes, and where
 
@@ -98,39 +111,53 @@ Four kinds of data, in up to four locations:
 | What | Size | Notes |
 |---|---|---|
 | **Model cache** (Hugging Face weights) | GBs | The big one. Shared HF cache — see the caveat below. |
-| **Managed Python env** (`project/.venv`) | GBs | Rebuilt automatically if you reinstall. |
-| **App data** (voices, projects, DB, generated audio, logs) | small–MBs | Your voice profiles and history live here. |
-| **App config + logs** (`config.json`, window state, Tauri logs) | tiny | Settings and desktop-shell logs. |
+| **Managed Python env** (`runtime/project/.venv` in the app folder) | GBs | Rebuilt automatically if you reinstall. |
+| **App data** (voices, projects, DB, generated audio, sidecar engines, logs) | small–GBs | Your voice profiles and history live here. |
+| **App folder** (window state, update settings, desktop logs, updater cache) | tiny | Desktop-shell state. |
 
 ### macOS
 
 ```
-~/Library/Application Support/OmniVoice/                       ← app data (voices, projects, omnivoice.db, outputs, omnivoice.log)
-~/Library/Application Support/com.debpalash.omnivoice-studio/  ← config.json + the managed Python env (project/.venv)
-~/Library/Logs/OmniVoice/                                      ← backend logs (backend.log, backend_err.log)
-~/Library/Logs/com.debpalash.omnivoice-studio/                ← desktop-shell log (tauri.log)
-~/.config/omnivoice/                                           ← saved env file (cache location, HF token)
-~/.cache/huggingface/                                          ← model weights (shared HF cache — see caveat)
+~/Library/Application Support/OmniVoice/      ← app data (voices, projects, omnivoice.db, outputs, omnivoice.log)
+~/Library/Application Support/VoiceStudio/    ← app folder + the managed Python env (runtime/project/.venv)
+~/Library/Logs/VoiceStudio/                   ← desktop-shell logs
+~/Library/Caches/voicestudio-electron-updater/ ← downloaded updates
+~/.config/omnivoice/                          ← saved env file (cache location, HF token)
+~/.cache/huggingface/                         ← model weights (shared HF cache — see caveat)
 ```
 
 ### Linux (AppImage / .deb)
 
 ```
-~/.omnivoice/                                     ← app data (voices, projects, omnivoice.db, outputs, omnivoice.log)
-~/.local/share/com.debpalash.omnivoice-studio/    ← config.json, shell logs, AND the managed Python env (project/.venv)
-~/.local/state/OmniVoice/                         ← backend logs (backend.log, backend_err.log)
-~/.config/omnivoice/                              ← saved env file (cache location, HF token)
-~/.cache/huggingface/                             ← model weights (shared HF cache — see caveat)
+~/.omnivoice/                                 ← app data (voices, projects, omnivoice.db, outputs, omnivoice.log)
+~/.config/VoiceStudio/                        ← app folder, desktop logs, AND the managed Python env (runtime/project/.venv)
+~/.cache/voicestudio-electron-updater/        ← downloaded updates
+~/.config/omnivoice/                          ← saved env file (cache location, HF token)
+~/.cache/huggingface/                         ← model weights (shared HF cache — see caveat)
 ```
+
+`$XDG_CONFIG_HOME` / `$XDG_CACHE_HOME` replace `~/.config` / `~/.cache` when set.
 
 ### Windows
 
 ```
-%APPDATA%\OmniVoice\                              ← app data (voices, projects, omnivoice.db, outputs, omnivoice.log)
-%LOCALAPPDATA%\com.debpalash.omnivoice-studio\    ← config.json, shell logs, AND the managed Python env (project\.venv)
-%LOCALAPPDATA%\OmniVoice\Logs\                    ← backend logs (backend.log, backend_err.log)
-%USERPROFILE%\.config\omnivoice\                  ← saved env file (cache location, HF token)
-%LOCALAPPDATA%\OmniVoice\hf_cache\                ← model weights (VoiceStudio uses a short path here to dodge MAX_PATH)
+%APPDATA%\OmniVoice\                           ← app data (voices, projects, omnivoice.db, outputs, omnivoice.log)
+%APPDATA%\VoiceStudio\                         ← app folder, desktop logs, AND the managed Python env (runtime\project\.venv)
+%LOCALAPPDATA%\voicestudio-electron-updater\   ← downloaded updates
+%USERPROFILE%\.config\omnivoice\               ← saved env file (cache location, HF token)
+%LOCALAPPDATA%\OmniVoice\hf_cache\             ← model weights (VoiceStudio uses a short path here to dodge MAX_PATH)
+```
+
+### Left behind by a Tauri-era install
+
+If you used VoiceStudio before the Electron desktop app, these may also exist;
+the script removes them too:
+
+```
+macOS:   ~/Library/Application Support/com.debpalash.omnivoice-studio/, ~/Library/Logs/OmniVoice/,
+         ~/Library/Logs/com.debpalash.omnivoice-studio/
+Linux:   ~/.local/share/com.debpalash.omnivoice-studio/, ~/.local/state/VoiceStudio/
+Windows: %LOCALAPPDATA%\com.debpalash.omnivoice-studio\, %LOCALAPPDATA%\OmniVoice\Logs\
 ```
 
 On Windows, if `HF_HOME` isn't set, VoiceStudio redirects the model cache to
@@ -141,15 +168,17 @@ model paths don't hit the 260-character `MAX_PATH` limit.
 
 - **Custom folders:** if you chose a custom data or model folder in setup (or
   set `OMNIVOICE_DATA_DIR` / `OMNIVOICE_CACHE_DIR` / `HF_HOME` /
-  `HF_HUB_CACHE`), your data is there instead of the defaults above.
+  `HF_HUB_CACHE`), your data is there instead of the defaults above. A Python
+  runtime you moved to another drive lives in the `VoiceStudio` folder you
+  picked.
 - **Portable mode:** everything lives in an `OmniVoiceStudio-Data/` folder next
   to the app binary — delete that one folder and you're done.
 - **App-managed engine sidecars:** if VoiceStudio installed IndexTTS 2.5,
-  CosyVoice, or another sidecar, its isolated venv lives under the app-config
-  folder above and is removed with it. A user-managed IndexTTS checkout set via
-  `OMNIVOICE_INDEXTTS_DIR` is preserved only when its resolved path is outside
-  the app-config folder. Verify the resolved path before cleanup: anything
-  inside the app-config folder is removed with it; retain or delete an external
+  CosyVoice, or another sidecar, its isolated venv lives under `engines/` in the
+  app-data folder above and is removed with it. A user-managed IndexTTS checkout
+  set via `OMNIVOICE_INDEXTTS_DIR` is preserved only when its resolved path is
+  outside the app-data folder. Verify the resolved path before cleanup: anything
+  inside the app-data folder is removed with it; retain or delete an external
   checkout separately.
 
 > **Shared HF cache caveat:** `~/.cache/huggingface/` is the **standard Hugging
@@ -173,13 +202,13 @@ normal per-platform step:
   without administrator approval.
 - **Linux (AppImage):** delete the `.AppImage` file. If you integrated it into
   your menu (e.g. with AppImageLauncher or a hand-written `.desktop` file),
-  also remove `~/.local/share/applications/*omnivoice*.desktop` and any icon
+  also remove `~/.local/share/applications/*voicestudio*.desktop` (or `*omnivoice*.desktop` from an older install) and any icon
   under `~/.local/share/icons/`.
-- **Linux (.deb):** `sudo apt remove voicestudio` (this removes the program;
-  your data folders above are user data and are left in place — delete them
-  with the script or by hand). Installed before the rename? The old package is
-  called `omnivoice-studio` — the two are separate packages, so
-  `sudo apt remove omnivoice-studio` removes the earlier one.
+- **Linux (.deb):** `sudo apt remove voicestudio-electron` (this removes the
+  program; your data folders above are user data and are left in place —
+  delete them with the script or by hand). An older Tauri-era package may also
+  be installed: `sudo apt remove voicestudio`, or `omnivoice-studio` from before
+  the rename — they are separate packages.
 
 ## Reinstalling later
 

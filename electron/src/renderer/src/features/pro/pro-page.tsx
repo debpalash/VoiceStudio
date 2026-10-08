@@ -2,15 +2,10 @@ import { useEffect, useState, type PointerEvent as ReactPointerEvent } from 'rea
 import {
   BriefcaseBusinessIcon,
   CheckIcon,
-  CpuIcon,
-  FolderInputIcon,
   GitCompareArrowsIcon,
   KeyRoundIcon,
-  Layers3Icon,
   ListChecksIcon,
   PackageCheckIcon,
-  ServerCogIcon,
-  Share2Icon,
   ShieldCheckIcon,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -43,11 +38,9 @@ const plans = [
   },
 ] as const;
 const planFeatures = [
-  'recipes_title',
   'automation_title',
   'history_title',
   'delivery_title',
-  'remote_workers_title',
   'commercial_title',
 ] as const;
 const lifetimeFeatures = [
@@ -73,30 +66,10 @@ const benefits = [
     body: 'commercial_body',
     effect: 'seal',
   },
-  { icon: Layers3Icon, title: 'recipes_title', body: 'recipes_body', effect: 'spotlight' },
-  { icon: FolderInputIcon, title: 'watch_title', body: 'watch_body', effect: 'orbit' },
   { icon: ListChecksIcon, title: 'automation_title', body: 'automation_body', effect: 'lanes' },
   { icon: GitCompareArrowsIcon, title: 'history_title', body: 'history_body', effect: 'wave' },
   { icon: PackageCheckIcon, title: 'delivery_title', body: 'delivery_body', effect: 'pixels' },
   { icon: ShieldCheckIcon, title: 'preflight_title', body: 'preflight_body', effect: 'scan' },
-  {
-    icon: ServerCogIcon,
-    title: 'remote_device_title',
-    body: 'remote_device_body',
-    effect: 'signal',
-  },
-  {
-    icon: CpuIcon,
-    title: 'remote_workers_title',
-    body: 'remote_workers_body',
-    effect: 'nodes',
-  },
-  {
-    icon: Share2Icon,
-    title: 'gpu_share_title',
-    body: 'gpu_share_body',
-    effect: 'beam',
-  },
 ] as const;
 
 function trackFeaturePointer(event: ReactPointerEvent<HTMLElement>) {

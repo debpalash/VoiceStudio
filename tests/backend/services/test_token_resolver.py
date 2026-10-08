@@ -43,12 +43,13 @@ def fresh_resolver(monkeypatch, tmp_path):
 
 
 def _mock_whoami(monkeypatch, mapping):
-    """Patch huggingface_hub.whoami so that a known {token: result} mapping
-    drives validity. `mapping[token]` may be a dict like {"name": "alice"}
-    or an Exception instance to raise."""
+    """Patch HfApi.whoami so that a known {token: result} mapping drives
+    validity. `mapping[token]` may be a dict like {"name": "alice"} or an
+    Exception instance to raise. Every call must target huggingface.co."""
     import huggingface_hub
 
-    def _fake_whoami(token=None, **kwargs):
+    def _fake_whoami(self, token=None, **kwargs):
+        assert self.endpoint == "https://huggingface.co", self.endpoint
         if token in mapping:
             outcome = mapping[token]
             if isinstance(outcome, Exception):
@@ -56,7 +57,7 @@ def _mock_whoami(monkeypatch, mapping):
             return outcome
         raise RuntimeError(f"unexpected token in whoami: {token!r}")
 
-    monkeypatch.setattr(huggingface_hub, "whoami", _fake_whoami)
+    monkeypatch.setattr(huggingface_hub.HfApi, "whoami", _fake_whoami)
 
 
 def _set_cli_token(monkeypatch, value):
@@ -182,51 +183,50 @@ def test_state_returns_three_rows(fresh_resolver, monkeypatch):
     assert cli_row.masked is None
 
 
-def test_save_writes_both_store_and_login(fresh_resolver, monkeypatch):
-    """save_app_token() must update settings_store AND call
-    huggingface_hub.login(token=..., add_to_git_credential=False) so the
-    canonical HF file (~/.cache/huggingface/token) is in sync."""
+def test_save_writes_both_store_and_hub_files(fresh_resolver, monkeypatch):
+    """save_app_token() updates settings_store AND the local Hub token file,
+    so engines and the hf CLI see the same token."""
+    from huggingface_hub import constants
     tr = fresh_resolver
-    import huggingface_hub
-
-    login_calls = []
-    monkeypatch.setattr(
-        huggingface_hub,
-        "login",
-        lambda **kw: login_calls.append(kw),
-    )
+    _mock_whoami(monkeypatch, {APP_TOKEN: {"name": "alice"}})
     tr.save_app_token(APP_TOKEN)
 
-    # Settings store now has it.
     from services import settings_store
     assert settings_store.get_hf_token() == APP_TOKEN
-
-    # huggingface_hub.login was called with the right kwargs.
-    assert len(login_calls) == 1
-    call = login_calls[0]
-    assert call.get("token") == APP_TOKEN
-    # Pitfall #2: must always pass add_to_git_credential=False.
-    assert call.get("add_to_git_credential") is False
+    assert Path(constants.HF_TOKEN_PATH).read_text() == APP_TOKEN
 
 
-def test_save_uses_add_to_git_credential_false(fresh_resolver, monkeypatch):
-    """Standalone check for Pitfall #2 (explicit so reviewers see the
-    invariant being enforced)."""
+def test_save_never_writes_a_git_credential(fresh_resolver, monkeypatch):
+    """Pitfall #2: the token must never reach the user's git credentials."""
+    from huggingface_hub import _login
     tr = fresh_resolver
-    import huggingface_hub
+    _mock_whoami(monkeypatch, {APP_TOKEN: {"name": "alice"}})
+    monkeypatch.setattr(_login, "set_git_credential", lambda *a, **k: pytest.fail("git credential written"))
     captured = {}
-    def _fake_login(**kwargs):
-        captured.update(kwargs)
-    monkeypatch.setattr(huggingface_hub, "login", _fake_login)
+    real = _login._set_active_token
+
+    def _spy(token_name, add_to_git_credential):
+        captured["add_to_git_credential"] = add_to_git_credential
+        return real(token_name=token_name, add_to_git_credential=add_to_git_credential)
+
+    monkeypatch.setattr(_login, "_set_active_token", _spy)
     tr.save_app_token(APP_TOKEN)
-    assert captured.get("add_to_git_credential") is False
+    assert captured == {"add_to_git_credential": False}
+
+
+def test_invalid_token_is_not_written_to_hub_files(fresh_resolver, monkeypatch):
+    from huggingface_hub import constants
+    _set_cli_token(monkeypatch, None)
+    _mock_whoami(monkeypatch, {APP_TOKEN: RuntimeError("401")})
+    fresh_resolver.save_app_token(APP_TOKEN)
+    from services import settings_store
+    assert settings_store.get_hf_token() == APP_TOKEN
+    assert not Path(constants.HF_TOKEN_PATH).exists()
 
 
 def test_clear_app_token_removes_from_store(fresh_resolver, monkeypatch):
     tr = fresh_resolver
-    import huggingface_hub
-    monkeypatch.setattr(huggingface_hub, "login", lambda **kw: None)
-    monkeypatch.setattr(huggingface_hub, "logout", lambda: None)
+    _mock_whoami(monkeypatch, {APP_TOKEN: {"name": "alice"}})
 
     tr.save_app_token(APP_TOKEN)
     from services import settings_store
@@ -305,8 +305,8 @@ def test_environment_normalization_retains_correct_source(fresh_resolver, monkey
 
 
 def test_save_and_clear_use_the_same_real_hub_files(fresh_resolver, monkeypatch):
-    from huggingface_hub import constants, hf_api
-    monkeypatch.setattr(hf_api, "whoami", lambda token: {"name": "test", "auth": {"accessToken": {"role": "read", "displayName": "synthetic"}}})
+    from huggingface_hub import constants
+    _mock_whoami(monkeypatch, {APP_TOKEN: {"name": "test", "auth": {"accessToken": {"role": "read", "displayName": "synthetic"}}}})
     fresh_resolver.save_app_token(APP_TOKEN)
     assert Path(constants.HF_TOKEN_PATH).read_text() == APP_TOKEN
     assert Path(constants.HF_STORED_TOKENS_PATH).exists()

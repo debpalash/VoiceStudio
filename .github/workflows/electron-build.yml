@@ -15,6 +15,7 @@ jobs:
   package:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
+    continue-on-error: ${{ matrix.experimental == true }}
     strategy:
       fail-fast: false
       matrix:
@@ -31,6 +32,14 @@ jobs:
             target: x86_64-pc-windows-msvc
             flags: --win --x64
             local_runtime: true
+          - runner: windows-11-arm
+            platform: win32
+            arch: arm64
+            target: aarch64-pc-windows-msvc
+            flags: --win --arm64
+            local_runtime: true
+            # New target: report failures without hiding the other legs.
+            experimental: true
           - runner: macos-15
             platform: darwin
             arch: arm64
@@ -49,24 +58,25 @@ jobs:
         shell: bash
     env:
       VOICESTUDIO_RUST_TARGET: ${{ matrix.target }}
-      VOICESTUDIO_UPDATE_CHANNEL: electron-preview-${{ matrix.platform }}-${{ matrix.arch }}
+      # Rehearsal artifacts carry the stable feed; there is no preview release.
+      VOICESTUDIO_UPDATE_CHANNEL: electron-stable-${{ matrix.platform }}-${{ matrix.arch }}
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: '1.4.2'
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: native/desktop-bridge -> target
           key: electron-${{ matrix.target }}
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
           version: '0.12.13'
           enable-cache: false
@@ -82,7 +92,7 @@ jobs:
           import { mkdirSync, copyFileSync, chmodSync } from 'node:fs';
           import { join } from 'node:path';
           const expected = process.env.VOICESTUDIO_RUST_TARGET;
-          const targets = { 'linux-x64': 'x86_64-unknown-linux-gnu', 'win32-x64': 'x86_64-pc-windows-msvc', 'darwin-arm64': 'aarch64-apple-darwin', 'darwin-x64': 'x86_64-apple-darwin' };
+          const targets = { 'linux-x64': 'x86_64-unknown-linux-gnu', 'win32-x64': 'x86_64-pc-windows-msvc', 'win32-arm64': 'aarch64-pc-windows-msvc', 'darwin-arm64': 'aarch64-apple-darwin', 'darwin-x64': 'x86_64-apple-darwin' };
           if (targets[`${process.platform}-${process.arch}`] !== expected) throw new Error('Runner architecture does not match package target');
           const source = execFileSync(process.platform === 'win32' ? 'where.exe' : 'which', ['uv'], { encoding: 'utf8' }).trim().split(/\r?\n/)[0];
           const dir = 'electron/build/uv';
@@ -127,7 +137,7 @@ jobs:
             node tests/packaged-smoke.mjs --install
           fi
       - name: Save installers and updater metadata for review
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: electron-rehearsal-${{ matrix.platform }}-${{ matrix.arch }}
           retention-days: 14

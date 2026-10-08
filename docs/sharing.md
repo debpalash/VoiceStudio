@@ -11,14 +11,22 @@ For another device on the same network — e.g. opening the web UI on your phone
    - a **QR code** — scan it from a phone/tablet to open the UI pre-authenticated,
    - **copy** and **open-in-browser** buttons,
    - the **access PIN**.
-3. On the other device, scan the QR (or open the URL and enter the PIN when prompted).
+3. On the other device, scan the QR (or open the URL and enter the PIN when prompted). Use the IP address the panel shows: a router DNS name such as `mypc.lan` is refused unless it is listed in `OMNIVOICE_ALLOWED_HOSTS` (see [host names](api-auth.md#requests-from-other-websites-and-host-names)).
 4. Click **Stop sharing** (or flip back to **Local**) to close the network socket again.
 
 You can also drive this from **Settings → Sharing & Remote Access**.
 
 Desktop installers include the web interface used by the LAN address; another
 device does not need VoiceStudio installed and the host does not need a source
-checkout or a separate frontend development server.
+checkout or a separate frontend development server. The backend serves the web
+build shipped inside the running app (`OMNIVOICE_FRONTEND_DIST`), so after an
+update LAN devices get the matching interface with no extra step.
+
+**"Web interface unavailable" on the other device:** the backend is running
+but has no web build to serve. Desktop builds before the fix for #2599 had this
+problem on every OS; update to the latest release. In a source checkout run
+`bun run build:web` and restart the backend. Another device is never redirected
+to `localhost`, because on that device it is not VoiceStudio.
 
 ### How the PIN works
 - A fresh 6-digit PIN is generated each time you enable sharing; it is never written to disk.
@@ -46,4 +54,5 @@ Tailscale proxies the loopback backend directly, so — like LAN sharing — it 
 
 ## Notes
 - Both paths leave the running model and in-flight jobs **completely untouched**.
-- Server deployments (docker, `OMNIVOICE_BIND_HOST=0.0.0.0`) manage their own networking; the in-app toggle is for the desktop app and is unaffected by these flows.
+- Open shared or remote VoiceStudio by IP address, `localhost`, this machine's host name, its Tailscale name or a container host alias such as `host.docker.internal`. Any other host name (for example a reverse proxy domain) needs a valid API key or admin session, or an `OMNIVOICE_ALLOWED_HOSTS` entry; see [API authentication](api-auth.md#requests-from-other-websites-and-host-names).
+- Server deployments (Docker, or a source backend started with `OMNIVOICE_BIND_HOST=0.0.0.0`) manage their own networking; the in-app toggle is for the desktop app and is unaffected by these flows.

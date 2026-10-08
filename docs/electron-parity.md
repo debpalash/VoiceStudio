@@ -1,5 +1,11 @@
 # Electron and Tauri behavior parity
 
+> **Historical context:** this page was written while the Electron and Tauri apps
+> coexisted. Mentions of Tauri helpers, pages, tests and regression results describe
+> that migration period; the Tauri shell has since been removed and the shared code
+> now lives in `electron/src/shared/`. Existing Tauri installs: see the
+> [migration guide](electron-migration.md).
+
 This inventory tracks user-visible behavior. A row is **implemented** when Electron exposes the
 same task and backend contract. Platform-specific performance may differ. A native row stays
 **verification pending** until its real macOS, Windows, and Linux smoke gates pass.
@@ -18,7 +24,7 @@ same task and backend contract. Platform-specific performance may differ. A nati
 | Model catalogue and engine selection | Implemented | model-library component tests, recommendations smoke, live install/cancel/delete/unload verification, current in-process/isolated Faster-Whisper selection and restoration, and repeatable app-managed audio.cpp v0.7.4 Sortformer inference/cancellation on Windows Vulkan | Native install matrix across model families and desktop OSes |
 | Local and remote compute target | Implemented | worker API tests, compute-target UI, remote-target recommendation smoke, Ubuntu 26.04 WSL real TTS plus disconnect/reconnect fallback | Native-machine remote run outside WSL |
 | Settings, logs, API reference and support | Implemented | settings smoke tests, responsive live runtime/hardware identity, 640 px layout smoke, packaged Linux 150% DPR/no-overflow visual smoke and `docs/electron-logs.md` | Native visual capture on macOS |
-| Updates, notifications, app/tray/taskbar branding | Implemented; published-update verification pending | updater IPC lifecycle/authorization regression, platform-specific feed names, bounded channel-aware release history, byte/SHA-512 release contract, release-matrix validation of each unpacked Electron app, branded Windows NSIS/app icon, launched AppImage and installed Debian package with shared brand assets/native helper | First signed Stable/Preview update and installed-shell visual check on macOS/Linux |
+| Updates, notifications, app/tray/taskbar branding | Implemented; published-update verification pending | updater IPC lifecycle/authorization regression, platform-specific feed names, bounded channel-aware release history, byte/SHA-512 release contract, release-matrix validation of each unpacked Electron app, branded Windows NSIS/app icon, launched AppImage and installed Debian package with shared brand assets/native helper | First signed Stable update and installed-shell visual check on macOS/Linux |
 | Watch folders and global capture | Verification pending | Windows native watch lifecycle/global shortcut/insertion plus Linux AppImage Wayland tray/watch and clipboard-fallback smokes | macOS permissions, Linux portal global shortcut and physical microphone matrix |
 | T3-inspired shell, themes, scale and keyboard navigation | Implemented | shared resizable secondary panes, sidebar, locale-layout, workspace-shell and all-route accessibility smoke tests, including 640–1920 px secondary-pane geometry, 38 routes at 1440/640 px, packaged Linux 150% DPR and main-process empty-renderer recovery with a localized asset-independent fallback | Native screen-reader pass on macOS/Linux and high-DPI pass on macOS |
 | In-app agent repair dock | Electron extension | `docs/electron-repair.md`, native smoke, packaged Codex/Claude/OpenCode acceptance on Windows, and packaged Linux host-shim rejection | Pi acceptance when installed; native macOS/Linux CLI matrix |
@@ -45,9 +51,9 @@ Clone handoff and cleanup, and round-tripped a generated take into a disposable 
 Its live route sweep remained free of renderer warnings, exceptions and API failures after
 updater, dictation, QR, locale loading, translation-file and local-agent discovery rejection paths
 were contained at their initiating UI boundaries.
-The inventory guard maps every current Tauri page, every static Electron route and every model
-family to its maintained capability or responsive-layout evidence; adding an unmapped page or route
-now fails the required test gate.
+During the migration, an inventory guard mapped every Tauri page, every static Electron route and
+every model family to its maintained capability or responsive-layout evidence; it was retired with
+the Tauri shell.
 An isolated clean Ubuntu 26.04 workspace also completed the Electron typecheck and production
 package, then passed the unpacked Linux artifact contract with its x64 app, bundled `uv`, branded
 resources and native dictation helper present.

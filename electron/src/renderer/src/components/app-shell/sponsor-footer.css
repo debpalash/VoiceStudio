@@ -198,9 +198,6 @@
 .sponsor-support-icon[data-brand='github'] {
   background: #f5f5f5;
 }
-.sponsor-support-icon[data-brand='discord'] {
-  color: #5865f2;
-}
 
 .sponsor-support-all {
   border-top: 1px solid var(--border);

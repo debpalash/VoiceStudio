@@ -1,5 +1,11 @@
 # Electron transcriptions
 
+> **Historical context:** this page was written while the Electron and Tauri apps
+> coexisted. Mentions of Tauri helpers, pages, tests and regression results describe
+> that migration period; the Tauri shell has since been removed and the shared code
+> now lives in `electron/src/shared/`. Existing Tauri installs: see the
+> [migration guide](electron-migration.md).
+
 Open Transcriptions above the engine list, or through command search. Upload an
 audio file or start dictation, then stop recording to transcribe. The workspace
 checks dictation readiness before recording/upload and again before transcription.

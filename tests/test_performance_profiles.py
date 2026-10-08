@@ -227,3 +227,31 @@ def test_initial_visible_balanced_profile_is_reconciled(monkeypatch):
 
     assert profiles.reconcile_active_profile() == {}
     assert calls == [("balanced", None)]
+
+
+def test_tiered_tts_engines_are_registered_omnivoice_runtimes():
+    """The tier gate must name engine ids the registry can actually activate;
+    a stale id there silently ignored the speed/quality tier for the sidecar."""
+    from services import tts_backend
+
+    assert profiles.TIERED_TTS_ENGINES == {"omnivoice", "omnivoice-subprocess"}
+    for engine in profiles.TIERED_TTS_ENGINES:
+        assert engine in tts_backend._REGISTRY
+
+
+def test_tier_applies_to_the_omnivoice_sidecar(monkeypatch):
+    from core import prefs
+    from services import asr_backend, tts_backend
+
+    values = {"performance_profile": {"global": "fast"}}
+    monkeypatch.setattr(prefs, "get", lambda key, default=None: values.get(key, default))
+    fast = profiles.tts_defaults("omnivoice")
+    assert fast and profiles.tts_defaults("omnivoice-subprocess") == fast
+    assert profiles.tts_defaults("kittentts") == {}
+
+    monkeypatch.setattr(tts_backend, "active_backend_id", lambda: "omnivoice-subprocess")
+    monkeypatch.setattr(asr_backend, "active_backend_id", lambda: "faster-whisper")
+    state = profiles.profile_state()
+    assert "tts" in state["applicable_families"]
+    assert state["selections"]["tts"]["model"] == "k2-fsa/OmniVoice"
+    assert state["tts_tiered_engines"] == ["omnivoice", "omnivoice-subprocess"]

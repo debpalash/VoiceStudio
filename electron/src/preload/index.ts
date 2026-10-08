@@ -36,7 +36,7 @@ const bridge: VoiceStudioBridge = {
     deactivate: () => ipcRenderer.invoke('pro:deactivate'),
   },
   repair: {
-    list: () => ipcRenderer.invoke('repair:list'),
+    list: (options) => ipcRenderer.invoke('repair:list', options),
     getState: () => ipcRenderer.invoke('repair:getState'),
     chooseWorkspace: () => ipcRenderer.invoke('repair:chooseWorkspace'),
     start: (request) => ipcRenderer.invoke('repair:start', request),
@@ -56,10 +56,8 @@ const bridge: VoiceStudioBridge = {
     download: () => ipcRenderer.invoke('updates:download') as Promise<UpdateState>,
     dismiss: () => ipcRenderer.invoke('updates:dismiss') as Promise<UpdateState>,
     install: () => ipcRenderer.invoke('updates:install') as Promise<void>,
-    setChannel: (channel) =>
-      ipcRenderer.invoke('updates:setChannel', channel) as Promise<UpdateState>,
-    listReleases: (channel) =>
-      ipcRenderer.invoke('updates:listReleases', channel) as Promise<UpdateReleaseInfo[]>,
+    listReleases: () =>
+      ipcRenderer.invoke('updates:listReleases') as Promise<UpdateReleaseInfo[]>,
     onState: (cb) => subscribe<UpdateState>('updates:state', cb),
   },
   watch: {

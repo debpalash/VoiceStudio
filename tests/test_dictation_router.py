@@ -64,7 +64,7 @@ def test_get_prefs_defaults(client):
     assert r.status_code == 200
     body = r.json()
     assert body == {"enabled": True, "mode": "toggle",
-                    "model_id": "sherpa-whisper-tiny"}
+                    "model_id": "sherpa-whisper-tiny", "prompt": ""}
 
 
 def test_set_prefs_persists_and_validates(client):
@@ -73,17 +73,50 @@ def test_set_prefs_persists_and_validates(client):
     assert r.status_code == 200
     body = r.json()
     assert body == {"enabled": False, "mode": "hold",
-                    "model_id": "sherpa-whisper-tiny"}
+                    "model_id": "sherpa-whisper-tiny", "prompt": ""}
     # Persistence: a follow-up GET sees the written values (round-trips through
     # the store the handler actually used — robust to prefs-reference swaps).
     got = client.get("/dictation/prefs").json()
     assert got == {"enabled": False, "mode": "hold",
-                   "model_id": "sherpa-whisper-tiny"}
+                   "model_id": "sherpa-whisper-tiny", "prompt": ""}
 
     # Bad mode rejected.
     assert client.post("/dictation/prefs", json={"mode": "nope"}).status_code == 400
     # Bad model rejected.
     assert client.post("/dictation/prefs", json={"model_id": "nope"}).status_code == 400
+
+
+def test_prompt_round_trips_trimmed_and_clears(client):
+    r = client.post("/dictation/prefs", json={"prompt": "  Kubernetes, gRPC  "})
+    assert r.status_code == 200
+    assert r.json()["prompt"] == "Kubernetes, gRPC"
+    assert client.get("/dictation/prefs").json()["prompt"] == "Kubernetes, gRPC"
+    # Omitting the field leaves it alone; an empty string clears it.
+    assert client.post("/dictation/prefs", json={"mode": "hold"}).json()["prompt"] == "Kubernetes, gRPC"
+    assert client.post("/dictation/prefs", json={"prompt": ""}).json()["prompt"] == ""
+
+
+def test_prompt_length_is_bounded(client):
+    from api.routers import dictation as dr
+
+    too_long = "x" * (dr.MAX_PROMPT_CHARS + 1)
+    assert client.post("/dictation/prefs", json={"prompt": too_long}).status_code == 400
+    assert dr.PREF_PROMPT not in client._store
+    ok = "x" * dr.MAX_PROMPT_CHARS
+    assert client.post("/dictation/prefs", json={"prompt": ok}).json()["prompt"] == ok
+
+
+def test_prompt_only_update_keeps_loaded_capture_engine(client, monkeypatch):
+    """The prompt is read per transcription; editing it must not unload the
+    capture model (a multi-GB Whisper reload on the next dictation)."""
+    from services import asr_backend
+
+    loaded = object()
+    monkeypatch.setattr(asr_backend, "_capture_backend", loaded)
+    assert client.post("/dictation/prefs", json={"prompt": "gRPC"}).status_code == 200
+    assert asr_backend._capture_backend is loaded
+    assert client.post("/dictation/prefs", json={"mode": "hold"}).status_code == 200
+    assert asr_backend._capture_backend is None
 
 
 def test_set_prefs_accepts_repo_id_and_normalizes(client):

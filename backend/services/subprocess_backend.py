@@ -752,10 +752,6 @@ class SubprocessBackend(TTSBackend):
         finally:
             self._proc = None
 
-    def unload(self) -> None:
-        """TTSBackend.unload override — idempotent shutdown."""
-        self.shutdown()
-
     # ── health check + generate ────────────────────────────────────────────
 
     def health_check(self) -> tuple[bool, str]:
@@ -870,7 +866,14 @@ class SubprocessBackend(TTSBackend):
                         # never be cleared — and a pool worker later reusing
                         # that ident would inherit up to a grace period of
                         # unearned extension (CodeRabbit on #1379).
-                        if running_on_gpu_pool():
+                        #
+                        # Only COLD-LOAD frames are load evidence. A sidecar may
+                        # also heartbeat while it generates (so a slow CPU render
+                        # is not mistaken for a hang by the recv watchdog), but a
+                        # timer thread proves nothing about synthesis progress:
+                        # crediting it would let a stalled native generate hold
+                        # its GPU worker past the execution budget (#2435).
+                        if running_on_gpu_pool() and reply.get("stage") != "generating":
                             report_model_load_activity()
                     except Exception:
                         pass  # the heartbeat is best-effort; never fail a synth over it

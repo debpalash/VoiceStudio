@@ -6,6 +6,7 @@ import { BarChart3Icon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiJson } from '@/lib/api/client';
 import { useBackendStatus } from '@/hooks/use-backend-status';
+import { isBackendReachable } from '@shared/utils/backendStage';
 import { setupWasStarted } from '@/lib/setup-progress';
 import {
   capture,
@@ -28,7 +29,7 @@ export function AnalyticsRuntime() {
   const analytics = useQuery({
     queryKey: analyticsKey,
     queryFn: ({ signal }) => apiJson<AnalyticsState>('/api/settings/analytics', { signal }),
-    enabled: backend.stage === 'ready',
+    enabled: isBackendReachable(backend.stage),
     retry: false,
   });
   useEffect(() => {
@@ -146,13 +147,13 @@ export function AnalyticsConsentBanner() {
   const analytics = useQuery({
     queryKey: analyticsKey,
     queryFn: ({ signal }) => apiJson<AnalyticsState>('/api/settings/analytics', { signal }),
-    enabled: backend.stage === 'ready',
+    enabled: isBackendReachable(backend.stage),
     retry: false,
   });
   const setup = useQuery({
     queryKey: ['setup-status'],
     queryFn: ({ signal }) => apiJson<{ models_ready: boolean }>('/setup/status', { signal }),
-    enabled: backend.stage === 'ready',
+    enabled: isBackendReachable(backend.stage),
     retry: false,
   });
   const state = analytics.data;

@@ -73,7 +73,9 @@ export function createStreamingPreview(
   release = claimPlayback(stop, 'output');
   if (context.state === 'suspended') void context.resume().catch(() => {});
   timer = setInterval(() => {
-    if (complete && context.currentTime >= nextStart - 0.02) stop();
+    // Close only after the last scheduled source has fully played; closing
+    // the context earlier cuts the tail of the final chunk.
+    if (complete && context.currentTime >= nextStart) stop();
   }, 100);
 
   return {
@@ -94,9 +96,15 @@ export function createStreamingPreview(
     if (finished) return;
     if (!samples.length) return;
     const duration = samples.length / sampleRate;
-    const fade = nodes.length ? Math.min(crossfadeSeconds, previousDuration, duration) : 0;
-    let start = nodes.length ? nextStart - fade : nextStart;
-    if (start < context.currentTime + 0.01) start = context.currentTime + 0.02;
+    let fade = nodes.length ? Math.min(crossfadeSeconds, previousDuration, duration) : 0;
+    let start = nextStart - fade;
+    if (start < context.currentTime + 0.01) {
+      // Underrun: the backend paused long enough that the planned start is
+      // already behind the device clock. Crossfade only the part that still
+      // overlaps the previous source; if it already ended, start at full gain.
+      start = context.currentTime + 0.02;
+      fade = Math.max(0, Math.min(fade, nextStart - start));
+    }
 
     const buffer = context.createBuffer(1, samples.length, sampleRate);
     buffer.getChannelData(0).set(samples);

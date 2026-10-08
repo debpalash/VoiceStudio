@@ -180,7 +180,7 @@ Grammar precedence (extends `longform_parser.py:10`):
 
 - **Respelling (alias) rows** → existing `apply_lexicon` (already correct: longest-first, boundary-aware, ReDoS-safe). Works on **every** engine — it's just text substitution.
 - **Phoneme rows (IPA/CMU)** → engine phoneme markup where supported (e.g. CosyVoice/sherpa-onnx models with a phoneme front-end), else **graceful fallback to the respelling** if the row also has one, else passed through and flagged "phoneme not honored on this engine" (parity-rule: visible degradation). No engine is *broken* by a phoneme row; worst case it's spoken as the literal grapheme.
-- Per-language: global rows always apply; language-tagged rows apply when request `language` matches (or is `Auto`). Matching is case-insensitive on the 2-letter prefix, consistent with `CosyVoiceBackend.LANG_TAGS` handling.
+- Per-language: global rows always apply; language-tagged rows apply when request `language` matches (or is `Auto`). Matching resolves both sides through the bundled language map: picker names (`Spanish`) and ISO ids (`es`, `kbt`, regional `es-MX`) compare as the same language id.
 
 ---
 

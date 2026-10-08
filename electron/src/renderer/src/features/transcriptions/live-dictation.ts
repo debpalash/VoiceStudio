@@ -112,6 +112,9 @@ export class LiveDictation {
       this.stream = stream;
       issue = 'connection';
       const url = new URL(await backendWebSocketUrl('/ws/transcribe'));
+      // A cancelled or superseded start must not open a socket: it would
+      // replace the current session's socket and steal its EOF.
+      if (!current()) return;
       url.searchParams.set('model', prefs.model_id);
       url.searchParams.set('pcm', '1');
       url.searchParams.set('sr', '16000');

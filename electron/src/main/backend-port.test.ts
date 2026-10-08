@@ -297,7 +297,9 @@ it.each(['explicit port', 'custom command', 'external backend', 'healthy backend
       'fetch',
       vi.fn(async () => {
         if (kind !== 'healthy backend') throw new Error('unreachable');
-        return new Response(JSON.stringify({ status: 'ok', version: 'test' }));
+        return new Response(JSON.stringify({ status: 'ok', version: 'test' }), {
+          headers: { 'x-omnivoice-backend': 'test' },
+        });
       }),
     );
     mocks.spawn.mockReturnValue(
@@ -308,6 +310,49 @@ it.each(['explicit port', 'custom command', 'external backend', 'healthy backend
       await supervisor.start();
       expect(supervisor.port).toBe(3900);
       expect(mocks.listen).not.toHaveBeenCalled();
+    } finally {
+      (supervisor as unknown as { child: null }).child = null;
+      await supervisor.shutdown();
+    }
+  },
+);
+
+it.each(['', '3900'])(
+  'does not attach to an unmarked health responder on the configured port (OMNIVOICE_PORT=%j)',
+  async (portEnv) => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.stubEnv('OMNIVOICE_PORT', portEnv);
+    vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+    vi.stubEnv('VOICESTUDIO_SKIP_BACKEND', '');
+    mocks.occupied.add(3900);
+    // Another local service owns the port and happens to answer the same
+    // liveness shape, without the VoiceStudio marker header.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (!url.startsWith('http://127.0.0.1:3900/')) throw new Error('unreachable');
+        return new Response(JSON.stringify({ status: 'ok', version: '1.0.0' }));
+      }),
+    );
+    const child = Object.assign(new EventEmitter(), {
+      stdin: null,
+      stdout: null,
+      stderr: null,
+      stdio: [],
+    });
+    mocks.spawn.mockReturnValue(child);
+    const supervisor = new BackendSupervisor();
+    try {
+      await supervisor.start();
+      expect(supervisor.status.stage).not.toBe('ready');
+      expect(mocks.spawn).toHaveBeenCalledOnce();
+      expect(mocks.spawn.mock.calls[0][2].env.OMNIVOICE_PORT).toBe('3900');
+      // The spawned backend cannot bind and exits; the user gets the
+      // actionable port-in-use message rather than a foreign attachment.
+      child.emit('exit', 78, null);
+      await vi.advanceTimersByTimeAsync(11_000);
+      expect(supervisor.status.stage).toBe('port_in_use');
+      expect(supervisor.status.message).toContain('Port 3900 is already in use');
     } finally {
       (supervisor as unknown as { child: null }).child = null;
       await supervisor.shutdown();

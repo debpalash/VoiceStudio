@@ -944,3 +944,39 @@ async def test_argos_batch_retry_reports_unsupported_script(tmp_path, monkeypatc
         await batch.retry_batch_job("retry-script")
     assert err.value.status_code == 422
     assert "NLLB" in err.value.detail
+
+
+# Latin, Hawaiian and Breton have no NLLB-200 language; they must be rejected
+# with the "unsupported language" 400 rather than guessed.
+_NLLB_UNSUPPORTED = {"la", "haw", "br"}
+
+
+def _picker_codes() -> set[str]:
+    import re
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / "electron/src/shared/utils/languages.js").read_text(encoding="utf-8")
+    codes = set(re.findall(r"\{ code: '([^']+)'", src))
+    assert len(codes) > 80
+    return codes
+
+
+def test_nllb_resolves_every_dub_source_and_target_picker_code():
+    from api.routers.dub_core import _DUB_SOURCE_LANG_CODES
+    from api.routers.dub_translate import _nllb_language
+    from transformers.models.nllb.tokenization_nllb import FAIRSEQ_LANGUAGE_CODES
+
+    codes = set(_DUB_SOURCE_LANG_CODES) | {c.lower() for c in _picker_codes()}
+    resolved = {code: _nllb_language(code) for code in codes}
+    assert {c for c, v in resolved.items() if v is None} == _NLLB_UNSUPPORTED
+    assert all(v in FAIRSEQ_LANGUAGE_CODES for v in resolved.values() if v)
+
+
+def test_nllb_script_variants_and_aliases():
+    from api.routers.dub_translate import _nllb_language
+
+    assert _nllb_language("pa") == "pan_Guru"
+    assert _nllb_language("sr") == "srp_Cyrl"
+    assert _nllb_language("no") == _nllb_language("nb") == "nob_Latn"
+    assert _nllb_language("jw") == "jav_Latn"
+    assert _nllb_language("ne") == "npi_Deva"

@@ -279,6 +279,20 @@ it('gives Windows a PowerShell docker run with a CSPRNG key and backtick continu
     expect(ps.text.trimEnd()).toMatch(/(?:voicestudio|omnivoice-studio):stable$/);
   }
 });
+it('mounts the host model cache at the image HF_HOME and adds no dead bind knob', () => {
+  for (const slug of ['docker', 'github-container-registry']) {
+    const text = INTEGRATION_SETUPS[slug]
+      .blocks('')!
+      .map((block) => block.text)
+      .join('\n');
+    // deploy/Dockerfile: HF_HOME=/app/omnivoice_data/huggingface.
+    expect(text).toContain('.cache/huggingface:/app/omnivoice_data/huggingface');
+    expect(text).not.toContain('/root/.cache/huggingface');
+    // The image ENTRYPOINT binds 0.0.0.0 itself; the env var does nothing.
+    expect(text).not.toContain('OMNIVOICE_BIND_HOST');
+    expect(text).toMatch(/:stable\b/);
+  }
+});
 it('reads the Agents SDK key only for a remote https backend', () => {
   for (const url of ['http://192.168.1.5:3900', 'http://127.0.0.1:3900']) {
     const text = openaiAgentsSetup('openai-agents', url)!.text;

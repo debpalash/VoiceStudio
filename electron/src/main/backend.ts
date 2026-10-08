@@ -9,7 +9,9 @@ import {
   stageRuntimeSources,
   type RuntimeRegion,
 } from './runtime-project';
+import { asciiSafePthFiles } from './pth-ascii';
 import { CrashJournal } from './crash-journal';
+import { nativeFaultSummary } from '../shared/utils/crashReport';
 import { availableBackendPort } from './backend-port';
 import { legacyStorageEnv } from './legacy-storage';
 import { spawn, spawnSync, type ChildProcess, type StdioOptions } from 'node:child_process';
@@ -25,8 +27,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { rm } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { basename, delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
+import { cpus, homedir, totalmem } from 'node:os';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { app } from 'electron';
 import type {
   BackendConnection,
@@ -42,7 +44,9 @@ import {
   saveRemoteBackend,
   type RemoteSession,
 } from './remote-backend';
+import { toolSearchDirs } from './tool-path';
 import { SetupProgressTracker, cleanProcessLine } from './setup-progress';
+import { scrubText } from '../shared/utils/scrub';
 
 const DEFAULT_PORT = 3900;
 const DEFAULT_BUDGET_S = 300;
@@ -54,6 +58,26 @@ const PROBE_TIMEOUT_MS = 1500;
 const SHUTDOWN_INTENT_TIMEOUT_MS = 1000;
 /** Consecutive supervisor probe misses (2 s apart) before a ready backend is declared gone. */
 const SUPERVISE_MISSES = 3;
+/**
+ * Consecutive probes that got an HTTP answer which was not a healthy /health
+ * (about a minute at the supervisor's cadence) before the backend is reported
+ * as unhealthy. A listener that answers is alive, so this is never `crashed`
+ * and never "busy" — it is a different, accurate state, and it still clears
+ * itself as soon as a probe comes back healthy.
+ */
+const SUPERVISE_REJECTIONS = 15;
+const REMOTE_AUTH_CHECK_TIMEOUT_MS = 5000;
+/** Healthy supervise ticks (2 s apart) between credential re-checks of an auth_required remote. */
+const AUTH_RECHECK_TICKS = 15;
+/**
+ * Stages a later successful /health probe must retire back to `ready` (#2430).
+ * `unresponsive` is a live-but-busy backend, not a failure: the supervisor
+ * already proved the process is alive, so the health loop owns clearing it.
+ */
+const RECOVERABLE_STAGES: ReadonlySet<BackendStage> = new Set<BackendStage>([
+  'failed',
+  'unresponsive',
+]);
 const LOG_RING_LINES = 200;
 const LOG_TAIL_LINES = 40;
 /** EX_CONFIG (sysexits.h): backend/main.py exits with it when the port is taken (#1223). */
@@ -102,9 +126,49 @@ export function resolvePort(): number {
   return Number.isInteger(raw) && raw > 0 && raw < 65536 ? raw : DEFAULT_PORT;
 }
 
+/** Hosts at or below this are "low-spec": a cold backend import is disk/CPU-bound. */
+const LOW_SPEC_CORES = 4;
+const LOW_SPEC_MEMORY_BYTES = 8 * 1024 ** 3;
+const LOW_SPEC_BUDGET_FACTOR = 2;
+/** A backend that keeps talking may be given at most this many budgets in total. */
+const MAX_BUDGET_EXTENSIONS = 3;
+
+/**
+ * The default readiness budget, doubled on a small host (#2445). A machine with
+ * no dedicated GPU is usually also short on cores and RAM, and its first start
+ * after an install is the slowest: antivirus scans the freshly written native
+ * libraries while a handful of cores import torch and the whole backend. That
+ * is slow, not broken, so it must not be failed at the budget sized for a
+ * workstation. An explicit `OMNIVOICE_STARTUP_BUDGET_S` always wins. This only
+ * stretches a timeout - it never changes what a feature does - so it is not a
+ * cross-platform behavior difference.
+ */
+export function defaultStartupBudgetS(cores = cpus().length, memoryBytes = totalmem()): number {
+  const small = cores <= LOW_SPEC_CORES || memoryBytes <= LOW_SPEC_MEMORY_BYTES;
+  return small ? DEFAULT_BUDGET_S * LOW_SPEC_BUDGET_FACTOR : DEFAULT_BUDGET_S;
+}
+
 function startupBudgetMs(): number {
   const raw = Number(process.env.OMNIVOICE_STARTUP_BUDGET_S);
-  return (Number.isFinite(raw) && raw >= 0 ? raw : DEFAULT_BUDGET_S) * 1000;
+  return (Number.isFinite(raw) && raw >= 0 ? raw : defaultStartupBudgetS()) * 1000;
+}
+
+/**
+ * When the readiness wait should give up. `base` is the plain budget; a backend
+ * that has printed something within the last half-budget is alive and
+ * progressing (migrations, model-directory scans), so the deadline slides to
+ * stay half a budget past its last output, never beyond `MAX_BUDGET_EXTENSIONS`
+ * budgets in total. A silent or wedged backend still fails at `base`.
+ */
+export function readinessDeadline(
+  startedAt: number,
+  budgetMs: number,
+  lastOutputAt: number,
+): number {
+  const base = startedAt + budgetMs;
+  if (lastOutputAt <= 0) return base;
+  const ceiling = startedAt + budgetMs * MAX_BUDGET_EXTENSIONS;
+  return Math.max(base, Math.min(ceiling, lastOutputAt + budgetMs / 2));
 }
 
 /**
@@ -151,6 +215,34 @@ export function bundledUvPath(resourcesPath: string, platform = process.platform
   return join(resourcesPath, 'tools', platform === 'win32' ? 'uv.exe' : 'uv');
 }
 
+/**
+ * Intel Macs (#889, #2365): PyTorch ships no macOS x86_64 wheels, so the
+ * managed runtime can never resolve there. The setup screen must say so
+ * before any install is offered — never after a multi-GB failure.
+ * Testable via parameters following bundledUvPath's precedent.
+ */
+export function isUnsupportedPlatform(platform = process.platform, arch = process.arch): boolean {
+  return platform === 'darwin' && arch === 'x64';
+}
+
+/**
+ * Why this host cannot install the local runtime, if it cannot (#2598).
+ *
+ * An x64 process on macOS is either a real Intel Mac or the Intel build
+ * running through Rosetta on Apple Silicon. Both resolve x86_64 wheels and
+ * fail, but only the second has a fix on the same machine: install the
+ * Apple Silicon build. Telling that user "this Intel Mac is unsupported"
+ * sends them to a remote backend they do not need.
+ */
+export function platformSetupIssue(
+  platform = process.platform,
+  arch = process.arch,
+  translated = app.runningUnderARM64Translation === true,
+): 'unsupported_platform' | 'wrong_architecture' | undefined {
+  if (!isUnsupportedPlatform(platform, arch)) return undefined;
+  return translated ? 'wrong_architecture' : 'unsupported_platform';
+}
+
 function usableFile(path: string): boolean {
   try {
     if (!existsSync(path)) return false;
@@ -169,15 +261,7 @@ function findUv(): string | null {
     if (usableFile(bundled)) return bundled;
   }
   const names = process.platform === 'win32' ? ['uv.exe', 'uv'] : ['uv'];
-  const home = homedir();
-  // A GUI launch (Finder, Explorer, a .desktop file) does not see the shell's
-  // PATH additions, so the standard uv install locations are checked too.
-  const dirs = [
-    ...(process.env.PATH ?? '').split(delimiter).filter(Boolean),
-    join(home, '.local', 'bin'),
-    join(home, '.cargo', 'bin'),
-    ...(process.platform === 'win32' ? [] : ['/opt/homebrew/bin', '/usr/local/bin']),
-  ];
+  const dirs = toolSearchDirs();
   for (const dir of dirs) {
     for (const name of names) {
       const candidate = join(dir, name);
@@ -276,6 +360,11 @@ function selectedRuntimeRoot(parent: string): string {
     : join(selected, 'VoiceStudio');
 }
 
+/** The web UI build packaged with this app version (served to LAN devices). */
+export function bundledWebUiPath(): string {
+  return join(backendRoot(), 'frontend', 'dist');
+}
+
 function samePath(left: string, right: string): boolean {
   const normalizedLeft = resolve(left);
   const normalizedRight = resolve(right);
@@ -293,6 +382,8 @@ export async function resolveSpawnPlan(
   if (override) return { argv: override, cwd: root };
   if (app.isPackaged) {
     const project = packagedProject ?? join(defaultRuntimeRoot(), 'project');
+    // Heals runtimes installed before #1783 was fixed without a repair run.
+    await asciiSafePthFiles(join(project, '.venv')).catch(() => []);
     return {
       argv: [runtimePython(project), '-m', ...UVICORN_ARGS, '--port', String(port)],
       cwd: project,
@@ -302,14 +393,34 @@ export async function resolveSpawnPlan(
   // deadline and repeat that download after every restart (#2184).
   const portArg = ['--port', String(port)];
   const python = venvPython(root);
-  if (existsSync(python) && (await runtimeDependenciesReady(root))) {
+  const setup = 'Run `bun run setup:api` in the repository, wait for it to finish, then restart.';
+  if (!existsSync(python)) {
+    return {
+      error: `The Python environment in ${root} is missing (no ${relative(root, python)}). ${setup}`,
+    };
+  }
+  // Name the import that failed (#2555): "incomplete" alone cannot tell a
+  // setup that never ran from one that finished but cannot load a module.
+  let failure = '';
+  if (await runtimeDependenciesReady(root, (detail) => (failure = detail))) {
     return { argv: [python, '-m', ...UVICORN_ARGS, ...portArg], cwd: root };
   }
   return {
     error:
-      `The Python environment in ${root} is missing or incomplete. ` +
-      'Run `bun run setup:api` in the repository, wait for it to finish, then restart.',
+      `The Python environment in ${root} is incomplete${failure ? `: ${failure}` : ''}. ${setup} ` +
+      'If setup already finished without errors, include this message and the setup output in a bug report.',
   };
+}
+
+/** The port of the electron-vite dev renderer URL, if it is a local http URL. */
+export function devRendererPort(rendererUrl: string | undefined): string | null {
+  if (!rendererUrl) return null;
+  try {
+    const url = new URL(rendererUrl);
+    return url.protocol === 'http:' && url.port ? url.port : null;
+  } catch {
+    return null;
+  }
 }
 
 function childEnv(
@@ -335,6 +446,11 @@ function childEnv(
   // Arms backend/core/parent_liveness.py: stdin EOF == "the shell is gone".
   env.OMNIVOICE_DESKTOP_CONTAINED = '1';
   env.OMNIVOICE_PORT = String(port);
+  // The dev renderer is served by Vite on a real port; tell the backend so
+  // Settings -> Sharing reports it. Packaged builds serve app:// (no port).
+  const rendererPort = devRendererPort(env.ELECTRON_RENDERER_URL);
+  if (rendererPort && !env.OMNIVOICE_UI_PORT?.trim() && !env.VOICESTUDIO_UI_PORT?.trim())
+    env.OMNIVOICE_UI_PORT = rendererPort;
   // #2215: the backend resolves uv as OMNIVOICE_BUNDLED_UV first and
   // `shutil.which("uv")` second. The packaged uv lives in resources/tools,
   // which is on nobody's PATH, and a GUI launch does not inherit the shell's
@@ -346,6 +462,12 @@ function childEnv(
   if (!env.OMNIVOICE_BUNDLED_UV) {
     const uv = findUv();
     if (uv) env.OMNIVOICE_BUNDLED_UV = uv;
+  }
+  // #2599: LAN devices load the web UI from this backend. Serve the build
+  // shipped inside this app version's resources, never a copy beside the
+  // runtime project (absent on updated installs, stale after an update).
+  if (app.isPackaged && process.resourcesPath && !env.OMNIVOICE_FRONTEND_DIST?.trim()) {
+    env.OMNIVOICE_FRONTEND_DIST = bundledWebUiPath();
   }
   if (region === 'china') env.HF_ENDPOINT ??= 'https://hf-mirror.com';
   if (platform === 'win32') {
@@ -371,6 +493,40 @@ export function managedBackendSpawnOptions(
     stdio: drainFd === null ? ['pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe', 'pipe'],
     drainFd,
   };
+}
+
+/** A failed spawn names the program, not just the OS error. Windows denies a
+ *  blocked executable with a bare `spawn UNKNOWN`; runtime-owned launches get
+ *  the install that owns the program, while custom `OMNIVOICE_BACKEND_CMD`
+ *  launches point at their own executable instead (#2440). */
+export function spawnFailureMessage(
+  command: string,
+  error: unknown,
+  { runtimeOwned = true }: { runtimeOwned?: boolean } = {},
+): string {
+  const detail = errorMessage(error);
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  const launchRejected = ['ENOENT', 'UNKNOWN', 'EACCES', 'EPERM'].includes(code ?? '');
+  if (!launchRejected) return `Could not start ${command}: ${detail}`;
+  return runtimeOwned
+    ? `Could not start ${command}: ${detail}. Install or repair the local runtime, then restart VoiceStudio.`
+    : `Could not start ${command}: ${detail}. Check that the program exists and can be launched, then try again.`;
+}
+
+/** The startup-budget failure says what the launch actually did, so a report
+ *  shows where startup stalled instead of asking for the log (#2445): the
+ *  backend's last line, "no output" for a managed process that never printed,
+ *  or "nothing spawned" for an attach-only wait that owns no process. */
+export function startupTimeoutMessage(
+  port: number,
+  budgetMs: number,
+  { owned, lastOutput }: { owned: boolean; lastOutput?: string },
+): string {
+  const base =
+    `Backend did not answer on port ${port} within ${Math.round(budgetMs / 1000)} s ` +
+    '(OMNIVOICE_STARTUP_BUDGET_S).';
+  if (!owned) return `${base} Nothing was spawned for this attempt.`;
+  return lastOutput ? `${base} Last output: ${lastOutput}` : `${base} It printed no output.`;
 }
 
 function delay(ms: number): Promise<void> {
@@ -402,12 +558,25 @@ export class BackendSupervisor extends EventEmitter<{
   private startedAt = Date.now();
   private child: ChildProcess | null = null;
   private readonly log: string[] = [];
+  /** Only the spawned process's own output, for quoting back in failure messages. */
+  private readonly childLog: string[] = [];
+  /** When the spawned process last printed a line (0 = nothing yet this launch). */
+  private lastChildOutputAt = 0;
   /** Bumped on every start/shutdown so stale poll loops and exit handlers no-op. */
   private generation = 0;
   /** A generation owns at most one health loop, even if readiness is observed twice. */
   private supervisingGeneration: number | null = null;
+  /**
+   * How the latest probe failed. Only `refused` — no listener, or another
+   * service on the port — is evidence the backend is gone. A `timeout` means
+   * the kernel accepted the connection while the event loop was blocked (a
+   * long job can hold it for hours), and `rejected` means it answered unhealthy.
+   */
+  private lastProbeOutcome: 'ok' | 'timeout' | 'refused' | 'rejected' = 'ok';
   private shuttingDown = false;
+  private diagnosis: BackendStatus['diagnosis'];
   private setupIssue: BackendStatus['setupIssue'];
+  private setupRequiredGib: number | undefined;
   private runtimeInterrupted = false;
   private setupPhase: BackendStatus['setupPhase'] = 'checking';
   private readonly setupProgress = new SetupProgressTracker();
@@ -463,6 +632,8 @@ export class BackendSupervisor extends EventEmitter<{
         : {}),
     };
     if (this.stage === 'setup_required' && this.setupIssue) status.setupIssue = this.setupIssue;
+    if (this.stage === 'setup_required' && this.setupIssue === 'space' && this.setupRequiredGib)
+      status.setupRequiredGib = this.setupRequiredGib;
     if (this.stage === 'setup_required' && this.runtimeInterrupted)
       status.runtimeInterrupted = true;
     if (this.stage === 'installing') {
@@ -470,6 +641,7 @@ export class BackendSupervisor extends EventEmitter<{
       status.setupProgress = this.setupProgress.snapshot();
     }
     if (this.message !== undefined) status.message = this.message;
+    if (this.diagnosis) status.diagnosis = this.diagnosis;
     if (this.exitCode !== undefined) status.exitCode = this.exitCode;
     if (this.exitSignal !== undefined) status.exitSignal = this.exitSignal;
     return status;
@@ -495,13 +667,17 @@ export class BackendSupervisor extends EventEmitter<{
     this.startedAt = Date.now();
     this.exitCode = undefined;
     this.exitSignal = undefined;
+    // Every launch begins with an empty child-output ring. A restart must not
+    // quote the backend it just killed, and a completed runtime install must
+    // not quote the installer — setupRuntime's uv children share this ring.
+    this.childLog.length = 0;
+    this.lastChildOutputAt = 0;
     this.setStage('attaching', { managed: false, message: undefined });
     try {
       if (await this.probe()) {
         if (gen !== this.generation) return;
         this.runtimeInterrupted = false;
-        this.setStage('ready');
-        this.supervise(gen);
+        await this.markReady(gen, {}, true);
         return;
       }
       if (gen !== this.generation) return;
@@ -511,6 +687,10 @@ export class BackendSupervisor extends EventEmitter<{
           managed: false,
           message: `Could not reach the configured remote backend at ${this.remoteUrl}.`,
         });
+        // Nothing else probes a `failed` remote. Without this, a Retry made
+        // while the server is down leaves the status failed forever, even after
+        // the server comes back.
+        void this.recoverWhenRemoteReturns(gen);
         return;
       }
 
@@ -530,8 +710,7 @@ export class BackendSupervisor extends EventEmitter<{
         if (gen !== this.generation) return;
         if (attached) {
           this.runtimeInterrupted = false;
-          this.setStage('ready');
-          this.supervise(gen);
+          await this.markReady(gen, {}, true);
           return;
         }
       }
@@ -541,6 +720,10 @@ export class BackendSupervisor extends EventEmitter<{
         if (!ready) {
           if (gen === this.generation) {
             this.runtimeInterrupted = await runtimeInstallInterrupted(project);
+            // Intel Macs can never resolve the runtime (#889), and the Intel
+            // build under Rosetta resolves the same wheels (#2598): say so
+            // now, before the setup screen offers an install that must fail.
+            this.setupIssue = platformSetupIssue();
             this.setStage('setup_required');
           }
           return;
@@ -566,8 +749,7 @@ export class BackendSupervisor extends EventEmitter<{
           const attached = await this.probe();
           if (gen !== this.generation) return;
           if (attached) {
-            this.setStage('ready');
-            this.supervise(gen);
+            await this.markReady(gen, {}, true);
             return;
           }
           if (identifiedBackend) {
@@ -601,7 +783,10 @@ export class BackendSupervisor extends EventEmitter<{
       !app.isPackaged ||
       this.installation ||
       this.cleaningRuntime ||
-      this.stage !== 'setup_required'
+      this.stage !== 'setup_required' ||
+      // The setup screen hides the install CTA here; refuse direct IPC too —
+      // the dependency set can never resolve on this host (#2365).
+      isUnsupportedPlatform()
     )
       return;
     let project =
@@ -612,7 +797,9 @@ export class BackendSupervisor extends EventEmitter<{
     const gen = ++this.generation;
     this.startedAt = Date.now();
     this.log.length = 0;
+    this.childLog.length = 0;
     this.setupIssue = undefined;
+    this.setupRequiredGib = undefined;
     this.runtimeInterrupted = false;
     this.setupPhase = 'checking';
     this.setupProgress.reset();
@@ -691,7 +878,13 @@ export class BackendSupervisor extends EventEmitter<{
             });
             this.attachLineReader(child.stdout, 'out');
             this.attachLineReader(child.stderr, 'err');
-            child.on('error', reject);
+            child.on('error', (err) =>
+              reject(
+                Object.assign(new Error(spawnFailureMessage(command, err)), {
+                  code: (err as NodeJS.ErrnoException | undefined)?.code,
+                }),
+              ),
+            );
             child.on('close', (code) => {
               if (this.child === child) this.child = null;
               if (code === 0) resolve(capturedStdout);
@@ -711,11 +904,15 @@ export class BackendSupervisor extends EventEmitter<{
       if (gen === this.generation) {
         const code = (error as NodeJS.ErrnoException)?.code;
         this.setupIssue =
-          code === 'ENOSPC'
-            ? 'space'
-            : ['EACCES', 'EPERM', 'EROFS'].includes(code || '')
-              ? 'access'
-              : undefined;
+          code === 'INTEL_MAC_UNSUPPORTED'
+            ? (platformSetupIssue() ?? 'unsupported_platform')
+            : code === 'ENOSPC'
+              ? 'space'
+              : ['EACCES', 'EPERM', 'EROFS'].includes(code || '')
+                ? 'access'
+                : undefined;
+        this.setupRequiredGib =
+          code === 'ENOSPC' ? (error as { requiredGib?: number }).requiredGib : undefined;
         this.runtimeInterrupted = await runtimeInstallInterrupted(project);
         this.pushLog('err', errorMessage(error));
         this.setStage('setup_required', { message: errorMessage(error) });
@@ -767,6 +964,7 @@ export class BackendSupervisor extends EventEmitter<{
     }
     if (gen !== this.generation) return;
     this.setupIssue = undefined;
+    this.setupRequiredGib = undefined;
     this.runtimeInterrupted = false;
     this.setupPhase = 'checking';
     this.message = undefined;
@@ -901,9 +1099,14 @@ export class BackendSupervisor extends EventEmitter<{
 
   private setStage(
     stage: BackendStage,
-    patch: { managed?: boolean; message?: string | undefined } = {},
+    patch: {
+      managed?: boolean;
+      message?: string | undefined;
+      diagnosis?: BackendStatus['diagnosis'];
+    } = {},
   ): void {
     this.stage = stage;
+    this.diagnosis = patch.diagnosis;
     if ('managed' in patch) this.managed = patch.managed ?? false;
     if ('message' in patch) this.message = patch.message;
     this.emitStatus();
@@ -937,12 +1140,25 @@ export class BackendSupervisor extends EventEmitter<{
     this.emit('status', this.status);
   }
 
-  private pushLog(stream: 'out' | 'err', line: string): void {
-    line = cleanProcessLine(line);
+  private pushLog(stream: 'out' | 'err', line: string, fromChild = false): void {
+    // Backend output can carry a token or a home directory (and with it the
+    // user's name). It is quoted in failure messages, shown in the log tail and
+    // forwarded to repair agents, so it is scrubbed once, here, at the source.
+    line = scrubText(cleanProcessLine(line));
     if (!line) return;
     if (stream === 'err') this.crashes.captureLine(line);
     this.log.push(line);
     if (this.log.length > LOG_RING_LINES) this.log.splice(0, this.log.length - LOG_RING_LINES);
+    // Failure messages quote the backend, not this shell. `log` also carries
+    // the supervisor's own "Reusing compatible Tauri runtime"/"spawning in …"
+    // lines, so taking its tail would report a launch banner as the backend's
+    // last word — exactly the evidence a startup failure needs.
+    if (fromChild) {
+      this.lastChildOutputAt = Date.now();
+      this.childLog.push(line);
+      if (this.childLog.length > LOG_RING_LINES)
+        this.childLog.splice(0, this.childLog.length - LOG_RING_LINES);
+    }
     (stream === 'err' ? console.error : console.log)(`[backend] ${line}`);
     if (this.stage === 'installing') {
       this.setupProgress.ingest(line);
@@ -954,7 +1170,7 @@ export class BackendSupervisor extends EventEmitter<{
     if (!readable) return;
     let pending = '';
     const flushPending = () => {
-      if (pending.length > 0) this.pushLog(stream, pending);
+      if (pending.length > 0) this.pushLog(stream, pending, true);
       pending = '';
     };
     readable.setEncoding('utf8');
@@ -962,7 +1178,7 @@ export class BackendSupervisor extends EventEmitter<{
       pending += chunk;
       const lines = pending.split(/[\r\n]+/);
       pending = lines.pop() ?? '';
-      for (const line of lines) if (line.length > 0) this.pushLog(stream, line);
+      for (const line of lines) if (line.length > 0) this.pushLog(stream, line, true);
     });
     readable.on('end', flushPending);
     readable.on('error', (error: unknown) => {
@@ -973,9 +1189,13 @@ export class BackendSupervisor extends EventEmitter<{
     });
   }
 
+  /** Launch the resolved backend command and wire its lifecycle events. */
   private spawnChild(plan: SpawnPlan, gen: number): void {
     this.crashes.resetCapture();
     const [command, ...args] = plan.argv;
+    // A custom command bypasses the managed runtime; its own executable is the
+    // only thing that can be repaired.
+    const runtimeOwned = !parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD);
     if (!command) {
       this.setStage('failed', { message: 'Empty backend command' });
       return;
@@ -995,7 +1215,7 @@ export class BackendSupervisor extends EventEmitter<{
       });
     } catch (err) {
       this.setStage('failed', {
-        message: `Could not start the backend: ${errorMessage(err)}`,
+        message: spawnFailureMessage(command, err, { runtimeOwned }),
       });
       return;
     }
@@ -1023,7 +1243,7 @@ export class BackendSupervisor extends EventEmitter<{
       if (gen !== this.generation) return;
       this.child = null;
       this.setStage('failed', {
-        message: `Could not start the backend: ${errorMessage(err)}`,
+        message: spawnFailureMessage(command, err, { runtimeOwned }),
       });
     });
     child.on('exit', (code, signal) => {
@@ -1050,8 +1270,7 @@ export class BackendSupervisor extends EventEmitter<{
         this.exitCode = undefined;
         this.exitSignal = undefined;
         this.pushLog('out', 'Attached to the replacement VoiceStudio backend.');
-        this.setStage('ready', { managed: false, message: undefined });
-        this.supervise(gen);
+        await this.markReady(gen, { managed: false, message: undefined }, true);
         return;
       }
       if (Date.now() >= deadline) break;
@@ -1062,7 +1281,7 @@ export class BackendSupervisor extends EventEmitter<{
     // End every readiness/supervisor loop for the dead ownership generation
     // before publishing the terminal result.
     this.generation++;
-    this.crashes.record(code, signal, Date.now() - this.startedAt, this.log);
+    const recorded = this.crashes.record(code, signal, Date.now() - this.startedAt, this.log);
     this.exitCode = code;
     this.exitSignal = signal;
     if (code === EXIT_PORT_IN_USE) {
@@ -1071,7 +1290,11 @@ export class BackendSupervisor extends EventEmitter<{
       });
       return;
     }
-    const lastLine = this.log.at(-1);
+    // A native fault's last line is whatever followed the dump: the stdlib
+    // frame that started the process, an extension-module list or an access
+    // log line. Name the fault and where it happened instead (#2382, #2187).
+    const lastLine =
+      nativeFaultSummary(recorded?.logTail.join('\n') ?? '') || this.childLog.at(-1);
     const why = signal ? `signal ${signal}` : `exit code ${code}`;
     this.setStage('crashed', {
       message: `Backend exited unexpectedly (${why}).${lastLine ? ` Last output: ${lastLine}` : ''}`,
@@ -1079,6 +1302,7 @@ export class BackendSupervisor extends EventEmitter<{
   }
 
   private async probe(baseUrl = this.baseUrl, identityOnly = false): Promise<boolean> {
+    this.lastProbeOutcome = 'ok';
     try {
       // This runs for the entire desktop session. Use the canonical, tiny
       // liveness response instead of repeatedly serializing full hardware,
@@ -1088,26 +1312,130 @@ export class BackendSupervisor extends EventEmitter<{
         signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
         redirect: this.remoteUrl ? 'follow' : 'error',
       });
-      // Fallback ports were not explicitly chosen by the user. A generic
-      // health JSON must never redirect renderer content to another service.
+      // Every local backend this shell can spawn or attach to stamps the
+      // marker on every response (BackendMarkerMiddleware, #1385). A generic
+      // health JSON on a loopback port, configured or fallback, must never
+      // redirect renderer content to another service; an unmarked listener
+      // is left alone and the launch reports the port as in use instead.
+      // Remote backends were chosen explicitly and may predate the marker.
       const marked = Boolean(res.headers.get('x-omnivoice-backend'));
       if (identityOnly) return marked;
-      if (!this.remoteUrl && this.port !== this.configuredPort && !marked) return false;
-      if (!res.ok) return false;
+      if (!this.remoteUrl && !marked) {
+        this.lastProbeOutcome = 'refused';
+        return false;
+      }
+      if (!res.ok) {
+        this.lastProbeOutcome = 'rejected';
+        return false;
+      }
       const body: unknown = await res.json();
-      return (
+      const healthy =
         typeof body === 'object' &&
         body !== null &&
         (body as { status?: unknown }).status === 'ok' &&
-        typeof (body as { version?: unknown }).version === 'string'
-      );
-    } catch {
+        typeof (body as { version?: unknown }).version === 'string';
+      if (!healthy) this.lastProbeOutcome = 'rejected';
+      return healthy;
+    } catch (error) {
+      const name = (error as { name?: unknown } | null)?.name;
+      this.lastProbeOutcome = name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'refused';
       return false;
     }
   }
 
+  /** Keep probing a configured remote that was unreachable; resume supervision when it answers. */
+  private async recoverWhenRemoteReturns(gen: number): Promise<void> {
+    while (gen === this.generation && this.stage === 'failed' && this.remoteUrl) {
+      await delay(SUPERVISE_POLL_MS);
+      if (gen !== this.generation || this.stage !== 'failed') return;
+      if (await this.probe()) {
+        if (gen !== this.generation || this.stage !== 'failed') return;
+        await this.markReady(gen, { message: undefined }, true);
+        return;
+      }
+    }
+  }
+
+  /**
+   * Whether a remote accepts this client's credentials. /health needs no admin
+   * session, so it can answer while every authenticated call fails (the session
+   * expired during an outage, or the key was rotated). Same check the remote
+   * probe applies when connecting: an authenticated /system/info. Three-way,
+   * because a timeout or a 5xx proves nothing about the session: only a 2xx is
+   * `valid` and only 401/403 is `rejected`.
+   */
+  private async remoteCredentials(): Promise<'valid' | 'rejected' | 'inconclusive'> {
+    if (!this.remoteUrl) return 'valid';
+    try {
+      const res = await fetch(`${this.baseUrl}/system/info`, {
+        headers: this.requestHeaders(),
+        signal: AbortSignal.timeout(REMOTE_AUTH_CHECK_TIMEOUT_MS),
+        redirect: 'follow',
+      });
+      if (res.ok) return 'valid';
+      return res.status === 401 || res.status === 403 ? 'rejected' : 'inconclusive';
+    } catch {
+      return 'inconclusive';
+    }
+  }
+
+  /**
+   * The one place a backend that just answered /health becomes `ready`. A local
+   * backend is trusted on /health alone; a remote must also prove its
+   * credentials are accepted, otherwise the workspace would resume while every
+   * authenticated API and WebSocket call fails.
+   *
+   *  - valid: `ready`.
+   *  - rejected: `failed` with the auth diagnosis.
+   *  - inconclusive: the CURRENT state is kept. A `failed`/`unresponsive` remote
+   *    is never promoted on an unverified session, and a first start reports
+   *    uncertain connectivity (`unresponsive`) instead of `ready`. The
+   *    supervisor re-checks on its next tick.
+   *
+   * Returns whether the stage is now `ready`.
+   */
+  private async markReady(
+    gen: number,
+    patch: { managed?: boolean; message?: string | undefined },
+    superviseAfter: boolean,
+  ): Promise<boolean> {
+    const credentials = await this.remoteCredentials();
+    if (gen !== this.generation) return false;
+    if (credentials === 'valid') {
+      this.setStage('ready', patch);
+    } else if (credentials === 'rejected') {
+      if (this.diagnosis !== 'auth_required' || this.stage !== 'failed') {
+        this.setStage('failed', {
+          managed: false,
+          message: `The remote backend at ${this.baseUrl} no longer accepts this app's credentials (its admin session expired or the key changed). Reconnect it with the API key.`,
+          diagnosis: 'auth_required',
+        });
+      }
+    } else if (this.stage !== 'failed' && this.stage !== 'unresponsive') {
+      this.setStage('unresponsive', {
+        managed: false,
+        message: `Cannot confirm that the remote backend at ${this.baseUrl} accepts this app's credentials: its authenticated check did not complete. Retrying automatically.`,
+        diagnosis: 'remote_unreachable',
+      });
+    }
+    if (superviseAfter) this.supervise(gen);
+    return credentials === 'valid';
+  }
+
+  /** Poll /health until ready, retiring the launch when the budget expires. */
   private async waitUntilReady(gen: number, budgetMs: number): Promise<void> {
-    const deadline = this.startedAt + budgetMs;
+    // `OMNIVOICE_STARTUP_BUDGET_S` bounds how long the *backend* may take to
+    // answer, so it is measured from the moment this poll loop begins — which
+    // is right after the process was spawned. Anchoring it to `startedAt`
+    // charged the launch against the backend's window (#2445), and everything
+    // ahead of the spawn is slow and independently bounded: resolving the
+    // runtime imports torch in a child interpreter (30 s each, once per
+    // candidate project, then again in resolveSpawnPlan), staging the bundled
+    // sources is a recursive copy, and port selection walks up to 17
+    // candidates. Once that pre-spawn work outlasted the budget, this loop
+    // failed on its very first probe — killing a backend that had been alive
+    // for a second and reporting "did not answer within 300 s".
+    const pollStartedAt = Date.now();
     const waitingStage = this.stage;
     while (gen === this.generation && this.stage === waitingStage) {
       const ready = await this.probe();
@@ -1115,20 +1443,26 @@ export class BackendSupervisor extends EventEmitter<{
       // starting to attaching must retire this launch's readiness deadline.
       if (gen !== this.generation || this.stage !== waitingStage) return;
       if (ready) {
-        this.setStage('ready', { message: undefined });
-        this.supervise(gen);
+        await this.markReady(gen, { message: undefined }, true);
         return;
       }
       if (gen !== this.generation || (this.stage !== 'starting' && this.stage !== 'attaching')) {
         return;
       }
-      if (Date.now() > deadline) {
+      if (Date.now() > readinessDeadline(pollStartedAt, budgetMs, this.lastChildOutputAt)) {
         this.generation++;
+        // killChild() nulls this.child, so record whether this launch owned a
+        // process *before* tearing it down. Checking afterwards would
+        // suppress the one diagnostic that matters — a managed backend that
+        // died silently — and would let an attach-only wait blame output from
+        // a backend this attempt never started.
+        const owned = this.child !== null;
+        // Taken before teardown too: killing the child can append shutdown
+        // output, which must not replace the startup line the report needs.
+        const lastOutput = owned ? this.childLog.at(-1) : undefined;
         await this.killChild();
         this.setStage('failed', {
-          message:
-            `Backend did not answer on port ${this.port} within ${Math.round(budgetMs / 1000)} s ` +
-            '(OMNIVOICE_STARTUP_BUDGET_S). Check the log above.',
+          message: startupTimeoutMessage(this.port, budgetMs, { owned, lastOutput }),
         });
         return;
       }
@@ -1140,6 +1474,18 @@ export class BackendSupervisor extends EventEmitter<{
     if (this.supervisingGeneration === gen) return;
     this.supervisingGeneration = gen;
     let misses = 0;
+    // Consecutive refused connections, classified from the LATEST probes: a
+    // refusal followed by a timeout or an answer means the listener is back.
+    let refusals = 0;
+    // Consecutive answered-but-unhealthy probes, counted apart from refusals.
+    let rejections = 0;
+    // Healthy ticks since an auth_required remote was last re-validated.
+    let authRecheck = 0;
+    const noteMiss = (): number => {
+      refusals = this.lastProbeOutcome === 'refused' ? refusals + 1 : 0;
+      rejections = this.lastProbeOutcome === 'rejected' ? rejections + 1 : 0;
+      return ++misses;
+    };
     const release = (): void => {
       if (this.supervisingGeneration === gen) this.supervisingGeneration = null;
     };
@@ -1151,10 +1497,19 @@ export class BackendSupervisor extends EventEmitter<{
       }
       if (await this.probe()) {
         misses = 0;
-        if (gen === this.generation && this.stage === 'failed') {
-          this.setStage('ready', { message: undefined });
+        refusals = 0;
+        rejections = 0;
+        if (gen === this.generation && RECOVERABLE_STAGES.has(this.stage)) {
+          // A remote parked on auth_required is re-validated only every Nth
+          // healthy tick: the rejection will repeat until credentials change
+          // (possibly outside this app), so checking each tick is wasted load,
+          // but never checking would leave it failed after they are fixed.
+          if (this.diagnosis !== 'auth_required' || ++authRecheck >= AUTH_RECHECK_TICKS) {
+            authRecheck = 0;
+            await this.markReady(gen, { message: undefined }, false);
+          }
         }
-      } else if (++misses >= SUPERVISE_MISSES && gen === this.generation) {
+      } else if (noteMiss() >= SUPERVISE_MISSES && gen === this.generation) {
         // The child-exit handler owns this bounded replacement handoff. It
         // will either attach or invalidate the generation before reporting a
         // crash, so this concurrent health loop must not race it.
@@ -1162,13 +1517,61 @@ export class BackendSupervisor extends EventEmitter<{
           if (gen === this.generation) void tick();
           return;
         }
+        // The listener keeps answering /health with something unhealthy. It is
+        // neither busy nor dead, so say what is true instead of waiting
+        // forever. `failed` is recoverable: the next healthy probe clears it,
+        // and nothing is killed or respawned here.
+        if (rejections >= SUPERVISE_REJECTIONS) {
+          if (this.stage !== 'failed') {
+            this.setStage('failed', {
+              message: `The backend at ${this.baseUrl} answers /health but reports that it is not healthy.`,
+              diagnosis: 'unhealthy',
+            });
+          }
+          if (gen === this.generation) void tick();
+          return;
+        }
+        // An answered-but-unhealthy probe is neither a stall nor a death, so it
+        // must not announce "busy" or fall through to the crash path below
+        // while the count above is still building.
+        if (this.lastProbeOutcome === 'rejected') {
+          if (gen === this.generation) void tick();
+          return;
+        }
         // Inference can monopolize Python's event loop longer than the health
         // deadline. A missed HTTP probe is not proof of process death. Keep
         // observing our live child; its exit handler owns crash reporting.
+        //
+        // Report this as `unresponsive`, NOT `failed` (#2430): the process is
+        // demonstrably alive, so the failure channel would be a lie. `failed`
+        // tears the workspace down behind an error gate, pauses every query
+        // and dead-ends in-flight requests, all for a stall that the very next
+        // probe clears. Announced once, then left to recover on its own.
         if (this.child && this.child.exitCode === null && this.child.signalCode === null) {
-          if (misses === SUPERVISE_MISSES) {
-            this.setStage('failed', {
-              message: `Backend is running but temporarily not responding on port ${this.port}. Waiting for recovery.`,
+          if (this.stage !== 'unresponsive') {
+            this.setStage('unresponsive', {
+              message: `Backend is running but busy on port ${this.port}; it is not answering health checks right now. This resolves on its own once the current job finishes.`,
+            });
+          }
+          if (gen === this.generation) void tick();
+          return;
+        }
+        // An attached or remote backend has no child handle, but a refused
+        // connection and a silent one differ: the kernel still accepts TCP for
+        // a live process whose event loop is blocked, so timeouts alone are
+        // never proof of death (#2601) — a long job can hold the loop for
+        // hours. Stay `unresponsive`, keep probing, and let the user reconnect
+        // from the status bar. Only consecutive refusals (the listener is
+        // gone) declare it crashed.
+        if (!this.managed && refusals < SUPERVISE_MISSES) {
+          if (this.stage !== 'unresponsive') {
+            this.setStage('unresponsive', {
+              message: this.remoteUrl
+                ? `Cannot confirm connectivity to the remote backend at ${this.baseUrl}: its health checks are timing out (a network problem, or the server is busy). Retrying automatically.`
+                : `The external backend at ${this.baseUrl} is running but busy; it is not answering health checks right now. This resolves on its own once the current job finishes.`,
+              // English above is for logs and bug reports; the renderer shows
+              // the localized catalog string for this code.
+              diagnosis: this.remoteUrl ? 'remote_unreachable' : undefined,
             });
           }
           if (gen === this.generation) void tick();

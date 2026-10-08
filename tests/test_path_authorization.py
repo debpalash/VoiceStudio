@@ -82,9 +82,9 @@ def auth(tmp_path, monkeypatch):
     return _Auth(mod, str(d))
 
 
-@pytest.mark.parametrize("kind", ["models_dir", "ffmpeg", "ffprobe", "dub_export", "soni_input", "soni_output_dir"])
+@pytest.mark.parametrize("kind", ["models_dir", "ffmpeg", "ffprobe", "dub_export", "soni_input", "soni_output_dir", "sidecar_dir"])
 def test_consume_returns_the_authorized_path_for_every_capability_kind(auth, kind):
-    # All six authorize_host_path kinds share ONE resolution path (_AUTH_DIR)
+    # Every authorize_host_path kind shares ONE resolution path (_AUTH_DIR)
     # — this is the "whole class" #1781 must fix, not just dub_export.
     assert kind in auth.kinds
     token = _token()

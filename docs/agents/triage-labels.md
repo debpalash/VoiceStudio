@@ -27,6 +27,12 @@ vocabulary on 2026-08-07.
 This repo also carries labels outside the triage vocabulary — `bug`,
 `enhancement`, `documentation`, `question`, `duplicate`, `invalid`,
 `good first issue`, `help wanted`, `roadmap`, `from-discord`,
-`v0.3.0-investigate`. They classify *what* an issue is; the five above track
-*where it is in the queue*. The two sets are orthogonal — applying a triage
-label never means removing a type label.
+`v0.3.0-investigate`, plus the area labels `install` (installer, setup and
+first-run problems) and `sponsor` (sponsorship inquiries). They classify *what*
+an issue is; the five above track *where it is in the queue*. The two sets are
+orthogonal — applying a triage label never means removing a type label.
+
+Issue templates apply only labels from this file: the bug and install-problem
+forms add `needs-triage` next to their type/area label; the feature and
+sponsor forms add only their type/area label. Do not reintroduce a bare
+`triage` label.

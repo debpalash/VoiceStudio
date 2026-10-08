@@ -41,8 +41,13 @@ Before touching any knob, check these — they account for most slowness reports
    - **Model Catalogue** shows a routing badge per engine — "GPU active",
      "CPU fallback", or "CPU" — with the *reason* shown as small text under
      the badge (full text on hover).
-   Note: **GPU acceleration on Windows is NVIDIA/CUDA-only** — AMD and Intel
-   GPUs run CPU-only there (see [Windows install notes](install/windows.md)).
+   Note: **PyTorch GPU acceleration on Windows is NVIDIA/CUDA-only** — AMD and
+   Intel GPUs run PyTorch engines on the CPU there (audio.cpp can still use a
+   Radeon through Vulkan; see [Windows install notes](install/windows.md)).
+   **Settings → Performance → GPU acceleration** (`GET /api/settings/gpu-report`)
+   lists, per engine, whether it uses the GPU on this machine and why not
+   otherwise — including "your Radeon was found but this PyTorch build is
+   NVIDIA-only".
 5. **You aborted a dub earlier (fixed in v0.3.23).** Dubbing moves the TTS
    model to CPU to free VRAM for the ASR model, then moves it back when the
    transcription finishes. Before v0.3.23 that move-back only ran on the fully
@@ -85,18 +90,22 @@ None of them are required — the defaults are chosen for the common case.
 | `OMNIVOICE_FLASHINFER` | `0` | CUDA-only accelerated decoding for the default engine via [FlashInfer](https://github.com/flashinfer-ai/flashinfer) kernels (packed CFG attention, fused RMSNorm/RoPE/GEMM) — ~2x on upstream's benchmarks. `1` enables it; `graph` also captures CUDA graphs (best when you render one thing at a time). Requires installing the optional `flashinfer-python` package into the backend environment first (`uv pip install flashinfer-python flashinfer-jit-cache --extra-index-url https://flashinfer.ai/whl/cu128/`, matching your CUDA build). Replaces `torch.compile` for that session, pins inference to a single GPU thread (the FlashInfer attention plan is per-generation state), and keeps fused copies of the attention/MLP weights resident (~roughly half the LLM's weight size extra VRAM) — leave it off on tight-VRAM cards. If the package is missing or a FlashInfer/CUDA-graph kernel fails at runtime, the app logs the reason and falls back to the standard path; failures outside those kernels (e.g. a genuine out-of-memory) surface normally. |
 | `OMNIVOICE_PROMPT_DISK_CACHE` | `1` | Persist encoded voice-clone references (`prompt_cache/` in the app data dir, ~10 KB per voice, 32 newest kept) so the first generation with a known voice after a restart skips the reference re-encode and any auto-transcription. Set `0` to keep the cache in memory only. |
 | `OMNIVOICE_IDLE_TIMEOUT_S` | `900` | Seconds of idle before the TTS model unloads to free memory. Raise it (e.g. `3600`) if you generate in bursts and dislike the ~8 s reload; lower it on tight-memory machines. |
+| `OMNIVOICE_OFFLOAD_AFTER_GENERATION` | off | `1` moves the built-in TTS model to system RAM once generation finishes, and back on the next generation. Same toggle as **Settings → Performance & Device → Memory management** (the env var wins over the UI). See [Offload to RAM after generation](#offload-to-ram-after-generation). |
+| `OMNIVOICE_OFFLOAD_AFTER_GENERATION_GRACE_S` | `3` | How long the GPU must stay idle after a generation before that offload runs. |
 | `OMNIVOICE_SIDECAR_IDLE_TIMEOUT_S` | `300` | Same idea for sidecar engines (IndexTTS 2.5 etc.). |
+| `MIOPEN_FIND_MODE` | `FAST` | MIOpen (ROCm) algorithm search. The default exhaustive search costs ~18 s every time it sees a new convolution shape — shape-varying vocoders like IndexTTS's BigVGAN paid it on nearly every chunk. `FAST` finds a near-optimal kernel in well under a second; the backend sets it at startup, only MIOpen reads it (ROCm on Linux or Windows; inert on CUDA/MPS/CPU), and an exported value always wins over the default. |
 | `OMNIVOICE_LLM_CONCURRENCY` | `6` | Parallel LLM translation calls during a dub. Raise for a fast API endpoint, lower if your provider rate-limits. |
 | `OMNIVOICE_GPU_WORKERS` | auto | Concurrent generations on the GPU. Auto-sized from free VRAM (1 worker per 5 GB, max 4); MPS and CPU always get 1. **Do not raise this on ≤10 GB cards or Apple Silicon** — two concurrent jobs over-committing VRAM is exactly the crash class (#567) the auto-sizing exists to prevent. |
 | `OMNIVOICE_CPU_POOL` | `min(8, cores)` | Thread pool for CPU-side work (translation dispatch, audio I/O). |
 | `OMNIVOICE_SINGLE_ENGINE_RESIDENT` | `1` | Keep only one TTS engine in memory at a time. Set `0` on 32 GB+ machines to keep several engines warm across switches. |
 | `OMNIVOICE_UNIFIED_OFFLOAD_HEADROOM_GB` | `6` | On unified memory (Apple Silicon): if free RAM is below this when a dub needs the transcription model, the TTS model is fully released first (it reloads on the next generation). Raise to be more aggressive about freeing, lower on 32 GB+ machines to avoid the reload. |
-| `OMNIVOICE_INDEXTTS_FP16` | `1` | IndexTTS half-precision. Leave on. |
+| `OMNIVOICE_INDEXTTS_FP16` | `1` | IndexTTS half-precision. Leave on. On ROCm the bfloat16 claim is verified with a tiny test matmul in a child process first: GPUs whose rocBLAS crashes on bf16 load fp32 automatically instead of segfaulting the sidecar. Set `0` to force fp32 outright. |
 | `OMNIVOICE_ASR_VRAM_PREFLIGHT` | `1` | Downgrade transcription precision instead of crashing when VRAM is short (CUDA). Leave on. |
 | `OMNIVOICE_GENERATE_TIMEOUT_S` | `300` | Abandon a generation after this many seconds **of actual compute** on an accelerated (GPU-family) host — the clock starts when a worker picks the job up, never while it waits in line. It's a floor, not a ceiling: the budget grows with the text (+1 s per 40 characters past the first 1200), so long inputs rarely need this raised. A **CUDA or ROCm** GPU with less dedicated VRAM than the engine declares it needs is the exception — it pages to system RAM and renders slower than the same machine's CPU, so it floors at `OMNIVOICE_CPU_GENERATE_TIMEOUT_S` below instead. Apple Silicon (MPS) is not included: its reported VRAM is a heuristic over a *unified* memory pool, not a dedicated one, so there is no comparable floor to measure it against. Setting **this** var explicitly turns that off — an explicit value here is the base on every device, under-provisioned or not, so lowering it to fail fast still works. Also settable from **Settings → Performance & Device → Compute-time budget** (persists to `prefs.json`; takes effect on the next backend restart, same as `OMNIVOICE_DEVICE` above). |
 | `OMNIVOICE_CPU_GENERATE_TIMEOUT_S` | `600` | Same budget, for hosts that render on the CPU — correct CPU synthesis legitimately takes longer than the accelerated floor, so it gets its own, higher one. It is also the floor a CUDA/ROCm GPU below the engine's declared VRAM floor gets, since that is the performance class it actually falls into. An explicit value here always governs CPU-family generation, independent of `OMNIVOICE_GENERATE_TIMEOUT_S` above — that var only doubles as a CPU floor when *this* one is left unset (a legacy shortcut: setting only `OMNIVOICE_GENERATE_TIMEOUT_S` lowers the watchdog everywhere with one var). Also settable from **Settings → Performance & Device**, which flags a row an external env var is already shadowing instead of claiming a save will apply. |
 | `OMNIVOICE_ENGINE_IMPORT_PROBE_TIMEOUT_S` | `60` | How long to wait while checking that a sidecar engine's virtualenv can import the engine. Only affects how quickly a *broken* venv is ruled out — a probe that runs out of time is treated as "unproven", and the venv is used anyway, so a slow machine is never told its engine is missing. Per-engine override: `OMNIVOICE_INDEXTTS_IMPORT_PROBE_TIMEOUT_S` (and the same shape for `CONFUCIUS4`, `DOTS_TTS`, `MOSS_TTS_V15`). |
 | `OMNIVOICE_GPU_QUEUE_TIMEOUT_S` | `1800` | How long a job may sit in the GPU queue before it's reported as a saturated pool (a retryable condition — nothing ran). Waiting is normal on 1-worker machines; lower this only if you'd rather fail fast than queue. |
+| `OMNIVOICE_PROGRESS_EXTENSION_CAP_S` | `1800` | Extra time a job that keeps reporting progress (a model download heartbeat, a finished chunk) may run past its budget — the larger of this and three times the job's own budget. A job that goes silent still stops at its budget. Replaces the old name `OMNIVOICE_MODEL_LOAD_TIMEOUT_S`, which is still accepted but deprecated; it is unrelated to the cold-load ceiling `OMNIVOICE_MODEL_LOAD_TIMEOUT`. The app waits out the backend's longest default budget before it gives up on a request itself. |
 
 **torch.compile** is probe-based, not platform-based: it's attempted only
 where the runtime check says it can work (a CUDA device with Triton importable
@@ -132,19 +141,43 @@ editor, profile previews, and streaming).
 | The host synthesizes on the CPU **and** the text is over 1200 characters | A heads-up that this generation may exceed the time budget |
 | The host synthesizes on Apple Silicon (MPS) **and** the text is over 1200 characters | The same heads-up — MPS gets the accelerated-host budget (`OMNIVOICE_GENERATE_TIMEOUT_S`), which a long render can still legitimately exceed |
 
-**Why 1200 characters:** it is the same figure the budget itself uses. The first
-1200 characters get the flat base budget, and only past that does the budget
-start growing (+1 s per 40 characters). Below the threshold you are inside a
-budget the backend already considers generous, so ordinary sentences on a CPU
-laptop stay quiet.
+**Why 1200 characters:** this advisory threshold matches the free allowance in
+the legacy accelerated/explicit-budget rule: the first 1200 characters get the
+flat base, then the budget grows by 1 s per 40 characters. Default CPU budgeting
+uses a separate rule: its 4 s per character exceeds the 600 s floor above 150
+characters, so a 400-character passage receives 1600 s even though no length
+warning appears. The warning threshold itself is unchanged.
 
 **Which base applies:**
 
 | Host | Base budget |
 | --- | --- |
-| Renders on the CPU | `OMNIVOICE_CPU_GENERATE_TIMEOUT_S` |
+| Renders on the CPU | `OMNIVOICE_CPU_GENERATE_TIMEOUT_S` (see below: with the default value it also scales with the input at CPU speed) |
 | CUDA/ROCm GPU below the engine's declared VRAM floor, when `OMNIVOICE_GENERATE_TIMEOUT_S` is not explicitly set | `OMNIVOICE_CPU_GENERATE_TIMEOUT_S` (whichever of the two is larger) |
 | Any other accelerated host, MPS included | `OMNIVOICE_GENERATE_TIMEOUT_S` |
+
+**CPU hosts scale much faster than the +1 s per 40 characters.** A CPU render is
+often 10-50x slower than on a GPU, so while `OMNIVOICE_CPU_GENERATE_TIMEOUT_S` is
+left at its default the budget grows at 4 s per input character (a 400-character
+passage gets about 27 minutes), capped at 2 hours of base compute allowance.
+Queueing, model loading and the existing progress-extension allowance are
+separate. Each streamed chunk is budgeted from its own text; a silent, wedged job
+exhausts its compute allowance. Setting the CPU budget explicitly turns this
+scaling off and uses your value as the floor (plus the standard +1 s per 40
+characters) — an explicit setting is always authoritative.
+
+The desktop backstop accounts for the reported automatic CPU ceiling on local
+CPU-routed jobs with the default budget. MCP tools conservatively allow that
+ceiling whenever the CPU budget is not explicitly set. Both waits also include
+model-load, queue, sidecar and progress-extension allowances. The ceiling avoids
+guessing the compute budget from typed text that number normalization or
+pronunciation rules can expand before synthesis.
+
+MCP generation also allows a separate reference-transcription job before
+synthesis for clone profiles without a cached transcript. That job uses the
+generation base budget, its own queue and progress extension; it does not use
+the standalone transcription timeout. MCP includes this allowance conservatively
+because it cannot inspect the backend's cached reference transcript.
 
 Both rows above can be overridden, and the two vars are independent:
 
@@ -189,6 +222,8 @@ chapter) is not abandoned when it reaches its budget. It gets extra time while
 chunks keep landing, up to three times its own budget or 30 minutes, whichever
 is longer (#2287). A render that finishes no chunk within 5 minutes after its
 budget is still abandoned.
+
+Subprocess-engine unload skips a sidecar while an operation holds its lock, including engine-switch unloads. An idle sidecar is released immediately and respawns on its next request. Explicit shutdown remains the termination path for application exit and failed operations.
 
 **Where it lives:**
 
@@ -241,6 +276,38 @@ component. Believe the message; Flush only fixes memory contention. Also
 note the app already frees memory on its own when idle
 (`OMNIVOICE_IDLE_TIMEOUT_S`) — Flush is for when you need the memory *now*,
 between jobs.
+
+## Offload to RAM after generation
+
+For machines that share the GPU with something else that needs a lot of VRAM,
+such as a local LLM, a game or an image model. **Settings → Performance &
+Device → Memory management → Move the voice model to system RAM after
+generation** (off by default; `OMNIVOICE_OFFLOAD_AFTER_GENERATION=1` does the
+same and wins over the toggle).
+
+- When a generation finishes and the GPU has been idle for
+  `OMNIVOICE_OFFLOAD_AFTER_GENERATION_GRACE_S` (3 s), the built-in OmniVoice
+  model moves from the GPU to system RAM. The next generation moves it back
+  first. That takes a few seconds, much less than the ~8 s reload after
+  **Unload**.
+- Nothing moves while another generation is running or queued, or while a
+  dub, batch or audiobook job is active; during such a job the check repeats
+  every 10 s, so the model still moves once the job finishes. A run of
+  back-to-back generations pays for one move at the end, not one per
+  generation.
+- With `OMNIVOICE_FLASHINFER` on, its fused weights and captured CUDA graphs
+  are released with the move and rebuilt when the model is back on the GPU.
+  The dub's transcription offload does the same.
+- NVIDIA (CUDA), AMD (ROCm), Intel XPU and Apple Silicon (MPS) are supported.
+  On Apple Silicon memory is unified: the move frees the GPU's working set for
+  other GPU apps, not total RAM. On CPU the model already lives in RAM, so the
+  setting does nothing.
+- If another app has taken the VRAM when the next generation starts, the move
+  back fails. That generation then runs on the CPU (slower, not an error), and
+  the next one tries again.
+- Engines that run in their own process (sidecars such as IndexTTS) are not
+  moved. They release their memory on their own idle timeout
+  (`OMNIVOICE_SIDECAR_IDLE_TIMEOUT_S`).
 
 If the timeout error keeps recurring even right after an unload, see
 [troubleshooting §14](install/troubleshooting.md#14-cant-reach-the-local-backend-during-generation--transcription--dubbing)

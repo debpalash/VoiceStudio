@@ -140,3 +140,151 @@ def test_timing_trims_edge_silence_but_keeps_internal_pauses():
     result = trim_speech_padding(wav, 1000)
     assert result.shape[-1] == 700
     assert torch.equal(result[..., 250:450], torch.zeros(1,200))
+
+
+def _replace_subtitles(job):
+    from services.dub_pipeline import replace_source_segments
+    imported = [{'id': 0, 'start': 0.0, 'end': 1.0, 'text': 'imported cue'}]
+    replace_source_segments(job, imported)
+    return imported
+
+
+def test_subtitles_replaced_during_synthesis_publish_nothing(render_dub):
+    previous = render_dub.path / 'dubbed_en.wav'
+    previous.write_bytes(b'previous successful output')
+    render_dub.job['dubbed_tracks']['en'] = {'path': str(previous)}
+    replaced = []
+    def synthesize():
+        replaced.append(_replace_subtitles(render_dub.job))
+        return torch.ones(1, 24000) * .1
+    render_dub.output[0] = synthesize
+    events = render_dub.run()
+    assert [e.get('error_code') for e in events if e['type'] == 'error'] == ['dub_source_changed']
+    assert not any(e['type'] == 'done' for e in events)
+    assert previous.read_bytes() == b'previous successful output'
+    assert render_dub.job['dubbed_tracks']['en'] == {'path': str(previous)}
+    assert render_dub.job['segments'] is replaced[0]
+    # Neither the speech nor its fingerprint reaches the segment cache.
+    assert not (render_dub.path / 'seg_en_a.wav').exists()
+    assert 'seg_hashes' not in render_dub.job
+    assert 'seg_order' not in render_dub.job
+
+
+@pytest.fixture
+def assembling(render_dub, monkeypatch):
+    """Half-length speech, so strict-slot assembly awaits the underrun stretch."""
+    import api.routers.dub_generate as dg
+    render_dub.output[0] = lambda: torch.ones(1, 12000) * .1
+    hooks = []
+    async def stretch(wav, target, sr):
+        for hook in hooks:
+            hook()
+        return torch.nn.functional.interpolate(wav.unsqueeze(0), size=target, mode='linear').squeeze(0)
+    monkeypatch.setattr(dg, '_pitch_preserving_stretch', stretch)
+    previous = render_dub.path / 'dubbed_en.wav'
+    previous.write_bytes(b'previous successful output')
+    render_dub.job['dubbed_tracks']['en'] = {'path': str(previous)}
+    # The previous track's segment cache, as previews read it.
+    cached = render_dub.path / 'seg_en_a.wav'
+    cached.write_bytes(b'speech of the previous track')
+    render_dub.job['seg_hashes_by_lang'] = {'en': {'a': 'previous-fingerprint'}}
+    render_dub.job['seg_hashes'] = {'a': 'previous-fingerprint'}
+    render_dub.job['seg_order'] = ['a']
+    return SimpleNamespace(hooks=hooks, previous=previous, cached=cached)
+
+
+def _assert_previous_segment_cache(render_dub, assembling):
+    """Previews and partial regeneration still see only the previous track."""
+    assert assembling.cached.read_bytes() == b'speech of the previous track'
+    assert render_dub.job['seg_hashes_by_lang'] == {'en': {'a': 'previous-fingerprint'}}
+    assert render_dub.job['seg_hashes'] == {'a': 'previous-fingerprint'}
+    assert render_dub.job['seg_order'] == ['a']
+    assert 'seg_num_step' not in render_dub.job
+
+
+def test_subtitles_replaced_during_assembly_keep_previous_track(render_dub, assembling):
+    assembling.hooks.append(lambda: _replace_subtitles(render_dub.job))
+    events = render_dub.run(timing_strategy='strict_slot')
+    assert [e.get('error_code') for e in events if e['type'] == 'error'] == ['dub_source_changed']
+    assert not any(e['type'] == 'done' for e in events)
+    assert assembling.previous.read_bytes() == b'previous successful output'
+    assert render_dub.job['dubbed_tracks']['en'] == {'path': str(assembling.previous)}
+    assert render_dub.job['segments'][0]['text'] == 'imported cue'
+    _assert_previous_segment_cache(render_dub, assembling)
+    assert not list(render_dub.path.glob('.render-*'))
+
+
+def test_cancel_during_assembly_keeps_previous_track(render_dub, assembling, monkeypatch):
+    import api.routers.dub_generate as dg
+    cancelled = []
+    monkeypatch.setattr(dg.task_manager, 'is_cancelled', lambda *_: bool(cancelled))
+    assembling.hooks.append(lambda: cancelled.append(True))
+    events = render_dub.run(timing_strategy='strict_slot')
+    assert events[-1]['type'] == 'cancelled'
+    assert not any(e['type'] == 'done' for e in events)
+    assert assembling.previous.read_bytes() == b'previous successful output'
+    assert render_dub.job['dubbed_tracks']['en'] == {'path': str(assembling.previous)}
+    _assert_previous_segment_cache(render_dub, assembling)
+    assert not list(render_dub.path.glob('.render-*'))
+
+
+def test_published_render_installs_its_segment_speech(render_dub, assembling):
+    events = render_dub.run(timing_strategy='strict_slot')
+    assert any(e['type'] == 'done' for e in events)
+    assert assembling.cached.read_bytes() != b'speech of the previous track'
+    assert sf.info(assembling.cached).frames == 12000
+    fingerprint = render_dub.job['seg_hashes_by_lang']['en']['a']
+    assert fingerprint != 'previous-fingerprint'
+    assert render_dub.job['seg_hashes'] == {'a': fingerprint}
+    assert not list(render_dub.path.glob('.render-*'))
+
+
+def test_failed_render_leaves_cached_speech_and_fingerprints_together(render_dub):
+    cached = render_dub.path / 'seg_en_a.wav'
+    cached.write_bytes(b'speech the old fingerprint describes')
+    render_dub.job['seg_hashes_by_lang'] = {'en': {'a': 'old-fingerprint'}}
+    calls = []
+    def synthesize():
+        calls.append(True)
+        if len(calls) > 1:
+            raise RuntimeError('engine failed')
+        return torch.ones(1, 24000) * .1
+    render_dub.output[0] = synthesize
+    events = render_dub.run(
+        segments=[dict(start=0, end=1, text='new words'), dict(start=1, end=2, text='more')],
+        segment_ids=['a', 'b'],
+    )
+    assert any(e['type'] == 'error' for e in events)
+    # A later partial run trusts this pair; new speech under the old
+    # fingerprint would be spliced in as up to date.
+    assert cached.read_bytes() == b'speech the old fingerprint describes'
+    assert render_dub.job['seg_hashes_by_lang'] == {'en': {'a': 'old-fingerprint'}}
+    assert not list(render_dub.path.glob('.render-*'))
+
+
+def test_published_segments_drop_qc_marks_of_the_previous_track():
+    from api.routers.dub_generate import QC_FIELDS, _sync_job_segments
+    job = {'segments': [{
+        'id': 'a', 'start': 0.0, 'end': 1.0, 'text': 'hello', 'speaker_id': 'Speaker 1',
+        'qc_drift': 0.8, 'qc_flagged': True, 'qc_recognized': 'yellow',
+        'qc_measured_start': 0.1, 'qc_measured_end': 0.9,
+    }]}
+    _sync_job_segments(job, DubRequest(
+        segments=[dict(start=0, end=1, text='hola')], segment_ids=['a'], language_code='es',
+    ))
+    (row,) = job['segments']
+    assert row['text'] == 'hola' and row['speaker_id'] == 'Speaker 1'
+    assert not set(QC_FIELDS) & set(row)
+
+
+def test_qc_annotations_during_render_neither_block_nor_survive_publication(render_dub):
+    render_dub.job['segments'] = [{'id': 'a', 'start': 0.0, 'end': 1.0, 'text': 'hello'}]
+    def synthesize():
+        # /dub/qc annotates the live rows in place; that is not a subtitle edit.
+        render_dub.job['segments'][0].update(qc_drift=0.9, qc_flagged=True)
+        return torch.ones(1, 24000) * .1
+    render_dub.output[0] = synthesize
+    events = render_dub.run()
+    assert any(e['type'] == 'done' for e in events)
+    assert 'qc_flagged' not in render_dub.job['segments'][0]
+    assert 'qc_drift' not in render_dub.job['segments'][0]

@@ -3,16 +3,12 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 const mocks = vi.hoisted(() => {
   const handlers = new Map<string, Set<(...args: any[]) => void>>();
   const ipcHandlers = new Map<string, (...args: any[]) => unknown>();
+  // updates.json once stored the retired channel choice.
   const disk = { channel: undefined as 'stable' | 'preview' | undefined };
   const fs = {
-    readFileSync: vi.fn(() => {
-      if (!disk.channel) throw new Error('missing');
-      return JSON.stringify({ channel: disk.channel });
+    rmSync: vi.fn((_path: string) => {
+      disk.channel = undefined;
     }),
-    writeFileSync: vi.fn((_path: string, value: string) => {
-      disk.channel = JSON.parse(value).channel;
-    }),
-    renameSync: vi.fn(),
   };
   const autoUpdater = {
     autoDownload: true,
@@ -64,12 +60,10 @@ vi.mock('node:fs', () => ({ ...mocks.fs, default: mocks.fs }));
 vi.mock('./trusted-renderer', () => ({ isTrustedRenderer: mocks.trusted }));
 
 import {
-  compareReleaseVersions,
   DesktopUpdater,
   feedManifestName,
   listDesktopReleases,
   registerUpdateIpc,
-  resolvePreviewFeed,
   UPDATE_CHANNELS,
 } from './updater';
 
@@ -163,47 +157,33 @@ describe('DesktopUpdater', () => {
     });
   });
 
-  test('switches and persists the preview channel before checking it', async () => {
-    const fetcher = vi.fn(async (input: string | URL | Request) => {
-      const url = String(input);
-      const version = url.includes('/preview/') ? '0.5.3-144' : '0.5.2';
-      return new Response(`version: ${version}\n`);
-    }) as typeof fetch;
-    const updater = new DesktopUpdater(fetcher);
-    await updater.setChannel('preview');
-
-    expect(mocks.disk.channel).toBe('preview');
-    expect(mocks.autoUpdater.allowPrerelease).toBe(true);
-    expect(mocks.autoUpdater.channel).toBe(`electron-preview-${process.platform}-${process.arch}`);
-    expect(mocks.autoUpdater.setFeedURL).toHaveBeenLastCalledWith({
-      provider: 'generic',
-      url: 'https://github.com/debpalash/VoiceStudio/releases/download/preview',
-      channel: `electron-preview-${process.platform}-${process.arch}`,
-    });
-    expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledOnce();
-    expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(updater.snapshot().channel).toBe('preview');
-    await expect(updater.setChannel('nightly' as any)).rejects.toThrow('Invalid update channel');
-  });
-
-  test('keeps Preview selected while using a newer Stable feed without allowing downgrade', async () => {
+  test('migrates a saved Preview choice to Stable without errors', async () => {
     mocks.disk.channel = 'preview';
-    const fetcher = vi.fn(async (input: string | URL | Request) => {
-      const version = String(input).includes('/preview/') ? '0.5.3-144' : '0.5.3';
-      return new Response(`version: ${version}\n`);
-    }) as typeof fetch;
-    const updater = new DesktopUpdater(fetcher);
+    const updater = new DesktopUpdater();
 
+    expect(mocks.fs.rmSync).toHaveBeenCalledWith(expect.stringContaining('updates.json'), {
+      force: true,
+    });
+    expect(mocks.disk.channel).toBeUndefined();
     await updater.check();
 
-    expect(updater.snapshot().channel).toBe('preview');
-    expect(mocks.autoUpdater.allowPrerelease).toBe(true);
+    expect(updater.snapshot().status).toBe('idle');
+    expect(updater.snapshot()).not.toHaveProperty('channel');
+    expect(mocks.autoUpdater.allowPrerelease).toBe(false);
     expect(mocks.autoUpdater.allowDowngrade).toBe(false);
     expect(mocks.autoUpdater.setFeedURL).toHaveBeenLastCalledWith({
       provider: 'generic',
       url: 'https://github.com/debpalash/VoiceStudio/releases/latest/download',
       channel: `electron-stable-${process.platform}-${process.arch}`,
     });
+    expect(updater).not.toHaveProperty('setChannel');
+  });
+
+  test('a leftover settings file that cannot be removed never blocks the updater', () => {
+    mocks.fs.rmSync.mockImplementationOnce(() => {
+      throw new Error('EPERM');
+    });
+    expect(() => new DesktopUpdater()).not.toThrow();
   });
 
   test('keeps startup checks quiet while reporting manual check failures', async () => {
@@ -240,12 +220,25 @@ describe('DesktopUpdater', () => {
   test('exposes unsupported state without touching updater APIs in development', async () => {
     mocks.app.isPackaged = false;
     const updater = new DesktopUpdater();
-    expect(updater.snapshot()).toMatchObject({ status: 'unsupported', channel: 'stable' });
+    expect(updater.snapshot()).toMatchObject({ status: 'unsupported' });
     await updater.check();
     await updater.download();
     updater.install();
     expect(mocks.autoUpdater.setFeedURL).not.toHaveBeenCalled();
     expect(mocks.autoUpdater.checkForUpdates).not.toHaveBeenCalled();
+  });
+
+  test('stays unsupported when a package manager owns the install', async () => {
+    vi.stubEnv('VOICESTUDIO_DISABLE_UPDATER', '1');
+    try {
+      const updater = new DesktopUpdater();
+      expect(updater.snapshot()).toMatchObject({ status: 'unsupported' });
+      await updater.check();
+      expect(mocks.autoUpdater.setFeedURL).not.toHaveBeenCalled();
+      expect(mocks.autoUpdater.checkForUpdates).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   test('loads and validates native release history without trusting GitHub response fields', async () => {
@@ -286,39 +279,10 @@ describe('DesktopUpdater', () => {
 
 describe('update feed selection', () => {
   test('matches electron-updater platform manifest names', () => {
-    expect(feedManifestName('preview', 'win32', 'x64')).toBe('electron-preview-win32-x64.yml');
-    expect(feedManifestName('preview', 'darwin', 'arm64')).toBe(
-      'electron-preview-darwin-arm64-mac.yml',
-    );
-    expect(feedManifestName('preview', 'linux', 'x64')).toBe(
-      'electron-preview-linux-x64-linux.yml',
-    );
+    expect(feedManifestName('win32', 'x64')).toBe('electron-stable-win32-x64.yml');
+    expect(feedManifestName('darwin', 'arm64')).toBe('electron-stable-darwin-arm64-mac.yml');
+    expect(feedManifestName('linux', 'x64')).toBe('electron-stable-linux-x64-linux.yml');
   });
-
-  test('orders numeric previews below the stable release with the same core version', () => {
-    expect(compareReleaseVersions('0.5.3-145', '0.5.3-144')).toBe(1);
-    expect(compareReleaseVersions('0.5.3', '0.5.3-999')).toBe(1);
-    expect(compareReleaseVersions('0.5.2', '0.5.3-1')).toBe(-1);
-  });
-
-  test.each([
-    ['preview', '0.5.3-144', '0.5.2', 200, 200],
-    ['stable', '0.5.3-144', '0.5.3', 200, 200],
-    ['stable', '', '0.5.2', 404, 200],
-    ['preview', '0.5.3-144', '', 200, 404],
-    ['preview', '', '', 404, 404],
-  ] as const)(
-    'selects %s for preview=%s stable=%s',
-    async (expected, previewVersion, stableVersion, previewStatus, stableStatus) => {
-      const fetcher = vi.fn(async (input: string | URL | Request) => {
-        const preview = String(input).includes('/preview/');
-        return new Response(`version: ${preview ? previewVersion : stableVersion}\n`, {
-          status: preview ? previewStatus : stableStatus,
-        });
-      }) as typeof fetch;
-      await expect(resolvePreviewFeed(fetcher, 'win32', 'x64')).resolves.toBe(expected);
-    },
-  );
 });
 
 describe('update IPC', () => {
@@ -355,7 +319,8 @@ describe('update IPC', () => {
       }),
     ).toThrow('Untrusted update request');
 
+    expect(UPDATE_CHANNELS).not.toHaveProperty('setChannel');
     dispose();
-    expect(mocks.ipcMain.removeHandler).toHaveBeenCalledTimes(7);
+    expect(mocks.ipcMain.removeHandler).toHaveBeenCalledTimes(6);
   });
 });

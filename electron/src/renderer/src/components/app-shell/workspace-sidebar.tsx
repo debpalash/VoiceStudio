@@ -13,6 +13,7 @@ import { WorkspaceNavigation } from './workspace-menu';
 import { StatusBar } from './status-bar';
 import { SystemNotifications } from './system-notifications';
 import { useBackendStatus } from '@/hooks/use-backend-status';
+import { isBackendReachable } from '@shared/utils/backendStage';
 
 export function WorkspaceSidebar() {
   const backend = useBackendStatus();
@@ -101,7 +102,7 @@ export function WorkspaceSidebar() {
               />
             </Link>
             {mac && <StatusBar compact inline />}
-            {!mac && <SystemNotifications enabled={backend.stage === 'ready'} compact />}
+            {!mac && <SystemNotifications enabled={isBackendReachable(backend.stage)} compact />}
           </div>
         </aside>
       )}
@@ -190,7 +191,7 @@ export function WorkspaceSidebar() {
                   />
                   {t('nav.settings')}
                 </Link>
-                <SystemNotifications enabled={backend.stage === 'ready'} />
+                <SystemNotifications enabled={isBackendReachable(backend.stage)} />
               </div>
             )}
           </div>

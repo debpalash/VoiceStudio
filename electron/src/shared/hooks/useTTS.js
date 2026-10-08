@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import { useAppStore } from '../store';
 import { generateSpeech, TtsGenerationBusyError } from '../api/generate';
 import { pickDesignSeed } from '../utils/seed';
+import { generateAbortMs } from '../utils/generateBudget';
 import { playBlobAudio, playPing } from '../utils/media';
 import {
   StreamingPreviewError,
@@ -237,13 +238,11 @@ export default function useTTS({ selectedProfile, setSelectedProfile, loadHistor
         }
       }
 
-      // The first /generate may cold-load/download the model. The backend now
-      // bounds that and returns an error rather than hanging; this client-side
-      // abort is a backstop so the UI never spins forever even if the backend
-      // is unreachable. The ceiling sits just above the backend's load timeout
-      // so the backend's descriptive error wins in the normal case.
+      // The backend bounds every phase of a generate and returns a descriptive
+      // error; this abort only catches a backend gone silent, so it outlasts
+      // the backend's longest legitimate budget (see generateBudget.ts).
       const ac = new AbortController();
-      abortTimer = setTimeout(() => ac.abort(), 21 * 60 * 1000);
+      abortTimer = setTimeout(() => ac.abort(), generateAbortMs(text.length));
 
       // #1330 — one voice for both delivery paths. A dropped chunk is not an
       // error (the audio is real), so it is a persistent-ish warning toast

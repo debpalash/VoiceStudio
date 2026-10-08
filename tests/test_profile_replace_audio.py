@@ -76,6 +76,9 @@ def test_replace_writes_new_versioned_file_and_removes_old(env):
     assert new_name.startswith(f"{created['id']}-") and new_name.endswith(".wav")
     assert updated["audio_url"] != created["audio_url"]
     assert (voices / new_name).read_bytes() == wav_bytes(6000)
+    # Retired, not deleted: a running render may still read it (#2535).
+    assert (voices / old_name).exists()
+    _profiles.sweep_retired_voice_files(grace_s=0)
     assert not (voices / old_name).exists()
     assert not list(voices.glob("*.part"))
     served = client.get(f"/profiles/{created['id']}/audio")
@@ -112,8 +115,9 @@ def test_replace_clears_lock_and_consent(env):
     assert not updated["verified_own_voice"]
     assert updated["consent_text"] == "" and updated["consent_audio_path"] == ""
     assert updated["consent_recorded_at"] is None
-    assert not (voices / f"{pid}_locked.wav").exists()
     assert not (voices / f"{pid}_consent.wav").exists()
+    _profiles.sweep_retired_voice_files(grace_s=0)
+    assert not (voices / f"{pid}_locked.wav").exists()
     # The served clip is the new reference, not the discarded locked take.
     assert client.get(f"/profiles/{pid}/audio").content == wav_bytes(6000)
 
@@ -511,6 +515,7 @@ def test_concurrent_replacements_leave_no_orphan(env, monkeypatch):
     responses = asyncio.run(race())
     assert [r.status_code for r in responses] == [200, 200]
     final = client.get(f"/profiles/{pid}").json()["ref_audio_path"]
+    profiles.sweep_retired_voice_files(grace_s=0)  # superseded clips are retired first
     assert sorted(p.name for p in voices.iterdir() if p.name.startswith(pid)) == [final]
 
 

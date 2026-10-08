@@ -4,6 +4,14 @@ export function generationFailureMessage(
   translate: (key: string) => string,
 ): string | undefined {
   if (!value || typeof value !== 'object') return undefined;
+  // Stable transcription failure codes (backend/core/public_errors.py): the
+  // backend sends fixed English text, the app shows the localized equivalent.
+  switch ((value as { code?: unknown }).code) {
+    case 'transcription_media_tool':
+      return translate('tts_errors.transcription_media_tool');
+    case 'transcription_pipe_lost':
+      return translate('tts_errors.transcription_pipe_lost');
+  }
   switch ((value as { docs_topic?: unknown }).docs_topic) {
     case 'GPU_ARCH_UNSUPPORTED':
       return translate('tts_errors.gpu_arch_unsupported');

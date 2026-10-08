@@ -398,3 +398,52 @@ async def test_completion_wins_when_timeout_wait_resumes_late(mm, pool, monkeypa
             assert await _run(mm, pool, worker, timeout=0.4) == 'completed audio'
     finally:
         release.set()
+
+
+def test_generating_heartbeats_are_not_credited_as_model_load_progress(mm, monkeypatch):
+    """Review (CodeRabbit, #2435): a sidecar's timer-thread heartbeat during
+    ``generate`` re-arms the recv watchdog but is not evidence the model is
+    loading or synthesising, so it must not extend the GPU worker's budget."""
+    sb = importlib.import_module("services.subprocess_backend")
+    calls = []
+    monkeypatch.setattr(mm, "report_model_load_activity", lambda: calls.append(1))
+    monkeypatch.setattr(mm, "running_on_gpu_pool", lambda: True)
+
+    class _Backend(sb.SubprocessBackend):
+        id = "testengine"
+        display_name = "test"
+
+        @classmethod
+        def is_available(cls):
+            return True, "test"
+
+        @classmethod
+        def venv_python(cls):  # pragma: no cover - not spawned
+            return sys.executable
+
+        @classmethod
+        def sidecar_script(cls):  # pragma: no cover - not spawned
+            return __file__
+
+        @property
+        def sample_rate(self):
+            return 24000
+
+        @property
+        def supported_languages(self):
+            return ["multi"]
+
+    b = _Backend.__new__(_Backend)
+    b._lock = threading.Lock()
+    frames = [
+        {"op": "progress", "stage": "loading_model", "percent": 1},
+        {"op": "progress", "stage": "generating", "percent": 2},
+        {"op": "progress", "stage": "generating", "percent": 3},
+        {"op": "audio", "audio_pcm_b64": "", "sample_rate": 24000, "n_samples": 0},
+    ]
+    monkeypatch.setattr(b, "_spawn", lambda: None)
+    monkeypatch.setattr(b, "_send", lambda msg: None)
+    monkeypatch.setattr(b, "_recv_with_timeout", lambda t: frames.pop(0))
+
+    b.generate("hello")
+    assert len(calls) == 1, f"only the cold-load frame is load evidence, got {len(calls)}"

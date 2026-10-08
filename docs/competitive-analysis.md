@@ -1,5 +1,8 @@
 # Competitive Analysis — voicebox · pyvideotrans · Patter (+ second-tier landscape)
 
+> **Dated analysis.** `scripts/validate-install-docs.py`, cited below as an existing
+> gate, has since been removed; `scripts/check-docs-drift.py` (`docs-drift.yml`) remains.
+
 *Compiled 2026-06-11 from four parallel research passes (one per competitor repo + a
 full feature-surface inventory of this codebase). Star counts and versions are
 as-of-date snapshots. VoiceStudio grades (A–D) come from the self-inventory: code

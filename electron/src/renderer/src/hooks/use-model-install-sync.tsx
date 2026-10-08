@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiJson } from '@/lib/api/client';
 import { useBackendStatus } from '@/hooks/use-backend-status';
+import { isBackendReachable } from '@shared/utils/backendStage';
 
 export interface ModelInstallJob {
   repo_id: string;
@@ -38,7 +39,7 @@ export function useModelInstallJobs<T extends ModelInstallJob = ModelInstallJob>
   return useQuery({
     queryKey: ['model-install-jobs'],
     queryFn: () => apiJson<ModelInstallJobsResponse<T>>('/models/install/status'),
-    enabled: backend.stage === 'ready',
+    enabled: isBackendReachable(backend.stage),
     refetchInterval: modelInstallPollInterval,
   });
 }

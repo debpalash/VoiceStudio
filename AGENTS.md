@@ -36,12 +36,13 @@ Binding for every AI agent (Claude, Codex, Cursor, review bots, …). CLAUDE.md 
 ## Change rules (see CLAUDE.md for full text)
 - Root-cause the class, not the instance; fail-before/pass-after regression test; smallest correct change.
 - Default behavior identical on macOS/Windows/Linux; platform-only features go behind explicit opt-in. Divergent default = P0.
-- Local-first: no new required network calls; any HF download gated on installed-ness or explicit user action; all synthetic audio through the `mark_synthetic` chokepoint. Owner-approved exception (2026-09-28): the public GitHub star count may refresh automatically every 20 minutes, without credentials/referrer or user content; offline use remains unaffected.
-- Every user-facing string via i18n, present in ALL 21 `electron/src/shared/i18n/locales/*.json` with real translations.
+- Local-first: no new required network calls; any HF download gated on installed-ness or explicit user action; all synthetic audio through the `mark_synthetic` chokepoint. Sanctioned calls are listed in `.github/CONTRIBUTING.md` → Quality gates: user-started first-run setup (ffmpeg from GitHub `zackees/ffmpeg_bins`, the huggingface.co/hf-mirror.com reachability probe, HF model downloads), opening/enabling the galleries (jsDelivr manifest, GitHub Releases), packaged update checks, user-clicked yt-dlp updates from PyPI, consent-gated analytics, prefilled-URL bug reports, and the Pro licence check after a key is entered. Owner-approved exception (2026-09-28): the public GitHub star count may refresh automatically every 20 minutes, without credentials/referrer or user content; offline use remains unaffected.
+- Every user-facing string via i18n, present in ALL 21 `electron/src/renderer/src/i18n/locales/*.json` files (the catalog the app loads) with real translations; `tests/test_locale_parity.py` and Electron `locale:check` enforce it. The legacy `electron/src/shared/i18n/` catalog is loaded only by shared-module tests.
 - Docs-sync in the same PR. CHANGELOG Unreleased: quiet one-liners ending `(#N)` + `— thanks @user!` for community work, under a short `**Highlights**` list.
 - Tagged release announcements lead with the biggest user-visible change; redesigns need real UI screenshots and migrations need installer links and steps. Verify all contributor credits from the tag comparison and included PRs; list authors and bug reporters separately (see `docs/RELEASING.md`).
 - Versioning: root `package.json` is the single source of truth; never bump without the owner asking.
 - JavaScript dependency changes require regenerating root `bun.lock` (Docker runs `--frozen-lockfile`).
+- Attribution: commits, PR descriptions and comments carry only the submitter's git identity. Never credit an agent (no agent `Co-authored-by:`, "Generated with …", session links) and never add other names/emails. Human co-authors are fine. Enforced by the `commit-identity` check.
 - Issues: absorb or decline — never defer to a future version. Check the open-PR queue before implementing community-reported fixes.
 
 ## Shared select controls
@@ -65,4 +66,4 @@ The five canonical roles, each label string equal to its name. See `docs/agents/
 
 ### Domain docs
 
-Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+Single-context: `docs/adr/` plus a root `CONTEXT.md` that is created lazily and does not exist yet — skip it when absent. See `docs/agents/domain.md`.

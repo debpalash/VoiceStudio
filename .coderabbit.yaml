@@ -44,7 +44,6 @@ reviews:
     - "!**/uv.lock"
     - "!**/dist/**"
     - "!**/build/**"
-    - "!frontend/src-tauri/target/**"
     - "!**/*.min.js"
     - "!**/*.svg"
     - "!**/*.png"
@@ -57,11 +56,13 @@ reviews:
   path_instructions:
     - path: "**/*.{py,rs,js,jsx,ts,tsx}"
       instructions: >-
-        OmniVoice is fully-local (no cloud, no API keys, no telemetry). Flag any
-        new outbound network call that is not to github.com issues, a HuggingFace
-        model download, or an explicitly opt-in endpoint. Flag any code that
-        persists or logs values matching *TOKEN*/*KEY*/*SECRET* or absolute user
-        home paths (/Users/<name>/, C:\\Users\\<name>\\).
+        VoiceStudio is local-first: no required cloud calls, accounts or API
+        keys. Flag any new outbound network call that is not on the sanctioned
+        list in CLAUDE.md (Local-first guarantee) and .github/CONTRIBUTING.md
+        (Quality gates); analytics stays behind the first-run consent prompt.
+        Flag any code that persists or logs values matching
+        *TOKEN*/*KEY*/*SECRET* or absolute user home paths (/Users/<name>/,
+        C:\\Users\\<name>\\).
     - path: "backend/services/**/*.py"
       instructions: >-
         Review as an ML-inference/audio engineer. Check: thread-safety of model
@@ -81,28 +82,30 @@ reviews:
         every query/path/form param as hostile (path traversal, log injection,
         CSRF from a browser tab), and never route user-chosen filesystem
         destinations through HTTP — that authorization belongs in Electron main.
-    - path: "frontend/src/**/*.{js,jsx,ts,tsx}"
+    - path: "electron/src/{shared,renderer}/**/*.{js,jsx,ts,tsx}"
       instructions: >-
         Review as a product-minded senior frontend engineer. Check: stale state
         and races (async results landing after unmount or after newer requests);
         every user-visible failure has an actionable, non-technical error
         message; loading/disabled states during long operations. Every new
         user-facing string must be an i18n t('...') key present in ALL 21
-        frontend/src/i18n/locales/*.json files — flag hardcoded UI strings and
-        keys missing from any locale.
+        locale files of the catalog the code imports from —
+        electron/src/shared/i18n/locales/*.json (tests/test_locale_parity.py)
+        or electron/src/renderer/src/i18n/locales/*.json (electron
+        locale:check) — flag hardcoded UI strings and keys missing from any
+        locale.
     - path: "electron/**/*.{ts,tsx}"
       instructions: >-
         Electron is the only maintained desktop; Tauri is sunset and archived.
         Review main/preload IPC authorization, sender validation, narrow bridges,
         native file dialogs, runtime supervision and renderer lifecycle. Never
-        require a Tauri UI backport. User-facing strings belong in all 21 Electron
-        locale bundles. Validate user-visible behavior on macOS, Windows and Linux.
+        require a Tauri UI backport. User-facing strings belong in all 21 files
+        of the matching locale catalog. Validate user-visible behavior on macOS, Windows and Linux.
     - path: "native/**/*.rs"
       instructions: >-
-        Review shared Electron native helpers for input validation, process and
-        filesystem scope, thread affinity and cross-platform behavior. Archived
-        Tauri modules imported by these helpers remain shared code; do not require
-        unrelated Tauri shell work.
+        Review the Electron native helper (native/desktop-bridge) for input
+        validation, process and filesystem scope, thread affinity and
+        cross-platform behavior. Never require work on the removed Tauri shell.
     - path: "tests/**/*.py"
       instructions: >-
         Review as a test-infrastructure engineer. Check: the test would fail
@@ -114,8 +117,9 @@ reviews:
         a justification.
     - path: ".github/workflows/**"
       instructions: >-
-        Pin actions to a major version tag at minimum. Flag any workflow that
-        grants write permissions it does not need.
+        Every remote action must be pinned to a full 40-character commit SHA
+        with a trailing "# vX.Y.Z" comment (tests/test_actions_pinned.py).
+        Flag any workflow that grants write permissions it does not need.
     - path: "CHANGELOG.md"
       instructions: >-
         Hard rule (owner-restyled 2026-07-17): the Unreleased section is a
@@ -124,16 +128,17 @@ reviews:
         the (#NNN) ref and, for community contributions, a "— thanks @user!"
         credit. Flag multi-line or bold-lead paragraph entries, missing refs,
         and missing credits.
-    - path: "frontend/package.json"
+    - path: "**/package.json"
       instructions: >-
-        This is a bun workspace monorepo: any dependency change here requires
-        regenerating the repo-root bun.lock in the same PR —
-        deploy/Dockerfile runs `bun install --frozen-lockfile`, so CI-green
-        does not imply Docker-green. Flag package.json dependency changes
-        without a matching root bun.lock diff. Also: this file is the single
-        source of truth for the app version — flag any version change not
-        mirrored in pyproject.toml, frontend/src-tauri/Cargo.toml and
-        backend/core/version.py in lockstep.
+        This is a bun workspace monorepo: any dependency change in a workspace
+        package.json requires regenerating the repo-root bun.lock in the same
+        PR — deploy/Dockerfile runs `bun install --frozen-lockfile`, so
+        CI-green does not imply Docker-green. Flag package.json dependency
+        changes without a matching root bun.lock diff. The root package.json
+        is the single source of truth for the app version — flag any version
+        change not mirrored in pyproject.toml and backend/core/version.py
+        (_FALLBACK_VERSION) in lockstep (tests/test_app_version.py), and any
+        version bump the owner did not request.
 
   # Non-gating pre-merge audits of the project's hard rules (warning mode —
   # the human owner is the gate, these make the checklist visible per-PR).
@@ -157,17 +162,21 @@ reviews:
       - name: "i18n completeness (21 locales)"
         mode: warning
         instructions: >-
-          For every new or changed t('...') key in frontend code, verify the
-          key exists in all 21 files under frontend/src/i18n/locales/. List any
-          locale files missing the key. Also flag hardcoded user-facing strings
+          For every new or changed t('...') key in Electron UI code, verify the
+          key exists in all 21 files of the catalog it uses:
+          electron/src/shared/i18n/locales/ or
+          electron/src/renderer/src/i18n/locales/. List any locale files
+          missing the key. Also flag hardcoded user-facing strings
           that bypass i18n entirely.
       - name: "Local-first guarantee"
         mode: warning
         instructions: >-
-          Verify the PR adds no required cloud calls, accounts, API keys or
-          telemetry. Outbound traffic is only allowed to GitHub Issues (opt-in
-          bug reporting) and HuggingFace model downloads. The app must remain
-          fully functional offline and with reporting disabled.
+          Verify the PR adds no required cloud calls, accounts or API keys,
+          and no outbound call outside the sanctioned list in CLAUDE.md
+          (Local-first guarantee) and .github/CONTRIBUTING.md (Quality gates).
+          Product analytics must stay behind the first-run consent prompt. The
+          app must remain fully functional offline with every prompt
+          declined.
       - name: "Backward compatibility"
         mode: warning
         instructions: >-

@@ -163,7 +163,8 @@ manifest = {
   "version": "0.3.0",
   "rendered_by": os.environ.get("RENDERED_BY", "macOS say + ffmpeg showwaves"),
   "rendered_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-  "license": "MIT (synthetic, no third-party IP)",
+  "license": "NOASSERTION",
+  "license_review_required": True,
   "source": {
     "code": "en", "label": "English",
     "video": "source.mp4", "srt": "source.srt",

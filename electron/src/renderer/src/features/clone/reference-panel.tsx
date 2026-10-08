@@ -4,7 +4,7 @@ import type { useReferenceTranscript } from '@/hooks/use-reference-transcript';
 import { profileAudioUrl } from '@/lib/api/client';
 import { PortraitSearch } from './portrait-search';
 import { ProfileImageEditor } from './profile-image-editor';
-import { ProfileAvatar } from '@/components/profile-avatar';
+import { ProfilePhoto } from './profile-photo';
 import { useForm } from '@tanstack/react-form';
 import {
   ChevronDownIcon,
@@ -17,7 +17,6 @@ import {
 } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 import { WaveformPlayer } from '@/components/waveform-player';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -117,10 +116,12 @@ export function SaveProfileForm({
             const invalid = field.state.meta.isTouched && errors.length > 0;
             return (
               <div className="flex items-center gap-4">
-                <ProfileAvatar
+                <ProfilePhoto
                   name={field.state.value}
                   imageUrl={imageUrl}
-                  className="size-14 text-lg"
+                  onFile={setImage}
+                  label={t('profileIdentity.upload_image')}
+                  className="size-16 text-lg"
                 />
                 <div className="flex min-w-0 flex-1 flex-col gap-2">
                   <Label htmlFor={nameId}>{t('clone.profile_name')}</Label>
@@ -149,22 +150,15 @@ export function SaveProfileForm({
             );
           }}
         </form.Field>
-        <Label className="cursor-pointer self-start text-sm text-muted-foreground hover:text-foreground">
-          {t('profileIdentity.upload_image')}
-          <input
-            type="file"
-            className="sr-only"
-            accept="image/png,image/jpeg,image/webp"
-            onChange={(event) => {
-              const selected = event.target.files?.[0];
-              if (selected) {
-                if (selected.size > 5 * 1024 * 1024) toast.error(t('profileIdentity.image_limit'));
-                else setImage(selected);
-              }
-              event.target.value = '';
-            }}
-          />
-        </Label>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <span>{t('cloneFlow.photo_hint')}</span>
+          {image && (
+            <Button type="button" variant="ghost" size="xs" onClick={() => setImage(undefined)}>
+              <XIcon data-icon="inline-start" />
+              {t('cloneFlow.remove_photo')}
+            </Button>
+          )}
+        </div>
         <form.Subscribe selector={(state) => state.values.name}>
           {(name) => <PortraitSearch name={name} onSelect={setImage} />}
         </form.Subscribe>

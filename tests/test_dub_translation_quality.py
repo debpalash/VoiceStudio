@@ -483,3 +483,34 @@ async def test_custom_style_reaches_direct_translation(monkeypatch):
     direct = [c for c in client.calls if _is_direct_call(client, c)]
     assert direct
     assert all("Keep it warm and conversational; preserve jokes." in client.system_of(c) for c in direct)
+
+
+@pytest.mark.asyncio
+async def test_reasoning_model_output_never_reaches_the_dub(monkeypatch):
+    """Spark-X2.5 and Qwen3 thinking templates prefill <think>, so every reply
+    from a server without a reasoning parser starts with the monologue and a
+    bare </think>. None of it may land in the literal, the critique or the
+    final line."""
+    from api.routers import dub_translate
+
+    def script(kw):
+        sys_msg = kw["messages"][0]["content"]
+        if "script reviewer" in sys_msg:
+            answer = "Too stiff for spoken dialogue."
+        elif "script writer" in sys_msg:
+            answer = "enciende la parrilla ya"
+        else:
+            answer = "procede a encender la parrilla ahora"
+        return "The user wants Spanish, keep it natural.\n</think>\n\n" + answer
+
+    client = _ScriptedLLMClient(script)
+    _wire_skill_client(monkeypatch, client)
+
+    resp = await dub_translate.dub_translate(
+        _req(_segs("Fire up the grill now."), auto_glossary=False))
+    row = resp["translated"][0]
+    assert row["text"] == "enciende la parrilla ya"
+    assert row["literal"] == "procede a encender la parrilla ahora"
+    polish = [c for c in client.calls if _is_polish_call(client, c)][0]
+    assert "</think>" not in client.user_of(polish)
+    assert "The user wants" not in client.user_of(polish)

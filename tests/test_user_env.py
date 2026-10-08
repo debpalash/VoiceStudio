@@ -62,3 +62,65 @@ def test_file_is_0600(tmp_path):
     p = tmp_path / "env"
     user_env.set_user_env("K", "v", path=str(p))
     assert stat.S_IMODE(os.stat(p).st_mode) == 0o600
+
+
+import pytest
+
+
+@pytest.mark.parametrize("value", [
+    "/chosen/Books #1",
+    "/chosen/it's here",
+    "C:\\Users\\me\\Models #2",
+    "/chosen/${HOME}/models",
+    "/chosen/a b/c\\'d",
+    '/chosen/"quoted"',
+])
+def test_special_characters_survive_the_dotenv_round_trip(tmp_path, monkeypatch, value):
+    """A folder like ``Books #1`` was written unquoted and truncated at `` #``
+    by the startup dotenv loader, silently pointing at a sibling directory."""
+    p = tmp_path / "env"
+    p.write_text("HF_TOKEN=hf_keep\n")
+    user_env.set_user_env("OMNIVOICE_TEST_PATH", value, path=str(p))
+    assert user_env.get_user_env("OMNIVOICE_TEST_PATH", path=str(p)) == value
+    monkeypatch.delenv("OMNIVOICE_TEST_PATH", raising=False)
+    monkeypatch.setenv("HF_TOKEN", "")
+    assert user_env.load_into_environ(str(p)) is True
+    assert os.environ["OMNIVOICE_TEST_PATH"] == value
+    assert os.environ["HF_TOKEN"] == "hf_keep"
+
+
+def test_ordinary_values_stay_unquoted(tmp_path):
+    p = tmp_path / "env"
+    user_env.set_user_env("HF_ENDPOINT", "https://hf-mirror.com", path=str(p))
+    user_env.set_user_env("OMNIVOICE_CACHE_DIR", "/data/models", path=str(p))
+    assert p.read_text() == "HF_ENDPOINT=https://hf-mirror.com\nOMNIVOICE_CACHE_DIR=/data/models\n"
+
+
+def test_line_breaks_are_rejected(tmp_path):
+    with pytest.raises(ValueError):
+        user_env.set_user_env("K", "a\nb", path=str(tmp_path / "env"))
+
+
+def test_hand_written_unquoted_values_still_expand_variables(tmp_path, monkeypatch):
+    """docs/performance.md tells users to edit this file; ``${HOME}`` in an
+    unquoted or double-quoted value expands as before #2519, while the
+    single-quoted form the app writes stays literal."""
+    monkeypatch.setenv("HOME", "/home/u")
+    p = tmp_path / "env"
+    p.write_text(
+        "HF_HOME=${HOME}/models\n"
+        'OMNIVOICE_TEST_DQ="${HOME}/dq"\n'
+        "OMNIVOICE_TEST_SQ='${HOME}/sq'\n"
+        "OMNIVOICE_TEST_LAST='${HOME}/first'\n"
+        "OMNIVOICE_TEST_LAST=${HOME}/second\n"
+    )
+    user_env.set_user_env("OMNIVOICE_TEST_PATH", "/chosen/${HOME}/models", path=str(p))
+    for key in ("HF_HOME", "OMNIVOICE_TEST_DQ", "OMNIVOICE_TEST_SQ", "OMNIVOICE_TEST_LAST",
+                "OMNIVOICE_TEST_PATH"):
+        monkeypatch.delenv(key, raising=False)
+    assert user_env.load_into_environ(str(p)) is True
+    assert os.environ["HF_HOME"] == "/home/u/models"
+    assert os.environ["OMNIVOICE_TEST_DQ"] == "/home/u/dq"
+    assert os.environ["OMNIVOICE_TEST_SQ"] == "${HOME}/sq"
+    assert os.environ["OMNIVOICE_TEST_LAST"] == "/home/u/second"
+    assert os.environ["OMNIVOICE_TEST_PATH"] == "/chosen/${HOME}/models"

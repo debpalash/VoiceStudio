@@ -272,6 +272,39 @@ def test_the_watcher_ignores_unrelated_errors(tmp_path):
     assert proc.stdout.split() == ["CLEAN", "CAUGHT"], (proc.stdout, proc.stderr)
 
 
+def test_a_permission_denied_bind_gets_its_own_actionable_message(tmp_path):
+    """#2460: `[Errno 13]` / WSAEACCES 10013 on bind (a Windows excluded port
+    range, or a privileged port) is not "port in use". It used to surface as a
+    bare `exit code 3` -- uvicorn's startup-failure code -- with nothing about
+    reserved ranges or OMNIVOICE_PORT. The watcher records it separately (never
+    as ``bind_error``: the in-use advice would be wrong) and the shell's
+    "Last output" then carries the explanation."""
+    guard = _read("backend", "main.py")
+    start = guard.index("    def _fail_port_in_use(")
+    end = guard.index("    # #1223: uvicorn does NOT")
+    body = "\n".join(line[4:] for line in guard[start:end].splitlines())
+
+    script = tmp_path / "denied.py"
+    script.write_text(
+        "import errno, logging, sys\n"
+        f"_EXIT_PORT_IN_USE = {_EXPECTED_EXIT}\n"
+        "_port = 3900\n" + body + "\n"
+        "w = _BindErrorWatcher()\n"
+        "log = logging.getLogger('probe'); log.addFilter(w)\n"
+        "log.error(OSError(errno.EACCES, 'permission denied'))\n"
+        "assert w.bind_error is None and w.denied_error is not None\n"
+        "_fail_port_denied(w.denied_error)\n",
+        encoding="utf-8",
+    )
+    proc = subprocess.run([sys.executable, str(script)], capture_output=True, text=True)
+    assert proc.returncode == 1, proc.stderr
+    assert "excludedportrange" in proc.stderr and "OMNIVOICE_PORT" in proc.stderr
+    assert "already in use" not in proc.stderr
+    assert "_watcher.denied_error is not None" in _read("backend", "main.py"), (
+        "the denied-bind watcher is never consulted in main.py"
+    )
+
+
 # ── the properties the watcher depends on, measured not assumed ───────────
 
 def test_uvicorn_logging_config_preserves_filters(tmp_path):

@@ -16,14 +16,28 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  UVICORN_ARGS,
   buildExitBanner,
   createBackendSupervisor,
   isBackendSourceChange,
   killProcessTree,
   resolveDataDir,
   tailFile,
+  uvRunArgs,
+  uvicornArgs,
 } from '../../scripts/dev-backend.mjs';
+
+test('CPU/CUDA/ROCm restarts skip sync while preserving bind-host and port overrides', () => {
+  for (const variant of ['auto', 'cpu', 'cuda', 'rocm']) {
+    const args = uvRunArgs({
+      OMNIVOICE_TORCH_VARIANT: variant,
+      OMNIVOICE_BIND_HOST: '192.0.2.10',
+      OMNIVOICE_PORT: '4321',
+    });
+    assert.deepEqual(args.slice(0, 2), ['run', '--no-sync']);
+    assert.equal(args[args.indexOf('--host') + 1], '192.0.2.10');
+    assert.equal(args[args.indexOf('--port') + 1], '4321');
+  }
+});
 
 function supervisorHarness(overrides = {}) {
   const children = [];
@@ -87,12 +101,26 @@ function supervisorHarness(overrides = {}) {
   };
 }
 
-test('uvicorn runs directly because the wrapper owns source reloads', () => {
+test('uvicorn runs directly on loopback because the wrapper owns source reloads', () => {
   assert.equal(
-    ['uv', ...UVICORN_ARGS].join(' '),
-    'uv run uvicorn main:app --app-dir backend --host 0.0.0.0 --port 3900',
+    ['uv', ...uvicornArgs({})].join(' '),
+    'uv run uvicorn main:app --app-dir backend --host 127.0.0.1 --port 3900',
   );
-  assert.equal(UVICORN_ARGS.includes('--reload'), false);
+  assert.equal(uvicornArgs({}).includes('--reload'), false);
+});
+
+test('dev backend honours the backend bind host and port knobs', () => {
+  const args = uvicornArgs({ OMNIVOICE_BIND_HOST: '0.0.0.0', OMNIVOICE_PORT: '3912' });
+  assert.deepEqual(args.slice(-4), ['--host', '0.0.0.0', '--port', '3912']);
+  for (const bad of ['', 'nope', '0', '70000']) {
+    assert.deepEqual(uvicornArgs({ OMNIVOICE_PORT: bad }).slice(-2), ['--port', '3900']);
+  }
+  assert.deepEqual(uvicornArgs({ OMNIVOICE_BIND_HOST: '  ' }).slice(-4, -2), ['--host', '127.0.0.1']);
+  assert.deepEqual(uvRunArgs({ OMNIVOICE_TORCH_VARIANT: 'rocm', OMNIVOICE_PORT: '3912' }).slice(0, 3), [
+    'run',
+    '--no-sync',
+    'uvicorn',
+  ]);
 });
 
 test('only Python source changes trigger backend reloads', () => {

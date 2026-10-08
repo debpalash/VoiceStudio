@@ -109,11 +109,28 @@ describe('parseSrt', () => {
       '00:00:01.000 --> 00:00:02.000\nSpoken text\n';
     expect(parseSrt(vtt)).toBe('Spoken text');
   });
-  it('never treats a NOTE block as a cue even when it contains a valid timing line', () => {
-    const vtt =
-      'WEBVTT\n\nNOTE\n00:00:01.000 --> 00:00:02.000\nprivate note\n\n' +
-      '00:00:03.000 --> 00:00:04.000\nSpoken text\n';
-    expect(parseSrt(vtt)).toBe('Spoken text');
+  it('lets a timing line in position two outrank a STYLE or REGION identifier', () => {
+    for (const identifier of ['STYLE', 'REGION']) {
+      expect(parseSrt(`WEBVTT\n\n${identifier}\n00:01.000 --> 00:02.000\nSpoken text\n`)).toBe(
+        'Spoken text',
+      );
+    }
+  });
+  it('never treats a NOTE block as a cue even when its second line is a timing line', () => {
+    for (const identifier of ['NOTE', 'NOTE identifier']) {
+      const vtt =
+        `WEBVTT\n\n${identifier}\n00:00:01.000 --> 00:00:02.000\nprivate note\n\n` +
+        '00:00:03.000 --> 00:00:04.000\nSpoken text\n';
+      expect(parseSrt(vtt)).toBe('Spoken text');
+    }
+  });
+  it('keeps a cue whose identifier is STYLE or REGION in a mixed file', () => {
+    for (const identifier of ['intro', 'STYLE', 'REGION']) {
+      const vtt =
+        `WEBVTT\n\n${identifier}\n00:00:01.000 --> 00:00:02.000\nHello world.\n\n` +
+        'next\n00:00:03.000 --> 00:00:04.000\nStill here.\n';
+      expect(parseSrt(vtt)).toBe('Hello world.\nStill here.');
+    }
   });
   it('keeps NOTE when it is the spoken dialogue', () => {
     expect(

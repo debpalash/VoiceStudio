@@ -458,7 +458,9 @@ async def ws_transcribe(websocket: WebSocket):
 
             # Transcribe current buffer
             try:
-                text = await _transcribe_buffer(audio_chunks[:], pcm_sr=pcm_sr)
+                text = await _transcribe_buffer(
+                    audio_chunks[:], pcm_sr=pcm_sr, dictation=not is_platform_stream,
+                )
                 if text and text != partial_text:
                     partial_text = text
                     await _safe_send({
@@ -488,7 +490,11 @@ async def ws_transcribe(websocket: WebSocket):
     # Final transcription on complete buffer — skip if client already gone.
     if total_bytes > MIN_FINAL_BUFFER_BYTES:
         try:
-            result = await _transcribe_buffer_full(audio_chunks, pcm_sr=pcm_sr)
+            # The vocabulary hint is a dictation setting; API stream clients
+            # on PLATFORM_STREAM_PATH never get it.
+            result = await _transcribe_buffer_full(
+                audio_chunks, pcm_sr=pcm_sr, dictation=not is_platform_stream,
+            )
             # Dictation v2: deterministic polish so the pasted final reads
             # like typed text (leading capital, terminal punctuation).
             result["text"] = polish_text(result.get("text", ""))
@@ -1150,8 +1156,14 @@ def _result_text(result: dict | None) -> str:
     return ""
 
 
-async def _transcribe_buffer(chunks: list[bytes], *, pcm_sr: int | None = None) -> str:
-    """Quick partial transcription of the current audio buffer."""
+async def _transcribe_buffer(
+    chunks: list[bytes], *, pcm_sr: int | None = None, dictation: bool = False,
+) -> str:
+    """Quick partial transcription of the current audio buffer.
+
+    ``dictation=True`` applies the saved dictation vocabulary hint; other
+    callers of this helper (e.g. the phone-call agent) stay unbiased by it.
+    """
 
     tmp = _pcm16_to_wav(b"".join(chunks), pcm_sr) if pcm_sr else _chunks_to_wav(chunks)
     if tmp is None:
@@ -1160,10 +1172,12 @@ async def _transcribe_buffer(chunks: list[bytes], *, pcm_sr: int | None = None) 
     try:
         from services.model_manager import _gpu_pool
         from services.asr_backend import get_capture_asr_backend, run_transcribe_guarded
+        from api.routers.dictation import dictation_transcribe_kwargs
 
         def _run():
             backend = get_capture_asr_backend()
-            result = backend.transcribe(tmp, word_timestamps=False)
+            prompt_kwargs = dictation_transcribe_kwargs(backend) if dictation else {}
+            result = backend.transcribe(tmp, word_timestamps=False, **prompt_kwargs)
             return _result_text(result)
 
         # Bound dictation transcribes (#730): a wedged whisperx/CTranslate2 call
@@ -1180,8 +1194,15 @@ async def _transcribe_buffer(chunks: list[bytes], *, pcm_sr: int | None = None) 
 
 async def _transcribe_buffer_full(
     chunks: list[bytes], *, pcm_sr: int | None = None, skip_sherpa: bool = False,
+    dictation: bool = False,
 ) -> dict:
-    """Full transcription with timing info for the final result."""
+    """Full transcription with timing info for the final result.
+
+    ``dictation=True`` applies the saved dictation vocabulary hint. The
+    silent-model rescue (``skip_sherpa``) leaves it off: its text decides
+    whether a sherpa model is demoted, and Whisper can echo a prompt on noise,
+    so that text must come from the audio alone.
+    """
     tmp = _pcm16_to_wav(b"".join(chunks), pcm_sr) if pcm_sr else _chunks_to_wav(chunks)
     if tmp is None:
         return {"text": "", "segments": [], "language": "unknown",
@@ -1190,11 +1211,13 @@ async def _transcribe_buffer_full(
     try:
         from services.model_manager import _gpu_pool
         from services.asr_backend import get_capture_asr_backend, run_transcribe_guarded
+        from api.routers.dictation import dictation_transcribe_kwargs
 
         def _run():
             backend = get_capture_asr_backend(skip_sherpa=skip_sherpa)
+            prompt_kwargs = dictation_transcribe_kwargs(backend) if dictation else {}
             t0 = time.perf_counter()
-            result = backend.transcribe(tmp, word_timestamps=False)
+            result = backend.transcribe(tmp, word_timestamps=False, **prompt_kwargs)
             elapsed = round(time.perf_counter() - t0, 2)
 
             segments = result.get("segments", [])
@@ -1263,11 +1286,11 @@ def _chunks_to_wav(chunks: list[bytes]) -> str | None:
     tmp_out.close()
 
     try:
-        from services.ffmpeg_utils import find_ffmpeg
+        from services.ffmpeg_utils import find_ffmpeg, local_inputs_only
         import subprocess
         subprocess.run(
-            [find_ffmpeg(), "-y", "-i", tmp_in.name,
-             "-ar", "16000", "-ac", "1", "-f", "wav", tmp_out.name],
+            local_inputs_only([find_ffmpeg(), "-y", "-i", tmp_in.name,
+             "-ar", "16000", "-ac", "1", "-f", "wav", tmp_out.name]),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=10,

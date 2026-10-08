@@ -256,35 +256,57 @@ def _sha256_of_file(p: Path, *, chunk: int = 1 << 20) -> str:
     return h.hexdigest()
 
 
+class ChecksumManifestError(RuntimeError):
+    """``bin/checksums.sha256`` exists but cannot be trusted as written."""
+
+
+_SHA256_RE = re.compile(r"[0-9a-fA-F]{64}")
+_BSD_LINE_RE = re.compile(r"SHA256 \((?P<name>.+)\) = (?P<digest>\S+)")
+
+
 def _load_checksum_manifest() -> dict[str, str]:
     """Load ``bin/checksums.sha256`` if present.
 
-    Format mirrors the BSD-style output of ``sha256sum``:
+    Accepts ``sha256sum`` output (``<hex>  [*]<filename>``) and the BSD
+    ``SHA256 (<filename>) = <hex>`` form. File names are compared by base name.
 
-        <hex>  <filename>
-
-    Missing manifest is treated as "verification not requested" — the
-    caller may then refuse to use the binary if strict-verify is
-    requested. We do NOT silently treat missing manifest as success.
+    A missing manifest means verification was not requested — source
+    checkouts never have one. A manifest that exists but cannot be read, or
+    that has a malformed or conflicting line, raises
+    :class:`ChecksumManifestError`: an entry that may have declared a checksum
+    must never be skipped silently.
     """
     manifest = _REPO_ROOT / "bin" / "checksums.sha256"
     out: dict[str, str] = {}
     if not manifest.is_file():
         return out
     try:
-        for line in manifest.read_text().splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
+        text = manifest.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ChecksumManifestError("bin/checksums.sha256 could not be read") from exc
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        bsd = _BSD_LINE_RE.fullmatch(line)
+        if bsd:
+            digest, name = bsd.group("digest"), bsd.group("name")
+        else:
             parts = line.split(None, 1)
             if len(parts) != 2:
-                continue
+                raise ChecksumManifestError("bin/checksums.sha256 has a malformed line")
             digest, name = parts
             # Strip the BSD-style "*" binary marker if present.
             name = name.lstrip("*").strip()
-            out[name] = digest.lower()
-    except Exception as exc:
-        logger.warning("Failed to parse bin/checksums.sha256: %s", exc)
+        name = os.path.basename(name.replace("\\", "/"))
+        if not name or not _SHA256_RE.fullmatch(digest):
+            raise ChecksumManifestError("bin/checksums.sha256 has a malformed line")
+        digest = digest.lower()
+        if out.get(name, digest) != digest:
+            raise ChecksumManifestError(
+                f"bin/checksums.sha256 lists conflicting checksums for {name}"
+            )
+        out[name] = digest
     return out
 
 
@@ -359,6 +381,7 @@ def _make_backend_class():
 
         id = "omnivoice-gguf"
         display_name = "OmniVoice (GGUF, hardware-adaptive)"
+        instruct_vocabulary = "tags"
         gpu_compat = ("cuda", "mps", "cpu")
         supports_voice_design = False
         # Every generate() spawns the external binary — allocations live in
@@ -420,7 +443,14 @@ def _make_backend_class():
                         f"OmniVoice engine (Model Catalogue)."
                     )
                 # Manifest-based SHA-256 verification (T-04-01).
-                manifest = _load_checksum_manifest()
+                try:
+                    manifest = _load_checksum_manifest()
+                except ChecksumManifestError as exc:
+                    return False, (
+                        f"GGUF binary {bin_path.name} could not be verified: "
+                        f"{exc}. Reinstall VoiceStudio or use the default "
+                        f"in-process OmniVoice engine."
+                    )
                 expected = manifest.get(bin_path.name)
                 if expected is not None:
                     actual = _sha256_of_file(bin_path)

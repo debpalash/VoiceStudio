@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => ({
   state: {
     status: 'idle',
     currentVersion: '0.5.2',
-    channel: 'stable',
     progress: 0,
   } as UpdateState,
   listener: undefined as ((state: UpdateState) => void) | undefined,
@@ -17,7 +16,6 @@ const mocks = vi.hoisted(() => ({
   download: vi.fn(),
   dismiss: vi.fn(),
   install: vi.fn(),
-  setChannel: vi.fn(),
   listReleases: vi.fn(),
   flushDubDraft: vi.fn(),
   api: vi.fn(),
@@ -34,7 +32,6 @@ vi.mock('@/components/bridge', () => ({
       download: mocks.download,
       dismiss: mocks.dismiss,
       install: mocks.install,
-      setChannel: mocks.setChannel,
       listReleases: mocks.listReleases,
       onState: (listener: (state: UpdateState) => void) => {
         mocks.listener = listener;
@@ -77,7 +74,6 @@ describe('UpdateSettings', () => {
     mocks.state = {
       status: 'idle',
       currentVersion: '0.5.2',
-      channel: 'stable',
       progress: 0,
     };
     mocks.listener = undefined;
@@ -92,10 +88,6 @@ describe('UpdateSettings', () => {
     mocks.download.mockResolvedValue(mocks.state);
     mocks.dismiss.mockResolvedValue(mocks.state);
     mocks.install.mockResolvedValue(undefined);
-    mocks.setChannel.mockImplementation(async (channel: 'stable' | 'preview') => ({
-      ...mocks.state,
-      channel,
-    }));
     mocks.listReleases.mockResolvedValue([]);
     mocks.api.mockImplementation(async (path: string) => {
       if (path.includes('/models/install/status')) return { jobs: [] };
@@ -108,13 +100,25 @@ describe('UpdateSettings', () => {
 
   afterEach(cleanup);
 
-  test('checks for updates and switches between Stable and Preview', async () => {
+  test('checks for updates and offers no update-channel choice', async () => {
     renderSettings();
     fireEvent.click(await screen.findByRole('button', { name: 'updates.check_now' }));
     await waitFor(() => expect(mocks.check).toHaveBeenCalledOnce());
 
-    fireEvent.click(screen.getByRole('button', { name: 'about.channel_preview' }));
-    await waitFor(() => expect(mocks.setChannel).toHaveBeenCalledWith('preview'));
+    // No Preview feed is published, so a channel picker would only mislead.
+    expect(screen.queryByText('about.update_channel')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'about.channel_preview' })).not.toBeInTheDocument();
+  });
+
+  test('lists tagged releases only', async () => {
+    mocks.listReleases.mockResolvedValue([
+      { version: '0.5.2', name: 'v0.5.2', date: '2026-09-12T00:00:00Z', prerelease: false, notes: '' },
+      { version: '0.5.3-7', name: 'preview', date: '2026-09-13T00:00:00Z', prerelease: true, notes: '' },
+    ]);
+    renderSettings();
+    expect(await screen.findByText('v0.5.2')).toBeInTheDocument();
+    expect(screen.queryByText('v0.5.3-7')).not.toBeInTheDocument();
+    expect(mocks.listReleases).toHaveBeenCalledWith();
   });
 
   test('keeps progress live and downloads an available update', async () => {

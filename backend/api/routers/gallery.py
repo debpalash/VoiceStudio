@@ -20,6 +20,16 @@ from core.config import VOICES_DIR, OUTPUTS_DIR
 from core import event_bus
 from core.audio_validation import resolve_regular_file
 from core.file_cleanup import FileCleanupError, unlink_if_present
+from core.media_types import MEDIA_EXTS, media_extension, unsupported_media_detail
+from core.url_safety import (
+    LIVE_SOURCE_DETAIL,
+    NOT_MEDIA_DETAIL,
+    PRIVATE_DESTINATION_DETAIL,
+    UNSUPPORTED_DOWNLOAD_DETAIL,
+    UnsafeURLError,
+    check_public_url,
+)
+from core.path_security import contained_join
 from services.ffmpeg_utils import spawn_subprocess
 
 logger = logging.getLogger("omnivoice.gallery")
@@ -145,7 +155,7 @@ def delete_voice(voice_id: str):
         if not row:
             raise HTTPException(status_code=404, detail="Voice not found")
 
-        audio_path = row["audio_path"]
+        audio_path = contained_join(VOICE_GALLERY_DIR, row["audio_path"])
         if audio_path:
             try:
                 unlink_if_present(audio_path)
@@ -179,6 +189,7 @@ async def search_youtube(
             *ytdlp_argv,
             "--dump-json",
             "--remote-components", "ejs:github",
+            "--",
             f"ytsearch{max_results}:{query}",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -228,27 +239,32 @@ async def download_youtube_clip(
     description: str = Query("", description="Optional description"),
 ):
     """Download a clip from YouTube for voice cloning."""
+    try:
+        video_url = await asyncio.to_thread(check_public_url, video_url)
+    except UnsafeURLError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
     voice_id = str(uuid.uuid4())[:8]
     output_path = str(VOICE_GALLERY_DIR / f"{voice_id}.wav")
-    temp_path = str(VOICE_GALLERY_DIR / f"{voice_id}.%(ext)s")
+    source_stem = f"{voice_id}.source"
+    saved = False
 
     try:
-        from services.media_tools import ytdlp_invocation
-        ytdlp_argv, ytdlp_env = ytdlp_invocation()
+        from services.media_tools import guarded_ytdlp_invocation
+        ytdlp_argv, ytdlp_env = guarded_ytdlp_invocation()
+        # Download the audio track natively (under the connect-time guard) and
+        # cut the clip locally. `--download-sections` would hand the URL to
+        # ffmpeg, which resolves and follows redirects outside the guard.
         cmd = [
             *ytdlp_argv,
             "--remote-components", "ejs:github",
+            "--downloader", "native",
+            "--no-playlist",
             "-f",
             "bestaudio",
-            "--download-sections",
-            f"*{start_time:.1f}-{start_time + duration:.1f}",
-            "-x",
-            "--audio-format",
-            "wav",
-            "--audio-quality",
-            "0",
             "-o",
-            temp_path,
+            str(VOICE_GALLERY_DIR / f"{source_stem}.%(ext)s"),
+            # Positional input after "--" can never be parsed as an option.
+            "--",
             video_url,
         ]
 
@@ -261,21 +277,25 @@ async def download_youtube_clip(
         stdout, stderr = await result.communicate()
 
         if result.returncode != 0:
-            logger.error(f"yt-dlp download failed: {stderr.decode()}")
+            error_text = stderr.decode(errors="replace")
+            logger.error(f"yt-dlp download failed: {error_text}")
+            for policy_detail in _SOURCE_POLICY_DETAILS:
+                if policy_detail in error_text:
+                    raise HTTPException(status_code=400, detail=policy_detail)
             raise HTTPException(
-                status_code=500, detail=f"Download failed: {stderr.decode()}"
+                status_code=500, detail=f"Download failed: {error_text}"
             )
 
-        # Find the downloaded file (yt-dlp replaces %s with actual extension)
-        downloaded_files = list(VOICE_GALLERY_DIR.glob(f"{voice_id}.*"))
+        downloaded_files = [
+            path for path in VOICE_GALLERY_DIR.glob(f"{source_stem}.*")
+            if not path.name.endswith((".part", ".ytdl"))
+        ]
         if not downloaded_files:
             raise HTTPException(status_code=500, detail="Downloaded file not found")
 
-        actual_path = downloaded_files[0]
-        # Rename to output_path
-        final_path = Path(output_path)
-        actual_path.rename(final_path)
-
+        duration = await _cut_local_clip(
+            str(downloaded_files[0]), output_path, start_time, duration
+        )
         conn = db_conn()
         with conn as c:
             c.execute(
@@ -299,17 +319,80 @@ async def download_youtube_clip(
                 ),
             )
 
+        saved = True
         return {
             "success": True,
             "voice_id": voice_id,
-            "audio_path": output_path,
             "duration": duration,
         }
+    except HTTPException:
+        raise
     except FileNotFoundError:
         raise HTTPException(status_code=500, detail="yt-dlp not installed")
     except Exception as e:
         logger.exception("Download error")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        leftovers = list(VOICE_GALLERY_DIR.glob(f"{source_stem}.*"))
+        if not saved:
+            leftovers.append(Path(output_path))
+        for leftover in leftovers:
+            with contextlib.suppress(OSError):
+                leftover.unlink()
+
+
+_SOURCE_POLICY_DETAILS = (
+    PRIVATE_DESTINATION_DETAIL,
+    LIVE_SOURCE_DETAIL,
+    UNSUPPORTED_DOWNLOAD_DETAIL,
+    NOT_MEDIA_DETAIL,
+)
+
+
+async def _cut_local_clip(source: str, output_path: str, start: float, duration: float) -> float:
+    """Cut ``duration`` seconds at ``start`` from a downloaded file into a WAV.
+
+    The input is a local path and ffmpeg may only open local files, so a file
+    that smuggles in a playlist can't make it fetch anything. Returns the
+    clip's real length.
+    """
+    import soundfile as sf
+
+    from services.ffmpeg_utils import find_ffmpeg
+
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        raise HTTPException(
+            status_code=500,
+            detail="ffmpeg was not found. Set it in Settings → Audio tools, then retry.",
+        )
+    process = await spawn_subprocess(
+        ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+        "-protocol_whitelist", "file,pipe",
+        "-ss", f"{start:.3f}", "-t", f"{duration:.3f}",
+        "-i", source,
+        "-map", "0:a:0", "-vn", "-c:a", "pcm_s16le",
+        output_path,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await process.communicate()
+    if process.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not cut the clip: {stderr.decode(errors='replace').strip()}",
+        )
+    try:
+        info = sf.info(output_path)
+        frames, rate = info.frames, info.samplerate
+    except Exception:  # noqa: BLE001 - unreadable output is the same failure
+        frames, rate = 0, 0
+    if frames <= 0 or rate <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="The start time is past the end of this video. Pick an earlier start time.",
+        )
+    return frames / rate
 
 
 @router.post("/gallery/upload")
@@ -321,8 +404,15 @@ async def upload_voice_clip(
     audio: UploadFile = File(...),
 ):
     """Upload a voice clip directly to the gallery."""
+    ext = media_extension(audio.filename, MEDIA_EXTS, ".wav")
+    if ext is None:
+        raise HTTPException(
+            status_code=415,
+            detail=unsupported_media_detail(
+                "audio", MEDIA_EXTS, os.path.splitext(audio.filename or "")[1]
+            ),
+        )
     voice_id = str(uuid.uuid4())[:8]
-    ext = os.path.splitext(audio.filename or ".wav")[1]
     audio_path = str(VOICE_GALLERY_DIR / f"{voice_id}{ext}")
 
     with open(audio_path, "wb") as f:
@@ -370,7 +460,6 @@ async def upload_voice_clip(
     return {
         "id": voice_id,
         "name": name,
-        "audio_path": audio_path,
         "duration": duration,
     }
 
@@ -490,8 +579,9 @@ def _materialize_gallery_profile(
             pre_row = conn.execute(
                 "SELECT * FROM voice_gallery WHERE id = ?", (voice_id,),
             ).fetchone()
-            if pre_row is not None:
-                pre_source = Path(pre_row["audio_path"])
+            pre_path = contained_join(VOICE_GALLERY_DIR, pre_row["audio_path"]) if pre_row is not None else None
+            if pre_path:
+                pre_source = Path(pre_path)
                 if pre_source.is_file():
                     pre_existing = _existing_gallery_profile(conn, dict(pre_row), pre_source)
                     copy_needed = pre_existing is None or not _gallery_profile_audio_is_current(
@@ -513,8 +603,9 @@ def _materialize_gallery_profile(
                 raise HTTPException(status_code=404, detail="Voice not found")
 
             voice = dict(row)
-            source = Path(voice["audio_path"])
-            if not source.is_file():
+            source_path = contained_join(VOICE_GALLERY_DIR, voice["audio_path"])
+            source = Path(source_path) if source_path else None
+            if source is None or not source.is_file():
                 raise HTTPException(status_code=404, detail="Audio file not found on disk")
 
             def _install_audio(destination: Path) -> None:
@@ -605,9 +696,9 @@ def preview_voice(voice_id: str):
     if not row:
         raise HTTPException(status_code=404, detail="Voice not found")
 
-    audio_path = row["audio_path"]
+    audio_path = contained_join(VOICE_GALLERY_DIR, row["audio_path"])
 
-    if os.path.isabs(audio_path) and os.path.exists(audio_path):
+    if audio_path and os.path.isabs(audio_path) and os.path.exists(audio_path):
         # Serve the file from this API route so deployments mounted below a
         # path prefix do not lose that prefix while following a redirect.
         return FileResponse(audio_path)
@@ -667,7 +758,7 @@ def batch_delete_voices(body: dict):
         for vid in ids:
             row = conn.execute("SELECT audio_path FROM voice_gallery WHERE id = ?", (vid,)).fetchone()
             if row:
-                audio_path = row["audio_path"]
+                audio_path = contained_join(VOICE_GALLERY_DIR, row["audio_path"])
                 if audio_path:
                     try:
                         unlink_if_present(audio_path)

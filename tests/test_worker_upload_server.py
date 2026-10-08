@@ -169,7 +169,10 @@ class _Plane:
 
     async def register(self) -> None:
         token = registry.create_enrollment(endpoint="localhost:1", cert_fingerprint="fp").encode()
-        challenge, nonce = identity.new_challenge(), identity.new_challenge()
+        challenge = (
+            await self.servicer.IssueChallenge(pb.ChallengeRequest(), None)
+        ).challenge
+        nonce = identity.new_challenge()
         signature = self.keypair.sign(
             identity.challenge_message(
                 challenge=challenge,

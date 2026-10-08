@@ -226,6 +226,66 @@ def test_long_reference_without_installed_asr_uses_model_passage(
     assert counting.calls == 2
 
 
+def _no_cached_reference_asr(monkeypatch):
+    """The model's own Whisper snapshot is not installed (offline, empty cache)."""
+    import huggingface_hub
+    from huggingface_hub.errors import LocalEntryNotFoundError
+
+    def _missing(*_args, **_kwargs):
+        raise LocalEntryNotFoundError("not cached")
+
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", _missing)
+
+
+def test_over_limit_reference_without_asr_names_the_length_limit(
+    tmp_path, monkeypatch
+):
+    """#2442: a saved 35 s voice whose recognizer found nothing said only
+    "needs an installed speech-to-text model", although a typed transcript is
+    dropped for it and the real problem is the reference length."""
+    _no_cached_reference_asr(monkeypatch)
+    model = _omnivoice_stub()
+    model._asr_pipe = None
+
+    with pytest.raises(ValueError) as caught:
+        model.create_voice_clone_prompt(_wav(tmp_path / "long.wav", 35), None)
+
+    message = str(caught.value)
+    assert "35.0" in message
+    assert "20 seconds" in message
+    assert "3-10 second" in message
+
+
+def test_unrelated_asr_load_error_is_not_reported_as_length(
+    tmp_path, monkeypatch
+):
+    """Only the missing-snapshot case maps to [clone_ref_too_long]."""
+    model = _omnivoice_stub()
+    model._asr_pipe = None
+
+    def _broken(*_args, **_kwargs):
+        raise ValueError("corrupt ASR weights")
+
+    monkeypatch.setattr(model, "_load_cached_reference_asr", _broken)
+
+    with pytest.raises(ValueError, match="corrupt ASR weights") as caught:
+        model.create_voice_clone_prompt(_wav(tmp_path / "long.wav", 35), None)
+
+    assert "[clone_ref_too_long]" not in str(caught.value)
+
+
+def test_reference_within_transcript_limit_keeps_the_asr_hint(
+    tmp_path, monkeypatch
+):
+    """A 18 s clip can take a transcript, so the transcript advice stays."""
+    _no_cached_reference_asr(monkeypatch)
+    model = _omnivoice_stub()
+    model._asr_pipe = None
+
+    with pytest.raises(ValueError, match="installed speech-to-text model"):
+        model.create_voice_clone_prompt(_wav(tmp_path / "mid.wav", 18), None)
+
+
 def test_stored_whole_clip_transcript_on_long_reference_still_clones(
     tmp_path, monkeypatch, no_prompt_disk_cache
 ):
@@ -266,12 +326,46 @@ def test_inline_fallback_drops_whole_clip_transcript(tmp_path, monkeypatch):
             return [torch.zeros(1, 10)]
 
     monkeypatch.setattr(_tts(), "_get_clone_prompt", lambda *a, **k: None)
+    monkeypatch.setattr(_tts(), "_reuse_or_rank_passage", lambda _path: None)
     path = _wav(tmp_path / "long.wav", 25)
 
     _tts().generate_with_cached_ref(_Model(), ref_audio=path, ref_text="whole clip", text="hi")
 
     assert seen["ref_audio"] == path
     assert seen["ref_text"] is None
+
+
+def test_inline_fallback_uses_the_installed_passage(tmp_path, monkeypatch):
+    """#2579: after a failed precompute the inline retry passed the whole 32 s
+    clip with no transcript, so OmniVoice's bundled Whisper was asked and
+    failed although Faster-Whisper was installed and selected."""
+    import shutil
+
+    seen = {}
+
+    class _Model:
+        def generate(self, **kw):
+            seen.update(kw)
+            seen["existed"] = os.path.exists(kw["ref_audio"])
+            return [torch.zeros(1, 10)]
+
+    window = _wav(tmp_path / "window.wav", 10)
+
+    def _selected(_path):
+        owned = tmp_path / "owned.wav"
+        shutil.copy(window, owned)
+        return str(owned), "best passage words"
+
+    monkeypatch.setattr(_tts(), "_get_clone_prompt", lambda *a, **k: None)
+    monkeypatch.setattr(_tts(), "_reuse_or_rank_passage", _selected)
+    path = _wav(tmp_path / "long.wav", 32)
+
+    _tts().generate_with_cached_ref(_Model(), ref_audio=path, ref_text="", text="hi")
+
+    assert seen["ref_text"] == "best passage words"
+    assert seen["ref_audio"] == str(tmp_path / "owned.wav")
+    assert seen["existed"] is True
+    assert not os.path.exists(seen["ref_audio"])
 
 
 def test_sidecar_request_drops_whole_clip_transcript(tmp_path, monkeypatch):
@@ -514,6 +608,7 @@ def test_inline_fallback_drops_blank_transcript_on_long_reference(tmp_path, monk
             return [torch.zeros(1, 10)]
 
     monkeypatch.setattr(_tts(), "_get_clone_prompt", lambda *a, **k: None)
+    monkeypatch.setattr(_tts(), "_reuse_or_rank_passage", lambda _path: None)
     path = _wav(tmp_path / "long.wav", 25)
     _tts().generate_with_cached_ref(_Model(), ref_audio=path, ref_text="", text="hi")
     assert seen["ref_text"] is None
@@ -831,3 +926,22 @@ def test_ref_upload_suffix_allowlist(filename, suffix):
     from api.routers.generation import _ref_upload_suffix
 
     assert _ref_upload_suffix(filename) == suffix
+
+
+@pytest.mark.parametrize("ref_text", [None, "whole clip"])
+def test_subprocess_engine_still_speaks_the_requested_text(tmp_path, monkeypatch, ref_text):
+    """Choosing the reference passage must never replace the text to speak."""
+    from engines import omnivoice_subprocess
+
+    engine = omnivoice_subprocess.OmniVoiceSubprocessBackend
+    # Patch the base the engine really inherits from: other tests reload
+    # `services.subprocess_backend`, so a fresh import can be a different class.
+    base = next(c for c in engine.__mro__[1:] if "generate" in vars(c))
+    sent = {}
+    monkeypatch.setattr(base, "generate", lambda self, text, **kw: sent.update(text=text, **kw))
+    monkeypatch.setattr(_tts(), "omnivoice_inline_reference", lambda audio, text: (audio, text, None))
+    path = _wav(tmp_path / "ref.wav", 5)
+
+    engine.generate(object.__new__(engine), "Say this.", ref_audio=path, ref_text=ref_text)
+
+    assert sent["text"] == "Say this."

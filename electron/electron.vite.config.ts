@@ -27,6 +27,11 @@ const define = {
   __POSTHOG_HOST__: JSON.stringify(process.env.VITE_POSTHOG_HOST ?? process.env.POSTHOG_HOST ?? ''),
 };
 
+// OMNIVOICE_UI_PORT is canonical (the backend reads it for its origin
+// allow-list); VOICESTUDIO_UI_PORT is the accepted legacy alias.
+const rendererPort =
+  Number(process.env.OMNIVOICE_UI_PORT || process.env.VOICESTUDIO_UI_PORT) || 3902;
+
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
@@ -90,7 +95,7 @@ export default defineConfig({
       exclude: ['@scalar/api-reference-react'],
     },
     server: {
-      port: Number(process.env.VOICESTUDIO_UI_PORT) || 3902,
+      port: rendererPort,
       strictPort: true,
       // Dev counterpart of main's app:// proxy (CONTRACT.md, same-origin API rule).
       proxy: {
@@ -101,7 +106,7 @@ export default defineConfig({
           ws: true,
           configure(proxy) {
             proxy.on('proxyReqWs', (outgoing, incoming) => {
-              const port = Number(process.env.VOICESTUDIO_UI_PORT) || 3902;
+              const port = rendererPort;
               const origin = incoming.headers.origin;
               if (origin === `http://localhost:${port}` || origin === `http://127.0.0.1:${port}`) {
                 outgoing.removeHeader('origin');

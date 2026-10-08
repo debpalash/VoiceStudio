@@ -40,6 +40,13 @@ _CHANGE_CASES = [
     ("English", "It costs $5", "It costs five dollars"),
     ("English", "Just $1 more", "Just one dollar more"),
     ("English", "It costs $5.99 now", "It costs five dollars, ninety-nine cents now"),
+    # Sentence punctuation after an amount is not part of it: the lookahead
+    # used to reject any period or comma, so these reached the engine as digits.
+    ("English", "It costs $5.", "It costs five dollars."),
+    ("English", "Pay $5, please", "Pay five dollars, please"),
+    ("English", "It costs $5.99.", "It costs five dollars, ninety-nine cents."),
+    ("English", "$12.34, $56.78, and $9.",
+     "twelve dollars, thirty-four cents, fifty-six dollars, seventy-eight cents, and nine dollars."),
     ("English", "rated 3.5 stars", "rated three point five stars"),
     # English writes decimals with a period, so three digits after it are a
     # decimal here (the same digits are a thousands group in German, below).
@@ -144,6 +151,8 @@ _UNCHANGED_CASES = [
     # (language, input) — ambiguous constructs keep their digits/shape
     ("English", "version v2 shipped"),          # digit glued to a letter
     ("English", "order 1,000 units"),           # thousands separator: ambiguous
+    ("English", "It costs $1,000."),            # a dollar amount with a separator
+    ("English", "It costs $5.5."),              # one decimal digit: not cents
     ("English", "pages 3-5 tonight"),           # range
     ("English", "agent 007 reporting"),         # leading-zero code
     ("English", "see 3.5.1 in the docs"),       # version string
@@ -289,7 +298,7 @@ def test_idempotent_double_encoded_entity():
     assert normalize_text(once, None) == once
 
 
-# ── Toggle: pref (default ON) + env override ─────────────────────────────────
+# ── Toggle: default ON + env override ────────────────────────────────────────
 
 def test_enabled_by_default(monkeypatch):
     monkeypatch.delenv(text_normalization.ENV_VAR, raising=False)
@@ -297,15 +306,12 @@ def test_enabled_by_default(monkeypatch):
     assert normalize_for_tts("I have 2 cats", "English") == "I have two cats"
 
 
-def test_pref_off_bypasses(monkeypatch):
+def test_never_written_pref_does_not_toggle_normalization(monkeypatch):
+    """Only the env var switches it off; no Settings surface writes a pref."""
     monkeypatch.delenv(text_normalization.ENV_VAR, raising=False)
     import core.prefs as prefs_mod
-    monkeypatch.setattr(
-        prefs_mod, "get",
-        lambda key, default=None: False if key == text_normalization.PREF_KEY else default,
-    )
-    raw = "I have 2 cats!!!!!!"
-    assert normalize_for_tts(raw, "English") == raw  # byte-identical bypass
+    monkeypatch.setattr(prefs_mod, "get", lambda key, default=None: False)
+    assert normalization_enabled() is True
 
 
 def test_env_off_bypasses(monkeypatch):
@@ -533,3 +539,17 @@ def test_complete_signed_decimal_ranges(raw, expected):
 ])
 def test_malformed_or_protected_ranges_remain_unchanged(raw):
     assert normalize_text(raw, "ko") == raw
+
+
+@pytest.mark.parametrize(("env", "expected"), [(None, True), ("1", True), ("off", False), ("0", False)])
+def test_pronunciation_switch_is_env_only(monkeypatch, env, expected):
+    from api.routers.generation import pronunciation_enabled
+    import core.prefs as prefs_mod
+
+    if env is None:
+        monkeypatch.delenv("OMNIVOICE_PRONUNCIATION", raising=False)
+    else:
+        monkeypatch.setenv("OMNIVOICE_PRONUNCIATION", env)
+    # A never-written pref must not change the outcome.
+    monkeypatch.setattr(prefs_mod, "get", lambda key, default=None: False)
+    assert pronunciation_enabled() is expected

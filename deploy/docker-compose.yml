@@ -14,6 +14,9 @@
 #  First run downloads ~4 GB of models. Progress is shown in logs.
 #  Open http://localhost:3900 once the health check passes.
 #
+#  Images: `:stable` / `:stable-rocm` are the latest tagged release; use
+#  `:latest` / `:rocm` to follow the rolling preview built from main.
+#
 #  SECURITY: The port is bound to 127.0.0.1 by default — only this
 #  machine can reach the API. To expose VoiceStudio on your LAN (or
 #  through a reverse proxy / tunnel), change the port mapping to
@@ -25,12 +28,12 @@
 services:
   # ── CPU mode — activate with: docker compose --profile cpu up
   omnivoice:
-    image: ghcr.io/debpalash/voicestudio:latest
+    image: ghcr.io/debpalash/voicestudio:stable
     # To build from source instead of pulling, comment out `image:` and
-    # uncomment the two lines below:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
+    # uncomment the three lines below:
+    # build:
+    #   context: ..
+    #   dockerfile: deploy/Dockerfile
     container_name: omnivoice-studio
     profiles: ["cpu"]
     ports:
@@ -44,12 +47,10 @@ services:
       - OMNIVOICE_DATA_DIR=/app/omnivoice_data
       - PYTHONPATH=/app/backend
       - PYTHONUNBUFFERED=1
-      # Bind uvicorn to 0.0.0.0 *inside* the container so the host-side port
-      # mapping above can forward traffic in. The 127.0.0.1 prefix on the
-      # `ports:` mapping is what enforces loopback-only on the host —
-      # OMNIVOICE_BIND_HOST=0.0.0.0 here only opens the container's own
-      # interface. The backend default is 127.0.0.1 (see backend/main.py).
-      - OMNIVOICE_BIND_HOST=0.0.0.0
+      # The image's uvicorn ENTRYPOINT binds 0.0.0.0 *inside* the container so
+      # the host-side port mapping above can forward traffic in. The 127.0.0.1
+      # prefix on the `ports:` mapping is what enforces loopback-only on the
+      # host.
       # Headless server: relax the desktop-only loopback origin gate so the
       # web UI's /system/* and /api/settings/* routes work through Docker's
       # NAT (issue #261). Already baked into the image; shown here so it's
@@ -71,10 +72,11 @@ services:
 
   # ── GPU mode — activate with: docker compose --profile gpu up
   omnivoice-gpu:
-    image: ghcr.io/debpalash/voicestudio:latest
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
+    image: ghcr.io/debpalash/voicestudio:stable
+    # To build from source, swap `image:` for the commented `build:` lines.
+    # build:
+    #   context: ..
+    #   dockerfile: deploy/Dockerfile
     container_name: omnivoice-studio-gpu
     profiles: ["gpu"]
     ports:
@@ -88,10 +90,9 @@ services:
       - OMNIVOICE_DATA_DIR=/app/omnivoice_data
       - PYTHONPATH=/app/backend
       - PYTHONUNBUFFERED=1
-      # Bind uvicorn to 0.0.0.0 *inside* the container — same as the CPU
-      # service above. The host-side `127.0.0.1:3900:3900` mapping keeps
-      # LAN reachability off by default.
-      - OMNIVOICE_BIND_HOST=0.0.0.0
+      # Container-internal 0.0.0.0 bind comes from the image ENTRYPOINT — same
+      # as the CPU service above. The host-side `127.0.0.1:3900:3900` mapping
+      # keeps LAN reachability off by default.
       # See the CPU service above — relaxes the loopback origin gate for the
       # headless Docker deployment (issue #261). Set to 0 to re-enable it.
       - OMNIVOICE_SERVER_MODE=1
@@ -119,7 +120,7 @@ services:
   # the amdgpu kernel driver (the ROCm userspace ships inside the image).
   # Podman works with the same two --device flags (Quadlet: AddDevice=).
   omnivoice-rocm:
-    image: ghcr.io/debpalash/voicestudio:rocm
+    image: ghcr.io/debpalash/voicestudio:stable-rocm
     # To build from source instead of pulling, comment out `image:` and
     # uncomment the lines below. BASE_IMAGE/GPU_FLAVOR are required — the
     # Dockerfile's defaults build the CUDA variant.
@@ -145,9 +146,8 @@ services:
       - OMNIVOICE_DATA_DIR=/app/omnivoice_data
       - PYTHONPATH=/app/backend
       - PYTHONUNBUFFERED=1
-      # See the CPU service above — container-internal bind + relaxed
-      # loopback origin gate for the headless Docker deployment.
-      - OMNIVOICE_BIND_HOST=0.0.0.0
+      # See the CPU service above — relaxed loopback origin gate for the
+      # headless Docker deployment.
       - OMNIVOICE_SERVER_MODE=1
       - OMNIVOICE_API_KEY=${OMNIVOICE_API_KEY:?export a long random OMNIVOICE_API_KEY before starting a Studio profile}
       - OMNIVOICE_WORKER_PORT=${OMNIVOICE_WORKER_PORT:-7443}
@@ -171,10 +171,10 @@ services:
   # No port is published: uvicorn only hosts the application lifespan that
   # owns the outbound worker agent. The browser UI is not needed or exposed.
   omnivoice-worker-gpu:
-    image: ghcr.io/debpalash/voicestudio:latest
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
+    image: ghcr.io/debpalash/voicestudio:stable
+    # build:
+    #   context: ..
+    #   dockerfile: deploy/Dockerfile
     container_name: omnivoice-worker-gpu
     profiles: ["worker-gpu"]
     entrypoint: ["python3", "-m", "uvicorn"]
@@ -208,7 +208,7 @@ services:
 
   # ── Worker-only AMD GPU (ROCm) mode
   omnivoice-worker-rocm:
-    image: ghcr.io/debpalash/voicestudio:rocm
+    image: ghcr.io/debpalash/voicestudio:stable-rocm
     container_name: omnivoice-worker-rocm
     profiles: ["worker-rocm"]
     entrypoint: ["python3", "-m", "uvicorn"]

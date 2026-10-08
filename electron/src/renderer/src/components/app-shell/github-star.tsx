@@ -14,7 +14,7 @@ function GithubIcon({ className }: { className?: string }) {
   );
 }
 
-const STARS_URL = 'https://api.github.com/repos/debpalash/VoiceStudio/stargazers/count';
+const STARS_URL = 'https://api.github.com/repos/debpalash/VoiceStudio';
 const REFRESH_MS = 20 * 60 * 1000;
 // The last bundled count remains visible when GitHub cannot be reached.
 const BUNDLED_STARS = 43_638;
@@ -28,7 +28,7 @@ async function fetchStarCount(signal: AbortSignal): Promise<number> {
   });
   if (!response.ok) throw new Error('GitHub star count unavailable');
   const data: unknown = await response.json();
-  const count = (data as { count?: unknown } | null)?.count;
+  const count = (data as { stargazers_count?: unknown } | null)?.stargazers_count;
   if (!Number.isSafeInteger(count) || (count as number) < 0)
     throw new Error('Invalid GitHub star count');
   return count as number;
@@ -37,6 +37,8 @@ async function fetchStarCount(signal: AbortSignal): Promise<number> {
 export function GithubStar() {
   const { t } = useTranslation();
   const stars = useQuery({
+    // Local combined-PR previews can suppress unsolicited external requests.
+    enabled: import.meta.env.VITE_PREVIEW_OFFLINE !== '1',
     queryKey: ['github-star-count'],
     queryFn: ({ signal }) => fetchStarCount(signal),
     staleTime: REFRESH_MS,

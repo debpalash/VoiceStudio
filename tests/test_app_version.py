@@ -80,16 +80,3 @@ def test_fallback_version_resolves_to_pyproject():
         (root / "pyproject.toml").read_text(encoding="utf-8"),
     ).group(1)
     assert _fallback_version() == pyproject
-
-
-def test_frozen_build_collects_package_metadata():
-    """backend.spec must copy_metadata('omnivoice') so the frozen backend reads
-    its real version via importlib.metadata instead of the fallback literal."""
-    from pathlib import Path
-
-    spec = (Path(__file__).resolve().parents[1] / "backend.spec").read_text(
-        encoding="utf-8"
-    )
-    assert (
-        "copy_metadata('omnivoice')" in spec or 'copy_metadata("omnivoice")' in spec
-    ), "backend.spec must copy_metadata('omnivoice') (frozen-build version reporting)"

@@ -20,7 +20,9 @@ import shlex
 
 from core.config import OUTPUTS_DIR, DATA_DIR, CRASH_LOG_PATH, LOG_PATH, IDLE_TIMEOUT_SECONDS
 from core.version import APP_VERSION
+from core.browser_guard import reject_cross_site_get
 from core.logging_utils import log_safe
+from core.poll_guard import PollGuard
 from core.nvidia_smi import find_nvidia_smi
 from core.public_errors import public_failure
 from services.model_manager import get_model_status, get_best_device, resolve_omnivoice_checkpoint
@@ -215,19 +217,21 @@ def _nvidia_live_stats() -> tuple[float, float, float] | None:
         return None
 
 
-def _ui_port() -> int:
-    """The Vite UI dev-server port, single-sourced from OMNIVOICE_UI_PORT.
+def _ui_port() -> int | None:
+    """The browser UI dev-server port, or None when there is no such server.
 
-    Mirrors the resolver in main.py (kept local to avoid importing the app
-    module). Falls back to 3901 on a missing or malformed value.
+    Shares core.csrf's resolver (OMNIVOICE_UI_PORT, alias VOICESTUDIO_UI_PORT)
+    so Settings → Sharing reports the port the CORS/CSRF allow-list trusts.
+    The packaged desktop app serves its UI from app://voicestudio, so with no
+    UI port configured a desktop-contained backend has none to report; the
+    Electron dev shell passes its renderer port explicitly.
     """
-    raw = os.environ.get("OMNIVOICE_UI_PORT")
-    if raw is None:
-        return 3901
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return 3901
+    from core.csrf import configured_ui_port, ui_port
+
+    configured = configured_ui_port()
+    if configured is None and os.environ.get("OMNIVOICE_DESKTOP_CONTAINED") == "1":
+        return None
+    return configured or ui_port()
 
 
 def _fast_download_status() -> dict:
@@ -289,19 +293,30 @@ def _has_hf_token() -> bool:
         # Resolver must never break /system/info — fall back to False.
         return False
 
+def _list_loaded_snapshot():
+    from services import model_lifecycle
+    return model_lifecycle.list_loaded()
+
+
+# Polled every second by several widgets while work runs: each gets a private
+# single-thread executor (see core.poll_guard) so a stalled driver/DB call can
+# never occupy the shared worker pool the rest of the API runs on.
+_model_status_poll = PollGuard("model-status", lambda: get_model_status())
+_loaded_models_poll = PollGuard("model-loaded", _list_loaded_snapshot)
+
+
 @router.get("/model/status", response_model=ModelStatusResponse)
-def model_status():
+async def model_status():
     """Report model loading state for frontend warm-up indicators."""
-    return get_model_status()
+    return await _model_status_poll.get()
 
 
 @router.get("/model/loaded")
-def loaded_models():
+async def loaded_models():
     """List all currently loaded models for the flush dropdown (MM2-04).
     Thin delegation to the model_lifecycle facade — shape unchanged:
     ``{models, count}``."""
-    from services import model_lifecycle
-    return model_lifecycle.list_loaded()
+    return await _loaded_models_poll.get()
 
 
 @router.post("/model/unload/{model_id}")
@@ -1171,14 +1186,16 @@ PERSISTENT_KEYS = {
     "DEEPL_API_KEY", "DEEPL_BASE_URL",
     "MICROSOFT_API_KEY", "MICROSOFT_BASE_URL",
     "GOOGLE_TRANSLATE_API_KEY", "MICROSOFT_REGION", "AWS_PROFILE", "AWS_REGION",
-    # User-configurable network ports. Persisted so they survive restarts;
-    # the Rust sidecar reads OMNIVOICE_PORT at startup and the backend derives
-    # the LAN-share/UI ports from the others.
-    "OMNIVOICE_PORT", "OMNIVOICE_SHARE_PORT", "OMNIVOICE_UI_PORT",
+    # The LAN-share port is the only persisted port: the backend binds that
+    # listener itself. OMNIVOICE_PORT and OMNIVOICE_UI_PORT are deliberately
+    # NOT persisted — the process that binds them (the desktop shell, the dev
+    # script, Docker, Vite) reads its own environment, never prefs.json, so a
+    # saved value only made the backend misreport the ports it was given.
+    # core.prefs.restore_env ignores values saved by older versions.
+    "OMNIVOICE_SHARE_PORT",
     # Per-job compute-time budgets (#1787). Both are captured at import time
     # by services/model_manager.py (GPU_JOB_TIMEOUT_S / CPU_JOB_TIMEOUT_S), so
-    # a value saved here takes effect on the NEXT backend restart — same
-    # contract as OMNIVOICE_PORT above. Restored into os.environ during the
+    # a value saved here takes effect on the NEXT backend restart. Restored into os.environ during the
     # "env_prefs" startup step (main.py), which runs before model_manager is
     # first imported ("ml_imports"), so the restored value is what the module
     # captures. The Settings UI must say so (RestartBadge).
@@ -1190,15 +1207,22 @@ PERSISTENT_KEYS = {
 # main.py); merging them here lets users inspect/clear them from the same
 # Settings env panel as every other persisted var. Single-sourced from the
 # installer's SPECS so a future sidecar engine can't forget to register.
+#
+# The backend runs the interpreter inside these folders, so they are host
+# paths that must never arrive as raw HTTP text: a new value comes only from a
+# one-shot desktop authorization (kind "sidecar_dir"), like the models folder.
+# Clearing stays a plain request; values already persisted keep working.
+_SIDECAR_DIR_KEYS: set[str] = set()
 try:
     from services.sidecar_install import persistent_env_vars as _sidecar_env_vars
-    PERSISTENT_KEYS |= _sidecar_env_vars()
+    _SIDECAR_DIR_KEYS = set(_sidecar_env_vars())
+    PERSISTENT_KEYS |= _SIDECAR_DIR_KEYS
 except Exception:  # pragma: no cover — defensive: env panel > installer wiring
     pass
 
 # Keys whose value must be a valid TCP port (1024–65535). Validated before
 # being set so a bad value never reaches uvicorn / the share listener.
-_PORT_KEYS = {"OMNIVOICE_PORT", "OMNIVOICE_SHARE_PORT", "OMNIVOICE_UI_PORT"}
+_PORT_KEYS = {"OMNIVOICE_SHARE_PORT"}
 
 # Keys whose value is a wall-clock compute-time budget in seconds (#1787).
 # Validated the same way as _PORT_KEYS: reject anything that isn't a
@@ -1211,6 +1235,30 @@ _TIMEOUT_KEYS = {"OMNIVOICE_GENERATE_TIMEOUT_S", "OMNIVOICE_CPU_GENERATE_TIMEOUT
 _MAX_GENERATE_TIMEOUT_S = 21600.0  # 6 hours
 
 
+def _authorized_sidecar_dir(value, authorization) -> str:
+    """Resolve a sidecar install folder from a desktop authorization only."""
+    if value:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Engine folders cannot be set through the API. Set the variable in "
+                "the backend's environment (for example ~/.config/omnivoice/env) and "
+                "restart, or use the one-click engine installer in Settings → Models."
+            ),
+        )
+    if not authorization:
+        return ""  # clear
+    from core.path_authorization import PathAuthorizationError, consume
+
+    try:
+        raw = consume(str(authorization), "sidecar_dir").strip()
+    except PathAuthorizationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in raw):
+        raise HTTPException(status_code=400, detail="Path contains invalid control characters")
+    return os.path.abspath(os.path.expanduser(raw)) if raw else ""
+
+
 @router.post("/system/set-env")
 async def set_env_var(body: dict):
     """Set an environment variable at runtime, persisted across restarts.
@@ -1218,7 +1266,7 @@ async def set_env_var(body: dict):
     Persistent keys (proxy, FFMPEG_PATH, translation provider keys, …) are
     saved to ``prefs.json`` so they survive backend restarts (restored at
     startup in ``main.py``). HF_TOKEN is persisted via
-    ``huggingface_hub.login()`` (and cleared with the shared token-file helper). Other keys
+    ``token_resolver.persist_hub_token()`` (and cleared with the shared token-file helper). Other keys
     are set on ``os.environ`` for the running process.
 
     The loopback-origin gate that previously lived inline here is now applied
@@ -1235,6 +1283,9 @@ async def set_env_var(body: dict):
             status_code=400,
             detail=f"Key '{key}' is not allowed. Allowed: {', '.join(sorted(ALLOWED_KEYS))}",
         )
+
+    if key in _SIDECAR_DIR_KEYS:
+        value = _authorized_sidecar_dir(value, body.get("authorization"))
 
     if value:
         # Port keys must be a numeric string in the unprivileged range so a
@@ -1272,15 +1323,15 @@ async def set_env_var(body: dict):
         os.environ[key] = value
         logger.info("Environment variable set (length=%d)", len(value))
 
-        # Capability 1 / issue #35: HF_TOKEN persists across restarts via
-        # huggingface_hub.login() — writes the token to $HF_HOME/token so
-        # the next process pickup doesn't need an env var. add_to_git_credential
-        # stays False; we don't want to spew tokens into the user's git config.
+        # Capability 1 / issue #35: HF_TOKEN persists across restarts in the
+        # Hub token file so the next process pickup doesn't need an env var.
+        # persist_hub_token validates on huggingface.co only (never a mirror)
+        # and never writes a git credential.
         if key == "HF_TOKEN":
             try:
-                from huggingface_hub import login as _hf_login
-                _hf_login(token=value, add_to_git_credential=False)
-                logger.info("HF token persisted to $HF_HOME/token via login()")
+                from services.token_resolver import persist_hub_token
+                persist_hub_token(value)
+                logger.info("HF token persisted to the local Hub token file")
             except Exception as e:
                 # Non-fatal — the runtime env var is still set, so the
                 # current process will still see the token. We just lose
@@ -1299,7 +1350,7 @@ async def set_env_var(body: dict):
             except Exception:
                 raise HTTPException(status_code=500, detail="Could not clear local Hugging Face token files") from None
 
-    # HF_TOKEN persistence is handled above via huggingface_hub.login()/
+    # HF_TOKEN persistence is handled above via persist_hub_token()/
     # clear_hf_cli_tokens() — it never touches prefs.json. Everything else in
     # PERSISTENT_KEYS (proxy, FFMPEG_PATH, translation provider keys, …) is
     # saved to prefs.json so it survives backend restarts (restored at
@@ -1539,7 +1590,7 @@ async def network_disable(request: Request):
 
 # ── Tailscale (loopback-only control surface) ────────────────────────────────
 
-@router.get("/system/tailscale/status")
+@router.get("/system/tailscale/status", dependencies=[Depends(reject_cross_site_get)])
 async def tailscale_status():
     return _tailscale.status()
 

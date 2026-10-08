@@ -51,9 +51,10 @@ from dataclasses import asdict, dataclass
 from typing import Callable, Optional
 from urllib.parse import urlsplit
 
+from services.hf_auth import CANONICAL_ENDPOINT, host_gets_auth
+
 logger = logging.getLogger("omnivoice.endpoint_race")
 
-CANONICAL_ENDPOINT = "https://huggingface.co"
 COMMUNITY_MIRROR = "https://hf-mirror.com"
 
 # Hard env opt-out: any of these values disables auto selection entirely.
@@ -467,6 +468,30 @@ def effective_endpoint() -> Optional[str]:
     except Exception:
         logger.warning("effective_endpoint failed; using canonical", exc_info=True)
     return None
+
+
+def download_endpoint(*, gated: bool = False) -> Optional[str]:
+    """``effective_endpoint()`` for one download.
+
+    A gated repository needs the token, which only Hugging Face receives, so an
+    automatically picked mirror can never serve it: gated downloads use the
+    canonical endpoint unless the user explicitly chose a mirror. Never raises.
+    """
+    endpoint = effective_endpoint()
+    if not gated or not endpoint or host_gets_auth(endpoint):
+        return endpoint
+    return endpoint if explicit_mirror() else CANONICAL_ENDPOINT
+
+
+def explicit_mirror() -> str:
+    """The mirror the user explicitly configured, or "" for none. Never raises."""
+    try:
+        endpoint = explicit_endpoint()
+    except Exception:
+        return ""
+    if not isinstance(endpoint, str) or not endpoint or host_gets_auth(endpoint):
+        return ""
+    return endpoint
 
 
 def reselect_after_failure(repo_id: str, reason: Optional[str] = None) -> bool:

@@ -70,10 +70,12 @@ def analyze_audio(path: str | Path, *, max_seconds: float = 7200) -> AudioQualit
             begin, finish = start * step, min(end * step, analyzed)
             if finish - begin + 1e-8 < minimum:
                 continue
-            if len(warnings) >= 100:
-                truncated = True
-                break
             warnings.append(AudioWarning(kind=kind, start=round(begin, 3), end=round(finish, 3)))
+    # Sort the full set first so the cap keeps the earliest warnings on the
+    # timeline rather than whichever check happened to run first.
     warnings.sort(key=lambda item: (item.start, item.kind))
+    if len(warnings) > 100:
+        truncated = True
+        del warnings[100:]
     return AudioQuality(duration=duration, analyzed_seconds=analyzed,
                         truncated=truncated, warnings=warnings)

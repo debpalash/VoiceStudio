@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { apiJson, describeError } from '@/lib/api/client';
+import { isImeComposing } from '@/lib/ime';
 import { SettingsRow, SettingsSection } from './settings-layout';
 
 interface InboundKey {
@@ -240,7 +241,7 @@ export function InboundWorkersSettings() {
                 disabled={busy}
                 onChange={(event) => setLabel(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !busy) {
+                  if (event.key === 'Enter' && !busy && !isImeComposing(event)) {
                     void act(
                       async () => {
                         const result = await apiJson<IssuedAccess>('/workers/inbound/keys', {

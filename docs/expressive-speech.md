@@ -62,6 +62,8 @@ for your engine below.
   dictionary. Not expression, but often what a "it says this weirdly" problem
   actually needs.
 
+Pronunciation dictionary matching uses Unicode case-insensitive literal matches. Each matched term uses its own respelling; distinct terms such as Straße and STRASSE can have different respellings. Longer terms win overlaps, and later equal-length case variants retain precedence.
+
 ### Default engine (VoiceStudio)
 
 **Non-verbal tags.** The bundled model natively tokenizes 13 reaction tags

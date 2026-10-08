@@ -23,6 +23,7 @@ from __future__ import annotations
 import glob
 import os
 import shutil
+import stat
 import sys
 import tempfile
 import threading
@@ -60,6 +61,16 @@ def default_engines_dir() -> str:
     from core.config import DATA_DIR
 
     return str(Path(DATA_DIR) / "engines")
+
+
+def _has_venv(entry_path: str) -> bool:
+    """True when ``<entry>/.venv`` is a directory. Only a *missing* path means
+    "no venv"; a permission or I/O error propagates so the caller can mark the
+    scan incomplete instead of silently reclassifying an installed engine."""
+    try:
+        return stat.S_ISDIR(os.stat(os.path.join(entry_path, ".venv")).st_mode)
+    except (FileNotFoundError, NotADirectoryError):
+        return False
 
 
 def _engines_child_name(engines_dir: str, data_dir: str) -> str | None:
@@ -132,12 +143,20 @@ def _dir_size(path: str, deadline: float) -> tuple[int, bool, str | None]:
             complete = False
             break
         for name in files:
+            # Checked per file, not only per directory: one flat directory of
+            # millions of files is a single walk step and would otherwise run
+            # far past the budget while still reporting a complete total.
+            if time.monotonic() > deadline:
+                complete = False
+                break
             fp = os.path.join(root, name)
             try:
                 total += os.lstat(fp).st_size
             except OSError:
                 if err_path is None:
                     err_path = fp
+        if not complete:
+            break
     return total, complete, err_path
 
 
@@ -200,7 +219,7 @@ def build_report(
         })
 
     def _finish(category_id: str, cat: dict, complete: bool, err_path: str | None) -> None:
-        cat["complete"] = complete
+        cat["complete"] = complete and err_path is None
         if not complete:
             _warn_unreadable(category_id, cat["path"], "timeout")
         if err_path is not None:
@@ -263,6 +282,33 @@ def build_report(
     _finish("hf_cache", hf_cat, hf_complete, hf_err)
     categories.append(hf_cat)
 
+    # Use one ownership snapshot for both categories: only installed sidecars
+    # belong to engine_venvs. Interrupted installs inside DATA_DIR remain data.
+    engine_err: str | None = None
+    try:
+        with os.scandir(engines_dir) as it:
+            engine_entries = list(it)
+    except FileNotFoundError:
+        engine_entries = []
+    except OSError:
+        engine_entries = []
+        engine_err = engines_dir
+    engine_dirs = []
+    unclassified_engines = set()
+    for e in engine_entries:
+        # Resolve a transient inspection failure before either category claims
+        # the entry. Persistently unknown ownership remains an incomplete scan.
+        for _ in range(2):
+            try:
+                if e.is_dir(follow_symlinks=False) and _has_venv(e.path):
+                    engine_dirs.append(e.path)
+                break
+            except OSError:
+                engine_err = engine_err or e.path
+        else:
+            unclassified_engines.add(e.path)
+    engine_dirs.sort()
+
     # ── 2. App data dir, broken into subtotals ─────────────────────────────
     deadline = time.monotonic() + category_timeout
     data_complete = True
@@ -271,10 +317,11 @@ def build_report(
     claimed: set[str] = set()
 
     # When sidecar engines live under DATA_DIR/engines, the engine-venv category
-    # below owns that subtree — claim it here so it isn't also swept into "other".
+    # below owns installed sidecars; count the unclaimed remainder separately.
     engines_child = _engines_child_name(engines_dir, data_dir)
     if engines_child:
         claimed.add(engines_child)
+        data_err = engine_err
 
     for name in _DATA_CHILD_DIRS:
         p = os.path.join(data_dir, name)
@@ -304,25 +351,49 @@ def build_report(
     })
 
     other_bytes = 0
+    other_complete = True
+
+    def _other_entry(e: os.DirEntry) -> bool:
+        """Add one loose data entry to Other. False once the budget is spent
+        (the entry is not measured) or the entry could not be read."""
+        nonlocal other_bytes, other_complete, data_complete, data_err
+        if time.monotonic() > deadline:
+            other_complete = data_complete = False
+            return False
+        try:
+            if e.is_dir(follow_symlinks=False):
+                size, ok, err = _dir_size(e.path, deadline)
+                other_bytes += size
+                other_complete = other_complete and ok and err is None
+                data_complete = data_complete and ok
+                data_err = data_err or err
+            else:
+                other_bytes += e.stat(follow_symlinks=False).st_size
+        except OSError:
+            other_complete = False
+            data_err = data_err or e.path
+        return True
+
     try:
         with os.scandir(data_dir) as it:
             for e in it:
                 if e.name in claimed:
                     continue
-                if e.is_dir(follow_symlinks=False):
-                    size, ok, err = _dir_size(e.path, deadline)
-                    other_bytes += size
-                    data_complete = data_complete and ok
-                    data_err = data_err or err
-                else:
-                    try:
-                        other_bytes += e.stat(follow_symlinks=False).st_size
-                    except OSError:
-                        data_err = data_err or e.path
+                if not _other_entry(e):
+                    break
     except OSError:
         if os.path.exists(data_dir):
+            other_complete = False
             data_err = data_err or data_dir
-    children.append({"id": "other", "path": data_dir, "bytes": other_bytes, "complete": True})
+    if engines_child:
+        for e in engine_entries:
+            if e.path in engine_dirs or e.path in unclassified_engines:
+                continue
+            if not _other_entry(e):
+                break
+    children.append({
+        "id": "other", "path": data_dir, "bytes": other_bytes, "complete": other_complete,
+    })
 
     data_cat = {
         "id": "data",
@@ -338,21 +409,10 @@ def build_report(
     deadline = time.monotonic() + category_timeout
     venv_total = 0
     venv_complete = True
-    venv_err: str | None = None
+    venv_err: str | None = engine_err
     venv_items: list[dict] = []
-    try:
-        with os.scandir(engines_dir) as it:
-            engine_dirs = sorted(e.path for e in it if e.is_dir(follow_symlinks=False))
-    except OSError:
-        engine_dirs = []
     for edir in engine_dirs:
-        # A sidecar install is the venv PLUS a git checkout PLUS multi-GB weights
-        # (`checkpoints/`) — measure the whole `<id>` dir, not just `.venv`, or the
-        # weights (usually the bulk) go uncounted now that the data category no
-        # longer sweeps this subtree into "other". Only real installs have a venv,
-        # so that gate still skips a bare/interrupted dir.
-        if not os.path.isdir(os.path.join(edir, ".venv")):
-            continue
+        # Measure the whole installed sidecar: environment, checkout and weights.
         size, ok, err = _dir_size(edir, deadline)
         venv_total += size
         venv_complete = venv_complete and ok

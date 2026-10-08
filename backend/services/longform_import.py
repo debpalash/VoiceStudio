@@ -19,6 +19,7 @@ import re
 import zipfile
 from html.parser import HTMLParser
 from xml.etree import ElementTree as ET
+from urllib.parse import unquote, urlsplit
 
 from services.text_upload import bom_encoding, decode_text_upload
 
@@ -105,14 +106,16 @@ def chapterize_plaintext(text: str) -> str:
 
     No-op if the text already has Markdown H1 headings (the user has structured
     it). Otherwise short standalone lines beginning with a chapter keyword
-    (``Chapter 3``, ``Prologue`` …) become headings; everything else is left
-    verbatim. Text with no detectable breaks falls through as a single chapter.
+    (``Chapter 3``, ``Prologue`` …) become headings; body text is preserved with
+    line endings normalized to LF. Text with no detectable breaks falls through
+    as a single chapter.
     """
     text = text or ""
-    if _H1_RE.search(text):
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    if _H1_RE.search(normalized):
         return text
     out = []
-    for line in text.split("\n"):
+    for line in normalized.split("\n"):
         s = line.strip()
         if s and len(s) <= _CHAPTER_TITLE_MAX and _CH_RE.match(s):
             out.append(f"# {s}")
@@ -126,7 +129,16 @@ class _TextExtractor(HTMLParser):
     whitespace. First <h1>/<h2>/<title> seen is kept as the chapter title."""
 
     _SKIP = {"script", "style", "head"}
-    _BREAK = {"p", "br", "div", "h1", "h2", "h3", "li", "tr"}
+    #: Block-level elements: each starts a new line when it opens AND when it
+    #: closes, so text after ``</p>`` / ``</td>`` / ``</li>`` never joins the
+    #: previous paragraph. ``br`` is void, so only its start tag breaks.
+    _BREAK = {
+        "p", "br", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "ul", "ol",
+        "tr", "td", "th", "table", "caption", "thead", "tbody", "tfoot",
+        "blockquote", "pre", "hr", "section", "article", "aside", "header",
+        "footer", "nav", "main", "figure", "figcaption", "dl", "dt", "dd",
+        "address", "details", "summary", "fieldset", "form",
+    }
     #: A print page number carried into the EPUB (EPUB 3 ``epub:type="pagebreak"``,
     #: ARIA ``role="doc-pagebreak"``, or a publisher class such as
     #: ``pagebreak-rw``). Inline, it glues onto prose ("happily as 2Zoe threw");
@@ -141,6 +153,11 @@ class _TextExtractor(HTMLParser):
         self._skip_depth = 0
         self._pagebreak_stack: list[str] = []
         self._in_title = False
+        #: The element whose text is the title, and that text as it arrives: a
+        #: heading such as ``<h1>Chapter <em>One</em></h1>`` reaches
+        #: ``handle_data`` in several pieces.
+        self._title_tag = ""
+        self._title_parts: list[str] = []
         self.title = ""
         self._elements: list[tuple[str, dict[str, str]]] = []
         #: ``epub:type`` tokens seen on the document's structural elements
@@ -187,10 +204,17 @@ class _TextExtractor(HTMLParser):
             if tag not in self._VOID:
                 self._pagebreak_stack.append(tag)
             return
-        if tag in ("h1", "h2", "title") and not self.title:
+        if tag in ("h1", "h2", "title") and not self.title and not self._in_title:
             self._in_title = True
+            self._title_tag = tag
+            self._title_parts = []
         if tag in self._BREAK:
-            self._parts.append("\n")
+            # A <br> inside the title separates its words ("CHAPTER I<br/>THE BOY
+            # WHO LIVED"); anywhere else a block break is a new body line.
+            if self._in_title and tag != self._title_tag:
+                self._title_parts.append(" ")
+            else:
+                self._parts.append("\n")
 
     def handle_endtag(self, tag):
         for index in range(len(self._elements) - 1, -1, -1):
@@ -205,18 +229,24 @@ class _TextExtractor(HTMLParser):
                     del self._pagebreak_stack[index:]
                     break
             return
-        if tag in ("h1", "h2", "title"):
+        if self._in_title and tag == self._title_tag:
             self._in_title = False
+            self.title = " ".join("".join(self._title_parts).split())
+        if tag in self._BREAK and tag not in self._VOID:
+            if self._in_title:
+                self._title_parts.append(" ")  # a block closing inside the title
+            else:
+                self._parts.append("\n")
 
     def handle_data(self, data):
         if self._skip_depth or self._pagebreak_stack:
             return
         if self._in_title:
             # The first heading becomes the chapter's `# Title` (metadata, not
-            # narrated) — capture it but keep it out of the body. Later headings
-            # (title already set) fall through and are narrated as subheadings.
-            if not self.title:
-                self.title = data.strip()
+            # narrated) — capture all of its text, nested inline elements
+            # included, but keep it out of the body. Later headings (title
+            # already set) fall through and are narrated as subheadings.
+            self._title_parts.append(data)
             return
         self._parts.append(data)
 
@@ -251,6 +281,17 @@ def _html_extract(xhtml: str) -> tuple[set[str], str, str]:
 
 
 _OPF_NS = {"opf": "http://www.idpf.org/2007/opf", "c": "urn:oasis:names:tc:opendocument:xmlns:container"}
+
+
+def _member_path(base: str, href: str) -> str:
+    """Resolve an EPUB URI reference to its ZIP member, decoding exactly once."""
+    try:
+        reference = urlsplit(href)
+    except ValueError:
+        return ""
+    if reference.scheme or reference.netloc:
+        return ""  # remote references are never book members
+    return posixpath.normpath(posixpath.join(base, unquote(reference.path)))
 
 
 def _opf_path(zf: zipfile.ZipFile, budget: _ReadBudget) -> str:
@@ -316,7 +357,7 @@ def _toc_titles(
     nav_titles: dict[str, str] = {}  # EPUB 3 nav — authoritative
     ncx_titles: dict[str, str] = {}  # EPUB 2 NCX — fallback
     for href in nav_hrefs:
-        full = posixpath.normpath(posixpath.join(base, href)) if base else href
+        full = _member_path(base, href)
         if full not in names:
             continue
         raw = _read_member(zf, full, budget)
@@ -357,13 +398,12 @@ def _toc_titles(
                 for anchor in nav.iter():
                     if (body_start is None and local_name(anchor) == "a" and anchor.get("href")
                             and "bodymatter" in anchor.get(type_attribute, "").split()):
-                        target_path = anchor.get("href").split("#", 1)[0]
-                        body_start = posixpath.normpath(posixpath.join(nav_dir, target_path))
+                        body_start = _member_path(nav_dir, anchor.get("href"))
         for src, label in pairs:
-            path = src.split("#", 1)[0]
+            path = _member_path(nav_dir, src)
             label = " ".join(label.split())
             if path and label:
-                target.setdefault(posixpath.normpath(posixpath.join(nav_dir, path)), label)
+                target.setdefault(path, label)
     titles = {**ncx_titles, **nav_titles}
     return {k: v for k, v in titles.items() if v}, body_start
 
@@ -485,8 +525,7 @@ def epub_to_chapter_script(
     toc, declared_start = _toc_titles(zf, base, nav_hrefs, names, budget)
     for ref in opf.findall(".//opf:guide/opf:reference", _OPF_NS):  # EPUB 2 equivalent
         if declared_start is None and (ref.get("type") or "").lower() == "text" and ref.get("href"):
-            target = ref.get("href").split("#", 1)[0]
-            declared_start = posixpath.normpath(posixpath.join(base, target)) if base else target
+            declared_start = _member_path(base, ref.get("href"))
 
     sections: list[tuple[str, set[str], str, str]] = []  # (path, epub:types, heading, body)
     for ref in opf.findall(".//opf:spine/opf:itemref", _OPF_NS):
@@ -495,7 +534,7 @@ def epub_to_chapter_script(
             continue  # the table of contents itself is never narrated
         if (ref.get("linear") or "yes").lower() == "no":
             continue  # publisher marked it as outside the reading order
-        full = posixpath.normpath(posixpath.join(base, href)) if base else href
+        full = _member_path(base, href)
         if full not in names:
             continue
         # Bound decompression through the shared budget (an oversized entry is

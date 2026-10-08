@@ -123,6 +123,7 @@ def test_load_model_sync_pins_compiled_model_to_one_thread(
 
     fake_torch = SimpleNamespace(
         float16="float16",
+        float32="float32",
         compile=lambda mod, mode: _FakeCompiledLLM(mod),
     )
     fake_omnivoice_cls = SimpleNamespace(
@@ -152,7 +153,7 @@ def test_uncompiled_model_keeps_caller_threads(
     from types import SimpleNamespace
 
     fake_model = _RecordingModel()
-    fake_torch = SimpleNamespace(float16="float16", compile=None)
+    fake_torch = SimpleNamespace(float16="float16", float32="float32", compile=None)
     fake_omnivoice_cls = SimpleNamespace(from_pretrained=lambda *a, **k: fake_model)
 
     monkeypatch.setattr(model_manager, "_lazy_torch", lambda: fake_torch)

@@ -140,6 +140,31 @@ describe('buildBugReportUrl', () => {
     const url = await buildBugReportUrl({ error: err });
     expect(url.length).toBeLessThan(8000);
   });
+
+  it('includes arch and active ASR engine when the backend answers (#2416)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url) => {
+        const u = String(url);
+        if (u.includes('/system/info'))
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ arch: 'x86_64', disk_free_gb: 752.1 }),
+          });
+        if (u.includes('/engines'))
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({ tts: { active: 'omnivoice' }, asr: { active: 'faster-whisper' } }),
+          });
+        return Promise.reject(new Error('ECONNREFUSED'));
+      }),
+    );
+    const body = decodeURIComponent(await buildBugReportUrl());
+    expect(body).toContain('**Arch:** `x86_64`');
+    expect(body).toContain('**Active TTS engine:** `omnivoice`');
+    expect(body).toContain('**Active ASR engine:** `faster-whisper`');
+  });
 });
 
 describe('buildBugReportUrl — crash-marker enrichment (#941)', () => {

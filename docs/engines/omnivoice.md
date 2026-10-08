@@ -61,6 +61,10 @@ The env var overrides the persisted UI choice.
   Whisper Turbo CT2 build; cloning does not require a second Transformers copy.
   The model-level Whisper fallback
   also requires cached weights; it never downloads another ASR during cloning.
+  It reuses any installed snapshot of the configured PyTorch Whisper model
+  (`OMNIVOICE_PYTORCH_ASR_MODEL`), `openai/whisper-large-v3-turbo` or
+  `openai/whisper-large-v3`, including the pinned-commit layout Model Catalogue
+  leaves in the Hugging Face cache.
   If no recognizer is installed, supply a matching reference transcript or
   explicitly install and select a speech-to-text model in Model Catalogue. A clip with a supplied transcript is limited
   to 20 seconds so the two stay aligned; trim both to the same passage. Without
@@ -71,7 +75,9 @@ The env var overrides the persisted UI choice.
   whole-clip transcription and ignores a saved profile transcript, so long
   saved voices use this selection too. OmniVoice's own Whisper snapshot is only
   a fallback when no catalogue recognizer can transcribe a window, and it is
-  never downloaded during cloning. A transcript typed on the request for
+  never downloaded during cloning. When neither can run, the error says the clip
+  is too long and to trim it to 3–10 seconds, since a transcript cannot rescue it.
+  A transcript typed on the request for
   such a clip is rejected with `[clone_ref_too_long]`.
   Only that 15-second window is sent to the model. Clips longer than 75 seconds
   must be trimmed first. If no spoken words are detected, trim to

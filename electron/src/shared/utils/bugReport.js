@@ -164,6 +164,7 @@ async function captureContext(fresh) {
     if (j) {
       if (j?.os_version) lines.push(`**OS:** \`${scrubText(j.os_version)}\``);
       else if (j?.platform) lines.push(`**OS:** \`${j.platform}\``);
+      if (j?.arch) lines.push(`**Arch:** \`${scrubText(String(j.arch))}\``);
       if (j?.python) lines.push(`**Python:** \`${j.python}\``);
       if (j?.device) lines.push(`**Compute device:** \`${scrubText(j.device)}\``);
       if (j?.gpu_name) {
@@ -182,6 +183,8 @@ async function captureContext(fresh) {
     const j = await fetchJsonWithTimeout(`${API}/engines`);
     const active = j?.tts?.active;
     if (active) lines.push(`**Active TTS engine:** \`${active}\``);
+    const asrActive = j?.asr?.active;
+    if (asrActive) lines.push(`**Active ASR engine:** \`${scrubText(String(asrActive))}\``);
   } catch {
     /* noop */
   }

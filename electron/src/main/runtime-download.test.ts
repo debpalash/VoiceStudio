@@ -75,10 +75,33 @@ it('rejects oversized scripts and HTTP failures', async () => {
   await expect(
     downloadRuntimeInstaller('https://astral.sh', {}, new AbortController().signal),
   ).rejects.toThrow('size limit');
-  reply(503, 'unavailable');
+  for (let i = 0; i < 3; i += 1) reply(503, 'unavailable');
   await expect(
-    downloadRuntimeInstaller('https://astral.sh', {}, new AbortController().signal),
+    downloadRuntimeInstaller('https://astral.sh', {}, new AbortController().signal, 0),
   ).rejects.toThrow('(503)');
+  expect(get).toHaveBeenCalledTimes(4); // 1 oversized + 3 bounded attempts
+});
+it('retries transient failures so a flaky first-run network still bootstraps', async () => {
+  reply(503, 'unavailable');
+  vi.mocked(get).mockImplementationOnce((() => {
+    const request = new EventEmitter();
+    queueMicrotask(() =>
+      request.emit('error', Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' })),
+    );
+    return request;
+  }) as unknown as typeof get);
+  reply(200, '# installer');
+  expect(
+    await downloadRuntimeInstaller('https://astral.sh', {}, new AbortController().signal, 0),
+  ).toBe('# installer');
+  expect(get).toHaveBeenCalledTimes(3);
+});
+it('does not retry definitive answers such as HTTP 404', async () => {
+  reply(404, 'missing');
+  await expect(
+    downloadRuntimeInstaller('https://astral.sh', {}, new AbortController().signal, 0),
+  ).rejects.toThrow('(404)');
+  expect(get).toHaveBeenCalledTimes(1);
 });
 it('does not start cancelled downloads', async () => {
   const controller = new AbortController();

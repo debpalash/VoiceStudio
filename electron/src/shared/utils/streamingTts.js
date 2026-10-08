@@ -155,16 +155,24 @@ export const peaksFromChunkList = (chunkArrays, buckets = 240) => {
  */
 export const createStreamingChunkPlayer = ({ label, sampleRate, crossfadeMs = 0, onDone } = {}) => {
   const Ctx = window.AudioContext || window.webkitAudioContext;
-  const ctx = new Ctx();
+  let ctx;
+  try {
+    ctx = new Ctx({ sampleRate });
+  } catch {
+    // Some output devices cannot open a context at the PCM rate.
+    ctx = new Ctx();
+  }
   if (ctx.state === 'suspended') ctx.resume().catch(() => {});
   const xf = Math.max(0, crossfadeMs) / 1000;
+  const startLeadSeconds = 0.08;
+  const endPaddingSeconds = 0.05;
 
   const chunks = []; // Float32Array per received chunk
   const starts = []; // timeline start (s) of each chunk, crossfade-overlapped
   let totalDuration = 0; // buffered timeline seconds
   let scheduled = []; // live nodes: { src, gain, index }
   let baseOffset = 0; // timeline position where the current chain started
-  let anchor = 0; // ctx.currentTime when the current chain started
+  let anchor = null; // ctx.currentTime when the current chain started
   let finished = false;
   let complete = false; // all chunks received (finalize() called)
   let timer = null;
@@ -172,23 +180,21 @@ export const createStreamingChunkPlayer = ({ label, sampleRate, crossfadeMs = 0,
   const dur = (i) => chunks[i].length / sampleRate;
   const fadeFor = (i) => (i > 0 ? Math.min(xf, dur(i - 1), dur(i)) : 0);
   const currentPos = () =>
-    Math.max(0, Math.min(baseOffset + (ctx.currentTime - anchor), totalDuration));
+    Math.max(
+      0,
+      Math.min(baseOffset + (anchor === null ? 0 : ctx.currentTime - anchor), totalDuration),
+    );
 
-  const finish = (reason) => {
-    if (finished) return;
-    finished = true;
-    if (timer) clearInterval(timer);
-    stopScheduled();
-    try {
-      ctx.close();
-    } catch {
-      /* already closed */
+  const disconnectScheduled = () => {
+    for (const node of scheduled) {
+      try {
+        node.src.disconnect();
+        node.gain.disconnect();
+      } catch {
+        /* noop */
+      }
     }
-    try {
-      onDone?.(reason);
-    } catch {
-      /* consumer callbacks must not break the manager */
-    }
+    scheduled = [];
   };
 
   const stopScheduled = () => {
@@ -208,6 +214,24 @@ export const createStreamingChunkPlayer = ({ label, sampleRate, crossfadeMs = 0,
     scheduled = [];
   };
 
+  const finish = (reason) => {
+    if (finished) return;
+    finished = true;
+    if (timer) clearInterval(timer);
+    if (reason === 'ended') disconnectScheduled();
+    else stopScheduled();
+    try {
+      ctx.close();
+    } catch {
+      /* already closed */
+    }
+    try {
+      onDone?.(reason);
+    } catch {
+      /* consumer callbacks must not break the manager */
+    }
+  };
+
   // Schedule chunk `i` at its timeline slot on the current anchor. `intra`
   // starts mid-chunk (seek); `withFade` crossfades against the chain's tail.
   const scheduleChunk = (i, intra = 0, withFade = true) => {
@@ -222,17 +246,21 @@ export const createStreamingChunkPlayer = ({ label, sampleRate, crossfadeMs = 0,
     gain.connect(ctx.destination);
 
     const when = anchor + (starts[i] + intra - baseOffset);
-    const fade = withFade && intra === 0 ? fadeFor(i) : 0;
+    const startAt = Math.max(when, ctx.currentTime);
     const tail = scheduled[scheduled.length - 1];
+    const fade =
+      withFade && intra === 0 && tail?.endsAt > startAt
+        ? Math.min(fadeFor(i), tail.endsAt - startAt)
+        : 0;
     if (fade > 0 && tail) {
       // Linear crossfade — same shape the backend bakes into the final file.
-      tail.gain.gain.setValueAtTime(1, when);
-      tail.gain.gain.linearRampToValueAtTime(0, when + fade);
-      gain.gain.setValueAtTime(0, when);
-      gain.gain.linearRampToValueAtTime(1, when + fade);
+      tail.gain.gain.setValueAtTime(1, startAt);
+      tail.gain.gain.linearRampToValueAtTime(0, startAt + fade);
+      gain.gain.setValueAtTime(0, startAt);
+      gain.gain.linearRampToValueAtTime(1, startAt + fade);
     }
-    src.start(Math.max(when, ctx.currentTime), intra);
-    scheduled.push({ src, gain, index: i });
+    src.start(startAt, intra);
+    scheduled.push({ src, gain, index: i, endsAt: startAt + dur(i) - intra });
   };
 
   const session = claimTrackedPlayback({
@@ -271,7 +299,9 @@ export const createStreamingChunkPlayer = ({ label, sampleRate, crossfadeMs = 0,
     if (finished || ctx.state !== 'running') return;
     const pos = currentPos();
     session.update({ currentTime: pos });
-    if (complete && pos >= totalDuration - 0.03) {
+    const endAt =
+      anchor === null ? ctx.currentTime : anchor + (totalDuration - baseOffset) + endPaddingSeconds;
+    if (complete && ctx.currentTime >= endAt) {
       session.update({ currentTime: totalDuration });
       session.release();
       finish('ended');
@@ -288,16 +318,23 @@ export const createStreamingChunkPlayer = ({ label, sampleRate, crossfadeMs = 0,
     starts.push(i === 0 ? 0 : starts[i - 1] + dur(i - 1) - fadeFor(i));
     totalDuration = starts[i] + dur(i);
 
-    const when = anchor + (starts[i] - baseOffset);
-    if (i > 0 && when < ctx.currentTime - 0.01) {
-      // Underrun: playback drained the buffered chunks before this one
-      // arrived. Re-anchor so the new chunk starts now (the playhead sat at
-      // the buffered edge) instead of clipping its head.
-      baseOffset = starts[i];
-      anchor = ctx.currentTime + 0.02;
+    if (i === 0) {
+      // Start the playhead with the first source, not when its context was
+      // created, and leave the renderer time to schedule the first quantum.
+      anchor = ctx.currentTime + startLeadSeconds;
       scheduleChunk(i, 0, false);
     } else {
-      scheduleChunk(i);
+      const when = anchor + (starts[i] - baseOffset);
+      if (when < ctx.currentTime - 0.01) {
+        // Underrun: playback drained the buffered chunks before this one
+        // arrived. Re-anchor so the new chunk starts now (the playhead sat at
+        // the buffered edge) instead of clipping its head.
+        baseOffset = starts[i];
+        anchor = ctx.currentTime + 0.02;
+        scheduleChunk(i, 0, true);
+      } else {
+        scheduleChunk(i);
+      }
     }
     session.update({
       duration: totalDuration,

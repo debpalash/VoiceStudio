@@ -148,7 +148,12 @@ remote key — is what's gating access.
   trusted LAN/Tailnet, set `OMNIVOICE_TRUSTED_NETWORKS` to a comma-separated list
   of CIDRs (e.g. `192.168.1.0/24,10.0.0.0/8`); clients from those networks are
   then treated as trusted by the **consumption** gates (share PIN, API key,
-  dictation WebSocket) and need no key/PIN. **Admin routes** (`/system/*`,
+  dictation WebSocket) and need no key/PIN. A proxy that forwards the original
+  `Host` (Caddy and Nginx Proxy Manager do) also needs its host name in
+  `OMNIVOICE_ALLOWED_HOSTS`, or requests without the API key are refused as an
+  unrecognized host name; IP addresses, `localhost` and `*.ts.net` names need
+  no entry (see [host names](api-auth.md#requests-from-other-websites-and-host-names)).
+  **Admin routes** (`/system/*`,
   `/api/settings/*`) stay true-loopback-only — use `OMNIVOICE_SERVER_MODE=1` for
   headless admin. It's the granular alternative to
   `OMNIVOICE_SERVER_MODE=1` (which trusts *all* non-loopback sources) and

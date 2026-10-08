@@ -86,3 +86,16 @@ def test_unknown_repo_cannot_start_a_network_repair(tmp_path):
         assert "No reviewed revision" in str(exc)
     else:  # pragma: no cover - assertion message is clearer than pytest.raises here
         raise AssertionError("unreviewed repository unexpectedly received a revision")
+
+
+def test_non_ascii_marker_falls_back_instead_of_raising(tmp_path):
+    """#2634: an undecodable marker must not block the next marker or the pin."""
+    repo_id = "k2-fsa/OmniVoice"
+    repo_dir = tmp_path / "models--k2-fsa--OmniVoice"
+    (repo_dir / "refs").mkdir(parents=True)
+    (repo_dir / "voicestudio-revision").write_bytes(b"\xff\xfe" + b"a" * 40)
+    existing = "e" * 40
+    (repo_dir / "refs" / "main").write_text(existing + "\n", encoding="ascii")
+    assert hf_revisions.installed_revision(repo_id, str(tmp_path)) == existing
+    (repo_dir / "refs" / "main").write_bytes(b"\x80\x81")
+    assert hf_revisions.installed_revision(repo_id, str(tmp_path)) == hf_revisions.revision_for(repo_id)

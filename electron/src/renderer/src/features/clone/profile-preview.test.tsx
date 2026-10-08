@@ -1,7 +1,8 @@
 ﻿import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ generate: vi.fn() }));
+const mocks = vi.hoisted(() => ({ generate: vi.fn(), warning: vi.fn(), success: vi.fn() }));
+vi.mock('sonner', () => ({ toast: { warning: mocks.warning, success: mocks.success } }));
 vi.mock('@/lib/api/generate', () => ({ generateClone: mocks.generate }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, to, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { to: string }) => (
@@ -80,4 +81,13 @@ it('aborts a closed pane and releases its synthesis slot without late playback',
     expect(release).not.toBeNull();
     release?.();
   });
+});
+
+it('discloses speech the backend dropped from a profile preview', async () => {
+  mocks.generate.mockResolvedValue({ blob: new Blob(['audio']), dropped: { count: 1, text: '' } });
+  mount();
+  fireEvent.click(screen.getByText('voice_profile.try_voice'));
+  fireEvent.click(screen.getByRole('button', { name: 'voice_profile.gen_preview' }));
+  await screen.findByTestId('preview-player');
+  expect(mocks.warning).toHaveBeenCalledWith('tts.droppedChunks', expect.anything());
 });

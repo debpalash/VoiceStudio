@@ -18,6 +18,8 @@ import zipfile
 from dataclasses import dataclass
 from typing import Optional
 
+from core.safe_archive import ArchiveError, copy_member, open_bounded_zip, read_member
+
 # ── Format constants ─────────────────────────────────────────────────────────
 OVSVOICE_FORMAT = "ovsvoice"
 OVSVOICE_SCHEMA_VERSION = 1
@@ -200,7 +202,8 @@ def _generate_preview(profile: dict, embed_fn) -> tuple[bytes, bool, float]:
         if not path:
             continue
         try:
-            waveform, sr = torchaudio.load(path)
+            from services.audio_io import load_audio
+            waveform, sr = load_audio(path)
         except Exception:  # noqa: BLE001 — try the next candidate (A4)
             continue
         if waveform.numel() == 0:  # empty/zero-length (A5)
@@ -328,10 +331,18 @@ class ParsedPersona:
         name = self.members.get(prefix)
         if not name:
             return False
-        import shutil
-        with self._zip.open(name) as src, open(dest_path, "wb") as dst:
-            shutil.copyfileobj(src, dst)
+        try:
+            copy_member(self._zip, name, dest_path)
+        except ArchiveError as e:
+            raise BundleError(e.status, e.detail)
         return True
+
+
+def _read_json_member(zf: zipfile.ZipFile, name: str) -> bytes:
+    try:
+        return read_member(zf, name)
+    except ArchiveError as e:
+        raise BundleError(e.status, e.detail)
 
 
 def parse_persona_bundle(content: bytes) -> ParsedPersona:
@@ -342,9 +353,9 @@ def parse_persona_bundle(content: bytes) -> ParsedPersona:
     if len(content) > MAX_BUNDLE_BYTES:
         raise BundleError(413, f"Bundle too large. Max is {MAX_BUNDLE_BYTES} bytes.")
     try:
-        zf = zipfile.ZipFile(io.BytesIO(content))
-    except zipfile.BadZipFile:
-        raise BundleError(400, "not a valid ZIP bundle")
+        zf = open_bounded_zip(content)
+    except ArchiveError as e:
+        raise BundleError(e.status, e.detail)
 
     names = [n for n in zf.namelist() if not n.endswith("/")]
 
@@ -353,7 +364,7 @@ def parse_persona_bundle(content: bytes) -> ParsedPersona:
     is_legacy = False
     if "manifest.json" in names:
         try:
-            manifest = json.loads(zf.read("manifest.json"))
+            manifest = json.loads(_read_json_member(zf, "manifest.json"))
         except (ValueError, UnicodeDecodeError):
             raise BundleError(400, "manifest is not valid JSON")
         if not isinstance(manifest, dict):
@@ -363,7 +374,7 @@ def parse_persona_bundle(content: bytes) -> ParsedPersona:
     elif "metadata.json" in names:
         is_legacy = True
         try:
-            legacy = json.loads(zf.read("metadata.json"))
+            legacy = json.loads(_read_json_member(zf, "metadata.json"))
         except (ValueError, UnicodeDecodeError):
             raise BundleError(400, "manifest is not valid JSON")
         if not isinstance(legacy, dict):
@@ -404,10 +415,10 @@ def parse_persona_bundle(content: bytes) -> ParsedPersona:
     consent = None
     if "consent.json" in names:
         try:
-            parsed = json.loads(zf.read("consent.json"))
+            parsed = json.loads(_read_json_member(zf, "consent.json"))
             if isinstance(parsed, dict):
                 consent = parsed
-        except (ValueError, UnicodeDecodeError):
+        except (ValueError, UnicodeDecodeError, BundleError):
             consent = None  # advisory only — a bad consent.json never 400s
 
     schema_version = manifest.get("schema_version", OVSVOICE_SCHEMA_VERSION)

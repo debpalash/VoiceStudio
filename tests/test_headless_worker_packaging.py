@@ -28,8 +28,8 @@ def _environment(service: dict) -> dict[str, str]:
 @pytest.mark.parametrize(
     ("service_name", "profile", "image_suffix"),
     [
-        ("omnivoice-worker-gpu", "worker-gpu", ":latest"),
-        ("omnivoice-worker-rocm", "worker-rocm", ":rocm"),
+        ("omnivoice-worker-gpu", "worker-gpu", ":stable"),
+        ("omnivoice-worker-rocm", "worker-rocm", ":stable-rocm"),
     ],
 )
 def test_compose_has_worker_only_gpu_profiles(service_name, profile, image_suffix):
@@ -90,3 +90,19 @@ def test_headless_docs_and_acceptance_script_use_the_supported_backend_command()
     assert HEADLESS_SOURCE_COMMAND in acceptance
     assert "OMNIVOICE_WORKER_MODE=1 omnivoice" not in guide
     assert "OMNIVOICE_WORKER_MODE=1 omnivoice" not in acceptance
+
+
+def test_compose_quick_start_pulls_released_images_without_dead_knobs():
+    """`:latest` is the rolling main preview; the quick start must pull the
+    release. An active `build:` next to `image:` would tag a local build as
+    that release, and OMNIVOICE_BIND_HOST is a no-op under the image's uvicorn
+    ENTRYPOINT, which binds 0.0.0.0 itself."""
+    compose = yaml.safe_load(
+        (ROOT / "deploy" / "docker-compose.yml").read_text(encoding="utf-8")
+    )
+    dockerfile = (ROOT / "deploy" / "Dockerfile").read_text(encoding="utf-8")
+    assert '"--host", "0.0.0.0"' in dockerfile
+    for name, service in compose["services"].items():
+        assert service["image"].rsplit(":", 1)[1] in {"stable", "stable-rocm"}, name
+        assert "build" not in service, name
+        assert "OMNIVOICE_BIND_HOST" not in _environment(service), name

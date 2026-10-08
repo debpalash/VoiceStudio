@@ -52,8 +52,14 @@ def kill_job_procs(job_id: str) -> None:
                 "Failed to kill subprocess for %s: %s",
                 job_id.replace("\n", " ").replace("\r", " "), e,
             )
+    # Drop only what was killed: a process registered while we were killing
+    # belongs to a still-live step and must stay tracked.
     with _active_procs_lock:
-        _active_procs.pop(job_id, None)
+        lst = _active_procs.get(job_id)
+        if lst is not None:
+            lst[:] = [p for p in lst if not any(p is k for k in procs)]
+            if not lst:
+                _active_procs.pop(job_id, None)
 
 
 def has_active_procs(job_id: str) -> bool:

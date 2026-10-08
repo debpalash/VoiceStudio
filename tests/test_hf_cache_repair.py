@@ -332,7 +332,7 @@ def model_manager(monkeypatch):
     monkeypatch.delenv("OMNIVOICE_PRELOAD_TTS_ASR", raising=False)
     monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
     monkeypatch.delenv("TRANSFORMERS_OFFLINE", raising=False)
-    monkeypatch.setattr(mm, "_lazy_torch", lambda: SimpleNamespace(float16="float16"))
+    monkeypatch.setattr(mm, "_lazy_torch", lambda: SimpleNamespace(float16="float16", float32="float32"))
     monkeypatch.setattr(mm, "get_best_device", lambda: "cpu")
     return mm
 

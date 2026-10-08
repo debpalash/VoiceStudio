@@ -1,4 +1,5 @@
 import { useBackendStatus } from '@/hooks/use-backend-status';
+import { isBackendReachable } from '@shared/utils/backendStage';
 import { LanguagesIcon } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -29,7 +30,7 @@ export interface TranslationEngine {
 export function useTranslationEngines() {
   const status = useBackendStatus();
   return useQuery({
-    enabled: status.stage === 'ready',
+    enabled: isBackendReachable(status.stage),
     queryKey: ['translation-engines'],
     queryFn: () =>
       apiJson<{

@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import inspect
 import io
 import json
 import logging
@@ -50,6 +49,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from services.model_manager import _gpu_pool, run_on_gpu_pool_guarded
 from core.http_headers import content_disposition
+from core.path_security import contained_join, upload_suffix
 from services.audio_io import OPUS_CODEC_ARGS, OPUS_SAMPLE_RATE
 
 logger = logging.getLogger("omnivoice.openai_compat")
@@ -61,7 +61,7 @@ logger = logging.getLogger("omnivoice.openai_compat")
 class OpenAIError(HTTPException):
     """An HTTPException that also names OpenAI's ``param`` and ``code``."""
 
-    def __init__(self, status_code: int, message: str, *, param: Optional[str] = None,
+    def __init__(self, status_code: int, message: Union[str, dict], *, param: Optional[str] = None,
                  code: Optional[str] = None, headers: Optional[dict] = None):
         super().__init__(status_code=status_code, detail=message, headers=headers)
         self.param = param
@@ -175,6 +175,66 @@ def is_openai_tts_model(model_id: str) -> bool:
     return model_id in OPENAI_TTS_MODELS or bool(_OPENAI_TTS_MODEL_RE.match(model_id))
 
 
+def _voice_name_key(name: Any) -> str:
+    """Comparison key for a voice-profile name: Unicode-normalised, trimmed,
+    case-folded — so ``"Narrator"``, ``" narrator "`` and ``"NARRATOR"`` match
+    (SQLite's ``LOWER()`` folds ASCII only)."""
+    import unicodedata
+
+    return unicodedata.normalize("NFKC", str(name or "")).strip().casefold()
+
+
+def _name_is_reserved(name: Any) -> bool:
+    """A profile named like an OpenAI voice or ``default`` keeps that word's
+    built-in meaning on /v1/audio/speech; it stays reachable by id."""
+    key = _voice_name_key(name)
+    return key == "default" or key in _OPENAI_VOICE_ALIASES
+
+
+def _resolve_voice_profile(voice: str):
+    """Resolve ``voice`` to a voice-profile row (#2617).
+
+    An exact profile id always wins; otherwise a unique case-insensitive
+    profile name matches. Several profiles sharing the name is a 409 that
+    lists their ids, so the caller can pick one instead of getting a silently
+    arbitrary voice. Returns ``None`` when nothing matches (the caller treats
+    ``voice`` as an engine preset) or the profile store can't be read.
+    """
+    try:
+        from core.db import db_conn
+
+        with db_conn() as conn:
+            row = conn.execute("SELECT * FROM voice_profiles WHERE id=?", (voice,)).fetchone()
+            if row is not None:
+                return row
+            key = _voice_name_key(voice)
+            if not key or _name_is_reserved(key):
+                return None
+            ids = [
+                r["id"]
+                for r in conn.execute("SELECT id, name FROM voice_profiles ORDER BY created_at, id")
+                if _voice_name_key(r["name"]) == key
+            ]
+            if len(ids) == 1:
+                return conn.execute("SELECT * FROM voice_profiles WHERE id=?", (ids[0],)).fetchone()
+    except Exception:
+        logger.warning("Voice profiles could not be read; treating voice as an engine preset")
+        return None
+    if len(ids) > 1:
+        message = (
+            f"{len(ids)} voice profiles are named '{voice.strip()}'. Pass one of their "
+            f"ids as `voice` instead, or rename the profiles so the name is unique: "
+            + ", ".join(ids)
+        )
+        raise OpenAIError(
+            409,
+            {"message": message, "matching_ids": ids},
+            param="voice",
+            code="ambiguous_voice",
+        )
+    return None
+
+
 # ── Schemas ─────────────────────────────────────────────────────────────────
 
 SpeechFormat = Literal["mp3", "opus", "aac", "flac", "wav", "pcm"]
@@ -200,7 +260,9 @@ class SpeechRequest(BaseModel):
     voice: Union[str, dict] = Field(
         default="default",
         description=(
-            "Voice to use. For VoiceStudio: pass a voice profile ID, 'default', "
+            "Voice to use. For VoiceStudio: pass a voice profile ID, a voice "
+            "profile name (case-insensitive; an ID wins, and a name shared by "
+            "several profiles is a 409 listing their IDs), 'default', "
             "or a KittenTTS preset name (also accepted as OpenAI's "
             "{\"id\": ...} object). OpenAI voice names (alloy, ash, ballad, "
             "coral, echo, fable, nova, onyx, sage, shimmer, verse, marin, "
@@ -555,12 +617,7 @@ def _engine_instructions(backend, instructions: Optional[str]) -> Optional[str]:
     """
     if not instructions:
         return None
-    from services.tts_backend import OmniVoiceBackend
-    if (
-        isinstance(backend, OmniVoiceBackend)
-        or getattr(backend, "supports_native_omnivoice_controls", False)
-        or str(getattr(backend, "id", "")).startswith("omnivoice")
-    ):
+    if getattr(backend, "instruct_vocabulary", "freeform") == "tags":
         from omnivoice.utils.voice_design import sanitize_instruct
         return sanitize_instruct(instructions) or None
     return instructions
@@ -635,34 +692,27 @@ async def create_speech(req: SpeechRequest):
     if req.description:
         kw["description"] = req.description
 
-    # Voice handling: if it's a known OpenAI alias, use defaults.
-    # If it's a UUID-like string, treat it as a profile_id and resolve ref_audio.
+    # Voice handling: an OpenAI alias or "default", in any case or spacing,
+    # uses the engine default; a voice-profile id, then a profile name
+    # (#2617), resolves the reference clip; anything else is forwarded as an
+    # engine preset (e.g. KittenTTS).
     voice = req.voice
-    if voice not in _OPENAI_VOICE_ALIASES and voice != "default":
-        # Try to resolve as a voice profile ID
-        try:
-            from core.db import db_conn
+    if not _name_is_reserved(voice):
+        row = _resolve_voice_profile(voice)
+        if row:
             from core.config import VOICES_DIR
-            with db_conn() as conn:
-                row = conn.execute(
-                    "SELECT * FROM voice_profiles WHERE id=?", (voice,)
-                ).fetchone()
-            if row:
-                if row["is_locked"] and row["locked_audio_path"]:
-                    kw["ref_audio"] = os.path.join(VOICES_DIR, row["locked_audio_path"])
-                elif row["ref_audio_path"]:
-                    kw["ref_audio"] = os.path.join(VOICES_DIR, row["ref_audio_path"])
-                if row["ref_text"]:
-                    kw["ref_text"] = row["ref_text"]
-                if row["instruct"] and not instruct:
-                    kw["instruct"] = row["instruct"]
-                if req.seed is None and row["seed"] is not None:
-                    kw["seed"] = row["seed"]
-            else:
-                # Not a profile ID — forward as engine preset name
-                kw["voice"] = voice
-        except Exception:
-            # Not a profile ID — might be a KittenTTS preset or similar
+            if row["is_locked"] and row["locked_audio_path"]:
+                kw["ref_audio"] = contained_join(VOICES_DIR, row["locked_audio_path"])
+            elif row["ref_audio_path"]:
+                kw["ref_audio"] = contained_join(VOICES_DIR, row["ref_audio_path"])
+            if row["ref_text"]:
+                kw["ref_text"] = row["ref_text"]
+            if row["instruct"] and not instruct:
+                kw["instruct"] = row["instruct"]
+            if req.seed is None and row["seed"] is not None:
+                kw["seed"] = row["seed"]
+        else:
+            # Not a profile — forward as an engine preset name.
             kw["voice"] = voice
 
     # Engine-agnostic text normalization (junk strip, numbers→words,
@@ -834,17 +884,9 @@ def _is_asr_engine_id(model: Optional[str]) -> bool:
 
 def _backend_request_kwargs(backend, options: dict) -> dict:
     """The subset of OpenAI-derived decode options this backend's
-    ``transcribe()`` declares. An engine that can't honour one (e.g. a
-    CTC model has no prompt) is simply not handed it."""
-    from services.asr_backend import TRANSCRIBE_REQUEST_OPTIONS
-    try:
-        params = inspect.signature(backend.transcribe).parameters
-    except (TypeError, ValueError):
-        return {}
-    return {
-        k: v for k, v in options.items()
-        if k in TRANSCRIBE_REQUEST_OPTIONS and k in params and v is not None
-    }
+    ``transcribe()`` declares (shared with dictation's vocabulary prompt)."""
+    from services.asr_backend import transcribe_request_kwargs
+    return transcribe_request_kwargs(backend, options)
 
 
 def _reported_language(result: dict, requested: Optional[str], task: str) -> str:
@@ -957,7 +999,8 @@ async def _transcribe_request(
         )
 
     # Write uploaded file to a temp location
-    suffix = os.path.splitext(file.filename or "audio.wav")[1] or ".wav"
+    # Content is probed by ffmpeg, so an unusable extension just gets ".wav".
+    suffix = upload_suffix(file.filename, ".wav") or ".wav"
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             content = await file.read()
@@ -1253,19 +1296,27 @@ def list_voices():
             "description": f"OpenAI '{name}' voice — maps to the active VoiceStudio engine's default voice.",
         })
 
-    # Include voice profiles from the database
+    # Include voice profiles from the database. `voice_id` is always
+    # accepted as `voice`; the name is too when `addressable_by_name` (#2617)
+    # — unique among profiles and not an OpenAI voice name or "default".
     try:
+        from collections import Counter
+
         from core.db import db_conn
         with db_conn() as conn:
             rows = conn.execute(
                 "SELECT id, name, language FROM voice_profiles ORDER BY name"
             ).fetchall()
+        name_counts = Counter(_voice_name_key(r["name"]) for r in rows)
         for row in rows:
+            key = _voice_name_key(row["name"])
             voices.append({
                 "voice_id": row["id"],
                 "name": row["name"],
                 "type": "profile",
                 "language": row["language"],
+                "addressable_by_name": bool(key) and name_counts[key] == 1
+                and not _name_is_reserved(key),
             })
     except Exception:
         logger.warning("Voice profiles could not be loaded; returning built-in aliases only")

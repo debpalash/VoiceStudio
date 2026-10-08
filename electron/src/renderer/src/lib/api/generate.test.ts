@@ -11,6 +11,7 @@ import {
   toGenerateForm,
 } from './generate';
 import type { CloneGenerateInput } from './types';
+import { BACKEND_GENERATE_BUDGET_S, generateAbortMs } from '@shared/utils/generateBudget';
 
 // Engine vocabulary (a regional Chinese dialect tag), escaped to keep the source ASCII.
 const DIALECT = '\u56DB\u5DDD\u8BDD';
@@ -157,6 +158,24 @@ describe('toGenerateForm', () => {
       toGenerateForm({ ...BASE_INPUT, profileId: 'p1', instruct: 'just prose' }).has('instruct'),
     ).toBe(false);
   });
+
+  it('sends the Voice Design recipe with the take (#2389)', () => {
+    const designRecipe = { description: 'raspy', picks: { Pitch: 'low pitch' } };
+    const form = toGenerateForm({ ...BASE_INPUT, designRecipe });
+    expect(JSON.parse(String(form.get('design_recipe')))).toEqual(designRecipe);
+    expect(toGenerateForm(BASE_INPUT).has('design_recipe')).toBe(false);
+  });
+
+  it('sends a free-form engine its description as written (#2389)', () => {
+    const description = ' raspy old female, scottish accent ';
+    expect(
+      toGenerateForm({
+        ...BASE_INPUT,
+        instruct: description,
+        instructVocabulary: 'freeform',
+      }).get('instruct'),
+    ).toBe('raspy old female, scottish accent');
+  });
 });
 
 describe('parseGenerateHeaders', () => {
@@ -284,9 +303,70 @@ describe('generateClone', () => {
         }),
     );
     const pending = generateClone({ ...BASE_INPUT, profileId: 'p1' });
+    let settled = false;
+    pending.catch(() => {}).finally(() => (settled = true));
     const assertion = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
-    await vi.advanceTimersByTimeAsync(21 * 60 * 1000 + 1);
+    // Still waiting where the old 21-minute backstop gave up on a job the
+    // backend was legitimately queueing (30 min) or cold-loading.
+    await vi.advanceTimersByTimeAsync(generateAbortMs(BASE_INPUT.text.length) - 1);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(2);
     await assertion;
+  });
+
+  it('outlasts the default CPU budget, which scales with the text (#2609)', () => {
+    const budget = BACKEND_GENERATE_BUDGET_S;
+    for (const chars of [400, 2_000, 5_000, 500_000]) {
+      // Mirrors backend cpu_auto_budget_s: 4 s/char, capped, plus sidecar grace.
+      const backendExecutionS =
+        Math.min(
+          Math.max(
+            budget.executionBase + Math.max(0, chars - budget.freeChars) / budget.charsPerSecond,
+            budget.cpuSecondsPerChar * chars,
+          ),
+          budget.cpuAutoCap,
+        ) + budget.sidecarGrace;
+      const backendMaxS =
+        budget.modelLoad +
+        budget.queueWait +
+        backendExecutionS +
+        Math.max(budget.progressExtensionCap, budget.progressExtensionBudgets * backendExecutionS);
+      expect(generateAbortMs(chars)).toBeGreaterThan(backendMaxS * 1000);
+    }
+    // 2,000 characters is 7,200 s on the backend; the old formula gave up at ~6,680 s.
+    expect(generateAbortMs(2_000)).toBeGreaterThan((7_200 + 1_800 + 1_200) * 1000);
+  });
+
+  it('waits for the reported automatic CPU ceiling whatever the typed length (#2609)', () => {
+    // A six-digit number normalizes to ~11x its length, so the typed length
+    // says nothing about the backend's grant; a CPU host reports its ceiling.
+    const withCeiling = generateAbortMs(20, { cpuAutoCeiling: 7_200 });
+    const budget = BACKEND_GENERATE_BUDGET_S;
+    const backendMaxS =
+      budget.modelLoad +
+      budget.queueWait +
+      7_200 +
+      budget.sidecarGrace +
+      Math.max(budget.progressExtensionCap, budget.progressExtensionBudgets * (7_200 + budget.sidecarGrace));
+    expect(withCeiling).toBeGreaterThan(backendMaxS * 1000);
+    expect(withCeiling).toBeGreaterThan(generateAbortMs(20));
+    expect(generateAbortMs(20, { cpuAutoCeiling: Number.NaN })).toBe(generateAbortMs(20));
+  });
+
+  it('outlasts the backend budget, which grows with the text', () => {
+    const budget = BACKEND_GENERATE_BUDGET_S;
+    const backendMaxS =
+      budget.modelLoad +
+      budget.queueWait +
+      budget.executionBase +
+      budget.sidecarGrace +
+      Math.max(
+        budget.progressExtensionCap,
+        budget.progressExtensionBudgets * (budget.executionBase + budget.sidecarGrace),
+      );
+    expect(generateAbortMs(0)).toBeGreaterThan(backendMaxS * 1000);
+    expect(generateAbortMs(0)).toBeGreaterThan(21 * 60 * 1000);
+    expect(generateAbortMs(50_000)).toBeGreaterThan(generateAbortMs(0) + 4 * 1220 * 1000 - 1);
   });
 });
 

@@ -27,7 +27,7 @@ import time
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from contextlib import contextmanager
-from typing import Optional
+from typing import Literal, Optional
 
 import torch
 
@@ -203,8 +203,25 @@ class TTSInputError(ValueError):
     surface as opaque 500s like "need at least one array to concatenate")."""
 
 
+def _lease_render(method):
+    """Keep engines resident for every render caller, including dub and batch."""
+    @functools.wraps(method)
+    def render(instance, *args, **kwargs):
+        with engine_in_use(instance):
+            return method(instance, *args, **kwargs)
+    return render
+
+
 class TTSBackend(ABC):
     """Every TTS engine exposes the same surface, regardless of vendor."""
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # Enforce lifetime at the engine boundary so every caller is covered.
+        for name in ("generate", "generate_batch", "_ensure_loaded"):
+            method = cls.__dict__.get(name)
+            if method is not None:
+                setattr(cls, name, _lease_render(method))
 
     #: Unique id for config + UI (e.g. "omnivoice", "voxcpm2").
     id: str = "base"
@@ -232,7 +249,11 @@ class TTSBackend(ABC):
 
     #: Whether this engine supports voice design from a text description
     #: (e.g. "young female, warm tone, British accent") without reference audio.
-    supports_voice_design: bool = False
+    #: ``False`` engines need a reference clip for the timbre, so Voice Design
+    #: is refused up front (UI and ``/generate``) instead of failing inside the
+    #: engine. ``None`` = not declared: design stays allowed and the engine
+    #: decides. Read through :func:`voice_design_support`.
+    supports_voice_design: Optional[bool] = None
 
     #: Whether this engine understands the graded-emotion generate kwargs
     #: (``emo_vector`` / ``emo_text`` + ``use_emo_text`` / ``emo_alpha``).
@@ -242,6 +263,14 @@ class TTSBackend(ABC):
     #: that don't set it still ignore the kwargs (every generate() takes **kw),
     #: so this is a discoverability hint, not an enforcement gate.
     supports_emotion: bool = False
+
+    #: How ``instruct`` is read (#2389): ``"tags"`` for OmniVoice's closed
+    #: voice-design vocabulary, which rejects anything else, or ``"freeform"``
+    #: for engines that take a written description as-is (Qwen3-TTS
+    #: VoiceDesign, VoxCPM2, audio.cpp) or ignore it. Surfaced via
+    #: ``list_backends()`` so clients reduce prose to tags only where the
+    #: engine requires it.
+    instruct_vocabulary: Literal["tags", "freeform"] = "freeform"
 
     def ensure_ready(self) -> None:
         """Load model weights now (blocking), so callers can separate the
@@ -286,6 +315,17 @@ class TTSBackend(ABC):
     #: (e.g. ``{"en": "English"}``); an empty dict means the engine falls back
     #: to the raw ISO / display token as the language picker renders it.
     language_display_names: dict[str, str] = {}
+
+    @classmethod
+    def configured_identity(cls) -> Optional[str]:
+        """What a fresh instance would load now, for engines whose model is a
+        construction-time preference. ``None`` means construction is not
+        preference-dependent and a cached instance never goes stale."""
+        return None
+
+    def built_identity(self) -> Optional[str]:
+        """The preference-dependent identity this instance was constructed with."""
+        return None
 
     def _normalize_language_code(self, language: object) -> Optional[str]:
         """Resolve picker names and region tags without treating unknown names as Auto."""
@@ -508,6 +548,7 @@ class TTSBackend(ABC):
         Engines that don't support this will ignore the parameter.
         """
 
+    @_lease_render
     def generate_batch(
         self,
         texts: list[str],
@@ -775,8 +816,13 @@ def _reference_duration_cached(path: str, _mtime_ns: int, _size: int) -> Optiona
     except Exception:  # noqa: BLE001 — fall through to ffmpeg
         pass
     try:
+        from core.url_safety import is_manifest_file
         from pydub import AudioSegment
 
+        # pydub's ffmpeg call cannot take input options, so a playlist named
+        # like audio is refused here rather than given to ffmpeg to follow.
+        if is_manifest_file(path):
+            return None
         return float(AudioSegment.from_file(path).duration_seconds)
     except Exception:  # noqa: BLE001 — unknown length: callers keep old behavior
         return None
@@ -1037,8 +1083,11 @@ def _read_reference_mono(path: str):
     if audio is None:
         try:
             import numpy as np
+            from core.url_safety import is_manifest_file
             from pydub import AudioSegment
 
+            if is_manifest_file(path):  # never hand a playlist to ffmpeg
+                return None
             segment = AudioSegment.from_file(path)
             sr = int(segment.frame_rate)
             samples = np.array(segment.get_array_of_samples(), dtype=np.float32)
@@ -1180,6 +1229,27 @@ def _reuse_or_rank_passage(ref_audio: str) -> Optional[tuple[str, str]]:
             if path is not None:
                 return path, recalled[1]
     return _omnivoice_installed_passage(ref_audio)
+
+
+def omnivoice_inline_reference(ref_audio, ref_text):
+    """``(ref_audio, ref_text, owned_path)`` for a direct ``model.generate()``.
+
+    Paths that bypass the prompt cache — the sidecar request and the inline
+    retry after a failed precompute — must condition on the same installed-
+    recognizer passage as the cache. Passing the whole long clip with no
+    transcript instead reached OmniVoice's bundled Whisper and failed with
+    "needs an installed speech-to-text model" although one was installed
+    (#2579). ``owned_path`` is a temporary window the caller deletes.
+    """
+    if isinstance(ref_audio, str):
+        from omnivoice.utils.audio import CLONE_REF_TEXT_MAX_SECONDS
+
+        duration = reference_duration_s(ref_audio)
+        if duration is not None and duration > CLONE_REF_TEXT_MAX_SECONDS:
+            selected = _reuse_or_rank_passage(ref_audio)
+            if selected is not None:
+                return selected[0], selected[1], selected[0]
+    return ref_audio, omnivoice_ref_text(ref_audio, ref_text), None
 
 
 def _speech_score(text: str) -> int:
@@ -1369,22 +1439,33 @@ def generate_with_cached_ref(model, *, ref_audio, ref_text, **gen_kw):
     # look the cache up, but never insert — see _get_clone_prompt(store=). MUST
     # be popped: the model's generate() has an explicit signature and would
     # TypeError on an unknown kwarg.
-    cache_ref = bool(gen_kw.pop("cache_ref", True))
-    # Stays in gen_kw too: the model needs it on the inline branch, and it is inert
-    # on the prompt branch (that prompt is already encoded).
-    preprocess_prompt = bool(gen_kw.get("preprocess_prompt", True))
-    prompt = (
-        _get_clone_prompt(model, ref_audio, ref_text, preprocess_prompt, store=cache_ref)
-        if ref_audio else None
-    )
-    if prompt is not None:
+    from services.model_manager import tts_inference
+
+    # tts_inference: no device move of the shared model while this runs, and
+    # it is restored first if an offload left it in RAM (#2618).
+    with engine_in_use(OmniVoiceBackend(model=model)), tts_inference():
+        cache_ref = bool(gen_kw.pop("cache_ref", True))
+        # Stays in gen_kw too: the model needs it on the inline branch, and it is inert
+        # on the prompt branch (that prompt is already encoded).
+        preprocess_prompt = bool(gen_kw.get("preprocess_prompt", True))
+        prompt = (
+            _get_clone_prompt(model, ref_audio, ref_text, preprocess_prompt, store=cache_ref)
+            if ref_audio else None
+        )
+        if prompt is not None:
+            try:
+                return model.generate(voice_clone_prompt=prompt, **gen_kw)
+            except Exception as e:  # noqa: BLE001 — fall back to the inline ref
+                logger.warning("voice_clone_prompt generate failed; retrying inline ref: %s", e)
+        inline_audio, inline_text, passage = omnivoice_inline_reference(ref_audio, ref_text)
         try:
-            return model.generate(voice_clone_prompt=prompt, **gen_kw)
-        except Exception as e:  # noqa: BLE001 — fall back to the inline ref
-            logger.warning("voice_clone_prompt generate failed; retrying inline ref: %s", e)
-    return model.generate(
-        ref_audio=ref_audio, ref_text=omnivoice_ref_text(ref_audio, ref_text), **gen_kw
-    )
+            return model.generate(ref_audio=inline_audio, ref_text=inline_text, **gen_kw)
+        finally:
+            if passage is not None:
+                try:
+                    os.remove(passage)
+                except OSError:
+                    logger.debug("failed to remove reference window")
 
 
 def clear_clone_prompt_cache() -> None:
@@ -1412,6 +1493,8 @@ class OmniVoiceBackend(TTSBackend):
 
     id = "omnivoice"
     display_name = "VoiceStudio (k2-fsa/OmniVoice, 600+ languages)"
+    instruct_vocabulary = "tags"
+    supports_voice_design = True
     gpu_compat = ("cuda", "rocm", "mps", "cpu")
     # Derived from the pool's own per-job budget (_GPU_VRAM_PER_JOB_GB = 5.0 in
     # model_manager, itself measured from the ~1.6 GB forward + autoregressive
@@ -1476,6 +1559,13 @@ class OmniVoiceBackend(TTSBackend):
 
     def _ensure_loaded(self):
         if self._model is not None:
+            # The cached instance skips get_model(), and with it the placement
+            # heal: put the shared model back on its device if the opt-in
+            # post-generation offload (#2618) or an unbalanced ASR offload
+            # (#1191) left it in RAM. One parameter probe when it is in place.
+            from services.model_manager import ensure_tts_on_device
+
+            ensure_tts_on_device()
             return
         # Reuse model_manager's cached instance so we don't double-load.
         from services.model_manager import get_model
@@ -1536,7 +1626,14 @@ class OmniVoiceBackend(TTSBackend):
         self._ensure_loaded()
         if not texts:
             return []
+        from services.model_manager import tts_inference
 
+        # Holds the shared model in place for prompt encoding + the batch
+        # generate (an offload can't move it mid-batch; #2618).
+        with tts_inference():
+            return self._generate_batch_on_model(texts, **kw)
+
+    def _generate_batch_on_model(self, texts: list[str], **kw) -> list[torch.Tensor]:
         def _items(value):
             if isinstance(value, list):
                 return value
@@ -1944,6 +2041,7 @@ class MossTTSNanoBackend(TTSBackend):
 
     id = "moss-tts-nano"
     display_name = "MOSS-TTS-Nano (20 langs, CPU realtime, 48 kHz)"
+    supports_voice_design = False  # strictly reference-cloning
     gpu_compat = ("cuda", "cpu")
 
     def __init__(self):
@@ -2314,6 +2412,97 @@ def resolve_kokoro_lang_code(language: str) -> str:
     return code
 
 
+def _harden_mlx_audio_eos_ids() -> None:
+    """Accept a single end-of-speech id from transformers 5 tokenizers.
+
+    mlx-audio's ``_eos_ids`` calls ``set(tokenizer.eos_token_ids)``; with
+    transformers 5 that attribute is one int, so OuteTTS (and any model using a
+    plain Hugging Face tokenizer) fails with "'int' object is not iterable".
+    """
+    try:
+        from mlx_audio.lm import generate as lm_generate
+    except ImportError:
+        return
+    original = getattr(lm_generate, "_eos_ids", None)
+    if original is None or getattr(original, "_accepts_int", False):
+        return
+
+    def _eos_ids(tokenizer):
+        value = getattr(tokenizer, "eos_token_ids", None)
+        if isinstance(value, int):
+            return {value}
+        return original(tokenizer)
+
+    _eos_ids._accepts_int = True
+    lm_generate._eos_ids = _eos_ids
+
+
+#: NLTK data MeloTTS English's g2p_en front end looks up on every call.
+_MELOTTS_NLTK_RESOURCES = (
+    ("taggers/averaged_perceptron_tagger_eng", "averaged_perceptron_tagger_eng"),
+    ("taggers/averaged_perceptron_tagger.zip", "averaged_perceptron_tagger"),
+    ("corpora/cmudict.zip", "cmudict"),
+)
+
+
+def _ensure_melotts_text_frontend() -> None:
+    """Validate optional text resources locally, before importing g2p_en.
+
+    g2p_en downloads its legacy NLTK tagger and dictionary at import time.
+    Check those plus the modern English tagger first; generation must never
+    acquire resources behind the user's back.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    if importlib.util.find_spec("g2p_en") is None:
+        raise RuntimeError(
+            "MeloTTS English needs the optional 'g2p_en' text package. "
+            "Pick another MLX-Audio model or install it explicitly into "
+            "VoiceStudio's Python environment (uv pip install g2p_en)."
+        )
+    import nltk
+    from core.config import DATA_DIR
+
+    target = Path(DATA_DIR) / "nltk_data"
+    if str(target) not in nltk.data.path:
+        nltk.data.path.insert(0, str(target))
+    for lookup, package in _MELOTTS_NLTK_RESOURCES:
+        try:
+            nltk.data.find(lookup)
+        except LookupError as exc:
+            raise RuntimeError(
+                f"MeloTTS needs the local NLTK '{package}' data. "
+                "Install its resources explicitly in VoiceStudio's Python "
+                "environment: python -m nltk.downloader "
+                "averaged_perceptron_tagger averaged_perceptron_tagger_eng cmudict. "
+                "Generation does not download these resources."
+            ) from exc
+
+
+def _dia_tagged(text: str) -> str:
+    """Prefix a single-speaker ``[S1]`` tag unless the text already names speakers."""
+    stripped = text.strip()
+    return stripped if re.match(r"\[S[12]\]", stripped) else f"[S1] {stripped}"
+
+
+_OUTETTS_CODEC_SAMPLE_RATE = 24000  # mlx-audio's DAC speech codec
+
+
+def _outetts_reference_array(path: str):
+    """Mono float32 ``mx.array`` at the OuteTTS codec rate, as its in-memory branch expects."""
+    import mlx.core as mx
+    import numpy as np
+    from services.audio_io import load_audio
+    from mlx_audio.utils import resample_audio
+
+    audio, sample_rate = load_audio(path)
+    mono = audio.mean(dim=0).detach().cpu().numpy()
+    if sample_rate != _OUTETTS_CODEC_SAMPLE_RATE:
+        mono = resample_audio(mono, sample_rate, _OUTETTS_CODEC_SAMPLE_RATE, axis=0)
+    return mx.array(np.asarray(mono, dtype=np.float32))
+
+
 class MLXAudioBackend(TTSBackend):
     """Blaizzy/mlx-audio — Apple-Silicon-only wrapper over 14+ TTS engines
     (Kokoro, CSM, Dia, Qwen3-TTS, Chatterbox, MeloTTS, OuteTTS, Spark,
@@ -2349,6 +2538,33 @@ class MLXAudioBackend(TTSBackend):
     }
     DEFAULT_MODEL_KEY = "kokoro"
 
+    # Languages each curated model is documented to speak, as ISO 639-1 codes.
+    # Drives both the language picker and the synthesis guard, so neither can
+    # offer a language the model cannot say. Custom repos stay open-ended.
+    # Sources (model cards, checked 2026-09-29):
+    #   kokoro      huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md
+    #   csm         huggingface.co/sesame/csm-1b ("some capacity for non-English
+    #               ... likely won't do well")
+    #   qwen3-tts   huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign (10 languages)
+    #   dia         huggingface.co/nari-labs/Dia-1.6B ("only supports English")
+    #   chatterbox  huggingface.co/ResembleAI/chatterbox (base model; Multilingual
+    #               is a separate checkpoint)
+    #   melotts     huggingface.co/mlx-community/MeloTTS-English-v3-MLX
+    #   outetts     huggingface.co/OuteAI/Llama-OuteTTS-1.0-1B (high + moderate
+    #               training-data tiers)
+    CURATED_MODEL_LANGUAGES: dict[str, tuple[str, ...]] = {
+        "kokoro": ("en", "es", "fr", "hi", "it", "pt", "ja", "zh"),
+        "csm": ("en",),
+        "qwen3-tts": ("zh", "en", "ja", "ko", "de", "fr", "ru", "pt", "es", "it"),
+        "dia": ("en",),
+        "chatterbox": ("en",),
+        "melotts": ("en",),
+        "outetts": (
+            "en", "ar", "zh", "nl", "fr", "de", "it", "ja", "ko", "lt", "ru", "es",
+            "pt", "be", "bn", "ka", "hu", "lv", "fa", "pl", "sw", "ta", "uk",
+        ),
+    }
+
     def __init__(self):
         self._model = None
         self._sr = 24000  # most mlx-audio engines emit 24 kHz mono
@@ -2356,15 +2572,22 @@ class MLXAudioBackend(TTSBackend):
         # model picker) > default. Mirrors active_backend_id()'s resolution
         # order exactly so power-users can still pin a model without the UI
         # silently undoing it.
+        self._model_id = self.configured_identity()
+
+    @classmethod
+    def configured_identity(cls) -> str:
         from core import prefs
         key = prefs.resolve(
             "mlx_audio_model_id",
             env="OMNIVOICE_MLX_AUDIO_MODEL",
-            default=self.DEFAULT_MODEL_KEY,
+            default=cls.DEFAULT_MODEL_KEY,
         )
         # Accept either a curated key ("kokoro") or a full HF repo id
         # ("mlx-community/Kokoro-82M-bf16") — flexibility for power users.
-        self._model_id = self.CURATED_MODELS.get(key, key)
+        return cls.CURATED_MODELS.get(key, key)
+
+    def built_identity(self) -> Optional[str]:
+        return self._model_id
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:
@@ -2395,12 +2618,25 @@ class MLXAudioBackend(TTSBackend):
     def model_identity(self) -> Optional[str]:
         return self._model_id
 
+    def _curated_key(self) -> Optional[str]:
+        return next(
+            (key for key, repo in self.CURATED_MODELS.items() if repo == self._model_id), None
+        )
+
+    def _check_language(self, language: object) -> Optional[str]:
+        # Kokoro's installed tables are authoritative and accept labels such
+        # as "British English" that the generic ISO check would reject.
+        if self._curated_key() == "kokoro":
+            if isinstance(language, str) and language.strip() and language.strip().lower() != "auto":
+                resolve_kokoro_lang_code(language)
+            return None
+        return super()._check_language(language)
+
     @property
     def supported_languages(self) -> list[str]:
-        # Per-model; Kokoro supports 8, Qwen3 ~4, Kugel 24. Return "multi"
-        # so the language picker doesn't gate by engine — each engine
-        # silently ignores languages it doesn't know.
-        return ["multi"]
+        # Per curated model; an arbitrary HF repo has no declared set.
+        declared = self.CURATED_MODEL_LANGUAGES.get(self._curated_key() or "")
+        return list(declared) if declared else ["multi"]
 
     @property
     def supports_cloning(self) -> bool:
@@ -2433,7 +2669,10 @@ class MLXAudioBackend(TTSBackend):
     def _ensure_loaded(self):
         if self._model is not None:
             return
+        if self._curated_key() == "melotts":
+            _ensure_melotts_text_frontend()
         from mlx_audio.tts.utils import load_model
+        _harden_mlx_audio_eos_ids()
         logger.info("Loading mlx-audio model %s", self._model_id)
         self._model = load_model(self._model_id)
 
@@ -2468,6 +2707,20 @@ class MLXAudioBackend(TTSBackend):
         kwargs = {"text": text, "speed": speed}
         if voice:     kwargs["voice"] = voice
         if ref_audio: kwargs["ref_audio"] = ref_audio
+        if self._curated_key() == "melotts":
+            _ensure_melotts_text_frontend()
+        if self._curated_key() == "dia":
+            # Dia is trained on speaker-tagged dialogue (huggingface.co/nari-labs/
+            # Dia-1.6B). Untagged text runs to the full audio length instead of
+            # stopping, which blew through the generation time limit.
+            kwargs["text"] = text = _dia_tagged(text)
+            if ref_text:
+                ref_text = _dia_tagged(ref_text)
+        if ref_audio and isinstance(ref_audio, str) and self._curated_key() == "outetts":
+            # mlx-audio's OuteTTS only defines its Whisper input on the
+            # in-memory branch, so a file path fails with UnboundLocalError
+            # ('resampled_audio'). Hand it the clip as the array it expects.
+            kwargs["ref_audio"] = _outetts_reference_array(ref_audio)
         # The comment above claimed instruct was passed "for Qwen3"; it never
         # was. The curated `qwen3-tts` model IS the VoiceDesign variant, which
         # mlx-audio refuses to run without one — so the engine was unusable no
@@ -2489,7 +2742,7 @@ class MLXAudioBackend(TTSBackend):
         # "IndexError: list index out of range" deep inside mlx-audio,
         # instead of ever attempting the clone. Community-diagnosed (#1012).
         if ref_audio and ref_text: kwargs["ref_text"] = ref_text
-        if language and language != "Auto":
+        if language and language.strip() and language.strip().lower() != "auto":
             if self._model_id == self.CURATED_MODELS.get("kokoro"):
                 # Kokoro's vendored pipeline hard-asserts `lang_code` against
                 # its own single-letter table — a bogus code crashes with an
@@ -2505,9 +2758,23 @@ class MLXAudioBackend(TTSBackend):
                 # entirely (Qwen3-TTS's own docstring: "lang_code: Language
                 # code (auto, chinese, english, etc.)" — a full name, not a
                 # 2-letter code). Kokoro's strict validation doesn't apply to
-                # them, so don't reject a language that's valid for whatever
-                # model is actually active.
-                kwargs["lang_code"] = language[:2].lower()
+                # them. Curated models are checked against their documented
+                # set instead of silently speaking a language they don't know.
+                self._check_language(language)
+                code = self._normalize_language_code(language)
+                if self._curated_key() == "qwen3-tts":
+                    # mlx-audio Qwen's codec_language_id uses full names.
+                    qwen_languages = {
+                        "zh": "chinese", "en": "english", "ja": "japanese",
+                        "ko": "korean", "de": "german", "fr": "french",
+                        "ru": "russian", "pt": "portuguese", "es": "spanish",
+                        "it": "italian",
+                    }
+                    mapped_language = qwen_languages.get(code)
+                    if mapped_language is not None:
+                        kwargs["lang_code"] = mapped_language
+                elif code is not None:
+                    kwargs["lang_code"] = code
 
         def collect(results):
             groups = []
@@ -2752,6 +3019,7 @@ class GPTSoVITSBackend(TTSBackend):
 
     id = "gpt-sovits"
     display_name = "GPT-SoVITS (5 langs, zero-shot, RTF 0.014, MIT)"
+    supports_voice_design = False  # api_v2 needs a reference clip for every request
     # Server-side; whichever device GPT-SoVITS itself uses (CUDA preferred).
     gpu_compat = ("cuda", "cpu")
 
@@ -2879,7 +3147,8 @@ class GPTSoVITSBackend(TTSBackend):
         # Parse the WAV response
         import io
         import torchaudio
-        wav, sr = torchaudio.load(io.BytesIO(audio_bytes))
+        from services.audio_io import load_audio
+        wav, sr = load_audio(io.BytesIO(audio_bytes))
         if sr != self.sample_rate:
             wav = torchaudio.functional.resample(wav, sr, self.sample_rate)
         if wav.ndim == 1:
@@ -3276,6 +3545,13 @@ def _sidecar_installable_ids() -> frozenset[str]:
         return frozenset()
 
 
+def voice_design_support(cls) -> Optional[bool]:
+    """``supports_voice_design`` as reported to clients: a declared bool, or
+    None when the engine never declared it (or it depends on the model)."""
+    value = getattr(cls, "supports_voice_design", None)
+    return value if isinstance(value, bool) else None
+
+
 def list_backends(*, include_hidden: bool = False) -> list[dict]:
     """Enumerate the engine catalogue with each backend's availability state.
 
@@ -3305,6 +3581,9 @@ def list_backends(*, include_hidden: bool = False) -> list[dict]:
           "gpu_compat":     list[str],              # subset of {cuda, rocm, mps, vulkan, xpu, npu, cpu}
           "supports_cloning": Optional[bool],       # True/False from the class attr; None when
                                                     #   model-dependent (property, e.g. mlx-audio)
+          "instruct_vocabulary": "tags" | "freeform",  # OmniVoice tag set vs model-native text
+          "supports_voice_design": Optional[bool],  # False = needs a reference clip;
+                                                    #   None = undeclared (design allowed)
           "max_ref_seconds": Optional[float],       # seconds of a clone clip the engine uses
           "ref_strategy": Optional[str],            # "best_window" | "head" | "full"; None = unverified
           "effective_device": str,                  # device this engine uses on THIS host
@@ -3428,6 +3707,11 @@ def list_backends(*, include_hidden: bool = False) -> list[dict]:
             # Graded-emotion capability (#1208) — drives the Audiobook emotion
             # panel's engine gate. Class attr, defaults False.
             "supports_emotion": bool(getattr(cls, "supports_emotion", False)),
+            # "tags" = OmniVoice's closed design vocabulary; "freeform" = the
+            # text reaches the model as written (#2389).
+            "instruct_vocabulary": getattr(cls, "instruct_vocabulary", "freeform"),
+            # Voice Design gate: False hides Design for reference-only engines.
+            "supports_voice_design": voice_design_support(cls),
             # Reference-length truth (#2281): how much of a clone clip the
             # engine really uses and how it picks it. None = not verified.
             "max_ref_seconds": getattr(cls, "max_ref_seconds", None),
@@ -3574,10 +3858,41 @@ def language_options(backend_id: str) -> Optional[list[str]]:
                 atexit.unregister(shutdown)
 
 
-def _installed_kokoro_language_options() -> Optional[list[str]]:
+# The language tables shipped by the mlx-audio release this app is tested with
+# (mlx_audio/tts/models/kokoro/pipeline.py, 0.3–0.5). Used only when the
+# installed tables cannot be read, so Kokoro never falls back to "every
+# language" in the picker — synthesis would reject most of them (#977).
+_KOKORO_FALLBACK_TABLES = (
+    {"en": "a", "en-us": "a", "en-gb": "b", "es": "e", "fr-fr": "f", "fr": "f",
+     "hi": "h", "it": "i", "pt-br": "p", "pt": "p", "ja": "j", "zh": "z"},
+    {"a": "American English", "b": "British English", "e": "es", "f": "fr-fr",
+     "h": "hi", "i": "it", "p": "pt-br", "j": "Japanese", "z": "Mandarin Chinese"},
+)
+
+
+def _literal_table(node):
+    """Evaluate ``{...}`` or ``dict(key=value, ...)`` without executing code.
+
+    mlx-audio declares ``LANG_CODES = dict(a=..., ...)``; ``literal_eval``
+    alone rejects that call, which silently hid Kokoro's real language set.
+    """
+    import ast
+
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "dict"
+            and all(keyword.arg for keyword in node.keywords)):
+        table = {}
+        for argument in node.args:
+            table.update(ast.literal_eval(argument))
+        table.update({keyword.arg: ast.literal_eval(keyword.value) for keyword in node.keywords})
+        return table
+    return ast.literal_eval(node)
+
+
+def _installed_kokoro_language_options() -> list[str]:
     """Read the installed model's literal tables without importing MLX or weights.
 
-    Unknown/new package layouts stay unknown rather than using a guessed list.
+    An unreadable or new package layout falls back to the tested release's
+    declared tables instead of leaving the picker open to every language.
     """
     import ast
     from importlib import metadata
@@ -3592,13 +3907,13 @@ def _installed_kokoro_language_options() -> Optional[list[str]]:
             if isinstance(node, ast.Assign):
                 for target in node.targets:
                     if isinstance(target, ast.Name) and target.id in {"ALIASES", "LANG_CODES"}:
-                        tables[target.id] = ast.literal_eval(node.value)
+                        tables[target.id] = _literal_table(node.value)
         aliases, languages = tables["ALIASES"], tables["LANG_CODES"]
-        return sorted(name for name, code in LANG_NAME_TO_ID.items()
-                      if aliases.get(_KOKORO_ISO_BY_FULL_NAME.get(name, code), code) in languages)
     except Exception:
-        logger.debug("Kokoro language metadata unavailable", exc_info=True)
-        return None
+        logger.warning("Kokoro language tables unreadable; using the declared set", exc_info=True)
+        aliases, languages = _KOKORO_FALLBACK_TABLES
+    return sorted(name for name, code in LANG_NAME_TO_ID.items()
+                  if aliases.get(_KOKORO_ISO_BY_FULL_NAME.get(name, code), code) in languages)
 
 
 
@@ -3796,7 +4111,7 @@ def get_active_tts_backend(*, model=None) -> TTSBackend:
     )
     if switching:
         try:
-            _active_instance.unload()
+            _retire_engine(_active_instance)
         except Exception as exc:  # noqa: BLE001
             logger.warning("engine switch: %s.unload() raised: %s",
                            type(_active_instance).__name__, exc)
@@ -3844,6 +4159,18 @@ _ENGINE_LAST_USED: dict[type, float] = {}
 # exactly like an abandoned model — and the sweep would unload it out from
 # under the thread rendering it.
 _ENGINE_IN_USE: dict[type, int] = {}
+_RETIRED_ENGINES: dict[type, list[object]] = {}
+
+
+def _retire_engine(instance) -> None:
+    """Unload a replaced model once every request holding its class has finished."""
+    with _ENGINE_CACHE_LOCK:
+        if _ENGINE_IN_USE.get(type(instance)):
+            retired = _RETIRED_ENGINES.setdefault(type(instance), [])
+            if not any(old is instance for old in retired):
+                retired.append(instance)
+            return
+        instance.unload()
 
 def _idle_seconds_from_env(name: str, default: float, *, floor: float) -> float:
     """Read a tunable idle duration, ignoring anything unusable.
@@ -3889,13 +4216,20 @@ def engine_in_use(instance, *, now: Optional[float] = None):
     try:
         yield instance
     finally:
+        retired = []
         with _ENGINE_CACHE_LOCK:
             remaining = _ENGINE_IN_USE.get(cls, 1) - 1
             if remaining > 0:
                 _ENGINE_IN_USE[cls] = remaining
             else:
                 _ENGINE_IN_USE.pop(cls, None)
+                retired = _RETIRED_ENGINES.pop(cls, [])
             _ENGINE_LAST_USED[cls] = time.monotonic() if now is None else float(now)
+        for old in retired:
+            try:
+                old.unload()
+            except Exception:
+                logger.warning("retired engine unload failed", exc_info=True)
 
 
 def get_engine_instance(cls, *, now: Optional[float] = None):
@@ -3906,13 +4240,33 @@ def get_engine_instance(cls, *, now: Optional[float] = None):
     an extra sidecar process the first time the lock is acquired. One instance
     per process is the right move.
     """
+    stale = None
     with _ENGINE_CACHE_LOCK:
         inst = _ENGINE_INSTANCES.get(cls)
+        if inst is not None and _built_for_other_model(cls, inst):
+            # A model picked in Settings after this instance was built (mlx-audio's
+            # curated models) must take effect; otherwise the old model keeps
+            # speaking under the new name. A job still holding it keeps its copy.
+            stale = inst
+            inst = None
         if inst is None:
             inst = cls()
             _ENGINE_INSTANCES[cls] = inst
         _ENGINE_LAST_USED[cls] = time.monotonic() if now is None else float(now)
-        return inst
+    if stale is not None:
+        try:
+            _retire_engine(stale)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("model switch: %s.unload() raised: %s", type(stale).__name__, exc)
+    return inst
+
+
+def _built_for_other_model(cls, inst) -> bool:
+    try:
+        wanted = cls.configured_identity()
+    except Exception:  # noqa: BLE001 — a preference read must never block synthesis
+        return False
+    return wanted is not None and wanted != inst.built_identity()
 
 
 def get_engine_instance_for(engine_id: str, *, now: Optional[float] = None):

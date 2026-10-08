@@ -1,5 +1,11 @@
 # Electron voice gallery
 
+> **Historical context:** this page was written while the Electron and Tauri apps
+> coexisted. Mentions of Tauri helpers, pages, tests and regression results describe
+> that migration period; the Tauri shell has since been removed and the shared code
+> now lives in `electron/src/shared/`. Existing Tauri installs: see the
+> [migration guide](electron-migration.md).
+
 Open VoiceStudio Gallery from the cloning sidebar or command search. Browse the
 existing local archetype catalogue by category, search it, and load more results.
 Age, gender, pitch, accent, language and whisper filters reuse the Tauri taxonomy.

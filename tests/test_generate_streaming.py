@@ -414,6 +414,38 @@ def test_stream_execution_timeout_is_not_reported_as_capacity_busy(
     assert events[-1][0]["code"] != "generation_busy"
 
 
+@pytest.mark.parametrize("device,expect_cpu_copy", [("cpu", True), ("cuda", False)])
+def test_stream_timeout_names_the_cpu_remedy_only_on_cpu(
+    client, monkeypatch, no_omnivoice_model, device, expect_cpu_copy,
+):
+    """#2609: a CPU user gets the concrete CPU-budget fix, same error code."""
+    fake = _make_deterministic_engine()
+    monkeypatch.setitem(_tts_mod()._REGISTRY, "stream-fake", fake)
+
+    import api.routers.generation as gen_mod
+    import services.engine_routing as routing
+
+    async def _expired(fn, *, what="GPU job", **kwargs):
+        del fn, kwargs
+        raise gen_mod.GpuJobTimeoutError("expired")
+
+    async def _profile(*_a, **_k):
+        return {
+            "effective_device": device, "min_vram_gb": 0.0,
+            "runtime_hardware_family": device, "runtime_vram_gb": None,
+            "routing_status": "ok",
+        }
+
+    monkeypatch.setattr(gen_mod, "run_on_gpu_pool_guarded", _expired)
+    monkeypatch.setattr(routing, "runtime_compute_profile_async", _profile)
+    events = _stream_events(
+        client, {"text": "Hello there.", "engine": "stream-fake"}
+    )
+    err = events[-1][0]
+    assert err["code"] == "generation_timeout"
+    assert ("CPU budget" in err["detail"]) is expect_cpu_copy
+
+
 def test_stream_native_model_path(client, monkeypatch, tmp_path):
     """The native OmniVoice model path streams too (per-chunk generate calls
     with duration=None), and its saved take matches the classic render."""

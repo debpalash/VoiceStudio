@@ -67,33 +67,73 @@ script as the literal translation — never switch language or transliterate.
 Reply ONLY with the adapted translation — no quotes, no headers, no code
 fences, no commentary."""
 
-# Per-language script ranges, mirrored from dub_translate.LANG_REQUIRED_SCRIPT
-# so the cinematic refine path can reject LLM outputs that drifted off the
-# target script. Kept local instead of imported because the routers package
-# also imports this services module — circular-import risk otherwise.
-_SCRIPT_RANGES = {
-    "hi":    (0x0900, 0x097F),
-    "ar":    (0x0600, 0x06FF),
-    "zh":    (0x4E00, 0x9FFF),
-    "zh-CN": (0x4E00, 0x9FFF),
-    "ja":    (0x3040, 0x30FF),
-    "ko":    (0xAC00, 0xD7AF),
-    "th":    (0x0E00, 0x0E7F),
-    "ru":    (0x0400, 0x04FF),
-    "uk":    (0x0400, 0x04FF),
+# Han letters: CJK unified ideographs (basic, extension A, supplementary
+# extensions B onward), compatibility ideographs, and the ideographic iteration
+# and closing marks (U+3005, U+3006) that ``str.isalpha`` counts as letters.
+_HAN_RANGES = (
+    (0x3005, 0x3006),
+    (0x3400, 0x4DBF),
+    (0x4E00, 0x9FFF),
+    (0xF900, 0xFAFF),
+    (0x20000, 0x323AF),
+)
+# Kana: hiragana and katakana with their marks, katakana phonetic extensions,
+# halfwidth katakana and the historic kana supplements.
+_KANA_RANGES = (
+    (0x3040, 0x30FF),
+    (0x31F0, 0x31FF),
+    (0xFF66, 0xFF9F),
+    (0x1B000, 0x1B16F),
+)
+
+# Letters each distinctive-script target may be written in. The single source
+# for the primary translation gate (dub_translate.LANG_REQUIRED_SCRIPT) and the
+# Cinematic/Autofit refine gate below. Japanese is written in kana AND kanji;
+# counting kana alone rejected every kanji-heavy Japanese line (#2576).
+SCRIPT_RANGES: dict[str, tuple[tuple[int, int], ...]] = {
+    "hi":    ((0x0900, 0x097F),),
+    "ar":    ((0x0600, 0x06FF),),
+    "zh":    _HAN_RANGES,
+    "zh-CN": _HAN_RANGES,
+    "ja":    _KANA_RANGES + _HAN_RANGES,
+    "ko":    ((0xAC00, 0xD7AF),),
+    "th":    ((0x0E00, 0x0E7F),),
+    "ru":    ((0x0400, 0x04FF),),
+    "uk":    ((0x0400, 0x04FF),),
 }
 
 
-def _looks_like_target_script(text: str, code: str, threshold: float = 0.5) -> bool:
-    rng = _SCRIPT_RANGES.get(code)
-    if not rng:
-        return True
-    lo, hi = rng
+# Han-only text is Chinese, not Japanese: real Japanese prose carries kana
+# (particles, inflections). Short all-kanji lines (names, headings) are common
+# Japanese, so only a run of this many Han letters with zero kana is rejected.
+_JA_HAN_ONLY_MIN = 6
+
+
+def _in_ranges(ch: str, ranges: tuple[tuple[int, int], ...]) -> bool:
+    return any(lo <= ord(ch) <= hi for lo, hi in ranges)
+
+
+def script_ratio(text: str, code: str) -> float:
+    """Fraction of letters in ``text`` inside the scripts expected for ``code``.
+
+    Punctuation, digits and whitespace are excluded from the denominator.
+    Targets without a distinctive script (and text without letters) score 1.0.
+    """
+    ranges = SCRIPT_RANGES.get(code)
+    if not ranges:
+        return 1.0
     letters = [c for c in text if c.isalpha()]
     if not letters:
-        return True
-    inside = sum(1 for c in letters if lo <= ord(c) <= hi)
-    return (inside / len(letters)) >= threshold
+        return 1.0
+    if code == "ja" and not any(_in_ranges(c, _KANA_RANGES) for c in letters):
+        if sum(1 for c in letters if _in_ranges(c, _HAN_RANGES)) >= _JA_HAN_ONLY_MIN:
+            return 0.0
+    inside = sum(1 for c in letters if _in_ranges(c, ranges))
+    return inside / len(letters)
+
+
+def _looks_like_target_script(text: str, code: str, threshold: float = 0.5) -> bool:
+    return script_ratio(text, code) >= threshold
 
 
 # ── Divergence guard (shared with speech_rate's Autofit fit pass) ────────────
@@ -320,7 +360,9 @@ def _chat(client, *, system: str, user: str) -> str:
                     {"role": "user", "content": user},
                 ],
             )
-            return (res.choices[0].message.content or "").strip()
+            from services.llm_backend import _strip_reasoning
+            return _strip_reasoning(res.choices[0].message.content or "",
+                                    prompt=f"{system}\n{user}")
         except Exception as e:  # noqa: BLE001 — re-raised unless a retryable 429
             wait = _retry_after_seconds(e)
             if wait is None or attempts >= 1:

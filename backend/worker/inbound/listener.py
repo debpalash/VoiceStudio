@@ -49,6 +49,9 @@ logger = logging.getLogger(__name__)
 # The panel presents its key here. Lower-case because gRPC normalises metadata
 # keys and a mixed-case constant silently never matches.
 KEY_METADATA_KEY = "x-omnivoice-node-key"
+# The panel's single-use challenge (hex) for the node's opening Register. The
+# node speaks first on Attach, so the challenge cannot ride a frame.
+CHALLENGE_METADATA_KEY = "x-omnivoice-challenge"
 
 DEFAULT_PORT = 7444
 DEFAULT_BIND = "127.0.0.1"
@@ -58,6 +61,15 @@ _FETCH_CHUNK_BYTES = 1024 * 1024
 # control plane's per-artifact limit and prevents one authenticated stream from
 # consuming the node's disk without bound.
 MAX_INPUT_ARTIFACT_BYTES = 1024**3
+
+
+def _metadata_challenge(context) -> bytes:
+    """The panel's challenge from Attach metadata; empty for older panels."""
+    try:
+        metadata = {k.lower(): v for k, v in (context.invocation_metadata() or ())}
+        return bytes.fromhex(str(metadata.get(CHALLENGE_METADATA_KEY, "")))[:64]
+    except (AttributeError, TypeError, ValueError):
+        return b""
 
 
 def _peer_of(context) -> str:
@@ -427,7 +439,12 @@ class NodeServicer(pb_grpc.NodeServiceServicer):
             # The node speaks first even though the panel dialled: it is still
             # the side with capabilities to declare, and the panel cannot
             # schedule anything until it knows them.
-            register = client.build_register_request()
+            challenge = _metadata_challenge(context)
+            register = (
+                client.build_register_request(challenge=challenge)
+                if challenge
+                else client.build_register_request()
+            )
             if inspect.isawaitable(register):
                 register = await register
             yield pb.WorkerMessage(register=register)

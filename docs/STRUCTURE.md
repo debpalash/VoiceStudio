@@ -7,15 +7,16 @@ Every folder has a single job. Every file at the root earns its place.
 ```
 VoiceStudio/
 │
-├── README.md / README_CN.md     ⟵ user-facing overview (English / Chinese)
+├── README.md / README_CN.md / README_JA.md ⟵ user-facing overview (English / Chinese / Japanese)
 ├── CHANGELOG.md                 ⟵ release history; Electron releases use the tagged section
 ├── CLAUDE.md / AGENTS.md        ⟵ the working contract for AI agents — keep the two in sync
 ├── LICENSE, LICENSE-NOTICE.md, SPONSORS.md
 │
 ├── pyproject.toml               ⟵ Python project manifest (+ pytest / lint config)
 ├── uv.lock                      ⟵ Python lockfile
-├── package.json                 ⟵ monorepo manifest (Bun workspaces + Turborepo)
-├── bun.lock                     ⟵ JS lockfile — repo-root, covers frontend/ too
+├── package.json                 ⟵ monorepo manifest (Bun workspaces + Turborepo) and THE app
+│                                   version (pyproject.toml + backend/core/version.py mirror it)
+├── bun.lock                     ⟵ JS lockfile — repo-root, covers the electron/ workspace
 ├── turbo.json                   ⟵ turborepo pipeline
 │
 ├── .coderabbit.yaml             ⟵ CodeRabbit PR review config (fed CLAUDE.md)
@@ -25,7 +26,6 @@ VoiceStudio/
 ├── .gitmodules                  ⟵ omnivoice-gallery submodule
 ├── .python-version
 ├── .dockerignore                ⟵ Docker build context filter
-├── backend.spec                 ⟵ pyinstaller spec (stays at root by pyinstaller convention)
 ├── alembic.ini                  ⟵ DB migration config (stays at root by alembic convention)
 │
 ├── .gitignore                   ⟵ a repo-local .env stays ignored, but user config is NOT
@@ -39,7 +39,7 @@ VoiceStudio/
 │   │   └── setup/               first-run wizard, model download
 │   ├── core/                    config, db, job queue, event bus, auth/CSRF, path security,
 │   │                            opt-in analytics, version, diagnostics
-│   ├── services/                97 modules of business logic — TTS, dubbing pipeline,
+│   ├── services/                99 modules of business logic — TTS, dubbing pipeline,
 │   │                            audio DSP, GPU gateway, engine routing, model lifecycle
 │   ├── engines/                 per-engine adapters: indextts, supertonic3, confucius4,
 │   │                            dots_tts, moss_tts_v15, pockettts, audiocpp,
@@ -52,36 +52,25 @@ VoiceStudio/
 │   ├── schemas/                 pydantic request/response shapes
 │   ├── migrations/versions/     alembic revisions — every schema change goes through here
 │   ├── plugins/                 plugin drop-in point (see services/plugin_sdk.py)
-│   ├── hooks/                   pyinstaller runtime hooks
 │   ├── config/models.yaml       model catalogue
 │   └── tests/                   the isolated pytest session — see "Where tests live"
 │
-├── electron/                    ⟵ maintained Electron desktop: main, preload, renderer
-│   ├── src/main/                lifecycle, backend supervisor, updater, native IPC
-│   ├── src/preload/             typed renderer bridge
-│   ├── src/renderer/            React 19 desktop UI
-│   ├── tests/                   packaged and workflow smoke tests
-│   └── electron-builder.config.mjs
+├── electron/                    ⟵ the only desktop app and web UI (Electron + React 19)
+│   ├── src/main/                lifecycle, backend supervisor, runtime setup, updater, native IPC
+│   ├── src/preload/             typed contextBridge → window.voicestudio
+│   ├── src/renderer/            desktop React app: routes/, features/, components/, i18n/locales/
+│   ├── src/shared/              modules shared by the desktop and browser builds (api/, i18n/,
+│   │                            store/, ui/, utils/) — not a runnable app
+│   ├── tests/                   packaged-app, installer and workflow smoke tests
+│   ├── build/                   packaging inputs: icons, entitlements, Info.plist
+│   ├── scripts/                 dev launcher, AppImage update-info embedding
+│   ├── vite.web.config.ts       browser build (`bun run build:web`) → frontend/dist/
+│   └── electron-builder.config.mjs   installers: DMG/zip, NSIS, AppImage + deb
 │
 ├── native/desktop-bridge/       ⟵ Rust helper used by Electron
 │
-├── frontend/                    ⟵ legacy web UI plus shared app metadata
-│   ├── package.json             THE maintained app version
-│   ├── src/
-│   │   ├── pages/               one file per top-level view
-│   │   ├── components/          reusable UI (+ audiobook/ clone/ dub/ gallery/ settings/ …)
-│   │   ├── ui/, lib/            shared primitives and helpers
-│   │   ├── api/                 typed API clients, one per router group
-│   │   ├── store/               Zustand slices (+ persisted-state migrations)
-│   │   ├── hooks/               custom React hooks
-│   │   ├── i18n/locales/        the ONLY home for user-facing strings
-│   │   ├── config/, data/, assets/, utils/
-│   │   └── test/                vitest setup + visual-test helpers
-│   ├── e2e/, e2e-perf/, e2e-prod/   Playwright suites: functional, perf, packaged bundle
-│   ├── src-tauri/               archived v0.5.3 Tauri shell and retained shared assets
-│   │   ├── capabilities/, icons/, wix/, debian/, appimage/   packaging inputs
-│   │   └── tests/
-│   └── public/
+├── frontend/dist/               ⟵ build output of `bun run build:web` (gitignored): the web UI
+│                                   the backend serves in Docker and, from Electron packages, to LAN devices
 │
 ├── omnivoice/                   ⟵ the underlying TTS model package
 │   ├── models/
@@ -98,12 +87,14 @@ VoiceStudio/
 │   ├── smoke/                   fast end-to-end checks (own CI job, HF_HUB_OFFLINE=1)
 │   ├── evals/                   quality evals (evals.yml)
 │   ├── probe/, fixtures/
-│   └── frontend/                Node-based frontend tests (legacy; vitest is the default)
+│   └── frontend/                `node:test` checks for shared helpers and dev scripts
 │
 ├── scripts/                     ⟵ dev / build / release scripts (shell, python, mjs)
-│   ├── install.sh / install.ps1 universal installers
-│   ├── desktop-*.mjs            dev, prod and fresh desktop launchers
-│   ├── smoke-test.sh            end-to-end validation
+│   ├── install.sh / install.ps1 shell + PowerShell installers served at voicestudio.sh/install
+│   ├── dev-backend.mjs          `bun run dev:api` backend supervisor
+│   ├── setup.py                 `bun run setup:api` post-sync platform setup (incl. ROCm opt-in)
+│   ├── electron-smoke-test.mjs  `bun run smoke-test` packaged-app launch check
+│   ├── prepare_electron_release.py, check_electron_release_assets.py   release asset gates
 │   ├── check-docs-drift.py      the docs-drift.yml checker (docs/features.yaml is canonical)
 │   └── build-omnivoice-tts.sh   builds the bin/ sidecars
 │
@@ -113,15 +104,14 @@ VoiceStudio/
 │                                   skills-lock.json — followed by path, never symlinked
 ├── skills/                      ⟵ skills this repo publishes (voicestudio, voicestudio-maintainer)
 │
-├── infra/                       ⟵ edge/deploy workers (not the Docker deploy path)
-│   └── install-redirect/        voicestudio.sh/install — UA-sniffing installer worker
-│
-├── deploy/                      ⟵ Docker deployment configs
+├── deploy/                      ⟵ Docker deployment configs + the installer worker
 │   ├── Dockerfile               CUDA by default; CI builds the ROCm variant from the same
 │   │                            file via BASE_IMAGE / GPU_FLAVOR overrides
 │   ├── docker-compose.yml       one-click local deployment
 │   ├── torch-constraints.txt    pinned torch resolution for the image
-│   └── dockerhub-overview.md    synced to the Docker Hub overview page at release
+│   ├── dockerhub-overview.md    synced to the Docker Hub overview page at release
+│   └── install-worker/          live voicestudio.sh/install Cloudflare worker; bundles
+│                                scripts/install.sh + install.ps1 (docs/install/script.md)
 │
 ├── docs/                        ⟵ developer docs, screenshots, branding
 │   ├── ROADMAP.md               where this project is going
@@ -134,7 +124,7 @@ VoiceStudio/
 │   ├── media/, screenshot-*.png, preview.png, logo.*
 │   └── languages.md, training.md, data_preparation.md, evaluation.md, voice-design.md
 │
-├── examples/                    ⟵ runnable demos + sample inputs (agentic/, speech-platform/)
+├── examples/                    ⟵ runnable demos + sample inputs (agentic/, config/)
 │
 ├── notebooks/                   ⟵ OmniVoice_Studio_Colab.ipynb
 │
@@ -143,8 +133,9 @@ VoiceStudio/
 ├── omnivoice_data/              ⟵ Docker bind-mount target (gitignored)
 │                                   DB + HF cache live here when running via compose
 │
-├── .github/workflows/           ⟵ ci, docker, release, security, docs-drift, evals,
-│                                   install-smoke, build-omnivoice-tts
+├── .github/workflows/           ⟵ ci, electron-build, electron-release, docker, security,
+│                                   docs-drift, evals, install-smoke, build-omnivoice-tts,
+│                                   cla, commit-identity, cosyvoice-dependencies
 └── .git/
 ```
 
@@ -156,7 +147,7 @@ VoiceStudio/
 
 3. **Each subdirectory owns one concern.** If you can't describe what goes in a directory in one sentence, it's wrong.
 
-4. **Every package has a manifest.** `backend/`, `frontend/`, `omnivoice/` each have their own deps declared via `pyproject.toml` / `package.json` — they are independently testable. The JS lockfile is the **repo-root** `bun.lock` (Bun workspace), and `deploy/Dockerfile` installs from it with `--frozen-lockfile`.
+4. **Every package has a manifest.** `backend/`, `electron/`, `omnivoice/` each have their own deps declared via `pyproject.toml` / `package.json` — they are independently testable. The JS lockfile is the **repo-root** `bun.lock` (Bun workspace), and `deploy/Dockerfile` installs from it with `--frozen-lockfile`.
 
 ## Where tests live
 
@@ -167,19 +158,19 @@ Three homes, each with its own runner. CI runs all three inside the single `test
 |---|---|---|
 | `tests/` | `pytest tests/` — the `testpaths` default | The main suite. Its `conftest.py` points `OMNIVOICE_DATA_DIR` at a throwaway dir so a run can never touch the developer's real app state (#878). |
 | `backend/tests/` | `pytest backend/tests/` — its own pytest session (the `Run pytest (backend/tests, isolated)` step) | Runs as an isolated session against `backend/`'s bare imports. Its `conftest.py` sets the same hermetic data dir; **never** reintroduce module-level `sys.modules` stubs there — they leak process-wide at collection time and poison mixed runs. |
-| `frontend/src/**/*.test.{js,jsx,ts,tsx}` | `bun run test` (vitest, jsdom) | Co-located with the component under test. `frontend/e2e*/` hold the Playwright suites; `tests/frontend/` is the older `node:test` set. |
+| `electron/src/**/*.test.{ts,tsx}` | `bun run test` (vitest, jsdom); CI runs it through `bun run check:electron` | Co-located with the module under test. `electron/tests/` holds the packaged-app and workflow smoke tests; `tests/frontend/` is the older `node:test` set (`bun run test:frontend`). |
 
 ## What lives where
 
 | Kind of thing | Goes in |
 |---|---|
-| User-facing product code | `backend/`, `frontend/` |
+| User-facing product code | `backend/`, `electron/` |
 | The TTS model (independent of the studio) | `omnivoice/` |
 | A new TTS/ASR engine adapter | `backend/engines/<engine>/` |
 | Everything executable but not user-facing | `scripts/` |
 | Prebuilt platform sidecars | `bin/` |
 | Python tests | `tests/` (or `backend/tests/` when the isolated session is required) |
-| Frontend unit tests | next to the component, as `*.test.jsx` |
+| Electron / UI unit tests | next to the module, as `*.test.ts(x)` |
 | Developer + user docs (Markdown) | `docs/` |
 | Architecture decision records (ADRs) | `docs/adr/` |
 | Agent-facing docs | `docs/agents/` |
@@ -219,14 +210,12 @@ The current flat layout works fine for the current size. If the project grows to
 VoiceStudio/
 ├── apps/
 │   ├── api/                 ← was backend/
-│   ├── web/                 ← was frontend/
-│   └── desktop/             ← was electron/
+│   └── desktop/             ← was electron/ (desktop + browser UI)
 ├── packages/
 │   ├── omnivoice-model/     ← was omnivoice/
 │   └── tts-adapters/        ← new; the pluggable TTS interface from ROADMAP phase 3
 ├── config/
-│   ├── docker/
-│   └── pyinstaller/
+│   └── docker/
 ├── tests/
 └── docs/
 ```
@@ -235,10 +224,9 @@ VoiceStudio/
 - `pyproject.toml` `[tool.hatch.build.targets.{sdist,wheel}]` paths
 - `package.json` workspaces and scripts
 - `turbo.json`, `Dockerfile`, `docker-compose.yml` paths
-- `backend.spec` (`['backend/main.py']`, `pathex=['.']`)
 - Electron Builder, native-helper, updater and packaged-smoke paths
 - every import that reads `from backend.main import …` (tests, scripts)
-- `frontend/package.json` as the version source of truth and its active mirrors
+- the root `package.json` as the version source of truth and its mirrors
 
 Migrate when adding the second `apps/*` or the second `packages/*`. Not before.
 

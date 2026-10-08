@@ -41,7 +41,7 @@ def _stub_build_synth(*, fail_on=None, exc=None):
     silence per span. `fail_on(text)` → raise, to exercise per-chapter faults;
     `exc` overrides what is raised (an engine can fail with an exception whose
     ``str()`` is empty — see the StopIteration case below)."""
-    def _factory(default_voice=None, language=None, opts=None, voice_map=None):
+    def _factory(default_voice=None, language=None, opts=None, voice_map=None, lease=None):
         def synth(text, voice_id, speed=None):
             if fail_on is not None and fail_on(text):
                 raise exc if exc is not None else RuntimeError("stub synth deliberately failed")

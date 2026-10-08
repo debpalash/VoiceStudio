@@ -1,7 +1,12 @@
 """CLI/module bridge for terminals, editor extensions, and agent hooks.
 
-The desktop app must be running for native dictation control. Batch
-transcription can also target a standalone or remote VoiceStudio backend.
+Transcribes files and reads the speech capability document from a local,
+standalone or remote VoiceStudio backend.
+
+Native dictation control (start/stop/toggle/status and ``--insert``) was served
+by the retired Tauri desktop shell on port 3902. The Electron app has no such
+control API, so those commands now fail with an explanation instead of hitting
+whatever else listens on that port (the Electron dev server does).
 """
 from __future__ import annotations
 
@@ -17,7 +22,6 @@ from typing import Any
 from urllib import error, request
 from urllib.parse import urlsplit
 
-DEFAULT_CONTROL_URL = "http://127.0.0.1:3902"
 DEFAULT_ENGINE_URL = "http://127.0.0.1:3900"
 
 
@@ -141,16 +145,18 @@ def _encode_multipart(
     return b"".join(parts), f"multipart/form-data; boundary={boundary}"
 
 
-def _control(args: argparse.Namespace, action: str) -> int:
-    method = "GET" if action in {"status", "capabilities"} else "POST"
-    path = {
-        "status": "/v1/status",
-        "capabilities": "/v1/capabilities",
-        "start": "/v1/dictation/start",
-        "stop": "/v1/dictation/stop",
-        "toggle": "/v1/dictation/toggle",
-    }[action]
-    result = _json_request(method, _join_url(args.control_url, path))
+RETIRED_CONTROL_COMMANDS = ("status", "start", "stop", "toggle")
+NATIVE_CONTROL_RETIRED = (
+    "native dictation control is not available: it was served by the retired "
+    "Tauri desktop app, and the Electron app has no control API. Use the in-app "
+    "dictation shortcut, or stream audio to /v1/audio/transcriptions/stream."
+)
+
+
+def _capabilities(args: argparse.Namespace) -> int:
+    result = _json_request(
+        "GET", _join_url(args.engine_url, "/.well-known/voicestudio-speech")
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
@@ -167,20 +173,9 @@ def _read_audio(path: str, stdin_filename: str) -> tuple[bytes, str]:
         raise SpeechClientError(f"could not read '{display_name}': {reason}") from exc
 
 
-def _response_text(body: bytes, content_type: str) -> str:
-    decoded = body.decode("utf-8", errors="replace")
-    if "json" not in content_type.lower():
-        return decoded
-    try:
-        payload = json.loads(decoded)
-    except json.JSONDecodeError:
-        return decoded
-    if isinstance(payload, dict) and isinstance(payload.get("text"), str):
-        return payload["text"]
-    return decoded
-
-
 def _transcribe(args: argparse.Namespace) -> int:
+    if args.insert:
+        raise SpeechClientError(NATIVE_CONTROL_RETIRED)
     audio, filename = _read_audio(args.audio, args.stdin_filename)
     fields = {
         "model": args.model,
@@ -194,44 +189,14 @@ def _transcribe(args: argparse.Namespace) -> int:
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
-    output_session_id = None
-    if args.insert:
-        session = _json_request(
-            "POST", _join_url(args.control_url, "/v1/output/sessions")
+    response_body, _ = _open(
+        request.Request(
+            _join_url(args.engine_url, "/v1/audio/transcriptions"),
+            data=body,
+            headers=headers,
+            method="POST",
         )
-        output_session_id = session["session_id"]
-
-    session_needs_cleanup = output_session_id is not None
-    try:
-        response_body, response_type = _open(
-            request.Request(
-                _join_url(args.engine_url, "/v1/audio/transcriptions"),
-                data=body,
-                headers=headers,
-                method="POST",
-            )
-        )
-        if output_session_id is not None:
-            _json_request(
-                "POST",
-                _join_url(
-                    args.control_url,
-                    f"/v1/output/sessions/{output_session_id}/insert",
-                ),
-                {"text": _response_text(response_body, response_type)},
-            )
-            session_needs_cleanup = False
-    finally:
-        if session_needs_cleanup:
-            try:
-                _json_request(
-                    "DELETE",
-                    _join_url(args.control_url, f"/v1/output/sessions/{output_session_id}"),
-                )
-            except Exception:  # noqa: BLE001
-                # Best-effort cleanup must not replace the original failure or
-                # KeyboardInterrupt that brought control into this finally.
-                pass
+    )
 
     sys.stdout.buffer.write(response_body)
     if response_body and not response_body.endswith(b"\n"):
@@ -242,19 +207,20 @@ def _transcribe(args: argparse.Namespace) -> int:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="voicestudio-speech",
-        description="Control and consume VoiceStudio's local speech platform.",
-    )
-    parser.add_argument(
-        "--control-url",
-        default=os.environ.get("VOICESTUDIO_SPEECH_URL", DEFAULT_CONTROL_URL),
+        description="Consume VoiceStudio's local speech platform.",
     )
     parser.add_argument(
         "--engine-url",
         default=_default_engine_url(),
     )
+    # Accepted and ignored so hooks written for the retired control server get
+    # the explanation instead of an argparse error.
+    parser.add_argument("--control-url", help=argparse.SUPPRESS)
     subparsers = parser.add_subparsers(dest="command", required=True)
-    for command in ("status", "capabilities", "start", "stop", "toggle"):
-        subparsers.add_parser(command)
+    subparsers.add_parser("capabilities", help="print the backend's speech capabilities")
+    for command in RETIRED_CONTROL_COMMANDS:
+        # Kept so existing hooks get the explanation, not an argparse error.
+        subparsers.add_parser(command, help=argparse.SUPPRESS)
 
     transcribe = subparsers.add_parser("transcribe")
     transcribe.add_argument("audio", help="audio file, or - for stdin")
@@ -267,11 +233,7 @@ def _parser() -> argparse.ArgumentParser:
         choices=("json", "text", "verbose_json", "srt", "vtt"),
         default="text",
     )
-    transcribe.add_argument(
-        "--insert",
-        action="store_true",
-        help="insert the result into the app focused when this command starts",
-    )
+    transcribe.add_argument("--insert", action="store_true", help=argparse.SUPPRESS)
     return parser
 
 
@@ -280,7 +242,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "transcribe":
             return _transcribe(args)
-        return _control(args, args.command)
+        if args.command == "capabilities":
+            return _capabilities(args)
+        raise SpeechClientError(NATIVE_CONTROL_RETIRED)
     except (SpeechClientError, KeyError) as exc:
         print(f"voicestudio-speech: {exc}", file=sys.stderr)
         return 2

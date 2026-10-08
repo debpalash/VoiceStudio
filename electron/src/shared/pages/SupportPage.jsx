@@ -363,9 +363,9 @@ function SupportView() {
 }
 
 /* ── Commercial License panel ─────────────────────────────────────────── */
-const LICENSE_EMAIL = 'VoiceStudio@palash.dev';
+const LICENSE_EMAIL = 'hi@voicestudio.sh';
 const LICENSE_MAILTO =
-  'mailto:VoiceStudio@palash.dev?subject=VoiceStudio Commercial License Inquiry' +
+  'mailto:hi@voicestudio.sh?subject=VoiceStudio Commercial License Inquiry' +
   '&body=Hi Palash,%0A%0AI%27d like to talk about a commercial license for VoiceStudio.%0A%0AOrganization:%0ATeam size:%0AUse case:%0A';
 
 function LicenseView() {
@@ -386,10 +386,7 @@ function LicenseView() {
           <span className="lp-hero__sweep" aria-hidden="true" />
         </h2>
         <p className="mx-auto mt-3 max-w-[680px] font-sans text-[0.78rem] leading-[1.5] text-[var(--chrome-fg-muted)]">
-          {t('enterprise.hero_simple', {
-            defaultValue:
-              'VoiceStudio is free and open-source under the AGPL-3.0 — including for commercial and internal business use. You only need a commercial license to embed it in a closed-source product without AGPL’s copyleft obligations.',
-          })}
+          {t('enterprise.hero_simple')}
         </p>
       </header>
 

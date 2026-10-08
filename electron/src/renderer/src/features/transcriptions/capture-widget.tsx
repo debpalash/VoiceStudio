@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { CopyIcon, MicIcon, PauseIcon, PlayIcon, SquareIcon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useBackendStatus } from '@/hooks/use-backend-status';
+import { isBackendReachable } from '@shared/utils/backendStage';
 import { LiveDictation } from './live-dictation';
 import { addTranscription } from '@shared/utils/transcriptionsStore';
 
@@ -18,9 +19,19 @@ export function CaptureWidget() {
   const output = useRef<Promise<unknown>>(Promise.resolve());
   const finishTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const api = window.voicestudio?.capture;
+  // The capture subscription is a long-lived session, so it is driven by
+  // whether the backend can serve at all and never by the stage LABEL.
+  // Depending on `backend.stage` tore the session down whenever a health probe
+  // moved the backend from `unresponsive` back to `ready`: the effect cleanup
+  // cancels the active recording, so a dictation started during a busy window
+  // was killed the moment the backend recovered, before transcription could
+  // finish (#2430). `isBackendReachable` folds `ready` and `unresponsive` into
+  // one value, so a busy <-> ready flip no longer re-runs the effect, while a
+  // genuine loss of the backend still tears the session down.
+  const backendReachable = isBackendReachable(backend.stage);
 
   useEffect(() => {
-    if (!api || backend.stage !== 'ready' || !backend.baseUrl) return;
+    if (!api || !backendReachable || !backend.baseUrl) return;
     const unsubscribe = api.onEvent((event) => {
       if (event.action === 'cancel') {
         if (session.current !== event.session) return;
@@ -80,7 +91,7 @@ export function CaptureWidget() {
       if (id !== null) void api.cancel(id).catch(() => {});
       if (finishTimer.current) clearTimeout(finishTimer.current);
     };
-  }, [api, backend.stage, backend.baseUrl, live]);
+  }, [api, backendReachable, backend.baseUrl, live]);
 
   useEffect(() => {
     const id = session.current;

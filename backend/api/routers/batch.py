@@ -12,6 +12,7 @@ import os
 import json
 import shutil
 import uuid
+import threading
 import time
 import asyncio
 import logging
@@ -22,8 +23,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from core.config import DATA_DIR
-from core import failure
+from core import failure, voice_leases
 from core.logging_utils import log_safe
+from core.media_types import media_upload_suffix
+from core.path_security import contained_join, portable_filename
 from core.file_cleanup import FileCleanupError, unlink_if_present
 from services.dub_batching import (
     BATCH_WIDTH_ENV,
@@ -54,6 +57,14 @@ _BATCH_PRESET_INSTRUCT = {
 _queue: asyncio.Queue = None       # Lazily initialised
 _worker_task: asyncio.Task = None  # Background consumer
 _processing_job_ids: set[str] = set()
+# Jobs whose retry is being admitted. Admission awaits (voice/ASR/provider
+# preflight, output reset), so without a reservation two retries both pass the
+# terminal-state check and double-queue the job, and a delete can remove the
+# upload mid-admission (#2547).
+_job_reservations: set[str] = set()
+# Retry runs on the event loop, delete in the threadpool: the reserve step of
+# both is atomic under this lock.
+_reservation_lock = threading.Lock()
 _jobs: dict = {}                   # job_id → status dict
 
 
@@ -259,8 +270,8 @@ def _batch_voice(voice_id: str | None) -> dict:
     relative = row["locked_audio_path"] if row["is_locked"] else row["ref_audio_path"]
     if not relative:
         raise ValueError("That saved voice has no reference audio")
-    ref_audio = os.path.join(VOICES_DIR, relative)
-    if not os.path.isfile(ref_audio):
+    ref_audio = contained_join(VOICES_DIR, relative)
+    if not ref_audio or not os.path.isfile(ref_audio):
         raise ValueError("That saved voice's reference audio is missing")
     resolved.update({
         "ref_audio": ref_audio,
@@ -272,6 +283,14 @@ def _batch_voice(voice_id: str | None) -> dict:
 
 async def _run_batch_pipeline(job_id: str, job: dict):
     """Full batch dub pipeline: extract → transcribe → translate → generate → mix → export."""
+    # The queue-wide voice is resolved once and its reference re-read for every
+    # segment, so hold it until the job ends: the retired-voice sweep must not
+    # delete a take this job still uses (#2535).
+    with voice_leases.VoiceFileLease() as lease:
+        await _run_batch_pipeline_leased(job_id, job, lease)
+
+
+async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases.VoiceFileLease):
     import subprocess
 
     loop = asyncio.get_running_loop()
@@ -287,6 +306,7 @@ async def _run_batch_pipeline(job_id: str, job: dict):
     from services.ffmpeg_utils import (
         bed_mix_filter,
         find_ffmpeg,
+        local_inputs_only,
         raise_for_audio_extract_failure,
         require_audio_stream,
         validate_media_source,
@@ -300,9 +320,9 @@ async def _run_batch_pipeline(job_id: str, job: dict):
         require_audio_stream(video_path)
         try:
             subprocess.run(
-                [ffmpeg, "-y", "-i", video_path,
+                local_inputs_only([ffmpeg, "-y", "-i", video_path,
                  "-vn", "-acodec", "pcm_s16le", "-ar", "22050", "-ac", "1",
-                 audio_path],
+                 audio_path]),
                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                 timeout=300, check=True,
             )
@@ -311,7 +331,7 @@ async def _run_batch_pipeline(job_id: str, job: dict):
             raise
         # Get duration
         result = subprocess.run(
-            [ffmpeg, "-i", audio_path],
+            local_inputs_only([ffmpeg, "-i", audio_path]),
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             timeout=30,
         )
@@ -381,6 +401,7 @@ async def _run_batch_pipeline(job_id: str, job: dict):
     # propagates to _worker()'s existing except-Exception handling, which
     # already records a structured job failure via core.failure.build_failure.
     voice = _batch_voice(job.get("voice_id"))
+    lease.hold(voice.get("ref_audio"))
     engine_id, execution_target, backend = await _resolve_batch_execution(voice)
     sr = backend.sample_rate if backend is not None else 0
     from services.performance_profiles import tts_defaults
@@ -865,26 +886,26 @@ async def _run_batch_pipeline(job_id: str, job: dict):
             if bg:
                 # Mix dubbed audio with original background
                 subprocess.run(
-                    [ffmpeg, "-y",
+                    local_inputs_only([ffmpeg, "-y",
                      "-i", video_path,
                      "-i", track_path,
                      "-filter_complex",
                      bed_mix_filter("0:a", "1:a", out="out", duration="first"),
                      "-map", "0:v", "-map", "[out]",
                      "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-                     "-shortest", output_path],
+                     "-shortest", output_path]),
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                     timeout=600, check=True,
                 )
             else:
                 # Replace audio entirely
                 subprocess.run(
-                    [ffmpeg, "-y",
+                    local_inputs_only([ffmpeg, "-y",
                      "-i", video_path,
                      "-i", track_path,
                      "-map", "0:v", "-map", "1:a",
                      "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-                     "-shortest", output_path],
+                     "-shortest", output_path]),
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                     timeout=600, check=True,
                 )
@@ -918,6 +939,17 @@ async def enqueue_batch_job(
     lang_list = [l.strip() for l in langs.split(",") if l.strip()]
     if not lang_list:
         raise HTTPException(400, "At least one target language is required")
+    # Each code names per-language outputs (dubbed_{lang}.wav, output_{lang}.mp4).
+    from api.routers.dub_core import _safe_lang_or_400
+
+    for lang in lang_list:
+        _safe_lang_or_400(lang)
+
+    # Refuse a non-media upload before any environment check, so the answer
+    # does not depend on which models or engines happen to be installed.
+    ext = media_upload_suffix(video.filename, ".mp4")
+    if ext is None:
+        raise HTTPException(415, "Choose an audio or video file.")
 
     # Validate the snapshot before persisting a potentially large upload.
     # Resolve it again in the worker so deleting or editing a queued profile
@@ -958,10 +990,21 @@ async def enqueue_batch_job(
     # Save the uploaded video
     batch_dir = os.path.join(DATA_DIR, "batch")
     os.makedirs(batch_dir, exist_ok=True)
-    ext = os.path.splitext(video.filename or "video.mp4")[1] or ".mp4"
     video_path = os.path.join(batch_dir, f"{job_id}{ext}")
 
     await _save_upload(video, video_path)
+    from core.url_safety import is_manifest_file
+    try:
+        manifest = await asyncio.to_thread(is_manifest_file, video_path)
+    except OSError:
+        manifest = False  # The extract step reports the unreadable file.
+    if manifest:
+        # A playlist/manifest named like media: ffmpeg would follow its URLs.
+        try:
+            unlink_if_present(video_path)
+        except FileCleanupError:
+            logger.warning("Could not remove refused batch upload", exc_info=True)
+        raise failure.InvalidMediaFileError()
 
     job = {
         "id": job_id,
@@ -1038,6 +1081,18 @@ async def retry_batch_job(job_id: str):
         raise HTTPException(409, f"Job is {job['status']}, not retryable")
     if job_id in _processing_job_ids or not job.get("retry_ready", True):
         raise HTTPException(409, "The cancelled job is still stopping")
+    # Reserve before the first await so a concurrent retry/delete is refused.
+    with _reservation_lock:
+        if job_id in _job_reservations:
+            raise HTTPException(409, "This job is already being retried or deleted")
+        _job_reservations.add(job_id)
+    try:
+        return await _admit_retry(job_id, job)
+    finally:
+        _job_reservations.discard(job_id)
+
+
+async def _admit_retry(job_id: str, job: dict):
     if not os.path.isfile(job.get("video_path") or ""):
         raise HTTPException(409, "The original batch input is no longer available")
 
@@ -1117,6 +1172,28 @@ def delete_batch_job(job_id: str):
     job = _jobs.get(job_id)
     if not job:
         raise HTTPException(404, "Job not found")
+    # Never pull files from under a pipeline (queued, running, or cancelled but
+    # still stopping) or a retry being admitted (#2547). The reservation also
+    # stops a retry from starting while the files are being removed.
+    with _reservation_lock:
+        if (
+            job.get("status") in ("queued", "running")
+            or job_id in _processing_job_ids
+            or job_id in _job_reservations
+            or not job.get("retry_ready", True)
+        ):
+            raise HTTPException(
+                409,
+                "The job is still active. Cancel it and wait for it to stop before deleting.",
+            )
+        _job_reservations.add(job_id)
+    try:
+        return _delete_job_files(job_id, job)
+    finally:
+        _job_reservations.discard(job_id)
+
+
+def _delete_job_files(job_id: str, job: dict):
     if job.get("video_path"):
         try:
             unlink_if_present(job["video_path"])
@@ -1157,7 +1234,7 @@ def download_batch_output(job_id: str, lang: str):
     if not path or not os.path.exists(path):
         raise HTTPException(404, f"No output for language '{lang}'")
 
-    filename = f"{os.path.splitext(job['filename'])[0]}_{lang}.mp4"
+    filename = portable_filename(f"{os.path.splitext(job['filename'])[0]}_{lang}.mp4", "output.mp4")
     return FileResponse(
         path,
         media_type="video/mp4",

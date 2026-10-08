@@ -36,6 +36,7 @@ class MossTTSNanoSubprocessBackend(SubprocessBackend):
 
     id = "moss-tts-nano"
     display_name = "MOSS-TTS-Nano (20 langs, CPU realtime, 48 kHz)"
+    supports_voice_design = False  # strictly reference-cloning
     gpu_compat = ("cuda", "cpu")
     _DEFAULT_SAMPLE_RATE = 48_000
 

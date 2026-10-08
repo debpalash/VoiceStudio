@@ -1,8 +1,9 @@
-"""Consume one-shot host paths authorized by the native Tauri process.
+"""Consume one-shot host paths authorized by the native desktop process.
 
-The web API never accepts a filesystem destination or executable path. Tauri
-validates the user's native IPC request, writes a private capability file, and
-only the unguessable capability token crosses loopback HTTP.
+The web API never accepts a filesystem destination or executable path. The
+Electron main process (electron/src/main/media-authorization.ts) validates the
+user's native IPC request, writes a private capability file, and only the
+unguessable capability token crosses loopback HTTP.
 """
 from __future__ import annotations
 
@@ -25,6 +26,7 @@ _KINDS = {
     "dub_export",
     "soni_input",
     "soni_output_dir",
+    "sidecar_dir",
 }
 _AUTH_DIR = os.path.join(DATA_DIR, ".path-authorizations")
 
@@ -34,11 +36,11 @@ class PathAuthorizationError(ValueError):
 
 
 def consume(token: str, expected_kind: str) -> str:
-    """Consume and return a single Tauri-authorized path.
+    """Consume and return a single desktop-authorized path.
 
-    Capability files are one-shot and opened without following symlinks. Tauri
-    writes them into the app's private data directory; source/Docker callers
-    cannot mint a valid token through HTTP.
+    Capability files are one-shot and opened without following symlinks. The
+    desktop app writes them into the app's private data directory;
+    source/Docker callers cannot mint a valid token through HTTP.
     """
     if expected_kind not in _KINDS or not _TOKEN_RE.fullmatch(token or ""):
         raise PathAuthorizationError("Invalid or expired desktop authorization")

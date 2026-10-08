@@ -6,6 +6,12 @@ import os
 
 from services.performance_budget import TIERS as _PERFORMANCE_TIERS
 
+#: TTS engines whose sampling the performance tiers tune: native OmniVoice and
+#: the same model in its registered crash-isolated sidecar. The one source for
+#: the backend gates and the renderer (via ``tts_tiered_engines``).
+TIERED_TTS_ENGINES = frozenset({"omnivoice", "omnivoice-subprocess"})
+
+
 _PERFORMANCE_PROFILE_KEY = "performance_profile"
 _PERFORMANCE_FAMILIES = (
     "tts",
@@ -269,7 +275,7 @@ def profile_state(choice: str | None = None) -> dict:
         "dictation": selected_dictation.kind if selected_dictation else "inactive",
     }
     supported_engines = {
-        "tts": {"omnivoice", "omnivoice-isolated"},
+        "tts": TIERED_TTS_ENGINES,
         "asr": {"faster-whisper", "faster-whisper-isolated"},
         "translation": {"nllb"},
         "dictation": {"offline-transducer", "online-transducer"},
@@ -301,7 +307,7 @@ def profile_state(choice: str | None = None) -> dict:
             # OmniVoice has one checkpoint family today; its performance tiers
             # tune sampling rather than silently changing voice capabilities.
             "model": "k2-fsa/OmniVoice"
-            if tts_engine in {"omnivoice", "omnivoice-isolated", "omnivoice-subprocess"}
+            if tts_engine in TIERED_TTS_ENGINES
             else tts_engine,
         },
         "asr": {
@@ -351,6 +357,8 @@ def profile_state(choice: str | None = None) -> dict:
         "families": list(_PERFORMANCE_FAMILIES),
         "implemented_families": list(_PERFORMANCE_TARGETS),
         "applicable_families": applicable_families,
+        # The renderer mirrors the TTS preset only for these engines.
+        "tts_tiered_engines": sorted(TIERED_TTS_ENGINES),
         "targets": {
             family: _PERFORMANCE_TARGETS[family][effective[family]]
             for family in _PERFORMANCE_TARGETS
@@ -475,7 +483,7 @@ def reconcile_active_profile() -> dict[str, dict]:
 def tts_defaults(engine: str = "omnivoice") -> dict:
     """Only map sampling controls verified for the selected engine family."""
     tier = requested_tier("tts")
-    if tier is None or engine not in {"omnivoice", "omnivoice-isolated"}:
+    if tier is None or engine not in TIERED_TTS_ENGINES:
         return {}
     target = _PERFORMANCE_TARGETS["tts"][tier]
     return {"num_step": target["steps"], "postprocess_output": target["postprocess"]}

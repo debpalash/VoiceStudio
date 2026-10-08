@@ -27,13 +27,18 @@ def test_missing_implicit_asr_never_calls_network_capable_loader(monkeypatch, se
     model.load_asr_model = loader
     lookup = Mock(side_effect=LocalEntryNotFoundError("not cached"))
     monkeypatch.setattr("huggingface_hub.snapshot_download", lookup)
-    with pytest.raises(ValueError, match="reference transcript"):
+    # Over 20 s a transcript is refused, so the message names the length limit.
+    expected = "reference transcript" if seconds <= 20 else "20 seconds"
+    with pytest.raises(ValueError, match=expected):
         model.create_voice_clone_prompt(
             (torch.full((1, seconds * 24_000), 0.1), 24_000),
             preprocess_prompt=False,
         )
     loader.assert_not_called()
-    lookup.assert_called_once_with("openai/whisper-large-v3-turbo", local_files_only=True)
+    # The default checkpoint is asked for first; the other reusable Whisper
+    # checkpoints are tried before the model concludes nothing is installed.
+    assert lookup.call_args_list[0].args == ("openai/whisper-large-v3-turbo",)
+    assert all(call.kwargs["local_files_only"] is True for call in lookup.call_args_list)
 
 
 @pytest.mark.parametrize("seconds", [1, 21])
@@ -41,6 +46,8 @@ def test_implicit_asr_loads_only_the_resolved_local_snapshot(monkeypatch, tmp_pa
     model = _model()
     snapshot = tmp_path / "cached-whisper"
     snapshot.mkdir()
+    for name in ("config.json", "preprocessor_config.json", "tokenizer.json", "model.safetensors"):
+        (snapshot / name).write_text("{}")
     lookup = Mock(return_value=str(snapshot))
     monkeypatch.setattr("huggingface_hub.snapshot_download", lookup)
 

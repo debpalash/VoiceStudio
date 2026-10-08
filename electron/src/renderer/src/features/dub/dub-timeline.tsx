@@ -1,3 +1,4 @@
+import { formatTimestamp } from '@shared/utils/timeFormat';
 import { HeadphonesIcon, LoaderCircleIcon, PlayIcon, TriangleAlertIcon, ZoomInIcon, ZoomOutIcon, MaximizeIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -28,10 +29,7 @@ type Gesture = {
   end: number;
 };
 
-const formatTime = (seconds: number) => {
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes}:${(seconds % 60).toFixed(1).padStart(4, '0')}`;
-};
+const formatTime = (seconds: number) => formatTimestamp(seconds, { decimals: 1 });
 
 export function DubTimeline({
   segments,

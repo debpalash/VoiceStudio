@@ -113,3 +113,90 @@ it.each(['/ws/transcribe', '/ws/events', '/ws/tts'] as const)(
     );
   },
 );
+
+/** Headers arrive at once, then the body stalls after its first byte. */
+function stalledBody(status = 200): Response {
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{'));
+      },
+    }),
+    { status, headers: { 'content-type': 'application/json' } },
+  );
+}
+
+const SESSION = `ovs_admin_session_${'a'.repeat(43)}`;
+const healthy = () => json({ status: 'ok', version: '0.5.2', device: 'cpu' });
+
+it.each([
+  ['/health', [] as Array<() => Response>, ''],
+  ['/api/auth/session', [healthy], 'master-secret'],
+  ['/system/info', [healthy], ''],
+] as const)(
+  'times out a %s response whose body stalls after the headers',
+  async (phase, before, master) => {
+    const replies = [...before, () => stalledBody(phase === '/api/auth/session' ? 201 : 200)];
+    const fetcher = vi.fn(async () => replies.shift()!());
+    const started = Date.now();
+    const result = await probeRemoteBackend('http://gpu-box:3900', master, {
+      fetcher,
+      timeoutMs: 50,
+    });
+    expect(result).toMatchObject({ ok: false, kind: 'timeout' });
+    expect(Date.now() - started).toBeLessThan(2000);
+  },
+);
+
+it('times out a WebSocket ticket response whose body stalls after the headers', async () => {
+  const fetcher = vi.fn(async () => stalledBody(201));
+  await expect(
+    remoteWebSocketUrl(
+      'http://gpu-box:3900',
+      '/ws/tts',
+      { token: SESSION, expiresAt: 3601 },
+      { fetcher, now: () => 1000, timeoutMs: 50 },
+    ),
+  ).rejects.toThrow(/timed out/);
+});
+
+it('keeps HTTP and auth classifications when error bodies are left unread', async () => {
+  const denied = await probeRemoteBackend('http://gpu-box:3900', 'master-secret', {
+    fetcher: vi
+      .fn()
+      .mockImplementationOnce(healthy)
+      .mockImplementationOnce(() => stalledBody(403)),
+    timeoutMs: 50,
+  });
+  expect(denied).toMatchObject({ ok: false, kind: 'auth', status: 403 });
+  await expect(
+    remoteWebSocketUrl(
+      'http://gpu-box:3900',
+      '/ws/tts',
+      { token: SESSION, expiresAt: 3601 },
+      { fetcher: vi.fn(async () => stalledBody(503)), now: () => 1000, timeoutMs: 50 },
+    ),
+  ).rejects.toThrow('HTTP 503');
+});
+
+it.each(['/ws/transcribe', '/ws/events', '/ws/tts'] as const)(
+  'keeps a reverse-proxy path prefix in remote WebSocket %s URLs',
+  async (path) => {
+    const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      expect(String(input)).toBe('https://gpu-box/studio/api/auth/ws-ticket');
+      expect(init?.body).toBe(JSON.stringify({ path }));
+      return json({ ticket: `ovs_ws_ticket_${'b'.repeat(43)}`, expires_in: 30 }, { status: 201 });
+    });
+    expect(
+      await remoteWebSocketUrl(
+        'https://gpu-box/studio/',
+        path,
+        { token: SESSION, expiresAt: 3601 },
+        { fetcher, now: () => 1000 },
+      ),
+    ).toBe(`wss://gpu-box/studio${path}?ws_ticket=ovs_ws_ticket_${'b'.repeat(43)}`);
+    expect(await remoteWebSocketUrl('http://gpu-box:8080/a/b', path, null)).toBe(
+      `ws://gpu-box:8080/a/b${path}`,
+    );
+  },
+);

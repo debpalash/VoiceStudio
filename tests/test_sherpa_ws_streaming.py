@@ -192,7 +192,7 @@ def test_streaming_silent_model_falls_back_and_demotes(monkeypatch):
 
     fallback_calls = []
 
-    async def fallback(chunks, *, pcm_sr=None, skip_sherpa=False):
+    async def fallback(chunks, *, pcm_sr=None, skip_sherpa=False, dictation=False):
         fallback_calls.append((b"".join(chunks), pcm_sr, skip_sherpa))
         return {
             "text": "fallback heard me",
@@ -270,7 +270,7 @@ def test_streaming_silent_model_does_not_download_a_fallback(monkeypatch):
     monkeypatch.setattr(ab, "asr_model_missing_error", probe)
     fallback_calls = []
 
-    async def fallback(_chunks, *, pcm_sr=None, skip_sherpa=False):
+    async def fallback(_chunks, *, pcm_sr=None, skip_sherpa=False, dictation=False):
         fallback_calls.append(pcm_sr)
         return {"text": "this required a download", "segments": []}
 
@@ -313,7 +313,7 @@ async def test_silent_recovery_needs_fallback_speech_before_demotion(monkeypatch
     demoted = []
     monkeypatch.setattr(sd, "demote_model", lambda model_id: demoted.append(model_id) or True)
 
-    async def silent_fallback(_chunks, *, pcm_sr=None, skip_sherpa=False):
+    async def silent_fallback(_chunks, *, pcm_sr=None, skip_sherpa=False, dictation=False):
         assert pcm_sr == 16000
         assert skip_sherpa is True
         return {"text": "", "segments": []}
@@ -410,7 +410,7 @@ def test_offline_silent_model_does_not_download_a_fallback(monkeypatch):
     monkeypatch.setattr(ab, "asr_model_missing_error", probe)
     fallback_calls = []
 
-    async def fallback(_chunks, *, pcm_sr=None, skip_sherpa=False):
+    async def fallback(_chunks, *, pcm_sr=None, skip_sherpa=False, dictation=False):
         fallback_calls.append(pcm_sr)
         return {"text": "this required a download", "segments": []}
 

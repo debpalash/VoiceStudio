@@ -876,3 +876,70 @@ def test_purge_survives_a_missing_artifact_directory(db, tmp_path, monkeypatch):
     task_store.save(task, now=1000.0)
 
     assert task_store.purge_finished(now=1000.0 + WEEK + 1) == 1
+
+
+# ── File parameters are declared inputs or nothing ─────────────────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"text": "hi", "ref_audio": "WORKER_FILE"},
+        {"text": "hi", "ref_audio": ["WORKER_FILE"]},
+        {"text": "hi", "prompt_wav": "WORKER_FILE"},
+        {"text": "hi", "segments": [{"text": "x", "ref_audio": "WORKER_FILE"}]},
+        {"text": "hi", "voices": [{"source_audio": "WORKER_FILE"}]},
+    ],
+)
+async def test_a_panel_supplied_path_never_reaches_the_engine(engine, tmp_path, params):
+    """``params_json`` is panel input; a path in it names a file on the worker."""
+    private = tmp_path / "private.wav"
+    private.write_bytes(b"RIFF" + b"\0" * 64)
+    raw = json.dumps(params).replace("WORKER_FILE", str(private).replace("\\", "\\\\"))
+    assignment = pb.TaskAssignment(operation="clone", engine="fake-engine", params_json=raw)
+
+    with pytest.raises(TaskFailure) as raised:
+        await TaskExecutor(input_dir=str(tmp_path / "cache")).execute(assignment)
+
+    assert raised.value.error.error_class is ErrorClass.TERMINAL
+    assert raised.value.error.code == "INVALID_TASK_PARAMS"
+    assert engine.last_kwargs == {}, "the engine ran with a panel-chosen path"
+
+
+@pytest.mark.asyncio
+async def test_an_undeclared_id_is_refused_even_when_other_inputs_exist(
+    artifacts, voice, engine, tmp_path
+):
+    """Declaring one input must not license a second, undeclared path."""
+    assignment = _assignment(_task(ref_audio=voice), artifact_root=artifacts)
+    params = json.loads(assignment.params_json)
+    params["reference_audio"] = os.path.relpath(voice)
+    assignment.params_json = json.dumps(params)
+    worker = TaskExecutor(fetch_input=_download_from(artifacts), input_dir=str(tmp_path / "c"))
+
+    with pytest.raises(TaskFailure) as raised:
+        await worker.execute(assignment)
+
+    assert raised.value.error.code == "INVALID_TASK_PARAMS"
+
+
+@pytest.mark.asyncio
+async def test_text_equal_to_an_artifact_id_stays_text(artifacts, voice, engine, tmp_path):
+    """Only file-valued keys are rewritten to local paths."""
+    assignment = _assignment(_task(ref_audio=voice), artifact_root=artifacts)
+    params = json.loads(assignment.params_json)
+    params["instruct"] = params["ref_audio"]
+    assignment.params_json = json.dumps(params)
+    worker = TaskExecutor(fetch_input=_download_from(artifacts), input_dir=str(tmp_path / "c"))
+
+    await worker.execute(assignment)
+
+    assert engine.last_kwargs["instruct"] == assignment.inputs[0].artifact_id
+    assert os.path.isfile(engine.last_kwargs["ref_audio"])
+
+
+def test_both_ends_share_one_file_parameter_list():
+    from worker import params as wire_params
+
+    assert task_store.INPUT_PARAM_KEYS is wire_params.INPUT_PARAM_KEYS

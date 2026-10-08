@@ -73,7 +73,7 @@ def _origin_tuple(value: str | None) -> tuple[str, str, int | None] | None:
     ):
         return None
     scheme = parsed.scheme.lower()
-    if scheme not in {"http", "https", "tauri", "app"}:
+    if scheme not in {"http", "https", "app"}:
         return None
     if port is None:
         if scheme == "http":
@@ -83,24 +83,78 @@ def _origin_tuple(value: str | None) -> tuple[str, str, int | None] | None:
     return scheme, parsed.hostname.lower(), port
 
 
-DEFAULT_DESKTOP_ORIGINS = ("tauri://localhost", "http://tauri.localhost", "app://voicestudio")
+# Electron serves the packaged renderer from app://voicestudio. The retired
+# Tauri shell's origins are deliberately absent: final Tauri installs spawn the
+# backend bundled with them, never this one.
+DEFAULT_DESKTOP_ORIGINS = ("app://voicestudio",)
 
-def configured_allowed_origins() -> frozenset[tuple[str, str, int | None]]:
-    raw_port = os.environ.get("OMNIVOICE_UI_PORT", "3901")
-    try:
-        ui_port = int(raw_port)
-    except (TypeError, ValueError):
-        ui_port = 3901
+# The browser UI dev-server port. OMNIVOICE_UI_PORT is canonical, matching
+# OMNIVOICE_PORT; VOICESTUDIO_UI_PORT is the name the Vite configs read before
+# the two were unified and stays accepted as an alias. Mirrored in
+# electron/electron.vite.config.ts and electron/vite.web.config.ts.
+UI_PORT_ENV = "OMNIVOICE_UI_PORT"
+UI_PORT_ENV_ALIASES = ("VOICESTUDIO_UI_PORT",)
+DEFAULT_UI_PORT = 3901
+
+
+def configured_ui_port() -> int | None:
+    """The UI port named by the environment, or None when none is set.
+
+    The first non-empty name wins; a malformed or out-of-range value falls
+    back to the default port rather than disabling the allow-list.
+    """
+    for name in (UI_PORT_ENV, *UI_PORT_ENV_ALIASES):
+        raw = os.environ.get(name, "").strip()
+        if not raw:
+            continue
+        try:
+            port = int(raw)
+        except ValueError:
+            return DEFAULT_UI_PORT
+        return port if 0 < port <= 65535 else DEFAULT_UI_PORT
+    return None
+
+
+def ui_port() -> int:
+    """The UI dev-server port the default origin allow-list trusts."""
+    return configured_ui_port() or DEFAULT_UI_PORT
+
+
+def allowed_origin_values() -> list[str]:
+    """Raw allow-list entries shared by CORS (main.py) and the CSRF checks."""
+    port = ui_port()
     values = os.environ.get(
         "OMNIVOICE_ALLOWED_ORIGINS",
-        f"http://localhost:{ui_port},http://127.0.0.1:{ui_port},"
-        + ",".join(DEFAULT_DESKTOP_ORIGINS),
+        f"http://localhost:{port},http://127.0.0.1:{port}," + ",".join(DEFAULT_DESKTOP_ORIGINS),
     ).split(",")
+    return [value.strip() for value in values if value.strip()]
+
+
+def configured_allowed_origins() -> frozenset[tuple[str, str, int | None]]:
     return frozenset(
         origin
-        for value in values
-        if (origin := _origin_tuple(value.strip())) is not None
+        for value in allowed_origin_values()
+        if (origin := _origin_tuple(value)) is not None
     )
+
+
+# Response headers the browser client reads cross-origin. A header missing here
+# is silently null to a renderer on another origin (the web UI, a remote
+# backend), so every non-safelisted header the client reads must be listed.
+# tests/test_cors_exposed_headers.py scans the renderer to keep this complete.
+CORS_EXPOSED_HEADERS = (
+    "Content-Disposition",
+    "X-Audio-Id",
+    "X-Audio-Path",
+    "X-Audio-Duration",
+    "X-Gen-Time",
+    "X-Seed",
+    "X-OmniVoice-Routing",
+    "X-OmniVoice-Routing-Reason",
+    "X-OmniVoice-Dropped-Chunks",
+    "X-OmniVoice-Dropped-Text",
+    "X-Clean-Filename",
+)
 
 
 def _destination_origin(connection) -> tuple[str, str, int | None] | None:

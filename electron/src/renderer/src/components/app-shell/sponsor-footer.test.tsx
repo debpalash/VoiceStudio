@@ -22,7 +22,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it('places follow and donate links immediately before the Pro shortcut', () => {
+it('places Discord before X and donate before the collapse control', async () => {
   render(<SponsorFooter />);
   const buttons = screen.getByRole('contentinfo').querySelectorAll('button');
   expect(buttons).toHaveLength(5);
@@ -35,6 +35,11 @@ it('places follow and donate links immediately before the Pro shortcut', () => {
     'https://voicestudio.sh',
   );
   expect(screen.queryByRole('img')).toBeNull();
+  const discord = screen.getByRole('link', { name: 'support.join_discord' });
+  expect(discord).toHaveAttribute('href', 'https://discord.gg/bzQavDfVV9');
+  expect(discord.nextElementSibling).toBe(buttons[2]);
+  fireEvent.click(discord);
+  await waitFor(() => expect(mock.open).toHaveBeenCalledWith('https://discord.gg/bzQavDfVV9'));
 });
 
 it.each(['idebpalash', 'voicestudiosh'])('opens @%s in the external browser', async (handle) => {
@@ -67,6 +72,7 @@ it('opens compact support links from the heart and links to the full page', asyn
     'href',
     'https://discord.gg/bzQavDfVV9',
   );
+  expect(document.querySelector('.sponsor-support-popup a[href*="discord"]')).toBeNull();
   fireEvent.click(screen.getByRole('link', { name: 'Ko-fi' }));
   await waitFor(() => expect(mock.open).toHaveBeenCalledWith('https://ko-fi.com/debpalash'));
   fireEvent.click(screen.getAllByRole('button', { name: 'donate.title' })[1]);

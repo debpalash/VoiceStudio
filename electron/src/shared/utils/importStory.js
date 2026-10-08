@@ -83,7 +83,11 @@ function captionBlocks(text, webvtt) {
     if (!lines.length) return false;
     const first = lines[0];
     if (/^WEBVTT(?:[ \t]|$)/.test(first)) return false;
-    return !isWebVttMetadata(first);
+    if (!isWebVttMetadata(first)) return true;
+    // A timing line in position two outranks a STYLE/REGION identifier
+    // (https://www.w3.org/TR/webvtt1/#file-parsing), but a NOTE block is a
+    // private comment and never speech. Mirrors parse_srt.
+    return !first.startsWith('NOTE') && lines.length > 1 && isTimingLine(lines[1]);
   });
 }
 

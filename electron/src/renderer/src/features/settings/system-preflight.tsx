@@ -15,6 +15,16 @@ export function SystemPreflight() {
     retry: false,
   });
   const checks = Array.isArray(query.data?.checks) ? query.data.checks : [];
+  // The backend sends English text; checks it marks with a stable id are shown
+  // from the translation catalog instead.
+  const localized = (check: (typeof checks)[number]) =>
+    check.id === 'arch'
+      ? {
+          label: t('setup.check_arch_label'),
+          detail: t('setup.check_arch_detail'),
+          fix: t('setup.check_arch_fix'),
+        }
+      : { label: check.label, detail: check.detail, fix: check.fix };
   return (
     <SettingsSection title={t('setup.system_preflight')} icon={ScanSearchIcon}>
       <SettingsRow
@@ -52,6 +62,7 @@ export function SystemPreflight() {
                 : check.status === 'warn'
                   ? TriangleAlertIcon
                   : CircleXIcon;
+            const text = localized(check);
             return (
               <li key={check.id} className="flex items-start gap-3 py-3">
                 <Icon
@@ -66,11 +77,11 @@ export function SystemPreflight() {
                   }
                 />
                 <div className="min-w-0 space-y-1">
-                  <h3 className="text-sm font-medium">{check.label}</h3>
+                  <h3 className="text-sm font-medium">{text.label}</h3>
                   <p className="break-words text-xs leading-5 text-muted-foreground">
-                    {check.detail}
+                    {text.detail}
                   </p>
-                  {check.fix && <p className="break-words text-xs leading-5">{check.fix}</p>}
+                  {text.fix && <p className="break-words text-xs leading-5">{text.fix}</p>}
                 </div>
               </li>
             );

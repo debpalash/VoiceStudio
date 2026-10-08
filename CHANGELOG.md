@@ -8,50 +8,66 @@ metadata and the backend fallback mirror it.
 
 ## [Unreleased]
 
+## [0.5.7] — 2026-10-07
+
+**VoiceStudio now runs on PCs without a GPU and recovers instead of giving up.** Voice cloning uses the speech-to-text model you installed from Model Catalogue, GPU-less computers get the small CPU PyTorch build, and slow or busy backends are no longer reported as failed.
+
+This release also adds a GPU acceleration panel with honest Radeon reporting, the Ask VoiceStudio Agent, and a batch of fixes to dubbing, audiobooks, downloads and dictation.
+
+**Download**
+
+| Platform | Installer |
+| --- | --- |
+| Windows x64 | [Installer](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.7/VoiceStudio-Electron-0.5.7-win-x64.exe) |
+| Windows ARM64 (experimental) | [Installer](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.7/VoiceStudio-Electron-0.5.7-win-arm64.exe) |
+| macOS Apple Silicon | [DMG](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.7/VoiceStudio-Electron-0.5.7-mac-arm64.dmg) |
+| macOS Intel | [DMG](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.7/VoiceStudio-Electron-0.5.7-mac-x64.dmg) |
+| Linux x64 | [AppImage](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.7/VoiceStudio-Electron-0.5.7-linux-x64.AppImage) · [deb](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.7/VoiceStudio-Electron-0.5.7-linux-x64.deb) |
+
+**Upgrading:** Install over your existing Electron app; voices, projects and settings are kept. If setup asks, choose **Install local runtime** to refresh its dependencies.
+
+- Update remote workers to 0.5.7 too; the app refuses older workers with an upgrade message.
+- Docker, LAN or reverse-proxy access by a host name, without an API key or session, needs that name in `OMNIVOICE_ALLOWED_HOSTS`; IP addresses, `localhost`, `*.ts.net` and `host.docker.internal` work as before.
+- URL imports from servers on your own network need `OMNIVOICE_ALLOW_PRIVATE_URL_IMPORTS=1`.
+- [Where to set these variables](https://github.com/debpalash/VoiceStudio/blob/v0.5.7/docs/api-auth.md#requests-from-other-websites-and-host-names): a line in `~/.config/omnivoice/env` (macOS, Linux) or `%USERPROFILE%\.config\omnivoice\env` (Windows) for the desktop app, `-e` for Docker.
+
+**Moving from Tauri:** Close the app, back up its data directory, install Electron, and verify your voices and projects before removing Tauri. Follow the [migration guide](https://github.com/debpalash/VoiceStudio/blob/v0.5.7/docs/electron-migration.md). Tauri v0.5.3 remains the final Tauri release; its updater cannot install Electron.
+
+**Installer trust:** Electron installers are unsigned or ad-hoc signed and are not Apple-notarized. Windows/macOS may show trust warnings. macOS automatic updates are unverified; use manual installer updates. See the [installation guide](https://github.com/debpalash/VoiceStudio/blob/v0.5.7/docs/install/troubleshooting.md).
+
 **Highlights**
+
+- Voice cloning finds a speech-to-text model installed through Model Catalogue and explains clips that are too long (#2442, #2498) — thanks @drakeo338, @Bad-ptr!
+- PCs without a dedicated GPU install the small CPU PyTorch build and run, with generation budgets that scale on slower hosts; Windows on ARM gets an experimental native installer (#2500, #2611)
+- Settings → Performance → GPU acceleration shows your GPUs, the PyTorch build and why each engine runs on GPU or CPU, with honest Radeon reporting on Windows (#2468, #2501)
+- A slow or busy backend is no longer declared failed or crashed; start-up failures name what could not launch (#2445, #2499, #2608)
 - Ask VoiceStudio Agent adds chat, harness selection, feature presets, read-only planning and autopilot app actions without a source checkout (#2407)
-- Home credits contributors with over 10 commits in three responsive rows of round avatars stacked from right to left with an All contributors link, with GitHub and X links on Palash's hover card (#2407)
-- The VoiceStudio.sh Open Source title opens a website preview below the clicked item, within the right content area, with navigation and external-browser controls (#2407)
+
+### Changed
+
+- The Pro page lists only what Pro adds; recipes, watch folders, remote compute and voice cloning stay free (#2587)
+- Pro, export and enterprise text, in all 21 languages, makes clear that the app licence doesn't grant rights to models or generated audio (#2587)
+- Desktop installers include the app's licence notices (#2587)
 - Home cards use feature-specific SVG icons with brief hover and keyboard-focus animations that respect reduced motion (#2407)
 - Renamed the Dub workspace to Dubbing across navigation, project labels, and keyboard shortcuts (#2407)
 - Home prioritizes creation tools with clearer descriptions and controls; the footer can collapse and reopen (#2407)
-- Top bar adds a GitHub Star shortcut beside Get Pro with an exact count refreshed every 20 minutes (#2407)
-- Footer adds one X button with follow cards for @idebpalash and @voicestudiosh plus a compact support-links menu beside Pro (#2407)
 - Enter Studio opens its optional permissions and shortcut settings expanded by default (#2407)
 - Model packs can be selected and installed before preset-compatible engines are active, with changes applied only when installing or using the chosen pack (#2407)
-- Electron is now the only desktop and web UI; the retired Tauri shell and legacy entry points are removed (#2343)
-- Docker and browser deployments now use the same maintained interface as the Electron desktop app (#2341)
-- Manage Projects with confirmed individual and bulk deletion, retry failed items, and keep exported files and render audio (#2333)
-- Twilio setup is a guided checklist with live status and exact commands (#2304)
-- Integration pages use the full window, with a side panel on wide screens (#2304)
-- A call agent that places or answers phone calls in your own voice to get a task done (#2306)
-- Footer shows Integrations, Become a Sponsor, and a VoiceStudio Pro shortcut (#2302)
-- Pro keeps core generation unlimited and presents ten production benefits with $99/user yearly, $299/user lifetime, and Enterprise contact options, including quantity totals, commercial work, remote devices, workers, and GPU sharing (#2302)
-- A reference longer than 20 s clones from its best 15 s window using the speech model already installed (#2301) — thanks @Cengokill!
-- Record or drop a voice sample from one view in Voice Clone (#2307)
-- Voice Clone keeps the original container of a one-shot MP3, M4A or WebM reference (#2311)
-- Videos without sound get a clear message instead of an ffmpeg error dump (#2308)
-- MCP speech files and URLs can deliver Ogg/Opus instead of WAV; Ogg saves preserve int16 audio levels (#2321) — thanks @tracyndoan!
-- Turn a finished dub into a Stories script in one click, speakers and voices included (#2300) — thanks @shivsin25!
-
-### Added
-
-- Choose 16/24/32-bit WAV precision, sampling effort and mastering in Clone and Design, with file sizes and optional audio checks (#2406)
-- Language selection adds searchable flags, native names and codes in a responsive virtual grid, with supported model languages first and accessible keyboard navigation (#2408)
-- Run local narration, transcription, translation and voice-conversion recipes with resumable steps and WAV/TXT exports (#2333)
-
-- Call agent backend: place or answer phone calls that hold a task conversation in your verified or designed voice, with an editable AI disclosure, take-over and an after-call summary (#2306)
-- Calls workspace with a live transcript, take-over, hang-up and an after-call summary (#2305)
-- Create Story from a dub: its speakers become characters, its segments become lines, and each character keeps the voice the dub assigned — no retyping the script (#2300) — thanks @shivsin25!
-- Linux AppImages include standard update information and a published `.zsync` file so AppImageUpdate and desktop managers can download only changed bytes (#2327) — thanks @shuvashish76!
-
-### Changed
-- Sidebar keeps its quality slider, adds hardware-aware Auto with live resource usage and TTS-first model selection, and groups compact engine status with icon-based Simple, Models and Details views (#2396)
-
+- First-run setup stops Intel Macs before downloading dependencies and explains remote-backend access (#2419) — thanks @JoAdo07!
+- Machines without an NVIDIA GPU install the small CPU PyTorch build (about 5 GB instead of 9 GB free) and load voice models in float32 instead of float16 (#2500) — thanks @RobAsticles, @tiropictor!
+- Engines that could use a GPU report a CPU fallback, naming the card, when the installed PyTorch cannot use it (#2468, #2501) — thanks @Pates2004!
+- Setup names your Radeon card instead of blaming a missing NVIDIA driver, and ignores a ROCm override on Windows and macOS (#2468, #2501) — thanks @Pates2004!
+- Source setup selects CPU wheels before installing dependencies and preserves them on restart; development launches resolve Electron's binary before starting Vite (#2436) — thanks @RobAsticles!
+- Audio quality and Voice controls open as compact popovers from the Synthesize box on Clone and Voice Design (#2419)
+- The Synthesize button shows its keyboard shortcut as key chips inside the button (#2419)
+- The language menu stays within the window instead of clipping at the edges (#2419)
+- Choose a voice adds photo cards, Newest/A–Z sorting, search, and click or drop photo uploads (#2419)
+- Sidebar adds Fast, Balanced, Quality and Max choices, a separate Auto toggle, quieter engine status, and compact Simple, Models and Details views (#2419)
+- Sidebar adds hardware-aware Auto with live resource usage and TTS-first model selection, and groups compact engine status with icon-based Simple, Models and Details views (#2396)
 - LLM setup verifies a model response before enabling features, replaces the misleading engine inventory with connection guidance, and supports authenticated local servers (#2397)
 - LLM skills can use installed coding CLIs through the repair-agent runner, native paid providers through LiteLLM (#2397)
 - Dubbing supports Google Cloud Translation and Amazon Translate with explicit provider setup (#2397)
-- OmniVoice sidecars reuse installed speech recognition for short references without transcripts, matching in-process cloning (#2320)
+- OmniVoice sidecars reuse installed speech recognition for short references without transcripts, matching in-process cloning (#2320) — thanks @ewh1tman!
 - Electron recovers from OS-denied default backend ports without changing explicitly configured ports (#2358) — thanks @rishi2288!
 - Home opens directly on project actions, and Integrations lists only connectors with completed in-app setup (#2351)
 - Multi-GPU NVIDIA hosts can choose which physical CUDA adapter VoiceStudio and its engine subprocesses use (#2346) — thanks @z0tedd!
@@ -65,16 +81,67 @@ metadata and the backend fallback mirror it.
 - Footer sponsor hover details show dated GitHub reach, and its X opens the Pro page (#2302)
 - Linux AppImages use the static runtime so launching them no longer needs libfuse2 (#2328) — thanks @shuvashish76!
 - Voice Clone shows upload and record side by side instead of behind a toggle (#2307)
+- Removed the Preview update channel, which never had a published feed; a saved Preview choice moves to Stable (#2578)
+- Docker Compose and the Docker quick starts pull the `:stable` and `:stable-rocm` release images (#2578)
+- `OMNIVOICE_UI_PORT` is the one UI-port setting (`VOICESTUDIO_UI_PORT` still works), and ports are no longer saved to settings (#2578)
+- `OMNIVOICE_PROGRESS_EXTENSION_CAP_S` replaces `OMNIVOICE_MODEL_LOAD_TIMEOUT_S`, which is still accepted (#2578)
+- The backend no longer accepts the retired Tauri app's web origins, and installs no longer pull PyInstaller (#2578)
+- `backend.speech_client` dictation control commands, which drove the retired Tauri app, now exit with an explanation (#2578)
+- Removed three hidden settings that nothing could set; the `OMNIVOICE_PRONUNCIATION` and `OMNIVOICE_TEXT_NORMALIZATION` switches remain (#2578)
+
+### Added
+
+- The OpenAI-compatible speech API accepts a voice-profile name as `voice`, and the voice list shows which names work (#2617) — thanks @HuntingSuccubus!
+- New opt-in setting moves the voice model to system RAM after generation, freeing GPU memory for other apps such as a local LLM (#2618) — thanks @HuntingSuccubus!
+- Settings → About credits the speech models VoiceStudio can install, with links to their upstream terms and the required Higgs Audio and Llama notices (#2587)
+- Settings → Performance → GPU acceleration lists your GPUs, the installed PyTorch build and which engines use the GPU or run on CPU and why, in all 21 languages (#2468) — thanks @Pates2004!
+- iFLYTEK Astron MaaS as a named LLM provider (#2421) — thanks @FenjuFu!
+- Prosody Mirror directs each dub line from the source speaker's pitch, loudness, pace and voicing (#2417) — thanks @JoshuaWIls!
+- Windows on ARM: native ARM64 installer; the AI backend runs as x64 under emulation on the CPU (experimental) (#2500)
+- `OMNIVOICE_TORCH_VARIANT=auto|cuda|cpu` and `OMNIVOICE_CPU_DTYPE=bfloat16` override the automatic PyTorch build and CPU precision (#2500)
+- Bug reports include CPU architecture, free disk space and the active speech recognition engine (#2433) — thanks @HoneyTyagii, @Rey-de-la-Tierra!
+- `VOICESTUDIO_DISABLE_UPDATER=1` turns off the in-app updater for package-managed installs, and the Linux guide lists the community AUR package (#2557)
+- MCP agents can design a voice from a text description and reuse it by `profile_id` (`describe_voice`, `design_voice`) (#2419) — thanks @thelselutopia!
+- Dictation vocabulary hint in Settings → Dictation shortcut: names and jargon that Faster Whisper, MLX Whisper and OpenAI-compatible engines should expect (#2419) — thanks @m061i6!
+- Cheaper Inference is available as an optional LLM provider (#2419) — thanks @aiapienthusiast!
+- Choose 16/24/32-bit WAV precision, sampling effort and mastering in Clone and Design, with file sizes and optional audio checks (#2406)
+- Language selection adds searchable flags, native names and codes in a responsive virtual grid, with supported model languages first and accessible keyboard navigation (#2408)
+- Run local narration, transcription, translation and voice-conversion recipes with resumable steps and WAV/TXT exports (#2333)
+- Workflows Condition step routes each item by a text phrase, preserves output on direct-to-End branches, and uses one phrase editor (#2419) — thanks @shivsin25!
+- Call agent backend: place or answer phone calls that hold a task conversation in your verified or designed voice, with an editable AI disclosure, take-over and an after-call summary (#2306)
+- Calls workspace with a live transcript, take-over, hang-up and an after-call summary (#2305)
+- Create Story from a dub: its speakers become characters, its segments become lines, and each character keeps the voice the dub assigned — no retyping the script (#2300) — thanks @shivsin25!
+- Linux AppImages include standard update information and a published `.zsync` file so AppImageUpdate and desktop managers can download only changed bytes (#2327) — thanks @shuvashish76!
+- Pull requests ask their opener and every commit author and co-author to sign a one-time Contributor License Agreement by comment; the contributing guide explains how (#2556)
+- Home credits contributors with over 10 commits in three responsive rows of round avatars stacked from right to left with an All contributors link, with GitHub and X links on Palash's hover card (#2407)
+- The VoiceStudio.sh Open Source title opens a website preview below the clicked item, within the right content area, with navigation and external-browser controls (#2407)
+- Top bar adds a GitHub Star shortcut beside Get Pro with an exact count refreshed every 20 minutes (#2407)
+- Footer adds one X button with follow cards for @idebpalash and @voicestudiosh plus a compact support-links menu beside Pro (#2407)
+- Manage Projects with confirmed individual and bulk deletion, retry failed items, and keep exported files and render audio (#2333)
+- Footer shows Integrations, Become a Sponsor, and a VoiceStudio Pro shortcut (#2302)
+- Pro keeps core generation unlimited and presents ten production benefits with $99/user yearly, $299/user lifetime, and Enterprise contact options, including quantity totals, commercial work, remote devices, workers, and GPU sharing (#2302)
+- MCP speech files and URLs can deliver Ogg/Opus instead of WAV; Ogg saves preserve int16 audio levels (#2321) — thanks @tracyndoan!
 
 ### Docs
 
+- Model licence records list which models are non-commercial or still unreviewed, and the docs no longer claim MIT terms for bundled demo audio or commercial terms for OmniVoice (#2587)
+- Hermes Agent MCP setup (#2464), ChromeOS and iPad guidance (#2438, #2398) and keeping app data on an external drive (#2436) — thanks @MayoGit204, @luminosity-d3v, @CaptainAi777, @RobAsticles!
+- Japanese README (#2418) — thanks @eltociear!
+- Commercial License client verification and test guide (#2432) — thanks @velixio!
+- Hardware support table with CPU-only and Windows-on-ARM guidance (#2500)
+- Maintainer guide for repository settings that can't live in code; the licence notice scope and the contributing guide's list of network calls match the current app (#2556)
+- Contact addresses are now hi@voicestudio.sh (general and licensing), partner@voicestudio.sh (partnerships) and security@voicestudio.sh (security reports) (#2556)
+- Chinese README now matches the Electron installation and migration guide (#2419) — thanks @lg114!
 - Record the supplied audio comparisons and installed-engine quality validation (#2406)
-
 - New call agent guide covering setup, disclosure, recording consent and safeguards (#2306)
 - The Twilio guide and integration directory describe the guided setup and in-app integration pages (#2304)
+- Install guides cover the Electron app: real download names, Linux AppImage and `.deb`, current source builds and uninstall folders (#2578)
+- Docker docs: the model-cache mount that works, what each image tag means, and opt-in analytics (#2578)
+- Security, contributing, release, structure and update-channel docs match the current app; the security policy supports the latest 0.5.x (#2578)
+- License notice: commercial use is free under the AGPL; the paid licence is for closed-source use, with Pro plans linked (#2578)
 
 ### Fixed
-- LAN-share links no longer bounce remote browsers at their own loopback: the no-frontend fallback redirect keeps the host the client used, with the PIN query intact (#2680) — thanks @swadhinbiswas!
+- The no-web-UI fallback keeps the share PIN on its dev-UI redirect and answers terminally instead of looping when the share listener sits on the UI port (#2680) — thanks @swadhinbiswas!
 - Dub assembly, cached segments and audio tools can read generated WAV files when TorchCodec is missing or cannot load (#2379) — thanks @tokutei58301-boop!
 - Remote API-key and share-PIN clients can record and read export history while native filesystem operations stay local (#2383, #2384) — thanks @sedatdagg!
 - Concurrent job events receive unique sequence numbers (#2384) — thanks @sedatdagg!
@@ -86,15 +153,162 @@ metadata and the backend fallback mirror it.
 - MLX Qwen3-TTS receives the selected language correctly; MeloTTS explains missing text resources without downloading during generation (#2419)
 - The language picker offers only the languages each MLX-Audio model supports (Kokoro, CSM, Qwen3-TTS, Dia, Chatterbox, MeloTTS, OuteTTS), per their model cards, instead of every language (#977)
 
+- On Windows, updating the app no longer stops at "EPERM: operation not permitted, rename" when antivirus briefly holds the new runtime files (#2669) — thanks @javalovelinux-cmd!
+- MCP speech tools wait through model loading and progress-extended CPU renders instead of timing out before the backend (#2609) — thanks @JopsTaku!
+- On Windows, the GPU report finds your graphics card again, and CPU-only hosts with integrated graphics are no longer told to fix an NVIDIA driver (#2620) — thanks @creatorliao!
+- Stretch Video exports that keep the original background no longer fail with HTTP 409 when subtitle cues sit close together or have no length (#2616) — thanks @quan0pek!
+- Failed desktop saves and exports show the app's explanation instead of a bare "HTTP 409" (#2616) — thanks @quan0pek!
+- Failed model downloads stop every parallel range writer instead of leaving them writing in the background (#2642) — thanks @rudycelekli!
+- A finished call's status can no longer be overwritten by a delayed save, so call history shows the true outcome (#2640) — thanks @rudycelekli!
+- Cancelling a dub keeps track of processes started while it was being stopped (#2632) — thanks @rudycelekli!
+- Auto-extracted glossary terms with accents or Cyrillic letters are no longer duplicated (#2638) — thanks @rudycelekli!
+- Audio quality warnings keep the earliest problems on the timeline when there are more than 100 (#2636) — thanks @rudycelekli!
+- A corrupt model revision or install marker falls back cleanly instead of blocking model repair and installs (#2634) — thanks @rudycelekli!
+- EPUB import keeps paragraphs, list items and table cells separate (#2630) — thanks @rudycelekli!
+- Streaming speech no longer splits a later sentence at a comma after a short first reply such as "Yes." (#2628) — thanks @rudycelekli!
+- Queued AI-agent completions time out at their own deadline instead of waiting behind the running request (#2658) — thanks @rudycelekli!
+- Blank-window recovery no longer reloads a newer page or a closed window after a slow check (#2648) — thanks @rudycelekli!
+- The repair assistant's API tool stops reading oversized responses at its size limit (#2646) — thanks @rudycelekli!
+- Node tools installed through NVM are found newest-first, so v24 wins over v9 (#2644) — thanks @rudycelekli!
+- `bun run dev` on macOS rebuilds a broken cached development app instead of failing on every launch (#2656) — thanks @rudycelekli!
+- Dub and timeline timestamps near a minute boundary read "1:00.0" instead of "0:60.0", and batch durations and update times no longer show "60s" (#2660) — thanks @rudycelekli!
+- Multi-language dubbing no longer counts empty cues as missing translations, so progress and "ready to render" agree (#2662) — thanks @rudycelekli!
+- The microphone level meter releases the audio device if it fails to start (#2654) — thanks @rudycelekli!
+- Stopping or failing a long-form render always releases the stream connection (#2652) — thanks @rudycelekli!
+- Spelled-out text keeps emoji and rare characters whole (#2650) — thanks @rudycelekli!
+- Dubbing keeps the previous track when subtitles are imported or the render is cancelled before it finishes, and asks you to generate again for the new subtitles (#2614)
+- Cancelled, superseded or failed dubs leave segment previews and cached speech untouched, so previews and partial regeneration never use rejected audio (#2614)
+- A regenerated dub drops quality-check marks measured on the previous track (#2614)
+- Transcription no longer overwrites subtitles imported, or a dub published, while it runs (#2614)
+- Subtitles imported during transcription keep their matched voice references instead of audio from the discarded pass (#2614)
+- Re-transcribing replaces the previous transcript's voice references instead of reusing them on different lines (#2614)
+- A dub that finishes just as it is cancelled reports done instead of cancelled (#2614)
+- First-run setup tracks a package's download when uv spells its name with underscores on one line and hyphens on another (#2614)
+- Voice cloning finds a speech-to-text model installed through Model Catalogue instead of asking you to install one (#2442, #2498) — thanks @drakeo338, @Bad-ptr!
+- A reference over 20 s with no speech-to-text model says it is too long and to trim it to 3-10 s (#2442) — thanks @drakeo338, @Bad-ptr!
+- A generate can no longer crash the backend while the start-up model preload is still running (#2394) — thanks @manoooo202020!
+- Out-of-memory failures name system RAM exhaustion and what to free (#2462) — thanks @dubeypankaj11-spec!
+- A slow launch no longer spends the backend's start-up budget; failures quote the backend's last output (#2445, #2461, #2448) — thanks @nirmalchatur, @nvtoan0201-swe, @luomo1!
+- Start-up failures name the program that could not launch and hint at blocked launches, slow starts and OneDrive-synced folders (#2440, #2465) — thanks @Ankith51, @nathanvinteset!
+- Slow and no-GPU computers are not declared failed during start-up: 180 s runtime check, doubled budget on small hosts, a still-printing backend extends the wait (#2445, #2465, #2499) — thanks @Ankith51, @luomo1!
+- A busy backend is reported as recoverable and the health probe no longer imports torch (#2430, #2490, #2491) — thanks @nirmalchatur, @imsemoo, @Jokeryt27, @105252803-create!
+- VoxCPM2 generation stays bounded without killing slow CPU renders or cutting quality steps (#2435) — thanks @strauss-visuals!
+- Segmented model downloads reject wrong status or `Content-Range` instead of publishing bad bytes (#2451) — thanks @rudycelekli, @ege-arhan!
+- Resume records are trusted only when the partial file matches (#2452) — thanks @rudycelekli!
+- Concurrent migration snapshots no longer overwrite each other and abandoned reservations are pruned (#2453) — thanks @rudycelekli!
+- Exports and downloads named after video titles no longer fail on Windows with `[Errno 22]` (#2376) — thanks @manoooo202020!
+- A full disk during an install stops at once with free-space guidance, and first-run retries the `uv` download on flaky connections (#2496)
+- Deleting a voice profile commits before removing its files (#2483), and history clearing, unlock and consent re-recording no longer delete audio before the change is saved — thanks @rudycelekli!
+- Cache pruning keeps `voices_roots.json` so relocated legacy audio is recovered (#2482) — thanks @rudycelekli!
+- Resuming a book keeps the original plan until the render finishes (#2481) — thanks @rudycelekli!
+- Newer dubbing jobs no longer hide finished books and stories from the library (#2480) — thanks @rudycelekli!
+- Truncated float, PCM and other WAV references are rejected instead of reported as playable (#2477) — thanks @rudycelekli!
+- Dub assembly and cached-segment checks no longer depend on TorchCodec or the removed `torchaudio.info` on torchaudio 2.9 (#2378) — thanks @tokutei58301-boop!
+- Transcription says plainly when ffmpeg is missing or the backend lost its output pipe, and libraries that run plain `ffmpeg` find the bundled copy (#2404, #2405) — thanks @alannhery!
+- Streaming preview no longer clips the start and end of takes (#2399) — thanks @Marcin-CCC!
+- Specialized number tokens like `$5abc` and `3-5%` are left alone instead of half-spoken (#2475) — thanks @rudycelekli!
+- Stories WebVTT import keeps cues named `STYLE`, `REGION` or `NOTE` correctly (#2434) — thanks @Yi-111-a, @17lijunyi!
+- Percent-encoded EPUB chapter filenames import (#2449) — thanks @rudycelekli!
+- Pronunciation matches use the right replacement for Unicode case variants (#2450) — thanks @rudycelekli!
+- Literal `<stop>` and `<prd>` in streamed text are preserved (#2469) — thanks @rudycelekli!
+- Short answers from another known speaker are no longer folded into the previous speaker (#2471) — thanks @rudycelekli!
+- Fallback subprocess wrapper reports the child's exit code (#2473) — thanks @rudycelekli!
+- Short subtitle millisecond fields are read as milliseconds (#2422) — thanks @Vaishnavi220506!
+- Clone preview loops at the end of the audio stay within the clip (#2429) — thanks @Nikhi00718!
+- MCP tools and resources return real JSON (#2459) — thanks @abdullah-rashid62!
+- Call agents never speak reasoning that a chat template prefills (#2428) — thanks @swadhinbiswas, @FenjuFu!
+- Dub translation, review and glossary extraction strip reasoning from local thinking models (#2420) — thanks @FenjuFu!
+- IndexTTS 2.5 installs a ROCm PyTorch on ROCm hosts (#2371), verifies bf16 before enabling it (#2372) and avoids a long MIOpen stall (#2373) — thanks @swadhinbiswas, @thelselutopia!
+- The minimum NVIDIA driver check follows CUDA 12.x compatibility: 525.60.13 on Linux, 528.33 on Windows (#2489) — thanks @NN708!
+- Home keeps every qualifying contributor visible in its avatar rows (#2447) — thanks @nvtoan0201-swe!
+- Fix it with an agent finds Claude Code and other agent CLIs installed in user folders (~/.local/bin, Homebrew, npm global) when launched from Finder or a desktop entry, and rechecks each time the panel opens (#2602) — thanks @flatlinebb on Discord!
+- YouTube downloads no longer fail with Errno 22 or Broken pipe when the app's stdout is closed; yt-dlp progress and messages now go to the log (#2602) — thanks @marioteka and @shizzy_prod on Discord!
+- Offline NLLB translation accepts every language in the dubbing pickers (Nepali, Catalan, Latvian, Georgian, Punjabi, Norwegian and about 50 more) for both target and auto-detected source (#2602) — thanks @lamomg on Discord!
+- Voice Design explains when the selected engine can't design voices (IndexTTS2, MOSS, dots, Confucius4, GPT-SoVITS, Supertonic, OmniVoice GGUF) or can't reuse a saved voice's sample (KittenTTS, Supertonic, Sherpa-ONNX) instead of failing or silently switching to a preset voice (#2602) — thanks @natebojangles on Discord!
+- Voice Design follows your edits after you pick or save a designed voice: changing details, gender, the description or the seed no longer re-renders the saved sample (#2602) — thanks @retrologic on Discord!
+- Saving a voice design skips cold engine loading and downloads, including when a warm engine unloads during the save (#2583) — thanks @simoncheese!
+- Dubbing keeps Remove video available after an interrupted or failed run, so a YouTube link can replace the source, and labels it Remove audio for audio files (#2584) — thanks @harrsoft-dev!
+- Audio-only dub previews reuse one background mix instead of writing a new full-length WAV on every seek, which filled the disk on long dubs (#2581) — thanks @PsychoRhythmist!
+- References longer than 20 s keep using the installed speech-to-text model when OmniVoice retries generation without its cached voice prompt (#2579) — thanks @mahdinazmi!
+- Model Catalogue disk warnings name the 10 GB kept free after each download and use the same rule as the installer (#2597) — thanks @HuntingSuccubus!
+- Saving a cloned voice works offline: installed speech-to-text models load from disk and save-time transcription is time-limited (#2583) — thanks @simoncheese!
+- Apple Silicon Macs running the Intel build are pointed to the Apple Silicon download instead of failing setup on PyTorch (#2598) — thanks @igiteam!
+- Source checkouts that cannot start the backend say whether `.venv` is missing or which Python import failed (#2555) — thanks @spvn81!
+- Native backend crashes name the faulting frame and report the VoiceStudio frames and other threads that were running (#2382, #2250, #2187) — thanks @quan0pek and @geogjaime!
+- Streaming previews play the last chunk to its end and resume at full volume after a generation pause (#2518) — thanks @rudycelekli!
+- Remote backend checks and WebSocket sign-in time out when a server stalls mid-response instead of waiting forever (#2527) — thanks @rudycelekli!
+- Remote backends served under a reverse-proxy path prefix keep that prefix for dictation, events and speech WebSockets (#2537) — thanks @rudycelekli!
+- Cancelling dictation while it connects no longer hijacks the next dictation's connection (#2533) — thanks @rudycelekli!
+- Deleting one dictation transcript no longer removes other transcripts saved in the same moment (#2538) — thanks @rudycelekli!
+- Reusing a Clone take restores its WAV precision and Even out volume choice (#2526) — thanks @rudycelekli!
+- Compare voices and voice-profile previews warn when part of the text produced no speech (#2548) — thanks @rudycelekli!
+- Saving an export over an existing file keeps the old file intact if the new write fails (#2560) — thanks @rudycelekli!
+- First-run setup shows the right download size and active package when similarly named packages download together (#2562) — thanks @rudycelekli!
+- Storage scans now enforce their time budget between files, return the measured partial total, and mark Other incomplete when it expires or an entry is unreadable (#2564) — thanks @rudycelekli!
+- Batch retry and delete no longer race, so a job cannot be queued twice and its files are never removed while it is active or stopping (#2547) — thanks @rudycelekli!
+- Stopping an audiobook or Stories render marks its job cancelled instead of leaving it running, and refused renders no longer stay running either (#2536) — thanks @rudycelekli!
+- Audiobook and Stories descriptions with CRLF or CR paragraph breaks keep every paragraph in the exported file (#2528) — thanks @rudycelekli!
+- Re-locking a voice to another take re-renders its audiobook and Stories audio instead of replaying the previous take, and renders already running keep reading their take (#2535) — thanks @rudycelekli!
+- Longform chapters and segments are cached per synthesis language, so changing language no longer replays the previous audio (#2524) — thanks @rudycelekli!
+- Moving app data into an existing empty folder no longer fails with an EISDIR rollback (#2521) — thanks @rudycelekli!
+- Models folders with a hash, quote or backslash in the name now survive the saved-settings round trip, while hand-written `${HOME}` paths still expand (#2519) — thanks @rudycelekli!
+- Japanese translations written mostly in kanji are no longer rejected as the wrong script (#2576) — thanks @rudycelekli!
+- Dub quality check compares each track with its own language text, so correct multilingual dubs are no longer flagged (#2574) — thanks @rudycelekli!
+- Dub transcripts keep speech from segments the aligner could not time instead of dropping it (#2572) — thanks @rudycelekli!
+- Word alignment retries on the CPU when its model fails to load on Apple GPU, keeping precise dub timing (#2570) — thanks @rudycelekli!
+- Concurrent MCP voice-binding edits keep each other's changes, and simultaneous first saves no longer fail (#2568) — thanks @rudycelekli!
+- Dub visual-context analysis removes its temporary frames after success, errors and cancelled requests (#2566) — thanks @rudycelekli!
+- Gallery and Voice Clone trimming no longer stay stuck decoding when a file never reports its duration (#2558) — thanks @rudycelekli!
+- Pronunciation dictionary backups keep which duplicate entry wins, and the list, test and synthesis use one order (#2552) — thanks @rudycelekli!
+- Pronunciation entries scoped by language name or 3-letter code now match the right language, and Spanish entries no longer apply to Estonian (#2542) — thanks @rudycelekli!
+- Network Sharing from packaged desktop apps serves the web interface to LAN devices on macOS, Windows and Linux, and never redirects them to their own `localhost` (#2599) — thanks @Xpertfall!
+- URL imports accept only http(s) links and refuse private-network addresses unless `OMNIVOICE_ALLOW_PRIVATE_URL_IMPORTS=1` is set, download only through the guarded downloader, cut gallery clips locally and refuse live streams
+- Gallery, dubbing, voice-profile and batch uploads accept audio and video files only and refuse playlists named like media, and ffmpeg reads only local files
+- Model downloads keep every file inside the model cache, mirrors never receive your Hugging Face token (gated models install from Hugging Face even when Auto picked a mirror), mirror URLs must use HTTPS, and voice bundle imports and GGUF checksum checks are stricter
+- The local API refuses requests sent by other websites or addressed by unrecognized host names; `host.docker.internal` and requests carrying a valid API key or session still work, `OMNIVOICE_ALLOWED_HOSTS` adds other names, and a UI on an allowed origin still loads video previews and downloads
+- Remote workers open only the files a task sends as inputs, never a path named in its parameters
+- Remote worker registration signs a fresh single-use challenge from the app, so a recorded registration cannot be reused
+- The desktop app attaches only to a local backend that identifies itself as VoiceStudio, not to any service on its port
+- Dubbing and batch jobs accept only plain language codes when naming their output files
+- Saved voice, gallery and call-recording files are read only from inside their data folders, and uploads need a plain file extension
+- Engine install folders can no longer be set to a typed path over the HTTP API; they can still be cleared
+- CPU-only hosts get a compute-time budget that scales with input length (up to 2 h), so ordinary passages no longer time out mid-generation, and the timeout message names the CPU budget setting (#2611) — thanks @JopsTaku!
+- A busy attached backend shows as unresponsive instead of crashed, and background status polls no longer starve the backend worker pool (#2608) — thanks @be-huge, @aanbiluitel-sys!
+- Elevated Windows app removal stops before deleting data and points to a normal PowerShell window or Settings (#2578)
+- Contributor audits inspect committed files and exclude submodules, while still stopping on failed file attribution (#2556)
+- Contributor audits stop on unreadable Git history instead of dropping affected authors (#2556)
+- The CLA check accepts the sign line without a final full stop and replies when a comment cannot be recorded (#2586)
+- CLA rechecks clear older approvals, reject duplicate PR heads, and block failed status updates (#2556)
+- Keep audiobook chapter boundaries when importing CR-only manuscripts (#2508) — thanks @rudycelekli!
+- Preserve busy sidecars during engine-level unload instead of terminating their active operation (#2507) — thanks @Anuj04432 and @rudycelekli!
+- Exclude downloaded caption comments while preserving spoken metadata words (#2510) — thanks @rudycelekli!
+- Stopping a live Dubbing preview releases its stream and synthesis slot so another render can start (#2511) — thanks @rudycelekli!
+- Count interrupted sidecar installs and report unreadable engine scans in Storage usage (#2479) — thanks @rudycelekli!
+- Dub assembly, cached segments and audio tools can read generated WAV files when TorchCodec is missing or cannot load (#2419) — thanks @tokutei58301-boop!
+- Remote API-key and share-PIN clients can record and read export history while native filesystem operations stay local (#2419) — thanks @sedatdagg!
+- Concurrent job events receive unique sequence numbers (#2419) — thanks @sedatdagg!
+- Streaming reuses warm engines, follows model changes and protects active streams during eviction (#2419) — thanks @DeepanshuPal and @Kishore-MR!
+- VoxCPM2 performs one complete generation attempt with the requested sampling effort and enough time for CPU and MPS inference (#2419) — thanks @strauss-visuals!
+- Voice Clone explains when the selected model cannot clone instead of silently ignoring the reference (#2419)
+- GitHub Star count refreshes from the repository API, and macOS tray icons keep the intended menu-bar size (#2419)
+- MLX-Audio OuteTTS generates again with a reference clip or its default voice (#2419)
+- MLX Qwen3-TTS receives the selected language correctly; MeloTTS explains missing text resources without downloading during generation (#2419)
+- The language picker offers only the languages each MLX-Audio model supports (Kokoro, CSM, Qwen3-TTS, Dia, Chatterbox, MeloTTS, OuteTTS), per their model cards, instead of every language (#977) — thanks @scprdytj2s-beep!
+- The Enter that confirms Korean, Japanese or Chinese input no longer also submits project renames, language search, pronunciation, worker or MCP fields (#2419) — thanks @HEOJUNFO!
+- English text normalization speaks a dollar amount followed by a period or comma ("It costs $5.") instead of leaving the digits (#2419) — thanks @kevin9327!
+- Voice Design sends descriptions unchanged to free-text engines and restores the original design when reopening a take (#2419) — thanks @CauaMatheus and @dominikj-cf!
+- Voice Design keeps a detail you pick when you edit the description, unless the new text says otherwise, and reopening a take restores the description and picks it was made with (#2389) — thanks @dominikj-cf!
+- A snapshot interrupted mid-copy (crash, kill or power loss) is no longer listed as a database backup or counted toward the three kept; the leftover partial file is cleaned up on the next snapshot (#2419) — thanks @fadiroot!
 - Low-disk notifications open Storage settings directly (#2407)
-
 - Preserve float audio and requested seeds through OmniVoice/VoxCPM2 sidecars, and keep playback and saved WAV precision consistent (#2406)
 - Development launches rebuild main and preload changes so embedded website previews do not keep stale browser IPC after UI updates (#2407)
-
 - Dubbing reports damaged source files clearly and removes partial or failed copies when storage runs out (#2411)
+- Streaming previews keep audio edges intact, preserve crossfades for late chunks, and use the PCM rate when supported (#2419) — thanks @dajiaohuang and @Marcin-CCC!
+- Installed performance packs can be activated when all required models are present, even below the download-space reserve (#2419) — thanks @dajiaohuang!
 - macOS development launches use the maintained Electron version and icon paths (#2351)
 - Electron detects and repairs incomplete PyTorch, torchaudio and torchvision runtime wheels before backend startup (#2354) — thanks @jonathanmoronta1-lab!
 - Returning to local mode discards sessions from unsaved remote-backend connection tests (#2356)
+- EPUB chapters without a table-of-contents entry are named after their whole heading, not only its first styled fragment (#2419) — thanks @kevin9327!
 - Remote administrator sessions survive reloads and new tabs without storing the master API key (#2352) — thanks @brunobarrientos!
 - Dub extraction shows ffmpeg's actual error instead of its Homebrew version banner (#2353) — thanks @lyrenth!
 - Main-source installs use the built app version even when platform tooling has its own `Version` variable (#2343)
@@ -102,7 +316,6 @@ metadata and the backend fallback mirror it.
 - Engine health checks recognize one-click TTS engines such as VoxCPM2 and MOSS-TTS-Nano in their isolated environments (#2339)
 - Privacy controls stay expanded during first-run installation instead of hiding behind Advanced (#2337)
 - Preserve large workflow libraries and keyboard moves, secure library deletion and license storage, and keep analytics opt-out authoritative during startup (#2333)
-
 - Signed macOS releases now notarize and staple Electron installers when the owner supplies Apple Developer credentials (#1779)
 - Numbers grouped with a period in German, Spanish, French and the other comma-decimal languages, such as "10.000", keep their digits instead of being spoken as ten (#2334) — thanks @kevin9327!
 - Integration pages show each integration's own category and summary instead of borrowed labels such as "Dubbing" for Twilio (#2304)
@@ -113,14 +326,33 @@ metadata and the backend fallback mirror it.
 - Pure Dub timeline moves keep both millisecond cue times without unintended playback-speed changes (#2309) — thanks @kevin9327!
 - A video with no audio track now says so in Dub, Batch, transcription, cloning and imports instead of showing ffmpeg's exit-234 dump (#2308)
 - Dub import card gains Clear (URL) and Remove video controls with confirmation before discarding a transcript (#2314) — thanks @Raunaksplanet!
-- Engine model-download failures name the engine and offer retry guidance instead of a generic internal error (#2316) — thanks @shivsin25!
+- Engine model-download failures name the engine and offer retry guidance instead of a generic internal error (#2316) — thanks @shivsin25, @HNK-I!
 - Cache flushes after a dubbing offload or a failed generation reach every accelerator an engine can run on — Ascend NPU and Intel XPU included, not just CUDA and MPS (#2317) — thanks @li-lizhe!
 - Hardsub exports on Windows pass the caption path in ffmpeg's filter form so burned-in line and karaoke captions render (#2312) — thanks @kevin9327!
 - Dub QC scores Chinese, Japanese and Thai lines per character, so a single wrong character no longer counts as total drift and flags the line (#2335) — thanks @kevin9327!
-
-- `/generate` writes an uploaded clone reference with its real extension instead of always `.wav`, so a non-WAV one-shot clip still decodes (#2311)
-
+- `/generate` writes an uploaded clone reference with its real extension instead of always `.wav`, so a non-WAV one-shot clip still decodes (#2311) — thanks @kevin9327!
 - A reference longer than 20 s is transcribed with the speech-to-text model already installed, instead of failing when OmniVoice's own Whisper snapshot is not cached (#2301) — thanks @Cengokill!
+- Pronunciation dictionary entries in Japanese, Chinese and Thai apply inside a sentence, not only to a line that is the key alone (#2419) — thanks @kevin9327!
+- Speed/quality tiers apply to the crash-isolated OmniVoice engine too (#2578)
+- A browser UI on another origin receives each take's id, seed, timing and routing details (#2578)
+- Long or queued generations no longer show a failure after 21 minutes while the backend is still working (#2578)
+- The desktop backend starts on Windows when the user profile path has non-English characters (#1783, #2578)
+- Runtime setup continues to Python verification when an optional startup-path repair fails (#2578)
+- Uninstall scripts remove the Electron app's runtime, logs and updater cache (#2578)
+- The in-app Docker instructions reuse your model cache at the path the image reads (#2578)
+- Recording durations show their unit again in Japanese, Korean, Polish, Thai and Vietnamese (#2578)
+- `bun run dev:api` binds to loopback by default and follows `OMNIVOICE_PORT` (#2578)
+- New bug and install reports land in the `needs-triage` queue (#2578)
+
+### CI
+
+- The Windows ARM64 installer is built for ARM64 only, and the packaging rehearsal runs on Windows, Intel Mac and ARM64 without host-specific test failures (#2615)
+- Pull requests fail when a commit uses a leaked personal email, a placeholder identity, or an AI agent identity, or when a commit or the description credits an AI agent (#2556)
+- GitHub Actions are pinned to exact commits and kept current by Dependabot (#2556)
+- Release Docker images publish when the GitHub Release is published; `:latest` only ever comes from `main` (#2578)
+- One bun, TypeScript and Playwright version and one lockfile across the workspace; frontend unit tests run in the required check (#2578)
+- Tests keep the review-bot configs, issue-template labels and locale catalogs consistent (#2578)
+- Trusted base-branch checks reject leaked, placeholder, and AI agent identities while allowing human co-authors with names shared by agents (#2556)
 
 ## [0.5.6] — 2026-09-23
 

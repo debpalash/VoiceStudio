@@ -19,6 +19,7 @@ The chunked delivery targets <100ms time-to-first-audio (TTFA) on warm models.
 from __future__ import annotations
 
 import asyncio
+from contextlib import ExitStack
 import logging
 import os
 import time
@@ -41,23 +42,32 @@ _perf_counter = time.perf_counter
 
 async def _resolve_stream_backend(engine_id: str | None):
     """Resolve the live-stream engine without bypassing host isolation."""
-    from services.tts_backend import (
-        OmniVoiceBackend,
-        active_backend_id,
-        get_active_tts_backend,
-        get_backend_class,
-    )
+    from services import tts_backend
 
-    if engine_id:
-        return get_backend_class(engine_id)()
-
-    cls = get_backend_class(active_backend_id())
-    if cls is OmniVoiceBackend:
+    selected_id = engine_id or tts_backend.active_backend_id()
+    cls = tts_backend.get_backend_class(selected_id)
+    if cls is tts_backend.OmniVoiceBackend:
+        if engine_id:
+            # Preserve the explicit core override path; the shared model is
+            # loaded on demand by OmniVoiceBackend, not cached as a sidecar.
+            return cls()
         from services.model_manager import get_model
 
-        return get_active_tts_backend(model=await get_model())
-    return get_active_tts_backend()
-
+        return tts_backend.get_active_tts_backend(model=await get_model())
+    if not engine_id:
+        return tts_backend.get_active_tts_backend()
+    # The configured backend is cached separately from explicit overrides.
+    # Reuse it when the ids match rather than constructing a second instance.
+    # Never evict here: another socket can still hold a backend across chunks.
+    if (
+        tts_backend._active_instance_id == selected_id
+        and isinstance(tts_backend._active_instance, cls)
+    ):
+        if not tts_backend._built_for_other_model(cls, tts_backend._active_instance):
+            return tts_backend._active_instance
+        if tts_backend.active_backend_id() == selected_id:
+            return tts_backend.get_active_tts_backend()
+    return tts_backend.get_engine_instance_for(selected_id)
 
 class StreamTTSRequest(BaseModel):
     """Client request for streaming TTS."""
@@ -74,6 +84,35 @@ class StreamTTSRequest(BaseModel):
     emo_alpha: float = 1.0
     # Engine override
     engine: Optional[str] = None
+
+
+EMO_AUDIO_DETAIL = (
+    "emo_audio must name an audio clip stored in VoiceStudio's voices or "
+    "outputs folder."
+)
+
+
+def resolve_emotion_clip(value: object) -> str:
+    """Resolve an ``emo_audio`` reference to a file VoiceStudio owns.
+
+    Accepts a bare filename in the voices folder, or a path inside the voices
+    or outputs folders (voice-gallery imports live there). Anything else —
+    including arbitrary absolute paths — is refused, so a socket client can
+    never make the engine read an unrelated file from disk.
+    """
+    from core.config import OUTPUTS_DIR, VOICES_DIR
+    from core.path_security import UnsafePath, resolve_within
+
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(EMO_AUDIO_DETAIL)
+    for root in (VOICES_DIR, OUTPUTS_DIR):
+        try:
+            candidate = resolve_within(root, value.strip())
+        except (OSError, UnsafePath):
+            continue
+        if candidate.is_file() and not candidate.is_symlink():
+            return str(candidate)
+    raise ValueError(EMO_AUDIO_DETAIL)
 
 
 def build_stream_kwargs(data: dict) -> dict:
@@ -94,7 +133,7 @@ def build_stream_kwargs(data: dict) -> dict:
     if data.get("emo_text"):
         kw["emo_text"] = data["emo_text"]
     if data.get("emo_audio"):
-        kw["emo_audio"] = data["emo_audio"]
+        kw["emo_audio"] = resolve_emotion_clip(data["emo_audio"])
     # Default 1.0 when absent: a missing key must not trip the
     # `!= 1.0` branch into a KeyError (any minimal request that
     # omitted emo_alpha got an error frame instead of audio).
@@ -107,6 +146,7 @@ def build_stream_kwargs(data: dict) -> dict:
         try:
             from core.db import db_conn
             from core.config import VOICES_DIR
+            from core.path_security import contained_join
             with db_conn() as conn:
                 row = conn.execute(
                     "SELECT * FROM voice_profiles WHERE id=?",
@@ -114,13 +154,9 @@ def build_stream_kwargs(data: dict) -> dict:
                 ).fetchone()
             if row:
                 if row["is_locked"] and row["locked_audio_path"]:
-                    kw["ref_audio"] = os.path.join(
-                        VOICES_DIR, row["locked_audio_path"]
-                    )
+                    kw["ref_audio"] = contained_join(VOICES_DIR, row["locked_audio_path"])
                 elif row["ref_audio_path"]:
-                    kw["ref_audio"] = os.path.join(
-                        VOICES_DIR, row["ref_audio_path"]
-                    )
+                    kw["ref_audio"] = contained_join(VOICES_DIR, row["ref_audio_path"])
                 if row["ref_text"]:
                     kw["ref_text"] = row["ref_text"]
                 if row["instruct"] and not data.get("instruct"):
@@ -213,19 +249,24 @@ async def synthesize_stream(
     from services.model_manager import generate_timeout_s, run_on_gpu_pool_guarded
 
     backend = await _resolve_stream_backend(engine)
-    routing = await runtime_compute_profile_async(backend, detect_host_caps())
-    if routing["routing_status"] == "unavailable":
-        raise StreamUnavailableError(
-            scrub_text(routing["routing_reason"]) or "engine cannot run on this host"
-        )
+    from services.tts_backend import engine_in_use
+
     kw = build_stream_kwargs({"voice": voice, "language": language})
-    for sentence in split_stream_sentences(text, language):
-        wav, sr, _synth_s = await run_on_gpu_pool_guarded(
-            functools.partial(render_stream_sentence, backend, kw, sentence),
-            what="TTS generate",
-            timeout=generate_timeout_s(sentence, engine=backend),
-        )
-        yield wav, sr
+    with engine_in_use(backend):
+        routing = await runtime_compute_profile_async(backend, detect_host_caps())
+        if routing["routing_status"] == "unavailable":
+            raise StreamUnavailableError(
+                scrub_text(routing["routing_reason"]) or "engine cannot run on this host"
+            )
+        from services.engine_memory import evict_other_tts_engines
+        await evict_other_tts_engines(backend.id)
+        for sentence in split_stream_sentences(text, language):
+            wav, sr, _synth_s = await run_on_gpu_pool_guarded(
+                functools.partial(render_stream_sentence, backend, kw, sentence),
+                what="TTS generate",
+                timeout=generate_timeout_s(sentence, engine=backend),
+            )
+            yield wav, sr
 
 
 @router.websocket("/ws/tts")
@@ -302,6 +343,9 @@ async def ws_tts(websocket: WebSocket):
                         ),
                     })
 
+            # Close on every exit: normal completion, routing rejection,
+            # disconnect, generation failure or task cancellation.
+            engine_lease = ExitStack()
             try:
                 # Resolve engine
                 engine_id = data.get("engine")
@@ -320,6 +364,11 @@ async def ws_tts(websocket: WebSocket):
                 except Exception:
                     pass
                 backend = await _resolve_stream_backend(engine_id)
+                from services.tts_backend import engine_in_use
+
+                # The idle sweeper can run between sentence jobs and socket
+                # sends. Hold the cached instance for this whole request.
+                engine_lease.enter_context(engine_in_use(backend))
 
                 # ── Routing gate (#21 — no silent CPU fallback). WebSockets have
                 # no response headers, so this uses frames: an error frame +
@@ -349,7 +398,13 @@ async def ws_tts(websocket: WebSocket):
                         "reason": scrub_text(_notice[1]) if _notice[1] else None,
                     })
 
-                kw = build_stream_kwargs(data)
+                from services.engine_memory import evict_other_tts_engines
+                try:
+                    kw = build_stream_kwargs(data)
+                except ValueError as exc:
+                    await websocket.send_json({"type": "error", "detail": str(exc)})
+                    continue
+                await evict_other_tts_engines(backend.id)
 
                 # Normalized exactly once on the whole text, then chunked
                 # (see split_stream_sentences). The request's `language` is all
@@ -468,6 +523,8 @@ async def ws_tts(websocket: WebSocket):
                     })
                 except Exception:
                     break
+            finally:
+                engine_lease.close()
 
     except WebSocketDisconnect:
         pass

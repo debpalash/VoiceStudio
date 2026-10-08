@@ -50,14 +50,18 @@ export async function consumeLongformStream(res, onEvent, { isAborted, signal } 
     }
   };
 
+  // Every exit other than the stream ending on its own (abort, a throwing
+  // onEvent, a transport error) must cancel the reader — otherwise the body
+  // stays locked and the fetch open, and the server keeps rendering.
+  let streamEnded = false;
   try {
     while (true) {
-      if (aborted()) {
-        await releaseStream();
-        return;
-      }
+      if (aborted()) return;
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        streamEnded = true;
+        break;
+      }
       buffer += decoder.decode(value, { stream: true });
       const { lines, rest } = splitSSEBuffer(buffer);
       buffer = rest;
@@ -69,11 +73,10 @@ export async function consumeLongformStream(res, onEvent, { isAborted, signal } 
   } catch (e) {
     // An abort mid-read (AbortController.abort() / reader.cancel()) rejects the
     // pending read() — swallow it when WE initiated the stop; re-throw a genuine
-    // stream/transport error so callers still surface it.
-    if (aborted()) {
-      await releaseStream();
-      return;
-    }
+    // stream/transport error (or an onEvent throw) so callers still surface it.
+    if (aborted()) return;
     throw e;
+  } finally {
+    if (!streamEnded) await releaseStream();
   }
 }

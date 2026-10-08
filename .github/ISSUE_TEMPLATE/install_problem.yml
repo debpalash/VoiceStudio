@@ -1,7 +1,7 @@
 name: 🧩 Install / first-run problem
 description: The app won't install, set up, download models, or reach a first working output.
 title: "[Install] "
-labels: ["install", "triage"]
+labels: ["install", "needs-triage"]
 body:
   - type: markdown
     attributes:

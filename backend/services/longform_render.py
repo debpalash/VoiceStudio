@@ -41,6 +41,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional
 
+from services.ffmpeg_utils import local_inputs_only
+
 _BITRATE_RE = re.compile(r"^\d{2,3}k$")
 #: Default ceiling for the content-addressed chapter cache. Above this, the
 #: oldest cached chapter WAVs are evicted (LRU by mtime). Override via
@@ -65,18 +67,26 @@ _GLOBAL_TAG_KEYS: list[tuple[str, str]] = [
 
 
 def _escape_meta(value: str) -> str:
-    """Escape an FFMETADATA value (``=``, ``;``, ``#``, ``\\``, newline)."""
-    return re.sub(r"([=;#\\\n])", r"\\\1", value or "")
+    """Escape an FFMETADATA value (``=``, ``;``, ``#``, ``\\``, newline).
+
+    CRLF and lone CR are folded to LF first: FFmpeg's parser ends a metadata
+    line at a bare CR, so only LF is escapable and an unescaped CR silently
+    truncated every description paragraph after the first (#2528).
+    """
+    value = re.sub(r"\r\n?", "\n", value or "")
+    return re.sub(r"([=;#\\\n])", r"\\\1", value)
 
 
 def prune_cache_dir(cache_dir: str, max_bytes: int = _CACHE_MAX_BYTES) -> tuple[int, int]:
-    """Evict the oldest files in ``cache_dir`` until the total size is within
+    """Evict the oldest audio/cache files in ``cache_dir`` until the total size is within
     ``max_bytes`` (LRU by mtime). The content-addressed render cache otherwise
     grows without bound — uncompressed WAVs accumulate across every render.
 
     Walks the whole tree, so chapter WAVs at the root and segment WAVs under
     ``segments/`` share ONE byte budget — the cap holds no matter which layer
-    grew. Best-effort: returns ``(remaining_bytes, removed_count)`` and never
+    grew. Bookkeeping (including the voices-root index needed to find legacy
+    WAVs after a data-dir move) is counted but never evicted. Metadata alone may
+    exceed the budget. Best-effort: returns ``(remaining_bytes, removed_count)`` and never
     raises (a missing dir / unstattable file is just skipped). Call it *before*
     writing a job's files so the fresh ones are never the eviction target.
     """
@@ -92,7 +102,8 @@ def prune_cache_dir(cache_dir: str, max_bytes: int = _CACHE_MAX_BYTES) -> tuple[
                 mtime = os.path.getmtime(p)
             except OSError:
                 continue
-            entries.append((mtime, size, p))
+            if not name.lower().endswith(".json"):
+                entries.append((mtime, size, p))
             total += size
     if total <= max_bytes:
         return (total, 0)
@@ -461,7 +472,8 @@ class SegmentCache:
             return None
         try:
             import torchaudio
-            audio, sr = torchaudio.load(path)
+            from services.audio_io import load_audio
+            audio, sr = load_audio(path)
         except Exception:
             self.misses += 1
             return None  # unreadable/corrupt entry — clean miss, re-render
@@ -615,11 +627,11 @@ def build_loudnorm_measure_cmd(ffmpeg: str, concat_list_path: str, filt: str) ->
     """Pure argv for the measure pass: decode the concat list, run the
     print_format=json loudnorm filter, discard audio to the portable null muxer.
     Input segment is byte-identical to build_render_cmd so measured == muxed."""
-    return [
+    return local_inputs_only([
         ffmpeg, "-y", "-hide_banner", "-loglevel", "info",
         "-f", "concat", "-safe", "0", "-i", str(concat_list_path),
         "-af", filt, "-f", "null", "-",
-    ]
+    ], tool="ffmpeg")
 
 
 # ── FFMETADATA ──────────────────────────────────────────────────────────────
@@ -649,6 +661,15 @@ def build_ffmetadata(
         ]
         start = end
     return "\n".join(lines) + "\n"
+
+
+def write_lf_text(path: str, text: str) -> None:
+    """Write an ffmpeg-parsed text file (FFMETADATA, concat list) as UTF-8 with
+    bare LF endings. Text mode would turn the LF in an escaped ``\\<LF>``
+    paragraph break into CRLF on Windows, where FFmpeg then ends the tag at that
+    line and drops the rest (#2528)."""
+    with open(path, "wb") as f:
+        f.write(text.encode("utf-8"))
 
 
 def build_concat_list(wav_paths: Iterable[str]) -> str:
@@ -740,7 +761,7 @@ def build_render_cmd(
         if embed_cover:
             cmd += ["-c:v", "copy"]
         cmd += ["-movflags", "+faststart", "-f", "mp4", str(out_path)]
-    return cmd
+    return local_inputs_only(cmd, tool="ffmpeg")
 
 
 # ── Render summary (what a finished render WAS) ─────────────────────────────

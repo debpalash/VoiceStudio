@@ -218,6 +218,19 @@ test("an app-managed backend is recognised as ours", () => {
   assert.equal(belongsToCheckout("", "", winApp, true, ["C:", "repo"].join(sep)), true);
 });
 
+test("an Electron-managed runtime backend is recognised as ours", () => {
+  const root = "/work/VoiceStudio";
+  const linux = "/home/x/.config/VoiceStudio/runtime/project/.venv/bin/python";
+  assert.equal(belongsToCheckout("", `${linux} -m uvicorn main:app`, "", false, root), true);
+  const custom = "/mnt/fast/VoiceStudio/project/.venv/bin/python";
+  assert.equal(belongsToCheckout("", "", custom, false, root), true);
+  const sep = String.fromCharCode(92);
+  const win = ["C:", "Users", "x", "AppData", "Roaming", "VoiceStudio", "runtime", "project", ".venv", "Scripts", "python.exe"].join(sep);
+  assert.equal(belongsToCheckout("", "", win, true, ["C:", "repo"].join(sep)), true);
+  // Another project's venv in a folder that merely mentions the name is not ours.
+  assert.equal(belongsToCheckout("", "", "/srv/voicestudio-clone/.venv/bin/python", false, root), false);
+});
+
 test("the bundle id match is case-insensitive", () => {
   // Windows paths come back with inconsistent casing depending on the API.
   const root = "/work/VoiceStudio";

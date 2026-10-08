@@ -18,11 +18,12 @@ from __future__ import annotations
 
 import os
 import shutil
-import sys
 import tempfile
 from pathlib import Path
 
 import pytest
+
+import backend_module_state
 
 
 # ── env setup BEFORE any backend import ────────────────────────────────────
@@ -45,27 +46,6 @@ _FIXTURE_COPY = Path(tempfile.mkdtemp(prefix="omnivoice-smoke-"))
 shutil.copytree(FIXTURE_SRC, _FIXTURE_COPY, dirs_exist_ok=True)
 
 
-def _purge_backend_modules():
-    """Drop cached backend modules so the next import re-reads the CURRENT
-    env — `core.config` caches DB_PATH/VOICES_DIR at import time. Same
-    pattern as tests/backend/services/conftest.py.
-
-    The bare package names ("api", "services") must be purged along with
-    their submodules: a surviving stale package object keeps attribute
-    bindings to STALE submodules, so `from services import asr_backend`
-    resolves the stale twin while `from services.asr_backend import ...`
-    re-imports a fresh one — fixture patches then land on the module the
-    code under test never sees."""
-    for mod in list(sys.modules):
-        if (
-            mod in ("main", "core", "api", "services")
-            or mod.startswith("core.")
-            or mod.startswith("api.")
-            or mod.startswith("services.")
-        ):
-            sys.modules.pop(mod, None)
-
-
 @pytest.fixture(scope="module")
 def client():
     # Point backend.core.config.get_app_data_dir() at the COPY, scoped to
@@ -79,14 +59,18 @@ def client():
     # combined-run leaks, so keep this bubble airtight for local runs.
     mp = pytest.MonkeyPatch()
     mp.setenv("OMNIVOICE_DATA_DIR", str(_FIXTURE_COPY))
-    _purge_backend_modules()
+    # Drop cached backend modules so this import re-reads the smoke env;
+    # restore the originals afterwards (tests/backend_module_state.py).
+    before = backend_module_state.snapshot()
+    backend_module_state.purge()
     from fastapi.testclient import TestClient
     from main import app
     yield TestClient(app, client=("127.0.0.1", 50000))
-    # Teardown mirrors setup: purge the modules imported under the smoke
-    # env FIRST, then restore the env — later tests re-import against the
-    # restored OMNIVOICE_DATA_DIR instead of inheriting smoke-bound paths.
-    _purge_backend_modules()
+    # Teardown mirrors setup: drop the modules imported under the smoke env
+    # and reinstate the originals FIRST, then restore the env. Later tests
+    # then share module objects with their collection-time imports instead
+    # of inheriting smoke-bound paths or fresh twins.
+    backend_module_state.restore(before)
     mp.undo()
 
 

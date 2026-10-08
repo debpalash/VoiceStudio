@@ -76,7 +76,16 @@ REQUIRED_FEATURES = frozenset({
     # profile conditioning controls. Require the canonical worker render path
     # so an older peer cannot successfully return a different voice.
     "remote_tts_render_v1",
+    # Register signs a challenge the control plane issued (IssueChallenge, or
+    # Attach metadata inbound). A self-chosen challenge lets a recorded
+    # Register be replayed, so a peer without this is refused, by name.
+    identity.SERVER_CHALLENGE_FEATURE,
 })
+
+
+# Register refusal for a missing, spent or expired challenge. Retryable: the
+# worker fetches a new challenge rather than treating it as a verdict.
+CHALLENGE_EXPIRED = "CHALLENGE_EXPIRED"
 
 
 class ControlPlaneBindError(RuntimeError):
@@ -719,6 +728,7 @@ class WorkerServicer(pb_grpc.WorkerServiceServicer):
         self._registration_auth_slots = asyncio.Semaphore(
             _MAX_CONCURRENT_REGISTRATIONS
         )
+        self._challenges = identity.ChallengeBook()
         self._last_stream_activation_at: dict[str, float] = {}
         # Control teardown intentionally invalidates the token, but an RPC that
         # was already authorised can still hold the session object. Retain those
@@ -793,6 +803,15 @@ class WorkerServicer(pb_grpc.WorkerServiceServicer):
 
     # ── Registration ──────────────────────────────────────────────────────
 
+    async def IssueChallenge(
+        self, request: pb.ChallengeRequest, context
+    ) -> pb.ChallengeResponse:
+        """A single-use challenge for the caller's next Register to sign."""
+        return pb.ChallengeResponse(
+            challenge=self._challenges.issue(),
+            expires_in_seconds=int(self._challenges.ttl_seconds),
+        )
+
     async def Register(self, request: pb.RegisterRequest, context) -> pb.RegisterResponse:
         if request.protocol_version_max < MIN_SUPPORTED_VERSION:
             return self._refuse(
@@ -818,6 +837,15 @@ class WorkerServicer(pb_grpc.WorkerServiceServicer):
             return self._refuse(
                 "CAPABILITIES_TOO_LARGE",
                 "This worker advertised more model metadata than the control plane accepts.",
+            )
+
+        # Spent before authentication, whatever its outcome: a challenge is
+        # good for one attempt, so a recorded Register is dead on arrival.
+        if not self._challenges.consume(bytes(request.challenge)):
+            return self._refuse(
+                CHALLENGE_EXPIRED,
+                "The registration challenge expired or was already used. The "
+                "worker will fetch a fresh one and retry.",
             )
 
         async with self._registration_auth_slots:
@@ -3673,6 +3701,7 @@ __all__ = [
     "INLINE_RESULT_THRESHOLD",
     "MAX_ARTIFACT_BYTES",
     "MAX_TASK_ARTIFACT_BYTES",
+    "CHALLENGE_EXPIRED",
     "MIN_SUPPORTED_VERSION",
     "PROTOCOL_VERSION",
     "SESSION_METADATA_KEY",

@@ -15,6 +15,7 @@ Guarantees:
 """
 from __future__ import annotations
 
+import errno
 import os
 import platform
 import re
@@ -110,11 +111,27 @@ def no_audio_track_detail() -> dict[str, str]:
         "hint": _HINTS["NO_AUDIO_TRACK"],
     }
 
+def invalid_media_file_detail() -> dict[str, str]:
+    """Structured HTTP ``detail`` for an unreadable or non-media upload."""
+    return {
+        "code": InvalidMediaFileError.code,
+        "docs_topic": InvalidMediaFileError.docs_topic,
+        "message": INVALID_MEDIA_FILE_MESSAGE,
+        "hint": _HINTS["INVALID_MEDIA_FILE"],
+    }
+
 # One-line "what to do" per docs-taxonomy key. Keys mirror error_docs_map's
 # taxonomy; the docs URL itself stays owned by error_docs_map.
 _HINTS: dict[str, str] = {
     "GPU_OOM": "Close other GPU-heavy apps or unload models, then retry. You can also choose CPU in Settings → Performance & Device or select a smaller TTS engine.",
     "GPU_ARCH_UNSUPPORTED": "This PyTorch build does not support your GPU. Choose CPU in Settings → Performance & Device, or install a compatible PyTorch build.",
+    # #2462: the HOST ran out of RAM, not a GPU. On a CPU-only machine there is
+    # no device to spill to, so *every* out-of-memory failure there is this
+    # class — and GPU_OOM's "close other GPU-heavy apps … or choose CPU" is
+    # nonsense on a machine already running on CPU, which is why the reporter
+    # was told to go and check their engine instead. A separate class (not a
+    # wider GPU_OOM) because the remedy differs: free system RAM, not VRAM.
+    "HOST_MEMORY_EXHAUSTED": "The machine ran out of memory during generation. Close other memory-heavy apps and browser tabs, unload models you are not using with Flush models, render a shorter passage, or select a lighter TTS engine. On Windows, enlarging the page file also gives a large engine room to load.",
     "WORKER_AT_CAPACITY": "Wait for a running job on that worker to finish, or choose another available worker and retry.",
     "MODEL_NOT_INSTALLED": "Install or enable this engine on the worker machine, then refresh its capabilities and retry.",
     "MODEL_NOT_DOWNLOADED": "Open Models, install this model on the selected worker, then retry when the download completes.",
@@ -146,10 +163,13 @@ _HINTS: dict[str, str] = {
     "PKG_RESOURCES_MISSING": "Run `uv pip install --reinstall 'setuptools>=75,<80'` in the backend venv (a plain install is skipped when setuptools' metadata is present but its pkg_resources files were removed by antivirus). Restart after.",
     "GATEKEEPER_QUARANTINE": "Clear the macOS quarantine flag (xattr -cr the app), then reopen.",
     "APPIMAGE_WEBKIT_WHITESCREEN": "Launch with WEBKIT_DISABLE_DMABUF_RENDERER=1 set.",
-    "HF_AUTH_FAILED": "Set a valid HF_TOKEN in Settings → Hugging Face and retry.",
+    "HF_AUTH_FAILED": "Set a valid HF_TOKEN in Settings → Hugging Face and retry. If the model is gated, open its Hugging Face page and accept its access terms first.",
     "DIARIZATION_MODEL_MISSING": "Install or repair the selected diarisation model in Settings > Models > Diarisation, then retry transcription.",
     "DIARIZATION_LOAD_FAILED": "Open Settings > Logs > Backend for the model load error, then retry transcription after correcting it.",
     "PYANNOTE_LICENSE_REQUIRED": "Accept the pyannote model licenses on Hugging Face, then retry.",
+    # Set by the model install when a gated model fails on a mirror the user
+    # chose: mirrors never receive the token, so no token change can help.
+    "HF_MIRROR_GATED": "This model is gated, and mirrors never receive your Hugging Face token. Switch to Hugging Face (official) in Settings → Models → Hugging Face mirror, then retry.",
     "POCKETTTS_GATED_WEIGHTS": "PocketTTS weights are gated on HuggingFace. Accept the access agreement at huggingface.co/kyutai/pocket-tts, then set HF_TOKEN in Settings → Hugging Face and retry.",
     "COMPUTE_TYPE_UNSUPPORTED": "Your GPU doesn't support float16 — VoiceStudio retried on int8. If transcription still fails, set OMNIVOICE/ASR_COMPUTE_TYPE=int8 or use CPU.",
     # Literal versions, not `--constraint deploy/torch-constraints.txt`:
@@ -274,6 +294,44 @@ _HF_CONTEXT_MARKERS = (
 )
 
 
+_DISK_FULL_SIGNATURES = (
+    "errno 28", "no space left",
+    # Linux says "Disk quota exceeded"; macOS says "Disc quota exceeded".
+    "disk quota exceeded", "disc quota exceeded",
+    "winerror 112", "winerror 39", "not enough space on the disk",
+)
+# EDQUOT is 122 on Linux and 69 on macOS (absent on Windows) — use the platform's.
+_DISK_FULL_ERRNOS = frozenset(
+    n for n in (getattr(errno, "ENOSPC", None), getattr(errno, "EDQUOT", None)) if n is not None
+)
+
+
+def is_disk_full_error(reason: "BaseException | str | None") -> bool:
+    """True when an install/download died because the volume is full.
+
+    Accepts an exception (checks ``errno``/``winerror`` through the
+    ``__cause__``/``__context__`` chain, so a wrapped ``OSError`` still counts) or
+    the text of one. Disk-full is not transient: retrying with backoff only
+    delays the message, and the generic "network hiccup" hints are wrong for it.
+    Never raises."""
+    try:
+        if isinstance(reason, BaseException):
+            seen: set[int] = set()
+            exc: "BaseException | None" = reason
+            while exc is not None and id(exc) not in seen:
+                seen.add(id(exc))
+                if getattr(exc, "errno", None) in _DISK_FULL_ERRNOS or getattr(exc, "winerror", None) in (39, 112):
+                    return True
+                if any(sig in str(exc).lower() for sig in _DISK_FULL_SIGNATURES):
+                    return True
+                exc = exc.__cause__ or exc.__context__
+            return False
+        low = (reason or "").lower()
+        return any(sig in low for sig in _DISK_FULL_SIGNATURES)
+    except Exception:
+        return False
+
+
 def is_hf_connectivity_error(reason: Optional[str]) -> bool:
     """True when *reason* looks like a network/connectivity failure of an HF
     download (DNS, refused/reset connections, timeouts, hub locate errors).
@@ -370,6 +428,12 @@ _CONTEXT_FREE_HINT_CLASSES = frozenset({
     # Device allocator signatures are specific enough to attach the shared
     # recovery without exposing CUDA's process table or filesystem paths.
     "GPU_OOM",
+    # #2462: an allocator/OS "not enough memory" string — a machine signature
+    # nothing else produces, and the ONLY memory class a CPU-only host can
+    # produce. Without it, every OOM on a machine with no GPU reached the user
+    # as the bare "Generation failed. Check the selected engine and try
+    # again." with no hint, and the reporter could only file a RuntimeError.
+    "HOST_MEMORY_EXHAUSTED",
     # #2177: CUDA's own "no kernel image is available for execution" — a driver
     # sentence no other failure produces, and the one class a streaming render
     # on an unsupported card hits every single time. The non-streaming path has
@@ -495,15 +559,104 @@ def is_gpu_oom(error: BaseException | str) -> bool:
     return False
 
 
-def classify(reason: str) -> str:
+# Host-RAM exhaustion — the machine ran out of system memory, not a GPU (#2462).
+# Every entry is a machine string from an allocator or the OS, never a phrase a
+# dependency writes in prose: attaching a "free some RAM" remedy to an unrelated
+# failure is the #1943 failure mode, and the trigger has to be as unmistakable
+# as the device signatures above are.
+_HOST_OOM_SIGNATURES = (
+    # torch's own CPU allocator, which is what a CPU render produces:
+    #   RuntimeError: [enforce fail at alloc_cpu.cpp:117] . DefaultCPUAllocator:
+    #   not enough memory: you tried to allocate 2000000000 bytes.
+    "defaultcpuallocator: not enough memory",
+    "not enough memory: you tried to allocate",
+    # c10/ATen allocation failures.
+    "can't allocate memory",
+    "cannot allocate memory",
+    # std::bad_alloc — the C++ allocator's own exception, which arrives as a
+    # RuntimeError because torch wraps it.
+    "std::bad_alloc",
+    # Windows WinError 8. Deliberately NOT matched on a bare "not enough
+    # memory": the paging-file class (WinError 1455, "the paging file is too
+    # small for this operation to complete") has its own, more specific remedy
+    # and must keep it.
+    "not enough memory to continue the execution of the program",
+    # The same condition by its number, which survives a localized OS message
+    # (ERROR_NOT_ENOUGH_MEMORY = 8, "Not enough memory resources are available
+    # to process this command"). Bracketed so WinError 80/87/1455 never match.
+    "[winerror 8]",
+)
+
+
+def is_host_oom(error: BaseException | str) -> bool:
+    """Recognize host-RAM exhaustion through wrappers without importing torch.
+
+    The twin of :func:`is_gpu_oom` for the other memory device. Kept separate
+    rather than folded into that one because the recovery differs: freeing
+    VRAM cannot help a machine with no GPU, and the existing OOM retry in
+    ``tts_backend`` calls ``free_vram()`` — advice a CPU-only host cannot
+    follow (#2462). Never raises.
+    """
+    pending: list[BaseException] = [error] if isinstance(error, BaseException) else []
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if type(current).__name__ == "MemoryError":
+            return True
+        # OSError.winerror carries the number even when the text is localized.
+        if getattr(current, "winerror", None) == 8:
+            return True
+        if any(signature in str(current).lower() for signature in _HOST_OOM_SIGNATURES):
+            return True
+        if current.__cause__ is not None:
+            pending.append(current.__cause__)
+        if current.__context__ is not None:
+            pending.append(current.__context__)
+    if isinstance(error, str):
+        return any(signature in error.lower() for signature in _HOST_OOM_SIGNATURES)
+    return False
+
+
+def classify(reason: BaseException | str) -> str:
     """Map a failure reason to a docs-taxonomy key, or "" when unknown.
 
     Heuristic substring match — mirrors the frontend ``classifyError`` so the
     backend log / diagnostic names the same class the UI deeplink will use.
+
+    Accepts an exception as well as a message (#2462). A message is all the
+    older callers have and all most rules need, but the memory classes cannot
+    work from one: a bare ``MemoryError()`` has an EMPTY message, and
+    ``generation._oom_friendly_reraise`` replaces the allocator's own wording
+    with its own "ran out of memory" prose. In both cases ``str(exc)`` carries
+    no allocator signature, so the failure that IS a host OOM classifies to
+    nothing and the user gets the floor message. The exception's TYPE, and the
+    originals re-raised behind it, are the only evidence left — so when handed
+    one, the two chain-walking memory helpers get first refusal on it and the
+    message rules run on ``str(exc)`` exactly as before.
     """
+    if isinstance(reason, BaseException):
+        # GPU first, so a real device OOM keeps GPU_OOM (and its VRAM remedy)
+        # even when the host was short too — same precedence as the message
+        # path below, so passing an exception can never disagree with a string.
+        if is_gpu_oom(reason):
+            return "GPU_OOM"
+        if is_host_oom(reason):
+            return "HOST_MEMORY_EXHAUSTED"
+        # Every other rule is a message rule; unchanged behavior from here.
+        reason = str(reason)
     low = (reason or "").lower()
     if is_gpu_oom(low):
         return "GPU_OOM"
+    # #2462: the host itself ran out of RAM. After the device branch above, so a
+    # real GPU OOM keeps GPU_OOM (and its VRAM remedy) rather than being told to
+    # close memory-heavy apps; before everything else, because on a CPU-only
+    # machine this is the ONLY memory class that can occur and it used to fall
+    # all the way through to the unclassified floor message.
+    if is_host_oom(low):
+        return "HOST_MEMORY_EXHAUSTED"
     # #2177: the GPU's compute capability isn't in this torch build's arch list,
     # so CUDA refuses to launch kernels. Checked after the OOM branch so real
     # memory pressure is never relabelled, and matched on CUDA's own sentence —
@@ -531,6 +684,8 @@ def classify(reason: str) -> str:
         or "share your contact" in low
         or "access agreement" in low
         or "access conditions" in low
+        # pocket-tts' own wording when the gated cloning weights are missing.
+        or "weights for the model with voice cloning" in low
     ) and ("pocket" in low or "kyutai" in low):
         return "POCKETTTS_GATED_WEIGHTS"
     diarisation = any(marker in low for marker in (
@@ -548,7 +703,15 @@ def classify(reason: str) -> str:
             return "DIARIZATION_MODEL_MISSING"
         if any(marker in low for marker in ("failed to load", "load failed", "runtime failed")):
             return "DIARIZATION_LOAD_FAILED"
-    if (diarisation and access_failure) or ("gated" in low and "model" in low) or "accept the" in low:
+    if diarisation and access_failure:
+        return "PYANNOTE_LICENSE_REQUIRED"
+    # Any other gated repo (Sesame CSM's prompts, Llama tokenizers, ...) is a
+    # token/access problem for THAT model. Sending it to the pyannote class
+    # told users to accept diarisation licenses for a TTS model; error_journal
+    # already files GatedRepoError under HF_AUTH_FAILED.
+    if "gatedrepoerror" in low or ("gated" in low and ("repo" in low or "model" in low)):
+        return "HF_AUTH_FAILED"
+    if "accept the" in low:
         return "PYANNOTE_LICENSE_REQUIRED"
     # ASR robustness (#551 / #549): name the class so the no-segments toast is
     # actionable. Place before the generic returns so a compute-type/transformers

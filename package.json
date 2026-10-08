@@ -1,11 +1,11 @@
 {
   "name": "omnivoice-studio-monorepo",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "license": "AGPL-3.0-only",
   "private": true,
   "packageManager": "bun@1.4.2",
   "scripts": {
-    "setup:api": "uv sync && uv run python scripts/setup.py",
+    "setup:api": "node scripts/setup-api.mjs",
     "dev:api": "bun scripts/dev-backend.mjs",
     "dev:frontend": "bun run --cwd electron dev:web",
     "dev:desktop": "bun run --cwd electron dev",
@@ -37,11 +37,11 @@
   },
   "workspaces": ["electron"],
   "devDependencies": {
-    "concurrently": "^10",
+    "concurrently": "^10.0.5",
     "playwright": "^1.63.0",
-    "taze": "^21",
-    "turbo": "^2.10.12",
-    "typescript": "^6.0.3",
-    "wait-on": "^9.1.0"
+    "taze": "^21.3.0",
+    "turbo": "^2.11.5",
+    "typescript": "^7.0.2",
+    "wait-on": "^9.5.1"
   }
 }

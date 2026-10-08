@@ -96,3 +96,42 @@ it('reports a shared agent runner busy state as retryable', async () => {
     bridge.close();
   }
 });
+
+describe('queued completion deadlines', () => {
+  it('answers a queued request at its own deadline and never runs it', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], shouldAdvanceTime: true });
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const seen: string[] = [];
+    const bridge = await startLlmAgentBridge(async (body) => {
+      seen.push(body.model);
+      await gate;
+      return 'ok';
+    });
+    const call = (model: string, timeoutMs: number) =>
+      fetch(bridge.url + '/complete', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + bridge.token },
+        body: JSON.stringify({ ...request, model, timeoutMs }),
+      });
+    try {
+      const active = call('active', 600_000);
+      await vi.waitFor(() => expect(seen).toEqual(['active']));
+      const queued = call('queued', 1000);
+      const status = queued.then((r) => r.status);
+      await vi.advanceTimersByTimeAsync(1500);
+      // Responds 502 while the earlier completion is still active.
+      expect(await status).toBe(502);
+      release();
+      expect((await active).status).toBe(200);
+      // Expired request freed its slot and was skipped by the runner.
+      expect((await call('later', 5000)).status).toBe(200);
+      expect(seen).toEqual(['active', 'later']);
+    } finally {
+      vi.useRealTimers();
+      bridge.close();
+    }
+  });
+});

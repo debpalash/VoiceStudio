@@ -47,7 +47,10 @@ export async function startHealthBackend() {
       '/projects': [],
     };
     if (Object.hasOwn(fixtures, path)) {
-      response.writeHead(200, { 'content-type': 'application/json' });
+      response.writeHead(200, {
+        'content-type': 'application/json',
+        'x-omnivoice-backend': 'native-smoke',
+      });
       response.end(JSON.stringify(fixtures[path]));
       return;
     }

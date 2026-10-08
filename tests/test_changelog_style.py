@@ -49,6 +49,19 @@ _REF_ALLOWLIST = (
     "Remote workers** sends individual jobs to GPUs",
     # owner-requested workspace promotion (engines + model store out of Settings), no issue
     "Model Catalogue** — a workspace of its own",
+    # owner-authored hardening committed without a public issue
+    "The local API refuses requests sent by other websites",
+    "URL imports accept only http(s) links",
+    "Gallery, dubbing, voice-profile and batch uploads accept audio and video files only",
+    # owner-authored download hardening, no public issue
+    "Model downloads keep every file inside the model cache",
+    # owner-authored entries without a public reference
+    "Remote workers open only the files a task sends as inputs",
+    "Remote worker registration signs a fresh single-use challenge",
+    "The desktop app attaches only to a local backend that identifies itself",
+    "Dubbing and batch jobs accept only plain language codes",
+    "Saved voice, gallery and call-recording files are read only from inside",
+    "Engine install folders can no longer be set to a typed path",
 )
 
 _HEADING = re.compile(r"^## \[([^\]]+)\](?:\s*[—–-]\s*(.*))?$")

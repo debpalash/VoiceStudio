@@ -1,5 +1,11 @@
 # Electron compute and performance settings
 
+> **Historical context:** this page was written while the Electron and Tauri apps
+> coexisted. Mentions of Tauri helpers, pages, tests and regression results describe
+> that migration period; the Tauri shell has since been removed and the shared code
+> now lives in `electron/src/shared/`. Existing Tauri installs: see the
+> [migration guide](electron-migration.md).
+
 Settings > Compute device exposes the existing device override, a physical CUDA adapter selector on multi-GPU NVIDIA hosts, the torch.compile workaround, generation time budgets, and hardware readouts. The CUDA selector persists a stable GPU UUID through `CUDA_VISIBLE_DEVICES`; restart the app to apply it to the backend and every engine subprocess.
 
 CUDA selection uses the validated `/api/settings/cuda-device` endpoint; the generic environment setter cannot change it or alter the running process's GPU visibility.
@@ -7,7 +13,11 @@ Adapter discovery checks PATH, the Windows NVSMI installation directory, and the
 An externally set, empty `CUDA_VISIBLE_DEVICES` is shown as Disabled, not Auto: it hides all CUDA adapters and keeps the selector pinned.
 After a failed save, Retry reloads both compute settings and clears the observed error only when both requests succeed; it does not silently retry the write or dismiss failures from a newer save.
 
+Settings > Performance > GPU acceleration reads `GET /api/settings/gpu-report`: the GPUs the OS reports (independent of PyTorch), the installed PyTorch build, a host state with the options that really exist on that OS, and a per-engine verdict (uses the GPU, CPU and why, CPU by design). Engines that are not installed get no verdict. The backend sends codes; the renderer owns the text.
+
 Device choices come from the backend's detected families plus Auto. The chosen preference and currently active family are displayed separately. Environment-pinned choices are disabled, an ignored unavailable override is explained, and a changed preference shows its actual restart requirement. Failed saves keep the last confirmed state. Nothing automatically restarts the backend or changes the active model.
+
+Settings > Performance > Memory management also has the opt-in **Move the voice model to system RAM after generation** toggle (#2618, off by default), backed by `GET`/`PUT /api/settings/perf/offload-after-generation`. It applies from the next generation without a restart. The toggle is locked and explained when `OMNIVOICE_OFFLOAD_AFTER_GENERATION` pins it, and its description says when there's no GPU to free. Behaviour is described in [the performance guide](performance.md#offload-to-ram-after-generation).
 
 The torch.compile workaround matches Tauri: since #2135 it is selectable on every platform, because the compile failures it works around are not Windows-only. Generation budgets preserve separate GPU and CPU limits, validate the existing positive/21600-second range, and keep edits during refetches. An externally overridden budget reports that fact instead of implying the saved value will take effect after restart. Hardware RAM/VRAM readouts poll only while this view is mounted.
 
@@ -19,7 +29,7 @@ The backend publishes explicit model lifecycle transitions to the renderer event
 
 ## Speed and quality presets
 
-The sidebar groups the original speed/quality slider with its engine list. Models use compact two-line rows with plain-language tool names, short model names and written status. Available means the model loads on use; Check setup opens model settings to inspect availability. Offline overrides cached readiness. Loading and saving use explicit text and a spinner that respects reduced motion.
+The sidebar groups speed/quality with its engine list. Speed/quality offers labelled Fast, Balanced, Quality and Max choices plus a separate Auto toggle; while Auto is on, the tier it picked for this hardware is outlined, and the hardware line below opens the fit details. Models use compact two-line rows with plain-language tool names and short model names. Normal states show only a status dot (blue: available and loads on use; green: loaded), with the status named for screen readers and on hover; states that need attention, such as Check setup, loading or offline, are written out. Check setup opens model settings to inspect availability. Simple, Models and Details views switch from an inline icon toggle in the sidebar footer. In Details, an expanded tool shows a compact Engine / Model / Runs on card with a copy button for the full model ID, any setup problem as a highlighted note, and a Change engine button. Offline overrides cached readiness. Loading and saving use explicit text and a spinner that respects reduced motion.
 
 One view icon beside the device status opens the remembered Simple, Models and Details choices, each with its own icon. Simple shows voice readiness; Models shows all six selected engines; Details lets users expand one engine at a time for complete identifiers, observed execution devices, reported problems and a Change engine link. Diagnostics are opened explicitly, so hovering never stacks cards over the workspace. View changes only affect presentation. Engine lists scroll within the sidebar so Settings stays reachable on short windows.
 

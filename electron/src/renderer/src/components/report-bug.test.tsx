@@ -293,6 +293,28 @@ it('attaches the scrubbed current backend log when a live operation fails', asyn
   expect(body).not.toContain(secret);
 });
 
+it('includes arch, disk free and active ASR engine when the backend answers (#2416)', async () => {
+  mock.api.mockImplementation((path: string) => {
+    if (path === '/system/info')
+      return Promise.resolve({ arch: 'arm64', disk_free_gb: 42.5, platform: 'darwin' });
+    if (path === '/engines')
+      return Promise.resolve({ tts: { active: 'omnivoice' }, asr: { active: 'faster-whisper' } });
+    return Promise.resolve({});
+  });
+  render(<ReportBug />);
+
+  fireEvent.click(screen.getByRole('button', { name: 'reportBug.label' }));
+
+  await waitFor(() => expect(mock.open).toHaveBeenCalledTimes(1));
+  const body = new URL(mock.open.mock.calls[0]![0]).searchParams.get('body')!;
+  expect(body).toContain('arch');
+  expect(body).toContain('arm64');
+  expect(body).toContain('disk_free_gb');
+  expect(body).toContain('42.5');
+  expect(body).toContain('TTS: omnivoice');
+  expect(body).toContain('ASR: faster-whisper');
+});
+
 it.each([
   [3221225477, null, true],
   [-1073741819, null, true],

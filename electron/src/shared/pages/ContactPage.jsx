@@ -28,7 +28,7 @@ const DISCORD_URL = 'https://discord.gg/bzQavDfVV9';
 // GitHub Security Advisories = the private "report a vulnerability" flow that
 // SECURITY.md points at (never a public issue for security bugs).
 const SECURITY_URL = `${REPO_URL}/security/advisories/new`;
-const EMAIL = 'VoiceStudio@palash.dev';
+const EMAIL = 'hi@voicestudio.sh';
 const WEBSITE_URL = 'https://palash.dev';
 const X_URL = 'https://x.com/idebpalash';
 

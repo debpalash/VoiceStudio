@@ -138,3 +138,57 @@ def test_version_is_sanitized_for_filenames(tmp_path):
     name = os.path.basename(backup)
     assert "/" not in name.replace(os.path.basename(str(db)), "")
     assert os.path.dirname(backup) == os.path.dirname(str(db))
+
+
+def test_torn_partial_snapshot_is_not_a_backup(tmp_path, monkeypatch):
+    """A crash mid-copy leaves ``<db>.backup-<ver>-<n>.part-<pid>`` behind
+    (the temp name ``snapshot_before_migration`` renames into place at the
+    end). It must not be listed, reported as the latest backup, or counted
+    toward the rotation window."""
+    db = tmp_path / "omnivoice.db"
+    monkeypatch.setattr(db_backup, "_pid_alive", lambda pid: False)
+    _make_db(db)
+    real = db_backup.snapshot_before_migration(str(db), "0.3.8")
+    os.utime(real, (time.time() - 100, time.time() - 100))
+    torn = tmp_path / "omnivoice.db.backup-0.3.9-1.part-424242"
+    torn.write_bytes(b"torn")
+
+    assert db_backup.list_backups(str(db)) == [real]
+    assert db_backup.latest_backup(str(db))["path"] == real
+    assert db_backup.prune_backups(str(db), keep=1) == [str(torn)], "the torn file is garbage, the real backup stays"
+    assert os.path.isfile(real) and not torn.exists()
+
+
+def test_stale_partial_from_dead_writer_is_removed_by_next_snapshot(tmp_path, monkeypatch):
+    db = tmp_path / "omnivoice.db"
+    _make_db(db)
+    dead = tmp_path / "omnivoice.db.backup-0.3.8-1.part-424242"
+    dead.write_bytes(b"torn")
+    mine = tmp_path / f"omnivoice.db.backup-0.3.8-2.part-{os.getpid()}"
+    mine.write_bytes(b"in progress")
+    monkeypatch.setattr(db_backup, "_pid_alive", lambda pid: pid == os.getpid())
+
+    made = db_backup.snapshot_before_migration(str(db), "0.3.9")
+
+    assert not dead.exists(), "a partial whose writer is gone is garbage"
+    assert mine.exists(), "a partial owned by a live process is left alone"
+    assert db_backup.list_backups(str(db)) == [made]
+
+
+def test_pruning_preserves_non_snapshot_partials(tmp_path, monkeypatch):
+    db = tmp_path / "omnivoice.db"
+    notes = tmp_path / "omnivoice.db.backup-notes.part-424242"
+    notes.write_bytes(b"user notes")
+    monkeypatch.setattr(db_backup, "_pid_alive", lambda pid: False)
+    assert db_backup.prune_backups(str(db)) == []
+    assert notes.read_bytes() == b"user notes"
+
+
+def test_writer_liveness_never_sends_a_signal(monkeypatch):
+    import psutil
+    import pytest
+
+    monkeypatch.setattr(os, "kill", lambda *args: pytest.fail("liveness must not signal"))
+    monkeypatch.setattr(psutil, "pid_exists", lambda pid: pid == 123)
+    assert db_backup._pid_alive(123)
+    assert not db_backup._pid_alive(124)

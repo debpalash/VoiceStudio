@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { KeyboardIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import { apiJson } from '@/lib/api/client';
 import {
   dictationPreferencesKey,
@@ -32,6 +33,11 @@ export function ShortcutSettings() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const [verifiedShortcut, setVerifiedShortcut] = useState<string | null>(null);
+  // Unsaved vocabulary-prompt edit; null while it matches the saved value.
+  const [promptDraft, setPromptDraft] = useState<string | null>(null);
+  const [promptError, setPromptError] = useState(false);
+  const savedPrompt = prefs.data?.prompt ?? '';
+  const prompt = promptDraft ?? savedPrompt;
   useEffect(() => api?.onShortcutPressed?.(setVerifiedShortcut), [api]);
   useEffect(() => {
     if (!recording) return;
@@ -95,6 +101,23 @@ export function ShortcutSettings() {
       setBusy(false);
     }
   };
+  const savePrompt = async () => {
+    setBusy(true);
+    setPromptError(false);
+    try {
+      await apiJson('/dictation/prefs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      });
+      await client.invalidateQueries({ queryKey: dictationPreferencesKey });
+      setPromptDraft(null);
+    } catch {
+      setPromptError(true);
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <>
       <DictationDemo />
@@ -116,6 +139,36 @@ export function ShortcutSettings() {
               {t('voicePanel.mode_' + value)}
             </Button>
           ))}
+        </SettingsRow>
+        <SettingsRow
+          id="dictation-prompt"
+          title={t('voicePanel.prompt_label')}
+          description={t('voicePanel.prompt_sub')}
+        >
+          <Textarea
+            aria-labelledby="dictation-prompt"
+            className="@2xl:w-80"
+            maxLength={1000}
+            value={prompt}
+            // Locked while saving: the save clears the draft, which would drop keystrokes.
+            disabled={busy || !prefs.data}
+            onChange={(event) => {
+              const value = event.target.value;
+              setPromptDraft(value === savedPrompt ? null : value);
+            }}
+          />
+          <Button
+            size="sm"
+            disabled={busy || !prefs.data || prompt.trim() === savedPrompt}
+            onClick={() => void savePrompt()}
+          >
+            {t('common.save')}
+          </Button>
+          {promptError && (
+            <span role="alert" className="text-xs text-destructive">
+              {t('common.error')}
+            </span>
+          )}
         </SettingsRow>
         {api && (
           <>

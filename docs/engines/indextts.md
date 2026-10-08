@@ -24,6 +24,10 @@ The installer:
 - installs the reviewed `indextts-2.5` source revision in an isolated Python 3.11 venv;
 - downloads the reviewed `IndexTeam/IndexTTS-2.5` model revision;
 - resumes partial model downloads;
+- on an AMD ROCm host (`OMNIVOICE_TORCH_VARIANT=rocm`, or a host already
+  running ROCm torch), installs PyTorch's ROCm build so the engine uses the
+  GPU — upstream's own configuration pulls the CUDA wheel, which cannot see
+  an AMD GPU;
 - saves `OMNIVOICE_INDEXTTS_DIR` and activates the engine without a restart.
 
 An app-managed IndexTTS-2 checkout remains intact while 2.5 installs into a
@@ -67,6 +71,11 @@ export OMNIVOICE_INDEXTTS_DIR=/path/to/index-tts
 
 Restart VoiceStudio after setting a persistent environment variable outside
 the app.
+
+On an AMD ROCm host, swap the venv's torch for a ROCm build after the install
+(the index and pins `scripts/setup.py` uses for `OMNIVOICE_TORCH_VARIANT=rocm`
+are the working ones). Left alone, the upstream `pyproject.toml` resolves the
+CUDA build, which cannot see an AMD GPU and runs entirely on the CPU.
 
 ## Compatibility
 

@@ -1,4 +1,5 @@
-import type { WorkflowDocument, WorkflowStep } from './workflow-model';
+import { CONDITION_BRANCHES } from './workflow-model';
+import type { ConditionBranch, WorkflowDocument, WorkflowStep } from './workflow-model';
 
 export type RunState = 'ready' | 'running' | 'done' | 'failed' | 'cancelled';
 export interface RunItem {
@@ -19,13 +20,39 @@ export interface WorkflowRun {
   items: RunItem[];
 }
 export interface ExecutionPlan {
+  /** Every reachable step, the input node first, in walk order. */
   steps: WorkflowStep[];
   scripts: { name: string; text: string; sourceId?: string }[];
   signature: string;
+  /** The one successor of each step that has exactly one. */
+  next: Record<string, string>;
+  /** Each condition's two successors, by the handle the canvas draws. */
+  branches: Record<string, Record<ConditionBranch, string>>;
 }
 export class WorkflowValidationError extends Error {
-  constructor(readonly code: 'graph' | 'unsupported' | 'scripts' | 'voice' | 'media' | 'language') {
+  constructor(readonly code: 'graph' | 'unsupported' | 'scripts' | 'voice' | 'media' | 'language' | 'condition') {
     super(code);
+  }
+}
+
+type ValueType = 'text' | 'audio' | 'speech';
+
+/**
+ * Does the text reaching `step` satisfy it?
+ *
+ * Case-insensitive, and deliberately `toLowerCase` rather than
+ * `toLocaleLowerCase`: the same draft has to take the same branch on every
+ * machine, and the locale-aware form does not (Turkish dotless i lowercases
+ * `I` to `ı`, so a Turkish host would miss a phrase a US host matches).
+ */
+export function matchesCondition(step: WorkflowStep, value: string): boolean {
+  const phrase = step.text.trim().toLowerCase();
+  const text = value.trim().toLowerCase();
+  switch (step.match) {
+    case 'equals': return text === phrase;
+    case 'starts': return text.startsWith(phrase);
+    case 'ends': return text.endsWith(phrase);
+    default: return text.includes(phrase);
   }
 }
 
@@ -36,33 +63,75 @@ export function compileWorkflow(document: WorkflowDocument, engine = ''): Execut
   if (starts.length !== 1 || ids.size !== document.steps.length ||
     document.connections.some((edge) => !ids.has(edge.source) || !ids.has(edge.target)))
     throw new WorkflowValidationError('graph');
+  const byId = new Map<string, WorkflowStep>(document.steps.map((step) => [step.id, step]));
+  const leaving = (id: string) => document.connections.filter((edge) => edge.source === id);
+  for (const step of document.steps) {
+    // A branch may re-merge, so more than one edge IN is legitimate now. An
+    // input node with any, or any other node with none, still is not.
+    const entering = document.connections.filter((edge) => edge.target === step.id).length;
+    if (['start', 'audio'].includes(step.kind) ? entering !== 0 : entering === 0)
+      throw new WorkflowValidationError('graph');
+  }
   const steps: WorkflowStep[] = [];
-  let step: WorkflowStep | undefined = starts[0];
-  while (step) {
-    if (steps.includes(step)) throw new WorkflowValidationError('graph');
+  const next: Record<string, string> = {};
+  const branches: Record<string, Record<ConditionBranch, string>> = {};
+  // The value kind each node is ENTERED with. Two paths that re-merge must
+  // agree on it, or the shared tail would receive audio down one branch and
+  // text down the other; recording it also stops the walk re-validating a
+  // shared tail once per branch, which is what keeps this linear in graph size.
+  const entered = new Map<string, ValueType>();
+  const walk = (step: WorkflowStep, type: ValueType, path: ReadonlySet<string>) => {
+    if (path.has(step.id)) throw new WorkflowValidationError('graph');
+    const seen = entered.get(step.id);
+    if (seen !== undefined) {
+      if (seen !== type) throw new WorkflowValidationError('unsupported');
+      return; // Already validated from here, with the same input kind.
+    }
+    entered.set(step.id, type);
     steps.push(step);
-    const outgoing = document.connections.filter((edge) => edge.source === step!.id);
-    const incoming = document.connections.filter((edge) => edge.target === step!.id);
-    if (outgoing.length > 1 || incoming.length !== (['start', 'audio'].includes(step.kind) ? 0 : 1) ||
-      outgoing.some((edge) => edge.sourceHandle)) throw new WorkflowValidationError('graph');
-    step = outgoing.length ? document.steps.find((node) => node.id === outgoing[0].target) : undefined;
-  }
-  if (steps.length !== document.steps.length || steps.at(-1)?.kind !== 'end')
-    throw new WorkflowValidationError('graph');
-  // Explicit contracts prevent accidental audio→text coercion or marking human input synthetic.
-  let type: 'text' | 'audio' | 'speech' = steps[0].kind === 'audio' ? 'audio' : 'text';
-  for (const node of steps.slice(1, -1)) {
-    if (node.kind === 'speak' && type === 'text') type = 'speech';
-    else if (node.kind === 'convert' && type !== 'text') type = 'speech';
-    else if (node.kind === 'transcribe' && type !== 'text') type = 'text';
-    else if (node.kind === 'translate' && type === 'text') {
-      if (!node.sourceLanguage || !node.language || node.language === 'Auto')
+    const edges = leaving(step.id);
+    if (step.kind === 'end') {
+      if (edges.length) throw new WorkflowValidationError('graph');
+      return;
+    }
+    const onward = new Set(path).add(step.id);
+    if (step.kind === 'condition') {
+      // Only a condition may fork, and only into exactly the two handles the
+      // canvas draws: an unlabelled, duplicated or missing edge leaves a branch
+      // with no defined destination, which must fail here rather than mid-run.
+      if (type !== 'text') throw new WorkflowValidationError('unsupported');
+      if (!step.text.trim()) throw new WorkflowValidationError('condition');
+      if (edges.length !== 2 || CONDITION_BRANCHES.some(
+        (branch) => edges.filter((edge) => edge.sourceHandle === branch).length !== 1))
+        throw new WorkflowValidationError('graph');
+      branches[step.id] = Object.fromEntries(CONDITION_BRANCHES.map((branch) =>
+        [branch, edges.find((edge) => edge.sourceHandle === branch)!.target],
+      )) as Record<ConditionBranch, string>;
+      for (const branch of CONDITION_BRANCHES) walk(byId.get(branches[step.id][branch])!, type, onward);
+      return;
+    }
+    if (edges.length !== 1 || edges[0].sourceHandle) throw new WorkflowValidationError('graph');
+    // Explicit contracts prevent accidental audio→text coercion or marking human input synthetic.
+    let forward: ValueType = type;
+    if (['start', 'audio'].includes(step.kind)) {
+      // The input node only says where the value came from; it transforms nothing.
+    } else if (step.kind === 'speak' && type === 'text') forward = 'speech';
+    else if (step.kind === 'convert' && type !== 'text') forward = 'speech';
+    else if (step.kind === 'transcribe' && type !== 'text') forward = 'text';
+    else if (step.kind === 'translate' && type === 'text') {
+      if (!step.sourceLanguage || !step.language || step.language === 'Auto')
         throw new WorkflowValidationError('language');
-    } else if (node.kind !== 'normalize' || type !== 'speech')
+    } else if (step.kind !== 'normalize' || type !== 'speech')
       throw new WorkflowValidationError('unsupported');
-    if (['speak', 'convert'].includes(node.kind) && !node.voiceId?.trim())
+    if (['speak', 'convert'].includes(step.kind) && !step.voiceId?.trim())
       throw new WorkflowValidationError('voice');
-  }
+    next[step.id] = edges[0].target;
+    walk(byId.get(edges[0].target)!, forward, onward);
+  };
+  walk(starts[0], starts[0].kind === 'audio' ? 'audio' : 'text', new Set());
+  // Every path ends at an `end` (a non-end node without exactly one edge out
+  // already threw), so what is left to check is that nothing is stranded.
+  if (steps.length !== document.steps.length) throw new WorkflowValidationError('graph');
   if (steps.length < 3) throw new WorkflowValidationError('unsupported');
   const scripts = steps[0].kind === 'audio'
     ? (steps[0].media || []).map((file) => ({ name: file.name.replace(/\.[^.]+$/, ''), text: '', sourceId: file.id }))
@@ -73,13 +142,23 @@ export function compileWorkflow(document: WorkflowDocument, engine = ''): Execut
   } else if (!scripts.length || scripts.length > 50 || scripts.some((script) => !script.text.trim() || script.text.length > 20_000))
     throw new WorkflowValidationError('scripts');
   // Layout, names, and selection never invalidate generated audio; executable settings do.
+  // Wiring counts as an executable setting now: with a fork in the graph, moving
+  // an edge changes which steps a clip passes through without changing any of
+  // them, and a run restored across that edit would show output from a path the
+  // draft no longer describes. Sorted, so the edge list is a set rather than an
+  // authoring order.
   const signature = JSON.stringify({ engine,
-    steps: steps.map(({ id, kind, voiceId, language, speed, targetDb, sourceLanguage, provider }) => ['speak', 'convert'].includes(kind)
+    steps: steps.map(({ id, kind, voiceId, language, speed, targetDb, sourceLanguage, provider, text, match }) => ['speak', 'convert'].includes(kind)
       ? { id, kind, voiceId, language: language || 'Auto', speed: speed ?? 1 } : kind === 'normalize' ? { id, kind, targetDb: targetDb ?? -2 } : kind === 'translate' ? { id, kind, sourceLanguage, language, provider: provider || 'argos' }
+      : kind === 'condition' ? { id, kind, text, match: match || 'contains' }
       : kind === 'transcribe' ? { id, kind } : { id, kind }),
+    edges: document.connections
+      .filter((edge) => entered.has(edge.source))
+      .map((edge) => [edge.source, edge.target, edge.sourceHandle ?? ''].join('>'))
+      .sort(),
     scripts,
   });
-  return { steps, scripts, signature };
+  return { steps, scripts, signature, next, branches };
 }
 
 export function prepareRun(plan: ExecutionPlan, previous?: WorkflowRun | null): WorkflowRun {
@@ -108,6 +187,7 @@ export async function executeWorkflow(
     run.updatedAt = Date.now();
     await checkpoint(structuredClone(run));
   };
+  const byId = new Map<string, WorkflowStep>(plan.steps.map((step) => [step.id, step]));
   await save(); // Storage must work before doing expensive inference.
   for (const item of run.items) {
     if (item.state === 'done') continue;
@@ -115,12 +195,28 @@ export async function executeWorkflow(
       signal.throwIfAborted();
       item.texts ??= {};
       let value: string | Blob = item.text;
+      const input = plan.steps[0];
+      if (!item.sourceId) item.texts[input.id] = item.text;
       if (item.sourceId) {
-        value = item.audio[plan.steps[0].id] || await operations.loadAudio!(item.sourceId);
-        item.audio[plan.steps[0].id] = value;
+        value = item.audio[input.id] || await operations.loadAudio!(item.sourceId);
+        item.audio[input.id] = value;
         await save();
       }
-      for (const step of plan.steps.slice(1, -1)) {
+      // Each clip walks the graph itself: with a fork, two clips from one run
+      // legitimately visit different steps. Conditions are re-read rather than
+      // recorded, because the value they test is itself checkpointed — a resume
+      // re-evaluates the same text and so takes the same branch.
+      let finished = input;
+      let cursor: string | undefined = plan.next[input.id];
+      while (cursor) {
+        // Annotated because `cursor`'s next value is read off this step, and
+        // inferring one from the other is circular.
+        const step: WorkflowStep = byId.get(cursor)!;
+        if (step.kind === 'end') { finished = step; break; }
+        if (step.kind === 'condition') {
+          cursor = plan.branches[step.id][matchesCondition(step, value as string) ? 'yes' : 'no'];
+          continue;
+        }
         signal.throwIfAborted();
         item.stepId = step.id;
         item.state = 'running';
@@ -146,10 +242,13 @@ export async function executeWorkflow(
         }
         item.outputStep = step.id;
         await save();
+        cursor = plan.next[step.id];
       }
       signal.throwIfAborted();
+      // A branch directly to End exports its input only after completion.
+      item.outputStep ??= input.id;
       item.state = 'done';
-      item.stepId = plan.steps.at(-1)!.id;
+      item.stepId = finished.id;
       await save();
     } catch (error) {
       item.state = signal.aborted ? 'cancelled' : 'failed';

@@ -7,7 +7,7 @@
     "files": ["CLAUDE.md"],
     "rules": [
       "Default features must behave identically on macOS, Windows and Linux; a platform-divergent default is a P0 — platform-only behavior must sit behind explicit opt-in (Settings toggle, env var, or CLI flag).",
-      "Every new user-facing string must be an i18n t('...') key present in all 21 locale bundles for the affected maintained UI (electron/src/renderer/src/i18n/locales for Electron; frontend/src/i18n/locales for shared web UI); hardcoded CJK outside the allowlist in tests/test_no_hardcoded_cjk.py fails CI.",
+      "Every new user-facing string must be an i18n t('...') key present in all 21 files of the locale catalog the code imports from (electron/src/shared/i18n/locales, checked by tests/test_locale_parity.py, or electron/src/renderer/src/i18n/locales, checked by the electron locale:check script); hardcoded CJK outside the allowlist in tests/test_no_hardcoded_cjk.py fails CI.",
       "Existing omnivoice_data/ and already-installed engine model state must keep working without manual migration; DB schema changes go through alembic with an upgrade path.",
       "Never propose version bumps, release candidates, or deferrals to a future version — everything ships on the current line.",
       "The backend serves loopback HTTP: treat every query/path/form parameter as hostile (path traversal, log injection, CSRF from a browser tab); user-chosen filesystem destinations are authorized in Electron main, never via HTTP params.",
@@ -16,13 +16,13 @@
       "CHANGELOG.md Unreleased entries (owner-restyled 2026-07-17) are single-line bullets ending with the (#NNN) ref — plus a '— thanks @user!' credit for community PRs — under a short **Highlights** list; flag multi-line or bold-lead paragraph entries.",
       "No silent multi-GB downloads: any Hugging Face fetch in backend/services or backend/engines must be preceded by an installed-ness check (is_cached/cache_is_complete) or an explicit user install action; tests run under HF_HUB_OFFLINE=1.",
       "All synthetic-audio producers must route through the mark_synthetic watermark chokepoint — no audio route may ship unmarked.",
-      "A frontend/package.json dependency change requires regenerating the repo-root bun.lock in the same PR (deploy/Dockerfile runs bun install --frozen-lockfile)."
+      "Any workspace package.json dependency change requires regenerating the repo-root bun.lock in the same PR (deploy/Dockerfile runs bun install --frozen-lockfile). The root package.json is the single app-version source; pyproject.toml and backend/core/version.py mirror it in lockstep (tests/test_app_version.py)."
     ]
   },
   "triggerOnUpdates": true,
   "triggerOnDrafts": false,
   "statusCheck": true,
-  "ignorePatterns": "bun.lock\nuv.lock\nfrontend/src-tauri/target/**\ntests/fixtures/**\n*.svg\n*.png\n*.wav\n*.onnx",
+  "ignorePatterns": "bun.lock\nuv.lock\ntests/fixtures/**\n*.svg\n*.png\n*.wav\n*.onnx",
   "sequenceDiagramSection": {
     "included": false
   },

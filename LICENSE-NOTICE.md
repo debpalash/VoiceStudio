@@ -21,20 +21,28 @@ a network, you must also offer those users the complete corresponding source
 code of your modified version under these same AGPL-3.0 terms. See the full
 text in [`LICENSE`](LICENSE).
 
-A **commercial license is available** for organizations that want to embed
-VoiceStudio in a closed-source or proprietary product or service without
-the AGPL-3.0 copyleft obligations. Pricing tiers are coming soon; for inquiries
-contact `VoiceStudio@palash.dev`.
+Commercial use under the AGPL-3.0 is free. What is paid is a **commercial
+license** for organizations that want to embed VoiceStudio in a closed-source or
+proprietary product or service without the AGPL-3.0 copyleft obligations, and
+the VoiceStudio Pro features. See the plans at <https://voicestudio.sh/pro>; for
+other inquiries contact `hi@voicestudio.sh`.
+
+Contributors license their contributions to Yupcha Softwares Private Limited,
+the company that maintains VoiceStudio, under the
+[Contributor License Agreement](.github/CLA-1.0.md). While a contribution is
+in the public repository, it stays available there under the AGPL-3.0 or
+another OSI-approved licence (CLA section 4).
 
 (This Notice is a plain-language summary; the binding terms are the full GNU
 AGPL-3.0 text in [`LICENSE`](LICENSE).)
 
 ### Scope
 
-These terms cover the VoiceStudio application — the Tauri desktop shell
-(`frontend/src-tauri/`), the React frontend (`frontend/src/`), the FastAPI
-backend (`backend/`), and supporting build / packaging scripts (`scripts/`,
-`Dockerfile`, `docker-compose.yml`, `.github/`).
+These terms cover the VoiceStudio application — the Electron desktop and web
+app (`electron/`), its native desktop helper (`native/`), the FastAPI backend
+(`backend/`), and supporting build / packaging files (`scripts/`, `deploy/`,
+`.github/`). Electron components adapted from T3 Code keep their MIT notice in
+`electron/T3CODE-LICENSE.txt`.
 
 The bundled `omnivoice/` Python package — the underlying TTS model by Han Zhu —
 is **separately licensed under Apache License 2.0** by its upstream authors and
@@ -47,8 +55,24 @@ weights as CC-BY-NC. Its `audio_tokenizer/LICENSE` contains separate Boson
 Higgs Audio 2 and Meta Llama community terms. A commercial license for
 VoiceStudio-owned code does not replace any of those terms.
 
-Third-party dependencies retain their own licenses. See `Cargo.lock`,
-`bun.lock`, and `uv.lock` for the resolved set.
+The maintained About panel displays selected model credits and required literal
+Higgs Audio and Llama attribution text. See [model credit sources](docs/model-credits.md)
+for evidence and remaining gaps. These visible credits do not establish complete
+notice compliance or permission for a particular use.
+
+The [model licence records](backend/config/model_licenses.json) distinguish
+inspected non-commercial terms from unreviewed upstream metadata. A false
+commercial-use flag includes unresolved review; it is not a claim that every
+listed model forbids commercial use. No commercial clearance is asserted by
+the initial inventory.
+
+Third-party dependencies retain their own licenses. See `bun.lock`, `uv.lock`,
+and `native/desktop-bridge/Cargo.lock` for the resolved set.
+
+The locked PyAV 15.1.0 wheels bundle FFmpeg and x264/x265 libraries. PyAV's source
+licence alone does not describe those binaries' terms. The
+[wheel audit](docs/licensing/pyav-15.1.0-audit.md) records their hashes, build flags,
+upstream licence-label patch, and unresolved redistribution requirements.
 
 ### Reference
 

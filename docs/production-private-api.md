@@ -13,7 +13,6 @@ services:
     restart: unless-stopped
     environment:
       OMNIVOICE_API_KEY: ${OMNIVOICE_API_KEY:?set a long random key}
-      OMNIVOICE_BIND_HOST: 0.0.0.0
       OMNIVOICE_DATA_DIR: /app/omnivoice_data
     ports:
       - "127.0.0.1:3900:3900"
@@ -37,7 +36,7 @@ Generate `OMNIVOICE_API_KEY` with a password manager or
 deployment platform's secret store, not in the Compose file or source control.
 Send it from InterviewAce as `Authorization: Bearer <key>`.
 
-`OMNIVOICE_BIND_HOST=0.0.0.0` is required inside the container; the host-side
+The image binds `0.0.0.0` inside the container on its own; the host-side
 `127.0.0.1` port binding still prevents LAN or public access.
 `OMNIVOICE_DATA_DIR=/app/omnivoice_data` keeps application state on the named
 volume across container recreation.

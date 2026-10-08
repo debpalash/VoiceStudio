@@ -1,5 +1,5 @@
-import { getBridge } from '@/components/bridge';
 import { apiJson } from '@/lib/api/client';
+import { saveBackendFile } from '@/lib/native-save';
 import { queryClient } from '@/lib/query';
 
 const AUDIO_EXTENSIONS = new Set(['aac', 'flac', 'm4a', 'm4b', 'mp3', 'ogg', 'opus', 'wav']);
@@ -19,9 +19,8 @@ function exportMode(filename: string): 'audio' | 'video' | 'file' {
  * into a failed export.
  */
 export async function saveExport(url: string, suggestedName: string) {
-  const bridge = getBridge();
-  if (!bridge) return null;
-  const saved = await bridge.files.saveAudio({ url, suggestedName });
+  const saved = await saveBackendFile({ url, suggestedName });
+  if (!saved) return null;
   if (!saved.canceled && saved.path) {
     try {
       await apiJson('/export/record', {

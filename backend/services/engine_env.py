@@ -384,6 +384,16 @@ def build_engine_env(
     # AUTH-04: HF token injection from the resolver cascade. We import lazily
     # so the helper is callable in test contexts that don't stand up the
     # full settings_store / DB.
+    from services.hf_auth import env_allows_token
+
+    # An engine whose HF_ENDPOINT is a mirror must not send it the token.
+    if not env_allows_token(env):
+        inject_hf_token = False
+        env.pop("HF_TOKEN", None)
+        env.pop("YOUR_HF_TOKEN", None)
+        # "0" or another false value would still let a cached token reach the mirror.
+        env["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
+
     if inject_hf_token:
         try:
             from services import token_resolver

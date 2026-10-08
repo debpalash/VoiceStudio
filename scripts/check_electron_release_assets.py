@@ -24,6 +24,14 @@ TARGETS = {
     "win32-x64": ("win32-x64", "win", "x64", ".exe"),
 }
 
+# Targets whose build leg is allowed to fail without blocking a release
+# (continue-on-error in the workflow matrix). They are verified in full as soon
+# as any trace of them is published, and skipped only when entirely absent, so
+# a half-published feed still fails closed.
+OPTIONAL_TARGETS = {
+    "win32-arm64": ("win32-arm64", "win", "arm64", ".exe"),
+}
+
 
 class ReleaseContractError(RuntimeError):
     """The published release cannot safely serve an Electron update."""
@@ -49,22 +57,32 @@ def _asset_map(release: dict[str, Any]) -> dict[str, dict[str, Any]]:
 def verify_release(
     release: dict[str, Any], manifest_dir: Path, *, channel: str, version: str
 ) -> list[str]:
-    if channel not in {"stable", "preview"}:
+    # Stable is the only Electron update feed; there is no `preview` release.
+    if channel != "stable":
         raise ReleaseContractError(f"unsupported channel: {channel}")
-    version_pattern = r"\d+\.\d+\.\d+-\d+" if channel == "preview" else r"\d+\.\d+\.\d+"
-    if re.fullmatch(version_pattern, version) is None:
+    if re.fullmatch(r"\d+\.\d+\.\d+", version) is None:
         raise ReleaseContractError(f"{channel} version has the wrong shape: {version}")
-    if bool(release.get("isPrerelease")) != (channel == "preview"):
+    if release.get("isPrerelease"):
         raise ReleaseContractError(f"{channel} prerelease flag does not match the channel")
-    expected_tag = "preview" if channel == "preview" else f"v{version}"
+    expected_tag = f"v{version}"
     if release.get("tagName") != expected_tag:
         raise ReleaseContractError(f"{channel} release tag does not match {expected_tag}")
 
     assets = _asset_map(release)
     verified: list[str] = []
-    for target, (manifest_target, os_token, arch, extension) in TARGETS.items():
+    for target, (manifest_target, os_token, arch, extension) in {
+        **TARGETS,
+        **OPTIONAL_TARGETS,
+    }.items():
         manifest_name = f"electron-{channel}-{manifest_target}.yml"
         manifest_path = manifest_dir / manifest_name
+        if target in OPTIONAL_TARGETS:
+            # Skip only when NOTHING of this target is published: an installer
+            # or blockmap without its manifest is an incomplete release.
+            payload = f"VoiceStudio-Electron-{version}-{os_token}-{arch}{extension}"
+            traces = (manifest_name, payload, f"{payload}.blockmap")
+            if not manifest_path.is_file() and not any(name in assets for name in traces):
+                continue
         if not manifest_path.is_file():
             raise ReleaseContractError(f"missing downloaded manifest: {manifest_name}")
         manifest_asset = assets.get(manifest_name)
@@ -103,7 +121,7 @@ def verify_release(
             raise ReleaseContractError(f"published size does not match {artifact}")
         if not str(artifact_asset.get("digest") or "").startswith("sha256:"):
             raise ReleaseContractError(f"published payload has no GitHub digest: {artifact}")
-        if target == "win32-x64" and f"{artifact}.blockmap" not in assets:
+        if target.startswith("win32-") and f"{artifact}.blockmap" not in assets:
             raise ReleaseContractError(f"release is missing differential blockmap: {artifact}.blockmap")
         verified.append(f"{manifest_name} -> {artifact}")
     return verified
@@ -113,7 +131,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--release-json", type=Path, required=True)
     parser.add_argument("--manifest-dir", type=Path, required=True)
-    parser.add_argument("--channel", choices=("stable", "preview"), required=True)
+    parser.add_argument("--channel", choices=("stable",), required=True)
     parser.add_argument("--version", required=True)
     args = parser.parse_args()
     release = json.loads(args.release_json.read_text(encoding="utf-8"))

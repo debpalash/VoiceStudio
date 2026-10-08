@@ -10,7 +10,13 @@ from fastapi.responses import JSONResponse
 from schemas.requests import AgentFitRequest, TranslateRequest
 from services.model_manager import _cpu_pool, _gpu_pool
 from services.hf_revisions import revision_for
-from services.translator import cinematic_available, cinematic_refine_many, _cinematic_budget
+from services.translator import (
+    SCRIPT_RANGES,
+    _cinematic_budget,
+    cinematic_available,
+    cinematic_refine_many,
+    script_ratio,
+)
 from api.routers.dub_core import _get_job, _save_job
 
 router = APIRouter()
@@ -50,6 +56,25 @@ FLORES_CODES = {
     "ro": "ron_Latn", "hu": "hun_Latn", "bg": "bul_Cyrl", "sk": "slk_Latn",
     "sl": "slv_Latn", "hr": "hrv_Latn", "sr": "srp_Cyrl", "lt": "lit_Latn",
     "et": "est_Latn", "sw": "swh_Latn", "af": "afr_Latn", "ms": "zsm_Latn",
+    # Every remaining two-letter code the dub pickers and Whisper can emit.
+    # Script variants follow the NLLB-200 defaults (Serbian Cyrillic, Gurmukhi
+    # Punjabi, Northern Kurdish in Latin script, Tosk Albanian, ...). Latin (la),
+    # Hawaiian (haw) and Breton (br) have no NLLB-200 code and stay unsupported.
+    "am": "amh_Ethi", "as": "asm_Beng", "az": "azj_Latn", "ba": "bak_Cyrl",
+    "be": "bel_Cyrl", "bo": "bod_Tibt", "bs": "bos_Latn", "ca": "cat_Latn",
+    "cy": "cym_Latn", "eu": "eus_Latn", "fo": "fao_Latn", "gd": "gla_Latn",
+    "gl": "glg_Latn", "ha": "hau_Latn", "ht": "hat_Latn", "hy": "hye_Armn",
+    "is": "isl_Latn", "iw": "heb_Hebr", "jv": "jav_Latn", "jw": "jav_Latn",
+    "ka": "kat_Geor", "kk": "kaz_Cyrl", "km": "khm_Khmr", "ku": "kmr_Latn",
+    "ky": "kir_Cyrl", "lb": "ltz_Latn", "ln": "lin_Latn", "lo": "lao_Laoo",
+    "lv": "lvs_Latn", "mg": "plt_Latn", "mi": "mri_Latn", "mk": "mkd_Cyrl",
+    "mn": "khk_Cyrl", "mt": "mlt_Latn", "my": "mya_Mymr", "ne": "npi_Deva",
+    "no": "nob_Latn", "oc": "oci_Latn", "pa": "pan_Guru", "ps": "pbt_Arab",
+    "sa": "san_Deva", "sd": "snd_Arab", "si": "sin_Sinh", "sm": "smo_Latn",
+    "sn": "sna_Latn", "so": "som_Latn", "sq": "als_Latn", "su": "sun_Latn",
+    "tg": "tgk_Cyrl", "tk": "tuk_Latn", "tl": "tgl_Latn", "fil": "tgl_Latn",
+    "tt": "tat_Cyrl", "uz": "uzn_Latn", "xh": "xho_Latn", "yi": "ydd_Hebr",
+    "yo": "yor_Latn", "zu": "zul_Latn",
 }
 
 
@@ -148,38 +173,32 @@ def dialect_clause(dialect: Optional[str]) -> str:
     return ""
 
 
-# Per-language script enforcement. Maps language code → required Unicode
-# block(s) the translation must contain. Used as a sanity gate after the
-# LLM responds: if the output contains <50% characters from the expected
-# block, we treat the translation as corrupted and retry. The block names
-# here are the keys recognised by Python's `unicodedata.name()` lookup or
-# regex Unicode property classes.
+# Per-language script enforcement. Maps language code → (script name named in
+# the LLM prompt, letter ranges the translation must mostly use). Used as a
+# sanity gate after the LLM responds: if the output contains <50% letters from
+# the expected script, we treat the translation as corrupted and retry. The
+# ranges are shared with the Cinematic/Autofit gate (services.translator).
+_SCRIPT_NAMES = {
+    "hi": "DEVANAGARI",
+    "ar": "ARABIC",
+    "zh": "CJK",
+    "zh-CN": "CJK",
+    "ja": "JAPANESE",
+    "ko": "HANGUL",
+    "th": "THAI",
+    "ru": "CYRILLIC",
+    "uk": "CYRILLIC",
+}
 LANG_REQUIRED_SCRIPT = {
-    "hi":  ("DEVANAGARI", (0x0900, 0x097F)),
-    "ar":  ("ARABIC",     (0x0600, 0x06FF)),
-    "zh":  ("CJK",        (0x4E00, 0x9FFF)),
-    "zh-CN": ("CJK",      (0x4E00, 0x9FFF)),
-    "ja":  ("JAPANESE",   (0x3040, 0x30FF)),
-    "ko":  ("HANGUL",     (0xAC00, 0xD7AF)),
-    "th":  ("THAI",       (0x0E00, 0x0E7F)),
-    "ru":  ("CYRILLIC",   (0x0400, 0x04FF)),
-    "uk":  ("CYRILLIC",   (0x0400, 0x04FF)),
+    code: (name, SCRIPT_RANGES[code]) for code, name in _SCRIPT_NAMES.items()
 }
 
 
 def _script_ratio(text: str, code: str) -> float:
-    """Fraction of letters in `text` that fall inside the script block we
-    expect for `code`. Punctuation/digits/whitespace are excluded from the
-    denominator so a Hindi sentence ending in "." still scores 1.0."""
-    info = LANG_REQUIRED_SCRIPT.get(code)
-    if not info:
-        return 1.0
-    _, (lo, hi) = info
-    letters = [c for c in text if c.isalpha()]
-    if not letters:
-        return 1.0
-    inside = sum(1 for c in letters if lo <= ord(c) <= hi)
-    return inside / len(letters)
+    """Fraction of letters in `text` that fall inside the script we expect for
+    `code`. Punctuation/digits/whitespace are excluded from the denominator so
+    a Hindi sentence ending in "." still scores 1.0."""
+    return script_ratio(text, code)
 
 
 def _looks_like_target(text: str, code: str, threshold: float = 0.5) -> bool:
@@ -705,7 +724,9 @@ async def dub_translate(req: TranslateRequest):
                                 {"role": "user", "content": seg.text},
                             ],
                         )
-                        out_text = (res.choices[0].message.content or "").strip()
+                        from services.llm_backend import _strip_reasoning
+                        out_text = _strip_reasoning(res.choices[0].message.content or "",
+                                                    prompt=f"{sys_for_attempt}\n{seg.text}")
                         if not out_text:
                             last_err = "empty LLM response"
                             continue

@@ -49,6 +49,8 @@ class OmniVoiceSubprocessBackend(SubprocessBackend):
 
     id = "omnivoice-subprocess"
     display_name = "OmniVoice (subprocess-isolated, killable on timeout)"
+    instruct_vocabulary = "tags"
+    supports_voice_design = True
     _DEFAULT_SAMPLE_RATE = 24000
     gpu_compat = ("cuda", "rocm", "mps", "cpu")
     # Match OmniVoiceBackend: the measured floor below which a render that
@@ -70,21 +72,14 @@ class OmniVoiceSubprocessBackend(SubprocessBackend):
         passage = None
         audio = kw.get("ref_audio")
         if isinstance(audio, str):
-            from omnivoice.utils.audio import CLONE_REF_TEXT_MAX_SECONDS
-            from services.tts_backend import (
-                _reuse_or_rank_passage,
-                omnivoice_ref_text,
-                reference_duration_s,
-            )
+            from services.tts_backend import omnivoice_inline_reference
 
-            duration = reference_duration_s(audio)
-            if duration is not None and duration > CLONE_REF_TEXT_MAX_SECONDS:
-                selected = _reuse_or_rank_passage(audio)
-                if selected is not None:
-                    kw["ref_audio"], kw["ref_text"] = selected
-                    passage = selected[0]
-                elif kw.get("ref_text"):
-                    kw["ref_text"] = omnivoice_ref_text(audio, kw["ref_text"])
+            ref_text = kw.get("ref_text")
+            selected_audio, selected_text, passage = omnivoice_inline_reference(audio, ref_text)
+            if passage is not None:
+                kw["ref_audio"], kw["ref_text"] = selected_audio, selected_text
+            elif ref_text:
+                kw["ref_text"] = selected_text
         try:
             return super().generate(text, **kw)
         finally:

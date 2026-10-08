@@ -184,3 +184,23 @@ def test_total_is_the_sum_of_the_phases():
         grace_seconds=99,
     )
     assert d.total_seconds == 15
+
+
+@pytest.mark.parametrize(
+    ("env", "expected"),
+    [
+        ({}, 1800.0),
+        ({"OMNIVOICE_PROGRESS_EXTENSION_CAP_S": "900"}, 900.0),
+        # Deprecated alias keeps existing configurations working.
+        ({"OMNIVOICE_MODEL_LOAD_TIMEOUT_S": "600"}, 600.0),
+        ({"OMNIVOICE_PROGRESS_EXTENSION_CAP_S": "900",
+          "OMNIVOICE_MODEL_LOAD_TIMEOUT_S": "600"}, 900.0),
+        # The load ceiling is a different knob and never feeds the cap.
+        ({"OMNIVOICE_MODEL_LOAD_TIMEOUT": "60"}, 1800.0),
+    ],
+)
+def test_progress_extension_cap_name_and_deprecated_alias(env, expected):
+    from services import model_manager
+
+    assert model_manager.progress_extension_cap_s(env) == expected
+    assert deadlines._progress_extension_cap_s(env) == expected

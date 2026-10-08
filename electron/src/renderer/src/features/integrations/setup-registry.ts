@@ -102,7 +102,8 @@ function dockerRun(image: string) {
     '  -p 127.0.0.1:3900:3900 \\',
     '  -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \\',
     '  -v omnivoice-data:/app/omnivoice_data \\',
-    '  -v ~/.cache/huggingface:/root/.cache/huggingface \\',
+    // The image's HF_HOME; mounting the host cache there reuses its downloads.
+    '  -v ~/.cache/huggingface:/app/omnivoice_data/huggingface \\',
     `  ${image}:stable`,
     '',
   ].join('\n');
@@ -119,7 +120,7 @@ function dockerRunPowerShell(image: string) {
     '  -p 127.0.0.1:3900:3900 `',
     '  -e OMNIVOICE_API_KEY="$env:OMNIVOICE_API_KEY" `',
     '  -v omnivoice-data:/app/omnivoice_data `',
-    '  -v "${HOME}/.cache/huggingface:/root/.cache/huggingface" `',
+    '  -v "${HOME}/.cache/huggingface:/app/omnivoice_data/huggingface" `',
     `  ${image}:stable`,
     '',
   ].join('\n');
@@ -133,7 +134,6 @@ function dockerCompose(image: string) {
     '    ports:',
     '      - "127.0.0.1:3900:3900"',
     '    environment:',
-    '      - OMNIVOICE_BIND_HOST=0.0.0.0',
     '      - OMNIVOICE_API_KEY=${OMNIVOICE_API_KEY:?set a long random key}',
     '      - OMNIVOICE_DATA_DIR=/app/omnivoice_data',
     '      - HF_HOME=/app/omnivoice_data/huggingface',

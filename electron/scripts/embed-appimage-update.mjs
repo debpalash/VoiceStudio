@@ -16,16 +16,12 @@ const filename = `VoiceStudio-Electron-${version}-linux-x64.AppImage`;
 const image = resolve(releaseDir, filename);
 const zsync = `${image}.zsync`;
 const channel = process.env.VOICESTUDIO_UPDATE_CHANNEL || 'electron-stable-linux-x64';
-assert(
-  ['electron-stable-linux-x64', 'electron-preview-linux-x64'].includes(channel),
-  'Known Linux updater channel',
-);
-const preview = channel === 'electron-preview-linux-x64';
-const releaseTag = preview ? 'preview' : `v${version}`;
+// Stable is the only Linux update feed (no `preview` release exists).
+assert.equal(channel, 'electron-stable-linux-x64', 'Known Linux updater channel');
+const releaseTag = `v${version}`;
 const manifestPath = resolve(releaseDir, `${channel}-linux.yml`);
 const updateInfo =
-  `gh-releases-zsync|debpalash|VoiceStudio|${preview ? 'preview' : 'latest'}|` +
-  'VoiceStudio-Electron-*-linux-x64.AppImage.zsync';
+  'gh-releases-zsync|debpalash|VoiceStudio|latest|VoiceStudio-Electron-*-linux-x64.AppImage.zsync';
 
 // The pinned electron-builder runtime reserves a fixed-size .upd_info ELF
 // section. Read its actual offset instead of assuming a particular runtime

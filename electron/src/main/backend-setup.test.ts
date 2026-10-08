@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterEach, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, expect, it, onTestFinished, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { chmodSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -59,11 +59,20 @@ vi.mock('./runtime-project', () => ({
 import {
   BackendSupervisor,
   bundledUvPath,
+  bundledWebUiPath,
   isExpectedPipeClose,
+  isUnsupportedPlatform,
   managedBackendSpawnOptions,
+  platformSetupIssue,
 } from './backend';
+import { app } from 'electron';
 
+beforeEach(() => {
+  // Generic installation fixtures need a supported host. Intel cases override it.
+  if (process.platform === 'darwin') vi.spyOn(process, 'arch', 'get').mockReturnValue('arm64');
+});
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   vi.clearAllMocks();
@@ -178,7 +187,7 @@ it('uses the lightweight health contract for recurring liveness probes', async (
     async (_input: string | URL | Request) =>
       new Response(JSON.stringify({ status: 'ok', version: '0.5.2' }), {
         status: 200,
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'x-omnivoice-backend': '0.5.2' },
       }),
   );
   vi.stubGlobal('fetch', fetchMock);
@@ -201,7 +210,7 @@ it('attaches to a healthy replacement instead of reporting its exited child as c
     .mockResolvedValue(
       new Response(JSON.stringify({ status: 'ok', version: '0.5.2' }), {
         status: 200,
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'x-omnivoice-backend': '0.5.2' },
       }),
     );
   vi.stubGlobal('fetch', fetchMock);
@@ -231,6 +240,45 @@ it('attaches to a healthy replacement instead of reporting its exited child as c
   expect(supervisor.status.logTail).toContain('Attached to the replacement VoiceStudio backend.');
   await supervisor.shutdown();
   vi.useRealTimers();
+});
+it.each([
+  {
+    label: 'managed',
+    backendCmd: '',
+    advice: 'repair the local runtime',
+    forbidden: 'can be launched',
+  },
+  {
+    label: 'custom command',
+    backendCmd: '["custom-python"]',
+    advice: 'can be launched',
+    forbidden: 'local runtime',
+  },
+])('scopes spawn-failure advice to the $label launch', ({ backendCmd, advice, forbidden }) => {
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', backendCmd);
+  const child = Object.assign(new EventEmitter(), {
+    stdin: null,
+    stdout: null,
+    stderr: null,
+    stdio: [],
+    pid: 4242,
+  });
+  mocks.spawn.mockReturnValueOnce(child);
+  const supervisor = new BackendSupervisor();
+  const internal = supervisor as unknown as {
+    generation: number;
+    spawnChild: (plan: { argv: string[]; cwd: string }, generation: number) => void;
+  };
+  internal.generation = 1;
+  internal.spawnChild({ argv: ['missing-backend'], cwd: '/project' }, 1);
+
+  child.emit('error', Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }));
+
+  expect(supervisor.status.stage).toBe('failed');
+  expect(supervisor.status.message).toContain('missing-backend');
+  expect(supervisor.status.message).toContain('spawn ENOENT');
+  expect(supervisor.status.message).toContain(advice);
+  expect(supervisor.status.message).not.toContain(forbidden);
 });
 it('startup and retry await explicit setup without staging, spawning or installing', async () => {
   vi.stubGlobal(
@@ -318,11 +366,14 @@ it('exposes actionable storage failures without requiring log parsing', async ()
   );
   vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
   vi.stubEnv('VOICESTUDIO_SKIP_BACKEND', '');
-  mocks.install.mockRejectedValue(Object.assign(new Error('full'), { code: 'ENOSPC' }));
+  mocks.install.mockRejectedValue(
+    Object.assign(new Error('full'), { code: 'ENOSPC', requiredGib: 5 }),
+  );
   const supervisor = new BackendSupervisor();
   await supervisor.start();
   await supervisor.setupRuntime();
   expect(supervisor.status.setupIssue).toBe('space');
+  expect(supervisor.status.setupRequiredGib).toBe(5);
   mocks.install.mockRejectedValue(Object.assign(new Error('denied'), { code: 'EACCES' }));
   await supervisor.setupRuntime();
   expect(supervisor.status.setupIssue).toBe('access');
@@ -584,6 +635,40 @@ it('only ever names a uv that is really there', () => {
   }
 });
 
+// ── #2599: LAN devices need the web UI this app version ships ──────────────
+//
+// The runtime project holds only the Python sources, so a backend left to
+// find the web build beside itself had none and redirected LAN devices to
+// their own localhost. The managed launch must point it at the packaged build.
+
+function stubResourcesPath(path: string): void {
+  const previous = Object.getOwnPropertyDescriptor(process, 'resourcesPath');
+  Object.defineProperty(process, 'resourcesPath', { value: path, configurable: true });
+  onTestFinished(() => {
+    if (previous) Object.defineProperty(process, 'resourcesPath', previous);
+    else delete (process as { resourcesPath?: string }).resourcesPath;
+  });
+}
+
+it('serves LAN devices the web UI packaged with this app version', () => {
+  vi.stubEnv('OMNIVOICE_FRONTEND_DIST', '');
+  stubResourcesPath(join('/opt', 'VoiceStudio', 'resources'));
+
+  const { env } = managedBackendSpawnOptions(3900);
+
+  expect(env.OMNIVOICE_FRONTEND_DIST).toBe(
+    join('/opt', 'VoiceStudio', 'resources', 'frontend', 'dist'),
+  );
+  expect(bundledWebUiPath()).toBe(env.OMNIVOICE_FRONTEND_DIST);
+});
+
+it('keeps a web UI directory the user pinned themselves', () => {
+  vi.stubEnv('OMNIVOICE_FRONTEND_DIST', '/custom/web');
+  stubResourcesPath(join('/opt', 'VoiceStudio', 'resources'));
+
+  expect(managedBackendSpawnOptions(3900).env.OMNIVOICE_FRONTEND_DIST).toBe('/custom/web');
+});
+
 it('exposes the current process signal separately from the durable crash journal', async () => {
   vi.useFakeTimers();
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
@@ -604,4 +689,85 @@ it('exposes the current process signal separately from the durable crash journal
   await supervisor.shutdown();
   expect(supervisor.status.exitSignal).toBeUndefined();
   vi.useRealTimers();
+});
+
+// ── #2365: Intel Macs can never resolve the runtime ─────────────────────────
+//
+// PyTorch ships no macOS x86_64 wheels, so offering a local install there
+// burns gigabytes before a certain resolver failure. The supervisor parks
+// in setup_required with an unsupported_platform issue (the setup screen
+// shows remote-backend guidance instead of an install CTA), and setupRuntime
+// refuses even direct IPC.
+
+function stubIntelMac(): () => void {
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+  const arch = Object.getOwnPropertyDescriptor(process, 'arch');
+  Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+  Object.defineProperty(process, 'arch', { value: 'x64', configurable: true });
+  return () => {
+    if (platform) Object.defineProperty(process, 'platform', platform);
+    if (arch) Object.defineProperty(process, 'arch', arch);
+  };
+}
+
+it('parks Intel Macs in setup_required with an unsupported-platform issue', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      throw new Error('no backend');
+    }),
+  );
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  vi.stubEnv('VOICESTUDIO_SKIP_BACKEND', '');
+  const restore = stubIntelMac();
+  try {
+    expect(isUnsupportedPlatform()).toBe(true);
+    const supervisor = new BackendSupervisor();
+    await supervisor.start();
+    expect(supervisor.status.stage).toBe('setup_required');
+    expect(supervisor.status.setupIssue).toBe('unsupported_platform');
+    await supervisor.setupRuntime();
+    expect(mocks.install).not.toHaveBeenCalled();
+    await supervisor.shutdown();
+  } finally {
+    restore();
+  }
+});
+
+it('does not gate Apple Silicon or other platforms', () => {
+  expect(isUnsupportedPlatform('darwin', 'arm64')).toBe(false);
+  expect(isUnsupportedPlatform('win32', 'x64')).toBe(false);
+  expect(isUnsupportedPlatform('linux', 'x64')).toBe(false);
+});
+
+it('tells Apple Silicon users running the Intel build to install the arm64 build (#2598)', async () => {
+  expect(platformSetupIssue('darwin', 'x64', true)).toBe('wrong_architecture');
+  expect(platformSetupIssue('darwin', 'x64', false)).toBe('unsupported_platform');
+  expect(platformSetupIssue('darwin', 'arm64', false)).toBeUndefined();
+  // Windows on ARM emulating the x64 build is a different, supported path.
+  expect(platformSetupIssue('win32', 'x64', true)).toBeUndefined();
+
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      throw new Error('no backend');
+    }),
+  );
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  vi.stubEnv('VOICESTUDIO_SKIP_BACKEND', '');
+  const restore = stubIntelMac();
+  const electronApp = app as { runningUnderARM64Translation?: boolean };
+  electronApp.runningUnderARM64Translation = true;
+  try {
+    const supervisor = new BackendSupervisor();
+    await supervisor.start();
+    expect(supervisor.status.stage).toBe('setup_required');
+    expect(supervisor.status.setupIssue).toBe('wrong_architecture');
+    await supervisor.setupRuntime();
+    expect(mocks.install).not.toHaveBeenCalled();
+    await supervisor.shutdown();
+  } finally {
+    delete electronApp.runningUnderARM64Translation;
+    restore();
+  }
 });

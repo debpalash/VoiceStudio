@@ -14,7 +14,7 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => vi.fn(),
 }));
 vi.mock('@tanstack/react-query', async (importOriginal) => ({
-  ...await importOriginal<typeof import('@tanstack/react-query')>(),
+  ...(await importOriginal<typeof import('@tanstack/react-query')>()),
   useQuery: () => ({ data: [] }),
 }));
 vi.mock('@/hooks/use-profiles', () => ({ useProfiles: () => ({ data: [] }) }));
@@ -27,6 +27,16 @@ import { homeContributors } from './home-contributors-data';
 import en from '@/i18n/locales/en.json';
 
 afterEach(cleanup);
+
+it('keeps the heading and description together beside the contributor artwork', () => {
+  render(<HomePage />);
+  const heading = screen.getByRole('heading', { name: 'homeUi.title' });
+  const description = screen.getByText('homeUi.subtitle');
+  const copy = heading.parentElement!;
+  expect(copy).toContainElement(description);
+  expect(copy.querySelector('.home-contributors')).toBeNull();
+  expect(copy.nextElementSibling).toHaveClass('home-contributors');
+});
 
 it('previews the official website only when the title is clicked', () => {
   browser.open.mockClear();
@@ -51,8 +61,10 @@ it('names the feature Dubbing consistently while preserving the existing route',
 it('credits qualifying contributors and opens their GitHub profiles externally', () => {
   render(<HomePage />);
   const credits = screen.getAllByRole('listitem');
-  expect(credits).toHaveLength(9);
-  expect([1, 2, 3].map((row) => credits.filter((credit) => credit.style.gridRow === String(row)).length)).toEqual([4, 3, 2]);
+  expect(credits).toHaveLength(homeContributors.length + 1);
+  expect(
+    [1, 2, 3].map((row) => credits.filter((credit) => credit.style.gridRow === String(row)).length),
+  ).toEqual([5, 3, 2]);
   expect(homeContributors.every((person) => person.commits > 10)).toBe(true);
   const all = screen.getByRole('link', { name: 'homeUi.allContributors' });
   expect(all).toHaveAttribute(
@@ -63,15 +75,8 @@ it('credits qualifying contributors and opens their GitHub profiles externally',
   expect(files.openExternal).toHaveBeenCalledWith(
     'https://github.com/debpalash/VoiceStudio/graphs/contributors',
   );
-  for (const login of [
-    'kevin9327',
-    'psiberfunk',
-    'velixio',
-    'jaketame',
-    'paoloantinori',
-    'Chang-Jin-Lee',
-    'Shivendra-Coherent',
-  ]) {
+  for (const { login } of homeContributors) {
+    if (login === 'debpalash') continue;
     const profile = screen.getByRole('link', { name: `GitHub · @${login}` });
     expect(profile).toHaveAttribute('href', `https://github.com/${login}`);
     expect(profile.querySelector('img')?.src).not.toMatch(/^https?:\/\/(avatars|github)/);

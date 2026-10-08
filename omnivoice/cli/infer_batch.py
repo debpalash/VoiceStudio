@@ -48,6 +48,7 @@ from tqdm import tqdm
 from omnivoice.models.omnivoice import OmniVoice
 from omnivoice.utils.audio import load_audio
 from omnivoice.utils.common import str2bool
+from omnivoice.utils.dtype import tts_dtype_name
 from omnivoice.utils.data_utils import read_test_list
 from omnivoice.utils.duration import RuleDurationEstimator
 
@@ -231,7 +232,7 @@ def process_init(rank_queue, model_checkpoint, warmup=0):
     worker_model = OmniVoice.from_pretrained(
         model_checkpoint,
         device_map=worker_device,
-        dtype=torch.float16,
+        dtype=getattr(torch, tts_dtype_name(worker_device)),
     )
 
     if warmup > 0:

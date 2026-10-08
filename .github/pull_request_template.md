@@ -29,6 +29,7 @@
 ## Checklist
 
 - [ ] I've tested this locally
+- [ ] Every commit author has signed the [CLA](https://github.com/debpalash/VoiceStudio/blob/main/.github/CLA-1.0.md) (the **CLA** check tells you how)
 - [ ] I've updated relevant documentation (if applicable)
 - [ ] No local machine paths, logs, or personal env details in this PR
 - [ ] Maintained version files are in sync (if an owner-requested bump): root `package.json`, `pyproject.toml`, `backend/core/version.py`, and lockfiles

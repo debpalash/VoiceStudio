@@ -5,8 +5,14 @@ interface DescriptionResult {
   matched: unknown[];
   unmatched: string[];
 }
-/** Manual edits, new text and navigation always supersede a queued mapper response. */
-export function useDescription(apply: (attrs: Record<string, string>) => void) {
+/**
+ * Manual edits, new text and navigation always supersede a queued mapper
+ * response. `apply` also receives the description the mapping belongs to, so
+ * callers can drop one that no longer matches.
+ */
+export function useDescription(
+  apply: (attrs: Record<string, string>, description: string) => void,
+) {
   const applyRef = useRef(apply);
   applyRef.current = apply;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -29,7 +35,7 @@ export function useDescription(apply: (attrs: Record<string, string>) => void) {
     setMatched(true);
     const normalized = description.trim();
     if (!normalized) {
-      if (immediate) applyRef.current({});
+      if (immediate) applyRef.current({}, '');
       return;
     }
     const controller = new AbortController();
@@ -46,7 +52,7 @@ export function useDescription(apply: (attrs: Record<string, string>) => void) {
         })
           .then((result) => {
             if (controller.signal.aborted) return;
-            applyRef.current(result.attrs);
+            applyRef.current(result.attrs, normalized);
             setUnmatched(result.unmatched ?? []);
             setMatched(Boolean(result.matched?.length));
           })

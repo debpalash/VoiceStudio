@@ -1,0 +1,16 @@
+# SHA-256 digests of commit emails that must never appear in this repo's history.
+# Read by scripts/check_commit_identities.py (CI job: commit-identity).
+#
+# Only digests live here so the blocked addresses are not republished. To add
+# one, normalise the address (trim + lowercase), hash it, and append the digest
+# on its own line — never commit the plaintext:
+#
+#   printf '%s' 'someone@example.org' | tr A-Z a-z | sha256sum | cut -d' ' -f1
+#
+# One 64-character lowercase hex digest per line; blank lines and '#' comments
+# are ignored, anything else fails the check.
+29903483b62ec490ee09babe59630be06739ca13b1988cf4914ff12464a83f0f
+99f5b0bf85ee5ec1a066ae5c047fb262981efa5531e8b073686e997f64db05a5
+fbc9e302a66cac29f8676413b11e924ba1bacffc2d14f8b684a0884804f1b306
+b67be71e27a6bac639ac2add1ce064c51b40765222e2628b36885eebb415752d
+f98addabdf15792bb3674587b71a20ab11a1570c915c0e673f0ef9fd0448954a

@@ -30,6 +30,12 @@ import os
 from dataclasses import dataclass
 from typing import Optional
 
+from core.generate_budget import (  # stdlib-only: safe in the torch-free control plane
+    CHARS_PER_SECOND as _CHARS_PER_SECOND,
+    FREE_CHARS as _FREE_CHARS,
+    cpu_auto_budget_s as _cpu_auto_budget_s,
+)
+
 # Mirrors of model_manager's env knobs. Duplicated as *fallbacks* only: the
 # real values are read from model_manager when it is importable (the control
 # plane may run in a process that never loads torch). test_worker_deadlines.py
@@ -38,13 +44,18 @@ _GENERATE_TIMEOUT_S = float(os.environ.get("OMNIVOICE_GENERATE_TIMEOUT_S", "300.
 _CPU_GENERATE_TIMEOUT_S = float(
     os.environ.get("OMNIVOICE_CPU_GENERATE_TIMEOUT_S", "600.0")
 )
-_MODEL_LOAD_EXTRA_S = float(os.environ.get("OMNIVOICE_MODEL_LOAD_TIMEOUT_S", "1800.0"))
-_HEARTBEAT_GRACE_S = float(os.environ.get("OMNIVOICE_MODEL_LOAD_HEARTBEAT_GRACE_S", "30.0"))
+def _progress_extension_cap_s(env=os.environ) -> float:
+    """Mirror of model_manager.progress_extension_cap_s (deprecated alias:
+    OMNIVOICE_MODEL_LOAD_TIMEOUT_S)."""
+    return float(
+        env.get("OMNIVOICE_PROGRESS_EXTENSION_CAP_S")
+        or env.get("OMNIVOICE_MODEL_LOAD_TIMEOUT_S")
+        or "1800.0"
+    )
 
-# Free character allowance before the execution budget starts scaling, and the
-# characters-per-second it scales at. Mirrors model_manager.generate_timeout_s.
-_FREE_CHARS = 1200
-_CHARS_PER_SECOND = 40.0
+
+_MODEL_LOAD_EXTRA_S = _progress_extension_cap_s()
+_HEARTBEAT_GRACE_S = float(os.environ.get("OMNIVOICE_MODEL_LOAD_HEARTBEAT_GRACE_S", "30.0"))
 
 # How long a worker has to say "yes" to an assignment. Generous next to the
 # original 2s because a busy worker may be mid-inference with the GIL held, but
@@ -170,6 +181,9 @@ def _base_execution_seconds(
                 and "OMNIVOICE_GENERATE_TIMEOUT_S" not in os.environ
             ):
                 base = _CPU_GENERATE_TIMEOUT_S
+                if "OMNIVOICE_CPU_GENERATE_TIMEOUT_S" not in os.environ:
+                    # Default CPU budget scales at CPU speed (#2609).
+                    return _cpu_auto_budget_s(base, len(text or ""))
         except Exception:
             # Capability detection is optional in the torch-free control
             # plane; retain the configured universal bounded fallback.

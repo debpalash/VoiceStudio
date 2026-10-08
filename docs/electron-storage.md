@@ -1,5 +1,11 @@
 # Electron storage settings
 
+> **Historical context:** this page was written while the Electron and Tauri apps
+> coexisted. Mentions of Tauri helpers, pages, tests and regression results describe
+> that migration period; the Tauri shell has since been removed and the shared code
+> now lives in `electron/src/shared/`. Existing Tauri installs: see the
+> [migration guide](electron-migration.md).
+
 Settings > Storage reads the existing cached disk report, shows volume use/free space, model cache, application data, engine environments and temporary files, and marks incomplete scans explicitly. Largest models and data subtotals expand inline. Warning formatting and byte formatting are shared with Tauri.
 
 Open folder uses Electron's native reveal bridge, with the existing backend reveal route for browser development. Model and log links open their existing management views. Temporary-file cleanup requires explicit confirmation with the running-job warning. A partial deletion reports failure instead of claiming all files were cleared, and refreshes usage. Opening the page never deletes anything.
@@ -15,3 +21,7 @@ The application data location uses Electron's native folder picker and a main-pr
 Remove all data scans the backend data root, Electron runtime/configuration, logs, durable environment and model cache with real sizes. Shared Hugging Face caches remain an explicit opt-in. After typed confirmation, main rescans and validates every root, stops the backend and hands the exact plan to the signed desktop helper. The helper canonicalizes every path, waits for Electron to exit, then removes the locked Chromium/runtime tree without following a path alias outside VoiceStudio-owned data. A failed helper launch restores the backend and keeps the app open; a successful handoff quits immediately. Removing the installed application binary remains the operating system's normal uninstall step.
 
 `electron/tests/storage-settings-smoke.mjs` verifies warning/partial-scan display, folder reveal, cancel/confirm cleanup, partial cleanup failure and backup status with mocked mutations. Live read-only reports returned all four categories, one volume and an existing backup. No actual files were deleted. Tauri storage regression tests pass after shared-helper extraction. Connection, performance and privacy browser tests also pass after the settings-navigation refactor.
+
+Interrupted sidecar installs without an environment remain included in application data. Completed sidecar environments, checkouts and weights are counted once in the engine category.
+
+An unreadable engine directory or entry produces an incomplete report and a warning; unavailable bytes are not presented as a complete empty footprint.

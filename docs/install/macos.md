@@ -1,60 +1,30 @@
 # VoiceStudio — Install on macOS
 
-## Electron desktop (current)
-
-From the repository root, install Bun and uv, then run:
-
-```sh
-bun install
-bun run setup:api  # prepare Python dependencies before starting Electron
-bun run dev
-```
-
-Use `bun run desktop-prod` to build and launch Electron, or `bun run dist`
-to create local installers without publishing. The app manages its backend.
-See [Electron setup](../../electron/README.md) and [migration notes](../electron-migration.md).
-
-## Legacy Tauri installation and troubleshooting
-
-The instructions below apply to the sunset Tauri app and existing Tauri installers.
-
-This page is self-contained: follow it top to bottom and you'll end up with a
-working VoiceStudio install on macOS (Apple Silicon).
+VoiceStudio's macOS desktop app is built with Electron. The archived Tauri app
+is no longer maintained; if you still run it, follow the
+[migration guide](../electron-migration.md).
 
 > [!IMPORTANT]
-> **Intel Macs are not supported.** The app UI installs and launches, but the
-> local Python backend **cannot run**: PyTorch stopped shipping Intel-Mac
-> (macOS x86_64) wheels after 2.2.x, and VoiceStudio's dependencies require a
-> newer torch — so the first-run dependency install can never succeed, from
-> the DMG *or* from source
-> ([#889](https://github.com/debpalash/VoiceStudio/issues/889)). The app
-> detects this at first launch and tells you directly instead of failing with
-> a raw installer error. Your options on an Intel Mac: point the UI at a
-> remote backend running on another machine (**Settings → Sharing → Remote
-> backend**), or run VoiceStudio on an Apple Silicon Mac, Windows, or Linux.
+> **Intel Macs are not supported** for the local backend (app UI only).
+> PyTorch stopped shipping Intel-Mac (macOS
+> x86_64) wheels after 2.2.x and VoiceStudio's dependencies need a newer torch,
+> so a local Python backend cannot install on an Intel Mac — from the DMG *or*
+> from source ([#889](https://github.com/debpalash/VoiceStudio/issues/889)).
+> On Intel, packaged setup stops before creating a Python environment or
+> downloading dependencies and shows remote-backend guidance instead: use the
+> remote connection controls on the setup screen to point the app at a backend
+> on another machine, or run VoiceStudio on an Apple Silicon Mac, Windows, or
+> Linux.
 
-## Prerequisites
+## Requirements
 
-### Using the DMG
-
-- **macOS 13.3 (Ventura) or newer** — Apple Silicon (Intel: UI only, see the
+- **macOS 13.3 (Ventura) or newer** on Apple Silicon (Intel: UI only, see the
   note above).
 - **~10 GB free disk** for the app, its Python environment, and model weights.
 
-That's it — GPU acceleration (Apple MPS) is automatic on Apple Silicon, and
-Python, FFmpeg, and the model weights are bundled or bootstrapped by the app
-itself on first launch. No toolchain needed.
-
-### Building from source
-
-Everything above, plus the toolchain:
-
-- **Xcode Command Line Tools** — `xcode-select --install` (includes **git**
-  and the C toolchain; `curl` ships with macOS).
-- **Python 3.11+** — `brew install python@3.11` (or use `pyenv` / the system Python if you already have ≥3.11).
-- **Bun** — `curl -fsSL https://bun.sh/install | bash`.
-- **Rust / Cargo** — `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh` or `brew install rust`.
-  If you use rustup, reopen the terminal or source `"$HOME/.cargo/env"` before running `bun run tauri:desktop-prod`.
+GPU acceleration (Apple MPS) is automatic on Apple Silicon. Python, FFmpeg,
+and model weights are bootstrapped by the app itself on first launch; no
+toolchain is needed for the packaged app.
 
 FFmpeg/FFprobe and yt-dlp are **not** prerequisites on any install path: the
 app resolves them itself (a static build ships with the Python environment;
@@ -62,52 +32,37 @@ if nothing resolves, the app downloads its own checksummed build on first
 run). Power users can inspect or override the binaries in
 **Settings → Audio tools** — including pointing at a Homebrew copy.
 
-Optional but recommended:
+Optional but recommended: **a Hugging Face account** for diarization and the
+larger TTS models. See [docs/setup/huggingface-token.md](../setup/huggingface-token.md).
 
-- **A Hugging Face account** for diarization and the larger TTS models. See
-  [docs/setup/huggingface-token.md](../setup/huggingface-token.md).
+## Install (DMG)
 
-## Install (from source)
+Download the DMG that matches your Mac (check **Apple menu → About This Mac →
+Chip/Processor**) from the
+[Releases page](https://github.com/debpalash/VoiceStudio/releases/latest),
+double-click to mount it, and drag **VoiceStudio.app** into `/Applications`.
 
-One-liner (installs prerequisites, clones, and builds):
+| Mac | DMG to download |
+|-----|-----------------|
+| Apple Silicon (M1/M2/M3/M4…) | `VoiceStudio-Electron-<version>-mac-arm64.dmg` |
+| Intel | `VoiceStudio-Electron-<version>-mac-x64.dmg` — **UI only**: the local backend cannot run on Intel ([#889](https://github.com/debpalash/VoiceStudio/issues/889)) |
+
+The architectures are **not** interchangeable: an Intel Mac cannot run the
+`arm64` build (Rosetta 2 only translates the other direction). An Apple
+Silicon Mac *can* open the `x64` build through Rosetta, but its local backend
+then needs the Intel-only PyTorch wheels that no longer exist, so setup stops
+and offers the Apple Silicon download instead. Install the `arm64` DMG over it;
+your voices and projects are kept. Compare the download with the release's
+`SHA256SUMS.txt` before opening it.
+
+Or install the latest release from Terminal with the
+[shell installer](script.md), which picks the right DMG, verifies its
+checksum, and installs `VoiceStudio.app` into `/Applications` (or
+`~/Applications` when `/Applications` is not writable):
 
 ```bash
 curl -fsSL https://voicestudio.sh/install | sh
 ```
-
-Or manually:
-
-```bash
-git clone https://github.com/debpalash/VoiceStudio.git
-cd VoiceStudio
-bun install
-bun run tauri:desktop-prod
-```
-
-The first launch builds the Tauri shell, creates the Python venv via `uv`,
-syncs deps, and downloads model weights (~2.4 GB). The splash screen shows
-live progress for every step.
-
-## Install (pre-built `.app`)
-
-Download the latest DMG from the
-[Releases page](https://github.com/debpalash/VoiceStudio/releases/latest),
-double-click to mount, drag **VoiceStudio.app** into `/Applications`.
-
-Pick the DMG that matches your Mac (check **Apple menu → About This Mac → Chip/Processor**):
-
-| Mac | DMG to download |
-|-----|-----------------|
-| Apple Silicon (M1/M2/M3/M4…) | `VoiceStudio.Studio_<version>_aarch64.dmg` |
-| Intel | `VoiceStudio.Studio_<version>_x64.dmg` — **UI only**: the local backend cannot run on Intel ([#889](https://github.com/debpalash/VoiceStudio/issues/889)) |
-
-The architectures are **not** interchangeable: an Intel Mac cannot run the
-`aarch64` build (Rosetta 2 only translates the other direction — it lets Apple
-Silicon run Intel apps, never the reverse). And note the Intel caveat above:
-the `x64` DMG installs and launches, but is only useful together with a
-remote backend — the local Python backend cannot install on Intel because
-PyTorch no longer ships Intel-Mac wheels. Installing from source does not
-help; the dependency resolution fails the same way.
 
 If the first launch is blocked by macOS Gatekeeper ("VoiceStudio cannot be
 opened because the developer cannot be verified"), see the next section — it
@@ -157,6 +112,37 @@ for all platform credentials and verification gates. An Apple Developer
 membership is required; the archived Tauri workflow's `APPLE_CERTIFICATE`
 secrets do not sign Electron installers.
 
+## Building from source
+
+Use this for development or to run current `main`. To build and install a
+desktop package from `main` without a checkout, use the shell installer's
+[`--main` mode](script.md#building-main). Local source builds are not
+local-backend capable on Intel Macs either.
+
+Prerequisites (use a native arm64 terminal on Apple Silicon):
+
+- **Xcode Command Line Tools** — `xcode-select --install` (includes **git**
+  and the C toolchain; `curl` ships with macOS).
+- **Bun** — `curl -fsSL https://bun.sh/install | bash`.
+- **uv** — `curl -LsSf https://astral.sh/uv/install.sh | sh` (it provides the
+  managed Python 3.11 the backend uses).
+- **Node.js 22+** and **Rust / Cargo** (`brew install rust`, or rustup —
+  reopen the terminal or source `"$HOME/.cargo/env"` afterwards) for the
+  Electron native helper.
+
+```bash
+git clone https://github.com/debpalash/VoiceStudio.git
+cd VoiceStudio
+bun install
+bun run setup:api   # create the Python environment with uv
+bun run dev         # Electron with hot reload; it starts and supervises the backend
+```
+
+Use `bun run desktop-prod` to build and launch the production bundle, or
+`bun run dist` to create local DMG/zip packages in `electron/release/` without
+publishing. Local packages are unsigned. See
+[Electron setup](../../electron/README.md) for backend configuration.
+
 ## Apple Silicon vs Intel
 
 - **Apple Silicon (M-series):** VoiceStudio automatically picks the `mlx-whisper`
@@ -172,8 +158,7 @@ secrets do not sign Electron installers.
 - **Intel Macs:** the local backend is **unsupported** — PyTorch no longer
   ships Intel-Mac wheels, so the Python environment can never install
   ([#889](https://github.com/debpalash/VoiceStudio/issues/889)). The UI
-  works only when pointed at a remote backend (**Settings → Sharing → Remote
-  backend**).
+  works only when connected to a remote backend.
 
 The picker in **Model Catalogue** shows which backend is active.
 
@@ -192,19 +177,17 @@ Full details: [docs/setup/huggingface-token.md](../setup/huggingface-token.md).
 
 Hit a wall? See [docs/install/troubleshooting.md](troubleshooting.md).
 
-The in-app error UI (the React error boundary that fires on backend errors)
-includes an **"Open docs for this error"** button — that button deeplinks
-back into this docs tree at the right section for the error class.
+The in-app error UI includes an **"Open docs for this error"** button that
+deeplinks back into this docs tree at the right section for the error class.
 
-### Desktop window chrome
+### `torch` "doesn't have a source distribution or wheel for the current platform"
 
-The main window uses native macOS traffic lights with an overlay title bar;
-window sizing, resize limits, and application file-drop behavior match the
-other desktop platforms. The platform configuration repeats the complete window
-list because Tauri replaces arrays when merging it with the shared config.
-The capture widget remains a separate borderless window created at runtime.
-Its window-scoped Tauri capability permits hiding after recording or idle
-reconciliation on every desktop platform.
+If setup fails with `You're on macOS (macosx_…_x86_64), but torch … only has
+wheels for … macosx_11_0_arm64`, the runtime is being built for Intel. On an
+Apple Silicon Mac that means the `x64` DMG (or a Rosetta terminal for source
+installs) is in use: install the `mac-arm64` DMG, or run `bun run setup:api`
+from a native arm64 terminal (`uname -m` prints `arm64`). On an Intel Mac the
+local backend is unsupported; connect to a remote backend instead.
 
 ### Fast process shutdown
 

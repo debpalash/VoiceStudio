@@ -91,7 +91,7 @@ def test_demoted_sherpa_query_keeps_pcm_transport_for_legacy_fallback(
     monkeypatch.setattr(sd, "is_demoted", lambda mid: mid == model_id)
     sample_rates = []
 
-    async def fallback(_chunks, *, pcm_sr=None):
+    async def fallback(_chunks, *, pcm_sr=None, dictation=False):
         sample_rates.append(pcm_sr)
         return {
             "text": "legacy fallback heard pcm",

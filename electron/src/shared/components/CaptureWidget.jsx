@@ -2110,6 +2110,8 @@ export default function CaptureWidget({ onDismiss }) {
       const formData = new FormData();
       formData.append('audio', blob, `capture.${extension}`);
       formData.append('mode', captureMode);
+      // Hotkey dictation: apply the saved vocabulary hint (file transcription doesn't).
+      formData.append('dictation', 'true');
 
       try {
         // apiFetch attaches the PIN / remote API key headers (Wave 2.3)

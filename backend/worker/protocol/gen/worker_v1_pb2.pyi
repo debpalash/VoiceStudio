@@ -171,6 +171,22 @@ class RegisterRequest(_message.Message):
     features: _containers.RepeatedScalarFieldContainer[str]
     def __init__(self, envelope: _Optional[_Union[Envelope, _Mapping]] = ..., protocol_version_min: _Optional[int] = ..., protocol_version_max: _Optional[int] = ..., enrollment_token: _Optional[str] = ..., worker_id: _Optional[str] = ..., public_key: _Optional[bytes] = ..., challenge_signature: _Optional[bytes] = ..., challenge: _Optional[bytes] = ..., host: _Optional[_Union[HostInfo, _Mapping]] = ..., capabilities: _Optional[_Iterable[_Union[ModelCapability, _Mapping]]] = ..., max_concurrent_tasks: _Optional[int] = ..., in_flight: _Optional[_Iterable[_Union[TaskRef, _Mapping]]] = ..., completed_unacked: _Optional[_Iterable[_Union[TaskRef, _Mapping]]] = ..., key_id: _Optional[str] = ..., nonce: _Optional[bytes] = ..., labels: _Optional[_Mapping[str, str]] = ..., features: _Optional[_Iterable[str]] = ...) -> None: ...
 
+class ChallengeRequest(_message.Message):
+    __slots__ = ("envelope",)
+    ENVELOPE_FIELD_NUMBER: _ClassVar[int]
+    envelope: Envelope
+    def __init__(self, envelope: _Optional[_Union[Envelope, _Mapping]] = ...) -> None: ...
+
+class ChallengeResponse(_message.Message):
+    __slots__ = ("envelope", "challenge", "expires_in_seconds")
+    ENVELOPE_FIELD_NUMBER: _ClassVar[int]
+    CHALLENGE_FIELD_NUMBER: _ClassVar[int]
+    EXPIRES_IN_SECONDS_FIELD_NUMBER: _ClassVar[int]
+    envelope: Envelope
+    challenge: bytes
+    expires_in_seconds: int
+    def __init__(self, envelope: _Optional[_Union[Envelope, _Mapping]] = ..., challenge: _Optional[bytes] = ..., expires_in_seconds: _Optional[int] = ...) -> None: ...
+
 class RegisterResponse(_message.Message):
     __slots__ = ("envelope", "worker_id", "session_token", "session_epoch", "protocol_version", "session_expires_at_unix", "heartbeat_interval_seconds", "authoritative_in_flight", "error")
     ENVELOPE_FIELD_NUMBER: _ClassVar[int]

@@ -242,6 +242,39 @@ def test_create_normalizes_language_to_prefix(client):
     assert r.json()["language"] == "en"
 
 
+def test_language_scope_saved_as_language_id(client):
+    """#2542: names resolve through the bundled map and 3-letter ids survive."""
+    def saved(language):
+        return client.post(
+            "/pronunciation", json={"term": "x", "replacement": "y", "language": language}
+        ).json()["language"]
+
+    assert saved("Spanish") == "es"
+    assert saved("kbt") == "kbt"
+    assert saved("es_MX") == "es"
+    assert saved("Auto") == "*"
+    eid = client.post("/pronunciation", json={"term": "z", "replacement": "w"}).json()["id"]
+    assert client.put(f"/pronunciation/{eid}", json={"language": "Estonian"}).json()["language"] == "et"
+    imported = client.post("/pronunciation/import", json={"replace": True, "entries": [
+        {"term": "GIF", "replacement": "jiff", "language": "Spanish"},
+    ]})
+    assert imported.status_code == 200
+    assert client.get("/pronunciation/export").json()["entries"][0]["language"] == "es"
+
+
+def test_dry_run_matches_picker_names_not_shared_prefixes(client):
+    client.post("/pronunciation", json={"term": "GIF", "replacement": "jiff", "language": "es"})
+
+    def spoken(language):
+        return client.post(
+            "/pronunciation/test", json={"text": "GIF", "language": language}
+        ).json()["substituted"]
+
+    assert spoken("es") == "jiff"
+    assert spoken("Spanish") == "jiff"
+    assert spoken("Estonian") == "GIF"
+
+
 def test_ipa_validation_rejects_bracket_garbage(client):
     r = client.post("/pronunciation", json={"term": "x", "replacement": "[bad]", "type": "ipa"})
     assert r.status_code == 400
@@ -276,6 +309,44 @@ def test_import_export_roundtrip(client):
     # replace=true clears first
     assert client.post("/pronunciation/import", json={"entries": [], "replace": True}).json()["replaced"] is True
     assert client.get("/pronunciation/export").json()["entries"] == []
+
+
+def test_duplicate_precedence_survives_backup_restore(client, monkeypatch):
+    """#2552: one import stamps every row with the same created_at, so the
+    random id must not decide which duplicate wins. Ids are forced to sort in
+    reverse of insertion, which is one ordering a random draw can produce."""
+    import itertools
+    import types
+
+    import api.routers.pronunciation as router
+
+    countdown = itertools.count(999_999, -1)
+    monkeypatch.setattr(router, "uuid", types.SimpleNamespace(
+        uuid4=lambda: f"{next(countdown):012d}"))
+    entries = [
+        {"term": "GIF", "replacement": "first"},
+        {"term": "gif", "replacement": "last"},
+        {"term": "SQL", "replacement": "sequel", "language": "en"},
+        {"term": "SQL", "replacement": "ess-cue-ell", "language": "en"},
+    ]
+    client.post("/pronunciation/import", json={"entries": entries, "replace": True})
+
+    def spoken():
+        return client.post(
+            "/pronunciation/test", json={"text": "GIF SQL", "language": "en"}
+        ).json()["substituted"]
+
+    assert spoken() == "last ess-cue-ell"
+    listed = [e["replacement"] for e in client.get("/pronunciation").json()]
+    assert listed == ["first", "last", "sequel", "ess-cue-ell"]
+    from services.pronunciation import apply_pronunciation, load_entries_from_db
+    assert apply_pronunciation("GIF SQL", load_entries_from_db(), "en") == spoken()
+
+    for _ in range(2):
+        backup = client.get("/pronunciation/export").json()["entries"]
+        assert [e["replacement"] for e in backup] == listed
+        client.post("/pronunciation/import", json={"entries": backup, "replace": True})
+        assert spoken() == "last ess-cue-ell"
 
 
 def test_saved_entry_transforms_generate_text(client):

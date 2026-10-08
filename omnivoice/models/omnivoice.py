@@ -28,6 +28,7 @@ This is the main entry point for both inference and training:
 """
 
 import difflib
+import json
 import logging
 import math
 import os
@@ -97,6 +98,10 @@ class OmniVoiceModelAssetError(RuntimeError):
 
 
 _VOICE_CLONE_PROMPT_FORMAT_VERSION = 1
+
+
+class _ReferenceAsrNotInstalled(ValueError):
+    """No cached speech-to-text snapshot exists for implicit cloning."""
 
 
 @dataclass
@@ -305,6 +310,122 @@ def _resolve_snapshot_dir(checkpoint) -> str:
 _DEFAULT_ASR_MODEL = "openai/whisper-large-v3-turbo"
 
 
+def _reference_asr_repos() -> List[str]:
+    """Whisper checkpoints the implicit cloning fallback may reuse, best first.
+
+    The configured PyTorch Whisper model leads; ``openai/whisper-large-v3`` is
+    the checkpoint Model Catalogue lists for that engine, so a user who
+    installed it there is not told that no speech-to-text model exists.
+    """
+    configured = os.environ.get("OMNIVOICE_PYTORCH_ASR_MODEL", "").strip()
+    repos: List[str] = []
+    for repo in (configured, _DEFAULT_ASR_MODEL, "openai/whisper-large-v3"):
+        if repo and repo not in repos:
+            repos.append(repo)
+    return repos
+
+
+def _hub_cache_roots() -> List[str]:
+    """Directories that directly contain ``models--*`` folders."""
+    from huggingface_hub import constants
+
+    candidates = [
+        os.environ.get("HF_HUB_CACHE"),
+        os.environ.get("HUGGINGFACE_HUB_CACHE"),
+        getattr(constants, "HF_HUB_CACHE", None),
+    ]
+    home = os.environ.get("HF_HOME")
+    if home:
+        candidates += [os.path.join(home, "hub"), home]
+    roots: List[str] = []
+    for root in candidates:
+        if root and root not in roots:
+            roots.append(root)
+    return roots
+
+
+def _has_asr_weights(snapshot: str) -> bool:
+    """True when ``snapshot`` holds every file a Whisper pipeline loads.
+
+    Config, feature-extractor settings, a tokenizer and the complete weights
+    (every shard named by an index). A truncated download is rejected so the
+    caller can fall through to a complete snapshot instead of failing at load.
+    """
+    try:
+        names = set(os.listdir(snapshot))
+    except OSError:
+        return False
+    if not {"config.json", "preprocessor_config.json"} <= names:
+        return False
+    if not ({"tokenizer.json", "vocab.json"} & names):
+        return False
+    for index in ("model.safetensors.index.json", "pytorch_model.bin.index.json"):
+        if index in names:
+            try:
+                with open(os.path.join(snapshot, index), encoding="utf-8") as handle:
+                    shards = set(json.load(handle).get("weight_map", {}).values())
+            except (OSError, ValueError, AttributeError):
+                return False
+            return bool(shards) and shards <= names
+    return bool({"model.safetensors", "pytorch_model.bin"} & names)
+
+
+def _find_cached_reference_asr() -> Optional[str]:
+    """Local snapshot directory of an installed Whisper checkpoint, or None.
+
+    ``snapshot_download(repo, local_files_only=True)`` only resolves the
+    ``main`` ref. Model Catalogue installs every checkpoint at a pinned commit
+    and never writes that ref, so the plain lookup reported an installed model
+    as missing and cloning asked for a speech-to-text model the user already
+    had. Each cache root is therefore also asked for its concrete snapshot
+    revisions. Nothing here touches the network.
+    """
+    from huggingface_hub import snapshot_download
+    from huggingface_hub.errors import LocalEntryNotFoundError
+
+    configured = os.environ.get("OMNIVOICE_PYTORCH_ASR_MODEL", "").strip()
+    if configured and os.path.isdir(configured) and _has_asr_weights(configured):
+        return configured
+    for repo in _reference_asr_repos():
+        if os.path.isdir(repo):
+            continue
+        try:
+            found = snapshot_download(repo, local_files_only=True)
+            if _has_asr_weights(found):
+                return found
+        except (LocalEntryNotFoundError, ValueError):
+            pass
+        for root in _hub_cache_roots():
+            snapshots = os.path.join(
+                root, "models--" + repo.replace("/", "--"), "snapshots"
+            )
+            try:
+                revisions = sorted(
+                    (
+                        name
+                        for name in os.listdir(snapshots)
+                        if os.path.isdir(os.path.join(snapshots, name))
+                    ),
+                    key=lambda name: os.path.getmtime(os.path.join(snapshots, name)),
+                    reverse=True,
+                )
+            except OSError:
+                continue
+            for revision in revisions:
+                try:
+                    found = snapshot_download(
+                        repo,
+                        revision=revision,
+                        local_files_only=True,
+                        cache_dir=root,
+                    )
+                except (LocalEntryNotFoundError, ValueError):
+                    continue
+                if _has_asr_weights(found):
+                    return found
+    return None
+
+
 class OmniVoice(PreTrainedModel):
     _supports_flex_attn = True
     _supports_flash_attn_2 = True
@@ -474,17 +595,13 @@ class OmniVoice(PreTrainedModel):
 
     def _load_cached_reference_asr(self):
         """Implicit cloning fallback may reuse local weights, never download them."""
-        from huggingface_hub import snapshot_download
-        from huggingface_hub.errors import LocalEntryNotFoundError
-
-        try:
-            snapshot = snapshot_download(_DEFAULT_ASR_MODEL, local_files_only=True)
-        except LocalEntryNotFoundError as exc:
-            raise ValueError(
+        snapshot = _find_cached_reference_asr()
+        if snapshot is None:
+            raise _ReferenceAsrNotInstalled(
                 "Automatic reference transcription needs an installed speech-to-text "
                 "model. Provide a matching reference transcript, or install and select "
                 "a speech-to-text model in Model Catalogue, then try again."
-            ) from exc
+            )
         # Pass a directory rather than the repo ID so transformers cannot make
         # metadata requests or download missing assets from a partial snapshot.
         self.load_asr_model(model_name=snapshot)
@@ -830,7 +947,7 @@ class OmniVoice(PreTrainedModel):
                     f"{CLONE_REF_TOO_LONG_MARKER} Reference audio is "
                     f"{ref_duration:.1f} seconds long; automatic transcript-free "
                     "selection supports at most 75 seconds. Trim the audio to a "
-                    "3-10 second speech passage, or supply a matching transcript."
+                    "3-10 second speech passage."
                 )
 
             original_power = ref_wav.abs().amax(dim=0).square()
@@ -842,7 +959,22 @@ class OmniVoice(PreTrainedModel):
 
             if self._asr_pipe is None:
                 logger.info("Loading cached ASR for reference transcription ...")
-                self._load_cached_reference_asr()
+                try:
+                    self._load_cached_reference_asr()
+                except _ReferenceAsrNotInstalled as exc:
+                    if ref_duration <= CLONE_REF_TEXT_MAX_SECONDS:
+                        raise
+                    # A typed transcript is refused for this length, so the
+                    # transcript advice in the generic message is a dead end.
+                    raise ValueError(
+                        f"{CLONE_REF_TOO_LONG_MARKER} Reference audio is "
+                        f"{ref_duration:.1f} seconds long; a transcript only "
+                        f"works up to {CLONE_REF_TEXT_MAX_SECONDS:.0f} seconds. "
+                        "Trim the audio and transcript to a 3-10 second "
+                        "passage. A longer clip needs a speech-to-text model "
+                        "to pick the passage, and none could be loaded; "
+                        "install or select one in Model Catalogue."
+                    ) from exc
             candidates = list(ref_wav.split(max_samples, dim=-1))
 
             def speech_score(text):
@@ -857,10 +989,16 @@ class OmniVoice(PreTrainedModel):
                 key=lambda item: (speech_score(item[0]), activity_score(item[1])),
             )
             if speech_score(ref_text) == 0:
+                # A transcript is only accepted up to CLONE_REF_TEXT_MAX_SECONDS.
+                transcript_hint = (
+                    ", or supply a matching transcript"
+                    if ref_duration <= CLONE_REF_TEXT_MAX_SECONDS
+                    else ""
+                )
                 raise ValueError(
                     f"{CLONE_REF_NO_SPEECH_MARKER} Automatic speech detection "
                     "could not find spoken words in the reference. Trim it to a "
-                    "clear 3-10 second speech passage, or supply a matching transcript."
+                    f"clear 3-10 second speech passage{transcript_hint}."
                 )
 
         if preprocess_prompt:

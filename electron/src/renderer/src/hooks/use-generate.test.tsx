@@ -6,6 +6,8 @@ import { GenerationProvider, useGenerateClone } from './use-generate';
 import { patchCloneSettings } from '@/lib/store/clone-settings';
 import { generateClone } from '@/lib/api/generate';
 import { setLatestOutput } from '@/lib/store/output';
+import { queryKeys } from '@/lib/query';
+import type { Profile } from '@/lib/api/types';
 const modelStatus = vi.hoisted(() => ({
   value: { status: 'loading', loading: true } as {
     status: string;
@@ -23,6 +25,20 @@ vi.mock('sonner', () => ({
 }));
 vi.mock('./use-clone-readiness', () => ({ useCloneInputsReadiness: () => null }));
 vi.mock('./use-tts-readiness', () => ({ useTtsReadiness: () => null }));
+const engine = vi.hoisted(() => ({
+  vocabulary: undefined as 'tags' | 'freeform' | undefined,
+  design: undefined as boolean | null | undefined,
+  cloning: undefined as boolean | null | undefined,
+}));
+vi.mock('./use-engines', () => ({
+  useEngines: () => ({
+    activeTts: {
+      instruct_vocabulary: engine.vocabulary,
+      supports_voice_design: engine.design,
+      supports_cloning: engine.cloning,
+    },
+  }),
+}));
 vi.mock('@/lib/api/generate', () => ({
   generateClone: vi.fn(),
   sanitizeInstruct: () => ({ instruct: '', unsupported: [], duplicates: [], conflicts: [] }),
@@ -241,3 +257,138 @@ it('attributes generation to an explicitly selected designed voice', async () =>
     expect.anything(),
   );
 });
+
+it.each([
+  ['freeform', 'raspy old female, scottish accent', 'freeform'],
+  [undefined, '', 'tags'],
+] as const)(
+  'forwards design prose only to free-form engines (#2389, %s)',
+  async (vocabulary, sent, expectedVocabulary) => {
+    engine.vocabulary = vocabulary;
+    vi.mocked(generateClone).mockReset().mockRejectedValueOnce(new Error('stop'));
+    function DesignConsumer() {
+      const state = useGenerateClone();
+      return (
+        <button
+          onClick={() =>
+            void state.generateDesign({
+              text: 'Hi',
+              instruct: 'raspy old female, scottish accent',
+              seed: 1,
+            })
+          }
+        >
+          design {state.instructVocabulary}
+        </button>
+      );
+    }
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <GenerationProvider>
+          <DesignConsumer />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByText('design ' + expectedVocabulary));
+    await waitFor(() => expect(generateClone).toHaveBeenCalled());
+    expect(generateClone).toHaveBeenCalledWith(
+      expect.objectContaining({ instruct: sent, instructVocabulary: expectedVocabulary }),
+      expect.anything(),
+    );
+    engine.vocabulary = undefined;
+  },
+);
+
+it.each([
+  [false, 'design', false],
+  [null, 'none', true],
+  [true, 'none', true],
+] as const)(
+  'blocks Voice Design on an engine that declares it cannot design (supports_voice_design=%s)',
+  async (design, expectedBlocker, sends) => {
+    engine.design = design;
+    vi.mocked(generateClone).mockReset().mockRejectedValue(new Error('stop'));
+    function DesignConsumer() {
+      const state = useGenerateClone();
+      return (
+        <button onClick={() => void state.generateDesign({ text: 'Hi', instruct: 'male', seed: 1 })}>
+          blocker {state.designBlocker ?? 'none'} {String(state.canGenerateDesign)}
+        </button>
+      );
+    }
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <GenerationProvider>
+          <DesignConsumer />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    const button = screen.getByText(`blocker ${expectedBlocker} ${String(sends)}`);
+    fireEvent.click(button);
+    if (sends) await waitFor(() => expect(generateClone).toHaveBeenCalled());
+    else {
+      await act(async () => {});
+      expect(generateClone).not.toHaveBeenCalled();
+    }
+    engine.design = undefined;
+  },
+);
+
+it.each([
+  ['a saved design voice with a sample', { ref_audio_path: 'design.wav' }, false, true, 'none', true],
+  ['a locked design voice', { is_locked: 1, locked_audio_path: 'locked.wav' }, false, true, 'none', true],
+  ['a saved design voice without a sample', {}, false, true, 'design', false],
+  // KittenTTS / Supertonic-3 ignore reference audio: the saved voice would
+  // silently become a preset one, so the re-render stays blocked.
+  ['a saved sample on a preset-only engine', { ref_audio_path: 'design.wav' }, false, false, 'cloning', false],
+  ['a saved sample on an undeclared preset-only engine', { ref_audio_path: 'design.wav' }, null, false, 'cloning', false],
+  ['a locked take on a preset-only engine', { is_locked: 1, locked_audio_path: 'locked.wav' }, false, false, 'cloning', false],
+  ['a sampleless design on a preset-only engine', {}, false, false, 'design', false],
+] as const)(
+  're-renders %s only when the engine can clone its sample',
+  async (_label, sample, design, cloning, expectedBlocker, sends) => {
+    engine.design = design;
+    engine.cloning = cloning;
+    vi.mocked(generateClone).mockReset().mockRejectedValue(new Error('stop'));
+    const profile = {
+      id: 'voice-design',
+      kind: 'design',
+      ref_audio_path: null,
+      ...sample,
+    } as unknown as Profile;
+    const client = new QueryClient();
+    client.setQueryData(queryKeys.profiles, [profile]);
+    function DesignConsumer() {
+      const state = useGenerateClone();
+      return (
+        <button
+          onClick={() =>
+            void state.generateDesign({ text: 'Hi', instruct: 'male', profileId: profile.id })
+          }
+        >
+          linked {state.designBlockerFor(profile) ?? 'none'}
+        </button>
+      );
+    }
+    render(
+      <QueryClientProvider client={client}>
+        <GenerationProvider>
+          <DesignConsumer />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByText(`linked ${expectedBlocker}`));
+    if (sends) {
+      await waitFor(() => expect(generateClone).toHaveBeenCalled());
+      expect(generateClone).toHaveBeenCalledWith(
+        expect.objectContaining({ profileId: profile.id, seed: undefined }),
+        expect.anything(),
+      );
+    } else {
+      await act(async () => {});
+      expect(generateClone).not.toHaveBeenCalled();
+    }
+    engine.design = undefined;
+    engine.cloning = undefined;
+  },
+);

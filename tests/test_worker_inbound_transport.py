@@ -4353,3 +4353,42 @@ async def test_cancelled_node_stop_drains_listener_before_clearing_handle():
     with pytest.raises(asyncio.CancelledError):
         await stopping
     assert node._listener is None
+
+
+@pytest.mark.asyncio
+async def test_a_recorded_node_registration_cannot_be_replayed(inbound):
+    """The panel's Attach challenge is the only one a node registration may sign."""
+    from worker import identity
+    from worker.protocol.gen import worker_v1_pb2 as pb
+
+    await inbound.connect_panel()
+    enrolled = inbound.worker.registry.list_workers()[0]
+
+    def signed(challenge):
+        nonce = identity.new_challenge()
+        return pb.RegisterRequest(
+            envelope=pb.Envelope(sequence=0),
+            worker_id=enrolled.id,
+            public_key=inbound.keypair.public_bytes(),
+            challenge=challenge,
+            nonce=nonce,
+            challenge_signature=inbound.keypair.sign(
+                identity.challenge_message(
+                    challenge=challenge, worker_id=enrolled.id, session_epoch=0, nonce=nonce
+                )
+            ),
+        )
+
+    connection = inbound.connection
+    recorded = signed(identity.new_challenge())
+    connection._attach_challenge = identity.new_challenge()
+    worker, refusal = connection._authenticate_registration(recorded)
+    assert worker is None and refusal.error.code == "AUTH_FAILED"
+
+    fresh = identity.new_challenge()
+    connection._attach_challenge = fresh
+    worker, refusal = connection._authenticate_registration(signed(fresh))
+    assert refusal is None and worker.id == enrolled.id
+    # Spent: the same frame on a later Attach is refused.
+    worker, refusal = connection._authenticate_registration(signed(fresh))
+    assert worker is None and refusal.error.code == "AUTH_FAILED"

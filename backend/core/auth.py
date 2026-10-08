@@ -324,6 +324,52 @@ def _attach_principal(connection, principal: AuthPrincipal) -> AuthPrincipal:
     return principal
 
 
+def _candidate_principal(
+    connection,
+    candidate: _CredentialCandidate,
+    configured_key: str | None,
+    store: AdminSessionStore,
+) -> AuthPrincipal | None:
+    """The principal a presented credential proves, or None if it is invalid.
+
+    A WebSocket ticket is single-use: validating one consumes it.
+    """
+    principal: AuthPrincipal | None = None
+    if (
+        candidate.allow_master
+        and credential_matches(candidate.value, configured_key)
+    ):
+        principal = AuthPrincipal(
+            PrincipalKind.API_KEY,
+            ADMIN_CAPABILITIES,
+            credential_id="api-key",
+            transport=candidate.transport,
+        )
+    elif candidate.allow_session:
+        session = store.resolve(candidate.value, configured_key)
+        if session is not None:
+            principal = AuthPrincipal(
+                PrincipalKind.ADMIN_SESSION,
+                session.capabilities,
+                credential_id=session.credential_id,
+                transport=candidate.transport,
+            )
+    elif candidate.allow_ticket:
+        session = store.consume_ws_ticket(
+            candidate.value,
+            _canonical_websocket_path(connection),
+            configured_key,
+        )
+        if session is not None:
+            principal = AuthPrincipal(
+                PrincipalKind.ADMIN_SESSION,
+                session.capabilities,
+                credential_id=session.credential_id,
+                transport=candidate.transport,
+            )
+    return principal
+
+
 def resolve_principal(
     connection,
     *,
@@ -346,39 +392,7 @@ def resolve_principal(
     candidate = _credential_candidate(connection)
     configured_key = remote_api_key()
     if candidate is not None:
-        principal: AuthPrincipal | None = None
-        if (
-            candidate.allow_master
-            and credential_matches(candidate.value, configured_key)
-        ):
-            principal = AuthPrincipal(
-                PrincipalKind.API_KEY,
-                ADMIN_CAPABILITIES,
-                credential_id="api-key",
-                transport=candidate.transport,
-            )
-        elif candidate.allow_session:
-            session = store.resolve(candidate.value, configured_key)
-            if session is not None:
-                principal = AuthPrincipal(
-                    PrincipalKind.ADMIN_SESSION,
-                    session.capabilities,
-                    credential_id=session.credential_id,
-                    transport=candidate.transport,
-                )
-        elif candidate.allow_ticket:
-            session = store.consume_ws_ticket(
-                candidate.value,
-                _canonical_websocket_path(connection),
-                configured_key,
-            )
-            if session is not None:
-                principal = AuthPrincipal(
-                    PrincipalKind.ADMIN_SESSION,
-                    session.capabilities,
-                    credential_id=session.credential_id,
-                    transport=candidate.transport,
-                )
+        principal = _candidate_principal(connection, candidate, configured_key, store)
         if principal is not None:
             return _attach_principal(connection, principal)
         # An explicit, non-empty credential is authoritative. Do not silently
@@ -411,6 +425,29 @@ def resolve_principal(
         connection,
         AuthPrincipal(PrincipalKind.ANONYMOUS, frozenset()),
     )
+
+
+def presents_valid_credential(
+    connection,
+    *,
+    store: AdminSessionStore | None = None,
+) -> bool:
+    """Whether the request carries a valid API key or admin session.
+
+    Independent of network position: a loopback peer is resolved as LOOPBACK
+    before credentials are looked at, but a reverse proxy on this machine
+    forwards remote clients that authenticate themselves. The share PIN does
+    not count: it is short enough to guess, and a loopback request keeps
+    loopback rights, so a page re-pointing its domain at 127.0.0.1 could
+    otherwise try PINs until one passes. A WebSocket ticket is consumed by
+    this check, so call it at most once per handshake.
+    """
+    if store is None:
+        store = _active_admin_session_store()
+    candidate = _credential_candidate(connection)
+    if candidate is not None:
+        return _candidate_principal(connection, candidate, remote_api_key(), store) is not None
+    return False
 
 
 def principal_for(

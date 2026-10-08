@@ -51,7 +51,7 @@ describe('contact sections', () => {
     expect(href('Join the Discord')).toBe('https://discord.gg/bzQavDfVV9');
     expect(href('Follow on X')).toBe('https://x.com/idebpalash');
     expect(href('Report privately')).toBe(`${REPO}/security/advisories/new`);
-    expect(href(/licensing/i)).toBe(`mailto:VoiceStudio@palash.dev`);
+    expect(href(/licensing/i)).toBe(`mailto:hi@voicestudio.sh`);
     expect(href(/more about the project/i)).toBe('https://palash.dev');
   });
 

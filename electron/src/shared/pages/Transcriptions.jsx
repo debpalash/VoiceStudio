@@ -20,6 +20,7 @@ import { toMillis } from '../utils/relativeTime';
 import { useEffectiveDictationShortcut } from '../hooks/useEffectiveDictationShortcut';
 import { requestDictationCapture } from '../utils/dictationCapture';
 import {
+  addTranscription as storeAddTranscription,
   loadTranscriptions,
   TRANSCRIPTIONS_KEY,
   TRANSCRIPTION_EVENT,
@@ -46,22 +47,9 @@ export function segTimeRange(seg) {
   return start || end || '';
 }
 
+/** Kept for legacy shared importers; the store owns ids and the 200-entry cap. */
 export function addTranscription(entry) {
-  const list = loadTranscriptions();
-  const newEntry = {
-    id: Date.now(),
-    text: entry.text || '',
-    language: entry.language || 'unknown',
-    duration_s: entry.duration_s || 0,
-    segments: entry.segments || [],
-    timestamp: new Date().toISOString(),
-  };
-  list.unshift(newEntry);
-  // Keep last 200
-  if (list.length > 200) list.length = 200;
-  saveTranscriptions(list);
-  // Fire custom event for reactive updates
-  window.dispatchEvent(new CustomEvent(TRANSCRIPTION_EVENT, { detail: newEntry }));
+  storeAddTranscription(entry);
 }
 
 export default function TranscriptionsPage() {
@@ -130,7 +118,9 @@ export default function TranscriptionsPage() {
 
   const deleteEntry = useCallback(
     (id) => {
-      const next = transcriptions.filter((t) => t.id !== id);
+      // Remove only the selected row; older histories may repeat an id.
+      const index = transcriptions.findIndex((t) => t.id === id);
+      const next = transcriptions.filter((_, position) => position !== index);
       setTranscriptions(next);
       saveTranscriptions(next);
       if (selectedId === id) setSelectedId(null);

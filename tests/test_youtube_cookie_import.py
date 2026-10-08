@@ -56,7 +56,9 @@ def test_cookie_export_accepts_a_bom_and_rejects_empty_or_oversized_files(dub_co
 @pytest.mark.parametrize(
     ("scheme", "host", "origin", "allowed"),
     [
-        ("http", "127.0.0.1", "http://tauri.localhost", True),
+        ("http", "127.0.0.1", "http://localhost:3901", True),
+        # The retired Tauri webview origin is no longer a trusted local UI.
+        ("http", "127.0.0.1", "http://tauri.localhost", False),
         ("http", "::1", "http://localhost:3901", True),
         ("https", "192.0.2.20", "https://studio.example", True),
         ("http", "192.0.2.20", "http://localhost", False),
@@ -84,6 +86,9 @@ def test_cookie_export_is_forwarded_to_ytdlp(dub_pipeline, tmp_path, monkeypatch
 
         def __exit__(self, *_args):
             return False
+
+        def add_post_processor(self, *_args, **_kwargs):
+            pass  # the media-URL guard; not exercised by this fake
 
         def extract_info(self, _url, download=True):
             raise RuntimeError("stop after capturing options")
@@ -176,7 +181,7 @@ def test_enqueue_failure_deletes_staged_cookie(dub_core, tmp_path, monkeypatch):
     request = Request(
         {"type": "http", "scheme": "http", "server": ("127.0.0.1", 80),
          "client": ("127.0.0.1", 1234), "path": "/dub/ingest-url",
-         "headers": [(b"origin", b"http://tauri.localhost")]}
+         "headers": [(b"origin", b"http://localhost:3901")]}
     )
     with pytest.raises(RuntimeError, match="queue closed"):
         asyncio.run(
@@ -219,7 +224,7 @@ def test_job_directory_failure_happens_before_cookie_staging(
             "server": ("127.0.0.1", 80),
             "client": ("127.0.0.1", 1234),
             "path": "/dub/ingest-url",
-            "headers": [(b"origin", b"http://tauri.localhost")],
+            "headers": [(b"origin", b"http://localhost:3901")],
         }
     )
 

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Literal, Optional
 
 from services.audio_dsp import EFFECT_PRESETS
@@ -60,7 +60,9 @@ class FitOptions(BaseModel):
     allow_video_retime: Optional[bool] = None    # default True
 
 class DubRequest(BaseModel):
-    segments: List[DubSegment]
+    # An empty request has no speech to render; publishing it would replace
+    # the language's track with silence.
+    segments: List[DubSegment] = Field(min_length=1)
     language: str = "Auto"
     language_code: str = "und"  # ISO 639-1 for ffmpeg metadata (e.g. "es", "fr", "de")
     instruct: str = ""
@@ -202,6 +204,50 @@ class AgentFitRequest(BaseModel):
     translation_instructions: Optional[str] = Field(default=None, max_length=5000)
     segments: List[AgentFitSegment]
     target_lang: str
+
+class ProsodyMirrorSegment(BaseModel):
+    id: str = Field(min_length=1, max_length=128)
+    start: float = Field(ge=0, allow_inf_nan=False)
+    end: float = Field(ge=0, allow_inf_nan=False)
+    speaker_id: Optional[str] = Field(default=None, max_length=128)
+
+    @model_validator(mode="after")
+    def validate_span(self) -> "ProsodyMirrorSegment":
+        if self.end <= self.start:
+            raise ValueError("Segment end must be after its start")
+        return self
+
+
+class CleanupSegmentsRequest(BaseModel):
+    """The editor's current segments; without them the job's stored copy is
+    cleaned, which misses every edit made since transcription."""
+
+    segments: List[dict] = Field(max_length=20000)
+
+    @field_validator("segments")
+    @classmethod
+    def validate_segment_shape(cls, segments: List[dict]) -> List[dict]:
+        # Cleanup defaults missing fields to empty values and drops them, so a
+        # malformed segment would silently vanish instead of being rejected.
+        required = {"start", "end", "text"}
+        if any(not required.issubset(segment) for segment in segments):
+            raise ValueError("Each cleanup segment must include start, end and text")
+        return segments
+
+
+class ProsodyMirrorRequest(BaseModel):
+    """Segments as the editor currently holds them: splits, merges and timing
+    edits are client-side until generation, so the job's stored copy is stale."""
+
+    segments: List[ProsodyMirrorSegment] = Field(min_length=1, max_length=20000)
+
+    @field_validator("segments")
+    @classmethod
+    def validate_unique_ids(cls, v: List[ProsodyMirrorSegment]) -> List[ProsodyMirrorSegment]:
+        if len({segment.id for segment in v}) != len(v):
+            raise ValueError("Segment ids must be unique")
+        return v
+
 
 class ParseSubtitleTextRequest(BaseModel):
     """Raw pasted subtitle text (SRT/VTT-ish) to be parsed into timed cues.

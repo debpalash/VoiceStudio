@@ -685,6 +685,29 @@ def _do_update_ytdlp() -> str:
     return version
 
 
+_GUARDED_YTDLP_BOOTSTRAP = (
+    "import sys; sys.path.insert(0, sys.argv[1]); "
+    "from core.url_safety import run_guarded_ytdlp; "
+    "sys.exit(run_guarded_ytdlp(sys.argv[2:]))"
+)
+
+
+def guarded_ytdlp_invocation() -> "tuple[list[str], dict[str, str] | None]":
+    """Like :func:`ytdlp_invocation`, with the URL-import policy enforced.
+
+    The subprocess refuses connections to private-network addresses (unless
+    the user opted in), downloads only through yt-dlp's native downloaders and
+    refuses live streams — see ``core.url_safety``. Use it for every yt-dlp run whose input
+    comes from a caller. A build that cannot re-invoke the interpreter falls
+    back to the plain CLI; callers still validate the URL up front.
+    """
+    argv, env = ytdlp_invocation()
+    if argv[:3] != [sys.executable, "-m", "yt_dlp"]:
+        return argv, env
+    backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return [sys.executable, "-c", _GUARDED_YTDLP_BOOTSTRAP, backend_dir], env
+
+
 def ytdlp_invocation() -> "tuple[list[str], dict[str, str] | None]":
     """(argv prefix, env-or-None) for running the yt-dlp CLI.
 

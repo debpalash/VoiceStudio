@@ -187,10 +187,15 @@ def test_gated_weight_failures_are_typed_and_actionable(reason):
     assert "HF_TOKEN" in failure["hint"]
 
 
-def test_generic_gated_model_still_uses_existing_pyannote_class():
+def test_generic_gated_model_is_an_access_problem_not_pyannote():
     from core.failure import classify
 
-    assert classify("gated model license not accepted") == "PYANNOTE_LICENSE_REQUIRED"
+    assert classify("gated model license not accepted") == "HF_AUTH_FAILED"
+    assert classify(
+        "GatedRepoError: 401 Client Error. Cannot access gated repo for url "
+        "https://huggingface.co/sesame/csm-1b/resolve/main/prompts/conversational_a.wav."
+    ) == "HF_AUTH_FAILED"
+    assert classify("pyannote/segmentation-3.0 is gated: 403 forbidden") == "PYANNOTE_LICENSE_REQUIRED"
 
 
 def test_license_gate_fails_closed_when_settings_read_fails(monkeypatch):

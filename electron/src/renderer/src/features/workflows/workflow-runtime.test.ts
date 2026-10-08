@@ -33,6 +33,13 @@ describe('workflow execution', () => {
     expect(Object.keys(result.items[0].audio)).toEqual(plan.steps.slice(1, -1).map((step) => step.id));
     expect(save.mock.calls.length).toBeGreaterThan(4);
   });
+  it('does not expose an input as output when the first operation fails', async () => {
+    const plan = compileWorkflow(recipe());
+    const operations = { speak: vi.fn(async () => { throw new Error('offline'); }), normalize: vi.fn() };
+    const result = await executeWorkflow(plan, prepareRun(plan), operations, new AbortController().signal, async () => {});
+    expect(result.items[0].state).toBe('failed');
+    expect(result.items[0].outputStep).toBeUndefined();
+  });
   it('retries failed cleanup without regenerating completed speech', async () => {
     const plan = compileWorkflow(recipe(true));
     const operations = { speak: vi.fn(async () => wav()), normalize: vi.fn(async () => { throw new Error('cleanup unavailable'); }) };

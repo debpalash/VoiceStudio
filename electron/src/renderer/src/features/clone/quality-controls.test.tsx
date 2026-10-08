@@ -35,40 +35,81 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const open = () =>
+  fireEvent.click(screen.getByRole('button', { name: /^cloneQuality\.title: / }));
+
+it('resets only audio quality from its header icon', () => {
+  const before = { ...DEFAULT_CLONE_SETTINGS, wavBits: 32 as const, effectPreset: 'raw' as const,
+    steps: 64, speed: 1.5, duration: '3', denoise: false, text: 'Keep this', language: 'French' };
+  cloneSettingsStore.setState(() => before);
+  render(<QualityControls />);
+  open();
+  const reset = screen.getByRole('button', { name: 'clone.reset_overrides' });
+  expect(reset.textContent).toBe('');
+  expect(reset.querySelector('svg')).not.toBeNull();
+  fireEvent.click(reset);
+  expect(cloneSettingsStore.state).toEqual({ ...before,
+    wavBits: DEFAULT_CLONE_SETTINGS.wavBits,
+    steps: DEFAULT_CLONE_SETTINGS.steps,
+    effectPreset: DEFAULT_CLONE_SETTINGS.effectPreset });
+  expect(screen.getByRole('radio', { name: /cloneQuality\.preset16/ })).toHaveAttribute('aria-checked', 'true');
+});
+
+it('disables audio-quality reset while generating', () => {
+  cloneSettingsStore.setState(() => ({ ...DEFAULT_CLONE_SETTINGS, wavBits: 32 }));
+  render(<QualityControls disabled />);
+  open();
+  const reset = screen.getByRole('button', { name: 'clone.reset_overrides' });
+  expect(reset).toBeDisabled();
+  fireEvent.click(reset);
+  expect(cloneSettingsStore.state.wavBits).toBe(32);
+});
+
+it('shows the current preset on the composer pill and keeps tuning closed until opened', () => {
+  render(<QualityControls />);
+  expect(screen.getByRole('button', { name: 'cloneQuality.title: cloneQuality.preset16' })).toBeVisible();
+  expect(screen.queryByRole('radiogroup')).toBeNull();
+  expect(screen.queryByRole('switch')).toBeNull();
+  open();
+  expect(screen.getByRole('radiogroup', { name: 'cloneQuality.title' })).toBeInTheDocument();
+  expect(screen.getByRole('switch', { name: 'cloneQuality.mastering' })).toBeInTheDocument();
+});
+
 it('changes export precision with the keyboard, updates size and keeps sampling independent', async () => {
   render(<QualityControls />);
-  const precision = await screen.findByRole('slider', { name: 'cloneQuality.title' });
-  expect(precision).toHaveAttribute('aria-valuetext', 'cloneQuality.preset16');
+  open();
+  const standard = await screen.findByRole('radio', { name: /cloneQuality\.preset16/ });
+  expect(standard).toHaveAttribute('aria-checked', 'true');
   expect(screen.getByText('cloneQuality.size: 2.9')).toBeInTheDocument();
-  await act(async () => {
-    fireEvent.keyDown(precision, { key: 'ArrowRight' });
-  });
+  fireEvent.keyDown(standard, { key: 'ArrowRight' });
   expect(cloneSettingsStore.state.wavBits).toBe(24);
   expect(screen.getByText('cloneQuality.size: 4.3')).toBeInTheDocument();
-  await act(async () => {
-    fireEvent.keyDown(precision, { key: 'End' });
-  });
+  expect(screen.getByRole('radio', { name: /cloneQuality\.preset24/ })).toHaveFocus();
+  fireEvent.keyDown(standard, { key: 'End' });
   expect(cloneSettingsStore.state.wavBits).toBe(32);
   expect(screen.getByText('cloneQuality.size: 5.8')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('radio', { name: /cloneQuality\.preset16/ }));
+  expect(cloneSettingsStore.state.wavBits).toBe(16);
   expect(cloneSettingsStore.state.steps).toBe(16);
-  fireEvent.click(screen.getByText('voiceControls.options'));
   await act(async () => {
     fireEvent.keyDown(screen.getByRole('slider', { name: 'cloneQuality.effort' }), {
       key: 'ArrowRight',
     });
   });
   expect(cloneSettingsStore.state.steps).toBe(17);
-  expect(cloneSettingsStore.state.wavBits).toBe(32);
+  expect(cloneSettingsStore.state.wavBits).toBe(16);
   fireEvent.click(screen.getByRole('switch', { name: 'cloneQuality.mastering' }));
   expect(cloneSettingsStore.state.effectPreset).toBe('raw');
 });
 
-it('hides unsupported sampling controls and disables quality changes while generating', async () => {
+it('hides unsupported sampling controls and disables quality changes while generating', () => {
   engine.id = 'kittentts';
   render(<QualityControls disabled />);
+  open();
   expect(screen.queryByRole('slider', { name: 'cloneQuality.effort' })).toBeNull();
-  expect(await screen.findByRole('slider')).toBeDisabled();
-  fireEvent.click(screen.getByText('voiceControls.options'));
+  for (const radio of screen.getAllByRole('radio')) expect(radio).toBeDisabled();
+  fireEvent.keyDown(screen.getByRole('radiogroup'), { key: 'End' });
+  expect(cloneSettingsStore.state.wavBits).toBe(16);
   expect(screen.getByRole('switch')).toHaveAttribute('aria-disabled', 'true');
 });
 
@@ -77,7 +118,7 @@ it.each(['omnivoice-subprocess', 'voxcpm2', 'dots-tts', 'supertonic3'])(
   async (id) => {
     engine.id = id;
     render(<QualityControls />);
-    fireEvent.click(screen.getByText('voiceControls.options'));
+    open();
     const steps = await screen.findByRole('slider', { name: 'cloneQuality.effort' });
     expect(steps).toHaveAttribute('max', id === 'supertonic3' ? '12' : '64');
     await act(async () => {
@@ -90,24 +131,16 @@ it.each(['omnivoice-subprocess', 'voxcpm2', 'dots-tts', 'supertonic3'])(
   },
 );
 
-it('keeps detailed tuning collapsed until requested', () => {
-  const { container } = render(<QualityControls />);
-  expect(container.querySelector('details')).not.toHaveAttribute('open');
-  expect(screen.getByRole('switch')).not.toBeVisible();
-  fireEvent.click(screen.getByText('voiceControls.options'));
-  expect(screen.getByRole('switch', { name: 'cloneQuality.mastering' })).toBeVisible();
-});
-
-
 it('estimates from output metadata and leaves unknown model formats unspecified', () => {
   engine.id = 'voxcpm2';
   engine.output_sample_rate = 48000;
   const view = render(<QualityControls />);
-  expect(screen.getByText('cloneQuality.size: 5.8')).toBeVisible();
+  open();
+  expect(screen.getByText('cloneQuality.size: 5.8')).toBeInTheDocument();
   engine.output_channels = 2;
   view.rerender(<QualityControls />);
-  expect(screen.getByText('cloneQuality.size: 11.5')).toBeVisible();
+  expect(screen.getByText('cloneQuality.size: 11.5')).toBeInTheDocument();
   engine.output_sample_rate = null;
   view.rerender(<QualityControls />);
-  expect(screen.getByText('cloneQuality.sizeUnknown')).toBeVisible();
+  expect(screen.getByText('cloneQuality.sizeUnknown')).toBeInTheDocument();
 });

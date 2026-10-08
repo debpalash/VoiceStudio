@@ -1,5 +1,3 @@
-import { Slider } from '@base-ui/react/slider';
-import { DirectionProvider } from '@base-ui/react/direction-provider';
 import { Link } from '@tanstack/react-router';
 import {
   CrownIcon,
@@ -7,15 +5,18 @@ import {
   SparkleIcon,
   SparklesIcon,
   WandSparklesIcon,
-  InfoIcon,
+  CircleCheckIcon,
+  CircleGaugeIcon,
+  CircleHelpIcon,
   ChevronRightIcon,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useId, useState } from 'react';
+import { useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { apiJson, describeError } from '@/lib/api/client';
 import { useBackendStatus } from '@/hooks/use-backend-status';
+import { isBackendReachable } from '@shared/utils/backendStage';
 import { useDictationSelection } from '@/hooks/use-dictation-selection';
 import { engineFamilyState, useEngines } from '@/hooks/use-engines';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -48,7 +49,7 @@ export function PerformanceProfile({
   const dictation = useDictationSelection();
   const batch = useQuery({
     queryKey: ['batch-jobs', 'active'],
-    enabled: backend.stage === 'ready',
+    enabled: isBackendReachable(backend.stage),
     queryFn: ({ signal }) => apiJson<unknown[]>('/batch/jobs?status=active&limit=100', { signal }),
     staleTime: 1_000,
     refetchInterval: (query) => (query.state.data?.length ? 1_000 : 15_000),
@@ -57,9 +58,10 @@ export function PerformanceProfile({
   const groupId = useId();
   const [draft, setDraft] = useState<number | null>(null);
   const [hardwareOpen, setHardwareOpen] = useState(false);
+  const tierRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const busy =
     profile.isSaving ||
-    backend.stage !== 'ready' ||
+    !isBackendReachable(backend.stage) ||
     batch.isPending ||
     batch.isError ||
     Boolean(batch.data?.length) ||
@@ -73,29 +75,12 @@ export function PerformanceProfile({
   const disabled = busy || !profile.data || !supported;
   const selectedIndex = selected ? choices.indexOf(selected) : -1;
   const position = draft ?? Math.max(0, selectedIndex);
-  const TierIcon = [GaugeIcon, SparkleIcon, SparklesIcon, CrownIcon, WandSparklesIcon][position];
   const accent = [
     'var(--muted-foreground)',
     'color-mix(in oklab, var(--primary) 72%, var(--foreground))',
     'var(--primary)',
     'color-mix(in oklab, var(--primary) 82%, white)',
   ][Math.min(position, 3)];
-  const glow = disabled
-    ? 'none'
-    : [
-        'inset 0 1px 0 rgb(255 255 255 / 10%)',
-        'inset 0 1px 0 rgb(255 255 255 / 18%), 0 0 8px color-mix(in oklab, var(--primary) 16%, transparent)',
-        'inset 0 1px 0 rgb(255 255 255 / 30%), 0 0 16px color-mix(in oklab, var(--primary) 34%, transparent)',
-        'inset 0 1px 0 rgb(255 255 255 / 36%), 0 0 20px color-mix(in oklab, var(--primary) 46%, transparent)',
-      ][Math.min(position, 3)];
-  const thumbGlow = disabled
-    ? 'none'
-    : [
-        '0 1px 3px rgb(0 0 0 / 20%)',
-        '0 2px 6px rgb(0 0 0 / 22%), 0 0 7px color-mix(in oklab, var(--primary) 16%, transparent)',
-        '0 3px 9px rgb(0 0 0 / 24%), 0 0 13px color-mix(in oklab, var(--primary) 34%, transparent)',
-        '0 4px 11px rgb(0 0 0 / 26%), 0 0 17px color-mix(in oklab, var(--primary) 48%, transparent)',
-      ][Math.min(position, 3)];
   const choose = async (tier: PerformanceChoice) => {
     if (disabled) {
       setDraft(null);
@@ -122,8 +107,7 @@ export function PerformanceProfile({
   const hardwareSummary = profile.isSaving
     ? t('common.saving')
     : plan
-      ? (selected === 'auto' ? t('performanceProfile.' + plan.resolved) + ' · ' : '') +
-        t('performanceHardware.' + (plan.status === 'limited' ? 'reason.memory' : plan.status))
+      ? t('performanceHardware.' + (plan.status === 'limited' ? 'adjusted' : plan.status))
       : '';
   const selection = family ? profile.data?.selections?.[family] : null;
   const target = family ? profile.data?.targets?.[family] : null;
@@ -246,75 +230,98 @@ export function PerformanceProfile({
       </div>
     );
   }
+  const autoOn = selected === 'auto';
+  const tiers = performanceTiers;
+  // Auto is a mode, not a fifth notch: show the tier it resolved to as a hint.
+  const shownTier = draft != null ? choices[draft] : autoOn ? plan?.resolved : selected;
+  const HardwareIcon =
+    plan?.status === 'fits'
+      ? CircleCheckIcon
+      : plan?.status === 'unknown'
+        ? CircleHelpIcon
+        : CircleGaugeIcon;
+  const moveTier = (event: KeyboardEvent<HTMLDivElement>) => {
+    const current = Math.max(0, tiers.indexOf((shownTier ?? 'balanced') as (typeof tiers)[number]));
+    const forward = i18n.dir(i18n.language) === 'rtl' ? 'ArrowLeft' : 'ArrowRight';
+    const back = forward === 'ArrowRight' ? 'ArrowLeft' : 'ArrowRight';
+    const next =
+      event.key === forward || event.key === 'ArrowDown'
+        ? current + 1
+        : event.key === back || event.key === 'ArrowUp'
+          ? current - 1
+          : event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? tiers.length - 1
+              : null;
+    if (next == null || disabled) return;
+    event.preventDefault();
+    const tier = tiers[Math.min(tiers.length - 1, Math.max(0, next))];
+    tierRefs.current[tiers.indexOf(tier)]?.focus();
+    void choose(tier);
+  };
   return (
-    <div className="min-w-0 py-1">
-      <div className="mb-1 flex items-center justify-between gap-2 px-1 text-[11px] text-muted-foreground">
-        <span>{t('performanceProfile.title')}</span>
-        <span className="font-medium text-foreground">
-          {t('performanceProfile.' + choices[position])}
+    <div className="min-w-0 space-y-1.5 py-1.5">
+      <div className="flex items-center justify-between gap-2 px-1">
+        <span id={groupId} className="text-[11px] text-muted-foreground">
+          {t(supported ? 'performanceProfile.title' : 'modelSettings.unavailable')}
         </span>
-      </div>
-      <span id={groupId} className="sr-only">
-        {t(supported ? 'performanceProfile.title' : 'modelSettings.unavailable')}
-      </span>
-      <DirectionProvider direction={i18n.dir(i18n.language)}>
-        <Slider.Root
-          min={0}
-          max={choices.length - 1}
-          step={1}
-          largeStep={1}
-          value={position}
+        <button
+          type="button"
+          aria-pressed={autoOn}
           disabled={disabled}
-          aria-busy={profile.isSaving}
-          onValueChange={(value) => setDraft(value)}
-          onValueCommitted={(value) => void choose(choices[value])}
-          className={`w-full min-w-0 ${disabled ? 'opacity-50' : ''}`}
+          onClick={() => void choose(autoOn ? (plan?.resolved ?? 'balanced') : 'auto')}
+          className={cn(
+            'inline-flex h-6 items-center gap-1 rounded-full px-2 text-[11px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
+            autoOn
+              ? 'bg-primary/15 text-primary ring-1 ring-inset ring-primary/30'
+              : 'text-muted-foreground ring-1 ring-inset ring-border/60 hover:text-foreground',
+          )}
         >
-          <Slider.Control className="relative flex h-9 w-full min-w-0 touch-none select-none items-center px-4">
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 inset-y-1 rounded-full border border-border/60 transition-[background-color] duration-200 motion-reduce:transition-none"
-              style={{
-                backgroundColor: disabled
-                  ? 'var(--muted)'
-                  : `color-mix(in oklab, ${accent} ${[5, 9, 14, 20][Math.min(position, 3)]}%, var(--muted))`,
+          <WandSparklesIcon className="size-3" aria-hidden="true" />
+          {t('performanceProfile.auto')}
+        </button>
+      </div>
+      <div
+        role="radiogroup"
+        aria-labelledby={groupId}
+        aria-describedby={groupId + '-help'}
+        aria-busy={profile.isSaving}
+        onKeyDown={moveTier}
+        className={cn(
+          'flex gap-0.5 rounded-lg bg-sidebar-accent/35 p-0.5 ring-1 ring-inset ring-sidebar-border/50',
+          disabled && 'opacity-50',
+        )}
+      >
+        {tiers.map((tier, index) => {
+          const picked = shownTier === tier;
+          const checked = !autoOn && picked;
+          return (
+            <button
+              key={tier}
+              ref={(node) => {
+                tierRefs.current[index] = node;
               }}
-            />
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-y-1 start-0 rounded-full transition-[background,box-shadow,opacity] duration-200 motion-reduce:transition-none"
-              style={{
-                width: `calc(1rem + (100% - 2rem) * ${position / (choices.length - 1)})`,
-                background: `linear-gradient(110deg, color-mix(in oklab, ${accent} 65%, var(--muted)), ${accent} 75%, color-mix(in oklab, ${accent} ${position >= 2 ? 82 : 95}%, white))`,
-                boxShadow: glow,
-              }}
-            />
-            <Slider.Track className="relative h-7 w-full min-w-0">
-              <div
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-0 flex items-center justify-between"
-              >
-                {choices.map((tier, index) => (
-                  <span
-                    key={tier}
-                    title={t('performanceProfile.' + tier)}
-                    className={`size-1 shrink-0 rounded-full ${index <= position ? 'bg-primary-foreground/50' : 'bg-muted-foreground/60'}`}
-                  />
-                ))}
-              </div>
-              <Slider.Thumb
-                aria-labelledby={groupId}
-                aria-describedby={groupId + '-help'}
-                getAriaValueText={(_formatted, value) => t('performanceProfile.' + choices[value])}
-                className="absolute top-1/2 z-10 grid size-7 place-items-center rounded-full border border-background/40 bg-foreground text-background outline-none ring-ring/40 transition-[box-shadow,transform] hover:scale-105 focus-within:ring-4 data-dragging:scale-105 motion-reduce:transition-none"
-                style={{ boxShadow: thumbGlow }}
-              >
-                <TierIcon className="size-3.5" aria-hidden="true" />
-              </Slider.Thumb>
-            </Slider.Track>
-          </Slider.Control>
-        </Slider.Root>
-      </DirectionProvider>
+              type="button"
+              role="radio"
+              aria-checked={checked}
+              tabIndex={picked || (!shownTier && index === 1) ? 0 : -1}
+              disabled={disabled}
+              onClick={() => void choose(tier)}
+              className={cn(
+                'h-7 min-w-0 flex-auto truncate rounded-md px-1.5 text-[11px] font-medium outline-none transition-[background-color,color,box-shadow] duration-150 focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none',
+                checked
+                  ? 'bg-background text-foreground shadow-sm ring-1 ring-border/70'
+                  : picked
+                    ? 'text-foreground outline-1 -outline-offset-1 outline-primary/50 outline-dashed'
+                    : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {t('performanceProfile.' + tier)}
+            </button>
+          );
+        })}
+      </div>
       {plan && !family && (
         <Popover open={hardwareOpen} onOpenChange={setHardwareOpen}>
           <PopoverTrigger
@@ -322,14 +329,24 @@ export function PerformanceProfile({
               <button
                 type="button"
                 aria-label={hardwareSummary}
-                className="mt-0.5 flex min-h-7 w-full items-center gap-1.5 rounded px-1 text-start text-[11px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                className="group/hw flex min-h-6 w-full items-center gap-1.5 rounded px-1 text-start text-[11px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
               />
             }
           >
-            <span className="min-w-0 flex-1" role="status">
+            <HardwareIcon
+              className={cn(
+                'size-3 shrink-0',
+                plan.status === 'fits' ? 'text-success' : plan.status !== 'unknown' && 'text-warning',
+              )}
+              aria-hidden="true"
+            />
+            <span className="min-w-0 flex-1 truncate" role="status">
               {hardwareSummary}
             </span>
-            <InfoIcon className="size-3 shrink-0" aria-hidden="true" />
+            <ChevronRightIcon
+              className="size-3 shrink-0 opacity-60 transition-transform group-hover/hw:translate-x-0.5 rtl:rotate-180 motion-reduce:transition-none"
+              aria-hidden="true"
+            />
           </PopoverTrigger>
           <PopoverContent
             side="right"

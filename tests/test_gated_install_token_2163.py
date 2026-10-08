@@ -68,7 +68,7 @@ def _drive_segmented(download, monkeypatch, tmp_path, resolved):
 
     def _fake_metadata(url, token=None, **_kw):
         seen["file_metadata"] = token
-        return SimpleNamespace(etag='"deadbeef"', location=url, size=10)
+        return SimpleNamespace(etag='"' + 'd' * 40 + '"', location=url, size=10)
 
     monkeypatch.setattr(hf_file_download, "get_hf_file_metadata", _fake_metadata)
 

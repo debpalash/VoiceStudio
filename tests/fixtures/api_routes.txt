@@ -35,6 +35,7 @@ GET /api/settings/compute-device
 GET /api/settings/cuda-device
 GET /api/settings/db-backup
 GET /api/settings/dictation-refinement
+GET /api/settings/gpu-report
 GET /api/settings/hf-mirror
 GET /api/settings/hf-token/state
 GET /api/settings/history-retention
@@ -43,6 +44,7 @@ GET /api/settings/llm-endpoint
 GET /api/settings/llm-providers
 GET /api/settings/llm-providers/{provider_id}/models
 GET /api/settings/llm-skills
+GET /api/settings/perf/offload-after-generation
 GET /api/settings/perf/torch-compile-disabled
 GET /api/settings/performance-profile
 GET /api/settings/storage
@@ -116,6 +118,7 @@ GET /gallery/categories
 GET /gallery/voices
 GET /gallery/voices/{voice_id}
 GET /gallery/voices/{voice_id}/preview
+GET /generate/budget
 GET /glossary/{project_id}
 GET /health
 GET /history
@@ -220,6 +223,7 @@ POST /dub/import-srt/{job_id}
 POST /dub/ingest-url
 POST /dub/parse-subtitle-text
 POST /dub/preview-segment/{job_id}
+POST /dub/prosody-mirror/{job_id}
 POST /dub/qc/{job_id}
 POST /dub/transcribe/{job_id}
 POST /dub/translate
@@ -328,6 +332,7 @@ PUT /api/settings/history-retention
 PUT /api/settings/llm-endpoint
 PUT /api/settings/llm-providers/{provider_id}
 PUT /api/settings/llm-skills/{skill_id}
+PUT /api/settings/perf/offload-after-generation
 PUT /api/settings/perf/torch-compile-disabled
 PUT /api/settings/performance-profile
 PUT /api/settings/storage/models-dir

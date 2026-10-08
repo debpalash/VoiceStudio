@@ -43,6 +43,7 @@ describe('errorDocsMap', () => {
     expect(Object.keys(ERROR_DOCS).sort()).toEqual(
       [
         'GPU_ARCH_UNSUPPORTED',
+        'HOST_MEMORY_EXHAUSTED',
         'WINDOWS_APP_CONTROL_BLOCKED',
         'AUDIO_IO_FAILED',
         'INVALID_MEDIA_FILE',

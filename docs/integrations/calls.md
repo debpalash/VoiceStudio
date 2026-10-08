@@ -189,7 +189,9 @@ turn the other person talked over.
 - The LLM receives the brief, the disclosure, the guardrails and the
   conversation. It replies with `SAY:`, `ACTION: none | end_call | escalate` and
   an optional `OUTCOME:` line, streamed so the first sentence is synthesized
-  while the rest is written.
+  while the rest is written. Anything ahead of that format — such as reasoning
+  from a chat template that prefills the opening tag into the prompt — is held
+  back and never spoken or recorded.
 - Replies are synthesized with the streaming TTS pipeline in the chosen voice,
   resampled to 8 kHz μ-law and sent as 20 ms frames. On barge-in (about 200 ms
   of the other person's speech while the agent talks), VoiceStudio sends Twilio

@@ -79,7 +79,7 @@ class SystemInfoResponse(BaseModel):
     pin_required: bool = False
     backend_port: int = 3900
     share_port_base: int = 3901
-    ui_port: int = 3901
+    ui_port: int | None = 3901
 
 
 class ModelStatusResponse(BaseModel):

@@ -21,6 +21,11 @@ _BASE = links.PROJECT_REPO_BLOB_MAIN
 
 ERROR_DOCS: dict[str, str] = {
     "GPU_ARCH_UNSUPPORTED": f"{_BASE}/docs/install/troubleshooting.md#generation-failure-diagnosis",
+    # #2462 — the host ran out of system RAM. A CPU-only machine has no other
+    # memory device, so without its own class every OOM there reached the user
+    # as the unclassified floor message and the report could only say
+    # `RuntimeError`.
+    "HOST_MEMORY_EXHAUSTED": f"{_BASE}/docs/install/troubleshooting.md#generation-failure-diagnosis",
     "WINDOWS_APP_CONTROL_BLOCKED": f"{_BASE}/docs/install/troubleshooting.md#generation-failure-diagnosis",
     "AUDIO_IO_FAILED": f"{_BASE}/docs/install/troubleshooting.md#generation-failure-diagnosis",
     "INVALID_MEDIA_FILE": f"{_BASE}/docs/electron-dubbing.md#unreadable-source-file",

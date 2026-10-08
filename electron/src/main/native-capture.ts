@@ -1,5 +1,6 @@
+import { createTrayIcon } from './tray-icon';
 import { readFileSync } from 'node:fs';
-import { writeFile, rename } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { ShortcutSettings } from './shortcut-settings';
 import {
   app,
@@ -17,6 +18,7 @@ import { isTrustedRenderer } from './trusted-renderer';
 import { DictationOutputClient } from './dictation-output';
 import { CaptureSession, type CapturePhase } from './capture-session';
 import { activateLiveWindow, sendToLiveWindow } from './window-safety';
+import { renameWithRetry } from './rename-retry';
 
 /** Dedicated recorder owns the output IPC; ordinary app frames cannot type text. */
 export function installNativeCapture(
@@ -65,7 +67,7 @@ export function installNativeCapture(
   const shortcuts = new ShortcutSettings(output, saved, async (accelerator) => {
     const temporary = settingsPath + '.tmp';
     await writeFile(temporary, JSON.stringify({ accelerator }), 'utf8');
-    await rename(temporary, settingsPath);
+    await renameWithRetry(temporary, settingsPath);
   });
   const capture = new CaptureSession(
     output,
@@ -89,7 +91,7 @@ export function installNativeCapture(
     if (!trayLabels) return;
     const labels = trayLabels;
     const shortcut = shortcuts.getState().accelerator;
-    tray.setImage(trayIcon(capturing ? 'tray-recording.png' : '32x32.png'));
+    tray.setImage(createTrayIcon(trayIcon(capturing ? 'tray-recording.png' : '32x32.png')));
     tray.setContextMenu(
       Menu.buildFromTemplate([
         { label: labels.show, click: () => showMain() },

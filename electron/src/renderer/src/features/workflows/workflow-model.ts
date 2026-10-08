@@ -3,6 +3,12 @@ export const WORKFLOW_STORAGE_KEY = 'voicestudio.workflows.v1';
 export type StepKind = 'start' | 'agent' | 'speak' | 'condition' | 'call' | 'normalize' | 'audio' | 'transcribe' | 'translate' | 'convert' | 'end';
 export const STEP_KINDS: StepKind[] = ['start', 'agent', 'speak', 'condition', 'call', 'normalize', 'audio', 'transcribe', 'translate', 'convert', 'end'];
 
+export type ConditionMatch = 'contains' | 'equals' | 'starts' | 'ends';
+export const CONDITION_MATCHES: ConditionMatch[] = ['contains', 'equals', 'starts', 'ends'];
+/** The two source handles a condition offers; the canvas already renders them. */
+export const CONDITION_BRANCHES = ['yes', 'no'] as const;
+export type ConditionBranch = (typeof CONDITION_BRANCHES)[number];
+
 export interface WorkflowStep {
   id: string;
   kind: StepKind;
@@ -16,6 +22,8 @@ export interface WorkflowStep {
   targetDb?: number;
   sourceLanguage?: string;
   provider?: 'argos' | 'nllb';
+  /** How a `condition` compares the text reaching it against its own `text`. */
+  match?: ConditionMatch;
   media?: { id: string; name: string; type: string; size: number }[];
   scripts?: { name: string; text: string }[];
 }
@@ -122,6 +130,8 @@ export function parseWorkflowLibrary(raw: string | null, untitled: string): Work
             speed: typeof step.speed === 'number' && Number.isFinite(step.speed) ? Math.min(2, Math.max(0.5, step.speed)) : 1,
             sourceLanguage: typeof step.sourceLanguage === 'string' ? step.sourceLanguage.slice(0, 80) : '',
             provider: step.provider === 'nllb' ? 'nllb' : 'argos',
+            match: CONDITION_MATCHES.includes(step.match as ConditionMatch)
+              ? (step.match as ConditionMatch) : 'contains',
             media: Array.isArray(step.media) ? step.media.slice(0, 50).flatMap((entry) =>
               entry && typeof entry.id === 'string' && typeof entry.name === 'string' &&
               typeof entry.size === 'number' && entry.size > 0 && entry.size <= 64 * 1024 * 1024

@@ -171,3 +171,50 @@ def test_set_env_share_port_accepts_valid(monkeypatch):
     # Clean up the process-level env mutation so other tests aren't affected.
     import os
     os.environ.pop("OMNIVOICE_SHARE_PORT", None)
+
+
+def test_system_info_reports_no_ui_port_for_the_packaged_desktop(monkeypatch):
+    """The packaged app serves app://voicestudio; there is no UI port to show."""
+    for name in ("OMNIVOICE_UI_PORT", "VOICESTUDIO_UI_PORT"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("OMNIVOICE_DESKTOP_CONTAINED", "1")
+    assert _loopback_client().get("/system/info").json()["ui_port"] is None
+
+    # The Electron dev shell passes its renderer port explicitly.
+    monkeypatch.setenv("OMNIVOICE_UI_PORT", "3902")
+    assert _loopback_client().get("/system/info").json()["ui_port"] == 3902
+
+
+def test_system_info_reports_the_ui_port_alias(monkeypatch):
+    monkeypatch.delenv("OMNIVOICE_UI_PORT", raising=False)
+    monkeypatch.delenv("OMNIVOICE_DESKTOP_CONTAINED", raising=False)
+    monkeypatch.setenv("VOICESTUDIO_UI_PORT", "4100")
+    assert _loopback_client().get("/system/info").json()["ui_port"] == 4100
+
+
+def test_ports_bound_by_other_processes_are_not_persisted():
+    """The desktop shell, dev script and Docker bind these from their own
+    environment; a saved value only made the backend misreport its ports."""
+    c = _loopback_client()
+    for key in ("OMNIVOICE_PORT", "OMNIVOICE_UI_PORT"):
+        r = c.post("/system/set-env", json={"key": key, "value": "4000"})
+        assert r.status_code == 400
+
+
+def test_stale_saved_bound_ports_are_not_restored(monkeypatch):
+    from core import prefs
+
+    for key in ("OMNIVOICE_PORT", "OMNIVOICE_UI_PORT", "OMNIVOICE_SHARE_PORT"):
+        monkeypatch.delenv(key, raising=False)
+    prefs.restore_env({
+        "env.OMNIVOICE_PORT": "4000",
+        "env.OMNIVOICE_UI_PORT": "4100",
+        "env.OMNIVOICE_SHARE_PORT": "5050",
+    })
+    import os
+    try:
+        assert "OMNIVOICE_PORT" not in os.environ
+        assert "OMNIVOICE_UI_PORT" not in os.environ
+        assert os.environ["OMNIVOICE_SHARE_PORT"] == "5050"
+    finally:
+        os.environ.pop("OMNIVOICE_SHARE_PORT", None)

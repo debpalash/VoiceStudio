@@ -142,6 +142,8 @@ function WorkflowCanvas({ onCalls }: { onCalls: (call?: Pick<WorkflowStep, 'phon
         : ['speak', 'convert'].includes(step.kind) ? (profiles.data?.find((profile) => profile.id === step.voiceId)?.name || t('convert.pick_voice'))
         : step.kind === 'normalize' ? `${step.targetDb ?? -2} dBFS`
         : step.kind === 'call' ? ([step.phone, step.text].filter(Boolean).join(' · ') || t('workflows.add_details'))
+        : step.kind === 'condition' ? (step.text
+          ? `${t(`workflows.match_${step.match || 'contains'}`)} · ${step.text}` : t('workflows.add_details'))
           : step.text || t('workflows.add_details'),
     },
   })), [document.steps, selectedId, t, profiles.data]);
@@ -247,7 +249,7 @@ function WorkflowCanvas({ onCalls }: { onCalls: (call?: Pick<WorkflowStep, 'phon
         <div className="workflow-panel-heading workflow-panel-heading--steps">{t('workflows.add_step')}</div>
         <div className="workflow-palette">{STEP_KINDS.map((kind) => {
           const Icon = icons[kind];
-          return <button key={kind} type="button" aria-label={t(`workflows.step_${kind}`)} disabled={running} onClick={() => addStep(kind)}><span className={`workflow-palette-icon workflow-palette-icon--${kind}`}><Icon size={16} aria-hidden="true" /></span><span>{t(`workflows.step_${kind}`)}{['agent', 'condition', 'call'].includes(kind) && <small className="block text-[10px] text-muted-foreground">{t('workflows.local_draft')}</small>}</span><PlusIcon size={14} className="workflow-palette-add" aria-hidden="true" /></button>;
+          return <button key={kind} type="button" aria-label={t(`workflows.step_${kind}`)} disabled={running} onClick={() => addStep(kind)}><span className={`workflow-palette-icon workflow-palette-icon--${kind}`}><Icon size={16} aria-hidden="true" /></span><span>{t(`workflows.step_${kind}`)}{['agent', 'call'].includes(kind) && <small className="block text-[10px] text-muted-foreground">{t('workflows.local_draft')}</small>}</span><PlusIcon size={14} className="workflow-palette-add" aria-hidden="true" /></button>;
         })}</div>
       </aside>
       <section className="workflow-stage" aria-label={t('workflows.canvas')}>
@@ -281,7 +283,7 @@ function WorkflowCanvas({ onCalls }: { onCalls: (call?: Pick<WorkflowStep, 'phon
           <label htmlFor="workflow-step-title">{t('workflows.step_name')}</label>
           <Input id="workflow-step-title" value={selected.title} placeholder={t(`workflows.step_${selected.kind}`)} onChange={(event) => editStep({ title: event.target.value })} />
           {selected.kind === 'call' && <><label htmlFor="workflow-step-phone">{t('calls.number_label')}</label><Input id="workflow-step-phone" value={selected.phone} onChange={(event) => editStep({ phone: event.target.value })} /></>}
-          {!['start', 'end', 'speak', 'normalize', 'audio', 'transcribe', 'translate', 'convert'].includes(selected.kind) && <><label htmlFor="workflow-step-text">{t(selected.kind === 'call' ? 'calls.brief_label' : 'workflows.instructions')}</label><Textarea id="workflow-step-text" value={selected.text} onChange={(event) => editStep({ text: event.target.value })} rows={5} /></>}
+          {!['start', 'end', 'speak', 'normalize', 'audio', 'transcribe', 'translate', 'convert', 'condition'].includes(selected.kind) && <><label htmlFor="workflow-step-text">{t(selected.kind === 'call' ? 'calls.brief_label' : 'workflows.instructions')}</label><Textarea id="workflow-step-text" value={selected.text} onChange={(event) => editStep({ text: event.target.value })} rows={5} /></>}
           <WorkflowInputs key={selected.id} step={selected} onChange={editStep} />
           {selected.kind === 'call' && <Button onClick={() => onCalls(selected)}><PhoneCallIcon aria-hidden="true" />{t('workflows.prepare_call')}</Button>}
           <Button variant="ghost" onClick={() => { updateDocument((current) => removeWorkflowStep(current, selected.id)); setSelectedId(null); }}><Trash2Icon aria-hidden="true" />{t('workflows.remove_step')}</Button>

@@ -5,6 +5,9 @@
 > signing, and publication instructions are not maintained and must not be used
 > for a current release. Electron is the only maintained desktop app; follow
 > [RELEASING.md](RELEASING.md) for all current build and publication work.
+> The files it names (`frontend/src-tauri/`, `.github/workflows/release.yml`,
+> `scripts/desktop-prod.sh`) were removed with the Tauri shell; read them from git
+> history at the `v0.5.3` tag.
 
 A shippable macOS (and eventually cross-platform) desktop release where the user drags the `.app` to `Applications`, double-clicks once, and does **everything else from the UI** — dependency runtime, model weights, first-run consent, all inside the app.
 

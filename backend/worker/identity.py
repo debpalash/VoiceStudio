@@ -31,6 +31,7 @@ import hmac
 import json
 import os
 import secrets
+import threading
 import time
 from dataclasses import dataclass
 from typing import Optional
@@ -161,6 +162,53 @@ def challenge_message(
             nonce,
         ]
     )
+
+
+# Feature a peer advertises when it signs a challenge the other side issued.
+SERVER_CHALLENGE_FEATURE = "server_challenge_v1"
+CHALLENGE_TTL_SECONDS = 120
+_MAX_OUTSTANDING_CHALLENGES = 4096
+
+
+class ChallengeBook:
+    """Challenges this side issued and has not yet seen signed.
+
+    A signature only proves freshness over a value the VERIFIER chose. Each
+    challenge here is single-use and expires, so a captured Register frame
+    cannot be replayed. The book is bounded because issuing is unauthenticated:
+    under a flood the oldest entries go first, which costs a legitimate worker
+    at most one retry.
+    """
+
+    def __init__(
+        self,
+        *,
+        ttl_seconds: float = CHALLENGE_TTL_SECONDS,
+        limit: int = _MAX_OUTSTANDING_CHALLENGES,
+    ) -> None:
+        self.ttl_seconds = float(ttl_seconds)
+        self._limit = max(1, int(limit))
+        self._issued: dict[bytes, float] = {}
+        self._lock = threading.Lock()
+
+    def issue(self, *, now: Optional[float] = None) -> bytes:
+        stamp = resolve(now)
+        challenge = new_challenge()
+        with self._lock:
+            for stale in [c for c, expiry in self._issued.items() if expiry <= stamp]:
+                del self._issued[stale]
+            while len(self._issued) >= self._limit:
+                del self._issued[next(iter(self._issued))]
+            self._issued[challenge] = stamp + self.ttl_seconds
+        return challenge
+
+    def consume(self, challenge: bytes, *, now: Optional[float] = None) -> bool:
+        """Spend ``challenge``; True only for a live one this book issued."""
+        if not challenge:
+            return False
+        with self._lock:
+            expiry = self._issued.pop(bytes(challenge), None)
+        return expiry is not None and resolve(now) < expiry
 
 
 # ── Enrollment tokens ──────────────────────────────────────────────────────
@@ -383,7 +431,10 @@ def load_or_create_worker_key(path: str) -> WorkerKeypair:
 
 
 __all__ = [
+    "CHALLENGE_TTL_SECONDS",
+    "ChallengeBook",
     "ENROLLMENT_PREFIX",
+    "SERVER_CHALLENGE_FEATURE",
     "SESSION_PREFIX",
     "EnrollmentToken",
     "Session",

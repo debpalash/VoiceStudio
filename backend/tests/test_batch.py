@@ -106,6 +106,23 @@ class TestEnqueue:
         job = client.get(f"/batch/jobs/{job_id}").json()
         assert job["langs"] == ["es", "fr", "de"]
 
+    @pytest.mark.parametrize("langs", ["es,../../x", "fr,..\\..\\x", "es,de/../x", "es,C:x"])
+    def test_rejects_language_codes_that_are_not_plain(self, batch, client, fake_video, langs):
+        # Each code names dubbed_{lang}.wav / output_{lang}.mp4 on disk.
+        resp = _enqueue(client, fake_video, langs)
+        assert resp.status_code == 400, resp.text
+        assert not batch._jobs
+
+    @pytest.mark.parametrize("name", ["clip.mp4:stream", "clip.m\\..\\x", "clip.mp4\x01"])
+    def test_rejects_upload_names_with_unusable_extensions(self, batch, client, fake_video, name):
+        resp = client.post(
+            "/batch/enqueue",
+            files={"video": (name, io.BytesIO(fake_video), "video/mp4")},
+            data={"langs": "es", "preserve_bg": "true"},
+        )
+        assert resp.status_code == 415, resp.text
+        assert not batch._jobs
+
     def test_preserves_filename(self, client, fake_video):
         resp = _enqueue(client, fake_video)
         job_id = resp.json()["job_id"]

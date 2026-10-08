@@ -41,13 +41,12 @@ def _worker(conn, request: dict):
         # Prevent CUDA from inheriting contexts from parent
         os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
 
-        import torchaudio
-
         # Add backend to path
         backend_dir = os.path.join(os.path.dirname(__file__), "..")
         if backend_dir not in sys.path:
             sys.path.insert(0, backend_dir)
 
+        from services.audio_io import _safe_torchaudio_save
         from services.model_manager import _load_model_sync
         from services.audio_dsp import apply_mastering, normalize_audio
 
@@ -74,7 +73,8 @@ def _worker(conn, request: dict):
 
         # Write to temp file and return path
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-        torchaudio.save(tmp.name, final, sr, format="wav")
+        # torchaudio.save needs TorchCodec on 2.9+; the helper falls back to soundfile.
+        _safe_torchaudio_save(tmp.name, final, sr, format="wav")
         tmp.close()
 
         conn.send({"audio_path": tmp.name, "sample_rate": sr})

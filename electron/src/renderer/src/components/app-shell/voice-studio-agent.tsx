@@ -96,20 +96,29 @@ export function VoiceStudioAgent() {
     (!source || workspace.available),
   );
   const setDraft = (draft: string) => agentConversation.setState((state) => ({ ...state, draft }));
+  // The mount load and the panel-open refresh both scan, and their answers
+  // can arrive out of order: an older scan never replaces a newer one.
+  const scans = useRef({ issued: 0, applied: 0 });
+  const showAgents = (scan: number, found: RepairAgentInfo[]) => {
+    if (scan < scans.current.applied) return;
+    scans.current.applied = scan;
+    setAgents(found);
+    setSelected((current) =>
+      found.some((agent) => agent.id === current && agent.available)
+        ? current
+        : (found.find((agent) => agent.available)?.id ?? current),
+    );
+  };
 
   useEffect(() => {
     if (!bridge) return;
     let alive = true;
     const unsubscribe = bridge.repair.onEvent(receiveAgentEvent);
+    const scan = ++scans.current.issued;
     void Promise.all([bridge.repair.list(), bridge.repair.getState()])
       .then(([found, state]) => {
         if (!alive) return;
-        setAgents(found);
-        setSelected((current) =>
-          found.some((agent) => agent.id === current && agent.available)
-            ? current
-            : (found.find((agent) => agent.available)?.id ?? current),
-        );
+        showAgents(scan, found);
         setWorkspace({ available: state.workspaceAvailable, path: state.workspacePath ?? '' });
         restoreAgentTurn(state);
       })
@@ -121,6 +130,24 @@ export function VoiceStudioAgent() {
       unsubscribe();
     };
   }, [bridge]);
+
+  // A CLI installed while the app was running must appear without a restart.
+  useEffect(() => {
+    if (!bridge || !open) return;
+    let alive = true;
+    const scan = ++scans.current.issued;
+    void bridge.repair
+      .list({ refresh: true })
+      .then((found) => {
+        if (alive) showAgents(scan, found);
+      })
+      .catch(() => {
+        // Keep the previous list; the initial load reports failures.
+      });
+    return () => {
+      alive = false;
+    };
+  }, [bridge, open]);
 
   useEffect(() => {
     const receive = (request?: RepairAgentRequest | null) => {

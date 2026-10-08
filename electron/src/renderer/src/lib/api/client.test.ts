@@ -9,6 +9,7 @@ import {
   apiFetch,
   apiJson,
   audioUrl,
+  ENGINE_SELECTED_EVENT,
   describeError,
   errorFromResponse,
   profileAudioUrl,
@@ -277,4 +278,24 @@ it('shows top-level API recovery errors without exposing raw JSON', async () => 
   const error = await errorFromResponse(new Response(JSON.stringify(payload), { status: 400 }));
   expect(error.message).toBe(payload.error);
   expect(error.payload).toEqual(payload);
+});
+
+describe('engine selection event', () => {
+  it('fires after a successful POST /engines/select only', async () => {
+    vi.stubGlobal('fetch', async () => new Response('{}', { status: 200 }));
+    const seen = vi.fn();
+    window.addEventListener(ENGINE_SELECTED_EVENT, seen);
+    try {
+      await apiFetch('/engines/select');
+      await apiFetch('/engines/select', { method: 'GET' });
+      expect(seen).not.toHaveBeenCalled();
+      await apiFetch('/engines/select', { method: 'POST', body: '{}' });
+      expect(seen).toHaveBeenCalledTimes(1);
+      vi.stubGlobal('fetch', async () => new Response('{}', { status: 500 }));
+      await apiFetch('/engines/select', { method: 'POST', body: '{}' }).catch(() => {});
+      expect(seen).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener(ENGINE_SELECTED_EVENT, seen);
+    }
+  });
 });

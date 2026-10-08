@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import '@/i18n';
-import { ActionBar, ProductionSettings } from './action-bar';
+import { ActionBar, ProductionSettings, VoiceControls } from './action-bar';
 
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ to, children, className }: { to: string; children: ReactNode; className?: string }) => (
@@ -24,7 +24,7 @@ vi.mock('@/hooks/use-tts-languages', () => ({
 const generate = vi.fn(() => Promise.resolve());
 const cancel = vi.fn();
 const setCloneSetting = vi.fn();
-const resetOverrides = vi.fn();
+const resetVoiceControls = vi.fn();
 const runtime = {
   isGenerating: false,
   elapsedSeconds: 0,
@@ -64,7 +64,8 @@ vi.mock('@/lib/store/clone-settings', () => ({
   useCloneSettings: () => settings,
   useCloneSetting: (key: keyof typeof settings) => settings[key],
   setCloneSetting: (...args: unknown[]) => setCloneSetting(...args),
-  resetOverrides: () => resetOverrides(),
+  resetAudioQuality: vi.fn(),
+  resetVoiceControls: () => resetVoiceControls(),
 }));
 
 vi.mock('@/lib/audio/playback', () => ({
@@ -136,13 +137,32 @@ describe('ActionBar', () => {
     expect(screen.getByText('Prompt guidance')).toBeVisible();
     expect(screen.getByText('Sound variation')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Reset to defaults' }));
-    expect(resetOverrides).toHaveBeenCalled();
+    expect(resetVoiceControls).toHaveBeenCalled();
+  });
+
+  it('offers an icon-only reset in the Voice controls header', () => {
+    render(<VoiceControls />);
+    fireEvent.click(screen.getByRole('button', { name: 'Voice controls' }));
+    const reset = screen.getByRole('button', { name: 'Reset to defaults' });
+    expect(reset.textContent).toBe('');
+    expect(reset.querySelector('svg')).not.toBeNull();
+    resetVoiceControls.mockClear();
+    fireEvent.click(reset);
+    expect(resetVoiceControls).toHaveBeenCalledTimes(1);
   });
 
   it('calls generate from the primary action', () => {
     render(<ActionBar />);
     fireEvent.click(screen.getByRole('button', { name: 'Synthesize audio' }));
     expect(generate).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the keyboard shortcut inside the primary action, not as loose text', () => {
+    render(<ActionBar />);
+    const button = screen.getByRole('button', { name: 'Synthesize audio' });
+    expect(button).toHaveAttribute('aria-keyshortcuts', 'Control+Enter Meta+Enter');
+    expect(button.querySelectorAll('[data-slot="kbd"]')).toHaveLength(2);
+    expect(button).toHaveTextContent('↵');
   });
 
   it('keeps the action fixed while showing the real model-loading phase and progress', () => {
@@ -155,7 +175,7 @@ describe('ActionBar', () => {
     });
     render(<ActionBar />);
 
-    expect(screen.getByRole('button', { name: 'Optimizing model…' })).toHaveClass('w-52');
+    expect(screen.getByRole('button', { name: 'Optimizing model…' })).toHaveClass('w-60');
     expect(screen.getByText('62% · 3.4s')).toBeInTheDocument();
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '62');
   });

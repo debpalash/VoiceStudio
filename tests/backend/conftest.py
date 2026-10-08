@@ -14,31 +14,21 @@ poisoned VOICES_DIR) and audiobook resume (job seeded in one DB, endpoint
 reading another). CI's isolated invocations never see it; local combined runs
 do.
 
-The autouse teardown below re-purges after every test here, so the next
-consumer re-imports against the RESTORED env. It deliberately mirrors the
-setup-side purge condition used by those files — keep the two in sync, and
-keep the bare package names ("api", "services", "core"): a surviving stale
-package object still holds attribute bindings to stale submodules, which
-splits ``from services import x`` (package attr, stale) from
-``from services.x import y`` (fresh re-import).
+The autouse teardown below restores the module objects that existed before
+each test here (see ``tests/backend_module_state.py``). Purging alone left
+fresh twins behind: test modules collected earlier kept the originals, so a
+later test could patch ``core.db`` while ``services.dub_pipeline`` still wrote
+through the original module (#2585 CI). Modules first imported under a test's
+temporary environment are dropped, so the next consumer re-imports them
+against the RESTORED env.
 """
-import sys
-
 import pytest
 
-
-def purge_backend_modules() -> None:
-    for mod in list(sys.modules):
-        if (
-            mod in ("main", "core", "api", "services")
-            or mod.startswith("core.")
-            or mod.startswith("api.")
-            or mod.startswith("services.")
-        ):
-            sys.modules.pop(mod, None)
+from backend_module_state import restore, snapshot
 
 
 @pytest.fixture(autouse=True)
 def _repurge_backend_modules_after_module_surgery():
+    before = snapshot()
     yield
-    purge_backend_modules()
+    restore(before)

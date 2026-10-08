@@ -1,7 +1,8 @@
 # Shell installer (Electron)
 
 The shell installer supports macOS (Apple Silicon and Intel) and Linux x64.
-On Windows, download the `VoiceStudio-Electron-…-win-x64.exe` installer from
+On Windows, download the `VoiceStudio-Electron-…-win-x64.exe` installer (or
+`…-win-arm64.exe` on a Snapdragon/ARM PC) from
 [Releases](https://github.com/debpalash/VoiceStudio/releases).
 
 Or use PowerShell (the endpoint detects PowerShell's user agent):
@@ -14,7 +15,7 @@ Remove-Item Env:VOICESTUDIO_VERSION -ErrorAction SilentlyContinue
 $env:VOICESTUDIO_INSTALL_MODE='main'; irm https://voicestudio.sh/install | iex
 ```
 
-Windows main builds also need Visual Studio C++ build tools. The script builds
+On ARM64 Windows the script installs the native ARM64 build and falls back to the x64 build when a release has none. Windows main builds also need Visual Studio C++ build tools (plus the ARM64 build tools on ARM). The script builds
 an NSIS installer, opens its setup wizard, and waits for completion. Environment
 overrides persist in the terminal; remove them to return to latest-release mode.
 

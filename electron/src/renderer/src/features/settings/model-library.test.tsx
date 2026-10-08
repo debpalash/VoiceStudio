@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 const mock = vi.hoisted(() => ({
   api: vi.fn(),
@@ -7,11 +8,19 @@ const mock = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/api/client', () => ({ apiJson: mock.api }));
 vi.mock('sonner', () => ({ toast: mock.toast }));
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({ to, children, className }: { to: string; children: ReactNode; className?: string }) => (
+    <a href={to} className={className}>
+      {children}
+    </a>
+  ),
+}));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
-import { ModelLibrary, SystemRecommendations } from './model-library';
+import { ModelLibrary, PerformanceModelPacks, SystemRecommendations } from './model-library';
 import { modelFamilies } from './model-family';
+import { performancePackRepos } from './performance-model-packs';
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -82,6 +91,112 @@ it('prioritizes required and curated models across families, with optional downl
       queryKey: ['performance-profile'],
     }),
   );
+});
+
+it('allows using an installed performance pack below the download reserve', async () => {
+  const profile = {
+    global: 'balanced',
+    overrides: {},
+    effective: {},
+    families: [],
+    implemented_families: [],
+    targets: { tts: {} },
+    selections: { tts: { engine: 'other', model: null } },
+  };
+  mock.api.mockImplementation((path: string) => {
+    if (path === '/models') {
+      return Promise.resolve({
+        disk_free_gb: 2.5,
+        models: performancePackRepos.balanced.map((repo_id) => ({
+          repo_id,
+          label: repo_id,
+          role: repo_id.includes('whisper') || repo_id.includes('sherpa') ? 'ASR' : 'TTS',
+          size_gb: 1,
+          installed: true,
+          supported: true,
+        })),
+      });
+    }
+    if (path === '/api/settings/performance-profile') return Promise.resolve(profile);
+    if (path === '/models/install/status') return Promise.resolve({ jobs: [] });
+    if (path === '/setup/recommendations') {
+      return Promise.resolve({
+        device: { label: 'Windows x64' },
+        models: [],
+        download_gb_remaining: 0,
+        total_gb: 0,
+        all_installed: true,
+      });
+    }
+    if (path.startsWith('/batch/jobs')) return Promise.resolve([]);
+    return Promise.resolve({});
+  });
+
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <PerformanceModelPacks />
+    </QueryClientProvider>,
+  );
+
+  const usePack = await screen.findByRole('button', { name: 'models.pack_use' });
+  expect(usePack).toBeEnabled();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  fireEvent.click(usePack);
+
+  await waitFor(() =>
+    expect(mock.api).toHaveBeenCalledWith(
+      '/api/settings/performance-profile',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ tier: 'balanced', family: null }),
+      }),
+    ),
+  );
+  expect(mock.api.mock.calls.every(([path]) => path !== '/models/install')).toBe(true);
+});
+
+it('keeps the disk reserve guard when a performance pack still needs downloads', async () => {
+  mock.api.mockImplementation((path: string) => {
+    if (path === '/models') {
+      return Promise.resolve({
+        disk_free_gb: 2.5,
+        models: performancePackRepos.balanced.map((repo_id, index) => ({
+          repo_id,
+          label: repo_id,
+          role: repo_id.includes('whisper') || repo_id.includes('sherpa') ? 'ASR' : 'TTS',
+          size_gb: index === 0 ? 1 : 0,
+          installed: index !== 0,
+          supported: true,
+        })),
+      });
+    }
+    if (path === '/api/settings/performance-profile')
+      return Promise.resolve({ global: 'balanced', targets: {}, selections: {} });
+    if (path === '/models/install/status') return Promise.resolve({ jobs: [] });
+    if (path === '/setup/recommendations') {
+      return Promise.resolve({
+        device: { label: 'Windows x64' },
+        models: [],
+        download_gb_remaining: 0,
+        total_gb: 0,
+        all_installed: true,
+      });
+    }
+    if (path.startsWith('/batch/jobs')) return Promise.resolve([]);
+    return Promise.resolve({});
+  });
+
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <PerformanceModelPacks />
+    </QueryClientProvider>,
+  );
+
+  const installPack = await screen.findByRole('button', { name: 'models.pack_install' });
+  expect(installPack).toBeDisabled();
+  expect(screen.getByRole('alert')).toHaveTextContent('models.pack_low_disk');
+  fireEvent.click(installPack);
+  expect(mock.api.mock.calls.every(([path]) => path !== '/models/install')).toBe(true);
 });
 
 it('unloads a resident model before deleting its slash-separated repository', async () => {
@@ -604,4 +719,96 @@ it('labels installed recommendations and distinguishes the active model', async 
   expect(screen.getByText('modelSettings.selected')).toBeInTheDocument();
   expect(screen.getByText('modelMaintenance.installed')).toBeInTheDocument();
   expect(screen.getByText('Optional voice')).toBeInTheDocument();
+});
+
+it.each([
+  // Fits the raw download but not the headroom the backend keeps (#2597).
+  { free: 8, headroom: undefined, warns: true },
+  { free: 8, headroom: 2, warns: false },
+  { free: 20, headroom: 10, warns: false },
+])(
+  'warns about the full bundle with the backend disk rule (free $free GB, headroom $headroom)',
+  async ({ free, headroom, warns }) => {
+    mock.api.mockImplementation((path: string) => {
+      if (path === '/models') {
+        return Promise.resolve({ models: [], disk_free_gb: free, disk_headroom_gb: headroom });
+      }
+      if (path === '/setup/recommendations') {
+        return Promise.resolve({
+          device: { label: 'Test device' },
+          models: [
+            {
+              repo_id: 'owner/required',
+              label: 'Required voice',
+              role: 'TTS',
+              size_gb: 4,
+              required: true,
+              installed: false,
+            },
+          ],
+          download_gb_remaining: 4,
+          total_gb: 4,
+          all_installed: false,
+        });
+      }
+      if (path === '/models/install/status') return Promise.resolve({ jobs: [] });
+      return Promise.resolve({});
+    });
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <SystemRecommendations />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText('models.reco_disk_free');
+    expect(screen.queryByRole('alert') !== null).toBe(warns);
+  },
+);
+
+it('sends a gated install that failed on a chosen mirror to the mirror settings', async () => {
+  mock.api.mockImplementation((path: string) => {
+    if (path === '/models') {
+      return Promise.resolve({
+        models: [
+          {
+            repo_id: 'owner/gated',
+            label: 'Gated model',
+            role: 'TTS',
+            size_gb: 1,
+            installed: false,
+            supported: true,
+            gated: true,
+          },
+        ],
+      });
+    }
+    if (path === '/models/install/status') {
+      return Promise.resolve({
+        jobs: [
+          {
+            repo_id: 'owner/gated',
+            state: 'failed',
+            docs_topic: 'HF_MIRROR_GATED',
+            error: '401 Client Error',
+          },
+        ],
+      });
+    }
+    if (path === '/model/loaded') return Promise.resolve({ models: [], count: 0 });
+    return Promise.resolve({});
+  });
+
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <ModelLibrary family="tts" />
+    </QueryClientProvider>,
+  );
+
+  expect(await screen.findByText('modelMaintenance.mirrorGatedAccess')).toBeInTheDocument();
+  expect(screen.queryByText('401 Client Error')).not.toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'models.mirror_title' })).toHaveAttribute(
+    'href',
+    '/settings/models',
+  );
 });

@@ -93,6 +93,34 @@ def test_plaintext_no_breaks_is_single_chapter():
     assert len(parse_audiobook_script(out).chapters) == 1
 
 
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_import_endpoint_chapter_titles_across_line_endings(newline):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from api.routers.audiobook import router
+
+    lines = ["Chapter 1", "Once upon a time, the story began.", "", "Chapter 2", "The story ended."]
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+    response = client.post(
+        "/audiobook/import",
+        files={"file": ("book.txt", newline.join(lines).encode(), "text/plain")},
+    )
+    assert response.status_code == 200
+    result = response.json()
+    assert result["chapters"] == 2
+    assert result["text"] == "# Chapter 1\nOnce upon a time, the story began.\n\n# Chapter 2\nThe story ended."
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_existing_markdown_headings_after_preamble_stay_verbatim(newline):
+    from services.longform_import import chapterize_plaintext
+
+    manuscript = newline.join(["Prologue", "# First", "Body."])
+    assert chapterize_plaintext(manuscript) == manuscript
+
+
 # ── EPUB ────────────────────────────────────────────────────────────────────
 
 def _make_epub_raw(documents: list[bytes]) -> bytes:
@@ -147,6 +175,25 @@ def test_epub_extracts_chapters_in_spine_order():
     assert script.index("Intro") < script.index("Finale")
     plan = parse_audiobook_script(script)
     assert len(plan.chapters) == 2
+
+
+def test_epub_chapter_title_keeps_all_of_a_styled_heading():
+    # A heading holding inline markup or a <br> reaches the parser in pieces, and
+    # only the first piece named the chapter: "Chapter" for "Chapter <em>One</em>",
+    # "3" for "<span>3</span> The Calm". The rest was neither title nor body.
+    data = _make_epub_raw([
+        b"<html><body><h1>Chapter <em>One</em></h1><p>It began.</p></body></html>",
+        b"<html><body><h1>CHAPTER II<br/>THE STORM</h1><p>Rain fell.</p></body></html>",
+        b'<html><body><h2><span class="num">3</span> The Calm</h2><p>Quiet.</p></body></html>',
+        b"<html><body><h1>Chapter&#160;<a href=\"#n\">Four</a></h1><p>Last.</p></body></html>",
+    ])
+    script = epub_to_chapter_script(data)
+    assert "# Chapter One\n" in script
+    assert "# CHAPTER II THE STORM\n" in script
+    assert "# 3 The Calm\n" in script
+    assert "# Chapter Four\n" in script
+    assert [c.title for c in parse_audiobook_script(script).chapters] == [
+        "Chapter One", "CHAPTER II THE STORM", "3 The Calm", "Chapter Four"]
 
 
 def test_epub_skips_empty_documents():
@@ -354,3 +401,24 @@ def test_epub_wide_document_with_leading_whitespace(wide, whitespace):
     script = epub_to_chapter_script(_make_epub_raw([document]))
     assert _ACCENTED in script
     assert "\x00" not in script
+
+
+def test_text_after_block_end_tags_starts_a_new_line():
+    """#2630: text following a closing block tag must not join the previous one."""
+    from services.longform_import import _html_to_title_body
+
+    _, body = _html_to_title_body("<body><p>One.</p>Two.<ul><li>Three</li>Four</ul></body>")
+    lines = [ln for ln in body.split("\n") if ln]
+    assert lines == ["One.", "Two.", "Three", "Four"]
+
+    _, table = _html_to_title_body("<table><tr><td>A1</td><td>B1</td></tr><tr><th>A2</th>B2</tr></table>")
+    assert [ln for ln in table.split("\n") if ln] == ["A1", "B1", "A2", "B2"]
+
+    _, blocks = _html_to_title_body(
+        "<div>x<blockquote>quote</blockquote>y</div><section>s</section>z<h4>h</h4>w"
+    )
+    assert [ln for ln in blocks.split("\n") if ln] == ["x", "quote", "y", "s", "z", "h", "w"]
+
+    title, body = _html_to_title_body("<h1>Chapter <p>One</p></h1><p>Body</p>after")
+    assert title == "Chapter One"
+    assert [ln for ln in body.split("\n") if ln] == ["Body", "after"]

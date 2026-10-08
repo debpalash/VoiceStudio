@@ -13,8 +13,8 @@ export interface CreateCloneProfileInput {
   language?: string;
 }
 
-export async function listProfiles(): Promise<Profile[]> {
-  return apiJson<Profile[]>('/profiles');
+export async function listProfiles({ signal }: { signal?: AbortSignal } = {}): Promise<Profile[]> {
+  return apiJson<Profile[]>('/profiles', { signal });
 }
 
 export async function updateProfileImage(id: string, image: File): Promise<Profile> {

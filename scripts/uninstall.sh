@@ -15,9 +15,14 @@
 #   OMNIVOICE_DATA_DIR, OMNIVOICE_CACHE_DIR, HF_HOME, HF_HUB_CACHE
 # Export the ones you set for VoiceStudio before running, and it targets those.
 #
-# It NEVER deletes the app binary itself (that's a per-platform step — see
-# docs/install/uninstall.md), and it never touches anything outside the paths
-# it lists. Mirrors backend/core/config.py and the Electron setup flow.
+# Covers the Electron desktop app (its VoiceStudio app folder: managed Python
+# runtime, window state, logs, updater cache) and the folders a final Tauri
+# install left behind (com.debpalash.omnivoice-studio).
+#
+# Without --app it never deletes the app binary itself (that's a per-platform
+# step — see docs/install/uninstall.md), and it never touches anything outside
+# the paths it lists. Mirrors backend/core/config.py and
+# electron/src/main/backend.ts.
 set -euo pipefail
 
 APPLY=0
@@ -35,28 +40,46 @@ for arg in "$@"; do
   esac
 done
 
-IDENTIFIER="com.debpalash.omnivoice-studio"
+# Final Tauri installs used this identifier for their config + Python env.
+LEGACY_IDENTIFIER="com.debpalash.omnivoice-studio"
+# Electron app folder (app.getPath('userData'); electron/src/main/app-identity.ts)
+# and electron-updater's download cache (package name + "-updater").
+ELECTRON_APP_NAME="VoiceStudio"
+ELECTRON_UPDATER_CACHE="voicestudio-electron-updater"
 OS="$(uname -s)"
 
 # ── Resolve platform default paths (mirrors the app) ────────────────────────
 data_default=""
-config_default=""
+electron_user_data=""
+legacy_config=()
 logs_extra=()
 models_default=""
 case "$OS" in
   Darwin)
     data_default="$HOME/Library/Application Support/OmniVoice"
-    config_default="$HOME/Library/Application Support/$IDENTIFIER"
-    logs_extra=("$HOME/Library/Logs/OmniVoice" "$HOME/Library/Logs/$IDENTIFIER")
+    electron_user_data="$HOME/Library/Application Support/$ELECTRON_APP_NAME"
+    legacy_config=("$HOME/Library/Application Support/$LEGACY_IDENTIFIER")
+    logs_extra=(
+      "$HOME/Library/Logs/$ELECTRON_APP_NAME"
+      "$HOME/Library/Caches/$ELECTRON_UPDATER_CACHE"
+      "$HOME/Library/Logs/OmniVoice"
+      "$HOME/Library/Logs/$LEGACY_IDENTIFIER"
+    )
     models_default="$HOME/.cache/huggingface"
     ;;
   Linux)
     data_default="$HOME/.omnivoice"
-    config_default="${XDG_DATA_HOME:-$HOME/.local/share}/$IDENTIFIER"
-    # The BACKEND writes its own logs outside the app-data dir — see
-    # backend_log_path() in src-tauri/src/backend.rs. Missing this left a stray
-    # log dir behind on every Linux uninstall.
-    logs_extra=("${XDG_STATE_HOME:-$HOME/.local/state}/VoiceStudio")
+    # Electron keeps its logs inside the app folder on Linux.
+    electron_user_data="${XDG_CONFIG_HOME:-$HOME/.config}/$ELECTRON_APP_NAME"
+    legacy_config=(
+      "${XDG_DATA_HOME:-$HOME/.local/share}/$LEGACY_IDENTIFIER"
+      "${XDG_CONFIG_HOME:-$HOME/.config}/$LEGACY_IDENTIFIER"
+    )
+    # Final Tauri installs wrote backend logs outside the app-data dir.
+    logs_extra=(
+      "${XDG_CACHE_HOME:-$HOME/.cache}/$ELECTRON_UPDATER_CACHE"
+      "${XDG_STATE_HOME:-$HOME/.local/state}/VoiceStudio"
+    )
     models_default="$HOME/.cache/huggingface"
     ;;
   *)
@@ -72,6 +95,26 @@ MODELS_DIR="${OMNIVOICE_CACHE_DIR:-${HF_HOME:-${HF_HUB_CACHE:-$models_default}}}
 # It persists OMNIVOICE_CACHE_DIR (and can hold HF_TOKEN); leaving it behind
 # silently redirected a fresh reinstall's model cache to the old location.
 USER_ENV_DIR="$HOME/.config/omnivoice"
+
+# A custom runtime location the Electron app created (and therefore owns) is
+# recorded in runtime-location.json. Only an owned, absolute folder named
+# VoiceStudio that holds the app's project is removed — the same rule the
+# in-app uninstall applies; a reused Tauri environment is recorded unowned and
+# kept. The file must be exactly the object the app writes
+# ({"root": "...", "owned": true}); anything else is ignored, so a damaged or
+# hand-edited file can never point the deletion at another folder.
+electron_owned_runtime() {
+  local file="$electron_user_data/runtime-location.json" content root
+  [ -f "$file" ] || return 0
+  content=$(tr -d '\r\n' < "$file")
+  root=$(printf '%s' "$content" | sed -n 's/^[[:space:]]*{[[:space:]]*"root"[[:space:]]*:[[:space:]]*"\([^"\\]*\)"[[:space:]]*,[[:space:]]*"owned"[[:space:]]*:[[:space:]]*true[[:space:]]*}[[:space:]]*$/\1/p')
+  case "$root" in /*) ;; *) return 0 ;; esac
+  [ "$root" = "$electron_user_data/runtime" ] && return 0
+  [ "$(basename "$root" | tr '[:upper:]' '[:lower:]')" = "voicestudio" ] || return 0
+  [ -d "$root/project" ] || return 0
+  printf '%s\n' "$root"
+}
+ELECTRON_RUNTIME="$(electron_owned_runtime)"
 
 # ── Collect existing targets ────────────────────────────────────────────────
 app_targets=()
@@ -91,7 +134,9 @@ if [ "$REMOVE_APP" -eq 1 ]; then
 fi
 
 [ -e "$DATA_DIR" ] && app_targets+=("$DATA_DIR")
-[ -e "$config_default" ] && app_targets+=("$config_default")
+[ -e "$electron_user_data" ] && app_targets+=("$electron_user_data")
+[ -n "$ELECTRON_RUNTIME" ] && [ -e "$ELECTRON_RUNTIME" ] && app_targets+=("$ELECTRON_RUNTIME")
+for d in "${legacy_config[@]}"; do [ -e "$d" ] && app_targets+=("$d"); done
 [ -e "$USER_ENV_DIR" ] && app_targets+=("$USER_ENV_DIR")
 for d in "${logs_extra[@]:-}"; do [ -n "$d" ] && [ -e "$d" ] && app_targets+=("$d"); done
 

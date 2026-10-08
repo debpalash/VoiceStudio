@@ -145,6 +145,15 @@ failed download at once. Caveats:
   chunk-dedup and Xet's parallel fetch, but you gain reachability. On the
   classic path, per-byte speed/ETA **is** shown continuously.
 - Russia and some networks have no official mirror; use a VPN/tunnel.
+- A custom mirror URL must use `https://` (plain `http://` is accepted only
+  for a local proxy on `localhost`/`127.0.0.1`) and must not contain a user
+  name, password, query or fragment.
+- Your Hugging Face token is sent only to Hugging Face, never to a mirror —
+  including token checks and gated-access checks. Gated models (speaker
+  diarization) therefore download from the official endpoint: in **Auto** mode
+  they always do, even when automatic selection picked the mirror; with a
+  mirror you chose yourself, the install fails with `HF_MIRROR_GATED` — switch
+  to **Hugging Face (official)** to install them.
 
 ## Cancelling a download
 
@@ -164,4 +173,6 @@ takes effect at the next retry boundary.
   interrupted and left a partial snapshot. Delete the model in
   the engine's **Weights** list in **Model Catalogue** and install it again.
 - **Out of disk** — model sizes are shown in the catalog; free space or change
-  the cache location with `HF_HOME` / `HF_HUB_CACHE`.
+  the cache location with `HF_HOME` / `HF_HUB_CACHE`. An install also keeps
+  10 GB free on the model disk after the download, so it needs the download
+  size plus 10 GB; the warning in Model Catalogue shows both numbers.

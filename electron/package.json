@@ -7,7 +7,7 @@
   "license": "AGPL-3.0-only",
   "author": {
     "name": "VoiceStudio contributors",
-    "email": "VoiceStudio@palash.dev"
+    "email": "hi@voicestudio.sh"
   },
   "type": "module",
   "main": "./out/main/index.js",
@@ -82,7 +82,6 @@
     "react-hot-toast": "^2.6.0",
     "react-i18next": "^17.0.14",
     "react-window": "^2.3.1",
-    "remotion": "4.0.524",
     "shadcn": "^4.21.0",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.6.0",

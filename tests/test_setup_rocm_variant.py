@@ -60,7 +60,7 @@ def test_dev_backend_skips_resync_when_rocm_requested():
     script = f"""
       const mod = await import({json.dumps(module_uri)});
       console.log(JSON.stringify({{
-        base: mod.UVICORN_ARGS,
+        base: mod.uvicornArgs({{}}),
         unset: mod.uvRunArgs({{}}),
         auto: mod.uvRunArgs({{ OMNIVOICE_TORCH_VARIANT: "auto" }}),
         rocm: mod.uvRunArgs({{ OMNIVOICE_TORCH_VARIANT: " ROCm " }}),
@@ -74,6 +74,6 @@ def test_dev_backend_skips_resync_when_rocm_requested():
     )
     observed = json.loads(completed.stdout)
     base = observed["base"]
-    assert observed["unset"] == base
-    assert observed["auto"] == base
+    assert observed["unset"] == [base[0], "--no-sync", *base[1:]]
+    assert observed["auto"] == [base[0], "--no-sync", *base[1:]]
     assert observed["rocm"] == [base[0], "--no-sync", *base[1:]]

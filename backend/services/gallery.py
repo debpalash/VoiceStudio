@@ -9,10 +9,10 @@ burning a cold model load per voice afterwards.
 
 Trust
 =====
-``manifest.json`` is signed with the **existing Tauri release key** and verified
-against :data:`UPDATER_PUBKEY` — the same public key the updater already carries
-in ``frontend/src-tauri/tauri.conf.json``, kept in lockstep by
-``tests/test_gallery_previews.py``. Signature verification is the *only* thing
+``manifest.json`` is signed with the minisign key that signed the final Tauri
+release feeds and verified against :data:`UPDATER_PUBKEY`, which this module
+carries verbatim (``tests/test_gallery_previews.py`` checks it decodes as a
+valid minisign key). Signature verification is the *only* thing
 that makes the per-file SHA-256 digests meaningful, so a manifest that fails it
 is discarded outright (including a manifest already on disk: it is re-verified
 on every load, not trusted because it was trusted once). No new key, no new
@@ -71,10 +71,9 @@ logger = logging.getLogger("omnivoice.preview_gallery")
 #: was not written against, and the signature proves nothing about semantics.
 SCHEMA_VERSION = 1
 
-#: Minisign public key of the Tauri release signing key, verbatim from
-#: ``frontend/src-tauri/tauri.conf.json`` (plugins.updater.pubkey). Duplicated
-#: rather than read from the config because the frozen backend does not ship
-#: tauri.conf.json; the ratchet test keeps the two byte-identical.
+#: Minisign public key of the release signing key the final Tauri builds' updater
+#: carried. The Tauri shell and its config are gone, so this constant is now the
+#: only copy; changing it orphans every manifest signed with the old key.
 UPDATER_PUBKEY = (
     "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhFMDQ1QkZCQ0I4RDlCQkYKUl"
     "dTL200M0wrMXNFamdPSGF3VkUzVjBRY1FFOE0yTkxSMVZKNUowL2wyZEw2OG1TWXNLMDlSeTQK"

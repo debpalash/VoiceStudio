@@ -31,7 +31,8 @@ interface NetworkState {
 
 interface PortInfo {
   backend_port: number;
-  ui_port: number;
+  /** Null for the packaged app, whose UI is served from app:// rather than a port. */
+  ui_port: number | null;
   share_port_base: number;
 }
 
@@ -339,9 +340,11 @@ export function SharingSettings() {
           <SettingsRow id="sharing-backend-port" title={t('sharing.backend_port')}>
             <code className="rounded-md bg-muted px-2 py-1 text-xs">{ports.data.backend_port}</code>
           </SettingsRow>
-          <SettingsRow id="sharing-ui-port" title={t('sharing.ui_port')}>
-            <code className="rounded-md bg-muted px-2 py-1 text-xs">{ports.data.ui_port}</code>
-          </SettingsRow>
+          {ports.data.ui_port !== null && (
+            <SettingsRow id="sharing-ui-port" title={t('sharing.ui_port')}>
+              <code className="rounded-md bg-muted px-2 py-1 text-xs">{ports.data.ui_port}</code>
+            </SettingsRow>
+          )}
           <SettingsRow
             id="sharing-share-port"
             title={t('sharing.lan_share_port')}

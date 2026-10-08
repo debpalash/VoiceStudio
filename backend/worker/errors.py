@@ -91,6 +91,7 @@ _TAXONOMY: dict[str, ErrorClass] = {
     "OS_INVALID_ARGUMENT": ErrorClass.TRANSIENT,
     # Needs a human; no worker will do better.
     "HF_AUTH_FAILED": ErrorClass.TERMINAL,
+    "HF_MIRROR_GATED": ErrorClass.TERMINAL,
     "PYANNOTE_LICENSE_REQUIRED": ErrorClass.TERMINAL,
     "UNSUPPORTED_VIDEO_URL": ErrorClass.TERMINAL,
     "VIDEO_DRM_PROTECTED": ErrorClass.TERMINAL,

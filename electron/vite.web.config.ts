@@ -42,7 +42,9 @@ export default defineConfig({
   optimizeDeps: { exclude: ['@scalar/api-reference-react'] },
   server: {
     host: 'localhost',
-    port: Number(process.env.VOICESTUDIO_UI_PORT) || 3901,
+    // Same name the backend reads for its CORS/CSRF allow-list (core/csrf.py);
+    // VOICESTUDIO_UI_PORT remains an accepted alias.
+    port: Number(process.env.OMNIVOICE_UI_PORT || process.env.VOICESTUDIO_UI_PORT) || 3901,
     strictPort: true,
     proxy: {
       '/api/ws': {

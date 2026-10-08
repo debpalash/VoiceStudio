@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useGenerateClone } from '@/hooks/use-generate';
 import { router } from '@/router';
-import { writeDraft } from '@/features/design/design-draft';
+import { readDraft, replaceRecipe, writeDraft } from '@/features/design/design-draft';
 import defaults from '@shared/utils/firstSound.json';
 import {
   instructToVdStates,
@@ -24,17 +24,26 @@ export function FirstSoundHandoff() {
 
   useEffect(() => {
     const run = async () => {
-      if (running.current || !pending.current || designBlocker) return;
+      if (running.current || !pending.current) return;
+      if (designBlocker === 'design') {
+        // Waiting would never end: show the workspace that explains why.
+        pending.current = false;
+        await router.navigate({ to: '/design' });
+        return;
+      }
+      if (designBlocker) return;
       pending.current = false;
       running.current = true;
       const text = t('demo.clone_prompt');
       const seed = pickDesignSeed(false, null);
-      writeDraft({
-        text,
-        attrs: mergeDescribedAttrs(instructToVdStates(defaults.instruct)),
-        seed,
-        profileId: null,
-      });
+      writeDraft(
+        replaceRecipe(readDraft(), {
+          text,
+          attrs: mergeDescribedAttrs(instructToVdStates(defaults.instruct)),
+          seed,
+          profileId: null,
+        }),
+      );
       await router.navigate({ to: '/design' });
       try {
         await generateDesign({

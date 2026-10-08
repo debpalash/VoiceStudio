@@ -1,5 +1,11 @@
 # Electron projects
 
+> **Historical context:** this page was written while the Electron and Tauri apps
+> coexisted. Mentions of Tauri helpers, pages, tests and regression results describe
+> that migration period; the Tauri shell has since been removed and the shared code
+> now lives in `electron/src/shared/`. Existing Tauri installs: see the
+> [migration guide](electron-migration.md).
+
 Open Projects from the sidebar, command search, or Dubbing header. Current dubbing work can be saved with a name or saved as a new copy. Projects use the existing backend `/projects` database and Tauri state format.
 
 Opening a project asks before replacing the current draft. Active dubbing work and unresolved task recovery prevent switching. Deletion requires confirmation, removes only the saved project record, and detaches it from the current draft. It does not delete source media or generated audio.

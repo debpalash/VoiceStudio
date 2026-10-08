@@ -62,6 +62,24 @@ def test_append_event_assigns_monotonic_seq():
     assert (s1, s2, s3) == (1, 2, 3)
 
 
+def test_concurrent_same_job_events_have_unique_monotonic_sequences():
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    jid = _unique_id('concurrent')
+    job_store.create(jid, type='x')
+    ready = Barrier(8)
+
+    def append(worker):
+        ready.wait(timeout=10)
+        return [job_store.append_event(jid, f'{worker}:{i}') for i in range(4)]
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        sequences = [seq for batch in pool.map(append, range(8)) for seq in batch]
+    assert sorted(sequences) == list(range(1, 33))
+    assert [row['seq'] for row in job_store.events_since(jid)] == list(range(1, 33))
+
+
 def test_events_since_filters():
     jid = _unique_id()
     job_store.create(jid, type="x")

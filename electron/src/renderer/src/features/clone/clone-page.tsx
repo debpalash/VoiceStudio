@@ -18,7 +18,6 @@ import {
   ChevronDownIcon,
   PencilIcon,
   SearchIcon,
-  SlidersHorizontalIcon,
 } from 'lucide-react';
 import { isMac } from '@/components/bridge';
 import { cn } from '@/lib/utils';
@@ -29,11 +28,10 @@ import { setCloneSetting, useCloneSetting } from '@/lib/store/clone-settings';
 import { useReference } from '@/lib/store/reference';
 import { EngineNotice } from '@/components/engine-notice';
 import { useGenerateClone } from '@/hooks/use-generate';
-import { ActionBar, ProductionSettings } from './action-bar';
+import { ActionBar } from './action-bar';
 import { OutputPanel } from './output-panel';
 import { ReferencePanel, SaveProfileForm } from './reference-panel';
 import { ScriptPanel } from './script-panel';
-import { QualityControls } from './quality-controls';
 import { useCloneDemo } from '@/hooks/use-clone-demo';
 import { runRendererTask } from '@/lib/global-error-recovery';
 
@@ -47,7 +45,7 @@ export function ClonePage() {
   const { generate, isGenerating } = useGenerateClone();
   const demo = useCloneDemo();
   const { panel, editingProfileId } = useWorkspace();
-  const setPanel = (panel: 'voice' | 'settings' | null) => setWorkspace({ panel });
+  const setPanel = (panel: 'voice' | null) => setWorkspace({ panel });
   const setLibraryTab = (libraryTab: 'voices' | 'takes') => setWorkspace({ libraryTab });
   useEffect(() => {
     if (selectedTake) setWorkspace({ panel: null });
@@ -254,7 +252,6 @@ export function ClonePage() {
                   coachmark={showDemoCoachmark ? t('demo.clone_coachmark') : undefined}
                   onUserEdit={() => setShowDemoCoachmark(false)}
                 />
-                <QualityControls disabled={isGenerating} />
               </>
             )}
           </div>
@@ -262,13 +259,7 @@ export function ClonePage() {
             <div className="z-10 mt-auto shrink-0 bg-background">
               <div className="mx-auto w-full max-w-4xl px-6 pb-4">
                 <div className="glass-panel composer-surface rounded-xl border border-border/60 bg-muted/30 p-2.5 shadow-[0_2px_12px_rgb(0_0_0/4%)]">
-                  <ActionBar
-                    settingsOpen={panel === 'settings'}
-                    onOpenSettings={() => {
-                      openTake(null);
-                      setPanel(panel === 'settings' ? null : 'settings');
-                    }}
-                  />
+                  <ActionBar />
                 </div>
               </div>
               <OutputPanel />
@@ -300,15 +291,12 @@ export function ClonePage() {
         )}
         {!editingProfile && panel && !choosingVoice && !savingUpload && (
           <WorkspacePane
-            collapsible={panel === 'voice'}
-            title={t(panel === 'voice' ? 'cloneFlow.voice_sample' : 'clone.production_overrides')}
-            icon={panel === 'voice' ? AudioLinesIcon : SlidersHorizontalIcon}
+            collapsible
+            title={t('cloneFlow.voice_sample')}
+            icon={AudioLinesIcon}
             onClose={() => setPanel(null)}
           >
-            <div hidden={panel !== 'voice'}>
-              <ReferencePanel transcription={transcription} />
-            </div>
-            {panel === 'settings' && <ProductionSettings />}
+            <ReferencePanel transcription={transcription} />
           </WorkspacePane>
         )}
       </div>

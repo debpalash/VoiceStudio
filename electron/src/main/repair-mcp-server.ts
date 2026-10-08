@@ -13,6 +13,8 @@ interface RepairContext {
 }
 
 const MAX_RESPONSE = 1_000_000;
+// A single JSON-RPC line (tool arguments included) larger than this is refused.
+const MAX_REQUEST_LINE = 8_000_000;
 const configuredContextPath = process.env.VOICESTUDIO_REPAIR_CONTEXT_FILE;
 if (!configuredContextPath) throw new Error('VOICESTUDIO_REPAIR_CONTEXT_FILE is required');
 const contextPath: string = configuredContextPath;
@@ -27,6 +29,30 @@ function result(id: JsonRpcRequest['id'], value: unknown): void {
 
 function error(id: JsonRpcRequest['id'], code: number, message: string): void {
   send({ jsonrpc: '2.0', id, error: { code, message } });
+}
+
+/** Reads at most `limit` bytes, cancels the rest of the stream, and never emits a split UTF-8 character. */
+async function readBounded(response: Response, limit: number): Promise<string> {
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let text = '';
+  let received = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return text + decoder.decode();
+      const room = limit - received;
+      if (value.byteLength >= room) {
+        // Bytes of a character cut by the limit stay buffered in the decoder and are dropped.
+        return text + decoder.decode(value.subarray(0, room), { stream: true });
+      }
+      received += value.byteLength;
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
 }
 
 async function callApi(args: Record<string, unknown>) {
@@ -45,7 +71,7 @@ async function callApi(args: Record<string, unknown>) {
     body: hasBody ? JSON.stringify(args.body) : undefined,
     signal: AbortSignal.timeout(120_000),
   });
-  const text = (await response.text()).slice(0, MAX_RESPONSE);
+  const text = await readBounded(response, MAX_RESPONSE);
   return {
     content: [
       {
@@ -128,13 +154,40 @@ async function handle(request: JsonRpcRequest): Promise<void> {
 }
 
 let pending = '';
+// UTF-8 bytes in `pending`: the cap is in bytes, and a string's .length counts
+// UTF-16 units, so CJK input could otherwise buffer ~3x the cap.
+let pendingBytes = 0;
+let discarding = false;
+function refuseOversized(): void {
+  pending = '';
+  pendingBytes = 0;
+  discarding = true;
+  error(null, -32600, 'Request too large');
+}
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk: string) => {
-  pending += chunk;
-  const lines = pending.split(/\r?\n/);
+  if (!chunk.includes('\n')) {
+    // Mid-line: keep buffering, but never past the request cap.
+    if (discarding) return;
+    pending += chunk;
+    pendingBytes += Buffer.byteLength(chunk, 'utf8');
+    if (pendingBytes > MAX_REQUEST_LINE) refuseOversized();
+    return;
+  }
+  const lines = (discarding ? chunk : pending + chunk).split(/\r?\n/);
   pending = lines.pop() ?? '';
+  pendingBytes = Buffer.byteLength(pending, 'utf8');
+  // The first line of this chunk finishes an oversized request that was already refused.
+  if (discarding) lines.shift();
+  discarding = false;
+  if (pendingBytes > MAX_REQUEST_LINE) refuseOversized();
   for (const line of lines) {
     if (!line.trim()) continue;
+    // A line completed within one chunk never passed the buffering check above.
+    if (Buffer.byteLength(line, 'utf8') > MAX_REQUEST_LINE) {
+      error(null, -32600, 'Request too large');
+      continue;
+    }
     try {
       const request = JSON.parse(line) as JsonRpcRequest;
       void handle(request).catch(() => error(request.id, -32603, 'Internal error'));

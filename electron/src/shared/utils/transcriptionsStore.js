@@ -21,10 +21,26 @@ export function loadTranscriptions() {
   }
 }
 
+/**
+ * A numeric id unique within the stored history. `Date.now()` alone repeats
+ * when several finals land in the same millisecond or the clock steps back,
+ * and deletion is by id, so a repeat would delete unrelated rows.
+ */
+function nextTranscriptionId(entries) {
+  let newest = 0;
+  for (const entry of entries) {
+    if (typeof entry?.id === 'number' && Number.isFinite(entry.id) && entry.id > newest) {
+      newest = entry.id;
+    }
+  }
+  return Math.max(Date.now(), Math.floor(newest) + 1);
+}
+
 /** Append a completed transcript using the existing 200-entry storage contract. */
 export function addTranscription(entry) {
+  const existing = loadTranscriptions();
   const newEntry = {
-    id: Date.now(),
+    id: nextTranscriptionId(existing),
     text: entry.text || '',
     language: entry.language || 'unknown',
     duration_s: entry.duration_s || 0,
@@ -34,7 +50,7 @@ export function addTranscription(entry) {
       ? { refined_text: entry.refined_text }
       : {}),
   };
-  const list = [newEntry, ...loadTranscriptions()].slice(0, 200);
+  const list = [newEntry, ...existing].slice(0, 200);
   localStorage.setItem(TRANSCRIPTIONS_KEY, JSON.stringify(list));
   window.dispatchEvent(new CustomEvent(TRANSCRIPTION_EVENT, { detail: newEntry }));
   return newEntry;
@@ -54,13 +70,16 @@ export function subscribeTranscriptions(listener) {
   };
 }
 
-/** Delete from the latest stored list; failed writes leave observers unchanged. */
+/**
+ * Delete one entry from the latest stored list; failed writes leave observers
+ * unchanged. Only the first match (the row lists select) is removed, so older
+ * histories that already hold repeated ids never lose unrelated transcripts.
+ */
 export function removeTranscription(id) {
   const entries = JSON.parse(localStorage.getItem(TRANSCRIPTIONS_KEY) || '[]');
   if (!Array.isArray(entries)) throw new Error('Invalid transcription history');
-  localStorage.setItem(
-    TRANSCRIPTIONS_KEY,
-    JSON.stringify(entries.filter((entry) => entry.id !== id)),
-  );
+  const index = entries.findIndex((entry) => entry?.id === id);
+  if (index >= 0) entries.splice(index, 1);
+  localStorage.setItem(TRANSCRIPTIONS_KEY, JSON.stringify(entries));
   window.dispatchEvent(new CustomEvent(TRANSCRIPTION_EVENT));
 }

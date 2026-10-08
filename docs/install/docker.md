@@ -5,6 +5,13 @@ The docker image bundles the backend; the UI is served over HTTP and you open
 it in a normal browser. It is built from the same maintained renderer as the
 Electron desktop app; controls that require native desktop access are hidden.
 
+Inference runs inside the container. Nothing is sent off the machine without
+your explicit yes: product analytics are opt-in (PostHog, content-free usage
+metadata only) behind the same first-run consent prompt as the desktop app,
+and declining or skipping it keeps them off. Set
+`-e OMNIVOICE_ANALYTICS_DISABLED=1` to switch analytics off entirely. Model
+weights download from Hugging Face when you install a model.
+
 **Official images:** [`ghcr.io/debpalash/voicestudio`](https://github.com/debpalash/VoiceStudio/pkgs/container/voicestudio)
 and [`palashdeb/omnivoice-studio` on Docker Hub](https://hub.docker.com/r/palashdeb/omnivoice-studio) — same images, same tags.
 The former `ghcr.io/debpalash/omnivoice-studio` path remains a compatible alias.
@@ -32,17 +39,18 @@ On an ARM64 host, pulling without an explicit platform can fail with
 >
 > | Tag | What you get |
 > |-----|--------------|
-> | `:latest` | **Rolling preview** — latest commit on `main`, at or ahead of the last release. This is the preview channel; pin `:stable` for production. |
-> | `:stable` | Most recent versioned release (updated on every `v*` git tag) |
-> | `:0.5.6` | Exact release version |
-> | `:0.5` | Latest patch within the 0.5 minor |
+> | `:latest` | **Rolling preview** — the latest commit on `main`, at or ahead of the last release. Only `main` builds move it; publishing a release never does. Pin `:stable` for production. |
 > | `:main` | Alias of the same rolling `main` build as `:latest` |
-> | `:sha-xxxxxxx` | Specific commit (produced by manual workflow dispatch) |
+> | `:stable` | Most recent stable release — moves when a GitHub Release is published |
+> | `:0.5.6` | Exact release version, published with its GitHub Release |
+> | `:0.5` | Latest released patch within the 0.5 minor |
+> | `:sha-xxxxxxx` | Exact commit — produced by every image build (main, releases, manual runs) |
 > | `:rocm` | **AMD GPU (ROCm) build** of the rolling preview — the ROCm analogue of `:latest` |
 > | `:stable-rocm`, `:0.5.6-rocm`, `:0.5-rocm`, `:sha-xxxxxxx-rocm` | ROCm builds of the corresponding CUDA tags above |
 >
-> Versioning rule: preview builds always come from `main` and never
-> version-sort below `:stable` — upgrades flow naturally.
+> Release tags (`:X.Y.Z`, `:X.Y`, `:stable` and their `-rocm` forms) are
+> published only when the GitHub Release is published. Previews come only from
+> `main` (`:latest`, `:main`, `:rocm`); to follow previews, use `:latest`.
 >
 > **Note on desktop-only controls:** Electron updates, global shortcuts, native
 > file pickers, and runtime management do **not** apply to Docker. To update a
@@ -65,19 +73,18 @@ master key.
 ## Pull and run (CPU)
 
 ```bash
-docker pull ghcr.io/debpalash/voicestudio:latest
+docker pull ghcr.io/debpalash/voicestudio:stable
 
 docker run -d --name omnivoice \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
   -v omnivoice-data:/app/omnivoice_data \
-  -v ~/.cache/huggingface:/root/.cache/huggingface \
-  ghcr.io/debpalash/voicestudio:latest
+  ghcr.io/debpalash/voicestudio:stable
 ```
 
 > **Docker Hub mirror:** the same images are published to
 > `palashdeb/omnivoice-studio` on Docker Hub with identical tags — swap the
-> image for `palashdeb/omnivoice-studio:latest` if you prefer Docker Hub.
+> image for `palashdeb/omnivoice-studio:stable` if you prefer Docker Hub.
 > Tag semantics (`:latest` = rolling main preview, `:stable`/`:X.Y.Z` =
 > releases) are the same on both registries.
 
@@ -91,8 +98,7 @@ docker run -d --name omnivoice --gpus all \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
   -v omnivoice-data:/app/omnivoice_data \
-  -v ~/.cache/huggingface:/root/.cache/huggingface \
-  ghcr.io/debpalash/voicestudio:latest
+  ghcr.io/debpalash/voicestudio:stable
 ```
 
 GPU mode requires the
@@ -112,8 +118,7 @@ docker run -d --name omnivoice \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
   -v omnivoice-data:/app/omnivoice_data \
-  -v ~/.cache/huggingface:/root/.cache/huggingface \
-  ghcr.io/debpalash/voicestudio:rocm
+  ghcr.io/debpalash/voicestudio:stable-rocm
 ```
 
 ### AMD GPU on WSL2
@@ -136,8 +141,7 @@ docker run -d --name omnivoice \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
   -v omnivoice-data:/app/omnivoice_data \
-  -v ~/.cache/huggingface:/root/.cache/huggingface \
-  ghcr.io/debpalash/voicestudio:rocm
+  ghcr.io/debpalash/voicestudio:stable-rocm
 ```
 
 The image currently uses ROCm 7.2.x, so `HSA_ENABLE_DXG_DETECTION=1` is
@@ -180,7 +184,7 @@ The same flags work with **Podman** (`podman run --device /dev/kfd
 ```ini
 # ~/.config/containers/systemd/omnivoice.container
 [Container]
-Image=ghcr.io/debpalash/voicestudio:rocm
+Image=ghcr.io/debpalash/voicestudio:stable-rocm
 AddDevice=/dev/kfd
 AddDevice=/dev/dri
 PublishPort=127.0.0.1:3900:3900
@@ -358,9 +362,16 @@ prebuilt image via `docker run -e` (the older `VITE_OMNIVOICE_API` is inlined at
 ```bash
 docker run -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
   -e OMNIVOICE_PUBLIC_API_BASE=https://api.your-host.example \
+  -e OMNIVOICE_ALLOWED_ORIGINS=https://ui.your-host.example \
   -p 0.0.0.0:3900:3900 \
-  ghcr.io/debpalash/voicestudio:latest
+  ghcr.io/debpalash/voicestudio:stable
 ```
+
+List the UI's origin in `OMNIVOICE_ALLOWED_ORIGINS` so the API accepts its
+requests. Video previews and download links send no `Origin`; the API accepts
+them when their `Referer` is that origin, so keep the browser's default
+referrer policy on the UI host (a proxy that sets `Referrer-Policy: no-referrer`
+breaks them).
 
 > `OMNIVOICE_PUBLIC_API_BASE` must be a plain `http(s)://…` URL; anything else
 > is ignored and the app falls back to same-origin. If you build from source you
@@ -378,20 +389,25 @@ docker run -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
 
 ## Volume mounts
 
-Two paths are worth persisting across container restarts:
+Persist one path across container restarts:
 
-| Mount | Purpose | Why |
-|-------|---------|-----|
-| `omnivoice_data:/app/omnivoice_data` | Project DB, user voices, settings | Survives upgrade; encrypted HF token lives here |
-| `~/.cache/huggingface:/root/.cache/huggingface` | HF model cache | Re-using your host's cache saves ~2.4 GB of re-downloads |
+| Mount | Purpose |
+|-------|---------|
+| `omnivoice-data:/app/omnivoice_data` | Project DB, user voices, settings, encrypted HF token, **and the Hugging Face model cache** — survives upgrades |
+
+The image sets `HF_HOME=/app/omnivoice_data/huggingface`, so downloaded models
+already live in that volume; mounting a host cache at
+`/root/.cache/huggingface` has no effect. To reuse an existing host cache
+instead, bind it to the image's cache path:
+`-v ~/.cache/huggingface:/app/omnivoice_data/huggingface`. The container runs
+as root, so files it adds there are root-owned on the host.
 
 ## Troubleshooting
 
-- **Container reports 0.2.7 but image is tagged 0.3.x:** This was a workflow bug
-  (fixes #249, #251) — the `:latest` tag was not being updated on release tag
-  pushes. Pull the image again after the fix is merged: `docker pull ghcr.io/debpalash/voicestudio:latest`.
-  The running version is now shown in **Settings → About → Version** (read live
-  from the backend), so the web UI no longer displays a dash in Docker.
+- **Container reports an older or newer version than expected:** `:latest`
+  follows `main`, not releases. For a released version, pull `:stable` or the
+  exact `:X.Y.Z` tag and recreate the container. The running version is shown
+  in **Settings → About → Version** (read live from the backend).
 - **Checking which version is running:** `docker exec <container> python3 -c "import importlib.metadata; print(importlib.metadata.version('omnivoice'))"`, or hit the `/health` endpoint — it returns `{"status": "ok", "device": ..., "version": "0.3.x"}`. Use the container name listed by `docker compose ps` (or `omnivoice` for the `docker run` examples).
 - **Watching startup:** the port answers within about a second of container
   start, but heavy initialization (PyTorch, API routes, database migration)
@@ -411,6 +427,15 @@ Two paths are worth persisting across container restarts:
   to stay local) plus authentication. If you front
   the container with your own auth proxy on loopback, set `OMNIVOICE_SERVER_MODE=0`
   to re-enable the strict gate.
+- **"Request refused: VoiceStudio was addressed by an unrecognized host name":**
+  without an API key, the backend answers only to `localhost`, IP addresses and
+  configured names, so another website cannot rebind its domain onto it. Open
+  it by IP address, sign in with the API key, or add the name with
+  `-e OMNIVOICE_ALLOWED_HOSTS=nas.lan` (see
+  [API authentication](../api-auth.md#requests-from-other-websites-and-host-names)).
+- **URL import refused as a private network address:** imports fetch public
+  addresses only. To import from a media server on your network, set
+  `-e OMNIVOICE_ALLOW_PRIVATE_URL_IMPORTS=1`.
 - **Media-preview 404 in LAN mode:** see the [LAN access](#lan-access) section
   above — the `window.location.host` fix shipped in v0.3.
 - **GPU not detected (NVIDIA):** verify `docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu22.04 nvidia-smi` succeeds first.

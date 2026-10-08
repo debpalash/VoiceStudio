@@ -43,6 +43,7 @@ import {
   DESIGN_DRAFT_EVENT,
   designDraftFromTake,
   readDraft,
+  replaceRecipe,
   restoreDesignProfile,
   writeDraft,
 } from '@/features/design/design-draft';
@@ -147,12 +148,13 @@ export function SavedVoices({
     if (profile.kind === 'design') {
       const current = readDraft();
       const restored = restoreDesignProfile(profile, current.seed);
-      writeDraft({
-        ...current,
-        attrs: restored.attrs,
-        seed: restored.seed,
-        profileId: restored.profileId,
-      });
+      writeDraft(
+        replaceRecipe(current, {
+          attrs: restored.attrs,
+          seed: restored.seed,
+          profileId: restored.profileId,
+        }),
+      );
       setCloneSetting('language', restored.language);
       onSelected?.();
       runRendererTask('Reuse take in voice design', () => navigate({ to: '/design' }));

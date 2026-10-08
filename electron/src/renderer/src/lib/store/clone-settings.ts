@@ -51,7 +51,8 @@ export const DEFAULT_CLONE_SETTINGS: CloneSettings = {
   autoPlay: false,
 };
 
-function acceptsValue(key: keyof CloneSettings, value: unknown): boolean {
+/** Whether `value` is a valid stored value for the clone setting `key`. */
+export function acceptsCloneSetting(key: keyof CloneSettings, value: unknown): boolean {
   if (key === 'wavBits') return value === 16 || value === 24 || value === 32;
   if (key === 'effectPreset') return value === 'broadcast' || value === 'raw';
   if (key === 'selectedProfileId') return value === null || typeof value === 'string';
@@ -79,7 +80,7 @@ export function parsePersistedCloneSettings(raw: string | null | undefined): Clo
   const record = parsed as Record<string, unknown>;
   const accepted: Partial<CloneSettings> = {};
   for (const key of Object.keys(DEFAULT_CLONE_SETTINGS) as Array<keyof CloneSettings>) {
-    if (key in record && acceptsValue(key, record[key])) {
+    if (key in record && acceptsCloneSetting(key, record[key])) {
       Object.assign(accepted, { [key]: record[key] });
     }
   }
@@ -130,6 +131,29 @@ export function setCloneSetting<K extends keyof CloneSettings>(
 
 export function patchCloneSettings(partial: Partial<CloneSettings>): void {
   cloneSettingsStore.setState((prev) => ({ ...prev, ...partial }));
+}
+
+/** Restore next-take quality without touching voice controls or the draft. */
+export function resetAudioQuality(): void {
+  const { wavBits, steps, effectPreset } = DEFAULT_CLONE_SETTINGS;
+  patchCloneSettings({ wavBits, steps, effectPreset });
+}
+
+/** Restore voice controls without changing next-take quality or the draft. */
+export function resetVoiceControls(): void {
+  const { cfg, speed, tShift, posTemp, classTemp, layerPenalty, denoise, postprocess, duration } =
+    DEFAULT_CLONE_SETTINGS;
+  patchCloneSettings({
+    cfg,
+    speed,
+    tShift,
+    posTemp,
+    classTemp,
+    layerPenalty,
+    denoise,
+    postprocess,
+    duration,
+  });
 }
 
 /** Reset the production overrides (steps, cfg, …, duration) to their defaults. */

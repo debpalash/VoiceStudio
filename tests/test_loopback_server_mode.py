@@ -27,7 +27,9 @@ def is_local_host(*args, **kwargs):
 
 
 def require_admin(*args, **kwargs):
-    return _dependency("require_admin")(*args, **kwargs)
+    # ``require_admin`` is the async FastAPI dependency; the gate logic is the
+    # sync ``check_admin`` it delegates to.
+    return _dependency("check_admin")(*args, **kwargs)
 
 
 def require_admin_action(*args, **kwargs):

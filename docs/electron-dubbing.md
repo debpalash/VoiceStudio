@@ -1,5 +1,11 @@
 # Electron dubbing workspace
 
+> **Historical context:** this page was written while the Electron and Tauri apps
+> coexisted. Mentions of Tauri helpers, pages, tests and regression results describe
+> that migration period; the Tauri shell has since been removed and the shared code
+> now lives in `electron/src/shared/`. Existing Tauri installs: see the
+> [migration guide](electron-migration.md).
+
 The idle workspace includes an original/dubbed demo comparison with compact
 player controls. Sync playheads aligns positions without starting both videos.
 Sample transcript edits are retained per language while the demo is mounted;
@@ -14,9 +20,11 @@ translate, review the text, then generate. Completed tracks can be previewed and
 exported through the native save dialog.
 
 The import card can clear a pasted URL and its cookie attachment before ingest.
-After loading a source, Remove video returns to the import card, discarding the
-transcript and edit history while retaining production settings. It asks for
-confirmation when transcript edits or segments would be discarded.
+After loading a source, Remove video (Remove audio for audio sources) returns to
+the import card, with its file and URL options, discarding the transcript and edit
+history while retaining production settings. It stays available after an
+interrupted or failed run, and asks for confirmation when transcript edits or
+segments would be discarded.
 
 Segment rows scan as compact source/translation pairs: speaker, voice, fit state,
 selection and timestamp stay visible, while row actions reveal on hover or keyboard
@@ -51,6 +59,14 @@ TTS, fitting, mixing and export. Electron reuses Tauri's speaker binding and
 segment generation helpers. A stream close without a terminal event is a failure,
 not success. Cancellation aborts the HTTP stream and requests backend task/job
 cancellation. Edits, target language, track metadata and task IDs persist locally across reloads.
+A generation publishes its track only once it finishes: cancelling it, or importing or
+re-transcribing subtitles while it runs, keeps the previous track (the latter asks for a new
+generation). Fresh segment speech enters the cache behind segment previews and partial
+regeneration only when its track is published, together with its fingerprint; a new track starts
+without the previous track's QC marks, and a dub that finishes as cancellation arrives reports
+done. Subtitles imported, or a dub published, during transcription replace its result, and
+imported cues keep their matched voice references: each transcription writes its references to
+its own folder.
 Interrupted preparation/generation offers Resume, which reads the existing task
 and replays its stream; generation is never resubmitted just because the UI reloaded.
 Interrupted transcription offers an explicit Retry against the existing prepared
@@ -84,7 +100,14 @@ Malformed, overlapping, or duration-clamped cue counts remain visible in the sid
 Failed imports preserve the current edits. Generated track buttons clear on successful
 replacement to avoid presenting older audio as the new subtitles' output.
 URL import runs only after clicking Ingest; it uses the backend's existing yt-dlp
-pipeline. Explicit cookies.txt selection is available under URL sign-in options; optional caption downloads are available.
+pipeline. URL imports (here and in the voice gallery) accept only `http://` and
+`https://` links and refuse addresses on this computer or the local network,
+including redirects to them. Live streams and upcoming premieres can't be
+imported until the recording is available. Voice-gallery clips download the
+audio track and cut the clip on this computer. To import from a media server on your own network,
+set `OMNIVOICE_ALLOW_PRIVATE_URL_IMPORTS=1` for the backend (for example in
+`~/.config/omnivoice/env`) and restart. Uploads accept common audio and video
+file types only; a playlist or manifest renamed as a video is refused. Explicit cookies.txt selection is available under URL sign-in options; optional caption downloads are available.
 
 Translation quality uses the existing backend Fast, Autofit and Cinematic modes.
 The choice persists in the working draft and saved project (`translateQuality`),
@@ -151,6 +174,8 @@ Missing or malformed tracks fall back to the normal ASR path without another use
 decision. The downloader skips automatic translations. Real caption downloads
 are verified by the isolated public-URL smoke above. Authenticated sites still
 require a user-owned cookies export for native acceptance.
+
+Downloaded WebVTT NOTE comments are excluded as complete blocks. Spoken cue lines beginning with NOTE, NOTEBOOK or WEBVTT remain dialogue; rolling-caption timing remains available for the existing transcript cleanup.
 
 Production overrides expose steps, guidance, speed and global voice direction,
 matching the existing Tauri generation request. Defaults remain 16 / 2 / 1 with
@@ -234,6 +259,35 @@ retrying. Camera-cut segmentation uses nearby timed word boundaries when availab
 and skips cuts inside speech that cannot be assigned safely. This improves phrase
 timing; it does not promise phoneme-level lip sync or correct inaccurate source
 transcripts automatically.
+
+### Mirror source delivery
+
+**More → Mirror source delivery** writes a direction for each line from how the
+original actor spoke it. VoiceStudio measures pitch, pitch movement, loudness,
+syllable rate and voicing on the separated vocals track (the full mix when
+separation did not run) and compares every line against the same speaker's own
+typical delivery. Markedly louder, higher and faster lines become `urgent, quick`;
+near-unvoiced lines become `whispered`; lines close to the speaker's norm stay empty.
+
+| Measured against the speaker's baseline | Direction |
+| :--- | :--- |
+| Louder, faster and higher | `urgent` |
+| Louder, higher or more animated | `energetic` |
+| Quieter, lower and flatter | `calm` |
+| Loud but unhurried | `announcing` |
+| Mostly unvoiced and quiet | `whispered` |
+| Faster or slower syllables | `quick` / `slow` |
+
+Only empty directions are filled; a direction you typed is never replaced, and
+**Undo** reverts the whole pass. The words are the same taxonomy typed directions
+use, so they reach the TTS instruction, translation tone and speech-rate target
+with or without an LLM. Emotion is not inferred from acoustics; add it yourself.
+A speaker needs three measurable lines for their own baseline; otherwise the video's
+pooled baseline is used without pitch, which does not transfer between voices.
+Analysis runs locally in pure NumPy and takes roughly ten seconds per hour of
+dialogue; a line longer than a minute is measured from its first minute. The API is `POST /dub/prosody-mirror/{job_id}` with the editor's current
+segments; it only suggests directions and never changes the job, and refuses requests
+whose segments add up to more than twice the source audio plus one minute (one line).
 
 ### Preserve sound outside dialogue
 

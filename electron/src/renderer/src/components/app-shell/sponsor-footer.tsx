@@ -109,8 +109,11 @@ export function SponsorFooter() {
           </TooltipContent>
         </Tooltip>
         <div className="sponsor-footer-links">
-          {[{ label: t('contact.website'), href: 'https://voicestudio.sh', Icon: GlobeIcon }].map(
-            ({ label, href, Icon }) => (
+          {[
+            { label: t('contact.website'), href: 'https://voicestudio.sh', Icon: GlobeIcon },
+            { label: t('support.join_discord'), href: DISCORD_URL, logo: discordLogo },
+          ].map(
+            ({ label, href, Icon, logo }) => (
               <Tooltip key={href}>
                 <TooltipTrigger
                   render={
@@ -129,7 +132,11 @@ export function SponsorFooter() {
                     />
                   }
                 >
-                  <Icon aria-hidden="true" className="size-4" />
+                  {Icon ? (
+                    <Icon aria-hidden="true" className="size-4" />
+                  ) : (
+                    <img src={logo} alt="" aria-hidden="true" className="size-4" />
+                  )}
                 </TooltipTrigger>
                 <TooltipContent surface="theme" side="top">
                   {label}
@@ -240,12 +247,6 @@ export function SponsorFooter() {
                     href: REPO_URL,
                     logo: githubLogo,
                     brand: 'github',
-                  },
-                  {
-                    label: t('support.join_discord'),
-                    href: DISCORD_URL,
-                    logo: discordLogo,
-                    brand: 'discord',
                   },
                 ].map(({ label, href, logo, brand }) => (
                   <a

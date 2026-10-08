@@ -1,0 +1,33 @@
+# Code owners: GitHub requests review from these owners on matching pull requests.
+# Scope is limited to governance, licensing, release, and dependency surfaces.
+# There is deliberately no catch-all `*` rule. The last matching pattern wins.
+# Settings that cannot live in code: docs/maintainers/repository-settings.md
+
+# Governance and CI
+/.github/CODEOWNERS                    @debpalash
+/.github/workflows/                    @debpalash
+/.github/scripts/                      @debpalash
+
+# Licensing and contributor agreements
+/LICENSE                               @debpalash
+/LICENSE-NOTICE.md                     @debpalash
+/.github/CLA-*.md                      @debpalash
+/.github/CCLA-*.md                     @debpalash
+
+# Release, packaging, and container builds
+/electron/electron-builder.config.mjs  @debpalash
+/electron/build/                       @debpalash
+/electron/scripts/embed-appimage-update.mjs @debpalash
+/scripts/prepare_electron_release.py   @debpalash
+/scripts/check_electron_release_assets.py @debpalash
+/scripts/clear-release-rerun-assets.py @debpalash
+/scripts/verify-macos-signing.sh       @debpalash
+/deploy/                               @debpalash
+/docs/RELEASING.md                     @debpalash
+
+# Version source, its mirrors, and lockfiles
+/package.json                          @debpalash
+/pyproject.toml                        @debpalash
+/backend/core/version.py               @debpalash
+/bun.lock                              @debpalash
+/uv.lock                               @debpalash

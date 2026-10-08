@@ -20,6 +20,7 @@ from typing import Literal, TypedDict
 from core.device_caps import (
     DIRECTML_MARKER,
     KERNEL_RISK_MARKER,
+    UNUSABLE_GPU_MARKER,
     HostCaps,
 )
 
@@ -202,6 +203,17 @@ def resolve_routing(
     # 5. Genuine CPU-only host (or DirectML, which the probe reports as cpu)
     #    and engine supports cpu → benign; must not warn or block.
     if fam == "cpu" and "cpu" in targets:
+        # A GPU the OS can see but this torch build cannot drive (a Radeon on
+        # the NVIDIA-CUDA wheel): an engine that WOULD use a GPU elsewhere is
+        # a genuine fallback, not a CPU-native engine on a GPU-less machine.
+        if targets != ("cpu",):
+            for note in caps.notes:
+                if UNUSABLE_GPU_MARKER in note:
+                    return {
+                        "effective_device": "cpu",
+                        "routing_status": "cpu_fallback",
+                        "routing_reason": note,
+                    }
         reason = None
         for note in caps.notes:
             if DIRECTML_MARKER in note:

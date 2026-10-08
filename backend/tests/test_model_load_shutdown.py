@@ -168,7 +168,7 @@ def test_stringified_plain_pool_shutdown_still_not_matched():
 def _stub_load(monkeypatch, error):
     """Wire _load_model_sync's collaborators so `_load()` raises `error`
     without importing torch or touching the network."""
-    fake_torch = types.SimpleNamespace(float16="f16")
+    fake_torch = types.SimpleNamespace(float16="f16", float32="f32")
 
     class _FakeOV:
         @staticmethod

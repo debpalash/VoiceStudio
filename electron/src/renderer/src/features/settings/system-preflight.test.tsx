@@ -41,3 +41,22 @@ it('shows failure and permits an explicit retry without automatic probes', async
   expect(mock.api).toHaveBeenCalledTimes(1);
   expect(screen.getByRole('button', { name: 'setup.system_check' })).toBeEnabled();
 });
+it('renders the Windows-on-ARM notice from the translation catalog, not backend text', async () => {
+  mock.api.mockResolvedValue({
+    checks: [
+      {
+        id: 'arch',
+        label: 'Windows on ARM',
+        status: 'warn',
+        detail: 'English detail',
+        fix: 'English fix',
+      },
+    ],
+  });
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: 'setup.system_check' }));
+  await screen.findByText('setup.check_arch_label');
+  expect(screen.getByText('setup.check_arch_detail')).toBeTruthy();
+  expect(screen.getByText('setup.check_arch_fix')).toBeTruthy();
+  expect(screen.queryByText('English detail')).toBeNull();
+});

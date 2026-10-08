@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -57,7 +58,7 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, NamedTuple, Optional
+from typing import Callable, Iterable, NamedTuple, Optional
 
 from core.config import DATA_DIR
 from core.contained_subprocess import OwnedPopen, WindowsJobPopen, spawn_owned
@@ -162,6 +163,13 @@ class SidecarSpec:
     # Add PyTorch's CPU index on every host, for an engine that only ever
     # runs torch on the CPU (see core.torch_indexes).
     cpu_torch_index: bool = False
+    # Install torch from PyTorch's ROCm index on a ROCm host (or with
+    # ``OMNIVOICE_TORCH_VARIANT=rocm``). Only for an engine whose own torch
+    # constraints accept the shared ROCm stack in core.torch_indexes — an
+    # engine pinning another torch version must not set this, or resolution
+    # fails loudly at install time. False keeps the engine's existing host
+    # behaviour (see _rocm_pin_args, #2371).
+    uses_rocm_index: bool = False
     # torch/torchaudio pins for an upstream that leaves torch unpinned. Left
     # to the resolver, PyPI's newest torch (CPU-only on Windows) pairs with a
     # CUDA torchaudio from the other index. The host picks the build of the
@@ -245,6 +253,89 @@ def _torch_pin_args(spec: "SidecarSpec") -> list[str]:
     if sys.platform in ("win32", "linux"):
         return [f"{pin}+cpu" for pin in spec.torch_pins] + list(UV_PIP_CPU_ARGS)
     return list(spec.torch_pins)
+
+
+def _rocm_index_url() -> Optional[str]:
+    """The ROCm wheel index when this sidecar should take a ROCm torch, else None.
+
+    Two ways to be on ROCm, mirroring ``scripts/setup.py::_rocm_opt_in``:
+    the host probe reports family ``rocm`` (the main venv's torch exposes HIP),
+    or the user opted in with ``OMNIVOICE_TORCH_VARIANT=rocm`` (covers a swap
+    that has not landed yet). ``OMNIVOICE_TORCH_INDEX`` overrides the index
+    exactly as it does for the main venv. Linux only: ROCm wheels ship for
+    Linux (incl. WSL2) nowhere else, and the main venv's swap degrades to a
+    warning on other platforms — a sidecar install must not hard-fail where
+    the main venv quietly keeps its default torch.
+    """
+    if sys.platform != "linux":
+        return None
+    variant = os.environ.get("OMNIVOICE_TORCH_VARIANT", "").strip().lower()
+    if _host_family() == "rocm" or variant == "rocm":
+        from core.torch_indexes import PYTORCH_ROCM_INDEX_URL
+        return os.environ.get("OMNIVOICE_TORCH_INDEX") or PYTORCH_ROCM_INDEX_URL
+    return None
+
+
+def _rocm_pin_args() -> list[str]:
+    """ROCm torch for a sidecar venv on a ROCm host (#2371).
+
+    ``--no-sources`` is required for an upstream that routes torch through its
+    own ``[tool.uv.sources]`` (IndexTTS pins it to the cu128 index): without it
+    every ``+rocm`` pin is looked up on the cu128 index and fails. The local
+    tag comes from the index name (``…/rocm6.4`` → ``+rocm6.4``) so a custom
+    ``OMNIVOICE_TORCH_INDEX`` keeps resolving; a mirror without a rocm-style
+    name falls back to the bare pin and lets the extra index win by PEP 440
+    ordering (a tagged build sorts above the bare version).
+    """
+    from core.torch_indexes import (
+        PYTORCH_ROCM_INDEX_URL,
+        ROCM_TORCH_PINS,
+        UV_PIP_ROCM_ARGS,
+    )
+
+    index = _rocm_index_url() or ""
+    tail = index.rstrip("/").rsplit("/", 1)[-1]
+    tag = f"+{tail}" if tail.startswith("rocm") else ""
+    # uv must resolve against the SAME index the pins were derived from:
+    # the tag above already comes from OMNIVOICE_TORCH_INDEX, so appending
+    # the hard-coded public index would look a mirror's pins up on someone
+    # else's server (and bypass the mirror entirely).
+    idx_args = [
+        (index or PYTORCH_ROCM_INDEX_URL)
+        if arg == PYTORCH_ROCM_INDEX_URL
+        else arg
+        for arg in UV_PIP_ROCM_ARGS
+    ]
+    return ["--no-sources", *(f"{pin}{tag}" for pin in ROCM_TORCH_PINS), *idx_args]
+
+
+def venv_torch_hip(venv_dir: Path) -> Optional[bool]:
+    """``True``/``False`` when the venv's torch is/isn't a ROCm build, ``None``
+    when that cannot be told (no torch wheel found, unreadable file).
+
+    Reads the wheel's generated ``version.py`` instead of importing torch, so it
+    is safe on every engine-list refresh."""
+    matches = sorted((venv_dir / "lib").glob("python*/site-packages/torch/version.py"))
+    if not matches:
+        return None
+    try:
+        text = matches[0].read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    hip_set = re.search(r"^hip(?:\s*:[^=]*)?\s*=\s*['\"][^'\"]+['\"]", text, re.M)
+    return bool(hip_set) or "+rocm" in text
+
+
+def _venv_torch_is_rocm(venv_dir: Path) -> bool:
+    """True when the venv's installed torch is a ROCm build.
+
+    Reads the wheel's generated ``version.py`` — ``hip`` set, or a ``+rocm``
+    local version — instead of importing torch: this runs inside ``_healthy``
+    on every engine-list refresh, where an import probe would cost the
+    seconds the completion marker exists to avoid (see
+    ``_install_marker_valid``). Missing file = no torch = not ROCm, so a
+    broken deps step is offered the repair too."""
+    return bool(venv_torch_hip(venv_dir))
 
 
 def _moss_host() -> tuple[bool, str]:
@@ -333,6 +424,9 @@ SPECS: dict[str, SidecarSpec] = {
         # Installed before the completion marker existed; its weights
         # marker already proves a finished install.
         requires_install_marker=False,
+        # Upstream routes torch/torchaudio to the cu128 index on Linux and
+        # Windows, which sees no AMD GPU — take the ROCm build on ROCm hosts.
+        uses_rocm_index=True,
     ),
     # Pinned to the upstream commits current on 2026-09-10. Weights are not
     # fetched here: each engine downloads them into the shared HF cache on its
@@ -939,6 +1033,35 @@ def _job_step(job: dict, step_id: str) -> dict:
     return next(s for s in job["steps"] if s["id"] == step_id)
 
 
+_DISK_FULL_REMEDIATION = (
+    "The disk is full. Free up space (or move VoiceStudio's data directory to a "
+    "larger volume), then re-run the install — it resumes from where it stopped."
+)
+
+
+def _redact(exc: BaseException) -> str:
+    """Exception text with home-directory paths and tokens scrubbed, since a
+    step error is persisted in the job record and log."""
+    from core.failure import sanitize
+
+    return sanitize(str(exc))
+
+
+def _is_disk_full(exc: BaseException) -> bool:
+    from core.failure import is_disk_full_error
+
+    return is_disk_full_error(exc)
+
+
+def _output_shows_disk_full(lines: Iterable[str]) -> bool:
+    """uv reports a full volume only as output text with a bare non-zero exit.
+    Pass the failing process's own output, never the shared job log: an earlier
+    step's recovered "No space left" line must not relabel a later failure."""
+    from core.failure import is_disk_full_error
+
+    return is_disk_full_error("\n".join(lines))
+
+
 def _log(job: dict, line: str) -> None:
     line = line.rstrip()
     if line:
@@ -950,7 +1073,7 @@ def _log(job: dict, line: str) -> None:
 def _serialize_job(job: Optional[dict]) -> Optional[dict]:
     if job is None:
         return None
-    out = dict(job)
+    out = {k: v for k, v in job.items() if not k.startswith("_")}
     with _log_lock:
         out["log"] = list(job["log"])
     out["steps"] = [dict(s) for s in job["steps"]]
@@ -1027,6 +1150,15 @@ def _healthy(spec: SidecarSpec) -> bool:
     # predates the marker and keeps its weights check, so no existing install
     # is asked to reinstall.
     if not spec.requires_install_marker:
+        # #2371 recipe change: on a host where the installer WOULD place a
+        # ROCm torch, a managed venv provisioned before it still carries
+        # CUDA wheels that see no AMD GPU — the engine would run on CPU
+        # while routing reports acceleration. Offer the repair exactly
+        # where it applies (the deps step is idempotent: venv and weights
+        # stay, torch is swapped). User-managed clones keep their own
+        # layout; every other host keeps "installed means installed".
+        if spec.uses_rocm_index and _rocm_index_url() is not None:
+            return _venv_torch_is_rocm(checkout / ".venv")
         return True
     return _install_marker_valid(spec, checkout)
 
@@ -1163,8 +1295,10 @@ def _run_install(spec: SidecarSpec, job: dict) -> None:
                 raise
             except Exception as exc:  # noqa: BLE001 — surfaced into the job
                 step["state"] = "error"
+                if _is_disk_full(exc):
+                    raise _StepError(f"{type(exc).__name__}: {_redact(exc)}", _DISK_FULL_REMEDIATION) from exc
                 raise _StepError(
-                    f"{type(exc).__name__}: {exc}",
+                    f"{type(exc).__name__}: {_redact(exc)}",
                     "Re-run the install — it resumes from where it stopped. If it "
                     f"keeps failing, see {spec.docs_path} for the manual steps.",
                 ) from exc
@@ -1288,7 +1422,7 @@ def _source_present(spec: SidecarSpec, checkout: Path) -> bool:
         return True
     try:
         marker = (checkout / _SOURCE_REVISION_MARKER).read_text(encoding="utf-8").strip()
-    except OSError:
+    except (OSError, UnicodeError):
         return False
     return marker == spec.source_revision
 
@@ -1348,7 +1482,7 @@ def _extra_source_present(extra: ExtraSource, dest: Path) -> bool:
         return False
     try:
         marker = (dest / _SOURCE_REVISION_MARKER).read_text(encoding="utf-8").strip()
-    except OSError:
+    except (OSError, UnicodeError):
         return False
     return marker == extra.revision
 
@@ -1495,7 +1629,9 @@ def _step_install_deps(spec: SidecarSpec, job: dict) -> None:
         from engines.dots_tts.install import compatible_constraints
         constraint = compatible_constraints(checkout / "constraints" / "recommended.txt")
         target[target.index("-c") + 1] = constraint.resolve().as_uri()
-    if spec.torch_pins:
+    if _rocm_index_url() and spec.uses_rocm_index:
+        target += _rocm_pin_args()
+    elif spec.torch_pins:
         target += _torch_pin_args(spec)
     elif spec.cpu_torch_index:
         from core.torch_indexes import UV_PIP_CPU_ARGS
@@ -1505,6 +1641,7 @@ def _step_install_deps(spec: SidecarSpec, job: dict) -> None:
         target += list(UV_PIP_CU128_ARGS)
     # Always `--python <this engine's venv>`: the install can only ever land in
     # the venv this engine owns, never the app's interpreter.
+    job.pop("_last_run_output", None)
     rc = _run_logged(
         job,
         [uv, "pip", "install", "--python", str(py), *target],
@@ -1512,6 +1649,9 @@ def _step_install_deps(spec: SidecarSpec, job: dict) -> None:
         env=uv_subprocess_env(Path(DATA_DIR) / "engines"),
     )
     if rc != 0:
+        if _output_shows_disk_full(job.get("_last_run_output") or ()):
+            raise _StepError(f"uv pip install failed (exit {rc}): no space left on device.",
+                             _DISK_FULL_REMEDIATION)
         hint = (
             "Usually a network hiccup — re-run the install to resume. Behind a "
             "proxy, set HTTPS_PROXY in Settings → Environment first."
@@ -1587,7 +1727,7 @@ def _weights_present(spec: SidecarSpec) -> bool:
     wdir = managed_checkout(spec) / spec.weights_subdir
     try:
         marker = (wdir / _WEIGHTS_COMPLETE_MARKER).read_text(encoding="utf-8").splitlines()
-    except OSError:
+    except (OSError, UnicodeError):
         return False
     expected = [spec.weights_repo_id or "", spec.weights_revision or ""]
     actual = marker[:2] if len(marker) >= 2 else marker + [""]
@@ -1631,6 +1771,7 @@ def _step_fetch_weights(spec: SidecarSpec, job: dict) -> None:
 
     from huggingface_hub import snapshot_download
     from services import endpoint_race
+    from services.hf_auth import token_for_endpoint
     from services.token_resolver import resolve as resolve_token
     from utils import hf_progress
 
@@ -1663,16 +1804,17 @@ def _step_fetch_weights(spec: SidecarSpec, job: dict) -> None:
         # discovery, so gated engine weights 401 for a user whose token lives
         # in VoiceStudio's settings rather than HF's own cache (#2163).
         _resolved = resolve_token()
+        endpoint = endpoint_race.effective_endpoint()
         kwargs: dict = {
             "repo_id": spec.weights_repo_id,
             "local_dir": str(wdir),
-            "token": _resolved.token if _resolved else None,
+            # Hugging Face hosts only — a mirror never receives the token.
+            "token": token_for_endpoint(endpoint, _resolved.token if _resolved else None),
         }
         if spec.weights_revision:
             kwargs["revision"] = spec.weights_revision
         if spec.weights_allow_patterns:
             kwargs["allow_patterns"] = list(spec.weights_allow_patterns)
-        endpoint = endpoint_race.effective_endpoint()
         if endpoint:
             kwargs["endpoint"] = endpoint
         tqdm_cls = hf_progress.tracked_tqdm_class()
@@ -1681,8 +1823,10 @@ def _step_fetch_weights(spec: SidecarSpec, job: dict) -> None:
         try:
             snapshot_download(**kwargs)  # nosec B615 — deliberate default-branch policy, see above
         except Exception as exc:
+            if _is_disk_full(exc):
+                raise _StepError(f"Model weight download failed: {_redact(exc)}", _DISK_FULL_REMEDIATION) from exc
             raise _StepError(
-                f"Model weight download failed: {exc}",
+                f"Model weight download failed: {_redact(exc)}",
                 "Re-run the install — the download resumes where it stopped. "
                 "Check Settings → Network (HF endpoint / proxy) if it keeps failing.",
             ) from exc
@@ -1727,6 +1871,9 @@ def _run_logged(job: dict, argv: list[str], *, timeout: float,
     Returns the exit code; -1 on timeout (process tree killed) or spawn
     failure. argv-list only — never a shell string — so paths with spaces
     are safe on every platform. ``env=None`` inherits the parent environment.
+    This process's own lines are also kept in ``job["_last_run_output"]`` (reset
+    per call, hidden from the status payload) so a caller can diagnose its own
+    failure without reading earlier steps' log output.
 
     The stdout drain runs on its own daemon thread and the main flow blocks
     on ``proc.wait(timeout=…)``. That bounds the step even when a grandchild
@@ -1738,6 +1885,8 @@ def _run_logged(job: dict, argv: list[str], *, timeout: float,
     # starts. POSIX links it to backend death through a control pipe; Windows
     # retains a kill-on-close Job handle in this backend process.
     popen_kwargs = _install_containment_kwargs()
+    tail: deque[str] = deque(maxlen=60)
+    job["_last_run_output"] = tail
     try:
         proc = spawn_owned(
             argv,
@@ -1758,6 +1907,7 @@ def _run_logged(job: dict, argv: list[str], *, timeout: float,
             assert proc.stdout is not None
             for line in proc.stdout:
                 _log(job, line)
+                tail.append(line)
         except (OSError, ValueError):
             pass  # pipe closed by the timeout kill — nothing left to read
 

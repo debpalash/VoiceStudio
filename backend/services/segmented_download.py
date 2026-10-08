@@ -21,12 +21,13 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 from typing import Callable, Optional
 
 import httpx
 
-# Hosts the HF token may be sent to. Anything else (CDN) gets no auth header.
-_HF_AUTH_HOSTS = ("huggingface.co", "hf.co")
+from services.hf_auth import host_gets_auth as _host_gets_auth
+
 _DEFAULT_CONNECTIONS = 8
 _MIN_SEGMENT_BYTES = 4 * 1024 * 1024   # don't split below this — overhead > gain
 # Cap on a single segment. Progress is committed to the manifest only when a
@@ -42,11 +43,6 @@ _READ_CHUNK = 1024 * 1024
 
 class DownloadCancelled(Exception):
     """Raised when ``cancel_check()`` returns True mid-download."""
-
-
-def _host_gets_auth(url: str) -> bool:
-    host = (httpx.URL(url).host or "").lower()
-    return host in _HF_AUTH_HOSTS or host.endswith(".huggingface.co")
 
 
 def _auth_headers(url: str, token: Optional[str]) -> dict:
@@ -100,11 +96,23 @@ def _manifest_path(part: str) -> str:
 
 def _load_done(part: str, size: int) -> set[tuple[int, int]]:
     try:
+        if os.path.getsize(part) != size:
+            return set()  # missing/truncated bytes cannot be certified by a sidecar
         with open(_manifest_path(part)) as f:
             data = json.load(f)
-        if data.get("size") != size:
+        if not isinstance(data, dict) or data.get("size") != size:
             return set()
-        return {tuple(s) for s in data.get("done", [])}
+        ranges = data.get("done", [])
+        if not isinstance(ranges, list):
+            return set()
+        done = set()
+        for segment in ranges:
+            if (not isinstance(segment, list) or len(segment) != 2
+                    or any(type(value) is not int for value in segment)
+                    or not 0 <= segment[0] <= segment[1] < size):
+                return set()
+            done.add(tuple(segment))
+        return done
     except (OSError, ValueError):
         return set()
 
@@ -170,6 +178,12 @@ async def segmented_download(
                 headers = {**_auth_headers(final_url, token), "Range": f"bytes={start}-{end}"}
                 async with client.stream("GET", final_url, headers=headers) as r:
                     r.raise_for_status()
+                    match = re.fullmatch(r"bytes\s+([0-9]+)-([0-9]+)/([0-9]+|\*)",
+                                         r.headers.get("content-range", "").strip(), re.IGNORECASE)
+                    if (r.status_code != 206 or match is None
+                            or (int(match[1]), int(match[2])) != (start, end)
+                            or (match[3] != "*" and int(match[3]) != size)):
+                        raise ValueError(f"invalid response range for bytes {start}-{end}/{size}")
                     got = 0
                     with open(part, "r+b") as fh:
                         fh.seek(start)
@@ -194,7 +208,7 @@ async def segmented_download(
                     await _fetch(seg)
 
             if segments:
-                await asyncio.gather(*(_fetch_limited(s) for s in segments))
+                await _gather_or_cancel([_fetch_limited(s) for s in segments])
 
         # ── verify ──────────────────────────────────────────────────────
         actual = os.path.getsize(part)
@@ -219,6 +233,25 @@ async def segmented_download(
             await client.aclose()
 
 
+async def _gather_or_cancel(coros) -> None:
+    """Run ``coros`` concurrently; on the first failure (or outer cancellation)
+    cancel the siblings and *await* them, so no writer is still touching the
+    ``.part`` file once this returns or raises. ``asyncio.gather`` alone
+    re-raises immediately and leaves the siblings running.
+    """
+    tasks = [asyncio.ensure_future(c) for c in coros]
+    try:
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+    finally:
+        for t in tasks:
+            if not t.done():
+                t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+    for t in tasks:
+        if not t.cancelled() and t.exception() is not None:
+            raise t.exception()
+
+
 async def _stream_single(client, url, token, part, on_bytes, cancelled) -> None:
     async with client.stream("GET", url, headers=_auth_headers(url, token)) as r:
         r.raise_for_status()
@@ -231,11 +264,26 @@ async def _stream_single(client, url, token, part, on_bytes, cancelled) -> None:
                     on_bytes(len(chunk))
 
 
+def _invalidate_done(part: str) -> None:
+    try:
+        os.remove(_manifest_path(part))
+    except FileNotFoundError:
+        pass  # already absent: the goal of invalidation is met
+
+
 def _preallocate(part: str, size: int) -> None:
-    # Create/extend the file to `size` so segment writes can seek to offsets.
-    with open(part, "a+b") as fh:
+    # A checkpoint only certifies the original bytes, not a resized replacement.
+    try:
+        fh = open(part, "r+b")
+    except FileNotFoundError:
+        # Invalidate before creating a missing partial, too: an unlink failure
+        # must leave both the original partial state and destination untouched.
+        _invalidate_done(part)
+        fh = open(part, "a+b")
+    with fh:
         fh.seek(0, os.SEEK_END)
-        if fh.tell() < size:
+        if fh.tell() != size:
+            _invalidate_done(part)
             fh.truncate(size)
 
 

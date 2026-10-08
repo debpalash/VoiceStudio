@@ -47,6 +47,7 @@ import { deleteHistoryItem } from '@/lib/api/history';
 import { Input } from '@/components/ui/input';
 import { apiJson, apiPath, describeError } from '@/lib/api/client';
 import { runRendererTask } from '@/lib/global-error-recovery';
+import { isImeComposing } from '@/lib/ime';
 import { useProfiles } from '@/hooks/use-profiles';
 import { useHistory } from '@/hooks/use-history';
 import { patchCloneSettings } from '@/lib/store/clone-settings';
@@ -876,6 +877,7 @@ export function ProjectsPage() {
                               onChange={(event) => setRename(event.target.value)}
                               disabled={locked}
                               onKeyDown={(event) => {
+                                if (isImeComposing(event)) return;
                                 if (event.key === 'Enter' && rename.trim()) void apply();
                                 if (event.key === 'Escape') setConfirm(null);
                               }}

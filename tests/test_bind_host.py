@@ -4,7 +4,7 @@ Bind-host resolution tests — guards against regressing the loopback default.
 `backend/main.py` resolves its uvicorn bind host from `OMNIVOICE_BIND_HOST`
 with a default of `127.0.0.1`. Binding to `0.0.0.0` by default would expose
 every (currently unauthenticated) router on the user's LAN — see the security
-note in `deploy/docker-compose.yml`.
+note above the bind in `backend/main.py`.
 
 These tests don't boot uvicorn. They re-evaluate the resolution expression
 used in `main.py`'s `__main__` block, both as a string-level guard against
@@ -39,7 +39,7 @@ def test_explicit_loopback_env_var_is_honored():
 
 
 def test_explicit_all_interfaces_env_var_is_honored():
-    # Used by deploy/docker-compose.yml — must still work as an opt-in override.
+    # An explicit opt-in for `python backend/main.py` (and `bun run dev:api`).
     assert _resolve_bind_host({"OMNIVOICE_BIND_HOST": "0.0.0.0"}) == "0.0.0.0"
 
 

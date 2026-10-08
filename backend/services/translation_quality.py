@@ -81,7 +81,8 @@ def _chat(client, model: str, timeout: float, *, system: str, user: str) -> str:
             {"role": "user", "content": user},
         ],
     )
-    return (res.choices[0].message.content or "").strip()
+    from services.llm_backend import _strip_reasoning
+    return _strip_reasoning(res.choices[0].message.content or "", prompt=f"{system}\n{user}")
 
 
 # ── Stage 1: auto-glossary (theme + terminology) ────────────────────────────

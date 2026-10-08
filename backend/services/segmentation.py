@@ -203,39 +203,65 @@ def _best_boundary(text: str, ideal_pos: int) -> int:
     return length
 
 
-def _words_from_whisper(result: dict) -> List[Word]:
-    """Extract word-level timing if available, otherwise fall back to chunk-level."""
+def _spread_words(text: str, s: float, e: float) -> List[Word]:
+    """Split ``text`` into tokens spread evenly over ``[s, e]`` (no per-word
+    timing known). Empty text or a non-positive span yields nothing."""
+    text = _clean(text)
+    if not text or e <= s:
+        return []
+    tokens = text.split(" ")
+    dur = (e - s) / max(len(tokens), 1)
+    return [Word(start=s + k * dur, end=s + (k + 1) * dur, text=tok)
+            for k, tok in enumerate(tokens)]
+
+
+def _timed_words(seg: dict) -> List[Word]:
     words: List[Word] = []
+    for w in seg.get("words", []) or []:
+        wt = (w.get("word") or w.get("text") or "").strip()
+        if not wt:
+            continue
+        ws = float(w.get("start", seg.get("start", 0.0)))
+        we = float(w.get("end", seg.get("end", ws + 0.1)))
+        if we <= ws:
+            we = ws + 0.05
+        words.append(Word(start=ws, end=we, text=wt))
+    return words
+
+
+def _words_from_whisper(result: dict) -> List[Word]:
+    """Extract word-level timing if available, otherwise fall back to chunk-level.
+
+    When only SOME segments carry word timings (forced alignment can skip a
+    segment it cannot align), the others keep their speech: their text is
+    spread over their own segment span. Dropping them silently removed that
+    speech from the dub (#2572).
+    """
     segs = result.get("segments") if isinstance(result, dict) else None
     if segs:
-        for seg in segs:
-            for w in seg.get("words", []) or []:
-                wt = (w.get("word") or w.get("text") or "").strip()
-                if not wt:
+        per_segment = [_timed_words(seg) for seg in segs]
+        if any(per_segment):
+            words: List[Word] = []
+            for seg, timed in zip(segs, per_segment):
+                if timed:
+                    words.extend(timed)
                     continue
-                ws = float(w.get("start", seg.get("start", 0.0)))
-                we = float(w.get("end", seg.get("end", ws + 0.1)))
-                if we <= ws:
-                    we = ws + 0.05
-                words.append(Word(start=ws, end=we, text=wt))
-        if words:
+                try:
+                    start = float(seg.get("start"))
+                    end = float(seg.get("end"))
+                except (TypeError, ValueError):
+                    continue
+                words.extend(_spread_words(seg.get("text", ""), start, end))
             return words
 
     # Fallback: chunk-level timings (no per-word granularity)
+    words = []
     for chunk in result.get("chunks", []) or []:
         ts = chunk.get("timestamp") or (0.0, 0.0)
         s = float(ts[0] or 0.0)
         e = float(ts[1] or s + 0.1)
-        text = _clean(chunk.get("text", ""))
-        if not text or e <= s:
-            continue
         # Distribute time evenly across the tokens inside the chunk
-        tokens = text.split(" ")
-        dur = (e - s) / max(len(tokens), 1)
-        t = s
-        for tok in tokens:
-            words.append(Word(start=t, end=t + dur, text=tok))
-            t += dur
+        words.extend(_spread_words(chunk.get("text", ""), s, e))
     return words
 
 
@@ -377,10 +403,9 @@ def _merge_short(segments: List[Segment]) -> List[Segment]:
                     target = prev if prev_gap <= next_gap else nxt
                 else:
                     target = prev or nxt
-            elif prev:
-                target = prev
-            elif nxt:
-                target = nxt
+            # A genuine short turn with no same-speaker neighbour must stay
+            # attributed to its speaker; only ultra-short stray tokens above
+            # have permission to cross a known speaker boundary.
 
             if target is None:
                 i += 1

@@ -34,8 +34,8 @@ def test_filter_file_works_with_legacy_and_modern_ffmpeg(fu, monkeypatch, tmp_pa
     assert rc == 0
     assert len(calls) == (2 if modern else 1)
     if modern:
-        expected = list(command)
-        expected[3] = '-/filter_complex'
+        expected = ['-/filter_complex' if arg == '-filter_complex_script' else arg
+                    for arg in fu.local_inputs_only(command)]
         assert calls[1] == expected
     assert script.exists()  # caller-owned input, never removed
     assert command[3] == '-filter_complex_script'  # caller's argv unchanged

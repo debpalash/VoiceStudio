@@ -1,0 +1,3 @@
+# Hash-pinned legal texts (tests/test_cla_workflow.py): identical bytes on every OS.
+.github/CLA-*.md text eol=lf
+.github/CCLA-*.md text eol=lf

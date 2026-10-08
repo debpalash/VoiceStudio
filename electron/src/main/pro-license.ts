@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { readFile, rename, mkdir, writeFile, unlink } from 'node:fs/promises';
+import { readFile, mkdir, writeFile, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { app, safeStorage } from 'electron';
 import { matchesProLicense, type LicenseResponse } from './pro-license-validation';
+import { renameWithRetry } from './rename-retry';
 
 export type ProLicenseStatus = { active: boolean; configured: boolean; error?: 'offline' | 'invalid' | 'storage' };
 type StoredLicense = { encryptedKey?: string; fileKey?: string; instanceId: string };
@@ -55,7 +56,7 @@ async function saveStored(key: string, instanceId: string): Promise<void> {
   if (!safeStorage.isEncryptionAvailable() || safeStorage.getSelectedStorageBackend?.() === 'basic_text') throw new Error('storage');
   const stored: StoredLicense = { encryptedKey: safeStorage.encryptString(key).toString('base64'), instanceId };
   await writeFile(temporary, JSON.stringify(stored), { mode: 0o600 });
-  await rename(temporary, file);
+  await renameWithRetry(temporary, file);
 }
 
 export async function proLicenseStatus(): Promise<ProLicenseStatus> {

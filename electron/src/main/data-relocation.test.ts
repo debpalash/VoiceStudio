@@ -44,6 +44,15 @@ it('copies and verifies app data before exposing source cleanup', async () => {
   expect(existsSync(source)).toBe(false);
 });
 
+it('moves into an existing empty destination, the folder-picker case (#2521)', async () => {
+  const { source, target } = await fixture();
+  await mkdir(target, { recursive: true });
+  const prepared = await prepareDataRelocation(source, target);
+  expect(await readFile(join(target, 'voices', 'sample.wav'), 'utf8')).toBe('voice');
+  expect(existsSync(join(source, 'omnivoice.db'))).toBe(true);
+  expect(existsSync(prepared.target)).toBe(true);
+});
+
 it('rolls back only the verified destination and keeps the source', async () => {
   const { source, target } = await fixture();
   const prepared = await prepareDataRelocation(source, target);

@@ -39,6 +39,9 @@ def test_403_escalates_player_clients_in_order(tmp_path, monkeypatch):
         def __exit__(self, *a):
             return False
 
+        def add_post_processor(self, *_args, **_kwargs):
+            pass  # the media-URL guard; not exercised by this fake
+
         def extract_info(self, url, download=True):
             raise Exception("ERROR: unable to download video data: HTTP Error 403: Forbidden")
 
@@ -69,6 +72,9 @@ def test_success_after_403_on_alternate_client(tmp_path, monkeypatch):
 
         def __exit__(self, *a):
             return False
+
+        def add_post_processor(self, *_args, **_kwargs):
+            pass  # the media-URL guard; not exercised by this fake
 
         def extract_info(self, url, download=True):
             calls["n"] += 1

@@ -16,13 +16,13 @@ function openProfile(event: MouseEvent<HTMLAnchorElement>) {
   runRendererTask('Open contributor profile', () => bridge.files.openExternal(href));
 }
 
+/** Home contributor credits: every qualifying avatar, then the All link. */
 export function HomeContributors() {
   const { t } = useTranslation();
-  // Keep three complete tapered rows; All opens the remaining contributors.
-  const topCount = Math.max(2, Math.floor((homeContributors.length + 4) / 3));
-  const middleCount = topCount - 1;
-  const capacity = topCount + middleCount + Math.max(0, topCount - 2);
-  const items = [...homeContributors.slice(0, capacity - 1), { login: 'all', avatar: '' }];
+  // Fill three tapered rows from the right edge, ending with All.
+  const items = [...homeContributors, { login: 'all', avatar: '' }];
+  const topCount = Math.ceil((items.length + 3) / 3);
+  const middleCount = Math.ceil((items.length - topCount + 1) / 2);
   const starts = [0, topCount, topCount + middleCount];
   return (
     <ul

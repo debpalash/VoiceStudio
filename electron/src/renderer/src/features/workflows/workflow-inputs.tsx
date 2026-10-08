@@ -13,7 +13,8 @@ import VoiceSelector from '@shared/components/VoiceSelector';
 // @ts-expect-error shared JSX component has no declaration file
 import SearchableSelect from '@shared/components/SearchableSelect';
 import { deleteWorkflowArtifacts, saveWorkflowMedia } from './workflow-run-store';
-import type { WorkflowStep } from './workflow-model';
+import { CONDITION_MATCHES } from './workflow-model';
+import type { ConditionMatch, WorkflowStep } from './workflow-model';
 
 export function WorkflowInputs({ step, onChange }: { step: WorkflowStep; onChange(change: Partial<WorkflowStep>): void }) {
   const { t } = useTranslation();
@@ -87,6 +88,16 @@ export function WorkflowInputs({ step, onChange }: { step: WorkflowStep; onChang
     <label htmlFor="workflow-peak">{t('workflowRun.peak')}</label>
     <Input id="workflow-peak" type="number" min={-24} max={-1} step={1} value={step.targetDb ?? -2}
       onChange={(event) => { const targetDb = Number(event.target.value); if (Number.isFinite(targetDb)) onChange({ targetDb: Math.max(-24, Math.min(-1, targetDb)) }); }} />
+  </>;
+  if (step.kind === 'condition') return <>
+    <label htmlFor="workflow-condition">{t('workflows.condition_phrase')}</label>
+    <Input id="workflow-condition" value={step.text} maxLength={200}
+      onChange={(event) => onChange({ text: event.target.value })} />
+    <label>{t('workflows.condition_match')}</label>
+    <SearchableSelect value={step.match || 'contains'} onChange={(match: ConditionMatch) => onChange({ match })}
+      options={CONDITION_MATCHES.map((value) => ({ value, label: t(`workflows.match_${value}`) }))}
+      ariaLabel={t('workflows.condition_match')} menuPortal menuClassName="workflow-shared-select" buttonClassName="workflow-select-trigger" />
+    <p className="text-xs text-muted-foreground">{t('workflows.condition_hint')}</p>
   </>;
   if (step.kind !== 'start') return null;
   return <>

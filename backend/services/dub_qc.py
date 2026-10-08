@@ -30,6 +30,7 @@ from dataclasses import dataclass
 # dot U+30FB, the ideographic full stop U+3002, the Thai fongman U+0E4F) is
 # stripped like any other, and their digits stay word tokens.
 _NO_SPACE_SCRIPT = (
+    "\u3005-\u3007\u303b"  # ideographic iteration and closing marks, number zero
     "\u3041-\u3096\u3099-\u309f"  # hiragana, its sound and iteration marks
     "\u30a1-\u30fa\u30fc-\u30ff"  # katakana, prolonged sound, iteration marks
     "\u3400-\u4dbf"  # CJK ideographs, extension A

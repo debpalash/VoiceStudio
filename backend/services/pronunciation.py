@@ -31,11 +31,24 @@ import re
 from pathlib import Path
 from typing import Optional
 
+from services.dub_qc import _NO_SPACE_SCRIPT
+
 # A "word" character for boundary purposes. We treat the standard regex word
 # class (``\w`` = ``[A-Za-z0-9_]`` plus Unicode letters under ``re.UNICODE``,
 # the default for ``str`` patterns). A key only gets ``\b`` boundaries on a side
 # that actually abuts a word char, so a key like ``Dr.`` (ends in a non-word
 # char) still matches when followed by a space.
+#
+# Scripts written without spaces between words (kanji, kana, Thai, Lao, Myanmar,
+# Khmer; the same set dub_qc scores per character) are the exception: a key for
+# a Japanese or Chinese place name sits between more word characters in any
+# sentence that uses it, where ``\b`` never matches, so an edge in one of these
+# scripts gets no boundary.
+_NO_SPACE_CHAR = re.compile(f"[{_NO_SPACE_SCRIPT}]")
+
+
+def _needs_boundary(ch: str) -> bool:
+    return (ch.isalnum() or ch == "_") and not _NO_SPACE_CHAR.match(ch)
 
 
 def normalize_lexicon(lexicon: Optional[dict]) -> dict[str, str]:
@@ -60,17 +73,18 @@ def normalize_lexicon(lexicon: Optional[dict]) -> dict[str, str]:
 
 def _boundary_prefix(key: str) -> str:
     """``\\b`` only if the key starts with a word char (else the boundary would
-    never match — e.g. a key opening with punctuation)."""
-    return r"\b" if key[:1].isalnum() or key[:1] == "_" else ""
+    never match — e.g. a key opening with punctuation), and not one of a script
+    written without spaces."""
+    return r"\b" if _needs_boundary(key[:1]) else ""
 
 
 def _boundary_suffix(key: str) -> str:
-    """``\\b`` only if the key ends with a word char."""
-    return r"\b" if key[-1:].isalnum() or key[-1:] == "_" else ""
+    """``\\b`` only if the key ends with a word char of a spaced script."""
+    return r"\b" if _needs_boundary(key[-1:]) else ""
 
 
 def _compile(lexicon: dict[str, str]) -> tuple[Optional[re.Pattern], dict[str, str]]:
-    """Build the single alternation regex + a casefold→respelling lookup.
+    """Build the single alternation regex + matched-group→respelling lookup.
 
     Keys are sorted longest-first so an overlapping longer key (``Dr. Smith``)
     is tried before a shorter one (``Dr``). Each alternative carries its own
@@ -78,13 +92,17 @@ def _compile(lexicon: dict[str, str]) -> tuple[Optional[re.Pattern], dict[str, s
     punctuation-edged key (``Dr.``) matchable while still protecting a
     letter-edged key (``cat``) from partial hits inside ``category``.
     """
-    keys = sorted(lexicon.keys(), key=len, reverse=True)
+    # Equal-length case variants retain the existing last-entry precedence.
+    keys = sorted(reversed(lexicon), key=len, reverse=True)
     if not keys:
         return None, {}
-    # casefold (not lower) for robust Unicode case-insensitive lookup.
-    lookup = {k.casefold(): lexicon[k] for k in keys}
-    alts = [f"{_boundary_prefix(k)}{re.escape(k)}{_boundary_suffix(k)}" for k in keys]
-    # No capturing groups, no nested quantifiers — pure literal alternation.
+    # IGNORECASE and casefold have different Unicode equivalence classes:
+    # e.g. 'i' matches dotless 'ı', while Straße/STRASSE do not regex-match.
+    # Bind each literal to its replacement rather than folding matched text.
+    lookup = {f"term_{i}": lexicon[k] for i, k in enumerate(keys)}
+    alts = [f"(?P<term_{i}>{_boundary_prefix(k)}{re.escape(k)}{_boundary_suffix(k)})"
+            for i, k in enumerate(keys)]
+    # No nested quantifiers — pure literal alternation.
     pattern = re.compile("(?:" + "|".join(alts) + ")", re.IGNORECASE)
     return pattern, lookup
 
@@ -108,7 +126,7 @@ def apply_lexicon(text: str, lexicon: Optional[dict]) -> str:
         return text
 
     def _repl(m: re.Match) -> str:
-        return lookup.get(m.group(0).casefold(), m.group(0))
+        return lookup[m.lastgroup]
 
     return pattern.sub(_repl, text)
 
@@ -152,35 +170,97 @@ def save_lexicon(path, lexicon: Optional[dict]) -> dict[str, str]:
 # The JSON ``load_lexicon``/``save_lexicon`` above stay the per-project audiobook
 # override. THIS layer is the user-editable, DB-persisted, per-language default
 # dictionary surfaced in Settings → Pronunciation. Rows scoped ``language="*"``
-# apply to every request; a 2-letter language row applies only when the request
-# language's prefix matches (case-insensitive), so a German entry never fires on
-# an English render. Both layers are pure text substitution — they ride the same
+# apply to every request; a language row applies only when the request language
+# resolves to the same language code, so a German entry never fires on an
+# English render. Both layers are pure text substitution — they ride the same
 # ReDoS-safe ``apply_lexicon`` matcher, so every engine honors them.
 
 _ALL_LANG = "*"
 
+# Picker spellings the bundled map does not list (same aliases as
+# ``TTSBackend._normalize_language_code``).
+_LANG_NAME_ALIASES = {"mandarin": "zh", "arabic": "ar", "tagalog": "tl"}
+# A bare ISO 639 id with optional region/script subtags: en, kbt, es-MX, zh_Hans.
+_LANG_TAG_RE = re.compile(r"^([a-z]{2,3})(?:[-_][a-z0-9]{1,8})*$")
 
-def _lang_prefix(language: Optional[str]) -> Optional[str]:
-    """Normalize a request language to a lowercase 2-letter prefix.
 
-    ``"Auto"``/``None``/``""`` → ``None`` (means "no language pin": only global
-    ``*`` rows apply, language-tagged rows are skipped, mirroring how the engines
-    treat an unset language). A value like ``"en-US"`` / ``"English"`` →
-    ``"en"`` (first two letters); matching against entries is on this prefix.
+def _bundled_language_map() -> tuple[dict[str, str], frozenset[str]]:
+    """(lowercase picker name → id, every known id) from the bundled map the
+    language picker itself is built from. Pure data — no model import."""
+    try:
+        from omnivoice.utils.lang_map import LANG_NAME_TO_ID
+    except Exception:  # noqa: BLE001 — a missing map degrades to literal codes
+        return {}, frozenset()
+    return LANG_NAME_TO_ID, frozenset(LANG_NAME_TO_ID.values()) | frozenset(
+        _LANG_NAME_ALIASES.values()
+    )
+
+
+def language_scope_key(language: Optional[str]) -> Optional[str]:
+    """Resolve a request language or entry scope to one comparable code.
+
+    * ``None`` / ``""`` / ``"Auto"`` → ``None`` (no language pin).
+    * ``"*"`` → ``"*"`` (global scope).
+    * A known id (``"es"``, ``"kbt"``) → itself; a picker name (``"Spanish"``)
+      → its id (``"es"``); a regional tag (``"es-MX"``) → its base id.
+    * Anything else → the lowercased literal, so an unrecognized scope only
+      ever matches itself instead of a language that shares its first letters.
+
+    Truncating to two letters used to conflate names and codes: ``"Spanish"``
+    became ``"sp"``, ``"Estonian"`` became ``"es"`` (Spanish) and ``"kbt"``
+    became ``"kb"`` (#2542).
     """
-    if not language:
+    if language is None:
         return None
-    s = str(language).strip().lower()
+    s = " ".join(str(language).split()).lower()
     if not s or s == "auto":
         return None
-    return s[:2]
+    if s == _ALL_LANG:
+        return _ALL_LANG
+    names, ids = _bundled_language_map()
+    if s in ids:
+        return s
+    code = _LANG_NAME_ALIASES.get(s) or names.get(s)
+    if code:
+        return code
+    m = _LANG_TAG_RE.match(s)
+    if m:
+        return m.group(1)
+    return s
+
+
+def _scope_matcher(language: Optional[str]):
+    """Return ``matches(scope) -> bool`` for language-tagged rows of a request.
+
+    ``None`` when the request carries no language pin (only global rows apply).
+    A stored two-letter scope that is not a real language id is a prefix the
+    old truncating normalizer saved from a typed name (``"sp"`` for Spanish);
+    it keeps matching requests that begin with those letters, as it did when
+    it was saved. A legacy prefix that IS a real id (``"es"`` saved from
+    "Estonian") is indistinguishable from the code and keeps the code meaning.
+    """
+    req = language_scope_key(language)
+    if req is None or req == _ALL_LANG:
+        return None
+    raw_prefix = " ".join(str(language).split()).lower()[:2]
+    _names, ids = _bundled_language_map()
+
+    def matches(scope: str) -> bool:
+        key = language_scope_key(scope)
+        if key == req:
+            return True
+        return bool(
+            key and len(key) == 2 and ids and key not in ids and key == raw_prefix
+        )
+
+    return matches
 
 
 def entries_for_language(entries, language: Optional[str]) -> dict[str, str]:
     """Collapse DB rows into a ``{term: replacement}`` map for ``apply_lexicon``.
 
     Filters to ``enabled`` rows whose scope is global (``*``) OR whose language
-    prefix matches the request language. Only the **respelling** path produces a
+    resolves to the request language (see ``language_scope_key``). Only the **respelling** path produces a
     plain substitution here (Phase 1); IPA/CMU rows that carry no respelling are
     skipped at this layer (they're handled — or honestly degraded — by the
     engine-markup path, never silently mangling text). A language-specific row
@@ -190,7 +270,7 @@ def entries_for_language(entries, language: Optional[str]) -> dict[str, str]:
     ``entries`` is any iterable of mappings/rows with ``term``, ``replacement``,
     ``type``, ``language``, ``enabled`` keys (a ``sqlite3.Row`` works directly).
     """
-    req_prefix = _lang_prefix(language)
+    scope_matches = _scope_matcher(language)
     # Two passes so language rows win over global rows on the same term: collect
     # global first, then overlay matching-language rows.
     glob: dict[str, str] = {}
@@ -215,7 +295,7 @@ def entries_for_language(entries, language: Optional[str]) -> dict[str, str]:
         if scope == _ALL_LANG:
             glob[term] = str(replacement)
         else:
-            if req_prefix is not None and scope[:2].lower() == req_prefix:
+            if scope_matches is not None and scope_matches(scope):
                 lang[term] = str(replacement)
     merged = dict(glob)
     merged.update(lang)  # language rows override global on the same term
@@ -241,7 +321,7 @@ def inert_entries_for_language(entries, language: str | None) -> list[dict]:
     caller can now say WHY nothing happened instead of implying nothing
     matched.
     """
-    req_prefix = _lang_prefix(language)
+    scope_matches = _scope_matcher(language)
     out: list[dict] = []
     for e in entries or []:
         try:
@@ -256,7 +336,7 @@ def inert_entries_for_language(entries, language: str | None) -> list[dict]:
         if etype == "respelling":
             continue
         scope = (e["language"] or _ALL_LANG).strip() or _ALL_LANG
-        if scope != _ALL_LANG and (req_prefix is None or scope[:2].lower() != req_prefix):
+        if scope != _ALL_LANG and (scope_matches is None or not scope_matches(scope)):
             continue
         out.append({"term": term, "type": etype})
     return out
@@ -335,8 +415,16 @@ def apply_pronunciation(
 
 # ── DB load/save ──────────────────────────────────────────────────────────────
 
+# The one entry order every reader shares: later entries win a duplicate or
+# equal-length case-variant term, so the list, dry run, synthesis and backup must
+# agree on it. A bulk import stamps every row with one ``created_at`` and a
+# random ``id``, so ``id`` is no tiebreaker; ``rowid`` grows with each insert
+# and keeps the order entries were added (#2552).
+ENTRY_ORDER_SQL = "ORDER BY created_at ASC, rowid ASC"
+
+
 def load_entries_from_db() -> list[dict]:
-    """Return every pronunciation_entries row as a list of plain dicts.
+    """Return every pronunciation_entries row as plain dicts, in entry order.
 
     Import-light: the DB module is imported lazily so the pure-parser path (and
     the audiobook JSON path) never pull in sqlite/config.
@@ -346,7 +434,7 @@ def load_entries_from_db() -> list[dict]:
     with db_conn() as conn:
         rows = conn.execute(
             "SELECT id, term, replacement, type, language, enabled, created_at "
-            "FROM pronunciation_entries ORDER BY created_at ASC, id ASC"
+            f"FROM pronunciation_entries {ENTRY_ORDER_SQL}"  # nosec B608 - constant
         ).fetchall()
     return [dict(r) for r in rows]
 

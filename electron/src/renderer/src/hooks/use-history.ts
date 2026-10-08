@@ -18,6 +18,7 @@ import type { HistoryItem } from '@/lib/api/types';
 import { tr } from '@/lib/i18n-text';
 import { queryKeys } from '@/lib/query';
 import { useBackendStatus } from './use-backend-status';
+import { isBackendReachable } from '@shared/utils/backendStage';
 
 const HISTORY_STALE_MS = 10_000;
 
@@ -27,7 +28,7 @@ export function useHistory(): UseQueryResult<HistoryItem[]> {
     queryKey: queryKeys.history,
     queryFn: listHistory,
     staleTime: HISTORY_STALE_MS,
-    enabled: status.stage === 'ready',
+    enabled: isBackendReachable(status.stage),
   });
 }
 

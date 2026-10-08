@@ -33,16 +33,15 @@ def test_capabilities_are_stable_and_side_effect_free(monkeypatch):
     assert body["authentication"]["websocket_ticket_query_parameter"] == "ws_ticket"
 
 
-def test_desktop_backend_advertises_rust_control_sidecar(monkeypatch):
+def test_stale_control_port_env_no_longer_advertises_a_dead_endpoint(monkeypatch):
+    """The Tauri shell that served native control (and set this) is retired."""
     from api.routers.speech_platform import speech_capabilities
 
-    monkeypatch.setenv("VOICESTUDIO_SPEECH_CONTROL_PORT", "4902")
+    monkeypatch.setenv("VOICESTUDIO_SPEECH_CONTROL_PORT", "3902")
     body = speech_capabilities().model_dump(by_alias=True)
 
-    assert body["features"]["native_dictation_control"] is True
-    assert body["endpoints"]["native_dictation_control"]["path"] == (
-        "http://127.0.0.1:4902/v1/capabilities"
-    )
+    assert body["features"]["native_dictation_control"] is False
+    assert "native_dictation_control" not in body["endpoints"]
 
 
 @pytest.mark.parametrize(

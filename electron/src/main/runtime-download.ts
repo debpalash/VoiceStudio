@@ -43,14 +43,74 @@ export function setupProxyForUrl(raw: string, env: NodeJS.ProcessEnv): string {
   return candidate;
 }
 
-/** Download executable installer text only over HTTPS, including redirects. */
+const INSTALLER_ATTEMPTS = 3;
+const INSTALLER_ATTEMPT_TIMEOUT_MS = 60_000;
+/** Marks failures a fresh attempt can plausibly cure (resets, DNS blips, 5xx, 429). */
+class TransientDownloadError extends Error {}
+
+function pause(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(signal.reason);
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+/** Download executable installer text only over HTTPS, including redirects.
+ * First-run setup must survive a flaky network, so transient failures get a
+ * short bounded retry; HTTP 4xx, size/redirect violations and cancellation do not. */
 export async function downloadRuntimeInstaller(
   url: string,
   env: NodeJS.ProcessEnv,
   signal: AbortSignal,
+  backoffMs = 1_000,
 ): Promise<string> {
   const agent = new ProxyAgent({ getProxyForUrl: (target) => setupProxyForUrl(target, env) });
-  const bounded = AbortSignal.any([signal, AbortSignal.timeout(60_000)]);
+  try {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await downloadOnce(url, agent, signal);
+      } catch (error) {
+        signal.throwIfAborted();
+        if (attempt >= INSTALLER_ATTEMPTS || !isTransient(error)) throw error;
+        await pause(backoffMs * attempt, signal);
+      }
+    }
+  } finally {
+    agent.destroy();
+  }
+}
+
+function isTransient(error: unknown): boolean {
+  if (error instanceof TransientDownloadError) return true;
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  // The per-attempt timeout surfaces as an AbortError/TimeoutError; user cancel was
+  // already rethrown by the caller.
+  const name = (error as Error | undefined)?.name;
+  return (
+    name === 'TimeoutError' ||
+    name === 'AbortError' ||
+    [
+      'ECONNRESET',
+      'ECONNREFUSED',
+      'ETIMEDOUT',
+      'EAI_AGAIN',
+      'ENOTFOUND',
+      'EPIPE',
+      'ECONNABORTED',
+    ].includes(code ?? '')
+  );
+}
+
+async function downloadOnce(url: string, agent: ProxyAgent, signal: AbortSignal): Promise<string> {
+  const bounded = AbortSignal.any([signal, AbortSignal.timeout(INSTALLER_ATTEMPT_TIMEOUT_MS)]);
   async function download(target: string, redirects = 0): Promise<string> {
     if (new URL(target).protocol !== 'https:') throw new Error('uv installer requires HTTPS');
     bounded.throwIfAborted();
@@ -72,7 +132,12 @@ export async function downloadRuntimeInstaller(
         }
         if (status !== 200) {
           response.resume();
-          reject(new Error(`uv installer download failed (${status})`));
+          const message = `uv installer download failed (${status})`;
+          reject(
+            status >= 500 || status === 429
+              ? new TransientDownloadError(message)
+              : new Error(message),
+          );
           return;
         }
         const chunks: Buffer[] = [];
@@ -89,9 +154,5 @@ export async function downloadRuntimeInstaller(
       request.on('error', reject);
     });
   }
-  try {
-    return await download(url);
-  } finally {
-    agent.destroy();
-  }
+  return download(url);
 }

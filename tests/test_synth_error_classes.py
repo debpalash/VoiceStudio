@@ -189,3 +189,29 @@ def test_the_marker_is_shared_not_duplicated():
 
     assert classify(AUDIO_WRITE_FAILED_MARKER) == "AUDIO_IO_FAILED"
     assert classify(AUDIO_WRITE_FAILED_MARKER.upper()) == "AUDIO_IO_FAILED"
+
+
+def test_gated_model_file_is_named_as_an_access_problem(reraise):
+    raw = (
+        "GatedRepoError: 401 Client Error. Cannot access gated repo for url "
+        "https://huggingface.co/sesame/csm-1b/resolve/main/prompts/conversational_a.wav."
+    )
+    with pytest.raises(RuntimeError) as excinfo:
+        reraise(RuntimeError(raw))
+    msg = str(excinfo.value)
+    assert "doesn't recognize" not in msg
+    assert "pyannote" not in msg
+    assert "HF_TOKEN" in msg and "access terms" in msg
+
+
+def test_pockettts_missing_cloning_weights_names_the_gate(reraise):
+    raw = (
+        "RuntimeError: pockettts sidecar synthesize error: ValueError: We could not "
+        "download the weights for the model with voice cloning, but you're trying to "
+        "use voice cloning. Without voice cloning, you can use our catalog of voices."
+    )
+    with pytest.raises(RuntimeError) as excinfo:
+        reraise(RuntimeError(raw))
+    msg = str(excinfo.value)
+    assert "doesn't recognize" not in msg
+    assert "huggingface.co/kyutai/pocket-tts" in msg

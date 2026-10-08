@@ -24,8 +24,8 @@ logger = logging.getLogger("omnivoice.network_share")
 def backend_port() -> int:
     """The port the main backend listens on.
 
-    Single source of truth is the ``OMNIVOICE_PORT`` env var (read by the Rust
-    sidecar at startup and passed through to uvicorn's ``--port``). LAN-share
+    Single source of truth is the ``OMNIVOICE_PORT`` env var (the Electron
+    shell sets it and passes the same value to uvicorn's ``--port``). LAN-share
     and Tailscale derive their target ports from this so a user who runs the
     backend on a custom port gets a consistent share/proxy port. Falls back to
     the default on a missing or malformed value — never throws.

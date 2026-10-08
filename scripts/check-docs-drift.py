@@ -17,7 +17,8 @@ Exit 0 = no drift. Exit 1 = drift; findings go to stderr and, with
 ``--output``, to a Markdown report consumed by the rolling-issue automation
 in ``.github/workflows/docs-drift.yml``.
 
-Companion to ``scripts/validate-install-docs.py`` (the PR-gating half).
+Runs daily and on dispatch, not per PR; nothing else checks this inventory,
+so run it locally when a change adds or renames a feature or engine.
 Rolling-issue pattern adapted from Patter (MIT) — see
 docs/competitive-analysis.md, Patter deep dive 4.
 """

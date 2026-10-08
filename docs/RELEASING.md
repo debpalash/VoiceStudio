@@ -15,10 +15,14 @@ Electron publication uses these GitHub Actions secrets:
   Windows Authenticode signing. The macOS certificate cannot sign Windows apps.
 - The repository `GITHUB_TOKEN` for draft creation and asset uploads.
 - `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` for the Docker Hub mirror.
+- `POSTHOG_PROJECT_TOKEN` (secret) and `POSTHOG_HOST` (repository variable),
+  baked into packaged builds as the analytics token and host. They override the
+  in-repo publishable token; analytics still sends nothing without a yes at the
+  first-run consent prompt.
 
 The archived `TAURI_SIGNING_PRIVATE_KEY*` secrets are retained only so the final
-Tauri release can be audited. Do not use `.github/workflows/release.yml` for a new
-version. `TAURI_SUNSET_TAG` must continue to identify v0.5.3 so Electron releases
+Tauri release can be audited. The Tauri release workflow has been removed; every
+new version ships through `electron-release.yml`. `TAURI_SUNSET_TAG` must continue to identify v0.5.3 so Electron releases
 can copy the final signed `latest.json` and `latest-user.json` feeds unchanged.
 Those feeds must always point to immutable v0.5.3 Tauri assets; old Tauri clients
 must never receive an Electron installer.
@@ -42,7 +46,9 @@ version only after validation.
 
 1. Merge only after required CI and review are green.
 2. Run the artifact-only Electron rehearsal, `.github/workflows/electron-build.yml`,
-   and inspect all four outputs: Linux x64, Windows x64, macOS arm64, macOS x64.
+   and inspect all five outputs: Linux x64, Windows x64, Windows ARM64, macOS
+   arm64, macOS x64. Windows ARM64 is experimental: a failed leg does not block
+   the other four.
    It first checks the setup screen, then installs and starts the managed Python
    runtime in a separate temporary profile on Linux, Windows and Apple Silicon.
    Intel Macs retain packaging/setup checks under their existing
@@ -56,7 +62,14 @@ version only after validation.
    include migration steps and real screenshots when relevant, and verify human
    contributors and bug reporters from the tag comparison and included PRs.
 5. Run `uv run pytest tests/test_app_version.py tests/test_changelog_style.py -q`.
-6. Confirm the version matches the intended tag.
+6. Audit contributor agreements: `git fetch origin cla-signatures`, then
+   `GH_TOKEN=... python scripts/cla_audit.py`. Follow up with each unsigned
+   contributor it lists, asking them to sign `.github/CLA-1.0.md` (or their
+   employer the Corporate CLA). This step applies once the CLA workflow and
+   `scripts/cla_audit.py` are on `main`. The audit aborts if Git cannot read
+   any file’s history; restore access to missing objects and rerun before
+   treating its contributor list as complete.
+7. Confirm the version matches the intended tag.
 
 ## Build a release draft
 
@@ -65,8 +78,9 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-The tag starts `.github/workflows/electron-release.yml`. It builds all four
-platform targets, validates packaged startup and updater metadata, creates or
+The tag starts `.github/workflows/electron-release.yml`. It builds the same five
+targets (a failed experimental Windows ARM64 leg does not block the others, and
+its feed is checked only when it was published), validates packaged startup and updater metadata, creates or
 updates a draft, and uploads:
 
 - Electron installers and platform-specific `electron-stable-*.yml` feeds
@@ -74,7 +88,8 @@ updates a draft, and uploads:
 - authored CHANGELOG release notes
 - immutable copies of the final Tauri updater feeds for old clients
 
-Tag pushes never publish. Inspect the draft and downloaded installers first.
+Tag pushes never publish, and they do not build Docker images. Inspect the
+draft and downloaded installers first.
 
 If the workflow itself needs a fix after tagging, keep the tag immutable. Merge
 and validate the workflow fix on `main`, then dispatch `electron-release.yml`
@@ -88,20 +103,24 @@ and notarization are required by default. The owner may explicitly set
 `allow_unsigned=true`; the workflow then adds the installer-trust disclosure to
 the release notes. Never select that exception without the owner's decision.
 
+Publishing the GitHub Release triggers the Docker workflow for that tag. Docker
+release tags are never built from a tag push, and `:latest` only ever tracks
+`main`; a release does not move it.
+
 After publication, verify each maintained channel:
 
 | Channel | Workflow | Verification |
 |---|---|---|
-| GitHub Release | `electron-release.yml` | Four platform targets, updater feeds, checksums, CHANGELOG notes, retained v0.5.3 Tauri feeds |
-| GHCR CUDA | `docker.yml` | `:X.Y.Z`, `:X.Y`, `:stable` manifests |
-| GHCR ROCm | `docker.yml` | `:X.Y.Z-rocm`, `:X.Y-rocm`, `:stable-rocm` manifests |
-| Docker Hub | `docker.yml` | Matching CUDA/ROCm tags |
+| GitHub Release | `electron-release.yml` | Linux x64, Windows x64 (+ ARM64 when its leg passed), macOS arm64 and x64 installers, updater feeds, checksums, CHANGELOG notes, retained v0.5.3 Tauri feeds |
+| GHCR CUDA | `docker.yml` (release published) | `:X.Y.Z`, `:X.Y`, `:stable` manifests |
+| GHCR ROCm | `docker.yml` (release published) | `:X.Y.Z-rocm`, `:X.Y-rocm`, `:stable-rocm` manifests |
+| Docker Hub | `docker.yml` (release published) | Matching CUDA/ROCm tags |
 | Docker Hub overview | `docker.yml` | Read the `Update Docker Hub description` step log; the step may continue after a 403 |
-| Rolling containers | `docker.yml` on `main` | `:latest`, `:main`, and `:rocm` timestamps move |
+| Rolling containers | `docker.yml` on `main` pushes only | `:latest`, `:main`, and `:rocm` timestamps move; a release never moves them |
 
-A missing channel is a release bug. There are no RC tags; previews source from
-`main`, never a side branch. The Electron artifact workflow is the desktop
-rehearsal channel; no Tauri or desktop-preview build is maintained.
+A missing channel is a release bug. There are no RC tags and no preview update
+channel; previews are builds from `main` (the `electron-build.yml` artifacts or
+Docker `:latest`), never a side branch. No Tauri build is maintained.
 
 ## Package requirements
 
@@ -112,9 +131,8 @@ the downloaded image on a clean host because build-runner libraries can hide
 relocation errors.
 
 Linux release AppImages include `gh-releases-zsync` update information and a
-versioned `.AppImage.zsync` asset for AppImageUpdate/AppImageLauncher. Stable
-images follow the latest stable GitHub release; previews follow the `preview`
-release instead of downgrading to stable. The build uses `readelf` and
+versioned `.AppImage.zsync` asset for AppImageUpdate/AppImageLauncher. Release
+images follow the latest stable GitHub release. The build uses `readelf` and
 `zsyncmake` (Ubuntu package `zsync`) to embed this information before
 regenerating electron-updater's blockmap and checksums; the existing in-app
 updater still uses its separate channel manifest. Verify both update paths

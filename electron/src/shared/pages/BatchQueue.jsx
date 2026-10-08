@@ -1,3 +1,4 @@
+import { splitRoundedMinutes } from '../utils/timeFormat';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -425,9 +426,8 @@ function JobCard({ job, onCancel, onDelete, t }) {
 }
 
 function formatDuration(secs) {
-  if (secs < 60) return `${secs.toFixed(1)}s`;
-  const m = Math.floor(secs / 60);
-  const s = Math.round(secs % 60);
+  if (secs < 59.95) return `${secs.toFixed(1)}s`;
+  const { minutes: m, seconds: s } = splitRoundedMinutes(secs);
   if (m < 60) return `${m}m ${s}s`;
   const h = Math.floor(m / 60);
   return `${h}h ${m % 60}m`;

@@ -112,7 +112,7 @@ const extraSettings = [
     label: 'updates.tab',
     Icon: RefreshCwIcon,
     Component: UpdateSettings,
-    fields: ['updates.tab', 'updates.check_now', 'about.update_channel'],
+    fields: ['updates.tab', 'updates.check_now'],
   },
   {
     to: '/settings/support',

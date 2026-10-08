@@ -4,9 +4,9 @@ import time
 import shutil
 import subprocess
 import platform
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
-from api.dependencies import require_native_access, require_loopback
+from api.dependencies import require_native_access, require_loopback, require_consumer
 from core.db import db_conn
 from core.config import DATA_DIR, OUTPUTS_DIR
 from core import event_bus
@@ -65,7 +65,7 @@ def export_file(req: ExportRequest):
         # Video exports: overlay VoiceStudio logo if visible watermark is enabled
         if src.lower().endswith(".mp4"):
             from services.watermark import is_visible_video_enabled, get_ffmpeg_overlay_args
-            from services.ffmpeg_utils import find_ffmpeg
+            from services.ffmpeg_utils import find_ffmpeg, local_inputs_only
             logo_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "docs", "logo.png")
             logo_path = os.path.realpath(logo_path)
             if is_visible_video_enabled() and os.path.exists(logo_path):
@@ -80,9 +80,11 @@ def export_file(req: ExportRequest):
                 if overlay_args and ffmpeg:
                     try:
                         subprocess.run(
-                            [ffmpeg, "-y", "-i", src, "-i", logo_path]
-                            + overlay_args
-                            + ["-codec:a", "copy", dest],
+                            local_inputs_only(
+                                [ffmpeg, "-y", "-i", src, "-i", logo_path]
+                                + overlay_args
+                                + ["-codec:a", "copy", dest]
+                            ),
                             check=True,
                             capture_output=True,
                             timeout=120,
@@ -109,7 +111,7 @@ def export_file(req: ExportRequest):
     return {"success": True, "id": export_id}
 
 
-@router.post("/export/record")
+@router.post("/export/record", dependencies=[Depends(require_consumer)])
 def record_export(req: ExportRecordRequest):
     export_id = str(uuid.uuid4())[:8]
     with db_conn() as conn:
@@ -130,11 +132,18 @@ def delete_export_history(export_id: str):
     return {"deleted": export_id}
 
 
-@router.get("/export/history")
-def get_export_history():
+@router.get("/export/history", dependencies=[Depends(require_consumer)])
+def get_export_history(request: Request):
     with db_conn() as conn:
         rows = conn.execute("SELECT * FROM export_history ORDER BY created_at DESC LIMIT 50").fetchall()
-    return [dict(r) for r in rows]
+    from core.auth import PrincipalKind, principal_for
+
+    records = [dict(r) for r in rows]
+    if principal_for(request).kind == PrincipalKind.ANONYMOUS:
+        # Bare-server browser use may list exports, but host paths are private.
+        for record in records:
+            record["destination_path"] = ""
+    return records
 
 
 @router.post("/export/reveal", dependencies=[Depends(require_native_access)])

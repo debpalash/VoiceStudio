@@ -7,6 +7,7 @@ import { RepairAgentDock } from './repair-agent-dock';
 import { isMac } from '../bridge';
 import { cn } from '@/lib/utils';
 import { useBackendStatus } from '@/hooks/use-backend-status';
+import { isBackendReachable } from '@shared/utils/backendStage';
 import { SystemNotifications } from './system-notifications';
 
 export function AppShell() {
@@ -66,7 +67,7 @@ export function AppShell() {
           data-slot="macos-system-notifications"
           className="app-no-drag fixed top-3.5 right-3.5 z-50"
         >
-          <SystemNotifications enabled={backend.stage === 'ready'} titlebar />
+          <SystemNotifications enabled={isBackendReachable(backend.stage)} titlebar />
         </div>
       )}
     </div>

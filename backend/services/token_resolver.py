@@ -6,8 +6,9 @@ Resolution priority (highest → lowest):
   2. env    — `HF_TOKEN` or the legacy `HUGGING_FACE_HUB_TOKEN` env var
   3. hf-cli — the selected local Hub token file (`HF_TOKEN_PATH`)
 
-For each candidate, the resolver calls `huggingface_hub.whoami(token=...)`
-to verify the token is live; any HTTP error (401, 403, network) skips to
+For each candidate, the resolver calls whoami on huggingface.co itself
+(`hf_auth.canonical_whoami`, never a configured mirror) to verify the token
+is live; any HTTP error (401, 403, network) skips to
 the next source. Results are cached per (source, token-sha256) for 300
 seconds so repeat reads from the UI/dub_core don't hammer the HF API.
 
@@ -128,9 +129,9 @@ def _validate(source: Source, token: str) -> Optional[str]:
         if now - ts < _CACHE_TTL_SECONDS:
             return username
 
-    import huggingface_hub
+    from services.hf_auth import canonical_whoami
     try:
-        info = huggingface_hub.whoami(token=token)
+        info = canonical_whoami(token)
         name = (info or {}).get("name") if isinstance(info, dict) else None
         with _CACHE_LOCK:
             _VALIDATION_CACHE[key] = (now, name)
@@ -223,37 +224,56 @@ def state(*, validate: bool = False) -> dict:
     return {"sources": rows, "active": active}
 
 
+def persist_hub_token(token: str) -> None:
+    """Validate ``token`` on huggingface.co and make it the local Hub login.
+
+    Writes the same files as ``huggingface_hub.login()`` (``HF_TOKEN_PATH``
+    plus the named entry in ``stored_tokens``) without its whoami call, which
+    goes to ``HF_ENDPOINT`` and would hand the token to a configured mirror.
+    Never writes a git credential. Raises when the token is invalid.
+    """
+    from services.hf_auth import canonical_whoami
+
+    if token.startswith("api_org"):
+        raise ValueError("Use a personal account token, not an organization token")
+    info = canonical_whoami(token)
+    access = ((info or {}).get("auth") or {}).get("accessToken") or {}
+    name = access.get("displayName") or f"oauth-{(info or {}).get('name') or 'user'}"
+    try:
+        from huggingface_hub import _login
+        save, activate = _login._save_token, _login._set_active_token
+    except (ImportError, AttributeError):
+        # Library internals moved: the token file alone is what every Hub
+        # client reads.
+        from huggingface_hub import constants
+        path = Path(constants.HF_TOKEN_PATH)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(token, encoding="utf-8")
+        try:
+            path.chmod(0o600)
+        except OSError:
+            # Filesystems without POSIX modes (e.g. some Windows volumes) skip this.
+            pass
+        return
+    save(token=token, token_name=name)
+    activate(token_name=name, add_to_git_credential=False)
+
+
 def save_app_token(token: str) -> None:
-    """Persist token to the encrypted settings store AND populate the HF
-    canonical file via `huggingface_hub.login()`. Per Pitfall #2:
-    `add_to_git_credential=False` is non-negotiable — the alternative
-    silently writes the token to the user's global git credential helper,
-    which is leaks-galore for a desktop app."""
+    """Persist token to the encrypted settings store AND the local Hub token
+    files via `persist_hub_token()`. Per Pitfall #2 no git credential is ever
+    written — that would leak the token into the user's global git config."""
     if not token:
         clear_app_token()
         return
     from services import settings_store
     settings_store.set_hf_token(token)
     try:
-        import huggingface_hub
-        huggingface_hub.login(
-            token=token,
-            add_to_git_credential=False,
-            new_session=False,
-        )
-    except TypeError:
-        # Older huggingface_hub may not have new_session kwarg — retry
-        # without it. The add_to_git_credential=False kwarg is the
-        # invariant that matters; new_session is just a perf tweak.
-        try:
-            import huggingface_hub
-            huggingface_hub.login(token=token, add_to_git_credential=False)
-        except Exception:
-            logger.exception("huggingface_hub.login failed (non-fatal)")
-    except Exception:
+        persist_hub_token(token)
+    except Exception as exc:
         # Hub login failure must not strand the user — the token is still
         # in the encrypted store and the resolver will pick it up.
-        logger.exception("huggingface_hub.login failed (non-fatal)")
+        logger.warning("Could not save the Hugging Face token file (%s, non-fatal)", type(exc).__name__)
     invalidate_cache()
 
 

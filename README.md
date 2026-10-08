@@ -11,7 +11,8 @@
     <a href="#get-started">Get started</a> ·
     <a href="#documentation">Docs</a> ·
     <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
-    <a href="README_CN.md">简体中文</a>
+    <a href="README_CN.md">简体中文</a> ·
+    <a href="README_JA.md">日本語</a>
   </p>
   <p>
     <a href="https://github.com/debpalash/VoiceStudio/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/debpalash/VoiceStudio/ci.yml?branch=main" alt="CI" /></a>
@@ -71,15 +72,24 @@ curl -fsSL https://voicestudio.sh/install | sh -s -- --main
 curl -fsSL https://voicestudio.sh/install | sh -s -- --uninstall
 ```
 
+On Windows, run `irm https://voicestudio.sh/install | iex` in PowerShell.
 Release downloads require curl and a SHA-256 tool. `--main` requires Git,
 Node.js 22+, Bun, Rust/Cargo, and platform build tools; see
 [installer prerequisites and behavior](docs/install/script.md).
 The installer preserves your settings, projects, and models. Older versions
 must contain Electron packages; it never falls back to archived Tauri builds.
 
-Download from [Releases](https://github.com/debpalash/VoiceStudio/releases/latest), then follow your platform guide:
+Or download from [Releases](https://github.com/debpalash/VoiceStudio/releases/latest) (macOS `.dmg`, Windows `.exe`, Linux `.AppImage` or `.deb`) and follow your platform guide:
 
 **[macOS](docs/install/macos.md) · [Windows](docs/install/windows.md) · [Linux](docs/install/linux.md) · [Docker](docs/install/docker.md)**
+
+| Hardware | Support |
+|---|---|
+| NVIDIA GPU (Windows / Linux) | CUDA acceleration |
+| Apple Silicon | Metal (MPS) acceleration |
+| No dedicated GPU (Intel/AMD integrated graphics, older PCs) | Fully usable on the CPU, slower; setup installs the small CPU build of PyTorch (about 5 GB free disk) |
+| Windows on ARM (Snapdragon X etc.) | **Experimental**, validation pending: native ARM64 app, x64 Python backend under emulation, CPU only |
+| Intel Mac | App UI only; connect to a remote backend ([why](docs/install/macos.md)) |
 
 Open **Voice cloning**, choose a voice or add a clean reference recording, enter your text, and generate. Install the required model when prompted. Hardware needs vary by engine; see [performance](docs/performance.md).
 
