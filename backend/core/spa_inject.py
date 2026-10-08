@@ -26,15 +26,28 @@ def frontend_dist_dir() -> str:
     return os.path.join(backend_root, "..", "frontend", "dist")
 
 
-def dev_fallback_url(host: str | None, query: str, ui_port: int) -> str:
-    """Target for ``/`` when no built SPA is present (dev fallback).
+def dev_fallback_url(
+    *,
+    host: str | None,
+    port: int | None,
+    query: str,
+    client_is_loopback: bool,
+    ui_port: int,
+) -> str | None:
+    """Redirect target for ``/`` when no built SPA is present, or None when
+    a redirect would lead nowhere (#2680).
 
-    Preserves the host the client used instead of hardcoding ``localhost``:
-    the same route table is served by the LAN share listener on 0.0.0.0, and
-    an absolute loopback URL bounces a remote client at its own loopback
-    (``ERR_CONNECTION_REFUSED`` on their machine, #2680). The query string
-    (notably ``?pin=``) survives the hop so the PIN gate still sees it.
+    The same route table is served by the LAN share listener on 0.0.0.0, so:
+    a remote client has no UI dev server to reach — any target is a lie, and
+    with default ports (share base = backend + 1 = the UI port) the target is
+    the share listener itself, i.e. an infinite redirect loop — and a request
+    already aimed at the UI port would bounce onto itself. Only a loopback
+    client aimed elsewhere gets the dev-server bounce; everyone else gets a
+    terminal answer from the caller. The query string (notably ``?pin=``)
+    survives the hop.
     """
+    if not client_is_loopback or port == ui_port:
+        return None
     host = (host or "").strip() or "localhost"
     if ":" in host and not host.startswith("["):
         host = f"[{host}]"

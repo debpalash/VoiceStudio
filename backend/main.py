@@ -824,9 +824,27 @@ def _phase_a_finalize() -> None:
 
         @app.get("/", include_in_schema=False)
         def _dev_fallback(request: Request):
-            return RedirectResponse(
-                url=dev_fallback_url(request.url.hostname, request.url.query, _ui_port())
+            client = request.client.host if request.client else None
+            target = dev_fallback_url(
+                host=request.url.hostname,
+                port=request.url.port,
+                query=request.url.query,
+                client_is_loopback=is_local_host(client),
+                ui_port=_ui_port(),
             )
+            if target is None:
+                return JSONResponse(
+                    status_code=404,
+                    content={
+                        "detail": (
+                            "No built web UI in this install "
+                            "(frontend/dist is absent). Run the UI dev "
+                            "server or reinstall from a release that "
+                            "bundles the web UI."
+                        )
+                    },
+                )
+            return RedirectResponse(url=target)
 
     # An early /docs or /openapi.json hit may have cached a schema without
     # the routers — bust it so the next request rebuilds the full one.
