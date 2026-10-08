@@ -74,6 +74,17 @@ metadata and the backend fallback mirror it.
 - The Twilio guide and integration directory describe the guided setup and in-app integration pages (#2304)
 
 ### Fixed
+- LAN-share links no longer bounce remote browsers at their own loopback: the no-frontend fallback redirect keeps the host the client used, with the PIN query intact (#2680) — thanks @swadhinbiswas!
+- Dub assembly, cached segments and audio tools can read generated WAV files when TorchCodec is missing or cannot load (#2379) — thanks @tokutei58301-boop!
+- Remote API-key and share-PIN clients can record and read export history while native filesystem operations stay local (#2383, #2384) — thanks @sedatdagg!
+- Concurrent job events receive unique sequence numbers (#2384) — thanks @sedatdagg!
+- Streaming reuses warm engines, follows model changes and protects active streams during eviction (#2391, #2400) — thanks @DeepanshuPal and @Kishore-MR!
+- VoxCPM2 performs one complete generation attempt with the requested sampling effort and enough time for CPU and MPS inference (#2412) — thanks @strauss-visuals!
+- Voice Clone explains when the selected model cannot clone instead of silently ignoring the reference (#2419)
+- GitHub Star count refreshes from the repository API, and macOS tray icons keep the intended menu-bar size (#2419)
+- MLX-Audio OuteTTS generates again with a reference clip or its default voice (#2419)
+- MLX Qwen3-TTS receives the selected language correctly; MeloTTS explains missing text resources without downloading during generation (#2419)
+- The language picker offers only the languages each MLX-Audio model supports (Kokoro, CSM, Qwen3-TTS, Dia, Chatterbox, MeloTTS, OuteTTS), per their model cards, instead of every language (#977)
 
 - Low-disk notifications open Storage settings directly (#2407)
 

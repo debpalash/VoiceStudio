@@ -25,6 +25,24 @@ def frontend_dist_dir() -> str:
     backend_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(backend_root, "..", "frontend", "dist")
 
+
+def dev_fallback_url(host: str | None, query: str, ui_port: int) -> str:
+    """Target for ``/`` when no built SPA is present (dev fallback).
+
+    Preserves the host the client used instead of hardcoding ``localhost``:
+    the same route table is served by the LAN share listener on 0.0.0.0, and
+    an absolute loopback URL bounces a remote client at its own loopback
+    (``ERR_CONNECTION_REFUSED`` on their machine, #2680). The query string
+    (notably ``?pin=``) survives the hop so the PIN gate still sees it.
+    """
+    host = (host or "").strip() or "localhost"
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    target = f"http://{host}:{ui_port}/"
+    if query:
+        target += f"?{query}"
+    return target
+
 # Operator-controlled value, but validate to a plain http(s) URL with no
 # whitespace, quotes, or angle brackets so it can never break out of the
 # injected <script> element.

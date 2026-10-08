@@ -783,7 +783,12 @@ def _phase_a_finalize() -> None:
         app.mount("/demo_audio", StaticFiles(directory=_demo_dir), name="demo_audio")
 
     # SPA shell LAST so the "/" StaticFiles mount can't shadow any router.
-    from core.spa_inject import frontend_dist_dir, is_valid_public_api_base, inject_api_base
+    from core.spa_inject import (
+        frontend_dist_dir,
+        is_valid_public_api_base,
+        inject_api_base,
+        dev_fallback_url,
+    )
 
     _frontend_path = frontend_dist_dir()
     if os.path.exists(_frontend_path):
@@ -818,8 +823,10 @@ def _phase_a_finalize() -> None:
     else:
 
         @app.get("/", include_in_schema=False)
-        def _dev_fallback():
-            return RedirectResponse(url=f"http://localhost:{_ui_port()}")
+        def _dev_fallback(request: Request):
+            return RedirectResponse(
+                url=dev_fallback_url(request.url.hostname, request.url.query, _ui_port())
+            )
 
     # An early /docs or /openapi.json hit may have cached a schema without
     # the routers — bust it so the next request rebuilds the full one.
