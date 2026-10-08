@@ -142,16 +142,6 @@ This release also adds a GPU acceleration panel with honest Radeon reporting, th
 
 ### Fixed
 - The no-web-UI fallback keeps the share PIN on its dev-UI redirect and answers terminally instead of looping when the share listener sits on the UI port (#2680) — thanks @swadhinbiswas!
-- Dub assembly, cached segments and audio tools can read generated WAV files when TorchCodec is missing or cannot load (#2379) — thanks @tokutei58301-boop!
-- Remote API-key and share-PIN clients can record and read export history while native filesystem operations stay local (#2383, #2384) — thanks @sedatdagg!
-- Concurrent job events receive unique sequence numbers (#2384) — thanks @sedatdagg!
-- Streaming reuses warm engines, follows model changes and protects active streams during eviction (#2391, #2400) — thanks @DeepanshuPal and @Kishore-MR!
-- VoxCPM2 performs one complete generation attempt with the requested sampling effort and enough time for CPU and MPS inference (#2412) — thanks @strauss-visuals!
-- Voice Clone explains when the selected model cannot clone instead of silently ignoring the reference (#2419)
-- GitHub Star count refreshes from the repository API, and macOS tray icons keep the intended menu-bar size (#2419)
-- MLX-Audio OuteTTS generates again with a reference clip or its default voice (#2419)
-- MLX Qwen3-TTS receives the selected language correctly; MeloTTS explains missing text resources without downloading during generation (#2419)
-- The language picker offers only the languages each MLX-Audio model supports (Kokoro, CSM, Qwen3-TTS, Dia, Chatterbox, MeloTTS, OuteTTS), per their model cards, instead of every language (#977)
 
 - On Windows, updating the app no longer stops at "EPERM: operation not permitted, rename" when antivirus briefly holds the new runtime files (#2669) — thanks @javalovelinux-cmd!
 - MCP speech tools wait through model loading and progress-extended CPU renders instead of timing out before the backend (#2609) — thanks @JopsTaku!
