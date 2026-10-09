@@ -90,6 +90,30 @@ Resident memory added by each import, in boot order (fresh interpreter, macOS ar
 
 Idle RSS at ready: 653 MB before, 436 MB after. The TTS model preload is skipped on this host ("OmniVoice uses crash isolation"), so model memory is unmeasured; on CUDA hosts it preloads at boot.
 
+### With the OmniVoice model installed (macOS arm64, 32 GB)
+
+Model `k2-fsa/OmniVoice` (3.27 GB repo; 2.45 GB model plus an 806 MB audio tokenizer), no ASR model. Memory is the whole process tree, because the model runs in a sidecar process. Method: boot, wait 20 s, `POST /generate` a one-sentence text twice, then wait for idle release with `OMNIVOICE_SIDECAR_IDLE_TIMEOUT_S=45`.
+
+| Moment | Tree RSS |
+|---|---|
+| Ready (11.8 s, 9.1 s on two runs) | 546 MB |
+| Ready + 20 s | 550 MB |
+| Peak during first generate | 2.4–2.5 GB |
+| After first generate | 1.6–1.8 GB (sidecar ~1.0 GB, API ~540 MB) |
+| After sidecar idle release | 639 MB (about 90 MB more than before the generate) |
+
+| | Time |
+|---|---|
+| First generate (loads the model) | 15.7–21.6 s |
+| Second generate | 2.5 s |
+
+Findings:
+
+- **The boot does not preload on this host.** Apple Silicon takes the crash-isolated sidecar path, so `preload_model()` returns early (`model_manager.py`). The model loads on the first generate, which is where the 13–19 s goes. On CUDA hosts the preload loads the model at boot instead. That was not measured here.
+- **Loading is the memory peak.** The 2.45 GB checkpoint pushes the tree to about 2.5 GB, then settles at 1.6–1.8 GB while the sidecar stays warm.
+- **Idle release works but is slow to start.** The sidecar was gone about 75 s after a 45 s timeout (the reaper ticks about every 30 s). At the default timeout of 300 s the model stays resident for roughly 5.5 minutes after the last generate.
+- **The API process keeps about 90 MB** after the sidecar exits.
+
 Not yet measured:
 
 | Metric | macOS arm64 | Windows | Linux |
