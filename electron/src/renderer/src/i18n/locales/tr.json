@@ -443,6 +443,8 @@
     "m_ago": "{{count}}m önce",
     "h_ago": "{{count}}sa önce",
     "failed": "Transkripsiyon başarısız oldu",
+    "identify_speakers": "Konuşmacıları belirle",
+    "speakers_unavailable": "Konuşmacı belirleme kullanılamıyor. Transkript konuşmacı etiketleri olmadan kaydedildi.",
     "missing_model": "Yüklü bir konuşmadan metne modeli yok — bu özellik sesi yazıya dökmek için bir model gerektirir.",
     "original_transcript": "Orijinal transkript"
   },

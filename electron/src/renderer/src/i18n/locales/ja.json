@@ -443,6 +443,8 @@
     "m_ago": "{{count}}分前",
     "h_ago": "{{count}}時間前",
     "failed": "転写に失敗しました",
+    "identify_speakers": "話者を識別",
+    "speakers_unavailable": "話者の識別は利用できません。文字起こしは話者ラベルなしで保存されました。",
     "missing_model": "音声認識モデルがインストールされていません — この機能で文字起こしを行うにはモデルが必要です。",
     "original_transcript": "元の文字起こし"
   },

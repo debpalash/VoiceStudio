@@ -443,6 +443,8 @@
     "m_ago": "Vor {{count}}m",
     "h_ago": "Vor {{count}}h",
     "failed": "Transkription fehlgeschlagen",
+    "identify_speakers": "Sprecher erkennen",
+    "speakers_unavailable": "Die Sprechererkennung ist nicht verfügbar. Das Transkript wurde ohne Sprecherkennzeichnung gespeichert.",
     "missing_model": "Es ist kein Sprache-zu-Text-Modell installiert — diese Funktion benötigt eines zum Transkribieren.",
     "original_transcript": "Originaltranskript"
   },

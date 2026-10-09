@@ -36,6 +36,7 @@ import { toast } from 'sonner';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { WaveformPlayer } from '@/components/waveform-player';
 import { useRecording } from '@/hooks/use-recording';
@@ -53,16 +54,30 @@ import {
   TRANSCRIPTION_EVENT,
   type TranscriptEntry,
 } from '@shared/utils/transcriptionsStore';
-import { beginAppActivity } from '@/lib/app-activity';
 import { formatRelative } from '@/features/clone/format';
 import { useModelCatalogue } from '@/features/settings/model-catalogue-query';
 import { useNativeShortcut } from '@/hooks/use-native-dictation';
-import { recordActionBreadcrumb } from '@/lib/report-breadcrumb';
+import {
+  cancelTranscription,
+  clearTranscriptionFailure,
+  setTranscriptionsViewing,
+  startTranscription,
+  useTranscriptionJob,
+  type TranscriptionMode,
+} from './transcription-job';
 import { saveLocalFile } from '@/lib/local-export';
 import { formatShortcut } from '@shared/utils/dictationShortcut';
 
-type TranscriptionMode = 'fast' | 'accurate';
 const TRANSCRIPTION_MODE_KEY = 'voicestudio.transcription.mode';
+const TRANSCRIPTION_DIARIZE_KEY = 'voicestudio.transcription.diarize';
+
+function initialDiarize(): boolean {
+  try {
+    return localStorage.getItem(TRANSCRIPTION_DIARIZE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 function initialTranscriptionMode(): TranscriptionMode {
   try {
@@ -82,13 +97,12 @@ export function TranscriptionsPage() {
   const [entries, setEntries] = useState(loadTranscriptions);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
-  const [file, setFile] = useState<File | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [mode, setMode] = useState<TranscriptionMode>(initialTranscriptionMode);
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<string | null>(null);
+  const [diarize, setDiarize] = useState(initialDiarize);
+  const job = useTranscriptionJob();
+  const { running: busy, error: failed, file, savedId } = job;
   const [confirmClear, setConfirmClear] = useState(false);
-  const request = useRef<AbortController | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const engines = useEngines();
   const dictation = useDictationSelection();
@@ -115,74 +129,40 @@ export function TranscriptionsPage() {
   const chooseMode = (next: string | undefined) => {
     if (next !== 'fast' && next !== 'accurate') return;
     setMode(next);
-    setFailed(null);
+    clearTranscriptionFailure();
     try {
       localStorage.setItem(TRANSCRIPTION_MODE_KEY, next);
     } catch {
       // A denied storage write should not prevent the current selection.
     }
   };
-  const transcribe = async (audio: File) => {
-    if (request.current) return;
-    const reportMode = mode;
-    recordActionBreadcrumb(`transcribe:${reportMode}:start`);
-    const controller = new AbortController();
-    request.current = controller;
-    setBusy(true);
-    setFailed(null);
-    setFile(audio);
-    const finishActivity = beginAppActivity(mode === 'accurate' ? 'transcription' : 'dictation');
+  const chooseDiarize = (next: boolean) => {
+    setDiarize(next);
     try {
-      const ready = await apiJson<{ ready: boolean }>(
-        mode === 'accurate' ? '/dictation/readiness?purpose=transcribe' : '/dictation/readiness',
-        { signal: controller.signal },
-      );
-      if (!ready.ready) {
-        recordActionBreadcrumb(`transcribe:${reportMode}:error`);
-        void fileReadiness.refetch();
-        return;
-      }
-      const body = new FormData();
-      body.set('audio', audio);
-      body.set('mode', mode);
-      const refinement = await apiJson<{ auto: boolean }>('/api/settings/dictation-refinement', {
-        signal: controller.signal,
-      }).catch(() => ({ auto: false }));
-      if (controller.signal.aborted) return;
-      body.set('refine', String(refinement.auto));
-      const result = await apiJson<Partial<TranscriptEntry>>('/transcribe', {
-        method: 'POST',
-        body,
-        signal: controller.signal,
-      });
-      if (!controller.signal.aborted) {
-        const saved = addTranscription(result);
-        setSelectedId(saved.id);
-        recordActionBreadcrumb(`transcribe:${reportMode}:complete`);
-      }
-    } catch (error) {
-      recordActionBreadcrumb(
-        `transcribe:${reportMode}:${controller.signal.aborted ? 'cancel' : 'error'}`,
-      );
-      if (!controller.signal.aborted) setFailed(describeError(error));
-    } finally {
-      finishActivity();
-      if (request.current === controller) {
-        request.current = null;
-        setBusy(false);
-      }
+      localStorage.setItem(TRANSCRIPTION_DIARIZE_KEY, next ? '1' : '0');
+    } catch {
+      // A denied storage write should not prevent the current selection.
     }
+  };
+  const transcribe = async (audio: File) => {
+    const outcome = await startTranscription(audio, mode, { diarize });
+    if (outcome === 'not-ready') void fileReadiness.refetch();
   };
   const recording = useRecording((audio) => void transcribe(audio));
   const capturing =
     liveBusy || recording.isStarting || recording.isRecording || recording.isCleaning;
   useEffect(() => {
+    setTranscriptionsViewing(true);
     const unsubscribe = subscribeTranscriptions(setEntries);
     return () => {
+      setTranscriptionsViewing(false);
       unsubscribe();
-      request.current?.abort();
     };
   }, []);
+  useEffect(() => {
+    // A job that finished while this page was unmounted: show its result.
+    if (savedId !== null) setSelectedId(savedId);
+  }, [savedId]);
   useEffect(() => {
     if (!file) {
       setUrl(null);
@@ -381,6 +361,17 @@ export function TranscriptionsPage() {
                   {t('transcriptions.mode_accurate')}
                 </ToggleGroupItem>
               </ToggleGroup>
+              {mode === 'accurate' ? (
+                <label className="inline-flex items-center gap-2 px-1 text-xs text-muted-foreground">
+                  <Switch
+                    size="sm"
+                    checked={diarize}
+                    onCheckedChange={chooseDiarize}
+                    disabled={busy || capturing}
+                  />
+                  {t('transcriptions.identify_speakers')}
+                </label>
+              ) : null}
               {selectedModel ? (
                 <span
                   className="inline-flex min-w-0 max-w-72 items-center gap-1.5 px-1 text-xs text-muted-foreground"
@@ -490,7 +481,7 @@ export function TranscriptionsPage() {
                       <Button
                         variant="ghost"
                         onClick={() => {
-                          request.current?.abort();
+                          cancelTranscription();
                         }}
                       >
                         {t('common.cancel')}
@@ -635,7 +626,7 @@ export function TranscriptionsPage() {
                   variant="ghost"
                   size="icon-xs"
                   aria-label={t('common.dismiss')}
-                  onClick={() => setFailed(null)}
+                  onClick={clearTranscriptionFailure}
                 >
                   <XIcon />
                 </Button>
@@ -734,6 +725,11 @@ export function TranscriptionsPage() {
                           <span className="mr-3 font-mono text-xs text-muted-foreground">
                             {segTimeRange(segment)}
                           </span>
+                          {segment.speaker ? (
+                            <span className="mr-2 font-medium text-foreground">
+                              {segment.speaker}
+                            </span>
+                          ) : null}
                           {segment.text}
                         </p>
                       ))}

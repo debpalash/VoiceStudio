@@ -443,6 +443,8 @@
     "m_ago": "{{count}}分鐘前",
     "h_ago": "{{count}} 小時前",
     "failed": "轉錄失敗：",
+    "identify_speakers": "辨識說話者",
+    "speakers_unavailable": "說話者辨識無法使用。逐字稿已儲存，但沒有說話者標籤。",
     "missing_model": "尚未安裝語音轉文字模型 — 此功能需要一個模型來轉錄音訊。",
     "original_transcript": "原始轉錄"
   },

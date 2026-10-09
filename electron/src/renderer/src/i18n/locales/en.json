@@ -782,6 +782,8 @@
     "m_ago": "{{count}}m ago",
     "h_ago": "{{count}}h ago",
     "failed": "Transcription failed",
+    "identify_speakers": "Identify speakers",
+    "speakers_unavailable": "Speaker identification isn't available. The transcript was saved without speaker labels.",
     "missing_model": "No speech-to-text model is installed — this feature needs one to transcribe audio.",
     "original_transcript": "Original transcript"
   },

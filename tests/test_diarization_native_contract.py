@@ -43,6 +43,36 @@ def test_native_sortformer_rejects_unbounded_v1_recording(monkeypatch, tmp_path)
         adapter(tmp_path / "long.wav")
 
 
+def test_native_sortformer_normalises_formats_libsndfile_cannot_read(monkeypatch, tmp_path):
+    import soundfile
+
+    import core.contained_subprocess as contained
+    import engines.audiocpp.bootstrap as bootstrap
+    import services.ffmpeg_utils as ffmpeg_utils
+
+    adapter = object.__new__(NativeSortformer)
+    adapter.model = tmp_path / "sortformer.gguf"
+    adapter.binary = tmp_path / "audiocpp_cli"
+    spawned = []
+
+    def unreadable(_path):
+        raise soundfile.LibsndfileError(1)
+
+    def fake_spawn(command, **_kwargs):
+        spawned.append(command)
+        raise RuntimeError("stop after ffmpeg")
+
+    monkeypatch.setattr(soundfile, "info", unreadable)
+    monkeypatch.setattr(bootstrap, "resolve_compute_selection", lambda: SimpleNamespace(device=SimpleNamespace(backend="cpu", index=0)))
+    monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: "ffmpeg")
+    monkeypatch.setattr(contained, "spawn_owned", fake_spawn)
+
+    with pytest.raises(RuntimeError, match="stop after ffmpeg"):
+        adapter(tmp_path / "clip.m4a")
+
+    assert spawned and "ffmpeg" in str(spawned[0][0])
+
+
 def test_native_sortformer_clamps_one_frame_of_decoder_padding():
     frames = 560_000
 

@@ -54,6 +54,8 @@ async def transcribe_audio(
     mode: Optional[str] = Form(None),
     refine: Optional[str] = Form(None),
     dictation: Optional[str] = Form(None),
+    diarize: Optional[str] = Form(None),
+    num_speakers: Optional[str] = Form(None),
 ):
     """Transcribe an audio file to text.
 
@@ -77,6 +79,13 @@ async def transcribe_audio(
               engines that accept a prompt. Off by default so file
               transcription and MCP/CLI callers are never biased by it;
               ignored in 'reference' mode.
+
+        diarize: Opt-in speaker identification ('accurate' mode only, which
+              is the mode with segment timings). Each segment gains a
+              ``speaker`` label and the response a ``speakers`` list. If the
+              diarization model is missing or fails, the transcript is still
+              returned with a ``diarization_error`` code and no labels.
+        num_speakers: Optional exact speaker count hint for diarization.
 
     Returns:
         {
@@ -314,21 +323,46 @@ async def transcribe_audio(
             refined_text is not None,
         )
 
+        out_segments = [
+            {
+                "start": _timing(s.get("start", 0)),
+                "end": _timing(s.get("end", 0)),
+                "text": s.get("text", "").strip(),
+            }
+            for s in segments
+        ]
+        speakers: list[str] = []
+        diarization_error = None
+        if _truthy(diarize) and use_accurate:
+            from services.transcript_diarization import diarize_segments, parse_speaker_hint
+
+            try:
+                labels, diarization_error = await run_transcribe_guarded(
+                    _gpu_pool,
+                    lambda: diarize_segments(tmp.name, out_segments, parse_speaker_hint(num_speakers)),
+                    what="Speaker identification",
+                )
+            except ASRTimeoutError as exc:
+                logger.warning("Speaker identification timed out: %s", exc)
+                labels, diarization_error = [None] * len(out_segments), "DIARIZATION_TIMEOUT"
+            for segment, label in zip(out_segments, labels):
+                if label:
+                    segment["speaker"] = label
+                    if label not in speakers:
+                        speakers.append(label)
+
         response = {
             "text": full_text,
-            "segments": [
-                {
-                    "start": _timing(s.get("start", 0)),
-                    "end": _timing(s.get("end", 0)),
-                    "text": s.get("text", "").strip(),
-                }
-                for s in segments
-            ],
+            "segments": out_segments,
             "language": detected_lang,
             "duration_s": round(duration, 2),
             "transcription_time_s": elapsed,
             "engine": engine_id,
         }
+        if speakers:
+            response["speakers"] = speakers
+        if diarization_error:
+            response["diarization_error"] = diarization_error
         if refined_text is not None:
             response["refined_text"] = refined_text
         if recovered_from is not None:

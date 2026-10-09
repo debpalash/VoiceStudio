@@ -443,6 +443,8 @@
     "m_ago": "{{count}}분 전",
     "h_ago": "{{count}}시간 전",
     "failed": "받아쓰기 실패",
+    "identify_speakers": "화자 식별",
+    "speakers_unavailable": "화자 식별을 사용할 수 없습니다. 화자 라벨 없이 전사본이 저장되었습니다.",
     "missing_model": "음성 인식 모델이 설치되어 있지 않습니다 — 이 기능으로 오디오를 전사하려면 모델이 필요합니다.",
     "original_transcript": "원본 대본"
   },
