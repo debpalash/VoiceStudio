@@ -53,3 +53,16 @@ it('exports speaker-labelled text, merging consecutive segments of one speaker',
   const plain = addTranscription({ text: 'plain', segments: [{ text: 'plain' }] });
   expect(formatTranscriptExport([plain])).toContain('\nplain\n');
 });
+
+it('keeps the cleaned transcript in the export when speaker labels exist', () => {
+  const entry = addTranscription({
+    text: 'raw a b',
+    refined_text: 'Cleaned A B.',
+    segments: [
+      { start: 0, end: 1, text: 'a', speaker: 'Speaker 1' },
+      { start: 1, end: 2, text: 'b', speaker: 'Speaker 2' },
+    ],
+  });
+  const out = formatTranscriptExport([entry]);
+  expect(out).toContain('Cleaned A B.\n\nSpeaker 1: a\nSpeaker 2: b');
+});

@@ -52,6 +52,14 @@ def is_running() -> bool:
         return bool(_processes)
 
 
+def _check_duration(seconds: float) -> None:
+    if seconds > MAX_V1_AUDIO_SECONDS:
+        raise ValueError(
+            "Sortformer v1 supports recordings up to 120 seconds; "
+            "select pyannote for longer recordings"
+        )
+
+
 class NativeSortformer:
     """Stateless native invocation; the GGUF is never downloaded implicitly."""
 
@@ -90,12 +98,13 @@ class NativeSortformer:
 
         check_cancelled()
 
-        audio_info = sf.info(str(audio_path))
-        if audio_info.duration > MAX_V1_AUDIO_SECONDS:
-            raise ValueError(
-                "Sortformer v1 supports recordings up to 120 seconds; "
-                "select pyannote for longer recordings"
-            )
+        try:
+            audio_info = sf.info(str(audio_path))
+        except sf.LibsndfileError:
+            # libsndfile can't read m4a/webm/aac etc.; ffmpeg normalises those below.
+            audio_info = None
+        if audio_info is not None:
+            _check_duration(audio_info.duration)
         device = resolve_compute_selection().device
         with TemporaryDirectory(prefix="voicestudio-sortformer-") as directory:
             source = Path(audio_path).resolve()
@@ -140,7 +149,7 @@ class NativeSortformer:
                         tail = diagnostic.read().decode("utf-8", errors="replace")
                     logger.error("Sortformer exited with %s; native log tail:\n%s", code, tail)
                     raise RuntimeError(f"Native Sortformer failed (exit {code})")
-            if (audio_info.samplerate != 16000 or audio_info.channels != 1
+            if (audio_info is None or audio_info.samplerate != 16000 or audio_info.channels != 1
                 or audio_info.format != "WAV" or audio_info.subtype != "PCM_16"):
                 from services.ffmpeg_utils import find_ffmpeg, local_inputs_only
                 normalized = Path(directory) / "input.wav"
@@ -151,6 +160,7 @@ class NativeSortformer:
                 ], tool="ffmpeg"), "normalize.log")
                 source = normalized
                 audio_info = sf.info(str(source))
+                _check_duration(audio_info.duration)
                 command[command.index("--audio") + 1] = str(source)
             run_owned(command, "native.log")
             turns = json.loads(output.read_text(encoding="utf-8"))

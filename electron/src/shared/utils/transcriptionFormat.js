@@ -35,7 +35,14 @@ export function formatTranscriptExport(entries) {
     .map((entry) => {
       const date = new Date(entry.timestamp);
       const stamp = Number.isFinite(date.getTime()) ? date.toLocaleString() : '';
-      const text = speakerTranscript(entry) ?? preferredTranscript(entry);
+      const speakers = speakerTranscript(entry);
+      // Segments keep raw recognition, so a cleaned transcript stays the export
+      // and the speaker-labelled version rides along beneath it.
+      const text = !speakers
+        ? preferredTranscript(entry)
+        : entry.refined_text?.trim()
+          ? `${preferredTranscript(entry)}\n\n${speakers}`
+          : speakers;
       return `[${stamp}] (${entry.language || ''})\n${text}\n`;
     })
     .join('\n---\n\n');
