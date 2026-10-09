@@ -28,6 +28,7 @@ own pins.
 """
 from __future__ import annotations
 
+import importlib.util
 import logging
 import os
 import sys
@@ -91,13 +92,19 @@ class OmniVoiceSubprocessBackend(SubprocessBackend):
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:
-        # Same probe as OmniVoiceBackend: the package must be importable. The
+        # The package must be installed. This engine runs the model in a
+        # sidecar, so the parent never needs the module: importing it here
+        # cost seconds of torch/transformers import on every backend start
+        # (reconcile_active_profile probes availability at boot) for no use.
+        # The sidecar reports its own import failures when it spawns. The
         # interpreter is the parent's own (sys.executable), so there is no
         # separate venv to validate.
         try:
-            import omnivoice.models.omnivoice  # noqa: F401
+            found = importlib.util.find_spec("omnivoice.models.omnivoice") is not None
         except Exception as e:
             return False, f"omnivoice package missing: {e}"
+        if not found:
+            return False, "omnivoice package missing: omnivoice.models.omnivoice not found"
         return True, "ready"
 
     @classmethod

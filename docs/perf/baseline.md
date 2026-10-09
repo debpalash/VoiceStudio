@@ -58,6 +58,17 @@ Findings:
 - **Idle:** about 650–700 MB RSS and 2–3 % CPU with no model loaded. Model warm-ups were not exercised because no ASR model was installed.
 - **Install size:** `.venv` is 1.8 GB. Largest: `torch` 345 MB, `mlx` 207 MB, `llvmlite` 130 MB, `litellm` 87 MB, `gradio` 80 MB, `onnxruntime` 77 MB.
 
+### After: import-free availability probe
+
+`OmniVoiceSubprocessBackend.is_available()` now checks `find_spec` instead of importing the model. A/B on the same environment:
+
+| | Routes live (relaunch) | Routes live (first) | `services_start` (relaunch) | Idle RSS |
+|---|---|---|---|---|
+| Before | 14.1 s | 16.0 s | 9.6 s | 653 MB |
+| After | 6.0 s | 9.3 s | 2.6 s | 440 MB |
+
+The remaining `services_start` time is the translation-engine (~1.7 s) and ASR (~1.5 s) availability probes.
+
 Not yet measured:
 
 | Metric | macOS arm64 | Windows | Linux |
