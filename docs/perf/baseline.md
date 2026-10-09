@@ -67,7 +67,28 @@ Findings:
 | Before | 14.1 s | 16.0 s | 9.6 s | 653 MB |
 | After | 6.0 s | 9.3 s | 2.6 s | 440 MB |
 
-The remaining `services_start` time is the translation-engine (~1.7 s) and ASR (~1.5 s) availability probes.
+What the remaining ~2.6 s of `services_start` is (boot import trace after the change):
+
+| Import at boot | Cost | Pulled in by |
+|---|---|---|
+| `argostranslate` (`spacy`, `stanza`, `onnxruntime`) | ~1.2 s | translation-engine probe |
+| `faster_whisper` (`ctranslate2`, `transformers`) | ~1.1 s | ASR availability probe |
+
+Both probes import on purpose: they exist to catch a broken native stack (CTranslate2's executable-stack failure, #692) before the engine is offered. Replacing them with `find_spec` would only move the same import to the user's first translation or transcription, and would lose that check, so they are left alone. `sklearn` and `boto3` no longer load at boot.
+
+Resident memory added by each import, in boot order (fresh interpreter, macOS arm64):
+
+| Import | Added | Note |
+|---|---|---|
+| `torch` | 168 MB | needed by the in-process engines |
+| `sklearn` | 104 MB | no longer loaded at boot (it came in via the model import) |
+| `spacy` | 40 MB | via `argostranslate` |
+| `argostranslate.translate` | 38 MB | translation probe |
+| `transformers` | 28 MB | via `ctranslate2` |
+| `faster_whisper` | 26 MB | ASR probe |
+| `pyannote.audio` | 150 MB | not loaded at boot |
+
+Idle RSS at ready: 653 MB before, 436 MB after. The TTS model preload is skipped on this host ("OmniVoice uses crash isolation"), so model memory is unmeasured; on CUDA hosts it preloads at boot.
 
 Not yet measured:
 
