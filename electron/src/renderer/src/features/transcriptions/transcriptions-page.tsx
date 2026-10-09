@@ -36,6 +36,7 @@ import { toast } from 'sonner';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { WaveformPlayer } from '@/components/waveform-player';
 import { useRecording } from '@/hooks/use-recording';
@@ -68,6 +69,15 @@ import { saveLocalFile } from '@/lib/local-export';
 import { formatShortcut } from '@shared/utils/dictationShortcut';
 
 const TRANSCRIPTION_MODE_KEY = 'voicestudio.transcription.mode';
+const TRANSCRIPTION_DIARIZE_KEY = 'voicestudio.transcription.diarize';
+
+function initialDiarize(): boolean {
+  try {
+    return localStorage.getItem(TRANSCRIPTION_DIARIZE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 function initialTranscriptionMode(): TranscriptionMode {
   try {
@@ -89,6 +99,7 @@ export function TranscriptionsPage() {
   const [search, setSearch] = useState('');
   const [url, setUrl] = useState<string | null>(null);
   const [mode, setMode] = useState<TranscriptionMode>(initialTranscriptionMode);
+  const [diarize, setDiarize] = useState(initialDiarize);
   const job = useTranscriptionJob();
   const { running: busy, error: failed, file, savedId } = job;
   const [confirmClear, setConfirmClear] = useState(false);
@@ -125,8 +136,16 @@ export function TranscriptionsPage() {
       // A denied storage write should not prevent the current selection.
     }
   };
+  const chooseDiarize = (next: boolean) => {
+    setDiarize(next);
+    try {
+      localStorage.setItem(TRANSCRIPTION_DIARIZE_KEY, next ? '1' : '0');
+    } catch {
+      // A denied storage write should not prevent the current selection.
+    }
+  };
   const transcribe = async (audio: File) => {
-    const outcome = await startTranscription(audio, mode);
+    const outcome = await startTranscription(audio, mode, { diarize });
     if (outcome === 'not-ready') void fileReadiness.refetch();
   };
   const recording = useRecording((audio) => void transcribe(audio));
@@ -342,6 +361,17 @@ export function TranscriptionsPage() {
                   {t('transcriptions.mode_accurate')}
                 </ToggleGroupItem>
               </ToggleGroup>
+              {mode === 'accurate' ? (
+                <label className="inline-flex items-center gap-2 px-1 text-xs text-muted-foreground">
+                  <Switch
+                    size="sm"
+                    checked={diarize}
+                    onCheckedChange={chooseDiarize}
+                    disabled={busy || capturing}
+                  />
+                  {t('transcriptions.identify_speakers')}
+                </label>
+              ) : null}
               {selectedModel ? (
                 <span
                   className="inline-flex min-w-0 max-w-72 items-center gap-1.5 px-1 text-xs text-muted-foreground"
@@ -695,6 +725,11 @@ export function TranscriptionsPage() {
                           <span className="mr-3 font-mono text-xs text-muted-foreground">
                             {segTimeRange(segment)}
                           </span>
+                          {segment.speaker ? (
+                            <span className="mr-2 font-medium text-foreground">
+                              {segment.speaker}
+                            </span>
+                          ) : null}
                           {segment.text}
                         </p>
                       ))}

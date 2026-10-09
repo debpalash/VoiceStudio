@@ -445,6 +445,8 @@
     "m_ago": "il y a {{count}} m",
     "h_ago": "Il y a {{count}}h",
     "failed": "Échec de la transcription ",
+    "identify_speakers": "Identifier les locuteurs",
+    "speakers_unavailable": "L'identification des locuteurs n'est pas disponible. La transcription a été enregistrée sans étiquettes de locuteur.",
     "missing_model": "Aucun modèle de reconnaissance vocale n'est installé — cette fonction en a besoin pour transcrire l'audio.",
     "original_transcript": "Transcription originale"
   },

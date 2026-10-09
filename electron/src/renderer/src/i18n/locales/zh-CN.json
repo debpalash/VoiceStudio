@@ -456,6 +456,8 @@
     "m_ago": "{{count}} 分钟前",
     "h_ago": "{{count}} 小时前",
     "failed": "转录失败：",
+    "identify_speakers": "识别说话人",
+    "speakers_unavailable": "说话人识别不可用。转录文本已保存，但没有说话人标签。",
     "missing_model": "尚未安装语音转文字模型 — 此功能需要一个模型来转写音频。",
     "original_transcript": "原始转录"
   },

@@ -443,6 +443,8 @@
     "m_ago": "{{count}}m geleden",
     "h_ago": "{{count}}u geleden",
     "failed": "Transcriptie mislukt",
+    "identify_speakers": "Sprekers herkennen",
+    "speakers_unavailable": "Sprekerherkenning is niet beschikbaar. Het transcript is opgeslagen zonder sprekerlabels.",
     "missing_model": "Er is geen spraak-naar-tekstmodel geïnstalleerd — deze functie heeft er een nodig om audio te transcriberen.",
     "original_transcript": "Oorspronkelijk transcript"
   },

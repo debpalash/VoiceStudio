@@ -445,6 +445,8 @@
     "m_ago": "Hace {{count}}m",
     "h_ago": "Hace {{count}}h",
     "failed": "Error de transcripción",
+    "identify_speakers": "Identificar hablantes",
+    "speakers_unavailable": "La identificación de hablantes no está disponible. La transcripción se guardó sin etiquetas de hablante.",
     "missing_model": "No hay ningún modelo de voz a texto instalado — esta función necesita uno para transcribir audio.",
     "original_transcript": "Transcripción original"
   },

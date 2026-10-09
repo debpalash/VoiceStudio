@@ -445,6 +445,8 @@
     "m_ago": "{{count}}m atrás",
     "h_ago": "{{count}}h atrás",
     "failed": "Falha na transcrição",
+    "identify_speakers": "Identificar falantes",
+    "speakers_unavailable": "A identificação de falantes não está disponível. A transcrição foi salva sem rótulos de falantes.",
     "missing_model": "Nenhum modelo de fala para texto está instalado — este recurso precisa de um para transcrever áudio.",
     "original_transcript": "Transcrição original"
   },

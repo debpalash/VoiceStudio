@@ -447,6 +447,8 @@
     "m_ago": "{{count}}m temu",
     "h_ago": "{{count}}h temu",
     "failed": "Transkrypcja nie powiodła się",
+    "identify_speakers": "Rozpoznaj mówców",
+    "speakers_unavailable": "Rozpoznawanie mówców jest niedostępne. Transkrypcję zapisano bez etykiet mówców.",
     "missing_model": "Nie zainstalowano modelu zamiany mowy na tekst — ta funkcja wymaga go do transkrypcji dźwięku.",
     "original_transcript": "Oryginalna transkrypcja"
   },

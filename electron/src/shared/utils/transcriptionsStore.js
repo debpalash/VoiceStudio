@@ -46,6 +46,7 @@ export function addTranscription(entry) {
     duration_s: entry.duration_s || 0,
     segments: entry.segments || [],
     timestamp: new Date().toISOString(),
+    ...(Array.isArray(entry.speakers) && entry.speakers.length ? { speakers: entry.speakers } : {}),
     ...(typeof entry.refined_text === 'string' && entry.refined_text
       ? { refined_text: entry.refined_text }
       : {}),

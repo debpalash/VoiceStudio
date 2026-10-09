@@ -443,6 +443,8 @@
     "m_ago": "{{count}}phút trước",
     "h_ago": "{{count}}giờ trước",
     "failed": "Phiên âm không thành công",
+    "identify_speakers": "Nhận diện người nói",
+    "speakers_unavailable": "Không thể nhận diện người nói. Bản chép lời đã được lưu mà không có nhãn người nói.",
     "missing_model": "Chưa cài đặt mô hình chuyển giọng nói thành văn bản — tính năng này cần một mô hình để phiên âm.",
     "original_transcript": "Bản chép lời gốc"
   },

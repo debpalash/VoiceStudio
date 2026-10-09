@@ -443,6 +443,8 @@
     "m_ago": "{{count}}m sedan",
     "h_ago": "{{count}}h sedan",
     "failed": "Transkription misslyckades",
+    "identify_speakers": "Identifiera talare",
+    "speakers_unavailable": "Talaridentifiering är inte tillgänglig. Transkriptionen sparades utan talaretiketter.",
     "missing_model": "Ingen tal-till-text-modell är installerad — den här funktionen behöver en för att transkribera ljud.",
     "original_transcript": "Ursprunglig transkription"
   },

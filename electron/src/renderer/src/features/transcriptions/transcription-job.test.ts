@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { loadTranscriptions } from '@shared/utils/transcriptionsStore';
 
 const apiJson = vi.fn();
-const toast = { success: vi.fn(), error: vi.fn() };
+const toast = { success: vi.fn(), error: vi.fn(), warning: vi.fn() };
 vi.mock('@/lib/api/client', () => ({
   apiJson: (...args: unknown[]) => apiJson(...args),
   describeError: (error: unknown) => (error instanceof Error ? error.message : String(error)),
@@ -80,4 +80,39 @@ it('refuses a second job while one is running', async () => {
   expect(await job.startTranscription(audio, 'fast')).toBe('busy');
   finish({ text: 'x' });
   await first;
+});
+
+const sentForm = () =>
+  apiJson.mock.calls.find(([path]) => path === '/transcribe')![1].body as FormData;
+
+it('asks for speaker identification only in accurate mode', async () => {
+  respond(() => Promise.resolve({ text: 'x' }));
+  await job.startTranscription(audio, 'accurate', { diarize: true });
+  expect(sentForm().get('diarize')).toBe('true');
+  apiJson.mockClear();
+  await job.startTranscription(audio, 'fast', { diarize: true });
+  expect(sentForm().get('diarize')).toBeNull();
+  apiJson.mockClear();
+  await job.startTranscription(audio, 'accurate');
+  expect(sentForm().get('diarize')).toBeNull();
+});
+
+it('keeps speaker labels and warns when identification was unavailable', async () => {
+  respond(() =>
+    Promise.resolve({
+      text: 'hi',
+      segments: [{ start: 0, end: 1, text: 'hi', speaker: 'Speaker 1' }],
+      speakers: ['Speaker 1'],
+    }),
+  );
+  await job.startTranscription(audio, 'accurate', { diarize: true });
+  expect(loadTranscriptions()[0]).toMatchObject({
+    speakers: ['Speaker 1'],
+    segments: [{ speaker: 'Speaker 1' }],
+  });
+  expect(toast.warning).not.toHaveBeenCalled();
+
+  respond(() => Promise.resolve({ text: 'hi', diarization_error: 'MODEL_MISSING' }));
+  await job.startTranscription(audio, 'accurate', { diarize: true });
+  expect(toast.warning).toHaveBeenCalledOnce();
 });

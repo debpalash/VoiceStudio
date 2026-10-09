@@ -443,6 +443,8 @@
     "m_ago": "{{count}}m yang lalu",
     "h_ago": "{{count}}jam yang lalu",
     "failed": "Transkripsi gagal",
+    "identify_speakers": "Kenali pembicara",
+    "speakers_unavailable": "Pengenalan pembicara tidak tersedia. Transkrip disimpan tanpa label pembicara.",
     "missing_model": "Tidak ada model ucapan-ke-teks yang terpasang — fitur ini membutuhkannya untuk mentranskripsi audio.",
     "original_transcript": "Transkrip asli"
   },
