@@ -1,5 +1,7 @@
 """Second-pass ASR QC scoring (Wave 3.3 / Spec 5) — pure, no ASR/main import."""
 
+import unicodedata
+
 import pytest
 
 from services.dub_qc import score_dub, word_error_rate
@@ -57,6 +59,39 @@ def test_wer_no_space_script_punctuation_is_stripped():
 
 def test_wer_spaced_scripts_keep_word_tokens():
     assert word_error_rate("naïve café", "naïve cafe") == pytest.approx(1 / 2)
+
+
+@pytest.mark.parametrize("text", ["naïve café", "ガラス", "한글"])
+@pytest.mark.parametrize("decomposed_reference", [True, False])
+def test_imported_cue_and_recognition_with_equivalent_unicode_do_not_drift(
+    text, decomposed_reference,
+):
+    from services.srt_parser import parse_srt
+    from services.text_upload import decode_text_upload
+
+    decomposed = unicodedata.normalize("NFD", text)
+    reference = decomposed if decomposed_reference else text
+    hypothesis = text if decomposed_reference else decomposed
+    # Exercise the actual upload -> subtitle import -> QC consumer, without
+    # requiring a model or altering either source text's stored spelling.
+    uploaded = f"1\n00:00:00,000 --> 00:00:03,000\n{reference}\n".encode("utf-8")
+    segments = parse_srt(decode_text_upload(uploaded)).segments
+    scored = score_dub(segments, [{"start": 0.1, "end": 2.9, "text": hypothesis}])
+    assert scored[0].drift == 0.0
+    assert scored[0].flagged is False
+    assert scored[0].target_text == reference
+    assert scored[0].recognized_text == hypothesis
+    assert segments[0]["text"] == reference
+    assert scored[0].new_start == 0.1
+    assert scored[0].new_end == 2.9
+
+
+def test_canonical_unicode_scoring_keeps_real_accent_and_word_differences():
+    assert word_error_rate(unicodedata.normalize("NFD", "naïve café"), "naïve cafe") == 0.5
+    assert word_error_rate("ガラス", "カラス") == pytest.approx(1 / 3)
+    assert word_error_rate("the cat sat", "the dog sat") == pytest.approx(1 / 3)
+    # Canonical equivalence does not fold compatibility ligatures.
+    assert word_error_rate("ﬁle", "file") == 1.0
 
 
 # ── score_dub ────────────────────────────────────────────────────────────────
