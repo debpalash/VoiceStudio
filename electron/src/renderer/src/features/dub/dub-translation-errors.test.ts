@@ -4,6 +4,7 @@ import {
   clearDubEditHistory,
   dubSession,
   editDubSegment,
+  editDubSegments,
   redoDubEdit,
   undoDubEdit,
 } from './dub-session';
@@ -73,6 +74,35 @@ it('preserves other language errors when editing a translated line', () => {
     de: 'German translation failed',
   });
 });
+
+it.each(['single', 'bulk'])(
+  'clears the legacy error after a %s edit repairs only the saved translation',
+  (mode) => {
+    dubSession.setState((current) => ({
+      ...current,
+      segments: current.segments.map((segment) => ({
+        ...segment,
+        translate_errors: { fr: 'French translation failed' },
+      })),
+    }));
+    const changes = { translations: { fr: 'Bonjour', de: 'Hallo' } };
+    if (mode === 'single') editDubSegment('a', changes);
+    else editDubSegments(new Set(['a']), changes);
+    const repaired = dubSession.state.segments[0];
+    expect(repaired.text).toBe('Hello');
+    expect(repaired.translate_errors).toBeUndefined();
+    expect(getDubTranslationError(repaired, 'fr')).toBeUndefined();
+    expect(getDubTranslationError(repaired, 'de')).toBeUndefined();
+    expect(repaired.translate_error).toBeUndefined();
+
+    undoDubEdit();
+    expect(getDubTranslationError(dubSession.state.segments[0], 'fr')).toBe(
+      'French translation failed',
+    );
+    redoDubEdit();
+    expect(getDubTranslationError(dubSession.state.segments[0], 'fr')).toBeUndefined();
+  },
+);
 
 it('keeps saved failures for timing edits and unmatched or blank pasted text', () => {
   editDubSegment('a', { end: 2 });

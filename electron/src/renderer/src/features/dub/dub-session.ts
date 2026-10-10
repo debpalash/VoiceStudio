@@ -494,6 +494,8 @@ const patchSegment = (segment: DubSegment, value: Partial<DubSegment>) => {
       if (text !== segment.translations?.[language]) delete errors[language];
     }
     next.translate_errors = Object.keys(errors).length ? errors : undefined;
+    // Removing the last saved failure must not revive the legacy fallback.
+    if (!next.translate_errors) delete next.translate_error;
   }
   if (segment.merge_parts && fields.some((field) => MERGE_PART_FIELDS.has(field))) {
     next.merge_parts = undefined;
