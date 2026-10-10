@@ -963,6 +963,11 @@
     "details": "자세히"
   },
   "dubWorkspace": {
+    "transcriptIssues": "전사 문제",
+    "issueCount": "표시된 구간: {{total}}",
+    "issuePosition": "{{total}}개 중 {{current}}번째 문제",
+    "previousIssue": "이전 문제",
+    "nextIssue": "다음 문제",
     "title": "더빙",
     "start": "시작",
     "end": "끝",

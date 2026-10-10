@@ -967,6 +967,11 @@
     "unknown": "nieznany"
   },
   "dubWorkspace": {
+    "transcriptIssues": "Problemy transkrypcji",
+    "issueCount": "Oznaczone segmenty: {{total}}",
+    "issuePosition": "Problem {{current}} z {{total}}",
+    "previousIssue": "Poprzedni problem",
+    "nextIssue": "Następny problem",
     "title": "Dubbing",
     "start": "Zacznij",
     "end": "Koniec",

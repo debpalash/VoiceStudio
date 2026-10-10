@@ -971,6 +971,11 @@
     "unknown": "مجهول"
   },
   "dubWorkspace": {
+    "transcriptIssues": "مشكلات النص",
+    "issueCount": "المقاطع المُعلَّمة: {{total}}",
+    "issuePosition": "المشكلة {{current}} من {{total}}",
+    "previousIssue": "المشكلة السابقة",
+    "nextIssue": "المشكلة التالية",
     "title": "الدبلجة",
     "start": "ابدأ",
     "end": "نهاية",

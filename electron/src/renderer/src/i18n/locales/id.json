@@ -963,6 +963,11 @@
     "unknown": "tidak dikenal"
   },
   "dubWorkspace": {
+    "transcriptIssues": "Masalah transkrip",
+    "issueCount": "Segmen bertanda: {{total}}",
+    "issuePosition": "Masalah {{current}} dari {{total}}",
+    "previousIssue": "Masalah sebelumnya",
+    "nextIssue": "Masalah berikutnya",
     "title": "Sulih suara",
     "start": "Mulai",
     "end": "Akhir",

@@ -963,6 +963,11 @@
     "unknown": "bilinmiyor"
   },
   "dubWorkspace": {
+    "transcriptIssues": "Transkript sorunları",
+    "issueCount": "İşaretli bölümler: {{total}}",
+    "issuePosition": "{{total}} sorundan {{current}}.",
+    "previousIssue": "Önceki sorun",
+    "nextIssue": "Sonraki sorun",
     "title": "Dublaj",
     "start": "Başlat",
     "end": "Bitiş",

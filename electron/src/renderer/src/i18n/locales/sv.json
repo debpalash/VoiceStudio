@@ -963,6 +963,11 @@
     "unknown": "okänd"
   },
   "dubWorkspace": {
+    "transcriptIssues": "Problem i transkriptionen",
+    "issueCount": "Markerade segment: {{total}}",
+    "issuePosition": "Problem {{current}} av {{total}}",
+    "previousIssue": "Föregående problem",
+    "nextIssue": "Nästa problem",
     "title": "Dubbning",
     "start": "Starta",
     "end": "Slut",

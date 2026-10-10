@@ -963,6 +963,11 @@
     "unknown": "अज्ञात"
   },
   "dubWorkspace": {
+    "transcriptIssues": "प्रतिलेख की समस्याएँ",
+    "issueCount": "चिह्नित खंड: {{total}}",
+    "issuePosition": "{{total}} में से समस्या {{current}}",
+    "previousIssue": "पिछली समस्या",
+    "nextIssue": "अगली समस्या",
     "title": "डबिंग",
     "start": "प्रारंभ करें",
     "end": "ख़त्म",
