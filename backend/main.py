@@ -1446,6 +1446,7 @@ from core.failure import (  # noqa: E402
     invalid_media_file_detail,
     no_audio_track_detail,
 )
+from services.model_acceptance import ModelLicenceNotAccepted  # noqa: E402
 
 
 @app.exception_handler(NoAudioTrackError)
@@ -1458,6 +1459,17 @@ async def no_audio_track_handler(request: Request, exc: NoAudioTrackError):
     return JSONResponse(
         status_code=422,
         content={"detail": no_audio_track_detail()},
+        headers=_cors_headers_for(request),
+    )
+
+
+@app.exception_handler(ModelLicenceNotAccepted)
+async def model_licence_handler(request: Request, exc: ModelLicenceNotAccepted):
+    """403 with the models whose licence still needs acceptance, so the desktop
+    client can show the acceptance dialog instead of a generic failure."""
+    return JSONResponse(
+        status_code=403,
+        content={"detail": exc.detail()},
         headers=_cors_headers_for(request),
     )
 

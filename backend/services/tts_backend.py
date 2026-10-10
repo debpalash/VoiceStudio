@@ -4075,6 +4075,38 @@ def reset_active_backend() -> None:
                            type(inst).__name__, exc)
 
 
+def ensure_engine_licence(cls) -> None:
+    """Refuse a TTS engine whose gated model licences the user has not accepted.
+
+    Checked on every resolution, not only at construction, so revoking
+    acceptance also stops an already-cached instance. Raises
+    ``ModelLicenceNotAccepted`` before any weights load or sidecar starts.
+    """
+    from services.model_acceptance import ensure_engine_accepted
+
+    engine_id = getattr(cls, "id", None)
+    if not engine_id:
+        return
+    try:
+        identity = cls.configured_identity()
+    except Exception:  # noqa: BLE001 — unknown model: gate every model the engine ships
+        identity = None
+    ensure_engine_accepted(engine_id, identity)
+
+
+def ensure_active_engine_licence() -> None:
+    """:func:`ensure_engine_licence` for the configured engine, before any routing.
+
+    For job entry points that may render remotely and so never reach the local
+    instance cache. An unknown engine id is left to the caller's own error.
+    """
+    try:
+        cls = get_backend_class(active_backend_id())
+    except ValueError:
+        return
+    ensure_engine_licence(cls)
+
+
 def get_active_tts_backend(*, model=None) -> TTSBackend:
     """Return the configured backend, reusing a cached instance and releasing
     the previous engine on a switch (MM2-01).
@@ -4092,6 +4124,9 @@ def get_active_tts_backend(*, model=None) -> TTSBackend:
     """
     global _active_instance, _active_instance_id, _active_mlx_model_key
     bid = active_backend_id()
+    cls = get_backend_class(bid)
+    # Before the switch below: a refused engine must not unload the working one.
+    ensure_engine_licence(cls)
 
     mlx_model_key = None
     if bid == "mlx-audio":
@@ -4119,7 +4154,6 @@ def get_active_tts_backend(*, model=None) -> TTSBackend:
         _active_instance_id = None
         _active_mlx_model_key = None
 
-    cls = get_backend_class(bid)
     if cls is OmniVoiceBackend and model is not None:
         # Per-call view over the already-loaded shared singleton; don't cache it
         # (the model lifecycle is owned by model_manager), but the switch above
@@ -4240,6 +4274,7 @@ def get_engine_instance(cls, *, now: Optional[float] = None):
     an extra sidecar process the first time the lock is acquired. One instance
     per process is the right move.
     """
+    ensure_engine_licence(cls)
     stale = None
     with _ENGINE_CACHE_LOCK:
         inst = _ENGINE_INSTANCES.get(cls)
@@ -4366,6 +4401,7 @@ async def resolve_generation_backend(
             "Check Model Catalogue or the OMNIVOICE_TTS_BACKEND env var."
         ) from e
 
+    ensure_engine_licence(backend_cls)
     try:
         ok, msg = backend_cls.is_available()
     except Exception as exc:  # noqa: BLE001 — surface as an actionable ValueError

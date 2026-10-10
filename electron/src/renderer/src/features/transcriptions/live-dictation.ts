@@ -12,6 +12,7 @@ import {
 } from '@shared/utils/captureProtocol';
 import type { TranscriptEntry } from '@shared/utils/transcriptionsStore';
 import { apiJson } from '@/lib/api/client';
+import { announceModelLicenceRequired } from '@/features/settings/model-license-contract';
 import { backendWebSocketUrl } from '@/lib/api/websocket';
 import { beginAppActivity } from '@/lib/app-activity';
 import { getAecEnabled } from '@/lib/store/dictation-settings';
@@ -228,6 +229,7 @@ export class LiveDictation {
       });
       return;
     }
+    if (message.type === 'error') announceModelLicenceRequired(message);
     if (message.type === 'error' || (message.model_silent && !message.text?.trim())) {
       this.fail('transcription');
       return;

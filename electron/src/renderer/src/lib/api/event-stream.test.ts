@@ -41,3 +41,18 @@ it('ignores malformed events but never treats them as completion', async () => {
   await expect(consumeTaskStream('/task', seen)).rejects.toBeInstanceOf(IncompleteTaskStreamError);
   expect(seen).not.toHaveBeenCalled();
 });
+
+it('opens the licence dialog for a dub SSE error carrying model_licence_required', async () => {
+  const seen = vi.fn();
+  window.addEventListener('ov:model-licence-required', seen);
+  vi.mocked(apiFetch).mockResolvedValueOnce(
+    stream(
+      'event: error\ndata: {"code":"model_licence_required","message":"m","models":[{"repo_id":"o/m","fingerprint":"fp"}]}\n\n',
+    ),
+  );
+  const events = vi.fn(() => true);
+  await consumeTaskStream('/task', events);
+  window.removeEventListener('ov:model-licence-required', seen);
+  expect(seen).toHaveBeenCalledTimes(1);
+  expect(events).toHaveBeenCalledTimes(1);
+});

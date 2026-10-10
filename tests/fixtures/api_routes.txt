@@ -17,6 +17,7 @@ DELETE /history
 DELETE /history/{history_id}
 DELETE /longform/jobs/{job_id}
 DELETE /marketplace/{filename}
+DELETE /models/licenses/receipts/{plan_digest}
 DELETE /models/{repo_id:path}
 DELETE /profiles/{profile_id}
 DELETE /profiles/{profile_id}/consent
@@ -133,6 +134,9 @@ GET /model/status
 GET /models
 GET /models/access/status
 GET /models/install/status
+GET /models/licenses/acceptance/{repo_id:path}
+GET /models/licenses/details/{repo_id:path}
+GET /models/licenses/receipts/{plan_digest}
 GET /openapi.json
 GET /personalities
 GET /preview/{filename}
@@ -268,6 +272,11 @@ POST /media-tools/{tool}/use-system
 POST /model/unload/{model_id}
 POST /models/install
 POST /models/install/cancel
+POST /models/install/commit
+POST /models/install/prepare
+POST /models/licenses/accept
+POST /models/licenses/revoke
+POST /models/licenses/verify/{plan_digest}
 POST /personas/export/{profile_id}
 POST /personas/import
 POST /personas/inspect

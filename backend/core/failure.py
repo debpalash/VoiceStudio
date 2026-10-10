@@ -1369,9 +1369,27 @@ def build_failure(
     }
     if context:
         fields["context"] = {k: sanitize(str(v)) for k, v in context.items()}
+    licence = licence_required_detail(exc_or_msg)
+    if licence is not None:
+        # The client opens the acceptance dialog from these, not from the text.
+        fields["code"] = licence["code"]
+        fields["models"] = licence["models"]
     if include_diagnostic:
         fields["diagnostic"] = diagnostic(reason=reason, error_class=error_class, stage=stage)
     return fields
+
+
+def licence_required_detail(exc: Any) -> Optional[dict]:
+    """``ModelLicenceNotAccepted.detail()`` for ``exc`` or anything it was raised from."""
+    from services.model_acceptance import ModelLicenceNotAccepted
+
+    seen = 0
+    while isinstance(exc, BaseException) and seen < 8:
+        if isinstance(exc, ModelLicenceNotAccepted):
+            return exc.detail()
+        exc = exc.__cause__ or exc.__context__
+        seen += 1
+    return None
 
 
 def build_failure_event(

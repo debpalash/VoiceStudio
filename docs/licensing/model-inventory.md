@@ -41,7 +41,55 @@ or user files; those remain explicitly unresolved asset families. Native
 audio.cpp/FFmpeg program repositories are excluded from the model scan and need
 their separate dependency notices.
 
-This inventory does not yet enforce acceptance or Pro exclusions at runtime.
-Versioned acceptance, resolved-asset checks, backend entitlement enforcement and
-complete redistribution notices remain necessary before a paid release. The
-existing free application's engine behaviour is unchanged by this inventory.
+## Shared disclosure chain
+
+`backend/config/models.yaml` remains the operational catalogue. The existing
+`model_licenses.json` is schema v2; its original 56 identities and seven dynamic
+families remain intact. The upgrade preserves observed terms, distinguishes
+evidence revisions from runtime revisions, and keeps incomplete component and
+variant provenance explicit. It does not turn the legacy false commercial flag
+into a blanket non-commercial label.
+
+`GET /models` adds `license_info` to the existing catalogue rows. The maintained
+Electron Model Manager renders these notices alongside the same models and
+keeps commercial model use, output use, redistribution and voice consent
+separate. Original upstream licence labels and evidence are data, not promises
+that all selected assets or activities are covered.
+
+`scripts/generate_model_license_data.py` generates
+[`model-license-data.json`](model-license-data.json) from the same registry and
+catalogue without importing engines or downloading models. It includes all 56
+inventory rows, including dependencies outside the visible catalogue, the
+dynamic families, registry version/digest and source provenance. The website
+vendors these exact bytes as `public/model-license-data.json`, with the immutable
+app implementation commit, path and SHA-256 in `contract/model-licenses/source.json`.
+Its existing `scripts/introspect-reference.py --licenses-only` checks this input
+and generates legal-source provenance; `--verify-source` checks upstream byte
+parity in CI. This legal-source commit is separate from both the registry's
+audited inventory source and the website's capability submodule pin. The website
+must not replace an unknown assessment with a handwritten permission badge.
+
+```sh
+python scripts/generate_model_license_data.py
+python scripts/generate_model_license_data.py --check
+```
+
+The initial projection is disclosure-only. Every production record has missing
+exact-file and/or terms evidence; no commercial clearance or fully reviewed
+production selection is asserted.
+
+## Optional reviewed files, not global enforcement
+
+The additive [reviewed-file workflow](model-review-workflow.md) prepares an exact
+local plan and rejects incomplete evidence before acknowledging or transferring
+files. A qualifying plan binds its source, revisions, documents, artifact hashes
+and notice version to a local receipt. Verified files remain in a separate cache
+and are not activated for ordinary model use.
+
+Existing installation, repair, model packs, recommendations, first-use SDK
+downloads and remote workers remain unchanged. The legacy per-engine booleans
+are not migrated into versioned receipts or treated as provider approval.
+Complete upstream evidence, selected-component closure, redistribution notices,
+provider-specific access handling and integration at all runtime boundaries
+remain unimplemented requirements, not properties of this preview.
+

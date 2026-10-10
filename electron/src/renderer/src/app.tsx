@@ -20,6 +20,7 @@ import { RealtimeEventSync } from '@/hooks/use-realtime-events';
 import { GenerateBudgetSync } from '@/hooks/use-generate-budget-sync';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { WebAuthGate } from '@/components/web-auth-gate';
+import { ModelLicenceGate } from '@/features/settings/model-licence-acceptance';
 
 const notifiedUpdates = new Set<string>();
 
@@ -125,6 +126,7 @@ export function App() {
             <FirstSoundHandoff />
             <TooltipProvider>
               <RouterProvider router={router} />
+              <ModelLicenceGate />
               <Toaster richColors position="bottom-right" />
             </TooltipProvider>
           </GenerationProvider>

@@ -90,6 +90,30 @@ it('debounces edits, streams the CAST voice and plays binary PCM chunks', async 
   expect(mocks.append).toHaveBeenCalledWith(pcm);
   act(() => socket.frame('{"type":"done"}'));
   expect(mocks.finalize).toHaveBeenCalled();
+  // The mocked preview never reports playback end; release the shared slot.
+  act(() => result.current.stop());
+});
+
+it('opens the licence dialog when the TTS stream is refused for an unaccepted model', async () => {
+  const seen = vi.fn();
+  window.addEventListener('ov:model-licence-required', seen);
+  const { result } = renderHook(() => useDubLivePreview({ enabled: true, language: 'Spanish' }));
+  act(() => result.current.onEdit(segment, 'Hola otra vez'));
+  await act(async () => vi.advanceTimersByTimeAsync(LIVE_DUB_PREVIEW_DELAY_MS));
+  const socket = Socket.instances[0];
+  act(() => socket.open());
+  act(() =>
+    socket.frame(
+      JSON.stringify({
+        type: 'error',
+        detail: 'Accept the licence',
+        code: 'model_licence_required',
+        models: [{ repo_id: 'org/m', license: 'x', category: 'noncommercial', fingerprint: 'fp' }],
+      }),
+    ),
+  );
+  window.removeEventListener('ov:model-licence-required', seen);
+  expect(seen).toHaveBeenCalledTimes(1);
 });
 
 it('cancels an obsolete stream immediately and stays silent while disabled', async () => {

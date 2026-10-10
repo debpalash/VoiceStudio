@@ -33,7 +33,9 @@ from services.asr_backend import (
     run_transcribe_guarded,
 )
 from services.audio_io import _safe_soundfile_write
+from services.diarization_runtime import ensure_selected_accepted as _ensure_diarisation_accepted
 from services.ffmpeg_utils import find_ffmpeg, local_inputs_only
+from services.model_acceptance import ModelLicenceNotAccepted
 from services.segmentation import (
     segment_transcript,
     assign_speakers_from_diarization,
@@ -1088,6 +1090,19 @@ CLONE_SKIP_HEURISTIC_MSG = (
 )
 
 
+def _diarization_pipeline_checked():
+    """``get_diarization_pipeline(return_error=True)`` behind licence acceptance.
+
+    An unaccepted selected model returns ``(None, detail)`` with the typed
+    ``model_licence_required`` detail instead of loading it (#2689).
+    """
+    try:
+        _ensure_diarisation_accepted()
+    except ModelLicenceNotAccepted as exc:
+        return None, exc.detail()
+    return get_diarization_pipeline(return_error=True)
+
+
 def _clamp_num_speakers(value) -> Optional[int]:
     """Clamp the user's speaker-count hint to a sane 1–20 range.
 
@@ -1382,6 +1397,11 @@ async def dub_transcribe_stream(
                             break
                         yield b": tts-load keepalive\n\n"
                     _model = _model_task.result()
+                except ModelLicenceNotAccepted:
+                    # Only a best-effort harvest of a preloaded ASR pipe; the TTS
+                    # model's licence is asked for when it is actually used.
+                    logger.info("transcribe preflight: TTS model licence not accepted; skipping preload")
+                    _model = None
                 except Exception as e:
                     logger.error(
                         "transcribe preflight: model load failed (job=%s): %s",
@@ -1498,6 +1518,10 @@ async def dub_transcribe_stream(
                             # (and download CTA) as the initial preflight.
                             preflight_error = asr_model_missing_detail(e.payload)
                             preflight_payload = e.payload
+                        except ModelLicenceNotAccepted as e:
+                            # Typed payload → the client's acceptance dialog (#2689).
+                            preflight_error = str(e)
+                            preflight_payload = e.detail()
                         except Exception as e:
                             logger.error("Transcription preflight ASR load failed")
                             from core.failure import build_failure
@@ -1886,6 +1910,9 @@ async def dub_transcribe_stream(
                         f"speaker count."
                     )
                 return resplit, {
+                    # A licence-blocked diarisation model carries its typed
+                    # payload (code + models) through to the client (#2689).
+                    **(err_sentinel if isinstance(err_sentinel, dict) else {}),
                     "detail": detail,
                     "error_class": error_class,
                     "docs_url": error_docs_map.lookup(error_class),
@@ -1904,7 +1931,7 @@ async def dub_transcribe_stream(
             err_sentinel = None
             if asr_speaker_turns:
                 if num_speakers:
-                    diar_pipe, err_sentinel = get_diarization_pipeline(return_error=True)
+                    diar_pipe, err_sentinel = _diarization_pipeline_checked()
                 if not diar_pipe:
                     return _use_turns(err_sentinel=err_sentinel)
                 logger.info(
@@ -1913,7 +1940,23 @@ async def dub_transcribe_stream(
                     num_speakers, len(asr_speaker_turns),
                 )
             else:
-                diar_pipe, err_sentinel = get_diarization_pipeline(return_error=True)
+                diar_pipe, err_sentinel = _diarization_pipeline_checked()
+            if not diar_pipe and isinstance(err_sentinel, dict):
+                # The selected diarisation model's licence is not accepted
+                # (#2689): no model ran; say so with the typed payload so the
+                # client can offer acceptance, and label by silence gaps.
+                return (
+                    assign_speakers_heuristic(all_segments, num_speakers),
+                    {
+                        **err_sentinel,
+                        "detail": err_sentinel["message"]
+                        + " Using silence gaps for now; rapid speaker turns may be merged."
+                        + _hint_suffix(),
+                        "error_class": "MODEL_LICENCE_REQUIRED",
+                        "docs_url": error_docs_map.lookup("MODEL_LICENCE_REQUIRED"),
+                    },
+                    "heuristic",
+                )
             if not diar_pipe:
                 # Phase 1 AUTH-01: ask the resolver (App → Env → HF-CLI),
                 # not just the env var. This is the #35 fix — users who
@@ -2434,7 +2477,13 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
     # OMNIVOICE_PRELOAD_TTS_ASR — and when it is off, that branch raises "fallback
     # is not preloaded" anyway. Loading ~3 GB to reach a None attribute (and then
     # having offload_tts_for_asr free it) was pure cost.
-    _model = await get_model() if should_preload_tts_asr() else None
+    _model = None
+    if should_preload_tts_asr():
+        try:
+            _model = await get_model()
+        except ModelLicenceNotAccepted:
+            # Harvest-only preload; skip it rather than fail transcription.
+            logger.info("transcribe: TTS model licence not accepted; skipping preload")
 
     # TTS-only install: no ASR model on disk → typed 409 with a download CTA,
     # BEFORE any backend is constructed (the whisper backends auto-download
@@ -2454,6 +2503,9 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
                 status_code=409,
                 detail={**missing, "message": asr_model_missing_detail(missing)},
             )
+    # Diarisation runs after ASR; refuse an unaccepted model before any work
+    # (ModelLicenceNotAccepted → typed 403, #2689).
+    await asyncio.to_thread(_ensure_diarisation_accepted)
 
     def _transcribe():
 
@@ -2592,7 +2644,7 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
             "full_transcript": job.get("full_transcript", ""),
             "source_lang": source_lang,
         }
-    except HTTPException:
+    except (HTTPException, ModelLicenceNotAccepted):
         raise
     except asyncio.CancelledError:
         raise

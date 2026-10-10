@@ -3164,8 +3164,20 @@ async def _load_model_with_timeout():
         ) from exc
 
 
+def _ensure_omnivoice_licence() -> None:
+    """Raise ``ModelLicenceNotAccepted`` while OmniVoice's licence is unaccepted.
+
+    Checked on every ``get_model()``, warm or cold, so a revoked acceptance
+    stops a model that is already resident, not only the next load.
+    """
+    from services.model_acceptance import ensure_engine_accepted
+
+    ensure_engine_accepted("omnivoice")
+
+
 async def get_model(*, allow_load: bool = True):
     global model, _last_used
+    _ensure_omnivoice_licence()
     _last_used = time.time()
     if model is not None:
         # Placement self-heal (#1191). The ASR offload/restore pair below is a
@@ -3390,6 +3402,15 @@ async def preload_model():
             "Preload skipped: this process is running as a remote worker, so the "
             "model loads on first request and is released when it goes idle."
         )
+        return
+    # Installed but not accepted: nothing to warm. The user is asked when they
+    # first generate, so a boot-time error here would only be noise.
+    from services.model_acceptance import ModelLicenceNotAccepted
+
+    try:
+        _ensure_omnivoice_licence()
+    except ModelLicenceNotAccepted:
+        logger.info("Preload skipped: the OmniVoice model licence is not accepted yet.")
         return
     try:
         # Warm-up is gated on LOCAL availability only — never a Hub API

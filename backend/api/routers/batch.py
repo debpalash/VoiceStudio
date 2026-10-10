@@ -35,7 +35,9 @@ from services.dub_batching import (
 )
 from services import gpu_gateway
 from services.segment_bundle import extract_segment_wavs, remove_segment_wavs
-from services.tts_backend import active_backend_id, resolve_generation_backend
+from services.tts_backend import (
+    active_backend_id, ensure_active_engine_licence, resolve_generation_backend,
+)
 
 router = APIRouter()
 logger = logging.getLogger("omnivoice.batch")
@@ -137,6 +139,10 @@ async def _worker():
             # Lets the client show its localized message for a known class
             # (e.g. NO_AUDIO_TRACK) while `error` keeps the English reason.
             job["docs_topic"] = failed["docs_topic"] or None
+            from services.model_acceptance import ModelLicenceNotAccepted
+            if isinstance(e, ModelLicenceNotAccepted):
+                # Typed, like argos_packs: the client offers acceptance (#2689).
+                job["setup_required"] = {"kind": e.detail()["code"], **e.detail()}
             job["finished_at"] = time.time()
             logger.error("Batch job %s failed: %s", job_id, e, exc_info=True)
         finally:
@@ -167,6 +173,7 @@ _REMOTE_BATCH_OPERATION = "batch_segments"
 
 async def _resolve_batch_execution(voice: dict):
     """Resolve Batch's TTS target without loading local weights remotely."""
+    ensure_active_engine_licence()  # remote renders too: the user here asked for it
     engine_id = active_backend_id()
     decision = gpu_gateway.decide("batch")
     if decision.remote:

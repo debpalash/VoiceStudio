@@ -244,6 +244,27 @@ def _select_sherpa_spec(websocket: WebSocket):
     return _usable_spec(mid) if mid else None
 
 
+def _dictation_licence_error(spec) -> dict | None:
+    """``model_licence_required`` detail for the model this session would use.
+
+    Mirrors the session's routing: the selected sherpa model when sherpa is
+    installed, otherwise the capture engine the legacy path resolves.
+    """
+    from services.asr_backend import SherpaDictationBackend, get_capture_asr_backend
+    from services.model_acceptance import ModelLicenceNotAccepted, ensure_accepted
+
+    try:
+        if spec is not None and SherpaDictationBackend.is_available()[0]:
+            ensure_accepted([spec.repo_id])
+        else:
+            get_capture_asr_backend()
+    except ModelLicenceNotAccepted as exc:
+        return exc.detail()
+    except Exception:  # noqa: BLE001 — other failures surface on the real path
+        logger.debug("dictation licence preflight could not resolve the engine", exc_info=True)
+    return None
+
+
 @router.websocket(PLATFORM_STREAM_PATH)
 @router.websocket("/ws/transcribe")
 async def ws_transcribe(websocket: WebSocket):
@@ -317,6 +338,17 @@ async def ws_transcribe(websocket: WebSocket):
                 "type": "error", "kind": "asr_model_missing",
                 "message": asr_model_missing_detail(missing), **missing,
             })
+            await websocket.close()
+        except Exception:  # noqa: BLE001 — client may already be gone
+            pass
+        return
+    # Licence acceptance (#2689): a gated model the user has not accepted gets
+    # a typed frame the client can turn into the acceptance dialog, before any
+    # recognizer is built — never a generic failure or a silent engine swap.
+    licence = await asyncio.to_thread(_dictation_licence_error, spec)
+    if licence is not None:
+        try:
+            await websocket.send_json({"type": "error", "kind": licence["code"], **licence})
             await websocket.close()
         except Exception:  # noqa: BLE001 — client may already be gone
             pass
@@ -515,9 +547,15 @@ async def ws_transcribe(websocket: WebSocket):
             if not await _safe_send({"type": "final", **result}):
                 logger.debug("Skipped final send — client already disconnected")
         except Exception as e:
-            logger.exception("Final transcription failed")
-            await _safe_send({"type": "error", "message": str(e),
-                              "kind": "transcribe", "detail": str(e)})
+            from services.model_acceptance import ModelLicenceNotAccepted
+
+            if isinstance(e, ModelLicenceNotAccepted):
+                # Accepted at session start, revoked since: keep it typed.
+                await _safe_send({"type": "error", "kind": e.detail()["code"], **e.detail()})
+            else:
+                logger.exception("Final transcription failed")
+                await _safe_send({"type": "error", "message": str(e),
+                                  "kind": "transcribe", "detail": str(e)})
     else:
         await _safe_send({
             "type": "final",

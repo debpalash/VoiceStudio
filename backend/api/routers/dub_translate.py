@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from schemas.requests import AgentFitRequest, TranslateRequest
 from services.model_manager import _cpu_pool, _gpu_pool
 from services.hf_revisions import revision_for
+from services.model_acceptance import ModelLicenceNotAccepted
 from services.translator import (
     SCRIPT_RANGES,
     _cinematic_budget,
@@ -424,6 +425,10 @@ async def dub_translate(req: TranslateRequest):
                 })
             flores_tgt = resolved[req.target_lang]
             flores_src = resolved[src_lang]
+            # Checked per request, cached weights included, so revocation
+            # applies; ModelLicenceNotAccepted → typed 403 (#2689).
+            from services.model_acceptance import ensure_accepted
+            ensure_accepted([_NLLB_REPO_ID])
 
             def _translate_nllb():
                 global _nllb_model, _nllb_tokenizer, _nllb_device
@@ -970,6 +975,8 @@ async def dub_translate(req: TranslateRequest):
         return await _maybe_cinematic(
             translated, req, src_lang, loop,
         )
+    except ModelLicenceNotAccepted:
+        raise
     except Exception as e:
         from core.public_errors import public_failure
 

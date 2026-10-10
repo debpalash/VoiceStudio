@@ -2,6 +2,7 @@ import { generateAbortMs } from '@shared/utils/generateBudget';
 import { generationFailureMessage } from '@shared/utils/generationFailureMessage.ts';
 import i18next from 'i18next';
 import { languageRejectionMessage } from '@shared/utils/languageRejection.ts';
+import { announceModelLicenceRequired } from '@/features/settings/model-license-contract';
 import { ApiError, apiFetch, isAbortError } from './client';
 import {
   generateBudgetPending,
@@ -328,6 +329,7 @@ export async function generateCloneStreaming(
       } else if (event.type === 'done') {
         meta = event;
       } else if (event.type === 'error') {
+        announceModelLicenceRequired(event);
         const message =
           languageRejectionMessage(event, i18next.t) ||
           generationFailureMessage(event, i18next.t) ||

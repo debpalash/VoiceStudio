@@ -24,6 +24,8 @@ developer's real app state) with zero ``sys.modules`` surgery. This mirrors
 Do NOT reintroduce module-level ``sys.modules`` stubs in this directory —
 import the real module and rely on this conftest instead.
 """
+import importlib.abc
+import importlib.machinery
 import os
 import sys
 import tempfile
@@ -75,6 +77,60 @@ def supports_symlinks() -> bool:
         return True
     finally:
         shutil.rmtree(probe_dir, ignore_errors=True)
+
+
+_LICENCE_STUB: dict = {"active": False, "stubbed": []}
+
+
+class _LicenceDefaultFinder(importlib.abc.MetaPathFinder):
+    """Stub ``ensure_accepted`` on every copy of services.model_acceptance.
+
+    Tests here re-import backend modules mid-test (``_reimported_backend_modules``),
+    so the copy the app uses can be created after the fixture below ran. Mirrors
+    tests/conftest.py, where the enforcement tests live.
+    """
+
+    def find_spec(self, name, path=None, target=None):
+        if name != "services.model_acceptance":
+            return None
+        spec = importlib.machinery.PathFinder.find_spec(name, path)
+        if spec is None or spec.loader is None:
+            return spec
+        loader, run = spec.loader, spec.loader.exec_module
+
+        def exec_module(module):
+            run(module)
+            if _LICENCE_STUB["active"]:
+                _stub_licence_module(module)
+
+        loader.exec_module = exec_module
+        return spec
+
+
+def _stub_licence_module(module) -> None:
+    _LICENCE_STUB["stubbed"].append((module, module.ensure_accepted))
+    module.ensure_accepted = lambda repo_ids: None
+
+
+sys.meta_path.insert(0, _LicenceDefaultFinder())
+
+
+@pytest.fixture(autouse=True)
+def _model_licences_accepted_by_default():
+    """Gated model licences read as accepted; mirrors tests/conftest.py, where
+    the enforcement tests live and opt back in with ``model_licence_gate``."""
+    _LICENCE_STUB["active"] = True
+    from services import model_acceptance as _ma
+
+    if all(m is not _ma for m, _ in _LICENCE_STUB["stubbed"]):
+        _stub_licence_module(_ma)
+    try:
+        yield
+    finally:
+        _LICENCE_STUB["active"] = False
+        for module, original in reversed(_LICENCE_STUB["stubbed"]):
+            module.ensure_accepted = original
+        _LICENCE_STUB["stubbed"].clear()
 
 
 @pytest.fixture(scope="session")

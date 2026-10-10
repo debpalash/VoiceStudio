@@ -1692,6 +1692,9 @@ async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: flo
             detail={**e.payload, "message": asr_model_missing_detail(e.payload)},
         )
     except Exception as e:
+        from services.model_acceptance import ModelLicenceNotAccepted
+        if isinstance(e, ModelLicenceNotAccepted):
+            raise  # typed 403 via the app handler (#2689)
         logger.exception("dub QC ASR pass failed")
         raise HTTPException(status_code=500, detail=f"QC transcription failed: {e}")
 

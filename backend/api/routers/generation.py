@@ -33,6 +33,7 @@ from services.generation_audio import save_generation_wav
 # Compatibility export used by archetype previews and the gallery renderer.
 from services.audio_io import _safe_torchaudio_save
 from services.binary_preflight import InvalidBinaryError
+from services.model_acceptance import ModelLicenceNotAccepted
 from core import event_bus
 from core.render_trace import call as trace_call
 from core.logging_utils import log_safe
@@ -1882,6 +1883,10 @@ async def generate_speech(
                 "See GET /engines/tts for the list of valid engine ids."
             ),
         )
+    # Before any routing, eviction or load, and for remote renders too: the
+    # licence is accepted by the user asking for the audio. Raises the 403.
+    from services.tts_backend import ensure_engine_licence
+    ensure_engine_licence(backend_cls)
 
     # A design request on an engine that needs a reference clip would only
     # fail inside the engine, after a model load, and a reference on an
@@ -2889,7 +2894,7 @@ async def generate_speech(
             media_type="audio/wav",
             headers=_resp_headers,
         )
-    except HTTPException:
+    except (HTTPException, ModelLicenceNotAccepted):
         raise
     except gpu_gateway.ModelNotDownloaded as e:
         size_bytes = None

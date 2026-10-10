@@ -1,9 +1,6 @@
 import i18next from 'i18next';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  _resetBackendContactForTests,
-  lastBackendContact,
-} from '@shared/utils/backendContact';
+import { _resetBackendContactForTests, lastBackendContact } from '@shared/utils/backendContact';
 import {
   ApiError,
   apiFetch,
@@ -36,6 +33,26 @@ describe('errorFromResponse', () => {
     expect(err.detail).toBe('Localized recovery guidance');
     expect(translate).toHaveBeenCalledWith('engines.argosRuntimeUnavailable');
     expect(err.payload?.detail).toEqual(detail);
+  });
+  it('announces unaccepted model licences so the app can ask for acceptance', async () => {
+    const translate = vi.spyOn(i18next, 't').mockReturnValue('Accept the licence first');
+    const models = [
+      { repo_id: 'a/b', category: 'noncommercial', fingerprint: `v1:${'a'.repeat(64)}` },
+    ];
+    const detail = { code: 'model_licence_required', message: 'raw', models };
+    const seen: unknown[] = [];
+    const listener = (event: Event) => seen.push((event as CustomEvent).detail);
+    window.addEventListener('ov:model-licence-required', listener);
+    try {
+      const err = await errorFromResponse(
+        new Response(JSON.stringify({ detail }), { status: 403 }),
+      );
+      expect(err.detail).toBe('Accept the licence first');
+      expect(translate).toHaveBeenCalledWith('modelLicense.requiredError');
+      expect(seen).toEqual([models]);
+    } finally {
+      window.removeEventListener('ov:model-licence-required', listener);
+    }
   });
   it('localizes background preservation errors and retains diagnostics', async () => {
     const detail = { code: 'dub_background_unavailable', message: 'Raw diagnostic' };

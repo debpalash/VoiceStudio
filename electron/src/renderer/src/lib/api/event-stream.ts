@@ -1,4 +1,5 @@
 import { apiFetch } from './client';
+import { announceModelLicenceRequired } from '@/features/settings/model-license-contract';
 import { splitSSEBuffer, parseSSELine } from '@shared/utils/sseParse';
 export class IncompleteTaskStreamError extends Error {
   constructor() {
@@ -35,6 +36,7 @@ export async function consumeTaskStream(
     name = '';
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
     const object = parsed as Record<string, unknown>;
+    announceModelLicenceRequired(object);
     return onEvent({
       ...object,
       type: eventName || (typeof object.type === 'string' ? object.type : 'message'),

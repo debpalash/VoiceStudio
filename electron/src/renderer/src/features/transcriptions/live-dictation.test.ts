@@ -244,3 +244,19 @@ it('drops a cancelled start whose WebSocket URL resolves after a newer session o
   expect(result).toHaveBeenCalledWith(expect.objectContaining({ text: 'Mine.' }));
   expect(live.getSnapshot().stage).toBe('done');
 });
+
+it('opens the licence dialog when dictation is refused for an unaccepted model', async () => {
+  const seen = vi.fn();
+  window.addEventListener('ov:model-licence-required', seen);
+  await live.start(vi.fn());
+  Socket.instances[0].frame({
+    type: 'error',
+    kind: 'model_licence_required',
+    code: 'model_licence_required',
+    message: 'Accept the licence',
+    models: [{ repo_id: 'org/model', license: 'x', category: 'noncommercial', fingerprint: 'fp1' }],
+  });
+  window.removeEventListener('ov:model-licence-required', seen);
+  expect(seen).toHaveBeenCalledTimes(1);
+  expect(live.getSnapshot().stage).toBe('error');
+});

@@ -3080,6 +3080,85 @@ class ASRModelMissingError(RuntimeError):
         super().__init__(asr_model_missing_detail(payload))
 
 
+# ── Model licence acceptance (#2689) ───────────────────────────────────────
+# A model whose declared licence is not in the commercial category must be
+# accepted before use (services.model_acceptance). Every ASR / dictation
+# choke point resolves the concrete repo the backend instance will load and
+# checks it per use, so a revoked acceptance also applies to cached backends.
+# A sibling model of the same engine never decides the outcome.
+
+_MOONSHINE_REPOS = {
+    "moonshine/base": "UsefulSensors/moonshine-base",
+    "moonshine/tiny": "UsefulSensors/moonshine-tiny",
+}
+_HF_CACHE_DIR = re.compile(r"models--([^/\\]+?)--([^/\\]+)")
+
+
+_DRIVE_PATH = re.compile(r"[A-Za-z]:")
+
+
+def _licence_repo(name: str | None, *, faster_whisper: bool = False) -> str | None:
+    """HF repo id for a backend model name, alias, or installed snapshot path.
+
+    A local directory outside the HF cache has no registry identity (it is a
+    user-provided asset) and yields None. Local paths are recognised by syntax
+    (absolute, ``./``, ``../``, ``~``, drive letters), never by probing the
+    filesystem with a user-provided name.
+    """
+    name = str(name or "").strip()
+    if not name:
+        return None
+    cached = _HF_CACHE_DIR.search(name)
+    if cached:
+        return f"{cached.group(1)}/{cached.group(2)}"
+    if os.path.isabs(name) or name.startswith((".", "~")) or "\\" in name or _DRIVE_PATH.match(name):
+        return None
+    if name.lower() in _MOONSHINE_REPOS:
+        return _MOONSHINE_REPOS[name.lower()]
+    if faster_whisper:
+        return _fw_repo(name)
+    return name if "/" in name else None
+
+
+def backend_model_repos(backend: ASRBackend) -> list[str]:
+    """The concrete model repos ``backend`` loads (empty for remote engines)."""
+    if isinstance(backend, SherpaDictationBackend):
+        return [backend.spec.repo_id]
+    if isinstance(backend, PyTorchWhisperBackend):
+        repo = _licence_repo(backend._model_name())
+    else:
+        name = getattr(backend, "_model_name", None)
+        if isinstance(name, str):
+            repo = _licence_repo(
+                name,
+                faster_whisper=isinstance(backend, (FasterWhisperBackend, WhisperXBackend)),
+            )
+        else:
+            # Sidecar-isolated backends resolve their model in the child; the
+            # preflight helper mirrors that resolution exactly.
+            bid = getattr(backend, "id", None)
+            repo = _offline_asr_repo(bid) if bid else None
+    return [repo] if repo else []
+
+
+def ensure_backend_licence(backend: ASRBackend) -> None:
+    """Raise ``ModelLicenceNotAccepted`` before an unaccepted model is used."""
+    from services.model_acceptance import ensure_accepted
+
+    ensure_accepted(backend_model_repos(backend))
+
+
+def _licence_accepted(repo_id: str | None) -> bool:
+    """True when ``repo_id`` may be used now (accepted, or not gated)."""
+    from services.model_acceptance import ModelLicenceNotAccepted, ensure_accepted
+
+    try:
+        ensure_accepted([repo_id] if repo_id else [])
+    except ModelLicenceNotAccepted:
+        return False
+    return True
+
+
 def load_active_asr_backend(
     *, asr_pipe=None, require_installed: bool = False, defer_pytorch: bool = False,
 ) -> ASRBackend:
@@ -3113,6 +3192,9 @@ def load_active_asr_backend(
     tried: set[str] = set()
     while True:
         backend = get_active_asr_backend(asr_pipe=asr_pipe)
+        # Licence first, per use: a refused model surfaces its own typed error
+        # and is never swapped for a different model (#2689).
+        ensure_backend_licence(backend)
         if defer_pytorch and isinstance(backend, PyTorchWhisperBackend):
             return backend
         bid = getattr(backend, "id", "?")
@@ -3228,6 +3310,8 @@ def _installed_reference_fallbacks(
                     )
                     and _model_supported(model)
                     and model.get("repo_id") not in selected_repos
+                    # Never fall back onto an unaccepted gated model (#2689).
+                    and _licence_accepted(str(model.get("repo_id")))
                 ),
                 key=lambda model: float(model.get("size_gb") or 0),
                 reverse=True,
@@ -3263,6 +3347,7 @@ def _installed_reference_fallbacks(
                 for spec in sherpa_dictation.list_specs()
                 if spec.id not in selected_sherpa
                 and sherpa_dictation.is_installed(spec)
+                and _licence_accepted(spec.repo_id)
             ),
             key=lambda spec: float(spec.size_gb or 0),
             reverse=True,
@@ -3296,8 +3381,11 @@ def _release_reference_backend(backend: ASRBackend) -> None:
 def _try_reference_candidates(
     candidates: list[ASRBackend], audio_path: str, *, release_after: bool,
 ) -> str:
+    from services.model_acceptance import ModelLicenceNotAccepted
+
     for backend in candidates:
         try:
+            ensure_backend_licence(backend)
             result = backend.transcribe(audio_path, word_timestamps=False) or {}
             candidate_text = result.get("text") or " ".join(
                 (seg.get("text") or "").strip()
@@ -3306,6 +3394,8 @@ def _try_reference_candidates(
             candidate_text = (candidate_text or "").strip()
             if candidate_text:
                 return candidate_text
+        except ModelLicenceNotAccepted:
+            logger.info("transcribe_reference: %s skipped — model licence not accepted", backend.id)
         except Exception:  # noqa: BLE001 - try the next local engine
             logger.warning("transcribe_reference: %s failed", backend.id)
         finally:
@@ -3492,8 +3582,13 @@ def get_sherpa_dictation_backend(model_id: str) -> "SherpaDictationBackend":
     :func:`get_capture_asr_backend`. Thread-safe: the recognizer is shared;
     each session creates its own decode stream (see capture_ws)."""
     global _capture_backend, _capture_backend_key
+    from services import sherpa_dictation as _sd
+    from services.model_acceptance import ensure_accepted
     from services.performance_profiles import requested_tier
 
+    # Checked on every handout, cached or not, so revocation applies (#2689).
+    spec = _sd.get_spec(model_id)
+    ensure_accepted([spec.repo_id] if spec is not None else [])
     performance_tier = requested_tier("dictation")
     _touch_capture()  # any handout resets the idle clock
     with _capture_backend_lock:
@@ -3665,7 +3760,17 @@ def get_capture_asr_backend(*, skip_sherpa: bool = False) -> ASRBackend:
 
     ``skip_sherpa`` is used only to validate a token-silent Sherpa result with
     the installed capture fallback before persisting model demotion.
+
+    The selected model's licence is checked on every handout, including the
+    warm singleton, and an unaccepted model raises ``ModelLicenceNotAccepted``
+    instead of falling through to another engine (#2689).
     """
+    backend = _select_capture_asr_backend(skip_sherpa=skip_sherpa)
+    ensure_backend_licence(backend)
+    return backend
+
+
+def _select_capture_asr_backend(*, skip_sherpa: bool) -> ASRBackend:
     global _capture_backend, _capture_backend_key
 
     _touch_capture()  # any handout resets the idle clock (#1101 class)
@@ -3774,8 +3879,13 @@ def select_faster_whisper_model(repo_id: str) -> None:
     """Persist and apply a CTranslate2 model selection for this process."""
     from core import prefs
 
+    from services.model_acceptance import ensure_accepted
+
     if prefs.is_env_shadowed("ASR_MODEL_FASTER"):
         raise ValueError("ASR_MODEL_FASTER is set outside VoiceStudio")
+    # Selecting a gated model asks for acceptance up front; use is still
+    # checked at load, so a later revocation applies too (#2689).
+    ensure_accepted([_licence_repo(repo_id, faster_whisper=True)])
     prefs.set_("asr_model_faster", repo_id)
     # Sidecars inherit the process environment. Updating it here makes the
     # selection effective immediately as well as after the next app launch.

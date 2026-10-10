@@ -14,6 +14,7 @@ import {
   SearchIcon,
   SparklesIcon,
   Trash2Icon,
+  TriangleAlertIcon,
   type LucideIcon,
   WrenchIcon,
   XIcon,
@@ -41,6 +42,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { SettingsSection, SettingsRow } from './settings-layout';
 import { familyIcons, type ModelFamily } from './model-family';
 import { useModelCatalogue, type CatalogueModel } from './model-catalogue-query';
+import { ModelLicense } from './model-license';
 import { resolvePerformanceModelPack } from './performance-model-packs';
 import { modelDiskShortfall } from './model-disk-space';
 import { fmtBytes } from '@shared/components/settings/models/format';
@@ -940,6 +942,13 @@ export function ModelLibrary({
             {t('firstrun.chip_recommended')}
           </span>
         )}
+        <ModelLicense
+          repoId={model.repo_id}
+          label={model.label}
+          info={model.license_info}
+          acceptance={model.license_acceptance}
+          target={installTarget}
+        />
         {!activeAsrModel &&
           (activeEngineModel || activeDictationModel || activeDiarisationModel) && (
             <span className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-xs text-primary">
@@ -1118,10 +1127,18 @@ export function ModelLibrary({
           </>
         ) : model.installed ? (
           <>
-            <span className="flex items-center gap-1 text-xs">
-              <CheckIcon className="size-3.5" />
-              {t('modelMaintenance.installed')}
-            </span>
+            {model.license_acceptance?.required && !model.license_acceptance.accepted ? (
+              // Downloaded but unusable until its licence is accepted.
+              <span className="flex items-center gap-1 rounded-full bg-warning/10 px-2 py-1 text-xs text-warning">
+                <TriangleAlertIcon className="size-3.5" />
+                {t('modelLicense.acceptNeeded')}
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-xs">
+                <CheckIcon className="size-3.5" />
+                {t('modelMaintenance.installed')}
+              </span>
+            )}
             {!setup && resident && (
               <span
                 className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-xs text-primary"

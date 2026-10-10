@@ -1,3 +1,5 @@
+import importlib.abc
+import importlib.machinery
 import os
 import sys
 import tempfile
@@ -129,6 +131,74 @@ def _settings_files_restore(snapshot: dict) -> None:
         with open(tmp, "wb") as handle:
             handle.write(before)
         os.replace(tmp, path)
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "model_licence_gate: run with real model-licence acceptance (default: accepted)",
+    )
+
+
+_LICENCE_STUB = {"active": False, "stubbed": []}
+
+
+class _LicenceDefaultFinder(importlib.abc.MetaPathFinder):
+    """Stub ``ensure_accepted`` on every copy of services.model_acceptance.
+
+    Suites that purge and re-import backend modules mid-test (tests/backend)
+    create a fresh copy after the autouse fixture below has already run, so
+    patching the copy that existed then would miss the one the app uses.
+    """
+
+    def find_spec(self, name, path=None, target=None):
+        if name != "services.model_acceptance":
+            return None
+        spec = importlib.machinery.PathFinder.find_spec(name, path)
+        if spec is None or spec.loader is None:
+            return spec
+        loader, run = spec.loader, spec.loader.exec_module
+
+        def exec_module(module):
+            run(module)
+            if _LICENCE_STUB["active"]:
+                _stub_licence_module(module)
+
+        loader.exec_module = exec_module
+        return spec
+
+
+def _stub_licence_module(module) -> None:
+    _LICENCE_STUB["stubbed"].append((module, module.ensure_accepted))
+    module.ensure_accepted = lambda repo_ids: None
+
+
+sys.meta_path.insert(0, _LicenceDefaultFinder())
+
+
+@pytest.fixture(autouse=True)
+def _model_licences_accepted_by_default(request):
+    """Gated model licences read as accepted unless a test opts in with
+    ``@pytest.mark.model_licence_gate``.
+
+    Enforcement has its own tests (test_model_acceptance, test_tts_model_licence_gate);
+    every other engine test would otherwise depend on acceptance state that a
+    fresh test data dir never has. Mirrored in backend/tests/conftest.py.
+    """
+    if request.node.get_closest_marker("model_licence_gate"):
+        yield
+        return
+    _LICENCE_STUB["active"] = True
+    current = sys.modules.get("services.model_acceptance")
+    if current is not None and all(m is not current for m, _ in _LICENCE_STUB["stubbed"]):
+        _stub_licence_module(current)
+    try:
+        yield
+    finally:
+        _LICENCE_STUB["active"] = False
+        for module, original in reversed(_LICENCE_STUB["stubbed"]):
+            module.ensure_accepted = original
+        _LICENCE_STUB["stubbed"].clear()
 
 
 @pytest.fixture(scope="module", autouse=True)
