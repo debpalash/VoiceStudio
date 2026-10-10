@@ -630,9 +630,13 @@ def engine_health(engine_id: str):
         # ``health_check`` already swallows its own exceptions per Plan
         # 02-01's contract; we still wrap in a defensive try so a custom
         # subclass that violates the contract can't 500 the endpoint.
+        from services.model_acceptance import ModelLicenceNotAccepted
+
         try:
             instance = _get_engine_instance(cls)
             ok, msg = instance.health_check()
+        except ModelLicenceNotAccepted:
+            raise  # the structured 403: spawning the sidecar would load the model
         except Exception as exc:
             ok, msg = False, f"{type(exc).__name__}: {exc}"
             raised_class = type(exc).__name__

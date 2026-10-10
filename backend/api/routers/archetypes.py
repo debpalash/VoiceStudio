@@ -42,6 +42,7 @@ from core import archetypes
 from core.audio_validation import is_playable_wav, resolve_regular_file
 from core.config import OUTPUTS_DIR, VOICES_DIR
 from services import gallery
+from services.model_acceptance import ModelLicenceNotAccepted
 from core.browser_guard import reject_cross_site_get
 
 logger = logging.getLogger("omnivoice.archetypes")
@@ -563,6 +564,8 @@ async def preview_archetype(
     if not is_playable_wav(cache_path):
         try:
             await _render_wav_atomic(a, cache_path, prefix=".preview-")
+        except ModelLicenceNotAccepted:
+            raise  # the structured 403 that opens the acceptance dialog
         except Exception as e:  # model missing / OOM / inference failure
             logger.error("Archetype preview render failed", exc_info=True)
             # Two different failures, two different answers. Without a model
@@ -628,6 +631,8 @@ async def use_archetype(archetype_id: str, name: Optional[str] = Query(None)):
             audio_filename, audio_path = await _render_profile_audio(
                 a, profile_id, publish=existing is None,
             )
+        except ModelLicenceNotAccepted:
+            raise  # the structured 403 that opens the acceptance dialog
         except Exception as e:
             logger.error("Archetype 'use' render failed", exc_info=True)
             # Same actionable/diagnostic split as /preview — minus the gallery
@@ -674,6 +679,8 @@ async def use_archetype(archetype_id: str, name: Optional[str] = Query(None)):
         if audio_path is None:
             try:
                 audio_filename, audio_path = await _render_profile_audio(a, profile_id)
+            except ModelLicenceNotAccepted:
+                raise
             except Exception as e:
                 raise HTTPException(
                     status_code=503, detail="Couldn't create a voice from this archetype.",

@@ -46,6 +46,8 @@ async def _resolve_stream_backend(engine_id: str | None):
 
     selected_id = engine_id or tts_backend.active_backend_id()
     cls = tts_backend.get_backend_class(selected_id)
+    # Every branch below can hand back an already-built instance; refuse first.
+    tts_backend.ensure_engine_licence(cls)
     if cls is tts_backend.OmniVoiceBackend:
         if engine_id:
             # Preserve the explicit core override path; the shared model is
@@ -515,11 +517,19 @@ async def ws_tts(websocket: WebSocket):
                 )
 
             except Exception as e:
-                logger.exception("TTS streaming failed: %s", e)
+                from core.failure import licence_required_detail
+
+                licence = licence_required_detail(e)
+                if licence is None:
+                    logger.exception("TTS streaming failed: %s", e)
+                else:
+                    logger.info("TTS stream refused: model licence not accepted")
                 try:
                     await websocket.send_json({
                         "type": "error",
                         "detail": str(e),
+                        # code + models let the client open the acceptance dialog.
+                        **({"code": licence["code"], "models": licence["models"]} if licence else {}),
                     })
                 except Exception:
                     break

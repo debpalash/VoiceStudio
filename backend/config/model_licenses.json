@@ -1,7 +1,7 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "checked_at": "2026-10-03",
-  "scope": "Configured model repositories and known dynamic asset families. commercial_use is reviewed clearance for this distribution, not a universal claim about the model; false includes unresolved terms. No runtime enforcement is implemented by this inventory.",
+  "scope": "Model-source disclosures joined to models.yaml. Using a model whose licence category is not commercial requires the user's local licence acceptance; ordinary installs and SDK auxiliary downloads are unchanged. The additive reviewed-install API fails closed on incomplete evidence. A local acknowledgement is not upstream assent or commercial permission.",
   "models": [
     {
       "id": "k2-fsa/OmniVoice",
@@ -17,7 +17,53 @@
         "omnivoice-subprocess"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "The pinned card distinguishes Apache-2.0 code from non-commercial weights. The audio tokenizer has separate Boson and Meta terms; see docs/model-credits.md."
+      "notes": "The pinned card distinguishes Apache-2.0 code from non-commercial weights. The audio tokenizer has separate Boson and Meta terms; see docs/model-credits.md.",
+      "runtime_revision": "c5fdb5ccb189668d56333f77ba2629f4cd7535f4",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "restricted",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "noncommercial",
+          "scope": "Selected weight/component; all required components and intended use must be assessed.",
+          "summary": "Pinned card distinguishes Apache-2.0 code from CC-BY-NC weights; CC version not stated. Audio tokenizer adds Boson Higgs Audio 2 and Meta Llama 3 terms."
+        },
+        "output_terms": {
+          "status": "not_specifically_granted_in_reviewed_material",
+          "summary": "No express general output ownership grant identified. Higgs terms restrict using materials or outputs to improve other LLMs; noncommercial weights cannot be described as authorizing commercial generation.",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [
+          {
+            "url": "https://huggingface.co/k2-fsa/OmniVoice/blob/c5fdb5ccb189668d56333f77ba2629f4cd7535f4/README.md",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          },
+          {
+            "url": "https://huggingface.co/k2-fsa/OmniVoice/blob/c5fdb5ccb189668d56333f77ba2629f4cd7535f4/audio_tokenizer/LICENSE",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          }
+        ],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": [
+          "OmniVoice weights",
+          "Qwen-derived text tokenizer/backbone: provenance review needed",
+          "audio_tokenizer: Higgs Audio 2 / Meta Llama 3",
+          "eustlb/higgs-audio-v2-tokenizer repair/training path",
+          "optional reference ASR"
+        ]
+      }
     },
     {
       "id": "audio-cpp/audio.cpp-gguf",
@@ -32,7 +78,93 @@
         "audiocpp"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "dc6fecccc2b0c6bdda0a8b2f38fa61394fee0b9c",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "mixed_bundle_requires_per_file_records",
+          "summary": "This repo contains unrelated models. VoiceStudio downloads Breeze TTS 2 Q8_0 and Sortformer 4spk v1 Q8_0 only. Both have noncommercial upstream signals but different governing terms; see file variants."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [
+          {
+            "url": "https://github.com/debpalash/VoiceStudio/blob/06c6e077f0fc35149efefc3561e9be5ae835d916/backend/config/models.yaml",
+            "checked_at": "2026-10-09",
+            "method": "read_pinned_source"
+          }
+        ],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": [
+          "Breeze-TTS-2-GGUF/breeze-tts-2-q8_0.gguf",
+          "Sortformer-Diar-4spk-v1-GGUF/sortformer-diar-4spk-v1-q8_0.gguf"
+        ]
+      },
+      "variants": [
+        {
+          "id": "audiocpp:breeze-tts-2-q8_0",
+          "label": "Breeze-TTS-2-GGUF/breeze-tts-2-q8_0.gguf",
+          "commercial_inference": "unknown",
+          "commercial_outputs": "unknown",
+          "review_status": "unreviewed",
+          "blockers": [
+            "variant_provenance_unverified"
+          ],
+          "evidence_url": "https://huggingface.co/BreezeBlue/Breeze-TTS-2/blob/main/LICENSE",
+          "observations": {
+            "id": "audiocpp:breeze-tts-2-q8_0",
+            "repo": "audio-cpp/audio.cpp-gguf",
+            "revision": "dc6fecccc2b0c6bdda0a8b2f38fa61394fee0b9c",
+            "path": "Breeze-TTS-2-GGUF/breeze-tts-2-q8_0.gguf",
+            "engine": "audiocpp",
+            "upstream": "BreezeBlue/Breeze-TTS-2",
+            "commercial_inference": "noncommercial_current_upstream_terms",
+            "output_terms": "Current upstream v1.1 expressly restricts commercial use of self-hosted outputs; hosted products are separate. Exact quantized artifact original provenance/accepted terms must be recorded before applying current terms retroactively.",
+            "source": "https://huggingface.co/BreezeBlue/Breeze-TTS-2/blob/main/LICENSE",
+            "terms_version": "1.1; 2026-09-01",
+            "full_workflow_cleared": false
+          }
+        },
+        {
+          "id": "audiocpp:sortformer-diar-4spk-v1-q8_0",
+          "label": "Sortformer-Diar-4spk-v1-GGUF/sortformer-diar-4spk-v1-q8_0.gguf",
+          "commercial_inference": "unknown",
+          "commercial_outputs": "unknown",
+          "review_status": "unreviewed",
+          "blockers": [
+            "variant_provenance_unverified"
+          ],
+          "evidence_url": "https://huggingface.co/nvidia/diar_sortformer_4spk-v1",
+          "observations": {
+            "id": "audiocpp:sortformer-diar-4spk-v1-q8_0",
+            "repo": "audio-cpp/audio.cpp-gguf",
+            "revision": "dc6fecccc2b0c6bdda0a8b2f38fa61394fee0b9c",
+            "path": "Sortformer-Diar-4spk-v1-GGUF/sortformer-diar-4spk-v1-q8_0.gguf",
+            "engine": "audiocpp diarisation",
+            "upstream": "nvidia/diar_sortformer_4spk-v1",
+            "commercial_inference": "noncommercial_current_upstream_terms",
+            "license": "CC-BY-NC-4.0",
+            "source": "https://huggingface.co/nvidia/diar_sortformer_4spk-v1",
+            "output_terms": "Do not infer CC output ownership or automatic output relicensing; inference grant is noncommercial.",
+            "full_workflow_cleared": false
+          }
+        }
+      ]
     },
     {
       "id": "Systran/faster-whisper-large-v3",
@@ -49,7 +181,34 @@
         "whisperx"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "mlx-community/whisper-large-v3-mlx",
@@ -64,7 +223,34 @@
         "mlx-whisper"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "49e6aa286ad60c14352c404340ded53710378a11",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "mlx-community/whisper-large-v3-turbo",
@@ -79,7 +265,34 @@
         "mlx-whisper"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "openai/whisper-large-v3",
@@ -94,7 +307,34 @@
         "pytorch-whisper"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "06f233fe06e710322aca913c1bc4249a0d71fce1",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "mlx-community/whisper-tiny-mlx",
@@ -109,7 +349,34 @@
         "mlx-whisper"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "6caf9c55601caafbe6508a8b0d216bdf4783c4e8",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "deepdml/faster-whisper-large-v3-turbo-ct2",
@@ -126,7 +393,34 @@
         "whisperx"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "4df90f75321148c3a29a9e2351b7ddf8f5b115a8",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "Systran/faster-distil-whisper-large-v3",
@@ -143,7 +437,34 @@
         "whisperx"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "c3058b475261292e64a0412df1d2681c06260fab",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "Systran/faster-whisper-medium",
@@ -160,7 +481,34 @@
         "whisperx"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "08e178d48790749d25932bbc082711ddcfdfbc4f",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "Systran/faster-whisper-small",
@@ -177,7 +525,34 @@
         "whisperx"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "536b0662742c02347bc0e980a01041f333bce120",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "Systran/faster-whisper-base",
@@ -194,7 +569,34 @@
         "whisperx"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "nvidia/parakeet-tdt-0.6b-v3",
@@ -209,7 +611,40 @@
         "nemo-parakeet"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "541d1f99c6b0c3cd0b11a95167540bb8edefd82b",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "publisher_permits_commercial",
+          "summary": "Pinned model card expressly identifies CC-BY-4.0 as governing terms and permits commercial/noncommercial use. Conversion/runtime/input-rights scope still separate."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [
+          {
+            "url": "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3/blob/541d1f99c6b0c3cd0b11a95167540bb8edefd82b/README.md",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_governing_terms_section"
+          }
+        ],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "nvidia/parakeet-tdt-0.6b-v2",
@@ -224,7 +659,34 @@
         "nemo-parakeet"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "ae9ad07059c7c739ffaf932226a8fe64ae2620b0",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "mlx-community/parakeet-tdt-0.6b-v3",
@@ -239,7 +701,34 @@
         "parakeet-mlx"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "ed2b7e8c15f9aaa0b5772e2efb986255eaef7e15",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "UsefulSensors/moonshine-base",
@@ -254,7 +743,34 @@
         "moonshine"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "7a73d8d55ac0ba2ef3ae761593f6784b51f96dcf",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "UsefulSensors/moonshine-tiny",
@@ -269,7 +785,34 @@
         "moonshine"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "390624ed33d594443aa4aa221f5b9f283b545b5a",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
@@ -284,7 +827,34 @@
         "sherpa-onnx-asr"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review. The raw card could not be retrieved (401/404); metadata alone does not resolve the access gap."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review. The raw card could not be retrieved (401/404); metadata alone does not resolve the access gap.",
+      "runtime_revision": "2bda32ec70b097a55adaa07d9a7173915b43cc78",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
@@ -299,7 +869,34 @@
         "sherpa-onnx-asr"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "1ab9323565ddb038682214b292f588070a538ce2",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20",
@@ -314,7 +911,34 @@
         "sherpa-onnx-asr"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "98590b7ed6443e77b714204da2757d75e1a642f4",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "csukuangfj/sherpa-onnx-streaming-paraformer-bilingual-zh-en",
@@ -329,7 +953,34 @@
         "sherpa-onnx-asr"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "8e40c43232a1c5c66c82111efc5820d3accca11b",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "csukuangfj/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17",
@@ -344,7 +995,34 @@
         "sherpa-onnx-asr"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "d42f2d9f7ca24806fb667456a18a9f1b60f70d16",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23",
@@ -359,7 +1037,34 @@
         "sherpa-onnx-asr"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "204ad334e2e683fd295359930cc16fc0432a23ac",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "csukuangfj/sherpa-onnx-whisper-tiny",
@@ -374,7 +1079,34 @@
         "sherpa-onnx-asr"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "65176e2deb88badc814a94058666cadccc29b61c",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "facebook/nllb-200-distilled-600M",
@@ -387,7 +1119,45 @@
       "revision": "f8d333a098d19b4fd9a8b18f94170487ad3f821d",
       "engines": [],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Pinned model card identifies CC-BY-NC-4.0. This record does not grant output or training-data rights."
+      "notes": "Pinned model card identifies CC-BY-NC-4.0. This record does not grant output or training-data rights.",
+      "runtime_revision": "f8d333a098d19b4fd9a8b18f94170487ad3f821d",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "restricted",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "noncommercial",
+          "scope": "Selected weight/component; all required components and intended use must be assessed.",
+          "summary": "Official card names CC-BY-NC with CC-BY-NC-4.0 metadata and research/non-production scope."
+        },
+        "output_terms": {
+          "status": "not_specifically_granted_in_reviewed_material",
+          "summary": "No blanket translation-output grant or right to use source material established. Do not infer that CC automatically licenses every generated translation.",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [
+          {
+            "url": "https://huggingface.co/facebook/nllb-200-distilled-600M",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          }
+        ],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": [
+          "model weights",
+          "SentencePiece tokenizer"
+        ]
+      }
     },
     {
       "id": "pyannote/speaker-diarization-3.1",
@@ -400,7 +1170,34 @@
       "revision": "84fd25912480287da0247647c3d2b4853cb3ee5d",
       "engines": [],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "84fd25912480287da0247647c3d2b4853cb3ee5d",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "pyannote/segmentation-3.0",
@@ -413,7 +1210,34 @@
       "revision": "e66f3d3b9eb0873085418a7b813d3b369bf160bb",
       "engines": [],
       "configured_at": "backend/config/models.yaml dependencies of pyannote/speaker-diarization-3.1",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "e66f3d3b9eb0873085418a7b813d3b369bf160bb",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "pyannote/wespeaker-voxceleb-resnet34-LM",
@@ -426,7 +1250,34 @@
       "revision": "837717ddb9ff5507820346191109dc79c958d614",
       "engines": [],
       "configured_at": "backend/config/models.yaml dependencies of pyannote/speaker-diarization-3.1",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "837717ddb9ff5507820346191109dc79c958d614",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "OpenMOSS-Team/MOSS-TTS-Nano-100M",
@@ -441,7 +1292,56 @@
         "moss-tts-nano"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "44502f80dbf9743528fa921cc544d662c685ebec",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "conflicting_or_incomplete_evidence",
+          "scope": "Selected weight/component; all required components and intended use must be assessed.",
+          "summary": "Apache metadata conflicts with card instruction to treat repository as not licensed for redistribution until root LICENSE appears. Observed tree at 44502f8 has no LICENSE; pinned code repository has Apache text, insufficient to settle weights."
+        },
+        "output_terms": {
+          "status": "not_specifically_granted_in_reviewed_material",
+          "summary": "No blanket output ownership or third-party-rights clearance established.",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [
+          {
+            "url": "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Nano-100M",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          },
+          {
+            "url": "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Nano-100M/tree/main",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          },
+          {
+            "url": "https://github.com/OpenMOSS/MOSS-TTS-Nano/blob/8b7bcc9341b3b4ef3a3a58ba1338a7d85ff133eb/LICENSE",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          }
+        ],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": [
+          "pytorch_model.bin",
+          "text tokenizer.model",
+          "OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano separately downloaded; missing registry row"
+        ]
+      }
     },
     {
       "id": "KittenML/kitten-tts-mini-0.8",
@@ -456,7 +1356,51 @@
         "kittentts"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "c02725660cea441db4c383af69f1f26f5cd00947",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "permissive_metadata_only",
+          "scope": "Selected weight/component; all required components and intended use must be assessed.",
+          "summary": "Apache-2.0 model-card metadata verified; pinned tree has model ONNX plus voices.npz and no standalone LICENSE. Do not substitute SDK license for weight/voice scope."
+        },
+        "output_terms": {
+          "status": "not_specifically_granted_in_reviewed_material",
+          "summary": "No blanket output ownership or third-party-rights clearance established.",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [
+          {
+            "url": "https://huggingface.co/KittenML/kitten-tts-mini-0.8/tree/c02725660cea441db4c383af69f1f26f5cd00947",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          },
+          {
+            "url": "https://huggingface.co/KittenML/kitten-tts-mini-0.8",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          }
+        ],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": [
+          "kitten_tts_mini_v0_8.onnx",
+          "voices.npz: Bella/Jasper/Luna/Bruno/Rosie/Hugo/Kiki/Leo",
+          "kittentts 0.8.1 SDK"
+        ]
+      }
     },
     {
       "id": "openbmb/VoxCPM2",
@@ -471,7 +1415,54 @@
         "voxcpm2"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "bffb3df5a29440629464e5e839f4d214c8714c3d",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "publisher_permits_commercial",
+          "scope": "Selected weight/component; all required components and intended use must be assessed.",
+          "summary": "Actual runtime-pin card expressly permits commercial use under Apache-2.0. Strong candidate for completed component audit; registry evidence pin is stale."
+        },
+        "output_terms": {
+          "status": "not_specifically_granted_in_reviewed_material",
+          "summary": "No specific output ownership grant identified. Card calls for synthetic-content labeling and forbids impersonation/fraud/disinformation; assess voice consent and inputs separately.",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [
+          {
+            "url": "https://huggingface.co/openbmb/VoxCPM2/blob/bffb3df5a29440629464e5e839f4d214c8714c3d/README.md",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          },
+          {
+            "url": "https://huggingface.co/openbmb/VoxCPM2/tree/bffb3df5a29440629464e5e839f4d214c8714c3d",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          }
+        ],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": [
+          "model.safetensors",
+          "audiovae.pth",
+          "tokenizer.json",
+          "tokenization_voxcpm2.py",
+          "MiniCPM-4 provenance",
+          "optional denoiser/text normalization (verify VoiceStudio route)"
+        ]
+      }
     },
     {
       "id": "FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
@@ -486,7 +1477,42 @@
         "cosyvoice"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "29e01c4e8d000f4bcd70751be16fa94bf3d85a18",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": [
+          "llm.pt",
+          "flow.pt",
+          "hift.pt",
+          "campplus.onnx",
+          "speech_tokenizer_v3.onnx",
+          "CosyVoice-BlankEN/*",
+          "source runtime and optional frontend assets"
+        ]
+      }
     },
     {
       "id": "lj1995/GPT-SoVITS",
@@ -501,7 +1527,34 @@
         "gpt-sovits"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "336b2ec4e8d4ac74740798dd40af44e74659ecaf",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "mlx-community/Kokoro-82M-bf16",
@@ -516,7 +1569,53 @@
         "mlx-audio"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "a71e4d38b236d968966a2002c4c895dbd12b1c3c",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "upstream_publisher_permits_commercial_conversion_review_pending",
+          "scope": "Selected weight/component; all required components and intended use must be assessed.",
+          "summary": "Original hexgrad model explicitly describes Apache-licensed weights suitable for commercial deployment; exact MLX conversion and voices need verification."
+        },
+        "output_terms": {
+          "status": "not_specifically_granted_in_reviewed_material",
+          "summary": "No blanket output ownership or third-party-rights clearance established.",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [
+          {
+            "url": "https://huggingface.co/hexgrad/Kokoro-82M",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          },
+          {
+            "url": "https://huggingface.co/mlx-community/Kokoro-82M-bf16",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          }
+        ],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": [
+          "MLX model conversion",
+          "selected voice embedding",
+          "Misaki/G2P assets and dictionaries",
+          "espeak-ng or other platform phonemizer",
+          "training source credits retained separately"
+        ]
+      }
     },
     {
       "id": "mlx-community/csm-1b-8bit",
@@ -531,7 +1630,39 @@
         "mlx-audio"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "fcf0cc857eade3615a60f30722cf5197d4f88406",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": [
+          "Sesame CSM model and MLX conversion",
+          "Mimi audio codec",
+          "Llama architecture/text-tokenizer lineage must be inspected, not assumed equivalent to model weights",
+          "voice/reference sample"
+        ]
+      }
     },
     {
       "id": "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-4bit",
@@ -546,7 +1677,39 @@
         "mlx-audio"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "5c390979e4b93af5f2932f90742ca99c7dd04687",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": [
+          "MLX converted VoiceDesign weights",
+          "Qwen3-TTS-Tokenizer-12Hz",
+          "text tokenizer",
+          "base Qwen terms/provenance"
+        ]
+      }
     },
     {
       "id": "mlx-community/Dia-1.6B",
@@ -561,7 +1724,39 @@
         "mlx-audio"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "de4fa8c178ca5cc4e9d884b55b03fcfaa0995162",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": [
+          "MLX Dia weights",
+          "audio codec",
+          "text tokenizer",
+          "reference audio if selected; component mapping not closed"
+        ]
+      }
     },
     {
       "id": "mlx-community/Llama-OuteTTS-1.0-1B-4bit",
@@ -576,7 +1771,48 @@
         "mlx-audio"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Original model separates Llama 3.2 components from OuteAI non-commercial additions. Conversion card links original; see docs/model-credits.md."
+      "notes": "Original model separates Llama 3.2 components from OuteAI non-commercial additions. Conversion card links original; see docs/model-credits.md.",
+      "runtime_revision": "3ac2cff406f7de16a3216c60d0108571a916acc0",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "restricted",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "noncommercial",
+          "scope": "Selected weight/component; all required components and intended use must be assessed.",
+          "summary": "Original OuteAI card explicitly separates Llama 3.2 terms from CC-BY-NC-SA-4.0 additions; conversion does not remove restrictions."
+        },
+        "output_terms": {
+          "status": "not_specifically_granted_in_reviewed_material",
+          "summary": "No blanket output ownership or third-party-rights clearance established.",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [
+          {
+            "url": "https://huggingface.co/OuteAI/Llama-OuteTTS-1.0-1B",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          }
+        ],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": [
+          "Llama-3.2 base/text tokenizer",
+          "OuteAI additions",
+          "ibm-research/DAC.speech.v1.0 audio codec",
+          "selected voice profile",
+          "MLX conversion"
+        ]
+      }
     },
     {
       "id": "mlx-community/Chatterbox-TTS-4bit",
@@ -591,7 +1827,34 @@
         "mlx-audio"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "a3c8ded2d711d6395410d645b3a97c79fd563a13",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "mlx-community/MeloTTS-English-v3-MLX",
@@ -606,7 +1869,34 @@
         "mlx-audio"
       ],
       "configured_at": "backend/config/models.yaml",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "837d15fd72bc35a15033234ce5ea242367ca1960",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "IndexTeam/IndexTTS-2.5",
@@ -621,7 +1911,67 @@
         "indextts2"
       ],
       "configured_at": "backend/services/sidecar_install.py:411",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "d0aa86e75bb6f3437f3831e95056fa72842d89ef",
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": "backend/services/sidecar_install.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "conditional_custom_terms",
+          "scope": "Selected weight/component; all required components and intended use must be assessed.",
+          "summary": "Bilibili custom agreement; separate written license required above >100M monthly active users in previous month OR >RMB1B prior-year annual revenue, including affiliates. Downstream contractual/notice and AI-improvement restrictions apply. Repository license record points to a different model revision."
+        },
+        "output_terms": {
+          "status": "explicit_conditions",
+          "summary": "Custom definition of derivative work reaches model outputs and works based on them. No blanket commercial-output or ownership promise; legal interpretation of resulting obligations needed. Chinese-language agreement prevails.",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [
+          {
+            "url": "https://huggingface.co/IndexTeam/IndexTTS-2.5/blob/main/LICENSE",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          },
+          {
+            "url": "https://github.com/index-tts/index-tts/blob/bf2e967fac7933197143b017a60820b1ad40c448/LICENSE",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          },
+          {
+            "url": "https://huggingface.co/IndexTeam/IndexTTS-2.5/commit/94949e8da6862e9a5bfa41c7d332dfa96060cd43",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          },
+          {
+            "method": "independent_review_of_unchanged_LICENSE_ancestry",
+            "url": "https://huggingface.co/IndexTeam/IndexTTS-2.5/commit/ad9b8f0deb24673c1095dcc304474b717d4fd2a5",
+            "note": "Reviewer tied complete LICENSE text to runtime d0aa86e via parents c0bfde5,149920a,ad9b8f0,94949e8. Raw-byte SHA256 not obtained."
+          }
+        ],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": [
+          "gpt.pth",
+          "s2mel.pth",
+          "codec.pth",
+          "qwen0.6bemo4-merge",
+          "multilingual text tokenizer",
+          "facebook/w2v-bert-2.0",
+          "amphion/MaskGCT semantic_codec/model.safetensors",
+          "funasr/campplus",
+          "nvidia/bigvgan_v2_22khz_80band_256x"
+        ]
+      }
     },
     {
       "id": "Serveurperso/OmniVoice-GGUF",
@@ -636,7 +1986,34 @@
         "omnivoice-gguf"
       ],
       "configured_at": "backend/engines/omnivoice_gguf/backend.py:76",
-      "notes": "Conversion card names CC-BY-NC-4.0; its codec description does not override the actual tokenizer terms. See docs/model-credits.md."
+      "notes": "Conversion card names CC-BY-NC-4.0; its codec description does not override the actual tokenizer terms. See docs/model-credits.md.",
+      "runtime_revision": null,
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": null,
+      "component_closure": "incomplete",
+      "commercial_inference": "restricted",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "noncommercial_reported",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "Supertone/supertonic-3",
@@ -651,7 +2028,51 @@
         "supertonic3"
       ],
       "configured_at": "backend/engines/supertonic3/constants.py:31",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "724fb5abbf5502583fb520898d45929e62f02c0b",
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": "backend/engines/supertonic3/constants.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "conditional_custom_terms",
+          "scope": "Selected weight/component; all required components and intended use must be assessed.",
+          "summary": "Model is BigScience Open RAIL-M; commercial use is not categorically prohibited, but usage restrictions and downstream enforceable terms apply. SDK code MIT. Examined license at registry evidence revision; runtime pin differs."
+        },
+        "output_terms": {
+          "status": "explicit_conditions",
+          "summary": "Section 6 generally disclaims licensor rights in outputs subject to license; output uses must comply. Attachment A requires intelligible machine-generated disclosure and prohibits nonconsensual impersonation, among other restrictions.",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [
+          {
+            "url": "https://huggingface.co/Supertone/supertonic-3/blob/3cadd1ee6394adea1bd021217a0e650ede09a323/LICENSE",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          },
+          {
+            "url": "https://github.com/debpalash/VoiceStudio/blob/06c6e077f0fc35149efefc3561e9be5ae835d916/backend/engines/supertonic3/constants.py",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          }
+        ],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": [
+          "ONNX models",
+          "text tokenizer assets",
+          "voice style presets M1,M3,M4,M5,F3,F4,F5; SDK also accepts remaining M1-M5/F1-F5"
+        ]
+      }
     },
     {
       "id": "kyutai/pocket-tts",
@@ -666,7 +2087,314 @@
         "pockettts"
       ],
       "configured_at": "backend/engines/pockettts/main.py:215; SDK selects language/layer variants",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review. The raw card could not be retrieved (401/404); metadata alone does not resolve the access gap."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review. The raw card could not be retrieved (401/404); metadata alone does not resolve the access gap.",
+      "runtime_revision": "39592ff23c9ef80098bb74895d104c26275fe2c9",
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": "pocket-tts v2.1.0 SDK language config",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "permissive_metadata_plus_gate",
+          "scope": "Selected weight/component; all required components and intended use must be assessed.",
+          "summary": "CC-BY-4.0 reported, plus visible HF access/prohibited-use conditions. Registry row is incomplete: exact SDK resolves multi-repo checkpoints, text tokenizers and voice embeddings; see pocket variants."
+        },
+        "output_terms": {
+          "status": "not_specifically_granted_in_reviewed_material",
+          "summary": "Visible upstream conditions prohibit nonconsensual cloning, deception and harmful/illegal uses; no blanket ownership assertion. No gate accepted or bypassed.",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [
+          {
+            "url": "https://huggingface.co/kyutai/pocket-tts",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          },
+          {
+            "url": "https://github.com/kyutai-labs/pocket-tts/blob/058886528d0b6f2f2d4022de2e244a5260729e6e/pocket_tts/utils/utils.py",
+            "checked_at": "2026-10-09",
+            "method": "read_primary_source"
+          }
+        ],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": [
+          "ten language/layer model configurations",
+          "kyutai/pocket-tts-without-voice-cloning: fallback weights and SentencePiece tokenizer",
+          "precomputed voice embeddings",
+          "origin voice recording rights/provenance"
+        ]
+      },
+      "variants": [
+        {
+          "id": "pockettts:english",
+          "label": "pockettts:english",
+          "commercial_inference": "unknown",
+          "commercial_outputs": "unknown",
+          "review_status": "unreviewed",
+          "blockers": [
+            "variant_provenance_unverified"
+          ],
+          "evidence_url": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/english.yaml",
+          "observations": {
+            "id": "pockettts:english",
+            "engine": "pockettts",
+            "sdk_version": "2.1.0",
+            "sdk_commit": "058886528d0b6f2f2d4022de2e244a5260729e6e",
+            "source": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/english.yaml",
+            "artifact_references": [
+              "weights_path: hf://kyutai/pocket-tts/languages/english/model.safetensors@39592ff23c9ef80098bb74895d104c26275fe2c9",
+              "weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/english/model.safetensors@d29db7978e464fb90cb3359ee0c69a273b9142cc",
+              "    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/english/tokenizer.model@d29db7978e464fb90cb3359ee0c69a273b9142cc"
+            ],
+            "preset_embedding_template": "hf://kyutai/pocket-tts-without-voice-cloning/languages/english/embeddings/{voice}.safetensors@e041936c75475d350b405bc870bcf7c22da4e9e6",
+            "license_status": "weight/tokenizer/voice grants must be separately tied to these revisions",
+            "full_workflow_cleared": false
+          }
+        },
+        {
+          "id": "pockettts:french_24l",
+          "label": "pockettts:french_24l",
+          "commercial_inference": "unknown",
+          "commercial_outputs": "unknown",
+          "review_status": "unreviewed",
+          "blockers": [
+            "variant_provenance_unverified"
+          ],
+          "evidence_url": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/french_24l.yaml",
+          "observations": {
+            "id": "pockettts:french_24l",
+            "engine": "pockettts",
+            "sdk_version": "2.1.0",
+            "sdk_commit": "058886528d0b6f2f2d4022de2e244a5260729e6e",
+            "source": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/french_24l.yaml",
+            "artifact_references": [
+              "weights_path: hf://kyutai/pocket-tts/languages/french_24l/model.safetensors@39592ff23c9ef80098bb74895d104c26275fe2c9",
+              "weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/french_24l/model.safetensors@d29db7978e464fb90cb3359ee0c69a273b9142cc",
+              "    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/french_24l/tokenizer.model@d29db7978e464fb90cb3359ee0c69a273b9142cc"
+            ],
+            "preset_embedding_template": "hf://kyutai/pocket-tts-without-voice-cloning/languages/french_24l/embeddings/{voice}.safetensors@e041936c75475d350b405bc870bcf7c22da4e9e6",
+            "license_status": "weight/tokenizer/voice grants must be separately tied to these revisions",
+            "full_workflow_cleared": false
+          }
+        },
+        {
+          "id": "pockettts:german",
+          "label": "pockettts:german",
+          "commercial_inference": "unknown",
+          "commercial_outputs": "unknown",
+          "review_status": "unreviewed",
+          "blockers": [
+            "variant_provenance_unverified"
+          ],
+          "evidence_url": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/german.yaml",
+          "observations": {
+            "id": "pockettts:german",
+            "engine": "pockettts",
+            "sdk_version": "2.1.0",
+            "sdk_commit": "058886528d0b6f2f2d4022de2e244a5260729e6e",
+            "source": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/german.yaml",
+            "artifact_references": [
+              "weights_path: hf://kyutai/pocket-tts/languages/german/model.safetensors@39592ff23c9ef80098bb74895d104c26275fe2c9",
+              "weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/german/model.safetensors@d29db7978e464fb90cb3359ee0c69a273b9142cc",
+              "    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/german/tokenizer.model@d29db7978e464fb90cb3359ee0c69a273b9142cc"
+            ],
+            "preset_embedding_template": "hf://kyutai/pocket-tts-without-voice-cloning/languages/german/embeddings/{voice}.safetensors@e041936c75475d350b405bc870bcf7c22da4e9e6",
+            "license_status": "weight/tokenizer/voice grants must be separately tied to these revisions",
+            "full_workflow_cleared": false
+          }
+        },
+        {
+          "id": "pockettts:italian",
+          "label": "pockettts:italian",
+          "commercial_inference": "unknown",
+          "commercial_outputs": "unknown",
+          "review_status": "unreviewed",
+          "blockers": [
+            "variant_provenance_unverified"
+          ],
+          "evidence_url": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/italian.yaml",
+          "observations": {
+            "id": "pockettts:italian",
+            "engine": "pockettts",
+            "sdk_version": "2.1.0",
+            "sdk_commit": "058886528d0b6f2f2d4022de2e244a5260729e6e",
+            "source": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/italian.yaml",
+            "artifact_references": [
+              "weights_path: hf://kyutai/pocket-tts/languages/italian/model.safetensors@39592ff23c9ef80098bb74895d104c26275fe2c9",
+              "weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/italian/model.safetensors@d29db7978e464fb90cb3359ee0c69a273b9142cc",
+              "    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/italian/tokenizer.model@d29db7978e464fb90cb3359ee0c69a273b9142cc"
+            ],
+            "preset_embedding_template": "hf://kyutai/pocket-tts-without-voice-cloning/languages/italian/embeddings/{voice}.safetensors@e041936c75475d350b405bc870bcf7c22da4e9e6",
+            "license_status": "weight/tokenizer/voice grants must be separately tied to these revisions",
+            "full_workflow_cleared": false
+          }
+        },
+        {
+          "id": "pockettts:portuguese",
+          "label": "pockettts:portuguese",
+          "commercial_inference": "unknown",
+          "commercial_outputs": "unknown",
+          "review_status": "unreviewed",
+          "blockers": [
+            "variant_provenance_unverified"
+          ],
+          "evidence_url": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/portuguese.yaml",
+          "observations": {
+            "id": "pockettts:portuguese",
+            "engine": "pockettts",
+            "sdk_version": "2.1.0",
+            "sdk_commit": "058886528d0b6f2f2d4022de2e244a5260729e6e",
+            "source": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/portuguese.yaml",
+            "artifact_references": [
+              "weights_path: hf://kyutai/pocket-tts/languages/portuguese/model.safetensors@39592ff23c9ef80098bb74895d104c26275fe2c9",
+              "weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/portuguese/model.safetensors@d29db7978e464fb90cb3359ee0c69a273b9142cc",
+              "    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/portuguese/tokenizer.model@d29db7978e464fb90cb3359ee0c69a273b9142cc"
+            ],
+            "preset_embedding_template": "hf://kyutai/pocket-tts-without-voice-cloning/languages/portuguese/embeddings/{voice}.safetensors@e041936c75475d350b405bc870bcf7c22da4e9e6",
+            "license_status": "weight/tokenizer/voice grants must be separately tied to these revisions",
+            "full_workflow_cleared": false
+          }
+        },
+        {
+          "id": "pockettts:spanish",
+          "label": "pockettts:spanish",
+          "commercial_inference": "unknown",
+          "commercial_outputs": "unknown",
+          "review_status": "unreviewed",
+          "blockers": [
+            "variant_provenance_unverified"
+          ],
+          "evidence_url": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/spanish.yaml",
+          "observations": {
+            "id": "pockettts:spanish",
+            "engine": "pockettts",
+            "sdk_version": "2.1.0",
+            "sdk_commit": "058886528d0b6f2f2d4022de2e244a5260729e6e",
+            "source": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/spanish.yaml",
+            "artifact_references": [
+              "weights_path: hf://kyutai/pocket-tts/languages/spanish/model.safetensors@39592ff23c9ef80098bb74895d104c26275fe2c9",
+              "weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/spanish/model.safetensors@d29db7978e464fb90cb3359ee0c69a273b9142cc",
+              "    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/spanish/tokenizer.model@d29db7978e464fb90cb3359ee0c69a273b9142cc"
+            ],
+            "preset_embedding_template": "hf://kyutai/pocket-tts-without-voice-cloning/languages/spanish/embeddings/{voice}.safetensors@e041936c75475d350b405bc870bcf7c22da4e9e6",
+            "license_status": "weight/tokenizer/voice grants must be separately tied to these revisions",
+            "full_workflow_cleared": false
+          }
+        },
+        {
+          "id": "pockettts:german_24l",
+          "label": "pockettts:german_24l",
+          "commercial_inference": "unknown",
+          "commercial_outputs": "unknown",
+          "review_status": "unreviewed",
+          "blockers": [
+            "variant_provenance_unverified"
+          ],
+          "evidence_url": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/german_24l.yaml",
+          "observations": {
+            "id": "pockettts:german_24l",
+            "engine": "pockettts",
+            "sdk_version": "2.1.0",
+            "sdk_commit": "058886528d0b6f2f2d4022de2e244a5260729e6e",
+            "source": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/german_24l.yaml",
+            "artifact_references": [
+              "weights_path: hf://kyutai/pocket-tts/languages/german_24l/model.safetensors@39592ff23c9ef80098bb74895d104c26275fe2c9",
+              "weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/german_24l/model.safetensors@d29db7978e464fb90cb3359ee0c69a273b9142cc",
+              "    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/german_24l/tokenizer.model@d29db7978e464fb90cb3359ee0c69a273b9142cc"
+            ],
+            "preset_embedding_template": "hf://kyutai/pocket-tts-without-voice-cloning/languages/german_24l/embeddings/{voice}.safetensors@e041936c75475d350b405bc870bcf7c22da4e9e6",
+            "license_status": "weight/tokenizer/voice grants must be separately tied to these revisions",
+            "full_workflow_cleared": false
+          }
+        },
+        {
+          "id": "pockettts:italian_24l",
+          "label": "pockettts:italian_24l",
+          "commercial_inference": "unknown",
+          "commercial_outputs": "unknown",
+          "review_status": "unreviewed",
+          "blockers": [
+            "variant_provenance_unverified"
+          ],
+          "evidence_url": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/italian_24l.yaml",
+          "observations": {
+            "id": "pockettts:italian_24l",
+            "engine": "pockettts",
+            "sdk_version": "2.1.0",
+            "sdk_commit": "058886528d0b6f2f2d4022de2e244a5260729e6e",
+            "source": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/italian_24l.yaml",
+            "artifact_references": [
+              "weights_path: hf://kyutai/pocket-tts/languages/italian_24l/model.safetensors@39592ff23c9ef80098bb74895d104c26275fe2c9",
+              "weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/italian_24l/model.safetensors@d29db7978e464fb90cb3359ee0c69a273b9142cc",
+              "    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/italian_24l/tokenizer.model@d29db7978e464fb90cb3359ee0c69a273b9142cc"
+            ],
+            "preset_embedding_template": "hf://kyutai/pocket-tts-without-voice-cloning/languages/italian_24l/embeddings/{voice}.safetensors@e041936c75475d350b405bc870bcf7c22da4e9e6",
+            "license_status": "weight/tokenizer/voice grants must be separately tied to these revisions",
+            "full_workflow_cleared": false
+          }
+        },
+        {
+          "id": "pockettts:portuguese_24l",
+          "label": "pockettts:portuguese_24l",
+          "commercial_inference": "unknown",
+          "commercial_outputs": "unknown",
+          "review_status": "unreviewed",
+          "blockers": [
+            "variant_provenance_unverified"
+          ],
+          "evidence_url": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/portuguese_24l.yaml",
+          "observations": {
+            "id": "pockettts:portuguese_24l",
+            "engine": "pockettts",
+            "sdk_version": "2.1.0",
+            "sdk_commit": "058886528d0b6f2f2d4022de2e244a5260729e6e",
+            "source": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/portuguese_24l.yaml",
+            "artifact_references": [
+              "weights_path: hf://kyutai/pocket-tts/languages/portuguese_24l/model.safetensors@39592ff23c9ef80098bb74895d104c26275fe2c9",
+              "weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/portuguese_24l/model.safetensors@d29db7978e464fb90cb3359ee0c69a273b9142cc",
+              "    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/portuguese_24l/tokenizer.model@d29db7978e464fb90cb3359ee0c69a273b9142cc"
+            ],
+            "preset_embedding_template": "hf://kyutai/pocket-tts-without-voice-cloning/languages/portuguese_24l/embeddings/{voice}.safetensors@e041936c75475d350b405bc870bcf7c22da4e9e6",
+            "license_status": "weight/tokenizer/voice grants must be separately tied to these revisions",
+            "full_workflow_cleared": false
+          }
+        },
+        {
+          "id": "pockettts:spanish_24l",
+          "label": "pockettts:spanish_24l",
+          "commercial_inference": "unknown",
+          "commercial_outputs": "unknown",
+          "review_status": "unreviewed",
+          "blockers": [
+            "variant_provenance_unverified"
+          ],
+          "evidence_url": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/spanish_24l.yaml",
+          "observations": {
+            "id": "pockettts:spanish_24l",
+            "engine": "pockettts",
+            "sdk_version": "2.1.0",
+            "sdk_commit": "058886528d0b6f2f2d4022de2e244a5260729e6e",
+            "source": "https://github.com/kyutai-labs/pocket-tts/blob/v2.1.0/pocket_tts/config/spanish_24l.yaml",
+            "artifact_references": [
+              "weights_path: hf://kyutai/pocket-tts/languages/spanish_24l/model.safetensors@39592ff23c9ef80098bb74895d104c26275fe2c9",
+              "weights_path_without_voice_cloning: hf://kyutai/pocket-tts-without-voice-cloning/languages/spanish_24l/model.safetensors@d29db7978e464fb90cb3359ee0c69a273b9142cc",
+              "    tokenizer_path: hf://kyutai/pocket-tts-without-voice-cloning/languages/spanish_24l/tokenizer.model@d29db7978e464fb90cb3359ee0c69a273b9142cc"
+            ],
+            "preset_embedding_template": "hf://kyutai/pocket-tts-without-voice-cloning/languages/spanish_24l/embeddings/{voice}.safetensors@e041936c75475d350b405bc870bcf7c22da4e9e6",
+            "license_status": "weight/tokenizer/voice grants must be separately tied to these revisions",
+            "full_workflow_cleared": false
+          }
+        }
+      ]
     },
     {
       "id": "OpenMOSS-Team/MOSS-TTS-v1.5",
@@ -681,7 +2409,38 @@
         "moss-tts-v15"
       ],
       "configured_at": "backend/engines/moss_tts_v15/main.py:55",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "cdd3b911b1585e3f2dbc7775ef10f9926f58850a",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": [
+          "model weights",
+          "text tokenizer",
+          "processor.audio_tokenizer (resolved repository/revision not yet verified)"
+        ]
+      }
     },
     {
       "id": "rednote-hilab/dots.tts-soar",
@@ -696,7 +2455,34 @@
         "dots-tts"
       ],
       "configured_at": "backend/engines/dots_tts/main.py:53",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": null,
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": null,
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "netease-youdao/Confucius4-TTS",
@@ -711,7 +2497,34 @@
         "confucius4-tts"
       ],
       "configured_at": "docs/engines/confucius4-tts.md:56",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": null,
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": null,
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "facebook/w2v-bert-2.0",
@@ -726,7 +2539,34 @@
         "confucius4-tts"
       ],
       "configured_at": "docs/engines/confucius4-tts.md:59",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": null,
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": null,
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "funasr/campplus",
@@ -741,7 +2581,34 @@
         "confucius4-tts"
       ],
       "configured_at": "docs/engines/confucius4-tts.md:60",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": null,
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": null,
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "nvidia/bigvgan_v2_22khz_80band_256x",
@@ -756,7 +2623,34 @@
         "confucius4-tts"
       ],
       "configured_at": "docs/engines/confucius4-tts.md:61",
-      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review."
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": null,
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": null,
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "iic/SenseVoiceSmall",
@@ -771,7 +2665,34 @@
         "funasr"
       ],
       "configured_at": "backend/services/asr_backend.py:2259",
-      "notes": "Runtime uses the FunASR/ModelScope identifier. The matching Hugging Face API returned 401; no governing weight terms have been verified."
+      "notes": "Runtime uses the FunASR/ModelScope identifier. The matching Hugging Face API returned 401; no governing weight terms have been verified.",
+      "runtime_revision": null,
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": null,
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "Systran/faster-whisper-tiny",
@@ -786,7 +2707,34 @@
         "faster-whisper"
       ],
       "configured_at": "backend/services/asr_backend.py _fw_repo",
-      "notes": "Runtime fallback outside models.yaml. Licence identifier is model-card metadata; component terms and attribution require review."
+      "notes": "Runtime fallback outside models.yaml. Licence identifier is model-card metadata; component terms and attribution require review.",
+      "runtime_revision": null,
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": null,
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "Systran/faster-whisper-large-v2",
@@ -801,7 +2749,34 @@
         "faster-whisper"
       ],
       "configured_at": "backend/services/asr_backend.py _fw_repo",
-      "notes": "Runtime fallback outside models.yaml. Licence identifier is model-card metadata; component terms and attribution require review."
+      "notes": "Runtime fallback outside models.yaml. Licence identifier is model-card metadata; component terms and attribution require review.",
+      "runtime_revision": null,
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": null,
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "openai/whisper-large-v3-turbo",
@@ -816,7 +2791,34 @@
         "pytorch-whisper"
       ],
       "configured_at": "backend/services/tts_backend.py OMNIVOICE_PYTORCH_ASR_MODEL fallback",
-      "notes": "Clone-reference ASR fallback outside models.yaml. Model-card licence metadata is recorded; component terms and required notices remain under review."
+      "notes": "Clone-reference ASR fallback outside models.yaml. Model-card licence metadata is recorded; component terms and required notices remain under review.",
+      "runtime_revision": null,
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": null,
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "OpenMOSS-Team/MOSS-TTS-Nano",
@@ -831,7 +2833,34 @@
         "moss-tts-nano"
       ],
       "configured_at": "backend/services/tts_backend.py OMNIVOICE_MOSS_TTS_MODEL",
-      "notes": "Licence label is upstream metadata only; governing component terms, author credit and required notices remain under review."
+      "notes": "Licence label is upstream metadata only; governing component terms, author credit and required notices remain under review.",
+      "runtime_revision": null,
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": null,
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "conflicting_or_incomplete_evidence",
+          "summary": "SDK default uses this ID; catalogue uses -100M with same recorded commit. Alias/canonical identity and license scope must be resolved."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     },
     {
       "id": "eustlb/higgs-audio-v2-tokenizer",
@@ -846,7 +2875,34 @@
         "omnivoice"
       ],
       "configured_at": "backend/services/hf_revisions.py CURATED_REVISIONS; backend/services/model_manager.py repair",
-      "notes": "Licence label is upstream metadata only; governing component terms, author credit and required notices remain under review."
+      "notes": "Licence label is upstream metadata only; governing component terms, author credit and required notices remain under review.",
+      "runtime_revision": "528e871c2a26c4f0f7773b9754e2e1acae20899d",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     }
   ],
   "dynamic_assets": [
@@ -927,5 +2983,7 @@
       "configured_at": "backend/services/tts_backend.py; backend/services/rvc.py; backend/services/asr_backend.py",
       "notes": "Cannot enumerate every user asset from repository; represent unknown/unreviewed state explicitly, with user provenance inputs."
     }
-  ]
+  ],
+  "registry_version": "2026-10-09.draft1",
+  "source_commit": "06c6e077f0fc35149efefc3561e9be5ae835d916"
 }

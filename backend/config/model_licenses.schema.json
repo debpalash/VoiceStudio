@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VoiceStudio model licence inventory v2 draft foundation",
+  "description": "Additive v1 migration. Schema validates shape, not legal clearance or complete dependency evidence. See services/model_licenses.py for semantic validation.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "registry_version",
+    "source_commit",
+    "models",
+    "dynamic_assets"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "registry_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "models": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "license",
+          "credit",
+          "source_url",
+          "evidence_url",
+          "notes",
+          "review_status",
+          "commercial_use",
+          "runtime_revision",
+          "runtime_pin_scope",
+          "component_closure",
+          "commercial_inference",
+          "commercial_outputs",
+          "upstream_access",
+          "required_components",
+          "documents",
+          "artifacts"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "license": {
+            "type": "string",
+            "minLength": 1
+          },
+          "credit": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_url": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence_url": {
+            "type": "string",
+            "minLength": 1
+          },
+          "notes": {
+            "type": "string",
+            "minLength": 1
+          },
+          "review_status": {
+            "enum": [
+              "unreviewed",
+              "noncommercial",
+              "cleared"
+            ]
+          },
+          "commercial_use": {
+            "type": "boolean"
+          },
+          "runtime_revision": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{40}$"
+              }
+            ]
+          },
+          "runtime_pin_scope": {
+            "enum": [
+              "central",
+              "external"
+            ]
+          },
+          "component_closure": {
+            "enum": [
+              "complete",
+              "incomplete"
+            ]
+          },
+          "commercial_inference": {
+            "enum": [
+              "unknown",
+              "restricted"
+            ]
+          },
+          "commercial_outputs": {
+            "enum": [
+              "unknown",
+              "restricted"
+            ]
+          },
+          "upstream_access": {
+            "enum": [
+              "unknown",
+              "required",
+              "not_required"
+            ]
+          },
+          "required_components": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "title",
+                "source_url",
+                "sha256",
+                "text",
+                "redistribution",
+                "agreement_required"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "source_url": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "redistribution": {
+                  "const": "permitted"
+                },
+                "agreement_required": {
+                  "const": false
+                }
+              }
+            }
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "sha256",
+                "size_bytes",
+                "document_ids"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "size_bytes": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "document_ids": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "dynamic_assets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}

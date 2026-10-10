@@ -21,7 +21,7 @@ import { WorkspaceHeader } from '@/components/app-shell/workspace-header';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { EngineNotice } from '@/components/engine-notice';
 import { WatchFolder } from './watch-folder';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { UploadIcon, XIcon } from 'lucide-react';
@@ -35,6 +35,7 @@ import { apiJson, apiPath, describeError } from '@/lib/api/client';
 import { saveExport } from '@/lib/export-history';
 import { LANG_CODES } from '@shared/utils/languages';
 import { PRESETS } from '@shared/utils/constants';
+import { announceModelLicenceRequired } from '@/features/settings/model-license-contract';
 import type { BatchJob } from '@shared/api/batch-types';
 import { generationFailureMessage } from '@shared/utils/generationFailureMessage';
 import { enqueueVideos } from './enqueue';
@@ -81,6 +82,17 @@ export function BatchPage() {
       ),
     refetchInterval: tab === 'done' ? false : 3000,
   });
+  // A job parked on an unaccepted licence opens the dialog once; the user
+  // then retries it like any failed job.
+  const announcedLicence = useRef(new Set<string>());
+  useEffect(() => {
+    for (const job of jobs.data ?? []) {
+      const setup = job.setup_required;
+      if (setup?.kind !== 'model_licence_required' || announcedLicence.current.has(job.id)) continue;
+      announcedLicence.current.add(job.id);
+      announceModelLicenceRequired(setup);
+    }
+  }, [jobs.data]);
   const submit = async () => {
     if (uploading.current || ttsBlocker !== null || !files.length || !langs.length) return;
     if (!cachedTtsLanguagesSupported(client, 'batch', langs)) {
@@ -578,16 +590,16 @@ function BatchJobCard({
           ))}
         {['failed', 'cancelled'].includes(job.status) && (
           <Button
-            variant={job.setup_required ? 'default' : 'ghost'}
+            variant={job.setup_required?.kind === 'argos_packs' ? 'default' : 'ghost'}
             size="sm"
             disabled={Boolean(acting) || job.retry_ready === false}
             onClick={() => void recover(job)}
           >
-            {job.setup_required ? <LanguagesIcon /> : <RefreshCwIcon />}
+            {job.setup_required?.kind === 'argos_packs' ? <LanguagesIcon /> : <RefreshCwIcon />}
             {t(
               job.retry_ready === false
                 ? 'common.loading'
-                : job.setup_required
+                : job.setup_required?.kind === 'argos_packs'
                   ? 'modelMaintenance.install'
                   : 'common.retry',
             )}

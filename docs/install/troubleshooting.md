@@ -1362,3 +1362,13 @@ is affected; it does not diagnose or repair the original environment.
 ## Concurrent migration backups
 
 Concurrent pre-migration database snapshots reserve distinct backup counters before copying. Reservation files are not recovery backups. A reservation left by an interrupted writer is skipped by subsequent snapshots rather than reused.
+
+## "This model can't be used until you accept its licence"
+
+VoiceStudio does not own or license the models it runs. Models whose licence is
+not plainly commercial (non-commercial, conditional or unidentified terms, such
+as the default OmniVoice model) are blocked until you accept their licence once.
+Accept it in the dialog that appears, or in **Model Manager → the model's
+Licence icon**. Nothing is re-downloaded. Headless and API users can accept with
+`POST /models/licenses/accept`; see
+[Licence acceptance before use](../licensing/model-review-workflow.md#licence-acceptance-before-use).

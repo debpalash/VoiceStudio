@@ -11,6 +11,7 @@ from fastapi import APIRouter
 from .models import router as _models_router
 from .wizard import router as _wizard_router
 from .download import router as _download_router
+from ..model_licenses import router as _model_licenses_router
 
 # Re-export commonly used symbols for backward compatibility.
 from .models import KNOWN_MODELS, REQUIRED_MODELS, hf_cache_dir, is_cached  # noqa: F401
@@ -18,4 +19,6 @@ from .models import KNOWN_MODELS, REQUIRED_MODELS, hf_cache_dir, is_cached  # no
 router = APIRouter()
 router.include_router(_models_router)
 router.include_router(_wizard_router)
+router.include_router(_model_licenses_router)
 router.include_router(_download_router)
+

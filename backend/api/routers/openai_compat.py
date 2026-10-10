@@ -646,7 +646,12 @@ def _audio_chunks(audio: bytes):
 @router.post("/audio/speech")
 async def create_speech(req: SpeechRequest):
     """Generate audio from text. Compatible with OpenAI's POST /v1/audio/speech."""
-    backend = _resolve_engine(req.model)
+    from services.model_acceptance import ModelLicenceNotAccepted
+    try:
+        backend = _resolve_engine(req.model)
+    except ModelLicenceNotAccepted as exc:
+        # OpenAI's error shape; `detail` keeps the models for VoiceStudio clients.
+        raise OpenAIError(403, exc.detail(), param="model", code=exc.detail()["code"]) from exc
 
     # Compressed formats need ffmpeg: fail fast, before any model load or GPU
     # work, and never fall back to a body that doesn't match the format.
@@ -961,6 +966,7 @@ async def _transcribe_request(
         asr_model_missing_error,
         load_active_asr_backend,
     )
+    from services.model_acceptance import ModelLicenceNotAccepted
 
     if response_format not in _TRANSCRIPT_FORMATS:
         raise OpenAIError(
@@ -1135,6 +1141,9 @@ async def _transcribe_request(
             status_code=409,
             detail={**e.payload, "message": asr_model_missing_detail(e.payload)},
         )
+    except ModelLicenceNotAccepted as e:
+        # The active engine's model licence needs acceptance in the app (#2689).
+        raise OpenAIError(403, e.detail(), param="model", code=e.detail()["code"]) from e
     except TimeoutError as e:
         # ASRTimeoutError (subclass): backend alive, ASR too heavy for compute.
         logger.warning("OpenAI transcription timed out: %s", e)

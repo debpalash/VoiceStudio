@@ -739,9 +739,21 @@ class TaskExecutor:
         the two-phase split the protocol mirrors (#1033/#1037) is decorative.
         """
         from services import tts_backend  # noqa: PLC0415
+        from services.model_acceptance import ModelLicenceNotAccepted  # noqa: PLC0415
 
         try:
             backend = tts_backend.get_engine_instance_for(engine_id)
+        except ModelLicenceNotAccepted as exc:
+            # Installed but not accepted here: the weights must not load. Another
+            # worker that accepted the licence can still take the task.
+            raise TaskFailure(
+                WorkerError(
+                    error_class=ErrorClass.CAPABILITY,
+                    code="MODEL_LICENCE_REQUIRED",
+                    message=f"Engine '{engine_id}' needs its model licence accepted on this worker.",
+                    hint="Accept it in Model Catalogue on the worker machine, or route this task elsewhere.",
+                )
+            ) from exc
         except Exception as exc:
             raise TaskFailure(
                 WorkerError(

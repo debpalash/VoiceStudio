@@ -19,7 +19,9 @@ from core.tasks import task_manager
 from schemas.requests import DubRequest
 from services.model_manager import _gpu_pool, run_on_gpu_pool_guarded
 from services.srt_parser import vouch_cue_source
-from services.tts_backend import TTSBackend, resolve_generation_backend, active_backend_id
+from services.tts_backend import (
+    TTSBackend, active_backend_id, ensure_active_engine_licence, resolve_generation_backend,
+)
 from services.dub_batching import batch_timeout_s, native_batch_width
 from services import gpu_gateway
 from services.audio_dsp import apply_mastering, normalize_audio, apply_effects_chain, get_effect_chain
@@ -69,6 +71,7 @@ def _validate_render_languages(backend, req, seg_ids, regen_only):
 
 async def _resolve_dub_execution():
     """Resolve routing without loading local weights for a remote dub."""
+    ensure_active_engine_licence()  # remote renders too: the user here asked for it
     engine_id = active_backend_id()
     decision = gpu_gateway.decide("dub_segments")
     if decision.remote:

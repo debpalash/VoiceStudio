@@ -691,6 +691,11 @@ async def setup_warmup():
             from services.model_manager import get_model
             await get_model()
         except Exception as e:
+            from core.failure import licence_required_detail
+
+            if licence_required_detail(e) is not None:
+                logger.info("setup/warmup skipped: the model licence is not accepted yet.")
+                return
             logger.warning("setup/warmup: model load failed: %s", e)
 
     loop.create_task(_do_warmup())

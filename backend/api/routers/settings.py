@@ -974,6 +974,8 @@ def post_license_acceptance(body: _LicenseAcceptBody) -> dict:
     from services import settings_store
     try:
         settings_store.set_license_accepted(eid, body.accepted)
+        from services import model_acceptance
+        model_acceptance.sync_from_engine(eid, bool(body.accepted))
     except Exception as exc:
         logger.error("set_license_accepted failed for %s: %s", log_safe(eid), log_safe(exc))
         raise HTTPException(status_code=500, detail="Failed to persist license acceptance")

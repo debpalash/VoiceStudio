@@ -566,6 +566,13 @@ def _generic_extra_kwargs(opts: ExpressiveOptions) -> dict:
     return kw
 
 
+def _ensure_active_engine_licence() -> None:
+    """403 before the stream opens, rather than one failed row per chapter."""
+    from services.tts_backend import ensure_active_engine_licence
+
+    ensure_active_engine_licence()
+
+
 def _build_synth(
     default_voice: str | None,
     language: str | None = None,
@@ -611,8 +618,12 @@ def _build_synth(
             voice_leases.hold(lease, cache[key].get("ref_audio"))
         return cache[key]
 
+    from services.tts_backend import ensure_engine_licence
+
     engine_id = active_backend_id()
     cls = get_backend_class(engine_id)
+    # `cls()` below bypasses the instance cache and its licence check.
+    ensure_engine_licence(cls)
     if cls is OmniVoiceBackend:
         from services.model_manager import get_model
         return {"mode": "omnivoice", "resolve": resolve, "engine_id": engine_id,
@@ -1037,6 +1048,7 @@ async def audiobook_preview(req: AudiobookPreviewRequest) -> dict:
     from core.config import OUTPUTS_DIR
     from services import gpu_gateway
 
+    _ensure_active_engine_licence()
     plan = parse_audiobook_script(req.text, default_voice=req.default_voice)
     if not plan.chapters:
         raise HTTPException(status_code=400, detail="no chapters parsed from the script")
@@ -1444,6 +1456,7 @@ async def _public_longform_stream(plan, **render_kwargs):
 @router.post("/audiobook")
 async def audiobook_synthesize(req: AudiobookRequest, request: Request = None):
     """Synthesize a chapterized audiobook from a script, streaming SSE progress."""
+    _ensure_active_engine_licence()
     plan = parse_audiobook_script(req.text, default_voice=req.default_voice)
     # `request` is injected by FastAPI on the HTTP path (the default only applies
     # to a direct in-process call, e.g. a unit test); its disconnect poll is what
@@ -1499,6 +1512,7 @@ async def longform_render(req: LongformRenderRequest, request: Request = None):
     cover, metadata, and output formats as the Audiobook job."""
     from services.audiobook import AudiobookPlan, Chapter, Span
 
+    _ensure_active_engine_licence()
     if len(req.chapters) > _MAX_CHAPTERS:
         raise HTTPException(status_code=422, detail=f"too many chapters (max {_MAX_CHAPTERS})")
 
