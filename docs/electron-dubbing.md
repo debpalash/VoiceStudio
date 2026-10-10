@@ -40,6 +40,19 @@ active language in one click while preserving every target for Translate All and
 Generate. Persisted provider error pages are discarded and restored to the source
 dialogue with a retryable error state.
 
+The transcript toolbar counts flagged segments and offers Previous issue / Next
+issue controls. They wrap through tight-fit and overlong lines, translation errors
+or Fast fallbacks, generated-audio overflows, and QC verification flags in transcript
+order. Each jump selects and scrolls to the row, including rows outside the visible
+part of a long transcript. Keyboard focus stays on the control so Enter or Space
+can continue the review. Translation-error badges and navigation use the active
+language's saved failures, so a successful translation into another language does
+not hide them. Pasted replacements and edits to saved translations clear that
+language's error while keeping failures in other languages. The count follows
+edits and the active transcript; zero means no recorded flags, not that ungenerated
+speech has been verified. Navigation is disabled while a job is running or awaiting
+recovery.
+
 Long projects virtualize transcript rows, so only the visible editors are mounted.
 Timeline waveform peaks and onsets are computed once by the backend and cached as a
 small JSON payload; Chromium never decodes the full separated-vocals WAV to draw the

@@ -963,6 +963,11 @@
     "unknown": "onbekend"
   },
   "dubWorkspace": {
+    "transcriptIssues": "Problemen in transcript",
+    "issueCount": "Gemarkeerde segmenten: {{total}}",
+    "issuePosition": "Probleem {{current}} van {{total}}",
+    "previousIssue": "Vorig probleem",
+    "nextIssue": "Volgend probleem",
     "title": "Nasynchronisatie",
     "start": "Begin",
     "end": "Einde",

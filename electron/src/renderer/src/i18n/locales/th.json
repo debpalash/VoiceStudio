@@ -963,6 +963,11 @@
     "unknown": "ไม่ทราบ"
   },
   "dubWorkspace": {
+    "transcriptIssues": "ปัญหาในข้อความถอดเสียง",
+    "issueCount": "ช่วงที่ทำเครื่องหมาย: {{total}}",
+    "issuePosition": "ปัญหาที่ {{current}} จาก {{total}}",
+    "previousIssue": "ปัญหาก่อนหน้า",
+    "nextIssue": "ปัญหาถัดไป",
     "title": "การพากย์เสียง",
     "start": "เริ่ม",
     "end": "สิ้นสุด",

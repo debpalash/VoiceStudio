@@ -963,6 +963,11 @@
     "unknown": "未知"
   },
   "dubWorkspace": {
+    "transcriptIssues": "轉錄問題",
+    "issueCount": "已標記片段：{{total}}",
+    "issuePosition": "第 {{current}} 個問題，共 {{total}} 個",
+    "previousIssue": "上一個問題",
+    "nextIssue": "下一個問題",
     "title": "配音",
     "start": "開始",
     "end": "結束",

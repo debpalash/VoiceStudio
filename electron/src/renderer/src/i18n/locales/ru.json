@@ -967,6 +967,11 @@
     "unknown": "неизвестный"
   },
   "dubWorkspace": {
+    "transcriptIssues": "Проблемы в расшифровке",
+    "issueCount": "Отмеченные сегменты: {{total}}",
+    "issuePosition": "Проблема {{current}} из {{total}}",
+    "previousIssue": "Предыдущая проблема",
+    "nextIssue": "Следующая проблема",
     "title": "Дубляж",
     "start": "Начинать",
     "end": "Конец",

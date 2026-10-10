@@ -976,6 +976,11 @@
     "details": "详情"
   },
   "dubWorkspace": {
+    "transcriptIssues": "转录问题",
+    "issueCount": "已标记片段：{{total}}",
+    "issuePosition": "第 {{current}} 个问题，共 {{total}} 个",
+    "previousIssue": "上一个问题",
+    "nextIssue": "下一个问题",
     "title": "配音",
     "start": "开始",
     "end": "结束",

@@ -591,6 +591,145 @@ try {
   await page.getByRole('button', { name: 'Retry', exact: true }).click();
   await waitForSegmentText(0, 'Hello there');
   assert.equal(transcriptionCalls, attempts + 1);
+
+  // Issue navigation must reach unmounted rows, not just the visible transcript.
+  await page.evaluate(async () => {
+    const { dubSession } = await import('/src/features/dub/dub-session.ts');
+    const segments = Array.from({ length: 1000 }, (_, index) => ({
+      id: `issue-nav-${index}`,
+      start: index * 2,
+      end: index * 2 + 1,
+      text: `Transcript line ${index + 1}`,
+      text_original: `Transcript line ${index + 1}`,
+    }));
+    segments[3].plan = { status: 'tight', est_dur_s: 1.2, available_s: 1, est_overrun_s: 0.2 };
+    segments[499].plan = { status: 'impossible', est_dur_s: 3, available_s: 1, est_overrun_s: 2 };
+    segments[995].fit_status = { status: 'overflows', overflow_s: 1 };
+    dubSession.setState((current) => ({
+      ...current,
+      segments,
+      duration: 2000,
+      phase: 'editing',
+      tracks: [],
+    }));
+  });
+  const issues = page.getByRole('group', { name: 'Transcript issues', exact: true });
+  const nextIssue = issues.getByRole('button', { name: 'Next issue', exact: true });
+  const previousIssue = issues.getByRole('button', { name: 'Previous issue', exact: true });
+  await issues.getByText('Flagged segments: 3', { exact: true }).waitFor();
+  assert.equal(await page.locator('[data-dub-row-id="issue-nav-995"]').count(), 0);
+  const waitForIssue = (id) =>
+    page.waitForFunction((targetId) => {
+      const row = document.querySelector(`[data-dub-row-id="${targetId}"]`);
+      if (!row || row.getAttribute('aria-current') !== 'true') return false;
+      const rect = row.getBoundingClientRect();
+      const scroll = row.closest('.studio-scrollbar')?.getBoundingClientRect();
+      const controls = document
+        .querySelector('[aria-label="Transcript issues"]')
+        ?.getBoundingClientRect();
+      return (
+        scroll &&
+        controls &&
+        rect.top >= Math.max(scroll.top, controls.bottom) &&
+        rect.bottom <= scroll.bottom
+      );
+    }, id);
+  await nextIssue.focus();
+  await nextIssue.press('Enter');
+  await waitForIssue('issue-nav-3');
+  assert.equal(await nextIssue.evaluate((button) => button === document.activeElement), true);
+  await issues.getByText('Issue 1 of 3', { exact: true }).waitFor();
+  await previousIssue.click();
+  await waitForIssue('issue-nav-995');
+  await issues.getByText('Issue 3 of 3', { exact: true }).waitFor();
+  assert.ok((await segmentRows.count()) < 60, 'issue navigation must preserve virtualization');
+  await nextIssue.click();
+  await waitForIssue('issue-nav-3');
+  await nextIssue.click();
+  await waitForIssue('issue-nav-499');
+  // A resolved current row is still the cursor: next must advance, not skip.
+  await page.evaluate(async () => {
+    const { editDubSegment } = await import('/src/features/dub/dub-session.ts');
+    editDubSegment('issue-nav-499', { text: 'Shorter line' });
+  });
+  await issues.getByText('Flagged segments: 2', { exact: true }).waitFor();
+  await nextIssue.click();
+  await waitForIssue('issue-nav-995');
+  await page.evaluate(async () => {
+    const { dubSession } = await import('/src/features/dub/dub-session.ts');
+    dubSession.setState((current) => ({ ...current, phase: 'generating' }));
+  });
+  assert.equal(await nextIssue.isDisabled(), true);
+  assert.equal(await previousIssue.isDisabled(), true);
+  await page.evaluate(async () => {
+    const { dubSession } = await import('/src/features/dub/dub-session.ts');
+    dubSession.setState((current) => ({
+      ...current,
+      phase: 'editing',
+      segments: current.segments.map(({ plan, fit_status, ...segment }) => segment),
+    }));
+  });
+  await issues.getByText('Flagged segments: 0', { exact: true }).waitFor();
+  assert.equal(await nextIssue.isDisabled(), true);
+  assert.equal(await previousIssue.isDisabled(), true);
+
+  // A later successful translation clears the scalar error, but an earlier
+  // language's failure must remain discoverable when switching back to it.
+  await page.evaluate(async () => {
+    const { dubSession, setDubTarget } = await import('/src/features/dub/dub-session.ts');
+    dubSession.setState((current) => ({
+      ...current,
+      segments: current.segments.map((segment, index) =>
+        index === 123
+          ? {
+              ...segment,
+              translate_error: undefined,
+              translate_errors: { fr: 'French translation failed' },
+              translations: { de: 'Guten Tag' },
+            }
+          : segment,
+      ),
+    }));
+    setDubTarget('German', 'de');
+  });
+  await issues.getByText('Flagged segments: 0', { exact: true }).waitFor();
+  await page.evaluate(async () => {
+    const { setDubTarget } = await import('/src/features/dub/dub-session.ts');
+    setDubTarget('French', 'fr');
+  });
+  await issues.getByText('Flagged segments: 1', { exact: true }).waitFor();
+  await nextIssue.click();
+  await waitForIssue('issue-nav-123');
+  const translationRow = page.locator('[data-dub-row-id="issue-nav-123"]');
+  await translationRow.locator('[title*="French translation failed"]').waitFor();
+  await page.evaluate(async () => {
+    const { setDubTarget } = await import('/src/features/dub/dub-session.ts');
+    setDubTarget('German', 'de');
+  });
+  await issues.getByText('Flagged segments: 0', { exact: true }).waitFor();
+  assert.equal(await translationRow.locator('[title*="French translation failed"]').count(), 0);
+  await page.evaluate(async () => {
+    const { setDubTarget } = await import('/src/features/dub/dub-session.ts');
+    setDubTarget('French', 'fr');
+  });
+  await issues.getByText('Issue 1 of 1', { exact: true }).waitFor();
+  await page.evaluate(async () => {
+    const { applyDubTranslationRows } = await import('/src/features/dub/dub-session.ts');
+    applyDubTranslationRows('fr', [
+      {
+        id: 'issue-nav-123',
+        index: 123,
+        start: 246,
+        end: 247,
+        before: 'Transcript line 124',
+        after: 'Bonjour',
+        matched: true,
+      },
+    ]);
+  });
+  await issues.getByText('Flagged segments: 0', { exact: true }).waitFor();
+  assert.equal(await nextIssue.isDisabled(), true);
+  assert.equal(await translationRow.locator('[title*="French translation failed"]').count(), 0);
   assert.deepEqual(errors, []);
   assert.deepEqual(vidstackWarnings, []);
   if (video) assert.equal(mediaHeadRequests, 0);

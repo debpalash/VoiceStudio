@@ -963,6 +963,11 @@
     "unknown": "không rõ"
   },
   "dubWorkspace": {
+    "transcriptIssues": "Vấn đề trong bản chép lời",
+    "issueCount": "Đoạn được đánh dấu: {{total}}",
+    "issuePosition": "Vấn đề {{current}} trên {{total}}",
+    "previousIssue": "Vấn đề trước",
+    "nextIssue": "Vấn đề tiếp theo",
     "title": "Lồng tiếng",
     "start": "Bắt đầu",
     "end": "Kết thúc",

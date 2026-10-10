@@ -14,6 +14,8 @@ import { clampSegmentEdit } from '@shared/utils/timeline';
 import { dialectLabel, dialectMatchesLang, dialectOptionsFor } from '@shared/api/dialects';
 import { DubExportPanel } from './dub-export-panel';
 import { DubTimeline } from './dub-timeline';
+import { TranscriptIssueNavigation } from './transcript-issue-navigation';
+import { getDubTranslationError } from './transcript-issues';
 import { PasteTranslation } from './paste-translation';
 import { GlossaryPanel } from './glossary-panel';
 import { CastingBoard } from './casting-board';
@@ -324,6 +326,15 @@ export function DubPage() {
     getItemKey: (index) => session.segments[index]?.id ?? index,
     scrollMargin: segmentScrollMargin,
   });
+  const selectTranscriptSegment = (id: string) => {
+    const index = session.segments.findIndex((segment) => segment.id === id);
+    if (index < 0) return;
+    setSelectedSegmentId(id);
+    // CSS smooth scrolling can interrupt distant jumps as virtual rows are measured.
+    requestAnimationFrame(() =>
+      segmentVirtualizer.scrollToIndex(index, { align: 'center', behavior: 'instant' }),
+    );
+  };
   useLayoutEffect(() => {
     const list = segmentList.current;
     if (!list) return;
@@ -426,11 +437,7 @@ export function DubPage() {
     (segment) => segment.translations && Object.keys(segment.translations).length > 0,
   );
   const failedTranslationCount = code
-    ? session.segments.filter(
-        (segment) =>
-          segment.translate_errors?.[code] ||
-          (!segment.translate_errors && segment.translate_error),
-      ).length
+    ? session.segments.filter((segment) => getDubTranslationError(segment, code)).length
     : 0;
   const canRestoreOriginal = session.segments.some(
     (segment) =>
@@ -2152,6 +2159,13 @@ export function DubPage() {
                       </Button>
                     )}
                   </div>
+                  <TranscriptIssueNavigation
+                    segments={session.segments}
+                    language={code}
+                    selectedId={selectedSegmentId}
+                    disabled={busy || Boolean(session.recovery)}
+                    onSelect={selectTranscriptSegment}
+                  />
                 </div>
               )}
               {showCheckpoint && checkpointStage && (
@@ -2306,16 +2320,7 @@ export function DubPage() {
                   peaks={timelineOnsets.peaks}
                   previewingId={previewingSegmentId}
                   selectedId={selectedSegmentId}
-                  onSelect={(id) => {
-                    setSelectedSegmentId(id);
-                    const index = session.segments.findIndex((segment) => segment.id === id);
-                    if (index >= 0)
-                      requestAnimationFrame(() =>
-                        segmentVirtualizer.scrollToIndex(index, {
-                          align: 'center',
-                        }),
-                      );
-                  }}
+                  onSelect={selectTranscriptSegment}
                   onPreviewSegment={(segment) => void previewDubSegment(segment)}
                 />
               )}
@@ -2329,6 +2334,7 @@ export function DubPage() {
                     const index = row.index;
                     const segment = session.segments[index];
                     if (!segment) return null;
+                    const translationError = getDubTranslationError(segment, code);
                     return (
                       <div
                         key={row.key}
@@ -2341,6 +2347,7 @@ export function DubPage() {
                       >
                         <article
                           data-dub-row-id={segment.id}
+                          aria-current={selectedSegmentId === segment.id ? 'true' : undefined}
                           onFocusCapture={() => setSelectedSegmentId(segment.id)}
                           className={cn(
                             'group/segment relative isolate grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-2 px-2 py-3.5 transition-[background-color,box-shadow] after:pointer-events-none after:absolute after:right-2 after:bottom-0 after:left-[4.25rem] after:h-px after:bg-gradient-to-r after:from-border/65 after:via-border/35 after:to-transparent after:transition-opacity hover:bg-muted/[0.12] hover:after:opacity-100 focus-within:bg-muted/[0.16] focus-within:after:from-primary/45',
@@ -2422,17 +2429,17 @@ export function DubPage() {
                               ) : (
                                 <span className="min-w-0 flex-1" />
                               )}
-                              {(segment.translate_error ||
+                              {(translationError ||
                                 segment.translate_degraded ||
                                 segment.plan?.status === 'tight' ||
                                 segment.plan?.status === 'impossible' ||
                                 segment.fit_status?.status === 'overflows') && (
                                 <div className="ml-auto flex shrink-0 flex-wrap justify-end gap-1">
-                                  {segment.translate_error && (
+                                  {translationError && (
                                     <span
                                       className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive"
                                       title={t('segment.translate_error_title', {
-                                        error: segment.translate_error,
+                                        error: translationError,
                                       })}
                                     >
                                       <AlertCircleIcon className="size-3" />

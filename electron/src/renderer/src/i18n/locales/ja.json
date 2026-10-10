@@ -963,6 +963,11 @@
     "unknown": "未知"
   },
   "dubWorkspace": {
+    "transcriptIssues": "文字起こしの問題",
+    "issueCount": "要確認の区間: {{total}}",
+    "issuePosition": "全{{total}}件中{{current}}件目の問題",
+    "previousIssue": "前の問題",
+    "nextIssue": "次の問題",
     "title": "ダビング",
     "start": "スタート",
     "end": "終了",

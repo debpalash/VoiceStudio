@@ -963,6 +963,11 @@
     "unknown": "unbekannt"
   },
   "dubWorkspace": {
+    "transcriptIssues": "Probleme im Transkript",
+    "issueCount": "Markierte Abschnitte: {{total}}",
+    "issuePosition": "Problem {{current}} von {{total}}",
+    "previousIssue": "Vorheriges Problem",
+    "nextIssue": "Nächstes Problem",
     "title": "Synchronisation",
     "start": "Starten",
     "end": "Ende",
