@@ -40,6 +40,7 @@ import re
 import struct
 import sys
 import traceback
+from pathlib import Path
 
 
 # Mirrors backend/services/subprocess_backend.py::MAX_FRAME_BYTES.
@@ -54,6 +55,8 @@ MOSS_SAMPLE_RATE = 24000
 #: Reviewed HF repo and immutable revision for the default remote-code model.
 _DEFAULT_REPO = "OpenMOSS-Team/MOSS-TTS-v1.5"
 _DEFAULT_REVISION = "cdd3b911b1585e3f2dbc7775ef10f9926f58850a"
+_CODEC_REPO = "OpenMOSS-Team/MOSS-Audio-Tokenizer"
+_CODEC_REVISION = "3cd226ba2947efa357ef453bcad111b6eafba782"
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 
 
@@ -135,6 +138,81 @@ def _measure_vram_mb() -> float:
 _state = None
 
 
+def _snapshot_has_weights(path: str) -> bool:
+    """Legacy Hub caches may contain only config files from a failed load."""
+    root = Path(path)
+    if not (root / "config.json").is_file():
+        return False
+    if any((root / name).is_file() for name in ("model.safetensors", "pytorch_model.bin")):
+        return True
+    for name in ("model.safetensors.index.json", "pytorch_model.bin.index.json"):
+        try:
+            weight_map = json.loads((root / name).read_text(encoding="utf-8"))["weight_map"]
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        if isinstance(weight_map, dict) and weight_map and all(
+            isinstance(shard, str) and (root / shard).is_file()
+            for shard in weight_map.values()
+        ):
+            return True
+    return False
+
+
+def _snapshot_has_loading_files(path: str, *, processor: bool) -> bool:
+    """Check loader metadata, tokenizer assets and the remote-code import closure."""
+    from transformers.dynamic_module_utils import get_relative_import_files
+
+    root = Path(path)
+    names = ["config.json"]
+    if processor:
+        names += ["processor_config.json", "tokenizer_config.json"]
+    try:
+        configs = [json.loads((root / name).read_text(encoding="utf-8")) for name in names]
+        if not all(isinstance(config, dict) for config in configs):
+            return False
+        if processor:
+            if not ((root / "tokenizer.json").is_file() or all(
+                (root / name).is_file() for name in ("vocab.json", "merges.txt")
+            )):
+                return False
+            if not configs[-1].get("chat_template") and not (root / "chat_template.jinja").is_file():
+                return False
+        for config in configs:
+            for reference in config.get("auto_map", {}).values():
+                references = [reference] if isinstance(reference, str) else reference
+                for class_name in references:
+                    if class_name is None:  # optional slow/fast tokenizer class
+                        continue
+                    module_name = class_name.rsplit(".", 1)[0]
+                    module = root / (module_name + ".py")
+                    if not module.is_file() or not all(
+                        Path(relative).is_file() for relative in get_relative_import_files(module)
+                    ):
+                        return False
+    except (OSError, ValueError, TypeError, AttributeError):
+        return False
+    return True
+
+
+def _snapshot_path(repo: str, revision: str) -> str:
+    """Reuse a loadable local snapshot or complete its pinned download."""
+    from huggingface_hub import snapshot_download
+    from huggingface_hub.errors import LocalEntryNotFoundError
+
+    # A pinned revision can still trigger a Hub tree-listing request. Reuse
+    # complete cached loading files and weights first, including older caches.
+    try:
+        cached = snapshot_download(repo, revision=revision, local_files_only=True)
+    except LocalEntryNotFoundError:
+        pass
+    else:
+        if _snapshot_has_weights(cached) and _snapshot_has_loading_files(
+            cached, processor=repo != _CODEC_REPO,
+        ):
+            return cached
+    return snapshot_download(repo, revision=revision)
+
+
 def _load_model(stdout):
     """Cold-construct the MOSS-TTS-v1.5 processor + model.
 
@@ -175,8 +253,13 @@ def _load_model(stdout):
     # (Ampere+ CUDA, optional flash-attn) is opt-in via env.
     attn = os.environ.get("OMNIVOICE_MOSS_TTS_V15_ATTN", "sdpa")
 
+    # The upstream processor forwards revision to both the separate codec
+    # repo and ProcessorMixin.__init__, where it is invalid (#2690). Resolve
+    # each immutable revision first; the loaders then consume local paths.
+    model_path = _snapshot_path(repo, revision)
+    codec_path = _snapshot_path(_CODEC_REPO, _CODEC_REVISION)
     processor = AutoProcessor.from_pretrained(
-        repo, revision=revision, trust_remote_code=True,
+        model_path, trust_remote_code=True, codec_path=codec_path,
     )
     # The audio tokenizer is a separate sub-module that must be moved to the
     # device independently (easy to miss — see upstream README).
@@ -185,8 +268,7 @@ def _load_model(stdout):
     _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 50})
 
     model = AutoModel.from_pretrained(
-        repo,
-        revision=revision,
+        model_path,
         trust_remote_code=True,
         attn_implementation=attn,
         torch_dtype=dtype,

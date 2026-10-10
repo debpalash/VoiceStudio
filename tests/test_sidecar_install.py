@@ -1078,7 +1078,8 @@ def test_uninstalling_one_engine_leaves_every_other_engine_intact(monkeypatch):
 @pytest.mark.parametrize(
     ("engine_id", "venv_args", "install_args", "env_var"),
     [
-        ("moss-tts-v15", ["--python", "3.11"], ["-e", "{c}[torch-runtime]"],
+        ("moss-tts-v15", ["--python", "3.11"],
+         ["-e", "{c}[torch-runtime]", "torchcodec===0.8.1"],
          "OMNIVOICE_MOSS_TTS_V15_DIR"),
         ("confucius4-tts", ["--python", "3.10"], ["-r", "{c}/requirements.txt"],
          "OMNIVOICE_CONFUCIUS4_TTS_DIR"),
@@ -1095,6 +1096,7 @@ def test_uninstalling_one_engine_leaves_every_other_engine_intact(monkeypatch):
     ],
 )
 def test_new_specs_install_recipe(monkeypatch, engine_id, venv_args, install_args, env_var):
+    """Engine recipes install into their own venv and expose the correct env var."""
     spec = si.get_spec(engine_id)
     # The env var must be the one the engine's own bootstrap reads, or the
     # install lands in a directory the engine never looks at.
@@ -1886,8 +1888,9 @@ def test_unspecified_compatibility_does_not_rebuild_working_venv(monkeypatch, ve
     assert si._existing_venv_compatible(spec, Path("existing-python"))
 
 
-@pytest.mark.parametrize('engine', ['cosyvoice', 'moss-tts-nano'])
+@pytest.mark.parametrize('engine', ['cosyvoice', 'moss-tts-nano', 'moss-tts-v15'])
 def test_runtime_rejects_old_managed_recipe_but_preserves_external_installs(monkeypatch, tmp_path, engine):
+    """Recipe upgrades invalidate managed markers while preserving external venvs."""
     spec = si.SPECS[engine]
     checkout = si.managed_checkout(spec)
     py = si._venv_python(checkout / '.venv')
@@ -1907,6 +1910,43 @@ def test_runtime_rejects_old_managed_recipe_but_preserves_external_installs(monk
     (external / si._INSTALL_COMPLETE_MARKER).write_text('external-version\n')
     monkeypatch.setenv(spec.env_var, str(external))
     assert si.engine_venv_python(spec.env_var) == external_py
+
+
+def test_moss_decoder_recipe_upgrade_preserves_venv_and_cached_weights(monkeypatch, tmp_path):
+    """An old managed MOSS install resumes dependencies instead of skipping repair."""
+    spec = si.SPECS['moss-tts-v15']
+    checkout = si.managed_checkout(spec)
+    py = si._venv_python(checkout / '.venv')
+    py.parent.mkdir(parents=True)
+    py.write_text('#!existing-python\n')
+    marker = checkout / si._INSTALL_COMPLETE_MARKER
+    marker.write_text(spec.probe_module + '\n')
+    weights = tmp_path / 'hf-cache' / 'model.safetensors'
+    weights.parent.mkdir()
+    weights.write_bytes(b'existing weights')
+    monkeypatch.setattr(si, '_source_present', lambda *args: True)
+    monkeypatch.setattr(si, '_existing_venv_compatible', lambda *args: True)
+    monkeypatch.setattr(si, '_locate_uv', lambda: '/fake/uv')
+    monkeypatch.setattr(si, '_host_family', lambda: 'cuda')
+    commands = []
+    monkeypatch.setattr(si, '_run_logged', lambda job, argv, **kw: commands.append(argv) or 0)
+    monkeypatch.setattr(si.subprocess, 'run', lambda *a, **kw: SimpleNamespace(returncode=0))
+
+    assert not si._healthy(spec)
+    job = si._new_job(spec.engine_id)
+    si._step_create_venv(spec, job)
+    si._step_install_deps(spec, job)
+    assert not marker.exists()
+    si._step_verify(spec, job)
+
+    assert len(commands) == 1
+    assert commands[0][1:3] == ['pip', 'install']
+    assert commands[0][3:5] == ['--python', str(py)]
+    assert 'torchcodec===0.8.1' in commands[0]
+    assert py.read_text() == '#!existing-python\n'
+    assert weights.read_bytes() == b'existing weights'
+    assert si._healthy(spec)
+    assert si._install_marker_valid(spec, checkout)
 
 
 def test_corrupt_non_utf8_markers_read_as_absent_not_crash(monkeypatch):
