@@ -297,3 +297,83 @@ def test_auto_select_no_speech_within_transcript_limit_still_offers_transcript()
 
     with pytest.raises(ValueError, match=r"\[clone_ref_no_speech\].*matching transcript"):
         model.create_voice_clone_prompt((audio, 100), ref_text=None)
+
+
+def test_selected_passage_is_retranscribed_after_edge_trim(monkeypatch):
+    """A passage cut back to its pauses gets a transcript of exactly that audio."""
+    model = _model(reject_tokenization=False)
+    model.sampling_rate = 100
+    model._asr_pipe = object()
+    lengths = []
+
+    def transcribe(candidate):
+        lengths.append(candidate[0].size(-1))
+        return "Speech."
+
+    model.transcribe = transcribe
+    monkeypatch.setattr(
+        "omnivoice.models.omnivoice.remove_silence_safe",
+        lambda audio, *_args, **_kwargs: audio,
+    )
+    audio = torch.full((1, 16 * 100), 0.1)
+    audio[:, 1400:1430] = 0.0  # pause 1 s before the first window's fixed cut
+
+    model.create_voice_clone_prompt((audio, 100), ref_text=None)
+
+    assert lengths[:2] == [1500, 100]
+    assert len(lengths) == 3 and 1400 <= lengths[2] <= 1430
+
+
+def test_trim_transcription_failure_keeps_the_untrimmed_passage(monkeypatch):
+    """A recognizer that raises on the shorter trimmed window must not abort
+    cloning when the untrimmed passage already has a transcript."""
+    model = _model(reject_tokenization=False)
+    model.sampling_rate = 100
+    model._asr_pipe = object()
+
+    calls = []
+
+    def transcribe(candidate):
+        calls.append(candidate[0].size(-1))
+        if len(calls) == 3:  # two ranking windows, then the trimmed re-read
+            raise RuntimeError("recognizer failed on the trimmed window")
+        return "Speech."
+
+    model.transcribe = transcribe
+    monkeypatch.setattr(
+        "omnivoice.models.omnivoice.remove_silence_safe",
+        lambda audio, *_args, **_kwargs: audio,
+    )
+    audio = torch.full((1, 16 * 100), 0.1)
+    audio[:, 1400:1430] = 0.0
+
+    prompt = model.create_voice_clone_prompt((audio, 100), ref_text=None)
+
+    assert len(calls) == 3  # the failing trimmed read really happened
+    assert prompt.ref_text == "Speech."
+
+
+def test_trim_that_leaves_no_words_keeps_the_untrimmed_passage(monkeypatch):
+    """A usable passage must not become a "no speech" error because its
+    trimmed copy transcribes empty."""
+    model = _model(reject_tokenization=False)
+    model.sampling_rate = 100
+    model._asr_pipe = object()
+    lengths = []
+
+    def transcribe(candidate):
+        lengths.append(candidate[0].size(-1))
+        return "Speech." if candidate[0].size(-1) >= 1500 else ""
+
+    model.transcribe = transcribe
+    monkeypatch.setattr(
+        "omnivoice.models.omnivoice.remove_silence_safe",
+        lambda audio, *_args, **_kwargs: audio,
+    )
+    audio = torch.full((1, 16 * 100), 0.1)
+    audio[:, 1400:1430] = 0.0
+
+    prompt = model.create_voice_clone_prompt((audio, 100), ref_text=None)
+
+    assert prompt.ref_text == "Speech."
+    assert len(lengths) == 3 and lengths[2] < 1500  # the trim was tried, then dropped

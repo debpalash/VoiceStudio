@@ -22,6 +22,7 @@ import functools
 import logging
 import os
 import re
+import contextlib
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -668,6 +669,11 @@ class TTSBackend(ABC):
 _PROMPT_CACHE_MAX = 8
 _prompt_cache: "OrderedDict[tuple, object]" = OrderedDict()
 _prompt_cache_lock = threading.Lock()
+# Recognizer chain a transcript-free prompt was built under, by its cache key.
+# The key itself has no recognizer in it, so without this a recognizer the user
+# installs or selects later would never get to transcribe a reference that an
+# earlier chain could not. Guarded by _prompt_cache_lock.
+_unresolved_prompt_recognizers: dict = {}
 
 # Disk layer under the in-memory LRU (upstream k2-fsa VoiceClonePrompt.save/
 # load format). The in-memory cache dies with the process, so the first
@@ -738,6 +744,7 @@ def _prompt_cache_evict(key: tuple) -> None:
     """
     with _prompt_cache_lock:
         _prompt_cache.pop(key, None)
+        _unresolved_prompt_recognizers.pop(key, None)
     cache_dir = _prompt_disk_dir()
     if cache_dir is None:
         return
@@ -1257,6 +1264,40 @@ def _speech_score(text: str) -> int:
     return len(re.sub(r"[^\w]+", "", text or "", flags=re.UNICODE))
 
 
+def _unresolved_prompt_is_current(key: tuple) -> bool:
+    """True when the cached transcript-free prompt under ``key`` was built under
+    the recognizer chain that is selected now.
+
+    Installing or selecting another recognizer changes the chain, so the prompt
+    is no longer trusted and the new recognizer gets its turn. An unnamed chain
+    (identity "") is never trusted, for the same reason the passage cache
+    refuses it.
+    """
+    identity = _reference_asr_identity()
+    if not identity:
+        return False
+    with _prompt_cache_lock:
+        return _unresolved_prompt_recognizers.get(key) == identity
+
+
+def has_unresolved_clone_prompt(ref_audio: str, preprocess_prompt: bool = True) -> bool:
+    """True when a still-valid transcript-free prompt for ``ref_audio`` is cached.
+
+    That only happens after an earlier request found no installed-recognizer
+    words and let the model transcribe it, so a serialized sidecar can skip
+    loading the recognizer again for the same reference, until the selected
+    recognizers change.
+    """
+    try:
+        key = _clone_prompt_key(ref_audio, None, preprocess_prompt)
+    except Exception:  # noqa: BLE001 — an unreadable reference is simply "not cached"
+        return False
+    with _prompt_cache_lock:
+        if key not in _prompt_cache:
+            return False
+    return _unresolved_prompt_is_current(key)
+
+
 def _get_clone_prompt(
     model, ref_audio: str, ref_text, preprocess_prompt: bool = True, *,
     store: bool = True,
@@ -1284,6 +1325,9 @@ def _get_clone_prompt(
     # persist the transcript. Incomplete reference conditioning can destabilize
     # the reference/target boundary and introduce words in the generated prefix.
     unresolved_key = None
+    # True only when recognition ran to completion and found no words. A raised
+    # error is not that: the same recognizers may well succeed on the next try.
+    recognition_found_nothing = False
     from omnivoice.utils.audio import CLONE_REF_TEXT_MAX_SECONDS
 
     duration = reference_duration_s(ref_audio)
@@ -1319,10 +1363,24 @@ def _get_clone_prompt(
                 )
             except Exception:
                 pass
+            if (
+                unresolved_key is not None
+                and cacheable
+                and _unresolved_prompt_is_current(unresolved_key)
+            ):
+                # An earlier request found no installed-recognizer words and
+                # cached the model-transcribed prompt under this key: reuse it
+                # instead of loading the same recognizers again to fail again.
+                with _prompt_cache_lock:
+                    hit = _prompt_cache.get(unresolved_key)
+                    if hit is not None:
+                        _prompt_cache.move_to_end(unresolved_key)
+                        return hit
             try:
                 from services.asr_backend import transcribe_reference
 
                 ref_text = transcribe_reference(ref_audio)
+                recognition_found_nothing = not ref_text
             except Exception as e:  # noqa: BLE001 — model fallback remains available
                 logger.warning("reference transcript resolution failed: %s", e)
             if ref_text and unresolved_key is not None:
@@ -1335,10 +1393,18 @@ def _get_clone_prompt(
         except Exception:
             return None
         if cacheable:
+            # Retried under the current recognizers and still no transcript:
+            # the cached prompt stands, and is now trusted for this chain.
+            retried_with = (
+                _reference_asr_identity()
+                if key == unresolved_key and recognition_found_nothing else ""
+            )
             with _prompt_cache_lock:
                 hit = _prompt_cache.get(key)
                 if hit is not None:
                     _prompt_cache.move_to_end(key)
+                    if retried_with:
+                        _unresolved_prompt_recognizers[key] = retried_with
                     return hit
         # A recalled passage is materialized only when neither cache hits.
         prompt = _prompt_disk_load(key) if cacheable else None
@@ -1398,11 +1464,20 @@ def _get_clone_prompt(
                 _prompt_disk_save(key, prompt)
         if not store or not cacheable:
             return prompt
+        # Remember which recognizers could not transcribe this reference, so a
+        # later request only skips them while the selection is unchanged.
+        built_with = (
+            _reference_asr_identity()
+            if key == unresolved_key and recognition_found_nothing else ""
+        )
         with _prompt_cache_lock:
             _prompt_cache[key] = prompt
             _prompt_cache.move_to_end(key)
+            if built_with:
+                _unresolved_prompt_recognizers[key] = built_with
             while len(_prompt_cache) > _PROMPT_CACHE_MAX:
-                _prompt_cache.popitem(last=False)
+                evicted, _ = _prompt_cache.popitem(last=False)
+                _unresolved_prompt_recognizers.pop(evicted, None)
         return prompt
     finally:
         if passage_file is not None:
@@ -1445,19 +1520,32 @@ def generate_with_cached_ref(model, *, ref_audio, ref_text, **gen_kw):
     # it is restored first if an offload left it in RAM (#2618).
     with engine_in_use(OmniVoiceBackend(model=model)), tts_inference():
         cache_ref = bool(gen_kw.pop("cache_ref", True))
+        # Serialized sidecars only: unload the reference recognizer as soon as
+        # the prompt (or inline passage) exists, before the synthesis model
+        # runs. Popped for the same reason as cache_ref.
+        release_asr = bool(gen_kw.pop("release_reference_asr", False))
+        if release_asr:
+            from services.asr_backend import release_reference_asr_after
+
+            def release_scope():
+                return release_reference_asr_after()
+        else:
+            release_scope = contextlib.nullcontext
         # Stays in gen_kw too: the model needs it on the inline branch, and it is inert
         # on the prompt branch (that prompt is already encoded).
         preprocess_prompt = bool(gen_kw.get("preprocess_prompt", True))
-        prompt = (
-            _get_clone_prompt(model, ref_audio, ref_text, preprocess_prompt, store=cache_ref)
-            if ref_audio else None
-        )
+        with release_scope():
+            prompt = (
+                _get_clone_prompt(model, ref_audio, ref_text, preprocess_prompt, store=cache_ref)
+                if ref_audio else None
+            )
         if prompt is not None:
             try:
                 return model.generate(voice_clone_prompt=prompt, **gen_kw)
             except Exception as e:  # noqa: BLE001 — fall back to the inline ref
                 logger.warning("voice_clone_prompt generate failed; retrying inline ref: %s", e)
-        inline_audio, inline_text, passage = omnivoice_inline_reference(ref_audio, ref_text)
+        with release_scope():
+            inline_audio, inline_text, passage = omnivoice_inline_reference(ref_audio, ref_text)
         try:
             return model.generate(ref_audio=inline_audio, ref_text=inline_text, **gen_kw)
         finally:
@@ -1474,6 +1562,7 @@ def clear_clone_prompt_cache() -> None:
     with _prompt_cache_lock:
         _prompt_cache.clear()
         _passage_choices.clear()
+        _unresolved_prompt_recognizers.clear()
 
 
 # NB: model_manager.release_tts_side_caches() calls clear_clone_prompt_cache()

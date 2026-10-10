@@ -9,11 +9,17 @@ metadata and the backend fallback mirror it.
 ## [Unreleased]
 
 **Highlights**
-
 - Add model-source notices and an optional exact-file review preview; ordinary downloads remain unchanged. (#2689)
 - Model cards show a coloured icon for each model's licence category: commercial, with conditions, personal/research only, or unknown. (#2689)
 - Models without a plainly commercial licence, including the default OmniVoice model, must have their licence accepted once before use; VoiceStudio is not the licensor and cannot grant model rights. (#2689)
 - The model licence dialog is clearer: a plain summary, what the licence allows, and collapsible details; acceptance records the date and exact terms, and changed terms ask again. (#2689)
+- Voice cloning on 8 GB unified-memory Macs frees the reference speech model before synthesis, so cloning no longer swaps until it times out (#2619)
+
+### Fixed
+
+- Voice cloning on 8 GB unified-memory Macs frees the reference speech model before synthesis, so cloning no longer swaps until it times out (#2619)
+- Voice-clone references without a transcript are encoded once per engine process and logged without their spoken text (#2619)
+- Reference passages trim leading and trailing silence before selection, so clones no longer start or end mid-pause (#2619)
 
 ## [0.5.7] — 2026-10-07
 
