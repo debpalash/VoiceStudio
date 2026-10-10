@@ -2408,7 +2408,7 @@
       "engines": [
         "moss-tts-v15"
       ],
-      "configured_at": "backend/engines/moss_tts_v15/main.py:55",
+      "configured_at": "backend/engines/moss_tts_v15/main.py:56",
       "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
       "runtime_revision": "cdd3b911b1585e3f2dbc7775ef10f9926f58850a",
       "runtime_pin_scope": "central",
@@ -2418,7 +2418,9 @@
       "commercial_outputs": "unknown",
       "documents": [],
       "artifacts": [],
-      "required_components": [],
+      "required_components": [
+        "OpenMOSS-Team/MOSS-Audio-Tokenizer"
+      ],
       "upstream_access": "unknown",
       "audit_observations": {
         "commercial_inference": {
@@ -2438,7 +2440,49 @@
         "identified_components": [
           "model weights",
           "text tokenizer",
-          "processor.audio_tokenizer (resolved repository/revision not yet verified)"
+          "OpenMOSS-Team/MOSS-Audio-Tokenizer at 3cd226ba2947efa357ef453bcad111b6eafba782"
+        ]
+      }
+    },
+    {
+      "id": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "OpenMOSS-Team/MOSS-Audio-Tokenizer",
+      "source_url": "https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer",
+      "evidence_url": "https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer/blob/3cd226ba2947efa357ef453bcad111b6eafba782/README.md",
+      "revision": "3cd226ba2947efa357ef453bcad111b6eafba782",
+      "engines": [],
+      "configured_at": "backend/engines/moss_tts_v15/main.py:58",
+      "notes": "Required audio codec for MOSS-TTS-v1.5. Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "3cd226ba2947efa357ef453bcad111b6eafba782",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected audio codec only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision",
+          "Attribution/NOTICE/redistribution duties"
+        ],
+        "identified_components": [
+          "audio codec weights",
+          "remote-code configuration and model"
         ]
       }
     },

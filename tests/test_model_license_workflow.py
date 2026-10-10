@@ -358,7 +358,7 @@ class ProductionTests(unittest.TestCase):
 
     def test_production_rows_never_use_synthetic_positive_fixtures(self):
         registry = ml.load_registry()
-        self.assertEqual(len(registry["models"]), 56)
+        self.assertEqual(len(registry["models"]), 57)
         self.assertEqual(len(registry["dynamic_assets"]), 7)
         for row in registry["models"]:
             self.assertEqual(row["component_closure"], "incomplete")
@@ -381,8 +381,10 @@ class ProductionTests(unittest.TestCase):
         expected = {r["id"]: r["runtime_revision"] for r in data["models"]
                     if r["runtime_pin_scope"] == "central"}
         self.assertEqual(CURATED_REVISIONS, expected)
-        self.assertEqual(len(expected), 42)
-        # Golden digest of ALL 42 pins in base 06c6e077; no runtime upgrade.
+        self.assertEqual(len(expected), 43)
+        self.assertEqual(expected.pop("OpenMOSS-Team/MOSS-Audio-Tokenizer"),
+                         "3cd226ba2947efa357ef453bcad111b6eafba782")
+        # Preserve ALL 42 pre-existing pins from base 06c6e077 unchanged.
         self.assertEqual(ml.digest(expected), "421276b5ac88b32b36b838667e4cd2da8d410d48ba489dcffb8486772df9d858")
         self.assertEqual(expected["openbmb/VoxCPM2"], "bffb3df5a29440629464e5e839f4d214c8714c3d")
 

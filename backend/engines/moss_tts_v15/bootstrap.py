@@ -262,6 +262,9 @@ def _bootstrap_engines_venv(clone_dir: Path) -> Path:
                 uv, "pip", "install",
                 "--python", str(python_path),
                 "-e", f"{clone_dir}[torch-runtime]",
+                # == also admits +cu128, which needs NVIDIA NPP just to
+                # decode reference audio. Require the CPU decoder (#2690).
+                "torchcodec===0.8.1",
                 # The extra pins torch==2.9.1+cu128, which exists only on
                 # PyTorch's index — without it this could never resolve, on
                 # any host (core.torch_indexes).

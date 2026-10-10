@@ -446,7 +446,9 @@ SPECS: dict[str, SidecarSpec] = {
         source_revision="934d6826b084c46a0d033402174d5f8ac4ed2519",
         source_required_path="pyproject.toml",
         venv_args=("--python", "3.11"),
-        install_args=("-e", "{checkout}[torch-runtime]"),
+        # == permits the +cu128 decoder, which requires NVIDIA NPP even
+        # for CPU reference-audio decoding. === excludes that local build.
+        install_args=("-e", "{checkout}[torch-runtime]", "torchcodec===0.8.1"),
         uses_cuda_index=True,
         host_supported=_moss_host,
         docs_path="docs/engines/moss-tts-v15.md",

@@ -1078,7 +1078,8 @@ def test_uninstalling_one_engine_leaves_every_other_engine_intact(monkeypatch):
 @pytest.mark.parametrize(
     ("engine_id", "venv_args", "install_args", "env_var"),
     [
-        ("moss-tts-v15", ["--python", "3.11"], ["-e", "{c}[torch-runtime]"],
+        ("moss-tts-v15", ["--python", "3.11"],
+         ["-e", "{c}[torch-runtime]", "torchcodec===0.8.1"],
          "OMNIVOICE_MOSS_TTS_V15_DIR"),
         ("confucius4-tts", ["--python", "3.10"], ["-r", "{c}/requirements.txt"],
          "OMNIVOICE_CONFUCIUS4_TTS_DIR"),
