@@ -158,18 +158,57 @@ def _snapshot_has_weights(path: str) -> bool:
     return False
 
 
+def _snapshot_has_loading_files(path: str, *, processor: bool) -> bool:
+    """Check loader metadata, tokenizer assets and the remote-code import closure."""
+    from transformers.dynamic_module_utils import get_relative_import_files
+
+    root = Path(path)
+    names = ["config.json"]
+    if processor:
+        names += ["processor_config.json", "tokenizer_config.json"]
+    try:
+        configs = [json.loads((root / name).read_text(encoding="utf-8")) for name in names]
+        if not all(isinstance(config, dict) for config in configs):
+            return False
+        if processor:
+            if not ((root / "tokenizer.json").is_file() or all(
+                (root / name).is_file() for name in ("vocab.json", "merges.txt")
+            )):
+                return False
+            if not configs[-1].get("chat_template") and not (root / "chat_template.jinja").is_file():
+                return False
+        for config in configs:
+            for reference in config.get("auto_map", {}).values():
+                references = [reference] if isinstance(reference, str) else reference
+                for class_name in references:
+                    if class_name is None:  # optional slow/fast tokenizer class
+                        continue
+                    module_name = class_name.rsplit(".", 1)[0]
+                    module = root / (module_name + ".py")
+                    if not module.is_file() or not all(
+                        Path(relative).is_file() for relative in get_relative_import_files(module)
+                    ):
+                        return False
+    except (OSError, ValueError, TypeError, AttributeError):
+        return False
+    return True
+
+
 def _snapshot_path(repo: str, revision: str) -> str:
+    """Reuse a loadable local snapshot or complete its pinned download."""
     from huggingface_hub import snapshot_download
     from huggingface_hub.errors import LocalEntryNotFoundError
 
     # A pinned revision can still trigger a Hub tree-listing request. Reuse
-    # complete cached weights first, including caches from older Hub versions.
+    # complete cached loading files and weights first, including older caches.
     try:
         cached = snapshot_download(repo, revision=revision, local_files_only=True)
     except LocalEntryNotFoundError:
         pass
     else:
-        if _snapshot_has_weights(cached):
+        if _snapshot_has_weights(cached) and _snapshot_has_loading_files(
+            cached, processor=repo != _CODEC_REPO,
+        ):
             return cached
     return snapshot_download(repo, revision=revision)
 

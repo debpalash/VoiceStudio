@@ -47,7 +47,14 @@ snapshots: `OpenMOSS-Team/MOSS-TTS-v1.5` at
 `cdd3b911b1585e3f2dbc7775ef10f9926f58850a` and
 `OpenMOSS-Team/MOSS-Audio-Tokenizer` at
 `3cd226ba2947efa357ef453bcad111b6eafba782`. Existing cached files are reused;
-after downloading, synthesis also works offline.
+missing weight shards, tokenizer assets or model-code dependencies resume the
+same pinned download on the next synthesis. Complete snapshots work offline.
+
+For a managed installation created with the older decoder recipe, run
+**Model Catalogue → MOSS-TTS-v1.5 → Install** once to apply the update. The
+installer repairs dependencies in the existing venv and keeps the model cache.
+External clones retain their own dependency setup; use the decoder replacement
+command under **Common errors** if their CUDA decoder cannot load.
 
 ## Install
 

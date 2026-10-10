@@ -109,6 +109,12 @@ def resolve_moss_tts_v15_venv() -> Path:
         return _resolved_python
 
     clone_dir = os.environ.get(_CLONE_DIR_ENV)
+    if clone_dir and not _clone_venv_is_current(Path(clone_dir)):
+        raise RuntimeError(
+            "MOSS-TTS-v1.5 needs its audio decoder updated. Run Install for "
+            "MOSS-TTS-v1.5 in Model Catalogue to repair the existing environment "
+            "without removing its model cache."
+        )
 
     # A candidate whose probe ran out of time (#1414): preferred over
     # bootstrapping or declaring the engine missing, but only after every
@@ -188,9 +194,19 @@ def _probe_paths() -> list[Path]:
     out: list[Path] = []
     clone_dir = os.environ.get(_CLONE_DIR_ENV)
     if clone_dir:
+        if not _clone_venv_is_current(Path(clone_dir)):
+            return []
         out.append(_venv_python_path(Path(clone_dir) / ".venv"))
     out.append(_venv_python_path(_ENGINES_VENV_DIR))
     return out
+
+
+def _clone_venv_is_current(clone_dir: Path) -> bool:
+    """Apply managed recipe upgrades without changing external clone contracts."""
+    from services.sidecar_install import SPECS, engine_venv_python, managed_checkout
+
+    spec = SPECS["moss-tts-v15"]
+    return clone_dir != managed_checkout(spec) or engine_venv_python(_CLONE_DIR_ENV) is not None
 
 
 def _venv_can_import_moss(python_path: Path) -> ProbeResult:

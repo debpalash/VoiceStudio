@@ -449,6 +449,7 @@ SPECS: dict[str, SidecarSpec] = {
         # == permits the +cu128 decoder, which requires NVIDIA NPP even
         # for CPU reference-audio decoding. === excludes that local build.
         install_args=("-e", "{checkout}[torch-runtime]", "torchcodec===0.8.1"),
+        install_revision="cpu-decoder-v1",
         uses_cuda_index=True,
         host_supported=_moss_host,
         docs_path="docs/engines/moss-tts-v15.md",
