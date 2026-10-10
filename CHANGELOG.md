@@ -8,6 +8,18 @@ metadata and the backend fallback mirror it.
 
 ## [Unreleased]
 
+**Highlights**
+
+- Backend starts about twice as fast and idles about 200 MB lighter on Apple Silicon
+
+### Changed
+
+- The OmniVoice sidecar availability check no longer imports the model, cutting backend startup from about 14 s to 6 s (#2692)
+
+### Docs
+
+- Added a performance baseline with startup, memory and bundle measurements (#2692)
+
 ## [0.5.7] — 2026-10-07
 
 **VoiceStudio now runs on PCs without a GPU and recovers instead of giving up.** Voice cloning uses the speech-to-text model you installed from Model Catalogue, GPU-less computers get the small CPU PyTorch build, and slow or busy backends are no longer reported as failed.
