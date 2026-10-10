@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -19,13 +20,17 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-PORT = 3951
-BASE = f"http://127.0.0.1:{PORT}"
 
 
-def _get(path: str) -> dict | None:
+def _free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def _get(port: int, path: str) -> dict | None:
     try:
-        with urllib.request.urlopen(BASE + path, timeout=1) as response:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=1) as response:
             return json.load(response)
     except Exception:
         return None
@@ -38,20 +43,27 @@ def _rss_mb(pid: int) -> float:
 
 def boot(data_dir: str) -> dict:
     env = {**os.environ, "OMNIVOICE_DATA_DIR": data_dir}
+    # A fresh port per boot, and a liveness check below, so a response can only
+    # come from the backend this run launched, never from one already running.
+    port = _free_port()
     proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", str(PORT)],
+        [sys.executable, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", str(port)],
         cwd=ROOT / "backend", env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     try:
         started = time.monotonic()
         progress = None
         while time.monotonic() - started < 300:
-            progress = _get("/startup/progress")
+            if proc.poll() is not None:
+                raise RuntimeError(f"backend exited with code {proc.returncode} before it was ready")
+            progress = _get(port, "/startup/progress")
             if progress and progress["status"] in ("ready", "failed"):
                 break
             time.sleep(0.5)
         assert progress and progress["status"] == "ready", f"boot did not finish: {progress}"
         time.sleep(20)  # settle before reading the idle footprint
+        if proc.poll() is not None:
+            raise RuntimeError(f"backend exited with code {proc.returncode} while idling")
         return {
             "total": progress["elapsed_s"],
             "steps": {s["id"]: s.get("t") for s in progress["steps"]},
