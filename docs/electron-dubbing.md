@@ -45,7 +45,9 @@ issue controls. They wrap through tight-fit and overlong lines, translation erro
 or Fast fallbacks, generated-audio overflows, and QC verification flags in transcript
 order. Each jump selects and scrolls to the row, including rows outside the visible
 part of a long transcript. Keyboard focus stays on the control so Enter or Space
-can continue the review. The count follows edits and the active transcript; zero
+can continue the review. Translation-error badges and navigation use the active
+language's saved failures, so a successful translation into another language does
+not hide them. The count follows edits and the active transcript; zero
 means no recorded flags, not that ungenerated speech has been verified. Navigation
 is disabled while a job is running or awaiting recovery.
 

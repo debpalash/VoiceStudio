@@ -2,12 +2,13 @@ import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import type { DubSegment } from './dub-session';
+import { getDubTranslationError } from './transcript-issues';
 
 // Match the warnings shown on transcript rows. A segment with several warnings
 // is one stop, and resolved warnings disappear with the current session state.
-function hasTranscriptIssue(segment: DubSegment) {
+function hasTranscriptIssue(segment: DubSegment, language?: string) {
   return Boolean(
-    segment.translate_error ||
+    getDubTranslationError(segment, language) ||
     segment.translate_degraded ||
     segment.plan?.status === 'tight' ||
     segment.plan?.status === 'impossible' ||
@@ -18,17 +19,21 @@ function hasTranscriptIssue(segment: DubSegment) {
 
 export function TranscriptIssueNavigation({
   segments,
+  language,
   selectedId,
   disabled,
   onSelect,
 }: {
   segments: DubSegment[];
+  language?: string;
   selectedId: string | null;
   disabled: boolean;
   onSelect: (id: string) => void;
 }) {
   const { t } = useTranslation();
-  const issues = segments.flatMap((segment, index) => (hasTranscriptIssue(segment) ? [index] : []));
+  const issues = segments.flatMap((segment, index) =>
+    hasTranscriptIssue(segment, language) ? [index] : [],
+  );
   const selectedIndex = segments.findIndex((segment) => segment.id === selectedId);
   const position = issues.indexOf(selectedIndex);
   // Compare transcript positions rather than a stored issue index: an edit can

@@ -15,6 +15,7 @@ import { dialectLabel, dialectMatchesLang, dialectOptionsFor } from '@shared/api
 import { DubExportPanel } from './dub-export-panel';
 import { DubTimeline } from './dub-timeline';
 import { TranscriptIssueNavigation } from './transcript-issue-navigation';
+import { getDubTranslationError } from './transcript-issues';
 import { PasteTranslation } from './paste-translation';
 import { GlossaryPanel } from './glossary-panel';
 import { CastingBoard } from './casting-board';
@@ -436,11 +437,7 @@ export function DubPage() {
     (segment) => segment.translations && Object.keys(segment.translations).length > 0,
   );
   const failedTranslationCount = code
-    ? session.segments.filter(
-        (segment) =>
-          segment.translate_errors?.[code] ||
-          (!segment.translate_errors && segment.translate_error),
-      ).length
+    ? session.segments.filter((segment) => getDubTranslationError(segment, code)).length
     : 0;
   const canRestoreOriginal = session.segments.some(
     (segment) =>
@@ -2164,6 +2161,7 @@ export function DubPage() {
                   </div>
                   <TranscriptIssueNavigation
                     segments={session.segments}
+                    language={code}
                     selectedId={selectedSegmentId}
                     disabled={busy || Boolean(session.recovery)}
                     onSelect={selectTranscriptSegment}
@@ -2336,6 +2334,7 @@ export function DubPage() {
                     const index = row.index;
                     const segment = session.segments[index];
                     if (!segment) return null;
+                    const translationError = getDubTranslationError(segment, code);
                     return (
                       <div
                         key={row.key}
@@ -2430,17 +2429,17 @@ export function DubPage() {
                               ) : (
                                 <span className="min-w-0 flex-1" />
                               )}
-                              {(segment.translate_error ||
+                              {(translationError ||
                                 segment.translate_degraded ||
                                 segment.plan?.status === 'tight' ||
                                 segment.plan?.status === 'impossible' ||
                                 segment.fit_status?.status === 'overflows') && (
                                 <div className="ml-auto flex shrink-0 flex-wrap justify-end gap-1">
-                                  {segment.translate_error && (
+                                  {translationError && (
                                     <span
                                       className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive"
                                       title={t('segment.translate_error_title', {
-                                        error: segment.translate_error,
+                                        error: translationError,
                                       })}
                                     >
                                       <AlertCircleIcon className="size-3" />

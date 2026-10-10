@@ -128,7 +128,7 @@ it('advances from a resolved current issue without skipping and tolerates deleti
   expect(onSelect).toHaveBeenLastCalledWith('first');
 });
 
-it('refreshes warnings when the transcript or active language changes', () => {
+it('refreshes warnings when the transcript is replaced', () => {
   const onSelect = vi.fn();
   const view = render(
     <TranscriptIssueNavigation
@@ -149,6 +149,49 @@ it('refreshes warnings when the transcript or active language changes', () => {
   expect(screen.getByRole('status')).toHaveTextContent('Flagged segments: 1');
   fireEvent.click(next());
   expect(onSelect).toHaveBeenLastCalledWith('new');
+});
+
+it('finds a failed language after another translation succeeds', () => {
+  const segments = [
+    cue('translated', {
+      translations: { de: 'Guten Tag' },
+      translate_errors: { fr: 'French translation failed' },
+    }),
+  ];
+  const onSelect = vi.fn();
+  const props = { segments, selectedId: null, disabled: false, onSelect };
+  const view = render(<TranscriptIssueNavigation {...props} language="de" />);
+  expect(screen.getByRole('status')).toHaveTextContent('Flagged segments: 0');
+  expect(next()).toBeDisabled();
+  view.rerender(<TranscriptIssueNavigation {...props} language="fr" />);
+  expect(screen.getByRole('status')).toHaveTextContent('Flagged segments: 1');
+  fireEvent.click(next());
+  expect(onSelect).toHaveBeenLastCalledWith('translated');
+  view.rerender(<TranscriptIssueNavigation {...props} language="de" />);
+  expect(screen.getByRole('status')).toHaveTextContent('Flagged segments: 0');
+  expect(next()).toBeDisabled();
+});
+
+it('ignores another language error while preserving legacy translation failures', () => {
+  const onSelect = vi.fn();
+  render(
+    <TranscriptIssueNavigation
+      segments={[
+        cue('other-language', {
+          translate_error: 'French failure',
+          translate_errors: { fr: 'French failure' },
+        }),
+        cue('legacy', { translate_error: 'Legacy failure' }),
+      ]}
+      language="de"
+      selectedId={null}
+      disabled={false}
+      onSelect={onSelect}
+    />,
+  );
+  expect(screen.getByRole('status')).toHaveTextContent('Flagged segments: 1');
+  fireEvent.click(next());
+  expect(onSelect).toHaveBeenLastCalledWith('legacy');
 });
 
 it('does not invent warnings for unscored or successfully fitted segments', () => {

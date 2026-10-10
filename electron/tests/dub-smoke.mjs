@@ -672,6 +672,42 @@ try {
   await issues.getByText('Flagged segments: 0', { exact: true }).waitFor();
   assert.equal(await nextIssue.isDisabled(), true);
   assert.equal(await previousIssue.isDisabled(), true);
+
+  // A later successful translation clears the scalar error, but an earlier
+  // language's failure must remain discoverable when switching back to it.
+  await page.evaluate(async () => {
+    const { dubSession, setDubTarget } = await import('/src/features/dub/dub-session.ts');
+    dubSession.setState((current) => ({
+      ...current,
+      segments: current.segments.map((segment, index) =>
+        index === 123
+          ? {
+              ...segment,
+              translate_error: undefined,
+              translate_errors: { fr: 'French translation failed' },
+              translations: { de: 'Guten Tag' },
+            }
+          : segment,
+      ),
+    }));
+    setDubTarget('German', 'de');
+  });
+  await issues.getByText('Flagged segments: 0', { exact: true }).waitFor();
+  await page.evaluate(async () => {
+    const { setDubTarget } = await import('/src/features/dub/dub-session.ts');
+    setDubTarget('French', 'fr');
+  });
+  await issues.getByText('Flagged segments: 1', { exact: true }).waitFor();
+  await nextIssue.click();
+  await waitForIssue('issue-nav-123');
+  const translationRow = page.locator('[data-dub-row-id="issue-nav-123"]');
+  await translationRow.locator('[title*="French translation failed"]').waitFor();
+  await page.evaluate(async () => {
+    const { setDubTarget } = await import('/src/features/dub/dub-session.ts');
+    setDubTarget('German', 'de');
+  });
+  await issues.getByText('Flagged segments: 0', { exact: true }).waitFor();
+  assert.equal(await translationRow.locator('[title*="French translation failed"]').count(), 0);
   assert.deepEqual(errors, []);
   assert.deepEqual(vidstackWarnings, []);
   if (video) assert.equal(mediaHeadRequests, 0);
