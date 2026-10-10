@@ -66,6 +66,7 @@ def test_wer_spaced_scripts_keep_word_tokens():
 def test_imported_cue_and_recognition_with_equivalent_unicode_do_not_drift(
     text, decomposed_reference,
 ):
+    """Equivalent uploaded and recognized spellings preserve text and timing."""
     from services.srt_parser import parse_srt
     from services.text_upload import decode_text_upload
 
@@ -87,6 +88,7 @@ def test_imported_cue_and_recognition_with_equivalent_unicode_do_not_drift(
 
 
 def test_canonical_unicode_scoring_keeps_real_accent_and_word_differences():
+    """NFC scoring still distinguishes words, accents, kana and ligatures."""
     assert word_error_rate(unicodedata.normalize("NFD", "naïve café"), "naïve cafe") == 0.5
     assert word_error_rate("ガラス", "カラス") == pytest.approx(1 / 3)
     assert word_error_rate("the cat sat", "the dog sat") == pytest.approx(1 / 3)
