@@ -47,9 +47,11 @@ order. Each jump selects and scrolls to the row, including rows outside the visi
 part of a long transcript. Keyboard focus stays on the control so Enter or Space
 can continue the review. Translation-error badges and navigation use the active
 language's saved failures, so a successful translation into another language does
-not hide them. The count follows edits and the active transcript; zero
-means no recorded flags, not that ungenerated speech has been verified. Navigation
-is disabled while a job is running or awaiting recovery.
+not hide them. Pasted replacements and edits to saved translations clear that
+language's error while keeping failures in other languages. The count follows
+edits and the active transcript; zero means no recorded flags, not that ungenerated
+speech has been verified. Navigation is disabled while a job is running or awaiting
+recovery.
 
 Long projects virtualize transcript rows, so only the visible editors are mounted.
 Timeline waveform peaks and onsets are computed once by the backend and cached as a

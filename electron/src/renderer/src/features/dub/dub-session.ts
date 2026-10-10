@@ -488,6 +488,13 @@ const patchSegment = (segment: DubSegment, value: Partial<DubSegment>) => {
   const next = fields.some((field) => QC_INVALIDATING_FIELDS.has(field))
     ? { ...invalidateQc(base), ...value, id: segment.id }
     : { ...base, ...value, id: segment.id };
+  if (value.translations && next.translate_errors) {
+    const errors = { ...next.translate_errors };
+    for (const [language, text] of Object.entries(value.translations)) {
+      if (text !== segment.translations?.[language]) delete errors[language];
+    }
+    next.translate_errors = Object.keys(errors).length ? errors : undefined;
+  }
   if (segment.merge_parts && fields.some((field) => MERGE_PART_FIELDS.has(field))) {
     next.merge_parts = undefined;
     if (fields.some((field) => ATTRIBUTION_FIELD_NAMES.has(field)))
@@ -579,12 +586,19 @@ export function applyDubTranslationRows(targetCode: string, rows: PasteTranslati
   let changed = false;
   const next = dubSession.state.segments.map((segment) => {
     const text = mapped.get(segment.id);
-    if (!text || (segment.text === text && segment.translations?.[targetCode] === text))
+    const failed =
+      segment.translate_errors?.[targetCode] ||
+      (!segment.translate_errors && segment.translate_error);
+    if (!text || (segment.text === text && segment.translations?.[targetCode] === text && !failed))
       return segment;
     changed = true;
+    // Accepting replacement text also resolves a failed attempt with identical text.
+    const errors = { ...segment.translate_errors };
+    delete errors[targetCode];
     return patchSegment(segment, {
       text,
       translations: { ...segment.translations, [targetCode]: text },
+      translate_errors: Object.keys(errors).length ? errors : undefined,
     });
   });
   return changed ? commitSegmentEdit(next) : false;

@@ -708,6 +708,28 @@ try {
   });
   await issues.getByText('Flagged segments: 0', { exact: true }).waitFor();
   assert.equal(await translationRow.locator('[title*="French translation failed"]').count(), 0);
+  await page.evaluate(async () => {
+    const { setDubTarget } = await import('/src/features/dub/dub-session.ts');
+    setDubTarget('French', 'fr');
+  });
+  await issues.getByText('Issue 1 of 1', { exact: true }).waitFor();
+  await page.evaluate(async () => {
+    const { applyDubTranslationRows } = await import('/src/features/dub/dub-session.ts');
+    applyDubTranslationRows('fr', [
+      {
+        id: 'issue-nav-123',
+        index: 123,
+        start: 246,
+        end: 247,
+        before: 'Transcript line 124',
+        after: 'Bonjour',
+        matched: true,
+      },
+    ]);
+  });
+  await issues.getByText('Flagged segments: 0', { exact: true }).waitFor();
+  assert.equal(await nextIssue.isDisabled(), true);
+  assert.equal(await translationRow.locator('[title*="French translation failed"]').count(), 0);
   assert.deepEqual(errors, []);
   assert.deepEqual(vidstackWarnings, []);
   if (video) assert.equal(mediaHeadRequests, 0);
