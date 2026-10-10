@@ -137,7 +137,12 @@ _BASE_SCHEMA = """
         created_at REAL NOT NULL,
         payload TEXT NOT NULL
     );
-    CREATE INDEX IF NOT EXISTS idx_job_events_job_seq ON job_events(job_id, seq);
+    -- The (job_id, seq) index is deliberately NOT created here. It must be
+    -- UNIQUE, and an upgraded DB can still hold duplicate pairs left by the
+    -- pre-atomic append_event, which would make a bare CREATE UNIQUE INDEX
+    -- raise inside executescript and brick startup for exactly the users who
+    -- hit the bug. `_ensure_job_events_seq_unique` renumbers first, then
+    -- creates it; init_db and ensure_schema both call it.
 
     -- Phase 1 AUTH-02: encrypted per-install key/value store. Used today
     -- for the HF token row + the per-install Fernet salt. Both fresh
@@ -407,6 +412,112 @@ def _reconcile_additive_columns(conn) -> None:
         canon.close()
 
 
+_JOB_EVENTS_OLD_INDEX = "idx_job_events_job_seq"
+_JOB_EVENTS_UNIQUE_INDEX = "idx_job_events_job_seq_unique"
+
+# Jobs holding at least one duplicated seq. COUNT(*) > COUNT(DISTINCT seq) is
+# the duplicate test.
+_JOBS_WITH_DUPLICATE_SEQS = """
+    SELECT job_id
+      FROM job_events
+     GROUP BY job_id
+    HAVING COUNT(*) > COUNT(DISTINCT seq)
+"""
+
+_JOB_EVENTS_IN_INSERTION_ORDER = """
+    SELECT id, seq FROM job_events WHERE job_id = ? ORDER BY id
+"""
+
+_SET_SEQ = "UPDATE job_events SET seq = ? WHERE id = ?"
+
+
+def repaired_seqs(rows) -> list[tuple[int, int]]:
+    """Plan the seq repair for one job's rows, in insertion order.
+
+    Takes (row_id, seq) ordered by `id` and returns the (new_seq, row_id) pairs
+    that need writing. Each row keeps its own seq unless a predecessor already
+    claimed that number, in which case it takes the next one up:
+    ``new = max(seq, previous_new + 1)``.
+
+    The point is that a seq can only ever RISE. `events_since` serves a
+    reconnecting SSE client as ``seq > after_seq``, so lowering a retained
+    event's seq past that cursor would make the client skip it and never learn
+    it existed. Two things can push a seq down if the repair simply renumbers
+    from a base: a job the per-job cap has trimmed starts above 1, and the old
+    writer could land a stale low seq behind a higher one — it read MAX, then
+    inserted, and another caller could commit in between — so the values are not
+    even guaranteed non-decreasing by `id`. ``(55, 53, 53)`` renumbered from
+    MIN(seq) becomes ``(53, 54, 55)`` and loses the first event for a reader at
+    cursor 55; the running maximum makes it ``(55, 56, 57)`` instead.
+
+    Rows are never dropped, so no event is lost — which a
+    DELETE-the-duplicate repair could not promise. The result is strictly
+    increasing, hence unique, which is what lets the UNIQUE index build.
+    """
+    plan: list[tuple[int, int]] = []
+    previous = None
+    for row_id, seq in rows:
+        new = seq if previous is None else max(seq, previous + 1)
+        if new != seq:
+            plan.append((new, row_id))
+        previous = new
+    return plan
+
+
+def _ensure_job_events_seq_unique(conn) -> None:
+    """Make (job_id, seq) UNIQUE on ``job_events``, repairing old rows first.
+
+    ``append_event`` used to assign seq with a SELECT MAX + INSERT pair, so two
+    concurrent callers could write the same seq. The index was not UNIQUE, so
+    the duplicates persisted and an SSE client reconnecting with ``?after_seq=N``
+    replayed one event twice and skipped another. The write path is atomic now;
+    this makes the invariant enforced by the schema rather than merely upheld by
+    the caller, and repairs databases that already contain duplicates.
+
+    The companion to :func:`_reconcile_additive_columns`, and tolerant for the
+    same reason: a bundled install where alembic cannot run must still converge,
+    and an index that cannot be built must not stop the app from starting.
+    """
+    try:
+        if not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='job_events'"
+        ).fetchone():
+            return
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='index' AND name=?",
+            (_JOB_EVENTS_UNIQUE_INDEX,),
+        ).fetchone():
+            return  # already converged
+        repaired = 0
+        # Each job's rows are read in full before any of them is written: the
+        # plan depends on the seqs it is about to overwrite.
+        for (job_id,) in conn.execute(_JOBS_WITH_DUPLICATE_SEQS).fetchall():
+            rows = conn.execute(_JOB_EVENTS_IN_INSERTION_ORDER, (job_id,)).fetchall()
+            plan = repaired_seqs(rows)
+            conn.executemany(_SET_SEQ, plan)
+            repaired += len(plan)
+        conn.execute(f"DROP INDEX IF EXISTS {_JOB_EVENTS_OLD_INDEX}")
+        conn.execute(
+            f"CREATE UNIQUE INDEX IF NOT EXISTS {_JOB_EVENTS_UNIQUE_INDEX} "
+            "ON job_events(job_id, seq)"
+        )
+        conn.commit()
+        if repaired:
+            logger.info(
+                "job_events: renumbered %d row(s) carrying duplicate seq values "
+                "before making (job_id, seq) unique", repaired,
+            )
+    except sqlite3.Error as exc:
+        # Roll back before returning. The renumber and the index are one repair:
+        # leaving a half-renumbered table for the CALLER to commit would be worse
+        # than the duplicates this set out to fix.
+        try:
+            conn.rollback()
+        except sqlite3.Error:
+            pass
+        logger.warning("job_events unique-seq reconcile failed: %s", exc)
+
+
 def ensure_schema() -> None:
     """Idempotently ensure the base tables + additive columns exist.
 
@@ -422,6 +533,7 @@ def ensure_schema() -> None:
     try:
         conn.executescript(_BASE_SCHEMA)
         _reconcile_additive_columns(conn)
+        _ensure_job_events_seq_unique(conn)
         conn.commit()
     finally:
         conn.close()
@@ -440,6 +552,7 @@ def init_db():
         # (consent_audio_path, kind, ...). Runs regardless of whether alembic
         # below succeeds, so an unrunnable alembic can't leave a 500-ing schema.
         _reconcile_additive_columns(conn)
+        _ensure_job_events_seq_unique(conn)
         conn.commit()
     finally:
         conn.close()
