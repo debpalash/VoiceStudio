@@ -114,6 +114,26 @@ Findings:
 - **Idle release works but is slow to start.** The sidecar was gone about 75 s after a 45 s timeout (the reaper ticks about every 30 s). At the default timeout of 300 s the model stays resident for roughly 5.5 minutes after the last generate.
 - **The API process keeps about 90 MB** after the sidecar exits.
 
+### With an ASR model installed (macOS arm64)
+
+Model `mlx-community/whisper-large-v3-turbo` (1.61 GB), no TTS requests. Backend booted with `OMNIVOICE_IDLE_TIMEOUT_S=45` so the idle release shows in a short run (the default is 900 s). Readings are `ps` RSS over the process tree. macOS excludes compressed memory from RSS, so single readings can dip (one run read 136 MB at ready + 20 s); trust the large steps, not the small ones.
+
+| Moment | Tree RSS |
+|---|---|
+| Ready (11.3 s) | 519 MB |
+| Ready + 30 s (dictation warm-up) | 1.69 GB |
+| After the 45 s idle release | ~350 MB |
+| After a transcription (first / second) | 1.95 GB (3.9 s / 1.3 s) |
+| After the release that follows | 343–396 MB |
+
+Findings:
+
+- **The dictation model loads by default, unprompted.** The log shows `Capture ASR backend selected: mlx-whisper` and the 1.6 GB model warming 30 s after boot, with no user action. It added about 1.2 GB. The code comment says this is deliberate ("BY DEFAULT", skipped under 4 GB free RAM).
+- **It stays resident for the idle timeout, 900 s by default.** That is 15 minutes of ~1.2 GB for someone who never dictates. Here it unloaded about 60 s after the warm-up, as set by the 45 s override.
+- **Unloading works.** Memory drops back to roughly the boot level, and the next transcription pays the reload (3.9 s, then 1.3 s warm).
+- **The AudioSeal watermark warm-up** logged "skipped: checkpoint is not cached", so it adds nothing here.
+- `/transcribe` in accurate mode returned 409 because `whisper-large-v3-mlx` is not installed; not measured.
+
 Not yet measured:
 
 | Metric | macOS arm64 | Windows | Linux |
