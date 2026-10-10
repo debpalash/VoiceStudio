@@ -19,6 +19,9 @@ VoiceStudio/
 ├── bun.lock                     ⟵ JS lockfile — repo-root, covers the electron/ workspace
 ├── turbo.json                   ⟵ turborepo pipeline
 │
+├── flake.nix / flake.lock       ⟵ NixOS dev shell + a Nix-built Linux app; `nix flake check`
+│                                   gates the packaged resources and the helper's libxdo link
+│
 ├── .coderabbit.yaml             ⟵ CodeRabbit PR review config (fed CLAUDE.md)
 ├── greptile.json                ⟵ Greptile PR review config (fed CLAUDE.md)
 ├── skills-lock.json             ⟵ pins the sources + hashes of .agents/skills/

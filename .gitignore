@@ -125,6 +125,9 @@ frontend/src-tauri/binaries/ffmpeg
 cudnn8_compat/
 test-results/
 
+# Nix build symlinks
+/result
+
 # Research repos (local only)
 research/
 !.planning/research/
