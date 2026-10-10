@@ -159,7 +159,7 @@ jobs:
       # main preview channel only. :stable excludes prereleases.
       - name: Extract metadata (tags, labels)
         id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           # Same tag set applied to both registries. The Docker Hub line is
           # blank when the secret is unset, so metadata-action emits GHCR-only
@@ -317,7 +317,7 @@ jobs:
       # prerelease gating) with a `-rocm` suffix on every tag.
       - name: Extract metadata (tags, labels)
         id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
