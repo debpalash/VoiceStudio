@@ -5,14 +5,14 @@ judged against this table. Measured on `main` at `06c6e077` (0.5.7).
 
 ## Renderer (measured)
 
-Reproduce: `node scripts/perf/renderer-baseline.mjs` (builds the web renderer to a temp dir).
+Reproduce: `node scripts/perf/renderer-baseline.mjs` (builds the web renderer to a temp dir). These are static counts and sizes from the build output, not browser load or paint timings.
 
 | Metric | Value |
 |---|---|
-| Files `index.html` loads before first paint | 69 |
-| Eager size | 1,858 KB raw / 559 KB gzip |
+| Files referenced by `index.html` (fetched at page load) | 69 |
+| Size of those files | 1,858 KB raw / 559 KB gzip |
 | Entry chunk | 820 KB raw / 253 KB gzip |
-| Eager CSS | 255 KB raw / 36 KB gzip |
+| CSS among those files | 255 KB raw / 36 KB gzip |
 | JS chunks | 261 (20 are locales, 4.3 MB, lazy) |
 | `refetchInterval` declarations | 37 in 27 files (+ 9 `setInterval`) |
 
@@ -29,7 +29,7 @@ Within the app code, `features/settings` is 96 KB, `components/app-shell` 67 KB,
 
 Other findings:
 
-- `media-player` (vidstack, 153 KB) and `waveform-player` (44 KB) load before first paint.
+- `media-player` (vidstack, 153 KB) and `waveform-player` (44 KB) are referenced by `index.html`, so they download at page load.
 - Largest lazy chunks are `add-scalar-classes` (2.2 MB), `dash.all.min` (803 KB), `scalar-api-reference` (609 KB) and `hls` (562 KB). They only load on demand, so they cost install size, not startup.
 
 ## Backend (measured, macOS arm64 only)

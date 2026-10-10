@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Renderer performance baseline: what the first paint downloads, and how much
-// background polling the UI declares. Builds the web renderer into a temp
+// Renderer performance baseline: the files index.html references (fetched at
+// page load), and how much background polling the UI declares. Builds the web renderer into a temp
 // directory (no repo output is touched) and prints a markdown summary.
 //
 //   node scripts/perf/renderer-baseline.mjs
@@ -40,9 +40,9 @@ const LOCALE = /^(ar|de|es|fr|hi|id|it|ja|ko|nl|pl|pt|ru|sv|th|tr|uk|vi|zh-CN|zh
 const locales = js.filter((a) => LOCALE.test(a.name));
 
 console.log('### Renderer bundle');
-console.log(`- Eager (index.html): ${eager.length} files, ${kb(sum(eagerRows, 'raw'))} raw, ${kb(sum(eagerRows, 'gzip'))} gzip`);
+console.log(`- Referenced by index.html: ${eager.length} files, ${kb(sum(eagerRows, 'raw'))} raw, ${kb(sum(eagerRows, 'gzip'))} gzip`);
 console.log(`- JS chunks: ${js.length}; locale chunks: ${locales.length}, ${kb(locales.reduce((t, a) => t + a.size, 0))} (lazy)`);
-console.log('\nLargest eager files:');
+console.log('\nLargest files referenced by index.html:');
 for (const row of eagerRows.sort((a, b) => b.raw - a.raw).slice(0, 8)) {
   console.log(`- ${row.file.replace('assets/', '')}: ${kb(row.raw)} raw, ${kb(row.gzip)} gzip`);
 }
