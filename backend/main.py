@@ -849,10 +849,16 @@ def _phase_a_finalize() -> None:
         def _no_web_ui(request: Request):
             # Only a local browser may be sent to the local dev UI; a LAN
             # device redirected to localhost reaches itself, not us (#2599).
+            # The PIN query survives the hop so the gate still sees it, and
+            # a request already aimed at the UI port is answered terminally
+            # instead of bouncing onto itself forever (#2680: with default
+            # ports the share listener sits on the UI port).
             client = request.client.host if request.client else None
-            target = dev_ui_redirect(client, request.headers.get("host", ""), _ui_port())
-            if target:
-                return RedirectResponse(url=target)
+            ui_port = _ui_port()
+            target = dev_ui_redirect(client, request.headers.get("host", ""), ui_port)
+            if target and request.url.port != ui_port:
+                query = request.url.query
+                return RedirectResponse(url=target + (f"?{query}" if query else ""))
             media_type, body = web_ui_missing_body(request.headers.get("accept", ""))
             return Response(body, status_code=503, media_type=media_type)
 
