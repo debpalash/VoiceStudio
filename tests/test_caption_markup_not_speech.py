@@ -309,3 +309,24 @@ def test_edited_srt_text_exports_as_edited():
     segments[0]["text"] = "Goodbye"
     exported = _export("srt", segments)
     assert "Goodbye" in exported and "an8" not in exported
+
+
+def test_ruby_pronunciation_annotations_excluded_from_speech():
+    from services.srt_parser import spoken_cue_text, parse_srt
+
+    # WebVTT ruby cue
+    vtt = "WEBVTT\n\n00:01.000 --> 00:02.000\nPlease <ruby>read<rt>reed</rt></ruby> once.\n"
+    assert [cue["text"] for cue in parse_srt(vtt).segments] == ["Please read once."]
+    assert spoken_cue_text("Please <ruby>read<rt>reed</rt></ruby> once.", webvtt=True) == "Please read once."
+
+    # SubRip ruby cue
+    srt = "1\n00:00:01,000 --> 00:00:02,000\nPlease <ruby>read<rt>reed</rt></ruby> once.\n"
+    assert [cue["text"] for cue in parse_srt(srt).segments] == ["Please read once."]
+    assert spoken_cue_text("Please <ruby>read<rt>reed</rt></ruby> once.", webvtt=False) == "Please read once."
+
+    # Multiple ruby annotations and unclosed rt
+    compound = "漢字<ruby>漢<rt>かん</rt>字<rt>じ</rt></ruby>"
+    assert spoken_cue_text(compound, webvtt=True) == "漢字漢字"
+    unclosed = "Please <ruby>read<rt>reed</ruby> once."
+    assert spoken_cue_text(unclosed, webvtt=True) == "Please read once."
+
