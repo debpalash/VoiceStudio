@@ -55,7 +55,7 @@ Fun fact discovered en route: **pyvideotrans already integrates VoiceStudio as
 a first-class TTS/clone backend** (`videotrans/tts/_omnivoice.py`, via our Gradio
 API). We are upstream for 17.9k-star project users. **Second-pass update: the
 integration is verified broken** — it speaks Gradio to an endpoint we never exposed.
-Details in the [pyvideotrans deep dive](#7-fact-check-the-pyvideotrans--omnivoice-integration);
+Details in the [pyvideotrans deep dive](#7-fact-check-the-pyvideotrans--voicestudio-integration);
 the action item is now "ship a compat shim or upstream a REST integration", not
 "verify".
 
