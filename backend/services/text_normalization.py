@@ -461,7 +461,13 @@ def _expand_abbreviations(text: str, lang: str) -> str:
     pattern, lookup = entry
 
     def _repl(m: re.Match) -> str:
-        return lookup.get(m.group(0), m.group(0))
+        expansion = lookup.get(m.group(0), m.group(0))
+        # "No.5" / "Nr.5": the digit guard admits a number glued to the
+        # abbreviation, and the expansion must not be glued to it in turn
+        # ("number5" is a word the number pass leaves alone).
+        if expansion != m.group(0) and m.string[m.end():m.end() + 1].isdigit():
+            expansion += " "
+        return expansion
 
     return pattern.sub(_repl, text)
 

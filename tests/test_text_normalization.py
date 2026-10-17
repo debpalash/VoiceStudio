@@ -62,6 +62,10 @@ _CHANGE_CASES = [
     ("English", "fruit, e.g. apples", "fruit, for example apples"),
     ("English", "good vs. evil", "good versus evil"),
     ("English", "exhibit No. 5", "exhibit number five"),
+    # a number glued to the abbreviation is still spoken as one
+    ("English", "exhibit No.5", "exhibit number five"),
+    ("German", "Nr.5 gewinnt", "Nummer fünf gewinnt"),
+    ("French", "le n°5 gagne", "le numéro cinq gagne"),
     # ISO-ish codes resolve like display names
     ("en", "I have 2 cats", "I have two cats"),
     ("en-US", "I have 2 cats", "I have two cats"),
