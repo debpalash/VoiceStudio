@@ -559,11 +559,19 @@ def _numbers_to_words(text: str, lang: str) -> str:
 
         def _currency(m: re.Match) -> str:
             dollars = int(m.group(1))
-            if m.group(2) is not None:
-                amount = float(f"{m.group(1)}.{m.group(2)}")
-                return num2words(amount, lang="en", to="currency", currency="USD")
             unit = "dollar" if dollars == 1 else "dollars"
-            return f"{num2words(dollars, lang='en')} {unit}"
+            spoken = f"{num2words(dollars, lang='en')} {unit}"
+            if m.group(2) is None:
+                return spoken
+            cents = int(m.group(2))
+            # "$0.50" is "fifty cents" and "$5.00" is "five dollars": the
+            # zero part is not spoken ("zero dollars, fifty cents").
+            if cents == 0:
+                return spoken
+            if dollars == 0:
+                return f"{num2words(cents, lang='en')} {'cent' if cents == 1 else 'cents'}"
+            amount = float(f"{m.group(1)}.{m.group(2)}")
+            return num2words(amount, lang="en", to="currency", currency="USD")
 
         text = _CURRENCY_RE.sub(lambda m: _safe(m, _currency), text)
 
