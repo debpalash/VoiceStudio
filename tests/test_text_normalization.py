@@ -48,6 +48,10 @@ _CHANGE_CASES = [
     ("English", "$12.34, $56.78, and $9.",
      "twelve dollars, thirty-four cents, fifty-six dollars, seventy-eight cents, and nine dollars."),
     ("English", "rated 3.5 stars", "rated three point five stars"),
+    # The written trailing zeros are spoken, not dropped by the float.
+    ("English", "version 3.0 ships", "version three point zero ships"),
+    ("English", "it weighs 2.50 kg", "it weighs two point five zero kg"),
+    ("German", "Version 3.0 kommt", "Version drei Komma null kommt"),
     # English writes decimals with a period, so three digits after it are a
     # decimal here (the same digits are a thousands group in German, below).
     ("English", "pi is 3.141 here", "pi is three point one four one here"),
