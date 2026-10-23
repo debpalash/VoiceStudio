@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 ## Active desktop: Electron only
 
 Electron (`electron/`) is the only desktop and web UI. The Tauri shell and legacy
@@ -89,7 +93,49 @@ Other conventions not yet established. Will populate as patterns emerge during d
 <!-- GSD:architecture-start source:ARCHITECTURE.md -->
 ## Architecture
 
-Architecture not yet mapped. Follow existing patterns found in the codebase.
+- **Backend** — FastAPI app at `backend/main.py` (run as `main:app` with `--app-dir backend`, so imports are `core.…`, `services.…`, not `backend.…`). Routers in `backend/api/routers/`; cross-cutting infra (config, data dir, auth/CSRF, job queue, event bus, error journal, analytics) in `backend/core/`; pipelines (dubbing, ASR, diarization, longform, LLM, model management) in `backend/services/`. Loopback-only and unauthenticated by default; `OMNIVOICE_BIND_HOST` opts in to another interface. User data lives under `get_app_data_dir()` (`backend/core/config.py`, overridable with `OMNIVOICE_DATA_DIR`); schema changes go through alembic in `backend/migrations/`.
+- **TTS engines** — a registry in `backend/services/tts_backend.py` (`TTSBackend` subclasses; in-file `_REGISTRY` plus `_LAZY_REGISTRY` for `backend/engines/<name>`). Engines with conflicting deps run as sidecar processes in their own venv via `services/subprocess_backend.py::SubprocessBackend`; `backend/engines/_echo/` is permanent CI round-trip infrastructure — don't delete it. New engine ids must also be listed in `docs/features.yaml` (docs-drift job); the acceptance bar is `docs/engine-acceptance.md`. All synthetic audio passes through `mark_synthetic` (`backend/services/watermark.py`).
+- **`omnivoice/`** — the core OmniVoice model package (models, CLI, training/eval) imported by the backend.
+- **Electron** (`electron/src/`) — `main/` supervises the backend (`backend.ts`), installs the packaged Python runtime with uv from the bundled `pyproject.toml`/`uv.lock` (`runtime-project.ts`, `runtime-download.ts`), serves the renderer over the `app://voicestudio` scheme and proxies `/api` to the backend (`protocol.ts`), and owns IPC/updater. `preload/` exposes narrow bridges. `renderer/src/` is the app shell (TanStack Router, `features/<area>/`, shadcn `components/ui/`, the i18n catalog). `shared/` holds pages, components, the API client (`shared/api/`), hooks and Zustand `store/` that the renderer still imports. `dev:web` serves the same renderer in a browser against the backend.
+- **Native** — `native/desktop-bridge` (Rust) is the Electron native helper (capture, input injection); validate with `cargo check` on Rust changes.
+- **Ports/identity** come from `config/app.json` (backend 3900, web 3901) — change the manifest, not launchers.
+- **Deploy** — `deploy/Dockerfile` (CUDA/ROCm images) runs `bun install --frozen-lockfile`; store packaging metadata lives in `store/`.
+
+## Commands
+
+```bash
+bun install && bun run setup:api   # JS deps + Python env (uv) — required before first run
+bun run dev                        # Electron with hot reload; supervisor starts the backend (don't start a second)
+bun run dev:web                    # backend :3900 + renderer in browser :3901
+bun run dev:api                    # backend only (scripts/dev-backend.mjs wraps uvicorn)
+
+# Python (CI runs both sessions separately, with HF_HUB_OFFLINE=1)
+HF_HUB_OFFLINE=1 uv run pytest tests/ -q
+HF_HUB_OFFLINE=1 uv run pytest backend/tests/ -q
+uv run pytest tests/test_app_version.py -q          # single file; add ::test_name for one test
+
+# Electron (from repo root)
+bun run check:electron        # full CI gate: typecheck + tests + build + build:web + packaging contract
+bun run typecheck
+bun run lint
+bun run format
+bun run test                  # locale:check + vitest (main/renderer config, then shared config)
+cd electron && bunx vp test --run src/main/updater.test.ts                       # single vitest file
+cd electron && bunx vp test --run --config vite.shared.config.ts src/shared/api/client.test.ts   # single src/shared test
+bun run --cwd electron locale:check   # i18n encoding/keys/coverage
+bun run test:frontend                 # node --test tests/frontend/*.test.mjs
+bun run --cwd electron build && bun run --cwd electron test:desktop-ui   # real app vs fake backend (xvfb-run -a on headless Linux)
+
+# Generated mobile artifacts (drift fails tests/test_mobile_contract.py)
+bun scripts/export-mobile-tokens.ts --check
+uv run python scripts/export_openapi.py
+
+cargo check --manifest-path native/desktop-bridge/Cargo.toml
+```
+
+Renderer smoke tests, packaging (`bun run dist`, `bun run smoke-test`) and their flags are documented in `.github/CONTRIBUTING.md` → Testing.
+
+**Frontend structure rules** (enforced in review, not lint): component files soft-cap 300 / hard-cap 500 lines; pages in `shared/pages/` are thin orchestrators; one component per file with a co-located test; use `SearchableSelect` / `VoiceSelector`, never native `<select>`.
 <!-- GSD:architecture-end -->
 
 <!-- GSD:skills-start source:skills/ -->
