@@ -77,3 +77,82 @@ def test_dev_backend_skips_resync_when_rocm_requested():
     assert observed["unset"] == [base[0], "--no-sync", *base[1:]]
     assert observed["auto"] == [base[0], "--no-sync", *base[1:]]
     assert observed["rocm"] == [base[0], "--no-sync", *base[1:]]
+
+
+def test_windows_rocm_gfx_must_look_like_an_architecture():
+    setup = _load_setup()
+    assert setup._rocm_windows_gfx({}) is None
+    assert setup._rocm_windows_gfx({"OMNIVOICE_ROCM_GFX": ""}) is None
+    assert setup._rocm_windows_gfx({"OMNIVOICE_ROCM_GFX": "rx9060"}) is None
+    assert setup._rocm_windows_gfx({"OMNIVOICE_ROCM_GFX": "gfx1200; calc"}) is None
+    assert setup._rocm_windows_gfx({"OMNIVOICE_ROCM_GFX": " GFX1200 "}) == "gfx1200"
+
+
+def test_windows_rocm_swaps_only_the_torch_trio_from_amds_index():
+    setup = _load_setup()
+    cmd = setup.rocm_windows_install_cmd("gfx1200", python="C:/venv/python.exe")
+    # The repo's torch==2.8.0 constraints would reject AMD's build.
+    assert "--no-config" in cmd
+    assert cmd[cmd.index("--index-url") + 1] == "https://repo.amd.com/rocm/whl-multi-arch/"
+    # Only torch, torchaudio and torchvision are reinstalled; every other
+    # package keeps the lockfile's version (pillow and numpy stay put).
+    reinstalled = [cmd[i + 1] for i, a in enumerate(cmd) if a == "--reinstall-package"]
+    assert reinstalled == ["torch", "torchaudio", "torchvision"]
+    assert "--reinstall" not in cmd
+    assert cmd[-3:] == [
+        "torch[device-gfx1200]==2.12.0+rocm7.14.1",
+        "torchvision[device-gfx1200]==0.27.0+rocm7.14.1",
+        "torchaudio==2.11.0+rocm7.14.1",
+    ]
+
+
+def test_windows_rocm_without_gfx_keeps_default_torch(capsys, monkeypatch):
+    setup = _load_setup()
+    calls = []
+    monkeypatch.setattr(setup, "_installed_torch_is_rocm_isolated", lambda: False)
+    monkeypatch.setattr(setup.subprocess, "check_call", lambda *a, **k: calls.append(a))
+    setup._ensure_rocm_torch_windows({"OMNIVOICE_TORCH_VARIANT": "rocm"})
+    assert calls == []
+    assert "OMNIVOICE_ROCM_GFX" in capsys.readouterr().out
+
+
+def test_windows_rocm_is_opt_in(monkeypatch):
+    setup = _load_setup()
+    calls = []
+    monkeypatch.setattr(setup.subprocess, "check_call", lambda *a, **k: calls.append(a))
+    setup._ensure_rocm_torch_windows({"OMNIVOICE_ROCM_GFX": "gfx1200"})
+    setup._ensure_rocm_torch_windows(
+        {"OMNIVOICE_TORCH_VARIANT": "auto", "OMNIVOICE_ROCM_GFX": "gfx1200"}
+    )
+    assert calls == []
+
+
+def test_windows_rocm_probe_never_imports_torch_in_process(monkeypatch):
+    """A torch loaded here would lock torch/_C*.pyd and break the uv reinstall."""
+    import sys
+    import types
+
+    setup = _load_setup()
+    seen = {}
+
+    def fake_run(argv, **kwargs):
+        seen["argv"] = argv
+        return types.SimpleNamespace(returncode=0, stdout="1\n")
+
+    monkeypatch.setattr(setup.subprocess, "run", fake_run)
+    monkeypatch.delitem(sys.modules, "torch", raising=False)
+    assert setup._installed_torch_is_rocm_isolated("C:/venv/python.exe") is True
+    assert seen["argv"][0] == "C:/venv/python.exe" and seen["argv"][1] == "-c"
+    assert "torch" not in sys.modules
+
+    monkeypatch.setattr(
+        setup.subprocess, "run",
+        lambda *a, **k: types.SimpleNamespace(returncode=0, stdout="0\n"),
+    )
+    assert setup._installed_torch_is_rocm_isolated() is False
+    monkeypatch.setattr(
+        setup.subprocess, "run",
+        lambda *a, **k: types.SimpleNamespace(returncode=1, stdout=""),
+    )
+    assert setup._installed_torch_is_rocm_isolated() is False
+

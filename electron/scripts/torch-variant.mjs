@@ -70,8 +70,12 @@ export async function selectTorchVariant({
 } = {}) {
   const requested = requestedTorchVariant(env);
   if (platform === 'darwin') return 'native';
-  // ROCm is Linux-only; match the packaged install's Windows fallback.
-  if (requested === 'rocm' && platform === 'linux') return 'rocm';
+  // ROCm: Linux uses PyTorch's own index. Windows x64 (source installs only)
+  // swaps in AMD's wheels after the sync; the packaged install keeps its
+  // CPU/CUDA fallback there (electron/src/main/runtime-project.ts).
+  if (requested === 'rocm' && (platform === 'linux' || (platform === 'win32' && arch === 'x64'))) {
+    return 'rocm';
+  }
   const cpuWheelsApply =
     (platform === 'linux' && arch === 'x64') ||
     (platform === 'win32' && (arch === 'x64' || arch === 'arm64'));
@@ -83,7 +87,12 @@ export async function selectTorchVariant({
   return (await nvidiaAvailable()) ? 'cuda' : 'cpu';
 }
 
-/** Both variants are frozen in uv.lock; never download CUDA before swapping to CPU. */
-export function torchSyncArgs(variant) {
-  return variant === 'cpu' ? ['--no-group', 'cuda', '--group', 'cpu'] : [];
+/**
+ * Both variants are frozen in uv.lock; never download CUDA before swapping to CPU.
+ * Windows ROCm is replaced by AMD's wheels right after the sync, so it starts
+ * from the CPU group instead of fetching several GB of CUDA wheels it discards.
+ */
+export function torchSyncArgs(variant, platform = process.platform) {
+  const cpuFirst = variant === 'cpu' || (variant === 'rocm' && platform === 'win32');
+  return cpuFirst ? ['--no-group', 'cuda', '--group', 'cpu'] : [];
 }

@@ -24,6 +24,7 @@ Cross-platform:
   - macOS:   skipped (no CUDA)
 """
 import os
+import re
 import sys
 import subprocess
 import glob
@@ -87,6 +88,91 @@ def _ensure_rocm_torch():
     print(f"⚙ OMNIVOICE_TORCH_VARIANT=rocm — swapping torch to the ROCm wheel ({index_url})")
     try:
         subprocess.check_call(rocm_torch_reinstall_cmd(index_url))
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(f"⚠ ROCm torch install failed ({exc}); keeping the default torch build")
+        return
+    print("✓ ROCm torch installed")
+
+
+# ── AMD ROCm torch on Windows (opt-in, source installs) ────────────────────
+#
+# PyTorch's own ROCm index publishes Linux wheels only. AMD publishes Windows
+# wheels at repo.amd.com; they are a newer torch than the 2.8.0 the lockfile and
+# [tool.uv.constraint-dependencies] pin, so the swap runs with `--no-config`
+# (the repo's constraints would reject it) and only replaces the torch trio:
+# every other package keeps the lockfile's version.
+#
+# The wheel needs the GPU architecture: set OMNIVOICE_ROCM_GFX (for example
+# gfx1200 for the RX 9060 XT). Not validated against every engine; parts of
+# the app (CTranslate2/faster-whisper GPU, Triton) stay CPU-bound.
+ROCM_WIN_INDEX = "https://repo.amd.com/rocm/whl-multi-arch/"
+ROCM_WIN_BUILD = "rocm7.14.1"
+ROCM_WIN_VERSIONS = {"torch": "2.12.0", "torchaudio": "2.11.0", "torchvision": "0.27.0"}
+# Architectures AMD's Windows compatibility matrix lists for PyTorch 2.9+.
+ROCM_WIN_KNOWN_GFX = ("gfx1200", "gfx1201", "gfx1100", "gfx1101")
+
+
+def _installed_torch_is_rocm_isolated(python=None):
+    """Same check as `_installed_torch_is_rocm`, in a child process.
+
+    Windows cannot replace a loaded `torch/_C*.pyd`, so importing torch in this
+    process would make the reinstall below fail with "Access is denied".
+    """
+    code = "import torch; print(1 if getattr(torch.version, 'hip', None) else 0)"
+    try:
+        out = subprocess.run(
+            [python or sys.executable, "-c", code],
+            capture_output=True, text=True, timeout=120, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return out.returncode == 0 and out.stdout.strip().endswith("1")
+
+
+def _rocm_windows_gfx(environ=os.environ):
+    """The validated GPU architecture from OMNIVOICE_ROCM_GFX, else None."""
+    value = environ.get("OMNIVOICE_ROCM_GFX", "").strip().lower()
+    if re.fullmatch(r"gfx[0-9a-f]{3,5}", value):
+        return value
+    return None
+
+
+def rocm_windows_install_cmd(gfx, python=None, index_url=ROCM_WIN_INDEX):
+    """`uv pip install` argv that swaps only the torch trio to AMD's wheels."""
+    local = "+" + ROCM_WIN_BUILD
+    v = ROCM_WIN_VERSIONS
+    return [
+        "uv", "pip", "install", "--no-config",
+        "--python", python or sys.executable,
+        "--index-url", index_url,
+        "--reinstall-package", "torch",
+        "--reinstall-package", "torchaudio",
+        "--reinstall-package", "torchvision",
+        f"torch[device-{gfx}]=={v['torch']}{local}",
+        f"torchvision[device-{gfx}]=={v['torchvision']}{local}",
+        f"torchaudio=={v['torchaudio']}{local}",
+    ]
+
+
+def _ensure_rocm_torch_windows(environ=os.environ):
+    if environ.get("OMNIVOICE_TORCH_VARIANT", "").strip().lower() != "rocm":
+        return
+    if _installed_torch_is_rocm_isolated():
+        print("✓ ROCm torch already installed")
+        return
+    gfx = _rocm_windows_gfx(environ)
+    if gfx is None:
+        print(
+            "⚠ OMNIVOICE_TORCH_VARIANT=rocm on Windows needs your GPU architecture in "
+            "OMNIVOICE_ROCM_GFX (for example gfx1200 for the RX 9060 XT; AMD lists "
+            + ", ".join(ROCM_WIN_KNOWN_GFX)
+            + " for PyTorch on Windows). Keeping the default torch build."
+        )
+        return
+    index_url = environ.get("OMNIVOICE_TORCH_INDEX") or ROCM_WIN_INDEX
+    print(f"⚙ OMNIVOICE_TORCH_VARIANT=rocm — swapping torch to AMD's Windows wheels ({gfx})")
+    try:
+        subprocess.check_call(rocm_windows_install_cmd(gfx, index_url=index_url))
     except (OSError, subprocess.CalledProcessError) as exc:
         print(f"⚠ ROCm torch install failed ({exc}); keeping the default torch build")
         return
@@ -208,9 +294,11 @@ def main():
     if sys.platform == "darwin":
         return
 
-    # ── Step 2: opt-in AMD ROCm torch (Linux) ─────────────────────────────
+    # ── Step 2: opt-in AMD ROCm torch (Linux, or Windows source installs) ──
     if sys.platform.startswith("linux"):
         _ensure_rocm_torch()
+    elif sys.platform == "win32":
+        _ensure_rocm_torch_windows()
 
     compat_dir = _find_compat_dir()
     if compat_dir is None:

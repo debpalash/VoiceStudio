@@ -159,7 +159,7 @@ for (const platform of ["darwin", "linux"]) {
   }
 }
 
-test("Windows ROCm opt-in falls back to a supported CPU or CUDA wheel", async () => {
+test("Windows x64 ROCm opt-in selects AMD's wheels without probing NVIDIA", async () => {
   for (const hasGpu of [false, true]) {
     assert.equal(
       await selectTorchVariant({
@@ -168,10 +168,30 @@ test("Windows ROCm opt-in falls back to a supported CPU or CUDA wheel", async ()
         arch: "x64",
         nvidiaAvailable: async () => hasGpu,
       }),
-      hasGpu ? "cuda" : "cpu",
+      "rocm",
     );
   }
   assert.equal(requestedTorchVariant({ OMNIVOICE_TORCH_VARIANT: "default" }), "cuda");
+});
+
+test("Windows ARM64 ROCm opt-in still falls back to CPU wheels", async () => {
+  assert.equal(
+    await selectTorchVariant({
+      env: { OMNIVOICE_TORCH_VARIANT: "rocm" },
+      platform: "win32",
+      arch: "arm64",
+      nvidiaAvailable: async () => true,
+    }),
+    "cpu",
+  );
+});
+
+test("Windows ROCm syncs from the CPU group so no CUDA wheels are downloaded", () => {
+  const cpuGroup = ["--no-group", "cuda", "--group", "cpu"];
+  assert.deepEqual(torchSyncArgs("rocm", "win32"), cpuGroup);
+  assert.deepEqual(torchSyncArgs("rocm", "linux"), []);
+  assert.deepEqual(torchSyncArgs("cuda", "win32"), []);
+  assert.deepEqual(torchSyncArgs("cpu", "linux"), cpuGroup);
 });
 
 test("Windows ARM64 selects CPU wheels and an emulated x64 Python", async () => {

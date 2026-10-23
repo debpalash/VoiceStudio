@@ -23,7 +23,7 @@ export async function setupApi({
     `[setup] PyTorch: ${variant}${variant === "cpu" ? " (GPU acceleration unavailable or disabled; inference will be slower)" : ""}`,
   );
   for (const args of [
-    ["sync", "--locked", ...torchSyncArgs(variant), ...pythonArgs],
+    ["sync", "--locked", ...torchSyncArgs(variant, platform), ...pythonArgs],
     ["run", "--no-sync", "python", "scripts/setup.py"],
   ]) {
     const result = run("uv", args, { cwd: root, env, stdio: "inherit" });

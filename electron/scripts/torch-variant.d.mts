@@ -18,4 +18,4 @@ export function selectTorchVariant(options?: {
   arch?: string;
   nvidiaAvailable?: () => Promise<boolean>;
 }): Promise<SelectedTorchVariant>;
-export function torchSyncArgs(variant: SelectedTorchVariant): string[];
+export function torchSyncArgs(variant: SelectedTorchVariant, platform?: NodeJS.Platform): string[];

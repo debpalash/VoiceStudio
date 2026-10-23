@@ -13,6 +13,10 @@ metadata and the backend fallback mirror it.
 - Preview iOS and Android apps that run VoiceStudio on your phone, offline after downloading the models
 - Opt-in Beta update channel: get fixes early from Settings → Updates, and roll onto the next stable release automatically
 
+### Added
+
+- Windows source installs can opt in to AMD's experimental PyTorch ROCm wheels with OMNIVOICE_TORCH_VARIANT=rocm and OMNIVOICE_ROCM_GFX (#2908)
+
 ### Changed
 
 - The sidebar is a slim icon rail beside each section's own pane: Home and Clone get a Saved voices / Recent takes column, Design gets a Saved voices tab, and the full navigation is one click away (#3234)

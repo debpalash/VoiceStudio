@@ -113,7 +113,9 @@ def _amd_unusable_note() -> str:
             "CPU-only build) cannot drive it, and no ROCm build of the PyTorch "
             "version VoiceStudio ships exists for Windows. PyTorch "
             "engines run on the CPU; audio.cpp (Vulkan) can use the GPU - see "
-            "Settings > Performance for the per-engine list."
+            "Settings > Performance for the per-engine list. A source install can "
+            "opt in to AMD's experimental Windows wheels with "
+            "OMNIVOICE_TORCH_VARIANT=rocm and OMNIVOICE_ROCM_GFX (docs/install/windows.md)."
         )
     return (
         "AMD GPU detected but torch was installed with CUDA wheels. Set "
