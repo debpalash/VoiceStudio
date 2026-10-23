@@ -93,13 +93,13 @@ def boot(monkeypatch):
         importlib.reload(main)  # restore the default app for later tests
 
 
-def _get(app, client, host, accept="text/html"):
+def _get(app, client, host, accept="text/html", path="/"):
     from starlette.testclient import TestClient
 
     with TestClient(
         app, base_url=f"http://{host}", client=(client, 50000), follow_redirects=False
     ) as http:
-        return http.get("/", headers={"accept": accept})
+        return http.get(path, headers={"accept": accept})
 
 
 def test_lan_device_gets_the_packaged_web_ui(boot, tmp_path):
@@ -132,3 +132,25 @@ def test_local_dev_browser_still_reaches_the_dev_ui(boot, tmp_path):
 
     assert response.status_code == 307
     assert response.headers["location"].startswith("http://localhost:")
+
+
+def test_local_redirect_keeps_the_pin_query(boot, tmp_path):
+    # The PIN gate reads ?pin=; dropping it on the dev-UI bounce would sign
+    # the local browser out of the share it just opened (#2680).
+    app = boot(tmp_path / "missing")
+
+    response = _get(app, "127.0.0.1", "localhost:3900", path="/?pin=123456")
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "http://localhost:3901?pin=123456"
+
+
+def test_no_redirect_loop_when_sharing_from_the_ui_port(boot, tmp_path):
+    # Default ports put the share listener on the UI port; bouncing there
+    # returns the request to itself forever, so answer terminally (#2680).
+    app = boot(tmp_path / "missing")
+
+    response = _get(app, "127.0.0.1", "localhost:3901", path="/?pin=123456")
+
+    assert response.status_code == 503
+    assert "location" not in response.headers

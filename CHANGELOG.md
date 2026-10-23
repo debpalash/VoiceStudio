@@ -487,6 +487,7 @@ This release also adds a GPU acceleration panel with honest Radeon reporting, th
 - License notice: commercial use is free under the AGPL; the paid licence is for closed-source use, with Pro plans linked (#2578)
 
 ### Fixed
+- The no-web-UI fallback keeps the share PIN on its dev-UI redirect and answers terminally instead of looping when the share listener sits on the UI port (#2680) — thanks @swadhinbiswas!
 
 - Cloning without a transcript no longer dead-ends when speech-to-text is missing: the transcript preview reuses any installed model, and the Clone page offers a one-click install of the recommended one (#3036)
 - Dubbing can replace an uploaded source with a link without removing it first (#2944) — thanks @mvanhorn!
