@@ -27,6 +27,7 @@ metadata and the backend fallback mirror it.
 - Phone apps now use the app ID `sh.voicestudio.mobile`; a preview build installed before installs alongside as a new app, so pair it again and remove the old one (#3194)
 
 ### Added
+- Opt-in native Windows ROCm source bootstrap with a reusable pinned recipe, hash-checked CTranslate2 wheels and offline GPU smoke; packaged setup and app GPU support are unchanged (#2468)
 
 - The phone apps run speech, dictation, voice cloning and dubbing on the phone itself, offline once you download the models; pairing a computer is optional ([guide](docs/mobile.md)) (#2969)
 - Beta update channel: choose Stable or Beta under Settings → Updates; betas are `-beta.N` prereleases that never reach Stable users, and Docker gets matching `:beta` tags ([guide](docs/update-channels.md)) (#3175)

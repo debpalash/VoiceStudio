@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "python": {
+    "version": "3.12",
+    "platform": "win-amd64"
+  },
+  "torch": {
+    "find_links": "https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/",
+    "packages": [
+      "torch==2.9.1+rocm7.2.1",
+      "torchaudio==2.9.1+rocm7.2.1",
+      "torchvision==0.24.1+rocm7.2.1",
+      "rocm[libraries]==7.2.1"
+    ]
+  },
+  "ctranslate2": {
+    "version": "4.8.2",
+    "archive_url": "https://github.com/OpenNMT/CTranslate2/releases/download/v4.8.2/rocm-python-wheels-Windows.zip",
+    "archive_sha256": "43da4baa5feaee49f77e176277a9647f99c493173c81a0bc60f491cac97532c2",
+    "wheel_member": "temp-windows/ctranslate2-4.8.2-cp312-cp312-win_amd64.whl",
+    "wheel_sha256": "d5b9b0d34b23584638fc087bf99a85b0ba9917b84860d5fbddcc73b0aedd4fd4",
+    "required_dlls": ["hipblas.dll", "amdhip64_7.dll"]
+  }
+}
