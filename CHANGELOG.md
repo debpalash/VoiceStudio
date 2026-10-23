@@ -11,6 +11,7 @@ metadata and the backend fallback mirror it.
 **Highlights**
 
 - Preview iOS and Android companion apps for your own VoiceStudio
+- Keep the dubbing waveform visible and cue navigation accurate in long transcripts, even after dismissing errors (#2740) — thanks @liao942287300-cyber!
 - Opt-in Beta update channel: get fixes early from Settings → Updates, and roll onto the next stable release automatically
 
 ### Changed

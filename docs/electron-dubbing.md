@@ -41,6 +41,11 @@ Generate. Persisted provider error pages are discarded and restored to the sourc
 dialogue with a retryable error state.
 
 Long projects virtualize transcript rows, so only the visible editors are mounted.
+The transcript toolbar and waveform timeline stay above that scroll container.
+Selecting a timeline cue, with the mouse or keyboard, reveals its transcript row
+without moving the timeline out of view; timing controls remain available while
+editing long projects. Expanded rows, resized inline notices and dismissed errors
+retain their correct virtualized positions.
 Timeline waveform peaks and onsets are computed once by the backend and cached as a
 small JSON payload; Chromium never decodes the full separated-vocals WAV to draw the
 timeline. Video previews are written atomically with MP4 fast-start metadata and are
