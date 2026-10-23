@@ -142,6 +142,42 @@ def _voice_asset(value) -> Path | None:
     return resolved
 
 
+def _insert_bundle_profile(
+    metadata: dict,
+    profile_id: str,
+    ref_audio_filename: str,
+    locked_audio_filename: str | None,
+    *,
+    default_name: str,
+) -> bool:
+    """Store bundle metadata identically for uploads and marketplace installs."""
+    is_locked = bool(metadata.get("is_locked") and locked_audio_filename)
+    with db_conn() as conn:
+        conn.execute(
+            """INSERT INTO voice_profiles
+               (id, name, ref_audio_path, ref_text, instruct, language,
+                seed, personality, is_locked, locked_audio_path, created_at,
+                kind, vd_states)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                profile_id,
+                metadata.get("profile_name", default_name),
+                ref_audio_filename,
+                metadata.get("ref_text", ""),
+                metadata.get("instruct", ""),
+                metadata.get("language", "Auto"),
+                metadata.get("seed"),
+                metadata.get("personality", ""),
+                1 if is_locked else 0,
+                locked_audio_filename or "",
+                time.time(),
+                metadata.get("kind") or "clone",
+                metadata.get("vd_states"),
+            ),
+        )
+    return is_locked
+
+
 # ── Export ──────────────────────────────────────────────────────────────────
 
 
@@ -250,33 +286,10 @@ async def import_profile(
             detail="Invalid .omnivoice bundle: no reference audio found.",
         )
 
-    # Create the profile in the database
-    is_locked = bool(metadata.get("is_locked") and locked_audio_filename)
-    with db_conn() as conn:
-        conn.execute(
-            """INSERT INTO voice_profiles
-               (id, name, ref_audio_path, ref_text, instruct, language,
-                seed, personality, is_locked, locked_audio_path, created_at,
-                kind, vd_states)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                profile_id,
-                metadata.get("profile_name", "Imported Voice"),
-                ref_audio_filename,
-                metadata.get("ref_text", ""),
-                metadata.get("instruct", ""),
-                metadata.get("language", "Auto"),
-                metadata.get("seed"),
-                metadata.get("personality", ""),
-                1 if is_locked else 0,
-                locked_audio_filename or "",
-                time.time(),
-                # Preserve the design/clone distinction across the round-trip;
-                # old bundles without these keys import as a clone.
-                metadata.get("kind") or "clone",
-                metadata.get("vd_states"),
-            ),
-        )
+    is_locked = _insert_bundle_profile(
+        metadata, profile_id, ref_audio_filename, locked_audio_filename,
+        default_name="Imported Voice",
+    )
 
     event_bus.emit("profiles", {"action": "created", "id": profile_id})
     logger.info(
@@ -427,27 +440,10 @@ async def install_from_marketplace(filename: str):
     if not ref_audio_filename:
         raise HTTPException(status_code=400, detail="No reference audio in bundle.")
 
-    is_locked = bool(metadata.get("is_locked") and locked_audio_filename)
-    with db_conn() as conn:
-        conn.execute(
-            """INSERT INTO voice_profiles
-               (id, name, ref_audio_path, ref_text, instruct, language,
-                seed, personality, is_locked, locked_audio_path, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                profile_id,
-                metadata.get("profile_name", "Marketplace Voice"),
-                ref_audio_filename,
-                metadata.get("ref_text", ""),
-                metadata.get("instruct", ""),
-                metadata.get("language", "Auto"),
-                metadata.get("seed"),
-                metadata.get("personality", ""),
-                1 if is_locked else 0,
-                locked_audio_filename or "",
-                time.time(),
-            ),
-        )
+    _insert_bundle_profile(
+        metadata, profile_id, ref_audio_filename, locked_audio_filename,
+        default_name="Marketplace Voice",
+    )
 
     event_bus.emit("profiles", {"action": "created", "id": profile_id})
 

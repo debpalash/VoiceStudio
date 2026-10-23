@@ -14,6 +14,7 @@ import io
 import json
 import os
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -92,6 +93,61 @@ def test_import_preserves_design_kind(iso):
         ).fetchone()
     assert row["kind"] == "design"
     assert json.loads(row["vd_states"])["Gender"] == "female"
+
+
+def test_marketplace_install_preserves_design_kind(iso):
+    cfg, db, mk = iso
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    states = json.dumps({"Gender": "female"})
+    (Path(cfg.VOICES_DIR) / "aria.wav").write_bytes(b"RIFF" + b"\x00" * 512)
+    with db.db_conn() as conn:
+        conn.execute(
+            """INSERT INTO voice_profiles
+               (id, name, ref_audio_path, instruct, kind, vd_states)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            ("original-aria", "Marketplace Aria", "aria.wav", "female", "design", states),
+        )
+
+    app = FastAPI()
+    app.include_router(mk.router)
+    with TestClient(app) as client:
+        published = client.post("/marketplace/publish/original-aria")
+        assert published.status_code == 200
+        bundle_name = os.path.basename(published.json()["bundle_path"])
+        installed = client.post(f"/marketplace/install/{bundle_name}")
+        assert installed.status_code == 200
+        result = installed.json()
+
+    with db.db_conn() as conn:
+        row = conn.execute(
+            "SELECT kind, vd_states FROM voice_profiles WHERE id=?",
+            (result["profile_id"],),
+        ).fetchone()
+    assert row["kind"] == "design"
+    assert json.loads(row["vd_states"])["Gender"] == "female"
+
+
+def test_marketplace_install_legacy_bundle_defaults_to_clone(iso):
+    _, db, mk = iso
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    bundle = mk.MARKETPLACE_DIR / "legacy.omnivoice"
+    bundle.write_bytes(_make_bundle({"bundle_version": 1, "profile_name": "Legacy"}))
+    app = FastAPI()
+    app.include_router(mk.router)
+    with TestClient(app) as client:
+        installed = client.post("/marketplace/install/legacy.omnivoice")
+    assert installed.status_code == 200
+    with db.db_conn() as conn:
+        row = conn.execute(
+            "SELECT kind, vd_states FROM voice_profiles WHERE id=?",
+            (installed.json()["profile_id"],),
+        ).fetchone()
+    assert row["kind"] == "clone"
+    assert row["vd_states"] is None
 
 
 def test_import_legacy_bundle_defaults_to_clone(iso):

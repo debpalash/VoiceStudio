@@ -38,6 +38,7 @@ metadata and the backend fallback mirror it.
 
 - Saved dub loads confirm before replacing unsaved work, recheck edits made during loading and stop when you leave the workspace (#3234)
 - Large VirusTotal uploads upgrade the documented legacy upload URL to HTTPS before sending files or credentials (#3238)
+- Local marketplace installs keep designed voices and their saved design settings (#2878) — thanks @agammann!
 
 - iPhone: tapping Play right after generating speech starts playback instead of doing nothing (#3233)
 
