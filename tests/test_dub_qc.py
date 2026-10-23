@@ -59,6 +59,35 @@ def test_wer_spaced_scripts_keep_word_tokens():
     assert word_error_rate("naïve café", "naïve cafe") == pytest.approx(1 / 2)
 
 
+def test_wer_canonical_unicode_spellings_score_zero():
+    # Composed vs. decomposed accents spell the same word; drift must be 0.
+    # See issue #2693 — composed "ï" (U+00EF) vs. decomposed "i" + U+0308
+    # should not register as drift; reversed direction also passes.
+    import unicodedata
+
+    composed = "naïve café"
+    decomposed = unicodedata.normalize("NFD", composed)
+    assert word_error_rate(composed, decomposed) == 0.0
+    assert word_error_rate(decomposed, composed) == 0.0
+
+    # Hangul pre-composed syllable vs. jamo sequence for the same syllable.
+    composed_hangul = "한글"
+    jamo_hangul = unicodedata.normalize("NFD", composed_hangul)
+    assert word_error_rate(composed_hangul, jamo_hangul) == 0.0
+    assert word_error_rate(jamo_hangul, composed_hangul) == 0.0
+
+    # Japanese voiced katakana (ガ U+30AC vs. カ U+30AB + ゛ U+3099).
+    composed_kana = "ガラス"
+    decomposed_kana = unicodedata.normalize("NFD", composed_kana)
+    assert word_error_rate(composed_kana, decomposed_kana) == 0.0
+
+
+def test_wer_genuine_accent_difference_still_scores_drift():
+    # NFC normalization collapses canonical equivalence only, so a real accent
+    # change is preserved as drift.
+    assert word_error_rate("naïve", "naive") == pytest.approx(1 / 1)
+
+
 # ── score_dub ────────────────────────────────────────────────────────────────
 
 def _seg(start, end, text, sid=None):
