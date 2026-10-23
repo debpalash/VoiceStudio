@@ -46,9 +46,10 @@ If you have [Tailscale](https://tailscale.com/download) installed and signed in,
 1. **Settings → Sharing & Remote Access → Tailscale.**
 2. If Tailscale isn't detected, an **Install Tailscale** link is shown.
 3. Otherwise, **Enable** publishes this backend over your tailnet via `tailscale serve`. The panel shows your `<machine>.<tailnet>` URL with copy / open / QR.
-   - By default this serves over **HTTP** on the tailnet (`tailscale serve --http=80`) — which works on any tailnet, because the WireGuard tunnel already encrypts the traffic. No certificate needed.
-   - If your tailnet has **HTTPS Certificates** enabled (admin console → DNS → *HTTPS Certificates*), it serves over **HTTPS** instead and you get an `https://…ts.net` URL. (Forcing HTTPS without that feature is what produces the `error enabling https feature: 404` — so we detect it and fall back to HTTP automatically.)
-4. Open that URL from any device signed in to the same tailnet. **Disable** runs `tailscale serve reset`.
+   - By default this serves over **HTTP** on the tailnet (`tailscale serve --http=10000`) — which works on any tailnet, because the WireGuard tunnel already encrypts the traffic. No certificate needed.
+   - If your tailnet has **HTTPS Certificates** enabled (admin console → DNS → *HTTPS Certificates*), it serves over **HTTPS** instead and you get an `https://…ts.net:10000` URL. (Forcing HTTPS without that feature is what produces the `error enabling https feature: 404` — so we detect it and fall back to HTTP automatically.)
+   - VoiceStudio uses its **own port (10000)**, not the root `443`/`80`, so it never takes over a share another app on the same machine already serves. Change it with `OMNIVOICE_TAILSCALE_HTTPS_PORT` / `OMNIVOICE_TAILSCALE_HTTP_PORT` (set either to `443`/`80` for a bare URL). If the chosen port is already serving something else, Enable refuses instead of overwriting it.
+4. Open that URL from any device signed in to the same tailnet. **Disable** turns off only the ports that point at this backend (`tailscale serve --https=10000 off`); other shares on the machine are left alone. It never runs `tailscale serve reset`.
 
 Tailscale proxies the loopback backend directly, so — like LAN sharing — it never restarts the backend or drops the loaded model.
 

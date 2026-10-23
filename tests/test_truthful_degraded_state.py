@@ -116,9 +116,13 @@ async def test_log_clear_does_not_hide_notification_reset_failure(monkeypatch, t
     assert "/secret/prefs" not in caught.value.detail
 
 
-def test_tailscale_disable_reports_reset_failure_without_raw_output(monkeypatch):
+def test_tailscale_disable_reports_off_failure_without_raw_output(monkeypatch):
     tailscale = importlib.import_module("services.tailscale")
     monkeypatch.setattr(tailscale, "_cli", lambda: "/usr/bin/tailscale")
+    target = f"http://127.0.0.1:{tailscale.network_share.backend_port()}"
+    monkeypatch.setattr(
+        tailscale, "_serve_ports", lambda _cli: {10000: {"scheme": "https", "proxies": {target}}}
+    )
     monkeypatch.setattr(tailscale, "_run", lambda _args: {"ok": False, "error": "/secret/stderr"})
     result = tailscale.serve_disable()
     assert result["ok"] is False
