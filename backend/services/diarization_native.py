@@ -29,6 +29,39 @@ def _sortformer_command(binary: Path, model: Path, device, source: Path, output:
     ]
 
 
+def _read_turns_output(output: Path) -> list:
+    """Parse the native Sortformer ``turns.json`` written by ``audiocpp_cli``.
+
+    A successful subprocess exit (``code == 0``) does not guarantee a
+    parseable output file: the sidecar can be killed by an OOM, hit a
+    filesystem error mid-write, or hand back a non-UTF-8 byte fragment
+    that survived a write-through-binary buffer. Without a guarded read
+    here, any of those surfaces as a raw ``UnicodeDecodeError`` or
+    ``json.JSONDecodeError`` to the caller, with no hint that the bug is
+    in the sidecar output rather than in the request. Raise a clear
+    ``RuntimeError`` that names the file, the underlying error, and the
+    most recent log tail so the user has a chance to file a useful
+    bug report.
+    """
+    try:
+        raw = output.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise RuntimeError(
+            f"Native Sortformer output {output} could not be read as UTF-8: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+    try:
+        turns = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"Native Sortformer output {output} is not valid JSON: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+    if not isinstance(turns, list):
+        raise ValueError("Invalid native speaker-turn output")
+    return turns
+
+
 def _validated_turn(turn: dict, audio_frames: int) -> tuple[int, int, str]:
     start, end = turn.get("start_sample"), turn.get("end_sample")
     speaker = turn.get("speaker_id")
@@ -159,9 +192,7 @@ class NativeSortformer:
                 audio_info = sf.info(str(source))
                 command[command.index("--audio") + 1] = str(source)
             run_owned(command, "native.log")
-            turns = json.loads(output.read_text(encoding="utf-8"))
-            if not isinstance(turns, list):
-                raise ValueError("Invalid native speaker-turn output")
+            turns = _read_turns_output(output)
             annotation = Annotation()
             for index, turn in enumerate(turns):
                 start, end, speaker = _validated_turn(turn, audio_info.frames)
