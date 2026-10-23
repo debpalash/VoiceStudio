@@ -275,14 +275,23 @@ def test_curated_models_not_present_on_other_backends(registry_sandbox):
 
 def test_isolation_mode_in_process_vs_subprocess(registry_sandbox):
     """SubprocessBackend subclasses get isolation_mode='subprocess'; others 'in-process'."""
+    from core.device_caps import detect_host_caps
     registry_sandbox["fake-sub"] = FakeSubBackend
     registry_sandbox["healthy-inproc"] = HealthyInProcessBackend
     out = {entry["id"]: entry for entry in list_backends()}
 
     assert out["fake-sub"]["isolation_mode"] == "subprocess"
     assert out["healthy-inproc"]["isolation_mode"] == "in-process"
-    # The pre-existing OmniVoice backend is in-process — sanity check.
-    assert out["omnivoice"]["isolation_mode"] == "in-process"
+    # The canonical ``omnivoice`` id is in-process on every host EXCEPT Apple
+    # Silicon, where ``_effective_backend_class`` intentionally routes it to
+    # the killable MPS sidecar (see ``tts_backend.py``'s list_backends
+    # docstring: "On MPS, the canonical omnivoice id already resolves to the
+    # killable OmniVoice sidecar"). Either answer is correct — assert the
+    # one this host actually takes, and document it.
+    expected_omnivoice_mode = (
+        "subprocess" if detect_host_caps().family == "mps" else "in-process"
+    )
+    assert out["omnivoice"]["isolation_mode"] == expected_omnivoice_mode
 
 
 def test_last_error_cleared_after_recovery(registry_sandbox):
