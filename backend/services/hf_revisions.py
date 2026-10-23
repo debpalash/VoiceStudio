@@ -6,26 +6,44 @@ must call :func:`revision_for` instead of following ``main``.
 """
 from __future__ import annotations
 
+import json
+import logging
 import os
 import re
 from pathlib import Path
 
+_logger = logging.getLogger("omnivoice.hf_revisions")
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 
 # Runtime pins and legal evidence share one source, with separate revisions.
 # Changing evidence must never silently change the runtime download identity.
-def _curated_revisions() -> dict[str, str]:
-    import json
+CONFIG_PATH: Path = Path(__file__).resolve().parents[1] / "config" / "model_licenses.json"
 
-    path = Path(__file__).resolve().parents[1] / "config" / "model_licenses.json"
-    registry = json.loads(path.read_text(encoding="utf-8"))
+
+def _curated_revisions(config_path: Path = CONFIG_PATH) -> dict[str, str]:
+    try:
+        registry = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        # Mirrors the marker-fallback policy from 1f28c05: an unreadable or
+        # corrupt curated registry must not prevent the backend from coming
+        # up. ``revision_for`` raises a clear ``ValueError`` for an unpinned
+        # repo, so the first download that depends on curation fails
+        # loudly with a useful diagnostic instead of crashing the import.
+        _logger.warning(
+            "Curated HF revision registry %s is unreadable or corrupt (%s: %s); "
+            "treating every repo as unpinned until the file is repaired.",
+            config_path, type(exc).__name__, exc,
+        )
+        return {}
     pins = {}
-    for record in registry["models"]:
+    for record in registry.get("models", []):
+        if not isinstance(record, dict):
+            continue
         if record.get("runtime_pin_scope") != "central":
             continue
         revision = record.get("runtime_revision")
         if not isinstance(revision, str) or not _SHA.fullmatch(revision):
-            raise ValueError(f"Invalid runtime revision for {record['id']!r}")
+            raise ValueError(f"Invalid runtime revision for {record.get('id')!r}")
         if record["id"] in pins:
             raise ValueError("Duplicate runtime model identity")
         pins[record["id"]] = revision

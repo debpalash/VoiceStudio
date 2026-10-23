@@ -1,6 +1,7 @@
 """Curated Hugging Face inputs are immutable and repair preserves installs."""
 from pathlib import Path
 
+import pytest
 import yaml
 
 from services import hf_revisions
@@ -99,3 +100,33 @@ def test_non_ascii_marker_falls_back_instead_of_raising(tmp_path):
     assert hf_revisions.installed_revision(repo_id, str(tmp_path)) == existing
     (repo_dir / "refs" / "main").write_bytes(b"\x80\x81")
     assert hf_revisions.installed_revision(repo_id, str(tmp_path)) == hf_revisions.revision_for(repo_id)
+
+
+def test_curated_revisions_survives_unreadable_registry(tmp_path):
+    """#2882: a corrupt or truncated curated-registry file must not crash
+    the import that populates :data:`CURATED_REVISIONS`. The same fallback
+    policy that 1f28c05 applied to per-marker reads (treat as absent, log,
+    let the next layer fail with a precise diagnostic) covers the
+    registry read too.
+
+    Three failure modes are covered: a non-UTF-8 byte sequence (raises
+    ``UnicodeDecodeError``), a truncated JSON file (raises
+    ``json.JSONDecodeError``), and a missing file (raises ``OSError``).
+    Each must return an empty mapping without raising.
+    """
+
+    # Non-UTF-8 bytes: a stray BOM or binary fragment left by an interrupted
+    # write or a write through some text/binary mode mix-up.
+    bad_bytes = tmp_path / "model_licenses.json"
+    bad_bytes.write_bytes(b"\xff\xfe" + b"{\"models\": []}")
+    assert hf_revisions._curated_revisions(bad_bytes) == {}
+
+    # Truncated JSON: the file looks like text but stops mid-record.
+    truncated = tmp_path / "model_licenses.json"
+    truncated.write_text('{"models": [', encoding="utf-8")
+    assert hf_revisions._curated_revisions(truncated) == {}
+
+    # Missing file: the registry is not present at all (e.g. a stripped
+    # install or a path the user moved).
+    missing = tmp_path / "model_licenses.json"
+    assert hf_revisions._curated_revisions(missing) == {}
