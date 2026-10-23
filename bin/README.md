@@ -1,8 +1,9 @@
 # Bundled binaries
 
 This directory holds the paths for platform-specific native binaries. The files
-in git are zero-byte placeholders and the desktop installers do not ship real
-binaries yet (#2780); CI builds them as workflow artifacts. Today:
+in git are zero-byte placeholders. The Windows x64, Linux x64 and Apple Silicon
+installers ship real binaries built by the release workflow (#2780), and CI
+also builds them as workflow artifacts. Today:
 
 | File | Built from | Purpose |
 |------|------------|---------|
@@ -11,6 +12,7 @@ binaries yet (#2780); CI builds them as workflow artifacts. Today:
 | `omnivoice-tts-linux-x86_64` | same | Linux (x86_64) |
 | `omnivoice-tts-linux-aarch64` | same | Linux ARM64 — Apple Silicon under Asahi; built with GGML Vulkan where the toolchain supports it, so the Honeykrisp driver can accelerate generation |
 | `omnivoice-tts-windows-x86_64.exe` | same | Windows |
+| `ggml*.dll` / `libggml*` | same build | ggml libraries the binary loads. x86_64 builds include one CPU library per instruction-set level and pick the best one at runtime, so they run on any x86-64 CPU (#2780) |
 | `checksums.sha256` | computed by `scripts/build-omnivoice-tts.sh` | SHA-256 manifest — verified by `VoiceStudioGGUFBackend.is_available()` |
 
 The pinned commit SHA for `omnivoice.cpp` lives in

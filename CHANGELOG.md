@@ -72,6 +72,8 @@ metadata and the backend fallback mirror it.
 - Generation-complete notifications appear above the workspace instead of covering synthesis controls (#3102)
 - Generated speech no longer starts and ends with silence, and `[pause]` markers give exactly the pause you asked for (Raw preset and explicit durations untouched) (#3080)
 - Engine sidecars no longer load PyTorch just to answer the Test Engine ping, and a failed test logs its reason locally (#3026) — thanks @tekay-de!
+- The Windows, Linux and Apple Silicon installers include the OmniVoice GGUF engine, which was always reported unavailable (#2780)
+- The GGUF engine runs on every x86-64 processor instead of crashing on CPUs without AVX-512, and says so when a runtime cannot run on yours (#2780)
 
 ### Fixed
 

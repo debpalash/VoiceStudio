@@ -60,9 +60,12 @@ app on the CPU, just slower (integrated graphics are not used for AI work).
 On first run the runtime installer detects that no NVIDIA driver is present and
 installs the small CPU build of PyTorch instead of the multi-GB CUDA one, so
 the download is much smaller and needs about 5 GiB free instead of 9 GiB. For
-the best experience on a CPU, pick a light voice engine (KittenTTS,
-Supertonic-3, PocketTTS) and a small Whisper model in the Model Catalogue; the
-setup screen lists them as its CPU preset. Set `OMNIVOICE_TORCH_VARIANT=cuda`
+the best experience on a CPU, pick a light voice engine in the Model
+Catalogue: [OmniVoice GGUF](../engines/omnivoice-gguf.md) clones voices in all
+of OmniVoice's languages, PocketTTS and MOSS-TTS-Nano clone quickly in their
+languages, and KittenTTS and Supertonic-3 offer preset voices. Pair it with a
+small Whisper model; the setup screen's CPU preset suggests Whisper small.
+Set `OMNIVOICE_TORCH_VARIANT=cuda`
 (or `cpu`) before launching to override the detection.
 Source setup (`bun run setup:api`) also selects locked CPU wheels when NVIDIA
 is absent. See [CPU setup and overrides](../../electron/README.md#running-without-a-gpu).

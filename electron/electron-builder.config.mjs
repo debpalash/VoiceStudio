@@ -107,6 +107,37 @@ const bundledUvResources =
   uvSource && existsSync(uvSource) && statSync(uvSource).size > 0
     ? [{ from: uvSource, to: `tools/uv${uvExtension}` }]
     : [];
+// #2780: the OmniVoice GGUF engine spawns bin/omnivoice-tts-<slug> beside
+// backend/ (backend/engines/omnivoice_gguf/backend.py). Ship the runtime that
+// scripts/build-omnivoice-tts.sh built for this target, with the ggml libraries
+// it loads. Source checkouts hold zero-byte placeholders; leaving them out makes
+// the engine report that this build does not bundle it. Windows on ARM has no
+// runtime yet, so its engine keeps the in-process fallback.
+const ggufRuntimeSlug =
+  {
+    'x86_64-pc-windows-msvc': 'windows-x86_64',
+    'x86_64-unknown-linux-gnu': 'linux-x86_64',
+    'aarch64-apple-darwin': 'darwin-arm64',
+    'x86_64-apple-darwin': 'darwin-x86_64',
+  }[rustTarget] ?? null;
+export const ggufRuntimeName = ggufRuntimeSlug
+  ? `omnivoice-tts-${ggufRuntimeSlug}${ggufRuntimeSlug.startsWith('windows') ? '.exe' : ''}`
+  : null;
+const ggufRuntimeSource = ggufRuntimeName ? resolve(here, '../bin', ggufRuntimeName) : null;
+const ggufRuntimeResources =
+  ggufRuntimeSource && existsSync(ggufRuntimeSource) && statSync(ggufRuntimeSource).size > 0
+    ? [
+        {
+          from: '../bin',
+          to: 'bin',
+          filter: [
+            ggufRuntimeName,
+            'checksums.sha256',
+            ...(ggufRuntimeSlug.startsWith('windows') ? ['*.dll'] : ['libggml*']),
+          ],
+        },
+      ]
+    : [];
 const notarizeMac =
   !isMacAppStore &&
   Boolean(
@@ -176,6 +207,7 @@ export default {
     { from: '../config/app.json', to: 'config/app.json' },
     { from: 'T3CODE-LICENSE.txt', to: 'electron/T3CODE-LICENSE.txt' },
     ...bundledUvResources,
+    ...ggufRuntimeResources,
   ],
   asar: true,
   afterPack: packageNativeHelper,

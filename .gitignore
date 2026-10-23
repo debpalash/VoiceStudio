@@ -166,6 +166,7 @@ tests/probe/reports/
 # Only 0-byte placeholders of omnivoice-tts-* are tracked; real binaries,
 # the checksums manifest and the copied libggml shared libs ship via CI.
 bin/libggml*
+bin/ggml*.dll
 bin/checksums.sha256
 bin/omnivoice-tts-linux-aarch64
 

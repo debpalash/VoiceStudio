@@ -7,8 +7,10 @@ Architecture (Phase 4 Plan 04-01):
 
 The C++ binary is the isolation boundary; the per-engine venv that
 ``SubprocessBackend`` would normally create is unnecessary because
-``omnivoice-tts`` has no Python deps of its own (it statically links
-GGML/GGML-cpu and dlopens GGML-cuda / GGML-vulkan when present).
+``omnivoice-tts`` has no Python deps of its own. Its x86_64 builds load the
+ggml CPU variant that suits the host (and GPU backends when present) as
+runtime modules shipped next to it, so one binary runs on every CPU of its
+architecture.
 
 This module intentionally does NOT subclass :class:`SubprocessBackend`
 because that primitive owns a long-lived sidecar with a JSON-over-stdin
@@ -55,6 +57,7 @@ import math
 import os
 import platform
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -178,6 +181,49 @@ def _binary_repair_hint() -> str:
         f"reinstall VoiceStudio, or switch to the default in-process "
         f"OmniVoice engine (Model Catalogue)"
     )
+
+
+#: Exit statuses meaning the CPU rejected one of the binary's instructions:
+#: Windows STATUS_ILLEGAL_INSTRUCTION (unsigned and signed spellings) and
+#: SIGILL, which subprocess reports on POSIX as the negated signal number.
+_ILLEGAL_INSTRUCTION_EXITS = frozenset(
+    {0xC000001D, 0xC000001D - (1 << 32), -int(signal.SIGILL)}
+)
+
+_CPU_INCOMPATIBLE_REASON = (
+    "this CPU cannot run it: the runtime was compiled for instructions this "
+    "processor lacks (illegal-instruction fault, e.g. an AVX-512 build on an "
+    "AVX2-only CPU)"
+)
+
+#: (path, size, mtime) of a binary that died with an illegal instruction in
+#: this process. is_available() reports it until the file changes, so a
+#: rebuilt or reinstalled runtime is tried again without a restart.
+_cpu_incompatible_binary: Optional[tuple[str, int, int]] = None
+
+
+def _binary_identity(path: Path) -> Optional[tuple[str, int, int]]:
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (str(path), st.st_size, st.st_mtime_ns)
+
+
+def _raise_if_cpu_incompatible(path: Path, returncode: Optional[int]) -> None:
+    """Turn an illegal-instruction exit into the typed, actionable error.
+
+    A runtime built with ``GGML_NATIVE`` on a CI host carries that host's
+    instruction set; on an older CPU every spawn dies before printing
+    anything useful (#2780). Remember the binary as unusable so the Model
+    Catalogue says why and later requests fail fast.
+    """
+    global _cpu_incompatible_binary
+    if returncode not in _ILLEGAL_INSTRUCTION_EXITS:
+        return
+    _cpu_incompatible_binary = _binary_identity(path)
+    from services.binary_preflight import InvalidBinaryError
+    raise InvalidBinaryError(path, _CPU_INCOMPATIBLE_REASON, _binary_repair_hint())
 
 
 def _load_quant_map() -> dict:
@@ -442,6 +488,14 @@ def _make_backend_class():
                         f"VoiceStudio, or use the default in-process "
                         f"OmniVoice engine (Model Catalogue)."
                     )
+                if (
+                    _cpu_incompatible_binary is not None
+                    and _cpu_incompatible_binary == _binary_identity(bin_path)
+                ):
+                    return False, (
+                        f"GGUF binary {bin_path.name}: {_CPU_INCOMPATIBLE_REASON} "
+                        f"— {_binary_repair_hint()}."
+                    )
                 # Manifest-based SHA-256 verification (T-04-01).
                 try:
                     manifest = _load_checksum_manifest()
@@ -616,6 +670,7 @@ def _make_backend_class():
                     bin_path, f"the OS refused to execute it ({exc})",
                     _binary_repair_hint(),
                 ) from exc
+            _raise_if_cpu_incompatible(bin_path, proc.returncode)
             # `--help` typically exits 0 or 1 (some CLIs use 1 to signal
             # "help shown, no work done"). We accept both as long as the
             # binary actually emitted something.
@@ -826,6 +881,7 @@ def _make_backend_class():
                 ) from exc
 
             if proc.returncode != 0:
+                _raise_if_cpu_incompatible(Path(argv[0]), proc.returncode)
                 stderr = _mask_token(proc.stderr or "")
                 raise RuntimeError(
                     f"GGUF subprocess exited {proc.returncode}: "

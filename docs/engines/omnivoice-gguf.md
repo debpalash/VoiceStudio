@@ -31,17 +31,13 @@ against the same table (an F32 reference quant, ~3.2 GB, is override-only).
 
 ## Setup
 
-The desktop installers (Windows, macOS, Linux packages) do **not** ship this
-native binary yet, so on an installed app the engine shows *Unavailable* in
-Model Catalogue ([#2780](https://github.com/debpalash/VoiceStudio/issues/2780)).
-Use the default in-process OmniVoice engine, which is the same model, or run
-from a source checkout and build the binary for your platform (below). Once
-`bin/omnivoice-tts-<platform>` exists, select the engine via **Model Catalogue**
-(TTS tab → **Use**) or `OMNIVOICE_TTS_BACKEND=omnivoice-gguf`. The quant weights
-download on first use (see [downloading-models.md](../downloading-models.md)) —
-install them ahead of time from **Model Catalogue (TTS tab → the engine's
-Weights)** if you want the first generation to be quick; a long first render is
-the download, not a hang.
+Nothing to install: the Windows x64, Linux x64 and Apple Silicon installers
+bundle the runtime. Windows on ARM and Intel Macs don't, so they keep the
+default in-process engine. Select the engine via **Model Catalogue** (TTS tab → **Use**) or
+`OMNIVOICE_TTS_BACKEND=omnivoice-gguf`. The quant weights download on first
+use (see [downloading-models.md](../downloading-models.md)) — install them
+ahead of time from **Model Catalogue (TTS tab → the engine's Weights)** if you want the first
+generation to be quick; a long first render is the download, not a hang.
 
 **Source checkouts:** the repo ships zero-byte placeholders in `bin/` — real
 binaries come from CI (`build-omnivoice-tts`) or a local build. The engine detects a placeholder and
@@ -50,6 +46,13 @@ reports unavailable with instructions
 failing at spawn time; build one with
 `scripts/build-omnivoice-tts.sh --platform <slug>` or use the default
 in-process engine.
+
+**Every x86-64 CPU:** the `windows-x86_64`, `linux-x86_64` and
+`darwin-x86_64` builds ship one ggml CPU library per instruction-set level,
+from SSE4.2 to AVX-512, and load the best one for the processor at start. The
+same binary runs on old and new CPUs instead of only on the CI machine that
+built it ([#2780](https://github.com/debpalash/VoiceStudio/issues/2780)).
+Keep the binary and its `ggml*` libraries together in `bin/`.
 
 **Linux ARM64 (Asahi Apple Silicon):** the `linux-aarch64` binary prefers
 GGML's Vulkan backend when built on a host with `glslc` and the Khronos
@@ -71,6 +74,8 @@ Before reporting ready, the engine:
   drop `+x`, which used to surface as a permission error mislabeled as
   out-of-memory — [#437](https://github.com/debpalash/VoiceStudio/issues/437)).
   The chmod runs only after the SHA check confirms it's the right file.
+- reports a runtime that died with an illegal-instruction fault as unusable
+  on this CPU until the file is rebuilt or reinstalled.
 
 ## Behaviour notes
 
@@ -87,12 +92,17 @@ Before reporting ready, the engine:
 
 ## Troubleshooting
 
-- "GGUF binary missing": the installer doesn't include the runtime (see
-  Setup) — use the default engine, or build the binary from a source checkout.
+- "GGUF binary missing": this build doesn't include the runtime (Windows on
+  ARM, Intel Mac, or a source checkout; see Setup) — use the default engine,
+  or build the binary from a source checkout.
   The log line `Engine health check failed; engine=omnivoice-gguf` withholds the
-  reason by design; a missing binary is the usual cause on an installed app.
+  reason by design; a missing binary is the usual cause on such a build.
 - Checksum mismatch or quarantine messages: follow the printed fix, or
   reinstall.
+- "This CPU cannot run it" (illegal instruction): the runtime was compiled
+  for instructions your processor lacks, usually a build from before #2780 or
+  a native build copied from another machine. Rebuild it with
+  `scripts/build-omnivoice-tts.sh` or reinstall VoiceStudio.
 - Other issues: [install/troubleshooting.md](../install/troubleshooting.md).
 
 See also: [benchmarks.md](../benchmarks.md),

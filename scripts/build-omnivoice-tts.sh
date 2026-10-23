@@ -103,14 +103,30 @@ case "$PLATFORM" in
     windows-x86_64) OUT_NAME="$OUT_NAME.exe" ;;
 esac
 
+# Released binaries must run on every CPU of their architecture, not only on
+# the runner that compiled them. ggml defaults to GGML_NATIVE=ON, which targets
+# the build host: an AVX-512 windows-latest runner produced a binary that dies
+# with an illegal instruction on AVX2-only CPUs, such as most AMD Ryzen and
+# recent Intel consumer chips (#2780). Build every x86 CPU variant as a
+# runtime-loaded module instead; ggml_backend_load_all() picks the best one for
+# the host (upstream omnivoice.cpp's buildall.* uses the same flags).
+# BUILD_SHARED_LIBS is explicit because ggml turns it off under MinGW. ARM
+# builds stay native: darwin-arm64 builds on M1-class runners, the oldest Apple
+# Silicon, and linux-aarch64 ships in no installer.
+PORTABLE_X86_FLAGS=(
+    -DBUILD_SHARED_LIBS=ON
+    -DGGML_NATIVE=OFF
+    -DGGML_BACKEND_DL=ON
+    -DGGML_CPU_ALL_VARIANTS=ON
+)
+
 case "$PLATFORM" in
     linux-x86_64)
-        if [[ -x ./buildcpu.sh ]]; then
-            ./buildcpu.sh
-        else
-            cmake -B build -DCMAKE_BUILD_TYPE=Release
-            cmake --build build --config Release -j
-        fi
+        # Configured here rather than through upstream buildcpu.sh, which
+        # compiles for the build host. ggml-blas becomes an optional module
+        # that is skipped on hosts without OpenBLAS.
+        cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_BLAS=ON "${PORTABLE_X86_FLAGS[@]}"
+        cmake --build build --config Release -j
         cp -v build/omnivoice-tts "$BIN_DIR/$OUT_NAME"
         copy_shared_libs
         ;;
@@ -146,14 +162,15 @@ case "$PLATFORM" in
     windows-x86_64)
         # CI runs this from MSYS / git-bash; CMake picks up the MSVC
         # toolchain via the GitHub Actions runner's default env.
-        cmake -B build -DCMAKE_BUILD_TYPE=Release
+        cmake -B build -DCMAKE_BUILD_TYPE=Release "${PORTABLE_X86_FLAGS[@]}"
         cmake --build build --config Release -j
         cp -v build/Release/omnivoice-tts.exe "$BIN_DIR/$OUT_NAME"
         copy_shared_libs
         ;;
     darwin-x86_64)
         # x86_64 Macs build the CPU variant; Metal on Intel is undocumented.
-        cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64
+        cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            "${PORTABLE_X86_FLAGS[@]}"
         cmake --build build --config Release -j
         cp -v build/omnivoice-tts "$BIN_DIR/$OUT_NAME"
         copy_shared_libs

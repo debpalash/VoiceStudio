@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import './locale-encoding.mjs';
-import config from '../electron-builder.config.mjs';
+import config, { ggufRuntimeName } from '../electron-builder.config.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -202,6 +202,23 @@ if (process.env.VOICESTUDIO_RUST_TARGET || process.env.VOICESTUDIO_BUNDLED_UV) {
 }
 if (artifactRequested && bundledUvSource) {
   assert(existsSync(resolve(artifactResources, bundledUvSource.to)), 'Packaged uv executable');
+}
+// #2780: every installer shipped without the GGUF runtime, so the engine was
+// always unavailable. Release legs that build it set the requirement flag, so a
+// package can no longer leave it out silently.
+const ggufRuntime = config.extraResources.find((item) => item.to === 'bin');
+if (process.env.VOICESTUDIO_REQUIRE_GGUF_RUNTIME === '1') {
+  assert(ggufRuntimeName, 'This package target has an OmniVoice GGUF runtime');
+  assert(ggufRuntime, `Release builds package the GGUF runtime: bin/${ggufRuntimeName}`);
+}
+if (ggufRuntime) {
+  assert(ggufRuntime.filter.includes(ggufRuntimeName), 'GGUF resource ships the runtime');
+  assert(ggufRuntime.filter.includes('checksums.sha256'), 'GGUF resource ships its checksum');
+  if (artifactRequested)
+    assert(
+      existsSync(resolve(artifactResources, 'bin', ggufRuntimeName)),
+      `Packaged GGUF runtime: bin/${ggufRuntimeName}`,
+    );
 }
 assert.equal(
   config.extraMetadata.version,

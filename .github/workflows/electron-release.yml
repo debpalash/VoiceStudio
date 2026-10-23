@@ -83,22 +83,27 @@ jobs:
   package:
     needs: validate
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    # Includes the OmniVoice GGUF runtime build (all x86 CPU variants).
+    timeout-minutes: 75
     continue-on-error: ${{ matrix.experimental == true }}
     strategy:
       fail-fast: false
       matrix:
+        # gguf_platform: scripts/build-omnivoice-tts.sh slug packaged in bin/
+        # (#2780); empty where the engine keeps its in-process fallback.
         include:
           - runner: ubuntu-24.04
             platform: linux
             arch: x64
             target: x86_64-unknown-linux-gnu
             flags: --linux --x64
+            gguf_platform: linux-x86_64
           - runner: windows-2022
             platform: win32
             arch: x64
             target: x86_64-pc-windows-msvc
             flags: --win --x64
+            gguf_platform: windows-x86_64
           - runner: windows-11-arm
             platform: win32
             arch: arm64
@@ -108,16 +113,21 @@ jobs:
             # established targets. check_electron_release_assets.py verifies the
             # arm64 feed only when its manifest was published.
             experimental: true
+            # Its backend is emulated x64 Python; no runtime is built here yet.
+            gguf_platform: ''
           - runner: macos-15
             platform: darwin
             arch: arm64
             target: aarch64-apple-darwin
             flags: --mac --arm64
+            gguf_platform: darwin-arm64
           - runner: macos-15-intel
             platform: darwin
             arch: x64
             target: x86_64-apple-darwin
             flags: --mac --x64
+            # Intel Macs run the UI against a remote backend (docs/install/macos.md).
+            gguf_platform: ''
     defaults:
       run:
         shell: bash
@@ -152,7 +162,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev pkg-config xvfb zsync
+          sudo apt-get install -y libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev pkg-config xvfb zsync libopenblas-dev
       - name: Bundle pinned uv for the host architecture
         run: |
           node --input-type=module <<'NODE'
@@ -169,6 +179,26 @@ jobs:
           copyFileSync(source, destination);
           if (process.platform !== 'win32') chmodSync(destination, 0o755);
           NODE
+      - name: Build the OmniVoice GGUF runtime
+        # #2780: the installers used to ship only bin/'s zero-byte placeholders,
+        # so the GGUF engine was never available. Once a runtime is built, the
+        # packaging contract requires it in the package.
+        if: matrix.gguf_platform != ''
+        env:
+          GGUF_PLATFORM: ${{ matrix.gguf_platform }}
+        run: |
+          sha=$(python -c "import json; print(json.load(open('backend/engines/omnivoice_gguf/quant_map.json'))['_meta']['runtime_commit_sha'])")
+          if ! [[ "$sha" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::runtime_commit_sha is not a valid git SHA: '$sha'"
+            exit 1
+          fi
+          status=0
+          bash scripts/build-omnivoice-tts.sh --platform "$GGUF_PLATFORM" --commit-sha "$sha" || status=$?
+          # Exit 2 is the script's documented Metal fallback: that package keeps
+          # the in-process engine and must not demand a runtime.
+          if [ "$status" -eq 2 ]; then exit 0; fi
+          if [ "$status" -ne 0 ]; then exit "$status"; fi
+          echo "VOICESTUDIO_REQUIRE_GGUF_RUNTIME=1" >> "$GITHUB_ENV"
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
       - name: Validate and build Electron
