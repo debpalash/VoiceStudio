@@ -114,6 +114,7 @@ def test_completed_resume_retires_old_checkpoint_if_replacement_failed(checkpoin
         return str(audio), 1.0, True, None
     async def mux(command, **_kwargs):
         Path(command[-1]).write_bytes(b"completed output")
+        return 0, b"", b""
     monkeypatch.setattr(audiobook, "_run_chapter", chapter)
     monkeypatch.setattr(ffmpeg_utils, "run_ffmpeg", mux)
     async def run():
@@ -184,6 +185,7 @@ def test_partial_completed_resume_retains_original_when_checkpoint_save_fails(ch
         return str(audio), 1.0, True, None
     async def mux(command, **_kwargs):
         Path(command[-1]).write_bytes(b"partial output")
+        return 0, b"", b""
     monkeypatch.setattr(audiobook, "_run_chapter", chapter)
     monkeypatch.setattr(ffmpeg_utils, "run_ffmpeg", mux)
     async def run():

@@ -234,7 +234,7 @@ untested state; the test plan is required to cover the **Verify** column for eac
 | Change voice / order / pause / speed / sample_rate / engine | each is in the key payload (`:126-131`) | re-render | B7b |
 | Add/change lexicon (`/audiobook`) | folded under `"\x00lexicon"` sig key (`audiobook.py:284-287`) | re-render of affected chapters | B8 |
 | Underlying voice profile edited (ref_audio/instruct/seed change) | `voice_sig` changes (`audiobook.py:282-283`) | re-render | B7c |
-| Cache over `_CACHE_MAX_BYTES` (default 2 GB, `OMNIVOICE_LONGFORM_CACHE_MAX_GB`) | `prune_cache_dir` called **before** write (`audiobook.py:401`) | oldest WAVs evicted by mtime; **current job's fresh chapters never targeted** (pruned before they're written) | B-evict |
+| Cache over `_CACHE_MAX_BYTES` (default 2 GB, `OMNIVOICE_LONGFORM_CACHE_MAX_GB`) | `prune_cache_dir` called at render exit, before releasing cache leases | oldest unused WAVs evicted by mtime; files held by this or another active render remain available, even above the cap | B-evict |
 | Eviction race on a tie mtime | `entries.sort()` on `(mtime,size,p)` (`longform_render.py:93`) | deterministic enough; keep cache cases small to avoid mtime ties (see Risk) | B-evict |
 | `prune_cache_dir` on missing dir / unstattable file | `try/except OSError` (`longform_render.py:74-77`, `:87-88`, `:102-103`) | returns `(0,0)` / skips file, never raises | B-evict |
 
@@ -632,8 +632,8 @@ These are the exact seams the verification must exercise (verified against `main
   duration (`:188`); START/END are cumulative ms.
 - `backend/services/longform_render.py:65-104` — `prune_cache_dir(cache_dir: str,
   max_bytes: int = _CACHE_MAX_BYTES) -> tuple[int,int]`: LRU eviction by mtime, returns
-  `(remaining_bytes, removed_count)` (verify it doesn't evict the current job's fresh
-  chapters — it's called *before* write at `audiobook.py:401`); never raises
+  `(remaining_bytes, removed_count)` (verify it does not evict files held by active
+  cache leases during pruning at render exit); never raises
   (OSError-swallowing at `:74-77`, `:87-88`, `:102-103`). Ceiling is `_CACHE_MAX_BYTES`
   (`:41`, `OMNIVOICE_LONGFORM_CACHE_MAX_GB`, default 2 GB).
 - `backend/services/longform_render.py:109-135` — `chapter_cache_key(spans:
@@ -1090,7 +1090,14 @@ built from `_BASE_SCHEMA` (so the job-library cases run against the existing sch
      no error.
    - **B-evict.** Set `OMNIVOICE_LONGFORM_CACHE_MAX_GB` tiny, pre-seed old WAVs with
      explicit `os.utime` mtimes, render a fresh plan → old entries evicted, the fresh
-     chapters survive (pruned-before-write guarantee, `audiobook.py:401`).
+     chapters survive (cache leases remain held during pruning at render exit).
+     Overlap another render's exit with a multi-chapter resume at `started`, engine
+     preparation, and after its first chapter: later chapter WAVs and reusable
+     segments still hit. Unrelated audio is evictable after plan reservation,
+     and closing the stream releases every pin. Plan reservation runs in a worker
+     so other requests remain responsive; cancellation releases pins even when
+     that worker finishes later. Failed or cancelled muxes remove
+     partial MP3/M4B files while retaining the cached audio and resume manifest.
 
 **Partial / total failure (S2):**
 9. **Per-chapter fault isolation**: stub synth raises on chapter index 1 →

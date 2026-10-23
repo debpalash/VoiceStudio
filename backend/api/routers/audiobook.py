@@ -45,6 +45,7 @@ from services.audiobook import (
     synthesize_chapter,
 )
 from services.longform_render import (
+    CacheLease,
     LONGFORM_CACHE_SUBDIR,
     LOUDNESS_PRESETS,
     build_concat_list,
@@ -690,56 +691,22 @@ async def _prepare_synth(
     return info["synth"], info["sample_rate"], resolve, engine_id
 
 
-def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, lexicon=None,
-                           language=None, opts=None, voice_map=None):
-    """Render one chapter, content-addressed so a re-run reuses it (resume).
-
-    Returns ``(wav_path, duration_s, was_cached, seg_stats)``. Two cache
-    layers:
-
-    * Outer — the WAV at ``cache_dir/<key>.wav`` where ``key`` is
-      :func:`chapter_cache_key` over the chapter's spans + sample rate +
-      engine + each voice's resolved signature (+ the lexicon, so a lexicon
-      edit re-renders). A fully-unchanged chapter hits here and never touches
-      segment files. With invisible watermarking active the key also carries a
-      watermark tag (#1169) — pre-#1169 chapter caches (unmarked audio)
-      deliberately miss once and re-render marked; with watermarking off the
-      derivation is unchanged and released-version caches keep hitting.
-      ``seg_stats`` is ``None``.
-    * Inner — on a chapter miss, each spoken span goes through the
-      :class:`services.longform_render.SegmentCache` under
-      ``cache_dir/segments``: cached segments load from disk, only the
-      edited/missing ones synthesize, and each fresh segment persists the
-      moment it renders (an interrupted chapter resumes from them).
-      ``seg_stats`` is ``{"total": spoken_spans, "cached": reused}``.
-
-    Span text is normalized (``services.text_normalization``) up front — BEFORE
-    either cache key and BEFORE ``synthesize_chapter``'s lexicon pass, so the
-    per-project dictionary operates on normalized text and toggling / changing
-    normalization output naturally invalidates cached chapters and segments.
-
-    Runs in the GPU-pool executor.
-    """
+def _chapter_cache_inputs(chapter, sr, engine_id, resolve, cache_dir, lexicon=None,
+                          language=None, opts=None, voice_map=None, cache_lease=None):
+    """Derive and reserve the same inputs for planning and chapter rendering."""
     import json
-    import wave
 
-    from services.audio_io import atomic_save_wav
     from services.audiobook import ExpressiveOptions, Span, voice_map_signature
     from services.longform_render import (
         SegmentCache,
-        adopt_cached_file,
         chapter_cache_key,
         chapter_content_id,
-        explain_chapter_miss,
-        has_chapter_inputs,
-        record_chapter_inputs,
         remember_voices_root,
-        wav_is_complete,
     )
     from core.config import VOICES_DIR
     from services.pronunciation import normalize_lexicon
     from services.text_normalization import normalize_for_tts
-    from services.watermark import mark_synthetic, will_mark
+    from services.watermark import will_mark
 
     opts = opts or ExpressiveOptions()
 
@@ -847,6 +814,61 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
         inputs[f"{label} instruct"] = v.get("instruct")
         inputs[f"{label} seed"] = v.get("seed")
 
+    if cache_lease is not None:
+        for candidate in (wav_path, *legacy_paths):
+            cache_lease.hold(candidate)
+    seg_cache = SegmentCache(cache_dir, sample_rate=sr, engine_id=engine_id,
+                             voice_sig=voice_sigs, extra_sig=seg_extra_sig,
+                             vary_repeats=opts.vary_repeats,
+                             legacy_voice_sigs=legacy_voice_sigs, lease=cache_lease)
+    seg_cache.reserve(spans)
+    return spans, wav_path, legacy_paths, content_id, inputs, seg_cache
+
+
+def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, lexicon=None,
+                           language=None, opts=None, voice_map=None, cache_lease=None):
+    """Render one chapter, content-addressed so a re-run reuses it (resume).
+
+    Returns ``(wav_path, duration_s, was_cached, seg_stats)``. Two cache
+    layers:
+
+    * Outer — the WAV at ``cache_dir/<key>.wav`` where ``key`` is
+      :func:`chapter_cache_key` over the chapter's spans + sample rate +
+      engine + each voice's resolved signature (+ the lexicon, so a lexicon
+      edit re-renders). A fully-unchanged chapter hits here and never touches
+      segment files. With invisible watermarking active the key also carries a
+      watermark tag (#1169) — pre-#1169 chapter caches (unmarked audio)
+      deliberately miss once and re-render marked; with watermarking off the
+      derivation is unchanged and released-version caches keep hitting.
+      ``seg_stats`` is ``None``.
+    * Inner — on a chapter miss, each spoken span goes through the
+      :class:`services.longform_render.SegmentCache` under
+      ``cache_dir/segments``: cached segments load from disk, only the
+      edited/missing ones synthesize, and each fresh segment persists the
+      moment it renders (an interrupted chapter resumes from them).
+      ``seg_stats`` is ``{"total": spoken_spans, "cached": reused}``.
+
+    Span text is normalized (``services.text_normalization``) up front — BEFORE
+    either cache key and BEFORE ``synthesize_chapter``'s lexicon pass, so the
+    per-project dictionary operates on normalized text and toggling / changing
+    normalization output naturally invalidates cached chapters and segments.
+
+    Runs in the GPU-pool executor.
+    """
+    import wave
+
+    from services.audio_io import atomic_save_wav
+    from services.longform_render import (
+        adopt_cached_file, explain_chapter_miss, has_chapter_inputs,
+        record_chapter_inputs, wav_is_complete,
+    )
+    from services.watermark import mark_synthetic
+
+    opts = opts or ExpressiveOptions()
+    spans, wav_path, legacy_paths, content_id, inputs, seg_cache = _chapter_cache_inputs(
+        chapter, sr, engine_id, resolve, cache_dir, lexicon,
+        language, opts, voice_map, cache_lease,
+    )
     for candidate in dict.fromkeys((wav_path, *legacy_paths)):
         if not os.path.exists(candidate):
             continue
@@ -861,6 +883,10 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
             continue  # corrupt cache entry — try the next, else re-render
         if candidate != wav_path:
             candidate = adopt_cached_file(candidate, wav_path)
+        try:
+            os.utime(candidate, None)
+        except OSError:
+            pass
         if not has_chapter_inputs(cache_dir, content_id):
             record_chapter_inputs(cache_dir, content_id, inputs)
         return candidate, dur, True, None
@@ -873,10 +899,6 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
         logger.info("Chapter cache miss for %r: inputs unchanged, but the cached "
                     "audio file is gone (evicted or deleted)", str(chapter.title)[:80])
 
-    seg_cache = SegmentCache(cache_dir, sample_rate=sr, engine_id=engine_id,
-                             voice_sig=voice_sigs, extra_sig=seg_extra_sig,
-                             vary_repeats=opts.vary_repeats,
-                             legacy_voice_sigs=legacy_voice_sigs)
     audio, dur = synthesize_chapter(spans, synth, sr, lexicon=lexicon,
                                     segment_cache=seg_cache, **opts.join_kwargs())
     # Invisible provenance mark on the assembled chapter (#1169), tensor stage,
@@ -898,7 +920,8 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
 
 
 async def _run_chapter(chapter, *, default_voice, language, opts, voice_map,
-                       lexicon, cache_dir, lease=None):
+                       lexicon, cache_dir, lease=None, cache_lease=None,
+                       reserve_cache=None):
     """Render one chapter on this machine through the guarded GPU pool."""
     from services import gpu_gateway
     from services.model_manager import generate_timeout_s
@@ -916,6 +939,8 @@ async def _run_chapter(chapter, *, default_voice, language, opts, voice_map,
         default_voice, language=language, opts=opts, voice_map=voice_map,
         lease=lease,
     )
+    if reserve_cache is not None:
+        await asyncio.to_thread(reserve_cache, sr, engine_id, resolve)
     try:
         timeout_engine = get_backend_class(engine_id)
     except ValueError:
@@ -925,7 +950,7 @@ async def _run_chapter(chapter, *, default_voice, language, opts, voice_map,
         local=gpu_gateway.LocalCall(
             fn=lambda: _render_chapter_cached(
                 chapter, synth, sr, engine_id, resolve, cache_dir, lexicon,
-                language, opts, voice_map,
+                language, opts, voice_map, cache_lease,
             ),
             what="Audiobook chapter",
             timeout=generate_timeout_s(text, engine=timeout_engine),
@@ -1091,12 +1116,37 @@ async def _render_longform_sse(
     # front doors: an identical chapter renders once.
     cache_dir = os.path.join(OUTPUTS_DIR, LONGFORM_CACHE_SUBDIR)
     os.makedirs(cache_dir, exist_ok=True)
-    prune_cache_dir(cache_dir)  # bound disk before this job adds its chapters
     # Every reference take this render resolves stays held until it ends, so a
     # re-lock mid-book never lets the retired-voice sweep delete it (#2535).
     voice_lease = voice_leases.VoiceFileLease()
+    cache_lease = CacheLease()
+    startup_lease = CacheLease()
     try:
+        # Exact keys need the engine's sample rate, which can require an async
+        # model load. Protect existing inputs before the first yield/await,
+        # then narrow to this plan as soon as preparation succeeds.
+        startup_lease.hold_existing(cache_dir)
         resolved_lang = _resolve_default_language(language, default_voice)
+        reserved_plan = False
+
+        def reserve_cache(sr, engine_id, resolve):
+            nonlocal reserved_plan
+            if reserved_plan:
+                return
+            for chapter in plan.chapters:
+                try:
+                    _chapter_cache_inputs(
+                        chapter, sr, engine_id, resolve, cache_dir, lexicon,
+                        resolved_lang, opts, voice_map, cache_lease,
+                    )
+                except Exception:
+                    # A bad voice/chapter must still fail in its own chapter
+                    # boundary, without preventing the rest of the book.
+                    logger.debug("[%s] chapter cache reservation skipped", job_id,
+                                 exc_info=True)
+            reserved_plan = True
+            startup_lease.release()
+
         total = len(plan.chapters)
         chapter_files: list[str] = []
         chapters_meta: list[tuple[str, int]] = []
@@ -1132,7 +1182,8 @@ async def _render_longform_sse(
                 wav_path, dur, was_cached, seg_stats = await _run_chapter(
                     chapter, default_voice=default_voice, language=resolved_lang,
                     opts=opts, voice_map=voice_map, lexicon=lexicon,
-                    cache_dir=cache_dir, lease=voice_lease,
+                    cache_dir=cache_dir, lease=voice_lease, cache_lease=cache_lease,
+                    reserve_cache=reserve_cache,
                 )
             except Exception as e:  # isolate a bad chapter — keep going
                 logger.warning("[%s] chapter %d (%s) failed to render",
@@ -1246,14 +1297,26 @@ async def _render_longform_sse(
             measured = await measure_loudness(ffmpeg, concat_path, norm, job_id=job_id)
 
         with trace_stage("mux"):
-            await run_ffmpeg(
-                build_render_cmd(
-                    ffmpeg, concat_path, meta_path, out_path,
-                    fmt=ext, bitrate=bitrate, cover_path=_safe_cover_path(cover_path),
-                    loudness=loudness, measured=measured,
-                ),
-                job_id=job_id,
+            cmd = build_render_cmd(
+                ffmpeg, concat_path, meta_path, out_path,
+                fmt=ext, bitrate=bitrate, cover_path=_safe_cover_path(cover_path),
+                loudness=loudness, measured=measured,
             )
+            try:
+                rc, _, _ = await run_ffmpeg(cmd, job_id=job_id)
+                if rc != 0:
+                    raise RuntimeError(f"ffmpeg assembly failed (exit code {rc})")
+            except BaseException:
+                # Also runs on cancellation: failed encodes can leave sizeable
+                # files that the output library would mistake for finished work.
+                try:
+                    os.remove(out_path)
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    logger.warning("[%s] incomplete output cleanup failed", job_id,
+                                   exc_info=True)
+                raise
 
         if job_store is not None:
             try:
@@ -1318,6 +1381,11 @@ async def _render_longform_sse(
         yield _emit({"type": "error", "error": "render failed (see backend log)"})
     finally:
         voice_lease.release()
+        try:
+            prune_cache_dir(cache_dir)
+        finally:
+            startup_lease.release()
+            cache_lease.release()
 
 
 async def _public_longform_stream(plan, **render_kwargs):
