@@ -740,6 +740,11 @@
       "title": "Audio",
       "type": "string"
      },
+     "language": {
+      "default": "",
+      "title": "Language",
+      "type": "string"
+     },
      "match_duration": {
       "default": true,
       "title": "Match Duration",

@@ -2601,6 +2601,7 @@
     "pick_voice": "选择一个声音档案…",
     "match_duration": "匹配源时长",
     "match_duration_hint": "对结果做时间伸缩(保持音高),使其接近源音频的时长。",
+    "source_language": "源语音语言（自动 = 使用语音档案的语言）",
     "convert": "转换",
     "converting": "转换中…",
     "transcript": "识别到的内容",

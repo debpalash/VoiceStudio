@@ -2664,6 +2664,7 @@
     "pick_voice": "Pick a voice profile…",
     "match_duration": "Match source duration",
     "match_duration_hint": "Time-stretch the converted take (pitch preserved) to land near the source clip's length.",
+    "source_language": "Source speech language (Auto = use the voice profile's language)",
     "convert": "Convert",
     "converting": "Converting…",
     "transcript": "What it heard",

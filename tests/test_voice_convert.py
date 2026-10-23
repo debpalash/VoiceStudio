@@ -79,6 +79,15 @@ class _FakeASR:
         return self.result
 
 
+class _LangASR(_FakeASR):
+    """ASR whose ``transcribe`` accepts a language pin (like MLX/faster-whisper)."""
+
+    def transcribe(self, audio_path, *, word_timestamps=True, language=None):
+        self.calls.append({"audio_path": audio_path, "word_timestamps": word_timestamps,
+                           "language": language})
+        return self.result
+
+
 @pytest.fixture()
 def client():
     from fastapi.testclient import TestClient
@@ -559,3 +568,92 @@ def test_convert_router_is_registered():
     snapshot = os.path.join(os.path.dirname(__file__), "fixtures", "api_routes.txt")
     with open(snapshot, encoding="utf-8") as f:
         assert "POST /convert\n" in f.read()
+
+
+# ── Source language pin ─────────────────────────────────────────────────────
+
+
+def test_whisper_language_maps_names_and_keeps_auto():
+    from api.routers.voice_convert import _whisper_language
+
+    assert _whisper_language("Armenian") == "hy"
+    assert _whisper_language("Russian") == "ru"
+    assert _whisper_language("Hindi") == "hi"
+    assert _whisper_language("Bengali") == "bn"
+    assert _whisper_language("Thai") == "th"
+    assert _whisper_language("Burmese") == "my"
+    assert _whisper_language("Klingon") is None
+    assert _whisper_language("Auto") is None
+    assert _whisper_language("") is None
+    assert _whisper_language(None) is None
+
+
+def test_convert_pins_explicit_source_language(client, monkeypatch, clone_profile):
+    """An explicit ``language`` reaches the ASR so short non-Latin clips aren't
+    auto-detected as the wrong language (Armenian read as Russian)."""
+    fake = _make_fake_engine(f"fake-conv-{uuid.uuid4().hex[:6]}")
+    asr = _LangASR({"text": "hello", "segments": []})
+    _wire_stubs(monkeypatch, engine_cls=fake, asr=asr)
+
+    res = _post_convert(client, clone_profile, match_duration="0", language="Armenian")
+    assert res.status_code == 200, res.text
+    assert asr.calls[0]["language"] == "hy"
+
+
+def test_convert_auto_language_falls_back_to_profile_language(
+    client, monkeypatch, clone_profile,
+):
+    from core.db import db_conn
+
+    with db_conn() as conn:
+        conn.execute("UPDATE voice_profiles SET language=? WHERE id=?", ("Armenian", clone_profile))
+    fake = _make_fake_engine(f"fake-conv-{uuid.uuid4().hex[:6]}")
+    asr = _LangASR({"text": "hello", "segments": []})
+    _wire_stubs(monkeypatch, engine_cls=fake, asr=asr)
+
+    res = _post_convert(client, clone_profile, match_duration="0")
+    assert res.status_code == 200, res.text
+    assert asr.calls[0]["language"] == "hy"
+
+
+def test_convert_language_is_not_sent_to_asr_without_support(
+    client, monkeypatch, clone_profile,
+):
+    """Backends whose ``transcribe`` has no ``language`` option keep working."""
+    fake = _make_fake_engine(f"fake-conv-{uuid.uuid4().hex[:6]}")
+    asr = _FakeASR({"text": "hello", "segments": []})
+    _wire_stubs(monkeypatch, engine_cls=fake, asr=asr)
+
+    res = _post_convert(client, clone_profile, match_duration="0", language="Armenian")
+    assert res.status_code == 200, res.text
+    assert "language" not in asr.calls[0]
+
+
+def test_convert_explicit_language_beats_profile_language(client, monkeypatch, clone_profile):
+    """Picking Hindi on an English profile pins Hindi, not English."""
+    from core.db import db_conn
+
+    with db_conn() as conn:
+        conn.execute("UPDATE voice_profiles SET language=? WHERE id=?", ("English", clone_profile))
+    fake = _make_fake_engine(f"fake-conv-{uuid.uuid4().hex[:6]}")
+    asr = _LangASR({"text": "hello", "segments": []})
+    _wire_stubs(monkeypatch, engine_cls=fake, asr=asr)
+
+    res = _post_convert(client, clone_profile, match_duration="0", language="Hindi")
+    assert res.status_code == 200, res.text
+    assert asr.calls[0]["language"] == "hi"
+
+
+def test_convert_unsupported_pick_keeps_auto_detect(client, monkeypatch, clone_profile):
+    """A language Whisper lacks is not silently swapped for the profile's."""
+    from core.db import db_conn
+
+    with db_conn() as conn:
+        conn.execute("UPDATE voice_profiles SET language=? WHERE id=?", ("English", clone_profile))
+    fake = _make_fake_engine(f"fake-conv-{uuid.uuid4().hex[:6]}")
+    asr = _LangASR({"text": "hello", "segments": []})
+    _wire_stubs(monkeypatch, engine_cls=fake, asr=asr)
+
+    res = _post_convert(client, clone_profile, match_duration="0", language="Klingon")
+    assert res.status_code == 200, res.text
+    assert asr.calls[0]["language"] is None

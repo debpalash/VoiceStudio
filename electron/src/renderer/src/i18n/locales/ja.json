@@ -2601,6 +2601,7 @@
     "pick_voice": "ボイスプロファイルを選択…",
     "match_duration": "元の長さに合わせる",
     "match_duration_hint": "結果をタイムストレッチ(ピッチ維持)して、ソースクリップの長さに近づけます。",
+    "source_language": "元の音声の言語（自動 = ボイスプロファイルの言語）",
     "convert": "変換",
     "converting": "変換中…",
     "transcript": "聞き取った内容",

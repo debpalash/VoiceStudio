@@ -2605,6 +2605,7 @@
     "pick_voice": "Wybierz profil głosu…",
     "match_duration": "Dopasuj do długości źródła",
     "match_duration_hint": "Rozciąga wynik w czasie (z zachowaniem wysokości dźwięku), aby zbliżyć go do długości klipu źródłowego.",
+    "source_language": "Język mowy źródłowej (Auto = język profilu głosowego)",
     "convert": "Konwertuj",
     "converting": "Konwertowanie…",
     "transcript": "Co usłyszano",

@@ -2603,6 +2603,7 @@
     "pick_voice": "Elige un perfil de voz…",
     "match_duration": "Igualar duración de origen",
     "match_duration_hint": "Estira el resultado en el tiempo (conservando el tono) para acercarlo a la duración del clip de origen.",
+    "source_language": "Idioma del habla de origen (Auto = idioma del perfil de voz)",
     "convert": "Convertir",
     "converting": "Convirtiendo…",
     "transcript": "Lo que se oyó",

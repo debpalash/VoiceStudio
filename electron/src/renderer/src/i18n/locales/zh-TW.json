@@ -2601,6 +2601,7 @@
     "pick_voice": "選擇一個聲音設定檔…",
     "match_duration": "符合來源長度",
     "match_duration_hint": "對結果做時間伸縮(保持音高),使其接近來源音訊的長度。",
+    "source_language": "來源語音語言（自動 = 使用語音檔案的語言）",
     "convert": "轉換",
     "converting": "轉換中…",
     "transcript": "辨識到的內容",

@@ -2601,6 +2601,7 @@
     "pick_voice": "Välj en röstprofil…",
     "match_duration": "Matcha källans längd",
     "match_duration_hint": "Sträcker resultatet i tid (tonhöjden bevaras) så att det hamnar nära källklippets längd.",
+    "source_language": "Språk i källtalet (Auto = röstprofilens språk)",
     "convert": "Konvertera",
     "converting": "Konverterar…",
     "transcript": "Vad som hördes",

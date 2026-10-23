@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import inspect
 import logging
 import os
 import tempfile
@@ -111,7 +112,61 @@ async def _match_source_duration(audio_tensor, sample_rate: int, source_duration
         return audio_tensor
 
 
-async def _transcribe_source(tmp_path: str, *, source_lease=None) -> dict:
+# Whisper's own language table (code -> name), plus the aliases the language
+# picker uses. Kept here (not text_normalization's number-formatting table,
+# which only knows a few dozen languages) so every Whisper-supported pick pins.
+_WHISPER_LANGUAGES = {
+    "en": "english", "zh": "chinese", "de": "german", "es": "spanish", "ru": "russian",
+    "ko": "korean", "fr": "french", "ja": "japanese", "pt": "portuguese", "tr": "turkish",
+    "pl": "polish", "ca": "catalan", "nl": "dutch", "ar": "arabic", "sv": "swedish",
+    "it": "italian", "id": "indonesian", "hi": "hindi", "fi": "finnish", "vi": "vietnamese",
+    "he": "hebrew", "uk": "ukrainian", "el": "greek", "ms": "malay", "cs": "czech",
+    "ro": "romanian", "da": "danish", "hu": "hungarian", "ta": "tamil", "no": "norwegian",
+    "th": "thai", "ur": "urdu", "hr": "croatian", "bg": "bulgarian", "lt": "lithuanian",
+    "la": "latin", "mi": "maori", "ml": "malayalam", "cy": "welsh", "sk": "slovak",
+    "te": "telugu", "fa": "persian", "lv": "latvian", "bn": "bengali", "sr": "serbian",
+    "az": "azerbaijani", "sl": "slovenian", "kn": "kannada", "et": "estonian",
+    "mk": "macedonian", "br": "breton", "eu": "basque", "is": "icelandic", "hy": "armenian",
+    "ne": "nepali", "mn": "mongolian", "bs": "bosnian", "kk": "kazakh", "sq": "albanian",
+    "sw": "swahili", "gl": "galician", "mr": "marathi", "pa": "punjabi", "si": "sinhala",
+    "km": "khmer", "sn": "shona", "yo": "yoruba", "so": "somali", "af": "afrikaans",
+    "oc": "occitan", "ka": "georgian", "be": "belarusian", "tg": "tajik", "sd": "sindhi",
+    "gu": "gujarati", "am": "amharic", "yi": "yiddish", "lo": "lao", "uz": "uzbek",
+    "fo": "faroese", "ht": "haitian creole", "ps": "pashto", "tk": "turkmen",
+    "nn": "nynorsk", "mt": "maltese", "sa": "sanskrit", "lb": "luxembourgish",
+    "my": "myanmar", "bo": "tibetan", "tl": "tagalog", "mg": "malagasy", "as": "assamese",
+    "tt": "tatar", "haw": "hawaiian", "ln": "lingala", "ha": "hausa", "ba": "bashkir",
+    "jw": "javanese", "su": "sundanese", "yue": "cantonese",
+}
+_WHISPER_NAME_TO_CODE = {name: code for code, name in _WHISPER_LANGUAGES.items()} | {
+    "burmese": "my", "valencian": "ca", "flemish": "nl", "haitian": "ht",
+    "letzeburgesch": "lb", "pushto": "ps", "panjabi": "pa", "moldavian": "ro",
+    "moldovan": "ro", "sinhalese": "si", "castilian": "es", "mandarin": "zh",
+    "filipino": "tl", "farsi": "fa",
+}
+
+
+def _whisper_language(language: "str | None") -> "str | None":
+    """Language name (picker/profile) or ISO code -> Whisper code.
+
+    ``None`` for blank/"Auto"/not a Whisper language, which keeps Whisper's
+    auto-detect.
+    """
+    s = str(language or "").strip().lower()
+    if not s or s == "auto":
+        return None
+    if s in _WHISPER_NAME_TO_CODE:
+        return _WHISPER_NAME_TO_CODE[s]
+    return s if s in _WHISPER_LANGUAGES else None
+
+
+def _is_auto(language: "str | None") -> bool:
+    return str(language or "").strip().lower() in ("", "auto")
+
+
+async def _transcribe_source(
+    tmp_path: str, *, source_lease=None, language: "str | None" = None,
+) -> dict:
     """Active-ASR transcription of the uploaded clip (no word timestamps).
 
     Mirrors POST /transcribe: typed 409 + download CTA before any backend
@@ -139,7 +194,14 @@ async def _transcribe_source(tmp_path: str, *, source_lease=None) -> dict:
         # past an engine whose deep import chain is broken (#1185).
         from services.asr_backend import load_active_asr_backend
         backend = load_active_asr_backend()
-        return backend.transcribe(tmp_path, word_timestamps=False)
+        kwargs = {"word_timestamps": False}
+        code = _whisper_language(language)
+        # Pin the spoken language: auto-detect on short clips misreads e.g.
+        # Armenian as Russian. Backends without a ``language`` option keep
+        # auto-detecting.
+        if code and "language" in inspect.signature(backend.transcribe).parameters:
+            kwargs["language"] = code
+        return backend.transcribe(tmp_path, **kwargs)
 
     from services.model_manager import _gpu_pool
     release = source_lease.acquire() if source_lease is not None else None
@@ -174,6 +236,7 @@ async def convert_speech(
     audio: UploadFile = File(...),
     profile_id: str = Form(...),
     match_duration: bool = Form(True),
+    language: str = Form(""),
 ):
     """Convert a spoken clip into an existing voice profile's voice.
 
@@ -226,7 +289,14 @@ async def convert_speech(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
-        result = await _transcribe_source(tmp.name, source_lease=source_lease)
+        # Spoken language of the SOURCE clip: the explicit pick, else (Auto) the
+        # target profile's language (so Armenian speech isn't read as Russian).
+        # A pick Whisper doesn't support keeps auto-detect rather than
+        # silently switching to the profile's language.
+        source_language = cond["language"] if _is_auto(language) else language
+        result = await _transcribe_source(
+            tmp.name, source_lease=source_lease, language=source_language,
+        )
 
         segments = result.get("segments", [])
         text = result.get("text", "")

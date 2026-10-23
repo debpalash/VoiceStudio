@@ -2601,6 +2601,7 @@
     "pick_voice": "Bir ses profili seçin…",
     "match_duration": "Kaynak süresine eşitle",
     "match_duration_hint": "Sonucu zamanda esnetir (perde korunur) ve kaynak klibin uzunluğuna yaklaştırır.",
+    "source_language": "Kaynak konuşma dili (Otomatik = ses profilinin dili)",
     "convert": "Dönüştür",
     "converting": "Dönüştürülüyor…",
     "transcript": "Duyulan metin",

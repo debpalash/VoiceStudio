@@ -2601,6 +2601,7 @@
     "pick_voice": "Stimmprofil wählen…",
     "match_duration": "Quelldauer angleichen",
     "match_duration_hint": "Streckt das Ergebnis zeitlich (Tonhöhe bleibt erhalten), damit es etwa so lang wird wie der Quellclip.",
+    "source_language": "Sprache der Quellsprache (Auto = Sprache des Stimmprofils)",
     "convert": "Konvertieren",
     "converting": "Konvertiere…",
     "transcript": "Erkannter Text",

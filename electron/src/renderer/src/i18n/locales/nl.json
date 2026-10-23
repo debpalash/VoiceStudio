@@ -2601,6 +2601,7 @@
     "pick_voice": "Kies een stemprofiel…",
     "match_duration": "Bronduur aanhouden",
     "match_duration_hint": "Rekt het resultaat in de tijd (toonhoogte blijft behouden) tot ongeveer de lengte van de bronclip.",
+    "source_language": "Taal van de brongesproken tekst (Auto = taal van het stemprofiel)",
     "convert": "Converteren",
     "converting": "Converteren…",
     "transcript": "Wat er is gehoord",

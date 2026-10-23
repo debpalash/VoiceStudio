@@ -2601,6 +2601,7 @@
     "pick_voice": "Pilih profil suara…",
     "match_duration": "Samakan durasi sumber",
     "match_duration_hint": "Regangkan hasil secara waktu (nada tetap) agar mendekati panjang klip sumber.",
+    "source_language": "Bahasa ucapan sumber (Otomatis = bahasa profil suara)",
     "convert": "Konversi",
     "converting": "Mengonversi…",
     "transcript": "Yang terdengar",

@@ -2601,6 +2601,7 @@
     "pick_voice": "Chọn hồ sơ giọng nói…",
     "match_duration": "Khớp thời lượng nguồn",
     "match_duration_hint": "Kéo giãn kết quả theo thời gian (giữ nguyên cao độ) để gần bằng độ dài clip nguồn.",
+    "source_language": "Ngôn ngữ giọng nói nguồn (Tự động = ngôn ngữ của hồ sơ giọng nói)",
     "convert": "Chuyển đổi",
     "converting": "Đang chuyển đổi…",
     "transcript": "Nội dung nghe được",

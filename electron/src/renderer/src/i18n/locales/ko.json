@@ -2601,6 +2601,7 @@
     "pick_voice": "보이스 프로필 선택…",
     "match_duration": "원본 길이에 맞추기",
     "match_duration_hint": "결과를 타임 스트레치(음높이 유지)하여 소스 클립 길이에 가깝게 만듭니다.",
+    "source_language": "원본 음성 언어 (자동 = 음성 프로필 언어)",
     "convert": "변환",
     "converting": "변환 중…",
     "transcript": "인식된 내용",

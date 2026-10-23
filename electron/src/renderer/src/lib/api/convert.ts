@@ -14,6 +14,7 @@ export async function convertSpeech(
   profileId: string,
   matchDuration: boolean,
   signal: AbortSignal,
+  language = 'Auto',
 ): Promise<ConvertResult> {
   signal.throwIfAborted();
   const release = acquireSynthesis();
@@ -24,6 +25,7 @@ export async function convertSpeech(
     body.append('audio', audio);
     body.append('profile_id', profileId);
     body.append('match_duration', matchDuration ? '1' : '0');
+    if (language !== 'Auto') body.append('language', language);
     return await apiJson<ConvertResult>('/convert', { method: 'POST', body, signal });
   } finally {
     finishActivity();
