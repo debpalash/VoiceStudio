@@ -331,7 +331,7 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
         # the whole batch job at `.transcribe()` instead of degrading (#1185).
         backend = load_active_asr_backend()
         result = backend.transcribe(audio_path, word_timestamps=True)
-        detected_lang = result.get("language", "en")
+        detected_lang = result.get("language")
         segments = segment_transcript(result, duration=duration)
         segments = assign_speakers_heuristic(segments)
         for i, s in enumerate(segments):
@@ -349,7 +349,8 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
     # timeout to restore capacity.
     from services.asr_backend import run_transcribe_guarded
     segments, source_lang = await run_transcribe_guarded(_gpu_pool, _transcribe, what="Batch")
-    source_lang = (source_lang or "en").split("_")[0][:2].lower()
+    from services.dub_language import detected_source_language
+    source_lang = detected_source_language(source_lang)
     job["segments"] = segments
     job["source_lang"] = source_lang
     _set_progress(job, "transcribe", 100, segments_count=len(segments))
@@ -359,6 +360,12 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
             job["error"] = "Transcription produced no segments"
             job["status"] = "failed"
         return
+
+    if not source_lang:
+        raise RuntimeError(
+            "ASR did not return a detected source language. Use interactive dubbing "
+            "and select the source language, or choose an ASR model that reports it."
+        )
 
     # ── Engine resolution (issue #312 class) ────────────────────────────
     # Batch used to hardcode VoiceStudio regardless of the engine selected in

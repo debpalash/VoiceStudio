@@ -157,3 +157,54 @@ Sponsorship funds maintainer time, development tools, release infrastructure and
 
 [AGPL-3.0](LICENSE) covers the application, including commercial use under its conditions. Model weights, tokenizers, voices and generated-output conditions are separate; a paid app licence does not grant those rights. Clone voices only with permission. Model Manager now shows versioned model-source notices, evidence links and unresolved review gaps from the [shared inventory](docs/licensing/model-inventory.md). Its optional [reviewed-file preview](docs/licensing/model-review-workflow.md) does not enforce ordinary downloads or certify commercial permission. See [license details](LICENSE-NOTICE.md).
 
+
+### Optional whisper.cpp speech recognition
+
+For local transcription and translation, install the upstream
+[whisper.cpp CLI](https://github.com/ggml-org/whisper.cpp) and a compatible
+Whisper GGML model (for example `ggml-base.bin`). Binaries and models are
+user-managed; VoiceStudio does not download them automatically or offer them
+through Model Catalogue. Use a Vulkan-enabled CLI build for AMD GPU acceleration,
+a CUDA-enabled build for NVIDIA, or a Metal-enabled build on macOS. A Vulkan
+loader alone does not establish GPU support in the installed CLI.
+
+Set these environment variables before starting VoiceStudio (all desktop OSes):
+
+- `OMNIVOICE_ASR_BACKEND=whisper-cpp` selects the engine explicitly.
+- `OMNIVOICE_WHISPER_CPP_BIN` points to `whisper-cli` (`whisper-cli.exe` on Windows).
+- `OMNIVOICE_WHISPER_CPP_MODEL` points to your downloaded model file.
+- `OMNIVOICE_WHISPER_CPP_DEVICE` optionally selects the native GPU index.
+- `OMNIVOICE_WHISPER_CPP_BACKEND=cpu` disables native GPU acceleration.
+
+Alternatively, put the CLI in `backend/engines/whisper_cpp/bin/` or on `PATH`;
+`OMNIVOICE_WHISPER_CPP_DIR` selects its directory. On Linux and macOS, the CLI
+must have execute permission (`chmod +x /path/to/whisper-cli`). Legacy `main` executables are
+accepted only in an explicitly selected or package-local directory. Models are
+also found in `backend/engines/whisper_cpp/models/`, `~/.cache/whisper/`, or the
+existing Hugging Face cache for `ggerganov/whisper.cpp`. Global CPU selection
+always disables GPU use. Automatic ASR selection remains unchanged; diagnostics
+use conservative CPU estimates because the CLI's GPU providers are not verified.
+Older CLI builds without full JSON output can transcribe without word timings.
+If the CLI omits detected language metadata or returns malformed language
+metadata, it stays unknown: select a source
+language in interactive dubbing before translating; batch dubbing requires ASR
+language metadata.
+In Dubbing, the source language you choose applies everywhere the source text
+is read: the translation request, the Argos language packs checked and installed
+for the job, and the glossary terms extracted from it. Auto-detection only fills
+in while no explicit choice is made, and when neither the choice nor the
+detection names a language the source stays unknown instead of defaulting to
+English.
+Translation requires a multilingual model; English-only `.en`, Turbo, and
+Distil checkpoints are rejected for translation. That decision follows the
+checkpoint's own file name, so a model cached in the Hugging Face hub stays
+recognisable: the cache stores each model as a symlink into a
+content-addressed blob, and the cached entry's name (not the blob's hash)
+decides what the checkpoint can do. The licence check follows the file
+rather than the name: a selected model keeps the terms of the repository
+that physically holds it, even when a cache entry points somewhere else.
+Models resolved from a Hugging Face cache retain their source repository
+licence check. Other custom local files have no assumed repository identity;
+their terms remain your responsibility.
+Audio conversion permits local file and pipe inputs only. Remote URL entries
+in uploaded playlists are rejected.

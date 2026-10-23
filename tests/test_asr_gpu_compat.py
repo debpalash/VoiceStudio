@@ -28,13 +28,14 @@ _EXPECTED = {
     # Crash-isolated sidecar wraps the same CTranslate2 engine as
     # faster-whisper — same device support (#730 residual B).
     "faster-whisper-isolated": ("cuda", "cpu"),
+    "whisper-cpp": ("vulkan", "cuda", "mps", "cpu"),
 }
 
 # Engines that legitimately have NO cpu path (hard platform/GPU gate in
 # is_available — e.g. parakeet-mlx gates on Apple Silicon via mlx_supported()).
 _GPU_ONLY: set[str] = {"parakeet-mlx"}
 
-_VALID = {"cuda", "rocm", "mps", "xpu", "npu", "cpu"}
+_VALID = {"cuda", "rocm", "mps", "xpu", "npu", "vulkan", "cpu"}
 
 
 def _cls(engine_id):

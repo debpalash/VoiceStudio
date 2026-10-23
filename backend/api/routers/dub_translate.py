@@ -317,14 +317,21 @@ def _guess_lang_from_text(segments) -> str | None:
     return None
 
 
-def _resolve_source_lang(req: TranslateRequest) -> str:
-    """Pick source language: explicit request > job.source_lang > text guess > 'en'."""
+def _resolve_source_lang(req: TranslateRequest) -> str | None:
+    """Prefer explicit or job source; unknown ASR needs user selection.
+
+    Text-only calls retain their legacy script guess / English fallback.
+    """
     if getattr(req, "source_lang", None):
         return req.source_lang
     if getattr(req, "job_id", None):
         job = _get_job(req.job_id)
-        if job and job.get("source_lang"):
-            return job["source_lang"]
+        if job:
+            source = job.get("source_lang_override") or job.get("source_lang")
+            if source:
+                return source
+            if job.get("source_lang_detection_missing"):
+                return None
     return _guess_lang_from_text(getattr(req, "segments", None)) or "en"
 
 
@@ -412,6 +419,11 @@ async def dub_translate(req: TranslateRequest):
         api_key = os.environ.get("TRANSLATE_API_KEY", "")
         loop = asyncio.get_running_loop()
         src_lang = _resolve_source_lang(req)
+        if src_lang is None:
+            return JSONResponse(status_code=400, content={
+                "error": "Source language is unknown. Select the source language before translating.",
+                "code": "source_language_required",
+            })
 
         # Offline NLLB Transformer Translation
         if provider == "nllb":

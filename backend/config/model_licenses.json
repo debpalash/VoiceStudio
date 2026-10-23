@@ -3250,6 +3250,54 @@
           "Qwen3-1.7B-Q4_K_M.gguf"
         ]
       }
+    },
+    {
+      "id": "ggerganov/whisper.cpp",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "ggerganov/whisper.cpp",
+      "source_url": "https://huggingface.co/ggerganov/whisper.cpp",
+      "evidence_url": "https://huggingface.co/ggerganov/whisper.cpp/blob/5359861c739e955e79d9a303bcbc70fb988958b1/README.md",
+      "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+      "engines": [
+        "whisper-cpp"
+      ],
+      "configured_at": "backend/engines/whisper_cpp/bootstrap.py:29",
+      "notes": "Model-card metadata only: the pinned card declares the MIT licence and is not gated. The GGML/GGUF weights and the whisper.cpp CLI are user-managed and are never downloaded or redistributed by VoiceStudio, so no runtime revision is pinned here and no permission review was performed. Component terms, attribution text and the per-file terms of the selected checkpoint remain under review.",
+      "runtime_revision": null,
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": null,
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "not_required",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [
+          {
+            "url": "https://huggingface.co/ggerganov/whisper.cpp/blob/5359861c739e955e79d9a303bcbc70fb988958b1/README.md",
+            "checked_at": "2026-10-21",
+            "method": "read_pinned_source"
+          }
+        ],
+        "open_questions": [
+          "Governing terms at the installed checkpoint revision",
+          "Attribution/NOTICE/redistribution duties for the selected GGML/GGUF file",
+          "Reference audio and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
     }
   ],
   "dynamic_assets": [

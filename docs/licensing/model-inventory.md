@@ -1,6 +1,6 @@
 # Model licence inventory
 
-`backend/config/model_licenses.json` records 56 configured model repositories and
+`backend/config/model_licenses.json` records 63 configured model repositories and
 seven unresolved asset families. Each record has an upstream licence label,
 commercial-use review flag, credit text, source/evidence links and review notes.
 Pinned model-card revisions identify the evidence inspected; they do not pin
@@ -23,6 +23,14 @@ ModelScope model, and the failed matching Hugging Face query is not evidence of
 its terms. SDK-selected alignment, VAD, watermark, separation and translation
 assets need individual resolved identities and terms before clearance. Arbitrary
 user models and environment overrides cannot inherit a family's clearance.
+
+The optional local whisper.cpp engine contributes the `ggerganov/whisper.cpp`
+weights repository. Its record is an external runtime pin with a null runtime
+revision: VoiceStudio never downloads or redistributes those weights, the
+installed file is user-managed, and the record therefore carries the pinned
+model card's metadata (MIT licence, not gated) with no permission review. The
+engine reads the weights from the user's own cache or path, and the licence
+check follows the repository that physically holds the file the user selected.
 
 Run the offline inventory check:
 
@@ -58,7 +66,7 @@ that all selected assets or activities are covered.
 
 `scripts/generate_model_license_data.py` generates
 [`model-license-data.json`](model-license-data.json) from the same registry and
-catalogue without importing engines or downloading models. It includes all 56
+catalogue without importing engines or downloading models. It includes all 63
 inventory rows, including dependencies outside the visible catalogue, the
 dynamic families, registry version/digest and source provenance. The website
 vendors these exact bytes as `public/model-license-data.json`, with the immutable

@@ -94,7 +94,7 @@ def _fake_ffmpeg_factory(write_file: bool = True):
             # Positional cmd ends with "<output>" "-y" — scan for an abs path arg.
             out = None
             for arg in reversed(cmd):
-                if isinstance(arg, str) and arg.startswith("/") and "." in Path(arg).name:
+                if isinstance(arg, str) and Path(arg).is_absolute() and "." in Path(arg).name:
                     out = arg
                     break
             if out:
@@ -520,4 +520,4 @@ class TestAudioOnlyDubbing:
 
         assert dc._detected_source_lang("yue") == "yue"
         assert dc._detected_source_lang("es_ES") == "es"
-        assert dc._detected_source_lang("unknown-language") == "en"
+        assert dc._detected_source_lang("unknown-language") is None

@@ -358,7 +358,7 @@ class ProductionTests(unittest.TestCase):
 
     def test_production_rows_never_use_synthetic_positive_fixtures(self):
         registry = ml.load_registry()
-        self.assertEqual(len(registry["models"]), 62)
+        self.assertEqual(len(registry["models"]), 63)
         self.assertEqual(len(registry["dynamic_assets"]), 7)
         for row in registry["models"]:
             self.assertEqual(row["component_closure"], "incomplete")

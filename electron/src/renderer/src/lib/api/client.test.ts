@@ -44,6 +44,22 @@ describe("errorFromResponse", () => {
     expect(translate).toHaveBeenCalledWith("engines.argosRuntimeUnavailable");
     expect(err.payload?.detail).toEqual(detail);
   });
+  it("localizes the unknown source language gate and retains diagnostics", async () => {
+    const translate = vi
+      .spyOn(i18next, "t")
+      .mockReturnValue("Choose source and target languages.");
+    const detail = {
+      code: "source_language_required",
+      message:
+        "Source language is unknown. Select the source language before checking or installing its language pack.",
+    };
+    const err = await errorFromResponse(
+      new Response(JSON.stringify({ detail }), { status: 422 }),
+    );
+    expect(err.detail).toBe("Choose source and target languages.");
+    expect(translate).toHaveBeenCalledWith("workflowRun.invalid_language");
+    expect(err.payload?.detail).toEqual(detail);
+  });
   it("announces unaccepted model licences so the app can ask for acceptance", async () => {
     const translate = vi
       .spyOn(i18next, "t")

@@ -108,6 +108,13 @@ function detailToString(detail: unknown): string {
     detail.code === "dub_background_unavailable"
   )
     return tr("dubIntegrity.backgroundUnavailable");
+  if (
+    detail &&
+    typeof detail === "object" &&
+    "code" in detail &&
+    detail.code === "source_language_required"
+  )
+    return tr("workflowRun.invalid_language");
   if (typeof detail === "string") return detail;
   if (detail == null) return "";
   if (
