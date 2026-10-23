@@ -259,6 +259,12 @@ _ASS_OVERRIDE_RE = re.compile(r"\{\\[^{}\n]*\}")
 _LINE_BREAK_RE = re.compile(r"<br[ \t]*/?>", re.IGNORECASE)
 # An `&` that does not already start a character reference.
 _BARE_AMPERSAND_RE = re.compile(r"&(?!#\d+;|#[xX][0-9a-fA-F]+;|[A-Za-z][A-Za-z0-9]*;)")
+# Ruby pronunciation annotations (<rt>...</rt>, <rtc>...</rtc>).
+# Stripped before plain-text extraction so annotations are not duplicated as spoken dialogue.
+_RUBY_ANNOTATION_RE = re.compile(
+    r"<(?:rt|rtc)(?=[\s.>])[^<>\n]*>.*?(?:</(?:rt|rtc)>|(?=</ruby>)|$)",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 def spoken_cue_text(text: str, *, webvtt: bool = False) -> str:
@@ -271,6 +277,7 @@ def spoken_cue_text(text: str, *, webvtt: bool = False) -> str:
     timestamps) and ASS overrides are removed.
     """
     out = _LINE_BREAK_RE.sub(" ", _ASS_OVERRIDE_RE.sub("", text))
+    out = _RUBY_ANNOTATION_RE.sub("", out)
     out = (_WEBVTT_TAG_RE if webvtt else _SRT_MARKUP_RE).sub("", out)
     if webvtt:
         out = html.unescape(out)
