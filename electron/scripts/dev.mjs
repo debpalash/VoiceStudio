@@ -158,6 +158,10 @@ export function launchElectronVite(
   const { bin } = JSON.parse(readFileSync(electronVitePackage, 'utf8'));
   const electronViteBin = resolve(dirname(electronVitePackage), bin['electron-vite']);
   const env = { ...process.env };
+  // VS Code's extension host exports ELECTRON_RUN_AS_NODE to its children, so a
+  // coding agent running in the editor passed it on and the app's Electron ran as
+  // plain Node, dying on its first `electron` import.
+  delete env.ELECTRON_RUN_AS_NODE;
   // Electron 42+ downloads lazily through its public entry point. electron-vite
   // reads path.txt directly, so resolve the binary before it starts on every OS.
   env.ELECTRON_EXEC_PATH ||= resolveElectronExecutable();
@@ -176,7 +180,11 @@ export function launchElectronVite(
     });
   }
 
-  const child = spawnProcess(process.execPath, [electronViteBin, 'dev', '--watch', ...args], {
+  // `preview` (the `start` script) runs the production build through the same
+  // binary resolution; without it a fresh checkout failed "Electron uninstall".
+  const command =
+    args[0] === 'preview' ? ['preview', ...args.slice(1)] : ['dev', '--watch', ...args];
+  const child = spawnProcess(process.execPath, [electronViteBin, ...command], {
     cwd: electronRoot,
     env,
     stdio: 'inherit',

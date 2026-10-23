@@ -100,6 +100,59 @@ describe('Electron binary resolution', () => {
     }
   });
 
+  it('runs the production preview through the same binary resolution', () => {
+    // `start` and `desktop-prod` called `electron-vite preview` directly, so a
+    // fresh checkout failed with "Electron uninstall" before the lazy download.
+    const scripts = JSON.parse(readFileSync(resolve(__dirname, '../../package.json'), 'utf8'))
+      .scripts as Record<string, string>;
+    expect(scripts.start).toBe('node scripts/dev.mjs preview');
+    expect(scripts.preview).toBe('node scripts/dev.mjs preview');
+
+    const spawn = vi.fn(() => ({ on: vi.fn() }));
+    const resolveElectron = vi.fn(() => '/electron/dist/electron');
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    const previousExecutable = process.env.ELECTRON_EXEC_PATH;
+    delete process.env.ELECTRON_EXEC_PATH;
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    try {
+      launchElectronVite(['preview', '--skipBuild'], spawn, resolveElectron);
+      expect(resolveElectron).toHaveBeenCalledOnce();
+      expect(spawn).toHaveBeenCalledWith(
+        process.execPath,
+        [expect.stringContaining('electron-vite'), 'preview', '--skipBuild'],
+        expect.objectContaining({
+          env: expect.objectContaining({ ELECTRON_EXEC_PATH: '/electron/dist/electron' }),
+        }),
+      );
+    } finally {
+      Object.defineProperty(process, 'platform', platform);
+      if (previousExecutable === undefined) delete process.env.ELECTRON_EXEC_PATH;
+      else process.env.ELECTRON_EXEC_PATH = previousExecutable;
+    }
+  });
+
+  it('never hands an inherited ELECTRON_RUN_AS_NODE to the app', () => {
+    const spawn = vi.fn(() => ({ on: vi.fn() }));
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    const previous = process.env.ELECTRON_RUN_AS_NODE;
+    process.env.ELECTRON_RUN_AS_NODE = '1';
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    try {
+      launchElectronVite([], spawn, () => '/electron/dist/electron');
+      const [, , options] = spawn.mock.calls[0] as unknown as [
+        string,
+        string[],
+        { env: NodeJS.ProcessEnv },
+      ];
+      expect(options.env.ELECTRON_RUN_AS_NODE).toBeUndefined();
+      expect(process.env.ELECTRON_RUN_AS_NODE).toBe('1');
+    } finally {
+      Object.defineProperty(process, 'platform', platform);
+      if (previous === undefined) delete process.env.ELECTRON_RUN_AS_NODE;
+      else process.env.ELECTRON_RUN_AS_NODE = previous;
+    }
+  });
+
   it('does not launch Vite when binary resolution fails', () => {
     const spawn = vi.fn(() => ({ on: vi.fn() }));
     const failure = new Error('Electron binary download failed');
