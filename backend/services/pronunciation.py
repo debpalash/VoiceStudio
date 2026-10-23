@@ -136,14 +136,21 @@ def apply_lexicon(text: str, lexicon: Optional[dict]) -> str:
 def load_lexicon(path) -> dict[str, str]:
     """Load + normalize a lexicon from a JSON file.
 
-    A missing file, empty file, or non-object JSON yields ``{}`` rather than
-    raising — a project simply has no lexicon yet. Malformed JSON still raises
-    (caller's choice to surface it).
+    A missing file, empty file, unreadable file (non-UTF-8 bytes, OS error),
+    or non-object JSON yields ``{}`` rather than raising — a project simply
+    has no lexicon yet. Malformed JSON still raises (caller's choice to
+    surface it).
     """
     p = Path(path)
     if not p.is_file():
         return {}
-    raw = p.read_text(encoding="utf-8").strip()
+    try:
+        raw = p.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        # Same family as a missing file: the lexicon is unreadable, so
+        # treat it as not-yet-authored. Malformed JSON (the next step) is
+        # a different bug class and still propagates as before.
+        return {}
     if not raw:
         return {}
     data = json.loads(raw)
