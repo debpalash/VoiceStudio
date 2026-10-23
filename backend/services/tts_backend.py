@@ -3481,7 +3481,7 @@ _INSTALL_HINTS: dict[str, str] = {
     "indextts2":     "git clone --branch indextts-2.5 https://github.com/index-tts/index-tts.git && cd index-tts && uv venv .venv && uv pip install --python .venv/bin/python -e .  (Windows: .venv\\Scripts\\python.exe; NOT uv sync --all-extras)",
     "gpt-sovits":    "External API server — start api_v2.py on port 9880",
     "sherpa-onnx":   "pip install sherpa-onnx  (universal ONNX runtime, WASM-ready)",
-    "omnivoice-gguf":"Bundled — runs the C++ omnivoice-tts binary in bin/. Quants download lazily from Serveurperso/OmniVoice-GGUF on first generate.",
+    "omnivoice-gguf":"Bundled — runs the C++ omnivoice-tts binary in bin/. Weights are local-only: install the pinned pair once with `hf download Serveurperso/OmniVoice-GGUF omnivoice-base-Q4_K_M.gguf omnivoice-tokenizer-Q4_K_M.gguf --revision 361609388ae572a820d085185bbbe2a2aac4b30e --cache-dir \"<the cache directory this app reads>\"` (the app never downloads them; see docs/engines/omnivoice-gguf.md).",
     "supertonic3":   "uv sync --extra supertonic  (CPU-only ONNX, 31 langs, ~400 MB model on first use; OpenRAIL-M model license)",
     "pockettts":     "uv sync --extra pockettts  (Kyutai, CPU-only, ~100 MB model on first use; MIT code + CC-BY-4.0 weights; HF-gated, review terms and set HF_TOKEN)",
     "moss-tts-v15":  "git clone OpenMOSS/MOSS-TTS + set OMNIVOICE_MOSS_TTS_V15_DIR  (own venv, transformers==5.0; 8B, ~16 GB weights; CUDA/ROCm/XPU/NPU/CPU, no MPS; Apache-2.0)",

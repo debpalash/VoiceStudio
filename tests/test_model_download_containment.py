@@ -462,6 +462,7 @@ def test_normal_persona_bundle_still_parses(tmp_path):
 @pytest.fixture
 def gguf(monkeypatch, tmp_path):
     from engines.omnivoice_gguf import backend as gguf_backend
+    from huggingface_hub import constants
 
     root = tmp_path / "repo"
     (root / "bin").mkdir(parents=True)
@@ -471,6 +472,25 @@ def gguf(monkeypatch, tmp_path):
     monkeypatch.setattr(gguf_backend, "_REPO_ROOT", root)
     monkeypatch.setattr(gguf_backend, "_binary_path", lambda slug=None: fake_bin)
     monkeypatch.setattr(gguf_backend, "_is_macos_quarantined", lambda p: False)
+    # Readiness covers the weights too, so the fixture installs the pinned
+    # pair in a throwaway cache: a test that expects "ready" has to supply
+    # the weights it claims to have. The manifest checks below still decide
+    # the outcome on their own.
+    quant_map = gguf_backend._load_quant_map()
+    revision = quant_map["_meta"]["source_commit_sha"]
+    entry = quant_map["cpu"]
+    cache = tmp_path / "hub"
+    folder = cache / "models--Serveurperso--OmniVoice-GGUF" / "snapshots" / revision
+    folder.mkdir(parents=True)
+    for name in (entry["base"], entry["tokenizer"]):
+        (folder / name).write_bytes(b"gguf-weights")
+    monkeypatch.setattr(constants, "HF_HUB_CACHE", str(cache))
+    # A clean compute environment: an ambient CPU pin or native backend
+    # would change which quant the engine looks for.
+    for variable in ("OMNIVOICE_DEVICE", "OMNIVOICE_GGUF_BACKEND",
+                     "OMNIVOICE_GGUF_DEVICE", "GGML_BACKEND"):
+        monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setenv("OMNIVOICE_DEVICE", "auto")
     return gguf_backend, root / "bin" / "checksums.sha256", fake_bin
 
 

@@ -24,12 +24,14 @@ on:
     paths:
       - backend/engines/omnivoice_gguf/quant_map.json
       - scripts/build-omnivoice-tts.sh
+      - scripts/lib/omnivoice-vulkan.sh
       - .github/workflows/build-omnivoice-tts.yml
   push:
     branches: [main]
     paths:
       - backend/engines/omnivoice_gguf/quant_map.json
       - scripts/build-omnivoice-tts.sh
+      - scripts/lib/omnivoice-vulkan.sh
       - .github/workflows/build-omnivoice-tts.yml
   workflow_dispatch:
 

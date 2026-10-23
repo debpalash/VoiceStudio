@@ -38,21 +38,64 @@ decision doc cannot drift.
 
 ## Quant variants
 
-| Compute class | Quant | Base size | Tokenizer size | Total VRAM | When auto-selected |
-|---------------|-------|-----------|----------------|------------|---------------------|
-| `high-vram`   | BF16  | 1.23 GB   | 373 MB         | ~1.60 GB   | 12 GB+ VRAM        |
-| `mid-vram`    | Q8_0  | 656 MB    | 289 MB         | ~945 MB    | 4-12 GB VRAM       |
-| `low-vram`    | Q4_K_M| 407 MB    | 252 MB         | ~659 MB    | 1-4 GB VRAM        |
-| `cpu`         | Q4_K_M| 407 MB    | 252 MB         | ~659 MB    | CPU-only fallback  |
+| Compute class | Quant | Base size | Tokenizer size | Total VRAM | Selection policy |
+|---------------|-------|-----------|----------------|------------|------------------|
+| `high-vram`   | BF16  | 1.23 GB   | 373 MB         | ~1.60 GB   | Manual override; 12 GB+ VRAM sizing guidance |
+| `mid-vram`    | Q8_0  | 656 MB    | 289 MB         | ~945 MB    | Manual override; 4-12 GB VRAM sizing guidance |
+| `low-vram`    | Q4_K_M| 407 MB    | 252 MB         | ~659 MB    | Manual option; 1-4 GB VRAM sizing guidance |
+| `cpu`         | Q4_K_M| 407 MB    | 252 MB         | ~659 MB    | Automatic default while native capacity is unverified |
 
-F32 is published by the model but not auto-selected by the probe — it's
+The automatic `cpu` tier selects the smallest quant without changing the native
+compute backend: GPU acceleration remains available. Explicit allowed quant
+filenames remain authoritative.
+
+F32 is published by the model but requires an explicit override — it's
 ~3.2 GB total and offers no quality gain over BF16. Available as a
 Settings override for users on machines where bit-exact reference output
 is needed.
 
+## Weights are local-only
+
+The engine never downloads weights. `quant_cache.py` resolves the pinned
+base+tokenizer pair from the local HuggingFace cache
+(`try_to_load_from_cache`, a pure filesystem lookup) and both readiness
+(`is_available`) and generation (`_resolve_quant_paths`) go through that
+one path, so they cannot disagree about what will be loaded.
+
+- A complete pair counts only when **both** files exist at the pinned
+  revision; a half-installed pair, a directory, a dangling symlink and a
+  zero-byte partial download do not.
+- The selected tier is used whenever its pair is installed. An explicit
+  Settings override is strict — only that exact pair counts. An explicit
+  CPU choice (Settings, `OMNIVOICE_DEVICE=cpu`, `OMNIVOICE_GGUF_BACKEND=cpu`
+  or a native `GGML_BACKEND=CPU`) keeps the CPU tier's quant policy, so
+  a larger cached quant is not substituted for it.
+- Only when the selected pair is absent, and the selection is not an
+  explicit CPU choice, does the smallest complete cached automatic pair
+  (Q8_0, then BF16) stand in (#3042). Readiness and generation never
+  download a replacement, and an installed quant is never rewritten.
+  Override-only quants (F32) are never auto-selected.
+
+Installing a pair is an explicit, user-run step, and it has to land in
+the cache this app reads — a standalone `hf` command does not inherit
+the app's cache location:
+
+```bash
+hf download Serveurperso/OmniVoice-GGUF \
+  omnivoice-base-Q4_K_M.gguf omnivoice-tokenizer-Q4_K_M.gguf \
+  --revision 361609388ae572a820d085185bbbe2a2aac4b30e \
+  --cache-dir "<the cache directory this app reads>"
+```
+
+The revision is `_meta.source_commit_sha` from `quant_map.json`. The
+catalogue shows a generic "not installed yet" line plus a link to
+`docs/engines/omnivoice-gguf.md`, which carries the per-platform
+`--cache-dir` examples. The internal diagnostic keeps the recipe; public
+views show the localized manual-install guidance and the guide link.
+
 ## Hardware probe
 
-`hardware_probe.detect_capabilities()` walks:
+`hardware_probe.detect_capabilities()` describes the parent Python process:
 
 1. `torch.cuda.is_available()` → CUDA backend, total VRAM from
    `torch.cuda.mem_get_info()`.
@@ -62,6 +105,12 @@ is needed.
 
 Thresholds (in `_bucket()`): 12 GB → high-vram, 4 GB → mid-vram,
 1 GB → low-vram, else cpu.
+
+That parent CUDA/MPS adapter may differ from the native runtime's selected
+adapter, so its memory cannot establish a safe automatic quant size.
+`compute.automatic_compute_class()` instead uses the conservative `cpu` tier
+until native adapter capacity can be verified. Larger quants remain available
+through explicit Settings overrides.
 
 ## Subprocess invocation
 

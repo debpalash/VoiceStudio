@@ -55,6 +55,10 @@ Local workflows run on your hardware. Remote services are optional; usage analyt
 
 </details>
 
+OmniVoice GGUF source builds can optionally use Vulkan on Windows and Linux;
+see the [native engine guide](docs/engines/omnivoice-gguf.md#optional-vulkan-acceleration)
+for build requirements, CPU fallback, and device overrides.
+
 ## Get started
 
 ### One-command install (macOS / Linux)

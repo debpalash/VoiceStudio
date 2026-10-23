@@ -81,6 +81,7 @@ metadata and the backend fallback mirror it.
 ### Changed
 
 - The sponsor footer is gone from the app; sponsored integrations keep a Featured badge on their card in Integrations (#3031)
+- Optional Vulkan builds for OmniVoice GGUF on Windows and Linux use compatible dynamic CPU variants, with CPU fallback, conservative automatic quants, native device overrides, and generation deadlines (#3042) — thanks @dutch2005!
 
 ### Docs
 
@@ -92,6 +93,7 @@ metadata and the backend fallback mirror it.
 
 - macOS builds without a Developer ID are now signed ad hoc so the bundle signature is valid, and the shell installer clears quarantine, repairs an invalid signature of older releases, names an unreadable disk image, and tells Intel Mac users the backend needs Apple Silicon (#3033, #2763, #2829, #2681)
 - A "Generation failed" log line now says where it was raised and which error caused it, and the out-of-memory advice mentions picking another GPU, so these reports can be told apart (#2895, #2684, #2666, #2626, #2622, #2580, #3034)
+- OmniVoice GGUF loads only the weights you already installed, and reports itself unavailable with the install steps when the pinned weight pair is missing instead of fetching weights behind your back (#3042)
 
 ### CI
 

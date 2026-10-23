@@ -63,6 +63,7 @@ case "$PLATFORM" in
 esac
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+source "$REPO_ROOT/scripts/lib/omnivoice-vulkan.sh"
 BIN_DIR="$REPO_ROOT/bin"
 mkdir -p "$BIN_DIR"
 
@@ -104,50 +105,25 @@ case "$PLATFORM" in
 esac
 
 case "$PLATFORM" in
-    linux-x86_64)
-        if [[ -x ./buildcpu.sh ]]; then
-            ./buildcpu.sh
-        else
-            cmake -B build -DCMAKE_BUILD_TYPE=Release
-            cmake --build build --config Release -j
-        fi
-        cp -v build/omnivoice-tts "$BIN_DIR/$OUT_NAME"
-        copy_shared_libs
-        ;;
-    linux-aarch64)
-        # Apple Silicon under Asahi Linux: prefer GGML's Vulkan backend so
-        # the Honeykrisp driver can accelerate generation, but degrade to
-        # CPU when the Vulkan dev deps (glslc, SPIRV headers) are absent —
-        # same graceful-fallback pattern as darwin-arm64 Metal above.
-        # ggml-vulkan needs <spirv/unified1/spirv.hpp> at compile time
-        # (Arch: spirv-headers, Debian/Ubuntu: spirv-headers) and glslc to
-        # compile its compute shaders; a configure-only probe misses the
-        # header, hence the compile check.
-        VULKAN_BUILT=0
-        if command -v glslc >/dev/null 2>&1 &&
-            printf '#include <spirv/unified1/spirv.hpp>\nint main(){}\n' |
-                c++ -fsyntax-only -x c++ - 2>/dev/null; then
-            if cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=ON &&
-                cmake --build build --config Release -j; then
-                VULKAN_BUILT=1
-            else
-                echo "→ Vulkan build failed; retrying Linux ARM64 with CPU." >&2
-                rm -rf build
-            fi
-        fi
-        if [[ "$VULKAN_BUILT" -eq 0 ]]; then
+    linux-x86_64|linux-aarch64)
+        if ! try_vulkan_build; then
             rm -rf build
-            cmake -B build -DCMAKE_BUILD_TYPE=Release
-            cmake --build build --config Release -j
+            if [[ "$PLATFORM" == linux-x86_64 && -x ./buildcpu.sh ]]; then
+                ./buildcpu.sh
+            else
+                cmake -B build -DCMAKE_BUILD_TYPE=Release
+                cmake --build build --config Release -j
+            fi
         fi
         cp -v build/omnivoice-tts "$BIN_DIR/$OUT_NAME"
         copy_shared_libs
         ;;
     windows-x86_64)
-        # CI runs this from MSYS / git-bash; CMake picks up the MSVC
-        # toolchain via the GitHub Actions runner's default env.
-        cmake -B build -DCMAKE_BUILD_TYPE=Release
-        cmake --build build --config Release -j
+        # MSYS / git-bash uses the runner's configured MSVC toolchain.
+        if ! try_vulkan_build; then
+            cmake -B build -DCMAKE_BUILD_TYPE=Release
+            cmake --build build --config Release -j
+        fi
         cp -v build/Release/omnivoice-tts.exe "$BIN_DIR/$OUT_NAME"
         copy_shared_libs
         ;;

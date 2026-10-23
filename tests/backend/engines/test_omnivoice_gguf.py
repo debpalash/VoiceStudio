@@ -130,7 +130,37 @@ def test_is_available_when_sha_mismatch(monkeypatch, tmp_path):
     assert "checksum mismatch" in reason.lower()
 
 
-def test_is_available_passes_when_manifest_absent(monkeypatch, tmp_path):
+@pytest.fixture
+def cached_weights(monkeypatch, tmp_path):
+    """Install the pinned GGUF pair in a throwaway HuggingFace cache.
+
+    Readiness covers the weights as well as the binary, so a test that
+    expects "ready" has to supply the pair it claims to have — the
+    engine loads only from the local cache and never downloads.
+    """
+    from huggingface_hub import constants
+
+    from engines.omnivoice_gguf.backend import _load_quant_map
+
+    quant_map = _load_quant_map()
+    revision = quant_map["_meta"]["source_commit_sha"]
+    entry = quant_map["cpu"]
+    cache = tmp_path / "hub"
+    folder = cache / "models--Serveurperso--OmniVoice-GGUF" / "snapshots" / revision
+    folder.mkdir(parents=True)
+    for name in (entry["base"], entry["tokenizer"]):
+        (folder / name).write_bytes(b"gguf-weights")
+    monkeypatch.setattr(constants, "HF_HUB_CACHE", str(cache))
+    # A clean compute environment: an ambient CPU pin or native backend
+    # would change which quant the engine looks for.
+    for variable in ("OMNIVOICE_DEVICE", "OMNIVOICE_GGUF_BACKEND",
+                     "OMNIVOICE_GGUF_DEVICE", "GGML_BACKEND"):
+        monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setenv("OMNIVOICE_DEVICE", "auto")
+    return cache
+
+
+def test_is_available_passes_when_manifest_absent(monkeypatch, tmp_path, cached_weights):
     """When checksums.sha256 is missing we still report ready — the manifest
     is an integrity check, not a hard requirement (binaries are bundled
     via the installer, not by `pip`)."""
