@@ -167,7 +167,7 @@ try {
       contentType: 'text/event-stream',
       body: failTranscription
         ? ': disconnected\n\n'
-        : 'event: final\ndata: {"segments":[{"id":"1","start":0,"end":2,"text":"Hello there","speaker_id":"SPEAKER_00"},{"id":"2","start":3,"end":5,"text":"Second line","speaker_id":"SPEAKER_01"}],"source_lang":"en","cast_sources":{"SPEAKER_00":{},"SPEAKER_01":{}}}\n\nevent: done\ndata: {}\n\n',
+        : 'event: final\ndata: {"segments":[{"id":"1","start":0,"end":2,"text":"Hello there","speaker_id":"SPEAKER_00"},{"id":"2","start":3.004,"end":5,"text":"Second line","speaker_id":"SPEAKER_01"}],"source_lang":"en","cast_sources":{"SPEAKER_00":{},"SPEAKER_01":{}}}\n\nevent: done\ndata: {}\n\n',
     });
   });
   if (video) {
@@ -304,6 +304,19 @@ try {
   await segmentRows.first().locator('[data-segment-options-trigger]').click();
   await segmentRows.nth(1).locator('[data-segment-options-trigger]').click();
   const secondStart = segmentRows.nth(1).getByRole('spinbutton', { name: 'Start', exact: true });
+  // 3.004 shows as 3.00; tabbing through the untouched field must not commit
+  // that rounding, so Undo still reverts the nudge above.
+  await secondStart.focus();
+  await secondStart.press('Tab');
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await segmentRows.first().locator('[data-segment-options-trigger]').click();
+  assert.equal(
+    await segmentRows.first().getByRole('spinbutton', { name: 'Start', exact: true }).inputValue(),
+    '0.00',
+  );
+  await segmentRows.first().locator('[data-segment-options-trigger]').click();
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await segmentRows.nth(1).locator('[data-segment-options-trigger]').click();
   await secondStart.fill('1.9');
   await secondStart.press('Tab');
   assert.equal(await secondStart.inputValue(), '2.00');
