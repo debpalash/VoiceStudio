@@ -149,6 +149,53 @@ it('reports a live-but-busy backend as unresponsive, not failed (#2430)', async 
   }
 });
 
+// #3184: v0.5.6 classified exactly this shape as terminal `failed` with the
+// message "Backend is running but temporarily not responding on port N. Waiting
+// for recovery." A health deadline missed while a mid-download/job holds the
+// event loop is not a failure: the process must stay alive, un-killed, and the
+// old wording must stay dead.
+it('never classifies download-period health timeouts on a live managed child as failed (#3184)', async () => {
+  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+  vi.stubEnv('OMNIVOICE_PORT', '');
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  vi.stubEnv('VOICESTUDIO_SKIP_BACKEND', '');
+  vi.stubEnv('OMNIVOICE_STARTUP_BUDGET_S', '60');
+  const health: Health = { mode: 'down' };
+  stubHealth(health);
+  const child = liveChild();
+  mocks.spawn.mockReturnValue(child);
+
+  const supervisor = new BackendSupervisor();
+  try {
+    await supervisor.start();
+    health.mode = 'up';
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(supervisor.status.stage).toBe('ready');
+
+    // The reported scenario: a model download saturates the event loop and
+    // every probe times out — repeatedly, not just once.
+    health.mode = 'busy';
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(supervisor.status.stage).toBe('unresponsive');
+    // v0.5.6's wording must not come back in any stage.
+    expect(supervisor.status.message ?? '').not.toMatch(/temporarily not responding|Waiting for recovery/i);
+    // No destructive recovery: the child was observed, never killed or respawned.
+    expect(supervisor.status.managed).toBe(true);
+    expect(child.exitCode).toBeNull();
+    expect(mocks.spawnSync).not.toHaveBeenCalled();
+    expect(mocks.spawn).toHaveBeenCalledOnce();
+
+    // Download finishes: one healthy probe clears the stage on its own.
+    health.mode = 'up';
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(supervisor.status.stage).toBe('ready');
+    expect(supervisor.status.message).toBeUndefined();
+  } finally {
+    (supervisor as unknown as { child: null }).child = null;
+    await supervisor.shutdown();
+  }
+});
+
 async function attachedSupervisor(health: Health): Promise<BackendSupervisor> {
   vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
   vi.stubEnv('OMNIVOICE_PORT', '');
