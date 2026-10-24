@@ -30,6 +30,7 @@ import logging
 import os
 import re
 import contextlib
+import contextvars
 import threading
 import time
 import weakref
@@ -3366,9 +3367,92 @@ def _installed_reference_fallbacks(
     return fallbacks
 
 
+class _DeferredReferencePass:
+    """State of one ``release_reference_asr_after`` block.
+
+    ``get_active_asr_backend`` builds a fresh recognizer per call, and some
+    (faster-whisper) own their weights. Every window of the pass therefore
+    reuses one discovered candidate set, so the pass holds one recognizer, not
+    one per window, and ``used`` is what gets unloaded when the block ends.
+    """
+
+    def __init__(self) -> None:
+        self.used: list[ASRBackend] = []
+        self.candidates: list[ASRBackend] | None = None
+        self.fallbacks: list[ASRBackend] | None = None
+        # The recognizer that last produced words in this pass. Later windows try
+        # it first, so a selected-but-unhelpful recognizer is not reloaded beside
+        # the one that is already resident.
+        self.winner: ASRBackend | None = None
+
+
+# Set only by ``release_reference_asr_after``.
+_deferred_reference_release: contextvars.ContextVar[_DeferredReferencePass | None] = (
+    contextvars.ContextVar("deferred_reference_release", default=None)
+)
+
+
+@contextlib.contextmanager
+def release_reference_asr_after():
+    """Unload every ASR a reference pass used when the block exits.
+
+    For serialized sidecar use only (like ``transcribe_reference(release_after=)``):
+    ranking a long reference transcribes several windows, and releasing after
+    each one would reload the recognizer per window. Inside the block every
+    ``transcribe_reference`` call defers its release to the end of the block,
+    so the recognizer is gone before the much larger synthesis model runs.
+    """
+    state = _DeferredReferencePass()
+    token = _deferred_reference_release.set(state)
+    try:
+        yield
+    finally:
+        _deferred_reference_release.reset(token)
+        for backend in {id(b): b for b in state.used}.values():
+            _release_reference_backend(backend)
+
+
+def release_reference_asr_now() -> None:
+    """Unload what the enclosing ``release_reference_asr_after`` pass has used so far.
+
+    Called right before the TTS model builds its prompt: its own fallback may load
+    another recognizer, and two speech models must not be resident together on a
+    memory-tight host. A no-op outside such a pass (API process, tests).
+    """
+    state = _deferred_reference_release.get()
+    if state is None:
+        return
+    for backend in {id(b): b for b in state.used}.values():
+        _release_reference_backend(backend)
+    state.used.clear()
+    state.candidates = None  # a later transcribe in this pass rediscovers fresh ones
+    state.fallbacks = None
+    state.winner = None
+
+
 def _transcribe_reference_candidates(
     candidates: list[ASRBackend], audio_path: str, *, release_after: bool = False,
 ) -> str:
+    deferred = _deferred_reference_release.get()
+    if deferred is not None:
+        deferred.used.extend(candidates)  # unloaded once, by release_reference_asr_after
+
+        def drop_unhelpful(backend: ASRBackend) -> None:
+            # A recognizer that found no words is released NOW, before the next
+            # candidate (or the model's own fallback) loads beside it; the one
+            # that succeeds stays resident and is reused for the next window.
+            _release_reference_backend(backend)
+            deferred.used[:] = [b for b in deferred.used if b is not backend]
+            if deferred.winner is backend:
+                deferred.winner = None
+
+        def remember_winner(backend: ASRBackend) -> None:
+            deferred.winner = backend
+
+        return _try_reference_candidates(
+            candidates, audio_path, release_after=True,
+            on_failed=drop_unhelpful, on_success=remember_winner,
+        )
     # Sidecars serialize ASR and TTS; release even preloaded candidates skipped
     # after the first success before loading the much larger synthesis model.
     with contextlib.ExitStack() as releases:
@@ -3387,7 +3471,15 @@ def _release_reference_backend(backend: ASRBackend) -> None:
 
 def _try_reference_candidates(
     candidates: list[ASRBackend], audio_path: str, *, release_after: bool,
+    on_failed: "Callable[[ASRBackend], None] | None" = None,
+    on_success: "Callable[[ASRBackend], None] | None" = None,
 ) -> str:
+    """First candidate that produces words wins.
+
+    ``on_failed`` is called for every candidate that produced no words (or
+    raised) before the next one is tried, so a recognizer that did not help is
+    not kept loaded beside the one that is about to load.
+    """
     from services.model_acceptance import ModelLicenceNotAccepted
 
     for backend in candidates:
@@ -3400,6 +3492,8 @@ def _try_reference_candidates(
             )
             candidate_text = (candidate_text or "").strip()
             if candidate_text:
+                if on_success is not None:
+                    on_success(backend)
                 return candidate_text
         except ModelLicenceNotAccepted:
             logger.info("transcribe_reference: %s skipped — model licence not accepted", backend.id)
@@ -3408,32 +3502,13 @@ def _try_reference_candidates(
         finally:
             if not release_after and getattr(backend, "_reference_ephemeral", False):
                 _release_reference_backend(backend)
+        if on_failed is not None:
+            on_failed(backend)
     return ""
 
 
-def transcribe_reference(audio_path: str, *, release_after: bool = False) -> str | None:
-    """Transcribe a voice-clone reference clip with the active ASR backend.
-
-    Voice cloning without a user-supplied transcript used to fall through to
-    ``VoiceStudio.load_asr_model()`` — a transformers ``pipeline()`` load of
-    whisper-large-v3-turbo that fails outright on transformers 5.3 (#308),
-    even when whisperx / faster-whisper / mlx-whisper are installed and
-    working. Route the reference transcript through the registry instead, so
-    the model-attached pipeline is only reached when it is genuinely the last
-    resort. Returns ``None`` on any failure — callers pass ``ref_text=None``
-    through and the model's installed-only fallback still gets its chance.
-
-    Results are cached by audio content (#1032) — see the cache notes above.
-    ``release_after`` is for serialized sidecar use only: unload all selected
-    ASR weights before TTS loads, without evicting the API's shared live ASR.
-    """
-    fingerprint = _ref_audio_fingerprint(audio_path)
-    if fingerprint is not None:
-        with _ref_transcript_lock:
-            cached = _ref_transcript_cache.get(fingerprint)
-            if cached is not None:
-                _ref_transcript_cache.move_to_end(fingerprint)
-                return cached
+def _discover_reference_candidates() -> list[ASRBackend]:
+    """The installed recognizers a reference transcription may use, in order."""
     # Prefer the selected offline ASR engine. When its selected weights are not
     # installed, reuse the selected dictation engine if that model is already
     # local. Short clone references need plain transcription, which dictation
@@ -3469,14 +3544,70 @@ def transcribe_reference(audio_path: str, *, release_after: bool = False) -> str
                 candidates.append(capture)
         except Exception:  # noqa: BLE001 — reference ASR is best-effort
             logger.warning("transcribe_reference: dictation ASR unavailable")
+    return candidates
 
-    text = _transcribe_reference_candidates(candidates, audio_path, release_after=release_after)
+
+def transcribe_reference(audio_path: str, *, release_after: bool = False) -> str | None:
+    """Transcribe a voice-clone reference clip with the active ASR backend.
+
+    Voice cloning without a user-supplied transcript used to fall through to
+    ``VoiceStudio.load_asr_model()`` — a transformers ``pipeline()`` load of
+    whisper-large-v3-turbo that fails outright on transformers 5.3 (#308),
+    even when whisperx / faster-whisper / mlx-whisper are installed and
+    working. Route the reference transcript through the registry instead, so
+    the model-attached pipeline is only reached when it is genuinely the last
+    resort. Returns ``None`` on any failure — callers pass ``ref_text=None``
+    through and the model's installed-only fallback still gets its chance.
+
+    Results are cached by audio content (#1032) — see the cache notes above.
+    ``release_after`` is for serialized sidecar use only: unload all selected
+    ASR weights before TTS loads, without evicting the API's shared live ASR.
+    """
+    fingerprint = _ref_audio_fingerprint(audio_path)
+    if fingerprint is not None:
+        with _ref_transcript_lock:
+            cached = _ref_transcript_cache.get(fingerprint)
+            if cached is not None:
+                _ref_transcript_cache.move_to_end(fingerprint)
+                return cached
+    deferred = _deferred_reference_release.get()
+    # A recognizer that already produced words earlier in this pass is still
+    # resident: try it first, so later windows never reload an unhelpful
+    # recognizer beside it.
+    text = ""
+    tried = None  # the resident winner, once it has had its turn on this window
+    if deferred is not None and deferred.winner is not None:
+        tried = deferred.winner
+        text = _transcribe_reference_candidates(
+            [tried], audio_path, release_after=release_after,
+        )
+    if deferred is not None and deferred.candidates is not None:
+        candidates = deferred.candidates
+    elif text:
+        candidates = []  # not needed: the resident recognizer already answered
+    else:
+        candidates = _discover_reference_candidates()
+        if deferred is not None:
+            deferred.candidates = candidates
+    if not text:
+        # Never retry the winner that just failed on this window: it was already
+        # unloaded, and trying it again would reload its weights for nothing.
+        text = _transcribe_reference_candidates(
+            [c for c in candidates if c is not tried], audio_path, release_after=release_after,
+        )
     fallbacks: list[ASRBackend] = []
     if not text:
-        fallbacks = _installed_reference_fallbacks(candidates)
-        text = _transcribe_reference_candidates(fallbacks, audio_path, release_after=release_after)
+        if deferred is not None and deferred.fallbacks is not None:
+            fallbacks = deferred.fallbacks
+        else:
+            fallbacks = _installed_reference_fallbacks(candidates)
+            if deferred is not None:
+                deferred.fallbacks = fallbacks
+        text = _transcribe_reference_candidates(
+            [f for f in fallbacks if f is not tried], audio_path, release_after=release_after,
+        )
 
-    if not candidates and not fallbacks:
+    if not text and not candidates and not fallbacks:
         logger.info(
             "transcribe_reference: no installed ASR model available — skipping "
             "reference auto-transcription (no silent download)."

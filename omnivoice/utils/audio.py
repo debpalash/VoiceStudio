@@ -50,6 +50,47 @@ CLONE_REF_NO_SPEECH_MARKER = "[clone_ref_no_speech]"
 CLONE_REF_TEXT_MAX_SECONDS = 20.0
 CLONE_REF_WINDOW_SECONDS = 15.0
 CLONE_REF_MAX_WINDOWS = 5
+# The selected passage's edges are pulled inward to a pause within this span,
+# so it neither starts nor ends mid-word.
+CLONE_REF_EDGE_SEARCH_SECONDS = 1.5
+
+
+def trim_passage_to_pauses(
+    wav: torch.Tensor,
+    sample_rate: int,
+    search_seconds: float = CLONE_REF_EDGE_SEARCH_SECONDS,
+    frame_seconds: float = 0.05,
+    pause_ratio: float = 0.05,
+) -> torch.Tensor:
+    """Shrink a (C, T) passage so both edges fall in a pause.
+
+    Fixed-length windows are cut at arbitrary times, so a selected passage can
+    end mid-word: its transcript then ends in a fragment the audio does not
+    match, and the clone opens its output by finishing that fragment. Each
+    edge moves inward to the quietest frame within ``search_seconds`` — but
+    only when that frame is a real pause (energy under ``pause_ratio`` of the
+    passage's median frame); otherwise the edge stays. Never lengthens.
+    """
+    frame = max(1, int(frame_seconds * sample_rate))
+    n = wav.size(-1) // frame
+    span = int(search_seconds * sample_rate) // frame
+    if n < 2 * span + 2:
+        return wav
+    energy = wav[:, : n * frame].abs().amax(dim=0).float().square()
+    frames = energy.reshape(n, frame).mean(dim=1)
+    floor = float(frames.median()) * pause_ratio
+
+    def quietest(lo: int, hi: int):
+        k = lo + int(frames[lo:hi].argmin())
+        return k if float(frames[k]) < floor else None
+
+    head = quietest(0, span)
+    tail = quietest(n - span, n)
+    if head is None and tail is None:
+        return wav
+    start = head * frame + frame // 2 if head is not None else 0
+    end = tail * frame + frame // 2 if tail is not None else wav.size(-1)
+    return wav[:, start:end]
 
 
 def clone_ref_transcript_too_long_message(duration_s: float) -> str:

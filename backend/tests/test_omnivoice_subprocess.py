@@ -133,7 +133,7 @@ def test_reference_asr_hang_is_killed_and_next_request_recovers(monkeypatch, tmp
         "        while True: time.sleep(0.1)\n"
         "    return 'Reference words.'\n"
         "sys.modules['omnivoice.utils.audio'] = types.SimpleNamespace(CLONE_REF_TEXT_MAX_SECONDS=20)\n"
-        "sys.modules['services.tts_backend'] = types.SimpleNamespace(reference_duration_s=lambda _: 1)\n"
+        "sys.modules['services.tts_backend'] = types.SimpleNamespace(reference_duration_s=lambda _: 1, has_unresolved_clone_prompt=lambda *a, **k: False, generate_with_cached_ref=lambda model, **kw: model.generate(**kw))\n"
         "sys.modules['services.asr_backend'] = types.SimpleNamespace(transcribe_reference=transcribe)\n"
         "child._load_model = lambda _: types.SimpleNamespace(generate=lambda **kw: [None], sampling_rate=24000)\n"
         "child._tensor_to_pcm_b64 = lambda *args: ('AAAAAA==' if args[-1] == 'f32le' else 'AAA=', 24000, 1)\n"
@@ -154,6 +154,178 @@ def test_reference_asr_hang_is_killed_and_next_request_recovers(monkeypatch, tmp
         assert backend.generate("hello", ref_audio="okay.wav").shape[-1] == 1
     finally:
         backend.shutdown()
+
+
+def test_sidecar_synthesis_encodes_a_reference_once_per_sidecar(monkeypatch, tmp_path):
+    """Repeat requests reuse the cached clone prompt instead of re-selecting.
+
+    Without it a long reference reloads the passage-selection Whisper on
+    every line, and that phase alone can outlast the recv deadline.
+    """
+    from engines.omnivoice_subprocess import main as sidecar
+    from services import tts_backend
+
+    ref = tmp_path / "voice.wav"
+    ref.write_bytes(b"RIFF")
+    encodes, generated = [], []
+
+    class Model:
+        sampling_rate = 24_000
+
+        def create_voice_clone_prompt(self, ref_audio, ref_text=None, preprocess_prompt=True):
+            encodes.append(ref_audio)
+            return object()
+
+        def generate(self, **kw):
+            generated.append(kw)
+            return [None]
+
+    model = Model()
+    monkeypatch.setattr(sidecar, "_load_model", lambda _stdout: model)
+    monkeypatch.setattr(sidecar, "_tensor_to_pcm_b64", lambda *a, **k: ("AAA=", 24_000, 1))
+    monkeypatch.setattr(sidecar, "_send", lambda *_a, **_k: None)
+    monkeypatch.setattr(tts_backend, "reference_duration_s", lambda _p: 73.0)
+    # A disk hit would skip create_voice_clone_prompt and falsify the count.
+    monkeypatch.setenv("OMNIVOICE_PROMPT_DISK_CACHE", "0")
+    tts_backend.clear_clone_prompt_cache()
+    try:
+        for line in ("one", "two", "three"):
+            sidecar._handle_synthesize({"text": line, "ref_audio": str(ref)}, None)
+    finally:
+        tts_backend.clear_clone_prompt_cache()
+
+    assert len(encodes) == 1
+    assert all("voice_clone_prompt" in kw and "ref_audio" not in kw for kw in generated)
+
+
+def test_sidecar_asks_for_the_reference_recognizer_to_be_released(monkeypatch, tmp_path):
+    """Ranking a long reference loads a recognizer beside the TTS model; the
+    sidecar must have it unloaded before synthesis (8 GB unified memory)."""
+    from engines.omnivoice_subprocess import main as sidecar
+    from services import tts_backend
+
+    ref = tmp_path / "long.wav"
+    ref.write_bytes(b"RIFF")
+    seen = {}
+
+    def fake_generate(_model, **kw):
+        seen.update(kw)
+        return [None]
+
+    monkeypatch.setattr(sidecar, "_load_model", lambda _stdout: type("M", (), {"sampling_rate": 24_000})())
+    monkeypatch.setattr(sidecar, "_tensor_to_pcm_b64", lambda *a, **k: ("AAA=", 24_000, 1))
+    monkeypatch.setattr(sidecar, "_send", lambda *_a, **_k: None)
+    monkeypatch.setattr(tts_backend, "reference_duration_s", lambda _p: 73.0)
+    monkeypatch.setattr(tts_backend, "generate_with_cached_ref", fake_generate)
+
+    sidecar._handle_synthesize({"text": "hi", "ref_audio": str(ref)}, None)
+
+    assert seen["release_reference_asr"] is True
+
+
+def test_sidecar_short_reference_without_transcript_is_encoded_once(monkeypatch, tmp_path):
+    """A short reference whose transcript cannot be resolved must not reload
+    the model's own ASR on every line: it takes the cached-prompt path too."""
+    from engines.omnivoice_subprocess import main as sidecar
+    from services import asr_backend, tts_backend
+
+    ref = tmp_path / "short.wav"
+    ref.write_bytes(b"RIFF")
+    encodes, generated = [], []
+
+    class Model:
+        sampling_rate = 24_000
+
+        def create_voice_clone_prompt(self, ref_audio, ref_text=None, preprocess_prompt=True):
+            encodes.append(ref_audio)
+            return object()
+
+        def generate(self, **kw):
+            generated.append(kw)
+            return [None]
+
+    model = Model()
+    monkeypatch.setattr(sidecar, "_load_model", lambda _stdout: model)
+    monkeypatch.setattr(sidecar, "_tensor_to_pcm_b64", lambda *a, **k: ("AAA=", 24_000, 1))
+    monkeypatch.setattr(sidecar, "_send", lambda *_a, **_k: None)
+    monkeypatch.setattr(tts_backend, "reference_duration_s", lambda _p: 5.0)
+    asr_calls = []
+    monkeypatch.setattr(
+        asr_backend, "transcribe_reference",
+        lambda *_a, **_k: asr_calls.append(1),  # returns None: no words found
+    )
+    recognizers = ["installed-none"]
+    monkeypatch.setattr(tts_backend, "_reference_asr_identity", lambda: recognizers[0])
+    # A disk hit would skip create_voice_clone_prompt and falsify the count.
+    monkeypatch.setenv("OMNIVOICE_PROMPT_DISK_CACHE", "0")
+    tts_backend.clear_clone_prompt_cache()
+
+    def speak(line):
+        sidecar._handle_synthesize({"text": line, "ref_audio": str(ref)}, None)
+
+    try:
+        for line in ("one", "two", "three"):
+            speak(line)
+        assert len(encodes) == 1
+        assert all("voice_clone_prompt" in kw and "ref_audio" not in kw for kw in generated)
+        # Only the first request tries the recognizer (sidecar pre-pass + prompt
+        # build); once the prompt is cached, later lines never load it again.
+        assert len(asr_calls) == 2
+
+        # The user installs or selects another recognizer: it gets its turn
+        # (the stale prompt is not trusted), and when it also finds no words
+        # the cached prompt is reused and trusted again for the new chain.
+        recognizers[0] = "newly-selected"
+        speak("four")
+        assert len(asr_calls) == 4
+        assert len(encodes) == 1
+        speak("five")
+        assert len(asr_calls) == 4
+    finally:
+        tts_backend.clear_clone_prompt_cache()
+
+
+def test_sidecar_keeps_retrying_a_recognizer_that_errors(monkeypatch, tmp_path):
+    """Only a recognition that completed without words may be remembered: an
+    error is transient, so the recognizer is tried again on the next line."""
+    from engines.omnivoice_subprocess import main as sidecar
+    from services import asr_backend, tts_backend
+
+    ref = tmp_path / "flaky.wav"
+    ref.write_bytes(b"RIFF")
+    encodes, asr_calls = [], []
+
+    class Model:
+        sampling_rate = 24_000
+
+        def create_voice_clone_prompt(self, ref_audio, ref_text=None, preprocess_prompt=True):
+            encodes.append(ref_audio)
+            return object()
+
+        def generate(self, **kw):
+            return [None]
+
+    def failing_transcribe(*_a, **_k):
+        asr_calls.append(1)
+        raise RuntimeError("recognizer crashed")
+
+    model = Model()
+    monkeypatch.setattr(sidecar, "_load_model", lambda _stdout: model)
+    monkeypatch.setattr(sidecar, "_tensor_to_pcm_b64", lambda *a, **k: ("AAA=", 24_000, 1))
+    monkeypatch.setattr(sidecar, "_send", lambda *_a, **_k: None)
+    monkeypatch.setattr(tts_backend, "reference_duration_s", lambda _p: 5.0)
+    monkeypatch.setattr(tts_backend, "_reference_asr_identity", lambda: "installed-none")
+    monkeypatch.setattr(asr_backend, "transcribe_reference", failing_transcribe)
+    monkeypatch.setenv("OMNIVOICE_PROMPT_DISK_CACHE", "0")
+    tts_backend.clear_clone_prompt_cache()
+    try:
+        for line in ("one", "two", "three"):
+            sidecar._handle_synthesize({"text": line, "ref_audio": str(ref)}, None)
+    finally:
+        tts_backend.clear_clone_prompt_cache()
+
+    assert len(asr_calls) == 6  # sidecar pre-pass + prompt build, on every line
+    assert len(encodes) == 1    # the prompt itself is still reused
 
 
 # ── registry + isolation ───────────────────────────────────────────────────
