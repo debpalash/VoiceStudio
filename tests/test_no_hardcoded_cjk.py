@@ -48,8 +48,8 @@ _ALLOWED_FILES = {
     "electron/src/main/blank-window-guard.ts",
     # Documentation & translated docs
     "README.md",                                  # native language-switcher link
-    "README_CN.md",                               # Chinese README (a translation)
-    "README_JA.md",                               # Japanese README (a translation)
+    "docs/readme/README_CN.md",                   # Chinese README (a translation)
+    "docs/readme/README_JA.md",                   # Japanese README (a translation)
     "docs/data_preparation.md",                   # multilingual example payloads
     "docs/voice-design.md",                       # EN/CJK attribute mapping table
     "docs/engines/omnivoice.md",                  # pinyin pronunciation-control example (functional CJK)
