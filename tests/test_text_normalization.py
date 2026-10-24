@@ -75,6 +75,16 @@ _CHANGE_CASES = [
     ("Spanish", "el Sr. García", "el Señor García"),
     ("French", "il a 42 chats", "il a quarante-deux chats"),
     ("French", "Mme Dupont arrive", "Madame Dupont arrive"),
+    # Numbers around a space-grouped amount still speak; the group itself
+    # keeps its digits.
+    ("French", "2 colis de 1 234 pièces", "deux colis de 1 234 pièces"),
+    # A year is not a leading group: four digits never start one.
+    ("French", "en 2024 500 personnes", "en deux mille vingt-quatre cinq cents personnes"),
+    # Narrow and no-break spaces (what French keyboards and word processors
+    # insert) collapse to a plain space, and the group stays whole.
+    ("French", "soit 1\u202f234\u00a0567 euros", "soit 1 234 567 euros"),
+    # English keeps reading separate numbers: "2 100" is not a group there.
+    ("English", "room 2 100 meters away", "room two one hundred meters away"),
     ("Russian", "у меня 42 кота", "у меня сорок два кота"),
     # Malayalam goes through the native verbalizer (num2words has no ml
     # locale): cardinals with sandhi, years as plain cardinals, Indian
@@ -176,6 +186,16 @@ _UNCHANGED_CASES = [
     ("German", "etwa 12.500%"),                  # the percent rule shares it
     ("Spanish", "más de 1.000 personas"),
     ("French", "plus de 1.000 personnes"),
+    # A space between a 1-3 digit group and 3-digit groups is the other
+    # thousands separator in those locales ("1 234", "10 000"): kept whole,
+    # digits and all. The integer rule used to read the leading group on
+    # its own ("un 234,5", "dix 000 habitants").
+    ("French", "Il a 1 234,5 euros."),
+    ("French", "Population : 10 000 habitants."),
+    ("German", "Das sind 1 234 Euro."),
+    ("Russian", "Это 1 234 рубля."),
+    ("French", "soit 12 500% du total"),         # the percent rule shares it
+    ("French", "soit 1 234 % du total"),
     # Malayalam native path keeps the same conservative boundaries
     ("Malayalam", "1,000 രൂപ"),                  # thousands separator
     ("Malayalam", "പേജ് 3-5 വായിക്കുക"),           # range

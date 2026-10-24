@@ -493,6 +493,24 @@ _INTEGER_RE = re.compile(
     r"(?<![\w.,:/$%-])(?!0\d)(\d{1,6})(?![\w:/%-])(?![.,]\d)"
 )
 
+# Space-grouped thousands ("1 234", "10 000", "1 234,5", "12 500 %") in the
+# locales that also group with a period. The run is kept as written, like
+# "1,000" in English; without this the percent and integer rules read the
+# trailing or leading group on its own.
+_SPACE_GROUP_RE = re.compile(
+    r"(?<![\w.,:/$%-])\d{1,3}(?: \d{3})+(?:,\d+)?(?:\s?%)?(?![\w:/%-])(?![.,]\d)"
+)
+
+
+def _grouped_spans(text: str, lang: str) -> list[tuple[int, int]]:
+    if lang not in _COMMA_DECIMAL_LANGS:
+        return []
+    return [g.span() for g in _SPACE_GROUP_RE.finditer(text)]
+
+
+def _in_span(m: re.Match, spans: list[tuple[int, int]]) -> bool:
+    return any(start <= m.start() < end for start, end in spans)
+
 _ORDINAL_SUFFIX = {1: "st", 2: "nd", 3: "rd"}
 
 
@@ -569,7 +587,11 @@ def _numbers_to_words(text: str, lang: str) -> str:
 
     percent_word = _PERCENT_WORD.get(lang)
     if percent_word:
+        grouped = _grouped_spans(text, lang)
+
         def _percent(m: re.Match) -> str:
+            if _in_span(m, grouped):
+                return m.group(0)
             raw = m.group(1)
             if "." in raw:
                 fraction = raw.split(".", 1)[1]
@@ -590,9 +612,13 @@ def _numbers_to_words(text: str, lang: str) -> str:
 
         text = _DECIMAL_RE.sub(lambda m: _safe(m, _decimal), text)
 
+    grouped = _grouped_spans(text, lang)
+
     def _integer(m: re.Match) -> str:
         raw = m.group(1)
         if _leading_zero(raw):
+            return m.group(0)
+        if _in_span(m, grouped):
             return m.group(0)
         n = int(raw)
         if len(raw) == 4 and 1500 <= n <= 2099:
