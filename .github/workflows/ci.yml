@@ -281,8 +281,50 @@ jobs:
       - name: Snap artifact repair regression
         run: node --test electron/tests/snap-artifact-verification.test.mjs electron/tests/snap-launcher.test.mjs electron/tests/snap-store-packaging.test.mjs
 
-      # Browser workflow smokes exercise the maintained Electron renderer after
-      # the production build/typecheck/test contract above succeeds.
+  # Split from Tests (Electron) so the two ~7 minute halves run side by side.
+  # The browser workflow smokes need only the checked-out sources.
+  electron-smokes:
+    name: Electron renderer smokes
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.electron != 'false' }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: '1.4.2'
+
+      # Cache the resolved .debs for media and Snap artifact tests.
+      - name: System deps (ffmpeg and squashfs-tools)
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: ffmpeg squashfs-tools
+          version: 1.0
+
+      # Cache ~/.bun/install/cache keyed on bun.lock — `bun install` drops
+      # from ~15 s cold to near-instant on warm cache.
+      - name: Cache bun deps
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install Electron deps
+        # --frozen-lockfile so an Electron workspace change that forgets to
+        # regenerate the root bun.lock fails HERE (fast) instead of only in the
+        # Docker build (deploy/Dockerfile), which is what reddened main on #485.
+        run: bun install --frozen-lockfile
+
+      # Browser workflow smokes exercise the maintained Electron renderer.
       - name: Install Playwright chromium
         run: bunx playwright install --with-deps chromium
       - name: Electron renderer workflow smokes
@@ -316,35 +358,42 @@ jobs:
   # "Tests (backend + frontend)" even though the work now runs in two jobs.
   test:
     name: Tests (backend + frontend)
-    needs: [changes, test-python, test-electron]
+    needs: [changes, test-python, test-electron, electron-smokes]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
       PYTHON: ${{ needs.test-python.result }}
       ELECTRON: ${{ needs.test-electron.result }}
+      SMOKES: ${{ needs.electron-smokes.result }}
       ELECTRON_NEEDED: ${{ needs.changes.outputs.electron }}
     steps:
       - name: Both test jobs passed
         run: |
-          echo "Python: $PYTHON, Electron: $ELECTRON (needed: $ELECTRON_NEEDED)"
+          echo "Python: $PYTHON, Electron: $ELECTRON, smokes: $SMOKES (needed: $ELECTRON_NEEDED)"
           [ "$PYTHON" = success ] || exit 1
           # Skipped is only acceptable when change detection said nothing in this
           # PR can affect the Electron jobs.
-          [ "$ELECTRON" = success ] || { [ "$ELECTRON" = skipped ] && [ "$ELECTRON_NEEDED" = false ]; }
+          for result in "$ELECTRON" "$SMOKES"; do
+            [ "$result" = success ] || { [ "$result" = skipped ] && [ "$ELECTRON_NEEDED" = false ]; } || exit 1
+          done
 
   # Clicks every button on every route under four backend fault modes and fails
   # on stuck spinners, buttons left disabled, silent failures, crashes and
   # console errors
-  # (electron/tests/ui-crawler.mjs). One job, not a mode x shard matrix: the
-  # crawler runs every fault mode concurrently in one process, and a matrix of
-  # twelve jobs per push queued behind the runner limit for hours.
+  # (electron/tests/ui-crawler.mjs). Three route shards, not a mode x shard
+  # matrix: each shard still runs every fault mode concurrently in one process,
+  # and a matrix of twelve jobs per push queued behind the runner limit for hours.
   ui-crawler:
-    name: UI crawler
+    name: UI crawler (${{ matrix.shard }}/3)
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.electron != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -377,6 +426,7 @@ jobs:
         env:
           OMNIVOICE_PORT: '3999'
           VOICESTUDIO_UI_URL: http://localhost:3912
+          VOICESTUDIO_CRAWL_SHARD: ${{ matrix.shard }}/3
         run: |
           set -euo pipefail
           bun run --cwd electron smoke:server > /tmp/voicestudio-crawler-server.log 2>&1 &

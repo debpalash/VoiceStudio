@@ -315,7 +315,7 @@ OMNIVOICE_PORT=3999 bun run --cwd electron smoke:server &
 OMNIVOICE_PORT=3999 VOICESTUDIO_UI_URL=http://localhost:3912 PLAYWRIGHT_CHANNEL=chromium \
   node electron/tests/run-renderer-smokes.mjs [name-filter ...]
 
-# UI crawler (the "UI crawler" CI job), against the same smoke server:
+# UI crawler (the "UI crawler (n/3)" CI jobs, VOICESTUDIO_CRAWL_SHARD=n/3), against the same smoke server:
 # clicks every enabled button on every route, then the buttons a filled-in form
 # enables, then one level into each dialog, while API writes answer normally,
 # with 500, with a network error, or with broken JSON. It fails on a spinner
@@ -399,7 +399,7 @@ hard rules from the first prompt.
 ## Quality gates your PR must pass
 
 - **CI scope:** the Electron-only jobs (UI crawler, Desktop UI, Linux native
-  package, and `Tests (Electron)`, one half of `Tests (backend + frontend)`) are skipped on a
+  package, and `Tests (Electron)` plus `Electron renderer smokes`, the Electron halves of `Tests (backend + frontend)`) are skipped on a
   pull request whose every changed file is an *edit or addition* under `backend/`
   (except `backend/assets/`), `omnivoice/`, `docs/` or `mobile/`, a Python file under `tests/` or `scripts/`,
   a root `*.md`, `Makefile`, `uv.lock`, or a workflow other than `ci.yml` and

@@ -10,15 +10,18 @@ const ci = readFileSync(join(dir, '../../.github/workflows/ci.yml'), 'utf8');
 
 const job = ci.match(/\n {2}ui-crawler:\n([\s\S]*?)\n {2}[\w-]+:\n/)[1];
 
-test('CI crawls every fault mode in one job', () => {
-  // A matrix would multiply runner jobs per push; the crawler runs the modes concurrently itself.
-  assert.doesNotMatch(job, /strategy:|matrix\./, 'ui-crawler must stay a single job');
+test('CI crawls every fault mode, split only by route shard', () => {
+  // The crawler runs the modes concurrently itself. A mode x shard matrix queued twelve jobs per
+  // push behind the runner limit, so the only axis is the route shard, kept at three.
+  assert.doesNotMatch(job, /matrix\.mode/, 'shard by route only, never by fault mode');
+  assert.match(job, /shard: \[1, 2, 3\]/);
+  assert.match(job, /VOICESTUDIO_CRAWL_SHARD: \$\{\{ matrix\.shard \}\}\/3/);
   // Narrowing the modes or routes in CI would silently skip the faults this job exists for.
-  assert.doesNotMatch(job, /VOICESTUDIO_CRAWL_(MODES|ROUTES|SHARD)/);
+  assert.doesNotMatch(job, /VOICESTUDIO_CRAWL_(MODES|ROUTES)/);
   assert.match(crawler, /const MODES = \['fixture', 'http-500', 'network-error', 'bad-json'\]/);
 });
 
-test('the single job leaves room for a full crawl', () => {
+test('each shard leaves room for a full crawl', () => {
   const minutes = Number(job.match(/timeout-minutes: (\d+)/)[1]);
   assert.ok(minutes >= 30, `timeout-minutes ${minutes} is too short for every mode and route`);
 });

@@ -207,7 +207,7 @@ def test_the_jq_expression_emits_status_and_filename_for_renames_too(tmp_path):
 
 def test_the_electron_jobs_are_gated_on_the_detection_and_survive_its_failure():
     jobs = WORKFLOW["jobs"]
-    for name in ("ui-crawler", "linux-native-package", "electron-ui", "test-electron"):
+    for name in ("ui-crawler", "linux-native-package", "electron-ui", "test-electron", "electron-smokes"):
         assert jobs[name]["needs"] == "changes", name
         condition = jobs[name]["if"]
         assert "!cancelled()" in condition and "outputs.electron != 'false'" in condition, name
@@ -215,17 +215,26 @@ def test_the_electron_jobs_are_gated_on_the_detection_and_survive_its_failure():
     assert jobs["test-python"]["needs"] == "changes" and jobs["test-python"]["if"] == "${{ !cancelled() }}"
     # `test` is the required check: it must wait for both halves and always report,
     # and may accept a skipped Electron half only when detection said "false".
-    assert set(jobs["test"]["needs"]) == {"changes", "test-python", "test-electron"}
+    assert set(jobs["test"]["needs"]) == {"changes", "test-python", "test-electron", "electron-smokes"}
     assert jobs["test"]["if"] == "${{ !cancelled() }}"
     gate = "\n".join(str(s.get("run", "")) for s in jobs["test"]["steps"])
     assert '[ "$PYTHON" = success ]' in gate
-    assert '"$ELECTRON" = skipped' in gate and '"$ELECTRON_NEEDED" = false' in gate
+    assert '"$result" = skipped' in gate and '"$ELECTRON_NEEDED" = false' in gate
+    assert '"$ELECTRON" "$SMOKES"' in gate
     electron_steps = {s["name"] for s in jobs["test-electron"]["steps"] if "name" in s}
     assert {
         "Frontend unit tests", "Electron typecheck, tests and production contract",
-        "Snap artifact repair regression", "Install Playwright chromium",
-        "Electron renderer workflow smokes",
+        "Snap artifact repair regression",
     } <= electron_steps
+    smoke_steps = {s["name"] for s in jobs["electron-smokes"]["steps"] if "name" in s}
+    assert {"Install Playwright chromium", "Electron renderer workflow smokes"} <= smoke_steps
+    # the crawler is sharded; every shard must be run exactly once
+    crawler = jobs["ui-crawler"]
+    shards = crawler["strategy"]["matrix"]["shard"]
+    assert sorted(shards) == list(range(1, len(shards) + 1))
+    assert f"/{len(shards)}" in crawler["name"]
+    crawl_env = next(s["env"] for s in crawler["steps"] if s.get("name") == "Crawl every button")
+    assert crawl_env["VOICESTUDIO_CRAWL_SHARD"] == "${{ matrix.shard }}/" + str(len(shards))
     # nothing Electron-only stays behind in the Python job
     assert not electron_steps & {s.get("name") for s in jobs["test-python"]["steps"]} - {
         "Setup Node 22", "Setup Bun", "System deps (ffmpeg and squashfs-tools)",
@@ -235,8 +244,9 @@ def test_the_electron_jobs_are_gated_on_the_detection_and_survive_its_failure():
 
 def test_required_check_names_are_unchanged():
     names = {j["name"] for j in WORKFLOW["jobs"].values()}
-    assert {"Tests (backend + frontend)", "UI crawler", "Linux native package",
+    assert {"Tests (backend + frontend)", "Linux native package",
             "Electron installer contracts"} <= names
+    assert any(n.startswith("UI crawler (") for n in names)
     assert any(n.startswith("Desktop UI (") for n in names)
 
 

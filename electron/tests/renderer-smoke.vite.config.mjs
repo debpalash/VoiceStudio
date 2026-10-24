@@ -32,6 +32,7 @@ export default defineConfig({
   ],
   define: {
     __APP_VERSION__: JSON.stringify(version),
+    __BUILD_COMMIT__: JSON.stringify('000000000'),
     __WEB_DEPLOYMENT__: false,
   },
   resolve: {
