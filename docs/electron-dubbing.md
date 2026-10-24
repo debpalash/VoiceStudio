@@ -223,7 +223,8 @@ either neighbor. Merge/split uses Tauri's shared attribution bookkeeping, so spe
 voice, direction, gain and target language survive moving words across a boundary.
 Undo and redo retain the latest 50 edit states and reset when a new source, subtitle
 file, translation or project becomes the editing baseline. The toolbar and
-Cmd/Ctrl shortcuts expose the same operations. Unit and browser regressions cover
+Cmd/Ctrl shortcuts expose the same operations; Cmd/Ctrl+Z in any other field (glossary,
+translation notes, segment Start/End) stays that field's own undo. Unit and browser regressions cover
 the full insert/delete/merge/split/undo/redo sequence and merge-to-split attribution.
 
 The editor includes a proportional timing lane above the segment rows. Segment

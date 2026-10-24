@@ -322,6 +322,10 @@ try {
   assert.equal(await segmentRows.count(), 2);
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
   assert.equal(await segmentRows.count(), 3);
+  await segmentRows.first().locator('[data-segment-options-trigger]').click();
+  await segmentRows.first().getByRole('spinbutton', { name: 'Start', exact: true }).press('Control+z');
+  assert.equal(await segmentRows.count(), 3);
+  await segmentRows.first().locator('[data-segment-options-trigger]').click();
   await segmentRows.nth(1).getByRole('button', { name: 'Delete', exact: true }).click();
   assert.equal(await segmentRows.count(), 2);
   await segmentRows.first().getByRole('button', { name: 'More actions', exact: true }).click();
