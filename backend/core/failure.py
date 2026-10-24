@@ -1173,13 +1173,18 @@ _INCOMPLETE_CACHE_PHRASES = (
     # Matched as two fragments: the file list between them varies with the
     # transformers version and the requested weight variant.
     ("error no file named", "found in directory"),
+    # A snapshot may have all its weights but lack the audio tokenizer's
+    # processor config (#2984). Require the missing-config wording too:
+    # an AutoFeatureExtractor import/compatibility failure is not repairable
+    # by downloading model files.
+    ("can't load feature extractor for", "directory containing a preprocessor_config.json file"),
 )
 
 
 def is_incomplete_cache_message(text: str) -> bool:
-    """True when *text* is transformers reporting a snapshot with no weights.
+    """True when transformers reports missing weights or feature-extractor config.
 
-    Takes an already-lowercased string. Shared by :func:`classify` and
+    Accepts text in any case. Shared by :func:`classify` and
     model_manager's cache self-heal so the healer and the error message can
     never disagree about what an interrupted download looks like.
     """

@@ -2066,11 +2066,13 @@ def _is_incomplete_cache_error(exc: BaseException) -> bool:
     rather than the error type, since the same OSError type covers unrelated
     I/O failures.
 
-    There are TWO wordings, and this used to match only the first, so a
+    Missing weights have two wordings, and this used to match only the first, so a
     half-written repo whose *subfolder* failed to load (#1273:
     "Error no file named model.safetensors, … found in directory
     …/snapshots/<rev>/audio_tokenizer") got neither the automatic repair nor
-    an actionable message — just a raw 500. `core.failure` owns the phrase
+    an actionable message — just a raw 500. Missing feature-extractor config
+    uses a third wording (#2984), even when weights are complete, and needs
+    the same repair. `core.failure` owns the phrase
     list so the heal and the error text can't drift apart."""
     from core.failure import is_incomplete_cache_message
 

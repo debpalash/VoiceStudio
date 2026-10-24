@@ -715,6 +715,14 @@ reach the main app. Looking in the HF cache, a model folder
 (`models--k2-fsa--OmniVoice`, `models--Systran--faster-whisper-large-v3`) has
 `refs/` and maybe `config.json` but **no weight files** (`blobs/` empty or tiny).
 
+A partial cache can also have its weights but be missing
+`audio_tokenizer/preprocessor_config.json`. In that case synthesis reports
+"Can't load feature extractor" and names that file. VoiceStudio now routes
+this error through the existing cache repair and retries loading. With
+`HF_HUB_OFFLINE` or `TRANSFORMERS_OFFLINE` enabled, it leaves downloads disabled
+and reports that repair needs network access. If automatic repair fails, use
+the clean re-download steps below.
+
 **Cause:** the download started but the large weight shards never finished —
 almost always the connection **dropping, throttling, or being blocked** mid-pull
 (corporate/school proxy, VPN, antivirus quarantining the multi-GB file, or a
