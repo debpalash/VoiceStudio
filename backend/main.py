@@ -668,26 +668,58 @@ def _phase_a_build_inner() -> None:
         pass
 
     _startup_progress.begin_step("ml_imports")
-    import torchaudio
-    warnings.filterwarnings("ignore", category=UserWarning)
-    # torchaudio 2.9 REMOVED set_audio_backend(); soundfile has been the only
-    # backend since 2.0, so the call was already a no-op there and is simply
-    # absent now. Unguarded it raises AttributeError inside `ml_imports`, and a
-    # failure in that phase takes the whole backend down — the desktop app sits
-    # on "starting backend" forever and /health stays 503.
-    #
-    # That is not a hypothetical version: #1931 came from an sm_120 (Blackwell)
-    # user whose torch import crashed on Windows and who fixed it by moving to
-    # torch 2.9.1, which brings torchaudio 2.9 with it. Someone already working
-    # around one problem then hit a hard startup crash on a line that does
-    # nothing (#1931).
-    #
-    # The pin is not missing sm_120 kernels: torch 2.8.0 from the cu128 index
-    # lists sm_120 in get_arch_list(). CU128_ARCHS in
-    # tests/test_cuda_arch_compat.py records the same list, captured verbatim
-    # from a real cu128 build in #1285.
-    if hasattr(torchaudio, "set_audio_backend"):
-        torchaudio.set_audio_backend("soundfile")
+    import torch
+    if sys.platform == "win32":
+        # On Windows (Python 3.8+), native extension libraries (such as
+        # libtorchaudio.pyd) link against core PyTorch DLLs (c10.dll, torch_cpu.dll)
+        # in torch/lib. In Python 3.8+, ctypes.CDLL and native LoadLibraryEx only
+        # search directories added via os.add_dll_directory(). PyTorch's own init
+        # does not persist its AddDllDirectory handles, causing downstream
+        # extensions to fail with FileNotFoundError (WinError 126, #3147).
+        # Explicitly register torch/lib and hold the cookies.
+        for _pkg in (torch,):
+            _pkg_lib = os.path.join(os.path.dirname(getattr(_pkg, "__file__", "")), "lib")
+            if os.path.isdir(_pkg_lib):
+                try:
+                    from core.cudnn8 import _dll_dir_cookies
+                    _dll_dir_cookies.append(os.add_dll_directory(_pkg_lib))
+                except (OSError, AttributeError):
+                    pass
+    try:
+        import torchaudio
+        warnings.filterwarnings("ignore", category=UserWarning)
+        # torchaudio 2.9 REMOVED set_audio_backend(); soundfile has been the only
+        # backend since 2.0, so the call was already a no-op there and is simply
+        # absent now. Unguarded it raises AttributeError inside `ml_imports`, and a
+        # failure in that phase takes the whole backend down — the desktop app sits
+        # on "starting backend" forever and /health stays 503.
+        #
+        # That is not a hypothetical version: #1931 came from an sm_120 (Blackwell)
+        # user whose torch import crashed on Windows and who fixed it by moving to
+        # torch 2.9.1, which brings torchaudio 2.9 with it. Someone already working
+        # around one problem then hit a hard startup crash on a line that does
+        # nothing (#1931).
+        #
+        # The pin is not missing sm_120 kernels: torch 2.8.0 from the cu128 index
+        # lists sm_120 in get_arch_list(). CU128_ARCHS in
+        # tests/test_cuda_arch_compat.py records the same list, captured verbatim
+        # from a real cu128 build in #1285.
+        if hasattr(torchaudio, "set_audio_backend"):
+            torchaudio.set_audio_backend("soundfile")
+    except (ImportError, OSError) as _ta_exc:
+        # #3147: torchaudio's C++ extension (libtorchaudio.pyd) can fail to load
+        # if dependent DLLs or the VC++ runtime are missing. Audio I/O routes
+        # through services.audio_io with soundfile/ffmpeg fallbacks, so an
+        # extension failure must not abort backend startup.
+        try:
+            from core.scrub import scrub_text as _scrub
+            _ta_msg = _scrub(str(_ta_exc))
+        except ImportError:
+            _ta_msg = type(_ta_exc).__name__
+        logger.warning(
+            "torchaudio import failed (%s); audio I/O will use soundfile/ffmpeg fallback (#3147)",
+            _ta_msg,
+        )
     from utils import hf_progress
     # HF tqdm patch before any library import that can trigger
     # hf_hub_download (transformers, mlx_whisper, …).

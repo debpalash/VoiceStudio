@@ -60,7 +60,19 @@ from typing import Any, BinaryIO, Union
 
 import numpy as np
 import torch
-import torchaudio
+
+try:
+    import torchaudio
+except (ImportError, OSError) as _ta_err:  # #3147: Windows libtorchaudio DLL dependency missing
+    torchaudio = None  # type: ignore[assignment]
+    try:
+        from core.scrub import scrub_text as _scrub
+        _ta_msg = _scrub(str(_ta_err))
+    except ImportError:
+        _ta_msg = type(_ta_err).__name__
+    logging.getLogger("omnivoice.audio_io").debug(
+        "torchaudio extension unavailable (%s); using soundfile/ffmpeg fallback", _ta_msg
+    )
 
 logger = logging.getLogger("omnivoice.audio_io")
 
@@ -77,8 +89,10 @@ def load_audio(source: PathOrBuf) -> tuple[torch.Tensor, int]:
     """Read normalized channel-first audio even when TorchCodec is unavailable."""
     position = source.tell() if hasattr(source, "tell") and getattr(source, "seekable", lambda: False)() else None
     try:
+        if torchaudio is None:
+            raise ImportError("torchaudio is unavailable (#3147)")
         return torchaudio.load(source)
-    except (ImportError, RuntimeError) as exc:
+    except (ImportError, OSError, RuntimeError) as exc:
         if isinstance(exc, RuntimeError) and "could not load libtorchcodec" not in str(exc).lower():
             raise
         import soundfile as sf
@@ -388,6 +402,8 @@ def _safe_torchaudio_save(
     fmt = (format or "wav").lower()
     try:
         _ensure_audio_parent(path_or_buf)
+        if torchaudio is None:
+            raise ImportError("torchaudio is unavailable (#3147)")
         if fmt == "wav":
             torchaudio.save(
                 path_or_buf,
@@ -429,7 +445,7 @@ def _safe_torchaudio_save(
                     fmt, e,
                 )
                 torchaudio.save(path_or_buf, tensor, sample_rate, format=fmt)
-    except (ImportError, RuntimeError) as e:
+    except (ImportError, RuntimeError, OSError) as e:
         if isinstance(e, RuntimeError) and "could not load libtorchcodec" not in str(e).lower():
             raise _describe_write_failure(e, path_or_buf) from e
         # torchaudio >= 2.9 routes save() through TorchCodec, which needs
@@ -440,8 +456,13 @@ def _safe_torchaudio_save(
         # 2.8.0 publishes no aarch64 wheel. soundfile is already a locked
         # dependency and the tensor is normalized by this point, so hand it to
         # the audited sibling helper rather than failing the request.
+        try:
+            from core.scrub import scrub_text as _scrub
+            _save_err_msg = _scrub(str(e))
+        except ImportError:
+            _save_err_msg = type(e).__name__
         logger.warning(
-            "torchaudio.save needs TorchCodec (%s); writing via soundfile", e
+            "torchaudio.save unavailable (%s); writing via soundfile", _save_err_msg
         )
         if hasattr(path_or_buf, "seek") and hasattr(path_or_buf, "truncate"):
             try:
