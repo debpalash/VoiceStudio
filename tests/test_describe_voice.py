@@ -74,6 +74,16 @@ def test_numeric_age_does_not_misfire_elderly():
     assert a3["Age"] == "elderly"
 
 
+def test_aged_number_maps_to_its_bracket_not_elderly():
+    """'aged 22' is a number, not elderly's bare "aged" synonym."""
+    assert attrs_of("a young man, aged 22")["Age"] == "young adult"
+    assert attrs_of("a woman aged 30, calm and clear")["Age"] == "young adult"
+    assert attrs_of("narrator, age: 45")["Age"] == "middle-aged"
+    assert attrs_of("a man aged 8")["Age"] == "child"
+    assert attrs_of("a man aged 72")["Age"] == "elderly"
+    assert attrs_of("an aged sea captain")["Age"] == "elderly"
+
+
 def test_sichuan_dialect_grandma():
     res = parse_description("a sichuan dialect grandma")
     a = res["attrs"]
@@ -197,3 +207,51 @@ def test_endpoint_empty_description(client):
 def test_endpoint_rejects_oversized_description(client):
     r = client.post("/design/describe", json={"description": "x" * 2001})
     assert r.status_code == 422
+
+
+@pytest.mark.parametrize("description", [
+    "a toddler aged 18 months",
+    "a baby age: 20 weeks",
+    "a baby aged 90 days",
+])
+def test_age_with_non_year_unit_is_not_interpreted_as_years(description):
+    """Explicit infant-age units must not override child words as adult years."""
+    assert attrs_of(description)["Age"] == "child"
+
+
+@pytest.mark.parametrize("description,expected", [
+    ("a voice aged 1 month", "child"),
+    ("a voice aged 156 months", "teenager"),
+    ("a voice age: 22", "young adult"),
+])
+def test_explicit_age_units_preserve_numeric_brackets(description, expected):
+    """Unit-aware ages and unqualified year ages share the normal brackets."""
+    assert attrs_of(description)["Age"] == expected
+
+
+
+def test_numeric_age_scan_finishes_for_a_long_unmatched_separator():
+    """A missing age must not cause polynomial backtracking on whitespace."""
+    import os
+    from pathlib import Path
+    import subprocess
+    import sys
+
+    code = r"""
+from core.describe_voice import _AGE_NUM
+print('ready', flush=True)
+assert _AGE_NUM.search('aged' + '\n' * 100000 + '!') is None
+"""
+    process = subprocess.Popen(
+        [sys.executable, "-c", code],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        env={**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "backend")},
+    )
+    try:
+        assert process.stdout.readline().strip() == "ready"
+        process.communicate(timeout=3)
+        assert process.returncode == 0
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait()

@@ -388,3 +388,28 @@ def test_download_endpoint_explicit_env_wins(er, monkeypatch):
     })
     monkeypatch.setenv("HF_ENDPOINT", "https://custom.example")
     assert _download_endpoint() == "https://custom.example"
+
+
+@pytest.mark.parametrize("endpoint", ["https://example.invalid", "http://hf-mirror.com", "https://hf-mirror.com/path", "https://user@hf-mirror.com", "https://hf-mirror.com:8443", "https://[", "file:///tmp/model"])
+def test_auto_cache_rejects_unapproved_origins(er, endpoint):
+    from core import prefs
+
+    prefs.set_(er._DECISION_PREF, {"endpoint": endpoint, "checked_at": time.time(), "reachable": True})
+    assert er.cached_decision() is None
+    assert er.effective_endpoint() is None
+
+
+@pytest.mark.parametrize("checked_at", [float("nan"), float("inf"), -float("inf"), 10 ** 400])
+def test_auto_cache_rejects_invalid_timestamps(er, checked_at):
+    from core import prefs
+
+    prefs.set_(er._DECISION_PREF, {"endpoint": er.COMMUNITY_MIRROR, "checked_at": checked_at, "reachable": True})
+    assert er.cached_decision() is None
+    assert er.effective_endpoint() is None
+
+
+def test_auto_cache_allowlist_does_not_restrict_explicit_endpoint(er):
+    from core import prefs
+
+    prefs.set_("hf_endpoint", "https://private.example.invalid")
+    assert er.effective_endpoint() == "https://private.example.invalid"

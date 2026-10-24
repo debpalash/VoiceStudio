@@ -415,3 +415,25 @@ def test_empty_webvtt_cue_does_not_capture_following_identifier(gap):
     result = parse_srt(text)
     assert result.skipped_cues == 1
     assert [cue['text'] for cue in result.segments] == ['Spoken text']
+
+
+@pytest.mark.parametrize("hours", [100, 1234])
+@pytest.mark.parametrize("webvtt", [False, True])
+def test_exported_long_hour_timestamps_can_be_imported(hours, webvtt):
+    from services.srt_parser import format_cue_timestamp
+
+    start = hours * 3600 + 1.25
+    separator = "." if webvtt else ","
+    prefix = "WEBVTT\n\n" if webvtt else "1\n"
+    content = (prefix + format_cue_timestamp(start, separator) + " --> "
+               + format_cue_timestamp(start + 2, separator) + "\nSpoken text\n")
+    result = parse_srt(content)
+    assert len(result.segments) == 1
+    assert result.segments[0]["start"] == start
+    assert result.segments[0]["end"] == start + 2
+
+
+def test_unrepresentable_hour_timestamp_is_skipped():
+    hours = "9" * 1000
+    result = parse_srt(f"{hours}:00:00.000 --> {hours}:00:01.000\nToo large\n")
+    assert result.segments == []

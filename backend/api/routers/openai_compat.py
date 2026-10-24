@@ -584,9 +584,9 @@ def _typed_speech_http_error(e: Exception) -> Optional[HTTPException]:
 def _run_tts(backend, text: str, kw: dict):
     """Run TTS inference in the GPU thread pool."""
     import torch
-    from services.audio_dsp import apply_mastering, normalize_audio, trim_speech_padding
+    from services.audio_dsp import apply_mastering, normalize_audio, sanitize_audio, trim_speech_padding
     from services.watermark import mark_synthetic
-    wav = backend.generate(text, **kw)
+    wav = sanitize_audio(backend.generate(text, **kw))
     sr = backend.sample_rate
     # Strip the engine's lead-in/tail silence, as /generate does — unless the
     # caller asked for an exact `duration`, which a trim would shorten.

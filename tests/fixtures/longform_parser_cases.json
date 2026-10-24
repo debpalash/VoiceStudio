@@ -1601,5 +1601,364 @@
         ]
       }
     ]
+  },
+  {
+    "name": "pause_overflow_milliseconds",
+    "input": "a[pause 9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999ms]b",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "a",
+            "pause_ms_after": 10000,
+            "speed": null
+          },
+          {
+            "voice_id": "v1",
+            "text": "b",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "pause_overflow_scaled_seconds",
+    "input": "a[pause 10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000s]b",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "a",
+            "pause_ms_after": 10000,
+            "speed": null
+          },
+          {
+            "voice_id": "v1",
+            "text": "b",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ssml_spell_grapheme_combining",
+    "input": "[spell]éA[/spell]",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "é A",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ssml_spell_grapheme_indic",
+    "input": "[spell]क्\u200dषA[/spell]",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "क्\u200dष A",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ssml_spell_grapheme_flag",
+    "input": "[spell]🇺🇸A[/spell]",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "🇺🇸 A",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ssml_spell_grapheme_emoji",
+    "input": "[spell]👩🏽\u200d💻A[/spell]",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "👩🏽\u200d💻 A",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ssml_spell_grapheme_indic_boundary",
+    "input": "[spell]क् ष[/spell]",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "क् ष",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ssml_spell_grapheme_mark_boundary",
+    "input": "[spell]e ́A[/spell]",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "e ́ A",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ssml_spell_grapheme_flag_boundary",
+    "input": "[spell]🇺 🇸[/spell]",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "🇺 🇸",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "spell_nel_whitespace_separator",
+    "input": "[spell]e\u0085́A[/spell]",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "e ́ A",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "spell_c0_file_separator",
+    "input": "[spell]e\u001ćA[/spell]",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "e ́ A",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "spell_keeps_internal_bom",
+    "input": "[spell]e\ufeffA[/spell]",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "e \ufeff A",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ssml_resolution_non_top_close",
+    "input": "[slow]a[fast]b[spell]C[/slow]D[/fast]E[/spell]f",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "a",
+            "pause_ms_after": 0,
+            "speed": 0.85,
+            "join": "continue"
+          },
+          {
+            "voice_id": "v1",
+            "text": "b",
+            "pause_ms_after": 0,
+            "speed": 1.15,
+            "join": "continue"
+          },
+          {
+            "voice_id": "v1",
+            "text": "C D",
+            "pause_ms_after": 0,
+            "speed": 1.15,
+            "join": "continue"
+          },
+          {
+            "voice_id": "v1",
+            "text": "E",
+            "pause_ms_after": 0,
+            "speed": null,
+            "join": "continue"
+          },
+          {
+            "voice_id": "v1",
+            "text": "f",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ssml_resolution_same_tag_nested",
+    "input": "[slow]a[slow]b[/slow]c[emphasis]d[fast]e[/emphasis]f[/fast]g[/slow]h",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "abc",
+            "pause_ms_after": 0,
+            "speed": 0.85,
+            "join": "continue"
+          },
+          {
+            "voice_id": "v1",
+            "text": "d",
+            "pause_ms_after": 0,
+            "speed": 0.92,
+            "join": "continue"
+          },
+          {
+            "voice_id": "v1",
+            "text": "e",
+            "pause_ms_after": 0,
+            "speed": 1.15,
+            "join": "continue"
+          },
+          {
+            "voice_id": "v1",
+            "text": "f",
+            "pause_ms_after": 0,
+            "speed": 1.15,
+            "join": "continue"
+          },
+          {
+            "voice_id": "v1",
+            "text": "g",
+            "pause_ms_after": 0,
+            "speed": 0.85,
+            "join": "continue"
+          },
+          {
+            "voice_id": "v1",
+            "text": "h",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ssml_resolution_unmatched_unknown",
+    "input": "[/fast][SLOW]a[unknown]b[spell]C[/emphasis]D[/slow]E",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "a[unknown]b",
+            "pause_ms_after": 0,
+            "speed": 0.85,
+            "join": "continue"
+          },
+          {
+            "voice_id": "v1",
+            "text": "C D",
+            "pause_ms_after": 0,
+            "speed": 0.85,
+            "join": "continue"
+          },
+          {
+            "voice_id": "v1",
+            "text": "E",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
   }
 ]

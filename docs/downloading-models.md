@@ -5,7 +5,10 @@ explains how downloads are made fast, how to read the progress, and what to do
 on slow or restricted networks.
 
 Unknown or user-managed cache layouts are allowed through so existing manual
-engine installs remain compatible.
+engine installs remain compatible. Installed revision markers are published
+atomically from a unique temporary file, including when concurrent installs
+share a dependency. A failed publication retains the previous revision marker
+and removes its temporary file.
 
 ## Download backend: legacy LFS by default (accurate progress)
 
@@ -159,3 +162,11 @@ takes effect at the next retry boundary.
   the cache location with `HF_HOME` / `HF_HUB_CACHE`. An install also keeps
   2 GB free on the model disk after the download, so it needs the download
   size plus 2 GB; the warning in Model Catalogue shows both numbers.
+
+Deleting a model removes cached revisions of that model repository only. Other
+repositories (including forks sharing the same Git revision) and datasets with
+the same repository name remain cached.
+The segmented downloader verifies both Hugging Face checksum formats before
+replacing a destination: SHA-256 for LFS weights and Git blob SHA-1 for files
+stored directly in Git, such as configurations and tokenizers. A mismatch
+leaves the previous destination intact.

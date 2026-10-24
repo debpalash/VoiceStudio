@@ -711,7 +711,6 @@ def run_proc_factory(job_id: str):
                     raise HTTPException(status_code=504, detail=f"subprocess timed out after {timeout}s")
                 return p, stdout, stderr
             finally:
-                unregister_proc(job_id, p)
                 if p.returncode is None:
                     try:
                         p.kill()
@@ -721,6 +720,7 @@ def run_proc_factory(job_id: str):
                         await asyncio.wait_for(p.wait(), timeout=5.0)
                     except asyncio.TimeoutError:
                         pass
+                unregister_proc(job_id, p)
     return run_proc
 
 
@@ -823,7 +823,6 @@ async def run_proc_streaming_stderr(
                             yield ("stderr", line)
             rc = await p.wait()
         finally:
-            unregister_proc(job_id, p)
             if p.returncode is None:
                 try:
                     p.kill()
@@ -833,6 +832,7 @@ async def run_proc_streaming_stderr(
                     await asyncio.wait_for(p.wait(), timeout=5.0)
                 except asyncio.TimeoutError:
                     pass
+            unregister_proc(job_id, p)
             try:
                 p.stdout.close()
             except Exception:
@@ -1840,5 +1840,5 @@ async def ingest_pipeline(
         cookie_file = source.get("cookie_file")
         _delete_cookie_export(cookie_file)
         end_ingest(job_id)
-        with _active_procs_lock:
-            _active_procs.pop(job_id, None)
+        # Retry cleanup, retaining any process whose termination still fails.
+        kill_job_procs(job_id)

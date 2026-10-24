@@ -140,3 +140,39 @@ it('falls back to the default proxy port for a missing or invalid setting', () =
   }
   expect(electronProxyPort('49305')).toBe(49305);
 });
+
+it('fails an interrupted backend response promptly and serves the next request', async () => {
+  const upstream = createServer((request, response) => {
+    if (request.url === '/truncated') {
+      response.writeHead(200, { 'content-type': 'text/plain', 'content-length': '100' });
+      response.write('short', () => setTimeout(() => response.destroy(), 20));
+    } else response.end('healthy');
+  });
+  await new Promise<void>((resolve) => upstream.listen(0, '127.0.0.1', resolve));
+  cleanup.push(
+    () => new Promise<void>((resolve) => {
+      upstream.closeAllConnections();
+      upstream.close(() => resolve());
+    }),
+  );
+  const address = upstream.address();
+  if (!address || typeof address === 'string') throw new Error('upstream did not bind');
+  const proxy = await startDevBackendProxy(() => `http://127.0.0.1:${address.port}`, () => ({}), 0);
+  cleanup.push(proxy.close);
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const response = await fetch(`${proxy.url}/truncated`, { signal: controller.signal });
+    const outcome = await Promise.race([
+      response.text().then(() => 'completed', () => 'failed'),
+      new Promise<string>((resolve) => {
+        timer = setTimeout(() => resolve('timed-out'), 500);
+      }),
+    ]);
+    expect(outcome).toBe('failed');
+    expect(await (await fetch(`${proxy.url}/health`)).text()).toBe('healthy');
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+  }
+});

@@ -32,3 +32,7 @@ buttons show pending/buffering and unavailable states instead of silently swallo
 playback failures. An audio-only dub's preview mixes the dubbed track with the
 background once and reuses that file for every seek; regenerating the track
 replaces the old mix. Playback labels are translated in all 21 locales.
+
+Native exports preserve destination symlinks, including links to files that do
+not exist yet. The new file is written at the linked destination; cyclic or
+unresolvable links fail without replacing the link itself.

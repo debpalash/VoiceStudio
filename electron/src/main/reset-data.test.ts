@@ -76,6 +76,36 @@ it('removes only selected VoiceStudio targets and preserves unrelated siblings',
   expect(existsSync(join(roots.temp, 'unrelated.txt'))).toBe(true);
 });
 
+it('clears only log files when the log root is the data folder', async () => {
+  // The backend reports dirname(crash_log_path), and crash_log.txt lives in
+  // the data folder itself, so the packaged app passes logs === data.
+  const roots = await fixture();
+  await writeFile(join(roots.data, 'crash_log.txt'), 'crash');
+  await writeFile(join(roots.data, 'omnivoice.log.1'), 'log');
+  const shared = { ...roots, logs: roots.data };
+  const logs = (await scanResetScopes(shared)).find((scope) => scope.key === 'logs')!;
+  expect(logs.paths).not.toContain(roots.data);
+  const report = await purgeResetScopes(shared, ['logs'], join(roots.root, 'home'));
+  expect(report.removed).not.toContain(roots.data);
+  expect(existsSync(join(roots.data, 'crash_log.txt'))).toBe(false);
+  expect(existsSync(join(roots.data, 'omnivoice.log.1'))).toBe(false);
+  expect(existsSync(join(roots.data, 'prefs.json'))).toBe(true);
+  expect(existsSync(join(roots.data, 'voices', 'voice.wav'))).toBe(true);
+  expect(existsSync(join(roots.data, 'keep.txt'))).toBe(true);
+});
+
+it('keeps a log root that contains the data or model folder', async () => {
+  const roots = await fixture();
+  const parent = join(roots.root, 'OmniVoice');
+  const report = await purgeResetScopes({ ...roots, logs: parent }, ['logs'], null);
+  expect(report.removed).toEqual([]);
+  expect(existsSync(join(roots.data, 'voices', 'voice.wav'))).toBe(true);
+  const cache = join(roots.root, '.cache');
+  const models = await purgeResetScopes({ ...roots, logs: cache }, ['logs'], null);
+  expect(models.removed).toEqual([]);
+  expect(existsSync(join(roots.models, 'models--fixture', 'weights.bin'))).toBe(true);
+});
+
 it('refuses filesystem roots, home directories and unsigned custom roots', async () => {
   const root = await mkdtemp(join(tmpdir(), 'unsigned-reset-test-'));
   created.push(root);

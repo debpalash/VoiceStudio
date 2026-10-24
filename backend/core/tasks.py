@@ -1,8 +1,10 @@
 import asyncio
 import contextlib
+import threading
 import time
 import json
 import logging
+from collections.abc import Callable
 
 from core import job_store
 from core import failure
@@ -59,12 +61,20 @@ class TaskManager:
     def __init__(self):
         self.queue = None
         self.active_tasks = {}
+        # cancel_task() runs on request threads; the worker runs on the event
+        # loop. This lock makes "cancelled before dispatch?" and the move to
+        # `running` one step, so an abort cannot slip in between them.
+        self._state_lock = threading.Lock()
 
     def _init_queue(self):
         if self.queue is None:
             self.queue = asyncio.Queue()
 
-    async def add_task(self, task_id, task_type, func, *args, project_id=None, meta=None, **kwargs):
+    async def add_task(self, task_id, task_type, func, *args, project_id=None, meta=None,
+                       on_cancel: Callable[[], None] | None = None, **kwargs) -> None:
+        """Queue ``func``. ``on_cancel`` releases what the caller staged for it
+        (for example a temporary credentials file) when the task is cancelled
+        before it starts, since ``func`` never runs to clean up after itself."""
         self._init_queue()
         task_obj = {
             "status": "pending",
@@ -75,6 +85,7 @@ class TaskManager:
             "listeners_lock": asyncio.Lock(),
             "error": None,
             "cancelled": False,
+            "on_cancel": on_cancel,
         }
         self.active_tasks[task_id] = task_obj
         try:
@@ -84,9 +95,13 @@ class TaskManager:
         await self.queue.put((task_id, func, args, kwargs))
 
     def cancel_task(self, task_id):
-        if task_id in self.active_tasks:
-            self.active_tasks[task_id]["cancelled"] = True
-            return True
+        task = self.active_tasks.get(task_id)
+        if task is None:
+            return False
+        with self._state_lock:
+            if task["status"] in {"pending", "running"}:
+                task["cancelled"] = True
+                return True
         return False
 
     def is_cancelled(self, task_id):
@@ -137,7 +152,32 @@ class TaskManager:
                 self.queue.task_done()
                 continue
 
-            t["status"] = "running"
+            with self._state_lock:
+                cancelled_before_start = bool(t.get("cancelled"))
+                if cancelled_before_start:
+                    t["status"] = "cancelled"
+                else:
+                    t["status"] = "running"
+            if cancelled_before_start:
+                # Do not even call the function: opening an async generator or
+                # awaiting its first update can already start costly work.
+                on_cancel = t.get("on_cancel")
+                if on_cancel is not None:
+                    try:
+                        on_cancel()
+                    except Exception:
+                        logger.exception("on_cancel cleanup failed for %s", task_id)
+                try:
+                    job_store.mark_cancelled(task_id)
+                except Exception:
+                    logger.exception("job_store.mark_cancelled failed")
+                try:
+                    await self._push_event(task_id, f"data: {json.dumps({'type': 'cancelled'})}\n\n")
+                    await self._push_event(task_id, None)
+                finally:
+                    self.queue.task_done()
+                continue
+
             try:
                 job_store.mark_running(task_id)
             except Exception:

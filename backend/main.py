@@ -330,6 +330,7 @@ if _json_logs:
     # Replace every existing handler's formatter with the JSON one.
     for _h in logging.getLogger().handlers:
         _h.setFormatter(_JsonFormatter())
+    install_redaction_filter()
 
 # Rolling file handler so the Settings UI > Logs > Backend tab has something to read.
 # Attached to root so uvicorn, fastapi, and every `omnivoice.*` namespace land here.
@@ -830,8 +831,7 @@ def _phase_a_finalize() -> None:
         _index_path = os.path.join(_frontend_path, "index.html")
         if _public_api_base and not is_valid_public_api_base(_public_api_base):
             logging.getLogger("omnivoice.api").warning(
-                "OMNIVOICE_PUBLIC_API_BASE=%r is not a valid http(s) URL; ignoring.",
-                _public_api_base,
+                "OMNIVOICE_PUBLIC_API_BASE is not a valid http(s) URL; ignoring."
             )
             _public_api_base = ""
 

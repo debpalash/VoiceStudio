@@ -49,6 +49,10 @@ archive paths, probes its device list, and installs it under the update-survivin
 app-data engine directory. The action is explicit; generation never downloads
 or updates executable code.
 
+Runtime publication retries transient file locks for a bounded interval. If the
+new directory cannot be published, the installer restores the previous directory;
+if restoration is also blocked, it retains the backup for recovery.
+
 For a user-managed runtime:
 
 1. Download the v0.7.4 prebuilt for your platform from

@@ -74,6 +74,9 @@ def test_register_unregister_has_active():
     dp.register_proc(jid, proc)
     assert dp.has_active_procs(jid)
     dp.unregister_proc(jid, proc)
+    assert dp.has_active_procs(jid)  # A live process remains available for retry.
+    proc.returncode = 0
+    dp.unregister_proc(jid, proc)
     assert not dp.has_active_procs(jid)
 
 

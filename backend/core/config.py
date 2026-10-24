@@ -1,6 +1,20 @@
 import os
+import logging
 import re
 import sys
+
+logger = logging.getLogger("omnivoice.config")
+
+
+def _nonnegative_int_env(name: str, default: int) -> int:
+    try:
+        value = int(os.environ.get(name, str(default)))
+        if value >= 0:
+            return value
+    except ValueError:
+        pass  # fall through to the warning and the default below
+    logger.warning("%s must be a non-negative integer; using the default", name)
+    return default
 
 def get_app_data_dir():
     custom_dir = os.environ.get("OMNIVOICE_DATA_DIR")
@@ -107,8 +121,8 @@ PREVIEW_DIR = os.path.join(DATA_DIR, "preview")
 CRASH_LOG_PATH = os.path.join(DATA_DIR, "crash_log.txt")   # only written on unhandled exceptions
 LOG_PATH = os.path.join(DATA_DIR, "omnivoice.log")          # rolling runtime log — what the Settings UI reads
 
-IDLE_TIMEOUT_SECONDS = int(os.environ.get("OMNIVOICE_IDLE_TIMEOUT", "900"))
-CPU_POOL_WORKERS = int(os.environ.get("OMNIVOICE_CPU_POOL", "0")) or min(8, (os.cpu_count() or 4))
+IDLE_TIMEOUT_SECONDS = _nonnegative_int_env("OMNIVOICE_IDLE_TIMEOUT", 900)
+CPU_POOL_WORKERS = _nonnegative_int_env("OMNIVOICE_CPU_POOL", 0) or min(8, (os.cpu_count() or 4))
 
 def ensure_dirs():
     for d in [DATA_DIR, VOICES_DIR, OUTPUTS_DIR, DUB_DIR, PREVIEW_DIR]:

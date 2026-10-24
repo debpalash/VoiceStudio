@@ -211,10 +211,22 @@ async def _enable(app) -> ShareState:
         return _runtime.state
     port = _find_free_port(share_port_base())
     pin = _gen_pin()
-    config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning")
+    # The main server already owns the app lifespan; running it here would
+    # repeat startup on enable and run the full shutdown on disable.
+    config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="warning",
+                            lifespan="off")
     server = uvicorn.Server(config)
     server.install_signal_handlers = lambda: None  # never hijack signals in-process
-    _runtime.task = asyncio.create_task(server.serve())
+
+    async def _serve():
+        try:
+            await server.serve()
+        except SystemExit as exc:
+            # uvicorn sys.exit(1)s when the bind fails; a SystemExit escaping
+            # this task would stop the backend's own event loop.
+            raise RuntimeError("share listener failed to bind") from exc
+
+    _runtime.task = asyncio.create_task(_serve())
     for _ in range(100):  # ~5s for the socket to bind
         if getattr(server, "started", False):
             break

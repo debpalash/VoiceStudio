@@ -284,3 +284,49 @@ def test_segment_http_error_stops_other_segments(tmp_path):
         return [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
 
     assert asyncio.run(_do()) == []
+
+
+@pytest.mark.parametrize("read_chunk", [2, 1024])
+def test_overlong_range_cannot_corrupt_completed_neighbor(tmp_path, monkeypatch, read_chunk):
+    monkeypatch.setattr(sd, "_MIN_SEGMENT_BYTES", 4)
+    monkeypatch.setattr(sd, "_MAX_SEGMENT_BYTES", 4)
+    monkeypatch.setattr(sd, "_READ_CHUNK", read_chunk)
+    payload = b"ABCDEFGH"
+    dest = str(tmp_path / "model.bin")
+    with open(dest + ".part", "wb") as handle:
+        handle.write(b"0000" + payload[4:])
+    sd._save_done(dest + ".part", len(payload), {(4, 7)})
+
+    def overlong(request):
+        if request.method == "HEAD":
+            return httpx.Response(200, headers={"content-length": "8", "accept-ranges": "bytes"})
+        assert request.headers["range"] == "bytes=0-3"
+        return httpx.Response(206, headers={"content-range": "bytes 0-3/8"}, content=b"ABCDxx")
+
+    with pytest.raises(ValueError):
+        _download(overlong, dest, expected_size=len(payload), num_connections=2)
+    with open(dest + ".part", "rb") as handle:
+        assert handle.read()[4:] == payload[4:]
+    _download(_ranged_handler(payload), dest, expected_size=len(payload), num_connections=2)
+    with open(dest, "rb") as handle:
+        assert handle.read() == payload
+@pytest.mark.parametrize("accept_ranges", [False, True])
+def test_git_blob_etag_rejects_same_length_corruption(tmp_path, accept_ranges):
+    # `git hash-object` of b"test\n". Git hashes the blob header too, so a
+    # plain SHA1(content) is not a valid oracle for a Hub non-LFS etag.
+    tag = "9daeafb9864cf43055ae93beb0afd6c7d144bfa4"
+    dest = tmp_path / "config.json"
+    dest.write_bytes(b"previous installation")
+    with pytest.raises(ValueError, match="sha1"):
+        _download(_ranged_handler(b"fail\n", accept_ranges=accept_ranges), str(dest),
+                  expected_size=5, expected_etag=tag)
+    assert dest.read_bytes() == b"previous installation"
+
+
+@pytest.mark.parametrize("accept_ranges", [False, True])
+def test_git_blob_etag_accepts_exact_content(tmp_path, accept_ranges):
+    tag = '"9daeafb9864cf43055ae93beb0afd6c7d144bfa4"'
+    dest = tmp_path / "config.json"
+    _download(_ranged_handler(b"test\n", accept_ranges=accept_ranges), str(dest),
+              expected_size=5, expected_etag=tag)
+    assert dest.read_bytes() == b"test\n"

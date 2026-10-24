@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import io
 import logging
+import lzma
 import posixpath
 import re
 import zipfile
+import zlib
 from html.parser import HTMLParser
 from xml.etree import ElementTree as ET
 from urllib.parse import unquote, urlsplit
@@ -151,7 +153,7 @@ class _TextExtractor(HTMLParser):
         super().__init__(convert_charrefs=True)
         self._parts: list[str] = []
         self._skip_depth = 0
-        self._pagebreak_stack: list[str] = []
+        self._excluded_stack: list[str] = []
         self._in_title = False
         #: The element whose text is the title, and that text as it arrives: a
         #: heading such as ``<h1>Chapter <em>One</em></h1>`` reaches
@@ -179,6 +181,15 @@ class _TextExtractor(HTMLParser):
                 return True
         return False
 
+    @staticmethod
+    def _xhtml_tag(tag: str, namespaces: dict[str, str]) -> str:
+        # HTMLParser preserves qualified tag names. Strip only prefixes bound
+        # to XHTML; a publisher's foreign <x:script> is not an HTML script.
+        prefix, separator, local = tag.partition(":")
+        if separator and namespaces.get(prefix) == "http://www.w3.org/1999/xhtml":
+            return local
+        return tag
+
     def handle_starttag(self, tag, attrs):
         # Resolve semantic attributes by namespace URI, preserving XML scope.
         namespaces = dict(self._elements[-1][1] if self._elements else {"epub": self._EPUB_NS})
@@ -190,20 +201,24 @@ class _TextExtractor(HTMLParser):
             prefix, separator, local = name.partition(":")
             if separator and local == "type" and namespaces.get(prefix) == self._EPUB_NS:
                 types.update((value or "").split())
+        raw_tag = tag
+        tag = self._xhtml_tag(tag, namespaces)
         if tag not in self._VOID:
-            self._elements.append((tag, namespaces))
+            self._elements.append((raw_tag, namespaces))
         if tag in self._SKIP:
             self._skip_depth += 1
+        if self._excluded_stack:
+            if tag not in self._VOID:
+                self._excluded_stack.append(tag)
+            return
+        # HTML's hidden attribute is boolean: even hidden="false" hides the
+        # subtree. Suppress it before heading capture or paragraph breaks.
+        if any(name == "hidden" for name, _value in attrs) or self._is_pagebreak(attrs, types):
+            if tag not in self._VOID:
+                self._excluded_stack.append(tag)
+            return
         if tag in ("body", "main", "section", "article", "div"):
             self.epub_types.update(types)
-        if self._pagebreak_stack:
-            if tag not in self._VOID:
-                self._pagebreak_stack.append(tag)
-            return
-        if self._is_pagebreak(attrs, types):
-            if tag not in self._VOID:
-                self._pagebreak_stack.append(tag)
-            return
         if tag in ("h1", "h2", "title") and not self.title and not self._in_title:
             self._in_title = True
             self._title_tag = tag
@@ -216,17 +231,29 @@ class _TextExtractor(HTMLParser):
             else:
                 self._parts.append("\n")
 
+    def handle_startendtag(self, tag, attrs):
+        # A self-closing void element (<x:br/>) is never pushed onto the scope
+        # stack, so running the end-tag search would close a same-named
+        # ancestor instead and lose that ancestor's namespace binding.
+        depth = len(self._elements)
+        self.handle_starttag(tag, attrs)
+        if len(self._elements) > depth:
+            self.handle_endtag(tag)
+
     def handle_endtag(self, tag):
+        raw_tag = tag
+        namespaces = self._elements[-1][1] if self._elements else {}
+        tag = self._xhtml_tag(tag, namespaces)
         for index in range(len(self._elements) - 1, -1, -1):
-            if self._elements[index][0] == tag:
+            if self._elements[index][0] == raw_tag:
                 del self._elements[index:]
                 break
         if tag in self._SKIP and self._skip_depth:
             self._skip_depth -= 1
-        if self._pagebreak_stack:
-            for index in range(len(self._pagebreak_stack) - 1, -1, -1):
-                if self._pagebreak_stack[index] == tag:
-                    del self._pagebreak_stack[index:]
+        if self._excluded_stack:
+            for index in range(len(self._excluded_stack) - 1, -1, -1):
+                if self._excluded_stack[index] == tag:
+                    del self._excluded_stack[index:]
                     break
             return
         if self._in_title and tag == self._title_tag:
@@ -239,7 +266,7 @@ class _TextExtractor(HTMLParser):
                 self._parts.append("\n")
 
     def handle_data(self, data):
-        if self._skip_depth or self._pagebreak_stack:
+        if self._skip_depth or self._excluded_stack:
             return
         if self._in_title:
             # The first heading becomes the chapter's `# Title` (metadata, not
@@ -477,7 +504,8 @@ def _read_member(zf: zipfile.ZipFile, name: str, budget: _ReadBudget, *, require
         return None
     try:
         raw = zf.read(name)
-    except (zipfile.BadZipFile, RuntimeError, NotImplementedError, EOFError) as e:
+    except (zipfile.BadZipFile, RuntimeError, NotImplementedError, EOFError,
+            OSError, zlib.error, lzma.LZMAError) as e:
         raise ValueError(f"EPUB member {name!r} is unreadable: {e}") from e
     budget.used += len(raw)
     return raw

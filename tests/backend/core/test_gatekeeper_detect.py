@@ -39,13 +39,13 @@ def test_returns_false_on_non_macos(monkeypatch, detect):
     assert status["error_class"] is None
 
 
-def test_returns_true_when_xattr_lists_quarantine(monkeypatch, detect):
+def test_returns_true_when_xattr_reads_quarantine(monkeypatch, detect):
     """On Darwin with a quarantined bundle, xattr stdout contains
-    ``com.apple.quarantine`` → returns True."""
+    quarantine metadata → returns True."""
     monkeypatch.setattr(sys, "platform", "darwin")
 
     class _Result:
-        stdout = "com.apple.quarantine: 0083;6450c4b8;Chrome;\nother.attr: 1\n"
+        stdout = "0083;6450c4b8;Chrome;\n"
         stderr = ""
         returncode = 0
 
@@ -55,13 +55,13 @@ def test_returns_true_when_xattr_lists_quarantine(monkeypatch, detect):
 
 
 def test_returns_false_when_xattr_absent(monkeypatch, detect):
-    """xattr returns empty stdout → not quarantined."""
+    """The attribute query returns nonzero when quarantine is absent."""
     monkeypatch.setattr(sys, "platform", "darwin")
 
     class _Result:
         stdout = ""
         stderr = ""
-        returncode = 0
+        returncode = 1
 
     monkeypatch.setattr(subprocess, "run", lambda *a, **kw: _Result())
     assert detect.is_app_quarantined("/Applications/Fake.app") is False
@@ -123,3 +123,19 @@ def test_returns_false_when_not_inside_app_bundle(monkeypatch, detect):
     monkeypatch.setattr(subprocess, "run", _explode)
     # Call without passing bundle_path so _resolve_app_bundle_path runs.
     assert detect.is_app_quarantined() is False
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="requires native macOS extended attributes")
+def test_quarantine_probe_uses_exact_attribute_on_isolated_bundle(tmp_path, detect):
+    import shutil
+
+    if not shutil.which("xattr"):
+        pytest.skip("xattr is unavailable")
+    bundle = tmp_path / "Isolated.app"
+    bundle.mkdir()
+    subprocess.run(["xattr", "-w", "user.notes", "com.apple.quarantine", str(bundle)], check=True)
+    assert detect.is_app_quarantined(str(bundle)) is False
+    subprocess.run(["xattr", "-w", "com.apple.quarantine", "0083;fixture", str(bundle)], check=True)
+    assert detect.is_app_quarantined(str(bundle)) is True
+    subprocess.run(["xattr", "-d", "com.apple.quarantine", str(bundle)], check=True)
+    assert detect.is_app_quarantined(str(bundle)) is False

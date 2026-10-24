@@ -79,9 +79,17 @@ Node.js 22 以上、Bun、Rust/Cargo、および各プラットフォームの�
 インストーラーは設定、プロジェクト、モデルを保持します。旧バージョンを指定する場合は
 Electron パッケージを含んでいる必要があり、アーカイブ済みの Tauri ビルドにフォールバックすることはありません。
 
-[Releases](https://github.com/debpalash/VoiceStudio/releases/latest) からダウンロードし、お使いのプラットフォームのガイドに従ってください：
+[Releases](https://github.com/debpalash/VoiceStudio/releases/latest) からダウンロード（macOS `.dmg`、Windows `.exe`、Linux `.AppImage` または `.deb`）し、お使いのプラットフォームのガイドに従ってください：
 
 **[macOS](docs/install/macos.md) · [Windows](docs/install/windows.md) · [Linux](docs/install/linux.md) · [Docker](docs/install/docker.md)**
+
+| ハードウェア | サポート |
+|---|---|
+| NVIDIA GPU（Windows / Linux） | CUDA アクセラレーション |
+| Apple Silicon | Metal（MPS）アクセラレーション |
+| 専用 GPU なし（Intel/AMD 内蔵グラフィックス、古い PC） | CPU で問題なく利用できますが低速です。セットアップで小型の CPU 版 PyTorch をインストールします（空きディスク約 5 GB） |
+| Windows on ARM（Snapdragon X など） | **実験的**、検証待ち：ネイティブ ARM64 アプリ、エミュレーション上の x64 Python バックエンド、CPU のみ |
+| Intel Mac | アプリ UI のみ。リモートバックエンドに接続してください（[理由](docs/install/macos.md)） |
 
 **音声クローン**を開き、声を選ぶかクリアな参照音声を追加し、テキストを入力して生成します。求められたら必要なモデルをインストールしてください。必要なハードウェアはエンジンによって異なります。[パフォーマンス](docs/performance.md)を参照してください。
 
@@ -137,4 +145,4 @@ bun run dev
 
 ## ライセンスと責任ある利用
 
-[AGPL-3.0](LICENSE)。モデルにはそれぞれ独自のライセンスがあります。商用利用の前に確認してください。声のクローンは必ず許可を得たうえで行ってください。詳しくは[ライセンスの詳細](LICENSE-NOTICE.md)を参照してください。
+[AGPL-3.0](LICENSE) はアプリ本体（条件に従った商用利用を含む）に適用されます。モデルの重み、トークナイザー、声、生成物の条件は別個のものであり、有償のアプリライセンスはそれらの権利を付与しません。声のクローンは必ず許可を得たうえで行ってください。モデルマネージャーは、バージョン付きのモデル提供元の通知、根拠リンク、未解決の審査ギャップを[共有インベントリ](docs/licensing/model-inventory.md)から表示します。任意の[審査済みファイルのプレビュー](docs/licensing/model-review-workflow.md)は通常のダウンロードを制限せず、商用利用の許可を保証するものでもありません。詳しくは[ライセンスの詳細](LICENSE-NOTICE.md)を参照してください。

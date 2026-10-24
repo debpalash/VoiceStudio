@@ -2,6 +2,7 @@
 import {
   chmod,
   lstat,
+  mkdir,
   mkdtemp,
   open,
   readdir,
@@ -165,5 +166,89 @@ describe('replaceFile', () => {
     await replaceFile(link, 'new');
     expect(await readFile(real, 'utf8')).toBe('new');
     expect((await lstat(link)).isSymbolicLink()).toBe(true);
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('exports through dangling symlinks', () => {
+  it('creates the intended file while retaining a relative destination symlink', async () => {
+    const target = join(directory, 'future.wav');
+    const link = join(directory, 'export.wav');
+    await symlink('future.wav', link);
+    await replaceFile(link, 'new export');
+    expect((await lstat(link)).isSymbolicLink()).toBe(true);
+    expect(await readFile(target, 'utf8')).toBe('new export');
+    expect((await readdir(directory)).sort()).toEqual(['export.wav', 'future.wav']);
+  });
+
+  it.each(['relative', 'absolute', 'chain'])(
+    'rejects a %s dangling directory target before opening a temporary file',
+    async (kind) => {
+      const link = join(directory, 'export.wav');
+      const target = join(directory, 'future');
+      if (kind === 'chain') {
+        await symlink('future/', join(directory, 'middle'));
+        await symlink('middle', link);
+      } else {
+        await symlink(kind === 'absolute' ? `${target}/` : 'future/', link);
+      }
+      let opens = 0;
+      const tracked: ReplaceFileSystem = {
+        rename,
+        open: (...args) => {
+          opens++;
+          return open(...args);
+        },
+      };
+      await expect(replaceFile(link, 'new export', tracked)).rejects.toMatchObject({ code: 'EISDIR' });
+      expect(opens).toBe(0);
+      expect((await lstat(link)).isSymbolicLink()).toBe(true);
+      await expect(lstat(target)).rejects.toMatchObject({ code: 'ENOENT' });
+      expect((await readdir(directory)).sort()).toEqual(
+        kind === 'chain' ? ['export.wav', 'middle'] : ['export.wav'],
+      );
+    },
+  );
+
+  it('preserves a chain of links to a missing export', async () => {
+    const target = join(directory, 'future.wav');
+    const intermediate = join(directory, 'middle.wav');
+    const link = join(directory, 'export.wav');
+    await symlink(target, intermediate);
+    await symlink(intermediate, link);
+    await replaceFile(link, new Uint8Array([1, 2, 3]));
+    expect((await lstat(link)).isSymbolicLink()).toBe(true);
+    expect((await lstat(intermediate)).isSymbolicLink()).toBe(true);
+    expect([...(await readFile(target))]).toEqual([1, 2, 3]);
+  });
+
+  it('resolves `..` after a symlinked directory like the OS, not lexically', async () => {
+    const work = join(directory, 'work');
+    const other = join(directory, 'other');
+    await mkdir(join(other, 'subdir'), { recursive: true });
+    await mkdir(work);
+    await symlink(join(other, 'subdir'), join(work, 'alias'));
+    await writeFile(join(work, 'future.wav'), 'unrelated');
+    const link = join(work, 'export.wav');
+    await symlink('alias/../future.wav', link);
+    await replaceFile(link, 'new export');
+    expect((await lstat(link)).isSymbolicLink()).toBe(true);
+    expect(await readFile(join(other, 'future.wav'), 'utf8')).toBe('new export');
+    expect(await readFile(join(work, 'future.wav'), 'utf8')).toBe('unrelated');
+  });
+
+  it('rejects a missing intermediate directory instead of collapsing the path', async () => {
+    const link = join(directory, 'export.wav');
+    await symlink('missing/../export.wav', link);
+    await expect(replaceFile(link, 'new export')).rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await lstat(link)).isSymbolicLink()).toBe(true);
+    expect(await readdir(directory)).toEqual(['export.wav']);
+  });
+
+  it('refuses a cyclic symlink without overwriting the link', async () => {
+    const link = join(directory, 'export.wav');
+    await symlink(link, link);
+    await expect(replaceFile(link, 'new export')).rejects.toMatchObject({ code: 'ELOOP' });
+    expect((await lstat(link)).isSymbolicLink()).toBe(true);
+    expect(await readdir(directory)).toEqual(['export.wav']);
   });
 });

@@ -19,3 +19,7 @@ manual choices cancel queued or running mappings. Personality and demo starting 
 the collapsed recipe summary, language and production controls, profile editing and persona
 export use the same established controls as the Tauri workflow. Native verification and any
 remaining release gates are recorded in `electron/PARITY.md`.
+
+Numeric ages such as `aged 22` use the matching age bracket. Explicit months, weeks,
+or days (for example `a toddler aged 18 months`) are converted before choosing the
+bracket, so infant descriptions do not become teenage or elderly voices.

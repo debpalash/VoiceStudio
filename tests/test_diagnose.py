@@ -145,3 +145,25 @@ def test_deep_check_skips_during_model_load(monkeypatch):
     check = diagnose._check_deep_synthesis()
     assert check["status"] == WARN
     assert "skipped" in check["detail"]
+
+
+def test_unicode_diagnostics_write_to_ascii_console_without_mutating_report():
+    import copy
+    import io
+
+    report = {
+        "app_version": "0.5.7", "platform": "Host café",
+        "checks": [{"status": WARN, "label": "Device", "detail": "GPU — unavailable", "hint": "Choose café"}],
+        "engine_execution": [{"family": "tts", "engine_id": "example", "gpu_name": "GPU café", "cpu_fallback_reason": "unavailable — retry"}],
+        "summary": {"passed": 0, "warnings": 1, "failures": 0, "ok": False},
+    }
+    original = copy.deepcopy(report)
+    text = format_text(report)
+    output = io.BytesIO()
+    console = io.TextIOWrapper(output, encoding="ascii", errors="strict")
+    console.write(text)
+    console.flush()
+    assert b"\\u2014" in output.getvalue()
+    assert b"\\xe9" in output.getvalue()
+    assert "needs attention" in text
+    assert report == original

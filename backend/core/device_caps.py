@@ -570,8 +570,17 @@ def _probe() -> HostCaps:
             mismatch = arch_unsupported(torch)
             if mismatch is not None:
                 device_arch, archs = mismatch
+                forced = os.environ.get("OMNIVOICE_FORCE_CUDA", "").strip().lower() in {
+                    "1", "true", "yes", "on",
+                }
+                if not forced:
+                    # Availability of the driver is not availability of kernels.
+                    # Match get_best_device's CPU fallback before routing and
+                    # user overrides can advertise an unusable accelerator.
+                    detected.remove("rocm" if is_rocm else "cuda")
+                prefix = "" if forced else f"{UNUSABLE_GPU_MARKER}: "
                 notes.append(
-                    f"{device_name or 'GPU'} ({device_arch}) not in this torch "
+                    f"{prefix}{device_name or 'GPU'} ({device_arch}) not in this torch "
                     f"build's archs ({', '.join(archs)}) — {KERNEL_RISK_MARKER}"
                 )
 

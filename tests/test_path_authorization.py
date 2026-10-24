@@ -192,3 +192,37 @@ def test_missing_store_directory_is_distinguished_from_a_missing_token(auth, cap
     warnings = [rec for rec in caplog.records if rec.levelno == logging.WARNING]
     assert any("does not exist" in rec.message for rec in warnings)
     assert not any(auth.dir in rec.message for rec in warnings)
+
+
+@pytest.mark.parametrize('bad_token', ['é' * 64, '\ud800', {'nested': 'é'}])
+def test_corrupt_token_metadata_does_not_block_valid_authorization(auth, monkeypatch, bad_token):
+    original_scan = os.scandir
+    def stale_first(root):
+        with original_scan(root) as entries:
+            ordered = sorted(entries, key=lambda entry: entry.name)
+        class OrderedScan:
+            def __iter__(self):
+                return iter(ordered)
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+        return OrderedScan()
+    monkeypatch.setattr(auth.mod.os, "scandir", stale_first)
+    stale = 'a' * 64
+    auth.write(stale, 'dub_export', '/stale')
+    with open(os.path.join(auth.dir, f'{stale}.json'), 'w', encoding='utf-8') as handle:
+        json.dump({'token': bad_token, 'kind': 'dub_export', 'path': '/stale'}, handle)
+    token = 'b' * 64
+    auth.write(token, 'dub_export', '/selected')
+    assert auth.consume(token, 'dub_export') == '/selected'
+
+
+@pytest.mark.parametrize('bad_token', ['é' * 64, '\ud800'])
+def test_corrupt_token_metadata_returns_normal_authorization_error(auth, bad_token):
+    token = 'c' * 64
+    auth.write(token, 'dub_export', '/selected')
+    with open(os.path.join(auth.dir, f'{token}.json'), 'w', encoding='utf-8') as handle:
+        json.dump({'token': bad_token, 'kind': 'dub_export', 'path': '/selected'}, handle)
+    with pytest.raises(auth.Error):
+        auth.consume(token, 'dub_export')

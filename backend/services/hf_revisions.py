@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+import tempfile
 from pathlib import Path
 
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
@@ -54,9 +55,22 @@ def remember_revision(repo_id: str, revision: str, cache_dir: str) -> None:
     repo_dir = _repo_dir(repo_id, cache_dir)
     repo_dir.mkdir(parents=True, exist_ok=True)
     marker = repo_dir / "voicestudio-revision"
-    temporary = marker.with_suffix(f".tmp-{os.getpid()}")
-    temporary.write_text(revision + "\n", encoding="ascii")
-    os.replace(temporary, marker)
+    # Different model installs can share a dependency repository. A PID-only
+    # staging name lets their threads replace or unlink each other's bytes.
+    temporary = tempfile.NamedTemporaryFile(
+        mode="w", encoding="ascii", dir=repo_dir,
+        prefix=marker.name + ".tmp-", delete=False,
+    )
+    try:
+        with temporary:
+            temporary.write(revision + "\n")
+        # Close before renaming, including on Windows.
+        os.replace(temporary.name, marker)
+    finally:
+        try:
+            os.unlink(temporary.name)
+        except FileNotFoundError:
+            pass  # os.replace already moved the staging file into place
 
 
 def installed_revision(repo_id: str, cache_dir: str) -> str:
@@ -77,4 +91,3 @@ def installed_revision(repo_id: str, cache_dir: str) -> str:
         if _SHA.fullmatch(revision):
             return revision
     return curated_revision
-

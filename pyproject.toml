@@ -205,6 +205,8 @@ dependencies = [
     "lightning>=2.6.6",
     "pytorch-lightning>=2.6.6",
     "nvidia-ml-py>=13.0",
+    # Unicode grapheme segmentation for SSML spelling, matching the editor.
+    "regex>=2026.3.32",
 ]
 
 [project.optional-dependencies]

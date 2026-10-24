@@ -200,3 +200,77 @@ it.each(['/ws/transcribe', '/ws/events', '/ws/tts'] as const)(
     );
   },
 );
+
+it.each(['/health', '/api/auth/session', '/system/info', '/api/auth/ws-ticket'])(
+  'cancels an oversized %s body before buffering the whole response',
+  async (phase) => {
+    let chunks = 0;
+    let canceled = false;
+    const oversized = new Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          chunks++;
+          controller.enqueue(new Uint8Array(1024));
+          if (chunks === 100) controller.close();
+        },
+        cancel() {
+          canceled = true;
+        },
+      }),
+      { status: phase.startsWith('/api/auth/') ? 201 : 200 },
+    );
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      if (String(input).endsWith(phase)) return oversized;
+      return healthy();
+    });
+    if (phase === '/api/auth/ws-ticket') {
+      await expect(
+        remoteWebSocketUrl(
+          'http://gpu-box:3900',
+          '/ws/tts',
+          { token: SESSION, expiresAt: 3601 },
+          { fetcher, now: () => 1000 },
+        ),
+      ).rejects.toThrow('invalid WebSocket ticket');
+    } else {
+      const master = phase === '/api/auth/session' ? 'master-secret' : '';
+      const result = await probeRemoteBackend('http://gpu-box:3900', master, { fetcher });
+      expect(result.ok).toBe(false);
+    }
+    expect(canceled).toBe(true);
+    expect(chunks).toBeLessThanOrEqual(18);
+  },
+);
+
+it('accepts valid JSON split across byte and UTF-8 boundaries within the cap', async () => {
+  const health = new TextEncoder().encode(
+    JSON.stringify({ status: 'ok', version: '0.5.7', device: 'café' }),
+  );
+  const fetcher = vi.fn(async (input: string | URL | Request) => {
+    if (!String(input).endsWith('/health')) return json({ app_version: '0.5.7' });
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          for (const byte of health) controller.enqueue(new Uint8Array([byte]));
+          controller.close();
+        },
+      }),
+    );
+  });
+  expect(await probeRemoteBackend('http://gpu-box:3900', '', { fetcher })).toMatchObject({
+    ok: true,
+    detail: '0.5.7 on café',
+  });
+});
+
+it('accepts an identity response exactly at the byte cap', async () => {
+  const body = JSON.stringify({ status: 'ok', version: '0.5.7', device: 'cpu' }).padEnd(16 * 1024);
+  const fetcher = vi.fn(async (input: string | URL | Request) =>
+    String(input).endsWith('/health')
+      ? new Response(body)
+      : json({ app_version: '0.5.7' }),
+  );
+  expect(await probeRemoteBackend('http://gpu-box:3900', '', { fetcher })).toMatchObject({
+    ok: true,
+  });
+});

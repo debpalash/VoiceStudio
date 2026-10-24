@@ -1098,10 +1098,19 @@ def delete_model(repo_id: str):
     })
     try:
         from huggingface_hub import scan_cache_dir
+        from dataclasses import replace
+
         info = scan_cache_dir()
+        # A Git commit can appear in more than one repository (e.g. a fork).
+        # Hub deletion resolves hashes globally, so restrict its lookup before
+        # planning any filesystem changes for this one model.
+        scoped = replace(info, repos=frozenset(
+            entry for entry in info.repos
+            if entry.repo_id == repo_id and entry.repo_type == "model"
+        ))
         commits = [
             rev.commit_hash
-            for entry in info.repos if entry.repo_id == repo_id
+            for entry in scoped.repos
             for rev in entry.revisions
         ]
         if not commits:
@@ -1112,7 +1121,7 @@ def delete_model(repo_id: str):
                     "run POST /models/install first if you want a fresh download."
                 ),
             )
-        strategy = info.delete_revisions(*commits)
+        strategy = scoped.delete_revisions(*commits)
         strategy.execute()
         hf_progress.emit({
             "repo_id": repo_id,

@@ -1,6 +1,9 @@
 """Curated Hugging Face inputs are immutable and repair preserves installs."""
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+import threading
 
+import pytest
 import yaml
 
 from services import hf_revisions
@@ -99,3 +102,55 @@ def test_non_ascii_marker_falls_back_instead_of_raising(tmp_path):
     assert hf_revisions.installed_revision(repo_id, str(tmp_path)) == existing
     (repo_dir / "refs" / "main").write_bytes(b"\x80\x81")
     assert hf_revisions.installed_revision(repo_id, str(tmp_path)) == hf_revisions.revision_for(repo_id)
+
+
+def test_concurrent_revision_writes_publish_only_their_own_complete_bytes(tmp_path, monkeypatch):
+    repo_id = "k2-fsa/OmniVoice"
+    ready = threading.Barrier(2)
+    local = threading.local()
+    publishing = threading.Lock()
+    published = []
+    real_replace = hf_revisions.os.replace
+
+    def replace(source, destination):
+        # Both real writes finish before either real atomic rename occurs.
+        ready.wait(timeout=5)
+        with publishing:
+            payload = Path(source).read_text(encoding="ascii")
+            real_replace(source, destination)
+            published.append((local.revision, payload))
+
+    monkeypatch.setattr(hf_revisions.os, "replace", replace)
+
+    def write(revision):
+        local.revision = revision
+        try:
+            hf_revisions.remember_revision(repo_id, revision, str(tmp_path))
+        except Exception as exc:
+            return exc
+        return None
+
+    revisions = ["a" * 40, "b" * 40]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        failures = list(pool.map(write, revisions))
+    assert failures == [None, None]
+    assert sorted(published) == [(revision, revision + "\n") for revision in revisions]
+    assert hf_revisions.installed_revision(repo_id, str(tmp_path)) in revisions
+    repo_dir = tmp_path / "models--k2-fsa--OmniVoice"
+    assert [p.name for p in repo_dir.iterdir()] == ["voicestudio-revision"]
+
+
+def test_failed_revision_publication_keeps_marker_and_removes_staging(tmp_path, monkeypatch):
+    repo_id = "k2-fsa/OmniVoice"
+    original = "a" * 40
+    hf_revisions.remember_revision(repo_id, original, str(tmp_path))
+
+    def fail_replace(*_):
+        raise OSError("simulated rename failure")
+
+    monkeypatch.setattr(hf_revisions.os, "replace", fail_replace)
+    with pytest.raises(OSError, match="simulated rename failure"):
+        hf_revisions.remember_revision(repo_id, "b" * 40, str(tmp_path))
+    assert hf_revisions.installed_revision(repo_id, str(tmp_path)) == original
+    repo_dir = tmp_path / "models--k2-fsa--OmniVoice"
+    assert [p.name for p in repo_dir.iterdir()] == ["voicestudio-revision"]

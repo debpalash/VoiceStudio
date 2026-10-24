@@ -35,6 +35,19 @@ class PathAuthorizationError(ValueError):
     pass
 
 
+
+def _matches_token(payload: object, token: str) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    candidate = payload.get("token")
+    # compare_digest accepts only ASCII strings; corrupt metadata authorizes
+    # nothing and must not prevent unrelated native capabilities being used.
+    return (
+        isinstance(candidate, str) and _TOKEN_RE.fullmatch(candidate) is not None
+        and secrets.compare_digest(candidate, token)
+    )
+
+
 def consume(token: str, expected_kind: str) -> str:
     """Consume and return a single desktop-authorized path.
 
@@ -81,9 +94,7 @@ def consume(token: str, expected_kind: str) -> str:
                         probe = json.load(handle)
                 except (OSError, UnicodeError, json.JSONDecodeError):
                     continue  # Ignore corrupt/stale capabilities; they authorize nothing.
-                if isinstance(probe, dict) and secrets.compare_digest(
-                    str(probe.get("token", "")), token
-                ):
+                if _matches_token(probe, token):
                     candidate = entry.path
                     break
         if candidate is None:
@@ -117,7 +128,7 @@ def consume(token: str, expected_kind: str) -> str:
             pass  # Best-effort cleanup; the random claimed name cannot be reused.
     if not isinstance(payload, dict):
         raise PathAuthorizationError("Invalid desktop authorization")
-    if not secrets.compare_digest(str(payload.get("token", "")), token):
+    if not _matches_token(payload, token):
         raise PathAuthorizationError("Invalid desktop authorization")
     if payload.get("kind") != expected_kind or not isinstance(payload.get("path"), str):
         raise PathAuthorizationError("Desktop authorization does not match this setting")

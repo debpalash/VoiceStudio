@@ -238,7 +238,8 @@ def _force_reap(predicate) -> int:
 
 def list_live_sidecars() -> list[dict]:
     """Snapshot of subprocess engines with a currently-running sidecar, for the
-    loaded-models panel. Each entry: ``{id, pid, idle_seconds}``. Lets a user
+    loaded-models panel. Each entry includes ``id``, ``pid``, ``device`` and
+    ``idle_seconds``. Lets a user
     see (and free) sidecar VRAM the same way they unload the in-process TTS
     model."""
     out: list[dict] = []
@@ -246,8 +247,17 @@ def list_live_sidecars() -> list[dict]:
         proc = getattr(b, "_proc", None)
         if proc is None or proc.poll() is not None:
             continue
+        try:
+            from core.device_caps import detect_host_caps
+
+            device = b.runtime_compute_profile(detect_host_caps())["effective_device"]
+        except Exception:
+            # Inventory remains usable if a runtime probe fails. The host's
+            # best GPU is not evidence that this child actually uses it.
+            device = "unknown"
         out.append({
             "id": b.id,
+            "device": device,
             "pid": proc.pid,
             "idle_seconds": round(b.idle_seconds(), 1),
             "vram_mb": round(getattr(b, "_vram_mb", 0.0), 1),  # MM2-08; 0 = CPU/unmeasured
@@ -799,7 +809,13 @@ class SubprocessBackend(TTSBackend):
         sample rate. Negotiates float32 with capable sidecars and accepts
         legacy int16 frames from existing installations.
         """
-        self._check_language(kw.get("language"))
+        # Forward the code the engine just validated, not the caller's raw
+        # value: a picker or profile name such as "Portuguese" passes the check
+        # as "pt", but a sidecar given the name guesses from its first letters
+        # ("po"), which is no language at all.
+        language = self._check_language(kw.get("language"))
+        if language is not None:
+            kw = {**kw, "language": language}
         # On-pool callers (every HTTP/dub/batch generate, dispatched via
         # run_on_gpu_pool_guarded) already own a pool slot; re-acquiring would
         # self-deadlock on a 1-worker (MPS) pool, so skip it. Off-pool callers

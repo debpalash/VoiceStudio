@@ -130,7 +130,8 @@ def test_mem_get_info_failure_keeps_family_zeroes_vram():
     assert any("VRAM query failed" in n for n in caps.notes)
 
 
-def test_arch_mismatch_emits_kernel_risk_note():
+def test_arch_mismatch_emits_kernel_risk_note(monkeypatch):
+    monkeypatch.setenv("OMNIVOICE_FORCE_CUDA", "1")
     caps = _probe_with({
         "torch": _torch_mock(
             cuda_available=True, capability=(12, 0), arch_list=["sm_80", "sm_89"]
@@ -283,3 +284,98 @@ def test_generic_directml_loader_respects_selected_family(monkeypatch, npu_avail
     monkeypatch.setattr(model_manager, "_lazy_torch", lambda: torch)
     with patch.dict("sys.modules", modules):
         assert model_manager.get_best_device() == expected
+
+
+@pytest.fixture
+def clear_caps_cache():
+    clear = device_caps.detect_host_caps.cache_clear
+    yield
+    clear()
+
+
+@pytest.mark.parametrize("requested", ["auto", "cuda"])
+def test_unsupported_cuda_is_not_an_available_compute_family(monkeypatch, requested, clear_caps_cache):
+    from services.engine_routing import resolve_routing
+
+    monkeypatch.delenv("OMNIVOICE_FORCE_CUDA", raising=False)
+    monkeypatch.setenv("OMNIVOICE_DEVICE", requested)
+    caps = _probe_with({"torch": _torch_mock(
+        cuda_available=True, capability=(5, 2), arch_list=["sm_70", "sm_80", "sm_120"],
+        device_name="Quadro M5000M",
+    )})
+    assert caps.family == "cpu"
+    assert "cuda" not in caps.available_families
+    result = resolve_routing(("cuda", "cpu"), caps)
+    assert result["routing_status"] == "cpu_fallback"
+    assert result["effective_device"] == "cpu"
+    assert "sm_52" in result["routing_reason"]
+    assert resolve_routing(("cuda",), caps)["routing_status"] == "unavailable"
+
+
+def test_force_cuda_keeps_unsupported_gpu_with_warning(monkeypatch, clear_caps_cache):
+    monkeypatch.setenv("OMNIVOICE_FORCE_CUDA", "true")
+    caps = _probe_with({"torch": _torch_mock(
+        cuda_available=True, capability=(5, 2), arch_list=["sm_70"],
+    )})
+    assert caps.family == "cuda"
+    assert any(KERNEL_RISK_MARKER in note for note in caps.notes)
+
+
+def test_unsupported_cuda_does_not_hide_a_working_xpu(monkeypatch, clear_caps_cache):
+    monkeypatch.delenv("OMNIVOICE_FORCE_CUDA", raising=False)
+    caps = _probe_with({"torch": _torch_mock(
+        cuda_available=True, capability=(5, 2), arch_list=["sm_70"], xpu_available=True,
+    )})
+    assert caps.family == "xpu"
+    assert caps.available_families == ("xpu", "cpu")
+
+
+def test_unsupported_rocm_is_not_an_available_compute_family(monkeypatch, clear_caps_cache):
+    monkeypatch.delenv("OMNIVOICE_FORCE_CUDA", raising=False)
+    monkeypatch.delenv("HSA_OVERRIDE_GFX_VERSION", raising=False)
+    torch = _torch_mock(cuda_available=True, hip="6.4", arch_list=["gfx1100"])
+    torch.cuda.get_device_properties = lambda _: types.SimpleNamespace(gcnArchName="gfx803")
+    caps = _probe_with({"torch": torch})
+    assert caps.family == "cpu"
+    assert caps.available_families == ("cpu",)
+
+
+@pytest.mark.parametrize("forced", [False, True])
+def test_preflight_does_not_call_unsupported_cuda_ready(monkeypatch, tmp_path, forced, clear_caps_cache):
+    from api.routers.setup import wizard
+    from services import media_tools, tts_backend
+    from services.engine_routing import resolve_routing
+
+    monkeypatch.delenv("OMNIVOICE_FORCE_CUDA", raising=False)
+    if forced:
+        monkeypatch.setenv("OMNIVOICE_FORCE_CUDA", "1")
+    caps = _probe_with({"torch": _torch_mock(
+        cuda_available=True, capability=(5, 2), arch_list=["sm_70"],
+        device_name="Quadro M5000M",
+    )})
+    monkeypatch.setattr(device_caps, "detect_host_caps", lambda: caps)
+    monkeypatch.setattr(wizard._platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(wizard, "is_windows_on_arm", lambda: False)
+    monkeypatch.setattr(wizard, "_ram_gb", lambda: 32)
+    monkeypatch.setattr(wizard, "_disk_free_gb", lambda _: 100)
+    monkeypatch.setattr(wizard, "hf_cache_dir", lambda: str(tmp_path))
+    monkeypatch.setattr(wizard, "_network_check", lambda: {
+        "id": "network", "label": "Network", "status": "pass", "detail": "offline test", "fix": None,
+    })
+    monkeypatch.setattr(media_tools, "summary", lambda **_: None)
+    monkeypatch.setattr(wizard, "_detect_gpu", lambda: {
+        "vendor": "nvidia", "driver": "580.178.04", "device_name": "Quadro M5000M",
+        "backend": "cuda", "available": True, "notes": [],
+    })
+    monkeypatch.setattr(tts_backend, "gpu_routing_verdict", lambda: {
+        **resolve_routing(("cuda", "cpu"), caps), "engine": "omnivoice", "host_family": caps.family,
+    })
+    result = wizard.preflight()
+    gpu = next(row for row in result["checks"] if row["id"] == "gpu")
+    assert gpu["status"] == "warn"
+    assert "CUDA ready" not in gpu["detail"]
+    assert "sm_52" in gpu["detail"]
+    assert "driver alone" in gpu["fix"]
+    assert result["device"]["gpu_available"] is forced
+    assert result["device"]["gpu_backend"] == ("cuda" if forced else "cpu")
+    assert result["gpu_routing"]["effective_device"] == ("cuda" if forced else "cpu")

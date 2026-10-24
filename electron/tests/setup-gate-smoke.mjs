@@ -149,6 +149,29 @@ try {
     '1',
   );
   assert.equal(installs, 0);
+  // #2940: a long single-word step label (ru "Конфиденциальность") must stay
+  // inside the step sidebar instead of running into the content.
+  const ruPage = await browser.newPage({ viewport: { width: 1117, height: 711 } });
+  await ruPage.addInitScript(() => localStorage.setItem('voicestudio.locale', 'ru'));
+  await ruPage.route('**/api/setup/status', (route) =>
+    route.fulfill({ json: { models_ready: false, missing: [] } }),
+  );
+  await ruPage.route('**/api/setup/preflight', (route) => route.fulfill({ json: { ok: false } }));
+  await ruPage.goto('http://localhost:3912/#/clone');
+  const steps = ruPage.locator('nav').filter({ has: ruPage.locator('[aria-current=step]') });
+  await steps.waitFor();
+  await ruPage.waitForFunction(() => document.documentElement.lang === 'ru');
+  const overflowing = await steps.evaluate((nav) =>
+    [...nav.querySelectorAll('button')]
+      .filter((button) => {
+        const text = document.createRange();
+        text.selectNodeContents(button);
+        return text.getBoundingClientRect().right > button.getBoundingClientRect().right + 1;
+      })
+      .map((button) => button.textContent),
+  );
+  assert.deepEqual(overflowing, [], 'Setup step labels must stay inside the sidebar');
+  await ruPage.close();
   console.log(
     'First-run preflight/model gates, privacy/dictation steps and completion passed without downloads.',
   );

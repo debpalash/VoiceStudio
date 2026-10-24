@@ -42,7 +42,8 @@ const HOME_PATTERNS = [
   /(?:file:\/\/\/)?[A-Za-z]:\/Users\/[^/\s"']+/gi, // Windows, forward slashes (webview stacks, file:/// URLs)
   /\/Users\/[^/\s"']+/gi, // macOS
   /\/home\/[^/\s"']+/gi, // Linux
-  /[A-Za-z]:\\Users\\[^\\\s"']+/gi, // Windows, backslashes
+  // One or more backslashes: Python repr() and JSON double them.
+  /[A-Za-z]:\\+Users\\+[^\\\s"']+/gi, // Windows, backslashes
 ];
 
 /** Redact credential-shaped substrings and home directories. */

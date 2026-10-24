@@ -464,7 +464,7 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
             total_segments=len(translated_segments),
         )
 
-        from services.audio_dsp import apply_mastering, normalize_audio
+        from services.audio_dsp import apply_mastering, normalize_audio, sanitize_audio
         from services.audio_io import atomic_save_wav
         import torch
 
@@ -552,6 +552,7 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
                         )
                     rendered = []
                     for audio_out in generated:
+                        audio_out = sanitize_audio(audio_out)
                         if not getattr(backend, "applies_own_mastering", False):
                             audio_out = apply_mastering(audio_out, sample_rate=sr)
                         rendered.append(normalize_audio(audio_out, target_dBFS=-2.0))
@@ -617,6 +618,7 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
                         guidance_scale=2.0, speed=1.0,
                         denoise=True, postprocess_output=_batch_postprocess,
                     )
+                    audio_out = sanitize_audio(audio_out)
                     if not getattr(backend, "applies_own_mastering", False):
                         audio_out = apply_mastering(audio_out, sample_rate=sr)
                     return normalize_audio(audio_out, target_dBFS=-2.0)

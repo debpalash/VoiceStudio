@@ -188,10 +188,15 @@ def _riff_wav_header(source: PathOrBuf) -> "AudioInfo | None":
                 return None
             cid, size = chunk[:4], struct.unpack("<I", chunk[4:])[0]
             if cid == b"fmt ":
-                body = handle.read(size)
+                if size < 16:
+                    return None
+                # Only the fixed prefix contributes the facts below. A fmt
+                # extension can claim gigabytes; seek over it, never allocate it.
+                body = handle.read(16)
                 if len(body) < 16:
                     return None
-                tag, channels, rate, _brate, _align, bits = struct.unpack("<HHIIHH", body[:16])
+                tag, channels, rate, _brate, _align, bits = struct.unpack("<HHIIHH", body)
+                handle.seek(size - 16, os.SEEK_CUR)
                 if tag not in (1, 3, 0xFFFE) or channels < 1 or bits < 8 or bits % 8:
                     return None
                 fmt = (channels, rate, bits)

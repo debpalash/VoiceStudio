@@ -190,6 +190,10 @@ async def segmented_download(
                         async for chunk in r.aiter_bytes(_READ_CHUNK):
                             if _cancelled():
                                 raise DownloadCancelled()
+                            if len(chunk) > want - got:
+                                raise ValueError(
+                                    f"segment {start}-{end} overlong read: got more than {want} bytes"
+                                )
                             fh.write(chunk)
                             got += len(chunk)
                             if on_bytes:
@@ -217,9 +221,11 @@ async def segmented_download(
         # etag is typically the sha256 (LFS) — verify when it looks like a hash
         if expected_etag:
             tag = expected_etag.strip('"')
-            if len(tag) == 64 and all(c in "0123456789abcdef" for c in tag.lower()):
-                if _sha256(part) != tag.lower():
+            if all(c in "0123456789abcdef" for c in tag.lower()):
+                if len(tag) == 64 and _sha256(part) != tag.lower():
                     raise ValueError("sha256 mismatch — download corrupt")
+                if len(tag) == 40 and _git_blob_sha1(part) != tag.lower():
+                    raise ValueError("git sha1 mismatch — download corrupt")
 
         os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
         os.replace(part, dest)
@@ -290,6 +296,18 @@ def _preallocate(part: str, size: int) -> None:
 def _sha256(path: str) -> str:
     import hashlib
     h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def _git_blob_sha1(path: str) -> str:
+    """Hub non-LFS etags hash Git's blob header followed by the file bytes."""
+    import hashlib
+
+    h = hashlib.sha1(usedforsecurity=False)
+    h.update(f"blob {os.path.getsize(path)}\0".encode("ascii"))
     with open(path, "rb") as f:
         for block in iter(lambda: f.read(1024 * 1024), b""):
             h.update(block)

@@ -26,7 +26,7 @@ from dataclasses import dataclass
 
 
 # Captures: HH MM SS sep(`,` or `.`) ms (1-3 digits)
-_TS = r"(?:(\d{1,2}):)?([0-5]?\d):([0-5]?\d)[,.](\d{1,3})"
+_TS = r"(?:(\d+):)?([0-5]?\d):([0-5]?\d)[,.](\d{1,3})"
 # Horizontal whitespace only — NEVER plain `\s`, which matches newlines.
 # A timing line lives on ONE line, so `\s*` bought nothing but catastrophic
 # backtracking: under re.MULTILINE the engine restarts at every line start,
@@ -161,7 +161,7 @@ def parse_srt(content: str) -> SrtParseResult:
         try:
             start = _ts_to_seconds(m.group(1), m.group(2), m.group(3), m.group(4))
             end = _ts_to_seconds(m.group(5), m.group(6), m.group(7), m.group(8))
-        except (ValueError, IndexError):
+        except (ValueError, IndexError, OverflowError):
             skipped += 1
             continue
         if end <= start:

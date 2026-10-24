@@ -11,8 +11,11 @@ persisted ``HF_TOKEN``) and writes the file ``0600`` (it can hold secrets).
 """
 from __future__ import annotations
 
+import io
 import os
+import tempfile
 import re
+import tempfile
 from typing import Optional
 
 USER_ENV_PATH = os.path.expanduser("~/.config/omnivoice/env")
@@ -29,7 +32,7 @@ DESKTOP_ENV_FILE_HINT = (
 def _read_lines(path: str) -> list[str]:
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return f.read().splitlines()
+            return f.read().split("\n")
     except FileNotFoundError:
         return []
     # Any *other* OSError (permission, I/O error) propagates: collapsing it to
@@ -37,25 +40,28 @@ def _read_lines(path: str) -> list[str]:
     # keys (e.g. a persisted HF_TOKEN) when it rewrites the file.
 
 
-def _opener_0600(path: str, flags: int) -> int:
-    # Create the file with 0600 from the start (no world-readable window before
-    # a follow-up chmod) — it can hold secrets like HF_TOKEN. The mode is
-    # masked by umask but only ever *more* restrictive; non-POSIX platforms
-    # ignore the mode bits.
-    return os.open(path, flags, 0o600)
-
-
 def _write_lines(path: str, lines: list[str]) -> None:
+    path = os.path.realpath(path)
     parent = os.path.dirname(path)
     if parent:  # bare filename (e.g. an OMNIVOICE_ENV_FILE override) has no parent
         os.makedirs(parent, exist_ok=True)
     body = "\n".join(lines)
     if body and not body.endswith("\n"):
         body += "\n"
-    with open(path, "w", encoding="utf-8", opener=_opener_0600) as f:
-        f.write(body)
+    fd, temporary = tempfile.mkstemp(prefix=".omnivoice-env-", dir=parent or ".")
     try:
-        os.chmod(path, 0o600)  # tighten an existing file that predates the opener
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(body)
+        os.replace(temporary, path)
+    finally:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            # Successful replacement already removed this path; cleanup failures
+            # must not mask the original write or replacement exception.
+            pass
+    try:
+        os.chmod(path, 0o600)  # best-effort private permissions on the replacement
     except OSError:
         pass  # best-effort; some filesystems/Windows don't support chmod
 
@@ -79,44 +85,49 @@ def _encode_value(value: str) -> str:
     return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
 
-def _decode_value(raw: str) -> str:
-    if len(raw) >= 2 and raw[0] == "'" and raw[-1] == "'":
-        return re.sub(r"\\(['\\])", r"\1", raw[1:-1])
-    return raw
+def _read_bindings(path: str):
+    from dotenv.parser import parse_stream
+
+    return parse_stream(io.StringIO("\n".join(_read_lines(path))))
 
 
 def get_user_env(key: str, path: Optional[str] = None) -> Optional[str]:
-    path = path or os.environ.get("OMNIVOICE_ENV_FILE") or USER_ENV_PATH  # resolved at call time so tests can monkeypatch
-    prefix = f"{key}="
-    for line in _read_lines(path):
-        if line.startswith(prefix):
-            return _decode_value(line[len(prefix):])
-    return None
+    path = path or os.environ.get("OMNIVOICE_ENV_FILE") or USER_ENV_PATH
+    value = None
+    for binding in _read_bindings(path):
+        if binding.key == key:
+            value = binding.value
+    return value
 
 
 def set_user_env(key: str, value: str, path: Optional[str] = None) -> None:
-    """Upsert ``KEY=value``, preserving all other lines."""
+    """Upsert one effective assignment, preserving all other bindings."""
     path = path or os.environ.get("OMNIVOICE_ENV_FILE") or USER_ENV_PATH
-    prefix = f"{key}="
     encoded = _encode_value(value)
-    lines = _read_lines(path)
+    parts = []
     replaced = False
-    for i, line in enumerate(lines):
-        if line.startswith(prefix):
-            lines[i] = f"{key}={encoded}"
-            replaced = True
-            break
+    for binding in _read_bindings(path):
+        if binding.key == key:
+            if not replaced:
+                parts.append(f"{key}={encoded}\n")
+                replaced = True
+        else:
+            parts.append(binding.original.string)
     if not replaced:
-        lines.append(f"{key}={encoded}")
-    _write_lines(path, lines)
+        if parts and not parts[-1].endswith("\n"):
+            parts.append("\n")
+        parts.append(f"{key}={encoded}\n")
+    _write_lines(path, ["".join(parts)])
 
 
 def unset_user_env(key: str, path: Optional[str] = None) -> None:
-    """Remove ``KEY=...`` if present, preserving all other lines."""
+    """Remove every assignment to ``key``, preserving all other bindings."""
     path = path or os.environ.get("OMNIVOICE_ENV_FILE") or USER_ENV_PATH
-    prefix = f"{key}="
-    lines = [ln for ln in _read_lines(path) if not ln.startswith(prefix)]
-    _write_lines(path, lines)
+    body = "".join(
+        binding.original.string for binding in _read_bindings(path)
+        if binding.key != key
+    )
+    _write_lines(path, [body])
 
 
 def load_into_environ(path: Optional[str] = None) -> bool:
@@ -198,10 +209,8 @@ def _drop_invalid_path_keys() -> None:
             # Existing-but-read-only (an external mount, a permissions accident)
             # passes isdir yet fails on first real use — probe actual write
             # capability, not just existence (review finding).
-            probe = os.path.join(val, f".omnivoice-write-probe-{os.getpid()}")
-            with open(probe, "w") as f:
-                f.write("ok")
-            os.remove(probe)
+            with tempfile.TemporaryFile(mode="w", dir=val) as probe:
+                probe.write("ok")
             usable = True
         except OSError:
             usable = False

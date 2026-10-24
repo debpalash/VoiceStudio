@@ -29,6 +29,10 @@ def register_proc(job_id: str, proc) -> None:
 
 
 def unregister_proc(job_id: str, proc) -> None:
+    # Caller cleanup may have failed to terminate this process. Preserve it
+    # for a later abort until its exit is confirmed.
+    if proc.returncode is None:
+        return
     with _active_procs_lock:
         lst = _active_procs.get(job_id)
         if lst and proc in lst:
@@ -41,12 +45,14 @@ def kill_job_procs(job_id: str) -> None:
     """Kill every subprocess still running under a given job id. Idempotent."""
     with _active_procs_lock:
         procs = list(_active_procs.get(job_id, []))
+    finished = []
     for proc in procs:
         try:
             if proc.returncode is None:
                 proc.kill()
+            finished.append(proc)
         except ProcessLookupError:
-            pass
+            finished.append(proc)
         except Exception as e:
             logger.warning(
                 "Failed to kill subprocess for %s: %s",
@@ -57,7 +63,7 @@ def kill_job_procs(job_id: str) -> None:
     with _active_procs_lock:
         lst = _active_procs.get(job_id)
         if lst is not None:
-            lst[:] = [p for p in lst if not any(p is k for k in procs)]
+            lst[:] = [p for p in lst if not any(p is k for k in finished)]
             if not lst:
                 _active_procs.pop(job_id, None)
 

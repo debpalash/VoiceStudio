@@ -104,11 +104,32 @@ def test_caches_onsets_json_and_reuses_it(job_env):
 
     # Poison the cache with a sentinel — the route must serve it verbatim
     # (i.e. no recompute) while the audio mtime is older than the cache.
-    sentinel = {"onsets": [99.9], "peaks": [0.25, 0.5], "source": "mix"}
+    # Preserve the current analysis version: this tests reuse, not migration.
+    sentinel = {**res1, "onsets": [99.9], "peaks": [0.25, 0.5]}
     cache.write_text(json.dumps(sentinel))
     os.utime(str(mix), (0, 0))  # audio much older than cache
     res2 = _call(job_env["module"], job_env["job_id"])
     assert res2 == sentinel
+
+
+
+@pytest.mark.parametrize("version", [None, "mean_v0"])
+def test_fresh_legacy_channel_analysis_cache_is_recomputed(job_env, version):
+    mix = job_env["job_dir"] / "audio.wav"
+    _write_wav(mix, lead_silence_s=1.0)
+    job_env["job"]["audio_path"] = str(mix)
+    cache = job_env["job_dir"] / "onsets.json"
+    legacy = {"onsets": [99.9], "peaks": [0.0], "source": "mix"}
+    if version is not None:
+        legacy["channel_analysis"] = version
+    cache.write_text(json.dumps(legacy))
+    os.utime(str(mix), (0, 0))  # cache freshness alone must not preserve old analysis
+
+    result = _call(job_env["module"], job_env["job_id"])
+    assert result["onsets"][0] == pytest.approx(1.0, abs=0.06)
+    assert max(result["peaks"]) > 0.4
+    assert result["channel_analysis"] == "max_abs_v1"
+    assert json.loads(cache.read_text()) == result
 
 
 def test_recomputes_when_audio_newer_than_cache(job_env):

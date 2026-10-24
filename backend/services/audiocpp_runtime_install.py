@@ -156,9 +156,11 @@ def _install() -> None:
         )
         if probe.returncode != 0:
             raise RuntimeError("The downloaded audio.cpp runtime failed its device check")
-        if target.exists():
-            shutil.rmtree(target)
-        os.replace(prepared, target)
+        # Share the bounded publication retry/rollback used by bundled media tools.
+        # Import lazily so probing installer status does not initialize media tools.
+        from services.media_tools import _install_staged_directory
+
+        _install_staged_directory(str(prepared), str(target))
     bootstrap.invalidate()
 
 

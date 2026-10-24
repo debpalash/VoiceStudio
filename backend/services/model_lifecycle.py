@@ -150,7 +150,7 @@ def list_loaded() -> dict:
                 "id": f"sidecar:{s['id']}",
                 "name": f"{s['id']} (sidecar)",
                 "checkpoint": s["id"],
-                "device": get_best_device(),
+                "device": s.get("device") or "unknown",
                 "vram_mb": round(float(s.get("vram_mb") or 0), 1),
                 "unloadable": True,
                 **_tts_attribution(s["id"], active_tts),

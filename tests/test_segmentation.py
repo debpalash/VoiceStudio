@@ -432,3 +432,52 @@ def test_unaligned_segment_without_a_usable_span_is_skipped():
         {"start": 2.0, "end": 2.0, "text": "zero span"},
     ]
     assert [w.text for w in _words_from_whisper({"segments": segs})] == ["hi"]
+
+
+# ---------------------------------------------------------------------------
+# Unspaced scripts: ASR returns CJK/Thai words without spaces between them
+# ---------------------------------------------------------------------------
+
+def _word_result(*words, end=3.0):
+    step = end / len(words)
+    return {"segments": [{
+        "start": 0.0, "end": end, "text": "".join(words),
+        "words": [{"word": w, "start": i * step, "end": (i + 1) * step}
+                  for i, w in enumerate(words)],
+    }]}
+
+
+def test_chinese_words_rejoin_without_spaces():
+    result = _word_result("我们", "今天", "去", "公园", "散步。")
+    assert [s["text"] for s in segment_transcript(result, 3.0)] == ["我们今天去公园散步。"]
+
+
+def test_japanese_and_thai_words_rejoin_without_spaces():
+    result = _word_result("今日は", "公園に", "行きます。")
+    assert segment_transcript(result, 3.0)[0]["text"] == "今日は公園に行きます。"
+    result = _word_result("สวัสดี", "ครับ")
+    assert segment_transcript(result, 3.0)[0]["text"] == "สวัสดีครับ"
+
+
+def test_spaced_scripts_and_mixed_words_keep_their_spaces():
+    result = _word_result(" Hello", " there,", " friend.")
+    assert segment_transcript(result, 3.0)[0]["text"] == "Hello there, friend."
+    result = _word_result("用", "iPhone", "拍照。")
+    assert segment_transcript(result, 3.0)[0]["text"] == "用 iPhone 拍照。"
+
+
+def test_merging_short_chinese_segments_adds_no_space():
+    segs = [Segment(start=0.0, end=0.3, text="好。"),
+            Segment(start=0.35, end=2.5, text="我们走吧。")]
+    merged = _merge_short(segs)
+    assert merged[0].text == "好。我们走吧。"
+
+
+def test_full_chinese_sentences_are_not_short_once_rejoined():
+    # Two six-second, ten-character sentences: each is a full segment, so
+    # dropping the old artificial spaces must not make them fold together
+    # into one 12-second segment past MAX_DUR.
+    segs = [Segment(start=0.0, end=6.0, text="我们今天去公园散步了。"),
+            Segment(start=6.1, end=12.0, text="明天我们一起去看电影。")]
+    merged = _merge_short(segs)
+    assert [s.text for s in merged] == ["我们今天去公园散步了。", "明天我们一起去看电影。"]

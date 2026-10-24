@@ -9,6 +9,10 @@
  */
 export function decodeTextBytes(bytes) {
   const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  // Longest BOM first: UTF-32 LE begins with the UTF-16 LE mark.
+  // Browser TextDecoder does not implement UTF-32.
+  if (b[0] === 0xff && b[1] === 0xfe && b[2] === 0 && b[3] === 0) return decodeUtf32(b, true);
+  if (b[0] === 0 && b[1] === 0 && b[2] === 0xfe && b[3] === 0xff) return decodeUtf32(b, false);
   // TextDecoder drops the BOM of the encoding it was built for.
   if (b[0] === 0xef && b[1] === 0xbb && b[2] === 0xbf) return new TextDecoder('utf-8').decode(b);
   if (b[0] === 0xff && b[1] === 0xfe) return new TextDecoder('utf-16le').decode(b);
@@ -32,4 +36,20 @@ export function decodeTextBytes(bytes) {
 
 export async function readTextFile(file) {
   return decodeTextBytes(new Uint8Array(await file.arrayBuffer()));
+}
+
+function decodeUtf32(bytes, littleEndian) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const text = [];
+  for (let offset = 4; offset < bytes.length; offset += 4) {
+    if (offset + 4 > bytes.length) {
+      text.push('\ufffd');
+      break;
+    }
+    const scalar = view.getUint32(offset, littleEndian);
+    text.push(String.fromCodePoint(
+      scalar <= 0x10ffff && !(scalar >= 0xd800 && scalar <= 0xdfff) ? scalar : 0xfffd,
+    ));
+  }
+  return text.join('');
 }

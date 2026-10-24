@@ -580,23 +580,9 @@ def _render_with_pauses(gen_span, segments, sample_rate, *, trim_spans=False):
 
 
 def _sanitize_audio(audio_out):
-    """Replace non-finite samples (NaN / ±inf) with silence so a model glitch
-    can't produce an unreadable WAV (#629). Returns the input unchanged when it's
-    already finite or isn't a tensor. Never raises."""
-    try:
-        import torch
-        if torch.is_tensor(audio_out) and not bool(torch.isfinite(audio_out).all()):
-            logger.warning(
-                "Generated audio contained non-finite samples (NaN/inf) — "
-                "sanitizing to silence to keep the WAV decodable (#629)."
-            )
-            return torch.nan_to_num(audio_out, nan=0.0, posinf=0.0, neginf=0.0)
-    except Exception as exc:
-        logger.warning("Generated audio validation failed")
-        raise RuntimeError(
-            "Generated audio could not be validated. Retry the generation."
-        ) from exc
-    return audio_out
+    """Compatibility wrapper for the shared generation validation contract."""
+    from services.audio_dsp import sanitize_audio
+    return sanitize_audio(audio_out)
 
 
 @_render_timed('effects')
@@ -1630,7 +1616,7 @@ async def _finalize_generation(
         with db_conn() as conn:
             conn.execute(
                 "INSERT INTO generation_history (id, text, mode, language, instruct, profile_id, audio_path, duration_seconds, generation_time, seed, design_recipe, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                (audio_id, text[:200], take_mode,
+                (audio_id, text, take_mode,
                  language or "Auto", instruct or "", resolved_profile_id,
                  audio_filename, audio_dur, gen_time, used_seed, design_recipe, time.time())
             )

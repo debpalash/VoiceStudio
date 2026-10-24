@@ -420,17 +420,37 @@ def argos_pack_status(source_lang: str, target_langs: list[str]) -> dict:
         (package.from_code, package.to_code)
         for package in argostranslate.package.get_installed_packages()
     }
+    reachable = _argos_reachable(source, installed)
     return {
         "source_lang": source,
         "pairs": [
             {
                 "source_lang": source,
                 "target_lang": target,
-                "installed": source == target or (source, target) in installed,
+                "installed": target in reachable,
             }
             for target in targets
         ],
     }
+
+
+def _argos_reachable(source: str, installed: set[tuple[str, str]]) -> set[str]:
+    """Languages Argos can translate ``source`` into with these packs.
+
+    Argos chains installed packs through intermediate languages on its own,
+    and its index is almost entirely ``xx → en`` and ``en → xx``. So
+    es → fr is ready once es → en and en → fr are installed, even with no
+    es → fr pack (none exists).
+    """
+    reachable = {source}
+    frontier = [source]
+    while frontier:
+        code = frontier.pop()
+        for from_code, to_code in installed:
+            if from_code == code and to_code not in reachable:
+                reachable.add(to_code)
+                frontier.append(to_code)
+    return reachable
 
 
 def install_argos_packs(source_lang: str, target_langs: list[str]) -> dict:
@@ -450,22 +470,42 @@ def install_argos_packs(source_lang: str, target_langs: list[str]) -> dict:
         if missing:
             argostranslate.package.update_package_index()
             available = argostranslate.package.get_available_packages()
-            for target in targets:
-                if target not in missing:
-                    continue
-                package = next(
+            installed = {
+                (package.from_code, package.to_code)
+                for package in argostranslate.package.get_installed_packages()
+            }
+
+            def find(from_code: str, to_code: str):
+                return next(
                     (
                         item
                         for item in available
-                        if item.from_code == source and item.to_code == target
+                        if item.from_code == from_code and item.to_code == to_code
                     ),
                     None,
                 )
-                if package is None:
+
+            for target in targets:
+                if target not in missing:
+                    continue
+                direct = find(source, target)
+                if direct is not None:
+                    route = [(source, target)]
+                elif "en" not in (source, target):
+                    # Installed legs remain usable even if removed from the index.
+                    route = [(source, "en"), ("en", target)]
+                else:
+                    route = [(source, target)]
+                packages = [find(*pair) for pair in route if pair not in installed]
+                if any(package is None for package in packages):
                     raise ValueError(
                         f"No Argos language pack is available for {source} → {target}"
                     )
-                argostranslate.package.install_from_path(package.download())
+                for package in packages:
+                    pair = (package.from_code, package.to_code)
+                    if pair not in installed:
+                        argostranslate.package.install_from_path(package.download())
+                        installed.add(pair)
         return argos_pack_status(source, targets)
 
 

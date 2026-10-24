@@ -103,30 +103,39 @@ export function CaptureWidget() {
     const id = session.current;
     if (!api || id === null || state.stage !== 'done' || !state.text) return;
     let active = true;
+    // Release the recorder after either delivery outcome: finishing never
+    // replays text, and a failed delivery must not leave the session open.
+    const scheduleFinish = (delay: number) => {
+      finishTimer.current = setTimeout(() => {
+        if (session.current !== id) return;
+        void api
+          .finish(id)
+          .then(() => {
+            if (session.current === id) {
+              session.current = null;
+              live.cancel();
+            }
+          })
+          .catch(() => {
+            if (session.current === id) {
+              session.current = null;
+              live.cancel();
+              setDelivery('failed');
+            }
+          });
+      }, delay);
+    };
     void output.current
       .then(() => {
         if (!active || session.current !== id) return;
         // Leave clipboard-only completion visible instead of claiming insertion.
-        finishTimer.current = setTimeout(
-          () => {
-            if (session.current !== id) return;
-            void api
-              .finish(id)
-              .then(() => {
-                if (session.current === id) {
-                  session.current = null;
-                  live.cancel();
-                }
-              })
-              .catch(() => {
-                if (session.current === id) setDelivery('failed');
-              });
-          },
-          delivery === 'copied' ? 4000 : 700,
-        );
+        scheduleFinish(delivery === 'copied' ? 4000 : 700);
       })
       .catch(() => {
-        if (active && session.current === id) setDelivery('failed');
+        if (!active || session.current !== id) return;
+        setDelivery('failed');
+        // Keep the failure visible briefly, then release the session.
+        scheduleFinish(4000);
       });
     return () => {
       active = false;

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
+import { openExternalLink } from '@/lib/open-external-link';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import {
@@ -160,9 +162,9 @@ export function SystemNotifications({
       return;
     }
     if (note.action.type === 'link') {
-      const bridge = getBridge();
-      if (bridge) await bridge.files.openExternal(note.action.target);
-      else window.open(note.action.target, '_blank', 'noopener,noreferrer');
+      await openExternalLink(note.action.target, () =>
+        toast.error(t('integrationCatalog.websiteOpenFailed')),
+      );
       return;
     }
     if (note.action.type === 'api' && note.action.target.startsWith('/')) {

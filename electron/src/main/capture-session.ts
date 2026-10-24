@@ -206,11 +206,18 @@ export class CaptureSession {
   async finish(id: number): Promise<void> {
     const session = this.require(id);
     // Queue finish after already accepted utterances, never ahead of them.
-    await this.enqueue(session, async () => {
-      this.require(id);
-      await this.output.request({ method: session.accepted ? 'finish' : 'reject', session: id });
-      if (this.current === session) this.reset();
-    });
+    await this.enqueue(
+      session,
+      async () => {
+        this.require(id);
+        try {
+          await this.output.request({ method: session.accepted ? 'finish' : 'reject', session: id });
+        } finally {
+          if (this.current === session) this.reset();
+        }
+      },
+      true,
+    );
   }
 
   async cancelFor(id: number | null): Promise<void> {
@@ -239,8 +246,14 @@ export class CaptureSession {
     await this.output.request({ method: 'reject', session: session.id }).catch(() => {});
   }
 
-  private enqueue<T>(session: Session, operation: () => Promise<T>): Promise<T> {
-    const pending = session.pending.then(operation);
+  private enqueue<T>(
+    session: Session,
+    operation: () => Promise<T>,
+    cleanup = false,
+  ): Promise<T> {
+    // Delivery errors remain sticky: only cleanup may cross a failed acknowledgement.
+    const previous = cleanup ? session.pending.catch(() => {}) : session.pending;
+    const pending = previous.then(operation);
     session.pending = pending;
     return pending;
   }

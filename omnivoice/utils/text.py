@@ -246,7 +246,9 @@ def _pause_ms(num, unit):
         return PAUSE_DEFAULT_MS
     # Bare number or explicit "ms" -> milliseconds; "s" -> seconds.
     ms = value * 1000.0 if (unit and unit.lower() == "s") else value
-    ms_int = int(round(ms))
+    # Clamp before integer conversion: valid decimal markers can overflow
+    # float parsing or the seconds-to-milliseconds multiplication.
+    ms_int = int(round(min(ms, PAUSE_MAX_MS)))
     return max(0, min(ms_int, PAUSE_MAX_MS))
 
 

@@ -49,12 +49,30 @@ class HFTokenRedactor(logging.Filter):
                         k: (_HF_TOKEN_RE.sub(REDACTED, v) if isinstance(v, str) else v)
                         for k, v in record.args.items()
                     }
+            # Containers and custom objects stringify only during interpolation.
+            # Redact that rendered message without changing numeric formatting.
+            message = record.getMessage()
+            redacted = _HF_TOKEN_RE.sub(REDACTED, message)
+            if redacted != message:
+                record.msg = redacted
+                record.args = ()
         except Exception:
             # Never let the filter break the log pipeline. If anything
             # unexpected happens, just let the record pass through —
             # erring on the side of the log being noisy, not silent.
             pass
         return True
+
+
+class _RedactingFormatter(logging.Formatter):
+    """Preserve the handler's formatter, then redact its complete output."""
+
+    def __init__(self, delegate: logging.Formatter | None):
+        super().__init__()
+        self.delegate = delegate or logging.Formatter()
+
+    def format(self, record: logging.LogRecord) -> str:
+        return _HF_TOKEN_RE.sub(REDACTED, self.delegate.format(record))
 
 
 class RoutineHealthAccessFilter(logging.Filter):
@@ -101,7 +119,7 @@ class RoutineAsyncioTransportFilter(logging.Filter):
 
 def install_redaction_filter(root_logger: logging.Logger | None = None) -> None:
     """Attach a single HFTokenRedactor to the root logger and to every
-    existing handler. Idempotent — repeated calls do not stack up duplicate
+    existing handler, with final-output redaction. Idempotent — repeated calls do not stack up duplicate
     filters."""
     target = root_logger or logging.getLogger()
     if not any(isinstance(f, HFTokenRedactor) for f in target.filters):
@@ -111,11 +129,16 @@ def install_redaction_filter(root_logger: logging.Logger | None = None) -> None:
     for handler in list(target.handlers):
         if not any(isinstance(f, HFTokenRedactor) for f in handler.filters):
             handler.addFilter(HFTokenRedactor())
+        # Tracebacks, stack info, and custom formatter fields are rendered only
+        # after filters run. Keep their formatting while redacting the final text.
+        if not isinstance(handler.formatter, _RedactingFormatter):
+            handler.setFormatter(_RedactingFormatter(handler.formatter))
 
 
 def install_access_log_filter(logger: logging.Logger | None = None) -> None:
-    """Install the routine-health filter on Uvicorn's access logger once."""
+    """Install health suppression and token redaction on the access logger."""
     target = logger or logging.getLogger("uvicorn.access")
+    install_redaction_filter(target)
     if not any(isinstance(item, RoutineHealthAccessFilter) for item in target.filters):
         target.addFilter(RoutineHealthAccessFilter())
 

@@ -235,3 +235,30 @@ it('preserves Tauri behavior by rejecting starts while transcription is still ru
   ]);
   await capture.cancel();
 });
+
+it('finishes a failed delivery without replaying text or stranding the recorder', async () => {
+  const { capture, request, hide } = setup();
+  await capture.start('tray');
+  await capture.accept(1);
+  request.mockRejectedValueOnce(new Error('Lost acknowledgement'));
+  await expect(capture.deliver(1, 0, 'Once')).rejects.toThrow('Lost acknowledgement');
+  await expect(capture.deliver(1, 1, 'Later')).rejects.toThrow('Lost acknowledgement');
+
+  await expect(capture.finish(1)).resolves.toBeUndefined();
+  expect(request.mock.calls.filter(([command]) => command.method === 'deliver')).toHaveLength(1);
+  expect(request).toHaveBeenLastCalledWith({ method: 'finish', session: 1 });
+  expect(hide).toHaveBeenCalled();
+  expect(capture.canStart()).toBe(true);
+  await capture.start('tray');
+  await capture.cancel();
+});
+
+it('releases the recorder even when native finish itself fails', async () => {
+  const { capture, request, hide } = setup();
+  await capture.start('tray');
+  await capture.accept(1);
+  request.mockRejectedValueOnce(new Error('Helper disconnected'));
+  await expect(capture.finish(1)).rejects.toThrow('Helper disconnected');
+  expect(hide).toHaveBeenCalled();
+  expect(capture.canStart()).toBe(true);
+});

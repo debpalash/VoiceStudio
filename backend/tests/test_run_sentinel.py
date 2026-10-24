@@ -456,3 +456,22 @@ def test_notification_keeps_idle_exit_forensics_without_repeated_warning(client)
     details = client.get("/system/last-run-crash").json()
     assert details["record"]["detected_at"] == record["detected_at"]
     assert details["acknowledged"] is False
+
+
+def test_crash_log_tail_memory_depends_on_tail_size(sentinel_env, monkeypatch):
+    import tracemalloc
+    import core.scrub
+
+    line = "diagnostic line " + "x" * 112 + "\n"
+    with open(run_sentinel.LOG_PATH, "w", encoding="utf-8") as handle:
+        for _ in range(48_000):
+            handle.write(line)
+    monkeypatch.setattr(core.scrub, "scrub_text", lambda text: text)
+    tracemalloc.start()
+    try:
+        result = run_sentinel._scrubbed_log_tail(5)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert result == [line.rstrip("\n")] * 5
+    assert peak < 1_000_000, f"tail collection allocated {peak} bytes"

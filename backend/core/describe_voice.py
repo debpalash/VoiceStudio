@@ -247,14 +247,16 @@ def _compiled_rules():
 
 _COMPILED = _compiled_rules()
 
-# "<N> year(s) old / <N>-year-old / <N> yo" → an age bracket. Runs before the
-# keyword rules so the trailing "old" never misfires as elderly.
+# "<N> year(s) old / <N>-year-old / <N> yo / aged <N> / age: <N>" → an age
+# bracket. Runs before the keyword rules so the trailing "old" never misfires
+# as elderly, and "aged 22" never reaches elderly's bare "aged" synonym.
 _AGE_NUM = re.compile(
     r"\b(\d{1,3})(?:[\s\-]*(?:years?|yrs?|yr)[\s\-]*old|[\s\-]*(?:yo|y/o))\b"
+    r"|\baged?\s*(?::\s*)?(\d{1,3})(?:\s+(months?|weeks?|days?))?\b"
 )
 
 
-def _age_token_for(years: int) -> str:
+def _age_token_for(years: float) -> str:
     if years <= 12:
         return "child"
     if years <= 19:
@@ -282,7 +284,12 @@ def _match_category(category: str, text: str):
     if category == "Age":
         m = _AGE_NUM.search(text)
         if m:
-            return _age_token_for(int(m.group(1))), m
+            years = int(m.group(1) or m.group(2))
+            unit = m.group(3)
+            if unit:
+                # "aged 18 months" describes an infant, not an eighteen-year-old.
+                years /= {"month": 12, "week": 52, "day": 365}[unit.rstrip("s")]
+            return _age_token_for(years), m
     for token, patterns in _COMPILED[category]:
         best = None
         for pat in patterns:

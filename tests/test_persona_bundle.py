@@ -219,6 +219,12 @@ def test_parse_bad_spdx_in_manifest_normalized():
     assert parse_persona_bundle(content).license_spdx == DEFAULT_LICENSE
 
 
+@pytest.mark.parametrize("license_block", ["MIT", ["MIT"], 7])
+def test_parse_non_object_license_falls_back_to_default(license_block):
+    content = _zip({"manifest.json": _manifest_bytes(license=license_block),
+                    "ref_audio.wav": b"\x00" * 100})
+    assert parse_persona_bundle(content).license_spdx == DEFAULT_LICENSE
+
 def test_parse_last_wins_on_duplicate_members():
     content = _zip({"manifest.json": _manifest_bytes(),
                     "ref_audio.wav": b"\x00" * 100, "ref_audio_2.wav": b"\x11" * 100})

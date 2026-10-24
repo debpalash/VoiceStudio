@@ -14,7 +14,7 @@ import re
 from pathlib import Path
 
 _WINDOWS_RESERVED_NAMES = frozenset({"CON", "PRN", "AUX", "NUL"}) | frozenset(
-    f"{prefix}{number}" for prefix in ("COM", "LPT") for number in range(1, 10)
+    f"{prefix}{number}" for prefix in ("COM", "LPT") for number in "123456789¹²³"
 )
 
 # Both separator families, so a stored sub-path splits into the same components
@@ -41,8 +41,8 @@ def safe_filename(value: object) -> str:
         or ntpath.isabs(name)
         or ntpath.basename(name) != name
         or name.endswith((" ", "."))
-        or re.search(r"[\x00-\x1f]", name)
-        or name.split(".", 1)[0].upper() in _WINDOWS_RESERVED_NAMES
+        or _PORTABLE_INVALID_CHARS.search(name)
+        or name.split(".", 1)[0].rstrip().upper() in _WINDOWS_RESERVED_NAMES
         or len(name.encode("utf-8")) > 240
     ):
         raise UnsafePath("expected a bare filename")

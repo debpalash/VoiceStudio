@@ -13,6 +13,8 @@
  * maps speakers → cast members (autoCast). Speaker "Narrator" is the default.
  */
 
+import { TAGS } from './constants';
+
 const TAG_VERBS =
   'said|asked|replied|answered|whispered|shouted|murmured|cried|added|continued|' +
   'muttered|exclaimed|called|yelled|laughed|sighed|began|growled|responded|declared';
@@ -52,7 +54,9 @@ function attributionName(before, after) {
 // whose bracket content has no `:` (rules out [voice:…]) and whose first word
 // isn't a reserved marker keyword. Everything the parser emits keeps the same
 // { speaker, text } shape as parseScript, so autoCast works unchanged.
+// The expression tags from constants.js ([surprise-wa], …) are markers too.
 const _RESERVED_MARKERS = new Set([
+  ...TAGS.map((tag) => tag.slice(1, -1).toLowerCase()),
   'pause',
   'voice',
   'fast',

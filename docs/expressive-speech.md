@@ -67,6 +67,8 @@ for your engine below.
 
 Pronunciation dictionary matching uses Unicode case-insensitive literal matches. Each matched term uses its own respelling; distinct terms such as Straße and STRASSE can have different respellings. Longer terms win overlaps, and later equal-length case variants retain precedence.
 
+Longform chapter caches preserve pronunciation entry order: reordering equal-length case variants invalidates cached audio when it changes which respelling wins. After upgrading, chapters with a nonempty lexicon render once under the corrected cache identity; chapters without a lexicon retain their existing keys.
+
 ### Default engine (VoiceStudio)
 
 **Non-verbal tags.** The bundled model natively tokenizes 13 reaction tags

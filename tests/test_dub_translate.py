@@ -12,6 +12,13 @@ def test_translate_codes_cover_popular_iso():
         assert code in TRANSLATE_CODES, f"{code} missing from TRANSLATE_CODES"
 
 
+def test_translate_codes_map_chinese_scripts_to_regional_codes():
+    # The dub language picker sends cmn-Hans / cmn-Hant; translators expect zh-CN / zh-TW.
+    from api.routers.dub_translate import TRANSLATE_CODES
+    assert TRANSLATE_CODES["cmn-Hans"] == "zh-CN"
+    assert TRANSLATE_CODES["cmn-Hant"] == "zh-TW"
+
+
 @pytest.mark.parametrize("raw,expected", [
     # Already-normal ISO 639-1 codes pass through.
     ("zh", "zh"),

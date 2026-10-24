@@ -3,7 +3,7 @@
 The prefilled GitHub Issues URL caps out around 8k characters, so logs can
 never ride along with a report. This module zips the full picture instead:
 
-    omnivoice-diagnostics-<timestamp>.zip
+    omnivoice-diagnostics-<timestamp>-<unique>.zip
     ├── meta.json            app version, platform, python, generated-at
     ├── self_check.txt       human-readable diagnose report
     ├── self_check.json      same, structured
@@ -25,8 +25,10 @@ import json
 import os
 import platform
 import sys
+import tempfile
 import time
 import zipfile
+from collections import deque
 
 from core.config import OUTPUTS_DIR, LOG_PATH, CRASH_LOG_PATH
 from core.scrub import scrub_text
@@ -41,12 +43,12 @@ def _scrubbed_tail(path: str, max_lines: int) -> str:
     one-line note instead of a hard failure (the bundle must always build)."""
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
-            lines = f.readlines()
+            lines = deque(f, maxlen=max_lines)
     except FileNotFoundError:
         return f"(no file at {scrub_text(path)})\n"
     except Exception as e:
         return f"(could not read {scrub_text(path)}: {scrub_text(str(e))})\n"
-    return scrub_text("".join(lines[-max_lines:]))
+    return scrub_text("".join(lines))
 
 
 def build_bundle(include_network: bool = False) -> str:
@@ -70,7 +72,10 @@ def build_bundle(include_network: bool = False) -> str:
 
     stamp = time.strftime("%Y%m%d-%H%M%S")
     os.makedirs(OUTPUTS_DIR, exist_ok=True)
-    out_path = os.path.join(OUTPUTS_DIR, f"omnivoice-diagnostics-{stamp}.zip")
+    fd, out_path = tempfile.mkstemp(
+        prefix=f"omnivoice-diagnostics-{stamp}-", suffix=".zip", dir=OUTPUTS_DIR,
+    )
+    os.close(fd)
 
     with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("meta.json", json.dumps(meta, indent=2, ensure_ascii=False))

@@ -68,7 +68,8 @@ _HOME_PATTERNS = (
     re.compile(r"[A-Za-z]:/Users/[^/\s\"']+", re.IGNORECASE),   # Windows, forward slashes
     re.compile(r"/Users/[^/\s\"']+", re.IGNORECASE),           # macOS
     re.compile(r"/home/[^/\s\"']+", re.IGNORECASE),            # Linux
-    re.compile(r"[A-Za-z]:\\Users\\[^\\\s\"']+", re.IGNORECASE),  # Windows, backslashes
+    # One or more backslashes: repr() and JSON double them (OSError messages).
+    re.compile(r"[A-Za-z]:\\+Users\\+[^\\\s\"']+", re.IGNORECASE),  # Windows, backslashes
 )
 
 # Values shorter than this are too entropy-poor to be real secrets and too

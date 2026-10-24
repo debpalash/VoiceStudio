@@ -76,7 +76,7 @@ def is_app_quarantined(bundle_path: Optional[str] = None) -> bool:
         - False on dev runs where we are not inside a .app bundle.
         - False when ``xattr`` is missing or errors (safe default — we'd
           rather miss a quarantine warning than crash a startup probe).
-        - True when ``xattr -l`` lists ``com.apple.quarantine`` on the bundle.
+        - True when ``xattr -p com.apple.quarantine`` succeeds on the bundle.
     """
     if sys.platform != "darwin":
         return False
@@ -87,7 +87,7 @@ def is_app_quarantined(bundle_path: Optional[str] = None) -> bool:
 
     try:
         result = subprocess.run(
-            ["xattr", "-l", bundle],
+            ["xattr", "-p", "com.apple.quarantine", bundle],
             capture_output=True,
             text=True,
             timeout=5,
@@ -104,7 +104,7 @@ def is_app_quarantined(bundle_path: Optional[str] = None) -> bool:
         logger.warning("xattr probe failed: %s", e)
         return False
 
-    return "com.apple.quarantine" in (result.stdout or "")
+    return result.returncode == 0
 
 
 def quarantine_status() -> dict:

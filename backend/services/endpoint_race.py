@@ -41,6 +41,7 @@ tests patch the module-level ``probe_endpoint`` / ``throughput_probe``
 from __future__ import annotations
 
 import logging
+import math
 import os
 import threading
 import time
@@ -328,13 +329,18 @@ def cached_decision() -> Optional[dict]:
         d = prefs.get(_DECISION_PREF)
     except Exception:
         return None
-    if (
-        isinstance(d, dict)
-        and isinstance(d.get("endpoint"), str)
-        and d.get("endpoint")
-        and isinstance(d.get("checked_at"), (int, float))
-    ):
-        return d
+    try:
+        if (
+            isinstance(d, dict)
+            and isinstance(d.get("endpoint"), str)
+            and _is_allowed_probe_endpoint(d["endpoint"])
+            and isinstance(d.get("checked_at"), (int, float))
+            and math.isfinite(d["checked_at"])
+        ):
+            return d
+    except OverflowError:
+        # A hand-edited integer may be too large for timestamp arithmetic.
+        pass
     return None
 
 

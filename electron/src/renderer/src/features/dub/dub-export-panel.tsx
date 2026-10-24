@@ -7,7 +7,8 @@ import { getBridge } from '@/components/bridge';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { apiPath, describeError, errorFromResponse } from '@/lib/api/client';
 import { saveExport } from '@/lib/export-history';
-import { dubExportRequest, type DubExportFormat } from './dub-export';
+import { BackgroundVolumeControl } from './background-volume-control';
+import { backgroundGain, dubExportRequest, type DubExportFormat } from './dub-export';
 import { setDubExportPreferences, type DubSession } from './dub-session';
 
 export function DubExportPanel({ session, disabled }: { session: DubSession; disabled: boolean }) {
@@ -70,6 +71,7 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
         track,
         tracks: selected,
         preserveBg,
+        bedGain: backgroundGain(preferences.bedGain),
         burn: burn && burnAllowed,
         dual,
         karaoke,
@@ -168,6 +170,13 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
         </div>
         {['mp4', 'wav', 'mp3'].includes(format) &&
           toggle(t('exportModal.bg_audio'), preserveBg, setPreserveBg)}
+        {['mp4', 'wav', 'mp3'].includes(format) && (
+          <BackgroundVolumeControl
+            value={backgroundGain(preferences.bedGain)}
+            disabled={locked || !preserveBg}
+            onCommit={(bedGain) => setDubExportPreferences({ bedGain })}
+          />
+        )}
         {format === 'mp3' && (
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">{t('exportModal.bitrate')}</p>

@@ -172,7 +172,8 @@ def detect_speech_onsets(audio: np.ndarray, sr: int) -> list[float]:
     if sr <= 0 or audio is None or len(audio) == 0:
         return []
     if audio.ndim > 1:
-        audio = audio.mean(axis=1)
+        # Energy analysis must not cancel opposite-polarity stereo channels.
+        audio = np.max(np.abs(audio), axis=1)
     frame_len = max(1, int(FRAME_S * sr))
     rms = _frame_rms(audio, frame_len)
     if rms.size == 0:

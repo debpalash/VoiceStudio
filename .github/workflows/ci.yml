@@ -503,6 +503,12 @@ jobs:
           assert "Intel Macs are not supported" in docs
           PY
 
+      - name: Native macOS quarantine attribute detection
+        if: runner.os == 'macOS' && matrix.backend_supported
+        run: uv run --no-sync pytest tests/backend/core/test_gatekeeper_detect.py -q --tb=short
+        env:
+          HF_HUB_OFFLINE: "1"
+
       - name: Run smoke tests
         # Exercise credential paths and the Windows accept guard natively.
         if: matrix.backend_supported

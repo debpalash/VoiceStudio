@@ -1,4 +1,5 @@
 import { DubProjects } from './dub-projects';
+import { dubPreviewPath } from './dub-export';
 import { Menu } from '@base-ui/react/menu';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { SecondarySidebar } from '@/components/workspace-sidebar';
@@ -487,11 +488,11 @@ export function DubPage() {
             const revision = fingerprintRevision(session.fingerprintsByLang?.[track]);
             return {
               track,
-              path: `/dub/preview-video/${job}?mix=surgical2&lang=${encodeURIComponent(track)}${revision ? `&v=${revision}` : ''}`,
+              path: dubPreviewPath(session.jobId || '', track, 'video', session.exportOptions, revision),
             };
           })
         : [],
-    [job, session.fingerprintsByLang, session.inputType, session.jobId, session.tracks],
+    [job, session.fingerprintsByLang, session.inputType, session.jobId, session.tracks, session.exportOptions],
   );
   const source = useMemo(
     () =>
@@ -499,14 +500,14 @@ export function DubPage() {
         ? apiPath(
             preview === 'original'
               ? `/dub/audio/${job}`
-              : `/dub/download-audio/${job}?lang=${encodeURIComponent(preview)}`,
+              : dubPreviewPath(session.jobId || '', preview, 'audio', session.exportOptions),
           )
         : apiPath(
             preview === 'original'
               ? `/dub/media/${job}`
-              : `/dub/preview-video/${job}?mix=surgical2&lang=${encodeURIComponent(preview)}${previewRevision ? `&v=${previewRevision}` : ''}`,
+              : dubPreviewPath(session.jobId || '', preview, 'video', session.exportOptions, previewRevision),
           ),
-    [job, preview, previewRevision, session.inputType],
+    [job, preview, previewRevision, session.inputType, session.jobId, session.exportOptions],
   );
   // Vidstack treats a new object identity as a source update. Keep this
   // stable while unrelated transcript/progress state changes so the native

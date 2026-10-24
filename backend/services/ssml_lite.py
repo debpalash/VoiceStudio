@@ -63,25 +63,21 @@ _TAG_RE = re.compile(
 )
 
 
-def _resolve(stack: list[str]) -> dict:
-    """Collapse an open-tag stack into the effective segment properties.
+def _resolve(open_tags: dict[str, list[int]]) -> dict:
+    """Resolve the four-tag vocabulary without walking the nesting depth.
 
-    Outer→inner walk: a later (more-deeply-nested) tag overrides any property
-    it sets, leaving untouched properties from outer tags intact. So
-    ``[slow][spell]`` yields ``speed=SLOW_SPEED, spell=True``.
+    Each tag keeps its open positions. The latest speed-bearing tag wins;
+    spell and emphasis remain active while any matching open survives.
     """
+    latest = -1
     speed: Optional[float] = None
-    spell = False
-    emphasis = False
-    for name in stack:
-        spec = _TAGS[name]
-        if spec["speed"] is not None:
-            speed = spec["speed"]
-        if spec["spell"] is not None:
-            spell = bool(spec["spell"])
-        if spec["emphasis"] is not None:
-            emphasis = bool(spec["emphasis"])
-    return {"speed": speed, "spell": spell, "emphasis": emphasis}
+    for name in ("slow", "fast", "emphasis"):
+        positions = open_tags[name]
+        if positions and positions[-1] > latest:
+            latest = positions[-1]
+            speed = _TAGS[name]["speed"]
+    return {"speed": speed, "spell": bool(open_tags["spell"]),
+            "emphasis": bool(open_tags["emphasis"])}
 
 
 def parse_ssml_lite(text: str) -> list[dict]:
@@ -96,14 +92,15 @@ def parse_ssml_lite(text: str) -> list[dict]:
         return [{"text": text, "speed": None, "spell": False, "emphasis": False}]
 
     segments: list[dict] = []
-    stack: list[str] = []
+    open_tags: dict[str, list[int]] = {name: [] for name in _TAGS}
+    position = 0
     last = 0
 
     def emit(chunk: str) -> None:
         if not chunk:
             return
-        props = _resolve(stack)
-        seg = {"text": chunk, **props}
+        props = _resolve(open_tags)
+        seg = {"text": [chunk], **props}
         # Merge with the previous segment when prosody is identical so plain
         # text never fragments into multiple identical-styled pieces.
         if segments:
@@ -113,7 +110,7 @@ def parse_ssml_lite(text: str) -> list[dict]:
                 and prev["spell"] == seg["spell"]
                 and prev["emphasis"] == seg["emphasis"]
             ):
-                prev["text"] += chunk
+                prev["text"].append(chunk)
                 return
         segments.append(seg)
 
@@ -123,33 +120,35 @@ def parse_ssml_lite(text: str) -> list[dict]:
         is_close = m.group(1) == "/"
         name = m.group(2).lower()
         if is_close:
-            # Close the nearest matching open tag; ignore an unmatched close.
-            for i in range(len(stack) - 1, -1, -1):
-                if stack[i] == name:
-                    del stack[i]
-                    break
+            # Remove only the nearest matching open, including non-top closes.
+            if open_tags[name]:
+                open_tags[name].pop()
         else:
-            stack.append(name)  # unclosed opens stay on the stack to EOL
+            open_tags[name].append(position)
+            position += 1  # unclosed opens remain active to EOL
 
     emit(text[last:])
 
     if not segments:
         # Input was only tag markers (e.g. "[slow][/slow]"): nothing to speak.
         return []
-    return segments
+    return [{**seg, "text": "".join(seg["text"])} for seg in segments]
 
 
 def spell_out(word: str) -> str:
     """Space out a run for the ``[spell]`` case: ``"USA"`` → ``"U S A"``.
 
-    Collapses surrounding whitespace, then joins the remaining characters with
-    single spaces so the engine pronounces each letter discretely. Whitespace
+    Collapses surrounding whitespace, then joins the remaining grapheme
+    clusters with single spaces so the engine pronounces each letter discretely. Whitespace
     inside the run is treated as a separator (each token spelled, joined by a
     single space), so ``"go USA"`` → ``"g o U S A"``.
     """
     if not word:
         return ""
-    # Drop all existing whitespace, then interleave the visible characters with
-    # spaces. ``split()`` + ``"".join`` removes runs of whitespace first.
-    compact = "".join(word.split())
-    return " ".join(compact)
+    # Segment tokens separately: removing whitespace first could join an
+    # Indic virama, combining mark or regional indicator to the next token.
+    import regex
+
+    return " ".join(
+        cluster for token in word.split() for cluster in regex.findall(r"\X", token)
+    )

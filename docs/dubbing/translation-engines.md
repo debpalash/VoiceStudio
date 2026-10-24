@@ -268,6 +268,8 @@ panels instead so neither editor becomes unusably small.
 
 
 
+SRT and WebVTT imports accept hour fields longer than two digits, preserving cues from recordings over 99 hours.
+
 SRT and WebVTT exports round each cue timestamp once to the nearest millisecond, including carry into the next second or minute. The OpenAI-compatible transcription exports use the same formatter.
 
 

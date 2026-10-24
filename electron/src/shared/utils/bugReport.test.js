@@ -26,6 +26,8 @@ describe('scrubText — frontend twin of backend/core/scrub.py', () => {
     // Windows paths normalized to forward slashes (webview stacks, file URLs)
     ['C:/Users/dave/AppData/Local/OmniVoice/app.log', '~/AppData/Local/OmniVoice/app.log'],
     ['file:///C:/Users/erin/project/index.js', '~/project/index.js'],
+    // repr()/JSON-escaped Windows paths, as in Python OSError messages
+    ["No such file: 'C:\\\\Users\\\\gina\\\\AppData\\\\x.wav'", "No such file: '~\\\\AppData\\\\x.wav'"],
   ])('redacts home path %s', (raw, expected) => {
     expect(scrubText(raw)).toBe(expected);
   });

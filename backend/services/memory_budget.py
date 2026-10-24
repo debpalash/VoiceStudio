@@ -17,6 +17,7 @@ Stdlib + psutil (already a runtime dep). Never raises.
 from __future__ import annotations
 
 import logging
+import math
 import os
 from typing import Optional
 from core.logging_utils import log_safe
@@ -26,7 +27,15 @@ logger = logging.getLogger("omnivoice.memory_budget")
 # Below this much free RAM, a heavy model load is at real risk of tipping the
 # machine into the OOM-kill territory behind the 16 GB-Mac "Can't reach the
 # backend" reports. Tunable for smaller/larger boxes.
-_LOW_RAM_HEADROOM_GB = float(os.environ.get("OMNIVOICE_LOW_MEMORY_HEADROOM_GB", "2.0"))
+def _configured_headroom_gb() -> float:
+    try:
+        value = float(os.environ.get("OMNIVOICE_LOW_MEMORY_HEADROOM_GB", "2.0"))
+    except ValueError:
+        return 2.0
+    return value if math.isfinite(value) and value >= 0 else 2.0
+
+
+_LOW_RAM_HEADROOM_GB = _configured_headroom_gb()
 
 
 def available_memory() -> dict:

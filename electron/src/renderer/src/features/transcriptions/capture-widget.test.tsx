@@ -1,4 +1,4 @@
-import { act, render } from '@testing-library/react';
+import { act, cleanup, render } from '@testing-library/react';
 import { useSyncExternalStore } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CaptureWidget } from './capture-widget';
@@ -45,6 +45,7 @@ const capture = vi.hoisted(() => ({
   accept: vi.fn(async () => {}),
   cancel: vi.fn(async () => {}),
   deliver: vi.fn(async () => 'copied'),
+  finish: vi.fn(async () => {}),
   onEvent: vi.fn(),
   phase: vi.fn(async () => {}),
   ready: vi.fn(async () => {}),
@@ -57,7 +58,7 @@ const dictation = vi.hoisted(() => {
   return {
     cancel: vi.fn(),
     pause: vi.fn(),
-    start: vi.fn(async () => {}),
+    start: vi.fn(async (_onResult?: (entry: { text: string }) => void) => {}),
     stop: vi.fn(async () => {}),
     getSnapshot: () => snapshot,
     subscribe: () => () => {},
@@ -90,16 +91,20 @@ async function mountAndStartSession(): Promise<void> {
 
 beforeEach(() => {
   backendStore.reset();
+  Object.assign(dictation.getSnapshot(), { stage: 'recording', text: '' });
   for (const target of [capture, dictation]) {
     for (const value of Object.values(target)) {
       if (typeof value === 'function' && 'mockClear' in value) value.mockClear();
     }
   }
+  capture.finish.mockReset().mockResolvedValue(undefined);
   capture.onEvent.mockReturnValue(() => {});
   vi.stubGlobal('voicestudio', { capture });
 });
 
 afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -147,4 +152,52 @@ describe('native dictation survives a busy backend recovering (#2430)', () => {
     expect(capture.cancel).toHaveBeenCalledWith(7);
     expect(dictation.cancel).toHaveBeenCalled();
   });
+});
+
+describe('native dictation releases the recorder after a failed delivery', () => {
+  it('finishes the session once without retrying the text', async () => {
+    vi.useFakeTimers();
+    Object.assign(dictation.getSnapshot(), { stage: 'done', text: 'hello' });
+    capture.deliver.mockRejectedValueOnce(new Error('output helper disconnected'));
+    dictation.start.mockImplementationOnce(async (onResult) => {
+      onResult?.({ text: 'hello' });
+    });
+    render(<CaptureWidget />);
+    await mountAndStartSession();
+    await act(async () => {});
+
+    await act(async () => {
+      vi.advanceTimersByTime(4000);
+    });
+
+    expect(capture.deliver).toHaveBeenCalledTimes(1);
+    expect(capture.finish).toHaveBeenCalledTimes(1);
+    expect(capture.finish).toHaveBeenCalledWith(7);
+  });
+});
+
+it('releases a session when native finish rejects and admits the next capture', async () => {
+  vi.useFakeTimers();
+  Object.assign(dictation.getSnapshot(), { stage: 'done', text: 'hello' });
+  capture.finish.mockRejectedValueOnce(new Error('native session already reset'));
+  dictation.start.mockImplementationOnce(async (onResult) => {
+    onResult?.({ text: 'hello' });
+  });
+  render(<CaptureWidget />);
+  await mountAndStartSession();
+  await act(async () => {});
+  await act(async () => {
+    vi.advanceTimersByTime(4000);
+  });
+  expect(capture.finish).toHaveBeenCalledTimes(1);
+  expect(dictation.cancel).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    vi.advanceTimersByTime(8000);
+  });
+  expect(capture.finish).toHaveBeenCalledTimes(1);
+  const onEvent = capture.onEvent.mock.calls.at(-1)?.[0] as (event: unknown) => void;
+  await act(async () => {
+    onEvent({ action: 'start', session: 8 });
+  });
+  expect(capture.accept).toHaveBeenCalledWith(8);
 });

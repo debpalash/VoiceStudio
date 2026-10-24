@@ -31,17 +31,17 @@ const TAGS = {
 // Fixed-literal alternation, no quantifier overlap → linear-time (ReDoS-safe).
 const TAG_RE = /\[(\/?)(slow|fast|emphasis|spell)\]/gi;
 
-function resolve(stack) {
+function resolve(openTags) {
+  let latest = -1;
   let speed = null;
-  let spell = false;
-  let emphasis = false;
-  for (const name of stack) {
-    const spec = TAGS[name];
-    if (spec.speed !== null) speed = spec.speed;
-    if (spec.spell !== null) spell = !!spec.spell;
-    if (spec.emphasis !== null) emphasis = !!spec.emphasis;
+  for (const name of ['slow', 'fast', 'emphasis']) {
+    const positions = openTags[name];
+    if (positions.length && positions[positions.length - 1] > latest) {
+      latest = positions[positions.length - 1];
+      speed = TAGS[name].speed;
+    }
   }
-  return { speed, spell, emphasis };
+  return { speed, spell: !!openTags.spell.length, emphasis: !!openTags.emphasis.length };
 }
 
 export function parseSsmlLite(text) {
@@ -49,12 +49,13 @@ export function parseSsmlLite(text) {
   if (!text.includes('[')) return [{ text, speed: null, spell: false, emphasis: false }];
 
   const segments = [];
-  const stack = [];
+  const openTags = Object.fromEntries(Object.keys(TAGS).map((name) => [name, []]));
+  let position = 0;
   let last = 0;
 
   const emit = (chunk) => {
     if (!chunk) return;
-    const props = resolve(stack);
+    const props = resolve(openTags);
     const prev = segments[segments.length - 1];
     if (
       prev &&
@@ -62,10 +63,10 @@ export function parseSsmlLite(text) {
       prev.spell === props.spell &&
       prev.emphasis === props.emphasis
     ) {
-      prev.text += chunk;
+      prev.text.push(chunk);
       return;
     }
-    segments.push({ text: chunk, ...props });
+    segments.push({ text: [chunk], ...props });
   };
 
   const re = new RegExp(TAG_RE.source, TAG_RE.flags);
@@ -76,18 +77,14 @@ export function parseSsmlLite(text) {
     const isClose = m[1] === '/';
     const name = m[2].toLowerCase();
     if (isClose) {
-      for (let i = stack.length - 1; i >= 0; i--) {
-        if (stack[i] === name) {
-          stack.splice(i, 1);
-          break;
-        }
-      }
+      // Pop the nearest same-name open even when another tag is above it.
+      openTags[name].pop();
     } else {
-      stack.push(name);
+      openTags[name].push(position++);
     }
   }
   emit(text.slice(last));
-  return segments;
+  return segments.map((seg) => ({ ...seg, text: seg.text.join('') }));
 }
 
 // Grapheme clusters when the runtime has them (so ZWJ emoji, flags and
@@ -104,5 +101,7 @@ function splitCharacters(text) {
 
 /** Space out a run for [spell]: "USA" → "U S A". */
 export function spellOut(word) {
-  return splitCharacters((word || '').split(/\s+/).join('')).join(' ');
+  // Match Python str.split(): Unicode whitespace plus the four C0 separators.
+  // ECMAScript \s instead drops BOMs and omits NEL and those separators.
+  return (word || '').split(/[\p{White_Space}\u001C-\u001F]+/u).flatMap(splitCharacters).join(' ');
 }

@@ -78,9 +78,17 @@ curl -fsSL https://voicestudio.sh/install | sh -s -- --uninstall
 安装程序会保留你的设置、项目和模型。旧版本必须包含 Electron 包；
 它绝不会回退到已归档的 Tauri 构建。
 
-从 [Releases](https://github.com/debpalash/VoiceStudio/releases/latest) 下载，然后阅读对应平台的安装指南：
+也可从 [Releases](https://github.com/debpalash/VoiceStudio/releases/latest) 下载（macOS `.dmg`、Windows `.exe`、Linux `.AppImage` 或 `.deb`），然后阅读对应平台的安装指南：
 
 **[macOS](docs/install/macos.md) · [Windows](docs/install/windows.md) · [Linux](docs/install/linux.md) · [Docker](docs/install/docker.md)**
+
+| 硬件 | 支持情况 |
+|---|---|
+| NVIDIA 显卡（Windows / Linux） | CUDA 加速 |
+| Apple 芯片 | Metal（MPS）加速 |
+| 无独立显卡（Intel/AMD 集成显卡、较旧的电脑） | 可在 CPU 上正常使用，速度较慢；安装向导会安装小型 CPU 版 PyTorch（约需 5 GB 可用磁盘空间） |
+| Windows on ARM（骁龙 X 等） | **实验性**，尚待验证：原生 ARM64 应用，x64 Python 后端在模拟下运行，仅 CPU |
+| Intel Mac | 仅提供应用界面；请连接远程后端（[原因](docs/install/macos.md)） |
 
 打开**声音克隆**，选择已有声音或添加清晰的参考录音，输入文字并生成。按提示安装所需模型。硬件要求因引擎而异，详见[性能指南](docs/performance.md)。
 
@@ -133,4 +141,4 @@ bun run dev
 
 ## 许可与负责任使用
 
-应用采用 [AGPL-3.0](LICENSE) 许可。模型遵循各自的许可，商用前请确认其条款。克隆声音前须取得本人许可。详见[许可说明](LICENSE-NOTICE.md)。
+[AGPL-3.0](LICENSE) 涵盖应用本身，包括在其条件下的商业使用。模型权重、分词器、声音及生成内容的使用条件另行约定；付费的应用许可并不授予这些权利。克隆声音前须取得本人许可。模型管理器现在会显示带版本的模型来源声明、证据链接，以及来自[共享清单](docs/licensing/model-inventory.md)的尚未解决的审查缺口。其可选的[已审查文件预览](docs/licensing/model-review-workflow.md)不会对普通下载强制执行，也不能证明商业使用已获许可。详见[许可说明](LICENSE-NOTICE.md)。

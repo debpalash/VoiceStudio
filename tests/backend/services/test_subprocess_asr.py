@@ -173,7 +173,7 @@ def test_sidecar_accepts_max_profile_decode_width(monkeypatch):
             segments = [SimpleNamespace(start=0, end=1, text="heard", words=[])]
             return segments, SimpleNamespace(language="en")
 
-    monkeypatch.setattr(sidecar, "_get_model", lambda: FakeModel())
+    monkeypatch.setattr(sidecar, "_get_model", lambda _name=None: FakeModel())
     result = sidecar._transcribe(
         "/max.wav",
         False,

@@ -115,7 +115,7 @@ def apply_process_token_policy(environ: Optional[dict] = None) -> None:
                     _implicit_disabled_in.pop(next(iter(_implicit_disabled_in)))
         else:
             changed = _implicit_disabled_in.pop(id(env), None)
-            if changed is not None and changed[0] is env:
+            if changed is not None and changed[0] is env and env.get(_IMPLICIT_ENV) == "1":
                 previous = changed[1]
                 if previous is None:
                     env.pop(_IMPLICIT_ENV, None)

@@ -6,7 +6,7 @@ protocol (length-prefixed JSON over stdin/stdout):
 
     on start          → {"op":"ready","engine":"faster-whisper-isolated"}
     {"op":"ping"}     → {"op":"pong"}
-    {"op":"transcribe","audio_path":...,"word_timestamps":bool}
+    {"op":"transcribe","audio_path":...,"word_timestamps":bool,"model"?:str}
                       → {"op":"segments","result":{"segments":[...],"language":...}}
     {"op":"shutdown"} → exit 0
     error             → {"op":"error","message":...}
@@ -81,7 +81,7 @@ def _is_ct_error(msg):
     return "compute type" in low or "efficient float16" in low
 
 
-def _get_model():
+def _get_model(selected=None):
     global _model
     if _model is None:
         from core.execstack import ensure_ctranslate2_loadable
@@ -94,8 +94,12 @@ def _get_model():
         # Before this, the sidecar read only ASR_MODEL_FW while the download
         # preflight read ASR_MODEL_FASTER — set one and the other variant (or
         # the preflight) quietly used a different model.
+        # ``selected`` is the parent's Model Catalogue choice. It is saved in
+        # prefs.json, not the environment, so after a restart this child
+        # never saw it and loaded large-v3 instead.
         name = (
             os.environ.get("ASR_MODEL_FW")
+            or selected
             or os.environ.get("ASR_MODEL_FASTER")
             or "large-v3"
         )
@@ -151,7 +155,8 @@ def _request_options(request_options):
     return options
 
 
-def _transcribe(audio_path, word_timestamps, decode_options=None, request_options=None):
+def _transcribe(audio_path, word_timestamps, decode_options=None, request_options=None,
+                model_name=None):
     options = decode_options or {}
     if not isinstance(options, dict) or any(
         key not in {"beam_size", "best_of"}
@@ -160,7 +165,11 @@ def _transcribe(audio_path, word_timestamps, decode_options=None, request_option
     ):
         raise ValueError("Invalid ASR decoding options")
     extra = _request_options(request_options)
-    model = _get_model()
+    if model_name is not None and not (
+        isinstance(model_name, str) and 0 < len(model_name) <= 1024
+    ):
+        raise ValueError("Invalid ASR model name")
+    model = _get_model(model_name)
     segments, info = model.transcribe(
         audio_path, word_timestamps=word_timestamps, **options, **extra,
     )
@@ -218,6 +227,7 @@ def main() -> int:
                 result = _transcribe(
                     msg.get("audio_path"), bool(msg.get("word_timestamps", True)),
                     msg.get("decode_options"), msg.get("request_options"),
+                    msg.get("model"),
                 )
                 _send(stdout, {"op": "segments", "result": result})
             elif op == "shutdown":

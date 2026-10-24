@@ -50,6 +50,7 @@ def _complete_wav_container(path: Path, file_size: int) -> bool:
         if end > file_size or end < 12:
             return False
         offset = 12
+        frame_size = None
         while offset < end:
             stream.seek(offset)
             chunk = stream.read(8)
@@ -58,6 +59,18 @@ def _complete_wav_container(path: Path, file_size: int) -> bool:
             size = struct.unpack(endian + "I", chunk[4:])[0]
             payload_end = offset + 8 + size
             if payload_end > end:
+                return False
+            if chunk[:4] == b"fmt " and size >= 16:
+                fmt = stream.read(min(size, 40))
+                encoding, channels = struct.unpack_from(endian + "HH", fmt)
+                bits = struct.unpack_from(endian + "H", fmt, 14)[0]
+                if encoding == 0xFFFE and len(fmt) >= 40:
+                    encoding = struct.unpack_from(endian + "H", fmt, 24)[0]
+                # PCM and IEEE-float decoders round down partial final frames.
+                # Compressed formats may have a legitimate partial last block.
+                if encoding in (1, 3) and channels > 0 and bits > 0 and bits % 8 == 0:
+                    frame_size = channels * (bits // 8)
+            elif chunk[:4] == b"data" and frame_size is not None and size % frame_size:
                 return False
             # Some PCM writers omit padding on an odd final data chunk.
             if payload_end == end:
@@ -115,7 +128,7 @@ def is_playable_wav(path: Optional[Path]) -> bool:
 
             with sf.SoundFile(str(path)) as audio:
                 if (
-                    audio.format != "WAV"
+                    audio.format not in {"WAV", "WAVEX"}
                     or not 0 < audio.channels <= _MAX_CHANNELS
                     or not 0 < audio.samplerate <= _MAX_SAMPLE_RATE
                     or len(audio) <= 0

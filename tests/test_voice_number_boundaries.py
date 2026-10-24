@@ -20,3 +20,29 @@ def test_unambiguous_forms_still_verbalize(text, expected):
 def test_other_verbalizers_keep_the_shared_conservative_boundaries(language, text):
     from services.text_normalization import normalize_text
     assert normalize_text(text, language) == text
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("It costs £3.", "It costs three pounds."),
+    ("It costs £5.50 now", "It costs five pounds, fifty pence now"),
+    ("only £1.01 left", "only one pound, one penny left"),
+    ("It costs €20.", "It costs twenty euros."),
+    ("It costs €1.99, please", "It costs one euro, ninety-nine cents, please"),
+    ("$5 or £5 or €5", "five dollars or five pounds or five euros"),
+])
+def test_pound_and_euro_amounts_are_spoken_as_money(text, expected):
+    from services.text_normalization import normalize_text
+    assert normalize_text(text, "English") == expected
+
+
+@pytest.mark.parametrize("language, text", [
+    ("English", "¥300 and ₹50"),
+    ("English", "It costs £1,000."),
+    ("English", "It costs €5.5."),
+    ("German", "Das kostet €20 oder 20€."),
+    ("French", "Il coûte 3€."),
+    ("Malayalam", "₹50"),
+])
+def test_a_number_glued_to_a_currency_symbol_keeps_its_digits(language, text):
+    from services.text_normalization import normalize_text
+    assert normalize_text(text, language) == text

@@ -51,3 +51,32 @@ def test_download_names_derived_from_titles_are_never_raw():
         for match in re.finditer(r'^\s*(?:dl_)?filename\s*=\s*f"[^"\n]*\{[^}]*(?:base_name|filename)[^}]*\}[^\n]*$|^\s*dl_name\s*=\s*f"[^\n]*\{base_name\}[^\n]*$', text, re.M):
             offenders.append(f"{rel}: {match.group(0).strip()}")
     assert not offenders, offenders
+
+
+@pytest.mark.parametrize("name", [
+    "voice:secret.wav", 'voice"take.wav', "voice<take.wav", "voice>take.wav",
+    "voice|take.wav", "voice?take.wav", "voice*take.wav",
+    "CON .wav", "COM¹.wav", "COM².wav", "COM³.wav",
+    "LPT¹.wav", "LPT².wav", "LPT³.wav",
+])
+def test_safe_filename_rejects_windows_invalid_basenames(name):
+    from core.path_security import UnsafePath, safe_filename
+
+    with pytest.raises(UnsafePath):
+        safe_filename(name)
+
+
+@pytest.mark.parametrize("name", ["COM¹.wav", "COM².wav", "COM³.wav", "LPT¹.wav", "LPT².wav", "LPT³.wav"])
+def test_portable_filename_repairs_superscript_device_names(name):
+    from core.path_security import portable_filename, safe_filename
+
+    repaired = portable_filename(name)
+    assert repaired == "_" + name
+    assert safe_filename(repaired) == repaired
+
+
+@pytest.mark.parametrize("name", ["voice.wav", "recording-01.flac", "COM0.wav", "LPT4take.wav", "café.wav"])
+def test_safe_filename_keeps_normal_portable_names(name):
+    from core.path_security import safe_filename
+
+    assert safe_filename(name) == name

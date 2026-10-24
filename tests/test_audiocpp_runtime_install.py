@@ -91,3 +91,53 @@ def test_pinned_runtime_assets_have_published_sizes_and_sha256():
         assert bootstrap.VERSION.removeprefix("v") in filename
         assert len(digest) == 64 and set(digest) <= set("0123456789abcdef")
         assert bootstrap._ASSET_SIZES[slug] > 20_000_000
+
+
+@pytest.mark.parametrize("failure", ["transient", "permanent"])
+def test_install_preserves_runtime_until_publication_succeeds(monkeypatch, tmp_path, failure):
+    import errno
+    from types import SimpleNamespace
+    from services import media_tools
+
+    target = tmp_path / "runtime"
+    target.mkdir()
+    (target / "previous.txt").write_text("working runtime")
+    monkeypatch.setattr(bootstrap, "managed_runtime_dir", lambda: target)
+    monkeypatch.setattr(bootstrap, "default_asset", lambda: ("fixture.zip", "fixture-digest"))
+    monkeypatch.setattr(bootstrap, "default_asset_size", lambda: 1)
+    monkeypatch.setattr(installer, "_download", lambda *args: None)
+
+    def extract(archive, destination):
+        destination.mkdir()
+        (destination / bootstrap.binary_name()).write_bytes(b"fixture server")
+        cli = "audiocpp_cli.exe" if os.name == "nt" else "audiocpp_cli"
+        (destination / cli).write_bytes(b"fixture cli")
+
+    monkeypatch.setattr(installer, "_extract", extract)
+    monkeypatch.setattr(installer.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(returncode=0))
+    monkeypatch.setattr(media_tools.time, "sleep", lambda delay: None)
+    invalidations = []
+    monkeypatch.setattr(bootstrap, "invalidate", lambda: invalidations.append(True))
+    replace = os.replace
+    publication_attempts = []
+
+    def interrupted_publish(source, destination):
+        if Path(source).name == "prepared" and Path(destination) == target:
+            publication_attempts.append(True)
+            if failure == "permanent" or len(publication_attempts) == 1:
+                raise PermissionError(errno.EACCES, "fixture transient file lock")
+        return replace(source, destination)
+
+    monkeypatch.setattr(installer.os, "replace", interrupted_publish)
+    if failure == "permanent":
+        with pytest.raises(PermissionError):
+            installer._install()
+        assert (target / "previous.txt").read_text() == "working runtime"
+        assert invalidations == []
+    else:
+        installer._install()
+        assert (target / bootstrap.binary_name()).read_bytes() == b"fixture server"
+        assert not (target / "previous.txt").exists()
+        assert len(publication_attempts) == 2
+        assert invalidations == [True]
+    assert not list(tmp_path.glob(".media-backup-*"))

@@ -247,14 +247,16 @@ def _split_sentences(
     )
     acronyms = r"([A-Z][.][A-Z][.](?:[A-Z][.])?)"
     websites = r"[.](com|net|org|io|gov|edu|me)"
-    digits = r"([0-9])"
     multiple_dots = r"\.{2,}"
 
     text = text.replace("\n", " ")
 
     text = re.sub(prefixes, rf"\1{prd}", text)
     text = re.sub(websites, rf"{prd}\1", text)
-    text = re.sub(digits + r"[.]" + digits, rf"\1{prd}\2", text)
+    # Lookarounds, not captures: a capturing match consumes the digit after
+    # the dot, so the second dot in "2.5.1" or "192.168.1.1" went unprotected
+    # and split the number across two sentences.
+    text = re.sub(r"(?<=[0-9])[.](?=[0-9])", prd, text)
     text = re.sub(multiple_dots, lambda m: prd * len(m.group(0)), text)
 
     if "Ph.D" in text:
@@ -392,8 +394,12 @@ class SentenceChunker:
             if sent_text.strip():
                 result.append(sent_text.strip())
 
-        # Keep the last (potentially incomplete) sentence in the buffer
+        # Keep the last (potentially incomplete) sentence in the buffer.
+        # Splitting strips it, so restore a trailing space: the next token
+        # may start a new word ("How are " + "you").
         last_text = sentences[-1][0] if sentences else ""
+        if last_text and self._buffer[-1:].isspace():
+            last_text += " "
         self._buffer = last_text
 
         if result:
@@ -411,14 +417,15 @@ class SentenceChunker:
 
         A buffer qualifies when **all** of these hold:
 
-        1. Last non-whitespace char is a sentence terminator.
+        1. Last non-whitespace char is a sentence terminator other than the
+           Arabic semicolon, which can introduce a continuing clause.
         2. Word count is at least ``min_words_for_short_flush`` (default 1 —
            single-word replies like ``"Yes."`` flush immediately).
         3. The buffer contains exactly one terminator (the trailing one).
            Multiple terminators mean we may be mid-stream of a longer merged
            utterance like ``"Hey! Hi! Hello! This is a sentence."`` — let
            the standard path keep merging.
-        4. The char immediately before the terminator is **not** a digit
+        4. The char immediately before a period terminator is **not** a digit
            (avoids decimal mid-stream like ``"f(x) = x * 2."`` flushing
            before the ``54`` arrives).
         5. The trailing word is **not** a short ASCII all-caps acronym of
@@ -434,11 +441,12 @@ class SentenceChunker:
         TTS TTFB.
         """
         stripped = self._buffer.rstrip()
-        if not stripped or stripped[-1] not in _SENTENCE_TERMINATORS:
+        terminators = _SENTENCE_TERMINATORS + _UNAMBIGUOUS_NON_LATIN_TERMINATORS.replace("؛", "")
+        if not stripped or stripped[-1] not in terminators:
             return []
 
         # Only one terminator in the entire buffer (the trailing one).
-        if sum(1 for c in stripped if c in _SENTENCE_TERMINATORS) != 1:
+        if sum(1 for c in stripped if c in terminators) != 1:
             return []
 
         # Word count: ``"Hi there!".split()`` -> 2.
@@ -449,7 +457,7 @@ class SentenceChunker:
         # Don't flush on potential decimals.
         if len(stripped) >= 2:
             prev = stripped[-2]
-            if prev.isdigit():
+            if stripped[-1] in ".．" and prev.isdigit():
                 return []
             # Don't flush on short all-caps acronyms ("U.", "US.", "USA.") —
             # these are likely abbreviation periods, not sentence ends. Only
@@ -459,8 +467,8 @@ class SentenceChunker:
             # must still be allowed to flush).
             terminator = stripped[-1]
             last_word = (
-                stripped.rstrip(_SENTENCE_TERMINATORS).split()[-1]
-                if stripped.rstrip(_SENTENCE_TERMINATORS).split()
+                stripped.rstrip(terminators).split()[-1]
+                if stripped.rstrip(terminators).split()
                 else ""
             )
             if (

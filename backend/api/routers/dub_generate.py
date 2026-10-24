@@ -23,7 +23,7 @@ from services.tts_backend import (
     TTSBackend, active_backend_id, ensure_active_engine_licence, resolve_generation_backend,
 )
 from services.dub_batching import batch_timeout_s, native_batch_width
-from services.audio_dsp import apply_mastering, normalize_audio, apply_effects_chain, get_effect_chain
+from services.audio_dsp import apply_mastering, normalize_audio, apply_effects_chain, get_effect_chain, sanitize_audio
 from services.audio_io import atomic_save_wav, audio_info, _safe_torchaudio_save
 from services.ffmpeg_utils import (
     find_ffmpeg,
@@ -2060,6 +2060,9 @@ async def preview_segment(job_id: str, req: SegmentPreviewRequest):
             denoise=True,
             postprocess_output=True,
         )
+        # Repair invalid engine samples before DSP: NaN/Inf would poison peak
+        # normalization even when the finite speech samples remain usable.
+        audio_out = sanitize_audio(audio_out)
         if not getattr(backend, "applies_own_mastering", False):
             audio_out = apply_mastering(audio_out, sample_rate=backend.sample_rate)
         audio_out = normalize_audio(audio_out, target_dBFS=-2.0)

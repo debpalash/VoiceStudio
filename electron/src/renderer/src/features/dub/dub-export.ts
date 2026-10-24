@@ -5,6 +5,7 @@ export interface DubExportOptions {
   track: string;
   tracks: string[];
   preserveBg: boolean;
+  bedGain?: number;
   burn: boolean;
   dual: boolean;
   karaoke: boolean;
@@ -15,6 +16,8 @@ export function dubExportRequest(options: DubExportOptions) {
   if (!jobId || !track || (format === 'mp4' && (!tracks.length || !tracks.includes(track))))
     throw new Error('No export track selected');
   const query = new URLSearchParams({ lang: track });
+  if (['mp4', 'wav', 'mp3'].includes(format))
+    query.set('bed_gain', String(backgroundGain(options.bedGain)));
   let endpoint: string;
   let extension: string = format;
   if (format === 'mp4') {
@@ -49,6 +52,7 @@ export interface DubExportPreferences {
   track?: string;
   excluded?: string[];
   preserveBg?: boolean;
+  bedGain?: number;
   burn?: boolean;
   dual?: boolean;
   karaoke?: boolean;
@@ -67,5 +71,28 @@ export function restoreExportPreferences(raw: unknown): DubExportPreferences {
     if (typeof value[key] === 'boolean') result[key] = value[key];
   if (['128', '192', '256', '320'].includes(String(value.bitrate)))
     result.bitrate = String(value.bitrate);
+  if (typeof value.bedGain === 'number' && Number.isFinite(value.bedGain) && value.bedGain >= 0 && value.bedGain <= 4)
+    result.bedGain = value.bedGain;
   return result;
+}
+
+export function backgroundGain(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 4
+    ? value : 1;
+}
+
+/** Preview and exported media use the same saved mix options. */
+export function dubPreviewPath(
+  jobId: string, track: string, inputType: 'audio' | 'video',
+  preferences: DubExportPreferences = {}, revision = '',
+): string {
+  const query = new URLSearchParams({
+    lang: track,
+    preserve_bg: String(preferences.preserveBg ?? true),
+    bed_gain: String(backgroundGain(preferences.bedGain)),
+  });
+  if (inputType === 'video') query.set('mix', 'surgical2');
+  if (revision) query.set('v', revision);
+  const endpoint = inputType === 'audio' ? 'download-audio' : 'preview-video';
+  return `/dub/${endpoint}/${encodeURIComponent(jobId)}?${query}`;
 }

@@ -43,6 +43,8 @@ to `localhost`, because on that device it is not VoiceStudio.
 
 If you have [Tailscale](https://tailscale.com/download) installed and signed in, you can reach VoiceStudio from any of your devices over your private tailnet — identity-gated, with **no open ports and no PIN** (Tailscale handles identity, and the WireGuard tunnel encrypts the transport).
 
+On macOS, VoiceStudio also detects the executable inside `/Applications/Tailscale.app` when `tailscale` is absent from PATH. Bundled commands run with `TAILSCALE_BE_CLI=1` so sharing checks and controls use the CLI without opening the GUI. A standalone CLI on PATH remains preferred.
+
 1. **Settings → Sharing & Remote Access → Tailscale.**
 2. If Tailscale isn't detected, an **Install Tailscale** link is shown.
 3. Otherwise, **Enable** publishes this backend over your tailnet via `tailscale serve`. The panel shows your `<machine>.<tailnet>` URL with copy / open / QR.

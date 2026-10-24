@@ -192,3 +192,69 @@ def test_writer_liveness_never_sends_a_signal(monkeypatch):
     monkeypatch.setattr(psutil, "pid_exists", lambda pid: pid == 123)
     assert db_backup._pid_alive(123)
     assert not db_backup._pid_alive(124)
+
+
+def test_matching_directory_is_not_a_recovery_backup(tmp_path):
+    db = tmp_path / "omnivoice.db"
+    backup = tmp_path / "omnivoice.db.backup-0.5.7-1"
+    _make_db(backup)
+    directory = tmp_path / "omnivoice.db.backup-0.5.7-2"
+    directory.mkdir()
+    os.utime(backup, (1, 1))
+    os.utime(directory, (2, 2))
+
+    assert db_backup.list_backups(str(db)) == [str(backup)]
+    assert db_backup.latest_backup(str(db))["path"] == str(backup)
+    assert db_backup.prune_backups(str(db), keep=1) == []
+    assert backup.is_file()
+    assert directory.is_dir()
+
+
+def test_matching_directory_does_not_evict_last_real_backup(tmp_path):
+    db = tmp_path / "omnivoice.db"
+    backup = tmp_path / "omnivoice.db.backup-0.5.7-1"
+    _make_db(backup)
+    directory = tmp_path / "omnivoice.db.backup-0.5.7-2"
+    directory.mkdir()
+    os.utime(backup, (1, 1))
+    os.utime(directory, (2, 2))
+
+    assert db_backup.prune_backups(str(db), keep=1) == []
+    assert _rows(backup) == ["voice-0", "voice-1", "voice-2"]
+def test_backup_size_limit_includes_uncheckpointed_database_pages(tmp_path, monkeypatch, caplog):
+    db = tmp_path / "omnivoice.db"
+    _make_db(db)
+    conn = sqlite3.connect(str(db))
+    try:
+        conn.execute("PRAGMA wal_autocheckpoint=0")
+        conn.execute("INSERT INTO voices(name) VALUES (?)", ("x" * 32_000,))
+        conn.commit()
+        file_size = db.stat().st_size
+        logical_size = conn.execute("PRAGMA page_count").fetchone()[0] * conn.execute("PRAGMA page_size").fetchone()[0]
+        assert logical_size > file_size
+        monkeypatch.setattr(db_backup, "MAX_BACKUP_DB_BYTES", file_size)
+        with caplog.at_level(logging.INFO, logger="omnivoice.db.backup"):
+            assert db_backup.snapshot_before_migration(str(db), "0.3.9") is None
+        assert not list(tmp_path.glob("omnivoice.db.backup-*"))
+        assert "Skipping pre-migration DB backup" in caplog.text
+    finally:
+        conn.close()
+
+
+def test_backup_size_limit_does_not_count_repeated_wal_frames(tmp_path, monkeypatch):
+    db = tmp_path / "omnivoice.db"
+    _make_db(db)
+    conn = sqlite3.connect(str(db))
+    try:
+        conn.execute("PRAGMA wal_autocheckpoint=0")
+        for i in range(20):
+            conn.execute("UPDATE voices SET name=? WHERE id=1", (f"updated-{i}",))
+            conn.commit()
+        logical_size = conn.execute("PRAGMA page_count").fetchone()[0] * conn.execute("PRAGMA page_size").fetchone()[0]
+        assert os.path.getsize(str(db) + "-wal") > logical_size
+        monkeypatch.setattr(db_backup, "MAX_BACKUP_DB_BYTES", logical_size)
+        backup = db_backup.snapshot_before_migration(str(db), "0.3.9")
+        assert backup is not None
+        assert _rows(backup)[0] == "updated-19"
+    finally:
+        conn.close()

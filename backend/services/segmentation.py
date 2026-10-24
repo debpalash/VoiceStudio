@@ -17,6 +17,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Iterable, List, Optional, Sequence
 
+from services.dub_qc import _NO_SPACE_SCRIPT
+
 
 MIN_DUR = 1.5         # seconds — below this, a segment must merge
 MIN_CHARS = 12        # characters — below this, a segment must merge (Latin-ish)
@@ -56,7 +58,7 @@ def _word_count(text: str) -> int:
 def _is_short(seg) -> bool:
     return (
         seg.duration < MIN_DUR
-        or seg.char_count < MIN_CHARS
+        or _spaced_char_count(seg.text) < MIN_CHARS
         or _word_count(seg.text) < MIN_WORDS
     )
 
@@ -129,7 +131,7 @@ def _merge_segment_extra(target: Segment, incoming: Segment, *, prepend: bool) -
         )
 
     def joined(left: object, right: object) -> str:
-        return _clean(f"{left or ''} {right or ''}")
+        return _join_text((left, right))
 
     target_original = target.extra.get("text_original")
     incoming_original = incoming.extra.get("text_original")
@@ -165,6 +167,36 @@ def _merge_segment_extra(target: Segment, incoming: Segment, *, prepend: bool) -
 
 def _clean(text: str) -> str:
     return _WS.sub(" ", (text or "").strip())
+
+
+# Scripts written without spaces between words (CJK, kana, Thai, ...), plus
+# CJK and full-width punctuation. ASR returns their words unspaced, so joining
+# them with " " would print "word word word" into the transcript and the TTS.
+_UNSPACED = re.compile(f"[{_NO_SPACE_SCRIPT}\u3000-\u303f\uff00-\uffef]")
+
+
+def _join_text(parts: Iterable[object]) -> str:
+    """Join word or segment texts, with a space only where the script uses one."""
+    out = ""
+    for part in parts:
+        piece = _clean(str(part or ""))
+        if not piece:
+            continue
+        if out and not (_UNSPACED.match(out[-1]) and _UNSPACED.match(piece[0])):
+            out += " "
+        out += piece
+    return out
+
+
+def _spaced_char_count(text: str) -> int:
+    """Length on the Latin-calibrated scale ``MIN_CHARS`` uses.
+
+    Unspaced-script glyphs (CJK, kana, Thai, ...) each carry roughly a word,
+    so they count twice. Otherwise rejoining their words without the old
+    artificial spaces would turn full sentences into "short" fragments that
+    ``_merge_short`` folds together past ``MAX_DUR``.
+    """
+    return len(text) + len(_UNSPACED.findall(text))
 
 
 def _best_boundary(text: str, ideal_pos: int) -> int:
@@ -278,7 +310,7 @@ def _build_segments_from_words(words: Sequence[Word]) -> List[Segment]:
         nonlocal buf, buf_start
         if not buf:
             return
-        text = _clean(" ".join(w.text for w in buf))
+        text = _join_text(w.text for w in buf)
         if not text:
             buf = []
             return
@@ -342,7 +374,7 @@ def _build_segments_from_words(words: Sequence[Word]) -> List[Segment]:
                 segments.append(Segment(
                     start=buf_start,
                     end=left_buf[-1].end,
-                    text=_clean(" ".join(x.text for x in left_buf)),
+                    text=_join_text(x.text for x in left_buf),
                     extra={"words": _serialize_words(left_buf)},
                 ))
                 buf = list(right_buf)
@@ -412,14 +444,14 @@ def _merge_short(segments: List[Segment]) -> List[Segment]:
                 continue
             if target is prev:
                 _merge_segment_extra(prev, s, prepend=False)
-                prev.text = _clean(prev.text + " " + s.text)
+                prev.text = _join_text((prev.text, s.text))
                 prev.end = max(prev.end, s.end)
                 segments.pop(i)
                 did_merge = True
                 continue
             if target is nxt:
                 _merge_segment_extra(nxt, s, prepend=True)
-                nxt.text = _clean(s.text + " " + nxt.text)
+                nxt.text = _join_text((s.text, nxt.text))
                 nxt.start = min(nxt.start, s.start)
                 segments.pop(i)
                 did_merge = True
@@ -457,7 +489,7 @@ def _stitch_adjacent_shorts(segments: List[Segment]) -> List[Segment]:
                 and combined_dur <= MAX_DUR
             ):
                 _merge_segment_extra(a, b, prepend=False)
-                a.text = _clean(a.text + " " + b.text)
+                a.text = _join_text((a.text, b.text))
                 a.end = b.end
                 segments.pop(i + 1)
                 did = True
@@ -529,8 +561,8 @@ def _apply_scene_cuts(segments: List[Segment], scene_cuts: Iterable[float]) -> L
                     continue
                 split = min(candidates, key=lambda i: abs(float(words[i]["start"]) - cut))
                 left, right = words[:split], words[split:]
-                left_text = _clean(" ".join(str(w.get("text", w.get("word", ""))) for w in left))
-                right_text = _clean(" ".join(str(w.get("text", w.get("word", ""))) for w in right))
+                left_text = _join_text(w.get("text", w.get("word", "")) for w in left)
+                right_text = _join_text(w.get("text", w.get("word", "")) for w in right)
                 left_end, right_start = float(left[-1]["end"]), float(right[0]["start"])
                 if (len(left_text) < MIN_CHARS or len(right_text) < MIN_CHARS
                         or left_end - remaining.start < MIN_DUR
@@ -784,7 +816,10 @@ def _resplit_core(
     out: List[dict] = []
     for seg in segments:
         s0, s1 = seg["start"], seg["end"]
-        seg_words = [w for w in ordered if min(w.end, s1) - max(w.start, s0) > 1e-6]
+        # Segment bounds are rounded to 0.01s (Segment.to_dict) while word
+        # times are not, so a neighbouring segment's boundary word can overlap
+        # this span by up to 5ms. It is not this segment's word.
+        seg_words = [w for w in ordered if min(w.end, s1) - max(w.start, s0) > 0.005 + 1e-6]
         if len(seg_words) < 2:
             out.append(seg)
             continue
@@ -801,7 +836,7 @@ def _resplit_core(
         n_runs = len(runs)
         piece_no = 0
         for k, (label, ws) in enumerate(runs):
-            text = _clean(" ".join(w.text for w in ws))
+            text = _join_text(w.text for w in ws)
             if not text:
                 continue
             piece = dict(seg)

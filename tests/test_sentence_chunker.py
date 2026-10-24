@@ -79,3 +79,79 @@ def test_short_flush_ends_the_first_flush_window():
     clause = "However, the remaining answer keeps going for quite a while, and then"
     assert chunker.push(clause) == []
     assert chunker.flush() == [clause]
+
+
+@pytest.mark.parametrize("text", ["Ready 2!", "Ready 2?", "Ready 2。", "नमस्ते।", "مرحبا؟", "ሰላም።", "Ready 2؟"])
+def test_short_unambiguous_sentences_emit_before_stream_finishes(text):
+    chunker = SentenceChunker()
+    assert chunker.push(text[:-1]) == []
+    assert chunker.push(text[-1]) == [text]
+    assert chunker.flush() == []
+
+
+@pytest.mark.parametrize("text", ["Value 2.", "U.S.", "Dr."])
+def test_short_ambiguous_periods_keep_waiting_for_continuation(text):
+    chunker = SentenceChunker()
+    assert chunker.push(text) == []
+    assert chunker.flush() == [text]
+
+
+@pytest.mark.parametrize('tokens', [['２．', '５'], ['Value ２．', '５']])
+def test_short_full_width_decimals_wait_for_fractional_digits(tokens):
+    from services.sentence_chunker import SentenceChunker
+
+    chunker = SentenceChunker()
+    for token in tokens:
+        assert chunker.push(token) == []
+    assert chunker.flush() == [''.join(tokens)]
+
+
+@pytest.mark.parametrize("language", ["en", "ar"])
+@pytest.mark.parametrize("aggressive_first_flush", [False, True])
+@pytest.mark.parametrize("tokens", [["نعم؛", " ثم"], ["نعم", "؛ ", "ثم"]])
+def test_short_arabic_semicolon_keeps_continuing_clause_buffered(
+    language: str, aggressive_first_flush: bool, tokens: list[str]
+) -> None:
+    chunker = SentenceChunker(
+        language=language, aggressive_first_flush=aggressive_first_flush
+    )
+    for token in tokens:
+        assert chunker.push(token) == []
+    assert chunker.push(" نتابع؟") == ["نعم؛ ثم نتابع؟"]
+    assert chunker.flush() == []
+
+
+@pytest.mark.parametrize("terminator", list("।॥؟۔؏։፧።។៕။༎༏"))
+def test_short_non_latin_endings_still_flush_immediately(terminator: str) -> None:
+    chunker = SentenceChunker()
+    assert chunker.push("Ready 2") == []
+    assert chunker.push(terminator) == ["Ready 2" + terminator]
+    assert chunker.flush() == []
+@pytest.mark.parametrize("text", [
+    "Connect to the router at 192.168.1.1 and open the admin page in your browser.",
+    "We just shipped version 2.5.1 of the app, which fixes the login crash on startup.",
+])
+def test_dotted_numbers_stay_in_one_streamed_sentence(text):
+    """Every dot between two digits belongs to the number, not just the first."""
+    from api.routers.tts_stream import split_stream_sentences
+
+    assert split_stream_sentences(text, "English") == [text]
+    # LLM tokens carry their leading space (" 168") on the call-agent path.
+    words = text.split(" ")
+    assert _run_case([words[0], *(" " + w for w in words[1:])]) == [text]
+
+
+def test_a_sentence_after_a_dotted_number_still_splits():
+    from api.routers.tts_stream import split_stream_sentences
+
+    assert split_stream_sentences(
+        "Version 2.5.1 was released today. It fixed many bugs that users had reported.",
+        "English",
+    ) == ["Version 2.5.1 was released today.", "It fixed many bugs that users had reported."]
+def test_space_before_split_point_survives_into_next_push():
+    # The telephony reply parser holds back a trailing word that could start
+    # "ACTION:", so a push can end in a space; the next word must not be glued on.
+    assert _run_case(["Hello there my good friend. How are ", "you today?"]) == [
+        "Hello there my good friend.",
+        "How are you today?",
+    ]

@@ -1979,3 +1979,39 @@ def test_engines_dir_env_relocates_managed_roots(monkeypatch, tmp_path):
     elsewhere = tmp_path / "bigdrive"
     monkeypatch.setenv("OMNIVOICE_ENGINES_DIR", str(elsewhere))
     assert si.managed_root(spec) == elsewhere / spec.engine_id
+
+
+def test_uninstall_retains_discovery_when_files_are_locked(monkeypatch):
+    spec = _mk_spec()
+    monkeypatch.setitem(si.SPECS, spec.engine_id, spec)
+    checkout = si.managed_checkout(spec)
+    checkout.mkdir(parents=True)
+    (checkout / "weights.bin").write_bytes(b"installed weights")
+    monkeypatch.setenv(spec.env_var, str(checkout))
+    deleted = []
+    monkeypatch.setattr("core.prefs.get", lambda key, default=None: str(checkout))
+    monkeypatch.setattr("core.prefs.delete", lambda key: deleted.append(key))
+
+    def locked(path, **kwargs):
+        if not kwargs.get("ignore_errors"):
+            raise PermissionError("file in use")
+
+    monkeypatch.setattr(si.shutil, "rmtree", locked)
+    result = si.uninstall(spec.engine_id)
+    assert result["status"] == "uninstall_failed"
+    assert os.environ[spec.env_var] == str(checkout)
+    assert deleted == []
+    assert (checkout / "weights.bin").exists()
+
+
+def test_uninstall_route_reports_locked_files(monkeypatch):
+    from api.routers import engines
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(si, "uninstall", lambda _: {
+        "status": "uninstall_failed", "detail": "Close the engine and retry.",
+    })
+    with pytest.raises(HTTPException) as error:
+        engines.uninstall_sidecar_engine("fake-side")
+    assert error.value.status_code == 409
+    assert "retry" in error.value.detail

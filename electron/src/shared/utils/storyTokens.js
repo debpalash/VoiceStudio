@@ -33,9 +33,9 @@ const TOKEN_RE = /\[(?:\s*pause(?:\s+(\d+(?:\.\d+)?)(?:\s*(ms|s))?)?\s*|voice:\s
 function _pauseMs(num, unit) {
   if (num == null) return PAUSE_DEFAULT_MS;
   const value = parseFloat(num);
-  if (!Number.isFinite(value)) return PAUSE_DEFAULT_MS;
+  if (Number.isNaN(value)) return PAUSE_DEFAULT_MS;
   const ms = unit && unit.toLowerCase() === 's' ? value * 1000 : value;
-  return Math.max(0, Math.min(roundHalfToEven(ms), PAUSE_MAX_MS));
+  return Math.max(0, Math.min(roundHalfToEven(Math.min(ms, PAUSE_MAX_MS)), PAUSE_MAX_MS));
 }
 
 export function parseStoryText(text, defaultProfileId = null) {

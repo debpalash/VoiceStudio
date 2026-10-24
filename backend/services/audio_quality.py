@@ -55,14 +55,18 @@ def analyze_audio(path: str | Path, *, max_seconds: float = 7200) -> AudioQualit
         return AudioQuality(duration=duration, analyzed_seconds=analyzed,
                             truncated=truncated, warnings=[AudioWarning(kind='empty', start=0, end=0)])
     values = np.asarray(levels)
-    active = values[values > -50]
+    valid = ~np.asarray(invalid)
+    # Replacing invalid samples with zero is a numerical safeguard, not
+    # evidence of silence or a usable RMS level. Exclude those windows from
+    # relative-level baselines and volume/silence warnings.
+    active = values[(values > -50) & valid]
     baseline = float(np.median(active)) if len(active) else -50
     checks = [
         ('invalid', np.asarray(invalid), 0),
         ('clipping', np.asarray(clips), 0),
-        ('silence', values <= -50, 0 if not len(active) else 1),
-        ('quiet', (values > -50) & (values < baseline - 12), .5),
-        ('loud', values > baseline + 12, .5),
+        ('silence', (values <= -50) & valid, 0 if not len(active) else 1),
+        ('quiet', (values > -50) & (values < baseline - 12) & valid, .5),
+        ('loud', (values > baseline + 12) & valid, .5),
     ]
     for kind, mask, minimum in checks:
         edges = np.diff(np.concatenate(([False], mask, [False])).astype(int))

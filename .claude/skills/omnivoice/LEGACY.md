@@ -1,6 +1,6 @@
 # VoiceStudio compatibility entry
 
-The current cross-agent package is [voicestudio](../../../../skills/voicestudio/SKILL.md).
+The current cross-agent package is [voicestudio](../../../skills/voicestudio/SKILL.md).
 For new installations use `npx skills add debpalash/VoiceStudio --skill voicestudio`.
 
 Use the running backend at the user's configured address (default

@@ -53,6 +53,7 @@ import base64
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import tarfile
@@ -170,6 +171,14 @@ def load_state() -> dict:
         raw = _state_path().read_text(encoding="utf-8")
         state = json.loads(raw)
         if isinstance(state, dict) and state.get("schema") == SCHEMA_VERSION:
+            checked = state.get("last_checked")
+            if checked is not None:
+                try:
+                    valid = type(checked) in (int, float) and math.isfinite(checked)
+                except OverflowError:
+                    valid = False
+                if not valid:
+                    state.pop("last_checked", None)
             return state
     except (OSError, ValueError):
         pass
@@ -670,7 +679,7 @@ def status(*, now: Optional[float] = None) -> dict:
         "generated_at": (manifest or {}).get("generated_at"),
         "checked_seconds_ago": (
             max(0.0, _now(now) - float(state["last_checked"]))
-            if state.get("last_checked") else None
+            if state.get("last_checked") is not None else None
         ),
     }
 
@@ -679,7 +688,7 @@ def _cached_keys() -> set[str]:
     try:
         return {
             p.stem for p in _previews_dir().iterdir()
-            if p.suffix == ".mp3" and _KEY_RE.match(p.stem)
+            if p.suffix == ".mp3" and _KEY_RE.match(p.stem) and cached_preview(p.stem) is not None
         }
     except OSError:
         return set()

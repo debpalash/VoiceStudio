@@ -8,7 +8,7 @@ before chunking, so the engine never sees the hard-to-say original.
 This module is the engine-agnostic, pure core:
 
   * ``apply_lexicon(text, lexicon)`` — whole-word, case-insensitive replacement
-    of every key with its respelling. Word-boundary aware (``\\b``), so a key
+    of every key with its respelling. Unicode word-boundary aware, so a key
     ``cat`` never touches ``category``; surrounding punctuation/whitespace is
     preserved (``"smith,"`` → ``"Smith,"``). Longest key first, so a key
     ``Dr. Smith`` wins over ``Dr`` on overlapping input.
@@ -17,8 +17,8 @@ This module is the engine-agnostic, pure core:
 
 ReDoS safety: the matcher is a single anchored-alternation regex built from
 ``re.escape``'d keys joined by ``|`` and wrapped in word boundaries
-(``\\b(?:k1|k2|…)\\b``). No nested/overlapping quantifiers, no user-controlled
-quantifier — the keys are literals, so there is no catastrophic backtracking
+with fixed-width lookarounds. No nested/overlapping quantifiers or user-controlled
+quantifiers — the keys are literals, so there is no catastrophic backtracking
 (CodeQL py/polynomial-redos clean). Matching is done in one ``re.sub`` pass with
 a callback, so a respelling that happens to contain another key is never
 re-scanned (idempotent against its own output).
@@ -28,16 +28,15 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from pathlib import Path
 from typing import Optional
 
 from services.dub_qc import _NO_SPACE_SCRIPT
 
-# A "word" character for boundary purposes. We treat the standard regex word
-# class (``\w`` = ``[A-Za-z0-9_]`` plus Unicode letters under ``re.UNICODE``,
-# the default for ``str`` patterns). A key only gets ``\b`` boundaries on a side
-# that actually abuts a word char, so a key like ``Dr.`` (ends in a non-word
-# char) still matches when followed by a space.
+# Word characters include Unicode letters/numbers, underscore and combining
+# marks. A key only gets a guard on an edge that abuts one of these, so a
+# punctuation-edged key such as "Dr." still matches before a space.
 #
 # Scripts written without spaces between words (kanji, kana, Thai, Lao, Myanmar,
 # Khmer; the same set dub_qc scores per character) are the exception: a key for
@@ -48,7 +47,8 @@ _NO_SPACE_CHAR = re.compile(f"[{_NO_SPACE_SCRIPT}]")
 
 
 def _needs_boundary(ch: str) -> bool:
-    return (ch.isalnum() or ch == "_") and not _NO_SPACE_CHAR.match(ch)
+    word = ch.isalnum() or ch == "_" or unicodedata.category(ch).startswith("M")
+    return word and not _NO_SPACE_CHAR.match(ch)
 
 
 def normalize_lexicon(lexicon: Optional[dict]) -> dict[str, str]:
@@ -71,19 +71,25 @@ def normalize_lexicon(lexicon: Optional[dict]) -> dict[str, str]:
     return out
 
 
-def _boundary_prefix(key: str) -> str:
-    """``\\b`` only if the key starts with a word char (else the boundary would
-    never match — e.g. a key opening with punctuation), and not one of a script
-    written without spaces."""
-    return r"\b" if _needs_boundary(key[:1]) else ""
+def _boundary_prefix(key: str, word_chars: str) -> str:
+    """A fixed-width word guard only on an edge of a spaced-script word."""
+    first = key[0]
+    # A leading mark has no base inside this key; never detach it from a
+    # preceding grapheme, even when the mark belongs to a no-space script.
+    needs = unicodedata.category(first).startswith("M") or _needs_boundary(first)
+    return f"(?<![{word_chars}])" if needs else ""
 
 
-def _boundary_suffix(key: str) -> str:
-    """``\\b`` only if the key ends with a word char of a spaced script."""
-    return r"\b" if _needs_boundary(key[-1:]) else ""
+def _boundary_suffix(key: str, word_chars: str) -> str:
+    """Trailing marks inherit the boundary policy of their base character."""
+    base = next((char for char in reversed(key)
+                 if not unicodedata.category(char).startswith("M")), None)
+    # Marks alone have no base to establish no-space-script semantics.
+    needs = base is None or _needs_boundary(base)
+    return f"(?![{word_chars}])" if needs else ""
 
 
-def _compile(lexicon: dict[str, str]) -> tuple[Optional[re.Pattern], dict[str, str]]:
+def _compile(lexicon: dict[str, str], text: str = "") -> tuple[Optional[re.Pattern], dict[str, str]]:
     """Build the single alternation regex + matched-group→respelling lookup.
 
     Keys are sorted longest-first so an overlapping longer key (``Dr. Smith``)
@@ -96,11 +102,18 @@ def _compile(lexicon: dict[str, str]) -> tuple[Optional[re.Pattern], dict[str, s
     keys = sorted(reversed(lexicon), key=len, reverse=True)
     if not keys:
         return None, {}
+    # Unicode marks are missing from Python's regex word class. Add marks
+    # present in this ORIGINAL input to the fixed-width guards themselves,
+    # so a rejected longer term still allows another regex alternative.
+    marks = "" if text.isascii() else "".join(sorted({
+        char for char in text if unicodedata.category(char).startswith("M")
+    }))
+    word_chars = r"\w" + re.escape(marks)
     # IGNORECASE and casefold have different Unicode equivalence classes:
     # e.g. 'i' matches dotless 'ı', while Straße/STRASSE do not regex-match.
     # Bind each literal to its replacement rather than folding matched text.
     lookup = {f"term_{i}": lexicon[k] for i, k in enumerate(keys)}
-    alts = [f"(?P<term_{i}>{_boundary_prefix(k)}{re.escape(k)}{_boundary_suffix(k)})"
+    alts = [f"(?P<term_{i}>{_boundary_prefix(k, word_chars)}{re.escape(k)}{_boundary_suffix(k, word_chars)})"
             for i, k in enumerate(keys)]
     # No nested quantifiers — pure literal alternation.
     pattern = re.compile("(?:" + "|".join(alts) + ")", re.IGNORECASE)
@@ -121,10 +134,15 @@ def apply_lexicon(text: str, lexicon: Optional[dict]) -> str:
     if not text:
         return text or ""
     clean = normalize_lexicon(lexicon)
-    pattern, lookup = _compile(clean)
+    pattern, lookup = _compile(clean, text)
     if pattern is None:
         return text
 
+    return _replace_lexicon(text, pattern, lookup)
+
+
+def _replace_lexicon(text: str, pattern: re.Pattern, lookup: dict[str, str]) -> str:
+    """Apply a prepared dictionary once, without recompiling for each text run."""
     def _repl(m: re.Match) -> str:
         return lookup[m.lastgroup]
 
@@ -256,6 +274,13 @@ def _scope_matcher(language: Optional[str]):
     return matches
 
 
+def _prefer_term(terms: dict[str, str], term: str, replacement: str) -> None:
+    # The matcher gives later equal-length case variants precedence. Updating
+    # an existing dict key alone keeps its OLD position and loses that priority.
+    terms.pop(term, None)
+    terms[term] = replacement
+
+
 def entries_for_language(entries, language: Optional[str]) -> dict[str, str]:
     """Collapse DB rows into a ``{term: replacement}`` map for ``apply_lexicon``.
 
@@ -293,12 +318,13 @@ def entries_for_language(entries, language: Optional[str]) -> dict[str, str]:
             continue
         scope = (e["language"] or _ALL_LANG).strip() or _ALL_LANG
         if scope == _ALL_LANG:
-            glob[term] = str(replacement)
+            _prefer_term(glob, term, str(replacement))
         else:
             if scope_matches is not None and scope_matches(scope):
-                lang[term] = str(replacement)
+                _prefer_term(lang, term, str(replacement))
     merged = dict(glob)
-    merged.update(lang)  # language rows override global on the same term
+    for term, replacement in lang.items():
+        _prefer_term(merged, term, replacement)  # language rows win over global
     return merged
 
 
@@ -408,9 +434,22 @@ def apply_pronunciation(
     merged = entries_for_language(entries or [], language)
     if lexicon:
         # Project-local JSON overlays the DB defaults; project wins on conflict.
-        merged.update(normalize_lexicon(lexicon))
-    out = apply_lexicon(text, merged) if merged else text
-    return apply_inline_overrides(out)
+        for term, replacement in normalize_lexicon(lexicon).items():
+            _prefer_term(merged, term, replacement)
+    pattern, lookup = _compile(normalize_lexicon(merged))
+    if pattern is None:
+        return apply_inline_overrides(text)
+    # An explicit one-off respelling is the author's final choice. Substitute
+    # only outside ORIGINAL inline spans, even if a dictionary phrase could
+    # otherwise span across one. Compile once for the whole request.
+    parts: list[str] = []
+    last = 0
+    for inline in _INLINE_RE.finditer(text):
+        parts.append(_replace_lexicon(text[last:inline.start()], pattern, lookup))
+        parts.append(inline.group(0))
+        last = inline.end()
+    parts.append(_replace_lexicon(text[last:], pattern, lookup))
+    return apply_inline_overrides("".join(parts))
 
 
 # ── DB load/save ──────────────────────────────────────────────────────────────

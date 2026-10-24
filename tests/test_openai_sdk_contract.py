@@ -475,7 +475,7 @@ def test_isolated_sidecar_validates_request_options(monkeypatch):
             calls.append(options)
             return [], SimpleNamespace(language="de")
 
-    monkeypatch.setattr(sidecar, "_get_model", lambda: _Model())
+    monkeypatch.setattr(sidecar, "_get_model", lambda _name=None: _Model())
     sidecar._transcribe("/a.wav", False, {}, {"language": "de", "initial_prompt": "p",
                                              "temperature": 0.2, "task": "translate"})
     assert calls[-1] == {"word_timestamps": False, "language": "de", "initial_prompt": "p",

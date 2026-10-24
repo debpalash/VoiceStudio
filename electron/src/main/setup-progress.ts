@@ -93,6 +93,8 @@ export class SetupProgressTracker {
       if (!this.labels.has(name)) this.labels.set(name, starting[1].trim());
       this.planned.set(name, parseByteSize(starting[2], starting[3]));
       this.completed.delete(name);
+      // A retry starts a new transfer; bytes from the previous attempt are not downloaded.
+      this.received.delete(name);
       this.progress.downloadsComplete = false;
       this.refreshDownloadState();
       changed = true;
@@ -167,7 +169,14 @@ export class SetupProgressTracker {
   }
 
   private updateRate(now: number, bytes: number, totalBytes: number): void {
-    const previous = this.samples.at(-1);
+    let previous = this.samples.at(-1);
+    if (previous && bytes < previous.bytes) {
+      // Do not mix throughput from a discarded attempt into the new transfer's ETA.
+      this.samples.length = 0;
+      delete this.progress.bytesPerSecond;
+      delete this.progress.etaSeconds;
+      previous = undefined;
+    }
     if (!previous || bytes !== previous.bytes) {
       this.samples.push({ at: now, bytes });
       this.progress.transferUpdatedAt = now;

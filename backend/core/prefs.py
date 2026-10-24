@@ -36,7 +36,8 @@ _MUTATE_LOCK = threading.RLock()
 def _load() -> dict:
     try:
         with open(_PREFS_PATH, "r", encoding="utf-8") as f:
-            return json.load(f) or {}
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
     except Exception as e:

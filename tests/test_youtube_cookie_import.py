@@ -314,3 +314,33 @@ def test_failed_cookie_unlink_can_be_retried(dub_pipeline, tmp_path, monkeypatch
     assert cookie_path.exists()
     assert dub_pipeline._delete_cookie_export(str(cookie_path)) is True
     assert not cookie_path.exists()
+
+
+def test_cancel_before_start_deletes_staged_cookie(dub_core, tmp_path, monkeypatch):
+    from schemas.requests import DubIngestUrlRequest
+    from starlette.requests import Request
+
+    cookie_path = tmp_path / "queued.cookies.txt"
+    cookie_path.write_text(COOKIE_TEXT, encoding="utf-8")
+    monkeypatch.setattr(dub_core, "_stage_cookie_export", lambda _text: str(cookie_path))
+    monkeypatch.setattr(dub_core, "_safe_job_dir", lambda _job_id: str(tmp_path / "job"))
+    captured = {}
+
+    async def capture_add(*_args, **kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(dub_core.task_manager, "add_task", capture_add)
+    request = Request(
+        {"type": "http", "scheme": "http", "server": ("127.0.0.1", 80),
+         "client": ("127.0.0.1", 1234), "path": "/dub/ingest-url",
+         "headers": [(b"origin", b"http://localhost:3901")]}
+    )
+    asyncio.run(
+        dub_core.dub_ingest_url(
+            DubIngestUrlRequest(url="https://youtube.com/watch?v=abc", cookie_file=COOKIE_TEXT),
+            request,
+        )
+    )
+    assert cookie_path.exists()  # Still needed once the queued task starts.
+    captured["on_cancel"]()
+    assert not cookie_path.exists()

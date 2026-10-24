@@ -6,6 +6,8 @@ import { apiJson } from '@/lib/api/client';
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
+  openExternal: vi.fn().mockResolvedValue(undefined),
+  toastError: vi.fn(),
   listener: undefined as ((state: UpdateState) => void) | undefined,
   state: {
     status: 'available',
@@ -19,6 +21,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => mocks.navigate }));
 vi.mock('@/components/bridge', () => ({
   getBridge: () => ({
+    files: { openExternal: mocks.openExternal },
     updates: {
       getState: vi.fn(async () => mocks.state),
       onState: (listener: (state: UpdateState) => void) => {
@@ -30,6 +33,7 @@ vi.mock('@/components/bridge', () => ({
     },
   }),
 }));
+vi.mock('sonner', () => ({ toast: { error: mocks.toastError } }));
 vi.mock('@/lib/api/client', () => ({
   apiJson: vi.fn(async () => ({ notifications: [] })),
   apiFetch: vi.fn(),
@@ -46,6 +50,8 @@ import { SystemNotifications } from './system-notifications';
 describe('SystemNotifications desktop updates', () => {
   beforeEach(() => {
     mocks.navigate.mockReset();
+    mocks.openExternal.mockReset().mockResolvedValue(undefined);
+    mocks.toastError.mockReset();
     mocks.listener = undefined;
     mocks.state = {
       status: 'available',
@@ -55,7 +61,10 @@ describe('SystemNotifications desktop updates', () => {
       progress: 0,
     } as UpdateState;
   });
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
 
   test('keeps an available update actionable while the Python backend is offline', async () => {
     render(
@@ -121,5 +130,36 @@ describe('SystemNotifications desktop updates', () => {
     expect(warning).toHaveTextContent('settings.storage');
     fireEvent.click(warning!);
     await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith({ to: '/settings/storage' }));
+  });
+
+  test('reports a refused notification link without leaking its rejection', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mocks.openExternal.mockRejectedValueOnce(new Error('Default browser is unavailable'));
+    vi.mocked(apiJson).mockResolvedValueOnce({
+      notifications: [
+        {
+          id: 'help-link',
+          level: 'info',
+          title: 'Documentation',
+          action: { type: 'link', target: 'https://voicestudio.sh/docs' },
+        },
+      ],
+    });
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <SystemNotifications enabled />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /Documentation/ }));
+    fireEvent.click(await screen.findByText('Documentation'));
+    await waitFor(() =>
+      expect(mocks.toastError).toHaveBeenCalledWith('integrationCatalog.websiteOpenFailed'),
+    );
+    expect(mocks.openExternal).toHaveBeenCalledWith('https://voicestudio.sh/docs');
+    expect(warning).toHaveBeenCalledWith(
+      'Could not open external link:',
+      'Default browser is unavailable',
+    );
+    warning.mockRestore();
   });
 });

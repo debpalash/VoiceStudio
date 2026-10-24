@@ -529,6 +529,8 @@ Bundle impact: main bundle 226.56 kB → 229.31 kB (+2.75 kB for zustand; neglig
 
 ### 2026-04-21 — Phase 2.1: Persist task queue
 
+Cancelling a task while it is pending prevents its callable from starting. The task stream reports cancellation and then closes; the persisted job remains cancelled. Cancelling an already finished task returns false and preserves its terminal status.
+
 **Tasks survive server restart.** SSE clients can reconnect with `?after_seq=N` and catch up.
 
 - Schema v4: two new tables in `core/db.py:_BASE_SCHEMA` — `jobs` (id/type/project_id/status/timestamps/error/meta) and `job_events` (id/job_id/seq/payload) with indices on status, project, and `(job_id, seq)`. `IF NOT EXISTS` → no migration script needed for existing DBs.

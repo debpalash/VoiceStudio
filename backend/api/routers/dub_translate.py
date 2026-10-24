@@ -37,7 +37,7 @@ def _load_nllb_component(factory):
 TRANSLATE_CODES = {
     "en": "en", "es": "es", "fr": "fr", "de": "de", "it": "it", "pt": "pt",
     "ru": "ru", "ja": "ja", "ko": "ko", "zh": "zh-CN", "cmn-Hans": "zh-CN",
-    "ar": "ar", "hi": "hi", "tr": "tr", "pl": "pl", "nl": "nl", "sv": "sv",
+    "cmn-Hant": "zh-TW", "ar": "ar", "hi": "hi", "tr": "tr", "pl": "pl", "nl": "nl", "sv": "sv",
     "th": "th", "vi": "vi", "id": "id", "uk": "uk", "ml": "ml",
 }
 

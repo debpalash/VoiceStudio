@@ -35,7 +35,7 @@ separate licence from the rights holder for commercial use.
 - When a feature needs several unaccepted models at once (OmniVoice and its
   tokenizer, for example), the dialog shows each model's full licence and asks
   for a separate confirmation for each one.
-- An earlier Supertonic-3 licence acceptance carries over.
+- An earlier Supertonic-3 licence acceptance carries over. A malformed saved record never falls back to that earlier acceptance: it reports **not accepted** until you review and accept the current terms again. Reading the record leaves it unchanged; accepting replaces the damaged record with a fresh history.
 - API and headless users get HTTP 403 with
   `{"code": "model_licence_required", "models": [...]}` listing each model's
   `repo_id` and terms `fingerprint`. Accept after reviewing the terms with

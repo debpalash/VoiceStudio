@@ -737,7 +737,7 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
         wav_is_complete,
     )
     from core.config import VOICES_DIR
-    from services.pronunciation import normalize_lexicon
+    from services.pronunciation import apply_inline_overrides, normalize_lexicon
     from services.text_normalization import normalize_for_tts
     from services.watermark import mark_synthetic, will_mark
 
@@ -778,7 +778,7 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
     if lexicon:
         # Fold the lexicon into the cache key so editing pronunciations
         # invalidates cached chapters (reserved key can't collide with a voice id).
-        lex_sig = json.dumps(normalize_lexicon(lexicon), sort_keys=True)
+        lex_sig = json.dumps(list(normalize_lexicon(lexicon).items()))
         sig["\x00lexicon"] = lex_sig
     # Fold the #1208 expressive signature into BOTH cache layers so changing any
     # new knob (sampling, emotion, seed, cache opt-out) re-renders instead of
@@ -806,6 +806,13 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
     if language:
         sig["\x00language"] = language
         seg_extra_sig = f"{seg_extra_sig}\x00language={language}"
+    # Older chapters/segments may contain dictionary-rewritten inline markers.
+    # Invalidate both layers only for manuscripts using valid inline overrides;
+    # ordinary narration keeps its released cache keys.
+    inline_pronunciation = any(apply_inline_overrides(s.text) != s.text for s in spans)
+    if inline_pronunciation:
+        sig["\x00inline-pronunciation"] = "1"
+        seg_extra_sig = f"{seg_extra_sig}\x00inline-pronunciation=1"
     marking = will_mark()
     if marking:
         # Provenance-marked chapters cache under their own key (#1169): a
@@ -840,6 +847,8 @@ def _render_chapter_cached(chapter, synth, sr, engine_id, resolve, cache_dir, le
     }
     if language:
         inputs["language"] = language
+    if inline_pronunciation:
+        inputs["inline pronunciation"] = "1"
     for k, v in resolved.items():
         label = f"voice {re.sub(r'[^A-Za-z0-9_-]', '', k)[:40] or '(default)'}"
         inputs[f"{label} reference audio"] = _portable_ref_audio(v.get("ref_audio"))

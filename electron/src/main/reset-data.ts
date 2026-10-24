@@ -124,6 +124,11 @@ export function modelsAreShared(models: string, data: string): boolean {
   return !components(models).some((part) => appPrivate.has(part.toLocaleLowerCase('en-US')));
 }
 
+/** Whether a folder contains the data or model folder another scope owns. */
+function holdsOtherScopes(path: string, roots: ResetRoots): boolean {
+  return within(roots.data, path) || within(roots.models, path);
+}
+
 async function scopeTargets(key: DiskResetScope, roots: ResetRoots): Promise<string[]> {
   switch (key) {
     case 'settings':
@@ -154,7 +159,10 @@ async function scopeTargets(key: DiskResetScope, roots: ResetRoots): Promise<str
         join(roots.data, 'crash_log.txt'),
         join(roots.data, 'error_journal.jsonl'),
         ...(await prefixedChildren(roots.data, 'omnivoice.log')),
-        ...(roots.logs ? [roots.logs] : []),
+        // The backend reports its crash log's folder as the log root, and that
+        // file lives directly in the data folder. Removing such a root would
+        // delete every voice, project and setting, not just the logs above.
+        ...(roots.logs && !holdsOtherScopes(roots.logs, roots) ? [roots.logs] : []),
       ];
   }
 }

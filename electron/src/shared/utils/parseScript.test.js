@@ -94,6 +94,13 @@ describe('parseTaggedScript — [Name] tagged scripts (#487)', () => {
     expect(hasSpeakerTags('Just narration [pause] here.\n[voice:x] more')).toBe(false);
   });
 
+  it('does NOT treat expression tags as speakers', () => {
+    // [surprise-wa], [question-en], … are the tone buttons' tokens (constants.js TAGS).
+    expect(hasSpeakerTags('[surprise-wa] Oh no, the farmer is coming.')).toBe(false);
+    expect(hasSpeakerTags('[dissatisfaction-hnn] Fine.\n[question-en] Really?')).toBe(false);
+    expect(hasSpeakerTags('[Alice] hi')).toBe(true);
+  });
+
   it('hasSpeakerTags detects only real speaker tags', () => {
     expect(hasSpeakerTags('[Alice] hi')).toBe(true);
     expect(hasSpeakerTags('FOX: hi')).toBe(false);

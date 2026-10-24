@@ -10,8 +10,10 @@ stop at a byte cap even if an entry's declared size is wrong.
 from __future__ import annotations
 
 import io
+import lzma
 import os
 import zipfile
+import zlib
 
 from core.path_security import UnsafePath, safe_relative_path
 
@@ -71,7 +73,10 @@ def _stream(zf: zipfile.ZipFile, name: str, max_bytes: int, sink) -> None:
         with zf.open(name) as src:
             seen = 0
             while True:
-                chunk = src.read(_CHUNK)
+                try:
+                    chunk = src.read(_CHUNK)
+                except (OSError, zlib.error, lzma.LZMAError) as exc:
+                    raise ArchiveError(400, "bundle entry is unreadable") from exc
                 if not chunk:
                     return
                 seen += len(chunk)

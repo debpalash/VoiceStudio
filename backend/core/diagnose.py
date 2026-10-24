@@ -26,6 +26,7 @@ import os
 import platform
 import shutil
 import sys
+import tempfile
 
 from core.config import DATA_DIR
 from core.device_caps import KERNEL_RISK_MARKER, UNUSABLE_GPU_MARKER
@@ -175,11 +176,9 @@ def _check_disk() -> dict:
 
 
 def _check_data_dir() -> dict:
-    probe = os.path.join(DATA_DIR, ".diagnose_write_probe")
     try:
-        with open(probe, "w") as f:
-            f.write("ok")
-        os.remove(probe)
+        with tempfile.TemporaryFile(mode="w", dir=DATA_DIR) as probe:
+            probe.write("ok")
         return _check("data_dir", "Data directory", OK, f"writable: {DATA_DIR}")
     except Exception as e:
         return _check(
@@ -493,4 +492,4 @@ def format_text(report: dict) -> str:
         f"{s['passed']} ok, {s['warnings']} warning(s), {s['failures']} failure(s) - "
         + ("looks healthy" if s["ok"] else "needs attention")
     )
-    return "\n".join(lines)
+    return "\n".join(lines).encode("ascii", errors="backslashreplace").decode("ascii")

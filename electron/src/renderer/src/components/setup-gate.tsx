@@ -142,7 +142,9 @@ export function SetupGate({ children }: { children: ReactNode }) {
             >
               <Icon />
               <span className="tabular-nums text-muted-foreground">{index + 1}.</span>
-              {t(label)}
+              {/* A single long word (ru "Конфиденциальность") cannot wrap at a
+                  space, so let it shrink and break inside the sidebar (#2940). */}
+              <span className="min-w-0 break-words hyphens-auto">{t(label)}</span>
             </Button>
           ))}
         </nav>

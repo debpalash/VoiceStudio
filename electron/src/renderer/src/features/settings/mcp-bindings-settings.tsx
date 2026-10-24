@@ -60,10 +60,12 @@ export function McpBindingsSettings() {
     try {
       await apiJson<McpBinding>('/api/mcp/bindings', {
         method: 'PUT',
+        // The backend keeps a field sent as null and clears one sent as "",
+        // so re-saving an existing client ID with Default voice must send "".
         body: JSON.stringify({
           client_id: normalizedId,
-          label: label.trim() || null,
-          profile_id: profileId === DEFAULT_PROFILE ? null : profileId,
+          label: label.trim(),
+          profile_id: profileId === DEFAULT_PROFILE ? '' : profileId,
         }),
       });
       setClientId('');

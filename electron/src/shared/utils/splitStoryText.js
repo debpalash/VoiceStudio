@@ -20,7 +20,12 @@ export function splitIntoChunks(text, maxChars) {
     const window = clean.slice(i, i + max);
     let cut = -1;
     for (let j = window.length - 1; j > Math.floor(max * 0.4); j--) {
-      if (/[.!?\u3002\uFF01\uFF1F]/.test(window[j])) {
+      // A Latin terminator glued to a letter or digit ("3.5", "example.com")
+      // is inside a word, not at a sentence end.
+      if (
+        /[\u3002\uFF01\uFF1F]/.test(window[j]) ||
+        (/[.!?]/.test(window[j]) && !/[\p{L}\p{N}]/u.test(clean[i + j + 1] ?? ''))
+      ) {
         cut = j + 1;
         break;
       }

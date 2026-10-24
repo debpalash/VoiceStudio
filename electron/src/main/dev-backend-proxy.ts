@@ -120,6 +120,9 @@ export async function startDevBackendProxy(
         headers: proxyRequestHeaders(incoming.headers, getTrustedHeaders()),
       },
       (result) => {
+        // Headers may arrive before the backend crashes or truncates its body.
+        // pipe() does not forward source errors: retire the renderer response too.
+        result.on('error', () => response.destroy());
         response.writeHead(result.statusCode || 502, result.headers);
         result.pipe(response);
       },

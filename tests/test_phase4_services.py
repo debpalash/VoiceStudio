@@ -74,6 +74,17 @@ def test_speech_rate_ratio_calculation():
 # ── incremental (4.1) ──────────────────────────────────────────────────────
 
 
+def test_speech_rate_reads_the_dub_pages_chinese_tags_as_chinese():
+    """The dub page sends Chinese as cmn-Hans / cmn-Hant, not zh."""
+    text = "你好，我们今天要去公园散步，然后吃晚饭。"
+    zh = speech_rate.expected_duration(text, "zh")
+    for tag in ("cmn-Hans", "cmn-Hant", "zh-CN", "zh_TW", "yue"):
+        assert speech_rate.expected_duration(text, tag) == zh
+    assert speech_rate.rate_ratio(text, 3.0, "cmn-Hans") > 1.0  # too long: trim
+    assert speech_rate.expected_duration("hello there", "en-US") == \
+        speech_rate.expected_duration("hello there", "en")
+
+
 def test_incremental_first_run_everything_stale():
     segs = [
         {"id": "s1", "text": "Hello", "target_lang": "de"},

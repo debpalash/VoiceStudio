@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 
 from core.db import db_conn
 from core.config import PREVIEW_DIR
+from core.file_cleanup import sweep_stale_files
 from core.tasks import task_manager
 from core.logging_utils import log_safe
 from core.media_types import AUDIO_EXTS, MEDIA_EXTS, media_extension, media_upload_suffix, unsupported_media_detail
@@ -640,6 +641,10 @@ def delete_single_dub_history(history_id: str):
     event_bus.emit("dub_history", {"action": "deleted", "id": history_id})
     return {"deleted": True, "dir_kept_for": holders}
 
+# Uploaded previews older than this are removed on the next preview upload.
+PREVIEW_MAX_AGE_SECONDS = 24 * 3600
+
+
 @router.post("/preview/upload")
 async def preview_upload(video: UploadFile = File(...)):
     ext = media_upload_suffix(video.filename, ".mp4")
@@ -657,6 +662,14 @@ async def preview_upload(video: UploadFile = File(...)):
         raise InvalidMediaFileError()
 
     def _write_and_extract() -> bool:
+        # Previews are throwaway scratch copies that nothing else deletes.
+        removed = sweep_stale_files(PREVIEW_DIR, PREVIEW_MAX_AGE_SECONDS)
+        if removed:
+            logger.debug(
+                "Removed %d preview upload(s) older than %d hours",
+                removed,
+                PREVIEW_MAX_AGE_SECONDS // 3600,
+            )
         with open(vid_path, "wb") as f:
             f.write(payload)
         if ext in {".wav", ".mp3", ".m4a", ".aac"}:
@@ -990,6 +1003,12 @@ async def dub_ingest_url(req: DubIngestUrlRequest, request: Request):
             task_id, "prep",
             _ingest_gen, job_id, job_dir,
             source, None,
+            # A task cancelled while queued never starts, so the ingest
+            # pipeline's own cleanup would not run for the staged cookies.
+            on_cancel=(
+                (lambda: dub_pipeline._delete_cookie_export(cookie_path))
+                if cookie_path else None
+            ),
         )
     except Exception:
         if cookie_path:

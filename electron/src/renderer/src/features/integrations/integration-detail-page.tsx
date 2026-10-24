@@ -17,18 +17,12 @@ import {
 import { Link, useParams } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { WorkspaceHeader } from '@/components/app-shell/workspace-header';
-import { getBridge } from '@/components/bridge';
+import { openExternalLink } from '@/lib/open-external-link';
 import {
   getIntegrationBySlug,
   type IntegrationCatalogEntry,
 } from '@shared/config/integration-catalog';
 import './integrations-page.css';
-
-function openExternal(url: string) {
-  const bridge = getBridge();
-  if (bridge) void bridge.files.openExternal(url);
-  else window.open(url, '_blank', 'noopener,noreferrer');
-}
 
 function SetupBlockView({ block }: { block: SetupBlock }) {
   const { t } = useTranslation();
@@ -189,7 +183,11 @@ export function IntegrationDetailPage() {
       <p className="integration-detail-url">{entry.url}</p>
       <button
         type="button"
-        onClick={() => openExternal(entry.url)}
+        onClick={() =>
+          void openExternalLink(entry.url, () =>
+            toast.error(t('integrationCatalog.websiteOpenFailed')),
+          )
+        }
         className="integration-open-button"
       >
         {t('common.open')}

@@ -52,6 +52,8 @@ failure screen, restart action and logs.
 Source-mode shutdown closes active renderer-proxy streams as well as its listening socket. A live
 backend response or keep-alive connection therefore cannot strand Quit, Restart, or an isolated
 native lifecycle check.
+An interrupted backend response also closes the matching renderer request
+promptly, so it cannot remain pending after a mid-stream backend failure.
 
 The long-running supervisor probes the canonical compact `/health` contract. Full `/system/info`
 hardware, storage and settings data is fetched only by views that use it, avoiding repeated payload
@@ -137,3 +139,7 @@ waits up to 20 seconds for that boot's running reconciliation thread, including
 when its asyncio task was cancelled; a completed earlier boot cannot bypass the wait.
 Work not yet submitted is cancelled, and queued executor work remains tracked
 without requiring another executor thread to enforce the shutdown deadline.
+
+When setup retries a package download, progress clears that package’s previous
+bytes and rate estimate while retaining completed bytes from other packages.
+A new speed and remaining-time estimate appears after the retried transfer advances.

@@ -92,6 +92,10 @@ class SubprocessASRBackend(SubprocessBackend):
             return ASR_RECV_TIMEOUT_S
         return max(30.0, v)
 
+    def model_name(self) -> str | None:
+        """Model the sidecar should load, or None to let it decide."""
+        return None
+
     def supports_translation(self) -> bool:
         # Same model resolution as the sidecar (_asr_sidecar/main.py).
         from services.asr_backend import faster_whisper_model_id, whisper_checkpoint_translates
@@ -143,6 +147,7 @@ class SubprocessASRBackend(SubprocessBackend):
                 from services.asr_backend import whisper_request_options
                 request = whisper_request_options(
                     language, initial_prompt, temperature, task)
+                model = self.model_name()
                 self._send({
                     "op": "transcribe",
                     "audio_path": str(audio_path),
@@ -151,6 +156,7 @@ class SubprocessASRBackend(SubprocessBackend):
                     # Sent only when set, so a frame without them is
                     # byte-identical to before.
                     **({"request_options": request} if request else {}),
+                    **({"model": model} if model else {}),
                 })
                 reply = self._recv_with_timeout(timeout_s)
                 timed_out = self._last_recv_timed_out
@@ -231,6 +237,13 @@ class IsolatedFasterWhisperBackend(SubprocessASRBackend):
         from services.asr_backend import _ctranslate2_cudnn_ok
 
         return _ctranslate2_cudnn_ok()
+
+    def model_name(self) -> str | None:
+        # The Model Catalogue selection lives in prefs.json, which the child
+        # cannot read, and only reaches its environment in the session it was
+        # made in. Send it with each request so a restart keeps it.
+        from services.asr_backend import faster_whisper_model_id
+        return faster_whisper_model_id()
 
     @classmethod
     def venv_python(cls) -> Path:

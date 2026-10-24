@@ -1258,7 +1258,21 @@ def uninstall(engine_id: str) -> dict:
         }
     root = managed_root(spec)
     removed = root.is_dir()
-    shutil.rmtree(root, ignore_errors=True)
+    if removed:
+        try:
+            shutil.rmtree(root)
+        except OSError:
+            # A locked model/venv can leave part of the install behind. Keep
+            # its discovery settings so the user can retry instead of hiding
+            # the remaining files behind a successful uninstall response.
+            return {
+                "status": "uninstall_failed",
+                "engine": engine_id,
+                "detail": (
+                    f"Could not remove {spec.display_name}. Close any process "
+                    "using the engine, check folder permissions, then retry."
+                ),
+            }
     if env_dir:  # only ever the managed checkout at this point
         os.environ.pop(spec.env_var, None)
     from core import prefs

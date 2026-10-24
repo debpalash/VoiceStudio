@@ -95,3 +95,23 @@ describe('splitStoryText', () => {
     expect(splitStoryText('A.\r\n\r\nB.', 'paragraphs')).toEqual(['A.', 'B.']);
   });
 });
+
+describe('splitIntoChunks', () => {
+  it('does not cut inside a decimal number or a dotted name', () => {
+    const text =
+      'The ship reached the harbour at dawn and the crew counted 3.5 tonnes of cargo before anyone slept';
+    expect(splitIntoChunks(text, 60)).toEqual([
+      'The ship reached the harbour at dawn and the crew counted',
+      '3.5 tonnes of cargo before anyone slept',
+    ]);
+    expect(
+      splitIntoChunks('Our long story starts at the gates of voicestudio.sh today', 40),
+    ).toEqual(['Our long story starts at the gates of', 'voicestudio.sh today']);
+  });
+
+  it('still cuts after a sentence terminator', () => {
+    expect(
+      splitIntoChunks('The rain stopped at last. Then the door opened onto the street', 40),
+    ).toEqual(['The rain stopped at last.', 'Then the door opened onto the street']);
+  });
+});

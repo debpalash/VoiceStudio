@@ -10472,6 +10472,18 @@
       }
      },
      {
+      "in": "query",
+      "name": "bed_gain",
+      "required": false,
+      "schema": {
+       "default": 1.0,
+       "maximum": 4,
+       "minimum": 0,
+       "title": "Bed Gain",
+       "type": "number"
+      }
+     },
+     {
       "in": "header",
       "name": "X-VoiceStudio-Path-Authorization",
       "required": false,
@@ -10538,6 +10550,18 @@
       }
      },
      {
+      "in": "query",
+      "name": "bed_gain",
+      "required": false,
+      "schema": {
+       "default": 1.0,
+       "maximum": 4,
+       "minimum": 0,
+       "title": "Bed Gain",
+       "type": "number"
+      }
+     },
+     {
       "in": "header",
       "name": "X-VoiceStudio-Path-Authorization",
       "required": false,
@@ -10601,6 +10625,18 @@
        "default": true,
        "title": "Preserve Bg",
        "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "bed_gain",
+      "required": false,
+      "schema": {
+       "default": 1.0,
+       "maximum": 4,
+       "minimum": 0,
+       "title": "Bed Gain",
+       "type": "number"
       }
      },
      {
@@ -10681,6 +10717,18 @@
      },
      {
       "in": "query",
+      "name": "bed_gain",
+      "required": false,
+      "schema": {
+       "default": 1.0,
+       "maximum": 4,
+       "minimum": 0,
+       "title": "Bed Gain",
+       "type": "number"
+      }
+     },
+     {
+      "in": "query",
       "name": "bitrate",
       "required": false,
       "schema": {
@@ -10746,6 +10794,18 @@
        "description": "Mix background noise into dubbed tracks",
        "title": "Preserve Bg",
        "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "bed_gain",
+      "required": false,
+      "schema": {
+       "default": 1.0,
+       "maximum": 4,
+       "minimum": 0,
+       "title": "Bed Gain",
+       "type": "number"
       }
      },
      {
@@ -10877,6 +10937,18 @@
        "description": "Mix background noise into dubbed tracks",
        "title": "Preserve Bg",
        "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "bed_gain",
+      "required": false,
+      "schema": {
+       "default": 1.0,
+       "maximum": 4,
+       "minimum": 0,
+       "title": "Bed Gain",
+       "type": "number"
       }
      },
      {
@@ -11475,7 +11547,7 @@
   },
   "/dub/preview-video/{job_id}": {
    "get": {
-    "description": "Return an inline-playable MP4 with the chosen dubbed track as sole audio.\n\nCaches per lang+preserve_bg combination under exports/preview_{lang}_{bg}.mp4.\nCache is invalidated when the underlying dubbed track mtime is newer than the cache.",
+    "description": "Return an inline-playable MP4 with the chosen dubbed track as sole audio.\n\nCaches per lang+preserve_bg+bed_gain combination under exports/preview_{lang}_{bg}.mp4.\nCache is invalidated when the underlying dubbed track mtime is newer than the cache.",
     "operationId": "dub_preview_video_dub_preview_video__job_id__get",
     "parameters": [
      {
@@ -11507,6 +11579,18 @@
        "title": "Preserve Bg",
        "type": "boolean"
       }
+     },
+     {
+      "in": "query",
+      "name": "bed_gain",
+      "required": false,
+      "schema": {
+       "default": 1.0,
+       "maximum": 4,
+       "minimum": 0,
+       "title": "Bed Gain",
+       "type": "number"
+      }
      }
     ],
     "responses": {
@@ -11532,7 +11616,7 @@
     "summary": "Dub Preview Video"
    },
    "head": {
-    "description": "Return an inline-playable MP4 with the chosen dubbed track as sole audio.\n\nCaches per lang+preserve_bg combination under exports/preview_{lang}_{bg}.mp4.\nCache is invalidated when the underlying dubbed track mtime is newer than the cache.",
+    "description": "Return an inline-playable MP4 with the chosen dubbed track as sole audio.\n\nCaches per lang+preserve_bg+bed_gain combination under exports/preview_{lang}_{bg}.mp4.\nCache is invalidated when the underlying dubbed track mtime is newer than the cache.",
     "operationId": "dub_preview_video_dub_preview_video__job_id__head",
     "parameters": [
      {
@@ -11563,6 +11647,18 @@
        "default": true,
        "title": "Preserve Bg",
        "type": "boolean"
+      }
+     },
+     {
+      "in": "query",
+      "name": "bed_gain",
+      "required": false,
+      "schema": {
+       "default": 1.0,
+       "maximum": 4,
+       "minimum": 0,
+       "title": "Bed Gain",
+       "type": "number"
       }
      }
     ],

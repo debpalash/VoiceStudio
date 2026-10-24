@@ -14,8 +14,6 @@ import socket
 
 import pytest
 
-from services import network_share as ns
-
 
 @pytest.mark.parametrize('second_operation', ['enable', 'disable'])
 def test_overlapping_lifecycle_calls_leave_no_listener_or_mcp_hosts(monkeypatch, second_operation):
@@ -88,6 +86,8 @@ def _wait_closed(port: int, host: str = "127.0.0.1", tries: int = 40) -> bool:
 
 
 async def _exercise_lifecycle():
+    from services import network_share as ns
+
     # A minimal FastAPI app is enough — enable() only needs an ASGI app object
     # and a place to stash app.state.network_share.
     from fastapi import FastAPI
@@ -120,6 +120,8 @@ async def _exercise_lifecycle():
 
 
 def test_share_listener_lifecycle():
+    from services import network_share as ns
+
     # Ensure a clean starting state regardless of test ordering.
     if ns.get_state().enabled:
         asyncio.run(ns.disable(__import__("fastapi").FastAPI()))
@@ -138,3 +140,68 @@ def test_share_listener_lifecycle():
         # or a dirty module-level _state for the next test.
         if ns.get_state().enabled:
             asyncio.run(ns.disable(__import__("fastapi").FastAPI()))
+
+
+def test_share_listener_does_not_rerun_the_app_lifespan():
+    """The share listener serves the app the main server already started.
+
+    It must not run the app's lifespan again: enabling would repeat startup,
+    and disabling would run the full shutdown on the still-serving backend.
+    """
+    from contextlib import asynccontextmanager
+
+    from fastapi import FastAPI
+
+    from services import network_share as ns
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        try:
+            probe.bind(("0.0.0.0", 0))
+        except OSError as e:
+            pytest.skip(f"binding 0.0.0.0 not permitted in this sandbox: {e}")
+
+    events = []
+
+    @asynccontextmanager
+    async def lifespan(_app):
+        events.append("startup")
+        yield
+        events.append("shutdown")
+
+    app = FastAPI(lifespan=lifespan)
+
+    async def exercise():
+        await ns.enable(app)
+        await ns.disable(app)
+
+    try:
+        asyncio.run(exercise())
+    finally:
+        if ns.get_state().enabled:
+            asyncio.run(ns.disable(FastAPI()))
+    assert events == []
+def test_share_port_bind_failure_raises_instead_of_exiting(monkeypatch):
+    """A port taken after the free-port probe must not exit the backend.
+
+    uvicorn calls sys.exit(1) when its bind fails. Inside the share task that
+    SystemExit escaped asyncio and stopped the backend's own event loop instead
+    of reaching enable()'s "listener failed to start" handling.
+    """
+    from fastapi import FastAPI
+    from services import network_share as ns
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as taken:
+        try:
+            taken.bind(("0.0.0.0", 0))
+        except OSError as e:
+            pytest.skip(f"binding 0.0.0.0 not permitted in this sandbox: {e}")
+        taken.listen()
+        port = taken.getsockname()[1]
+        monkeypatch.setattr(ns, "_runtime", ns._ShareRuntime())
+        monkeypatch.setattr(ns, "_find_free_port", lambda *_: port)
+        app = FastAPI()
+
+        with pytest.raises(RuntimeError, match="failed to start"):
+            asyncio.run(ns.enable(app))
+    assert ns.get_state().enabled is False
+    assert app.state.network_share.enabled is False

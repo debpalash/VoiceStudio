@@ -66,7 +66,10 @@ Use **Check audio** below a finished take to scan locally for long silence,
 relative volume changes, clipping, empty audio or invalid samples. Click a warning
 to seek to its timestamp; close the report to dismiss it. Scanning is bounded to
 two hours and 100 warnings, and reports when limited. It never modifies audio.
-Warnings are advisory signal checks, not a voice-similarity or naturalness score.
+Windows containing non-finite samples are flagged as invalid and excluded from
+silence and relative-volume checks; their substituted zeros do not establish
+silence or change the volume baseline. Warnings are advisory signal checks, not
+a voice-similarity or naturalness score.
 
 ## Validation and repeatable comparisons
 

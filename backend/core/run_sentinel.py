@@ -44,6 +44,8 @@ break real work.
 """
 from __future__ import annotations
 
+from collections import deque
+
 import json
 import logging
 import os
@@ -278,7 +280,7 @@ def _scrubbed_log_tail(lines: int = LOG_TAIL_LINES) -> list[str]:
         from core.scrub import scrub_text
 
         with open(LOG_PATH, "r", encoding="utf-8", errors="replace") as f:
-            tail = f.readlines()[-lines:]
+            tail = deque(f, maxlen=lines)
         return [scrub_text(line.rstrip("\n")) for line in tail]
     except Exception:
         return []

@@ -2,6 +2,7 @@ import asyncio
 import errno
 import filecmp
 import logging
+import math
 from core.logging_utils import log_safe
 import os
 import shutil
@@ -635,6 +636,8 @@ def _atempo_chain(ratio: float) -> str:
     (WSOLA-style time-domain stretching). ratio > 1 speeds up, < 1
     slows down.
     """
+    if not math.isfinite(ratio) or ratio <= 0:
+        raise ValueError("Audio tempo ratio must be finite and positive")
     stages: list[str] = []
     remaining = ratio
     while remaining > 2.0:
@@ -669,6 +672,8 @@ async def _pitch_preserving_stretch(wav, target_samples: int, sr: int):
     wl = int(wav.shape[-1])
     if target_samples <= 0 or wl == target_samples:
         return wav
+    if wl == 0:
+        raise RuntimeError("Cannot time-stretch empty audio")
     ratio = wl / target_samples
     filter_str = _atempo_chain(ratio)
 
@@ -1051,12 +1056,6 @@ async def run_ffmpeg(cmd, timeout: float = 1800.0, capture: bool = True,
                         continue
                     return proc.returncode, out, err
                 finally:
-                    if job_id:
-                        try:
-                            unregister_proc(job_id, proc)
-                        except Exception as e:
-                            logger.debug("unregister_proc failed for %s: %s",
-                                         job_id.replace("\n", " ").replace("\r", " "), e)
                     # Guarantee reaping — prevents zombie pileup under timeouts or errors.
                     if proc.returncode is None:
                         try:
@@ -1069,6 +1068,12 @@ async def run_ffmpeg(cmd, timeout: float = 1800.0, capture: bool = True,
                         except asyncio.TimeoutError:
                             # Reaping is bounded; preserve the original error.
                             pass
+                    if job_id:
+                        try:
+                            unregister_proc(job_id, proc)
+                        except Exception as e:
+                            logger.debug("unregister_proc failed for %s: %s",
+                                         job_id.replace("\n", " ").replace("\r", " "), e)
     finally:
         if script_path:
             try:

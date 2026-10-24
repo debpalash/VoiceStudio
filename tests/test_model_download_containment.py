@@ -592,3 +592,21 @@ def test_implicit_token_parser_matches_huggingface_hub():
 
     for value in ("1", "true", "TRUE", "on", "ON", "Yes", "YES", " on ", " 1", "1 ", "0", "false", "", "2"):
         assert hf_auth.implicit_token_disabled(value) == constants._is_true(value), value
+
+
+@pytest.mark.parametrize("previous", [None, "0"])
+@pytest.mark.parametrize("chosen", ["true", "on", "0", ""])
+def test_process_policy_preserves_user_changes_after_injection(monkeypatch, previous, chosen):
+    from services import hf_auth
+
+    monkeypatch.setattr(hf_auth, "_implicit_disabled_in", {})
+    env = {"HF_ENDPOINT": "https://hf-mirror.com"}
+    if previous is not None:
+        env["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = previous
+    hf_auth.apply_process_token_policy(env)
+    assert env["HF_HUB_DISABLE_IMPLICIT_TOKEN"] == "1"
+    env["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = chosen
+    env.pop("HF_ENDPOINT")
+    hf_auth.apply_process_token_policy(env)
+    assert env["HF_HUB_DISABLE_IMPLICIT_TOKEN"] == chosen
+    assert id(env) not in hf_auth._implicit_disabled_in

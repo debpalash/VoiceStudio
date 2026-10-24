@@ -34,6 +34,7 @@ metadata and the backend fallback mirror it.
 
 - Preview iOS and Android companion apps: drive your own VoiceStudio from your phone (speak, voices and cloning, dubbing, dictation) after pairing by QR code; build from source for now ([guide](docs/mobile.md)) (#2965)
 - Smart Fit speed limits: set the fastest and slowest speed dubbing may apply to a line, from the Timing section (#3026) — thanks @MoonDragon-MD!
+- Save a background mix level from 0% to 400% with each dubbing session (#2964) — thanks @rudycelekli!
 
 ### Fixed
 
@@ -74,6 +75,73 @@ metadata and the backend fallback mirror it.
 - Generation-complete notifications appear above the workspace instead of covering synthesis controls (#3102)
 - Generated speech no longer starts and ends with silence, and `[pause]` markers give exactly the pause you asked for (Raw preset and explicit durations untouched) (#3080)
 - Engine sidecars no longer load PyTorch just to answer the Test Engine ping, and a failed test logs its reason locally (#3026) — thanks @tekay-de!
+- Dub quality checks treat equivalent Unicode spellings as the same text (#2693) — thanks @rudycelekli!
+- Downloads replace ASCII control characters in filenames so malformed names cannot break HTTP responses. (#2703) — thanks @rudycelekli!
+- Public API URLs are validated without logging rejected credentials, and international hostnames work with the served web interface. (#2704) — thanks @rudycelekli!
+- Corrupt compressed voice bundles and EPUB imports report invalid archives instead of an internal error. (#2706) — thanks @rudycelekli!
+- Subtitle imports retain cues whose hour field has more than two digits, including exported long recordings. (#2707) — thanks @rudycelekli!
+- Imported artifact filenames reject Windows-invalid characters and device aliases consistently on every platform. (#2708) — thanks @rudycelekli!
+- Database backup discovery ignores directories named like snapshots so recovery and retention use real files. (#2709) — thanks @rudycelekli!
+- Diagnostic exports created in the same second retain separate archives instead of overwriting earlier reports. (#2710) — thanks @rudycelekli!
+- Saved environment changes replace duplicate and hand-written assignments so the chosen setting, including Unicode line separators in folder names, survives restart. (#2711) — thanks @rudycelekli!
+- Failed saved-environment writes preserve existing settings and keys, and temporary writes retain their private file descriptor. (#2712) — thanks @rudycelekli!
+- Diagnostic and crash-report log tails use memory proportional to retained log lines instead of reading entire files. (#2713) — thanks @rudycelekli!
+- Preferences recover from non-object JSON so malformed saved settings do not break reading or saving choices. (#2714) — thanks @rudycelekli!
+- Runtime and access logs redact Hugging Face tokens, and Tailscale diagnostics retain safe status details without command output or exception text; keep unexpected programming failures visible while expected subprocess failures degrade safely. (#2715) — thanks @rudycelekli!
+- The pre-migration backup size limit includes committed database pages still in the WAL without counting repeated journal frames. (#2716) — thanks @rudycelekli!
+- Failed subprocess termination remains tracked so dubbing cancellation can retry without forgetting active work. (#2717) — thanks @rudycelekli!
+- Automatic model endpoint selection ignores malformed cached origins and timestamps while preserving explicit endpoint settings. (#2718) — thanks @rudycelekli!
+- macOS quarantine detection checks the exact attribute instead of mistaking unrelated attribute values for Gatekeeper quarantine. (#2719) — thanks @rudycelekli!
+- Short streaming speech replies emit at unambiguous sentence endings, including numeric replies and supported non-Latin punctuation, while keeping Arabic semicolon clauses buffered. (#2720) — thanks @rudycelekli!
+- Overlong range download responses cannot overwrite completed neighboring segments and corrupt resumed model files. (#2721) — thanks @rudycelekli!
+- Directory writability checks use isolated temporary files instead of overwriting existing probe names. (#2722) — thanks @rudycelekli!
+- Plain-text self-check reports escape non-ASCII diagnostic details so legacy Windows consoles can print them without crashing. (#2723) — thanks @rudycelekli!
+- Gallery status recovers malformed cached check times and counts only usable preview files while retaining download consent. (#2724) — thanks @rudycelekli!
+- Switching away from a model mirror preserves user changes to implicit-token settings made after the mirror policy applied. (#2725) — thanks @rudycelekli!
+- Cached voice references reject incomplete final PCM and float audio frames, including extensible WAV files. (#2726) — thanks @rudycelekli!
+- Corrupt desktop authorization metadata no longer blocks valid native path selections or raises an internal error. (#2727) — thanks @rudycelekli!
+- Oversized pause durations clamp to the documented ten-second limit without crashing narration parsing or diverging from the editor preview. (#2729) — thanks @rudycelekli!
+- Invalid memory-headroom environment settings fall back to the default advisory instead of breaking memory probes or suppressing low-memory warnings. (#2731) — thanks @rudycelekli!
+- Changing pronunciation entry precedence refreshes cached longform audio (#2728) — thanks @rudycelekli!
+- Keep combining accents, Indic conjuncts, flags and joined emoji together when spelling longform text, matching the editor preview. (#2734) — thanks @rudycelekli!
+- Preserve supported long and multiline pronunciation overrides during text normalization, including numeric respellings, and keep long bracket metadata opaque. (#2735) — thanks @rudycelekli!
+- Leave audio containing NaN or infinity intact during silence trimming, preserving its original length and invalid samples for later generation postprocessing, and sanitize them before DSP in the OpenAI-compatible speech route, streaming sentences, queued batch dubbing and interactive segment previews. (#2738) — thanks @rudycelekli!
+- Retrying a setup package download clears its stale progress and time estimate. (#2795) — thanks @rudycelekli!
+- Dictation releases its recorder after a failed native delivery or finish. (#2796) — thanks @rudycelekli!
+- Desktop backend connection checks cancel oversized responses while reading them. (#2797) — thanks @rudycelekli!
+- Exports preserve destination links and reject links that require a directory. (#2798) — thanks @rudycelekli!
+- Source-mode requests stop promptly when a backend response is interrupted. (#2799) — thanks @rudycelekli!
+- Cancelled queued tasks skip execution and retain cancelled status in the task stream and job history (#2800) — thanks @rudycelekli!
+- A cancelled child operation no longer stops the shared job worker or strands later queued work (#2801) — thanks @rudycelekli!
+- Malformed model licence records no longer crash the licence dialog or count an unknown action as acceptance (#2802) — thanks @rudycelekli!
+- Blank, malformed or negative CPU-pool and legacy idle-timeout overrides fall back to defaults instead of preventing backend startup (#2803) — thanks @rudycelekli!
+- Model installs sharing a dependency no longer overwrite each other’s temporary revision markers or leave staging files after publication fails (#2804) — thanks @rudycelekli!
+- EPUB narration excludes nested and inline hidden XHTML content. (#2805) — thanks @rudycelekli!
+- Reject invalid tempo ratios before constructing FFmpeg audio filters. (#2806) — thanks @rudycelekli!
+- Skip RIFF format extensions without allocating their declared size. (#2807) — thanks @rudycelekli!
+- Exclude invalid sample windows from silence and relative-volume warnings. (#2808) — thanks @rudycelekli!
+- Use even word spacing when ASR or fitted word timings are non-finite. (#2809) — thanks @rudycelekli!
+- Audio.cpp runtime installation retries transient file locks and preserves the previous runtime if publication fails (#2685) — thanks @rudycelekli!
+- Failed integration and notification website links show a clear error instead of an unhandled rejection (#2844) — thanks @rudycelekli!
+- English text reads pound and euro prices as money: "£5.50" is spoken "five pounds, fifty pence" instead of "£five point five", and numbers touching another currency symbol keep their digits instead of becoming "€zwanzig" or "trois€" (#2990)
+- EPUB imports keep chapter headings and paragraph breaks when books use prefixed XHTML elements (#3078) — thanks @rudycelekli!
+- System Check and engine routing use CPU when the installed PyTorch build lacks kernels for the GPU, instead of reporting CUDA ready (#3067) — thanks @rudycelekli!
+- Dictation no longer adds an extra full stop after Arabic, Urdu or Indic sentence-ending punctuation (#3086) — thanks @rudycelekli!
+- Desktop text uploads correctly decode UTF-32 files in either byte order (#3087) — thanks @rudycelekli!
+- Pronunciation dictionaries keep combining accents and vowel marks attached to their words (#3088) — thanks @rudycelekli!
+- Failed engine uninstalls report locked files and retain settings for a retry (#3089) — thanks @rudycelekli!
+- Model loading verifies repaired weight files before native memory mapping (#3090) — thanks @rudycelekli!
+- Dub stem exports keep the background on the fitted vocal timeline for Smart Fit and Stretch Video tracks (#3091) — thanks @rudycelekli!
+- Explicit inline pronunciation overrides take priority over saved dictionaries (#3092) — thanks @rudycelekli!
+- Deleting a cached model preserves other repositories that share its revision or name (#3094) — thanks @rudycelekli!
+- Model downloads verify non-LFS Git blob checksums before replacing existing files (#3095) — thanks @rudycelekli!
+- Loaded-models inventory reports CPU-only sidecar engines as CPU on accelerated hosts (#3096) — thanks @rudycelekli!
+- Audio and stem downloads reject an unavailable requested language instead of returning another language under its name (#3097) — thanks @rudycelekli!
+- Dub retiming and subtitle burns accept odd-sized screen recordings by padding at most one row and column for H.264 (#3098) — thanks @rudycelekli!
+- Dub waveform peaks and onset markers stay visible for opposite-polarity stereo audio, including existing cached timelines (#3099) — thanks @rudycelekli!
+- Handle deeply nested speech markup faster in both narration and the editor. (#2736) — thanks @rudycelekli!
+- Pronunciation dictionaries honor later entries and language or project overrides even with case variants (#3093) — thanks @rudycelekli!
+- MP3 downloads remove temporary uncompressed background mixes and partial encodes after success, failure, or cancellation (#3100) — thanks @rudycelekli!
 
 ### Fixed
 
@@ -93,6 +161,14 @@ metadata and the backend fallback mirror it.
 ### Changed
 
 - The sponsor footer is gone from the app; sponsored integrations keep a Featured badge on their card in Integrations (#3031)
+
+### Fixed
+
+- A sentence ending in "etc." or "usw." keeps its full stop when spoken, so it no longer runs into the next sentence ("et cetera Then we left") (#2991)
+
+### Fixed
+
+- Streamed speech keeps IP addresses and version numbers such as "192.168.1.1" or "2.5.1" in one sentence instead of cutting them after the second dot (#2993)
 
 ### Docs
 

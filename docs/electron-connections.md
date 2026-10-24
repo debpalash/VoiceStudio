@@ -30,3 +30,7 @@ comparison actions share that local readiness contract.
 Sharing exposes the backend only after an inline confirmation. It shows the active PIN and LAN addresses, generates QR links locally, supports a configurable share port, and controls the backend's Tailscale serve integration. These actions remain explicit and do not run during settings reads.
 
 Remote backend configuration is owned by Electron main. Connection tests validate a VoiceStudio health response and exchange an optional server master key once for a scoped, expiring session. The renderer clears the key immediately; only the URL is persisted. Main injects the session into production and development HTTP proxy traffic, native watch-folder uploads, and path-bound dictation WebSocket tickets. Switching back to the local backend is always available.
+
+Backend identity, session and WebSocket-ticket responses are limited to 16 KiB
+while reading, including responses without a Content-Length header. Oversized
+bodies are canceled instead of being buffered in the desktop process.

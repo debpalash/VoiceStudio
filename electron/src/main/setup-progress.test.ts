@@ -139,3 +139,39 @@ describe('SetupProgressTracker', () => {
     expect(cleanProcessLine('\u001b[2K Downloaded torch\r')).toBe('Downloaded torch');
   });
 });
+
+describe('download retries', () => {
+  it('removes completed bytes and rate estimates when a package download restarts', () => {
+    const tracker = new SetupProgressTracker();
+    tracker.ingest('Downloading torch (10 MB)', 1000);
+    tracker.ingest('torch 5 MB/10 MB', 2000);
+    tracker.ingest('Downloaded torch', 3000);
+    expect(tracker.snapshot().bytesPerSecond).toBeGreaterThan(0);
+
+    const retried = tracker.ingest('Downloading torch (10 MB)', 4000);
+    expect(retried).toMatchObject({
+      completedDownloads: 0,
+      downloadedBytes: 0,
+      totalBytes: 10_000_000,
+      downloadsComplete: false,
+    });
+    expect(retried?.bytesPerSecond).toBeUndefined();
+    expect(retried?.etaSeconds).toBeUndefined();
+    expect(tracker.ingest('torch 2 MB/10 MB', 5000)?.bytesPerSecond).toBe(2_000_000);
+  });
+
+  it('keeps other packages credited while restarting an incomplete artifact', () => {
+    const tracker = new SetupProgressTracker();
+    tracker.ingest('Downloading torch (10 MB)', 1000);
+    tracker.ingest('Downloading scipy (2 MB)', 1000);
+    tracker.ingest('Downloaded scipy', 2000);
+    tracker.ingest('torch 8 MB/10 MB', 3000);
+    expect(tracker.ingest('Downloading torch (10 MB)', 4000)).toMatchObject({
+      completedDownloads: 1,
+      downloadedBytes: 2_000_000,
+      totalBytes: 12_000_000,
+      downloadsComplete: false,
+      activePackage: 'torch',
+    });
+  });
+});

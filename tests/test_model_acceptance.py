@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import sys
 from pathlib import Path
 
@@ -212,3 +213,65 @@ def test_history_is_bounded(store):
         ma.accept("k2-fsa/OmniVoice", fp)
         ma.revoke("k2-fsa/OmniVoice")
     assert len(ma.details("k2-fsa/OmniVoice")["history"]) == 20
+
+
+@pytest.mark.parametrize("damage", [
+    {"last": {}},
+    {"last": {"action": "unrecognized"}},
+    {"last": {"action": ["accepted"]}},
+    {"last": {"action": "accepted", "fingerprint": 123}},
+    {"history": 42},
+    {"history": {"unexpected": "mapping"}},
+    {"history": [None]},
+    {"accepted_terms": ["invalid"]},
+])
+def test_malformed_acceptance_record_fails_closed_and_can_be_repaired(store, damage):
+    repo_id = "Supertone/supertonic-3"
+    fp = ma.status(repo_id)["fingerprint"]
+    ma.accept(repo_id, fp)
+    record = json.loads(store[ma._key(repo_id)])
+    # Keep a matching fingerprint in an unknown action: it must not open the gate.
+    if damage.get("last", {}).get("action") == "unrecognized":
+        damage = {"last": {"action": "unrecognized", "fingerprint": fp}}
+    record.update(damage)
+    store[ma._key(repo_id)] = json.dumps(record)
+    before = store[ma._key(repo_id)]
+    state = ma.status(repo_id)
+    assert state["state"] == "not_accepted"
+    assert state["accepted"] is False
+    assert ma.details(repo_id)["history"] == []
+    assert store[ma._key(repo_id)] == before  # Reads never rewrite local evidence.
+    with pytest.raises(ma.ModelLicenceNotAccepted):
+        ma.ensure_accepted([repo_id])
+    assert ma.accept(repo_id, fp)["accepted"] is True
+    assert len(ma.details(repo_id)["history"]) == 1
+
+
+@pytest.mark.parametrize("field", ["at", "app_version"])
+@pytest.mark.parametrize("value", [{}, 5, ["x"]])
+@pytest.mark.parametrize("where", ["last", "history"])
+def test_non_text_display_fields_fail_closed(store, field, value, where):
+    repo_id = "Supertone/supertonic-3"
+    fp = ma.status(repo_id)["fingerprint"]
+    ma.accept(repo_id, fp)
+    record = json.loads(store[ma._key(repo_id)])
+    entry = {**record["last"], field: value}
+    if where == "last":
+        record["last"] = entry
+    else:
+        record["history"] = [entry]
+    store[ma._key(repo_id)] = json.dumps(record)
+    assert ma.status(repo_id)["state"] == "not_accepted"
+    assert ma.details(repo_id)["history"] == []
+    assert ma.accept(repo_id, fp)["accepted"] is True
+
+
+def test_missing_or_null_display_fields_stay_readable(store):
+    repo_id = "Supertone/supertonic-3"
+    fp = ma.status(repo_id)["fingerprint"]
+    ma.accept(repo_id, fp)
+    record = json.loads(store[ma._key(repo_id)])
+    record["last"].pop("app_version", None)
+    record["last"]["at"] = None
+    store[ma._key(repo_id)] = json.dumps(record)
+    assert ma.status(repo_id)["accepted"] is True

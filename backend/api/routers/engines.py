@@ -550,6 +550,8 @@ def uninstall_sidecar_engine(engine_id: str):
         raise HTTPException(status_code=409, detail="Install is still running — wait for it to finish.")
     if res["status"] == "not_managed":
         raise HTTPException(status_code=400, detail=res["detail"])
+    if res["status"] == "uninstall_failed":
+        raise HTTPException(status_code=409, detail=res["detail"])
     return res
 
 

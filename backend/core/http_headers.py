@@ -31,7 +31,7 @@ __all__ = ["ascii_filename", "content_disposition"]
 
 #: Characters Windows forbids in a filename, plus the quoting/injection risks
 #: (`"` and `\` end the quoted-string; CR/LF would split the header).
-_UNSAFE = re.compile(r'[\\/:*?"<>|\r\n\t]')
+_UNSAFE = re.compile(r'[\\/:*?"<>|\x00-\x1f\x7f]')
 
 
 def _fold(text: str) -> str:

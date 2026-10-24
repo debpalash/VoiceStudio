@@ -732,3 +732,32 @@ def test_featured_tarball_is_byte_deterministic(tmp_path):
 
     assert (tmp_path / "featured.tar.gz").read_bytes() == first_bytes
     assert second["sha256"] == first["sha256"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("checked_at", ["invalid", [], {}, False, True, float("nan"), float("inf"), 10 ** 400])
+async def test_malformed_gallery_timestamp_recovers_without_losing_consent(sandbox, stub, checked_at):
+    gallery._save_state({"enabled": True, "last_checked": checked_at})
+    state = gallery.load_state()
+    assert state["enabled"] is True
+    assert "last_checked" not in state
+    assert gallery.status(now=1000.0)["checked_seconds_ago"] is None
+    result = await gallery.check_for_updates(client=stub.client(), now=1000.0)
+    assert result["enabled"] is True
+    assert stub.requests
+
+
+def test_status_epoch_timestamp_is_a_real_check(sandbox):
+    gallery._save_state({"enabled": False, "last_checked": 0})
+    assert gallery.status(now=10.0)["checked_seconds_ago"] == 10.0
+
+
+def test_status_counts_only_usable_cached_previews(sandbox):
+    previews = gallery._previews_dir()
+    previews.mkdir(parents=True)
+    (previews / f"{KEY_A}.mp3").mkdir()
+    (previews / f"{KEY_B}.mp3").touch()
+    (previews / f"{KEY_C}.mp3").write_bytes(_mp3(b"C"))
+    assert gallery.cached_preview(KEY_A) is None
+    assert gallery.cached_preview(KEY_B) is None
+    assert gallery.status()["cached"] == 1

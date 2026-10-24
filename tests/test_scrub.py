@@ -26,6 +26,8 @@ from core.scrub import REDACTED, scrub_provider_error, scrub_text
         # Windows paths normalized to forward slashes (file URLs, traces)
         ("C:/Users/erin/AppData/Local/OmniVoice/app.log", "~/AppData/Local/OmniVoice/app.log"),
         ("file:///D:/Users/frank/voice.wav", "file:///~/voice.wav"),
+        # repr()/JSON-escaped Windows paths, as in OSError messages
+        (r"No such file: 'C:\\Users\\gina\\AppData\\x.wav'", r"No such file: '~\\AppData\\x.wav'"),
     ],
 )
 def test_home_paths_redacted(raw, expected):

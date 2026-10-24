@@ -19,6 +19,7 @@ pipeline stage that runs the ASR pass lives in the dub router.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 
 
@@ -50,7 +51,10 @@ def _tokens(text: str) -> list[str]:
     """Lowercase word tokens, punctuation stripped — the unit drift is scored
     in. Script-agnostic: for no-space scripts each codepoint is a token, which
     still gives a sensible edit-distance ratio."""
-    text = (text or "").lower().strip()
+    # Manuscripts and ASR can spell the same letters with precomposed or
+    # combining codepoints. Compare canonical spellings without changing the
+    # stored text, stripping accents, or folding compatibility characters.
+    text = unicodedata.normalize("NFC", (text or "").lower()).strip()
     if not text:
         return []
     words = _TOKEN_RE.findall(text)

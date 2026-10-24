@@ -2200,10 +2200,16 @@ def _preflight_truncated_weights(checkpoint: str) -> None:
         return
     logger.warning("Model cache for %s has a truncated weight file; re-downloading it.", checkpoint)
     summary = repair.repair_repo_cache(checkpoint)
-    if not summary.get("ok"):
+    # The downloader returning successfully does not establish that the
+    # restored files are complete (a cache/proxy can recreate short bytes).
+    # Recheck the actual header/file-size invariant before native mmap.
+    still_truncated = repair.find_truncated_weights(
+        os.path.join(repair.repo_cache_dir(checkpoint), "snapshots")
+    )
+    if not summary.get("ok") or still_truncated:
         raise RuntimeError(
             f"The model weights for {checkpoint} are incomplete and could not be "
-            f"re-downloaded ({summary.get('error') or 'unknown'})."
+            f"re-downloaded ({summary.get('error') or 'restored weight files are still incomplete'})."
             + _manual_cache_delete_hint(checkpoint)
         )
 

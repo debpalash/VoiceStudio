@@ -429,7 +429,8 @@ def parse_persona_bundle(content: bytes) -> ParsedPersona:
 
     preview_block = manifest.get("preview") or {}
     watermarked_preview = bool(preview_block.get("watermarked")) if isinstance(preview_block, dict) else False
-    license_spdx = normalize_spdx((manifest.get("license") or {}).get("spdx"))
+    license_block = manifest.get("license") or {}
+    license_spdx = normalize_spdx(license_block.get("spdx") if isinstance(license_block, dict) else None)
     preview_only = ("preview" in members
                     and "ref_audio" not in members and "locked_audio" not in members)
 

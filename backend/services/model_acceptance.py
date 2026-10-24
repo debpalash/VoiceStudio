@@ -126,6 +126,35 @@ def _key(repo_id: str) -> str:
 
 
 _UNREADABLE = object()
+_FINGERPRINT = re.compile(r"v[12]:[a-f0-9]{64}\Z")
+
+
+def _valid_action(entry) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    action = entry.get("action")
+    if not isinstance(action, str) or action not in {"accepted", "withdrawn"}:
+        return False
+    # Display fields are optional (legacy entries carry ``at: None``) but must
+    # be text when present: the licence dialog renders them directly.
+    if any(entry.get(field) is not None and not isinstance(entry.get(field), str)
+           for field in ("at", "app_version")):
+        return False
+    fingerprint = entry.get("fingerprint")
+    return (
+        (action == "withdrawn" and fingerprint is None)
+        or (isinstance(fingerprint, str) and _FINGERPRINT.fullmatch(fingerprint) is not None)
+    )
+
+
+def _valid_record(record) -> bool:
+    return (
+        isinstance(record, dict)
+        and _valid_action(record.get("last"))
+        and isinstance(record.get("history"), list)
+        and all(_valid_action(entry) for entry in record["history"])
+        and (record.get("accepted_terms") is None or isinstance(record["accepted_terms"], dict))
+    )
 
 
 def _record(repo_id: str):
@@ -148,8 +177,10 @@ def _record(repo_id: str):
         value = json.loads(raw)
     except ValueError:
         value = None
-    if isinstance(value, dict) and isinstance(value.get("last"), dict):
-        return value
+    if value is not None:
+        return value if _valid_record(value) else _UNREADABLE
+    if raw != "revoked" and (not isinstance(raw, str) or not _FINGERPRINT.fullmatch(raw)):
+        return _UNREADABLE
     action = "withdrawn" if raw == "revoked" else "accepted"
     entry = {"action": action, "at": None, "fingerprint": None if action == "withdrawn" else raw}
     return {"last": entry, "accepted_terms": None, "history": [entry]}

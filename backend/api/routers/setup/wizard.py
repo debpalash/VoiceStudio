@@ -544,7 +544,25 @@ def preflight():
 
     # ── GPU
     gpu = _detect_gpu()
-    if gpu["vendor"] == "apple" and gpu["available"]:
+    # nvidia-smi / is_available only establish driver visibility. A wheel
+    # without this GPU's kernels is not "CUDA ready" (#3067).
+    from core.device_caps import UNUSABLE_GPU_MARKER, detect_host_caps
+    caps = detect_host_caps()
+    arch_warning = next(
+        (note for note in caps.notes if KERNEL_RISK_MARKER in note), None,
+    )
+    if arch_warning:
+        if UNUSABLE_GPU_MARKER in arch_warning:
+            gpu["available"] = False
+            gpu["backend"] = "cpu"
+        gpu_status = "warn"
+        gpu_detail = arch_warning
+        gpu_fix = (
+            "Use a PyTorch build containing kernels for this GPU architecture, "
+            "or continue with a CPU-capable engine. Updating the driver alone "
+            "does not add missing kernels."
+        )
+    elif gpu["vendor"] == "apple" and gpu["available"]:
         gpu_status, gpu_fix = "pass", None
         gpu_detail = f"{gpu['device_name']} — Metal (MPS) ready"
     elif gpu["vendor"] == "nvidia" and gpu["available"]:

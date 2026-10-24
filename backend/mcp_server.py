@@ -981,7 +981,9 @@ def main():
 
     if args.sse:
         logger.info("Starting MCP server on SSE transport, port %d", args.port)
-        mcp.run(transport="sse", port=args.port)
+        # FastMCP.run() takes no port: the SSE server listens on settings.port.
+        mcp.settings.port = args.port
+        mcp.run(transport="sse")
     else:
         logger.info("Starting MCP server on stdio transport")
         mcp.run(transport="stdio")

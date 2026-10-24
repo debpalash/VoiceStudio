@@ -343,9 +343,11 @@ def _safety_filters(text: str) -> str:
 #
 # Language passes must never rewrite `[…]` spans: `[pause 300ms]` /
 # `[rate 0.9]` / `[voice:NAME]` are grammar, and `[[term|replacement]]`
-# belongs to the pronunciation layer. Bounded repetition keeps it linear.
+# belongs to the pronunciation layer. Its accepted 256-character grammar
+# includes newlines. Single-bracket content excludes both delimiters, so an
+# unbounded run cannot rescan nested opens and remains linear.
 
-_BRACKET_SPAN_RE = re.compile(r"\[[^\][\n]{0,128}\]")
+_BRACKET_SPAN_RE = re.compile(r"\[\[[^\]]{0,256}\]\]|\[[^\][\n]*\]")
 
 
 def _outside_brackets(text: str, fn: Callable[[str], str]) -> str:
@@ -453,6 +455,12 @@ def _compile_abbreviations() -> dict[str, tuple[re.Pattern, dict[str, str]]]:
 
 _ABBREV_COMPILED = _compile_abbreviations()
 
+# List-closing abbreviations whose dot often doubles as the sentence's full
+# stop ("…, stoves, etc. Then we left."). Expanding them must keep that stop,
+# or two sentences run together into one ("et cetera Then we left").
+_SENTENCE_FINAL_ABBREVIATIONS = frozenset({"etc.", "usw."})
+_NEXT_SENTENCE_RE = re.compile(r"\s*(?:$|\n|[A-ZÀ-ÖØ-Þ])")
+
 
 def _expand_abbreviations(text: str, lang: str) -> str:
     entry = _ABBREV_COMPILED.get(lang)
@@ -461,7 +469,11 @@ def _expand_abbreviations(text: str, lang: str) -> str:
     pattern, lookup = entry
 
     def _repl(m: re.Match) -> str:
-        return lookup.get(m.group(0), m.group(0))
+        expansion = lookup.get(m.group(0), m.group(0))
+        if (m.group(0).lower() in _SENTENCE_FINAL_ABBREVIATIONS
+                and _NEXT_SENTENCE_RE.match(m.string, m.end())):
+            return expansion + "."
+        return expansion
 
     return pattern.sub(_repl, text)
 
@@ -478,10 +490,18 @@ _TIME_RE = re.compile(r"(?<![\w:.,/$%+-])([01]?\d|2[0-3]):([0-5]\d)(?![\w:/%+-])
 # EN-only ordinal, suffix verified in the callback ("2th" stays as-is).
 _ORDINAL_RE = re.compile(r"(?<![\w.,:/$%+-])(\d{1,4})(st|nd|rd|th)(?![\w:/%+-])(?![.,]\d)")
 
-# EN-only dollars: $N or $N.CC. "$1,000" and "$5.5" are blocked by the
-# lookahead; a period or comma that ends the sentence or clause is not, the
-# same guard the integer and decimal rules use ("It costs $5." is spoken).
-_CURRENCY_RE = re.compile(r"(?<![\w.,:/$%+-])\$(\d{1,6})(?:\.(\d{2}))?(?![\w:/%+-])(?![.,]\d)")
+# EN-only money: $N, £N or €N, optionally .CC. "$1,000" and "$5.5" are
+# blocked by the lookahead; a period or comma that ends the sentence or clause
+# is not, the same guard the integer and decimal rules use ("It costs $5." is
+# spoken).
+_CURRENCY_RE = re.compile(r"(?<![\w.,:/$£€%+-])[$£€](\d{1,6})(?:\.(\d{2}))?(?![\w:/%+-])(?![.,]\d)")
+
+# Symbol → (unit, units, subunit, subunits) for _CURRENCY_RE.
+_CURRENCY_UNITS = {
+    "$": ("dollar", "dollars", "cent", "cents"),
+    "£": ("pound", "pounds", "penny", "pence"),
+    "€": ("euro", "euros", "cent", "cents"),
+}
 
 _PERCENT_RE = re.compile(r"(?<![\w.,:/$%+-])(\d{1,6}(?:\.\d{1,4})?)\s?%(?![\w:/%+-])(?![.,]\d)")
 
@@ -510,6 +530,21 @@ def _glued_to_mark(m: re.Match) -> bool:
     )
 
 
+def _glued_to_currency(m: re.Match) -> bool:
+    """True when the match touches a currency symbol ("£3", "20€", "¥300").
+
+    Only "$", "£" and "€" amounts are verbalized, and only in English; any
+    other number glued to a symbol keeps its digits. Splicing a word in
+    ("£three", "zwanzig€") leaves the symbol attached to a word, where the
+    engine can no longer read it as money.
+    """
+    s, start, end = m.string, m.start(), m.end()
+    return any(
+        unicodedata.category(ch) == "Sc"
+        for ch in (s[start - 1:start], s[end:end + 1]) if ch
+    )
+
+
 def _leading_zero(raw: str) -> bool:
     """``(?!0\\d)`` only sees ASCII zero; ``\\d`` also matches native digits
     (൦൦൭, ٠٠٧), which must stay codes just like "007"."""
@@ -530,7 +565,9 @@ def _numbers_to_words(text: str, lang: str) -> str:
 
     def _safe(m: re.Match, render: Callable[[re.Match], str], *, clock: bool = False) -> str:
         # Any num2words hiccup leaves this occurrence untouched.
-        if _glued_to_mark(m) or (not clock and _leading_zero(m.group(1).partition(".")[0])):
+        if _glued_to_mark(m) or _glued_to_currency(m):
+            return m.group(0)
+        if not clock and _leading_zero(m.group(1).partition(".")[0]):
             return m.group(0)
         try:
             return render(m)
@@ -558,12 +595,13 @@ def _numbers_to_words(text: str, lang: str) -> str:
         text = _ORDINAL_RE.sub(lambda m: _safe(m, _ordinal), text)
 
         def _currency(m: re.Match) -> str:
-            dollars = int(m.group(1))
-            if m.group(2) is not None:
-                amount = float(f"{m.group(1)}.{m.group(2)}")
-                return num2words(amount, lang="en", to="currency", currency="USD")
-            unit = "dollar" if dollars == 1 else "dollars"
-            return f"{num2words(dollars, lang='en')} {unit}"
+            unit, units, subunit, subunits = _CURRENCY_UNITS[m.group(0)[0]]
+            whole = int(m.group(1))
+            spoken = f"{num2words(whole, lang='en')} {unit if whole == 1 else units}"
+            if m.group(2) is None:
+                return spoken
+            cents = int(m.group(2))
+            return f"{spoken}, {num2words(cents, lang='en')} {subunit if cents == 1 else subunits}"
 
         text = _CURRENCY_RE.sub(lambda m: _safe(m, _currency), text)
 
@@ -637,7 +675,7 @@ def _numbers_to_words_native(text: str, lang: str) -> str:
 
     def _safe(m: re.Match, render: Callable[[re.Match], str]) -> str:
         """Render one match; on any error return the original text."""
-        if _glued_to_mark(m) or _leading_zero(m.group(1).partition(".")[0]):
+        if _glued_to_mark(m) or _glued_to_currency(m) or _leading_zero(m.group(1).partition(".")[0]):
             return m.group(0)
         try:
             return render(m)

@@ -204,9 +204,9 @@ def render_stream_sentence(backend, kw: dict, sentence_text: str):
     without the engine slowing at all.
     """
     _synth_t0 = _perf_counter()
-    from services.audio_dsp import apply_mastering, normalize_audio
+    from services.audio_dsp import apply_mastering, normalize_audio, sanitize_audio
     from services.watermark import mark_synthetic
-    wav = backend.generate(sentence_text, **kw)
+    wav = sanitize_audio(backend.generate(sentence_text, **kw))
     sr_actual = backend.sample_rate
     # Like _run_tts in openai_compat: studio engines (VoxCPM2) opt out of the
     # broadcast mastering chain. Loudness normalisation still runs.

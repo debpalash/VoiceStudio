@@ -460,6 +460,14 @@ drop older architectures. Which ones varies by torch release, not by the CUDA
 variant alone: the pinned 2.8.0+cu128 build reports `sm_70` first, while the
 cu128 arch list captured in #1285 still carried `sm_61`.
 
+System Check and engine routing exclude a CUDA/ROCm GPU when the installed
+PyTorch build has no compatible kernels for its architecture. A CPU-capable
+engine falls back to CPU; GPU-only engines are unavailable. This also applies
+to older cards such as Maxwell (`sm_52`) on wheels that start at `sm_70`.
+Updating the driver alone cannot add missing kernels. Install a compatible
+PyTorch build or continue on CPU. The existing `OMNIVOICE_FORCE_CUDA=1` override
+retains the GPU path and its kernel-risk warning for expert configurations.
+
 **Linked issue:** [#1931](https://github.com/debpalash/VoiceStudio/issues/1931)
 — thanks to the reporter for the full diagnosis, including the verification
 commands above.
@@ -1416,7 +1424,9 @@ verification decides whether the runtime works.
 A cut-off model download makes Windows kill the backend with an access violation
 (`0xC0000005`) when the weights are read. VoiceStudio now checks each
 `.safetensors` file's header against its size before loading and re-downloads a
-truncated file automatically. If you point `OMNIVOICE_CHECKPOINT` at your own
+truncated file automatically. It checks the restored bytes again before loading;
+if the replacement is still incomplete, it stops with a recoverable error
+instead of attempting to memory-map it. If you point `OMNIVOICE_CHECKPOINT` at your own
 folder, it names the incomplete file instead; delete it and download it again.
 
 ### "Backend is running but busy / not responding on port 3900"

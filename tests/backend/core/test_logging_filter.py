@@ -150,3 +150,102 @@ def test_asyncio_transport_filter_drops_routine_socket_send_warning():
         None,
     )
     assert transport_filter.filter(record) is False
+
+
+@pytest.mark.parametrize("json_output", [False, True])
+def test_rendered_output_redacts_nested_values_and_tracebacks(json_output):
+    import io
+    import json
+    from core.logging_filter import install_redaction_filter
+
+    class JsonFormatter(logging.Formatter):
+        def format(self, record):
+            return json.dumps({
+                "message": record.getMessage(),
+                "exception": self.formatException(record.exc_info) if record.exc_info else None,
+            })
+
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(JsonFormatter() if json_output else logging.Formatter("%(levelname)s %(message)s"))
+    logger = logging.Logger("isolated-token-output", logging.DEBUG)
+    logger.addHandler(handler)
+    install_redaction_filter(logger)
+    install_redaction_filter(logger)
+    try:
+        raise ValueError("download rejected " + VALID_TOKEN)
+    except ValueError:
+        logger.exception("context=%s count=%d", {"nested": [VALID_TOKEN]}, 7)
+    output = stream.getvalue()
+    assert VALID_TOKEN not in output
+    assert "hf_***REDACTED***" in output
+    assert "ValueError" in output
+    assert "count=7" in output
+    if json_output:
+        assert "ValueError" in json.loads(output)["exception"]
+
+
+def test_nested_redaction_preserves_mapping_formatting(redactor_logger, caplog):
+    with caplog.at_level(logging.INFO, logger=redactor_logger.name):
+        redactor_logger.info("value=%(value)s count=%(count)d", {"value": [VALID_TOKEN], "count": 7})
+    message = caplog.records[0].getMessage()
+    assert VALID_TOKEN not in message
+    assert "count=7" in message
+
+
+def test_main_json_logging_setup_keeps_final_redaction():
+    """Execute the actual logging-only startup code without loading ML engines."""
+    import ast
+    import io
+    import json
+    from pathlib import Path
+    from types import SimpleNamespace
+    from core.logging_filter import install_redaction_filter
+
+    source = Path(__file__).resolve().parents[3] / "backend" / "main.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    formatter = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "_JsonFormatter")
+    setup = next(node for node in tree.body if isinstance(node, ast.If) and isinstance(node.test, ast.Name) and node.test.id == "_json_logs")
+    stream = io.StringIO()
+    logger = logging.Logger("isolated-main-json", logging.DEBUG)
+    handler = logging.StreamHandler(stream)
+    logger.addHandler(handler)
+    install_redaction_filter(logger)
+    namespace = {"logging": logging}
+    exec(compile(ast.Module(body=[formatter], type_ignores=[]), str(source), "exec"), namespace)
+    namespace.update(logging=SimpleNamespace(getLogger=lambda: logger), _json_logs=True, install_redaction_filter=lambda: install_redaction_filter(logger))
+    exec(compile(ast.Module(body=[setup], type_ignores=[]), str(source), "exec"), namespace)
+    try:
+        raise ValueError(VALID_TOKEN)
+    except ValueError:
+        logger.exception("failed")
+    output = json.loads(stream.getvalue())
+    assert VALID_TOKEN not in output["exc"]
+    assert "ValueError" in output["exc"]
+    assert output["msg"] == "failed"
+
+
+def test_access_handler_replacement_preserves_token_redaction():
+    import io
+    from uvicorn.logging import AccessFormatter
+    from core.logging_filter import HFTokenRedactor, install_access_log_filter
+
+    logger = logging.Logger("owned.uvicorn.access", level=logging.INFO)
+    install_access_log_filter(logger)
+    # Uvicorn installs/replaces its access handler after main's initial setup.
+    output = io.StringIO()
+    handler = logging.StreamHandler(output)
+    handler.setFormatter(AccessFormatter(
+        fmt='%(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s',
+        use_colors=False,
+    ))
+    logger.handlers = [handler]
+    logger.info('%s - "%s %s HTTP/%s" %d', '127.0.0.1:1', 'GET',
+                '/missing?token=' + VALID_TOKEN, '1.1', 404)
+    assert VALID_TOKEN not in output.getvalue()
+    assert '/missing?token=hf_***REDACTED***' in output.getvalue()
+    assert '404' in output.getvalue()
+    install_access_log_filter(logger)
+    assert sum(isinstance(f, HFTokenRedactor) for f in logger.filters) == 1
+    logger.info('%s - "%s %s HTTP/%s" %d', '127.0.0.1:1', 'GET', '/health', '1.1', 200)
+    assert '/health' not in output.getvalue()

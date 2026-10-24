@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { open, realpath, rename, rm, stat } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { lstat, open, readlink, realpath, rename, rm, stat } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, join, sep } from 'node:path';
 import { FILE_RENAME, renameWithRetry } from './rename-retry';
 
 /** Filesystem calls `replaceFile` makes; injectable so tests can simulate disk failures. */
@@ -17,13 +17,45 @@ export interface ReplaceFileOptions {
   sleep?: (ms: number) => Promise<void>;
 }
 
-/** Follow an existing symlink so the link keeps pointing at the replaced file. */
-async function resolveDestination(path: string): Promise<string> {
-  try {
-    return await realpath(path);
-  } catch {
-    return path;
+const MAX_LINK_HOPS = 40;
+
+/**
+ * Follow symlinks so a link keeps pointing at the replaced file, including
+ * links to a file that does not exist yet.
+ *
+ * The directory is resolved by the filesystem first (`realpath`), so `..`
+ * after a symlinked directory means the link target's parent, exactly as the
+ * OS would open the path. Lexically collapsing `alias/../x` could pick a
+ * different directory and overwrite an unrelated file. A missing intermediate
+ * directory is an error rather than a silent fallback.
+ */
+async function resolveDestination(path: string, hops = 0): Promise<string> {
+  if (hops > MAX_LINK_HOPS) {
+    throw Object.assign(new Error(`Too many symbolic links: ${path}`), { code: 'ELOOP' });
   }
+  // A trailing separator requires a directory; basename would erase that
+  // requirement and turn a dangling directory link into a successful file save.
+  if (path.endsWith(sep) || (process.platform === 'win32' && path.endsWith('/'))) {
+    throw Object.assign(new Error(`Destination requires a directory: ${path}`), { code: 'EISDIR' });
+  }
+  const directory = await realpath(dirname(path));
+  const candidate = join(directory, basename(path));
+  try {
+    return await realpath(candidate);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  // The final component is missing or a dangling link. A dangling link still
+  // belongs to its symlink: replacing it would detach the export location
+  // from the user's intended destination.
+  const entry = await lstat(candidate).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== 'ENOENT') throw error;
+    return null;
+  });
+  if (!entry?.isSymbolicLink()) return candidate;
+  const link = await readlink(candidate);
+  // Keep any `..` in the link text: the next hop resolves directories first.
+  return resolveDestination(isAbsolute(link) ? link : `${directory}${sep}${link}`, hops + 1);
 }
 
 /**

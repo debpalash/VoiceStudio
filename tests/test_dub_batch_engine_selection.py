@@ -415,3 +415,87 @@ def test_batch_respects_applies_own_mastering(
 
     assert len(fake.calls) == 1
     assert mastering_calls == []
+
+
+@pytest.mark.parametrize("invalid", [float("nan"), float("inf"), -float("inf"), 0.0], ids=["nan", "posinf", "neginf", "finite-control"])
+@pytest.mark.parametrize("own_mastering", [False, True], ids=["shared-mastering", "engine-mastering"])
+@pytest.mark.parametrize("native_batch", [False, True], ids=["single", "native-batch"])
+def test_batch_sanitizes_generated_audio_before_dsp(
+    batch_job_env, fake_registry, no_omnivoice_model_manager, monkeypatch,
+    invalid, own_mastering, native_batch,
+):
+    """An invalid tail must not suppress peak normalization of finite speech.
+
+    Exercise the real registered engine routing, async batch pipeline and Torch
+    DSP. ASR, media extraction and watermark embedding are controlled seams;
+    neither real model weights nor user media are needed for this regression.
+    """
+    b, make_job = batch_job_env
+    fake = fake_registry("fake-invalid-batch", own_mastering=own_mastering)
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "fake-invalid-batch")
+    monkeypatch.setenv("OMNIVOICE_DUB_BATCH_WIDTH", "2")
+    rendered_by = []
+
+    def generated_audio():
+        audio = torch.full((1, 24001), 0.25)
+        audio[0, -1] = invalid
+        return audio
+
+    def generate(self, text, **kwargs):
+        rendered_by.append("single")
+        return generated_audio()
+
+    monkeypatch.setattr(fake, "generate", generate)
+    if native_batch:
+        def generate_batch(self, texts, **kwargs):
+            rendered_by.append("native-batch")
+            return [generated_audio() for _ in texts]
+        monkeypatch.setattr(fake, "generate_batch", generate_batch)
+
+    async def transcribe(pool, fn, what=None):
+        count = 2 if native_batch else 1
+        return ([{"id": f"s{i}", "start": float(i), "end": float(i + 1),
+                  "text": "hola", "text_original": "hola"}
+                 for i in range(count)], "en")
+
+    monkeypatch.setattr("services.asr_backend.run_transcribe_guarded", transcribe)
+    import services.audio_dsp as dsp
+    original_normalize = dsp.normalize_audio
+    normalized = []
+    mastering_inputs = []
+
+    def mastering(audio, sample_rate=None):
+        mastering_inputs.append(audio.clone())
+        return audio  # Do not require an optional pedalboard installation.
+
+    def normalize(audio, target_dBFS=-2.0):
+        result = original_normalize(audio, target_dBFS=target_dBFS)
+        normalized.append(result.clone())
+        return result
+
+    monkeypatch.setattr(dsp, "apply_mastering", mastering)
+    monkeypatch.setattr(dsp, "normalize_audio", normalize)
+
+    async def watermark(audio, sample_rate, **kwargs):
+        return audio
+
+    monkeypatch.setattr("services.watermark.mark_synthetic_async", watermark)
+    saved = []
+    monkeypatch.setattr("services.audio_io.atomic_save_wav",
+                        lambda path, audio, sr: saved.append(audio.clone()))
+
+    job = make_job("invalid-audio", voice_id=None)
+    asyncio.run(b._run_batch_pipeline("invalid-audio", job))
+
+    count = 2 if native_batch else 1
+    assert rendered_by == (["native-batch"] if native_batch else ["single"])
+    assert len(normalized) == count
+    assert len(mastering_inputs) == (0 if own_mastering else count)
+    for audio in mastering_inputs + normalized + saved:
+        assert bool(torch.isfinite(audio).all())
+    for audio in normalized:
+        assert audio[0, 12000].item() == pytest.approx(10 ** (-2.0 / 20.0))
+    assert len(saved) == 1
+    assert saved[0][0, 12000].item() == pytest.approx(10 ** (-2.0 / 20.0))
+    assert "en" in job.get("outputs", {})
+    assert not job.get("warnings")
