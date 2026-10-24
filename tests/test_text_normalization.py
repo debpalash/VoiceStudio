@@ -71,6 +71,11 @@ _CHANGE_CASES = [
     ("German", "Nr. 5 gewinnt", "Nummer fünf gewinnt"),
     ("German", "etwa 50%", "etwa fünfzig Prozent"),
     ("German", "etwa 3.5 Kilo", "etwa drei Komma fünf Kilo"),
+    # The day of a date keeps its digits; the year still speaks. A number
+    # that ends a sentence before any other word still speaks.
+    ("German", "Am 3. Mai 2024", "Am 3. Mai zweitausendvierundzwanzig"),
+    ("German", "Ich habe 3. Dann 4.", "Ich habe drei. Dann vier."),
+    ("German", "Kapitel 3. Der Anfang.", "Kapitel drei. Der Anfang."),
     ("Spanish", "tengo 42 gatos", "tengo cuarenta y dos gatos"),
     ("Spanish", "el Sr. García", "el Señor García"),
     ("French", "il a 42 chats", "il a quarante-deux chats"),
@@ -176,6 +181,21 @@ _UNCHANGED_CASES = [
     ("German", "etwa 12.500%"),                  # the percent rule shares it
     ("Spanish", "más de 1.000 personas"),
     ("French", "plus de 1.000 personnes"),
+    # "3. Mai" is an ordinal date where a period marks ordinals; its spoken
+    # form inflects ("am dritten", "der dritte"), so the day stays as
+    # written for the engine. The integer rule used to speak the cardinal
+    # and leave the period behind as a sentence break ("drei. Mai").
+    ("German", "Am 3. Mai"),
+    ("German", "Der 1. Januar ist frei."),
+    ("German", "am 21. dezember"),
+    ("German", "Am 3. Mrz. und am 5. Jun."),      # abbreviated months
+    ("German", "Am 3. Mär. geschlossen"),
+    ("German", "bis 1. Jul. offen"),
+    ("Danish", "Den 3. maj"),
+    ("Norwegian", "Den 17. mai"),
+    ("Finnish", "3. toukokuuta"),
+    ("Czech", "3. května"),
+    ("Polish", "3. maja"),
     # Malayalam native path keeps the same conservative boundaries
     ("Malayalam", "1,000 രൂപ"),                  # thousands separator
     ("Malayalam", "പേജ് 3-5 വായിക്കുക"),           # range
