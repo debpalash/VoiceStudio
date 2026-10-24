@@ -326,8 +326,9 @@ class TestBurnPolicyAndFittedCues:
         content = open(path, encoding="utf-8").read()
         assert "Dialogue: 0,0:00:01.00,0:00:03.75,Default," in content
         # "Hello" sweeps until "there" starts on the FITTED timeline:
-        # 2.375 - 1.0 = 1.375 s → 138 cs (\kf rounds to centiseconds).
-        assert "{\\kf138}Hello {\\kf138}there" in content
+        # 2.375 s rounds to 2.38 s, so "Hello" gets 138 cs and "there" the
+        # 137 cs left before the 3.75 s cue end (275 cs in all).
+        assert "{\\kf138}Hello {\\kf137}there" in content
 
     def test_write_burn_srt_uses_fitted_times(self, tmp_path):
         from api.routers.dub_export import _write_burn_srt

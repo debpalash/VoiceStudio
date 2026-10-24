@@ -122,6 +122,39 @@ class TestKaraokeTags:
         # No karaoke duration may exceed the 1 s cue.
         assert all(int(cs) <= 100 for cs in re.findall(r"\\kf?(\d+)", line))
 
+    def test_tags_add_up_to_the_cue_length_on_a_long_cue(self):
+        # 30 words evenly over 10 s are 33.33 cs each. Rounding every tag on
+        # its own gave 30 x 33 = 990 cs, so the sweep ended 0.1 s before the
+        # cue did and ran further ahead of the audio with every word.
+        text = " ".join(f"w{i}" for i in range(30))
+        script = build_ass([{"start": 1.0, "end": 11.0, "text": text}])
+        line = next(l for l in script.splitlines() if l.startswith("Dialogue:"))
+        durations = [int(cs) for cs in re.findall(r"\\kf?(\d+)", line)]
+        assert len(durations) == 30
+        assert sum(durations) == 1000
+        # Word 15 starts 5 s into the cue on the rounded timeline.
+        assert sum(durations[:15]) == 500
+
+    def test_words_starting_in_the_same_centisecond_keep_the_cue_length(self):
+        # w1 and w2 both round to 1.50 s. w1 still gets a 1 cs tag, and w2
+        # gives that centisecond back, so the tags still end at the cue end.
+        cue = {"start": 1.0, "end": 2.0, "text": "w0 w1 w2",
+               "words": [{"text": "w0", "start": 1.0, "end": 1.5},
+                         {"text": "w1", "start": 1.501, "end": 1.502},
+                         {"text": "w2", "start": 1.503, "end": 2.0}]}
+        line = next(l for l in build_ass([cue]).splitlines()
+                    if l.startswith("Dialogue:"))
+        assert "{\\kf50}w0 {\\kf1}w1 {\\kf49}w2" in line
+
+    def test_lead_in_follows_the_rounded_word_start(self):
+        # 0.015 s rounds to 2 cs, 1 cs after the 0.01 s cue start, so the
+        # sweep waits 1 cs before the first word.
+        cue = {"start": 0.01, "end": 1.0, "text": "hi",
+               "words": [{"text": "hi", "start": 0.015, "end": 1.0}]}
+        line = next(l for l in build_ass([cue]).splitlines()
+                    if l.startswith("Dialogue:"))
+        assert line.endswith("{\\k1}{\\kf98}hi")
+
     def test_braces_and_newlines_escaped(self):
         cue = {"start": 0.0, "end": 1.0, "text": "{\\b1}bold\nnext"}
         script = build_ass([cue])
