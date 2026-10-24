@@ -2881,11 +2881,11 @@
       "engines": [
         "pytorch-whisper"
       ],
-      "configured_at": "backend/services/tts_backend.py OMNIVOICE_PYTORCH_ASR_MODEL fallback",
-      "notes": "Clone-reference ASR fallback outside models.yaml. Model-card licence metadata is recorded; component terms and required notices remain under review.",
-      "runtime_revision": null,
-      "runtime_pin_scope": "external",
-      "runtime_pin_source": null,
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Catalogued in models.yaml as the reference-transcription fallback (#3176). Model-card licence metadata is recorded; component terms and required notices remain under review.",
+      "runtime_revision": "41f01f3fe87f28c78e2fbf8b568835947dd65ed9",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
       "component_closure": "incomplete",
       "commercial_inference": "unknown",
       "commercial_outputs": "unknown",

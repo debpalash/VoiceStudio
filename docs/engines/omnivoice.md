@@ -59,7 +59,8 @@ The env var overrides the persisted UI choice.
   has none, VoiceStudio uses an already-installed speech recognizer on first
   use and saves the result to the profile. This includes the catalogue’s
   Whisper Turbo CT2 build; cloning does not require a second Transformers copy.
-  The model-level Whisper fallback
+  The PyTorch Whisper Turbo fallback is available in Model Catalogue on
+  macOS (including Apple Silicon), Windows and Linux. The model-level fallback
   also requires cached weights; it never downloads another ASR during cloning.
   It reuses any installed snapshot of the configured PyTorch Whisper model
   (`OMNIVOICE_PYTORCH_ASR_MODEL`), `openai/whisper-large-v3-turbo` or
@@ -77,6 +78,13 @@ The env var overrides the persisted UI choice.
   a fallback when no catalogue recognizer can transcribe a window, and it is
   never downloaded during cloning. When neither can run, the error says the clip
   is too long and to trim it to 3–10 seconds, since a transcript cannot rescue it.
+  This also applies to **Edit voice profile → Try this voice**: a saved
+  transcript for a 27-second recording does not describe the shorter selected
+  passage. Keep an installed recognizer available, or replace the reference with
+  a 3–10 second passage and its matching transcript. Unloading the bundled
+  reference Whisper does not disconnect the separately selected recognizer;
+  unload reports busy while reference transcription is active. Silent windows
+  do not prevent selection of another window containing speech.
   A transcript typed on the request for
   such a clip is rejected with `[clone_ref_too_long]`.
   Only that 15-second window is sent to the model. Clips longer than 75 seconds

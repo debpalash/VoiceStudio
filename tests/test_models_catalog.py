@@ -141,3 +141,11 @@ def test_single_cross_platform_dictation_recommendation_is_whisper_tiny():
     sherpa = [m for m in _models() if m.get("engine") == "sherpa-onnx"]
     recommended = [m["dictation_id"] for m in sherpa if "all" in (m.get("curated_on") or [])]
     assert recommended == ["sherpa-whisper-tiny"]
+
+
+def test_reference_whisper_fallback_is_available_on_apple_silicon(monkeypatch):
+    from api.routers.setup import models as catalog
+
+    monkeypatch.setattr(catalog, "_current_platform_tags", lambda: ["darwin", "darwin-arm64"])
+    fallback = next(m for m in _models() if m["repo_id"] == "openai/whisper-large-v3-turbo")
+    assert catalog._model_supported(fallback)

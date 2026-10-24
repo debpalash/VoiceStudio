@@ -2922,6 +2922,22 @@ def _load_model_sync():
             # back to the effective configured checkpoint below.
             logger.debug("Could not attach resident model identity", exc_info=True)
 
+        # Route reference transcription through the app's selected ASR engine
+        # (#3176): the model's own fallback only accepts transformers-format
+        # Whisper snapshots, so it ignored a faster-whisper/WhisperX selection
+        # entirely. Best-effort — an unavailable engine must not fail the TTS
+        # load; the bundled snapshot chain stays as the fallback.
+        try:
+            from services.asr_backend import install_reference_transcriber
+
+            install_reference_transcriber()
+        except Exception:
+            logger.warning(
+                "Could not attach the selected ASR engine for reference "
+                "transcription; the model's bundled fallback stays active.",
+                exc_info=True,
+            )
+
         _set_loading("ready", "Model ready", progress=100)
         logger.info("VoiceStudio model loaded successfully.")
         return _model
@@ -3766,6 +3782,13 @@ def unload_shared_model() -> bool:
     global model, _ram_offload
     if model is None:
         return False
+    # Clear the callback when TTS unloads; selected ASR is managed separately.
+    try:
+        from services.asr_backend import remove_reference_transcriber
+
+        remove_reference_transcriber()
+    except Exception:  # noqa: BLE001 — unloading TTS must still complete
+        logger.debug("Could not detach reference transcriber", exc_info=True)
     model = None
     _ram_offload = None
     release_tts_side_caches()

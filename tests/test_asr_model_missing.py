@@ -205,14 +205,20 @@ class TestHelper:
         assert payload is not None
         assert payload["missing_repo_id"] == "someorg/custom-whisper"
 
-    def test_pytorch_whisper_default_repo_fails_open(self):
-        """openai/whisper-large-v3-turbo (the pytorch-whisper default) is not
-        a catalog entry — the preflight stays out of the way (auto-download,
-        the pre-preflight behaviour)."""
+    def test_pytorch_whisper_default_repo_gets_an_actionable_cta(self):
+        """openai/whisper-large-v3-turbo (the pytorch-whisper default) became
+        a catalogue entry (#3176), so a missing install now yields a CTA the
+        user can act on instead of a silent auto-download."""
         from services import asr_backend
         with patch.object(asr_backend, "active_backend_id",
-                          return_value="pytorch-whisper"):
-            assert asr_backend.asr_model_missing_error() is None
+                          return_value="pytorch-whisper"), patch.object(
+                              asr_backend, "_repo_installed", return_value=False):
+            payload = asr_backend.asr_model_missing_error()
+        assert payload is not None
+        assert payload["missing_repo_id"] == "openai/whisper-large-v3-turbo"
+        from api.routers.setup.models import get_model_catalog
+        assert get_model_catalog().get(payload["recommended"]["repo_id"]) is not None
+        assert get_model_catalog().get("openai/whisper-large-v3-turbo") is not None
 
     def test_unknown_faster_whisper_alias_fails_open(self):
         """An alias our table doesn't know (but faster_whisper may resolve)

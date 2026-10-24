@@ -3411,6 +3411,79 @@ def _try_reference_candidates(
     return ""
 
 
+def _reference_transcriber_call(audio) -> str | None:
+    """The selected ASR engine's plain-text transcript for one clip, or None.
+
+    ``audio`` is a file path or a ``(waveform, sample_rate)`` tuple, matching
+    the OmniVoice reference-transcriber contract (#3176). Routes through
+    :func:`transcribe_reference` — the same cache-backed, licence-checked,
+    never-downloading chain profile saves already use — so a valid stored or
+    previously computed transcript is reused instead of re-transcribing.
+    Never raises: the caller falls back to the model's bundled Whisper.
+    """
+    if isinstance(audio, str):
+        path = audio
+    else:
+        # OmniVoice hands the bundled path a (waveform, sr) tuple. transcribe_reference
+        # works on file paths, so land the tensor on disk as a temporary WAV.
+        import tempfile
+
+        waveform, sr = audio
+        fd, path = tempfile.mkstemp(suffix=".wav")
+        try:
+            import soundfile as sf
+
+            with os.fdopen(fd, "wb") as handle:
+                sf.write(
+                    handle, waveform.squeeze(0).detach().cpu().numpy(),
+                    int(sr), format="WAV",
+                )
+        except Exception:
+            try:
+                os.close(fd)
+            except OSError:
+                pass  # fdopen may already have closed the descriptor.
+            try:
+                os.unlink(path)
+            except OSError:
+                pass  # Best-effort cleanup of the failed temporary WAV.
+            return None
+    try:
+        return transcribe_reference(path)
+    finally:
+        if not isinstance(audio, str):
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+
+def install_reference_transcriber() -> None:
+    """Make the app's selected ASR engine the reference transcriber (#3176).
+
+    OmniVoice's clone-reference path consults the installed transcriber before
+    its bundled transformers-Whisper fallback, so the engine the user selected
+    in Model Catalogue (faster-whisper, whisperx, mlx-whisper, …) actually
+    transcribes the reference clip instead of the request dead-ending on a
+    snapshot the user was never offered. Also reads back the transcriber from
+    the omnivoice module if it was replaced — installs are idempotent.
+    """
+    from omnivoice.models.omnivoice import set_reference_transcriber
+
+    set_reference_transcriber(_reference_transcriber_call)
+
+
+def remove_reference_transcriber() -> None:
+    """Detach the reference transcriber — used when the TTS model unloads, so
+    no later reference clip can reach a released pipeline."""
+    try:
+        from omnivoice.models.omnivoice import set_reference_transcriber
+
+        set_reference_transcriber(None)
+    except Exception:  # noqa: BLE001 — detach is best-effort
+        logger.debug("Could not detach reference transcriber", exc_info=True)
+
+
 def transcribe_reference(audio_path: str, *, release_after: bool = False) -> str | None:
     """Transcribe a voice-clone reference clip with the active ASR backend.
 

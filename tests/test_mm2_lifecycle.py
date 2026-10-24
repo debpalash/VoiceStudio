@@ -133,8 +133,10 @@ def test_list_loaded_asr_row_is_honest(monkeypatch):
     rows = {m["id"]: m for m in ml.list_loaded()["models"]}
     assert "asr" in rows
     asr = rows["asr"]
-    assert asr["unloadable"] is False
-    assert asr.get("note")  # explains the disabled unload button
+    # #3176: the reference ASR holds real VRAM, so the dispatcher now supports
+    # unloading it independently of TTS - the row must advertise that.
+    assert asr["unloadable"] is True
+    assert asr.get("note")
 
 
 def test_list_loaded_attributes_resident_tts_to_its_engine(monkeypatch):

@@ -101,6 +101,14 @@ models:
     curated_on: [rocm]
     note: "CTranslate2 has no ROCm backend, so on AMD GPUs this PyTorch build is the accelerated route."
 
+  - repo_id: "openai/whisper-large-v3-turbo"
+    label: "Whisper large-v3 Turbo (PyTorch — reference transcription fallback)"
+    role: ASR
+    engines: [pytorch-whisper]
+    size_gb: 1.6
+    platforms: [cuda, rocm, cpu, darwin-arm64]
+    note: "Transformers-format Whisper weights — the checkpoint the automatic reference transcription fallback loads when no installed speech engine was attached. Install it if voice cloning reports a missing transcription model."
+
   - repo_id: "mlx-community/whisper-tiny-mlx"
     label: "Whisper tiny (MLX ASR — fast fallback)"
     role: ASR

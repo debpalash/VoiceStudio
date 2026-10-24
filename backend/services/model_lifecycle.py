@@ -48,6 +48,35 @@ def _asr_device() -> str:
     return "cpu"
 
 
+def _loaded_asr_checkpoint(pipe) -> str:
+    """The repo id of the model the ASR pipeline actually loaded, or 'unknown'.
+
+    The row used to report the ASR_MODEL env default, which is frequently not
+    the model resident in ``_asr_pipe`` (the reference-transcription path
+    loads from the HF cache directly), so the Settings pages matched no
+    catalogue card and rendered no Unload strip (#3176 comment). Prefer the
+    pipeline's own metadata; derive the repo id from a cache snapshot path
+    (``models--openai--whisper-large-v3-turbo/snapshots/<rev>``) when that is
+    all the pipeline remembers - on either path separator. An unidentifiable
+    model reports honestly as 'unknown' rather than a fabricated identity.
+    """
+    model = getattr(pipe, "model", None)
+    path = str(
+        getattr(model, "name_or_path", None)
+        or getattr(getattr(model, "config", None), "_name_or_path", None)
+        or ""
+    ).strip()
+    if not path:
+        return "unknown"
+    # Local snapshot inside the HF cache: models--<org>--<name>/snapshots/<rev>
+    norm = path.replace("\\", "/").rstrip("/")
+    if "models--" in norm:
+        for part in norm.split("/"):
+            if part.startswith("models--"):
+                return part[len("models--"):].replace("--", "/")
+    return path
+
+
 def _backend_device(backend: object) -> str:
     """Report the device this backend can actually use.
 
@@ -114,18 +143,19 @@ def list_loaded() -> dict:
             **_tts_attribution("omnivoice", active_tts),
         })
 
-    # 2. ASR (WhisperX) — co-loaded with and released alongside the TTS model.
-    #    Honest reporting (MM2-03): the device is read from the pipe, and the
-    #    dead "unload" button is explained by a note rather than left silent.
+    # 2. The reference-transcription ASR pipeline co-held by the TTS model.
+    #    Unloadable independently (#3176): it can hold ~1.6 GB of VRAM on a
+    #    6 GB card, and unloading it releases that without dropping TTS.
+    #    The checkpoint names the model actually resident, not an env default.
     if mm.model is not None and getattr(mm.model, "_asr_pipe", None) is not None:
         models.append({
             "id": "asr",
-            "name": "WhisperX ASR",
-            "checkpoint": os.environ.get("ASR_MODEL", "Systran/faster-whisper-large-v3"),
+            "name": "Whisper",
+            "checkpoint": _loaded_asr_checkpoint(mm.model._asr_pipe),
             "device": _asr_device(),
             "vram_mb": 0,
-            "unloadable": False,
-            "note": "released with the TTS model",
+            "unloadable": True,
+            "note": "released on Unload; reloads on the next reference transcription",
         })
 
     # 3. Diarization pipeline
@@ -299,6 +329,27 @@ async def unload(model_id: str) -> dict:
                 return {"unloaded": "tts", "success": True}
         return {"unloaded": "tts", "success": False, "reason": "not loaded"}
 
+    # The reference-transcription ASR pipeline (#3176). Dropped under the model
+    # lock coordinates lifecycle changes; the model's own nonblocking guard
+    # refuses unload while an inference thread is using reference ASR.
+    # Never touches the TTS model.
+    if model_id == "asr":
+        async with mm._model_lock:
+            if mm.model is None or getattr(mm.model, "_asr_pipe", None) is None:
+                return {"unloaded": model_id, "success": False, "reason": "not loaded"}
+            try:
+                released = mm.model.unload_asr_model()
+            except AttributeError:
+                # Older model object without the helper - drop the attribute.
+                mm.model._asr_pipe = None
+                released = True
+            if not released:
+                return {"unloaded": model_id, "success": False, "reason": "not loaded or busy"}
+            # The host hook resolves the separately managed selected engine;
+            # unloading bundled Whisper must not disconnect that route.
+            mm.free_vram()
+            return {"unloaded": model_id, "success": True}
+
     if model_id == "diarization":
         if mm._diar_pipeline is not None:
             mm._diar_pipeline = None
@@ -371,7 +422,7 @@ async def unload(model_id: str) -> dict:
 async def unload_all() -> dict:
     """Release shared/alternate TTS, diarisation, sidecars, dictation and translation."""
     results = {}
-    model_ids = ["tts", "diarization", "sidecars", "capture-asr", "translation:nllb"]
+    model_ids = ["asr", "tts", "diarization", "sidecars", "capture-asr", "translation:nllb"]
     try:
         model_ids.extend(
             entry["id"]
