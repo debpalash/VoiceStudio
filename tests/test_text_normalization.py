@@ -113,6 +113,25 @@ _CHANGE_CASES = [
     (None, "a�b", "ab"),
     (None, "Tom &amp; Jerry", "Tom & Jerry"),
     (None, "one&nbsp;space", "one space"),
+    # Markdown emphasis delimiters are stripped, not spoken (#3197)
+    ("English", "Say **bold** word", "Say bold word"),
+    ("English", "Say __bold__ word", "Say bold word"),
+    ("English", "Say *italic* word", "Say italic word"),
+    ("English", "Say _italic_ word", "Say italic word"),
+    ("English", "**bold** and **more** here", "bold and more here"),
+    # Digits still verbalize around a surviving arithmetic asterisk
+    ("English", "2 * 3 = 6", "two * three = six"),
+    ("English", "2 * 3 * 4 equals", "two * three * four equals"),
+    # Emphasis spans soft line breaks
+    ("English", "Say **first line\nsecond line** now", "Say first line\nsecond line now"),
+    # Emphasis around a speech control strips; the control survives
+    ("English", "**Hello [pause 300ms] world**", "Hello [pause 300ms] world"),
+    # Asterisks open inside words (CommonMark); underscores do not
+    ("English", "un**believ**able now", "unbelievable now"),
+    ("English", "pre*fix* this", "prefix this"),
+    ("English", "___bold___ here", "bold here"),
+    # Nested spans resolve fully, so a second pass is a no-op
+    ("English", "**outer **inner** outer**", "outer inner outer"),
 ]
 
 
@@ -216,6 +235,12 @@ _UNCHANGED_CASES = [
     # Bracket grammar is never rewritten
     ("English", "[pause 300ms] then [rate 0.9] speech [voice:Alice]"),
     ("English", "[[term|5]] stays bracket-managed"),
+    # Unpaired markers and non-delimiter uses survive (#3197)
+    ("English", "use snake_case names"),
+    ("English", "foo__bar__baz here"),
+    ("English", "имя_файла_здесь test"),
+    ("English", "a lone * stays"),
+    ("English", "[**bold**] markers inside brackets stay untouched"),
     # Plain text is byte-identical
     ("English", "The quick brown fox jumps."),
     (None, "already clean text"),
@@ -298,6 +323,40 @@ def test_idempotent_double_encoded_entity():
     # "&amp;nbsp;" must not decode one layer per pass.
     once = normalize_text("bad &amp;nbsp; soup", None)
     assert normalize_text(once, None) == once
+
+
+def test_many_unmatched_openers_stay_fast_and_untouched():
+    """Linear scan (#3205 P1): 25k unmatched ``**`` openers must not stall
+    synthesis. The lazy-regex version took ~16 s here; the scanner takes ms.
+    The 10 s bound has 700x headroom and only trips on quadratic blowup."""
+    import time
+    from services.text_normalization import _strip_markdown_emphasis
+    raw = "**a " * 25000
+    start = time.perf_counter()
+    assert _strip_markdown_emphasis(raw) == raw
+    assert time.perf_counter() - start < 10
+
+
+def test_many_matched_pairs_stay_fast():
+    """One-join assembly (#3205 P1): per-span string rebuilds are quadratic
+    on matched pairs (~22 s at this size); retained-slice join takes ms."""
+    import time
+    from services.text_normalization import _strip_markdown_emphasis
+    raw = "**a** " * 300000
+    start = time.perf_counter()
+    assert _strip_markdown_emphasis(raw) == "a " * 300000
+    assert time.perf_counter() - start < 10
+
+
+@pytest.mark.parametrize("raw", ["__**__**" * 25000, "[pause 300ms] x " * 20000])
+def test_long_runs_and_many_controls_stay_fast(raw):
+    """Run bounds are saved at tokenization and bracket spans restore in one
+    pass; per-token run rescans and per-span replaces were quadratic (#3205)."""
+    import time
+    from services.text_normalization import _strip_markdown_emphasis
+    start = time.perf_counter()
+    _strip_markdown_emphasis(raw)
+    assert time.perf_counter() - start < 10
 
 
 # ── Toggle: default ON + env override ────────────────────────────────────────

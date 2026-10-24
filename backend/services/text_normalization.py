@@ -301,6 +301,130 @@ _UNSAFE_CONTROL_CODEPOINTS = frozenset(
 _UNSAFE_CONTROL_TRANSLATION = dict.fromkeys(_UNSAFE_CONTROL_CODEPOINTS)
 
 
+# Markdown emphasis delimiters (``**bold**``, ``__bold__``, ``*italic*``,
+# ``_italic_``) reach the engine as spoken words ("asterisk", #3197): a lone
+# ``*`` pair happens to survive as emphasis, but ``**`` is read aloud.
+#
+# Boundaries (#3205 review): ``*``/``**`` need whitespace flanks only — a
+# non-space after the opener, a non-space before the closer — because
+# CommonMark lets asterisks open inside words (``un**believ**able``). ``_``/
+# ``__`` additionally refuse word characters on the outer side, so
+# ``snake_case`` and ``foo__bar__baz`` survive. Arithmetic (``2 * 3 * 4``)
+# survives via the whitespace rule. Bodies span soft line breaks.
+#
+# Linear single-pass scan (#3205 P1): lazy ``(.+?)`` backtracks quadratically
+# on unmatched openers (``"**a " * 25000`` stalls synthesis), so delimiters
+# are tokenized once per class and paired left-to-right — a token pairs as a
+# closer when a pending opener exists, else opens, else is stray and kept.
+# Result assembly is one join over retained slices: rebuilding per span is
+# itself quadratic on many matched pairs. Idempotent: a second pass finds no
+# pairs. Bracket spans are masked during the match so emphasis around a
+# speech control (``**Hello [pause 300ms] world**``) strips while the control
+# survives; NUL placeholders are safe because the safety filters deleted NUL.
+# Word characters are Unicode-aware (``str.isalnum`` plus combining marks, as
+# for Malayalam) so ``имя_файла`` keeps its underscores like ``snake_case``.
+
+
+def _is_wordch(ch: str) -> bool:
+    return (
+        ch == "_"
+        or ch.isalnum()
+        or unicodedata.combining(ch) != 0
+        or unicodedata.category(ch) in ("Mc", "Me")
+    )
+
+
+def _delim_tokens(text: str, ch: str) -> list[tuple[int, int, int, int]]:
+    """Split each maximal run of ch into ``**`` tokens then at most one ``*``.
+
+    ``***`` → one ``**`` plus one ``*`` so bold+italic nests resolve across
+    the two passes instead of stranding the run. Each token carries its run's
+    bounds so flank checks are O(1) (rescanning a long run per token is
+    quadratic on ``"__**__**" * N``).
+    """
+    toks: list[tuple[int, int, int, int]] = []
+    for m in re.finditer(re.escape(ch) + "+", text):
+        rs, re_ = m.start(), m.end()
+        s, n = rs, re_ - rs
+        while n > 3:
+            toks.append((s, 2, rs, re_))
+            s += 2
+            n -= 2
+        if n == 3:
+            toks.append((s, 2, rs, re_))
+            toks.append((s + 2, 1, rs, re_))
+        else:
+            toks.append((s, n, rs, re_))
+    return toks
+
+
+def _open_ok(
+    text: str, tok: tuple[int, int, int, int], n: int, word_guarded: bool
+) -> bool:
+    s, L, rs, _re = tok
+    if s + L > n - 1 or text[s + L].isspace():
+        return False
+    return not word_guarded or rs == 0 or not _is_wordch(text[rs - 1])
+
+
+def _close_ok(
+    text: str, tok: tuple[int, int, int, int], n: int, word_guarded: bool
+) -> bool:
+    s, _L, _rs, re_ = tok
+    if s == 0 or text[s - 1].isspace():
+        return False
+    return not word_guarded or re_ >= n or not _is_wordch(text[re_])
+
+
+def _pair_spans(
+    text: str, tokens: list[tuple[int, int, int, int]], word_guarded: bool
+) -> list[tuple[int, int]]:
+    drop: list[tuple[int, int]] = []
+    # Stack, not a single slot: ``**outer **inner** outer**`` must pair the
+    # inner span first and still close the outer one (idempotent output).
+    stack: list[tuple[int, int]] = []
+    n = len(text)
+    for tok in tokens:
+        s, L = tok[0], tok[1]
+        if stack and _close_ok(text, tok, n, word_guarded):
+            os_, oL = stack.pop()
+            drop.append((os_, os_ + oL))
+            drop.append((s, s + L))
+        elif _open_ok(text, tok, n, word_guarded):
+            stack.append((s, L))
+    return drop
+
+
+def _delete_spans(text: str, spans: list[tuple[int, int]]) -> str:
+    """Remove ascending, non-overlapping spans with a single join."""
+    parts: list[str] = []
+    last = 0
+    for a, b in spans:
+        parts.append(text[last:a])
+        last = b
+    parts.append(text[last:])
+    return "".join(parts)
+
+
+_MASK_RE = re.compile("\x00(\\d+)\x00")
+
+
+def _strip_markdown_emphasis(text: str) -> str:
+    spans: list[str] = []
+
+    def _mask(m: re.Match) -> str:
+        spans.append(m.group(0))
+        return f"\x00{len(spans) - 1}\x00"
+
+    out = _BRACKET_SPAN_RE.sub(_mask, text)
+    for ch, guarded in (("*", False), ("_", True)):
+        for L in (1, 2):
+            toks = [t for t in _delim_tokens(out, ch) if t[1] == L]
+            out = _delete_spans(out, sorted(_pair_spans(out, toks, guarded)))
+    # One pass: a replace per span rescans the whole text (quadratic).
+    return _MASK_RE.sub(lambda m: spans[int(m.group(1))], out)
+
+
 def _strip_unsafe_controls(text: str) -> str:
     """Delete only the explicitly enumerated unsafe Unicode controls."""
     return text.translate(_UNSAFE_CONTROL_TRANSLATION)
@@ -663,6 +787,7 @@ def normalize_text(text: str, language: Optional[str] = None) -> str:
     if not text:
         return text or ""
     out = _safety_filters(text)
+    out = _strip_markdown_emphasis(out)
     # Runs outside the num2words gate below: ko/ja/zh keep their digits (that
     # gate returns None for them) but still need the range mark spoken.
     plain = _plain_lang_code(language)

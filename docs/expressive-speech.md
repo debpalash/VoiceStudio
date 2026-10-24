@@ -35,8 +35,8 @@ the pipeline goes out of its way not to break tags:
 - Zero-width joiners and non-joiners used in Persian, Urdu, Indic text and
   emoji survive normalization; unsafe invisible and direction controls are
   still removed.
-- The text-normalization pass (numbers, abbreviations) skips every `[…]` span
-  (`backend/services/text_normalization.py`).
+- The text-normalization pass (numbers, abbreviations, markdown emphasis)
+  skips every `[…]` span (`backend/services/text_normalization.py`).
 - The long-text chunker never cuts inside a bracket tag
   (`backend/services/chunked_tts.py`, `_BRACKET_TAG_RE`).
 
