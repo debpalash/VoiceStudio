@@ -396,6 +396,7 @@ as root, so files it adds there are root-owned on the host.
 
 ## Troubleshooting
 
+- **"Enter access PIN" on the Docker host:** see [Recovering from a lost share PIN](#recovering-from-a-lost-share-pin) below.
 - **Container reports an older or newer version than expected:** `:latest`
   follows `main`, not releases. For a released version, pull `:stable` or the
   exact `:X.Y.Z` tag and recreate the container. The running version is shown
@@ -441,6 +442,42 @@ as root, so files it adds there are root-owned on the host.
   [Pull and run (AMD GPU / ROCm)](#pull-and-run-amd-gpu--rocm) above for when
   to set one by hand.
 - More entries: [docs/install/troubleshooting.md](troubleshooting.md).
+
+### Recovering from a lost share PIN
+
+If you enable **Settings → Sharing & Remote Access** and then lose the browser's
+PIN cookie, even `http://127.0.0.1:3900/` on the Docker host can ask for the PIN.
+Docker forwards that connection through its bridge, so the backend sees a
+non-loopback peer (for example, `172.17.0.1`). The host's loopback port binding
+limits who can connect; it does not make the peer inside the container loopback.
+
+The PIN lives only in the running backend process, not in `prefs.json`. The API
+key and share PIN are separate gates: signing in with `OMNIVOICE_API_KEY` does
+not bypass an active PIN gate on ordinary HTTP requests.
+
+To recover, restart the existing container. This interrupts running jobs and
+clears the in-memory sharing state and server-side administrator sessions. It
+does not erase the administrator credential stored in the browser:
+
+```bash
+docker restart omnivoice
+```
+
+Replace `omnivoice` with your container's name if different. Reopen
+`http://127.0.0.1:3900/` once startup completes and sign in with the same
+`OMNIVOICE_API_KEY` supplied when the container was created. Restarting keeps
+the existing data volume, voices, projects, settings and downloaded models;
+there is no need to delete the container or its volume.
+
+For host-only Docker use, leave in-app network sharing off and retain
+`-p 127.0.0.1:3900:3900`. For access from another device, follow
+[LAN access](#lan-access) and keep the administrator API key configured.
+
+`OMNIVOICE_TRUSTED_NETWORKS` can exempt selected peer addresses from the PIN
+and API-key consumption gates, but it does **not** grant administrator access.
+Do not trust an entire Docker subnet just to dismiss the PIN prompt: other
+containers or forwarded clients may share that network identity. See
+[trusted networks](../api-auth.md#trusted-networks) before choosing this deployment policy.
 
 ### CTranslate2 compatibility
 

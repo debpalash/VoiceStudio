@@ -73,8 +73,10 @@ Notes on the PIN gate (`NetworkAccessMiddleware`, `backend/main.py`):
   always served un-PIN'd so the PIN-prompt UI can load.
 - It is a **consumption** credential: a valid PIN never unlocks the admin surface
   (it is 6 digits, brute-forceable). Admin needs loopback or the API key.
-- It is completely inert when no PIN is set (the default, and every Docker
-  deploy).
+- It is completely inert when no PIN is set (including Docker until in-app
+  network sharing is enabled). Docker's bridge can make the host's own browser
+  a non-loopback client; if the PIN is lost, follow the
+  [Docker recovery steps](install/docker.md#recovering-from-a-lost-share-pin).
 
 ---
 

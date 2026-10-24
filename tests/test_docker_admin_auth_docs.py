@@ -97,3 +97,20 @@ def test_wsl_rocm_matrix_marks_rx_6700_xt_unverified():
     assert "CPU fallback stage and reason" in section
     assert "CPU-only completion" in section
     assert "successful GPU validation" in section
+
+
+def test_pin_recovery_distinguishes_server_sessions_from_browser_storage():
+    text = (ROOT / "docs/install/docker.md").read_text(encoding="utf-8")
+    section = text.split("### Recovering from a lost share PIN", 1)[1].split(
+        "###", 1
+    )[0]
+    paragraph = " ".join(section.split())
+
+    assert "server-side administrator sessions" in paragraph
+    assert (
+        "does not erase the administrator credential stored in the browser" in paragraph
+    )
+    assert "in-memory sharing state" in paragraph
+    assert "sign in with the same `OMNIVOICE_API_KEY`" in paragraph
+    assert "Restarting keeps the existing data volume" in paragraph
+    assert "browser administrator sessions" not in paragraph

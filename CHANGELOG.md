@@ -94,6 +94,7 @@ metadata and the backend fallback mirror it.
 
 ### Docs
 
+- Docker guide explains recovery from a lost share PIN, including server-side session reset without deleting saved data or browser credentials (#3006) — thanks @jonathanwxh-cell!
 - `SPONSORS.md` now states what each sponsorship tier gives, when recognition starts, and what sponsorship does not buy, and the README and inquiry form point to it (#3172)
 - OmniVoice GGUF docs state that the installers do not ship its native binary yet (#3026) — thanks @DestinyQJY!
 - Contributor guides and the pull request template explain how to sign the CLA before opening a first pull request (#2676)
