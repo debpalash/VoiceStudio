@@ -15981,7 +15981,7 @@
     "summary": "List Profiles"
    },
    "post": {
-    "description": "Create a voice profile (spec: docs/specs/voice-studio-unification.md \u00a75).\n\nkind='clone'  \u2014 requires `ref_audio` (the user's reference recording).\nkind='design' \u2014 requires `vd_states` (JSON of category picks); the server\n                renders a deterministic sample WAV (seed 42, same path as\n                archetype materialization) and stores it as the profile's\n                reference so the voice identity is stable across runs.",
+    "description": "Create a voice profile (spec: docs/specs/voice-studio-unification.md \u00a75).\n\nkind='clone'  \u2014 requires `ref_audio` (the user's reference recording).\nkind='design' \u2014 requires `vd_states` (JSON of category picks); the server\n                renders a deterministic sample WAV with the submitted seed\n                (42 when none, same path as archetype materialization) and\n                stores it as the profile's reference so the voice identity\n                is stable across runs.",
     "operationId": "create_profile_profiles_post",
     "requestBody": {
      "content": {

@@ -135,9 +135,10 @@ async def create_profile(
 
     kind='clone'  — requires `ref_audio` (the user's reference recording).
     kind='design' — requires `vd_states` (JSON of category picks); the server
-                    renders a deterministic sample WAV (seed 42, same path as
-                    archetype materialization) and stores it as the profile's
-                    reference so the voice identity is stable across runs.
+                    renders a deterministic sample WAV with the submitted seed
+                    (42 when none, same path as archetype materialization) and
+                    stores it as the profile's reference so the voice identity
+                    is stable across runs.
     """
     name = name.strip()
     if not name:
@@ -226,6 +227,7 @@ async def create_profile(
         from services.model_manager import get_model_status
         audio_path = os.path.join(VOICES_DIR, f"{profile_id}.wav")
         audio_filename = None
+        used_seed = seed if seed is not None else _DESIGN_SEED
         if get_model_status()["loaded"]:
             try:
                 await _render_archetype_wav(
@@ -233,6 +235,7 @@ async def create_profile(
                         "language": language,
                         "sample_script": ref_text,  # optional custom sample line
                         "instruct": instruct,
+                        "seed": used_seed,
                     },
                     Path(audio_path),
                     allow_model_load=False,
@@ -247,7 +250,6 @@ async def create_profile(
                 if os.path.exists(audio_path):
                     with contextlib.suppress(OSError):
                         os.remove(audio_path)
-        used_seed = seed if seed is not None else _DESIGN_SEED
 
     try:
         if portrait:
@@ -798,7 +800,7 @@ async def get_profile_audio(profile_id: str):
         return Response("Profile not found", status_code=404)
     with db_conn() as conn:
         row = conn.execute(
-            "SELECT ref_audio_path, locked_audio_path, kind, instruct, language, ref_text "
+            "SELECT ref_audio_path, locked_audio_path, kind, instruct, language, ref_text, seed "
             "FROM voice_profiles WHERE id=?",
             (profile_id,),
         ).fetchone()
@@ -807,8 +809,8 @@ async def get_profile_audio(profile_id: str):
     audio_file = row["locked_audio_path"] or row["ref_audio_path"]
     if not audio_file:
         # A design profile saved before the engine was ready (issue #476) has no
-        # identity sample yet. Render it lazily now — the deterministic seed-42
-        # sample is reproducible, so a deferred render matches a save-time one.
+        # identity sample yet. Render it lazily now — the sample is deterministic
+        # for the stored seed, so a deferred render matches a save-time one.
         rendered = await _materialize_design_sample(profile_id, row)
         if rendered is None:
             return Response("No audio available", status_code=404)
@@ -856,6 +858,7 @@ async def _materialize_design_sample(profile_id: str, row) -> Optional[str]:
                 "language": row["language"] or "Auto",
                 "sample_script": row["ref_text"] or "",
                 "instruct": row["instruct"] or "",
+                "seed": row["seed"],
             },
             Path(audio_path),
             prefix=f".{profile_id}-",

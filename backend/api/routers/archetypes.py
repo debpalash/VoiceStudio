@@ -360,17 +360,21 @@ async def _render_archetype_wav(a: dict, out_path: Path, *, allow_model_load: bo
     # length-scaled helper (#1190) instead of the flat 300s default.
     from services.model_manager import generate_timeout_s
     _budget = generate_timeout_s(text, engine=model)
+    # A design profile's sample uses the seed the user saved it with (#3254);
+    # archetype previews keep the fixed preview seed.
+    seed = a.get("seed")
+    seed = _PREVIEW_SEED if seed is None else int(seed)
     audio_tensor = await run_on_gpu_pool_guarded(
-        lambda: _infer(_PREVIEW_SEED), what="Archetype preview generate",
+        lambda: _infer(seed), what="Archetype preview generate",
         timeout=_budget)
     if _is_unusable_audio(audio_tensor):
         # Blank OR a degenerate tonal buzz — retry once on a different seed to
         # step off the bad diffusion trajectory. Static message only: the
-        # archetype id is request-derived (CodeQL log-injection); the seed is a
-        # module constant, safe to log.
-        logger.warning("Archetype rendered unusable at seed %d — retrying once", _PREVIEW_SEED)
+        # archetype id is request-derived (CodeQL log-injection); the seed is an
+        # int, safe to log.
+        logger.warning("Archetype rendered unusable at seed %d — retrying once", seed)
         audio_tensor = await run_on_gpu_pool_guarded(
-            lambda: _infer(_PREVIEW_SEED + 1), what="Archetype preview generate",
+            lambda: _infer(seed + 1), what="Archetype preview generate",
             timeout=_budget)
     if _is_unusable_audio(audio_tensor):
         raise RuntimeError("the voice engine returned no audible audio for this archetype")
