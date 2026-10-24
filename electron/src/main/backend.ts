@@ -1,6 +1,7 @@
 import { decideMissingRuntime, runtimeWasInstalled } from './runtime-repair';
 import {
   installRuntime,
+  MISSING_SYSTEM_LIBRARY_CODE,
   promoteLegacyRuntimeCaches,
   runtimeCompatible,
   runtimeDependenciesReady,
@@ -16,6 +17,7 @@ import { asciiSafePthFiles } from './pth-ascii';
 import { devProbeStamped, writeDevProbeStamp } from './dev-probe-stamp';
 import { CrashJournal } from './crash-journal';
 import { nativeFaultSummary } from '../shared/utils/crashReport';
+import { backendStartupFailure, isBrokenEnvironmentOutput } from '../shared/utils/backendOutput';
 import { availableBackendPort } from './backend-port';
 import { scopedStorage, scopedStorageEnv, type ScopedStorage } from './storage-scope';
 import { legacyStorageEnv } from './legacy-storage';
@@ -692,6 +694,16 @@ export class BackendSupervisor extends EventEmitter<{
   private readonly log: string[] = [];
   /** Only the spawned process's own output, for quoting back in failure messages. */
   private readonly childLog: string[] = [];
+  /**
+   * The spawned process's stderr only.
+   *
+   * The backend's verdict about a failed start is printed there, while the
+   * access log uvicorn writes to stdout can be the last line of a failed
+   * launch — every /health poll during startup prints one. Quoting "the last
+   * line" therefore reported `503 Service Unavailable` to a user whose real
+   * problem was a native extension that would not load (#3058).
+   */
+  private readonly childErrorLog: string[] = [];
   /** When the spawned process last printed a line (0 = nothing yet this launch). */
   private lastChildOutputAt = 0;
   /** Bumped on every start/shutdown so stale poll loops and exit handlers no-op. */
@@ -837,6 +849,7 @@ export class BackendSupervisor extends EventEmitter<{
     // quote the backend it just killed, and a completed runtime install must
     // not quote the installer — setupRuntime's uv children share this ring.
     this.childLog.length = 0;
+    this.childErrorLog.length = 0;
     this.lastChildOutputAt = 0;
     this.setStage('attaching', { managed: false, message: undefined });
     try {
@@ -987,6 +1000,7 @@ export class BackendSupervisor extends EventEmitter<{
     this.startedAt = Date.now();
     this.log.length = 0;
     this.childLog.length = 0;
+    this.childErrorLog.length = 0;
     this.setupIssue = undefined;
     this.setupRequiredGib = undefined;
     this.runtimeRepairFailed = false;
@@ -1104,9 +1118,11 @@ export class BackendSupervisor extends EventEmitter<{
             ? (platformSetupIssue() ?? 'unsupported_platform')
             : code === 'ENOSPC'
               ? 'space'
-              : ['EACCES', 'EPERM', 'EROFS'].includes(code || '')
-                ? 'access'
-                : undefined;
+              : code === MISSING_SYSTEM_LIBRARY_CODE
+                ? 'missing_system_library'
+                : ['EACCES', 'EPERM', 'EROFS'].includes(code || '')
+                  ? 'access'
+                  : undefined;
         this.setupRequiredGib =
           code === 'ENOSPC' ? (error as { requiredGib?: number }).requiredGib : undefined;
         this.runtimeRepairFailed = this.repairAttempted;
@@ -1373,6 +1389,11 @@ export class BackendSupervisor extends EventEmitter<{
       this.childLog.push(line);
       if (this.childLog.length > LOG_RING_LINES)
         this.childLog.splice(0, this.childLog.length - LOG_RING_LINES);
+      if (stream === 'err') {
+        this.childErrorLog.push(line);
+        if (this.childErrorLog.length > LOG_RING_LINES)
+          this.childErrorLog.splice(0, this.childErrorLog.length - LOG_RING_LINES);
+      }
     }
     (stream === 'err' ? console.error : console.log)(`[backend] ${line}`);
     if (this.stage === 'installing') {
@@ -1523,9 +1544,53 @@ export class BackendSupervisor extends EventEmitter<{
     // log line. Name the fault and where it happened instead (#2382, #2187).
     const lastLine = nativeFaultSummary(recorded?.logTail.join('\n') ?? '') || this.childLog.at(-1);
     const why = signal ? `signal ${signal}` : `exit code ${code}`;
+    // The backend's own verdict names the cause of a failed start. Without it
+    // the message quoted uvicorn's access log for the last /health poll —
+    // "503 Service Unavailable" — and hid the import error that actually
+    // killed the process (#3058).
+    const startup = backendStartupFailure(this.childErrorLog);
+    // A backend that died while importing its own dependencies is a broken
+    // environment, not a crash to retry: its wheels are damaged or a system
+    // library they link against is gone. Repair the managed runtime once per
+    // launch instead of leaving the user with a dead app (#3058).
+    if (this.canRepairRuntime() && isBrokenEnvironmentOutput(this.childErrorLog)) {
+      this.repairAttempted = true;
+      this.pushLog(
+        'out',
+        'The backend died while loading its Python dependencies; repairing the runtime.',
+      );
+      this.setStage('setup_required', { managed: true, message: undefined });
+      void this.setupRuntime();
+      return;
+    }
     this.setStage('crashed', {
-      message: `Backend exited unexpectedly (${why}).${lastLine ? ` Last output: ${lastLine}` : ''}`,
+      // The child was ours: the failure belongs to the managed runtime, and a
+      // report that says "Managed: false" sends the triage the wrong way.
+      managed: true,
+      message: startup
+        ? `Backend failed to start during '${startup.step}' (${why}): ${startup.reason}`
+        : `Backend exited unexpectedly (${why}).${lastLine ? ` Last output: ${lastLine}` : ''}`,
     });
+  }
+
+  /**
+   * Whether this launch may rebuild the managed runtime on its own.
+   *
+   * The same guard the setup flow uses: a packaged app with a user-initiated
+   * runtime, no custom backend command, a resolved runtime project and no
+   * install already running.
+   */
+  private canRepairRuntime(): boolean {
+    return (
+      app.isPackaged &&
+      runtimeSetupSupported() &&
+      !parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD) &&
+      !isUnsupportedPlatform() &&
+      Boolean(this.runtimeProject) &&
+      !this.repairAttempted &&
+      !this.installation &&
+      !this.cleaningRuntime
+    );
   }
 
   private async probe(baseUrl = this.baseUrl, identityOnly = false): Promise<boolean> {

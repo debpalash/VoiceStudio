@@ -2053,6 +2053,7 @@
     "setup_access": "앱 데이터 폴더에 쓰기 권한을 허용한 후 다시 시도하세요.",
     "setup_unsupported_platform": "이 Intel Mac에서는 로컬 AI 백엔드를 실행할 수 없습니다 — PyTorch에 macOS Intel용 휠이 없습니다. 아래에서 원격 백엔드에 연결하세요. 로컬 설치는 필요하지 않습니다.",
     "setup_wrong_architecture": "Apple Silicon Mac에서 Rosetta를 통해 실행 중인 VoiceStudio Intel(x64) 빌드이므로 로컬 AI 백엔드를 설치할 수 없습니다. 앱을 종료하고 Apple Silicon(arm64) DMG를 덮어 설치한 뒤 다시 여세요. 음성과 프로젝트는 그대로 유지됩니다.",
+    "setup_missing_system_library": "이 Windows 시스템에 PyTorch 오디오 확장이 필요로 하는 Microsoft Visual C++ 2015-2022 재 배포 가능한 패키지(x64)가 없습니다. Microsoft에서 설치한 뒤 다시 시도하세요.",
     "download_apple_silicon": "Apple Silicon 빌드 다운로드",
     "ready": "엔진 준비 완료",
     "show_log": "로그 표시",

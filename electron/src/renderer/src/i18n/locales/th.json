@@ -2053,6 +2053,7 @@
     "setup_access": "อนุญาตให้เขียนลงในโฟลเดอร์ข้อมูลของแอป แล้วลองอีกครั้ง",
     "setup_unsupported_platform": "Mac Intel เครื่องนี้ไม่สามารถเรียกใช้ AI แบ็กเอนด์ในเครื่องได้ — PyTorch ไม่มี wheel สำหรับ macOS Intel โปรดเชื่อมต่อรีโมตแบ็กเอนด์ด้านล่าง ไม่จำเป็นต้องติดตั้งในเครื่อง",
     "setup_wrong_architecture": "นี่คือ VoiceStudio รุ่น Intel (x64) ที่ทำงานผ่าน Rosetta บน Mac ชิป Apple Silicon จึงติดตั้งแบ็กเอนด์ AI ในเครื่องไม่ได้ ปิดแอป ติดตั้ง DMG รุ่น Apple Silicon (arm64) ทับ แล้วเปิดใหม่ — เสียงและโปรเจกต์ของคุณจะยังอยู่ครบ",
+    "setup_missing_system_library": "ระบบ Windows นี้ไม่มี Microsoft Visual C++ 2015-2022 Redistributable (x64) ซึ่งส่วนขยายเสียงของ PyTorch ต้องใช้ ติดตั้งจาก Microsoft แล้วกดลองใหม่",
     "download_apple_silicon": "ดาวน์โหลดรุ่น Apple Silicon",
     "ready": "เอนจินพร้อม",
     "show_log": "แสดงบันทึก",

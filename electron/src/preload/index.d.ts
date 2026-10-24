@@ -31,7 +31,12 @@ export interface NativeCrashRecord {
 export interface BackendStatus {
   lastCrash?: NativeCrashRecord;
   stage: BackendStage;
-  setupIssue?: 'space' | 'access' | 'unsupported_platform' | 'wrong_architecture';
+  setupIssue?:
+    | 'space'
+    | 'access'
+    | 'unsupported_platform'
+    | 'wrong_architecture'
+    | 'missing_system_library';
   /** Free disk (GiB) the failed install needed; the CPU-only install needs less than the CUDA one. */
   setupRequiredGib?: number;
   /** A prior explicit install stopped after creating its resumable project/cache. */

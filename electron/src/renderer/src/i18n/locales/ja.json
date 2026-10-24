@@ -2053,6 +2053,7 @@
     "setup_access": "アプリのデータフォルダーへの書き込みを許可して、再試行してください。",
     "setup_unsupported_platform": "このIntel MacではローカルAIバックエンドを実行できません — PyTorchにmacOS Intel用wheelがありません。代わりに下でリモートバックエンドに接続してください。ローカルインストールは不要です。",
     "setup_wrong_architecture": "これは Apple Silicon Mac 上の Rosetta で動作している VoiceStudio の Intel (x64) 版のため、ローカル AI バックエンドをインストールできません。アプリを終了し、Apple Silicon (arm64) 版の DMG を上書きインストールしてから再度開いてください。ボイスとプロジェクトはそのまま残ります。",
+    "setup_missing_system_library": "この Windows システムには、PyTorch の音声拡張に必要な Microsoft Visual C++ 2015-2022 再頒布可能パッケージ (x64) が入っていません。Microsoft からインストールしてから、再試行を押してください。",
     "download_apple_silicon": "Apple Silicon 版をダウンロード",
     "ready": "エンジン準備完了",
     "show_log": "ログを表示",

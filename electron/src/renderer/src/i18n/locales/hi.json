@@ -2053,6 +2053,7 @@
     "setup_access": "ऐप के डेटा फ़ोल्डर में लिखने की अनुमति दें, फिर दोबारा प्रयास करें।",
     "setup_unsupported_platform": "यह Intel Mac स्थानीय AI बैकएंड नहीं चला सकता — PyTorch में macOS Intel व्हील नहीं हैं। नीचे रिमोट बैकएंड से जुड़ें; स्थानीय इंस्टॉल की ज़रूरत नहीं है।",
     "setup_wrong_architecture": "यह VoiceStudio का Intel (x64) बिल्ड है जो Apple Silicon Mac पर Rosetta के ज़रिए चल रहा है, इसलिए लोकल AI बैकएंड इंस्टॉल नहीं हो सकता। ऐप बंद करें, इसके ऊपर Apple Silicon (arm64) DMG इंस्टॉल करें और फिर से खोलें — आपकी आवाज़ें और प्रोजेक्ट सुरक्षित रहेंगे।",
+    "setup_missing_system_library": "इस Windows सिस्टम पर Microsoft Visual C++ 2015-2022 Redistributable (x64) नहीं है, जिसकी PyTorch ऑडियो एक्सटेंशन को ज़रूरत है। इसे Microsoft से इंस्टॉल करें, फिर «पुनः प्रयास करें» दबाएँ।",
     "download_apple_silicon": "Apple Silicon बिल्ड डाउनलोड करें",
     "ready": "इंजन तैयार है",
     "show_log": "लॉग दिखाएँ",

@@ -332,6 +332,7 @@
     "setup_access": "Allow write access to the app’s data folder, then retry.",
     "setup_unsupported_platform": "This Intel Mac can't run the local AI backend — PyTorch ships no macOS Intel wheels. Connect a remote backend below instead; no local install is needed.",
     "setup_wrong_architecture": "This is the Intel (x64) build of VoiceStudio running through Rosetta on an Apple Silicon Mac, so the local AI backend can't install. Quit, install the Apple Silicon (arm64) DMG over this app, and reopen — your voices and projects are kept.",
+    "setup_missing_system_library": "This Windows system is missing the Microsoft Visual C++ 2015-2022 Redistributable (x64), which the PyTorch audio extension needs. Install it from Microsoft, then press Retry.",
     "download_apple_silicon": "Download the Apple Silicon build",
     "proxy_bypass_help": "Fully quit VoiceStudio, set HTTP_PROXY/HTTPS_PROXY to your proxy URL and NO_PROXY to excluded hosts in a terminal, then launch VoiceStudio from that terminal. Retrying in the current app cannot load new environment variables.",
     "hint_spawn_blocked": "Your operating system or security software refused to launch the local engine. Add VoiceStudio’s runtime folder to your antivirus exclusions (Windows: Windows Security → Virus & threat protection → Manage settings → Exclusions), make sure it is not inside a cloud-synced folder such as OneDrive, then retry.",

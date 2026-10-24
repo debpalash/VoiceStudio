@@ -2,6 +2,7 @@ import { abortableDelay } from './abortableDelay.ts';
 import { DEFAULT_BACKEND_PORT } from '../app-config.ts';
 import { deploymentMode, type DeploymentMode } from './deploymentMode.ts';
 import { isNativeFaultExit } from './nativeExit.ts';
+import { isBrokenEnvironmentOutput } from './backendOutput.ts';
 /**
  * backendCrash — frontend bridge to the desktop shell's crash forensics
  * (#941, src-tauri/src/crash.rs).
@@ -314,48 +315,23 @@ export function isNativeFault(marker: Pick<BackendCrashMarker, 'exit_code' | 'si
  *
  * Reported repeatedly (#1282: `import torchaudio` → `from torch.hub import …`
  * exploding 4 s after launch; #1376: transformers' lazy module raising
- * `ModuleNotFoundError: Could not import module 'GenerationMixin'` 28 s in).
- * Both fell through to the VRAM default, which told users whose venv was
- * half-installed to go flush a TTS model. Nothing about the exit code
- * distinguishes these — the traceback is the only evidence, and it was sitting
- * unread in the marker.
+ * `ModuleNotFoundError: Could not import module 'GenerationMixin'` 28 s in;
+ * #3058: `Could not find module '…libtorchaudio.pyd' (or one of its
+ * dependencies)` on Windows). All fell through to the VRAM default, which
+ * told users whose venv was half-installed to go flush a TTS model. Nothing
+ * about the exit code distinguishes these — the traceback is the only
+ * evidence, and it was sitting unread in the marker.
  *
- * Deliberately narrow: an ImportError *plus* one of the packages the app
- * cannot run without. A model file that fails to import mid-request is a
- * different animal, and a generic "ImportError" match would swallow it.
+ * The markers themselves live in `shared/utils/backendOutput` so the Electron
+ * main process can classify the same output when the backend dies during
+ * startup (#3058) and there is no crash marker to read.
  */
-const _IMPORT_FAILURE_MARKERS = [
-  'modulenotfounderror',
-  'importerror',
-  'dll load failed',
-  'undefined symbol',
-];
-const _CORE_DEPENDENCIES = [
-  'torch',
-  'torchaudio',
-  'torchvision',
-  'transformers',
-  'soundfile',
-  'numpy',
-];
-
-// How much of the captured tail is treated as "this run". backend_err.log is
-// appended across runs and the shell captures its last ~40 lines, so a process
-// that died before writing 40 lines of its own carries the PREVIOUS run's
-// output above its own (greptile). An import traceback stranded up there must
-// not diagnose the crash that happened after it — restricting the match to the
-// most recent lines means a stale one only counts when the current run wrote
-// almost nothing, which is itself the startup death this classifies.
-const _RECENT_TAIL_LINES = 20;
-
 export function isBrokenEnvironmentCrash(
   marker: Partial<Pick<BackendCrashMarker, 'last_stderr'>>,
 ): boolean {
-  const raw = (marker.last_stderr || '').trim();
-  if (!raw) return false;
-  const tail = raw.split('\n').slice(-_RECENT_TAIL_LINES).join('\n').toLowerCase();
-  if (!_IMPORT_FAILURE_MARKERS.some((m) => tail.includes(m))) return false;
-  return _CORE_DEPENDENCIES.some((d) => tail.includes(d));
+  const raw = marker.last_stderr || '';
+  if (!raw.trim()) return false;
+  return isBrokenEnvironmentOutput(raw.split('\n'));
 }
 
 export function crashCauseHint(

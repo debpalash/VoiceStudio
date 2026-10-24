@@ -2055,6 +2055,7 @@
     "setup_access": "Permite escribir en la carpeta de datos de la aplicación y vuelve a intentarlo.",
     "setup_unsupported_platform": "Este Mac Intel no puede ejecutar el backend de IA local — PyTorch no ofrece wheels para macOS Intel. Conecta un backend remoto abajo; no se necesita instalación local.",
     "setup_wrong_architecture": "Esta es la versión Intel (x64) de VoiceStudio ejecutándose mediante Rosetta en un Mac con Apple Silicon, por lo que el backend de IA local no se puede instalar. Cierra la app, instala encima el DMG para Apple Silicon (arm64) y vuelve a abrirla; tus voces y proyectos se conservan.",
+    "setup_missing_system_library": "A este sistema Windows le falta el Microsoft Visual C++ 2015-2022 Redistributable (x64), que necesita la extensión de audio de PyTorch. Instálalo desde Microsoft y pulsa Reintentar.",
     "download_apple_silicon": "Descargar la versión para Apple Silicon",
     "ready": "Motor listo",
     "show_log": "Mostrar registro",

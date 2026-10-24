@@ -10,10 +10,13 @@ import {
   installRuntime,
   promoteLegacyRuntimeCaches,
   CUDNN8_COMPAT_PIN,
+  MISSING_SYSTEM_LIBRARY_CODE,
+  NATIVE_DIAGNOSTIC_PREFIX,
   ROCM_TORCH_INDEX,
   ROCM_TORCH_PINS,
   rocmTorchOptIn,
   RUNTIME_IMPORT_PROBE,
+  RUNTIME_NATIVE_DIAGNOSTIC_PROBE,
   RUNTIME_NATIVE_IMPORT_PROBE,
   RUNTIME_REPAIR_PACKAGES,
   clearCtranslate2ExecutableStack,
@@ -456,6 +459,54 @@ describe('packaged runtime setup', () => {
       'clean',
       ...RUNTIME_REPAIR_PACKAGES,
     ]);
+  });
+  it('reports a missing system library instead of reinstalling wheels that cannot supply it', async () => {
+    const { bundle, project } = await fixture();
+    await interpreter(project);
+    const run = vi.fn(async (_command: string, args: string[]) => {
+      if (args[0] !== '-c') return undefined;
+      if (args[1] === RUNTIME_IMPORT_PROBE || args[1] === RUNTIME_NATIVE_IMPORT_PROBE) {
+        throw new Error("Could not find module 'libtorchaudio.pyd' (or one of its dependencies).");
+      }
+      if (args[1] === RUNTIME_NATIVE_DIAGNOSTIC_PROBE) {
+        return `${NATIVE_DIAGNOSTIC_PREFIX}${JSON.stringify({
+          missing_system_libraries: ['vcomp140.dll'],
+          extension_present: true,
+        })}\n`;
+      }
+      return undefined;
+    });
+
+    await expect(
+      installRuntime(bundle, project, 'uv', run, new AbortController().signal),
+    ).rejects.toMatchObject({
+      code: MISSING_SYSTEM_LIBRARY_CODE,
+      missingSystemLibraries: ['vcomp140.dll'],
+    });
+    // No wheel can supply a system library, so nothing is downloaded for it.
+    expect(run.mock.calls.some(([, args]) => args[0] === 'sync')).toBe(false);
+    expect(run.mock.calls.some(([, args]) => args[0] === 'cache')).toBe(false);
+    expect(await runtimeReady(bundle, project)).toBe(false);
+  });
+  it('reports a missing system library when a fresh install fails verification', async () => {
+    const { bundle, project } = await fixture();
+    const run = vi.fn(async (_command: string, args: string[]) => {
+      if (args[0] !== '-c') return undefined;
+      if (args[1] === RUNTIME_IMPORT_PROBE) {
+        throw new Error("Could not find module 'libtorchaudio.pyd' (or one of its dependencies).");
+      }
+      if (args[1] === RUNTIME_NATIVE_DIAGNOSTIC_PROBE) {
+        return `${NATIVE_DIAGNOSTIC_PREFIX}${JSON.stringify({
+          missing_system_libraries: ['msvcp140.dll'],
+          extension_present: true,
+        })}\n`;
+      }
+      return undefined;
+    });
+
+    await expect(
+      installRuntime(bundle, project, 'uv', run, new AbortController().signal),
+    ).rejects.toMatchObject({ code: MISSING_SYSTEM_LIBRARY_CODE });
   });
   it('repairs sentencepiece without evicting healthy PyTorch wheels', async () => {
     const { bundle, project } = await fixture();

@@ -2057,6 +2057,7 @@
     "setup_access": "Разрешите запись в папку данных приложения и повторите попытку.",
     "setup_unsupported_platform": "Этот Mac на Intel не может запускать локальный ИИ-бэкенд — у PyTorch нет колёс под macOS Intel. Подключите удалённый бэкенд ниже; локальная установка не нужна.",
     "setup_wrong_architecture": "Это версия VoiceStudio для Intel (x64), запущенная через Rosetta на Mac с Apple Silicon, поэтому локальный ИИ-бэкенд не может установиться. Закройте приложение, установите поверх него DMG для Apple Silicon (arm64) и откройте снова — ваши голоса и проекты сохранятся.",
+    "setup_missing_system_library": "В этой системе Windows отсутствует Microsoft Visual C++ 2015-2022 Redistributable (x64), который нужен аудиорасширению PyTorch. Установите его с сайта Microsoft и нажмите «Повторить».",
     "download_apple_silicon": "Скачать версию для Apple Silicon",
     "ready": "Движок готов",
     "show_log": "Показать журнал",
