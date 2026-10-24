@@ -584,9 +584,23 @@ def _numbers_to_words(text: str, lang: str) -> str:
 
     if lang in _DECIMAL_LANGS:
         def _decimal(m: re.Match) -> str:
-            if _thousands_group(lang, m.group(2)):
+            whole, fraction = m.group(1), m.group(2)
+            if _thousands_group(lang, fraction):
                 return m.group(0)
-            return num2words(float(f"{m.group(1)}.{m.group(2)}"), lang=lang)
+            spoken = num2words(float(f"{whole}.{fraction}"), lang=lang)
+            # A float has no trailing zeros: "3.0" read as "three" and "2.50"
+            # as "two point five". Speak the zeros that were written.
+            zeros = len(fraction) - len(fraction.rstrip("0"))
+            if zeros:
+                from num2words import CONVERTER_CLASSES
+                point = getattr(CONVERTER_CLASSES.get(lang), "pointword", None)
+                if not isinstance(point, str):
+                    return spoken
+                zero = num2words(0, lang=lang)
+                if zeros == len(fraction):
+                    spoken = f"{num2words(int(whole), lang=lang)} {point}"
+                spoken += f" {zero}" * zeros
+            return spoken
 
         text = _DECIMAL_RE.sub(lambda m: _safe(m, _decimal), text)
 
