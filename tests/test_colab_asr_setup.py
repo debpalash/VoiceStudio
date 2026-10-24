@@ -103,5 +103,58 @@ class ColabASRSetupTests(unittest.TestCase):
         self.assertLess(setup, transcribe)
 
 
+class ColabLicenceErrorTests(unittest.TestCase):
+    """Model-licence 403s read as a licence problem, not a download/GPU failure (#3076)."""
+
+    BODY = {"detail": {"code": "model_licence_required", "message": "Accept the licence.",
+                       "models": [{"repo_id": "org/model-a"}]}}
+
+    def cell(self, marker):
+        cells = json.loads(NOTEBOOK.read_text())["cells"]
+        return next("".join(c["source"]) for c in cells
+                    if c["cell_type"] == "code" and marker in "".join(c["source"]))
+
+    def helpers(self):
+        src = self.cell("def api_fail")
+        ns = {"json": json, "LOG_HINT": "LOG"}
+        exec(src[src.index("def _error_detail"):src.index("def speak")], ns)
+        return ns
+
+    def test_api_fail_names_licence_and_models(self):
+        resp = types.SimpleNamespace(status_code=403, text=json.dumps(self.BODY),
+                                     json=lambda: self.BODY)
+        with self.assertRaisesRegex(RuntimeError, r"model licence not accepted[\s\S]*org/model-a"):
+            self.helpers()["api_fail"](resp, "/generate")
+
+    def test_api_fail_keeps_plain_http_errors(self):
+        def not_json():
+            raise ValueError("not json")
+        resp = types.SimpleNamespace(status_code=500, text="boom", json=not_json)
+        with self.assertRaisesRegex(RuntimeError, r"HTTP 500\nboom") as cm:
+            self.helpers()["api_fail"](resp, "/generate")
+        self.assertNotIn("licence", str(cm.exception))
+
+    def run_smoke(self, body, code):
+        import io
+        import urllib.error
+
+        def urlopen(req, timeout=None):
+            if isinstance(req, str):
+                return io.BytesIO(b"{}")
+            raise urllib.error.HTTPError(
+                "http://x/generate", code, "err", {}, io.BytesIO(body.encode()))
+        with patch("urllib.request.urlopen", side_effect=urlopen):
+            exec(self.cell("# ── 7. Smoke test"), {})
+
+    def test_smoke_cell_names_licence(self):
+        with self.assertRaisesRegex(RuntimeError, r"model licence not accepted[\s\S]*org/model-a"):
+            self.run_smoke(json.dumps(self.BODY), 403)
+
+    def test_smoke_cell_keeps_plain_http_errors(self):
+        with self.assertRaisesRegex(RuntimeError, r"HTTP 500\nboom") as cm:
+            self.run_smoke("boom", 500)
+        self.assertNotIn("licence", str(cm.exception))
+
+
 if __name__ == "__main__":
     unittest.main()
