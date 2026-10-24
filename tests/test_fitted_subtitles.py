@@ -39,12 +39,25 @@ def test_fitted_cues_uses_new_timeline():
 
 
 def test_fitted_cues_are_monotone():
+    """Shared timeline cues may overlap while their starts remain ordered."""
     # Overlapping/odd inputs must still produce a non-decreasing cue stream.
     segs = [{"start": 3.9, "end": 4.1}, {"start": 4.0, "end": 4.0}]
     cues = fitted_cues(segs, PLAN)
     for s, e in cues:
         assert e >= s
-    assert cues[1][0] >= cues[0][1] - 1e-9
+    assert cues[1][0] >= cues[0][0] - 1e-9
+    assert cues[1][0] == pytest.approx(6.0)
+
+
+def test_legacy_sequential_stretch_plan_keeps_caption_after_previous_voice():
+    """Legacy overlapping source chunks serialize voices and their captions."""
+    plan = [
+        dict(orig_start=0, orig_end=2, new_start=0, new_end=2),
+        dict(orig_start=1, orig_end=3, new_start=2, new_end=4),
+    ]
+    assert fitted_cues([dict(start=0, end=2), dict(start=1, end=3)], plan) == [
+        (0, 2), (2, 4),
+    ]
 
 
 def test_empty_plan_cues_match_original():

@@ -51,15 +51,27 @@ def fitted_cues(segments: list[dict], plan: list[dict]) -> list[tuple[float, flo
 
     Monotonicity guard: a cue's end is never before its start, and successive
     starts never go backwards (rounding across chunk seams can't produce a
-    non-monotone SRT).
+    non-monotone SRT). Legacy plans with overlapping source chunks serialize
+    those chunks, so their cues retain the previous-end guard.
     """
     out: list[tuple[float, float]] = []
+    sequential = False
+    covered_until = float("-inf")
+    for chunk in plan:
+        if float(chunk.get("orig_start", 0.0)) < covered_until:
+            sequential = True
+            break
+        covered_until = max(covered_until, float(chunk.get("orig_end", 0.0)))
+    prev_start = 0.0
     prev_end = 0.0
     for seg in segments:
         s = map_time_to_fitted(float(seg.get("start", 0.0)), plan)
         e = map_time_to_fitted(float(seg.get("end", 0.0)), plan)
-        s = max(s, prev_end if out else 0.0)
+        # Shared timelines allow simultaneous speakers; legacy sequential
+        # plans must still wait for the previous speaker's end.
+        s = max(s, prev_end if sequential else prev_start)
         e = max(e, s)
         out.append((s, e))
+        prev_start = s
         prev_end = e
     return out

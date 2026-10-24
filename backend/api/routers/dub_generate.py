@@ -696,7 +696,7 @@ async def dub_generate(job_id: str, req: DubRequest):
             Re-marking here would double-mark every segment in the final mix.
             """
             import wave
-            import numpy as np
+            from services.dub_mix import pcm16_chunks
 
             target_base = os.path.basename(target_path)
             fd, tmp_path = tempfile.mkstemp(
@@ -711,15 +711,11 @@ async def dub_generate(job_id: str, req: DubRequest):
                     wf.setnchannels(1)
                     wf.setsampwidth(2)
                     wf.setframerate(sample_rate)
-                    total_len = int(samples.shape[0])
-                    for off in range(0, total_len, chunk_samples):
-                        chunk = np.array(samples[off: off + chunk_samples], dtype=np.float32, copy=True)
-                        if chunk.size == 0:
-                            continue
-                        np.nan_to_num(chunk, copy=False, nan=0.0, posinf=1.0, neginf=-1.0)
-                        chunk = np.clip(chunk, -1.0, 1.0)
-                        pcm = (chunk * 32767.0).astype("<i2", copy=False)
-                        wf.writeframes(pcm.tobytes())
+                    for pcm in pcm16_chunks(
+                        samples, chunk_samples,
+                        prevent_clipping=strategy == "smart_fit",
+                    ):
+                        wf.writeframes(pcm)
                 return tmp_path
             except BaseException:
                 try:

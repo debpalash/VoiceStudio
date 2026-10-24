@@ -30,13 +30,16 @@ Algorithm per segment (defaults in :class:`FitParams`):
 6. **Timeline cursor** — mirrors the existing ``stretch_video`` layout
    loop: pre-roll and inter-segment gaps pass through at 1.0×; each
    segment's video chunk ``[start, effective_end]`` occupies
-   ``slot * video_ratio`` on the new timeline.
+   ``slot * video_ratio`` on the new timeline. Overlapping slots share a
+   piecewise timeline using the largest requested slowdown at each source
+   interval; their audio onsets retain the mapped overlap.
 
 This module is deliberately I/O-free and torch-free so it can be unit- and
 golden-tested without a model, ffmpeg, or an event loop.
 """
 from __future__ import annotations
 
+import heapq
 import math
 from dataclasses import dataclass, field
 
@@ -83,7 +86,7 @@ class SegmentFit:
     index: int
     seg_id: str
     audio_rate: float       # pitch-preserving rate: >1 speeds up (fit), <1 slows down (fill)
-    video_ratio: float      # ≥ 1.0 — setpts slow-down applied to the video chunk
+    video_ratio: float      # ≥ 1.0 — average video slowdown across this slot
     new_start: float        # placement on the fitted (possibly longer) timeline
     new_end: float          # end of the video chunk on the fitted timeline
     orig_start: float
@@ -130,6 +133,70 @@ def _fit_one(need: float, params: FitParams) -> tuple[float, float, str]:
     if audio_rate * video_ratio >= need - _EPS:
         return audio_rate, video_ratio, "hybrid"
     return audio_rate, video_ratio, "overflow_trimmed"
+
+
+def _shared_timeline(plan: FitPlan, natural_durs_s: list[float]) -> FitPlan:
+    """Resolve overlapping slots onto one source-video timeline in O(n log n).
+
+    Each source interval uses the largest slowdown requested by its active
+    speakers. This satisfies each slot's video budget without replaying the
+    overlap. Audio rates remain unchanged; audio placement and subtitle mapping
+    use the same piecewise timeline as video and background-bed export.
+    """
+    starts: dict[float, list[tuple[float, float, int]]] = {}
+    boundaries = set()
+    for i, segment in enumerate(plan.segments):
+        a, b = segment.orig_start, segment.effective_end
+        boundaries.update((a, b))
+        if b > a:
+            starts.setdefault(a, []).append((-segment.video_ratio, b, i))
+    points = sorted(boundaries)
+    active: list[tuple[float, float, int]] = []
+    cursor = points[0]  # unchanged pre-roll
+    mapped = {points[0]: cursor}
+    chunks: list[dict] = []
+    for a, b in zip(points, points[1:]):
+        for entry in starts.get(a, ()):
+            heapq.heappush(active, entry)
+        while active and active[0][1] <= a:
+            heapq.heappop(active)
+        ratio = -active[0][0] if active else 1.0
+        end = cursor + (b - a) * ratio
+        # Merge equal-rate neighbours; subtitle boundaries still retain their
+        # mapped positions even when they fall inside one export chunk.
+        if chunks and chunks[-1]["stretch_ratio"] == ratio:
+            chunks[-1]["orig_end"] = b
+            chunks[-1]["new_end"] = round(end, 4)
+        else:
+            chunks.append(dict(
+                orig_start=a, orig_end=b, new_start=round(cursor, 4),
+                new_end=round(end, 4), stretch_ratio=ratio,
+            ))
+        mapped[b] = end
+        cursor = end
+
+    for segment, natural in zip(plan.segments, natural_durs_s):
+        start = mapped[segment.orig_start]
+        end = mapped[segment.effective_end]
+        slot = segment.effective_end - segment.orig_start
+        segment.new_start = round(start, 4)
+        segment.new_end = round(end, 4)
+        segment.video_ratio = round((end - start) / slot, 6) if slot > 0 else 1.0
+        overflow = max(0.0, max(0.0, float(natural)) / segment.audio_rate - (end - start))
+        segment.overflow_s = round(overflow, 4)
+        if overflow > 1e-6:
+            segment.status = "overflow_trimmed"
+        elif segment.video_ratio > 1.0 + 1e-6:
+            segment.status = "hybrid"
+        elif segment.audio_rate > 1.0 + 1e-6:
+            segment.status = "audio_stretched"
+        elif segment.audio_rate < 1.0 - 1e-6:
+            segment.status = "audio_slowed"
+        else:
+            segment.status = "fits"
+    plan.video_plan = chunks
+    plan.total_duration = round(cursor + max(0.0, plan.orig_duration - points[-1]), 4)
+    return plan
 
 
 def plan_fit(
@@ -228,4 +295,12 @@ def plan_fit(
     last_eff = float(plan.segments[-1].effective_end)
     cursor += max(0.0, float(total_dur_s) - last_eff)
     plan.total_duration = round(max(cursor, float(total_dur_s)), 4)
+    # Non-overlapping projects keep their established layout byte-for-byte.
+    # Overlapping speakers must share the same video, not concatenate copies
+    # of the source interval and move later speech past its original onset.
+    covered_until = float("-inf")
+    for segment in plan.segments:
+        if segment.orig_start < covered_until - _EPS:
+            return _shared_timeline(plan, natural_durs_s)
+        covered_until = max(covered_until, segment.effective_end)
     return plan

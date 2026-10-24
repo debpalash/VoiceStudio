@@ -28,7 +28,6 @@ import pytest
 
 from services.fit_planner import FitParams, FitPlan, MAX_AUDIO_RATE_HARD, plan_fit
 from services.incremental import fit_fingerprint
-from api.routers.dub_export import _build_video_stretch_filter_graph
 
 
 def _single_seg_plan(natural: float, *, slot: float = 1.0, params: FitParams | None = None) -> FitPlan:
@@ -252,6 +251,9 @@ def test_audio_only_mode_within_hard_limit_has_no_overflow():
 
 
 def test_video_plan_feeds_the_stretch_filter_graph_builder():
+    """Planner chunks satisfy the export router's filter-graph contract."""
+    from api.routers.dub_export import _build_video_stretch_filter_graph
+
     p = plan_fit(
         [
             {"id": "a", "start": 1.0, "end": 3.0},
@@ -272,6 +274,9 @@ def test_video_plan_feeds_the_stretch_filter_graph_builder():
 
 
 def test_empty_segment_list_yields_empty_plan():
+    """An empty track retains source duration and needs no video filter."""
+    from api.routers.dub_export import _build_video_stretch_filter_graph
+
     p = plan_fit([], [], 10.0)
     assert p.segments == []
     assert p.video_plan == []

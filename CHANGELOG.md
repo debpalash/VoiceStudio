@@ -92,6 +92,10 @@ metadata and the backend fallback mirror it.
 
 - The sponsor footer is gone from the app; sponsored integrations keep a Featured badge on their card in Integrations (#3031)
 
+### Fixed
+
+- Smart Fit keeps overlapping speakers and captions on one timeline without replaying shared video — thanks @jonathanwxh-cell! (#3008)
+
 ### Docs
 
 - Google Play store listing, graphics and Play Console answers for the Android app are ready for the owner to submit (#3257, #3258)

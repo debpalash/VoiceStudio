@@ -23,3 +23,19 @@ filters; POSIX filenames keep literal backslashes. Two caption styles are availa
 Smart Fit exports burn captions after the video retime, so both styles follow
 the fitted timeline. The karaoke script can also be downloaded on its own from
 `GET /dub/ass/{job_id}` as an `.ass` sidecar.
+
+## Overlapping speakers in Smart Fit
+
+Smart Fit keeps overlapping speakers on one shared video timeline. Where their
+slots overlap, the largest requested video slowdown applies once; each voice
+starts at its mapped source onset. Captions retain overlapping cue times, and
+the background bed follows the same video timing. Non-overlapping slots keep
+their existing fitting behavior.
+
+If overlapping voices exceed the WAV level range, Smart Fit attenuates the
+whole mixed track by one constant factor to avoid clipped peaks. Tracks already
+within range retain their level. Legacy Stretch Video caption timing is
+preserved for saved plans that place overlapping source cues sequentially.
+
+Regenerate an affected Smart Fit track before exporting an older project:
+exporting an already saved track uses its saved fit plan and audio placement.
