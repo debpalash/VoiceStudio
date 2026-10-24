@@ -84,6 +84,12 @@ generation stays alive while the download makes progress; if a stalled
 download runs out of time, raise the compute-time budget in
 **Settings → Performance & Device** and try again.
 
+The text tokenizer reuses the configured Hugging Face Hub cache, including
+`HF_HOME` / `HF_HUB_CACHE` overrides. Loading it preserves `HF_MODULES_CACHE`
+instead of creating a nested cache beside the downloaded model code, keeping
+the app's short Windows cache paths effective. Tokenizers already downloaded
+into an older nested cache remain usable offline without another download.
+
 ## Troubleshooting
 
 - "moss_tts_nano package not installed": run the clone + `uv pip install -e .`
