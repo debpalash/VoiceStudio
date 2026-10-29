@@ -795,3 +795,27 @@ def test_unreadable_reference_reports_an_actionable_error(monkeypatch, tmp_path)
         rig.instance.generate("x", ref_audio=str(broken), ref_text="hello there")
     assert "reference" in str(exc_info.value).lower()
     assert not rig.argvs, "the CLI must not be spawned with an unusable reference"
+
+def test_oversized_reference_is_refused_before_it_is_decoded(monkeypatch, tmp_path):
+    """A reference whose decoded size does not fit the backend's budget is
+    refused with an actionable message instead of being decoded.
+
+    The upload path caps a reference at 128 MB on disk, but a lossy
+    container decodes to far more than that, and the conversion decodes it
+    in the backend process.
+    """
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.ogg"
+    _write_3s_ogg(reference)
+    monkeypatch.setattr(
+        gguf_backend,
+        "_reference_decoded_bytes",
+        lambda path: gguf_backend._MAX_REFERENCE_DECODED_BYTES + 1,
+    )
+
+    rig = _PromptRig(monkeypatch, tmp_path)
+    with pytest.raises(ValueError) as exc_info:
+        rig.instance.generate("x", ref_audio=str(reference), ref_text="hello there")
+    assert "too long" in str(exc_info.value).lower()
+    assert not rig.argvs, "the CLI must not be spawned with an oversized reference"

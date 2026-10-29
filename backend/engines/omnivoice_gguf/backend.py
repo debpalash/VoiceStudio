@@ -89,6 +89,13 @@ _HF_REPO_ID = "Serveurperso/OmniVoice-GGUF"
 _HF_TOKEN_RE = re.compile(r"hf_[A-Za-z0-9]{30,}")
 _HF_TOKEN_MASK = "hf_***REDACTED***"
 
+#: Decoded budget for one reference clip. The profile upload path caps a
+#: reference at 128 MB on disk (``api.routers.profiles``), but a lossy
+#: container decodes to far more than that, and converting a reference
+#: decodes it in the backend process. A clip that does not fit is refused
+#: with an actionable message instead of exhausting the backend.
+_MAX_REFERENCE_DECODED_BYTES = 128 * 1024 * 1024
+
 
 def _mask_token(s: str) -> str:
     """Belt-and-suspenders token redaction. Used on captured stderr
@@ -390,6 +397,32 @@ def _is_riff_wave(path: Path) -> bool:
     return len(header) == 12 and header[:4] == b"RIFF" and header[8:12] == b"WAVE"
 
 
+def _reference_decoded_bytes(prompt: Path) -> Optional[int]:
+    """Decoded size of a reference clip in bytes, or None when unknown.
+
+    The size is read from the container metadata, so nothing is decoded and
+    nothing is allocated to learn it.
+    """
+    try:
+        import soundfile as sf
+
+        info = sf.info(str(prompt))
+        return int(info.frames) * int(info.channels) * 4  # float32 samples
+    except Exception:  # noqa: BLE001 — libsndfile cannot read every container
+        # M4A/AAC and friends: fall back to the app's duration probe.
+        pass
+    try:
+        from services.tts_backend import reference_duration_s
+
+        seconds = reference_duration_s(str(prompt))
+    except Exception:  # noqa: BLE001 — an unknown size is not a refusal
+        return None
+    if seconds is None:
+        return None
+    # Worst case for the clip's own rate and layout: 48 kHz stereo float32.
+    return int(seconds * 48_000 * 2 * 4)
+
+
 def _convert_reference_to_wav(prompt: Path) -> Path:
     """Decode ``prompt`` into a temporary WAV the GGUF CLI can read.
 
@@ -403,24 +436,36 @@ def _convert_reference_to_wav(prompt: Path) -> Path:
     """
     from services.audio_io import atomic_save_wav, load_audio
 
+    decoded = _reference_decoded_bytes(prompt)
+    if decoded is not None and decoded > _MAX_REFERENCE_DECODED_BYTES:
+        # The upload path caps a reference at 128 MB on disk, but a lossy
+        # container decodes to far more than that — and the conversion
+        # decodes it in the backend process, while the CLI would do it in
+        # its own. Refuse instead of exhausting the backend.
+        raise ValueError(
+            "The voice profile's reference clip is too long to convert. "
+            "Trim it to a shorter clip and upload it again."
+        )
+    try:
+        wav, rate = load_audio(prompt)
+    except Exception as exc:  # noqa: BLE001 — any decode failure is "unreadable"
+        raise ValueError(
+            "The voice profile's reference clip could not be read as audio. "
+            "Re-upload the clip as a WAV, MP3, M4A, FLAC or OGG file."
+        ) from exc
     fd, name = tempfile.mkstemp(prefix="omnivoice-gguf-ref-", suffix=".wav")
     os.close(fd)
     target = Path(name)
     try:
-        try:
-            wav, rate = load_audio(prompt)
-            atomic_save_wav(str(target), wav, rate)
-        except Exception as exc:  # noqa: BLE001 — any decode failure is "unreadable"
-            raise ValueError(
-                "The voice profile's reference clip could not be read as audio. "
-                "Re-upload the clip as a WAV, MP3, M4A, FLAC or OGG file."
-            ) from exc
+        atomic_save_wav(str(target), wav, rate)
     except BaseException:
         # BaseException so an interrupted write does not leave the temp file
-        # behind either.
+        # behind either. A write failure keeps its own cause — the user
+        # cannot fix it by re-uploading the clip.
         try:
             target.unlink()
         except OSError:
+            # Already gone, or not ours to remove.
             pass
         raise
     return target
