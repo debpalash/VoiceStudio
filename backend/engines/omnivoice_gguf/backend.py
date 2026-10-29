@@ -419,6 +419,9 @@ def _ffprobe_decoded_bytes(prompt: Path) -> Optional[int]:
                 tool="ffprobe",
             ),
             capture_output=True, timeout=60, check=False,
+            # Every spawn in this module carries the loader env
+            # (tests/test_gguf_source_build_runtime_1348.py).
+            env=_spawn_env(),
         )
         if proc.returncode != 0:
             return None
