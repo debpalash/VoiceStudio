@@ -375,6 +375,81 @@ def _sha256_of_file(p: Path, *, chunk: int = 1 << 20) -> str:
     return h.hexdigest()
 
 
+def _is_riff_wave(path: Path) -> bool:
+    """True when ``path`` carries the RIFF/WAVE header the CLI can parse.
+
+    The bundled runtime reads WAV containers only (``omnivoice.cpp``
+    ``src/wav.h``: ``read_wav_buf`` rejects anything whose first bytes are
+    not ``RIFF``/``WAVE``), so anything else has to be converted first.
+    """
+    try:
+        with path.open("rb") as handle:
+            header = handle.read(12)
+    except OSError:
+        return False
+    return len(header) == 12 and header[:4] == b"RIFF" and header[8:12] == b"WAVE"
+
+
+def _convert_reference_to_wav(prompt: Path) -> Path:
+    """Decode ``prompt`` into a temporary WAV the GGUF CLI can read.
+
+    A voice profile keeps the reference clip in whatever container the user
+    uploaded (the profile editor accepts MP3, M4A, ...), but the CLI's WAV
+    reader only understands RIFF/WAVE — an MP3 reference killed the spawn
+    with "[WAV] Not a valid WAV buffer" (#3655). Decode through the app's
+    own loader (torchaudio → soundfile → ffmpeg) and write a WAV next to
+    the other per-call temp files. The CLI resamples and downmixes the
+    prompt itself, so the clip keeps its own rate and channel layout.
+    """
+    from services.audio_io import atomic_save_wav, load_audio
+
+    fd, name = tempfile.mkstemp(prefix="omnivoice-gguf-ref-", suffix=".wav")
+    os.close(fd)
+    target = Path(name)
+    try:
+        try:
+            wav, rate = load_audio(prompt)
+            atomic_save_wav(str(target), wav, rate)
+        except Exception as exc:  # noqa: BLE001 — any decode failure is "unreadable"
+            raise ValueError(
+                "The voice profile's reference clip could not be read as audio. "
+                "Re-upload the clip as a WAV, MP3, M4A, FLAC or OGG file."
+            ) from exc
+    except BaseException:
+        # BaseException so an interrupted write does not leave the temp file
+        # behind either.
+        try:
+            target.unlink()
+        except OSError:
+            pass
+        raise
+    return target
+
+
+def _validated_reference(ref_audio: str) -> Path:
+    """Resolve a reference clip and check it against the engine's read policy.
+
+    The prompt clip must live under a directory this app owns (voices,
+    dubbing workspace or the temp dir) so a request cannot point the
+    binary at arbitrary files on disk.
+    """
+    from core.config import DUB_DIR, VOICES_DIR
+
+    prompt = Path(ref_audio).resolve()
+    roots = [
+        Path(VOICES_DIR).resolve(),
+        Path(DUB_DIR).resolve(),
+        Path(tempfile.gettempdir()).resolve(),
+    ]
+    if not any(prompt == root or prompt.is_relative_to(root) for root in roots):
+        raise FileNotFoundError(
+            f"Reference audio is outside the directories this engine may read: {prompt}"
+        )
+    if not prompt.is_file():
+        raise FileNotFoundError(f"Reference audio file does not exist: {prompt}")
+    return prompt
+
+
 def _automatic_entry(quant_map: dict) -> dict:
     """The quant entry the automatic compute policy selects.
 
@@ -901,6 +976,7 @@ def _make_backend_class():
             os.close(fd)
             out_path = Path(out_name)
             transcript_path: Optional[Path] = None
+            converted_prompt: Optional[Path] = None
             try:
                 if ref_audio and ref_text:
                     # A file keeps arbitrary transcript text out of argv.
@@ -908,6 +984,15 @@ def _make_backend_class():
                     transcript_path = Path(t_name)
                     with os.fdopen(t_fd, "w", encoding="utf-8") as handle:
                         handle.write(str(ref_text))
+                # The CLI reads WAV containers only, so a profile reference
+                # stored as MP3/M4A/... has to be converted before it is
+                # handed over (#3655). The original path is validated first —
+                # the conversion reads the file.
+                if ref_audio:
+                    prompt = _validated_reference(ref_audio)
+                    if not _is_riff_wave(prompt):
+                        converted_prompt = _convert_reference_to_wav(prompt)
+                        ref_audio = str(converted_prompt)
                 argv = self._build_argv(
                     base=base,
                     tokenizer=tokenizer,
@@ -926,7 +1011,7 @@ def _make_backend_class():
                 self._run_subprocess(argv, stdin_text=text)
                 samples, _rate = sf.read(str(out_path), dtype="float32")
             finally:
-                for leftover in (out_path, transcript_path):
+                for leftover in (out_path, transcript_path, converted_prompt):
                     if leftover is None:
                         continue
                     try:
@@ -986,20 +1071,9 @@ def _make_backend_class():
                 argv.append("--no-preprocess-prompt")
 
             if ref_audio:
-                from core.config import DUB_DIR, VOICES_DIR
-
-                prompt = Path(ref_audio).resolve()
-                roots = [
-                    Path(VOICES_DIR).resolve(),
-                    Path(DUB_DIR).resolve(),
-                    Path(tempfile.gettempdir()).resolve(),
-                ]
-                if not any(prompt == root or prompt.is_relative_to(root) for root in roots):
-                    raise FileNotFoundError(
-                        f"Reference audio is outside the directories this engine may read: {prompt}"
-                    )
-                if not prompt.is_file():
-                    raise FileNotFoundError(f"Reference audio file does not exist: {prompt}")
+                # Two-stage validation (defense in depth) — see
+                # :func:`_validated_reference`.
+                prompt = _validated_reference(ref_audio)
                 argv += ["--ref-wav", str(prompt)]
                 if ref_text:
                     argv += ["--ref-text", str(ref_text)]

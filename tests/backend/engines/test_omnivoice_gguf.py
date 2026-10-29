@@ -650,3 +650,148 @@ def test_select_default_falls_back_on_zero_byte_placeholder(monkeypatch, tmp_pat
     monkeypatch.setattr(gguf_backend, "_is_macos_quarantined", lambda p: False)
 
     assert gguf_backend.select_default_engine() == "omnivoice"
+
+
+# ── #3655 — the CLI reads WAV containers only ────────────────────────────────
+
+
+def _cli_wav_format(data: bytes) -> tuple[int, int]:
+    """Return ``(audio_format, bits_per_sample)`` the way the runtime reads it.
+
+    Mirrors ``read_wav_buf`` in the pinned ``omnivoice.cpp`` (``src/wav.h``):
+    the container must start with ``RIFF``/``WAVE`` and the ``fmt `` chunk
+    must declare a format the runtime decodes — PCM (1) at 16/24 bits or
+    IEEE float (3) at 32 bits. Anything else makes the CLI exit with
+    "[WAV] Not a valid WAV buffer".
+    """
+    assert len(data) >= 12, "too short to be a RIFF file"
+    assert data[:4] == b"RIFF" and data[8:12] == b"WAVE", (
+        "not a RIFF/WAVE container"
+    )
+    audio_format = 0
+    bits = 0
+    pos = 12
+    while pos + 8 <= len(data):
+        chunk_id = data[pos:pos + 4]
+        size = int.from_bytes(data[pos + 4:pos + 8], "little")
+        body = data[pos + 8:pos + 8 + size]
+        if chunk_id == b"fmt " and len(body) >= 16:
+            audio_format = int.from_bytes(body[0:2], "little")
+            bits = int.from_bytes(body[14:16], "little")
+            if audio_format == 0xFFFE and len(body) >= 40:
+                # WAVE_FORMAT_EXTENSIBLE collapses to its sub-format.
+                sub = int.from_bytes(body[24:26], "little")
+                if sub in (1, 3):
+                    audio_format = sub
+        pos += 8 + size + (size & 1)
+    assert audio_format in (1, 3), f"unsupported WAV format tag {audio_format}"
+    if audio_format == 1:
+        assert bits in (16, 24), f"unsupported PCM width {bits}"
+    else:
+        assert bits == 32, f"unsupported float width {bits}"
+    return audio_format, bits
+
+
+def _write_3s_ogg(out_path: Path, sr: int = 24_000) -> None:
+    """Write a 3-second mono Ogg Vorbis clip — a non-WAV profile reference.
+
+    The profile editor keeps the reference in whatever container the user
+    uploaded, so an MP3/M4A/Ogg reference reaches the engine verbatim.
+    """
+    import math
+
+    import numpy as np
+    import soundfile as sf
+
+    t = np.arange(sr * 3, dtype="float32") / sr
+    sf.write(out_path, (0.05 * np.sin(2 * math.pi * 440 * t)).astype("float32"),
+             sr, format="OGG")
+
+
+class _PromptRig:
+    """Backend wired to a stub runner that records the CLI argv.
+
+    Unlike :class:`_GgufRig` this patches the engine's own spawn method
+    instead of ``subprocess.run``, so a test that reaches ffmpeg (the
+    fallback decoder) still runs the real subprocess.
+    """
+
+    def __init__(self, monkeypatch, tmp_path):
+        from engines.omnivoice_gguf import backend as mod
+
+        self.mod = mod
+        self.argvs: list[list[str]] = []
+        self.ref_bytes: bytes = b""
+        self.instance = mod._make_backend_class()()
+        weights, codec = tmp_path / "w.gguf", tmp_path / "c.gguf"
+        weights.write_bytes(b"0")
+        codec.write_bytes(b"0")
+        monkeypatch.setattr(
+            self.instance, "_resolve_quant_paths",
+            lambda: (weights, codec, {"base": weights.name, "codec": codec.name}),
+        )
+        exe = tmp_path / "stub-tts-exe"
+        exe.write_bytes(b"\x7fELF" + b"\x00" * 16)
+        exe.chmod(0o755)
+        monkeypatch.setattr(mod, "_binary_path", lambda slug=None: exe)
+
+        def fake_run(argv, *, stdin_text):
+            self.argvs.append(list(argv))
+            # Read the prompt while it still exists: the converted copy is
+            # deleted once the call returns.
+            ref = Path(argv[argv.index("--ref-wav") + 1]) if "--ref-wav" in argv else None
+            self.ref_bytes = ref.read_bytes() if ref is not None else b""
+            _write_3s_wav(Path(argv[argv.index("-o") + 1]))
+
+        monkeypatch.setattr(self.instance, "_run_subprocess", fake_run)
+
+    def ref_wav(self) -> Path:
+        argv = self.argvs[-1]
+        return Path(argv[argv.index("--ref-wav") + 1])
+
+
+def test_non_wav_reference_is_converted_before_it_reaches_the_cli(monkeypatch, tmp_path):
+    """#3655 — a profile reference stored as a non-WAV container must not be
+    handed to the CLI verbatim.
+
+    The bundled runtime parses RIFF/WAVE only, so an MP3 (or Ogg, M4A, …)
+    reference killed every generation with "[WAV] Not a valid WAV buffer".
+    """
+    reference = tmp_path / "profile-ref.ogg"
+    _write_3s_ogg(reference)
+
+    rig = _PromptRig(monkeypatch, tmp_path)
+    rig.instance.generate("x", ref_audio=str(reference), ref_text="hello there")
+
+    handed_over = rig.ref_wav()
+    assert handed_over != reference.resolve(), "the raw profile clip was handed to the CLI"
+    # The file the CLI receives must satisfy the runtime's WAV contract.
+    _cli_wav_format(rig.ref_bytes)
+    # The converted copy is transient.
+    assert not handed_over.exists()
+    # The stored profile clip is left untouched.
+    assert reference.exists()
+
+
+def test_wav_reference_is_handed_to_the_cli_unchanged(monkeypatch, tmp_path):
+    """A WAV reference is already CLI-readable — it must not be re-encoded."""
+    reference = tmp_path / "profile-ref.wav"
+    _write_3s_wav(reference)
+
+    rig = _PromptRig(monkeypatch, tmp_path)
+    rig.instance.generate("x", ref_audio=str(reference), ref_text="hello there")
+
+    assert rig.ref_wav() == reference.resolve()
+
+
+def test_unreadable_reference_reports_an_actionable_error(monkeypatch, tmp_path):
+    """A reference that cannot be decoded fails with a readable message
+    instead of the CLI's "Not a valid WAV buffer"."""
+    broken = tmp_path / "profile-ref.ogg"
+    broken.write_bytes(b"this is not audio")
+
+    rig = _PromptRig(monkeypatch, tmp_path)
+    with pytest.raises(ValueError) as exc_info:
+        rig.instance.generate("x", ref_audio=str(broken), ref_text="hello there")
+    assert "reference" in str(exc_info.value).lower()
+    assert not rig.argvs, "the CLI must not be spawned with an unusable reference"
