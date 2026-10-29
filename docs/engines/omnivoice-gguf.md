@@ -305,6 +305,9 @@ Before reporting ready, the engine:
 - Output is 24 kHz mono — same model, same rate as in-process OmniVoice.
 - Cloning from a reference clip (with optional transcript) and style
   instructions are supported; no voice design.
+- The runtime reads WAV containers only, so a reference clip saved in
+  another format (MP3, M4A, Ogg, ...) is converted to a temporary WAV
+  before the binary is spawned.
 - Same multilingual surface as OmniVoice ([languages.md](../languages.md)).
 - Because generation runs in another process, the app's own GPU counters
   don't see its allocations — diagnostics label it accordingly.
