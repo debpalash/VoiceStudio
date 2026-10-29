@@ -397,47 +397,45 @@ def _is_riff_wave(path: Path) -> bool:
     return len(header) == 12 and header[:4] == b"RIFF" and header[8:12] == b"WAVE"
 
 
-def _reference_audio_properties(prompt: Path) -> Optional[tuple[float, int, int]]:
-    """``(duration_s, channels, sample_rate)`` of a reference clip, or None.
+def _reference_decoded_bytes(prompt: Path) -> int:
+    """Decoded size of a reference clip in bytes.
 
-    Metadata only — nothing is decoded, so an oversized clip is refused
-    before anything is allocated. ``libsndfile`` reads the header of every
-    container the app's decoder accepts, so the size is known for the
-    formats a reference can be cloned from at all.
+    Read from the container header — the audio is never decoded, so an
+    oversized clip is refused before anything is allocated. ``libsndfile``
+    reads the header of every container the app's decoder accepts, so the
+    size is exact for the formats a reference can be cloned from at all.
+
+    Raises :class:`ValueError` when the header cannot be read: a clip of
+    unknown size is exactly what this budget exists to keep out, and the
+    decoder cannot read such a container either.
     """
     try:
         import soundfile as sf
 
         info = sf.info(str(prompt))
-    except Exception:  # noqa: BLE001 — an unknown size is not a refusal
-        return None
-    return float(info.duration), int(info.channels), int(info.samplerate)
-
-
-def _reference_decoded_bytes(prompt: Path) -> Optional[int]:
-    """Decoded size of a reference clip in bytes, or None when unknown."""
-    properties = _reference_audio_properties(prompt)
-    if properties is None:
-        return None
-    duration, channels, sample_rate = properties
-    return int(duration * sample_rate * channels * 4)  # float32 samples
+    except Exception as exc:  # noqa: BLE001 — an unreadable header is a refusal
+        raise ValueError(
+            "The voice profile's reference clip could not be read as audio. "
+            "Re-upload the clip as a WAV, MP3, FLAC or OGG file."
+        ) from exc
+    return int(info.frames) * int(info.channels) * 4  # float32 samples
 
 
 def _convert_reference_to_wav(prompt: Path) -> Path:
     """Decode ``prompt`` into a temporary WAV the GGUF CLI can read.
 
     A voice profile keeps the reference clip in whatever container the user
-    uploaded (the profile editor accepts MP3, M4A, ...), but the CLI's WAV
-    reader only understands RIFF/WAVE — an MP3 reference killed the spawn
-    with "[WAV] Not a valid WAV buffer" (#3655). Decode through the app's
-    own loader (torchaudio → soundfile → ffmpeg) and write a WAV next to
-    the other per-call temp files. The CLI resamples and downmixes the
+    uploaded (the profile editor accepts MP3, FLAC, Ogg, ...), but the CLI's
+    WAV reader only understands RIFF/WAVE — an MP3 reference killed the
+    spawn with "[WAV] Not a valid WAV buffer" (#3655). Decode through the
+    app's own loader (torchaudio → soundfile → ffmpeg) and write a WAV next
+    to the other per-call temp files. The CLI resamples and downmixes the
     prompt itself, so the clip keeps its own rate and channel layout.
     """
     from services.audio_io import atomic_save_wav, load_audio
 
     decoded = _reference_decoded_bytes(prompt)
-    if decoded is not None and decoded > _MAX_REFERENCE_DECODED_BYTES:
+    if decoded > _MAX_REFERENCE_DECODED_BYTES:
         # The upload path caps a reference at 128 MB on disk, but a lossy
         # container decodes to far more than that — and the conversion
         # decodes it in the backend process, while the CLI would do it in
@@ -448,6 +446,10 @@ def _convert_reference_to_wav(prompt: Path) -> Path:
         )
     try:
         wav, rate = load_audio(prompt)
+    except ValueError:
+        # The loader's own size-limit errors ("use a shorter clip") are
+        # actionable as they are — do not turn them into a re-upload hint.
+        raise
     except Exception as exc:  # noqa: BLE001 — any decode failure is "unreadable"
         raise ValueError(
             "The voice profile's reference clip could not be read as audio. "

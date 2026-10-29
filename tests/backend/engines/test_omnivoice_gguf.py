@@ -821,15 +821,74 @@ def test_oversized_reference_is_refused_before_it_is_decoded(monkeypatch, tmp_pa
     assert not rig.argvs, "the CLI must not be spawned with an oversized reference"
 
 
-def test_reference_properties_are_read_without_decoding(monkeypatch, tmp_path):
-    """The size guard reads the clip's metadata, so an oversized clip is
-    refused before anything is decoded."""
+def test_reference_size_is_read_without_decoding(monkeypatch, tmp_path):
+    """The size guard reads the clip's header, so nothing is decoded.
+
+    A guard that decoded the clip to size it would defeat itself, so the
+    sample-reading path is made to fail: the size must still come back.
+    """
+    import soundfile as sf
+
     from engines.omnivoice_gguf import backend as gguf_backend
 
     reference = tmp_path / "profile-ref.ogg"
     _write_3s_ogg(reference)
 
-    duration, channels, sample_rate = gguf_backend._reference_audio_properties(reference)
-    assert duration == pytest.approx(3.0, abs=0.2)
-    assert channels == 1
-    assert sample_rate == 24_000
+    def _explode(*_a, **_k):
+        raise AssertionError("the reference must not be decoded to size it")
+
+    monkeypatch.setattr(sf, "read", _explode)
+
+    size = gguf_backend._reference_decoded_bytes(reference)
+    assert size == pytest.approx(3 * 24_000 * 4, rel=0.01)
+
+
+def test_reference_of_unknown_size_is_refused_before_it_is_decoded(monkeypatch, tmp_path):
+    """A reference whose header cannot be read is refused, not decoded.
+
+    An unbounded decode is exactly what the budget exists to prevent, so a
+    clip of unknown size never reaches the decoder.
+    """
+    import services.audio_io as audio_io
+
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    unknown = tmp_path / "profile-ref.m4a"
+    unknown.write_bytes(b"not a container libsndfile can size")
+
+    decoded: list = []
+
+    def _explode(*_a, **_k):
+        decoded.append(True)
+        raise AssertionError("an unsized reference must not be decoded")
+
+    monkeypatch.setattr(audio_io, "load_audio", _explode)
+
+    with pytest.raises(ValueError) as exc_info:
+        gguf_backend._convert_reference_to_wav(unknown)
+    assert not decoded, "an unsized reference must not be decoded"
+    assert "could not be read" in str(exc_info.value)
+
+
+def test_loader_size_limit_error_is_kept(monkeypatch, tmp_path):
+    """The loader's own size-limit error stays as it is.
+
+    It already says "use a shorter clip"; turning it into a re-upload
+    hint would send the user after the wrong fix.
+    """
+    import services.audio_io as audio_io
+
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.ogg"
+    _write_3s_ogg(reference)
+
+    def _too_big(*_a, **_k):
+        raise ValueError("Audio exceeds the decoding size limit; use a shorter clip.")
+
+    monkeypatch.setattr(audio_io, "load_audio", _too_big)
+
+    with pytest.raises(ValueError) as exc_info:
+        gguf_backend._convert_reference_to_wav(reference)
+    assert "shorter clip" in str(exc_info.value)
+    assert "re-upload" not in str(exc_info.value)
