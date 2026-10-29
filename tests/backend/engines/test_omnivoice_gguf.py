@@ -819,3 +819,17 @@ def test_oversized_reference_is_refused_before_it_is_decoded(monkeypatch, tmp_pa
         rig.instance.generate("x", ref_audio=str(reference), ref_text="hello there")
     assert "too long" in str(exc_info.value).lower()
     assert not rig.argvs, "the CLI must not be spawned with an oversized reference"
+
+
+def test_reference_properties_are_read_without_decoding(monkeypatch, tmp_path):
+    """The size guard reads the clip's metadata, so an oversized clip is
+    refused before anything is decoded."""
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.ogg"
+    _write_3s_ogg(reference)
+
+    duration, channels, sample_rate = gguf_backend._reference_audio_properties(reference)
+    assert duration == pytest.approx(3.0, abs=0.2)
+    assert channels == 1
+    assert sample_rate == 24_000

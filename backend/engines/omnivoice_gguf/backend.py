@@ -397,30 +397,58 @@ def _is_riff_wave(path: Path) -> bool:
     return len(header) == 12 and header[:4] == b"RIFF" and header[8:12] == b"WAVE"
 
 
-def _reference_decoded_bytes(prompt: Path) -> Optional[int]:
-    """Decoded size of a reference clip in bytes, or None when unknown.
+def _reference_audio_properties(prompt: Path) -> Optional[tuple[float, int, int]]:
+    """``(duration_s, channels, sample_rate)`` of a reference clip, or None.
 
-    The size is read from the container metadata, so nothing is decoded and
-    nothing is allocated to learn it.
+    Metadata only — nothing is decoded, so an oversized clip is refused
+    before anything is allocated.
     """
     try:
         import soundfile as sf
 
         info = sf.info(str(prompt))
-        return int(info.frames) * int(info.channels) * 4  # float32 samples
+        return float(info.duration), int(info.channels), int(info.samplerate)
     except Exception:  # noqa: BLE001 — libsndfile cannot read every container
-        # M4A/AAC and friends: fall back to the app's duration probe.
+        # M4A/AAC and video files: ask ffprobe for the audio stream's
+        # properties instead.
         pass
     try:
-        from services.tts_backend import reference_duration_s
+        from services.ffmpeg_utils import find_ffprobe, local_inputs_only
 
-        seconds = reference_duration_s(str(prompt))
+        ffprobe = find_ffprobe()
+        if not ffprobe:
+            return None
+        proc = subprocess.run(
+            local_inputs_only(
+                [ffprobe, "-v", "error", "-select_streams", "a:0",
+                 "-show_entries", "stream=channels,sample_rate:format=duration",
+                 "-of", "json", str(prompt)],
+                tool="ffprobe",
+            ),
+            capture_output=True, timeout=60, check=False,
+        )
+        if proc.returncode != 0:
+            return None
+        payload = json.loads(proc.stdout.decode("utf-8", errors="replace"))
+        streams = payload.get("streams") or [{}]
+        stream = streams[0]
+        duration = float((payload.get("format") or {}).get("duration") or 0.0)
+        channels = int(stream.get("channels") or 0)
+        sample_rate = int(stream.get("sample_rate") or 0)
+        if duration <= 0 or channels <= 0 or sample_rate <= 0:
+            return None
+        return duration, channels, sample_rate
     except Exception:  # noqa: BLE001 — an unknown size is not a refusal
         return None
-    if seconds is None:
+
+
+def _reference_decoded_bytes(prompt: Path) -> Optional[int]:
+    """Decoded size of a reference clip in bytes, or None when unknown."""
+    properties = _reference_audio_properties(prompt)
+    if properties is None:
         return None
-    # Worst case for the clip's own rate and layout: 48 kHz stereo float32.
-    return int(seconds * 48_000 * 2 * 4)
+    duration, channels, sample_rate = properties
+    return int(duration * sample_rate * channels * 4)  # float32 samples
 
 
 def _convert_reference_to_wav(prompt: Path) -> Path:
