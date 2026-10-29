@@ -401,45 +401,17 @@ def _reference_audio_properties(prompt: Path) -> Optional[tuple[float, int, int]
     """``(duration_s, channels, sample_rate)`` of a reference clip, or None.
 
     Metadata only — nothing is decoded, so an oversized clip is refused
-    before anything is allocated.
+    before anything is allocated. ``libsndfile`` reads the header of every
+    container the app's decoder accepts, so the size is known for the
+    formats a reference can be cloned from at all.
     """
     try:
         import soundfile as sf
 
         info = sf.info(str(prompt))
-        return float(info.duration), int(info.channels), int(info.samplerate)
-    except Exception:  # noqa: BLE001 — libsndfile cannot read every container
-        # M4A/AAC and video files: ask ffprobe for the audio stream's
-        # properties instead.
-        pass
-    try:
-        from services.ffmpeg_utils import find_ffprobe, local_inputs_only
-
-        ffprobe = find_ffprobe()
-        if not ffprobe:
-            return None
-        proc = subprocess.run(
-            local_inputs_only(
-                [ffprobe, "-v", "error", "-select_streams", "a:0",
-                 "-show_entries", "stream=channels,sample_rate:format=duration",
-                 "-of", "json", str(prompt)],
-                tool="ffprobe",
-            ),
-            capture_output=True, timeout=60, check=False,
-        )
-        if proc.returncode != 0:
-            return None
-        payload = json.loads(proc.stdout.decode("utf-8", errors="replace"))
-        streams = payload.get("streams") or [{}]
-        stream = streams[0]
-        duration = float((payload.get("format") or {}).get("duration") or 0.0)
-        channels = int(stream.get("channels") or 0)
-        sample_rate = int(stream.get("sample_rate") or 0)
-        if duration <= 0 or channels <= 0 or sample_rate <= 0:
-            return None
-        return duration, channels, sample_rate
     except Exception:  # noqa: BLE001 — an unknown size is not a refusal
         return None
+    return float(info.duration), int(info.channels), int(info.samplerate)
 
 
 def _reference_decoded_bytes(prompt: Path) -> Optional[int]:
@@ -479,7 +451,7 @@ def _convert_reference_to_wav(prompt: Path) -> Path:
     except Exception as exc:  # noqa: BLE001 — any decode failure is "unreadable"
         raise ValueError(
             "The voice profile's reference clip could not be read as audio. "
-            "Re-upload the clip as a WAV, MP3, M4A, FLAC or OGG file."
+            "Re-upload the clip as a WAV, MP3, FLAC or OGG file."
         ) from exc
     fd, name = tempfile.mkstemp(prefix="omnivoice-gguf-ref-", suffix=".wav")
     os.close(fd)
