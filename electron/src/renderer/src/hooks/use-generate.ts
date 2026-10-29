@@ -147,6 +147,12 @@ function announceInstructWarnings(free: string): string {
 
 function announceResultNotices(result: GenerateResult): void {
   announceDroppedSpeech(result.dropped);
+  // Inline-tag pre-flight (services/tag_policy): a reaction tag the engine does
+  // not render is spoken as a literal word. The take is clean, just wrong —
+  // name the tags once; removing them or switching engines is the fix.
+  if (result.tagWarning?.count) {
+    toast.warning(tr('tts.tagWarning', { tags: result.tagWarning.tags.join(', ') }));
+  }
   // The backend only sets the routing headers on cpu_fallback / accelerated-
   // with-caveat, so their presence is the signal.
   if (result.routing && result.routing.status !== lastRoutingStatus) {

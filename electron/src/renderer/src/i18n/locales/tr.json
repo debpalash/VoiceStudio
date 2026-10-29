@@ -254,6 +254,7 @@
     "voiceCallHint": "\"Arama yapabilir\" olarak işaretlenen sesler doğrulanmış kendi sesiniz veya tasarlanmış bir sestir. Yalnızca bunlar arama yapabilir."
   },
   "tts": {
+    "tagWarning": "Bu satır içi tepki etiketleri çalıştırılmak yerine sözcük olarak okunacak: {{tags}}. Etiketleri kaldırın veya bunları işleyen bir motora geçin.",
     "generationComplete": "Konuşma oluşturma tamamlandı",
     "routingFallback": "CPU üzerinde çalışıyor - bu motorun makinenizde GPU yolu yoktur, bu nedenle üretim daha yavaş olacaktır. {{reason}}",
     "routingCaveat": "GPU kullanılıyor ancak: {{reason}}",

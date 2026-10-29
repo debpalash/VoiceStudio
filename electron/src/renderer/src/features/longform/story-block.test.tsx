@@ -1,6 +1,27 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import i18n from '@/i18n';
+
+// The tone palette is engine-gated (#3422): StoryBlock reads the active
+// engine's expression_caps.tags. Tests that do not care get the full
+// OmniVoice vocabulary; the gating test narrows it.
+const engineMock = vi.hoisted(() => ({
+  tags: ['[laughter]', '[sigh]', '[question-en]', '[surprise-wa]', '[confirmation-en]', '[dissatisfaction-hnn]'] as string[],
+}));
+
+vi.mock('@/hooks/use-engines', () => ({
+  useEngines: () => ({
+    activeTts: {
+      id: 'omnivoice',
+      display_name: 'VoiceStudio (k2-fsa/OmniVoice, 600+ languages)',
+      expression_caps: { emotion: 'direction', tags: engineMock.tags },
+    },
+  }),
+}));
+
+afterEach(() => {
+  engineMock.tags = ['[laughter]', '[sigh]', '[question-en]', '[surprise-wa]', '[confirmation-en]', '[dissatisfaction-hnn]'];
+});
 
 vi.mock('@/components/waveform-player', () => ({ WaveformPlayer: () => null }));
 vi.mock('./story-preview', () => ({ previewStoryLine: vi.fn() }));
@@ -90,6 +111,23 @@ it('shows one chip row: speaker, effective voice, and speed only when overridden
     name: i18n.t('stories.toneChip', { speed: '1.25×' }),
   });
   expect(secondTone.textContent).toBe('1.25×');
+});
+
+it('grays a tone the active engine does not render and explains why', async () => {
+  engineMock.tags = ['[laughter]'];
+  const draft = draftWith([{ id: 'a', text: 'Hello.', profileId: null }]);
+  render(<StoryEditor draft={draft} profiles={profiles} disabled={false} onChange={vi.fn()} />);
+  fireEvent.click(
+    screen.getByRole('button', { name: i18n.t('stories.toneChip', { speed: '1.00×' }) }),
+  );
+  const laugh = await screen.findByRole('button', { name: i18n.t('stories.tones.laugh') });
+  const sigh = screen.getByRole('button', { name: i18n.t('stories.tones.sigh') });
+  expect(laugh).toBeEnabled();
+  expect(sigh).toBeDisabled();
+  expect(sigh).toHaveAttribute(
+    'title',
+    i18n.t('expression.tags_unsupported', { engine: 'OmniVoice' }),
+  );
 });
 
 it('names a removed voice profile as unavailable instead of a fallback voice', () => {

@@ -667,6 +667,7 @@
     "route_not_found": "O backend de VoiceStudio en execución non ten un punto final {{route}}. Reinicie VoiceStudio para que a aplicación e o backend coincidan; se persiste, actualice ambos á mesma versión."
   },
   "tts": {
+    "tagWarning": "Estas etiquetas de reacción en liña leranse en voz alta no canto de interpretarse: {{tags}}. Quítalas ou cambia a un motor que as interprete.",
     "generationComplete": "Xeración de fala completada",
     "routingFallback": "Executándose na CPU: este motor non ten ruta da GPU na túa máquina, polo que a xeración será máis lenta. {{reason}}",
     "routingCaveat": "Usando a GPU, pero: {{reason}}",

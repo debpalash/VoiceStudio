@@ -1405,6 +1405,17 @@
       "title": "Text",
       "type": "string"
      },
+     "text_normalization": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Text Normalization"
+     },
      "wav_bits": {
       "default": "16",
       "enum": [

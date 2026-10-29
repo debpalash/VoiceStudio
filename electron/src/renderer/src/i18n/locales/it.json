@@ -254,6 +254,7 @@
     "voiceCallHint": "Le voci contrassegnate con «Può chiamare» sono la tua voce verificata o una voce progettata. Solo queste possono effettuare chiamate."
   },
   "tts": {
+    "tagWarning": "Questi tag di reazione inline verranno letti come parole invece di essere eseguiti: {{tags}}. Rimuovili o passa a un motore che li interpreta.",
     "generationComplete": "Generazione vocale completata",
     "routingFallback": "In esecuzione su CPU: questo motore non ha un percorso GPU sul tuo computer, quindi la generazione sarà più lenta. {{reason}}",
     "routingCaveat": "Utilizzando la GPU, ma: {{reason}}",

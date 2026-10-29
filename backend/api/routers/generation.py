@@ -1864,6 +1864,13 @@ async def generate_speech(
     # OMNIVOICE_PRONUNCIATION env var can disable it for power users. Omitting it
     # with an empty dictionary is byte-identical to legacy behavior.
     pronounce: bool = Form(True),
+    # Engine-agnostic text normalization for THIS request: "auto" (default —
+    # the OMNIVOICE_TEXT_NORMALIZATION env switch decides, default ON),
+    # "on" (force) or "off" (send the text exactly as typed). The
+    # per-request counterpart of the hosted services'
+    # `apply_text_normalization` field; validated right after engine resolution
+    # so a typo'd value is a clear 400, never a silent pre-pass change.
+    text_normalization: Optional[str] = Form(None),
     # Streaming preview: when true, the response is application/x-ndjson —
     # one JSON event per line ("start" → N × "chunk" (base64 PCM16 preview of
     # each text chunk, playable the moment it arrives) → "done" with the saved
@@ -1916,6 +1923,15 @@ async def generate_speech(
                 "See GET /engines/tts for the list of valid engine ids."
             ),
         )
+
+    # Per-request normalization mode (auto/on/off) — validated before any model
+    # load or remote dispatch so a bad value fails fast with a 400 instead of
+    # silently changing the pre-pass.
+    from services.text_normalization import resolve_normalization_mode
+    try:
+        normalization_mode = resolve_normalization_mode(text_normalization)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     # Validate expressive controls before model loads or GPU routing. A
     # request must not silently lose emotion when switching to an engine
     # without this capability, or send conflicting emotion sources.
@@ -2272,10 +2288,12 @@ async def generate_speech(
     # abbreviations) — AFTER `language` is fully resolved, and BEFORE the
     # pronunciation dictionary so user dictionary entries operate on
     # normalized text and respellings are never re-mangled (ordering rationale
-    # in services/text_normalization.py). Pref-gated (default ON), idempotent,
-    # never raises; applied exactly once per request, at this choke point.
+    # in services/text_normalization.py). The request's `text_normalization`
+    # mode (auto/on/off) gates it — "auto" keeps the env default ON;
+    # idempotent, never raises; applied exactly once per request, at this
+    # choke point.
     from services.text_normalization import normalize_for_tts
-    text = normalize_for_tts(text, language)
+    text = normalize_for_tts(text, language, mode=normalization_mode)
 
     # Expressive-TTS Spec 01: apply the user pronunciation dictionary + inline
     # [[…]] one-off overrides to the text, here — AFTER `language` is fully
@@ -2299,6 +2317,18 @@ async def generate_speech(
         # double-bracket text the model would mispronounce).
         from services.pronunciation import apply_inline_overrides
         text = apply_inline_overrides(text)
+
+    # Inline-tag pre-flight (#3422): reaction tags the resolved engine does not
+    # render for the catalogue's expression_caps would be spoken aloud as
+    # literal words ("bracket laughter"). Advisory only — the text still
+    # reaches the engine verbatim (the user's script is the user's script); the
+    # warning rides response headers so the UI can name the tags. App-level
+    # markers ([pause], SSML-lite, [voice:…], [[…]]) are exempt.
+    from services import expression, tag_policy
+    _tag_warning = tag_policy.audit_tags(
+        text, expression.expression_caps(backend_cls)["tags"]
+    )
+    _tag_headers = tag_policy.tag_warning_headers(_tag_warning)
 
     start_time = time.time()
 
@@ -2649,6 +2679,7 @@ async def generate_speech(
         _stream_headers = _apply_routing_headers({
             "X-Seed": str(used_seed) if used_seed is not None else "",
             **NO_BUFFER_HEADERS,
+            **_tag_headers,
         }, _routing_notice)
         return StreamingResponse(
             # A chunk can render for minutes without a byte; blank lines keep
@@ -2743,6 +2774,7 @@ async def generate_speech(
             "X-Seed": str(used_seed) if used_seed is not None else "",
             "X-Audio-Duration": str(audio_dur),
             "Content-Length": str(len(wav_bytes)),
+            **_tag_headers,
         }
         # #1330: the body is a WAV, so the header channel carries the notice
         # that some of the text produced no audio. Count first (always exact),

@@ -72,3 +72,35 @@ To support stable long-form speech generation with low VRAM consumption, the tex
 |---|---|---|---|
 | `audio_chunk_duration` | float | 15.0 | Target chunk duration (seconds) when splitting long text. |
 | `audio_chunk_threshold` | float | 30.0 | Estimated audio duration (seconds) above which chunking is activated. |
+
+## Text Normalization (auto / on / off)
+
+Before any engine sees the text, VoiceStudio runs one conservative pre-pass —
+digits, clock times, curated abbreviations, markdown emphasis, unsafe control
+characters (`backend/services/text_normalization.py`). It is applied exactly
+once per request, before the pronunciation dictionary and the bracket-tag
+grammar, and it never raises.
+
+The pre-pass has a per-request switch on both text→engine API surfaces:
+
+| Surface | Field | Values |
+|---|---|---|
+| `POST /generate` (form) | `text_normalization` | `auto` (default), `on`, `off` |
+| `WS /ws/tts` (JSON) | `text_normalization` | `auto` (default), `on`, `off` |
+
+- `auto` — the global switch decides: `OMNIVOICE_TEXT_NORMALIZATION=0` disables
+  normalization (default ON). This is the historical behaviour when the field
+  is omitted.
+- `on` — force the pre-pass for this request even with the env switch off.
+- `off` — send the text exactly as typed (the tag pre-flight and pronunciation
+  dictionary are unaffected).
+
+An unknown value is a `400` on `/generate` and an `error` frame on `/ws/tts`,
+never a silent fallback.
+
+Per-language coverage is deliberate: a language is expanded only where the
+rendered form was vetted. Slovak (`sk`) is vetted for **0–99** only — num2words
+joins compounds above that into non-standard spellings (`stojeden`,
+`tisícdvestotridsaťštyri`), so larger Slovak numbers keep their digits.
+Unsupported languages keep every digit by design (a false negative is safe; a
+mangled number is not).

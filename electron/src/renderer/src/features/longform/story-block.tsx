@@ -20,6 +20,8 @@ import { isChapterLine } from '@shared/utils/storyExport';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { WaveformPlayer } from '@/components/waveform-player';
+import { useEngines } from '@/hooks/use-engines';
+import { engineShortName, expressionCaps } from '@/lib/expression';
 import { cn } from '@/lib/utils';
 import type { Draft } from './longform-session';
 import { AutoSizeTextarea, ChipPopover, ChoiceList } from './story-chips';
@@ -125,6 +127,15 @@ export function StoryBlock({
   onRemove: () => void;
 }) {
   const { t } = useTranslation();
+  // Engine-gated tone palette (#3422): a tag the active engine does not render
+  // is read aloud as words, so offer only the ones it performs — same
+  // explanation as the audiobook toolbar. (A tag already in the text is
+  // covered by the take's tagWarning toast.)
+  const { activeTts } = useEngines();
+  const engineTags = expressionCaps(activeTts).tags;
+  const tagHint = t('expression.tags_unsupported', {
+    engine: engineShortName(activeTts),
+  });
   const heading = isChapterLine(line.text);
   const character = draft.cast.find((c) => c.id === line.character);
   // Same lookup order as storyVoicesReady: a removed profile reads as
@@ -261,8 +272,10 @@ export function StoryBlock({
                         key={tone.tag}
                         size="xs"
                         variant="outline"
-                        disabled={disabled}
-                        title={tone.tag}
+                        disabled={disabled || !engineTags.includes(tone.tag)}
+                        title={
+                          engineTags.includes(tone.tag) ? tone.tag : tagHint
+                        }
                         onClick={() => {
                           onInsert(tone.tag);
                           close();

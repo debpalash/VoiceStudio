@@ -53,6 +53,10 @@ Pinned by ``tests/test_text_normalization.py`` (dictionary-order test).
 
 Gate: default ON; the ``OMNIVOICE_TEXT_NORMALIZATION`` env var disables it,
 the same contract as ``OMNIVOICE_PRONUNCIATION`` ("0"/"false"/"no"/"off").
+A caller may also pass a per-request ``mode`` ("auto"/"on"/"off", see
+:func:`resolve_normalization_mode`) — the API-level counterpart of the hosted
+services' ``apply_text_normalization`` field: "auto" defers to the env switch,
+"on" forces the pass, "off" sends the text exactly as typed.
 :func:`normalize_for_tts` is the gated entry point every pipeline calls; it
 never raises — normalization is never allowed to break synthesis.
 """
@@ -109,6 +113,7 @@ _FULL_NAME_TO_CODE = {
     "lithuanian": "lt",
     "latvian": "lv",
     "slovenian": "sl",
+    "slovak": "sk",
     "serbian": "sr",
     "hebrew": "he",
     "persian": "fa",
@@ -141,8 +146,16 @@ _ISO_ALIASES = {"kk": "kz"}
 _NUM2WORDS_LANGS = frozenset({
     "en", "de", "es", "fr", "it", "pt", "nl", "ru", "uk", "pl", "tr", "cs",
     "da", "fi", "sv", "no", "ro", "hu", "id", "lt", "lv", "sl", "sr", "ar",
-    "he", "fa", "az", "kz",
+    "he", "fa", "az", "kz", "sk",
 })
+
+# Locales where only a bounded number range renders as standard orthography,
+# so anything above the bound keeps its digits (a false negative is fine, a
+# non-word is not). Slovak: num2words joins compounds above 99 into
+# "stojeden"/"tisícdvestotridsaťštyri", but standard Slovak writes those
+# spaced ("sto jeden", "tisíc dvesto tridsaťštyri") — 0–99 ("dvadsaťjeden")
+# is correct as rendered, so that is the vetted window.
+_NUM2WORDS_MAX_INT = {"sk": 99}
 
 # Locales whose num2words decimal rendering was vetted ("drei Komma fünf",
 # "три целых пять десятых", …). tr/vi are excluded on purpose: their 0.5
@@ -680,12 +693,19 @@ _DATE_MONTH_RE = {
 # trailing or leading group on its own. A leading minus ("-1 234 %") belongs
 # to the run; the lookbehind still rejects it after a word ("a-1 234").
 _SPACE_GROUP_RE = re.compile(
-    r"(?<![\w.,:/$%-])-?\d{1,3}(?: \d{3})+(?:,\d+)?(?:\s?%)?(?![\w:/%-])(?![.,]\d)"
+    r"(?<![\w.,:/$%-])-?\d{1,3}(?:[ \u00a0\u202f]\d{3})+(?:,\d+)?(?:\s?%)?(?![\w:/%-])(?![.,]\d)"
 )
+
+# Locales whose thousands groups are written with spaces: they are protected
+# from integer expansion as a WHOLE group (the number keeps its digits), or
+# "1 234" would be expanded as "1" then leave "234" behind. Comma-decimal
+# locales group this way, and Slovak does too — with no comma-decimal opt-in
+# of its own (its 0-99 window is the only vetted range).
+_SPACE_GROUPED_LANGS = _COMMA_DECIMAL_LANGS | {"sk"}
 
 
 def _grouped_spans(text: str, lang: str) -> list[tuple[int, int]]:
-    if lang not in _COMMA_DECIMAL_LANGS:
+    if lang not in _SPACE_GROUPED_LANGS:
         return []
     return [g.span() for g in _SPACE_GROUP_RE.finditer(text)]
 
@@ -844,6 +864,11 @@ def _numbers_to_words(text: str, lang: str, locale: Optional[str] = None) -> str
         if _in_span(m, grouped):
             return m.group(0)
         n = int(raw)
+        # Bounded-range locales (see _NUM2WORDS_MAX_INT): digits above the
+        # vetted window are left alone instead of rendered as a non-word.
+        max_int = _NUM2WORDS_MAX_INT.get(lang)
+        if max_int is not None and n > max_int:
+            return m.group(0)
         if month_re and 1 <= n <= 31 and month_re.match(text, m.end()):
             return m.group(0)
         if len(raw) == 4 and 1500 <= n <= 2099:
@@ -944,15 +969,48 @@ def normalization_enabled() -> bool:
     return env.strip().lower() not in ("0", "false", "no", "off", "")
 
 
-def normalize_for_tts(text: str, language: Optional[str] = None) -> str:
-    """Gated + hardened entry point: pref/env toggle, never raises.
+#: Per-request normalization modes — the API-level switch that mirrors the
+#: hosted services' ``apply_text_normalization`` field:
+#:   "auto" (default) = the env switch decides (historical behaviour),
+#:   "on"             = force normalization for this request,
+#:   "off"            = send the text exactly as typed.
+NORMALIZATION_MODES = ("auto", "on", "off")
 
+
+def resolve_normalization_mode(mode: Optional[str]) -> str:
+    """Validate a caller-supplied mode; ``"auto"`` when absent/empty.
+
+    Raises ``ValueError`` for anything outside :data:`NORMALIZATION_MODES` so
+    a typo'd request is a clear 4xx instead of a silent pre-pass surprise.
+    """
+    if mode is None:
+        return "auto"
+    value = str(mode).strip().lower()
+    if not value:
+        return "auto"
+    if value not in NORMALIZATION_MODES:
+        raise ValueError(
+            f"text_normalization must be one of {', '.join(NORMALIZATION_MODES)}"
+        )
+    return value
+
+
+def normalize_for_tts(
+    text: str, language: Optional[str] = None, mode: str = "auto"
+) -> str:
+    """Gated + hardened entry point: request mode / env switch, never raises.
+
+    ``mode`` is ``"auto"`` (the env switch decides), ``"on"`` (force) or
+    ``"off"`` (bypass) — see :func:`resolve_normalization_mode`; invalid
+    values fall back to ``"auto"`` here (routes reject them explicitly).
     Every TTS pipeline calls this exactly once, at its text→engine choke
     point, BEFORE the pronunciation dictionary (see module docstring).
     """
     if not text:
         return text or ""
-    if not normalization_enabled():
+    if mode == "off":
+        return text
+    if mode != "on" and not normalization_enabled():
         return text
     try:
         return normalize_text(text, language)

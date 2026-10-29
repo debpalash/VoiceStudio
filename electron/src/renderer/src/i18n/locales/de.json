@@ -254,6 +254,7 @@
     "voiceCallHint": "Mit „Kann anrufen“ markierte Stimmen sind deine verifizierte eigene Stimme oder eine entworfene Stimme. Nur diese können Anrufe tätigen."
   },
   "tts": {
+    "tagWarning": "Diese Inline-Reaktionstags werden vorgelesen statt ausgeführt: {{tags}}. Entferne sie oder wechsle zu einer Engine, die Tags ausführt.",
     "generationComplete": "Spracherzeugung abgeschlossen",
     "routingFallback": "Läuft auf der CPU – diese Engine verfügt über keinen GPU-Pfad auf Ihrem Computer, daher erfolgt die Generierung langsamer. {{reason}}",
     "routingCaveat": "GPU nutzen, aber: {{reason}}",

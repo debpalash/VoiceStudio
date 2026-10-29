@@ -254,6 +254,7 @@
     "voiceCallHint": "Vozes marcadas com \"Pode ligar\" são a sua própria voz verificada ou uma voz projetada. Só elas podem fazer chamadas."
   },
   "tts": {
+    "tagWarning": "Estas tags de reação inline serão lidas como palavras em vez de interpretadas: {{tags}}. Remova-as ou mude para um motor que as interprete.",
     "generationComplete": "Geração de voz concluída",
     "routingFallback": "Rodando em CPU — este mecanismo não possui caminho de GPU em sua máquina, então a geração será mais lenta. {{reason}}",
     "routingCaveat": "Usando a GPU, mas: {{reason}}",

@@ -117,9 +117,9 @@ def test_ws_tts_budget_one_generate_per_sentence(client, fake_stream_engine, mon
     norm_calls = []
     real_norm = norm_mod.normalize_for_tts
 
-    def norm_spy(text, language=None):
+    def norm_spy(text, language=None, mode="auto"):
         norm_calls.append((text, language))
-        return real_norm(text, language)
+        return real_norm(text, language, mode=mode)
 
     monkeypatch.setattr(norm_mod, "normalize_for_tts", norm_spy)
 

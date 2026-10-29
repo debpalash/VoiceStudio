@@ -254,6 +254,7 @@
     "voiceCallHint": "Les voix marquées « Peut appeler » sont votre propre voix vérifiée ou une voix conçue. Seules celles-ci peuvent passer des appels."
   },
   "tts": {
+    "tagWarning": "Ces balises de réaction en ligne seront lues à voix haute au lieu d'être interprétées : {{tags}}. Supprimez-les ou passez à un moteur qui les interprète.",
     "generationComplete": "Génération vocale terminée",
     "routingFallback": "Fonctionnant sur CPU : ce moteur n'a pas de chemin GPU sur votre machine, la génération sera donc plus lente. {{reason}}",
     "routingCaveat": "Utilisation du GPU, mais : {{reason}}",

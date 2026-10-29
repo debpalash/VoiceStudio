@@ -254,6 +254,7 @@
     "voiceCallHint": "Suara bertanda \"Bisa menelepon\" adalah suara Anda sendiri yang terverifikasi atau suara rancangan. Hanya suara itu yang dapat melakukan panggilan."
   },
   "tts": {
+    "tagWarning": "Tag reaksi inline ini akan dibaca sebagai kata, bukan dijalankan: {{tags}}. Hapus tag tersebut atau ganti ke mesin yang menjalankannya.",
     "generationComplete": "Pembuatan ucapan selesai",
     "routingFallback": "Berjalan pada CPU — mesin ini tidak memiliki jalur GPU pada mesin Anda, sehingga pembuatannya akan lebih lambat. {{reason}}",
     "routingCaveat": "Menggunakan GPU, tetapi: {{reason}}",

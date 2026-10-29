@@ -667,6 +667,7 @@
     "route_not_found": "The running VoiceStudio backend has no {{route}} endpoint. Restart VoiceStudio so the app and backend match; if it persists, update both to the same version."
   },
   "tts": {
+    "tagWarning": "These inline reaction tags will be read aloud as words instead of performed: {{tags}}. Remove them or switch to an engine that performs tags.",
     "generationComplete": "Speech generation complete",
     "routingFallback": "Running on CPU — this engine has no GPU path on your machine, so generation will be slower. {{reason}}",
     "routingCaveat": "Using the GPU, but: {{reason}}",

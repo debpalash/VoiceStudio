@@ -254,6 +254,7 @@
     "voiceCallHint": "Głosy oznaczone „Może dzwonić” to Twój zweryfikowany własny głos lub głos zaprojektowany. Tylko one mogą wykonywać połączenia."
   },
   "tts": {
+    "tagWarning": "Te śródwierszowe tagi reakcji zostaną przeczytane jako słowa zamiast wykonane: {{tags}}. Usuń je lub przełącz na silnik, który je interpretuje.",
     "generationComplete": "Generowanie mowy zakończone",
     "routingFallback": "Działa na procesorze — ten silnik nie ma ścieżki GPU na twoim komputerze, więc generowanie będzie wolniejsze. {{reason}}",
     "routingCaveat": "Używasz procesora graficznego, ale: {{reason}}",

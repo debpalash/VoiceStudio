@@ -217,6 +217,9 @@ export interface GenerateResult {
   seed: number | null;
   routing: { status: string; reason: string } | null;
   dropped: { count: number; text: string } | null;
+  /** Inline reaction tags the active engine will read as words (services/tag_policy).
+   *  `tags` is capped at 8 on the wire; `count` is always exact. */
+  tagWarning: { count: number; tags: string[] } | null;
 }
 
 // ── Errors ────────────────────────────────────────────────────────────────

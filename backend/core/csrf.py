@@ -155,6 +155,11 @@ CORS_EXPOSED_HEADERS = (
     "X-OmniVoice-Routing-Reason",
     "X-OmniVoice-Dropped-Chunks",
     "X-OmniVoice-Dropped-Text",
+    # Inline reaction-tag pre-flight (services/tag_policy): tags the active
+    # engine will speak as literal words. Count + percent-encoded tag list;
+    # the generate hook reads both to name them in one warning toast.
+    "X-OmniVoice-Tag-Warning",
+    "X-OmniVoice-Tag-Warning-Tags",
     "X-Clean-Filename",
 )
 

@@ -254,6 +254,7 @@
     "voiceCallHint": "Las voces marcadas con «Puede llamar» son tu propia voz verificada o una voz diseñada. Solo esas pueden hacer llamadas."
   },
   "tts": {
+    "tagWarning": "Estas etiquetas de reacción en línea se leerán en voz alta en lugar de interpretarse: {{tags}}. Quítalas o cambia a un motor que las interprete.",
     "generationComplete": "Generación de voz completada",
     "routingFallback": "Ejecutándose en CPU: este motor no tiene una ruta de GPU en su máquina, por lo que la generación será más lenta. {{reason}}",
     "routingCaveat": "Usando la GPU, pero: {{reason}}",

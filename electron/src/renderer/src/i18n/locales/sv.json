@@ -254,6 +254,7 @@
     "voiceCallHint": "Röster märkta ”Kan ringa” är din verifierade egna röst eller en designad röst. Bara de kan ringa samtal."
   },
   "tts": {
+    "tagWarning": "Dessa inline-reaktionstaggar läses upp som ord istället för att utföras: {{tags}}. Ta bort dem eller byt till en motor som utför taggar.",
     "generationComplete": "Talgenereringen är klar",
     "routingFallback": "Körs på CPU — den här motorn har ingen GPU-sökväg på din maskin, så genereringen kommer att gå långsammare. {{reason}}",
     "routingCaveat": "Använder GPU, men: {{reason}}",

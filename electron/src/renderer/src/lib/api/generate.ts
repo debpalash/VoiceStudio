@@ -200,10 +200,26 @@ function headerInt(headers: Headers, name: string): number | null {
   return Number.isInteger(value) ? value : null;
 }
 
+function decodeTagList(raw: string | null): string[] {
+  if (!raw) return [];
+  return raw
+    .split(',')
+    .map((value) => {
+      try {
+        return decodeURIComponent(value.trim());
+      } catch {
+        // A malformed percent-escape costs one tag name, never the whole take.
+        return '';
+      }
+    })
+    .filter(Boolean);
+}
+
 /** Everything `/generate` reports about a take rides in response headers. */
 export function parseGenerateHeaders(headers: Headers): Omit<GenerateResult, 'blob'> {
   const routingStatus = headers.get('X-OmniVoice-Routing');
   const droppedCount = headerInt(headers, 'X-OmniVoice-Dropped-Chunks');
+  const tagWarningCount = headerInt(headers, 'X-OmniVoice-Tag-Warning');
   return {
     id: headers.get('X-Audio-Id'),
     audioPath: headers.get('X-Audio-Path'),
@@ -216,6 +232,14 @@ export function parseGenerateHeaders(headers: Headers): Omit<GenerateResult, 'bl
     dropped:
       droppedCount !== null && droppedCount > 0
         ? { count: droppedCount, text: headers.get('X-OmniVoice-Dropped-Text') ?? '' }
+        : null,
+    // Guard on the count: the tag list itself is capped at 8 by the backend.
+    tagWarning:
+      tagWarningCount !== null && tagWarningCount > 0
+        ? {
+            count: tagWarningCount,
+            tags: decodeTagList(headers.get('X-OmniVoice-Tag-Warning-Tags')),
+          }
         : null,
   };
 }
@@ -388,6 +412,7 @@ export async function generateCloneStreaming(
       seed: completed.seed ?? headers.seed,
       routing: headers.routing,
       dropped,
+      tagWarning: headers.tagWarning,
     };
   } catch (error) {
     (player as ReturnType<typeof createStreamingPreview> | null)?.fail();

@@ -261,6 +261,8 @@ describe('parseGenerateHeaders', () => {
       'X-OmniVoice-Routing-Reason': 'no CUDA',
       'X-OmniVoice-Dropped-Chunks': '2',
       'X-OmniVoice-Dropped-Text': 'lost | words',
+      'X-OmniVoice-Tag-Warning': '2',
+      'X-OmniVoice-Tag-Warning-Tags': '%5Blaughter%5D,%5Bsigh%5D',
     });
     expect(parseGenerateHeaders(headers)).toEqual({
       id: 'abc',
@@ -270,11 +272,16 @@ describe('parseGenerateHeaders', () => {
       seed: 42,
       routing: { status: 'cpu_fallback', reason: 'no CUDA' },
       dropped: { count: 2, text: 'lost | words' },
+      tagWarning: { count: 2, tags: ['[laughter]', '[sigh]'] },
     });
   });
 
   it('yields nulls when headers are absent or malformed', () => {
-    const headers = new Headers({ 'X-Seed': 'nope', 'X-OmniVoice-Dropped-Chunks': '0' });
+    const headers = new Headers({
+      'X-Seed': 'nope',
+      'X-OmniVoice-Dropped-Chunks': '0',
+      'X-OmniVoice-Tag-Warning': '0',
+    });
     expect(parseGenerateHeaders(headers)).toEqual({
       id: null,
       audioPath: null,
@@ -283,7 +290,19 @@ describe('parseGenerateHeaders', () => {
       seed: null,
       routing: null,
       dropped: null,
+      tagWarning: null,
     });
+  });
+});
+
+it('survives a malformed percent-escape in the tag list', () => {
+  const headers = new Headers({
+    'X-OmniVoice-Tag-Warning': '2',
+    'X-OmniVoice-Tag-Warning-Tags': '%5Blaughter%5D,%E0%A4%A',
+  });
+  expect(parseGenerateHeaders(headers).tagWarning).toEqual({
+    count: 2,
+    tags: ['[laughter]'],
   });
 });
 

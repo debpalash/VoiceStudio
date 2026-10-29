@@ -254,6 +254,7 @@
     "voiceCallHint": "標記為「可通話」的聲音是你已驗證的本人聲音或設計的聲音。只有這些聲音可以撥打電話。"
   },
   "tts": {
+    "tagWarning": "這些內聯反應標籤會被當作詞語朗讀，而不是被處理：{{tags}}。請刪除標籤，或切換到能處理標籤的引擎。",
     "generationComplete": "語音生成完成",
     "routingFallback": "在 CPU 上運作 — 引擎在您的電腦上沒有 GPU 路徑，因此產生速度會較慢。 {{reason}}",
     "routingCaveat": "使用 GPU，但是：{{reason}}",

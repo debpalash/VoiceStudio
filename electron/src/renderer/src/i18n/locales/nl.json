@@ -254,6 +254,7 @@
     "voiceCallHint": "Stemmen met ‘Kan bellen’ zijn je geverifieerde eigen stem of een ontworpen stem. Alleen die kunnen bellen."
   },
   "tts": {
+    "tagWarning": "Deze inline reactietags worden voorgelezen in plaats van uitgevoerd: {{tags}}. Verwijder ze of stap over naar een engine die tags uitvoert.",
     "generationComplete": "Spraakgeneratie voltooid",
     "routingFallback": "Draait op CPU: deze engine heeft geen GPU-pad op uw machine, dus de generatie zal langzamer zijn. {{reason}}",
     "routingCaveat": "De GPU gebruiken, maar: {{reason}}",

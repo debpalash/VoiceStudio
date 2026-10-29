@@ -254,6 +254,7 @@
     "defaultVoice": "기본 음성"
   },
   "tts": {
+    "tagWarning": "이 인라인 반응 태그는 실행되지 않고 단어로 읽힙니다: {{tags}}. 태그를 삭제하거나 태그를 처리하는 엔진으로 전환하세요.",
     "generationComplete": "음성 생성이 완료되었습니다",
     "routingFallback": "CPU에서 실행 — 이 엔진은 컴퓨터에 GPU 경로가 없으므로 생성 속도가 느려집니다. {{reason}}",
     "routingCaveat": "GPU를 사용하지만: {{reason}}",

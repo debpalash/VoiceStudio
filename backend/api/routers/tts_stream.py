@@ -201,15 +201,18 @@ def build_stream_kwargs(data: dict) -> dict:
     return kw
 
 
-def split_stream_sentences(text: str, language: str | None) -> list[str]:
+def split_stream_sentences(
+    text: str, language: str | None, mode: str = "auto"
+) -> list[str]:
     """Normalize once, then split into sentences for progressive delivery.
 
     Engine-agnostic text normalization (junk strip, numbers→words,
     abbreviations) — the same pre-pass as /generate, applied exactly ONCE per
     request, on the whole text BEFORE the sentence chunker fans it out (so
     per-sentence generates never re-normalize, and expanded abbreviations
-    can't confuse the sentence splitter). Pref-gated (default ON), idempotent,
-    never raises.
+    can't confuse the sentence splitter). ``mode`` is the request's
+    ``text_normalization`` switch (auto/on/off; auto = the env default),
+    idempotent, never raises.
 
     Wave 1.4: the first sentence's audio streams while later sentences are
     still synthesizing — the time-to-first-audio win. The chunker handles
@@ -219,7 +222,7 @@ def split_stream_sentences(text: str, language: str | None) -> list[str]:
     from services.text_normalization import normalize_for_tts
     from services.sentence_chunker import SentenceChunker
 
-    text = normalize_for_tts(text, language)
+    text = normalize_for_tts(text, language, mode=mode)
     chunker = SentenceChunker(language=(language or "en"))
     sentences = chunker.push(text)
     sentences.extend(chunker.flush())
@@ -333,6 +336,17 @@ async def ws_tts(websocket: WebSocket):
                 })
                 continue
 
+            # Per-request normalization mode — invalid values are an error
+            # frame, never a silent pre-pass change (parity with /generate).
+            from services.text_normalization import resolve_normalization_mode
+            try:
+                _normalization_mode = resolve_normalization_mode(
+                    data.get("text_normalization")
+                )
+            except ValueError as exc:
+                await websocket.send_json({"type": "error", "detail": str(exc)})
+                continue
+
             t0 = _perf_counter()
             text = data["text"]
 
@@ -401,7 +415,9 @@ async def ws_tts(websocket: WebSocket):
                 # Normalized exactly once on the whole text, then chunked
                 # (see split_stream_sentences). The request's `language` is all
                 # this route knows (None → universal safety filters only).
-                sentences = split_stream_sentences(text, data.get("language"))
+                sentences = split_stream_sentences(
+                    text, data.get("language"), mode=_normalization_mode
+                )
 
                 # Run generation in the GPU pool
                 import functools

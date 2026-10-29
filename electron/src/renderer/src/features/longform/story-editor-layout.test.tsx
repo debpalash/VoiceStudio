@@ -3,6 +3,26 @@ import { expect, it, vi } from 'vitest';
 import '@/i18n';
 
 vi.mock('@/components/waveform-player', () => ({ WaveformPlayer: () => null }));
+// StoryBlock reads the active engine's expression caps for its tone palette.
+vi.mock('@/hooks/use-engines', () => ({
+  useEngines: () => ({
+    activeTts: {
+      id: 'omnivoice',
+      display_name: 'VoiceStudio (k2-fsa/OmniVoice, 600+ languages)',
+      expression_caps: {
+        emotion: 'direction',
+        tags: [
+          '[laughter]',
+          '[sigh]',
+          '[question-en]',
+          '[surprise-wa]',
+          '[confirmation-en]',
+          '[dissatisfaction-hnn]',
+        ],
+      },
+    },
+  }),
+}));
 vi.mock('./story-preview', () => ({ previewStoryLine: vi.fn() }));
 vi.mock('./story-stems', () => ({ StoryStems: () => null }));
 vi.mock('@/components/pipeline-failure', () => ({ PipelineFailure: () => null }));

@@ -254,6 +254,7 @@
     "voiceCallHint": "Giọng được đánh dấu \"Có thể gọi\" là giọng của chính bạn đã xác minh hoặc giọng được thiết kế. Chỉ những giọng đó mới gọi điện được."
   },
   "tts": {
+    "tagWarning": "Các thẻ phản ứng nội tuyến này sẽ bị đọc thành từ thay vì được xử lý: {{tags}}. Hãy xoá thẻ hoặc chuyển sang công cụ xử lý được thẻ.",
     "generationComplete": "Đã tạo giọng nói xong",
     "routingFallback": "Chạy trên CPU - công cụ này không có đường dẫn GPU trên máy của bạn, do đó quá trình tạo sẽ chậm hơn. {{reason}}",
     "routingCaveat": "Sử dụng GPU nhưng: {{reason}}",

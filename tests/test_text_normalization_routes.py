@@ -95,9 +95,9 @@ def norm_spy(monkeypatch):
     calls = []
     real = norm_mod.normalize_for_tts
 
-    def spy(text, language=None):
+    def spy(text, language=None, mode="auto"):
         calls.append((text, language))
-        return real(text, language)
+        return real(text, language, mode=mode)
 
     monkeypatch.setattr(norm_mod, "normalize_for_tts", spy)
     return calls

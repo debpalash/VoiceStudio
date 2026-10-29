@@ -159,6 +159,12 @@ _CHANGE_CASES = [
     ("Chinese", "需要3\uff5e4天", "需要3到4天"),
     ("English", "Open 20~30 minutes", "Open twenty to thirty minutes"),
     ("ko", "[pause 300ms] 1.5~2.5배", "[pause 300ms] 1.5에서 2.5배"),
+    # Slovak (sk): vetted for 0-99 only — num2words' joined compound above
+    # that ("stojeden", "tisícdvestotridsaťštyri") is not standard Slovak
+    # orthography (standard writes it spaced), so larger numbers keep digits.
+    ("Slovak", "Mám 21 rokov a 5 psov", "Mám dvadsaťjeden rokov a päť psov"),
+    ("sk", "Mám 7 kníh", "Mám sedem kníh"),
+    ("sk-SK", "Volám sa 12", "Volám sa dvanásť"),
     # Universal safety filters (language-independent)
     (None, "hello\u200b \u200dworld", "hello \u200dworld"),
     (None, "too   many\t spaces", "too many spaces"),
@@ -322,6 +328,14 @@ _UNCHANGED_CASES = [
     ("Vietnamese", "Các năm 2008, 2010 và 2025"),
     ("vi", "Sinh năm 1995, gặp lại năm 2024"),
     ("vi-VN", "42 con mèo"),
+    # Slovak numbers above the vetted 0-99 window keep their digits.
+    ("Slovak", "Mám 105 kníh"),
+    # Space-grouped thousands are one quantity: expanding "1" and leaving
+    # "234" behind would split it (Greptile P1 on #3639).
+    ("Slovak", "Mám 1 234 kníh"),
+    ("sk", "12 000 ľudí"),
+    ("Slovak", "V roku 2024 som mal 1234 eur"),
+    ("sk", "Úspech 3.5 percenta"),
     (None, "42 cats"),                          # no language pin → no digits pass
     ("Auto", "42 cats"),
     # Bracket grammar is never rewritten
@@ -344,6 +358,14 @@ _UNCHANGED_CASES = [
 @pytest.mark.parametrize("language,raw", _UNCHANGED_CASES)
 def test_leaves_unchanged(language, raw):
     assert normalize_text(raw, language) == raw
+
+
+def test_slovak_nbsp_thousands_keeps_digits():
+    """The safety filter normalizes NBSP to a space; the thousands group must
+    still survive as digits (never "jeden" + leftover "234")."""
+    out = normalize_text("Mám 1\u00a0234 kníh", "sk")
+    assert "234" in out
+    assert "jeden" not in out
 
 
 def test_full_name_lookup_gated_by_vetted_set():
@@ -548,6 +570,32 @@ def test_env_on_beats_pref_off(monkeypatch):
     assert normalize_for_tts("I have 2 cats", "English") == "I have two cats"
 
 
+# ── Per-request mode (auto / on / off) ──────────────────────────────────────
+
+def test_resolve_normalization_mode():
+    assert text_normalization.resolve_normalization_mode(None) == "auto"
+    assert text_normalization.resolve_normalization_mode("") == "auto"
+    assert text_normalization.resolve_normalization_mode(" AUTO ") == "auto"
+    assert text_normalization.resolve_normalization_mode("on") == "on"
+    assert text_normalization.resolve_normalization_mode("Off") == "off"
+    with pytest.raises(ValueError):
+        text_normalization.resolve_normalization_mode("yes")
+
+
+def test_mode_off_bypasses_even_when_enabled(monkeypatch):
+    monkeypatch.delenv(text_normalization.ENV_VAR, raising=False)
+    raw = "I have 2 cats!!!!!!"
+    assert normalize_for_tts(raw, "English", mode="off") == raw
+
+
+def test_mode_on_forces_past_env_off(monkeypatch):
+    monkeypatch.setenv(text_normalization.ENV_VAR, "0")
+    assert (
+        normalize_for_tts("I have 2 cats", "English", mode="on")
+        == "I have two cats"
+    )
+
+
 def test_never_raises(monkeypatch):
     # A crash inside the normalizer must degrade to raw text, never break synth.
     monkeypatch.delenv(text_normalization.ENV_VAR, raising=False)
@@ -647,9 +695,9 @@ def test_generate_applies_normalization_exactly_once(client, monkeypatch, fake_e
     calls = []
     real = norm_mod.normalize_for_tts
 
-    def spy(text, language=None):
+    def spy(text, language=None, mode="auto"):
         calls.append(text)
-        return real(text, language)
+        return real(text, language, mode=mode)
 
     monkeypatch.setattr(norm_mod, "normalize_for_tts", spy)
 
@@ -694,6 +742,54 @@ def test_generate_toggle_off_sends_raw_text(client, monkeypatch, fake_engine):
     })
     assert res.status_code == 200, res.text
     assert fake_engine.calls[-1][0] == "Dr. Smith has 2 cats"
+
+
+def test_generate_mode_field_overrides_env_toggle(client, monkeypatch, fake_engine):
+    """/generate's `text_normalization` is the per-request switch: "on" forces
+    the pre-pass past an env off switch, "off" sends raw text, and an unknown
+    value is a 400 rather than a silent fallback."""
+    monkeypatch.setenv(text_normalization.ENV_VAR, "0")
+    res = client.post("/generate", data={
+        "text": "Dr. Smith has 2 cats", "language": "English",
+        "engine": "fake-norm-engine", "seed": "42", "text_normalization": "on",
+    })
+    assert res.status_code == 200, res.text
+    assert fake_engine.calls[-1][0] == "Doctor Smith has two cats"
+
+    monkeypatch.delenv(text_normalization.ENV_VAR, raising=False)
+    res = client.post("/generate", data={
+        "text": "Dr. Smith has 2 cats", "language": "English",
+        "engine": "fake-norm-engine", "seed": "42", "text_normalization": "off",
+    })
+    assert res.status_code == 200, res.text
+    assert fake_engine.calls[-1][0] == "Dr. Smith has 2 cats"
+
+    res = client.post("/generate", data={
+        "text": "hello", "engine": "fake-norm-engine",
+        "text_normalization": "maybe",
+    })
+    assert res.status_code == 400
+    assert "text_normalization" in res.text
+
+
+def test_generate_warns_when_engine_does_not_render_tags(client, monkeypatch, fake_engine):
+    """Inline-tag pre-flight (services/tag_policy): reaction tags the resolved
+    engine does not declare in expression_caps ride response headers, while
+    app-level markers ([pause ...]) never warn — they are stitched before the
+    engine runs. Advisory only: the tag still reaches the engine verbatim."""
+    monkeypatch.delenv(text_normalization.ENV_VAR, raising=False)
+    res = client.post("/generate", data={
+        "text": "Hello [laughter] there [pause 300ms] and [sigh]",
+        "language": "English",
+        "engine": "fake-norm-engine", "seed": "42",
+    })
+    assert res.status_code == 200, res.text
+    assert res.headers["X-OmniVoice-Tag-Warning"] == "2"
+    from urllib.parse import unquote
+    tags = [unquote(t) for t in res.headers["X-OmniVoice-Tag-Warning-Tags"].split(",")]
+    assert tags == ["[laughter]", "[sigh]"]
+    rendered = " ".join(call[0] for call in fake_engine.calls)
+    assert rendered.count("[laughter]") == 1
 
 
 # ── Longform: chapter render normalizes spans (and keys the cache on it) ────

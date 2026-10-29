@@ -55,6 +55,17 @@ degrades output on every engine we ship — those tags are on the roadmap (see
 [What's coming](#whats-coming)), not in the engines. Use only the tags listed
 for your engine below.
 
+**A tag that is already in the text is caught on render, not just in the menus.**
+`backend/services/tag_policy.py` audits the final text against the engine's
+declared `expression_caps.tags`; when it finds reaction tags the active engine
+will read as words, the take's response carries `X-OmniVoice-Tag-Warning`
+(count) and `X-OmniVoice-Tag-Warning-Tags` (percent-encoded tags) on both the
+classic WAV and the streaming preview, and the app shows one warning toast
+naming them. The text itself is never rewritten — the warning tells you which
+part will sound wrong. App-level markers (`[pause …]`, the SSML-lite tags,
+`[voice:…]`, `[[…]]` overrides) are handled before any engine sees them and are
+never part of that warning.
+
 ## What each engine can do today
 
 Clients read the same answer from `GET /engines/tts`: each engine carries

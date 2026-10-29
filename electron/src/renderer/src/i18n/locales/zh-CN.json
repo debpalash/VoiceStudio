@@ -254,6 +254,7 @@
     "voiceCallHint": "标记为“可通话”的声音是你已验证的本人声音或设计的声音。只有这些声音可以拨打电话。"
   },
   "tts": {
+    "tagWarning": "这些内联反应标签会被当作词语朗读，而不是被处理：{{tags}}。请删除标签，或切换到能处理标签的引擎。",
     "generationComplete": "语音生成完成",
     "droppedChunks_one": "此版本中未生成音频的文本片段：{{count}} 个。请尝试重新生成。",
     "droppedChunksWithText_one": "此版本中未生成音频的文本片段：{{count}} 个 —“{{text}}”。请尝试重新生成。",

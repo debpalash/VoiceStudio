@@ -37,6 +37,7 @@ function result(audioPath: string | null): GenerateResult {
     seed: 3,
     routing: null,
     dropped: null,
+    tagWarning: null,
   };
 }
 
