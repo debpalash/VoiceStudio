@@ -894,19 +894,18 @@ def test_loader_size_limit_error_is_kept(monkeypatch, tmp_path):
     assert "re-upload" not in str(exc_info.value)
 
 
-def _fake_ffprobe(tmp_path: Path, payload: dict) -> Path:
-    """A stand-in ffprobe that prints ``payload`` as ffprobe's JSON output."""
-    import sys
+def _fake_ffprobe(monkeypatch, payload: dict) -> None:
+    """Make the engine's ffprobe probe report ``payload``.
 
-    script = tmp_path / "fake-ffprobe"
-    script.write_text(
-        f"#!{sys.executable}\n"
-        "import sys\n"
-        f"sys.stdout.write({json.dumps(payload)!r})\n",
-        encoding="utf-8",
-    )
-    script.chmod(0o755)
-    return script
+    The probe's *result* is mocked rather than a stand-in binary: a
+    shebang script is not launchable on Windows, and the probe is the
+    only thing under test here.
+    """
+    def _fake_run(argv, **_kw):
+        return subprocess.CompletedProcess(argv, 0, json.dumps(payload).encode("utf-8"), b"")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    monkeypatch.setattr("services.ffmpeg_utils.find_ffprobe", lambda: "ffprobe")
 
 
 def test_reference_size_falls_back_to_the_audio_stream(monkeypatch, tmp_path):
@@ -920,10 +919,9 @@ def test_reference_size_falls_back_to_the_audio_stream(monkeypatch, tmp_path):
     reference = tmp_path / "profile-ref.m4a"
     reference.write_bytes(b"not a container libsndfile can read")
 
-    probe = _fake_ffprobe(tmp_path, {
+    _fake_ffprobe(monkeypatch, {
         "streams": [{"duration": "3.000000", "channels": 1, "sample_rate": 24000}],
     })
-    monkeypatch.setattr("services.ffmpeg_utils.find_ffprobe", lambda: str(probe))
 
     size = gguf_backend._reference_decoded_bytes(reference)
     assert size == pytest.approx(3 * 24_000 * 4, rel=0.01)
@@ -937,10 +935,9 @@ def test_oversized_reference_is_refused_when_ffprobe_sizes_it(monkeypatch, tmp_p
     reference.write_bytes(b"not a container libsndfile can read")
 
     # Two hours of 48 kHz stereo float32 is well past the budget.
-    probe = _fake_ffprobe(tmp_path, {
+    _fake_ffprobe(monkeypatch, {
         "streams": [{"duration": "7200.000000", "channels": 2, "sample_rate": 48000}],
     })
-    monkeypatch.setattr("services.ffmpeg_utils.find_ffprobe", lambda: str(probe))
 
     with pytest.raises(ValueError) as exc_info:
         gguf_backend._convert_reference_to_wav(reference)
