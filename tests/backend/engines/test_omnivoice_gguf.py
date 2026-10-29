@@ -894,14 +894,17 @@ def test_loader_size_limit_error_is_kept(monkeypatch, tmp_path):
     assert "re-upload" not in str(exc_info.value)
 
 
-def _fake_ffprobe(monkeypatch, payload: dict) -> None:
+def _fake_ffprobe(monkeypatch, payload: dict, seen: dict | None = None) -> None:
     """Make the engine's ffprobe probe report ``payload``.
 
     The probe's *result* is mocked rather than a stand-in binary: a
     shebang script is not launchable on Windows, and the probe is the
-    only thing under test here.
+    only thing under test here. Pass ``seen`` to capture the spawn's
+    keyword arguments.
     """
-    def _fake_run(argv, **_kw):
+    def _fake_run(argv, **kw):
+        if seen is not None:
+            seen.update(kw)
         return subprocess.CompletedProcess(argv, 0, json.dumps(payload).encode("utf-8"), b"")
 
     monkeypatch.setattr(subprocess, "run", _fake_run)
@@ -942,3 +945,25 @@ def test_oversized_reference_is_refused_when_ffprobe_sizes_it(monkeypatch, tmp_p
     with pytest.raises(ValueError) as exc_info:
         gguf_backend._convert_reference_to_wav(reference)
     assert "too long" in str(exc_info.value).lower()
+
+
+def test_ffprobe_probe_carries_the_loader_env(monkeypatch, tmp_path):
+    """The ffprobe probe is a spawn in this module, so it carries the loader
+    env every other spawn here carries (#1348).
+
+    The repository policy test only checks that an ``env`` keyword is
+    present; this one pins *which* env, so the probe cannot silently lose
+    it.
+    """
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.m4a"
+    reference.write_bytes(b"not a container libsndfile can read")
+
+    seen: dict = {}
+    _fake_ffprobe(monkeypatch, {
+        "streams": [{"duration": "3.000000", "channels": 1, "sample_rate": 24000}],
+    }, seen)
+
+    gguf_backend._reference_decoded_bytes(reference)
+    assert seen["env"] == gguf_backend._spawn_env()
