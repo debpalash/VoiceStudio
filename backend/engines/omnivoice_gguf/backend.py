@@ -397,28 +397,68 @@ def _is_riff_wave(path: Path) -> bool:
     return len(header) == 12 and header[:4] == b"RIFF" and header[8:12] == b"WAVE"
 
 
+def _ffprobe_decoded_bytes(prompt: Path) -> Optional[int]:
+    """Decoded size of a reference clip, measured with ffprobe, or None.
+
+    ffprobe reads the container's metadata and decodes nothing, so a
+    container ``libsndfile`` cannot size can still be measured before it
+    is decoded. The *audio stream's* duration is used, not the
+    container's: a video whose audio track is short is a short reference.
+    """
+    try:
+        from services.ffmpeg_utils import find_ffprobe, local_inputs_only
+
+        ffprobe = find_ffprobe()
+        if not ffprobe:
+            return None
+        proc = subprocess.run(
+            local_inputs_only(
+                [ffprobe, "-v", "error", "-select_streams", "a:0",
+                 "-show_entries", "stream=duration,channels,sample_rate",
+                 "-of", "json", str(prompt)],
+                tool="ffprobe",
+            ),
+            capture_output=True, timeout=60, check=False,
+        )
+        if proc.returncode != 0:
+            return None
+        payload = json.loads(proc.stdout.decode("utf-8", errors="replace"))
+        stream = (payload.get("streams") or [{}])[0]
+        duration = float(stream.get("duration") or 0.0)
+        channels = int(stream.get("channels") or 0)
+        sample_rate = int(stream.get("sample_rate") or 0)
+    except Exception:  # noqa: BLE001 — an unsized clip is a refusal
+        return None
+    if duration <= 0 or channels <= 0 or sample_rate <= 0:
+        return None
+    return int(duration * sample_rate * channels * 4)  # float32 samples
+
+
 def _reference_decoded_bytes(prompt: Path) -> int:
     """Decoded size of a reference clip in bytes.
 
-    Read from the container header — the audio is never decoded, so an
+    Read from the container metadata — the audio is never decoded, so an
     oversized clip is refused before anything is allocated. ``libsndfile``
-    reads the header of every container the app's decoder accepts, so the
-    size is exact for the formats a reference can be cloned from at all.
+    sizes every container it can read; the ones it cannot (M4A, AAC,
+    WebM) are measured with ffprobe.
 
-    Raises :class:`ValueError` when the header cannot be read: a clip of
-    unknown size is exactly what this budget exists to keep out, and the
-    decoder cannot read such a container either.
+    Raises :class:`ValueError` when the clip cannot be sized at all: a
+    clip of unknown size is exactly what this budget exists to keep out.
     """
     try:
         import soundfile as sf
 
         info = sf.info(str(prompt))
-    except Exception as exc:  # noqa: BLE001 — an unreadable header is a refusal
+        return int(info.frames) * int(info.channels) * 4  # float32 samples
+    except Exception:  # noqa: BLE001 — libsndfile cannot read every container
+        pass
+    decoded = _ffprobe_decoded_bytes(prompt)
+    if decoded is None:
         raise ValueError(
             "The voice profile's reference clip could not be read as audio. "
             "Re-upload the clip as a WAV, MP3, FLAC or OGG file."
-        ) from exc
-    return int(info.frames) * int(info.channels) * 4  # float32 samples
+        )
+    return decoded
 
 
 def _convert_reference_to_wav(prompt: Path) -> Path:
