@@ -238,6 +238,7 @@ fi
         (True, False, True),
     ],
 )
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX Bash execution and executable shell-tool stubs")
 def test_linux_arm_build_falls_back_to_cpu(
     tmp_path, prerequisites, fail_configure, fail_build
 ):

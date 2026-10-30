@@ -255,23 +255,48 @@ def test_set_custom_path_persists_via_env_prefs_convention(mt, monkeypatch, tmp_
     from services import ffmpeg_utils
     # Both acquisition and resolution validate executables. These shell fixtures
     # are intentionally fake and cannot execute on Windows.
-    monkeypatch.setattr(ffmpeg_utils, "_binary_runs", lambda p: True)
-    fake = tmp_path / "myffmpeg"
+    fake = tmp_path / ("myffmpeg.exe" if os.name == "nt" else "myffmpeg")
+    fakeprobe = tmp_path / ("myffprobe.exe" if os.name == "nt" else "myffprobe")
+    candidates = {str(fake), str(fakeprobe)}
+    monkeypatch.setattr(ffmpeg_utils, "_binary_runs", lambda candidate: candidate in candidates)
     fake.write_text("#!/bin/sh\n")
     fake.chmod(0o755)
-    monkeypatch.setattr(mt, "_binary_runs", lambda p: True)
+    monkeypatch.setattr(mt, "_binary_runs", lambda candidate: candidate in candidates)
 
     info = mt.set_custom_path("ffmpeg", str(fake))
     assert os.environ["FFMPEG_PATH"] == str(fake)
     assert prefs.get("env.FFMPEG_PATH") == str(fake)
     assert info["origin"] == "custom"
+    assert info["path"] == str(fake)
+    assert info["ok"] is True
 
     # ffprobe persists under its own (already-PERSISTENT) key.
-    fakeprobe = tmp_path / "myffprobe"
     fakeprobe.write_text("#!/bin/sh\n")
     fakeprobe.chmod(0o755)
-    mt.set_custom_path("ffprobe", str(fakeprobe))
+    probe_info = mt.set_custom_path("ffprobe", str(fakeprobe))
     assert prefs.get("env.FFPROBE_PATH") == str(fakeprobe)
+    assert probe_info["origin"] == "custom"
+    assert probe_info["path"] == str(fakeprobe)
+    assert probe_info["ok"] is True
+
+
+def test_set_custom_path_rejects_invalid_image_without_overwriting_preferences(
+    mt, tmp_path, monkeypatch,
+):
+    import core.prefs as prefs
+
+    previous = str(tmp_path / "previous-ffmpeg")
+    monkeypatch.setenv("FFMPEG_PATH", previous)
+    prefs.set_("env.FFMPEG_PATH", previous)
+    invalid = tmp_path / ("invalid-ffmpeg.exe" if os.name == "nt" else "invalid-ffmpeg")
+    invalid.write_bytes(b"MZ")
+    invalid.chmod(0o755)
+
+    with pytest.raises(ValueError, match="does not run"):
+        mt.set_custom_path("ffmpeg", str(invalid))
+
+    assert os.environ["FFMPEG_PATH"] == previous
+    assert prefs.get("env.FFMPEG_PATH") == previous
 
 
 def test_set_custom_path_rejects_missing_and_non_running_files(mt, tmp_path, monkeypatch):

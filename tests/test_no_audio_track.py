@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import io
 import json
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -29,8 +28,17 @@ from core.failure import (
     public_hint_for_topic,
 )
 
-FFMPEG = shutil.which("ffmpeg")
-needs_ffmpeg = pytest.mark.skipif(not FFMPEG, reason="ffmpeg is not installed")
+
+@pytest.fixture
+def media_ffmpeg(monkeypatch) -> str:
+    from services import ffmpeg_utils
+
+    monkeypatch.setattr(ffmpeg_utils, "_BINARY_OK", {})
+    resolved = ffmpeg_utils.find_ffmpeg()
+    if not resolved:
+        pytest.skip("a runnable ffmpeg is required for synthetic media fixtures")
+    return resolved
+
 
 # The owner's diagnostic, trimmed to the lines ffmpeg prints for this case.
 OWNER_STDERR = (
@@ -44,8 +52,8 @@ OWNER_STDERR = (
 )
 
 
-def _make(path: Path, *, audio: bool) -> Path:
-    cmd = [FFMPEG, "-hide_banner", "-loglevel", "error", "-y",
+def _make(path: Path, *, audio: bool, ffmpeg: str) -> Path:
+    cmd = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
            "-f", "lavfi", "-i", "testsrc=size=160x120:rate=10:duration=1"]
     if audio:
         cmd += ["-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-shortest"]
@@ -55,13 +63,13 @@ def _make(path: Path, *, audio: bool) -> Path:
 
 
 @pytest.fixture
-def video_only(tmp_path) -> Path:
-    return _make(tmp_path / "silent.mp4", audio=False)
+def video_only(tmp_path, media_ffmpeg) -> Path:
+    return _make(tmp_path / "silent.mp4", audio=False, ffmpeg=media_ffmpeg)
 
 
 @pytest.fixture
-def video_with_audio(tmp_path) -> Path:
-    return _make(tmp_path / "speech.mp4", audio=True)
+def video_with_audio(tmp_path, media_ffmpeg) -> Path:
+    return _make(tmp_path / "speech.mp4", audio=True, ffmpeg=media_ffmpeg)
 
 
 def _raises_no_audio():
@@ -114,7 +122,6 @@ def test_http_surfaces_route_no_audio_track_to_a_structured_422():
 # ── probing ────────────────────────────────────────────────────────────────
 
 
-@needs_ffmpeg
 def test_probe_tells_audio_from_no_audio(video_only, video_with_audio, tmp_path, monkeypatch):
     from services import ffmpeg_utils
 
@@ -135,7 +142,6 @@ def test_probe_tells_audio_from_no_audio(video_only, video_with_audio, tmp_path,
 # ── dub ingest (the reported path) ─────────────────────────────────────────
 
 
-@needs_ffmpeg
 @pytest.mark.asyncio
 @pytest.mark.parametrize("probe", [True, False], ids=["probe", "stderr-fallback"])
 async def test_dub_extract_of_video_without_audio_reports_no_audio_track(
@@ -160,7 +166,6 @@ async def test_dub_extract_of_video_without_audio_reports_no_audio_track(
     assert "Invalid argument" not in error["reason"]
 
 
-@needs_ffmpeg
 @pytest.mark.asyncio
 async def test_dub_extract_of_video_with_audio_still_extracts(video_with_audio, tmp_path, monkeypatch):
     from services import dub_pipeline
@@ -189,7 +194,6 @@ async def test_dub_extract_of_video_with_audio_still_extracts(video_with_audio, 
 # ── the rest of the class ──────────────────────────────────────────────────
 
 
-@needs_ffmpeg
 def test_asr_decode_of_video_without_audio_raises_no_audio_track(video_only, video_with_audio):
     from services.asr_backend import _decode_audio_16k_mono
 
@@ -198,7 +202,6 @@ def test_asr_decode_of_video_without_audio_raises_no_audio_track(video_only, vid
     assert _decode_audio_16k_mono(str(video_with_audio)).size > 8000
 
 
-@needs_ffmpeg
 def test_extract_failure_helper_keeps_other_failures(video_with_audio):
     from services.ffmpeg_utils import raise_for_audio_extract_failure
 
@@ -208,7 +211,6 @@ def test_extract_failure_helper_keeps_other_failures(video_with_audio):
     raise_for_audio_extract_failure(b"Unknown encoder 'foo'", str(video_with_audio))
 
 
-@needs_ffmpeg
 def test_gallery_upload_refuses_video_without_audio(video_only, tmp_path, monkeypatch):
     from fastapi import UploadFile
 
@@ -225,7 +227,6 @@ def test_gallery_upload_refuses_video_without_audio(video_only, tmp_path, monkey
     assert not list(store.iterdir()), "the refused upload must not be kept"
 
 
-@needs_ffmpeg
 def test_clone_profile_refuses_reference_without_audio(video_only, tmp_path, monkeypatch):
     from fastapi import UploadFile
 
@@ -244,7 +245,6 @@ def test_clone_profile_refuses_reference_without_audio(video_only, tmp_path, mon
     assert not list(store.iterdir()), "the refused reference must not be kept"
 
 
-@needs_ffmpeg
 def test_batch_extract_reports_no_audio_track(video_only, tmp_path, monkeypatch):
     from api.routers import batch
 
@@ -279,7 +279,6 @@ def _fake_asr(monkeypatch):
     monkeypatch.setattr(asr, "get_capture_asr_backend", lambda *_a, **_k: _SilentVideoASR())
 
 
-@needs_ffmpeg
 def test_transcribe_upload_of_video_without_audio_names_the_cause(video_only, monkeypatch):
     from fastapi import UploadFile
 
@@ -291,7 +290,6 @@ def test_transcribe_upload_of_video_without_audio_names_the_cause(video_only, mo
         asyncio.run(transcribe_audio(audio=upload, language=None, model=None, mode="accurate", refine=None))
 
 
-@needs_ffmpeg
 def test_openai_transcription_of_video_without_audio_is_a_400(video_only, monkeypatch):
     from fastapi import UploadFile
 

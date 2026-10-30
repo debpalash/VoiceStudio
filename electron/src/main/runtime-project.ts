@@ -7,6 +7,7 @@ export { nvidiaDriverPresent, cudaOnlyPackages } from '../../scripts/torch-varia
 import { inspectRuntimeInterpreter } from './runtime-interpreter';
 import { RuntimeLaunchRefusedError, runtimeLaunchRefusal } from './runtime-launch-refusal';
 import { WINDOWS_ROCM_IMPORT_TIMEOUT_MS } from './runtime-probe';
+import { runtimeChildEnv } from './runtime-environment';
 import {
   windowsRocmSelected,
   windowsRocmStamp,
@@ -199,6 +200,10 @@ const IMPORT_MARKER = 'VOICESTUDIO_IMPORT=';
 export const RUNTIME_IMPORT_PROBE = RUNTIME_IMPORT_MODULES.map(
   (name) => `print('${IMPORT_MARKER}${name}', flush=True)\nimport ${name}`,
 ).join('\n');
+const WINDOWS_ROCM_APPLICATION_IMPORT_PROBE =
+  WINDOWS_ROCM_IMPORT_PREFIX +
+  `print('${IMPORT_MARKER}torch', flush=True)\nimport torch\n` +
+  RUNTIME_IMPORT_PROBE;
 /** The module an import probe was loading when its output stopped, if it said. */
 export function lastImportAttempted(output: unknown): string | null {
   const marked = String(output ?? '')
@@ -285,7 +290,7 @@ export function runtimePython(root: string, platform = process.platform): string
 export type TorchVariant = 'default' | 'cpu' | 'rocm';
 export interface TorchChoice {
   variant: TorchVariant;
-  /** True when pinned via OMNIVOICE_TORCH_VARIANT; false when inferred from the host. */
+  /** True when explicitly selected; false when inferred from the host. */
   explicit: boolean;
 }
 
@@ -332,22 +337,40 @@ export async function runtimeDownloadHosts(
   bundle: string,
   platform: NodeJS.Platform = process.platform,
   arch: string = process.arch,
-  /** Host serving the PyPI-hosted wheels: a regional mirror (#3444) or the origin. */
+  choice?: TorchChoice,
   pypiHost: string = new URL(PYPI_FILES_ORIGIN).host,
 ): Promise<Map<string, string>> {
   const lock = await readFile(join(bundle, 'uv.lock'), 'utf8');
-  const rocm = resolveTorchVariant(process.env, platform, arch).variant === 'rocm';
-  // Windows ROCm installs from AMD's repository (the recipe), not PyTorch's index.
-  const rocmHost =
-    platform === 'win32'
-      ? 'repo.radeon.com'
-      : new URL(process.env.OMNIVOICE_TORCH_INDEX || ROCM_TORCH_INDEX).host;
-  const hosts = setupDownloadHosts(lock, {
-    pytorchIndex: cpuTorchApplies(platform, arch),
-    overrides: rocm
-      ? Object.fromEntries(ROCM_TORCH_PINS.map((pin) => [pin.split(/[=<>!~]/)[0]!, rocmHost]))
-      : undefined,
-  });
+  const variant = (choice ?? resolveTorchVariant(process.env, platform, arch)).variant;
+  let hosts: Map<string, string>;
+  if (windowsRocmSelected(variant, platform, arch)) {
+    const recipe = JSON.parse(
+      await readFile(join(bundle, 'scripts/windows-rocm-recipe.json'), 'utf8'),
+    ) as {
+      torch: { find_links: string; packages: string[]; wheel_files: string[] };
+      runtime: { packages: string[]; wheel_files: string[] };
+    };
+    hosts = setupDownloadHosts(lock, { pytorchIndex: cpuTorchApplies(platform, arch) });
+    for (const section of [recipe.torch, recipe.runtime]) {
+      const artifactHosts = section.wheel_files.map(
+        (artifact) => new URL(recipe.torch.find_links + artifact).host,
+      );
+      const host = artifactHosts[0];
+      if (!host || artifactHosts.some((candidate) => candidate !== host))
+        throw new Error('invalid_report');
+      for (const pin of section.packages) hosts.set(pin.split('==')[0]!, host);
+    }
+    hosts.delete('ctranslate2');
+  } else {
+    const rocm = variant === 'rocm';
+    const rocmHost = new URL(process.env.OMNIVOICE_TORCH_INDEX || ROCM_TORCH_INDEX).host;
+    hosts = setupDownloadHosts(lock, {
+      pytorchIndex: cpuTorchApplies(platform, arch),
+      overrides: rocm
+        ? Object.fromEntries(ROCM_TORCH_PINS.map((pin) => [pin.split(/[=<>!~]/)[0]!, rocmHost]))
+        : undefined,
+    });
+  }
   // A regional mirror serves the PyPI-hosted wheels (#3444); other hosts stay.
   const origin = new URL(PYPI_FILES_ORIGIN).host;
   if (pypiHost !== origin) {
@@ -360,15 +383,17 @@ export async function runtimeDownloadHosts(
 export function managedPythonRequest(
   platform: NodeJS.Platform = process.platform,
   arch: string = process.arch,
+  choice?: TorchChoice,
 ): string {
-  if (windowsRocmSelected(undefined, platform, arch)) return WINDOWS_ROCM_PYTHON_REQUEST;
+  if (windowsRocmSelected(choice?.variant, platform, arch)) return WINDOWS_ROCM_PYTHON_REQUEST;
   return platform === 'win32' && arch === 'arm64' ? WIN_ARM64_PYTHON_REQUEST : '3.11';
 }
 
 async function dependencyStamp(
   bundle: string,
-  variant: TorchVariant = resolveTorchVariant().variant,
+  choice: TorchChoice = resolveTorchVariant(),
 ): Promise<string> {
+  const { variant } = choice;
   const hash = createHash('sha256');
   hash.update(RUNTIME_SCHEMA);
   if (variant === 'rocm') hash.update(':torch=rocm');
@@ -385,11 +410,13 @@ async function dependencyStamp(
  * to pick a smaller download. The reverse is not true: a CPU environment on a
  * host that has since gained an NVIDIA driver is stale and needs reinstalling.
  */
-async function acceptedStamps(bundle: string): Promise<string[]> {
-  const choice = resolveTorchVariant();
-  const stamps = [await dependencyStamp(bundle, choice.variant)];
+async function acceptedStamps(
+  bundle: string,
+  choice: TorchChoice = resolveTorchVariant(),
+): Promise<string[]> {
+  const stamps = [await dependencyStamp(bundle, choice)];
   if (choice.variant === 'cpu' && !choice.explicit) {
-    stamps.push(await dependencyStamp(bundle, 'default'));
+    stamps.push(await dependencyStamp(bundle, { variant: 'default', explicit: false }));
   }
   return stamps;
 }
@@ -547,19 +574,6 @@ function probeTimedOut(error: unknown): boolean {
 }
 
 /**
- * Check the selected interpreter locally before trusting runtime metadata.
- *
- * Only a probe that actually FAILED (a missing module, a bad DLL, an
- * interpreter that will not start) proves the runtime broken. A probe that was
- * still importing when the generous ceiling expired proves only that this host
- * is slow, so it is inconclusive and the runtime is trusted: treating "slow" as
- * "broken" is what sent working installs back to the multi-GB setup screen, or
- * reported "environment missing or incomplete" for an intact one. If the
- * interpreter really is wedged the backend launch that follows fails with the
- * process's own output and the startup budget, which is a far better diagnostic
- * than a silent false negative here.
- */
-/**
  * The line that says WHY the import probe failed: Python's final exception
  * line (`ModuleNotFoundError: No module named 'sentencepiece'`, `ImportError:
  * DLL load failed ...`), or the launch error when the interpreter never ran.
@@ -580,21 +594,46 @@ export function probeFailureDetail(error: unknown, stderr: unknown): string {
   return scrubText(detail).slice(0, 300);
 }
 
+/**
+ * Check the selected interpreter locally before trusting runtime metadata.
+ *
+ * Only a probe that actually FAILED (a missing module, a bad DLL, an
+ * interpreter that will not start) proves the runtime broken. A probe that was
+ * still importing when the generous ceiling expired proves only that this host
+ * is slow, so it is inconclusive and the runtime is trusted: treating "slow" as
+ * "broken" is what sent working installs back to the multi-GB setup screen, or
+ * reported "environment missing or incomplete" for an intact one. If the
+ * interpreter really is wedged the backend launch that follows fails with the
+ * process's own output and the startup budget, which is a far better diagnostic
+ * than a silent false negative here.
+ */
 export async function runtimeDependenciesReady(
   project: string,
   onFailure?: (detail: string) => void,
+  choice?: TorchChoice,
+  managed = false,
 ): Promise<boolean> {
   let windowsRocm: boolean;
   try {
-    windowsRocm = windowsRocmSelected();
+    windowsRocm = windowsRocmSelected(choice?.variant);
   } catch (error) {
-    // ROCm requested on a host that cannot run it (Windows ARM64): not ready,
-    // with the reason, instead of a rejected readiness check.
     onFailure?.(error instanceof Error ? error.message : String(error));
     return false;
   }
-  if (windowsRocm && !(await windowsRocmReady(project, onFailure))) return false;
-  const env: NodeJS.ProcessEnv = { ...process.env };
+  if (windowsRocm && !(await windowsRocmReady(project, onFailure, managed))) return false;
+  const env = runtimeChildEnv(
+    {
+      ...process.env,
+      ...(choice
+        ? { OMNIVOICE_TORCH_VARIANT: choice.variant === 'default' ? 'cuda' : choice.variant }
+        : {}),
+    },
+    {
+      managed,
+      platform: process.platform,
+      variant: windowsRocm ? 'rocm' : (choice?.variant ?? 'default'),
+    },
+  );
   delete env.PYTHONHOME;
   delete env.PYTHONPATH;
   env.HF_HUB_OFFLINE = '1';
@@ -612,16 +651,14 @@ export async function runtimeDependenciesReady(
       if (!ready) {
         const module = lastImportAttempted(stdout);
         const detail = probeFailureDetail(error, stderr);
-        onFailure?.(
-          module && !stderr.trim() ? `${detail} (importing ${module})` : detail,
-        );
+        onFailure?.(module && !stderr.trim() ? `${detail} (importing ${module})` : detail);
       }
       resolve(ready);
     };
     try {
       execFile(
         python,
-        ['-c', (windowsRocm ? WINDOWS_ROCM_IMPORT_PREFIX : '') + RUNTIME_IMPORT_PROBE],
+        ['-c', windowsRocm ? WINDOWS_ROCM_APPLICATION_IMPORT_PROBE : RUNTIME_IMPORT_PROBE],
         {
           cwd: project,
           windowsHide: true,
@@ -807,17 +844,23 @@ export function outdatedSystemLibraryError(
   );
 }
 
-export async function runtimeReady(bundle: string, project: string): Promise<boolean> {
+export async function runtimeReady(
+  bundle: string,
+  project: string,
+  choice?: TorchChoice,
+  managed = false,
+): Promise<boolean> {
   if (await runtimeIncomplete(project)) return false;
   try {
     return (
       (await stat(runtimePython(project))).isFile() &&
       (await stat(join(project, '.venv', 'pyvenv.cfg'))).isFile() &&
-      (await acceptedStamps(bundle)).includes(
+      (await acceptedStamps(bundle, choice)).includes(
         await readFile(join(project, RUNTIME_READY_MARKER), 'utf8'),
       ) &&
-      (!windowsRocmSelected() ||
-        ((await windowsRocmRecipeMatches(bundle, project)) && (await windowsRocmReady(project))))
+      (!windowsRocmSelected(choice?.variant) ||
+        ((await windowsRocmRecipeMatches(bundle, project)) &&
+          (await windowsRocmReady(project, undefined, managed))))
     );
   } catch (error) {
     if (error instanceof RuntimeLaunchRefusedError) throw error;
@@ -831,9 +874,15 @@ export async function runtimeReady(bundle: string, project: string): Promise<boo
  * match this Electron bundle. The Electron marker is intentionally optional:
  * Tauri predates it and owns the same frozen Python graph.
  */
-export async function runtimeCompatible(bundle: string, project: string): Promise<boolean> {
+export async function runtimeCompatible(
+  bundle: string,
+  project: string,
+  choice?: TorchChoice,
+  managed = false,
+): Promise<boolean> {
   if (await runtimeIncomplete(project)) return false;
   try {
+    const torch = choice ?? resolveTorchVariant();
     const [python, config, bundledProject, installedProject, bundledLock, installedLock, marker] =
       await Promise.all([
         stat(runtimePython(project)),
@@ -861,10 +910,11 @@ export async function runtimeCompatible(bundle: string, project: string): Promis
       (marker === null
         ? // A Tauri environment carries the lock's default (CUDA) torch: fine for
           // inferred CPU hosts, wrong for an explicit ROCm or CPU request.
-          !resolveTorchVariant().explicit || resolveTorchVariant().variant === 'default'
-        : (await acceptedStamps(bundle)).includes(marker)) &&
-      (!windowsRocmSelected() ||
-        ((await windowsRocmRecipeMatches(bundle, project)) && (await windowsRocmReady(project))))
+          !torch.explicit || torch.variant === 'default'
+        : (await acceptedStamps(bundle, torch)).includes(marker)) &&
+      (!windowsRocmSelected(torch.variant) ||
+        ((await windowsRocmRecipeMatches(bundle, project)) &&
+          (await windowsRocmReady(project, undefined, managed))))
     );
   } catch (error) {
     if (error instanceof RuntimeLaunchRefusedError) throw error;
@@ -1090,6 +1140,7 @@ async function prefetchLockedWheels(
   signal: AbortSignal,
   mirror: string | null,
   reserveBytes: number,
+  choice: TorchChoice,
   { log = () => {}, transfer }: MirrorReporter,
 ): Promise<Map<string, string>> {
   const connections = prefetchConnections();
@@ -1105,7 +1156,7 @@ async function prefetchLockedWheels(
     return new Map();
   }
   signal.throwIfAborted();
-  const managedMinor = /3\.(\d+)/.exec(managedPythonRequest())?.[1];
+  const managedMinor = /3\.(\d+)/.exec(managedPythonRequest(undefined, undefined, choice))?.[1];
   const plan = planWheelPrefetch(
     await readFile(join(project, 'uv.lock'), 'utf8'),
     String(output ?? ''),
@@ -1171,6 +1222,7 @@ export async function installRuntime(
   signal: AbortSignal,
   phase: (value: RuntimePhase) => void = () => {},
   region: RuntimeRegion = 'auto',
+  choice?: TorchChoice,
   downloads: MirrorReporter = {},
 ): Promise<void> {
   signal.throwIfAborted();
@@ -1182,7 +1234,7 @@ export async function installRuntime(
   // A cancelled attempt leaves its unfinished wheels behind; uv cannot resume them.
   // Drop them before measuring free space, or they can block the retry that would free it.
   await pruneInterruptedUvDownloads(runtimeUvCache(project));
-  const torch = resolveTorchVariant();
+  const torch = choice ?? resolveTorchVariant();
   const windowsRocm = windowsRocmSelected(torch.variant);
   const requiredBytes =
     torch.variant === 'cpu' || process.platform === 'darwin'
@@ -1233,6 +1285,7 @@ export async function installRuntime(
   const env: NodeJS.ProcessEnv = {
     ...downloadProxyEnv(),
     ...runtimeDownloadEnv(downloadRegion),
+    OMNIVOICE_TORCH_VARIANT: torch.variant === 'default' ? 'cuda' : torch.variant,
     UV_PROJECT_ENVIRONMENT: join(project, '.venv'),
     // Keep immutable downloads beside the replaceable project. Clean & Retry can
     // rebuild a broken venv without paying the multi-gigabyte transfer twice.
@@ -1242,6 +1295,8 @@ export async function installRuntime(
     TMP: scratch,
     TMPDIR: scratch,
   };
+  const runWithChoice: RuntimeRunner = (command, args, cwd, overrides, options) =>
+    run(command, args, cwd, { ...env, ...overrides }, options);
   if (!uv) {
     phase('downloading_uv');
     await mkdir(tools, { recursive: true });
@@ -1254,7 +1309,7 @@ export async function installRuntime(
     );
     await writeFile(script, installer);
     signal.throwIfAborted();
-    await run(
+    await runWithChoice(
       windows ? 'powershell.exe' : 'sh',
       windows
         ? ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script]
@@ -1280,14 +1335,14 @@ export async function installRuntime(
     ? await inspectRuntimeInterpreter(
         runtimePython(project),
         project,
-        run,
+        runWithChoice,
         signal,
         windowsRocm,
-        managedPythonRequest() === WIN_ARM64_PYTHON_REQUEST,
+        managedPythonRequest(undefined, undefined, torch) === WIN_ARM64_PYTHON_REQUEST,
         RUNTIME_IMPORT_PROBE,
         RUNTIME_NATIVE_IMPORT_PROBE,
         RUNTIME_REPAIR_PACKAGES,
-        () => diagnoseNativeRuntime(project, run),
+        () => diagnoseNativeRuntime(project, runWithChoice),
       )
     : {
         existingPython: false,
@@ -1295,14 +1350,11 @@ export async function installRuntime(
         missingSystemLibraries: [] as string[],
       };
   if (missingSystemLibraries.length) {
-    // The wheels are fine; this Windows system is missing a library they
-    // link against. Say so instead of downloading gigabytes that cannot
-    // supply a system file (#3058).
     throw missingSystemLibraryError(missingSystemLibraries);
   }
   const pythonArgs = existingPython
     ? ['--python', runtimePython(project)]
-    : ['--managed-python', '--python', managedPythonRequest()];
+    : ['--managed-python', '--python', managedPythonRequest(undefined, undefined, torch)];
   const cpuTorch = torch.variant === 'cpu';
   // A failed native import may leave distribution metadata intact, so uv's
   // ordinary sync would otherwise consider the broken wheel already satisfied.
@@ -1320,7 +1372,7 @@ export async function installRuntime(
     // Not on a resume: there the import fails because the interrupted attempt
     // never finished installing, and uv only adds finished wheels to its cache,
     // so evicting would throw away gigabytes already downloaded (#3475).
-    await run(uv, ['cache', 'clean', ...repairPackages], project, env);
+    await runWithChoice(uv, ['cache', 'clean', ...repairPackages], project, env);
     signal.throwIfAborted();
   }
   // The lock resolves torch to the CUDA build (and, on Linux, ~3 GB of nvidia-*
@@ -1354,16 +1406,17 @@ export async function installRuntime(
     project,
     syncArgs,
     env,
-    run,
+    runWithChoice,
     signal,
     mirror,
     requiredBytes,
+    torch,
     downloads,
   );
   await syncLockedWithMirror(
     project,
     mirror,
-    () => run(uv!, syncArgs, project, env),
+    () => runWithChoice(uv!, syncArgs, project, env),
     signal,
     downloads,
     localUrls,
@@ -1373,7 +1426,7 @@ export async function installRuntime(
   // resume parts left by a failed segmented fetch only take space.
   await clearPrefetchedWheels(runtimeWheelPrefetchDir(project));
   if (cpuTorch) {
-    await run(
+    await runWithChoice(
       uv,
       [
         'pip',
@@ -1392,10 +1445,15 @@ export async function installRuntime(
     signal.throwIfAborted();
   }
   if (windowsRocm) {
-    await run(runtimePython(project), ['-m', WINDOWS_ROCM_MODULE, '--uv', uv], project, env);
+    await runWithChoice(
+      runtimePython(project),
+      ['-m', WINDOWS_ROCM_MODULE, '--uv', uv],
+      project,
+      env,
+    );
     signal.throwIfAborted();
   } else if (torch.variant === 'rocm') {
-    await run(
+    await runWithChoice(
       uv,
       [
         'pip',
@@ -1409,43 +1467,47 @@ export async function installRuntime(
     );
     signal.throwIfAborted();
   }
-  await ensureCudnn8Compat(uv, project, run, env, signal, torch.variant);
+  await ensureCudnn8Compat(uv, project, runWithChoice, env, signal, torch.variant);
   signal.throwIfAborted();
   // A non-English profile path in uv's editable .pth crashes Python 3.11 at
   // startup on a non-UTF-8 Windows code page (#1783).
   await asciiSafePthFiles(join(project, '.venv')).catch(() => []);
   phase('verifying');
+  try {
+    if (windowsRocm) {
+      await runWithChoice(
+        runtimePython(project),
+        ['-c', WINDOWS_ROCM_APPLICATION_IMPORT_PROBE],
+        project,
+        env,
+        { timeoutMs: WINDOWS_ROCM_IMPORT_TIMEOUT_MS },
+      );
+    } else await runWithChoice(runtimePython(project), ['-c', RUNTIME_IMPORT_PROBE], project);
+  } catch (error) {
+    // A fresh install on a Windows system without the Visual C++ runtime
+    // cannot verify either, and no wheel can supply the missing file (#3058).
+    const diagnosis = await diagnoseNativeRuntime(project, runWithChoice);
+    if (diagnosis.missingSystemLibraries.length) {
+      throw missingSystemLibraryError(diagnosis.missingSystemLibraries);
+    }
+    // An outdated system Visual C++ runtime crashes newer C++ wheels such as
+    // sentencepiece 0.2.2 with an access violation; say so and how to fix it (#3293).
+    throw outdatedSystemLibraryError(error, diagnosis) ?? importFailure(error);
+  }
   if (windowsRocm) {
-    await run(
+    await runWithChoice(
       runtimePython(project),
-      ['-c', WINDOWS_ROCM_IMPORT_PREFIX + RUNTIME_IMPORT_PROBE],
+      ['-m', WINDOWS_ROCM_MODULE, '--verify-only'],
       project,
       env,
-      { timeoutMs: WINDOWS_ROCM_IMPORT_TIMEOUT_MS },
     );
-    await run(runtimePython(project), ['-m', WINDOWS_ROCM_MODULE, '--verify-only'], project, env);
-  } else {
+  } else if (torch.variant === 'rocm') {
+    // With an untagged OMNIVOICE_TORCH_INDEX mirror the bare pins can resolve
+    // to ordinary wheels; never mark such a runtime ROCm-ready.
     try {
-      await run(runtimePython(project), ['-c', RUNTIME_IMPORT_PROBE], project);
-    } catch (error) {
-      // A fresh install on a Windows system without the Visual C++ runtime
-      // cannot verify either, and no wheel can supply the missing file (#3058).
-      const diagnosis = await diagnoseNativeRuntime(project, run);
-      if (diagnosis.missingSystemLibraries.length) {
-        throw missingSystemLibraryError(diagnosis.missingSystemLibraries);
-      }
-      // An outdated system Visual C++ runtime crashes newer C++ wheels such as
-      // sentencepiece 0.2.2 with an access violation; say so and how to fix it (#3293).
-      throw outdatedSystemLibraryError(error, diagnosis) ?? importFailure(error);
-    }
-    if (torch.variant === 'rocm') {
-      // With an untagged OMNIVOICE_TORCH_INDEX mirror the bare pins can resolve
-      // to ordinary wheels; never mark such a runtime ROCm-ready.
-      try {
-        await run(runtimePython(project), ['-c', ROCM_TORCH_PROBE], project);
-      } catch {
-        throw new Error(ROCM_TORCH_PROBE_FAILURE);
-      }
+      await runWithChoice(runtimePython(project), ['-c', ROCM_TORCH_PROBE], project);
+    } catch {
+      throw new Error(ROCM_TORCH_PROBE_FAILURE);
     }
   }
   signal.throwIfAborted();
@@ -1455,10 +1517,7 @@ export async function installRuntime(
   );
   // The ready marker is written last and is authoritative: it supersedes the
   // install marker even if removing that marker below fails (#3475).
-  await writeFile(
-    join(project, RUNTIME_READY_MARKER),
-    await dependencyStamp(bundle, torch.variant),
-  );
+  await writeFile(join(project, RUNTIME_READY_MARKER), await dependencyStamp(bundle, torch));
   // Windows briefly locks a freshly written file while antivirus or the indexer
   // scans it; retry instead of failing a finished install on that lock.
   await rm(join(project, RUNTIME_INSTALLING_MARKER), {

@@ -19,6 +19,7 @@ CATALOG = (
 _SHOUTED = re.compile(r"[A-Z][A-Z &/'.-]{3,}")
 _ALLOWED_KEYS = {
     "about.vram",  # acronym
+    "runtimeTorch.cuda",
     "settings.uninstall_confirm_word",  # the word the user must type
     "settings.reset_confirm_word",
 }

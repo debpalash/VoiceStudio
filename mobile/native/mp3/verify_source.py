@@ -18,7 +18,7 @@ def verify(archive=None):
         path = Path(name)
         assert not path.is_absolute() and '..' not in path.parts
         assert hashlib.sha256((SOURCE / path).read_bytes()).hexdigest() == digest, name
-    actual = {str(p.relative_to(SOURCE)) for p in SOURCE.rglob('*') if p.suffix in ('.c', '.h')}
+    actual = {p.relative_to(SOURCE).as_posix() for p in SOURCE.rglob('*') if p.suffix in ('.c', '.h')}
     expected = {p for p in pin['files'] if Path(p).suffix in ('.c', '.h')} | {'config.h'}
     assert actual == expected, 'Unpinned encoder input'
     if archive:

@@ -2,7 +2,12 @@
 import { EventEmitter } from 'node:events';
 import type { BackendSupervisor } from './backend';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { AGENT_SCAN_TTL_MS, registerRepairAgents, REPAIR_CHANNELS } from './repair-agents';
+import {
+  AGENT_SCAN_TTL_MS,
+  registerRepairAgents,
+  REPAIR_CHANNELS,
+  type RepairAgentsRegistration,
+} from './repair-agents';
 const mock = vi.hoisted(() => ({
   handlers: new Map<string, (...args: any[]) => any>(),
   spawn: vi.fn(),
@@ -11,11 +16,13 @@ const mock = vi.hoisted(() => ({
   bridge: vi.fn(),
   close: vi.fn(async () => {}),
   output: vi.fn(),
+  closeLlm: vi.fn(),
+  pickWorkspace: vi.fn(),
 }));
 vi.mock('electron', () => ({
   app: { getPath: () => '/temp', getAppPath: () => '/app' },
   BrowserWindow: {},
-  dialog: {},
+  dialog: { showOpenDialog: mock.pickWorkspace },
   ipcMain: {
     handle: (name: string, callback: (...args: any[]) => any) => mock.handlers.set(name, callback),
     removeHandler: (name: string) => mock.handlers.delete(name),
@@ -57,11 +64,15 @@ function answerProbes() {
 }
 vi.mock('./repair-api-bridge', () => ({ startRepairApiBridge: mock.bridge }));
 vi.mock('./llm-agent-bridge', () => ({
-  startLlmAgentBridge: async () => ({ url: '', token: '', close() {} }),
+  startLlmAgentBridge: async () => ({ url: '', token: '', close: mock.closeLlm }),
 }));
 vi.mock('./window-safety', () => ({ sendToLiveWindow: mock.output }));
 const frame = { url: 'app://voicestudio/index.html' };
-const contents = { mainFrame: frame };
+let contentsDestroyed = false;
+const contents = Object.assign(new EventEmitter(), {
+  mainFrame: frame,
+  isDestroyed: () => contentsDestroyed,
+});
 const owner = { webContents: contents };
 const event = { sender: contents, senderFrame: frame };
 const request = {
@@ -71,9 +82,10 @@ const request = {
   report: 'Create a preview',
   context: '{}',
 };
-let dispose: (() => void) | undefined;
+let dispose: RepairAgentsRegistration | undefined;
 beforeEach(() => {
   vi.clearAllMocks();
+  contentsDestroyed = false;
   answerProbes();
   mock.bridge.mockResolvedValue({ contextFile: '/temp/isolated/context.json', close: mock.close });
   vi.stubGlobal(
@@ -82,21 +94,141 @@ beforeEach(() => {
   );
 });
 afterEach(() => {
-  dispose?.();
+  dispose?.dispose();
   vi.unstubAllGlobals();
 });
 const start = () => mock.handlers.get(REPAIR_CHANNELS.start)!(event, request);
-async function setup() {
+async function setup(overrides: Partial<BackendSupervisor> = {}) {
+  dispose?.dispose();
   dispose = await registerRepairAgents(
     {
       baseUrl: 'http://localhost',
       requestHeaders: () => ({}),
       status: { stage: 'ready' },
+      ...overrides,
     } as unknown as BackendSupervisor,
     '/source',
     () => owner as any,
   );
 }
+
+it('keeps trusted repair reads alive during backend shutdown until the renderer is destroyed', async () => {
+  let release!: () => void;
+  const backendShutdown = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+  );
+  await setup({ shutdown: backendShutdown });
+  const found = await mock.handlers.get(REPAIR_CHANNELS.list)!(event);
+  const probes = mock.execFile.mock.calls.length;
+  const quitting = (async () => {
+    dispose!.stop();
+    await backendShutdown();
+  })();
+  try {
+    expect(mock.handlers.get(REPAIR_CHANNELS.list)).toBeTypeOf('function');
+    expect(mock.handlers.get(REPAIR_CHANNELS.state)).toBeTypeOf('function');
+    expect(await mock.handlers.get(REPAIR_CHANNELS.list)!(event, { refresh: true })).toEqual(found);
+    expect(mock.handlers.get(REPAIR_CHANNELS.state)!(event).status).toBe('idle');
+    expect(mock.execFile).toHaveBeenCalledTimes(probes);
+    const foreign = { ...event, senderFrame: { url: frame.url } };
+    expect(() => mock.handlers.get(REPAIR_CHANNELS.list)!(foreign)).toThrow('Untrusted');
+    expect(() => mock.handlers.get(REPAIR_CHANNELS.state)!(foreign)).toThrow('Untrusted');
+    await expect(start()).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(translate()).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(mock.handlers.get(REPAIR_CHANNELS.chooseWorkspace)!(event)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    expect(mock.spawn).not.toHaveBeenCalled();
+    expect(mock.execFile).toHaveBeenCalledTimes(probes);
+    release();
+    await quitting;
+    expect(mock.handlers.get(REPAIR_CHANNELS.state)).toBeTypeOf('function');
+    contentsDestroyed = true;
+    contents.emit('destroyed');
+    expect(mock.handlers.size).toBe(0);
+    dispose!();
+    expect(mock.closeLlm).toHaveBeenCalledTimes(1);
+  } finally {
+    release();
+    await quitting;
+  }
+});
+
+it('stops active repair work once while retaining its stopped state until renderer destruction', async () => {
+  const child = Object.assign(new EventEmitter(), {
+    stdin: Object.assign(new EventEmitter(), { end: vi.fn() }),
+    stdout: new EventEmitter(),
+    stderr: new EventEmitter(),
+    kill: vi.fn(),
+  });
+  mock.spawn.mockReturnValue(child);
+  await setup();
+  await start();
+  dispose!.stop();
+  dispose!.stop();
+  expect(child.kill).toHaveBeenCalledTimes(1);
+  expect(mock.handlers.get(REPAIR_CHANNELS.state)!(event).status).toBe('stopped');
+  child.emit('close', 0);
+  expect(mock.handlers.get(REPAIR_CHANNELS.state)!(event).status).toBe('stopped');
+  contentsDestroyed = true;
+  contents.emit('destroyed');
+  dispose!();
+  dispose!.dispose();
+  expect(mock.handlers.size).toBe(0);
+  expect(mock.closeLlm).toHaveBeenCalledTimes(1);
+  expect(child.kill).toHaveBeenCalledTimes(1);
+});
+
+it('cancels an unresolved workspace choice when repair work stops', async () => {
+  let answer!: (value: unknown) => void;
+  mock.pickWorkspace.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+  );
+  await setup();
+  const picking = mock.handlers.get(REPAIR_CHANNELS.chooseWorkspace)!(event);
+  dispose!.stop();
+  answer({ canceled: false, filePaths: ['/different-source'] });
+  await expect(picking).rejects.toMatchObject({ name: 'AbortError' });
+  expect(mock.handlers.get(REPAIR_CHANNELS.state)!(event).workspacePath).not.toBe(
+    '/different-source',
+  );
+});
+
+it('does not launch version probes when a pending scan resumes after shutdown starts', async () => {
+  await setup();
+  const release = holdLocate();
+  const scanning = mock.handlers.get(REPAIR_CHANNELS.list)!(event, { refresh: true });
+  dispose!.stop();
+  release();
+  await scanning;
+  expect(mock.execFile.mock.calls.some((call) => call[1].includes('--version'))).toBe(false);
+});
+
+it('fully disposes immediately when its renderer is already destroyed', async () => {
+  await setup();
+  contentsDestroyed = true;
+  dispose!.stop();
+  dispose!.stop();
+  dispose!();
+  expect(mock.handlers.size).toBe(0);
+  expect(contents.listenerCount('destroyed')).toBe(0);
+  expect(mock.closeLlm).toHaveBeenCalledTimes(1);
+});
+
+it('retains the callable full disposer while its renderer is still alive', async () => {
+  await setup();
+  dispose!();
+  dispose!.dispose();
+  expect(mock.handlers.size).toBe(0);
+  expect(contents.listenerCount('destroyed')).toBe(0);
+  expect(mock.closeLlm).toHaveBeenCalledTimes(1);
+});
 
 it('cancels during setup and rejects a concurrent request before launching a process', async () => {
   let release!: (value: unknown) => void;
@@ -230,12 +362,13 @@ it('stopping while the translation CLI is located prevents the spawn', async () 
   expect(mock.spawn).not.toHaveBeenCalled();
 });
 
-it('disposing while a CLI is located prevents both launches from spawning', async () => {
+it('stopping with a live renderer cancels held repair and translation lookups', async () => {
   await setup();
   let release = holdLocate();
   const repair = start();
   await vi.waitFor(() => expect(mock.execFile).toHaveBeenCalledTimes(5));
-  dispose!();
+  dispose!.stop();
+  expect(mock.handlers.get(REPAIR_CHANNELS.state)!(event).status).toBe('stopped');
   release();
   await repair;
 
@@ -243,7 +376,28 @@ it('disposing while a CLI is located prevents both launches from spawning', asyn
   release = holdLocate();
   const pending = translate();
   await vi.waitFor(() => expect(mock.execFile).toHaveBeenCalledTimes(10));
-  dispose!();
+  dispose!.stop();
+  expect(mock.handlers.get(REPAIR_CHANNELS.state)).toBeTypeOf('function');
+  release();
+  await expect(pending).rejects.toThrow('Agent translation was stopped');
+  expect(mock.bridge).not.toHaveBeenCalled();
+  expect(mock.spawn).not.toHaveBeenCalled();
+});
+
+it('disposing while a CLI is located prevents both launches from spawning', async () => {
+  await setup();
+  let release = holdLocate();
+  const repair = start();
+  await vi.waitFor(() => expect(mock.execFile).toHaveBeenCalledTimes(5));
+  dispose!.dispose();
+  release();
+  await repair;
+
+  await setup();
+  release = holdLocate();
+  const pending = translate();
+  await vi.waitFor(() => expect(mock.execFile).toHaveBeenCalledTimes(10));
+  dispose!.dispose();
   dispose = undefined;
   release();
   await expect(pending).rejects.toThrow('Agent translation was stopped');

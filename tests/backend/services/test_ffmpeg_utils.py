@@ -21,8 +21,8 @@ def test_resolve_ffprobe_prefers_omnivoice_env_var(monkeypatch, tmp_path):
     from services import ffmpeg_utils
 
     fake = tmp_path / "ffprobe"
-    fake.write_text("#!/bin/sh\necho 1\n")
-    fake.chmod(0o755)
+    fake.touch()
+    monkeypatch.setattr(ffmpeg_utils, "_binary_runs", lambda candidate: candidate == str(fake))
     monkeypatch.setenv("OMNIVOICE_FFPROBE_PATH", str(fake))
 
     assert ffmpeg_utils.resolve_ffprobe() == str(fake)
@@ -33,8 +33,8 @@ def test_resolve_ffprobe_falls_back_to_legacy_FFPROBE_PATH(monkeypatch, tmp_path
     from services import ffmpeg_utils
 
     fake = tmp_path / "ffprobe-legacy"
-    fake.write_text("#!/bin/sh\necho 1\n")
-    fake.chmod(0o755)
+    fake.touch()
+    monkeypatch.setattr(ffmpeg_utils, "_binary_runs", lambda candidate: candidate == str(fake))
     monkeypatch.setenv("FFPROBE_PATH", str(fake))
 
     assert ffmpeg_utils.resolve_ffprobe() == str(fake)
@@ -48,9 +48,12 @@ def test_resolve_ffprobe_omnivoice_path_takes_precedence_over_legacy(
 
     canonical = tmp_path / "ffprobe-canonical"
     legacy = tmp_path / "ffprobe-legacy"
-    for f in (canonical, legacy):
-        f.write_text("#!/bin/sh\necho 1\n")
-        f.chmod(0o755)
+    for candidate in (canonical, legacy):
+        candidate.touch()
+    monkeypatch.setattr(
+        ffmpeg_utils, "_binary_runs",
+        lambda candidate: candidate in (str(canonical), str(legacy)),
+    )
 
     monkeypatch.setenv("OMNIVOICE_FFPROBE_PATH", str(canonical))
     monkeypatch.setenv("FFPROBE_PATH", str(legacy))
@@ -63,7 +66,7 @@ def test_resolve_ffprobe_falls_back_to_PATH(monkeypatch, tmp_path):
     from services import ffmpeg_utils
 
     # Stub shutil.which inside the module so we do not depend on the host PATH.
-    fake = "/fake/path/from/system/ffprobe"
+    fake = str(tmp_path / "system" / "ffprobe")
 
     def _fake_which(name):
         if name == "ffprobe":
@@ -71,9 +74,10 @@ def test_resolve_ffprobe_falls_back_to_PATH(monkeypatch, tmp_path):
         return None
 
     monkeypatch.setattr(ffmpeg_utils, "shutil", _ShutilStub(_fake_which))
+    monkeypatch.setattr(ffmpeg_utils, "_acquired_bundled", lambda tool: None)
     # The fake path isn't a real binary — bypass the runnability probe here
     # (rejection behavior has its own test below).
-    monkeypatch.setattr(ffmpeg_utils, "_binary_runs", lambda _p: True)
+    monkeypatch.setattr(ffmpeg_utils, "_binary_runs", lambda candidate: candidate == fake)
     assert ffmpeg_utils.resolve_ffprobe() == fake
 
 
@@ -85,19 +89,23 @@ def test_resolve_ffprobe_rejects_non_runnable_candidate(monkeypatch, tmp_path):
 
     broken = tmp_path / "ffprobe-broken"
     broken.write_bytes(b"\x00\x01not-a-binary")
-    broken.chmod(0o755)
     good = tmp_path / "ffprobe-good"
-    good.write_text("#!/bin/sh\necho 1\n")
-    good.chmod(0o755)
+    good.touch()
+    probes = []
 
+    def binary_runs(candidate):
+        probes.append(candidate)
+        return candidate == str(good)
+
+    monkeypatch.setattr(ffmpeg_utils, "_binary_runs", binary_runs)
+    monkeypatch.setattr(ffmpeg_utils, "_acquired_bundled", lambda tool: None)
     monkeypatch.setenv("OMNIVOICE_FFPROBE_PATH", str(broken))
     monkeypatch.setattr(
         ffmpeg_utils, "shutil",
         _ShutilStub(lambda name: str(good) if name == "ffprobe" else None),
     )
-    ffmpeg_utils._BINARY_OK.clear()
-
     assert ffmpeg_utils.resolve_ffprobe() == str(good)
+    assert probes == [str(broken), str(good)]
 
 
 def test_resolve_ffprobe_returns_None_when_nothing_resolves(monkeypatch):
@@ -105,6 +113,7 @@ def test_resolve_ffprobe_returns_None_when_nothing_resolves(monkeypatch):
     from services import ffmpeg_utils
 
     monkeypatch.setattr(ffmpeg_utils, "shutil", _ShutilStub(lambda _name: None))
+    monkeypatch.setattr(ffmpeg_utils, "_acquired_bundled", lambda tool: None)
     assert ffmpeg_utils.resolve_ffprobe() is None
 
 
@@ -117,8 +126,8 @@ def test_resolve_ffprobe_env_var_with_command_name_resolves_via_which(
     from services import ffmpeg_utils
 
     fake = tmp_path / "ffprobe"
-    fake.write_text("#!/bin/sh\necho 1\n")
-    fake.chmod(0o755)
+    fake.touch()
+    monkeypatch.setattr(ffmpeg_utils, "_binary_runs", lambda candidate: candidate == str(fake))
 
     def _fake_which(name):
         if name == "ffprobe":
@@ -144,7 +153,10 @@ def test_find_ffprobe_preserves_ffmpeg_parent_directory(monkeypatch, tmp_path, b
     monkeypatch.setattr(ffmpeg_utils, "resolve_ffprobe", lambda: None)
     monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: str(ffmpeg))
 
-    monkeypatch.setattr(ffmpeg_utils, "_binary_runs", lambda candidate: runnable)
+    monkeypatch.setattr(
+        ffmpeg_utils, "_binary_runs",
+        lambda candidate: candidate == str(ffprobe) and runnable,
+    )
     assert ffmpeg_utils.find_ffprobe() == (str(ffprobe) if runnable else None)
 
 
@@ -196,6 +208,55 @@ def test_binary_probe_rejects_nonzero_exit(monkeypatch):
     monkeypatch.setattr(ffmpeg_utils, "_BINARY_OK", {})
     # Python is portable and executable, but rejects FFmpeg's -version flag.
     assert not ffmpeg_utils._binary_runs(sys.executable)
+
+
+@pytest.mark.parametrize("returncode", [0, 1])
+def test_binary_probe_caches_exit_status(monkeypatch, tmp_path, returncode):
+    import subprocess
+    from services import ffmpeg_utils
+
+    candidate = str(tmp_path / "ffprobe")
+    calls = []
+
+    def run_probe(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, returncode)
+
+    monkeypatch.setattr(ffmpeg_utils, "_BINARY_OK", {})
+    monkeypatch.setattr(ffmpeg_utils.subprocess, "run", run_probe)
+
+    assert ffmpeg_utils._binary_runs(candidate) is (returncode == 0)
+    assert ffmpeg_utils._binary_runs(candidate) is (returncode == 0)
+    assert calls == [(
+        [candidate, "-version"],
+        {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
+         "timeout": 10, "check": False},
+    )]
+
+
+@pytest.mark.parametrize("failure", ["os-error", "timeout", "subprocess-error"])
+def test_binary_probe_rejects_and_caches_launch_errors(monkeypatch, tmp_path, failure):
+    import subprocess
+    from services import ffmpeg_utils
+
+    candidate = str(tmp_path / "ffprobe")
+    calls = []
+    failures = {
+        "os-error": OSError("not an executable"),
+        "timeout": subprocess.TimeoutExpired([candidate, "-version"], 10),
+        "subprocess-error": subprocess.SubprocessError("probe failed"),
+    }
+
+    def run_probe(command, **kwargs):
+        calls.append(command)
+        raise failures[failure]
+
+    monkeypatch.setattr(ffmpeg_utils, "_BINARY_OK", {})
+    monkeypatch.setattr(ffmpeg_utils.subprocess, "run", run_probe)
+
+    assert ffmpeg_utils._binary_runs(candidate) is False
+    assert ffmpeg_utils._binary_runs(candidate) is False
+    assert calls == [[candidate, "-version"]]
 
 
 def test_sibling_probe_rejects_nonzero_exit(monkeypatch, tmp_path):

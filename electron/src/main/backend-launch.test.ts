@@ -61,6 +61,68 @@ it.each(['darwin', 'win32', 'linux'] as const)(
     );
   },
 );
+
+it('SDK isolation removes inherited locators only from explicitly managed ROCm backend options', () => {
+  state.packaged = true;
+  const choice = { variant: 'rocm', explicit: true } as const;
+  const selectors = ['HIP_PATH', 'ROCM_HOME', 'ROCM_PATH'];
+  for (const key of selectors) vi.stubEnv(key, 'parent-sdk');
+  vi.stubEnv('HIP_VISIBLE_DEVICES', '0');
+  vi.stubEnv('HSA_OVERRIDE_GFX_VERSION', 'unqualified');
+  vi.stubEnv('MIOPEN_DISABLE_CACHE', '1');
+  setBackendOnlyEnv({ Hip_Path: 'late-sdk' });
+  try {
+    const unmanaged = managedBackendSpawnOptions(3900, 'auto', 'win32', choice, false).env;
+    expect(unmanaged.HIP_PATH).toBe('parent-sdk');
+    expect(unmanaged.Hip_Path).toBe('late-sdk');
+    const managed = managedBackendSpawnOptions(3900, 'auto', 'win32', choice, true).env;
+    expect(Object.keys(managed).filter((key) => selectors.includes(key.toUpperCase()))).toEqual([]);
+    expect(managed.HIP_VISIBLE_DEVICES).toBe('0');
+    expect(managed.HSA_OVERRIDE_GFX_VERSION).toBe('unqualified');
+    expect(managed.MIOPEN_DISABLE_CACHE).toBe('1');
+    expect(selectors.map((key) => process.env[key])).toEqual(selectors.map(() => 'parent-sdk'));
+  } finally {
+    setBackendOnlyEnv({ Hip_Path: undefined });
+  }
+});
+
+it.each([
+  { managed: false, platform: 'win32', variant: 'rocm' },
+  { managed: undefined, platform: 'win32', variant: 'rocm' },
+  { managed: true, platform: 'win32', variant: 'cpu' },
+  { managed: true, platform: 'win32', variant: 'default' },
+  { managed: true, platform: 'linux', variant: 'rocm' },
+  { managed: true, platform: 'darwin', variant: 'rocm' },
+] as const)(
+  'SDK isolation preserves locators for managed=$managed platform=$platform variant=$variant',
+  ({ managed, platform, variant }) => {
+    for (const key of ['HIP_PATH', 'ROCM_HOME', 'ROCM_PATH']) vi.stubEnv(key, 'user-sdk');
+    const env = managedBackendSpawnOptions(
+      3900,
+      'auto',
+      platform,
+      { variant, explicit: true },
+      managed,
+    ).env;
+    expect([env.HIP_PATH, env.ROCM_HOME, env.ROCM_PATH]).toEqual([
+      'user-sdk',
+      'user-sdk',
+      'user-sdk',
+    ]);
+  },
+);
+
+it.each([false, true])(
+  'SDK isolation never marks a source/custom plan managed: custom=%s',
+  async (custom) => {
+    state.packaged = custom;
+    vi.stubEnv('OMNIVOICE_BACKEND_CMD', custom ? '["custom-python", "-m", "uvicorn"]' : '');
+    const plan = await resolveSpawnPlan(3900);
+    expect(plan).toHaveProperty('argv');
+    expect(plan).not.toHaveProperty('managedRuntime', true);
+  },
+);
+
 it('launches the prepared source interpreter without syncing or downloading dependencies', async () => {
   vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
   const plan = await resolveSpawnPlan(3912);

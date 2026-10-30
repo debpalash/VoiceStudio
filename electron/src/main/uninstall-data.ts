@@ -1,12 +1,18 @@
-import { lstat, realpath } from 'node:fs/promises';
+import { lstat } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { isAbsolute } from 'node:path';
+import type { UninstallTarget } from '../preload/index.d';
 import {
   directorySize,
+  isAppOwnedRoot,
   isValidVoiceStudioRoot,
   modelsAreShared,
   normalized,
+  physicalPath,
   within,
 } from './reset-data';
+
+export type { UninstallTarget } from '../preload/index.d';
 
 export interface UninstallRoots {
   data: string;
@@ -16,14 +22,6 @@ export interface UninstallRoots {
   logs: string | null;
   userEnvironment: string;
   models: string;
-}
-
-export interface UninstallTarget {
-  key: 'data' | 'env' | 'logs' | 'userenv' | 'models';
-  path: string;
-  size_bytes: number;
-  exists: boolean;
-  shared: boolean;
 }
 
 export interface UninstallPlan {
@@ -42,24 +40,56 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-function uniqueRoots<T extends { key: UninstallTarget['key']; path: string; shared: boolean }>(
-  values: T[],
-): T[] {
-  const seen = new Set<string>();
-  return values.filter(({ path }, index) => {
-    const key = normalized(path);
-    if (seen.has(key)) return false;
-    if (
-      !values[index].shared &&
-      values.some((parent, other) => other < index && !parent.shared && within(path, parent.path))
-    )
-      return false;
-    seen.add(key);
-    return true;
+async function uniqueRoots<
+  T extends { key: UninstallTarget['key']; path: string; shared: boolean },
+>(values: T[], home: string | null) {
+  const physicalTargets = await Promise.all(
+    values.map(async (target) => ({ ...target, physical: await physicalPath(target.path) })),
+  );
+  const pending = physicalTargets.filter((target) => target.shared && target.physical);
+  while (pending.length) {
+    const shared = pending.pop()!;
+    for (const target of physicalTargets) {
+      if (
+        !target.shared &&
+        target.physical &&
+        shared.physical &&
+        (within(target.physical, shared.physical) || within(shared.physical, target.physical))
+      ) {
+        target.shared = true;
+        pending.push(target);
+      }
+    }
+  }
+  const grouped = new Map<string, (typeof physicalTargets)[number]>();
+  for (const target of physicalTargets) {
+    const key = normalized(target.physical ?? target.path);
+    const previous = grouped.get(key);
+    if (!previous || target.key === 'models') grouped.set(key, target);
+    else previous.shared ||= target.shared;
+  }
+  const targets = [...grouped.values()];
+  const owned = await Promise.all(
+    targets.map(({ path, key }) => isValidVoiceStudioRoot(path, home, key === 'models')),
+  );
+  return targets.filter((target, index) => {
+    if (target.shared && target.key === 'models') return true;
+    return !targets.some(
+      (parent, other) =>
+        other !== index &&
+        owned[other] &&
+        parent.shared === target.shared &&
+        parent.physical &&
+        target.physical &&
+        within(target.physical, parent.physical),
+    );
   });
 }
 
-export async function scanUninstallTargets(roots: UninstallRoots): Promise<UninstallTarget[]> {
+export async function scanUninstallTargets(
+  roots: UninstallRoots,
+  home: string | null = homedir(),
+): Promise<UninstallTarget[]> {
   const modelLexicallyNested = [roots.data, roots.environment].some((root) =>
     within(roots.models, root),
   );
@@ -76,59 +106,41 @@ export async function scanUninstallTargets(roots: UninstallRoots): Promise<Unins
     {
       key: 'models' as const,
       path: roots.models,
-      shared: await modelsAreShared(roots.models, roots.data),
+      shared: await modelsAreShared(roots.models, roots.data, home),
     },
   ];
   const targets: UninstallTarget[] = [];
-  for (const candidate of candidates) {
+  for (const candidate of await uniqueRoots(candidates, home)) {
     const present = await exists(candidate.path);
-    let path = candidate.path;
-    if (present) {
-      try {
-        path = await realpath(candidate.path);
-      } catch {
-        /* reported as missing below */
-      }
-    }
+    const path = candidate.physical ?? candidate.path;
+    const coveredBy = candidate.physical
+      ? candidates.filter((parent) => parent.path !== candidate.path)
+      : [];
+    const parents = await Promise.all(
+      coveredBy.map(async (parent) => ({ ...parent, physical: await physicalPath(parent.path) })),
+    );
+    const coveredPaths = parents
+      .filter(
+        (parent) =>
+          parent.physical &&
+          normalized(parent.physical) !== normalized(path) &&
+          within(path, parent.physical),
+      )
+      .map((parent) => parent.physical!);
     targets.push({
-      ...candidate,
+      key: candidate.key,
+      shared: candidate.shared,
       path,
       exists: present && isAbsolute(path),
       size_bytes: present ? await directorySize(path) : 0,
+      ...(coveredPaths.length ? { covered_by: coveredPaths } : {}),
     });
   }
   const model = targets.find((target) => target.key === 'models');
-  const environment = targets.find((target) => target.key === 'env' && target.exists);
-  if (model?.exists && environment && within(model.path, environment.path)) model.shared = false;
-  if (model?.exists && model.shared) {
-    for (const target of targets) {
-      if (
-        target !== model &&
-        target.exists &&
-        (within(model.path, target.path) || within(target.path, model.path))
-      ) {
-        target.shared = true;
-      }
-    }
-    for (let index = targets.length - 1; index >= 0; index -= 1) {
-      if (targets[index] !== model && normalized(targets[index].path) === normalized(model.path)) {
-        targets.splice(index, 1);
-      }
-    }
-  }
-  if (
-    model &&
-    !model.shared &&
-    targets.some(
-      (target) =>
-        target !== model && ['data', 'env'].includes(target.key) && within(model.path, target.path),
-    )
-  ) {
-    targets.splice(targets.indexOf(model), 1);
-  } else if (model && !model.exists && modelLexicallyNested) {
+  if (model && !model.exists && modelLexicallyNested) {
     targets.splice(targets.indexOf(model), 1);
   }
-  return uniqueRoots(targets);
+  return targets;
 }
 
 export async function createUninstallPlan(
@@ -136,39 +148,41 @@ export async function createUninstallPlan(
   includeModels: boolean,
   home: string | null,
 ): Promise<UninstallPlan> {
-  const eligible = targets.filter((target) => target.exists && (includeModels || !target.shared));
+  const protectedTargets = await uniqueRoots(targets, home);
+  const eligible = protectedTargets.filter(
+    (target) => target.exists && (includeModels || !target.shared || target.key !== 'models'),
+  );
   const refused: string[] = [];
-  const accepted: UninstallTarget[] = [];
+  const accepted: Array<UninstallTarget & { physical: string }> = [];
   for (const target of eligible) {
-    if (
-      !isAbsolute(target.path) ||
-      !(await isValidVoiceStudioRoot(target.path, home, target.key === 'models'))
-    ) {
+    const physical = target.physical;
+    const valid =
+      physical &&
+      (await (target.key === 'models'
+        ? isValidVoiceStudioRoot(physical, home, true)
+        : isAppOwnedRoot(physical, home)));
+    if (!isAbsolute(target.path) || !physical || !valid) {
       refused.push(target.path);
-    } else {
-      accepted.push(target);
+    } else if (includeModels || !target.shared) {
+      accepted.push({ ...target, physical });
     }
   }
-  const paths = accepted
-    .filter(
-      (target, index) =>
-        !accepted.some((parent, other) => other !== index && within(target.path, parent.path)),
-    )
-    .map((target) => target.path);
+  const selected = accepted.filter(
+    (target, index) =>
+      !accepted.some(
+        (parent, other) =>
+          other !== index &&
+          within(target.physical, parent.physical) &&
+          (parent.physical !== target.physical || other < index),
+      ),
+  );
   return {
-    paths,
-    targets: accepted
-      .filter(
-        (target, index) =>
-          !accepted.some((parent, other) => other !== index && within(target.path, parent.path)),
-      )
-      .map((target) => ({ path: target.path, kind: target.key === 'models' ? 'models' : 'app' })),
+    paths: selected.map((target) => target.physical),
+    targets: selected.map((target) => ({
+      path: target.physical,
+      kind: target.key === 'models' ? 'models' : 'app',
+    })),
     refused,
-    size_bytes: accepted
-      .filter(
-        (target, index) =>
-          !accepted.some((parent, other) => other !== index && within(target.path, parent.path)),
-      )
-      .reduce((sum, target) => sum + target.size_bytes, 0),
+    size_bytes: selected.reduce((sum, target) => sum + target.size_bytes, 0),
   };
 }

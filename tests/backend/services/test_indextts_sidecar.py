@@ -629,7 +629,7 @@ def test_sidecar_loader_keeps_user_managed_v2_compatibility(monkeypatch, tmp_pat
 
     assert isinstance(loaded, FakeIndexTTS)
     assert sidecar._model_version == "2"
-    assert captured["cfg_path"].endswith("checkpoints/config.yaml")
+    assert Path(captured["cfg_path"]) == checkpoint_dir / "config.yaml"
     assert captured["use_fp16"] is True
     assert "use_qwen_emo" not in captured
 
@@ -648,6 +648,6 @@ def test_sidecar_2_fallback_keeps_target_tokens_and_drops_25_only_kwargs():
     model_kwargs = sidecar._model_init_kwargs(
         "/models/index-tts", version="2", reduced_precision=True,
     )
-    assert model_kwargs["cfg_path"].endswith("checkpoints/config.yaml")
+    assert Path(model_kwargs["cfg_path"]) == Path("/models/index-tts/checkpoints/config.yaml")
     assert model_kwargs["use_fp16"] is True
     assert "use_qwen_emo" not in model_kwargs

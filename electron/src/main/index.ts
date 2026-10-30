@@ -13,7 +13,7 @@ import { registerIpc, wireWindowMaximizeEvents } from './ipc';
 import { APP_ORIGIN, installAppProtocol, registerAppScheme } from './protocol';
 import { electronProxyPort, startDevBackendProxy } from './dev-backend-proxy';
 import { DesktopUpdater, registerUpdateIpc } from './updater';
-import { registerRepairAgents } from './repair-agents';
+import { registerRepairAgents, type RepairAgentsRegistration } from './repair-agents';
 import { installRendererPermissions } from './media-permissions';
 import { installBlankWindowGuard } from './blank-window-guard';
 import { shouldOpenDevTools } from './devtools-policy';
@@ -59,7 +59,7 @@ let tray: Tray | null = null;
 let closeCapture: (() => void) | null = null;
 let closeDevProxy: (() => Promise<void>) | null = null;
 let closeUpdates: (() => void) | null = null;
-let closeRepairAgents: (() => void) | null = null;
+let closeRepairAgents: RepairAgentsRegistration | null = null;
 let closeAccount: (() => void) | null = null;
 let quitPreparation: Promise<void> | null = null;
 
@@ -99,7 +99,7 @@ async function tearDownNativeResources(): Promise<void> {
   closeCapture = null;
   closeUpdates?.();
   closeUpdates = null;
-  closeRepairAgents?.();
+  closeRepairAgents?.stop();
   closeRepairAgents = null;
   closeAccount?.();
   closeAccount = null;

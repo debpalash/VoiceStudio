@@ -20,6 +20,13 @@ import { createReadStream, type BigIntStats } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { DIRECTORY_RENAME, renameWithRetry } from './rename-retry';
+import {
+  fileFingerprint,
+  sameFileGeneration,
+  RollbackIncompleteError,
+  TargetChangedError,
+  stableDirectoryIdentity,
+} from './data-directory-identity';
 
 const DATA_KEY = 'OMNIVOICE_DATA_DIR';
 const MOVE_RESERVE_BYTES = 64 * 1024 * 1024;
@@ -181,29 +188,6 @@ interface OwnedEntry {
   mode?: number;
 }
 
-function fileFingerprint(info: BigIntStats, digest?: string) {
-  return {
-    dev: info.dev,
-    ino: info.ino,
-    birthtimeNs: info.birthtimeNs,
-    ctimeNs: info.ctimeNs,
-    size: info.size,
-    fileMode: info.mode,
-    digest,
-  };
-}
-
-function sameFileGeneration(info: BigIntStats, entry: ReturnType<typeof fileFingerprint>): boolean {
-  return (
-    info.dev === entry.dev &&
-    info.ino === entry.ino &&
-    info.birthtimeNs === entry.birthtimeNs &&
-    info.ctimeNs === entry.ctimeNs &&
-    info.size === entry.size &&
-    info.mode === entry.fileMode
-  );
-}
-
 async function matchesFile(
   path: string,
   info: BigIntStats,
@@ -218,57 +202,6 @@ async function matchesFile(
   for await (const chunk of createReadStream(path)) hash.update(chunk);
   if (hash.digest('hex') !== entry.digest) return false;
   return sameFileGeneration(await lstat(path, { bigint: true }), entry);
-}
-
-class RollbackIncompleteError extends Error {
-  constructor(cause: unknown) {
-    super('rollback_incomplete', { cause });
-  }
-}
-
-class TargetChangedError extends Error {
-  constructor() {
-    super('target_changed');
-  }
-}
-
-// A nonzero creation timestamp may be a mutable ctime fallback. Only probe
-// ambiguous roots; keep the exclusive marker open so inode reuse cannot make
-// cleanup adopt a replacement. No model files are open during this check.
-async function stableDirectoryIdentity(
-  target: string,
-  selected: BigIntStats,
-): Promise<BigIntStats> {
-  if (selected.birthtimeNs === 0n) throw new Error('identity_unavailable');
-  if (selected.birthtimeNs !== selected.ctimeNs) return selected;
-  const marker = join(target, `.voicestudio-identity-${randomUUID()}`);
-  const handle = await open(marker, 'wx');
-  try {
-    const owned = await handle.stat({ bigint: true });
-    const present = await lstat(marker, { bigint: true });
-    if (
-      !present.isFile() ||
-      present.size !== 0n ||
-      !sameFileGeneration(present, fileFingerprint(owned))
-    )
-      throw new TargetChangedError();
-    await rm(marker);
-  } catch (error) {
-    throw new RollbackIncompleteError(error);
-  } finally {
-    await handle.close();
-  }
-  const after = await lstat(target, { bigint: true });
-  if (
-    !after.isDirectory() ||
-    after.isSymbolicLink() ||
-    after.dev !== selected.dev ||
-    after.ino !== selected.ino
-  )
-    throw new TargetChangedError();
-  if (after.birthtimeNs !== selected.birthtimeNs || after.birthtimeNs === after.ctimeNs)
-    throw new Error('identity_unavailable');
-  return after;
 }
 
 async function bindTargetDirectory(
@@ -312,6 +245,7 @@ async function prepareExistingDestination(
   plan: DataRelocationPlan,
   sourceManifest: ManifestEntry[],
   requestedTarget: string,
+  environmentTarget: string,
 ): Promise<PreparedDataRelocation> {
   const { validateTarget, selectedStillPresent } = await bindTargetDirectory(
     plan.target,
@@ -553,8 +487,8 @@ async function prepareExistingDestination(
     // core.config preserves the env spelling, and Python os.path.join does not
     // normalize it. In particular C:/data becomes C:/data\voices on Windows.
     const trailingSeparator =
-      requestedTarget.endsWith(sep) || (sep === '\\' && requestedTarget.endsWith('/'));
-    const current = requestedTarget + (trailingSeparator ? '' : sep) + 'voices';
+      environmentTarget.endsWith(sep) || (sep === '\\' && environmentTarget.endsWith('/'));
+    const current = environmentTarget + (trailingSeparator ? '' : sep) + 'voices';
     // Match services.longform_render.remember_voices_root's filtering/order/cap.
     const expected = JSON.stringify(
       [current, ...seen.filter((root) => root !== current)].slice(0, 8),
@@ -599,8 +533,11 @@ async function prepareExistingDestination(
 export async function prepareDataRelocation(
   source: string,
   target: string,
+  requestedTarget = target,
 ): Promise<PreparedDataRelocation> {
   const plan = await inspectDataRelocation(source, target);
+  if (normalized(await canonicalDestination(requestedTarget)) !== normalized(plan.target))
+    throw new TargetChangedError();
   const sourceManifest = await manifest(plan.source);
   const existing = await lstat(plan.target).then(
     () => true,
@@ -609,7 +546,7 @@ export async function prepareDataRelocation(
       return false;
     },
   );
-  if (existing) return prepareExistingDestination(plan, sourceManifest, target);
+  if (existing) return prepareExistingDestination(plan, sourceManifest, requestedTarget, target);
   const parent = dirname(plan.target);
   const staging = join(parent, `.${basename(plan.target)}.voicestudio-moving-${randomUUID()}`);
   await mkdir(staging, { recursive: false });
@@ -668,7 +605,7 @@ export async function prepareDataRelocation(
   }
   let binding: Awaited<ReturnType<typeof bindTargetDirectory>>;
   try {
-    binding = await bindTargetDirectory(plan.target, target, stagedIdentity);
+    binding = await bindTargetDirectory(plan.target, requestedTarget, stagedIdentity);
     await binding.validateTarget();
   } catch (error) {
     throw new RollbackIncompleteError(error);
@@ -800,6 +737,7 @@ export async function relocateDataDirectory(
   source: string,
   target: string,
   runtime: DataRelocationRuntime,
+  requestedTarget = target,
 ): Promise<DataRelocationResult> {
   let prepared: PreparedDataRelocation | null = null;
   let previousSetting: string | null = null;
@@ -811,7 +749,7 @@ export async function relocateDataDirectory(
     await runtime.stop();
     stopped = true;
     runtime.progress('copying');
-    prepared = await prepareDataRelocation(source, target);
+    prepared = await prepareDataRelocation(source, target, requestedTarget);
     previousSetting = await readDataDirectorySetting(runtime.environmentPath);
     runtime.progress('switching');
     await writeDataDirectorySetting(target, runtime.environmentPath);

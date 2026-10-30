@@ -1506,7 +1506,7 @@
     "gpu_report_state_kernels_missing": "{{gpu}} ditemukan, tetapi build PyTorch ini ({{torch}}) tidak memiliki kernel untuk arsitektur komputasinya, sehingga mesin berjalan di CPU.",
     "gpu_report_state_unknown": "Status GPU tidak dapat ditentukan.",
     "gpu_report_option_vulkan_engines": "Pakai mesin dengan runtime GPU sendiri: audio.cpp berjalan di GPU AMD Radeon lewat Vulkan (Pengaturan → Model → pasang runtime).",
-    "gpu_report_option_rocm_windows_manual": "Pada perangkat keras AMD yang didukung dengan Windows 11 x64, aktifkan penyiapan ROCm 7.2.1 VoiceStudio melalui OMNIVOICE_TORCH_VARIANT=rocm. Jika sudah terpasang, jalankan penyiapan lagi dan periksa matriks driver serta perangkat keras AMD. Mesin opsional memiliki batasan tersendiri; lihat panduan pemasangan Windows.",
+    "gpu_report_option_rocm_windows_manual": "Untuk kartu AMD yang didukung di Windows, buka Pengaturan → Performa → Paket runtime dan pilih AMD ROCm, lalu simpan pilihan, selesaikan tugas Anda, tutup VoiceStudio sepenuhnya dan buka kembali, kemudian pilih Pasang dalam penyiapan. Pada pemasangan baru, pilih AMD ROCm sebelum Pasang. Opsi peluncuran lanjutan: OMNIVOICE_TORCH_VARIANT=rocm. Periksa matriks perangkat keras dan driver AMD; mesin opsional memiliki batasan tersendiri. Lihat panduan pemasangan Windows.",
     "gpu_report_option_rocm_variant_linux": "Setel OMNIVOICE_TORCH_VARIANT=rocm lalu jalankan penyiapan lagi untuk memasang build ROCm dari PyTorch.",
     "gpu_report_option_rocm_device_access": "Pastikan driver amdgpu dimuat dan pengguna Anda dapat membuka /dev/kfd (grup render dan video).",
     "gpu_report_option_reinstall_cuda_torch": "Pasang ulang runtime agar memasang build CUDA dari PyTorch.",
@@ -3039,6 +3039,7 @@
     "pockettts_accepted_toast": "Ketentuan PocketTTS diterima."
   },
   "engines": {
+    "voxcpm2LayoutError": "Lingkungan VoxCPM2 memiliki tautan yang mengarah ke luar folder terkelolanya. Perbaiki tautan sebelum mencoba kembali pemasangan Windows ROCm.",
     "selectCpuFallback": "{{engine}}: berjalan di CPU — {{reason}}",
     "selectWithCaveat": "Beralih ke {{engine}} — {{reason}}",
     "acceptLicense": "Terima lisensi",
@@ -3105,6 +3106,7 @@
     "channels_stereo": "Stereo"
   },
   "tts_errors": {
+    "video_retime_fps_unavailable": "Smart Fit tidak dapat menentukan laju bingkai video sumber. Periksa berkas sumber dan alat media, lalu coba lagi.",
     "profile_language_rejected": "Otomatis menggunakan bahasa profil suara ({{language}}), yang tidak didukung mesin ini. Ubah bahasa profil, pilih bahasa yang didukung, atau ganti mesin.",
     "generation_in_progress": "Pembuatan sedang berjalan — tunggu hingga selesai sebelum memulai yang lain.",
     "error_prefix": "Kesalahan: {{message}}",
@@ -4468,6 +4470,28 @@
     "nextMemory": "Perangkat ini kehabisan memori. Pilih profil yang lebih ringan di Pengaturan → Performa, lalu coba lagi.",
     "downloads": "Unduhan",
     "activeCount": "Unduhan berjalan: {{count}}"
+  },
+  "runtimeTorch": {
+    "title": "Paket lingkungan runtime",
+    "auto": "Otomatis",
+    "cpu": "CPU saja",
+    "cuda": "NVIDIA CUDA",
+    "rocm": "AMD ROCm (kartu yang didukung)",
+    "autoDescription": "Menggunakan NVIDIA CUDA jika terdeteksi; jika tidak, CPU. AMD ROCm harus dipilih secara eksplisit.",
+    "cpuDescription": "Memasang paket khusus CPU.",
+    "cudaDescription": "Memasang paket NVIDIA CUDA; memerlukan GPU NVIDIA dan driver yang kompatibel.",
+    "rocmDescription": "Memasang paket AMD ROCm untuk kartu AMD yang didukung. Dukungan bergantung pada sistem operasi dan mesin.",
+    "pinned": "OMNIVOICE_TORCH_VARIANT mengunci pilihan ini. Ubah lingkungan peluncuran untuk membukanya.",
+    "saving": "Menyimpan pilihan paket…",
+    "saveError": "Pilihan paket tidak dapat disimpan. Pilihan sebelumnya tetap dipilih. Coba lagi.",
+    "saved": "Pilihan disimpan. Unduhan hanya dimulai saat Anda memilih Pasang, Lanjutkan, atau Coba lagi.",
+    "packagesEffect": "Memilih paket untuk penyiapan berikutnya. Perangkat komputasi aktif dan penguncian CPU tidak berubah.",
+    "change": "Ubah paket runtime",
+    "confirmDescription": "Simpan pilihan runtime baru untuk peluncuran aplikasi berikutnya. Backend saat ini tetap berjalan. Selesaikan tugas Anda, tutup VoiceStudio sepenuhnya lalu buka kembali, kemudian pilih Pasang di jendela penyiapan yang ada. Tidak ada mulai ulang atau unduhan otomatis. Data dan model tetap tersimpan; lingkungan pendamping CPU yang ada tidak berubah. Kembali ke CPU mungkin memerlukan penyiapan lagi.",
+    "preparing": "Menyimpan untuk peluncuran berikutnya…",
+    "beginError": "Pilihan runtime tidak dapat disimpan. Backend saat ini tidak berubah. Coba lagi.",
+    "confirm": "Simpan untuk peluncuran berikutnya",
+    "pending": "Pilihan runtime disimpan: {{choice}}. Selesaikan tugas Anda, tutup VoiceStudio sepenuhnya lalu buka kembali, kemudian pilih Pasang dalam penyiapan. Backend saat ini tidak dimulai ulang dan tidak ada unduhan yang dimulai."
   },
   "disabledReason": {
     "files_required": "Tambahkan setidaknya satu video terlebih dahulu.",

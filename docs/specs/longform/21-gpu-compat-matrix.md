@@ -171,7 +171,14 @@ Specific edge rules (all spelled out — no hand-waving):
 ### 3. Promote `gpu_compat` to ASR, fix #390, fix IndexTTS2
 
 - `ASRBackend` (`asr_backend.py:37`) gets `gpu_compat: tuple[str, ...] = ("cpu",)` on the ABC; each subclass declares real values:
-  - WhisperX (`:61`) / FasterWhisper (`:382`) → `("cuda","rocm","cpu")` (CTranslate2 supports CUDA; ROCm via HIP build).
+  - WhisperX / FasterWhisper keep static `("cuda","cpu")`. The existing
+    `runtime_gpu_compat()` hook adds `rocm` only for an admitted native profile:
+    FasterWhisper requires verified pinned HIP CT2; WhisperX additionally requires
+    the registered gfx1201/7.2.1/WhisperX 3.4.5 capability qualifier used by
+    availability and pre-cache ASR/alignment loading. Unknown/Unicode SDK or
+    temporary/cache profiles stay gated; pyannote speaker diarization receives
+    no capability. Class and instance reporting use the same existing routing
+    hook. Windows HIP auto selection continues to prefer faster-whisper.
   - MLXWhisper (`:497`) → `("mps","cpu")`.
   - PyTorchWhisper (`:566`) → `("cuda","rocm","mps","cpu")`.
   - NeMoASR (`:632`) / FunASR (`:886`) → `("cuda","cpu")`.

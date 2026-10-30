@@ -1506,7 +1506,7 @@
     "gpu_report_state_kernels_missing": "{{gpu}} wurde gefunden, aber dieser PyTorch-Build ({{torch}}) enthält keine Kernel für seine Rechenarchitektur, daher laufen die Engines auf der CPU.",
     "gpu_report_state_unknown": "Der GPU-Status konnte nicht ermittelt werden.",
     "gpu_report_option_vulkan_engines": "Nutzen Sie eine Engine mit eigener GPU-Laufzeit: audio.cpp läuft über Vulkan auf AMD-Radeon-GPUs (Einstellungen → Modelle → Laufzeit installieren).",
-    "gpu_report_option_rocm_windows_manual": "Auf unterstützter AMD-Hardware mit Windows 11 x64 können Sie die ROCm-7.2.1-Installation von VoiceStudio mit OMNIVOICE_TORCH_VARIANT=rocm aktivieren. Falls bereits installiert, führen Sie die Einrichtung erneut aus und prüfen Sie AMDs Treiber- und Hardwarematrix. Für optionale Engines gelten eigene Einschränkungen; siehe Windows-Installationsanleitung.",
+    "gpu_report_option_rocm_windows_manual": "Öffnen Sie für unterstützte AMD-Karten unter Windows Einstellungen → Leistung → Laufzeitpakete und wählen Sie AMD ROCm. Speichern Sie die Auswahl, beenden Sie Ihre Aufgaben, schließen Sie VoiceStudio vollständig und öffnen Sie es erneut. Wählen Sie dann Installieren in der Einrichtung. Wählen Sie bei einer Erstinstallation AMD ROCm vor Installieren. Erweiterte Startoption: OMNIVOICE_TORCH_VARIANT=rocm. Prüfen Sie die AMD-Treiber- und Hardwareliste; optionale Engines haben eigene Einschränkungen. Siehe Windows-Installationsanleitung.",
     "gpu_report_option_rocm_variant_linux": "Setzen Sie OMNIVOICE_TORCH_VARIANT=rocm und führen Sie die Einrichtung erneut aus, um den ROCm-Build von PyTorch zu installieren.",
     "gpu_report_option_rocm_device_access": "Prüfen Sie, ob der amdgpu-Treiber geladen ist und Ihr Benutzer /dev/kfd öffnen kann (Gruppen render und video).",
     "gpu_report_option_reinstall_cuda_torch": "Installieren Sie die Laufzeit neu, damit der CUDA-Build von PyTorch installiert wird.",
@@ -3039,6 +3039,7 @@
     "pockettts_accepted_toast": "PocketTTS-Bedingungen akzeptiert."
   },
   "engines": {
+    "voxcpm2LayoutError": "Die VoxCPM2-Umgebung enthält einen Verweis auf einen Pfad außerhalb ihres verwalteten Ordners. Repariere die Verknüpfung, bevor du die Installation mit Windows ROCm erneut versuchst.",
     "selectCpuFallback": "{{engine}}: läuft auf der CPU — {{reason}}",
     "selectWithCaveat": "Zu {{engine}} gewechselt — {{reason}}",
     "acceptLicense": "Lizenz akzeptieren",
@@ -3105,6 +3106,7 @@
     "channels_stereo": "Stereo"
   },
   "tts_errors": {
+    "video_retime_fps_unavailable": "Smart Fit kann die Bildrate des Quellvideos nicht ermitteln. Prüfe die Quelldatei und die Medienwerkzeuge und versuche es erneut.",
     "profile_language_rejected": "Automatisch verwendet die Sprache des Stimmprofils ({{language}}), die diese Engine nicht unterstützt. Ändere die Profilsprache, wähle eine unterstützte Sprache oder wechsle die Engine.",
     "generation_in_progress": "Eine Generierung läuft bereits – warte, bis sie abgeschlossen ist, bevor du eine weitere startest.",
     "error_prefix": "Fehler: {{message}}",
@@ -4468,6 +4470,28 @@
     "nextMemory": "Dem Gerät ist der Speicher ausgegangen. Wähle unter Einstellungen → Leistung ein leichteres Profil und versuche es dann erneut.",
     "downloads": "Downloads",
     "activeCount": "Laufende Downloads: {{count}}"
+  },
+  "runtimeTorch": {
+    "title": "Laufzeitpakete",
+    "auto": "Automatisch",
+    "cpu": "Nur CPU",
+    "cuda": "NVIDIA CUDA",
+    "rocm": "AMD ROCm (unterstützte Karten)",
+    "autoDescription": "Verwendet NVIDIA CUDA, wenn erkannt, andernfalls die CPU. AMD ROCm muss ausdrücklich gewählt werden.",
+    "cpuDescription": "Installiert Pakete ausschließlich für die CPU.",
+    "cudaDescription": "Installiert NVIDIA-CUDA-Pakete; erfordert eine kompatible NVIDIA-GPU und einen passenden Treiber.",
+    "rocmDescription": "Installiert AMD-ROCm-Pakete für unterstützte AMD-Karten. Die Unterstützung hängt vom Betriebssystem und von der Engine ab.",
+    "pinned": "OMNIVOICE_TORCH_VARIANT legt diese Auswahl fest. Ändern Sie die Startumgebung, um sie freizugeben.",
+    "saving": "Paketauswahl wird gespeichert…",
+    "saveError": "Die Paketauswahl konnte nicht gespeichert werden. Die bisherige Auswahl bleibt bestehen. Versuchen Sie es erneut.",
+    "saved": "Auswahl gespeichert. Downloads beginnen erst mit Installieren, Fortsetzen oder Erneut versuchen.",
+    "packagesEffect": "Wählt Pakete für die nächste Einrichtung. Das aktive Rechengerät und CPU-Festlegungen bleiben unverändert.",
+    "change": "Laufzeitpakete ändern",
+    "confirmDescription": "Speichern Sie die neue Laufzeitauswahl für den nächsten App-Start. Das aktuelle Backend läuft weiter. Beenden Sie Ihre Aufgaben, schließen Sie VoiceStudio vollständig und öffnen Sie es erneut. Wählen Sie dann Installieren im vorhandenen Einrichtungsfenster. Es erfolgt kein automatischer Neustart oder Download. Daten und Modelle bleiben erhalten; bestehende CPU-Hilfsumgebungen bleiben unverändert. Die Rückkehr zur CPU kann eine erneute Einrichtung erfordern.",
+    "preparing": "Für den nächsten App-Start speichern…",
+    "beginError": "Die Laufzeitauswahl konnte nicht gespeichert werden. Das aktuelle Backend bleibt unverändert. Versuchen Sie es erneut.",
+    "confirm": "Für nächsten App-Start speichern",
+    "pending": "Laufzeitauswahl gespeichert: {{choice}}. Beenden Sie Ihre Aufgaben, schließen Sie VoiceStudio vollständig und öffnen Sie es erneut. Wählen Sie dann Installieren in der Einrichtung. Das aktuelle Backend wurde nicht neu gestartet; es wurden keine Downloads gestartet."
   },
   "disabledReason": {
     "files_required": "Füge zuerst mindestens ein Video hinzu.",

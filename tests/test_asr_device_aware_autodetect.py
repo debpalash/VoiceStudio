@@ -121,6 +121,7 @@ def test_forced_align_is_engine_agnostic_so_mlx_keeps_whisperx_timing(monkeypatc
 def test_alignment_retries_on_cpu_before_giving_up_on_timing(monkeypatch):
     """An aligner that hits an unimplemented MPS op must NOT silently cost us the
     word timing — it must fall back to the CPU, which always works."""
+    monkeypatch.setattr("core.windows_rocm.pipelines.windows_hip_installed", lambda: False)
     tried: list[str] = []
     aligned = [{"text": "hi", "start": 0.0, "end": 1.0, "words": [{"word": "hi", "start": 0.0}]}]
 

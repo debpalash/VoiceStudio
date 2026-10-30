@@ -39,13 +39,15 @@ const ICONS: Record<UninstallTarget['key'], LucideIcon> = {
 export function uninstallBytes(targets: UninstallTarget[], includeModels: boolean): number {
   const selected = targets.filter((target) => target.exists && (includeModels || !target.shared));
   const pathKey = (value: string) => value.replaceAll('\\', '/').replace(/\/$/, '');
+  const selectedPaths = new Set(selected.map((target) => pathKey(target.path)));
   return selected
     .filter(
       (target, index) =>
+        !target.covered_by?.some((parent) => selectedPaths.has(pathKey(parent))) &&
         !selected.some(
           (parent, other) =>
             other !== index &&
-            (pathKey(target.path) === pathKey(parent.path) ||
+            ((other < index && pathKey(target.path) === pathKey(parent.path)) ||
               pathKey(target.path).startsWith(pathKey(parent.path) + '/')),
         ),
     )

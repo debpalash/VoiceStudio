@@ -60,7 +60,8 @@ vi.mock('node:fs', async (importOriginal) => {
   };
 });
 vi.mock('node:fs/promises', () => ({ rm: mocks.rm }));
-vi.mock('./runtime-project', () => ({
+vi.mock('./runtime-project', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./runtime-project')>()),
   MISSING_SYSTEM_LIBRARY_CODE: 'MISSING_SYSTEM_LIBRARY',
   OUTDATED_SYSTEM_LIBRARY_CODE: 'OUTDATED_SYSTEM_LIBRARY',
   RUNTIME_FILES_LOCKED_CODE: 'RUNTIME_FILES_LOCKED',
@@ -738,6 +739,9 @@ it('reuses a healthy default runtime after explicit setup leaves an unowned envi
   expect(mocks.install).not.toHaveBeenCalled();
   expect(mocks.dependencies).toHaveBeenCalledWith(
     join('/private/voicestudio', 'runtime', 'project'),
+    undefined,
+    expect.objectContaining({ explicit: false }),
+    true,
   );
   expect(restart).toHaveBeenCalledOnce();
   restart.mockRestore();

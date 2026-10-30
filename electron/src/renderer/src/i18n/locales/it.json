@@ -1508,7 +1508,7 @@
     "gpu_report_state_kernels_missing": "È stata trovata {{gpu}}, ma questa build di PyTorch ({{torch}}) non ha kernel per la sua architettura di calcolo, quindi i motori vengono eseguiti sulla CPU.",
     "gpu_report_state_unknown": "Impossibile determinare lo stato della GPU.",
     "gpu_report_option_vulkan_engines": "Usa un motore con un proprio runtime GPU: audio.cpp funziona sulle GPU AMD Radeon tramite Vulkan (Impostazioni → Modelli → installa il runtime).",
-    "gpu_report_option_rocm_windows_manual": "Su hardware AMD supportato con Windows 11 x64, attiva l'installazione di ROCm 7.2.1 di VoiceStudio con OMNIVOICE_TORCH_VARIANT=rocm. Se è già installato, ripeti l'installazione e controlla la matrice dei driver e dell'hardware AMD. I motori opzionali hanno limiti propri; consulta la guida all'installazione di Windows.",
+    "gpu_report_option_rocm_windows_manual": "Per le schede AMD supportate su Windows, apri Impostazioni → Prestazioni → Pacchetti dell’ambiente e scegli AMD ROCm, poi salva la scelta, termina le attività, chiudi completamente VoiceStudio e riaprilo, quindi scegli Installa nella configurazione. Alla prima installazione scegli AMD ROCm prima di Installa. Opzione di avvio avanzata: OMNIVOICE_TORCH_VARIANT=rocm. Controlla la matrice di hardware e driver AMD; i motori opzionali hanno limiti separati. Consulta la guida di installazione Windows.",
     "gpu_report_option_rocm_variant_linux": "Imposta OMNIVOICE_TORCH_VARIANT=rocm ed esegui di nuovo la configurazione per installare la build ROCm di PyTorch.",
     "gpu_report_option_rocm_device_access": "Verifica che il driver amdgpu sia caricato e che il tuo utente possa aprire /dev/kfd (gruppi render e video).",
     "gpu_report_option_reinstall_cuda_torch": "Reinstalla il runtime in modo che installi la build CUDA di PyTorch.",
@@ -3041,6 +3041,7 @@
     "pockettts_accepted_toast": "Condizioni di PocketTTS accettate."
   },
   "engines": {
+    "voxcpm2LayoutError": "L’ambiente VoxCPM2 contiene un collegamento che punta all’esterno della cartella gestita. Ripara il collegamento prima di riprovare l’installazione con Windows ROCm.",
     "selectCpuFallback": "{{engine}}: in esecuzione sulla CPU — {{reason}}",
     "selectWithCaveat": "Passato a {{engine}} — {{reason}}",
     "acceptLicense": "Accetta la licenza",
@@ -3107,6 +3108,7 @@
     "channels_stereo": "Stereo"
   },
   "tts_errors": {
+    "video_retime_fps_unavailable": "Smart Fit non riesce a determinare la frequenza dei fotogrammi del video sorgente. Controlla il file sorgente e gli strumenti multimediali, poi riprova.",
     "profile_language_rejected": "Auto usa la lingua del profilo vocale ({{language}}), non supportata da questo motore. Modifica la lingua del profilo, scegli una lingua supportata o cambia motore.",
     "generation_in_progress": "È già in corso una generazione: attendi che termini prima di avviarne un’altra.",
     "error_prefix": "Errore: {{message}}",
@@ -4470,6 +4472,28 @@
     "nextMemory": "Memoria esaurita su questo dispositivo. Scegli un profilo più leggero in Impostazioni → Prestazioni, poi riprova.",
     "downloads": "Download",
     "activeCount": "Download in corso: {{count}}"
+  },
+  "runtimeTorch": {
+    "title": "Pacchetti dell’ambiente",
+    "auto": "Automatico",
+    "cpu": "Solo CPU",
+    "cuda": "NVIDIA CUDA",
+    "rocm": "AMD ROCm (schede supportate)",
+    "autoDescription": "Usa NVIDIA CUDA se rilevato, altrimenti la CPU. AMD ROCm richiede una scelta esplicita.",
+    "cpuDescription": "Installa pacchetti solo per la CPU.",
+    "cudaDescription": "Installa i pacchetti NVIDIA CUDA; richiede una GPU NVIDIA e un driver compatibili.",
+    "rocmDescription": "Installa i pacchetti AMD ROCm per le schede AMD supportate. Il supporto varia in base al sistema operativo e al motore.",
+    "pinned": "OMNIVOICE_TORCH_VARIANT impone questa scelta. Modifica l’ambiente di avvio per sbloccarla.",
+    "saving": "Salvataggio della scelta dei pacchetti…",
+    "saveError": "Impossibile salvare la scelta dei pacchetti. Rimane selezionata la scelta precedente. Riprova.",
+    "saved": "Scelta salvata. I download iniziano solo scegliendo Installa, Riprendi o Riprova.",
+    "packagesEffect": "Seleziona i pacchetti per la prossima configurazione. Il dispositivo di calcolo attivo e le impostazioni che impongono la CPU restano invariati.",
+    "change": "Cambia pacchetti dell’ambiente",
+    "confirmDescription": "Salva il nuovo ambiente per il prossimo avvio dell’app. Il backend attuale continua a funzionare. Termina le attività, chiudi completamente VoiceStudio e riaprilo, quindi scegli Installa nella finestra di configurazione esistente. Nulla si riavvia o si scarica automaticamente. Dati e modelli vengono conservati; gli ambienti ausiliari CPU esistenti restano invariati. Tornare alla CPU potrebbe richiedere una nuova configurazione.",
+    "preparing": "Salvataggio per il prossimo avvio…",
+    "beginError": "Impossibile salvare la scelta dell’ambiente. Il backend attuale resta invariato. Riprova.",
+    "confirm": "Salva per il prossimo avvio",
+    "pending": "Scelta dell’ambiente salvata: {{choice}}. Termina le attività, chiudi completamente VoiceStudio e riaprilo, quindi scegli Installa nella configurazione. Il backend attuale non è stato riavviato e nessun download è iniziato."
   },
   "disabledReason": {
     "files_required": "Aggiungi prima almeno un video.",

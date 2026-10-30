@@ -31,6 +31,10 @@ from core.failure import build_failure, classify
 from services import ffmpeg_utils
 
 
+def _tool_filename(tool: str) -> str:
+    return f"{tool}.exe" if os.name == "nt" else tool
+
+
 # ── the failure is now classified ────────────────────────────────────────
 
 
@@ -93,8 +97,8 @@ def test_the_resolved_binaries_are_published_on_PATH(monkeypatch, tmp_path):
     by bare name must find what `find_ffprobe()` already resolved."""
     bin_dir = tmp_path / "media"
     bin_dir.mkdir()
-    ffmpeg = bin_dir / "ffmpeg"
-    ffprobe = bin_dir / "ffprobe"
+    ffmpeg = bin_dir / _tool_filename("ffmpeg")
+    ffprobe = bin_dir / _tool_filename("ffprobe")
     ffmpeg.write_text("")
     ffprobe.write_text("")
 
@@ -116,8 +120,9 @@ def test_publishing_is_idempotent(monkeypatch, tmp_path):
     without bound."""
     bin_dir = tmp_path / "media"
     bin_dir.mkdir()
-    (bin_dir / "ffmpeg").write_text("")
-    monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: str(bin_dir / "ffmpeg"))
+    ffmpeg = bin_dir / _tool_filename("ffmpeg")
+    ffmpeg.write_text("")
+    monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: str(ffmpeg))
     monkeypatch.setattr(ffmpeg_utils, "find_ffprobe", lambda: None)
     monkeypatch.setenv("PATH", "/usr/bin")
 
@@ -133,10 +138,12 @@ def test_separate_directories_are_both_added(monkeypatch, tmp_path):
     a, b = tmp_path / "a", tmp_path / "b"
     a.mkdir()
     b.mkdir()
-    (a / "ffmpeg").write_text("")
-    (b / "ffprobe").write_text("")
-    monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: str(a / "ffmpeg"))
-    monkeypatch.setattr(ffmpeg_utils, "find_ffprobe", lambda: str(b / "ffprobe"))
+    ffmpeg = a / _tool_filename("ffmpeg")
+    ffprobe = b / _tool_filename("ffprobe")
+    ffmpeg.write_text("")
+    ffprobe.write_text("")
+    monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: str(ffmpeg))
+    monkeypatch.setattr(ffmpeg_utils, "find_ffprobe", lambda: str(ffprobe))
     monkeypatch.setenv("PATH", "/usr/bin")
 
     assert sorted(ffmpeg_utils.ensure_media_tools_on_path()) == sorted([str(a), str(b)])
@@ -189,8 +196,9 @@ def test_the_published_paths_are_not_logged(monkeypatch, tmp_path, caplog):
 
     bin_dir = tmp_path / "Users" / "alice" / "media"
     bin_dir.mkdir(parents=True)
-    (bin_dir / "ffmpeg").write_text("")
-    monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: str(bin_dir / "ffmpeg"))
+    ffmpeg = bin_dir / _tool_filename("ffmpeg")
+    ffmpeg.write_text("")
+    monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: str(ffmpeg))
     monkeypatch.setattr(ffmpeg_utils, "find_ffprobe", lambda: None)
     monkeypatch.setenv("PATH", "/usr/bin")
 

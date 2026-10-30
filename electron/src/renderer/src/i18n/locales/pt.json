@@ -1508,7 +1508,7 @@
     "gpu_report_state_kernels_missing": "{{gpu}} foi encontrada, mas esta compilação do PyTorch ({{torch}}) não tem kernels para sua arquitetura de computação, então os mecanismos rodam na CPU.",
     "gpu_report_state_unknown": "Não foi possível determinar o estado da GPU.",
     "gpu_report_option_vulkan_engines": "Use um mecanismo com runtime de GPU próprio: o audio.cpp roda em GPUs AMD Radeon via Vulkan (Configurações → Modelos → instalar o runtime).",
-    "gpu_report_option_rocm_windows_manual": "Em hardware AMD compatível com Windows 11 x64, ative a instalação do ROCm 7.2.1 pelo VoiceStudio com OMNIVOICE_TORCH_VARIANT=rocm. Se já estiver instalado, execute a instalação novamente e confira a matriz de drivers e hardware da AMD. Os mecanismos opcionais têm limitações próprias; consulte o guia de instalação do Windows.",
+    "gpu_report_option_rocm_windows_manual": "Para placas AMD compatíveis no Windows, abra Configurações → Desempenho → Pacotes do ambiente e escolha AMD ROCm; salve a escolha, termine suas tarefas, feche o VoiceStudio completamente e abra-o novamente; depois escolha Instalar na configuração. Em uma instalação nova, escolha AMD ROCm antes de Instalar. Opção avançada de inicialização: OMNIVOICE_TORCH_VARIANT=rocm. Confira a matriz de hardware e drivers da AMD; mecanismos opcionais têm limites próprios. Consulte o guia de instalação do Windows.",
     "gpu_report_option_rocm_variant_linux": "Defina OMNIVOICE_TORCH_VARIANT=rocm e execute a configuração novamente para instalar a versão ROCm do PyTorch.",
     "gpu_report_option_rocm_device_access": "Verifique se o driver amdgpu está carregado e se seu usuário pode abrir /dev/kfd (grupos render e video).",
     "gpu_report_option_reinstall_cuda_torch": "Reinstale o runtime para que ele instale a versão CUDA do PyTorch.",
@@ -3041,6 +3041,7 @@
     "pockettts_accepted_toast": "Condições do PocketTTS aceites."
   },
   "engines": {
+    "voxcpm2LayoutError": "O ambiente VoxCPM2 contém um link que aponta para fora da pasta gerenciada. Corrija o link antes de tentar novamente a instalação com Windows ROCm.",
     "selectCpuFallback": "{{engine}}: em execução na CPU — {{reason}}",
     "selectWithCaveat": "Alterado para {{engine}} — {{reason}}",
     "acceptLicense": "Aceitar licença",
@@ -3107,6 +3108,7 @@
     "channels_mono": "Mono"
   },
   "tts_errors": {
+    "video_retime_fps_unavailable": "O Smart Fit não consegue determinar a taxa de quadros do vídeo de origem. Verifique o arquivo de origem e as ferramentas de mídia e tente novamente.",
     "profile_language_rejected": "Automático usa o idioma do perfil de voz ({{language}}), não suportado por este motor. Altere o idioma do perfil, escolha um idioma compatível ou mude de motor.",
     "generation_in_progress": "Já existe uma geração em andamento — aguarde a conclusão antes de iniciar outra.",
     "error_prefix": "Erro: {{message}}",
@@ -4470,6 +4472,28 @@
     "nextMemory": "Este dispositivo ficou sem memória. Escolha um perfil mais leve em Configurações → Desempenho e tente novamente.",
     "downloads": "Downloads",
     "activeCount": "Downloads em andamento: {{count}}"
+  },
+  "runtimeTorch": {
+    "title": "Pacotes do ambiente",
+    "auto": "Automático",
+    "cpu": "Somente CPU",
+    "cuda": "NVIDIA CUDA",
+    "rocm": "AMD ROCm (placas compatíveis)",
+    "autoDescription": "Usa NVIDIA CUDA quando detectado; caso contrário, CPU. AMD ROCm exige uma escolha explícita.",
+    "cpuDescription": "Instala pacotes somente para CPU.",
+    "cudaDescription": "Instala pacotes NVIDIA CUDA; exige uma GPU NVIDIA e um driver compatíveis.",
+    "rocmDescription": "Instala pacotes AMD ROCm para placas AMD compatíveis. O suporte varia conforme o sistema operacional e o mecanismo.",
+    "pinned": "OMNIVOICE_TORCH_VARIANT fixa esta escolha. Altere o ambiente de inicialização para desbloqueá-la.",
+    "saving": "Salvando a escolha de pacotes…",
+    "saveError": "Não foi possível salvar a escolha de pacotes. A escolha anterior continua selecionada. Tente novamente.",
+    "saved": "Escolha salva. Os downloads começam somente ao escolher Instalar, Retomar ou Tentar novamente.",
+    "packagesEffect": "Seleciona os pacotes para a próxima configuração. O dispositivo de computação ativo e as configurações que fixam a CPU permanecem inalterados.",
+    "change": "Alterar pacotes do ambiente",
+    "confirmDescription": "Salve a nova escolha do ambiente para a próxima inicialização do aplicativo. O backend atual continuará funcionando. Termine suas tarefas, feche o VoiceStudio completamente e abra-o novamente; depois escolha Instalar na janela de configuração existente. Nada reinicia ou é baixado automaticamente. Dados e modelos são mantidos; os ambientes auxiliares de CPU existentes não mudam. Voltar à CPU pode exigir outra configuração.",
+    "preparing": "Salvando para a próxima inicialização…",
+    "beginError": "Não foi possível salvar a escolha do ambiente. O backend atual permanece inalterado. Tente novamente.",
+    "confirm": "Salvar para a próxima inicialização",
+    "pending": "Escolha do ambiente salva: {{choice}}. Termine suas tarefas, feche o VoiceStudio completamente e abra-o novamente; depois escolha Instalar na configuração. O backend atual não foi reiniciado e nenhum download foi iniciado."
   },
   "disabledReason": {
     "files_required": "Adicione pelo menos um vídeo primeiro.",

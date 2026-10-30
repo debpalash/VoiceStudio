@@ -28,14 +28,15 @@ model directory, not only the parent Hugging Face cache directory.
 
 Click **Install** in **Model Catalogue → Engines → CosyVoice**. VoiceStudio
 gives CosyVoice its own folder under the data directory and its own Python
-3.10 environment, and runs it there in a separate process. The install:
+3.10 environment, and runs it there in a separate process. Explicit native
+Windows ROCm setup uses the qualified Python 3.12 variant below. The install:
 
 - clones a reviewed CosyVoice commit and the Matcha-TTS code it depends on;
 - downloads the CosyVoice 3 weights (about 5.4 GB).
 
 It differs from upstream's own setup:
 
-- **PyTorch 2.7.0.** The CUDA 12.8 build on an NVIDIA GPU, the CPU build on
+- **PyTorch 2.7.0 in the default recipes.** The CUDA 12.8 build on an NVIDIA GPU, the CPU build on
   other Windows and Linux machines, the regular build on Apple Silicon.
   Upstream's 2.3.1 exists only for CUDA 12.1 and cannot run on RTX 50-series
   GPUs. On Linux ARM64 (for example DGX Spark) only torch takes that build
@@ -67,6 +68,36 @@ Macs, where PyTorch 2.7.0 has no build.
 
 CosyVoice 3 has no built-in voices. With no reference clip, it speaks in the
 voice of upstream's own sample prompt.
+
+## Managed native Windows AMD variant
+
+After explicitly selecting the supported Windows ROCm runtime, click **Install**
+on the CosyVoice engine row. This uses its own Python 3.12 environment with the
+hash-pinned Torch/audio 2.9.1 and SDK 7.2.1 recipe. Its remaining inference pins
+retain the reviewed security fixes; PyWORLD still needs the existing C++ build
+tools. CPU, CUDA, Linux, macOS and custom source installations retain their
+existing recipes. An explicit CPU compute choice stays on CPU.
+
+The managed setup verifies the actual private interpreter, package versions,
+reviewed source revisions, a native GPU kernel and the bundled local prompt
+before atomically publishing the HIP completion record. A legacy CPU completion
+record does not establish HIP readiness. Changing source, packages or interpreter
+invalidates that record. SDK selectors inherited from another installation are
+removed only from this verified managed child's environment.
+
+A healthy existing Python 3.10/Torch2.7 CPU sidecar remains installed and usable
+as a CPU fallback after changing the main runtime choice. That choice alone
+does not invalidate or convert it; an explicit reinstall is required to replace
+its environment. Custom/source installations retain their own contract.
+
+The pinned upstream reference and dataset loaders use a local soundfile adapter
+inside their own module namespaces, preserving shared TorchAudio. This avoids
+requiring TorchCodec's FFmpeg DLLs for WAV/FLAC/MP3 prompts. LLM, flow and HiFT
+parameters must match the selected device; the ONNX speaker/tokenizer helpers
+remain on CPU. Device changes allow the normal three-second graceful shutdown
+before bounded forced cleanup; a retained live owner blocks replacement.
+A model-free setup result is separate from real speech generation
+and does not certify other cards, operating systems or gated pipelines.
 
 ## Source builds and existing installations
 

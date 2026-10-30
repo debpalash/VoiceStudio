@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { runtimeChildEnv } from './runtime-environment';
 import { runtimeLaunchRefusal } from './runtime-launch-refusal';
 
 export const WINDOWS_ROCM_PYTHON_REQUEST = 'cpython-3.12-windows-x86_64';
@@ -70,12 +71,14 @@ export function withWindowsRocmReadinessDecision(check: () => Promise<boolean>):
 export async function windowsRocmReady(
   project: string,
   onFailure?: (detail: string) => void,
+  managed = false,
 ): Promise<boolean> {
   const decision = readinessDecision.getStore();
-  let result = decision?.get(project);
+  const key = `${managed ? 'managed' : 'external'}:${project}`;
+  let result = decision?.get(key);
   if (!result) {
-    result = probeWindowsRocmReady(project);
-    decision?.set(project, result);
+    result = probeWindowsRocmReady(project, managed);
+    decision?.set(key, result);
   }
   const ready = await result;
   if (!ready)
@@ -84,13 +87,16 @@ export async function windowsRocmReady(
 }
 
 /** Verification fails closed; launch refusals propagate without triggering a reinstall. */
-function probeWindowsRocmReady(project: string): Promise<boolean> {
-  const env: NodeJS.ProcessEnv = {
-    ...process.env,
-    HF_HUB_OFFLINE: '1',
-    TRANSFORMERS_OFFLINE: '1',
-    PYTHONNOUSERSITE: '1',
-  };
+function probeWindowsRocmReady(project: string, managed: boolean): Promise<boolean> {
+  const env = runtimeChildEnv(
+    {
+      ...process.env,
+      HF_HUB_OFFLINE: '1',
+      TRANSFORMERS_OFFLINE: '1',
+      PYTHONNOUSERSITE: '1',
+    },
+    { managed, platform: process.platform, variant: 'rocm' },
+  );
   delete env.PYTHONHOME;
   delete env.PYTHONPATH;
   return new Promise((resolve, reject) => {

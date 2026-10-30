@@ -914,6 +914,12 @@ async def dub_download(
                 raise HTTPException(status_code=409, detail="Export aborted")
             from core.failure import build_failure
             retime_warning = build_failure(e, stage="video-retime", include_diagnostic=False)
+            if (isinstance(e, RetimeError) and e.stage == "probe") or (
+                isinstance(e, FileNotFoundError) and e.filename == "ffprobe"
+            ):
+                if isinstance(e, RetimeError) and e.code:
+                    retime_warning["code"] = e.code
+                raise HTTPException(status_code=503, detail=retime_warning) from e
             job["last_export_warning"] = {"type": "video_retime_fallback", **retime_warning}
             logger.exception(
                 "Smart Fit video retime failed for job %s — exporting "
@@ -1295,6 +1301,14 @@ async def dub_preview_video(
             except Exception as e:
                 if (isinstance(e, RetimeError) and e.stage == "aborted") or job.get("aborted"):
                     raise HTTPException(status_code=409, detail="Preview aborted")
+                if (isinstance(e, RetimeError) and e.stage == "probe") or (
+                    isinstance(e, FileNotFoundError) and e.filename == "ffprobe"
+                ):
+                    from core.failure import build_failure
+                    failure = build_failure(e, stage="video-retime", include_diagnostic=False)
+                    if isinstance(e, RetimeError) and e.code:
+                        failure["code"] = e.code
+                    raise HTTPException(status_code=503, detail=failure) from e
                 # Preview is best-effort: fall back to the un-retimed video
                 # rather than a black player. The export path surfaces the
                 # structured warning; here we just log.

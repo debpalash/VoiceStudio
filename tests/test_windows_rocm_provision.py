@@ -132,15 +132,16 @@ def test_every_amd_artifact_is_hash_pinned():
         assert set(recipe[section]["wheel_files"]) == set(recipe[section]["wheel_sha256"])
 
 
+@pytest.mark.parametrize("section", ["torch", "runtime"])
 @pytest.mark.parametrize("bad", [None, "", "abc", "Z" * 64])
-def test_recipe_without_a_valid_hash_is_refused(tmp_path, bad):
+def test_recipe_without_a_valid_hash_is_refused(tmp_path, bad, section):
     recipe = module("recipe")
     data = recipe.load_recipe()
-    name = data["torch"]["wheel_files"][0]
+    name = data[section]["wheel_files"][0]
     if bad is None:
-        del data["torch"]["wheel_sha256"][name]
+        del data[section]["wheel_sha256"][name]
     else:
-        data["torch"]["wheel_sha256"][name] = bad
+        data[section]["wheel_sha256"][name] = bad
     path = tmp_path / "recipe.json"
     path.write_text(json.dumps(data))
     with pytest.raises(RuntimeError, match="sha256"):
@@ -152,9 +153,15 @@ def test_requirements_carry_a_hash_for_every_url():
     recipe = module("recipe").load_recipe()
     lines = install.hashed_requirements(recipe).splitlines()
     assert len(lines) == sum(len(recipe[s]["wheel_files"]) for s in ("torch", "runtime"))
+    expected = {
+        recipe["torch"]["find_links"] + name: recipe[section]["wheel_sha256"][name]
+        for section in ("runtime", "torch") for name in recipe[section]["wheel_files"]
+    }
     for line in lines:
-        url, flag = line.split(" --hash=sha256:")
-        assert url.startswith("https://repo.radeon.com/") and len(flag) == 64
+        url, digest = line.split("#sha256=")
+        assert expected.pop(url) == digest
+        assert "--hash" not in line
+    assert not expected
 
 
 class _Dist:

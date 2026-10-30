@@ -17,6 +17,10 @@ import pytest
 def reset_diar(monkeypatch):
     import services.model_manager as mm
     monkeypatch.setattr(mm, "_diar_pipeline", None, raising=False)
+    monkeypatch.setattr(
+        "core.device_caps.detect_host_caps", lambda: types.SimpleNamespace(family="cpu"),
+    )
+    monkeypatch.setattr("services.diarization_runtime.selected_backend", lambda: "pyannote")
     yield mm
     monkeypatch.setattr(mm, "_diar_pipeline", None, raising=False)
 

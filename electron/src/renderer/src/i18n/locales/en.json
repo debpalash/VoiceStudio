@@ -397,6 +397,7 @@
     "offline_bar": "Engine busy, reconnecting automatically"
   },
   "engines": {
+    "voxcpm2LayoutError": "The VoxCPM2 environment links outside its managed folder. Repair the link before retrying the Windows ROCm installation.",
     "selectCpuFallback": "{{engine}}: running on CPU — {{reason}}",
     "selectWithCaveat": "Switched to {{engine}} — {{reason}}",
     "none_ready_title": "Text-to-speech is not ready",
@@ -638,6 +639,7 @@
     "recorder_unsupported": "This system cannot encode microphone audio."
   },
   "tts_errors": {
+    "video_retime_fps_unavailable": "Smart Fit cannot determine the source video frame rate. Check the source file and media tools, then retry.",
     "profile_language_rejected": "Auto uses the voice profile’s language ({{language}}), which this engine does not support. Change the profile language, choose a supported language, or switch engines.",
     "enter_text": "Enter some text first.",
     "upload_or_select": "Upload a reference clip or pick a saved voice.",
@@ -1674,7 +1676,7 @@
     "gpu_report_state_kernels_missing": "{{gpu}} was found, but this PyTorch build ({{torch}}) has no kernels for its compute architecture, so engines run on the CPU.",
     "gpu_report_state_unknown": "GPU status could not be determined.",
     "gpu_report_option_vulkan_engines": "Use an engine with its own GPU runtime: audio.cpp runs on AMD Radeon GPUs through Vulkan (Settings → Models → install the runtime).",
-    "gpu_report_option_rocm_windows_manual": "On supported Windows 11 x64 AMD hardware, opt into VoiceStudio's ROCm 7.2.1 setup with OMNIVOICE_TORCH_VARIANT=rocm. If already installed, rerun setup and check AMD's driver and hardware matrix. Optional engines have separate limits; see the Windows install guide.",
+    "gpu_report_option_rocm_windows_manual": "For supported Windows AMD cards, open Settings → Performance → Runtime packages and choose AMD ROCm, then save the choice, finish your tasks, fully quit and reopen VoiceStudio, and choose Install in setup. For a fresh install, choose AMD ROCm before Install. Advanced launch option: OMNIVOICE_TORCH_VARIANT=rocm. Check AMD’s driver and hardware matrix; optional engines have separate limits. See the Windows install guide.",
     "gpu_report_option_rocm_variant_linux": "Set OMNIVOICE_TORCH_VARIANT=rocm and run setup again to install the ROCm build of PyTorch.",
     "gpu_report_option_rocm_device_access": "Check that the amdgpu driver is loaded and your user can open /dev/kfd (render and video groups).",
     "gpu_report_option_reinstall_cuda_torch": "Reinstall the runtime so it installs the CUDA build of PyTorch.",
@@ -4468,6 +4470,28 @@
     "nextMemory": "This device ran out of memory. Choose a lighter profile in Settings → Performance, then retry.",
     "downloads": "Downloads",
     "activeCount": "Downloads in progress: {{count}}"
+  },
+  "runtimeTorch": {
+    "title": "Runtime packages",
+    "auto": "Automatic",
+    "cpu": "CPU only",
+    "cuda": "NVIDIA CUDA",
+    "rocm": "AMD ROCm (supported cards)",
+    "autoDescription": "Uses NVIDIA CUDA when detected; otherwise CPU. AMD ROCm requires an explicit choice.",
+    "cpuDescription": "Installs CPU-only packages.",
+    "cudaDescription": "Installs NVIDIA CUDA packages; requires a compatible NVIDIA GPU and driver.",
+    "rocmDescription": "Installs AMD ROCm packages for supported AMD cards. Support varies by operating system and engine.",
+    "pinned": "OMNIVOICE_TORCH_VARIANT pins this choice. Change the launch environment to unlock it.",
+    "saving": "Saving package choice…",
+    "saveError": "Could not save the package choice. The previous choice is still selected. Try again.",
+    "saved": "Choice saved. Downloads start only when you choose Install, Resume or Retry.",
+    "packagesEffect": "Selects packages for the next setup. The active compute device and CPU pins remain unchanged.",
+    "change": "Change runtime packages",
+    "confirmDescription": "Save the new runtime choice for the next app start. The current backend keeps running. Finish your tasks, fully quit and reopen VoiceStudio, then choose Install in the existing setup window. Nothing restarts or downloads automatically. Data and models are retained; existing CPU sidecars stay unchanged. Returning to CPU may require setup again.",
+    "preparing": "Saving for next app start…",
+    "beginError": "Could not save the runtime choice. The current backend is unchanged. Try again.",
+    "confirm": "Save for next app start",
+    "pending": "Runtime choice saved: {{choice}}. Finish your tasks, fully quit and reopen VoiceStudio, then choose Install in setup. The current backend has not restarted; no downloads have started."
   },
   "disabledReason": {
     "files_required": "Add at least one video first.",

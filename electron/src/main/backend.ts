@@ -1,6 +1,7 @@
 import { decideMissingRuntime, runtimeWasInstalled } from './runtime-repair';
 import { windowsRocmInstalled, windowsRocmRequested } from './runtime-windows-rocm';
 import { runtimeProjectReady } from './runtime-readiness';
+import { runtimeChildEnv } from './runtime-environment';
 import { runRuntimeProbe } from './runtime-probe';
 import { RuntimeLaunchRefusedError } from './runtime-launch-refusal';
 import { pypiFilesHost } from './pypi-mirror';
@@ -10,6 +11,7 @@ import {
   OUTDATED_SYSTEM_LIBRARY_CODE,
   RUNTIME_FILES_LOCKED_CODE,
   promoteLegacyRuntimeCaches,
+  resolveTorchVariant,
   runtimeDependenciesReady,
   runtimeDownloadHosts,
   runtimeInstallInterrupted,
@@ -17,6 +19,7 @@ import {
   runtimeUvCache,
   stageRuntimeSources,
   type RuntimeRegion,
+  type TorchChoice,
 } from './runtime-project';
 import { collectHostSnapshot, freeGb, type HostSnapshot } from './host-snapshot';
 import { runtimeSetupSupported } from './distribution';
@@ -35,6 +38,7 @@ import { scopedStorage, scopedStorageEnv, type ScopedStorage } from './storage-s
 import { legacyStorageEnv } from './legacy-storage';
 import { spawn, spawnSync, type ChildProcess, type StdioOptions } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { randomUUID } from 'node:crypto';
 import {
   accessSync,
   constants,
@@ -42,6 +46,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -57,6 +62,7 @@ import type {
   BackendStatus,
   NativeCrashRecord,
   RemoteBackendProbe,
+  RuntimeTorchPreference,
 } from '../preload/index.d';
 import {
   loadRemoteBackend,
@@ -125,6 +131,7 @@ const TAURI_APP_ID = 'com.debpalash.omnivoice-studio';
 const RUNTIME_LOCATION_FILE = 'runtime-location.json';
 const RUNTIME_PREFERENCES_FILE = 'runtime-preferences.json';
 const RUNTIME_REGIONS = new Set<RuntimeRegion>(['auto', 'global', 'china', 'russia', 'restricted']);
+const RUNTIME_TORCH_PREFERENCES = new Set<RuntimeTorchPreference>(['auto', 'cpu', 'cuda', 'rocm']);
 
 /** Pipe closures emitted while a child is exiting are lifecycle signals, not failures. */
 export function isExpectedPipeClose(error: unknown): boolean {
@@ -144,17 +151,55 @@ function runtimePreferencesPath(): string {
   return join(app.getPath('userData'), RUNTIME_PREFERENCES_FILE);
 }
 
-function loadRuntimeRegion(): RuntimeRegion {
+interface RuntimePreferences {
+  region: RuntimeRegion;
+  torchPreference: RuntimeTorchPreference;
+  torchSetupPending?: boolean;
+}
+
+function loadRuntimePreferences(): RuntimePreferences {
   try {
     const value = JSON.parse(readFileSync(runtimePreferencesPath(), 'utf8')) as {
       region?: unknown;
+      torchPreference?: unknown;
+      torchSetupPending?: unknown;
     };
-    return typeof value.region === 'string' && RUNTIME_REGIONS.has(value.region as RuntimeRegion)
-      ? (value.region as RuntimeRegion)
-      : 'auto';
+    return {
+      region:
+        typeof value?.region === 'string' && RUNTIME_REGIONS.has(value.region as RuntimeRegion)
+          ? (value.region as RuntimeRegion)
+          : 'auto',
+      torchPreference:
+        typeof value?.torchPreference === 'string' &&
+        RUNTIME_TORCH_PREFERENCES.has(value.torchPreference as RuntimeTorchPreference)
+          ? (value.torchPreference as RuntimeTorchPreference)
+          : 'auto',
+      ...(value?.torchSetupPending === true ? { torchSetupPending: true } : {}),
+    };
   } catch {
-    return 'auto';
+    return { region: 'auto', torchPreference: 'auto' };
   }
+}
+
+function saveRuntimePreferences(preferences: RuntimePreferences): void {
+  const destination = runtimePreferencesPath();
+  const temporary = `${destination}.${randomUUID()}.tmp`;
+  mkdirSync(dirname(destination), { recursive: true });
+  try {
+    writeFileSync(temporary, JSON.stringify(preferences, null, 2), { flag: 'wx' });
+    renameSync(temporary, destination);
+  } catch (error) {
+    try {
+      rmSync(temporary, { force: true });
+    } catch {}
+    throw error;
+  }
+}
+
+function inheritedTorchPreference(): Exclude<RuntimeTorchPreference, 'auto'> | undefined {
+  const raw = process.env.OMNIVOICE_TORCH_VARIANT?.trim().toLowerCase();
+  if (raw === 'default') return 'cuda';
+  return raw === 'cpu' || raw === 'cuda' || raw === 'rocm' ? raw : undefined;
 }
 
 const UVICORN_ARGS = ['uvicorn', 'main:app', '--app-dir', 'backend', '--host', '127.0.0.1'];
@@ -354,6 +399,7 @@ function venvPython(root: string): string {
 interface SpawnPlan {
   argv: string[];
   cwd: string;
+  managedRuntime?: boolean;
 }
 
 interface LegacyInstallConfig {
@@ -482,6 +528,13 @@ export interface SpawnPlanError {
   setupIssue?: 'unsupported_platform';
 }
 
+function ownsRuntimeProject(project: string): boolean {
+  if (!app.isPackaged || parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD)) return false;
+  const configured = storedRuntimeLocation();
+  if (configured && samePath(project, join(configured.root, 'project'))) return configured.owned;
+  return samePath(project, join(defaultRuntimeRoot(), 'project'));
+}
+
 export async function resolveSpawnPlan(
   port: number,
   packagedProject?: string,
@@ -497,6 +550,7 @@ export async function resolveSpawnPlan(
     return {
       argv: [runtimePython(project), '-m', ...UVICORN_ARGS, '--port', String(port)],
       cwd: project,
+      managedRuntime: ownsRuntimeProject(project),
     };
   }
   // Setup is explicit: `uv run` can sync gigabytes inside the health-check
@@ -574,11 +628,14 @@ function childEnv(
   port: number,
   _region: RuntimeRegion = 'auto',
   platform = process.platform,
+  choice?: TorchChoice,
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...(app.isPackaged ? legacyStorageEnv(legacyTauriRoots()) : {}),
     ...process.env,
   };
+  if (choice?.explicit)
+    env.OMNIVOICE_TORCH_VARIANT = choice.variant === 'default' ? 'cuda' : choice.variant;
   const scopedRoot = app.isPackaged ? scopedRuntimeRoot() : null;
   if (scopedRoot) {
     Object.assign(env, scopedStorageEnv(scopedRoot, env));
@@ -660,9 +717,14 @@ export function managedBackendSpawnOptions(
   port: number,
   region: RuntimeRegion = 'auto',
   platform = process.platform,
+  choice?: TorchChoice,
+  managed = false,
 ): { env: NodeJS.ProcessEnv; stdio: StdioOptions; drainFd: number | null } {
   const drainFd = platform === 'win32' ? null : 3;
-  const env = { ...childEnv(port, region, platform), ...backendOnlyEnv };
+  const env = runtimeChildEnv(
+    { ...childEnv(port, region, platform, choice), ...backendOnlyEnv },
+    { managed, platform, variant: choice?.variant ?? 'default' },
+  );
   if (drainFd !== null) env.OMNIVOICE_DESKTOP_DRAIN_FD = String(drainFd);
   return {
     env,
@@ -856,7 +918,54 @@ export class BackendSupervisor extends EventEmitter<{
   private installation: AbortController | null = null;
   private cleaningRuntime = false;
   private runtimeProject: string | null = null;
-  private runtimeRegion: RuntimeRegion = loadRuntimeRegion();
+  private runtimePreferences = loadRuntimePreferences();
+
+  private get runtimeRegion(): RuntimeRegion {
+    return this.runtimePreferences.region;
+  }
+
+  private runtimeTorchSupported(): boolean {
+    return (
+      app.isPackaged &&
+      (process.platform === 'win32' || process.platform === 'linux') &&
+      process.arch === 'x64' &&
+      runtimeSetupSupported()
+    );
+  }
+
+  private runtimeTorchSetupPending(): boolean {
+    return this.runtimeTorchSupported() && this.runtimePreferences.torchSetupPending === true;
+  }
+
+  private runtimeTorchSwitchable(): boolean {
+    return (
+      this.runtimeTorchSupported() &&
+      this.stage === 'ready' &&
+      this.managed &&
+      !this.remoteUrl &&
+      !process.env.OMNIVOICE_BACKEND_CMD?.trim() &&
+      !this.installation &&
+      !this.cleaningRuntime &&
+      !this.shuttingDown &&
+      this.ownsRuntimeProject() &&
+      Boolean(
+        this.child &&
+        this.child.pid !== undefined &&
+        this.child.pid > 0 &&
+        this.child.exitCode === null &&
+        this.child.signalCode === null &&
+        !this.child.killed,
+      )
+    );
+  }
+
+  private runtimeTorchChoice(): TorchChoice {
+    const env = { ...process.env };
+    if (this.runtimeTorchSupported())
+      env.OMNIVOICE_TORCH_VARIANT =
+        inheritedTorchPreference() ?? this.runtimePreferences.torchPreference;
+    return resolveTorchVariant(env);
+  }
 
   get baseUrl(): string {
     return this.remoteUrl || `http://127.0.0.1:${this.port}`;
@@ -935,6 +1044,12 @@ export class BackendSupervisor extends EventEmitter<{
               defaultRuntimeRoot(),
             ),
             runtimeRegion: this.runtimeRegion,
+            runtimeTorchPreference:
+              inheritedTorchPreference() ?? this.runtimePreferences.torchPreference,
+            runtimeTorchPinned: Boolean(inheritedTorchPreference()),
+            runtimeTorchSupported: this.runtimeTorchSupported(),
+            runtimeTorchSwitchable: this.runtimeTorchSwitchable(),
+            runtimeTorchSetupPending: this.runtimeTorchSetupPending(),
             ...this.runtimeStorage(),
           }
         : {}),
@@ -973,7 +1088,7 @@ export class BackendSupervisor extends EventEmitter<{
   }
 
   /** Attach to a backend already answering on the port, else spawn one. */
-  async start(): Promise<void> {
+  async start(runtimeChoice?: TorchChoice): Promise<void> {
     const gen = ++this.generation;
     this.shuttingDown = false;
     this.startedAt = Date.now();
@@ -1028,17 +1143,24 @@ export class BackendSupervisor extends EventEmitter<{
         }
       }
 
+      const choice =
+        app.isPackaged && !parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD)
+          ? (runtimeChoice ?? this.runtimeTorchChoice())
+          : undefined;
       if (app.isPackaged && !parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD)) {
-        const { project, ready } = await this.resolveRuntimeProject();
+        const { project, ready } = await this.resolveRuntimeProject(choice);
         if (!ready) {
           if (gen === this.generation) {
-            const action = decideMissingRuntime({
-              packaged: true,
-              previouslyInstalled: await runtimeWasInstalled(project),
-              repairAttempted: this.repairAttempted,
-              unsupported: isUnsupportedPlatform(),
-              rocmNotYetInstalled: windowsRocmRequested() && !(await windowsRocmInstalled(project)),
-            });
+            const action = this.runtimeTorchSetupPending()
+              ? 'wizard'
+              : decideMissingRuntime({
+                  packaged: true,
+                  previouslyInstalled: await runtimeWasInstalled(project),
+                  repairAttempted: this.repairAttempted,
+                  unsupported: isUnsupportedPlatform(),
+                  rocmNotYetInstalled:
+                    windowsRocmRequested(choice?.variant) && !(await windowsRocmInstalled(project)),
+                });
             this.runtimeRepairFailed = action === 'repair_failed';
             this.runtimeInterrupted = await runtimeInstallInterrupted(project);
             // Intel Macs can never resolve the runtime (#889), and the Intel
@@ -1110,7 +1232,7 @@ export class BackendSupervisor extends EventEmitter<{
         this.setStage('failed', { message: plan.error });
         return;
       }
-      this.spawnChild(plan, gen);
+      this.spawnChild(plan, gen, choice);
       if (gen !== this.generation || this.stage !== 'starting') return;
       void this.waitUntilReady(gen, startupBudgetMs());
     } catch (error) {
@@ -1132,6 +1254,7 @@ export class BackendSupervisor extends EventEmitter<{
       isUnsupportedPlatform()
     )
       return;
+    const choice = this.runtimeTorchChoice();
     let project =
       this.runtimeProject ?? join(storedRuntimeRoot() ?? defaultRuntimeRoot(), 'project');
     this.runtimeProject = project;
@@ -1149,12 +1272,18 @@ export class BackendSupervisor extends EventEmitter<{
     this.setupPhase = 'checking';
     this.setupProgress.reset();
     this.setStage('installing', { message: undefined });
-    const stopWatching = this.watchSetupDownloads(gen, controller.signal);
+    const stopWatching = this.watchSetupDownloads(gen, controller.signal, choice);
     try {
-      const reusable = await runtimeProjectReady(backendRoot(), project);
+      const reusable = await runtimeProjectReady(
+        backendRoot(),
+        project,
+        choice,
+        ownsRuntimeProject(project),
+      );
       if (gen !== this.generation || controller.signal.aborted) return;
       if (reusable) {
-        await this.start();
+        this.completeRuntimeTorchSetup();
+        await this.start(choice);
         return;
       }
       let runtimeRoot = dirname(project);
@@ -1177,10 +1306,16 @@ export class BackendSupervisor extends EventEmitter<{
           'Creating a separate Electron runtime; existing environment preserved.',
         );
         this.emitStatus();
-        const fallbackReusable = await runtimeProjectReady(backendRoot(), project);
+        const fallbackReusable = await runtimeProjectReady(
+          backendRoot(),
+          project,
+          choice,
+          ownsRuntimeProject(project),
+        );
         if (gen !== this.generation || controller.signal.aborted) return;
         if (fallbackReusable) {
-          await this.start();
+          this.completeRuntimeTorchSetup();
+          await this.start(choice);
           return;
         }
       }
@@ -1198,39 +1333,35 @@ export class BackendSupervisor extends EventEmitter<{
         project,
         findUv(),
         (command, args, cwd, env, options) => {
+          const runtimeEnv = runtimeChildEnv(
+            { ...childEnv(this.port, this.runtimeRegion, process.platform, choice), ...env },
+            {
+              managed: ownsRuntimeProject(project),
+              platform: process.platform,
+              variant: choice.variant,
+            },
+          );
           // A planning run (uv's dry run) is read, not shown: its package list
           // would read as installs to the progress tracker.
           if (options?.quiet)
-            return runRuntimeProbe(
-              command,
-              args,
-              cwd,
-              { ...childEnv(this.port, this.runtimeRegion), ...env },
-              {
-                timeoutMs: options.timeoutMs,
-                signal: controller.signal,
-                captureStderr: true,
-              },
-            );
+            return runRuntimeProbe(command, args, cwd, runtimeEnv, {
+              timeoutMs: options.timeoutMs,
+              signal: controller.signal,
+              captureStderr: true,
+            });
           if (options?.timeoutMs)
-            return runRuntimeProbe(
-              command,
-              args,
-              cwd,
-              { ...childEnv(this.port, this.runtimeRegion), ...env },
-              {
-                timeoutMs: options.timeoutMs,
-                signal: controller.signal,
-                onSpawn: (child) => {
-                  this.child = child;
-                  this.attachLineReader(child.stdout, 'out');
-                  this.attachLineReader(child.stderr, 'err');
-                },
-                onClose: (child) => {
-                  if (this.child === child) this.child = null;
-                },
+            return runRuntimeProbe(command, args, cwd, runtimeEnv, {
+              timeoutMs: options.timeoutMs,
+              signal: controller.signal,
+              onSpawn: (child) => {
+                this.child = child;
+                this.attachLineReader(child.stdout, 'out');
+                this.attachLineReader(child.stderr, 'err');
               },
-            );
+              onClose: (child) => {
+                if (this.child === child) this.child = null;
+              },
+            });
           return new Promise<string>((resolve, reject) => {
             if (controller.signal.aborted) {
               reject(controller.signal.reason);
@@ -1238,7 +1369,7 @@ export class BackendSupervisor extends EventEmitter<{
             }
             const child = spawn(command, args, {
               cwd,
-              env: { ...childEnv(this.port, this.runtimeRegion), ...env },
+              env: runtimeEnv,
               windowsHide: true,
               detached: process.platform !== 'win32',
               stdio: ['pipe', 'pipe', 'pipe'],
@@ -1278,6 +1409,7 @@ export class BackendSupervisor extends EventEmitter<{
           this.emitStatus();
         },
         this.runtimeRegion,
+        choice,
         {
           log: (line) => {
             if (gen === this.generation) this.pushLog('out', line);
@@ -1289,13 +1421,16 @@ export class BackendSupervisor extends EventEmitter<{
           },
           pypiHost: (host) => {
             if (gen !== this.generation) return;
-            void runtimeDownloadHosts(backendRoot(), process.platform, process.arch, host)
+            void runtimeDownloadHosts(backendRoot(), process.platform, process.arch, choice, host)
               .then((hosts) => this.setupProgress.setDownloadHosts(hosts))
               .catch(() => undefined);
           },
         },
       );
-      if (gen === this.generation) await this.start();
+      if (gen === this.generation && !controller.signal.aborted) {
+        this.completeRuntimeTorchSetup();
+        await this.start(choice);
+      }
     } catch (error) {
       if (gen === this.generation) {
         const code = (error as NodeJS.ErrnoException)?.code;
@@ -1332,7 +1467,7 @@ export class BackendSupervisor extends EventEmitter<{
    * in-flight bytes: the setup screen names the source host, and a download
    * that stops receiving data shows as stalled instead of frozen (#3411).
    */
-  private watchSetupDownloads(gen: number, signal: AbortSignal): () => void {
+  private watchSetupDownloads(gen: number, signal: AbortSignal, choice: TorchChoice): () => void {
     const reporter = new SetupDownloadReporter();
     void Promise.resolve()
       .then(() =>
@@ -1340,6 +1475,7 @@ export class BackendSupervisor extends EventEmitter<{
           backendRoot(),
           process.platform,
           process.arch,
+          choice,
           pypiFilesHost(this.runtimeRegion),
         ),
       )
@@ -1385,10 +1521,8 @@ export class BackendSupervisor extends EventEmitter<{
     const project = join(runtimeRoot, 'project');
     if (!samePath(candidate, project))
       throw new Error('Runtime cleanup refused for an invalid project path');
-    const owned =
-      samePath(runtimeRoot, defaultRuntimeRoot()) ||
-      Boolean(configured?.owned && samePath(configured.root, runtimeRoot));
-    if (!owned) throw new Error('Runtime cleanup refused for an unowned environment');
+    if (!ownsRuntimeProject(project))
+      throw new Error('Runtime cleanup refused for an unowned environment');
     this.runtimeProject = project;
     const gen = this.generation;
     this.cleaningRuntime = true;
@@ -1534,13 +1668,60 @@ export class BackendSupervisor extends EventEmitter<{
       throw new Error('runtime_region_unavailable');
     if (typeof raw !== 'string' || !RUNTIME_REGIONS.has(raw as RuntimeRegion))
       throw new Error('invalid_runtime_region');
-    this.runtimeRegion = raw as RuntimeRegion;
-    writeFileSync(
-      runtimePreferencesPath(),
-      JSON.stringify({ region: this.runtimeRegion }, null, 2),
-    );
+    const preferences = { ...this.runtimePreferences, region: raw as RuntimeRegion };
+    saveRuntimePreferences(preferences);
+    this.runtimePreferences = preferences;
     this.emitStatus();
     return this.runtimeRegion;
+  }
+
+  setRuntimeTorchPreference(raw: unknown): RuntimeTorchPreference {
+    this.assertRuntimeTorchPreference(raw);
+    if (this.stage !== 'setup_required' || this.installation || this.cleaningRuntime)
+      throw new Error('runtime_torch_unavailable');
+    return this.persistRuntimeTorchPreference(raw);
+  }
+
+  private persistRuntimeTorchPreference(
+    preference: RuntimeTorchPreference,
+  ): RuntimeTorchPreference {
+    const preferences = {
+      ...this.runtimePreferences,
+      torchPreference: preference,
+      torchSetupPending: true,
+    };
+    saveRuntimePreferences(preferences);
+    this.runtimePreferences = preferences;
+    this.emitStatus();
+    return preference;
+  }
+
+  private completeRuntimeTorchSetup(): void {
+    if (!this.runtimeTorchSetupPending()) return;
+    const preferences = { ...this.runtimePreferences };
+    delete preferences.torchSetupPending;
+    saveRuntimePreferences(preferences);
+    this.runtimePreferences = preferences;
+  }
+
+  async beginRuntimeTorchSetup(raw: unknown): Promise<void> {
+    this.assertRuntimeTorchPreference(raw);
+    if (this.stage !== 'ready' || this.installation || this.cleaningRuntime || this.shuttingDown)
+      throw new Error('runtime_torch_unavailable');
+    if (!this.runtimeTorchSwitchable()) throw new Error('runtime_torch_not_owned');
+    this.persistRuntimeTorchPreference(raw);
+  }
+
+  private assertRuntimeTorchPreference(raw: unknown): asserts raw is RuntimeTorchPreference {
+    if (typeof raw !== 'string' || !RUNTIME_TORCH_PREFERENCES.has(raw as RuntimeTorchPreference))
+      throw new Error('invalid_runtime_torch_preference');
+    if (
+      !this.runtimeTorchSupported() ||
+      this.remoteUrl ||
+      process.env.OMNIVOICE_BACKEND_CMD?.trim()
+    )
+      throw new Error('runtime_torch_unavailable');
+    if (inheritedTorchPreference()) throw new Error('runtime_torch_pinned');
   }
 
   /** A custom runtime is removable only when this Electron install created it. */
@@ -1583,11 +1764,17 @@ export class BackendSupervisor extends EventEmitter<{
     this.emitStatus();
   }
 
-  private async resolveRuntimeProject(): Promise<{ project: string; ready: boolean }> {
+  private async resolveRuntimeProject(
+    choice?: TorchChoice,
+  ): Promise<{ project: string; ready: boolean }> {
     const bundle = backendRoot();
     const own = join(defaultRuntimeRoot(), 'project');
     const configuredRoot = storedRuntimeRoot();
     const configured = configuredRoot ? join(configuredRoot, 'project') : null;
+    if (this.runtimeTorchSetupPending()) {
+      this.runtimeProject = configured ?? own;
+      return { project: this.runtimeProject, ready: false };
+    }
     // Explicit selection is authoritative, including when it needs setup.
     const candidates = (
       configured ? [configured] : [this.runtimeProject, own, ...legacyTauriRuntimeProjects()]
@@ -1596,7 +1783,7 @@ export class BackendSupervisor extends EventEmitter<{
     let selectedRefusal: RuntimeLaunchRefusedError | undefined;
     for (const project of new Set(candidates.map((candidate) => resolve(candidate)))) {
       try {
-        if (await runtimeProjectReady(bundle, project)) {
+        if (await runtimeProjectReady(bundle, project, choice, ownsRuntimeProject(project))) {
           this.runtimeProject = project;
           if (project !== own && project !== configured)
             this.pushLog('out', `Reusing compatible Tauri runtime: ${project}`);
@@ -1691,7 +1878,7 @@ export class BackendSupervisor extends EventEmitter<{
   }
 
   /** Launch the resolved backend command and wire its lifecycle events. */
-  private spawnChild(plan: SpawnPlan, gen: number): void {
+  private spawnChild(plan: SpawnPlan, gen: number, choice?: TorchChoice): void {
     this.crashes.resetCapture();
     const [command, ...args] = plan.argv;
     // A custom command bypasses the managed runtime; its own executable is the
@@ -1703,7 +1890,13 @@ export class BackendSupervisor extends EventEmitter<{
     }
     console.log(`[backend] spawning in ${plan.cwd}: ${plan.argv.join(' ')}`);
     let child: ChildProcess;
-    const processOptions = managedBackendSpawnOptions(this.port, this.runtimeRegion);
+    const processOptions = managedBackendSpawnOptions(
+      this.port,
+      this.runtimeRegion,
+      process.platform,
+      choice,
+      plan.managedRuntime === true,
+    );
     try {
       child = spawn(command, args, {
         cwd: plan.cwd,
@@ -1859,25 +2052,21 @@ export class BackendSupervisor extends EventEmitter<{
   }
 
   /**
+   * Whether the resolved runtime project is one this install created. A
+   * compatible legacy Tauri project can be adopted as the runtime; a crash-time
+   * repair must never run `uv sync` inside files another install owns.
+   */
+  private ownsRuntimeProject(): boolean {
+    return Boolean(this.runtimeProject && ownsRuntimeProject(this.runtimeProject));
+  }
+
+  /**
    * Whether this launch may rebuild the managed runtime on its own.
    *
    * The same guard the setup flow uses: a packaged app with a user-initiated
    * runtime, no custom backend command, a resolved runtime project and no
    * install already running.
    */
-  /**
-   * Whether the resolved runtime project is one this install created. A
-   * compatible legacy Tauri project can be adopted as the runtime; a crash-time
-   * repair must never run `uv sync` inside files another install owns.
-   */
-  private ownsRuntimeProject(): boolean {
-    const project = this.runtimeProject;
-    if (!project) return false;
-    if (samePath(project, join(defaultRuntimeRoot(), 'project'))) return true;
-    const configured = storedRuntimeLocation();
-    return Boolean(configured?.owned && samePath(project, join(configured.root, 'project')));
-  }
-
   private canRepairRuntime(): boolean {
     return (
       app.isPackaged &&
@@ -1885,6 +2074,7 @@ export class BackendSupervisor extends EventEmitter<{
       !parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD) &&
       !isUnsupportedPlatform() &&
       this.ownsRuntimeProject() &&
+      !this.runtimeTorchSetupPending() &&
       !this.repairAttempted &&
       !this.installation &&
       !this.cleaningRuntime

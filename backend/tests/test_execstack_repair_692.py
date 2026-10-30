@@ -194,6 +194,8 @@ def test_asr_probes_report_unavailable_when_repair_impossible(monkeypatch):
     from services import asr_backend as ab
     monkeypatch.setattr(execstack, "ensure_ctranslate2_loadable", lambda: (False, "blocked"))
     from core.windows_rocm import ct2, pipelines
+    monkeypatch.setattr(ct2, "windows_hip_installed", lambda: False)
+    monkeypatch.setattr(pipelines, "windows_hip_installed", lambda: False)
     monkeypatch.setattr(ct2, "availability_status", lambda: None)
     monkeypatch.setattr(pipelines, "pipeline_error", lambda *a, **k: None)
     ok, msg = ab.FasterWhisperBackend.is_available()
@@ -238,6 +240,7 @@ def test_sidecar_probe_repairs_before_import(monkeypatch):
     monkeypatch.setattr(execstack, "ensure_ctranslate2_loadable",
                         lambda: order.append("repair") or (False, "blocked"))
     from core.windows_rocm import ct2
+    monkeypatch.setattr(ct2, "windows_hip_installed", lambda: False)
     monkeypatch.setattr(ct2, "availability_status", lambda: None)
     cls = next(c for c in vars(subprocess_asr).values()
                if isinstance(c, type) and "is_available" in vars(c)

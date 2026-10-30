@@ -35,6 +35,7 @@ import threading
 import time
 import weakref
 from urllib.parse import urlsplit
+from pathlib import Path
 from utils.containment import contain_system_exit
 
 from abc import ABC, abstractmethod
@@ -584,6 +585,82 @@ _ALIGN_CACHE: dict[tuple[str, str], object] = {}
 _ALIGN_DEVICE_ENV = "OMNIVOICE_ALIGN_DEVICE"
 
 
+class _OptionalAlignmentUnavailable(RuntimeError):
+    pass
+
+
+class _UnsupportedAlignmentLanguage(ValueError):
+    pass
+
+
+def _alignment_offline() -> bool:
+    """Read both offline switches at call time."""
+    return any(
+        os.environ.get(name, "").strip().upper() in {"1", "ON", "YES", "TRUE"}
+        for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")
+    )
+
+
+def _ensure_alignment_tokenizer() -> None:
+    """Require local sentence-splitting data without invoking its downloader."""
+    import nltk
+    from core.config import DATA_DIR
+
+    nltk_dir = Path(DATA_DIR) / "nltk_data"
+    if str(nltk_dir) not in nltk.data.path:
+        nltk.data.path.insert(0, str(nltk_dir))
+    try:
+        nltk.data.load("tokenizers/punkt/english.pickle")
+    except LookupError as error:
+        raise _OptionalAlignmentUnavailable("NLTK punkt_tab is missing while offline") from error
+
+
+def _load_installed_align_model(language: str, device: str):
+    """Load cached weights on the requested device; never download assets."""
+    import importlib
+
+    align_module = importlib.import_module("whisperx.alignment")
+    torch_models = align_module.DEFAULT_ALIGN_MODELS_TORCH
+    hf_models = align_module.DEFAULT_ALIGN_MODELS_HF
+    if language in torch_models:
+        import torch
+        import torchaudio
+
+        model_name = torch_models[language]
+        bundle = getattr(torchaudio.pipelines, model_name)
+        checkpoint = Path(torch.hub.get_dir()) / "checkpoints" / bundle._path
+        if not checkpoint.is_file():
+            raise _OptionalAlignmentUnavailable(f"{language} alignment checkpoint is missing while offline")
+        kwargs = {"model_name": model_name, "model_dir": str(checkpoint.parent)}
+    elif language in hf_models:
+        from huggingface_hub import snapshot_download
+
+        snapshot = snapshot_download(
+            hf_models[language], local_files_only=True,
+            allow_patterns=(
+                "config.json", "preprocessor_config.json", "vocab.json",
+                "special_tokens_map.json", "tokenizer_config.json",
+                "pytorch_model.bin", "model.safetensors",
+            ),
+        )
+        root = Path(snapshot)
+        if not (
+            all((root / name).is_file() for name in (
+                "config.json", "preprocessor_config.json", "vocab.json",
+            ))
+            and any((root / name).is_file() for name in (
+                "pytorch_model.bin", "model.safetensors",
+            ))
+        ):
+            raise _OptionalAlignmentUnavailable(f"{language} alignment snapshot is incomplete while offline")
+        kwargs = {"model_name": snapshot}
+    else:
+        raise _UnsupportedAlignmentLanguage(f"Forced alignment is not configured for {language!r}")
+    _ensure_alignment_tokenizer()
+    model, model_metadata = align_module.load_align_model(language, device, **kwargs)
+    return align_module, model, model_metadata
+
+
 def load_align_model(language_code: str, device: str):
     """Lazy-load (and cache) the wav2vec2 aligner for a language.
 
@@ -591,29 +668,36 @@ def load_align_model(language_code: str, device: str):
     language — WhisperX bundles them for ~20 major languages only — or it
     cannot be loaded on ``device``. The caller then keeps Whisper's own
     (looser) word timestamps, after trying any fallback device."""
-    from core.windows_rocm.pipelines import pipeline_error, prepare_audio_imports
+    from core.windows_rocm.pipelines import WHISPERX_ALIGNMENT, pipeline_error, prepare_audio_imports
 
-    if reason := pipeline_error(device):
+    if reason := pipeline_error(device, capability=WHISPERX_ALIGNMENT):
         logger.info("%s Keeping native word timestamps.", reason)
         return None
     key = (language_code, device)
-    if key in _ALIGN_CACHE:
-        return _ALIGN_CACHE[key]
     try:
+        offline = _alignment_offline()
+        cached = _ALIGN_CACHE.get(key)
+        if cached is not None:
+            if offline:
+                _ensure_alignment_tokenizer()
+            return cached
         prepare_audio_imports()
-        import whisperx
+        if offline:
+            _module, model, metadata = _load_installed_align_model(language_code, device)
+        else:
+            import whisperx
 
-        model, metadata = whisperx.load_align_model(
-            language_code=language_code, device=device,
-        )
+            model, metadata = whisperx.load_align_model(
+                language_code=language_code, device=device,
+            )
         _ALIGN_CACHE[key] = (model, metadata)
-    except Exception as e:  # noqa: BLE001 — missing aligner is normal, not fatal
+    except Exception as error:
         logger.info(
             "no wav2vec2 aligner for language=%r on %s (%s); "
             "falling back to Whisper's native word timestamps",
-            language_code, device, e,
+            language_code, device, error,
         )
-        _ALIGN_CACHE[key] = None
+        return None
     return _ALIGN_CACHE[key]
 
 
@@ -656,9 +740,9 @@ def forced_align(segments: list, audio, language_code: str, device: str | None =
             continue
         model_a, metadata = align
         try:
-            from core.windows_rocm.pipelines import pipeline_error, prepare_audio_imports
+            from core.windows_rocm.pipelines import WHISPERX_ALIGNMENT, pipeline_error, prepare_audio_imports
 
-            if pipeline_error(dev):
+            if pipeline_error(dev, capability=WHISPERX_ALIGNMENT):
                 return segments
             prepare_audio_imports()
             import whisperx
@@ -680,9 +764,17 @@ def forced_align(segments: list, audio, language_code: str, device: str | None =
 class WhisperXBackend(ASRBackend):
     id = "whisperx"
     display_name = "WhisperX (faster-whisper + wav2vec2 forced alignment)"
-    # Windows HIP heavy pipelines remain gated pending MIOpen validation.
-    # CPU execution remains available independently of basic HIP CT2 support.
     gpu_compat = ("cuda", "cpu")
+
+    @classmethod
+    def runtime_gpu_compat(cls):
+        from core.device_caps import detect_host_caps
+        from core.windows_rocm.pipelines import WHISPERX_ASR, pipeline_error, windows_hip_installed
+
+        if (windows_hip_installed() and detect_host_caps().family == "rocm"
+                and pipeline_error("cuda", capability=WHISPERX_ASR) is None):
+            return ("cuda", "rocm", "cpu")
+        return cls.gpu_compat
 
     def __init__(self):
         self._model_name = os.environ.get("ASR_MODEL_WHISPERX", "large-v3")
@@ -771,9 +863,9 @@ class WhisperXBackend(ASRBackend):
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:
-        from core.windows_rocm.pipelines import pipeline_error, prepare_audio_imports
+        from core.windows_rocm.pipelines import WHISPERX_ASR, pipeline_error, prepare_audio_imports
 
-        if reason := pipeline_error():
+        if reason := pipeline_error(capability=WHISPERX_ASR):
             return False, reason
         ok, detail = _ctranslate2_execstack_ok()
         if not ok:
@@ -800,9 +892,9 @@ class WhisperXBackend(ASRBackend):
         self._ensure_asr()
 
     def _ensure_asr(self):
-        from core.windows_rocm.pipelines import PipelineCompatibilityError, pipeline_error, prepare_audio_imports
+        from core.windows_rocm.pipelines import WHISPERX_ASR, PipelineCompatibilityError, pipeline_error, prepare_audio_imports
 
-        if reason := pipeline_error(self._device):
+        if reason := pipeline_error(self._device, capability=WHISPERX_ASR):
             raise PipelineCompatibilityError(reason)
         if self._asr is not None:
             return
@@ -852,8 +944,6 @@ class WhisperXBackend(ASRBackend):
                 _local_model_source(self._model_name),
                 device=self._device,
                 compute_type=self._compute_type,
-                # vad_method="silero" is the default; keep it so short gaps
-                # get cleaned up before transcription.
             )
         except (ValueError, RuntimeError) as e:
             # #551: GPUs without efficient fp16 (older Maxwell/Pascal, GTX 16xx)
@@ -3280,12 +3370,13 @@ def load_active_asr_backend(
             cls = type(backend)
             caps = detect_host_caps()
             routing = runtime_compute_profile(cls, caps)
+            compat = routing["gpu_compat"]
             routing["routing_reason"] = scrub_text(routing["routing_reason"]) if routing["routing_reason"] else None
             _RUNTIME_EVIDENCE[bid] = execution_snapshot(
                 engine_id=bid,
                 engine_cls=cls,
                 instance=backend,
-                routing=routing,
+                routing={**routing, "gpu_compat": compat},
                 caps=caps,
             )
             _RUNTIME_INSTANCES[bid] = backend

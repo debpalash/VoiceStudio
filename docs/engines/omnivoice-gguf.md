@@ -193,7 +193,7 @@ well ahead of CPU-only.
 
 ## Vulkan acceleration
 
-The Windows x64 and Linux x64 installers ship the runtime with GGML's Vulkan
+The Windows x64 and Linux x64 installer builds require the runtime with GGML's Vulkan
 module (`ggml-vulkan`), built in CI with the Vulkan SDK. Any GPU with a working
 Vulkan driver is used: AMD Radeon and Ryzen AI, Intel Arc and Core Ultra, and
 NVIDIA.
@@ -210,6 +210,12 @@ will open without PyTorch:
    reports an 8 GB card as 4 GB or less. This list only sizes the quant: it
    does not prove the driver can open the GPU, so without `vulkaninfo` the
    engine keeps the CPU time budget and the GPU offer is not shown.
+
+A hidden Windows full report can stall while checking display surfaces. VoiceStudio
+retries with the surface-free `vulkaninfo --summary` after a bounded timeout.
+A successful native summary proves driver access; only an exact, unique vendor/name
+match in the OS inventory supplies missing VRAM. Unknown BF16 support stays unknown,
+so the automatic choice stays at Q8_0 or below. A failed command is never GPU proof.
 
 GGML numbers every discrete and integrated GPU in Vulkan order and opens the
 first discrete one, else the first integrated one. With an Intel UHD iGPU at

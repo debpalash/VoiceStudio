@@ -1506,7 +1506,7 @@
     "gpu_report_state_kernels_missing": "找到了 {{gpu}}，但此 PyTorch 版本（{{torch}}）沒有其計算架構對應的核心，因此引擎在 CPU 上執行。",
     "gpu_report_state_unknown": "無法判斷 GPU 狀態。",
     "gpu_report_option_vulkan_engines": "使用自帶 GPU 執行環境的引擎：audio.cpp 透過 Vulkan 在 AMD Radeon GPU 上執行（設定 → 模型 → 安裝執行環境）。",
-    "gpu_report_option_rocm_windows_manual": "在支援的 Windows 11 x64 AMD 硬體上，可透過 OMNIVOICE_TORCH_VARIANT=rocm 啟用 VoiceStudio 的 ROCm 7.2.1 安裝。若已安裝，請重新執行安裝程式並檢查 AMD 的驅動程式與硬體相容性表。選用引擎有各自的限制，請參閱 Windows 安裝指南。",
+    "gpu_report_option_rocm_windows_manual": "對於 Windows 上支援的 AMD 顯示卡，請開啟「設定 → 效能 → 執行環境套件」，選擇 AMD ROCm，儲存選擇，完成目前工作，完全結束並重新開啟 VoiceStudio，然後在設定畫面選擇「安裝」。首次安裝時，請在按下「安裝」前選擇 AMD ROCm。進階啟動選項：OMNIVOICE_TORCH_VARIANT=rocm。請核對 AMD 的硬體與驅動程式相容清單；選用引擎有各自的限制。請參閱 Windows 安裝指南。",
     "gpu_report_option_rocm_variant_linux": "設定 OMNIVOICE_TORCH_VARIANT=rocm 並重新執行安裝程式，即可安裝 ROCm 版 PyTorch。",
     "gpu_report_option_rocm_device_access": "請確認 amdgpu 驅動程式已載入，且目前使用者可以開啟 /dev/kfd（render 和 video 群組）。",
     "gpu_report_option_reinstall_cuda_torch": "重新安裝執行環境，讓它安裝 CUDA 版 PyTorch。",
@@ -3039,6 +3039,7 @@
     "pockettts_accepted_toast": "已接受 PocketTTS 條件。"
   },
   "engines": {
+    "voxcpm2LayoutError": "VoxCPM2 環境中有連結指向其受管理資料夾之外。請修復該連結，然後重試 Windows ROCm 安裝。",
     "selectCpuFallback": "{{engine}}：正在 CPU 上執行 — {{reason}}",
     "selectWithCaveat": "已切換至 {{engine}} — {{reason}}",
     "acceptLicense": "接受許可",
@@ -3105,6 +3106,7 @@
     "recorder_unsupported": "此系統無法編碼麥克風音訊。"
   },
   "tts_errors": {
+    "video_retime_fps_unavailable": "Smart Fit 無法判定來源影片的影格率。請檢查來源檔案和媒體工具，然後再試一次。",
     "profile_language_rejected": "自動模式使用聲音設定檔的語言（{{language}}），但此引擎不支援該語言。請修改設定檔語言、選擇支援的語言或更換引擎。",
     "generation_in_progress": "已有產生工作正在執行，請等待完成後再啟動新工作。",
     "error_prefix": "錯誤：{{message}}",
@@ -4468,6 +4470,28 @@
     "nextMemory": "此裝置記憶體不足。請在 設定 → 效能 中選擇較輕量的設定檔，然後重試。",
     "downloads": "下載",
     "activeCount": "進行中的下載：{{count}}"
+  },
+  "runtimeTorch": {
+    "title": "執行環境套件",
+    "auto": "自動",
+    "cpu": "僅 CPU",
+    "cuda": "NVIDIA CUDA",
+    "rocm": "AMD ROCm（支援的顯示卡）",
+    "autoDescription": "偵測到 NVIDIA CUDA 時使用 CUDA，否則使用 CPU。AMD ROCm 需要手動選擇。",
+    "cpuDescription": "安裝僅供 CPU 使用的套件。",
+    "cudaDescription": "安裝 NVIDIA CUDA 套件；需要相容的 NVIDIA 顯示卡與驅動程式。",
+    "rocmDescription": "為支援的 AMD 顯示卡安裝 AMD ROCm 套件。支援情況因作業系統與引擎而異。",
+    "pinned": "OMNIVOICE_TORCH_VARIANT 已鎖定此選項。請修改啟動環境以解除鎖定。",
+    "saving": "正在儲存套件選擇…",
+    "saveError": "無法儲存套件選擇。仍保留先前的選項。請重試。",
+    "saved": "已儲存選擇。只有選擇「安裝」、「繼續」或「重試」後才會開始下載。",
+    "packagesEffect": "選擇下次設定要使用的套件。目前運算裝置和強制使用 CPU 的設定保持不變。",
+    "change": "變更執行環境套件",
+    "confirmDescription": "儲存新的執行環境選擇，供下次啟動應用程式時使用。目前後端會繼續執行。請完成目前工作，完全結束並重新開啟 VoiceStudio，然後在現有設定視窗中選擇「安裝」。不會自動重新啟動或下載。資料與模型將保留；現有 CPU 輔助環境保持不變。切回 CPU 可能需要重新設定。",
+    "preparing": "正在儲存，供下次啟動使用…",
+    "beginError": "無法儲存執行環境選擇。目前後端保持不變。請重試。",
+    "confirm": "儲存供下次啟動使用",
+    "pending": "已儲存執行環境選擇：{{choice}}。請完成目前工作，完全結束並重新開啟 VoiceStudio，然後在設定中選擇「安裝」。目前後端尚未重新啟動，也未開始下載。"
   },
   "disabledReason": {
     "files_required": "請先至少新增一部影片。",

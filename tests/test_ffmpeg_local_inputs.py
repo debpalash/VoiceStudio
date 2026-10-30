@@ -226,19 +226,23 @@ def _playlist(base):
     ).encode()
 
 
-@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="needs a system ffmpeg")
-def test_ffmpeg_with_the_wrapper_never_fetches_playlist_urls(recorder, tmp_path):
+def test_ffmpeg_with_the_wrapper_never_fetches_playlist_urls(recorder, tmp_path, monkeypatch):
+    monkeypatch.setattr(ffmpeg_utils, "_BINARY_OK", {})
+    ffmpeg = ffmpeg_utils.find_ffmpeg()
+    if not ffmpeg:
+        pytest.skip("a runnable ffmpeg is required to verify playlist protocol blocking")
     base, hits = recorder
     playlist = tmp_path / "upload.m3u8"
     playlist.write_bytes(_playlist(base))
     # The default whitelist may already stop this on new ffmpeg builds; the
     # explicit one is what makes it hold for every ffmpeg the app may run.
     cmd = local_inputs_only(
-        [shutil.which("ffmpeg"), "-v", "error", "-y", "-i", str(playlist),
+        [ffmpeg, "-v", "error", "-y", "-i", str(playlist),
          str(tmp_path / "out.wav")]
     )
     proc = subprocess.run(cmd, capture_output=True, timeout=60)
     assert proc.returncode != 0
+    assert b"not on whitelist" in proc.stderr
     assert hits == []
 
 

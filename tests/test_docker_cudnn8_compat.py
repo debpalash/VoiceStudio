@@ -9,6 +9,10 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
+pytestmark = pytest.mark.skipif(
+    os.name == "nt", reason="Docker shell fixtures require POSIX executables"
+)
+
 
 @pytest.mark.parametrize('flavor,empty,success', [('cuda', False, True), ('rocm', False, True), ('cuda', True, False)])
 def test_compat_install_is_isolated_and_cuda_only(tmp_path, flavor, empty, success, machine='x86_64'):

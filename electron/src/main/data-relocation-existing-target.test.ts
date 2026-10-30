@@ -11,6 +11,7 @@ import {
   realpath,
   rename,
   rm,
+  stat,
   symlink,
   writeFile,
 } from 'node:fs/promises';
@@ -834,9 +835,20 @@ it('preserves a replacement directory when its inode is reused with a new genera
   constraints.reusedStats = await lstat(path, { bigint: true });
   await rename(path, join(root, 'previous-voices'));
   await mkdir(path, { mode: 0o700 });
+  await writeFile(join(path, 'personal.txt'), 'replacement data');
+  const replacement = await stat(path, { bigint: true });
   constraints.reuseEnabled = true;
   await prepared.rollback();
-  expect((await lstat(path)).mode & 0o777).toBe(0o700);
+  const present = await stat(path, { bigint: true });
+  expect(present.isDirectory()).toBe(true);
+  expect(present.dev).toBe(replacement.dev);
+  expect(present.ino).toBe(replacement.ino);
+  expect(present.birthtimeNs).toBe(replacement.birthtimeNs);
+  expect(present.mode).toBe(replacement.mode);
+  expect(await readFile(join(path, 'personal.txt'), 'utf8')).toBe('replacement data');
+  expect(await readFile(join(root, 'previous-voices', 'sample.wav'), 'utf8')).toBe('voice');
+  expect(await readFile(join(source, 'voices', 'sample.wav'), 'utf8')).toBe('voice');
+  if (process.platform !== 'win32') expect(Number(present.mode & 0o777n)).toBe(0o700);
 });
 
 it('preserves a scratch record replacement when all ambiguous metadata is reused', async () => {

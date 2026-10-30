@@ -1506,7 +1506,7 @@
     "gpu_report_state_kernels_missing": "{{gpu}} が見つかりましたが、この PyTorch ビルド ({{torch}}) にはその計算アーキテクチャ用のカーネルがないため、エンジンは CPU で実行されます。",
     "gpu_report_state_unknown": "GPU の状態を判定できませんでした。",
     "gpu_report_option_vulkan_engines": "独自の GPU ランタイムを持つエンジンを使用します。audio.cpp は Vulkan 経由で AMD Radeon GPU 上で動作します（設定 → モデル → ランタイムをインストール）。",
-    "gpu_report_option_rocm_windows_manual": "対応する Windows 11 x64 の AMD ハードウェアでは、OMNIVOICE_TORCH_VARIANT=rocm で VoiceStudio の ROCm 7.2.1 セットアップを有効にできます。インストール済みの場合はセットアップを再実行し、AMD のドライバーとハードウェアの対応表を確認してください。オプションのエンジンには個別の制限があります。Windows インストールガイドを参照してください。",
+    "gpu_report_option_rocm_windows_manual": "Windows の対応 AMD カードでは、設定 → パフォーマンス → ランタイムパッケージで AMD ROCm を選び、選択を保存し、作業を終え、VoiceStudio を完全に終了してから開き直し、セットアップで「インストール」を選んでください。新規インストールでは「インストール」の前に AMD ROCm を選びます。上級者向け起動オプション: OMNIVOICE_TORCH_VARIANT=rocm。AMD のハードウェアとドライバーの対応表を確認してください。追加エンジンには個別の制限があります。Windows インストールガイドを参照してください。",
     "gpu_report_option_rocm_variant_linux": "OMNIVOICE_TORCH_VARIANT=rocm を設定してセットアップを再実行すると、ROCm 版 PyTorch がインストールされます。",
     "gpu_report_option_rocm_device_access": "amdgpu ドライバーが読み込まれ、ユーザーが /dev/kfd を開けること（render と video グループ）を確認してください。",
     "gpu_report_option_reinstall_cuda_torch": "ランタイムを再インストールして、CUDA 版 PyTorch をインストールしてください。",
@@ -3039,6 +3039,7 @@
     "pockettts_accepted_toast": "PocketTTS の条件に同意しました。"
   },
   "engines": {
+    "voxcpm2LayoutError": "VoxCPM2 環境には、管理対象フォルダーの外部を参照するリンクがあります。リンクを修正してから、Windows ROCm でのインストールを再試行してください。",
     "selectCpuFallback": "{{engine}}: CPU で実行中 — {{reason}}",
     "selectWithCaveat": "{{engine}} に切り替えました — {{reason}}",
     "acceptLicense": "ライセンスに同意する",
@@ -3105,6 +3106,7 @@
     "recorder_unsupported": "このシステムではマイク音声をエンコードできません。"
   },
   "tts_errors": {
+    "video_retime_fps_unavailable": "Smart Fit は元の動画のフレームレートを判定できません。元のファイルとメディアツールを確認してから、もう一度お試しください。",
     "profile_language_rejected": "自動では音声プロファイルの言語（{{language}}）が使われますが、このエンジンは対応していません。プロファイルの言語を変更するか、対応言語または別のエンジンを選択してください。",
     "generation_in_progress": "生成がすでに実行中です。完了してから次の生成を開始してください。",
     "error_prefix": "エラー: {{message}}",
@@ -4468,6 +4470,28 @@
     "nextMemory": "このデバイスのメモリが不足しました。設定 → パフォーマンス で軽いプロファイルを選んでから再試行してください。",
     "downloads": "ダウンロード",
     "activeCount": "進行中のダウンロード: {{count}}"
+  },
+  "runtimeTorch": {
+    "title": "ランタイムパッケージ",
+    "auto": "自動",
+    "cpu": "CPU のみ",
+    "cuda": "NVIDIA CUDA",
+    "rocm": "AMD ROCm（対応カード）",
+    "autoDescription": "NVIDIA CUDA を検出した場合はそれを使用し、それ以外は CPU を使用します。AMD ROCm は明示的な選択が必要です。",
+    "cpuDescription": "CPU 専用のパッケージをインストールします。",
+    "cudaDescription": "NVIDIA CUDA パッケージをインストールします。対応する NVIDIA GPU とドライバーが必要です。",
+    "rocmDescription": "対応する AMD カード向けに AMD ROCm パッケージをインストールします。対応状況はオペレーティングシステムとエンジンによって異なります。",
+    "pinned": "OMNIVOICE_TORCH_VARIANT により選択が固定されています。解除するには起動環境を変更してください。",
+    "saving": "パッケージの選択を保存中…",
+    "saveError": "パッケージの選択を保存できませんでした。以前の選択が維持されています。再試行してください。",
+    "saved": "選択を保存しました。「インストール」「再開」「再試行」を選ぶまでダウンロードは開始されません。",
+    "packagesEffect": "次回のセットアップで使用するパッケージを選びます。現在の計算デバイスや CPU に固定する設定は変更しません。",
+    "change": "ランタイムパッケージを変更",
+    "confirmDescription": "次回のアプリ起動用に新しいランタイムの選択を保存します。現在のバックエンドは動作を続けます。作業を終え、VoiceStudio を完全に終了してから開き直し、既存のセットアップ画面で「インストール」を選んでください。自動的な再起動やダウンロードは行いません。データとモデルは保持され、既存の CPU 補助環境は変更されません。CPU に戻すには再セットアップが必要になる場合があります。",
+    "preparing": "次回の起動用に保存中…",
+    "beginError": "ランタイムの選択を保存できませんでした。現在のバックエンドは変更されていません。再試行してください。",
+    "confirm": "次回の起動用に保存",
+    "pending": "ランタイムの選択を保存しました: {{choice}}。作業を終え、VoiceStudio を完全に終了してから開き直し、セットアップで「インストール」を選んでください。現在のバックエンドは再起動されておらず、ダウンロードも開始されていません。"
   },
   "disabledReason": {
     "files_required": "まず動画を 1 本以上追加してください。",

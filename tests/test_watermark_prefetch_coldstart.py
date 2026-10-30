@@ -26,6 +26,11 @@ def watermark():
 
 @pytest.fixture(autouse=True)
 def _reset_models(monkeypatch, watermark):
+    # These lifecycle tests use fake constructors; cache-boundary coverage
+    # lives in test_watermark_offline_checkpoints.py without app imports.
+    monkeypatch.setattr(
+        watermark, "_require_audioseal_checkpoint_if_offline", lambda _: None,
+    )
     # Reset ALL lifecycle globals (CodeRabbit, PR #1577): a stale warm-up
     # stamp or availability cache from a prior test changes this test's
     # conditions.
@@ -132,6 +137,10 @@ def test_prefetch_generator_does_not_download_with_empty_offline_cache(
     monkeypatch, tmp_path, watermark
 ):
     """Default startup stays local-first even when watermarking is enabled."""
+    monkeypatch.setattr(
+        watermark, "_audioseal_checkpoint_path",
+        lambda _: SimpleNamespace(is_file=lambda: False),
+    )
     monkeypatch.setenv("AUDIOSEAL_CACHE_DIR", str(tmp_path))
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
     monkeypatch.setattr(watermark, "will_mark", lambda: True)
@@ -146,9 +155,11 @@ def test_prefetch_generator_does_not_download_with_empty_offline_cache(
 def test_prefetch_generator_loads_cached_checkpoint_offline(
     monkeypatch, tmp_path, watermark
 ):
-    cache_dir = tmp_path / "audioseal"
-    cache_dir.mkdir()
-    (cache_dir / "generator_base.pth").touch()
+    # Presence is simulated; no placeholder checkpoint is created.
+    monkeypatch.setattr(
+        watermark, "_audioseal_checkpoint_path",
+        lambda _: SimpleNamespace(is_file=lambda: True),
+    )
     monkeypatch.setenv("AUDIOSEAL_CACHE_DIR", str(tmp_path))
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
     monkeypatch.setattr(watermark, "will_mark", lambda: True)

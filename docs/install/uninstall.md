@@ -20,6 +20,12 @@ The Electron build finishes deletion through its signed desktop helper after the
 window exits, because Chromium keeps parts of its profile directory locked while
 the app is open. The same ownership checks and model-cache opt-in still apply.
 
+In-app cleanup checks resolved paths. It refuses filesystem roots, your home
+directory, unresolved paths and unrecognized custom folders without local app
+markers. An ancestor named `VoiceStudio` does not make unrelated folders removable.
+Custom runtimes must be recorded as Electron-owned; nonstandard runtime locations
+also need recognizable local staged app files.
+
 This is the right path if you installed the **.dmg / .exe / AppImage / .deb** —
 you don't have the repo, so the script below isn't available to you.
 
@@ -33,11 +39,11 @@ you don't have the repo, so the script below isn't available to you.
 how it shipped, without removing the app. Every option shows its real size before
 you commit, and the app restarts itself when it's done.
 
-| Option | What it removes | What it keeps |
-| --- | --- | --- |
-| **UI preferences only** | Theme, layout, language, dub settings | Everything on disk |
-| **All settings** | The above, plus saved settings on disk (engine choices, voice defaults) | Voices, projects, audio, models |
-| **Downloaded assets & models** | Model weights, sidecar engines, audio tools, caches | Everything you made |
+| Option                         | What it removes                                                         | What it keeps                                         |
+| ------------------------------ | ----------------------------------------------------------------------- | ----------------------------------------------------- |
+| **UI preferences only**        | Theme, layout, language, dub settings                                   | Everything on disk                                    |
+| **All settings**               | The above, plus saved settings on disk (engine choices, voice defaults) | Voices, projects, audio, models                       |
+| **Downloaded assets & models** | Model weights, sidecar engines, audio tools, caches                     | Everything you made                                   |
 | **Everything VoiceStudio did** | All of the above, plus voices, projects, generated audio, history, logs | The app itself, and the Python environment it runs on |
 
 "Choose exactly what to remove" opens the same list as individual checkboxes, so
@@ -54,10 +60,20 @@ Two things it deliberately does **not** touch:
   interpreter gone too, that's **Remove all data** — the section above.
 
 The shared Hugging Face model cache is called out separately wherever it applies:
-on macOS and Linux it's the standard cache other AI tools use too, so removing it
-may delete models VoiceStudio never downloaded. (On Windows, and in portable
-installs, the cache is VoiceStudio's own — there's nothing to share, and the app
-says so.)
+removing it may delete models VoiceStudio never downloaded. Caches inside validated
+app data or supported private-cache layouts, such as the default Windows and
+portable locations, are private when their resolved locations remain there. Other
+recognized Hugging Face cache locations are shared on every platform. A junction
+or symlink from the app's `models` folder to an external shared cache stays shared;
+**Remove all data** includes that cache only with the separate model-cache opt-in.
+That choice also protects overlapping cleanup folders: a runtime, app, log or saved
+environment path pointing at the shared cache cannot include it automatically.
+An overlapping parent folder is kept until the opt-in. A cache-only folder used as
+an unrelated app/runtime location is refused rather than treated as app-owned.
+
+Entries resolving to the same directory are counted once. A recognized private
+model cache remains removable when a data, log or environment path also points
+to it; that alias does not turn the cache into an unrecognized app folder.
 
 ## The one-command uninstaller (from a clone)
 
@@ -108,12 +124,12 @@ there; an existing environment it merely reused is left alone.
 
 Four kinds of data, in up to four locations:
 
-| What | Size | Notes |
-|---|---|---|
-| **Model cache** (Hugging Face weights) | GBs | The big one. Shared HF cache — see the caveat below. |
-| **Managed Python env** (`runtime/project/.venv` in the app folder) | GBs | Rebuilt automatically if you reinstall. |
-| **App data** (voices, projects, DB, generated audio, sidecar engines, logs) | small–GBs | Your voice profiles and history live here. |
-| **App folder** (window state, update settings, desktop logs, updater cache) | tiny | Desktop-shell state. |
+| What                                                                        | Size      | Notes                                                |
+| --------------------------------------------------------------------------- | --------- | ---------------------------------------------------- |
+| **Model cache** (Hugging Face weights)                                      | GBs       | The big one. Shared HF cache — see the caveat below. |
+| **Managed Python env** (`runtime/project/.venv` in the app folder)          | GBs       | Rebuilt automatically if you reinstall.              |
+| **App data** (voices, projects, DB, generated audio, sidecar engines, logs) | small–GBs | Your voice profiles and history live here.           |
+| **App folder** (window state, update settings, desktop logs, updater cache) | tiny      | Desktop-shell state.                                 |
 
 ### macOS
 
@@ -185,7 +201,7 @@ model paths don't hit the 260-character `MAX_PATH` limit.
 > **Shared HF cache caveat:** `~/.cache/huggingface/` is the **standard Hugging
 > Face cache**, shared by any tool that uses `huggingface_hub` (other ML apps,
 > `transformers`, etc.). If you use other Hugging Face tools, deleting the whole
-> folder removes *their* cached models too. To remove only VoiceStudio's models,
+> folder removes _their_ cached models too. To remove only VoiceStudio's models,
 > delete the `models--*` subfolders you recognize under
 > `~/.cache/huggingface/hub/`, or just let it be — it's only a cache and any
 > tool re-downloads what it needs. The uninstaller script prints the cache size

@@ -3,8 +3,9 @@
 WhisperX is the default ASR engine on CUDA and plain-CPU hosts: faster-whisper
 (CTranslate2) transcription plus a **wav2vec2 forced-alignment** pass that
 snaps word boundaries to ±10–30 ms (Whisper's own timestamps are ±100–300 ms).
-That word timing is what dubbing lip-sync depends on, which is why auto-detect
-prefers it wherever CTranslate2 can use the GPU.
+That word timing is what dubbing lip-sync depends on. On qualified Windows HIP
+hosts, auto-detect still prefers faster-whisper; choose WhisperX explicitly in
+the Model Catalogue to use its additional VAD and alignment pipeline.
 
 ## Selecting it
 
@@ -21,12 +22,33 @@ prefers it wherever CTranslate2 can use the GPU.
 
 ## Platform support
 
-| Host | What happens |
-| --- | --- |
-| NVIDIA CUDA | GPU, float16 (degrades automatically, see below) |
-| CPU (any OS) | int8 — works, but slow for large-v3 |
-| Apple Silicon | CPU only — CTranslate2 has no Metal build, so auto-detect prefers [mlx-whisper](mlx-whisper.md) there ([#1127](https://github.com/debpalash/VoiceStudio/issues/1127)) |
-| AMD ROCm | CPU only — CTranslate2 has no HIP build, so auto-detect prefers [pytorch-whisper](pytorch-whisper.md) there ([#1529](https://github.com/debpalash/VoiceStudio/issues/1529)) |
+| Host             | What happens                                                                                                                                                                                                                                                                        |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| NVIDIA CUDA      | GPU, float16 (degrades automatically, see below)                                                                                                                                                                                                                                    |
+| CPU (any OS)     | int8 — works, but slow for large-v3                                                                                                                                                                                                                                                 |
+| Apple Silicon    | CPU only — CTranslate2 has no Metal build, so auto-detect prefers [mlx-whisper](mlx-whisper.md) there ([#1127](https://github.com/debpalash/VoiceStudio/issues/1127))                                                                                                               |
+| Windows AMD ROCm | GPU only for the registered gfx1201/ROCm 7.2.1/WhisperX 3.4.5 profile, including managed ASCII SDK headers and compatible temporary/cache paths; see [Windows ROCm](../install/windows-rocm.md#qualified-whisperx-and-alignment). Other profiles stay gated; CPU remains available. |
+| Linux AMD ROCm   | The ordinary CTranslate2 installation remains CPU-only; auto-detect prefers [pytorch-whisper](pytorch-whisper.md) ([#1529](https://github.com/debpalash/VoiceStudio/issues/1529)).                                                                                                  |
+
+The qualified Windows route constructs WhisperX 3.4.5's bundled default pyannote
+VAD internally, then performs CT2 transcription and wav2vec2 alignment. This does
+not enable pyannote speaker diarization. The shared qualifier runs before warm
+ASR/alignment cache reuse and supplies the catalogue's runtime GPU compatibility;
+the static declaration remains CUDA/CPU. A changed or unknown profile cannot
+inherit admission from cached models. No terminal toggle is needed for a
+qualifying app-managed runtime.
+
+Natural production validation on RX 9070 XT used the unchanged default
+`large-v3`, French 24 kHz speech decoded to 16 kHz, 4.8-second and repeated
+39.6-second inputs, automatic French detection on the long input, and the
+installed default batch size **1**. No model override or diagnostic gate
+exception was used. VAD, CT2 and wav2vec2 executed on GPU, runtime reporting
+identified ROCm, and all 12/12 and 48/48 recognized words had timestamps.
+Unsupported warm profiles rejected before inference, then recovered; both
+owned process trees closed normally. Earlier cached-small controls remain
+separate diagnostic evidence. The repeated fixture does not establish
+all-spoken-word accuracy, other models/languages, speaker diarization, or
+packaged/fresh-Windows acceptance.
 
 ## Model selection
 
@@ -39,7 +61,7 @@ prefers it wherever CTranslate2 can use the GPU.
 
 ## VRAM preflight and degradation
 
-Loading fp16 large-v3 onto a nearly-full 8 GB card dies as a *native* CUDA
+Loading fp16 large-v3 onto a nearly-full 8 GB card dies as a _native_ CUDA
 abort — no Python exception, the whole backend goes down
 ([#723](https://github.com/debpalash/VoiceStudio/issues/723)). So before every
 load the engine checks free VRAM against per-compute-type budgets

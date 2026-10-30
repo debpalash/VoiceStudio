@@ -1,8 +1,13 @@
 import importlib.util
 from pathlib import Path
+import sys
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+
+requires_posix = pytest.mark.skipif(
+    sys.platform == "win32", reason="Release shell fixtures require POSIX executables"
+)
 
 
 @pytest.mark.parametrize("workflow_name", ["electron-build.yml", "electron-release.yml"])
@@ -27,6 +32,7 @@ def test_electron_packaging_workflows_publish_store_provenance(workflow_name):
     assert "electron/release/store-artifact-manifest-*.json" in upload_step["with"]["path"]
 
 
+@requires_posix
 def test_snap_store_workflow_builds_strict_snap_and_uploads_only_tags_to_candidate():
     import yaml
 
@@ -103,6 +109,7 @@ def test_snap_store_workflow_builds_strict_snap_and_uploads_only_tags_to_candida
     "tag,newest,released",
     [("v0.5.8", "v0.5.8", True), ("v0.5.8", "v0.5.10", False), ("v0.5.8", "", None)],
 )
+@requires_posix
 def test_snap_upload_releases_candidate_only_for_the_newest_tag(tmp_path, tag, newest, released):
     """An older tag's build must never move candidate back (checked after upload)."""
     import os
@@ -153,6 +160,7 @@ def test_snap_upload_releases_candidate_only_for_the_newest_tag(tmp_path, tag, n
 
 
 @pytest.mark.parametrize("tag,allowed", [("", False), ("v0.5.4", False), ("v0.5.3", True)])
+@requires_posix
 def test_release_downloads_legacy_feeds_only_from_final_tauri_tag(tmp_path, tag, allowed):
     import os
     import subprocess
@@ -252,6 +260,7 @@ def test_electron_release_scopes_signing_secrets_and_gates_unsigned_owner_dispat
     ({'CSC_LINK': '', 'CSC_KEY_PASSWORD': ''}, '|'),
     ({'CSC_LINK': 'fake-certificate', 'CSC_KEY_PASSWORD': 'fake-password'}, 'x|x'),
 ])
+@requires_posix
 def test_packaging_omits_empty_signing_credentials(tmp_path, credentials, expected):
     import os
     import subprocess
@@ -278,6 +287,7 @@ def test_packaging_omits_empty_signing_credentials(tmp_path, credentials, expect
     ('refs/heads/main', 'v1.2.3', 'refs/tags/v1.2.3', False, False),
     ('refs/heads/main', 'v9.9.9', 'refs/tags/v9.9.9', True, False),
 ])
+@requires_posix
 def test_release_tag_override_preserves_exact_tag_checkout(tmp_path, workflow_ref, override, ref, head_matches, ok):
     import os
     import subprocess
@@ -309,6 +319,7 @@ def test_release_tag_override_preserves_exact_tag_checkout(tmp_path, workflow_re
     ('maint', 'maintainer', 'maintainer', False),
     ('maintainer,', '', '', False),
 ])
+@requires_posix
 def test_unsigned_publish_needs_owner_or_listed_publisher(tmp_path, publishers, dispatcher, rerunner, ok):
     import os
     import subprocess

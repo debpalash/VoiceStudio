@@ -1,4 +1,4 @@
-import type { RuntimeRunner } from './runtime-project';
+import type { NativeRuntimeDiagnosis, RuntimeRunner } from './runtime-project';
 import { WINDOWS_ROCM_ABI_PROBE } from './runtime-windows-rocm';
 import { WINDOWS_ROCM_IMPORT_TIMEOUT_MS } from './runtime-probe';
 
@@ -13,9 +13,7 @@ export async function inspectRuntimeInterpreter(
   imports: string,
   nativeImports: string,
   repairPackages: readonly string[],
-  // Names system libraries the native wheels link against but the host lacks;
-  // no wheel can supply those, so they must not trigger a reinstall (#3058).
-  diagnose: () => Promise<{ missingSystemLibraries: string[] }>,
+  diagnoseNative: () => Promise<NativeRuntimeDiagnosis>,
 ): Promise<{ existingPython: boolean; repairPackages: string[]; missingSystemLibraries: string[] }> {
   const repairs: string[] = [];
   let missingSystemLibraries: string[] = [];
@@ -51,10 +49,8 @@ export async function inspectRuntimeInterpreter(
       try {
         await run(python, ['-c', nativeImports], project);
       } catch {
-        // A native wheel can be missing or ABI-broken while its dist-info still
-        // convinces uv sync it is installed: reinstall only then, never for a
-        // missing SYSTEM library that gigabytes of wheels cannot supply.
-        missingSystemLibraries = (await diagnose()).missingSystemLibraries;
+        const diagnosis = await diagnoseNative();
+        missingSystemLibraries = diagnosis.missingSystemLibraries;
         if (!missingSystemLibraries.length) repairs.push(...repairPackages);
       }
       signal.throwIfAborted();

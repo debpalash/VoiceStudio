@@ -94,11 +94,17 @@ export interface BackendStatus {
   /** Free GiB on the drive that will hold the runtime, while setup is required. */
   runtimeFreeGib?: number;
   runtimeRegion?: RuntimeRegion;
+  runtimeTorchPreference?: RuntimeTorchPreference;
+  runtimeTorchPinned?: boolean;
+  runtimeTorchSupported?: boolean;
+  runtimeTorchSwitchable?: boolean;
+  runtimeTorchSetupPending?: boolean;
   /** Where data, models and temp files go when the location was chosen during setup. */
   runtimeStorage?: { data: string; models: string; temp: string };
 }
 
 export type RuntimeRegion = 'auto' | 'global' | 'china' | 'russia' | 'restricted';
+export type RuntimeTorchPreference = 'auto' | 'cpu' | 'cuda' | 'rocm';
 
 export interface RuntimeLocation {
   path: string;
@@ -307,6 +313,7 @@ export interface UninstallTarget {
   size_bytes: number;
   exists: boolean;
   shared: boolean;
+  covered_by?: string[];
 }
 
 export interface AccountPublicState {
@@ -427,6 +434,8 @@ export interface VoiceStudioBridge {
     setupRuntime(): Promise<void>;
     cleanSetupRuntime(): Promise<void>;
     setRuntimeRegion(region: RuntimeRegion): Promise<RuntimeRegion>;
+    setRuntimeTorchPreference(preference: RuntimeTorchPreference): Promise<RuntimeTorchPreference>;
+    beginRuntimeTorchSetup(preference: RuntimeTorchPreference): Promise<void>;
     chooseRuntimeLocation(title: string): Promise<RuntimeLocation | null>;
     useDefaultRuntimeLocation(): Promise<RuntimeLocation>;
     getConnection(): Promise<BackendConnection>;

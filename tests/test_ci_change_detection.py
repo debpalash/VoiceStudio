@@ -25,8 +25,14 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
 STEP = next(s for s in WORKFLOW["jobs"]["changes"]["steps"] if s.get("id") == "detect")
 SCRIPT = STEP["run"]
-HAS_GREP_P = subprocess.run(["grep", "-P", "x"], input=b"", capture_output=True).returncode != 2
-pytestmark = pytest.mark.skipif(not HAS_GREP_P, reason="needs GNU grep -P, as on the Actions runner")
+HAS_GREP_P = (
+    os.name != "nt"
+    and shutil.which("grep") is not None
+    and subprocess.run(["grep", "-P", "x"], input=b"", capture_output=True).returncode != 2
+)
+pytestmark = pytest.mark.skipif(
+    not HAS_GREP_P, reason="needs a POSIX shell and GNU grep -P, as on the Actions runner"
+)
 
 
 def _detect(tmp_path: Path, rows, *, event="pull_request", gh_exit=0, gh_output_then_fail=False, grep_exit=None):

@@ -259,6 +259,29 @@ def test_nvidia_driver_floor_is_cuda12_minor_compat(monkeypatch, platform_, driv
     assert any("driver" in n.lower() for n in info["notes"]) is flagged
 
 
+def test_windows_amd_guidance_describes_the_opt_in_native_recipe(monkeypatch):
+    from api.routers.setup import wizard as setup_mod
+
+    monkeypatch.setattr(setup_mod.sys, "platform", "win32")
+    note = setup_mod._amd_unusable_note()
+    assert "Windows 11 x64" in note
+    assert "supported" in note
+    assert "Settings > Performance" in note
+    assert "docs/install/windows-rocm.md" in note
+    assert "no ROCm build" not in note
+    assert "cannot drive it" not in note
+
+
+def test_linux_amd_guidance_keeps_its_source_setup_instructions(monkeypatch):
+    from api.routers.setup import wizard as setup_mod
+
+    monkeypatch.setattr(setup_mod.sys, "platform", "linux")
+    note = setup_mod._amd_unusable_note()
+    assert "OMNIVOICE_TORCH_VARIANT=rocm" in note
+    assert "docs/install/linux.md#amd-gpu-rocm" in note
+    assert "Windows" not in note
+
+
 def test_preflight_amd_flags_warn_when_no_rocm_torch():
     """AMD GPU + torch without HIP → warn with ROCm install instructions."""
     import platform as _p

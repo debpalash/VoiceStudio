@@ -1506,7 +1506,7 @@
     "gpu_report_state_kernels_missing": "{{gpu}} is gevonden, maar deze PyTorch-build ({{torch}}) bevat geen kernels voor de rekenarchitectuur, dus de engines draaien op de CPU.",
     "gpu_report_state_unknown": "De GPU-status kon niet worden bepaald.",
     "gpu_report_option_vulkan_engines": "Gebruik een engine met een eigen GPU-runtime: audio.cpp draait via Vulkan op AMD Radeon-GPU's (Instellingen → Modellen → runtime installeren).",
-    "gpu_report_option_rocm_windows_manual": "Op ondersteunde AMD-hardware met Windows 11 x64 kunt u VoiceStudio met ROCm 7.2.1 installeren via OMNIVOICE_TORCH_VARIANT=rocm. Is het al geïnstalleerd, voer de installatie dan opnieuw uit en controleer de driver- en hardwarematrix van AMD. Voor optionele engines gelden aparte beperkingen; zie de Windows-installatiegids.",
+    "gpu_report_option_rocm_windows_manual": "Open voor ondersteunde AMD-kaarten op Windows Instellingen → Prestaties → Runtimepakketten en kies AMD ROCm. Sla de keuze op, rond je taken af, sluit VoiceStudio volledig af en open het opnieuw. Kies daarna Installeren in het installatiescherm. Kies bij een nieuwe installatie AMD ROCm vóór Installeren. Geavanceerde startoptie: OMNIVOICE_TORCH_VARIANT=rocm. Controleer de hardware- en driverlijst van AMD; optionele engines hebben eigen beperkingen. Zie de Windows-installatiegids.",
     "gpu_report_option_rocm_variant_linux": "Stel OMNIVOICE_TORCH_VARIANT=rocm in en voer de installatie opnieuw uit om de ROCm-build van PyTorch te installeren.",
     "gpu_report_option_rocm_device_access": "Controleer of het amdgpu-stuurprogramma is geladen en uw gebruiker /dev/kfd kan openen (groepen render en video).",
     "gpu_report_option_reinstall_cuda_torch": "Installeer de runtime opnieuw zodat de CUDA-build van PyTorch wordt geïnstalleerd.",
@@ -3039,6 +3039,7 @@
     "pockettts_accepted_toast": "Voorwaarden van PocketTTS geaccepteerd."
   },
   "engines": {
+    "voxcpm2LayoutError": "De VoxCPM2-omgeving bevat een koppeling naar een locatie buiten de beheerde map. Herstel de koppeling voordat je de installatie met Windows ROCm opnieuw probeert.",
     "selectCpuFallback": "{{engine}}: draait op de CPU — {{reason}}",
     "selectWithCaveat": "Overgeschakeld naar {{engine}} — {{reason}}",
     "acceptLicense": "Accepteer licentie",
@@ -3105,6 +3106,7 @@
     "channels_stereo": "Stereo"
   },
   "tts_errors": {
+    "video_retime_fps_unavailable": "Smart Fit kan de beeldsnelheid van de bronvideo niet bepalen. Controleer het bronbestand en de mediatools en probeer het opnieuw.",
     "profile_language_rejected": "Automatisch gebruikt de taal van het stemprofiel ({{language}}), die deze engine niet ondersteunt. Wijzig de profieltaal, kies een ondersteunde taal of wissel van engine.",
     "generation_in_progress": "Er wordt al audio gegenereerd — wacht tot dit klaar is voordat je opnieuw begint.",
     "error_prefix": "Fout: {{message}}",
@@ -4468,6 +4470,28 @@
     "nextMemory": "Dit apparaat heeft te weinig geheugen. Kies een lichter profiel via Instellingen → Prestaties en probeer het opnieuw.",
     "downloads": "Downloads",
     "activeCount": "Lopende downloads: {{count}}"
+  },
+  "runtimeTorch": {
+    "title": "Runtimepakketten",
+    "auto": "Automatisch",
+    "cpu": "Alleen CPU",
+    "cuda": "NVIDIA CUDA",
+    "rocm": "AMD ROCm (ondersteunde kaarten)",
+    "autoDescription": "Gebruikt NVIDIA CUDA indien gedetecteerd, anders de CPU. AMD ROCm moet expliciet worden gekozen.",
+    "cpuDescription": "Installeert pakketten uitsluitend voor de CPU.",
+    "cudaDescription": "Installeert NVIDIA CUDA-pakketten; vereist een compatibele NVIDIA-GPU en driver.",
+    "rocmDescription": "Installeert AMD ROCm-pakketten voor ondersteunde AMD-kaarten. Ondersteuning verschilt per besturingssysteem en engine.",
+    "pinned": "OMNIVOICE_TORCH_VARIANT legt deze keuze vast. Wijzig de startomgeving om deze te ontgrendelen.",
+    "saving": "Pakketkeuze opslaan…",
+    "saveError": "De pakketkeuze kon niet worden opgeslagen. De vorige keuze blijft geselecteerd. Probeer het opnieuw.",
+    "saved": "Keuze opgeslagen. Downloads beginnen pas bij Installeren, Hervatten of Opnieuw proberen.",
+    "packagesEffect": "Selecteert pakketten voor de volgende installatie. Het actieve rekenapparaat en vaste CPU-instellingen blijven ongewijzigd.",
+    "change": "Runtimepakketten wijzigen",
+    "confirmDescription": "Sla de nieuwe runtimekeuze op voor de volgende appstart. De huidige backend blijft draaien. Rond je taken af, sluit VoiceStudio volledig af en open het opnieuw. Kies daarna Installeren in het bestaande installatievenster. Niets start opnieuw of wordt gedownload zonder jouw actie. Gegevens en modellen blijven behouden; bestaande CPU-hulpomgevingen blijven ongewijzigd. Terugkeren naar de CPU kan een nieuwe installatie vereisen.",
+    "preparing": "Opslaan voor de volgende appstart…",
+    "beginError": "De runtimekeuze kon niet worden opgeslagen. De huidige backend blijft ongewijzigd. Probeer het opnieuw.",
+    "confirm": "Opslaan voor volgende appstart",
+    "pending": "Runtimekeuze opgeslagen: {{choice}}. Rond je taken af, sluit VoiceStudio volledig af en open het opnieuw. Kies daarna Installeren in het installatiescherm. De huidige backend is niet opnieuw gestart en er zijn geen downloads begonnen."
   },
   "disabledReason": {
     "files_required": "Voeg eerst minstens één video toe.",

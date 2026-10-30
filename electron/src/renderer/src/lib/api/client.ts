@@ -117,6 +117,13 @@ function detailToString(detail: unknown): string {
     detail &&
     typeof detail === "object" &&
     "code" in detail &&
+    detail.code === "video_retime_fps_unavailable"
+  )
+    return tr("tts_errors.video_retime_fps_unavailable");
+  if (
+    detail &&
+    typeof detail === "object" &&
+    "code" in detail &&
     detail.code === "source_language_required"
   )
     return tr("workflowRun.invalid_language");

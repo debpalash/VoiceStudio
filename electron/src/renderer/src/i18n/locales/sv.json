@@ -1506,7 +1506,7 @@
     "gpu_report_state_kernels_missing": "{{gpu}} hittades, men den här PyTorch-byggnaden ({{torch}}) har inga kärnor för sin beräkningsarkitektur, så motorerna körs på CPU:n.",
     "gpu_report_state_unknown": "GPU-statusen kunde inte fastställas.",
     "gpu_report_option_vulkan_engines": "Använd en motor med egen GPU-runtime: audio.cpp körs på AMD Radeon-GPU:er via Vulkan (Inställningar → Modeller → installera runtime).",
-    "gpu_report_option_rocm_windows_manual": "På AMD-maskinvara som stöds med Windows 11 x64 aktiverar du VoiceStudios ROCm 7.2.1-installation med OMNIVOICE_TORCH_VARIANT=rocm. Om det redan är installerat kör du installationen igen och kontrollerar AMD:s tabell för drivrutiner och maskinvara. Valfria motorer har egna begränsningar; se installationsguiden för Windows.",
+    "gpu_report_option_rocm_windows_manual": "För AMD-kort som stöds i Windows, öppna Inställningar → Prestanda → Körtidspaket och välj AMD ROCm. Spara valet, slutför dina uppgifter, avsluta VoiceStudio helt och öppna det igen. Välj sedan Installera i installationsvyn. Vid en ny installation väljer du AMD ROCm före Installera. Avancerat startalternativ: OMNIVOICE_TORCH_VARIANT=rocm. Kontrollera AMD:s lista över hårdvara och drivrutiner; valfria motorer har egna begränsningar. Se installationsguiden för Windows.",
     "gpu_report_option_rocm_variant_linux": "Ange OMNIVOICE_TORCH_VARIANT=rocm och kör installationen igen för att installera ROCm-bygget av PyTorch.",
     "gpu_report_option_rocm_device_access": "Kontrollera att amdgpu-drivrutinen är laddad och att din användare kan öppna /dev/kfd (grupperna render och video).",
     "gpu_report_option_reinstall_cuda_torch": "Installera om runtime så att CUDA-bygget av PyTorch installeras.",
@@ -3039,6 +3039,7 @@
     "pockettts_accepted_toast": "PocketTTS-villkoren har godkänts."
   },
   "engines": {
+    "voxcpm2LayoutError": "VoxCPM2-miljön innehåller en länk som pekar utanför dess hanterade mapp. Rätta till länken innan du försöker installera med Windows ROCm igen.",
     "selectCpuFallback": "{{engine}}: körs på CPU — {{reason}}",
     "selectWithCaveat": "Bytte till {{engine}} — {{reason}}",
     "acceptLicense": "Acceptera licens",
@@ -3105,6 +3106,7 @@
     "channels_stereo": "Stereo"
   },
   "tts_errors": {
+    "video_retime_fps_unavailable": "Smart Fit kan inte fastställa källvideons bildfrekvens. Kontrollera källfilen och medieverktygen och försök sedan igen.",
     "profile_language_rejected": "Auto använder röstprofilens språk ({{language}}), som denna motor inte stöder. Ändra profilens språk, välj ett språk som stöds eller byt motor.",
     "generation_in_progress": "En generering pågår redan – vänta tills den är klar innan du startar en ny.",
     "error_prefix": "Fel: {{message}}",
@@ -4468,6 +4470,28 @@
     "nextMemory": "Enheten fick slut på minne. Välj en lättare profil under Inställningar → Prestanda och försök sedan igen.",
     "downloads": "Nedladdningar",
     "activeCount": "Pågående nedladdningar: {{count}}"
+  },
+  "runtimeTorch": {
+    "title": "Körtidspaket",
+    "auto": "Automatiskt",
+    "cpu": "Endast CPU",
+    "cuda": "NVIDIA CUDA",
+    "rocm": "AMD ROCm (kort som stöds)",
+    "autoDescription": "Använder NVIDIA CUDA om det upptäcks, annars CPU. AMD ROCm måste väljas uttryckligen.",
+    "cpuDescription": "Installerar paket endast för CPU.",
+    "cudaDescription": "Installerar NVIDIA CUDA-paket; kräver en kompatibel NVIDIA-GPU och drivrutin.",
+    "rocmDescription": "Installerar AMD ROCm-paket för AMD-kort som stöds. Stödet varierar mellan operativsystem och motorer.",
+    "pinned": "OMNIVOICE_TORCH_VARIANT låser detta val. Ändra startmiljön för att låsa upp det.",
+    "saving": "Sparar paketval…",
+    "saveError": "Det gick inte att spara paketvalet. Det tidigare valet är fortfarande valt. Försök igen.",
+    "saved": "Valet har sparats. Hämtningar börjar först när du väljer Installera, Återuppta eller Försök igen.",
+    "packagesEffect": "Väljer paket för nästa installation. Den aktiva beräkningsenheten och låsta CPU-inställningar ändras inte.",
+    "change": "Ändra körtidspaket",
+    "confirmDescription": "Spara det nya körtidsvalet till nästa appstart. Den nuvarande backendprocessen fortsätter att köras. Slutför dina uppgifter, avsluta VoiceStudio helt och öppna det igen. Välj sedan Installera i det befintliga installationsfönstret. Inget startas om eller hämtas automatiskt. Data och modeller behålls; befintliga CPU-hjälpmiljöer ändras inte. En återgång till CPU kan kräva en ny installation.",
+    "preparing": "Sparar till nästa appstart…",
+    "beginError": "Det gick inte att spara körtidsvalet. Den nuvarande backendprocessen är oförändrad. Försök igen.",
+    "confirm": "Spara till nästa appstart",
+    "pending": "Körtidsval sparat: {{choice}}. Slutför dina uppgifter, avsluta VoiceStudio helt och öppna det igen. Välj sedan Installera i installationsvyn. Den nuvarande backendprocessen har inte startats om och inga hämtningar har påbörjats."
   },
   "disabledReason": {
     "files_required": "Lägg först till minst en video.",

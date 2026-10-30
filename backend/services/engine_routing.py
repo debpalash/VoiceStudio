@@ -64,10 +64,8 @@ def runtime_compute_profile(engine_or_cls, caps: HostCaps) -> dict:
     if callable(hook):
         return hook(caps)
     cls = engine_or_cls if isinstance(engine_or_cls, type) else type(engine_or_cls)
-    # Installed native runtimes (e.g. the opt-in Windows HIP CTranslate2) can
-    # widen or narrow the static contract; ask them when they say how.
-    dynamic = getattr(cls, "runtime_gpu_compat", None)
-    compat = tuple(dynamic() if callable(dynamic) else getattr(cls, "gpu_compat", ("cpu",)))
+    compat_hook = getattr(cls, "runtime_gpu_compat", None)
+    compat = tuple(compat_hook() if callable(compat_hook) else getattr(cls, "gpu_compat", ("cpu",)))
     floor = float(getattr(cls, "min_vram_gb", 0.0) or 0.0)
     parent_torch = uses_parent_torch(cls)
     return {

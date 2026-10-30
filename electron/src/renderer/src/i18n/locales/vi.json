@@ -1506,7 +1506,7 @@
     "gpu_report_state_kernels_missing": "Đã tìm thấy {{gpu}}, nhưng bản dựng PyTorch này ({{torch}}) không có kernel cho kiến trúc tính toán của nó nên các engine chạy trên CPU.",
     "gpu_report_state_unknown": "Không xác định được trạng thái GPU.",
     "gpu_report_option_vulkan_engines": "Dùng engine có runtime GPU riêng: audio.cpp chạy trên GPU AMD Radeon qua Vulkan (Cài đặt → Mô hình → cài runtime).",
-    "gpu_report_option_rocm_windows_manual": "Trên phần cứng AMD được hỗ trợ chạy Windows 11 x64, bật cài đặt ROCm 7.2.1 của VoiceStudio bằng OMNIVOICE_TORCH_VARIANT=rocm. Nếu đã cài, hãy chạy lại thiết lập và kiểm tra bảng tương thích trình điều khiển và phần cứng của AMD. Các engine tùy chọn có giới hạn riêng; xem hướng dẫn cài đặt Windows.",
+    "gpu_report_option_rocm_windows_manual": "Với card AMD được hỗ trợ trên Windows, mở Cài đặt → Hiệu năng → Gói môi trường chạy và chọn AMD ROCm, sau đó lưu lựa chọn, hoàn tất công việc, thoát hẳn rồi mở lại VoiceStudio và chọn Cài đặt trong phần thiết lập. Khi cài mới, chọn AMD ROCm trước Cài đặt. Tùy chọn khởi chạy nâng cao: OMNIVOICE_TORCH_VARIANT=rocm. Kiểm tra danh sách phần cứng và trình điều khiển của AMD; các bộ máy tùy chọn có giới hạn riêng. Xem hướng dẫn cài đặt Windows.",
     "gpu_report_option_rocm_variant_linux": "Đặt OMNIVOICE_TORCH_VARIANT=rocm rồi chạy lại phần thiết lập để cài bản dựng ROCm của PyTorch.",
     "gpu_report_option_rocm_device_access": "Kiểm tra trình điều khiển amdgpu đã được nạp và người dùng của bạn mở được /dev/kfd (nhóm render và video).",
     "gpu_report_option_reinstall_cuda_torch": "Cài lại runtime để nó cài bản dựng CUDA của PyTorch.",
@@ -3039,6 +3039,7 @@
     "pockettts_accepted_toast": "Đã chấp nhận điều kiện PocketTTS."
   },
   "engines": {
+    "voxcpm2LayoutError": "Môi trường VoxCPM2 có liên kết trỏ ra ngoài thư mục được quản lý. Hãy sửa liên kết trước khi thử cài đặt lại với Windows ROCm.",
     "selectCpuFallback": "{{engine}}: đang chạy trên CPU — {{reason}}",
     "selectWithCaveat": "Đã chuyển sang {{engine}} — {{reason}}",
     "acceptLicense": "Chấp nhận giấy phép",
@@ -3105,6 +3106,7 @@
     "recorder_unsupported": "Hệ thống này không thể mã hóa âm thanh từ micrô."
   },
   "tts_errors": {
+    "video_retime_fps_unavailable": "Smart Fit không thể xác định tốc độ khung hình của video nguồn. Hãy kiểm tra tệp nguồn và các công cụ đa phương tiện, rồi thử lại.",
     "profile_language_rejected": "Tự động sử dụng ngôn ngữ của hồ sơ giọng nói ({{language}}), nhưng bộ máy này không hỗ trợ. Đổi ngôn ngữ hồ sơ, chọn ngôn ngữ được hỗ trợ hoặc đổi bộ máy.",
     "generation_in_progress": "Một tác vụ tạo âm thanh đang chạy — hãy đợi hoàn tất trước khi bắt đầu tác vụ khác.",
     "error_prefix": "Lỗi: {{message}}",
@@ -4468,6 +4470,28 @@
     "nextMemory": "Thiết bị này đã hết bộ nhớ. Chọn hồ sơ nhẹ hơn trong Cài đặt → Hiệu suất, rồi thử lại.",
     "downloads": "Tải xuống",
     "activeCount": "Đang tải xuống: {{count}}"
+  },
+  "runtimeTorch": {
+    "title": "Gói môi trường chạy",
+    "auto": "Tự động",
+    "cpu": "Chỉ CPU",
+    "cuda": "NVIDIA CUDA",
+    "rocm": "AMD ROCm (card được hỗ trợ)",
+    "autoDescription": "Dùng NVIDIA CUDA nếu phát hiện được, nếu không thì dùng CPU. AMD ROCm cần được chọn rõ ràng.",
+    "cpuDescription": "Cài các gói chỉ dành cho CPU.",
+    "cudaDescription": "Cài các gói NVIDIA CUDA; yêu cầu GPU NVIDIA và trình điều khiển tương thích.",
+    "rocmDescription": "Cài các gói AMD ROCm cho card AMD được hỗ trợ. Mức hỗ trợ tùy thuộc vào hệ điều hành và bộ máy.",
+    "pinned": "OMNIVOICE_TORCH_VARIANT khóa lựa chọn này. Hãy đổi môi trường khởi chạy để mở khóa.",
+    "saving": "Đang lưu lựa chọn gói…",
+    "saveError": "Không thể lưu lựa chọn gói. Lựa chọn trước vẫn được giữ. Hãy thử lại.",
+    "saved": "Đã lưu lựa chọn. Chỉ bắt đầu tải xuống khi chọn Cài đặt, Tiếp tục hoặc Thử lại.",
+    "packagesEffect": "Chọn gói cho lần thiết lập tiếp theo. Thiết bị tính toán đang hoạt động và các thiết lập buộc dùng CPU không đổi.",
+    "change": "Đổi gói môi trường chạy",
+    "confirmDescription": "Lưu lựa chọn môi trường chạy mới cho lần mở ứng dụng tiếp theo. Backend hiện tại vẫn tiếp tục chạy. Hoàn tất công việc, thoát hẳn rồi mở lại VoiceStudio, sau đó chọn Cài đặt trong cửa sổ thiết lập hiện có. Không có khởi động lại hay tải xuống tự động. Dữ liệu và mô hình được giữ lại; các môi trường phụ trợ CPU hiện có không thay đổi. Quay lại CPU có thể cần thiết lập lại.",
+    "preparing": "Đang lưu cho lần mở tiếp theo…",
+    "beginError": "Không thể lưu lựa chọn môi trường chạy. Backend hiện tại không thay đổi. Hãy thử lại.",
+    "confirm": "Lưu cho lần mở tiếp theo",
+    "pending": "Đã lưu lựa chọn môi trường chạy: {{choice}}. Hoàn tất công việc, thoát hẳn rồi mở lại VoiceStudio, sau đó chọn Cài đặt trong phần thiết lập. Backend hiện tại chưa khởi động lại và chưa bắt đầu tải xuống."
   },
   "disabledReason": {
     "files_required": "Hãy thêm ít nhất một video trước.",

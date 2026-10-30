@@ -1520,7 +1520,7 @@
     "gpu_report_state_kernels_missing": "Znaleziono {{gpu}}, ale ta kompilacja PyTorch ({{torch}}) nie zawiera jąder dla jej architektury obliczeniowej, więc silniki działają na CPU.",
     "gpu_report_state_unknown": "Nie udało się ustalić stanu GPU.",
     "gpu_report_option_vulkan_engines": "Użyj silnika z własnym środowiskiem GPU: audio.cpp działa na GPU AMD Radeon przez Vulkan (Ustawienia → Modele → zainstaluj środowisko).",
-    "gpu_report_option_rocm_windows_manual": "Na obsługiwanym sprzęcie AMD z Windows 11 x64 włącz instalację ROCm 7.2.1 w VoiceStudio przez OMNIVOICE_TORCH_VARIANT=rocm. Jeśli jest już zainstalowany, uruchom instalację ponownie i sprawdź macierz sterowników i sprzętu AMD. Opcjonalne silniki mają osobne ograniczenia; zobacz przewodnik instalacji dla Windows.",
+    "gpu_report_option_rocm_windows_manual": "Dla obsługiwanych kart AMD w Windows otwórz Ustawienia → Wydajność → Pakiety środowiska, wybierz AMD ROCm, zapisz wybór, zakończ zadania, całkowicie zamknij i ponownie otwórz VoiceStudio, a potem wybierz Instaluj w konfiguracji. Przy pierwszej instalacji wybierz AMD ROCm przed Instaluj. Zaawansowana opcja uruchomienia: OMNIVOICE_TORCH_VARIANT=rocm. Sprawdź listę obsługi sprzętu i sterowników AMD; silniki opcjonalne mają osobne ograniczenia. Zobacz poradnik instalacji w Windows.",
     "gpu_report_option_rocm_variant_linux": "Ustaw OMNIVOICE_TORCH_VARIANT=rocm i uruchom konfigurację ponownie, aby zainstalować kompilację ROCm biblioteki PyTorch.",
     "gpu_report_option_rocm_device_access": "Sprawdź, czy sterownik amdgpu jest załadowany, a użytkownik może otworzyć /dev/kfd (grupy render i video).",
     "gpu_report_option_reinstall_cuda_torch": "Zainstaluj środowisko ponownie, aby zainstalowało kompilację CUDA biblioteki PyTorch.",
@@ -3065,6 +3065,7 @@
     "pockettts_accepted_toast": "Warunki PocketTTS zaakceptowane."
   },
   "engines": {
+    "voxcpm2LayoutError": "Środowisko VoxCPM2 zawiera dowiązanie prowadzące poza zarządzany folder. Napraw dowiązanie przed ponowną próbą instalacji z Windows ROCm.",
     "selectCpuFallback": "{{engine}}: działa na CPU — {{reason}}",
     "selectWithCaveat": "Przełączono na {{engine}} — {{reason}}",
     "acceptLicense": "Zaakceptuj licencję",
@@ -3131,6 +3132,7 @@
     "channels_stereo": "Stereo"
   },
   "tts_errors": {
+    "video_retime_fps_unavailable": "Smart Fit nie może ustalić liczby klatek na sekundę w filmie źródłowym. Sprawdź plik źródłowy i narzędzia multimedialne, a następnie spróbuj ponownie.",
     "profile_language_rejected": "Tryb automatyczny używa języka profilu głosu ({{language}}), którego ten silnik nie obsługuje. Zmień język profilu, wybierz obsługiwany język lub zmień silnik.",
     "generation_in_progress": "Generowanie już trwa — poczekaj na jego zakończenie przed rozpoczęciem kolejnego.",
     "error_prefix": "Błąd: {{message}}",
@@ -4496,6 +4498,28 @@
     "nextMemory": "Na tym urządzeniu zabrakło pamięci. Wybierz lżejszy profil w Ustawienia → Wydajność, a potem spróbuj ponownie.",
     "downloads": "Pobieranie",
     "activeCount": "Trwające pobierania: {{count}}"
+  },
+  "runtimeTorch": {
+    "title": "Pakiety środowiska",
+    "auto": "Automatycznie",
+    "cpu": "Tylko CPU",
+    "cuda": "NVIDIA CUDA",
+    "rocm": "AMD ROCm (obsługiwane karty)",
+    "autoDescription": "Wybiera NVIDIA CUDA po wykryciu, a w innym przypadku CPU. AMD ROCm wymaga jawnego wyboru.",
+    "cpuDescription": "Instaluje pakiety wyłącznie dla CPU.",
+    "cudaDescription": "Instaluje pakiety NVIDIA CUDA; wymaga zgodnej karty NVIDIA i sterownika.",
+    "rocmDescription": "Instaluje pakiety AMD ROCm dla obsługiwanych kart AMD. Obsługa zależy od systemu operacyjnego i silnika.",
+    "pinned": "OMNIVOICE_TORCH_VARIANT blokuje ten wybór. Aby go odblokować, zmień środowisko uruchomienia.",
+    "saving": "Zapisywanie wyboru pakietów…",
+    "saveError": "Nie udało się zapisać wyboru pakietów. Nadal wybrana jest poprzednia opcja. Spróbuj ponownie.",
+    "saved": "Zapisano wybór. Pobieranie rozpocznie się dopiero po wybraniu Instaluj, Wznów lub Ponów.",
+    "packagesEffect": "Wybiera pakiety do następnej konfiguracji. Aktywne urządzenie obliczeniowe i przypięcia do CPU pozostają bez zmian.",
+    "change": "Zmień pakiety środowiska",
+    "confirmDescription": "Zapisz nowy wybór środowiska na następne uruchomienie aplikacji. Obecny backend będzie nadal działać. Zakończ zadania, całkowicie zamknij i ponownie otwórz VoiceStudio, a następnie wybierz Instaluj w istniejącym oknie konfiguracji. Nic nie uruchamia się ponownie ani nie pobiera automatycznie. Dane i modele zostaną zachowane; istniejące środowiska pomocnicze CPU pozostaną bez zmian. Powrót do CPU może wymagać ponownej konfiguracji.",
+    "preparing": "Zapisywanie na następne uruchomienie…",
+    "beginError": "Nie udało się zapisać wyboru środowiska. Obecny backend pozostaje bez zmian. Spróbuj ponownie.",
+    "confirm": "Zapisz na następne uruchomienie",
+    "pending": "Zapisano wybór środowiska: {{choice}}. Zakończ zadania, całkowicie zamknij i ponownie otwórz VoiceStudio, a następnie wybierz Instaluj w konfiguracji. Obecny backend nie został uruchomiony ponownie; pobieranie nie rozpoczęło się."
   },
   "disabledReason": {
     "files_required": "Najpierw dodaj co najmniej jeden film.",

@@ -5,7 +5,9 @@ container bridge, VM host-only or VPN address, the phone on the same Wi-Fi
 got "could not connect".
 """
 import asyncio
+import importlib
 import socket
+import sys
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -40,10 +42,11 @@ def _addr(ip):
 
 
 def _lan(fake, stats=None, primary=None):
-    with patch.object(ns.psutil, "net_if_addrs", return_value=fake), patch.object(
-        ns.psutil, "net_if_stats", return_value=stats or {}
-    ), patch.object(ns, "_default_route_ipv4", return_value=primary):
-        return ns.lan_ipv4_addresses()
+    current = _ns()
+    with patch.object(current.psutil, "net_if_addrs", return_value=fake), patch.object(
+        current.psutil, "net_if_stats", return_value=stats or {}
+    ), patch.object(current, "_default_route_ipv4", return_value=primary):
+        return current.lan_ipv4_addresses()
 
 
 def test_real_lan_address_comes_before_virtual_adapters():
@@ -67,6 +70,29 @@ def test_default_route_address_ranks_first_even_on_a_bridge():
         "vEthernet (External Switch)": [_addr("192.168.1.42")],
     }
     assert _lan(fake, primary="192.168.1.42") == ["192.168.1.42", "10.0.0.9"]
+
+
+def test_bridge_ranking_after_network_share_module_reimport(monkeypatch):
+    """The helper must patch and invoke the replacement, never the stale alias."""
+    current = importlib.import_module("services.network_share")
+    services = importlib.import_module("services")
+    with monkeypatch.context() as cycle:
+        cycle.delitem(sys.modules, "services.network_share")
+        cycle.delattr(services, "network_share", raising=False)
+        replacement = importlib.import_module("services.network_share")
+        assert replacement is not ns
+        fake = {
+            "en0": [_addr("10.0.0.9")],
+            "vEthernet (External Switch)": [_addr("192.168.1.42")],
+        }
+        with patch.object(
+            ns, "lan_ipv4_addresses", side_effect=AssertionError("stale module invoked")
+        ), patch.object(
+            replacement, "lan_ipv4_addresses", wraps=replacement.lan_ipv4_addresses
+        ) as ranked:
+            assert _lan(fake, primary="192.168.1.42") == ["192.168.1.42", "10.0.0.9"]
+            ranked.assert_called_once_with()
+    assert importlib.import_module("services.network_share") is current
 
 
 def test_full_tunnel_vpn_on_the_default_route_never_ranks_first():

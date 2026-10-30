@@ -28,6 +28,10 @@ python3 mobile/native/mp3/verify_source.py
 python3 mobile/native/mp3/verify_source.py --archive /path/to/lame-3.100.tar.gz
 ```
 
+The offline inventory and SHA-256 check also runs on Windows; use `python`
+instead of `python3` when that is the installed interpreter command. Inventory
+paths use the same forward-slash spelling on every host.
+
 The VoiceStudio application source and build scripts in the same checkout are
 also available at <https://github.com/debpalash/VoiceStudio>. Use the source
 revision corresponding to the app release. You may modify the encoder and

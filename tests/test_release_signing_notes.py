@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -65,6 +66,7 @@ def test_every_package_leg_reports_and_mac_check_ignores_allow_unsigned():
     assert steps["Save the signing report"]["with"]["name"] == "electron-signing-${{ matrix.platform }}-${{ matrix.arch }}"
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX Bash execution and path semantics")
 def test_mac_package_discovers_the_imported_developer_id(tmp_path):
     # electron-builder's findIdentity returns null without a lookup when discovery is
     # off and no identity is named, so a supplied certificate was silently ignored.
@@ -86,6 +88,7 @@ def test_release_notes_are_built_from_the_reports():
     assert not any("Electron installer trust" in step.get("run", "") for step in steps)
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX Bash execution and executable shell-tool stubs")
 def test_release_notes_helper_comes_from_the_workflow_commit(tmp_path):
     # Rebuilding an older tag from main checks out a tag without the helper (#3241 review).
     import os
@@ -114,6 +117,7 @@ def test_release_notes_helper_comes_from_the_workflow_commit(tmp_path):
     assert text.index("### Installer signing") < text.index("**Highlights**")
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX Bash execution and executable shell-tool stubs")
 @pytest.mark.parametrize("failures,message,calls,ok", [
     (1, "Failed to staple your application with code: 68", 2, True),
     (2, "Failed to staple your application with code: 68", 2, False),

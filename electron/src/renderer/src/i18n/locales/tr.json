@@ -1506,7 +1506,7 @@
     "gpu_report_state_kernels_missing": "{{gpu}} bulundu, ancak bu PyTorch derlemesi ({{torch}}) kendi hesaplama mimarisine uygun çekirdek içermediği için motorlar CPU'da çalışır.",
     "gpu_report_state_unknown": "GPU durumu belirlenemedi.",
     "gpu_report_option_vulkan_engines": "Kendi GPU çalışma zamanına sahip bir motor kullanın: audio.cpp, AMD Radeon GPU'larda Vulkan üzerinden çalışır (Ayarlar → Modeller → çalışma zamanını kur).",
-    "gpu_report_option_rocm_windows_manual": "Desteklenen Windows 11 x64 AMD donanımında, OMNIVOICE_TORCH_VARIANT=rocm ile VoiceStudio'nun ROCm 7.2.1 kurulumunu etkinleştirin. Zaten kuruluysa kurulumu yeniden çalıştırın ve AMD'nin sürücü ve donanım uyumluluk tablosunu kontrol edin. İsteğe bağlı motorların ayrı sınırlamaları vardır; Windows kurulum kılavuzuna bakın.",
+    "gpu_report_option_rocm_windows_manual": "Windows üzerinde desteklenen AMD kartları için Ayarlar → Performans → Çalışma ortamı paketleri bölümünü açıp AMD ROCm seçin, ardından seçimi kaydedin, işlerinizi bitirin, VoiceStudio uygulamasını tamamen kapatıp yeniden açın ve kurulumda Yükle seçeneğini seçin. Yeni kurulumda Yükle seçeneğinden önce AMD ROCm seçin. Gelişmiş başlatma seçeneği: OMNIVOICE_TORCH_VARIANT=rocm. AMD sürücü ve donanım matrisini kontrol edin; isteğe bağlı motorların ayrı sınırlamaları vardır. Windows kurulum kılavuzuna bakın.",
     "gpu_report_option_rocm_variant_linux": "PyTorch'un ROCm derlemesini kurmak için OMNIVOICE_TORCH_VARIANT=rocm ayarlayın ve kurulumu yeniden çalıştırın.",
     "gpu_report_option_rocm_device_access": "amdgpu sürücüsünün yüklü olduğunu ve kullanıcınızın /dev/kfd'yi açabildiğini kontrol edin (render ve video grupları).",
     "gpu_report_option_reinstall_cuda_torch": "Çalışma zamanını yeniden kurun; böylece PyTorch'un CUDA derlemesi kurulur.",
@@ -3039,6 +3039,7 @@
     "pockettts_accepted_toast": "PocketTTS koşulları kabul edildi."
   },
   "engines": {
+    "voxcpm2LayoutError": "VoxCPM2 ortamı, yönetilen klasörünün dışına yönlendiren bir bağlantı içeriyor. Windows ROCm kurulumunu yeniden denemeden önce bağlantıyı düzeltin.",
     "selectCpuFallback": "{{engine}}: CPU üzerinde çalışıyor — {{reason}}",
     "selectWithCaveat": "{{engine}} motoruna geçildi — {{reason}}",
     "acceptLicense": "Lisansı kabul et",
@@ -3105,6 +3106,7 @@
     "channels_stereo": "Stereo"
   },
   "tts_errors": {
+    "video_retime_fps_unavailable": "Smart Fit kaynak videonun kare hızını belirleyemiyor. Kaynak dosyayı ve medya araçlarını kontrol edip yeniden deneyin.",
     "profile_language_rejected": "Otomatik, bu motorun desteklemediği ses profili dilini ({{language}}) kullanır. Profil dilini değiştirin, desteklenen bir dil seçin veya motoru değiştirin.",
     "generation_in_progress": "Bir oluşturma işlemi zaten çalışıyor — yenisini başlatmadan önce bitmesini bekleyin.",
     "error_prefix": "Hata: {{message}}",
@@ -4468,6 +4470,28 @@
     "nextMemory": "Bu cihazın belleği yetmedi. Ayarlar → Performans bölümünden daha hafif bir profil seçin, ardından yeniden deneyin.",
     "downloads": "İndirmeler",
     "activeCount": "Süren indirmeler: {{count}}"
+  },
+  "runtimeTorch": {
+    "title": "Çalışma ortamı paketleri",
+    "auto": "Otomatik",
+    "cpu": "Yalnızca CPU",
+    "cuda": "NVIDIA CUDA",
+    "rocm": "AMD ROCm (desteklenen kartlar)",
+    "autoDescription": "Algılanırsa NVIDIA CUDA, aksi halde CPU kullanılır. AMD ROCm açıkça seçilmelidir.",
+    "cpuDescription": "Yalnızca CPU paketlerini yükler.",
+    "cudaDescription": "NVIDIA CUDA paketlerini yükler; uyumlu NVIDIA GPU ve sürücüsü gerektirir.",
+    "rocmDescription": "Desteklenen AMD kartları için AMD ROCm paketlerini yükler. Destek, işletim sistemine ve motora göre değişir.",
+    "pinned": "OMNIVOICE_TORCH_VARIANT bu seçimi sabitler. Kilidi açmak için başlatma ortamını değiştirin.",
+    "saving": "Paket seçimi kaydediliyor…",
+    "saveError": "Paket seçimi kaydedilemedi. Önceki seçim geçerliliğini koruyor. Yeniden deneyin.",
+    "saved": "Seçim kaydedildi. İndirmeler yalnızca Yükle, Sürdür veya Yeniden dene seçildiğinde başlar.",
+    "packagesEffect": "Sonraki kurulum için paketleri seçer. Etkin işlem aygıtı ve CPU sabitlemeleri değişmez.",
+    "change": "Çalışma ortamı paketlerini değiştir",
+    "confirmDescription": "Yeni çalışma ortamı seçimini uygulamanın sonraki açılışı için kaydedin. Mevcut arka uç çalışmaya devam eder. İşlerinizi bitirin, VoiceStudio uygulamasını tamamen kapatıp yeniden açın, ardından mevcut kurulum penceresinde Yükle seçeneğini seçin. Hiçbir şey otomatik olarak yeniden başlamaz veya indirilmez. Veriler ve modeller korunur; mevcut CPU yardımcı ortamları değişmez. CPU kullanımına dönmek yeniden kurulum gerektirebilir.",
+    "preparing": "Sonraki açılış için kaydediliyor…",
+    "beginError": "Çalışma ortamı seçimi kaydedilemedi. Mevcut arka uç değişmedi. Yeniden deneyin.",
+    "confirm": "Sonraki açılış için kaydet",
+    "pending": "Çalışma ortamı seçimi kaydedildi: {{choice}}. İşlerinizi bitirin, VoiceStudio uygulamasını tamamen kapatıp yeniden açın ve kurulumda Yükle seçeneğini seçin. Mevcut arka uç yeniden başlatılmadı, hiçbir indirme başlamadı."
   },
   "disabledReason": {
     "files_required": "Önce en az bir video ekleyin.",

@@ -59,3 +59,11 @@ preserved for saved plans that place overlapping source cues sequentially.
 
 Regenerate an affected Smart Fit track before exporting an older project:
 exporting an already saved track uses its saved fit plan and audio placement.
+
+## Smart Fit media checks
+
+Smart Fit checks the source frame rate before rendering a batched timeline or
+extending the last frame. If FFprobe is missing or cannot run, repair the media
+tools. If the source has no usable frame rate, check the file and retry. Preview
+and download return an actionable error instead of silently exporting a shorter
+video. Ordinary exports and audio-only plans keep their existing behavior.

@@ -48,7 +48,8 @@ Automatic ASR selection is unchanged: whisper.cpp is used only when you pick it.
   the language stays unknown instead of defaulting to English. In interactive
   dubbing, select a source language before translating. Batch dubbing needs a
   language: when ASR reports none, the job stops with a message asking you to
-  pick the source language.
+  pick the source language. Streamed failures retain this actionable guidance
+  without exposing private paths or transcript text from the underlying error.
 - The source language you choose in Dubbing applies everywhere the source text
   is read: the translation request, the Argos language packs checked and
   installed for the job, and the glossary terms extracted from it.

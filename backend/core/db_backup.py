@@ -136,9 +136,45 @@ def _reserve_snapshot(db_path: str, safe_version: str) -> tuple[str, str]:
 _RESERVATION_MAX_AGE_S = 24 * 3600
 
 
+def _reservation_opener(path: str, flags: int) -> int:
+    """Let reservation owners remove their marker during a Windows PID read."""
+    if os.name != "nt":
+        return os.open(path, flags)
+
+    import ctypes
+    from ctypes import wintypes
+    import msvcrt
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+        wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    close_handle = kernel32.CloseHandle
+    close_handle.argtypes = (wintypes.HANDLE,)
+    close_handle.restype = wintypes.BOOL
+    generic_read = 0x80000000
+    share_read_write_delete = 0x00000007
+    open_existing = 3
+    file_attribute_normal = 0x00000080
+    handle = create_file(
+        path, generic_read, share_read_write_delete, None,
+        open_existing, file_attribute_normal, None,
+    )
+    if handle == wintypes.HANDLE(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        return msvcrt.open_osfhandle(handle, flags)
+    except BaseException:
+        close_handle(handle)
+        raise
+
+
 def _reservation_owner(path: str) -> int | None:
     try:
-        with open(path, "r", encoding="ascii") as fh:
+        with open(path, "r", encoding="ascii", opener=_reservation_opener) as fh:
             pid = int(fh.read().strip())
     except (OSError, ValueError):
         return None

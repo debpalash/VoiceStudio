@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import importlib.util
 import json
 import os
 import re
@@ -24,6 +25,7 @@ import sys
 import threading
 import time
 import traceback
+from pathlib import Path
 
 # Mirrors services/subprocess_backend.py::MAX_FRAME_BYTES.
 MAX_FRAME_BYTES = 64 * 1024 * 1024
@@ -42,6 +44,8 @@ _TRANSIENT_MARKERS = (
 )
 
 _MODEL = None
+_MODEL_DEVICE = None
+_ROCM_SUPPORT = None
 
 # -- wire protocol -----------------------------------------------------------
 
@@ -136,20 +140,67 @@ def _heartbeating(stdout, stage: str):
         thread.join(timeout=_HEARTBEAT_S + 1)
 
 
-def _load_model(stdout):
-    global _MODEL
+def _windows_rocm_support():
+    global _ROCM_SUPPORT
+    if sys.platform != "win32":
+        return None
+    directory = os.environ.get("OMNIVOICE_VOXCPM2_DIR")
+    if not directory:
+        if _ROCM_SUPPORT is not None:
+            raise RuntimeError("invalid_report")
+        return None
+    checkout = Path(directory)
+    try:
+        lines = (checkout / ".voicestudio_install_complete").read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError):
+        lines = []
+    if len(lines) < 2 or not lines[1].startswith("windows-rocm-voxcpm2-"):
+        if _ROCM_SUPPORT is not None:
+            raise RuntimeError("invalid_report")
+        return None
+    if os.path.normcase(os.path.abspath(sys.executable)) != os.path.normcase(
+        os.path.abspath(checkout / ".venv/Scripts/python.exe")
+    ):
+        raise RuntimeError("invalid_report")
+    if _ROCM_SUPPORT is None:
+        helper = Path(__file__).resolve().parents[2] / "core/windows_rocm/voxcpm2.py"
+        specification = importlib.util.spec_from_file_location("_voxcpm2_windows_rocm", helper)
+        support = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(support)
+        _ROCM_SUPPORT = support
+    if _ROCM_SUPPORT.read_verified_install(checkout) is None:
+        raise RuntimeError("invalid_report")
+    return _ROCM_SUPPORT
+
+
+def _load_model(stdout, requested_device=None):
+    global _MODEL, _MODEL_DEVICE
+    support = _windows_rocm_support()
+    device = None
+    if support is not None:
+        selected = requested_device or os.environ.get("OMNIVOICE_DEVICE", "auto").strip().lower()
+        device = support.runtime_device("cuda" if selected in {"auto", "rocm", "cuda"} else selected)
+        if _MODEL_DEVICE != device:
+            _MODEL = None
     if _MODEL is not None:
+        if support is not None:
+            support.validate_model_device(_MODEL, device)
         return _MODEL
     _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 0})
     with _heartbeating(stdout, "loading_model"):
         from voxcpm import VoxCPM  # type: ignore[import-not-found]  # noqa: PLC0415
 
         checkpoint = os.environ.get("OMNIVOICE_VOXCPM_MODEL", "openbmb/VoxCPM2")
-        _MODEL = _with_retries(
+        options = {"device": device} if device is not None else {}
+        model = _with_retries(
             lambda: VoxCPM.from_pretrained(
-                checkpoint, load_denoiser=False, optimize=False
+                checkpoint, load_denoiser=False, optimize=False, **options
             )
         )
+        if support is not None:
+            support.validate_model_device(model, device)
+        _MODEL = model
+        _MODEL_DEVICE = device
     _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 100})
     return _MODEL
 
@@ -261,7 +312,8 @@ def _handle_synthesize(msg: dict, stdout) -> None:
         raise ValueError(
             "ref_audio must be a local file path; URLs are not accepted (local-first)."
         )
-    model = _load_model(stdout)
+    requested_device = msg.get("_voxcpm2_runtime_device")
+    model = _load_model(stdout, requested_device) if requested_device is not None else _load_model(stdout)
     if msg.get("seed") is not None:
         import torch  # noqa: PLC0415
 
@@ -269,6 +321,9 @@ def _handle_synthesize(msg: dict, stdout) -> None:
     options = {key: value for key, value in msg.items() if key != "text"}
     with _heartbeating(stdout, "generating"):
         wav = model.generate(**generation_kwargs(text, **options))
+    support = _windows_rocm_support()
+    if support is not None:
+        support.validate_model_device(model, _MODEL_DEVICE)
     audio_format = msg.get("audio_format", "s16le")
     pcm_b64, n_samples = _to_pcm_b64(_at_engine_rate(wav, _sample_rate(model)), audio_format)
     _send(stdout, {

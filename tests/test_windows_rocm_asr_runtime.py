@@ -208,3 +208,21 @@ def test_failed_native_child_never_imports_ct2_in_availability(hip, monkeypatch,
     assert not hip.ct2.hip_ct2_available(), "a failed probe is not re-run on every refresh"
     hip.ct2._FAILED.clear()  # what a backend restart after rerunning setup does
     assert hip.ct2.hip_ct2_available(), "a fresh process verifies again"
+
+
+def test_failed_probe_retries_after_recipe_identity_changes(hip, monkeypatch):
+    calls = []
+
+    def verify():
+        calls.append(True)
+        if len(calls) == 1:
+            raise RuntimeError("fixture native failure")
+
+    monkeypatch.setattr(hip.ct2, "verify_environment", verify)
+    assert not hip.ct2.hip_ct2_available()
+    assert not hip.ct2.hip_ct2_available()
+    assert len(calls) == 1
+
+    monkeypatch.setattr(hip.ct2, "recipe_identity", lambda: "updated recipe")
+    assert hip.ct2.hip_ct2_available()
+    assert len(calls) == 2

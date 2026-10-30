@@ -39,6 +39,7 @@ import io
 import re
 import sys
 import wave
+from importlib import import_module
 from pathlib import Path
 
 import pytest
@@ -77,9 +78,9 @@ def asr(monkeypatch):
     import that the handlers use, then reads it out of ``sys.modules`` — see
     the module docstring on why a collection-time alias is unsafe here.
 
-    Hermetic selection: no env pin, no pref pin, no MPS → auto-detect goes
-    whisperx-first, and shallow probes report ready regardless of what this
-    host actually has installed.
+    Hermetic selection: no env pin, no pref pin, no MPS or HIP → auto-detect
+    goes whisperx-first, and shallow probes report ready regardless of what
+    this host actually has installed.
     """
     from api.routers import capture, openai_compat  # noqa: F401  (loads services.*)
 
@@ -88,15 +89,22 @@ def asr(monkeypatch):
     monkeypatch.delenv("OMNIVOICE_ASR_BACKEND", raising=False)
     monkeypatch.setattr("core.prefs.get", lambda key, default=None: None)
     monkeypatch.setattr(ab, "_mps_available", lambda: False)
+    monkeypatch.setattr(ab, "_rocm_torch", lambda: False)
+    monkeypatch.setattr(ab, "_cuda_reported_available", lambda: False)
+    monkeypatch.setattr(
+        import_module("core.windows_rocm.ct2"), "windows_hip_installed", lambda: False,
+    )
     for cls in (ab.WhisperXBackend, ab.FasterWhisperBackend):
         monkeypatch.setattr(cls, "is_available", classmethod(lambda cls: (True, "ready")))
     # The preflight is neutralized by `asr_model_installed`, but that fixture
     # resolves the module independently — re-assert it on the object the
     # routers actually hold so a purge can't leave a real preflight behind.
     monkeypatch.setattr(ab, "asr_model_missing_error", lambda **_kw: None)
+    ab.release_transcription_backend()
     ab._DEEP_IMPORT_BROKEN.clear()
     ab._LAST_ERRORS.clear()
     yield ab
+    ab.release_transcription_backend()
     ab._DEEP_IMPORT_BROKEN.clear()
     ab._LAST_ERRORS.clear()
 

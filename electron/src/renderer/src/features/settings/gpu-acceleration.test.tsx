@@ -98,7 +98,9 @@ it('tells a Radeon owner why the GPU is idle and which engines can still use it'
     'AMD Radeon RX 9070 XT was found, but this install uses the NVIDIA CUDA build of PyTorch (2.8.0+cu128)',
   );
   expect(screen.getByText(/audio\.cpp runs on AMD Radeon GPUs through Vulkan/)).toBeInTheDocument();
-  expect(screen.getByText(/opt into VoiceStudio's ROCm 7\.2\.1 setup/)).toBeInTheDocument();
+  expect(screen.getByText(/Settings → Performance → Runtime packages/)).toHaveTextContent(
+    'fully quit and reopen VoiceStudio',
+  );
   // Unknown future codes are hidden rather than rendered as raw keys; 1 of 2 known engines is on the GPU.
   expect(screen.getByText('1 of 2 engines use the GPU')).toBeInTheDocument();
   expect(screen.getByText('Uses the GPU (vulkan)')).toBeInTheDocument();

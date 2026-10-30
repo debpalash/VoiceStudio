@@ -34,7 +34,9 @@ source was consulted.
 from __future__ import annotations
 
 import asyncio
+import errno
 import logging
+import math
 import os
 import shutil
 from dataclasses import dataclass
@@ -42,7 +44,7 @@ from dataclasses import dataclass
 # Module access (not ``from core.config import DUB_DIR``) so the containment
 # guards below read the live value — tests reload core.config with a
 # sandboxed data dir.
-from services.ffmpeg_utils import probe_duration, probe_frame_rates, run_ffmpeg
+from services.ffmpeg_utils import find_ffprobe, probe_duration, probe_frame_rates, run_ffmpeg
 
 logger = logging.getLogger("omnivoice.api")
 
@@ -70,11 +72,12 @@ VIDEO_ENC_ARGS = ("-c:v", "libx264", "-preset", "medium", "-crf", "20",
 
 class RetimeError(Exception):
     """A retime render step failed. ``stage`` is one of
-    ``plan | encode | concat | aborted``."""
+    ``plan | probe | encode | concat | aborted``."""
 
-    def __init__(self, message: str, *, stage: str):
+    def __init__(self, message: str, *, stage: str, code: str | None = None):
         super().__init__(message)
         self.stage = stage
+        self.code = code
 
 
 @dataclass
@@ -194,20 +197,40 @@ def build_chunk_filter_graph(
 
 def _parse_rate(rate: str | None) -> float | None:
     """Parse an ffprobe frame-rate string ('30000/1001' or '25') to fps."""
-    if not rate:
+    if not isinstance(rate, str) or not rate:
         return None
     try:
         if "/" in rate:
             num_s, den_s = rate.split("/", 1)
             num, den = float(num_s), float(den_s)
-            if den == 0:
+            if num <= 0 or den <= 0:
                 return None
             value = num / den
         else:
             value = float(rate)
     except ValueError:
         return None
-    return value if value > 0 else None
+    return value if math.isfinite(value) and value > 0 else None
+
+
+def _output_frame_rate(rates: tuple[str, str] | None) -> str | None:
+    if rates:
+        for rate in (rates[1], rates[0]):
+            if _parse_rate(rate) is not None:
+                return rate
+    return None
+
+
+def _require_output_frame_rate(rate: str | None) -> None:
+    if _parse_rate(rate) is not None:
+        return
+    if not find_ffprobe():
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), "ffprobe")
+    raise RetimeError(
+        "Smart Fit cannot determine the source video frame rate. "
+        "Check the source file and media tools, then retry.",
+        stage="probe", code="video_retime_fps_unavailable",
+    )
 
 
 def is_vfr(r_frame_rate: str | None, avg_frame_rate: str | None) -> bool:
@@ -254,7 +277,9 @@ async def render_retimed_video(
     can kill them; ``abort_check`` is polled between batches for an early
     cooperative stop. Temp slices are removed on success AND failure.
 
-    Raises :class:`RetimeError` on any failure (stage encode/concat/aborted).
+    Missing FFprobe raises :class:`FileNotFoundError`; unknown frame rates
+    raise :class:`RetimeError` with stage probe before changing output files.
+    Render failures use stage encode/concat/aborted.
     """
     # ``out_path`` is server-built (under DUB_DIR) by every caller, but
     # realpath-normalise + containment-check inline at the sink anyway so
@@ -269,6 +294,9 @@ async def render_retimed_video(
     batches = partition_batches(chunks, batch_size)
     if not batches:
         raise RetimeError("empty retime plan", stage="plan")
+    if _parse_rate(out_fps) is None:
+        out_fps = _output_frame_rate(await probe_frame_rates(video_path))
+    _require_output_frame_rate(out_fps)
     slices_dir = out_path + ".slices"
     os.makedirs(slices_dir, exist_ok=True)
     try:
@@ -394,8 +422,10 @@ async def prepare_smart_fit_video(
     ``track_dur`` is the fitted dub track's duration; when it exceeds the
     expected retimed video length the tail is freeze-frame padded.
 
-    Raises :class:`RetimeError` when rendering fails — the caller owns the
-    fallback ladder (un-retimed export + structured warning).
+    Batched rendering and freeze tails require a known source frame rate.
+    Missing FFprobe raises :class:`FileNotFoundError`; unknown frame rates
+    raise :class:`RetimeError` with stage probe before rendering. Other render
+    failures use the caller's un-retimed fallback and structured warning.
     """
     # ``work_path`` is server-built (under DUB_DIR) by every caller, but
     # realpath-normalise + containment-check inline anyway so the batched
@@ -413,15 +443,13 @@ async def prepare_smart_fit_video(
         return None
 
     # VFR guard: trim-by-timestamp on a VFR stream lands on unpredictable
-    # frames. Normalise to the average rate first. Probe failure → proceed
-    # un-normalised (best effort; CFR sources are the overwhelming norm).
+    # frames. Normalise to the average rate first.
     # The probed rate doubles as the slice/tpad CFR target (out_fps).
     fps_norm: str | None = None
     out_fps: str | None = None
     rates = await probe_frame_rates(video_path)
     if rates:
-        out_fps = (rates[1] if _parse_rate(rates[1]) else None) or \
-                  (rates[0] if _parse_rate(rates[0]) else None)
+        out_fps = _output_frame_rate(rates)
         if is_vfr(*rates):
             fps_norm = out_fps
             logger.info(
@@ -433,6 +461,8 @@ async def prepare_smart_fit_video(
     tail_pad = 0.0
     if track_dur and track_dur - expected > DRIFT_TOLERANCE_S:
         tail_pad = track_dur - expected
+    if len(chunks) > single_pass_max or tail_pad > 0:
+        _require_output_frame_rate(out_fps)
 
     if len(chunks) <= single_pass_max:
         graph, label = build_chunk_filter_graph(

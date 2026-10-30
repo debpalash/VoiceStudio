@@ -396,7 +396,30 @@
     "pill_repeats": "{{count}} veces seguidas",
     "offline_bar": "Motor ocupado, reconectando automaticamente"
   },
+  "runtimeTorch": {
+    "title": "Paquetes do contorno de execución",
+    "auto": "Automático",
+    "cpu": "Só CPU",
+    "cuda": "NVIDIA CUDA",
+    "rocm": "AMD ROCm (tarxetas compatibles)",
+    "autoDescription": "Usa NVIDIA CUDA cando se detecta; en caso contrario, usa a CPU. AMD ROCm require unha selección explícita.",
+    "cpuDescription": "Instala paquetes só para CPU.",
+    "cudaDescription": "Instala paquetes NVIDIA CUDA; require unha GPU NVIDIA e un controlador compatibles.",
+    "rocmDescription": "Instala paquetes AMD ROCm para tarxetas AMD compatibles. A compatibilidade varía segundo o sistema operativo e o motor.",
+    "pinned": "OMNIVOICE_TORCH_VARIANT fixa esta selección. Cambia o contorno de inicio para desbloqueala.",
+    "saving": "Gardando a selección de paquetes…",
+    "saveError": "Non se puido gardar a selección de paquetes. A selección anterior segue activa. Volve tentalo.",
+    "saved": "Selección gardada. As descargas só comezan cando escolles Instalar, Continuar ou Tentar de novo.",
+    "packagesEffect": "Selecciona os paquetes para a próxima configuración. O dispositivo de cálculo activo e as configuracións fixadas para a CPU non cambian.",
+    "change": "Cambiar os paquetes do contorno de execución",
+    "confirmDescription": "Garda a nova selección do contorno de execución para o seguinte inicio da aplicación. O backend actual segue en funcionamento. Remata as túas tarefas, pecha VoiceStudio por completo e ábreo de novo; despois escolle Instalar na xanela de configuración existente. Non se reinicia nin se descarga nada automaticamente. Consérvanse os datos e os modelos; os contornos auxiliares de CPU existentes non cambian. Volver á CPU pode requirir executar a configuración de novo.",
+    "preparing": "Gardando para o seguinte inicio da aplicación…",
+    "beginError": "Non se puido gardar a selección do contorno de execución. O backend actual non cambiou. Volve tentalo.",
+    "confirm": "Gardar para o seguinte inicio da aplicación",
+    "pending": "Selección do contorno de execución gardada: {{choice}}. Remata as túas tarefas, pecha VoiceStudio por completo e ábreo de novo; despois escolle Instalar na configuración. O backend actual non se reiniciou e non comezou ningunha descarga."
+  },
   "engines": {
+    "voxcpm2LayoutError": "O contorno de VoxCPM2 contén ligazóns que apuntan fóra do seu cartafol xestionado. Repara a ligazón antes de volver tentar a instalación de Windows ROCm.",
     "selectCpuFallback": "{{engine}}: en execución na CPU — {{reason}}",
     "selectWithCaveat": "Cambiouse a {{engine}} — {{reason}}",
     "none_ready_title": "A conversión de texto a voz non está lista",
@@ -638,6 +661,7 @@
     "recorder_unsupported": "Este sistema non pode codificar o audio do micrófono."
   },
   "tts_errors": {
+    "video_retime_fps_unavailable": "Smart Fit non pode determinar a taxa de fotogramas do vídeo de orixe. Comproba o ficheiro de orixe e as ferramentas multimedia e volve tentalo.",
     "profile_language_rejected": "Auto usa o idioma do perfil de voz ({{language}}), que este motor non admite. Cambia o idioma do perfil, escolle un idioma compatible ou cambia de motor.",
     "enter_text": "Introduza primeiro texto.",
     "upload_or_select": "Carga un clip de referencia ou escolle unha voz gardada.",
@@ -1674,7 +1698,7 @@
     "gpu_report_state_kernels_missing": "Atopouse {{gpu}}, pero esta compilación de PyTorch ({{torch}}) non ten núcleos para a súa arquitectura de cálculo, polo que os motores funcionan na CPU.",
     "gpu_report_state_unknown": "Non se puido determinar o estado da GPU.",
     "gpu_report_option_vulkan_engines": "Use un motor co seu propio tempo de execución da GPU: audio.cpp execútase en GPU AMD Radeon a través de Vulkan (Configuración → Modelos → instalar o tempo de execución).",
-    "gpu_report_option_rocm_windows_manual": "No hardware AMD compatible con Windows 11 x64, activa a configuración ROCm 7.2.1 de VoiceStudio con OmniVoice_TORCH_VARIANT=rocm. Se xa está instalado, reexecute a configuración e comprobe o controlador e a matriz de hardware de AMD. Os motores opcionais teñen límites separados; consulte a guía de instalación de Windows.",
+    "gpu_report_option_rocm_windows_manual": "Para as tarxetas AMD compatibles con Windows, abre Axustes → Rendemento → Paquetes do contorno de execución e escolle AMD ROCm. Garda a selección, remata as túas tarefas, pecha VoiceStudio por completo e ábreo de novo; despois escolle Instalar na configuración. Nunha instalación nova, escolle AMD ROCm antes de Instalar. Opción avanzada de inicio: OMNIVOICE_TORCH_VARIANT=rocm. Comproba o controlador e a matriz de hardware de AMD; os motores opcionais teñen límites propios. Consulta a guía de instalación de Windows.",
     "gpu_report_option_rocm_variant_linux": "Establece OmniVoice_TORCH_VARIANT=rocm e executa a configuración de novo para instalar a compilación ROCm de PyTorch.",
     "gpu_report_option_rocm_device_access": "Comproba que o controlador amdgpu está cargado e que o teu usuario pode abrir /dev/kfd (grupos de renderización e vídeo).",
     "gpu_report_option_reinstall_cuda_torch": "Reinstale o tempo de execución para que instale a compilación CUDA de PyTorch.",
