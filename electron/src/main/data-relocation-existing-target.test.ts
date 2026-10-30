@@ -11,6 +11,7 @@ import {
   realpath,
   rename,
   rm,
+  stat,
   symlink,
   writeFile,
 } from 'node:fs/promises';
@@ -32,6 +33,8 @@ const constraints = vi.hoisted(() => ({
   mutableBirthtime: false,
   stableBirthtime: false,
   stableBirthtimes: new Map<string, bigint>(),
+  staleProbes: 0,
+  staleProbeTarget: '',
   copyCalls: 0,
   beforeReadFile: null as ((path: string) => Promise<void>) | null,
   beforeOpen: null as ((path: string) => Promise<void>) | null,
@@ -93,9 +96,13 @@ vi.mock('node:fs/promises', async (importOriginal) => {
         const key = `${info.dev}:${info.ino}`;
         if (!constraints.stableBirthtimes.has(key))
           constraints.stableBirthtimes.set(key, info.ctimeNs);
-        return Object.assign(Object.create(info), {
-          birthtimeNs: constraints.stableBirthtimes.get(key),
-        });
+        const birthtimeNs = constraints.stableBirthtimes.get(key);
+        // A coarse kernel clock leaves ctime unchanged across a same-tick probe.
+        if (String(args[0]) === constraints.staleProbeTarget) {
+          constraints.staleProbeTarget = '';
+          return Object.assign(Object.create(info), { birthtimeNs, ctimeNs: birthtimeNs });
+        }
+        return Object.assign(Object.create(info), { birthtimeNs });
       }
       if (constraints.mutableBirthtime && info.isDirectory() && 'ctimeNs' in info)
         return Object.assign(Object.create(info), { birthtimeNs: info.ctimeNs });
@@ -137,6 +144,10 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     },
     open: async (...args: Parameters<typeof actual.open>) => {
       await constraints.beforeOpen?.(String(args[0]));
+      if (constraints.staleProbes > 0 && String(args[0]).includes('.voicestudio-identity-')) {
+        constraints.staleProbes--;
+        constraints.staleProbeTarget = dirname(String(args[0]));
+      }
       const handle = await actual.open(...args);
       if (String(args[0]) === constraints.reusedIdentityPath && args[1] === 'wx') {
         const originalStat = handle.stat.bind(handle);
@@ -195,6 +206,8 @@ afterEach(async () => {
   constraints.mutableBirthtime = false;
   constraints.stableBirthtime = false;
   constraints.stableBirthtimes.clear();
+  constraints.staleProbes = 0;
+  constraints.staleProbeTarget = '';
   constraints.copyCalls = 0;
   constraints.beforeOpen = constraints.beforeReadFile = constraints.afterCopy = null;
   constraints.largeIdentityPath = '';
@@ -834,9 +847,12 @@ it('preserves a replacement directory when its inode is reused with a new genera
   constraints.reusedStats = await lstat(path, { bigint: true });
   await rename(path, join(root, 'previous-voices'));
   await mkdir(path, { mode: 0o700 });
+  const replacement = await stat(path, { bigint: true });
   constraints.reuseEnabled = true;
   await prepared.rollback();
-  expect((await lstat(path)).mode & 0o777).toBe(0o700);
+  // Windows reports every directory as 0o666, so compare the real inode, which
+  // `stat` (unlike the reuse-faking `lstat` above) reports on every OS.
+  expect((await stat(path, { bigint: true })).ino).toBe(replacement.ino);
 });
 
 it('preserves a scratch record replacement when all ambiguous metadata is reused', async () => {
@@ -996,6 +1012,36 @@ it.each([true, false])(
     const prepared = await prepareDataRelocation(source, target);
     expect(await readFile(join(target, 'omnivoice.db'), 'utf8')).toBe('database');
     expect(await prepared.rollback()).toBe(true);
+    expect(await readdir(existing ? target : dirname(target))).toEqual([]);
+    expect(await readFile(join(source, 'omnivoice.db'), 'utf8')).toBe('database');
+  },
+);
+
+it.each([true, false])(
+  'probes again when a coarse clock hides the first identity probe (existing target: %s)',
+  async (existing) => {
+    const { source, target } = await fixture();
+    if (!existing) await rm(target, { recursive: true });
+    constraints.stableBirthtime = true;
+    constraints.staleProbes = 1;
+    const prepared = await prepareDataRelocation(source, target);
+    expect(constraints.staleProbes).toBe(0);
+    expect(await readFile(join(target, 'omnivoice.db'), 'utf8')).toBe('database');
+    expect(await prepared.rollback()).toBe(true);
+    expect(await readFile(join(source, 'omnivoice.db'), 'utf8')).toBe('database');
+  },
+);
+
+it.each([true, false])(
+  'rejects creation identity a probe never sees change (existing target: %s)',
+  async (existing) => {
+    const { source, target } = await fixture();
+    if (!existing) await rm(target, { recursive: true });
+    constraints.stableBirthtime = true;
+    constraints.staleProbes = Number.POSITIVE_INFINITY;
+    const failure = await prepareDataRelocation(source, target).catch((error) => error);
+    expect(constraints.copyCalls).toBe(0);
+    expect(failure).toMatchObject({ message: 'identity_unavailable' });
     expect(await readdir(existing ? target : dirname(target))).toEqual([]);
     expect(await readFile(join(source, 'omnivoice.db'), 'utf8')).toBe('database');
   },
