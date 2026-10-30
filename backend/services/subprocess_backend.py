@@ -803,10 +803,14 @@ class SubprocessBackend(TTSBackend):
             if _is_jsonable(v):
                 msg[k] = v
         if isinstance(msg.get("ref_audio"), str):
-            # Engine venvs may read only plain PCM WAV (#3688); decode here.
+            # Engine venvs may read only plain PCM WAV (#3688); decode here and
+            # hold the copy until the sidecar has answered.
+            from core.voice_leases import VoiceFileLease
             from services.reference_wav import sidecar_reference_wav
 
-            msg["ref_audio"] = sidecar_reference_wav(msg["ref_audio"])
+            with VoiceFileLease() as lease:
+                msg["ref_audio"] = sidecar_reference_wav(msg["ref_audio"], lease=lease)
+                return self._exchange(msg, deadline_text=text)
         return self._exchange(msg, deadline_text=text)
 
     def _retry_changed_download_endpoint(self, proc, reply: dict) -> bool:
