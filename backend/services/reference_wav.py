@@ -47,10 +47,12 @@ def _cache_dir() -> str:
 
 
 def is_plain_pcm_wav(path: str) -> bool:
-    """True for a RIFF/WAVE file whose ``fmt`` chunk is integer PCM (tag 1).
+    """True for a RIFF/WAVE file of 16-bit integer PCM (format tag 1).
 
-    That is the one WAV layout every reader accepts, including the stdlib
-    ``wave`` module. Float (3) and WAVE_FORMAT_EXTENSIBLE (0xFFFE) are not.
+    That is the one WAV layout every sidecar reads correctly: PocketTTS reads
+    any ``.wav`` with the stdlib ``wave`` module and interprets the samples
+    as int16 whatever the header says, so 8/24/32-bit PCM, float (3) and
+    WAVE_FORMAT_EXTENSIBLE (0xFFFE) are all converted.
     """
     try:
         with open(path, "rb") as handle:
@@ -63,8 +65,11 @@ def is_plain_pcm_wav(path: str) -> bool:
                     return False
                 cid, size = chunk[:4], struct.unpack("<I", chunk[4:])[0]
                 if cid == b"fmt ":
-                    body = handle.read(2)
-                    return len(body) == 2 and struct.unpack("<H", body)[0] == 1
+                    body = handle.read(16)
+                    if len(body) != 16:
+                        return False
+                    tag, bits = struct.unpack("<H", body[:2])[0], struct.unpack("<H", body[14:])[0]
+                    return tag == 1 and bits == 16
                 handle.seek(size + (size % 2), os.SEEK_CUR)
     except OSError:
         return False
@@ -159,7 +164,7 @@ def prune_reference_copies() -> None:
 
 
 def sidecar_reference_wav(path: str, lease: Optional[voice_leases.VoiceFileLease] = None) -> str:
-    """``path`` if it is already plain PCM WAV, else a cached PCM16 mono copy.
+    """``path`` if it is already a 16-bit PCM ``.wav``, else a cached PCM16 mono copy.
 
     Pass the request's ``lease`` so the copy cannot be evicted before the
     sidecar has read it. Anything that is not an existing local file (an
@@ -168,7 +173,11 @@ def sidecar_reference_wav(path: str, lease: Optional[voice_leases.VoiceFileLease
     is returned so an engine that reads the format natively keeps working;
     the engine then reports its own error.
     """
-    if not path or not os.path.isfile(path) or is_plain_pcm_wav(path):
+    if not path or not os.path.isfile(path):
+        return path
+    # PocketTTS picks its reader by suffix: a PCM WAV named otherwise would
+    # need soundfile, which its venv lacks.
+    if path.lower().endswith(".wav") and is_plain_pcm_wav(path):
         return path
     try:
         import soundfile as sf
@@ -203,5 +212,8 @@ def sidecar_reference_wav(path: str, lease: Optional[voice_leases.VoiceFileLease
         _prune(directory, keep=name)
         return target
     except Exception as exc:  # noqa: BLE001 — the engine may still read the original
-        logger.warning("Could not convert reference %s to PCM WAV: %s", os.path.basename(path), exc)
+        from core.scrub import scrub_text
+
+        logger.warning("Could not convert reference %s to PCM WAV: %s",
+                       os.path.basename(path), scrub_text(str(exc)))
         return path
