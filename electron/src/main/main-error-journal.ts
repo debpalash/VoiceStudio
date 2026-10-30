@@ -1,5 +1,6 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { renameSyncWithRetry } from './rename-retry';
 import { scrubText } from '../shared/utils/scrub';
 
 const MAX_RECORDS = 20;
@@ -74,7 +75,7 @@ export class MainErrorJournal {
       mkdirSync(dirname(this.path), { recursive: true });
       const temporary = `${this.path}.tmp`;
       writeFileSync(temporary, JSON.stringify(this.records), { encoding: 'utf8', mode: 0o600 });
-      renameSync(temporary, this.path);
+      renameSyncWithRetry(temporary, this.path);
     } catch {
       /* preserve the original fatal error */
     }
