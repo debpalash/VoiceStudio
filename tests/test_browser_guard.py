@@ -234,6 +234,7 @@ def test_side_effectful_get_routes_carry_the_cross_site_dependency():
         "/dub/preview/{job_id}/{segment_index}",
         "/audio/{audio_id}.ogg",
         "/audio/{audio_id}.opus",
+        "/audio/{audio_id}.mp3",
         "/profile-images/search",
         "/api/settings/hf-token/state",
         "/api/settings/storage",
