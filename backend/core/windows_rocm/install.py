@@ -16,7 +16,8 @@ from .recipe import load_recipe, recipe_identity, validate_target
 from .verify import PROJECT_ROOT, verify_environment
 
 #: Packages the overlay replaces; everything else stays at its installed version.
-_OVERLAID = ("torch", "torchaudio", "torchvision", "ctranslate2", "rocm", "triton")
+_OVERLAID = ("torch", "torchaudio", "torchvision", "ctranslate2", "rocm", "triton",
+             "amd-torch", "amd-torchvision")
 
 
 def _normalized(name):

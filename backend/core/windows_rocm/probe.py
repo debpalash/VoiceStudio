@@ -1,6 +1,7 @@
 """Native model-free probe. Execute ONLY as a bounded subprocess."""
 
 import json
+import os
 import sys
 import sysconfig
 from importlib import metadata
@@ -16,6 +17,9 @@ from .verify import validate_report
 def probe():
     validate_target()
     recipe = load_recipe()
+    if (any(arch in recipe["rdna2"]["devices"] for arch in recipe["gpu_architectures"])
+            and os.environ.get("HSA_OVERRIDE_GFX_VERSION")):
+        raise VerificationFailure("device_runtime", "Remove HSA_OVERRIDE_GFX_VERSION; RDNA 2 uses native kernels")
     try:
         packages = {name: metadata.version(name) for name in expected_versions(recipe)}
     except metadata.PackageNotFoundError as exc:

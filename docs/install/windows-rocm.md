@@ -12,13 +12,15 @@ models.
 
 ## Prerequisites and exact scope
 
-- Windows 11 x64 and a GPU listed in AMD's **7.2.1**
+- Windows 11 x64 and a GPU. The existing ROCm 7.2.1 recipe targets AMD's
   [Radeon matrix](https://rocm.docs.amd.com/projects/radeon-ryzen/en/docs-7.2.1/docs/compatibility/compatibilityrad/windows/windows_compatibility.html)
-  or [Ryzen matrix](https://rocm.docs.amd.com/projects/radeon-ryzen/en/docs-7.2.1/docs/compatibility/compatibilityryz/windows/windows_compatibility.html).
-  A matching `gfx` architecture alone does not establish support for an unlisted product.
-- AMD's required [26.2.2 graphics driver](https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-2-2.html),
-  installed by you, following the
-  [AMD installation guide](https://rocm.docs.amd.com/projects/radeon-ryzen/en/docs-7.2.1/docs/install/installryz/windows/install-pytorch.html).
+  and [Ryzen matrix](https://rocm.docs.amd.com/projects/radeon-ryzen/en/docs-7.2.1/docs/compatibility/compatibilityryz/windows/windows_compatibility.html).
+  The ROCm 10 recipe targets RDNA 2 `gfx1030`, `gfx1031` and `gfx1032`;
+  it has been tested on an RX 6700 XT (`gfx1031`). The presence of a native
+  wheel does not imply AMD certification of every product or driver.
+- An AMD graphics driver compatible with the selected GPU and ROCm runtime.
+  For the 7.2.1 recipe, follow AMD's
+  [driver and installation guide](https://rocm.docs.amd.com/projects/radeon-ryzen/en/docs-7.2.1/docs/install/installryz/windows/install-pytorch.html).
 - Microsoft Visual C++ 2015–2022 x64 Redistributable. Source setup checks this
   prerequisite locally and stops with manual installation guidance when missing.
   Source and installed Electron users must install or verify the [official Microsoft x64 Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe)
@@ -26,18 +28,22 @@ models.
 - Space for the SDK, Python environment and temporary package downloads;
   optional engine environments and model weights require additional space.
 
-The recipe selects x64 Python **3.12**, ROCm **7.2.1**, Torch/audio
-**2.9.1+rocm7.2.1**, vision **0.24.1+rocm7.2.1**, and the exact HIP
-CTranslate2 **4.8.2** archive/wheel/DLL hashes. Windows ARM64, Windows 10 and
-unlisted GPUs, including RX 6700 XT, are outside this recipe's supported scope.
-Do not use Linux ROCm wheel indexes or an `HSA_OVERRIDE_GFX_VERSION` remap to
-claim support for those systems. A standalone HIP SDK on PATH is insufficient.
+Both recipes select x64 Python **3.12** and the exact HIP CTranslate2
+**4.8.2** archive/wheel/DLL hashes. RDNA 3, 3.5 and 4 retain ROCm **7.2.1**,
+Torch/audio **2.9.1+rocm7.2.1** and vision **0.24.1+rocm7.2.1**. RDNA 2
+uses ROCm **10.0.0**, Torch **2.13.0+rocm10.0.0**, audio
+**2.11.0.2+rocm10.0.0** and vision **0.28.0+rocm10.0.0**. Setup identifies
+the GPU by PCI ID and installs only that architecture's Torch, vision and SDK
+device packages, with native kernels and no `HSA_OVERRIDE_GFX_VERSION`. Mixed
+AMD architectures are refused because selecting the wrong device package
+would be unsafe. Windows ARM64, Windows 10 and other architectures remain
+outside this recipe's scope. A standalone HIP SDK on PATH is insufficient.
 
 ### What setup downloads, and how it is checked
 
-Setup downloads only from AMD's `repo.radeon.com` (the SDK and PyTorch wheels)
-and the OpenNMT/CTranslate2 GitHub release (the HIP CTranslate2 archive). Every
-one of those files has a SHA-256 in the recipe, and setup refuses a file whose
+Setup downloads from AMD's `repo.radeon.com` for the existing recipe or
+`stable.repo.amd.com` for RDNA 2, and the OpenNMT/CTranslate2 GitHub release
+(the HIP CTranslate2 archive). Every file has a SHA-256 in the recipe, and setup refuses a file whose
 bytes differ. Every other package keeps the version your environment already
 has, so the overlay never quietly upgrades dependencies.
 
@@ -116,19 +122,20 @@ inference are reported as different scopes.
 
 | Path | Windows ROCm behavior |
 | --- | --- |
-| Main Torch TTS and voice-cloning audio input | Uses the matched main environment; local soundfile compatibility preserves explicit soundfile input on torchaudio 2.9. Model/engine kernels still need real hardware testing. |
+| Main Torch TTS and voice-cloning audio input | Uses the matched main environment; local soundfile compatibility preserves explicit soundfile input on torchaudio 2.9 and later. Model/engine kernels still need real hardware testing. |
 | Faster-whisper, including the crash-isolated worker | GPU is admitted only for the pinned HIP binary plus bounded local verification; CPU overrides remain effective. Auto selection can prefer this verified basic-ASR path. |
 | WhisperX, pyannote speaker detection, wav2vec2 GPU alignment | GPU execution is gated before imports/cached pipelines: MIOpen Unicode-path and SDK-header compatibility is unverified. Choose CPU in Settings → Performance (`OMNIVOICE_DEVICE=cpu`) to use these pipelines. |
 | Unavailable forced alignment | Keeps the transcript and native word timestamps; alignment precision can be lower. It does not discard requested speech or translation content. |
 | Optional engine sidecars | Separate environments and compatibility. Main readiness never certifies them. |
 
 IndexTTS keeps its Python 3.10/3.11 requirement; CosyVoice keeps Torch 2.7;
-VoxCPM2 keeps Torch 2.11. The cp312/Torch 2.9 recipe is **not** applied to these
+VoxCPM2 keeps Torch 2.11. Neither cp312 main-environment recipe is applied to these
 environments. Managed Windows sidecars retain their own CPU availability and
 upstream requirements. Known non-HIP IndexTTS metadata keeps CPU fallback on
 all platforms. Only explicit Windows ROCm opt-in treats unknown sidecar metadata
 conservatively; default unknown-metadata behavior stays the same across platforms.
-Existing manually installed HIP sidecars remain detectable;
+On RDNA 2, IndexTTS, dots.tts and MOSS-TTS-v1.5 avoid bf16 GEMM because it can
+crash rocBLAS. Existing manually installed HIP sidecars remain detectable;
 that detection alone is not an inference certification. No engine is certified
 GPU-ready just because the main environment passed. Native/Vulkan engines have
 their own installation and capability checks.
@@ -153,8 +160,8 @@ bun run setup:api
 
 Use the command for your installation type, not both. `OMNIVOICE_DEVICE=cpu`
 alone selects CPU **execution** in the existing HIP environment; it does not
-replace packages. Remove a manually set HSA override when troubleshooting an
-otherwise supported GPU. Do not delete voices, projects, model caches or
+replace packages. Remove a manually set HSA override before running the RDNA 2 recipe; it uses
+native kernels and verification rejects an override. Do not delete voices, projects, model caches or
 optional-engine environments to repair the main runtime.
 
 Only explicitly started installation downloads AMD packages and the pinned
@@ -166,8 +173,8 @@ work incorporates focused contributions from
 their whole draft or mix the separate recipe proposed in
 [#2908](https://github.com/debpalash/VoiceStudio/pull/2908).
 
-Fresh supported AMD hardware inference, packaged Windows execution and upstream
-CI remain separate validation gates; a passing mocked test suite is not that evidence.
+Packaged Windows execution and speech inference remain separate validation gates;
+a passing model-free check does not certify an engine.
 
 Setup repairs only confirmed missing, mismatched or damaged packages, including
 native audio, vision and CTranslate2 imports with missing or corrupted wheel files.
