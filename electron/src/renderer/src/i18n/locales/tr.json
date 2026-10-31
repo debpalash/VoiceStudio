@@ -4375,6 +4375,18 @@
       "import": "İçe aktar",
       "export": "Dışa aktar",
       "send": "Gönder"
+    },
+    "support": {
+      "donate": "Bağış yap",
+      "other_apps": "Diğer uygulamalar",
+      "other_apps_intro": "Ekibimizin ve VoiceStudio sponsorlarının projeleri.",
+      "gift_note": "Bağış isteğe bağlıdır. Bağışlar geliştirmeyi destekler; özellik, içerik veya hizmet açmaz.",
+      "pro_scope": "Pro, bilgisayarınızdaki VoiceStudio’ya üretim araçları ekler. Telefon uygulamasının yaratıcı araçları ücretsiz kalır.",
+      "opengtm": "Açık kaynaklı satış otomasyonuyla potansiyel müşterileri bulun ve araştırın.",
+      "opal": "Kendi kitaplığınız için açık kaynaklı medya oynatıcı ve tarayıcı.",
+      "supermetry": "Kendi sunucunuzda barındırılan, gizliliğe saygılı web analitiği.",
+      "spicrawl": "Web sayfalarını yapay zekâ aracıları için Markdown veya yapılandırılmış veriye dönüştürün.",
+      "special_sponsor": "Özel sponsor"
     }
   },
   "failureCause": {

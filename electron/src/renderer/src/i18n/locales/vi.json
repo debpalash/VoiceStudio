@@ -4375,6 +4375,18 @@
       "import": "Nhập",
       "export": "Xuất",
       "send": "Gửi"
+    },
+    "support": {
+      "donate": "Đóng góp",
+      "other_apps": "Ứng dụng khác",
+      "other_apps_intro": "Các dự án của nhóm chúng tôi và nhà tài trợ VoiceStudio.",
+      "gift_note": "Đóng góp là tự nguyện. Khoản đóng góp hỗ trợ phát triển và không mở khóa tính năng, nội dung hay dịch vụ.",
+      "pro_scope": "Pro bổ sung công cụ sản xuất cho VoiceStudio trên máy tính. Các công cụ sáng tạo trên điện thoại vẫn miễn phí.",
+      "opengtm": "Tìm và nghiên cứu khách hàng tiềm năng bằng công cụ tự động hóa bán hàng mã nguồn mở.",
+      "opal": "Trình phát đa phương tiện và trình duyệt mã nguồn mở cho thư viện của bạn.",
+      "supermetry": "Phân tích web tự lưu trữ, tôn trọng quyền riêng tư.",
+      "spicrawl": "Chuyển trang web thành Markdown hoặc dữ liệu có cấu trúc cho tác nhân AI.",
+      "special_sponsor": "Nhà tài trợ đặc biệt"
     }
   },
   "failureCause": {

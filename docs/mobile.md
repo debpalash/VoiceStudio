@@ -40,6 +40,14 @@ Contributor portraits use the public GitHub profile images refreshed on
 2026-10-26. The contributor export also keeps iOS portraits identical to
 Electron and Android.
 
+Settings → **Support** contains native **Donate**, **VoiceStudio Pro** and
+**Other Apps** pages on both phones. All copy and project logos are bundled for
+offline use. Donate offers the same GitHub Sponsors, Ko-fi and PayPal destinations
+as desktop, opened only by a tap; gifts do not unlock features. Pro explains the
+computer production tools while the phone's creative tools stay free. It does
+not sell or activate mobile features. Other Apps introduces OpenGTM, Opal,
+Supermetry and Spicrawl with explicit sponsor credits and individual links.
+
 ## What you can do
 
 - **Speech**: type text, pick a voice and language, generate, play, share.

@@ -4375,7 +4375,19 @@
     "dub_advanced.dual": "Translation + original",
     "dub_advanced.exports": "Export settings",
     "editing.generated": "Generated audio",
-    "editing.merge": "Merge with next"
+    "editing.merge": "Merge with next",
+    "support": {
+      "donate": "Donate",
+      "other_apps": "Other Apps",
+      "other_apps_intro": "Projects from our team and the sponsors supporting VoiceStudio.",
+      "gift_note": "Giving is optional. Donations support development and do not unlock features, content or services.",
+      "pro_scope": "Pro adds production tools to VoiceStudio on your computer. The phone app’s creative tools remain free.",
+      "opengtm": "Find and research leads with open-source sales automation.",
+      "opal": "An open-source media player and browser for your own library.",
+      "supermetry": "Self-hosted, privacy-friendly web analytics.",
+      "spicrawl": "Turn web pages into Markdown or structured data for AI agents.",
+      "special_sponsor": "Special sponsor"
+    }
   },
   "failureCause": {
     "details": "Details",

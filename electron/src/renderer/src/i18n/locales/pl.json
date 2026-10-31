@@ -4403,6 +4403,18 @@
       "import": "Importuj",
       "export": "Eksportuj",
       "send": "Wyślij"
+    },
+    "support": {
+      "donate": "Wesprzyj",
+      "other_apps": "Inne aplikacje",
+      "other_apps_intro": "Projekty naszego zespołu i sponsorów VoiceStudio.",
+      "gift_note": "Wsparcie jest dobrowolne. Wpłaty wspierają rozwój i nie odblokowują funkcji, treści ani usług.",
+      "pro_scope": "Pro dodaje narzędzia produkcyjne do VoiceStudio na komputerze. Narzędzia kreatywne aplikacji mobilnej pozostają bezpłatne.",
+      "opengtm": "Znajduj i analizuj potencjalnych klientów dzięki automatyzacji sprzedaży o otwartym kodzie.",
+      "opal": "Odtwarzacz multimediów i przeglądarka o otwartym kodzie do własnej biblioteki.",
+      "supermetry": "Samodzielnie hostowana analityka internetowa szanująca prywatność.",
+      "spicrawl": "Zamieniaj strony internetowe na Markdown lub dane strukturalne dla agentów AI.",
+      "special_sponsor": "Sponsor specjalny"
     }
   },
   "failureCause": {

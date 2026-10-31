@@ -155,6 +155,16 @@ All tabs work without pairing once on-device models are installed (see M2); the 
      leaves the phone: nothing but requests to the paired host), About
      (version from the root `package.json`, licenses incl. Inter, model
      licenses link to the host).
+   - **Donate**, **VoiceStudio Pro** and **Other Apps** open native pages on
+     both platforms. Their bundled `support.json` catalog and project artwork
+     work offline, without pairing, analytics or automatic provider requests.
+     Donation destinations reuse the desktop's optional giving channels; gifts
+     never unlock app functionality, content or services. Pro explains the
+     existing computer production tools and keeps phone creation free; it has
+     no mobile checkout, licence activation or implied mobile entitlement.
+     Other Apps credits OpenGTM, Opal, Supermetry and Spicrawl with descriptive
+     copy and explicit strategic/special sponsor labels. External destinations
+     open only when tapped. Screens support accessibility text and tablets.
 
 ## Platform rules
 

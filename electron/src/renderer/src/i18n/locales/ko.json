@@ -4375,6 +4375,18 @@
       "send": "보내기",
       "export": "내보내기",
       "import": "가져오기"
+    },
+    "support": {
+      "donate": "후원하기",
+      "other_apps": "다른 앱",
+      "other_apps_intro": "VoiceStudio를 지원하는 개발팀과 후원사의 프로젝트입니다.",
+      "gift_note": "후원은 선택 사항입니다. 후원금은 개발을 지원하며 기능, 콘텐츠 또는 서비스를 잠금 해제하지 않습니다.",
+      "pro_scope": "Pro는 컴퓨터용 VoiceStudio에 제작 도구를 추가합니다. 휴대전화 앱의 창작 도구는 계속 무료입니다.",
+      "opengtm": "오픈 소스 영업 자동화로 잠재 고객을 찾고 조사하세요.",
+      "opal": "나만의 라이브러리를 위한 오픈 소스 미디어 플레이어와 브라우저입니다.",
+      "supermetry": "직접 호스팅하는 개인정보 보호 중심 웹 분석입니다.",
+      "spicrawl": "AI 에이전트를 위해 웹 페이지를 Markdown이나 구조화된 데이터로 변환합니다.",
+      "special_sponsor": "특별 후원사"
     }
   },
   "failureCause": {

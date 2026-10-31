@@ -4375,6 +4375,18 @@
       "import": "Importar",
       "export": "Exportar",
       "send": "Enviar"
+    },
+    "support": {
+      "donate": "Doar",
+      "other_apps": "Outras aplicacións",
+      "other_apps_intro": "Proxectos do noso equipo e dos patrocinadores de VoiceStudio.",
+      "gift_note": "Doar é opcional. As doazóns apoian o desenvolvemento e non desbloquean funcións, contido nin servizos.",
+      "pro_scope": "Pro engade ferramentas de produción a VoiceStudio no ordenador. As ferramentas creativas da aplicación móbil seguen sendo gratuítas.",
+      "opengtm": "Atopa e investiga posibles clientes con automatización de vendas de código aberto.",
+      "opal": "Un reprodutor multimedia e navegador de código aberto para a túa biblioteca.",
+      "supermetry": "Analítica web aloxada por ti e respectuosa coa privacidade.",
+      "spicrawl": "Converte páxinas web en Markdown ou datos estruturados para axentes de IA.",
+      "special_sponsor": "Patrocinador especial"
     }
   },
   "failureCause": {

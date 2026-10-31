@@ -62,6 +62,8 @@ val bundleCatalogs by tasks.registering {
     val catalogs = repository.resolve("electron/src/renderer/src/i18n/locales")
     val contracts = repository.resolve("mobile/contract")
     inputs.dir(contracts.resolve("tts"))
+    inputs.file(contracts.resolve("support.json"))
+    inputs.dir(contracts.resolve("support-artwork"))
     inputs.dir(catalogs)
     inputs.file(repository.resolve("electron/public/signal-field.webp"))
     inputs.file(repository.resolve("electron/src/shared/languages.json"))
@@ -88,6 +90,8 @@ val bundleCatalogs by tasks.registering {
         contracts.resolve("design.json").copyTo(assets.resolve("design.json"), overwrite = true)
         contracts.resolve("community-gallery.json").copyTo(assets.resolve("community-gallery.json"), overwrite = true)
         contracts.resolve("maintainer-cards.json").copyTo(assets.resolve("maintainer-cards.json"), overwrite = true)
+        contracts.resolve("support.json").copyTo(assets.resolve("support.json"), overwrite = true)
+        contracts.resolve("support-artwork").copyRecursively(assets.resolve("support-artwork"), overwrite = true)
         contracts.resolve("tokens.json").copyTo(assets.resolve("tokens.json"), overwrite = true)
         val en = JsonSlurper().parse(catalogs.resolve("en.json")) as Map<*, *>
         val label = (en["app"] as Map<*, *>)["name"].toString()

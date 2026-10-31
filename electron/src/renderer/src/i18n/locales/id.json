@@ -4375,6 +4375,18 @@
       "import": "Impor",
       "export": "Ekspor",
       "send": "Kirim"
+    },
+    "support": {
+      "donate": "Donasi",
+      "other_apps": "Aplikasi lain",
+      "other_apps_intro": "Proyek dari tim kami dan sponsor VoiceStudio.",
+      "gift_note": "Donasi bersifat opsional. Donasi mendukung pengembangan tanpa membuka fitur, konten, atau layanan.",
+      "pro_scope": "Pro menambahkan alat produksi ke VoiceStudio di komputer Anda. Alat kreatif aplikasi ponsel tetap gratis.",
+      "opengtm": "Temukan dan teliti calon pelanggan dengan otomatisasi penjualan sumber terbuka.",
+      "opal": "Pemutar media dan peramban sumber terbuka untuk koleksi Anda.",
+      "supermetry": "Analitik web yang dihosting sendiri dan ramah privasi.",
+      "spicrawl": "Ubah halaman web menjadi Markdown atau data terstruktur untuk agen AI.",
+      "special_sponsor": "Sponsor khusus"
     }
   },
   "failureCause": {

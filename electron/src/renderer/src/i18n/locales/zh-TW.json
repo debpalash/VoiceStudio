@@ -4375,6 +4375,18 @@
       "import": "匯入",
       "export": "匯出",
       "send": "傳送"
+    },
+    "support": {
+      "donate": "捐贈",
+      "other_apps": "其他應用程式",
+      "other_apps_intro": "來自我們團隊以及支持 VoiceStudio 的贊助商的專案。",
+      "gift_note": "捐贈完全自願，用於支持開發，不會解鎖任何功能、內容或服務。",
+      "pro_scope": "Pro 為電腦版 VoiceStudio 增添製作工具。手機應用程式的創作工具仍然免費。",
+      "opengtm": "透過開源銷售自動化工具尋找並研究潛在客戶。",
+      "opal": "為個人媒體庫打造的開源媒體播放器與瀏覽器。",
+      "supermetry": "自行託管、重視隱私的網站分析工具。",
+      "spicrawl": "將網頁轉換為適用於 AI 代理程式的 Markdown 或結構化資料。",
+      "special_sponsor": "特別贊助商"
     }
   },
   "failureCause": {

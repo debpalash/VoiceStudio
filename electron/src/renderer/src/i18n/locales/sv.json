@@ -4375,6 +4375,18 @@
       "import": "Importera",
       "export": "Exportera",
       "send": "Skicka"
+    },
+    "support": {
+      "donate": "Donera",
+      "other_apps": "Andra appar",
+      "other_apps_intro": "Projekt från vårt team och VoiceStudios sponsorer.",
+      "gift_note": "Donationer är frivilliga. De stöder utvecklingen utan att låsa upp funktioner, innehåll eller tjänster.",
+      "pro_scope": "Pro ger VoiceStudio produktionsverktyg på datorn. Mobilappens kreativa verktyg är fortsatt gratis.",
+      "opengtm": "Hitta och undersök potentiella kunder med försäljningsautomatisering med öppen källkod.",
+      "opal": "En mediaspelare och webbläsare med öppen källkod för ditt bibliotek.",
+      "supermetry": "Webbanalys på egen server med respekt för integriteten.",
+      "spicrawl": "Omvandla webbsidor till Markdown eller strukturerade data för AI-agenter.",
+      "special_sponsor": "Särskild sponsor"
     }
   },
   "failureCause": {

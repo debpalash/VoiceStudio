@@ -4371,6 +4371,18 @@
       "import": "导入",
       "export": "导出",
       "send": "发送"
+    },
+    "support": {
+      "donate": "捐赠",
+      "other_apps": "其他应用",
+      "other_apps_intro": "来自我们团队以及支持 VoiceStudio 的赞助商的项目。",
+      "gift_note": "捐赠完全自愿，用于支持开发，不会解锁任何功能、内容或服务。",
+      "pro_scope": "Pro 为电脑版 VoiceStudio 增添生产工具。手机应用的创作工具仍然免费。",
+      "opengtm": "通过开源销售自动化工具寻找并研究潜在客户。",
+      "opal": "为个人媒体库打造的开源媒体播放器与浏览器。",
+      "supermetry": "自行托管、注重隐私的网站分析工具。",
+      "spicrawl": "将网页转换为适用于 AI 智能体的 Markdown 或结构化数据。",
+      "special_sponsor": "特别赞助商"
     }
   },
   "failureCause": {
