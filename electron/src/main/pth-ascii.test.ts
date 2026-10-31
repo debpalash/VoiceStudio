@@ -1,5 +1,13 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -82,6 +90,22 @@ describe('asciiSafePthFiles (#1783)', () => {
     expect(asciiSafePthFilesSync(venv)).toEqual([]);
     expect(asciiSafePthFilesSync(join(venv, 'missing'))).toEqual([]);
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'keeps the original permission bits on the replaced file',
+    async () => {
+      const venv = mkdtempSync(join(tmpdir(), 'vs-pth-mode-'));
+      const windows = join(venv, 'Lib', 'site-packages');
+      mkdirSync(windows, { recursive: true });
+      const pth = join(windows, '_editable_impl_omnivoice.pth');
+      for (const heal of [() => asciiSafePthFiles(venv), async () => asciiSafePthFilesSync(venv)]) {
+        writeFileSync(pth, join(venv, CJK_USER), 'utf8');
+        chmodSync(pth, 0o600);
+        expect(await heal()).toEqual([pth]);
+        expect(statSync(pth).mode & 0o777).toBe(0o600);
+      }
+    },
+  );
 
   it('drops non-ASCII comments and escapes code lines', () => {
     expect(asciiSafePthText(`# ${CJK_USER}\n./lib`)).toBe('./lib');

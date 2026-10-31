@@ -1,5 +1,13 @@
-import { readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import {
+  chmodSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { chmod, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /**
@@ -33,14 +41,7 @@ export async function asciiSafePthFiles(venv) {
       const file = join(sitePackages, name);
       const text = healedPthText(await readFile(file).catch(() => null));
       if (text === null) continue;
-      const temp = tempPath(file);
-      try {
-        await writeFile(temp, text, 'utf8');
-        await rename(temp, file);
-      } catch (error) {
-        await rm(temp, { force: true });
-        throw error;
-      }
+      await replaceFile(file, text);
       rewritten.push(file);
     }
   }
@@ -70,14 +71,7 @@ export function asciiSafePthFilesSync(venv) {
       }
       const text = healedPthText(bytes);
       if (text === null) continue;
-      const temp = tempPath(file);
-      try {
-        writeFileSync(temp, text, 'utf8');
-        renameSync(temp, file);
-      } catch (error) {
-        rmSync(temp, { force: true });
-        throw error;
-      }
+      replaceFileSync(file, text);
       rewritten.push(file);
     }
   }
@@ -85,9 +79,37 @@ export function asciiSafePthFilesSync(venv) {
 }
 
 /**
- * A sibling path for an atomic replace: an interrupted heal leaves the original
- * `.pth` intact, and site ignores the temp file because it does not end in .pth.
+ * Replace `file` atomically through a sibling temp file: an interrupted heal
+ * leaves the original `.pth` intact, and site ignores the temp file because it
+ * does not end in .pth. The temp file takes the original's permission bits, so
+ * the replacement never exposes the embedded home path more widely.
  */
+async function replaceFile(file, text) {
+  const temp = tempPath(file);
+  try {
+    const mode = (await stat(file)).mode & 0o7777;
+    await writeFile(temp, text, { encoding: 'utf8', mode });
+    await chmod(temp, mode);
+    await rename(temp, file);
+  } catch (error) {
+    await rm(temp, { force: true });
+    throw error;
+  }
+}
+
+function replaceFileSync(file, text) {
+  const temp = tempPath(file);
+  try {
+    const mode = statSync(file).mode & 0o7777;
+    writeFileSync(temp, text, { encoding: 'utf8', mode });
+    chmodSync(temp, mode);
+    renameSync(temp, file);
+  } catch (error) {
+    rmSync(temp, { force: true });
+    throw error;
+  }
+}
+
 function tempPath(file) {
   return `${file}.${process.pid}.tmp`;
 }
