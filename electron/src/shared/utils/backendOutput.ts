@@ -129,3 +129,18 @@ export function windowsLoadBlock(lines: readonly string[]): WindowsLoadBlock | n
   if (/contains a virus or potentially unwanted software/i.test(tail)) return 'antivirus';
   return null;
 }
+
+/**
+ * The evidence quoted when a managed backend stayed silent until the startup
+ * budget ran out: the tail of the backend's own log file, or an explicit note
+ * that the log could not be read. `path` and the `tail` lines are expected to
+ * be scrubbed and bounded already (backend.ts does that when it reads the log);
+ * this only formats them, so the module keeps importing nothing and stays safe
+ * for the renderer bundle.
+ */
+export function backendLogEvidence(path: string, tail: readonly string[]): string {
+  const log = `The backend's own log (${path})`;
+  return tail.length > 0
+    ? `It printed no output. ${log} ends with:\n${tail.join('\n')}`
+    : `It printed no output. ${log} is missing, empty, or unreadable.`;
+}

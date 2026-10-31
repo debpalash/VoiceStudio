@@ -1,5 +1,8 @@
 // @vitest-environment node
 import { EventEmitter } from 'node:events';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 /**
@@ -124,10 +127,25 @@ function stubEnv(): void {
   vi.stubEnv('OMNIVOICE_STARTUP_BUDGET_S', BUDGET_S);
 }
 
+/**
+ * A fresh, empty data dir per test, so a silent failure never reads the
+ * developer's real omnivoice.log. Tests that need log content write their own
+ * `omnivoice.log` inside `dataDir` before starting the supervisor.
+ */
+const tempDirs: string[] = [];
+let dataDir = '';
+
+function stubDataDir(): void {
+  dataDir = mkdtempSync(join(tmpdir(), 'omnivoice-budget-'));
+  tempDirs.push(dataDir);
+  vi.stubEnv('OMNIVOICE_DATA_DIR', dataDir);
+}
+
 beforeEach(() => {
   // setupRuntime() refuses an Intel Mac outright (#2365), so these fixtures
   // would never spawn on a darwin/x64 runner. Pin a supported host.
   if (process.platform === 'darwin') vi.spyOn(process, 'arch', 'get').mockReturnValue('arm64');
+  stubDataDir();
 });
 
 afterEach(() => {
@@ -140,6 +158,7 @@ afterEach(() => {
   mocks.denied.clear();
   mocks.occupied.clear();
   mocks.runtimeReadyNow = true;
+  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
 it('gives a freshly spawned backend its whole budget after slow pre-launch work', async () => {
@@ -193,7 +212,7 @@ it('still fails the backend once it has had its full budget', async () => {
 });
 
 it.each([
-  ['silent', null, 'It printed no output.'],
+  ['silent', null, "It printed no output. The backend's own log"],
   [
     'noisy',
     'RuntimeError: no module named torch\r\n',
@@ -212,6 +231,94 @@ it.each([
     await vi.advanceTimersByTimeAsync(11_000);
     expect(supervisor.status.stage).toBe('failed');
     expect(supervisor.status.message).toContain(expected);
+  } finally {
+    (supervisor as unknown as { child: null }).child = null;
+    await supervisor.shutdown();
+  }
+});
+
+it('quotes the backend log tail when a silent backend wrote one', async () => {
+  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+  stubEnv();
+  writeFileSync(
+    join(dataDir, 'omnivoice.log'),
+    ['INFO: loading torch', 'INFO: loading transformers', 'WARNING: slow disk'].join('\n'),
+  );
+  stubBackend(() => false);
+  const { child } = fakeChild();
+  mocks.spawn.mockReturnValue(child);
+  const supervisor = new BackendSupervisor();
+  try {
+    await supervisor.start();
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(supervisor.status.stage).toBe('failed');
+    expect(supervisor.status.message).toContain('did not answer on port 3900');
+    expect(supervisor.status.message).toContain('INFO: loading torch');
+    expect(supervisor.status.message).toContain('WARNING: slow disk');
+    expect(supervisor.status.message).not.toContain('Last output:');
+  } finally {
+    (supervisor as unknown as { child: null }).child = null;
+    await supervisor.shutdown();
+  }
+});
+
+it('names the backend log path when a silent backend has no log file', async () => {
+  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+  stubEnv();
+  stubBackend(() => false);
+  const { child } = fakeChild();
+  mocks.spawn.mockReturnValue(child);
+  const supervisor = new BackendSupervisor();
+  try {
+    await supervisor.start();
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(supervisor.status.stage).toBe('failed');
+    expect(supervisor.status.message).toContain(join(dataDir, 'omnivoice.log'));
+    expect(supervisor.status.message).toContain('is missing, empty, or unreadable');
+  } finally {
+    (supervisor as unknown as { child: null }).child = null;
+    await supervisor.shutdown();
+  }
+});
+
+it('scrubs a home directory out of the quoted backend log tail', async () => {
+  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+  stubEnv();
+  writeFileSync(
+    join(dataDir, 'omnivoice.log'),
+    'loaded /home/alice/.omnivoice/models/model.bin\nINFO: done\n',
+  );
+  stubBackend(() => false);
+  const { child } = fakeChild();
+  mocks.spawn.mockReturnValue(child);
+  const supervisor = new BackendSupervisor();
+  try {
+    await supervisor.start();
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(supervisor.status.stage).toBe('failed');
+    expect(supervisor.status.message).toContain('loaded');
+    expect(supervisor.status.message).not.toContain('alice');
+    expect(supervisor.status.message).not.toContain('/home/alice');
+  } finally {
+    (supervisor as unknown as { child: null }).child = null;
+    await supervisor.shutdown();
+  }
+});
+
+it('reports the log path when a directory sits where the log should be', async () => {
+  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+  stubEnv();
+  mkdirSync(join(dataDir, 'omnivoice.log'), { recursive: true });
+  stubBackend(() => false);
+  const { child } = fakeChild();
+  mocks.spawn.mockReturnValue(child);
+  const supervisor = new BackendSupervisor();
+  try {
+    await supervisor.start();
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(supervisor.status.stage).toBe('failed');
+    expect(supervisor.status.message).toContain(join(dataDir, 'omnivoice.log'));
+    expect(supervisor.status.message).toContain('is missing, empty, or unreadable');
   } finally {
     (supervisor as unknown as { child: null }).child = null;
     await supervisor.shutdown();
