@@ -650,3 +650,27 @@ def test_select_default_falls_back_on_zero_byte_placeholder(monkeypatch, tmp_pat
     monkeypatch.setattr(gguf_backend, "_is_macos_quarantined", lambda p: False)
 
     assert gguf_backend.select_default_engine() == "omnivoice"
+
+
+def test_generate_leaves_quality_knobs_to_the_caller(monkeypatch):
+    """#3654 review: the engine itself stays permissive — it cannot tell an
+    explicit user request (num_step=32) from an internal default fill
+    (dubbing previews always pass num_step=8), so validation lives at the
+    API boundary (400 there) and every value here proceeds identically to
+    normal binary handling. The class flag advertises the lack of support.
+    """
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    cls = gguf_backend._make_backend_class()
+    assert cls.supports_num_step is False
+    assert cls.supports_guidance_scale is False
+    backend = cls()
+    monkeypatch.setattr(
+        backend, "_resolve_quant_paths",
+        lambda: (_ for _ in ()).throw(FileNotFoundError("test-no-binary")),
+    )
+
+    for kw in ({}, {"num_step": 16}, {"num_step": 8}, {"num_step": 32},
+               {"guidance_scale": 5.0}):
+        with pytest.raises(FileNotFoundError, match="test-no-binary"):
+            backend.generate("hello world", **kw)
