@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.normpath(_BACKEND_DIR))
 def main(monkeypatch, tmp_path):
     monkeypatch.setenv("OMNIVOICE_DATA_DIR", str(tmp_path))
     module = importlib.import_module("main")
-    monkeypatch.setattr(module, "_health_device", None, raising=False)
+    monkeypatch.setattr(module, "_health_label", None, raising=False)
     monkeypatch.setattr(module, "_health_device_thread", None, raising=False)
     return module
 
@@ -46,7 +46,7 @@ def test_a_blocked_device_probe_never_delays_the_liveness_answer(main, monkeypat
     release = threading.Event()
     entered = threading.Event()
 
-    def _blocked_probe() -> str:
+    def _blocked_probe(engine_id) -> str:
         entered.set()
         release.wait(30)
         return "cuda (Test GPU)"
@@ -76,7 +76,7 @@ def test_a_blocked_device_probe_never_delays_the_liveness_answer(main, monkeypat
 
 
 def test_a_failing_device_lookup_does_not_fail_the_probe(main, monkeypatch):
-    def _boom() -> str:
+    def _boom(engine_id) -> str:
         raise RuntimeError("driver exploded")
 
     monkeypatch.setattr(main, "_probe_health_device", _boom)
