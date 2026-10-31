@@ -99,6 +99,37 @@ def test_privileged_router_uses_method_aware_admin_guard(filename):
     assert "require_loopback" not in dependencies
 
 
+def test_gallery_router_uses_consumer_for_reads():
+    """Gallery reads stay reachable for PIN/trusted-network consumers; only
+    mutations escalate to require_admin (the router-level dependency is
+    require_consumer, not require_admin)."""
+    dependencies = _dependency_names(_router_assignment(_tree("gallery.py")))
+    assert "require_consumer" in dependencies
+    assert "require_admin" not in dependencies
+    assert "require_loopback" not in dependencies
+
+
+@pytest.mark.parametrize(
+    "function_name",
+    [
+        "delete_voice",
+        "search_youtube",
+        "download_youtube_clip",
+        "upload_voice_clip",
+        "save_voice_as_profile",
+        "update_voice",
+        "batch_delete_voices",
+        "voice_to_profile",
+    ],
+)
+def test_gallery_mutating_routes_require_admin(function_name):
+    dependencies = _dependency_names(
+        _route_decorators(_tree("gallery.py"), function_name)
+    )
+    assert "require_admin" in dependencies, function_name
+    assert "require_loopback" not in dependencies, function_name
+
+
 def test_every_mutating_engine_route_uses_method_aware_admin_guard():
     functions = _mutating_route_functions(_tree("engines.py"))
     assert functions
