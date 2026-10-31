@@ -84,6 +84,30 @@ def run_install(command):
         raise RuntimeError(f"Windows ROCm package installation failed: {exc}") from exc
 
 
+def locked_ct2_requirement(uv):
+    """The lockfile's own CTranslate2 pin for this interpreter.
+
+    Asking ``uv export`` keeps environment-marker evaluation in uv's hands
+    instead of reimplementing it here (this module is stdlib-only), and keeps
+    the version on the lockfile's supply-chain review instead of whatever PyPI
+    serves today. A bare ``ctranslate2`` would install the current release,
+    which is not what the frozen sync would have installed.
+    """
+    try:
+        result = subprocess.run(
+            [str(uv), "export", "--frozen", "--no-dev", "--no-hashes", "--format", "requirements-txt"],
+            cwd=PROJECT_ROOT, capture_output=True, text=True, errors="replace",
+            check=True, timeout=600,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(f"Windows ROCm could not read the locked CTranslate2 version: {exc}") from exc
+    for line in result.stdout.splitlines():
+        requirement = line.split("#", 1)[0].split(";", 1)[0].strip()
+        if requirement.startswith("ctranslate2=="):
+            return requirement
+    raise RuntimeError("The lockfile pins no CTranslate2 the CPU fallback could install")
+
+
 def provision(uv):
     """Reuse strictly verified installs; repair only confirmed package failures."""
     validate_target()
@@ -122,9 +146,11 @@ def provision(uv):
             # this is the only pass that can put it back. Without it a fresh ROCm 10
             # environment has no ctranslate2 at all: faster-whisper cannot import,
             # the app's own import check fails, and even the CPU fallback is gone.
-            # The locked version comes from the project lock, not from us, so it
-            # keeps the lockfile's supply-chain review.
-            run_install(install_command(uv, ["ctranslate2"], ["ctranslate2"], constraints))
+            # Pin the LOCKED version, not a bare name: a bare name installs whatever
+            # PyPI serves today, which is not what the frozen sync would have left.
+            run_install(install_command(
+                uv, [locked_ct2_requirement(uv)], ["ctranslate2"], constraints,
+            ))
     return verify_environment()
 
 

@@ -164,6 +164,8 @@ def test_installer_skips_the_ct2_archive_but_restores_the_locked_cpu_build(monke
         lambda *a: pytest.fail("ROCm 10 must not download the 7.2.1 CT2 archive"),
     )
     monkeypatch.setattr(installer, "checked_wheel", lambda *a: pytest.fail("unexpected CT2 wheel"))
+    # The locked pin is resolved through uv, never hardcoded here.
+    monkeypatch.setattr(installer, "locked_ct2_requirement", lambda uv: "ctranslate2==4.4.0")
 
     commands = []
     monkeypatch.setattr(installer, "run_install", lambda command: commands.append(command))
@@ -174,11 +176,52 @@ def test_installer_skips_the_ct2_archive_but_restores_the_locked_cpu_build(monke
     assert len(commands) == 2
     overlay, cpu_ct2 = commands
     assert "-r" in overlay
-    # The CPU build must come from the lock/index, never from a pinned URL, and
-    # it must be reinstalled so a stale HIP binary is actually replaced.
-    assert "ctranslate2" in cpu_ct2
+    # The requirement is an exact lock pin, never a bare name (that would install
+    # today's PyPI release instead of what the frozen sync would have left).
+    assert cpu_ct2[-1] == "ctranslate2==4.4.0"
+    # A bare ``ctranslate2`` may only appear as --reinstall-package's argument,
+    # which is the token right before the pinned requirement.
+    assert cpu_ct2[cpu_ct2.index("--reinstall-package") + 1] == "ctranslate2"
+    assert cpu_ct2[-1] != "ctranslate2"
     assert not any(str(arg).startswith("http") for arg in cpu_ct2)
-    assert "--reinstall-package" in cpu_ct2 and "ctranslate2" in cpu_ct2
+
+
+def test_locked_ct2_requirement_reads_the_lock_through_uv(monkeypatch):
+    """The pin comes from ``uv export``, including uv's own marker evaluation."""
+    import importlib
+    import subprocess
+
+    installer = importlib.import_module("core.windows_rocm.install")
+
+    export = (
+        "torch==2.13.0+cpu ; python_full_version < '3.13'\n"
+        "ctranslate2==4.4.0 ; python_full_version < '3.13'\n"
+        "ctranslate2==4.8.1 ; python_full_version >= '3.13'\n"
+    )
+
+    def run(command, **kwargs):
+        assert command[1:] == ["export", "--frozen", "--no-dev", "--no-hashes",
+                               "--format", "requirements-txt"]
+        assert kwargs["check"] is True and kwargs["timeout"] == 600
+        return subprocess.CompletedProcess(command, 0, export, "")
+
+    monkeypatch.setattr(installer.subprocess, "run", run)
+    # Both marker branches appear in the export; the first is this interpreter's.
+    assert installer.locked_ct2_requirement("uv-custom") == "ctranslate2==4.4.0"
+
+
+def test_locked_ct2_requirement_refuses_to_guess(monkeypatch):
+    """No CT2 in the export must not silently become "install latest"."""
+    import importlib
+    import subprocess
+
+    installer = importlib.import_module("core.windows_rocm.install")
+    monkeypatch.setattr(
+        installer.subprocess, "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "torch==2.13.0\n", ""),
+    )
+    with pytest.raises(RuntimeError, match="pins no CTranslate2"):
+        installer.locked_ct2_requirement("uv-custom")
 
 
 def test_a_recipe_with_a_hip_ct2_never_adds_the_cpu_pass(monkeypatch):
@@ -207,6 +250,10 @@ def test_a_recipe_with_a_hip_ct2_never_adds_the_cpu_pass(monkeypatch):
     monkeypatch.setattr(installer, "verify_environment", verify)
     monkeypatch.setattr(installer, "download_archive", lambda *a: None)
     monkeypatch.setattr(installer, "checked_wheel", lambda *a: "wheel.whl")
+    monkeypatch.setattr(
+        installer, "locked_ct2_requirement",
+        lambda uv: pytest.fail("the HIP path must not add a CPU CT2 pass"),
+    )
     commands = []
     monkeypatch.setattr(installer, "run_install", lambda command: commands.append(command))
     with pytest.raises(failures.VerificationFailure):
