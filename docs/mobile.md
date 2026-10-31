@@ -349,7 +349,9 @@ answers are in [`store/google-play.md`](../store/google-play.md). One-time setup
 1. Create the app in the Play Console with the package name
    `sh.voicestudio.mobile` and keep Play App Signing on (Google holds the app
    signing key; CI only holds the upload key).
-2. Create an upload key once and keep a backup in the team password manager:
+2. Reuse the upload key from the `mobile-release` environment so builds keep
+   their signing identity. Keep a backup in the team password manager. Only if
+   no key exists yet, create it once:
    `keytool -genkeypair -v -keystore upload.jks -alias upload -keyalg RSA -keysize 4096 -validity 10000`.
 3. Create a Google Cloud service account with a JSON key, then invite its email
    in the Play Console (Users and permissions) with release access to this app.
@@ -357,17 +359,28 @@ answers are in [`store/google-play.md`](../store/google-play.md). One-time setup
    the `main` branch, and add `ANDROID_UPLOAD_KEYSTORE` (the `.jks` as base64),
    `ANDROID_UPLOAD_KEYSTORE_PASSWORD`, `ANDROID_UPLOAD_KEY_ALIAS`,
    `ANDROID_UPLOAD_KEY_PASSWORD` and `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`.
-5. Google Play takes the first bundle only through the Play Console: run the
-   workflow once (its upload step fails), download the `VoiceStudio-android-play`
-   artifact and upload it to internal testing by hand. Until the app's first
-   release is rolled out, dispatch with status `draft`.
+5. Google Play takes the first bundle only through the Play Console. Prepare
+   it without attempting an upload: run **mobile-release** from `main`, leave
+   `release_ref` empty, enable `android`, and disable `ios` and `signed_ios`.
+   Its `mobile-release` environment needs the same four Android upload-key
+   secrets (use the existing key, including for later Play builds). Download
+   `VoiceStudio-android-release`, then upload its `VoiceStudio.aab` to internal
+   testing by hand. This manual build produces artifacts only; it creates no
+   release or tag and contacts no store. Until the app's first release is rolled
+   out, dispatch **Android Play internal testing** with status `draft`.
+
+The Play workflow installs the pinned NDK/CMake and reuses the native runtime
+cache. Before uploading, it strictly verifies the bundle against that upload
+key, accepting its self-signed certificate while rejecting unsigned content,
+other signers (including extra trusted co-signers) and Android debug certificates.
 
 The version name is the root `package.json` version. Both signed Android
 workflows get their version code from `scripts/android_version_code.py`: UTC
 minutes since 2020-01-01 (seconds jumped too far for Play). They share a concurrency
 group, so signed builds run one at a time, each taking minutes, and subsequent
 builds, including reruns, receive increasing codes
-across Play and GitHub releases. Local and `mobile` workflow builds stay debug-signed.
+across Play and GitHub releases. Local and `mobile` workflow APKs are debug-signed;
+local release builds without upload-key environment variables are unsigned.
 
 ## Releasing
 
