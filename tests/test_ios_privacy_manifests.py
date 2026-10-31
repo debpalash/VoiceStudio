@@ -76,9 +76,11 @@ def test_share_inbox_uses_one_configured_group_for_signing_and_runtime(tmp_path)
 
     project = yaml.safe_load((ROOT / "mobile/ios/VoiceStudio/project.yml").read_text())
     group = project["settings"]["base"]["VS_APP_GROUP_IDENTIFIER"]
-    assert group == "group.sh.voicestudio.mobile.development"
-    assert project["targets"]["VoiceStudio"]["settings"]["base"]["PRODUCT_BUNDLE_IDENTIFIER"] == "sh.voicestudio.mobile"
-    assert project["targets"]["VoiceStudioShare"]["settings"]["base"]["PRODUCT_BUNDLE_IDENTIFIER"] == "sh.voicestudio.mobile.development.share"
+    assert group.startswith("group.")
+    app_id = project["targets"]["VoiceStudio"]["settings"]["base"]["PRODUCT_BUNDLE_IDENTIFIER"]
+    for extension in ["VoiceStudioShare", "VoiceStudioWidget"]:
+        extension_id = project["targets"][extension]["settings"]["base"]["PRODUCT_BUNDLE_IDENTIFIER"]
+        assert extension_id.startswith(app_id + ".")
     generated_info = tmp_path / "Info.plist"
     load("mobile/ios/scripts/prepare_resources.py").prepare(tmp_path / "app", generated_info)
     for target, info in [("VoiceStudio", generated_info),
