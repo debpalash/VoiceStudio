@@ -225,3 +225,7 @@ Thank you to everyone who sends code, reports, translations and ideas. [All cont
 ## License & responsible use
 
 [AGPL-3.0](LICENSE) covers the app, including commercial use under its terms. Model weights, voices and generated output have their own licences, which the Model Manager shows for each model ([inventory](docs/licensing/model-inventory.md)). Clone a voice only with its owner's permission. Details: [LICENSE-NOTICE.md](LICENSE-NOTICE.md).
+
+## Community tutorials
+
+- [VoiceStudio walkthrough by Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
