@@ -3,6 +3,7 @@ import base64
 import importlib.util
 import os
 from pathlib import Path
+import re
 import subprocess
 
 import pytest
@@ -139,6 +140,26 @@ def test_signed_older_release_uses_the_workflows_own_signing_tools():
     assert tools["if"] == install["if"]
     assert tools["with"]["path"] + "/mobile/ios/scripts/archive_signing.py" in install["run"]
     assert steps.index(tools) < steps.index(install)
+
+
+def test_signing_tools_sparse_checkout_contains_every_consumed_helper(tmp_path):
+    checkout = tmp_path / "signing-tools"
+    subprocess.run(["git", "clone", "--shared", "--no-checkout", str(ROOT), str(checkout)],
+                   check=True, capture_output=True)
+    # Both the workflow and files come from one committed snapshot, like job.workflow_sha.
+    source = subprocess.run(["git", "show", "HEAD:.github/workflows/mobile-release.yml"],
+                            cwd=checkout, check=True, capture_output=True, text=True).stdout
+    workflow = yaml.load(source, Loader=yaml.BaseLoader)
+    steps = workflow["jobs"]["ios"]["steps"]
+    tools = next(step for step in steps if step.get("name") == "Checkout signing tools")["with"]
+    subprocess.run(["git", "sparse-checkout", "set", "--no-cone", "--stdin"], cwd=checkout,
+                   input=tools["sparse-checkout"].encode(), check=True, capture_output=True)
+    subprocess.run(["git", "checkout", "--force", "HEAD"], cwd=checkout, check=True, capture_output=True)
+    prefix = re.escape(tools["path"] + "/")
+    consumed = set(re.findall(prefix + r"([\w./-]+\.py)", "\n".join(step.get("run", "") for step in steps)))
+    assert consumed
+    for relative in consumed:
+        assert (checkout / relative).is_file(), f"Sparse checkout omitted consumed helper: {relative}"
 
 
 def test_cleanup_deletes_private_keychain_even_when_search_list_restore_fails(tmp_path, monkeypatch):
