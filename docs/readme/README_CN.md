@@ -28,6 +28,16 @@
   </p>
 </div>
 
+<table>
+  <tr><th align="center">特别赞助商 · Spicrawl</th></tr>
+  <tr><td align="center">
+    <a href="https://app.spicrawl.com/signup?utm_source=voicestudio&amp;utm_medium=github_readme&amp;utm_campaign=special_sponsor&amp;utm_content=logo"><img src="../../docs/sponsors/spicrawl.svg" alt="Spicrawl" width="220" /></a><br />
+    <strong>面向 AI 智能体的网页抓取服务。</strong><br />
+    通过 API、CLI 或 MCP，将网页转换为整洁的 Markdown 或结构化 JSON。<br />
+    <a href="https://app.spicrawl.com/signup?utm_source=voicestudio&amp;utm_medium=github_readme&amp;utm_campaign=special_sponsor&amp;utm_content=signup"><strong>探索 Spicrawl</strong></a>
+  </td></tr>
+</table>
+
 <p align="center">
   <a href="../../docs/media/electron/voicestudio.mp4">
     <picture>

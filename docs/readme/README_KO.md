@@ -28,6 +28,16 @@
   </p>
 </div>
 
+<table>
+  <tr><th align="center">특별 후원사 · Spicrawl</th></tr>
+  <tr><td align="center">
+    <a href="https://app.spicrawl.com/signup?utm_source=voicestudio&amp;utm_medium=github_readme&amp;utm_campaign=special_sponsor&amp;utm_content=logo"><img src="../../docs/sponsors/spicrawl.svg" alt="Spicrawl" width="220" /></a><br />
+    <strong>AI 에이전트를 위한 웹 스크래핑.</strong><br />
+    API, CLI 또는 MCP로 웹 페이지를 깔끔한 Markdown이나 구조화된 JSON으로 변환하세요.<br />
+    <a href="https://app.spicrawl.com/signup?utm_source=voicestudio&amp;utm_medium=github_readme&amp;utm_campaign=special_sponsor&amp;utm_content=signup"><strong>Spicrawl 살펴보기</strong></a>
+  </td></tr>
+</table>
+
 <p align="center">
   <a href="../../docs/media/electron/voicestudio.mp4">
     <picture>
