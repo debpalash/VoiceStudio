@@ -15,8 +15,9 @@ models.
 - Windows 11 x64 and a GPU. The existing ROCm 7.2.1 recipe targets AMD's
   [Radeon matrix](https://rocm.docs.amd.com/projects/radeon-ryzen/en/docs-7.2.1/docs/compatibility/compatibilityrad/windows/windows_compatibility.html)
   and [Ryzen matrix](https://rocm.docs.amd.com/projects/radeon-ryzen/en/docs-7.2.1/docs/compatibility/compatibilityryz/windows/windows_compatibility.html).
-  The ROCm 10 recipe targets RDNA 2 `gfx1030`, `gfx1031` and `gfx1032`;
-  it has been tested on an RX 6700 XT (`gfx1031`). The presence of a native
+  The ROCm 10 recipe targets RDNA 1 `gfx1010` (Navi 10, e.g. RX 5700 / 5700 XT)
+  and RDNA 2 `gfx1030`, `gfx1031` and `gfx1032`; it has been tested on an
+  RX 5700 (`gfx1010`) and an RX 6700 XT (`gfx1031`). The presence of a native
   wheel does not imply AMD certification of every product or driver.
 - An AMD graphics driver compatible with the selected GPU and ROCm runtime.
   For the 7.2.1 recipe, follow AMD's
@@ -28,24 +29,40 @@ models.
 - Space for the SDK, Python environment and temporary package downloads;
   optional engine environments and model weights require additional space.
 
-Both recipes select x64 Python **3.12** and the exact HIP CTranslate2
-**4.8.2** archive/wheel/DLL hashes. RDNA 3, 3.5 and 4 retain ROCm **7.2.1**,
-Torch/audio **2.9.1+rocm7.2.1** and vision **0.24.1+rocm7.2.1**. RDNA 2
-uses ROCm **10.0.0**, Torch **2.13.0+rocm10.0.0**, audio
-**2.11.0.2+rocm10.0.0** and vision **0.28.0+rocm10.0.0**. Setup identifies
-the GPU by PCI ID and installs only that architecture's Torch, vision and SDK
-device packages, with native kernels and no `HSA_OVERRIDE_GFX_VERSION`. Mixed
-AMD architectures are refused because selecting the wrong device package
-would be unsafe. Windows ARM64, Windows 10 and other architectures remain
-outside this recipe's scope. A standalone HIP SDK on PATH is insufficient.
+Both recipes select x64 Python **3.12**. RDNA 3, 3.5 and 4 retain ROCm **7.2.1**,
+Torch/audio **2.9.1+rocm7.2.1**, vision **0.24.1+rocm7.2.1** and the exact HIP
+CTranslate2 **4.8.2** archive/wheel/DLL hashes. RDNA 1 and 2 use ROCm **10.0.0**,
+Torch **2.13.0+rocm10.0.0**, audio **2.11.0.2+rocm10.0.0** and vision
+**0.28.0+rocm10.0.0**. Setup identifies the GPU by PCI ID and installs only that
+architecture's Torch, vision and SDK device packages, with native kernels and no
+`HSA_OVERRIDE_GFX_VERSION`. Mixed AMD architectures are refused because selecting
+the wrong device package would be unsafe. Windows ARM64, Windows 10 and other
+architectures remain outside this recipe's scope. A standalone HIP SDK on PATH
+is insufficient.
+
+#### CTranslate2 is not part of the ROCm 10 recipe
+
+The pinned HIP CTranslate2 **4.8.2** is built against the ROCm 7.2.1 SDK. On ROCm 10
+it loads and reports a device with `float16` support, but every inference fails at
+kernel launch (`hipErrorInvalidImage: device kernel image is invalid`, measured on an
+RX 5700 / `gfx1010`). Device discovery alone therefore cannot tell you it works, and
+the ROCm 10 overlay deliberately installs **no** CTranslate2 and reports
+`ct2_supported: false` instead of inheriting the 7.2.1 binary. Consequences:
+
+- PyTorch TTS engines run on the GPU and are the reason to opt in here.
+- Everything backed by CTranslate2 — faster-whisper ASR, diarization — stays on the
+  CPU. Its `hip_ct2_available()` returns `False` on this overlay without probing,
+  so no path advertises GPU ASR that would then fail.
+- Installing a CTranslate2 wheel yourself does not change that; the recipe pins none.
 
 ### What setup downloads, and how it is checked
 
 Setup downloads from AMD's `repo.radeon.com` for the existing recipe or
-`stable.repo.amd.com` for RDNA 2, and the OpenNMT/CTranslate2 GitHub release
-(the HIP CTranslate2 archive). Every file has a SHA-256 in the recipe, and setup refuses a file whose
-bytes differ. Every other package keeps the version your environment already
-has, so the overlay never quietly upgrades dependencies.
+`stable.repo.amd.com` for RDNA 1 and 2. For the 7.2.1 recipe it also downloads the
+OpenNMT/CTranslate2 GitHub release (the HIP CTranslate2 archive); the ROCm 10
+overlay downloads no CTranslate2 at all. Every file has a SHA-256 in the recipe, and
+setup refuses a file whose bytes differ. Every other package keeps the version your
+environment already has, so the overlay never quietly upgrades dependencies.
 
 Before this release, `OMNIVOICE_TORCH_VARIANT=rocm` was ignored on Windows. It
 now selects this stack. If it is already set on a machine with a working CUDA
@@ -101,9 +118,11 @@ Electron's setup log, using **that environment's interpreter**:
 ```
 
 Both commands without speech inputs perform **model-free** checks: exact ABI and
-package versions, native audio/vision imports, the pinned HIP CT2 DLL, supported
-GPU architecture, synchronized Torch arithmetic with checked results, and CT2
-GPU/float16 discovery. A timeout, crash or CPU fallback fails readiness. This
+package versions, native audio/vision imports, supported GPU architecture,
+synchronized Torch arithmetic, and a grouped-convolution kernel from the same
+wheel (a matmul-only check passes on GPUs whose convolution kernels cannot run at
+all). For a recipe that pins a HIP CTranslate2 it also checks the pinned DLL and
+CT2 GPU/float16 discovery. A timeout, crash or CPU fallback fails readiness. This
 proves neither speech inference nor WhisperX/MIOpen compatibility.
 
 For a separate **local CT2 speech** check, supply an already-installed local CT2
@@ -116,14 +135,16 @@ model folder and an existing PCM speech WAV:
 The smoke test never resolves a remote model ID or downloads assets. It consumes
 GPU/float16 inference and requires nonempty speech segments with finite times;
 the report omits transcripts and user paths. Model-free readiness and local CT2
-inference are reported as different scopes.
+inference are reported as different scopes. On the ROCm 10 overlay (RDNA 1 and 2)
+there is no verified HIP CTranslate2, so the speech-scope smoke is unavailable and
+the model-free report says so with `ct2_supported: false`.
 
 ## Engine boundaries
 
 | Path | Windows ROCm behavior |
 | --- | --- |
 | Main Torch TTS and voice-cloning audio input | Uses the matched main environment; local soundfile compatibility preserves explicit soundfile input on torchaudio 2.9 and later. Model/engine kernels still need real hardware testing. |
-| Faster-whisper, including the crash-isolated worker | GPU is admitted only for the pinned HIP binary plus bounded local verification; CPU overrides remain effective. Auto selection can prefer this verified basic-ASR path. |
+| Faster-whisper, including the crash-isolated worker | GPU is admitted only for the pinned HIP binary plus bounded local verification; CPU overrides remain effective. Auto selection can prefer this verified basic-ASR path. On the ROCm 10 overlay (RDNA 1 and 2) it always runs on the CPU: no verified HIP CTranslate2 exists for that runtime. |
 | WhisperX, pyannote speaker detection, wav2vec2 GPU alignment | GPU execution is gated before imports/cached pipelines: MIOpen Unicode-path and SDK-header compatibility is unverified. Choose CPU in Settings → Performance (`OMNIVOICE_DEVICE=cpu`) to use these pipelines. |
 | Unavailable forced alignment | Keeps the transcript and native word timestamps; alignment precision can be lower. It does not discard requested speech or translation content. |
 | Optional engine sidecars | Separate environments and compatibility. Main readiness never certifies them. |
@@ -134,11 +155,15 @@ environments. Managed Windows sidecars retain their own CPU availability and
 upstream requirements. Known non-HIP IndexTTS metadata keeps CPU fallback on
 all platforms. Only explicit Windows ROCm opt-in treats unknown sidecar metadata
 conservatively; default unknown-metadata behavior stays the same across platforms.
-On RDNA 2, IndexTTS, dots.tts and MOSS-TTS-v1.5 avoid bf16 GEMM because it can
-crash rocBLAS. Existing manually installed HIP sidecars remain detectable;
-that detection alone is not an inference certification. No engine is certified
-GPU-ready just because the main environment passed. Native/Vulkan engines have
-their own installation and capability checks.
+On the ROCm 10 overlay, IndexTTS, dots.tts and MOSS-TTS-v1.5 still avoid bf16 GEMM
+on `gfx103*` because it can crash rocBLAS there. The guard is keyed to those
+architectures, not to the overlay, because bf16 GEMM was measured working on
+`gfx1010` (matmul at 1024–4096 plus 25 repeated 2048×2048 iterations, all finite).
+Adding `gfx1010` to that guard without a reproduction would be a guess, so it is
+left alone. Existing manually installed HIP
+sidecars remain detectable; that detection alone is not an inference certification.
+No engine is certified GPU-ready just because the main environment passed.
+Native/Vulkan engines have their own installation and capability checks.
 
 ## Repair and rollback
 
@@ -160,13 +185,13 @@ bun run setup:api
 
 Use the command for your installation type, not both. `OMNIVOICE_DEVICE=cpu`
 alone selects CPU **execution** in the existing HIP environment; it does not
-replace packages. Remove a manually set HSA override before running the RDNA 2 recipe; it uses
+replace packages. Remove a manually set HSA override before running the ROCm 10 recipe; it uses
 native kernels and verification rejects an override. Do not delete voices, projects, model caches or
 optional-engine environments to repair the main runtime.
 
-Only explicitly started installation downloads AMD packages and the pinned
-OpenNMT/CTranslate2 GitHub release, with normal dependency resolution through
-package indexes. Verification and local smoke are offline. This installation
+Only explicitly started installation downloads AMD packages and, for the 7.2.1
+recipe, the pinned OpenNMT/CTranslate2 GitHub release, with normal dependency
+resolution through package indexes. Verification and local smoke are offline. This installation
 work incorporates focused contributions from
 [#2600](https://github.com/debpalash/VoiceStudio/pull/2600) and
 [#2607](https://github.com/debpalash/VoiceStudio/pull/2607); it does not absorb
