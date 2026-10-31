@@ -324,11 +324,14 @@ submits the app for App Store review. One-time setup in the Apple Developer team
 1. Register the App ID `sh.voicestudio.mobile` (Certificates, Identifiers &
    Profiles → Identifiers) and create the app in App Store Connect with it.
    The same team must own the existing Share ID
-   `sh.voicestudio.mobile.development.share` and `sh.voicestudio.mobile.widget`.
+   `sh.voicestudio.mobile.development.share` and `sh.voicestudio.mobile.workspacewidget`.
    Assign the existing `group.sh.voicestudio.mobile.development` App Group to
    both the app and Share extension, then refresh their profiles. The Share ID
    and group retain their registered names for store builds; the main app keeps
-   the App Store record’s `sh.voicestudio.mobile` ID. For another team, change
+   the App Store record’s `sh.voicestudio.mobile` ID. The widget uses
+   `sh.voicestudio.mobile.workspacewidget` because Apple reports the former
+   `.widget` identifier as unavailable to this team; a wildcard development
+   profile can archive it but cannot satisfy App Store export. For another team, change
    the bundle IDs and `VS_APP_GROUP_IDENTIFIER` in `project.yml`; that one group
    setting supplies both entitlements and runtime bundle metadata.
    Automatic signing cannot claim an identifier that Apple reports as unavailable

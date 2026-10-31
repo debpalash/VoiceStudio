@@ -90,7 +90,7 @@ targets:
         excludes: [Info.plist]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: sh.voicestudio.mobile.widget
+        PRODUCT_BUNDLE_IDENTIFIER: sh.voicestudio.mobile.workspacewidget
         INFOPLIST_FILE: ../VoiceStudioWidget/Info.plist
         SKIP_INSTALL: 'YES'
         MARKETING_VERSION: $(VS_MARKETING_VERSION)
