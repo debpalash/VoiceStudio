@@ -39,7 +39,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(profiles.event_bus, "emit", lambda *a: events.append(a))
     app = FastAPI()
     app.include_router(profiles.router)
-    client = TestClient(app)
+    client = TestClient(app, client=("127.0.0.1", 50000))
     created = client.post(
         "/profiles",
         data={"name": "Scarlet", "ref_text": "old words", "instruct": "female"},

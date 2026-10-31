@@ -85,18 +85,58 @@ def _mutating_route_functions(
 @pytest.mark.parametrize(
     "filename",
     [
+        "audiobook.py",
+        "batch.py",
+        "capture.py",
+        "describe_voice.py",
+        "dub_generate.py",
+        "dub_translate.py",
+        "glossary.py",
+        "marketplace.py",
         "mcp_bindings.py",
         "media_tools.py",
-        "pronunciation.py",
+        "personas.py",
+        "profiles.py",
+        "project_bundles.py",
+        "projects.py",
+        "stories.py",
+        "telephony_twilio.py",
+        "voice_convert.py",
+        "watermark.py",
         "settings.py",
         "system.py",
-        "telephony_twilio.py",
     ],
 )
 def test_privileged_router_uses_method_aware_admin_guard(filename):
     dependencies = _dependency_names(_router_assignment(_tree(filename)))
     assert "require_admin" in dependencies
     assert "require_loopback" not in dependencies
+
+
+def test_openai_compat_router_uses_consumer_gate():
+    """The /v1 audio routes are the documented consumption surface for PIN and
+    trusted-network clients, so the router stays on require_consumer rather
+    than require_admin."""
+    dependencies = _dependency_names(_router_assignment(_tree("openai_compat.py")))
+    assert "require_consumer" in dependencies
+    assert "require_admin" not in dependencies
+    assert "require_loopback" not in dependencies
+
+
+def test_profile_audio_materialization_requires_admin_action():
+    """Rendering a pending design sample inside GET /profiles/{id}/audio is an
+    admin action: require_admin_media_action must guard the branch that
+    synthesizes and persists ref_audio_path."""
+    for node in _tree("profiles.py").body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "get_profile_audio":
+            calls = {
+                child.func.id
+                for child in ast.walk(node)
+                if isinstance(child, ast.Call) and isinstance(child.func, ast.Name)
+            }
+            assert "require_admin_media_action" in calls, calls
+            return
+    raise AssertionError("get_profile_audio not found")
 
 
 def test_every_mutating_engine_route_uses_method_aware_admin_guard():
