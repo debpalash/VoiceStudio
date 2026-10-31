@@ -37,6 +37,14 @@ describe('backendFailureHints', () => {
     ).toEqual(['backend.hint_slow_start']);
   });
 
+  it('still classifies a silent timeout that quotes the backend log tail', () => {
+    expect(
+      backendFailureHints(
+        "Backend did not answer on port 3900 within 300 s (OMNIVOICE_STARTUP_BUDGET_S). It printed no output. The backend's own log (~/.omnivoice/omnivoice.log) ends with:\nINFO: loading torch\nSlow disks and antivirus scanning are the usual cause.",
+      ),
+    ).toEqual(['backend.hint_slow_start']);
+  });
+
   it('flags a path inside a cloud-synced folder (#2465)', () => {
     expect(
       backendFailureHints(
