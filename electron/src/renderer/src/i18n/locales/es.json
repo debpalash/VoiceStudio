@@ -3431,7 +3431,7 @@
     "add_details": "Añadir detalles",
     "step_start": "Inicio",
     "step_agent": "Agente",
-    "step_speak": "Hablar",
+    "step_speak": "Voz sintética",
     "step_condition": "Condición",
     "step_call": "Llamada",
     "step_end": "Fin",
@@ -3798,7 +3798,7 @@
       "brought_by": "De la mano de"
     },
     "tabs": {
-      "speak": "Hablar",
+      "speak": "Voz sintética",
       "voices": "Voces",
       "dub": "Doblaje",
       "dictate": "Dictado",
@@ -3846,7 +3846,8 @@
       "unstar": "Desestrellar",
       "engine_unavailable": "Este motor no está disponible. Comprueba su instalación en tu ordenador.",
       "voice_default": "Voz predeterminada (preajuste del motor)",
-      "engine_no_cloning": "Este motor no puede usar audio de referencia. Elige un motor compatible con la clonación de voz o usa la voz predeterminada."
+      "engine_no_cloning": "Este motor no puede usar audio de referencia. Elige un motor compatible con la clonación de voz o usa la voz predeterminada.",
+      "reference_required": "Elige una voz guardada para usar este modelo. Puedes importar una desde la galería."
     },
     "voices": {
       "search": "Buscar voces",
@@ -4075,7 +4076,7 @@
       "preset_voice": "Voz {{number}}",
       "transfer": "{{received}} de {{total}}",
       "privacy": "Las tareas en el dispositivo se quedan en este teléfono. Solo las descargas de modelos, las denuncias que decidas enviar y tu ordenador emparejado usan la red.",
-      "computer_feature": "Esta función se ejecuta ahora en tu ordenador. Hablar y Dictado funcionan en este teléfono sin emparejar.",
+      "computer_feature": "Esta función se ejecuta ahora en tu ordenador. Voz sintética y Dictado funcionan en este teléfono sin emparejar.",
       "accepted": "Licencia aceptada",
       "not_accepted": "Licencia no aceptada",
       "receipt": "{{action}} · {{time}} · App {{version}} · Términos {{fingerprint}}"
@@ -4376,6 +4377,18 @@
       "import": "Importar",
       "export": "Exportar",
       "send": "Enviar"
+    },
+    "support": {
+      "donate": "Donar",
+      "other_apps": "Otras aplicaciones",
+      "other_apps_intro": "Proyectos de nuestro equipo y de los patrocinadores de VoiceStudio.",
+      "gift_note": "Donar es opcional. Las donaciones apoyan el desarrollo sin desbloquear funciones, contenido ni servicios.",
+      "pro_scope": "Pro añade herramientas de producción a VoiceStudio en tu ordenador. Las herramientas creativas de la aplicación móvil siguen siendo gratuitas.",
+      "opengtm": "Encuentra e investiga clientes potenciales con automatización de ventas de código abierto.",
+      "opal": "Un reproductor multimedia y navegador de código abierto para tu biblioteca.",
+      "supermetry": "Analítica web autohospedada que respeta la privacidad.",
+      "spicrawl": "Convierte páginas web en Markdown o datos estructurados para agentes de IA.",
+      "special_sponsor": "Patrocinador especial"
     }
   },
   "failureCause": {

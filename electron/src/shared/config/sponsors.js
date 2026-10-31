@@ -9,6 +9,8 @@
 
 import { GITHUB_SPONSORS_URL, KOFI_URL } from '../utils/donateLinks';
 import supermetryMark from '../assets/sponsors/supermetry-mark.svg';
+import opengtmMark from '../assets/sponsors/opengtm-mark.svg';
+import opalMark from '../assets/sponsors/opal-mark.svg';
 
 const REPO = 'https://github.com/debpalash/VoiceStudio';
 
@@ -30,6 +32,18 @@ const REPO = 'https://github.com/debpalash/VoiceStudio';
  * @type {{ name: string, logoUrl: string, url: string, tier: string }[]}
  */
 export const SPONSORS = [
+  {
+    name: 'OpenGTM',
+    logoUrl: opengtmMark,
+    url: 'https://opengtm.palash.dev/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=in-app-support',
+    tier: 'strategic',
+  },
+  {
+    name: 'Opal',
+    logoUrl: opalMark,
+    url: 'https://opal.palash.dev/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=in-app-support',
+    tier: 'strategic',
+  },
   {
     name: 'Supermetry',
     logoUrl: supermetryMark,

@@ -45,7 +45,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Changed runtime paths
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      runtime: ${{ steps.scope.outputs.runtime }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/ci_scope.py
+
   android:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.runtime != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     defaults:
@@ -98,6 +118,8 @@ jobs:
           retention-days: 7
 
   ios:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.runtime != 'false' }}
     # Same SDK as the TestFlight upload, so App Store toolchain breaks show up here first.
     runs-on: macos-26
     # Cold simulator/device compilation can exhaust an hour after tests pass.
@@ -222,7 +244,11 @@ jobs:
   # native code the phones run. Models are user-started downloads in the app;
   # here they are fetched for the test with its explicit test-licence flag.
   ios-inference:
-    runs-on: macos-15
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.runtime != 'false' }}
+    # Standard Intel runners have 14 GB RAM; standard ARM runners have 7 GB.
+    # The verified OmniVoice pack requires 8 GB, including inference headroom.
+    runs-on: macos-15-intel
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -235,10 +261,20 @@ jobs:
           path: |
             mobile/native/ios/build/macos
             mobile/ios/.cache/inference-models
-          key: ios-inference-${{ hashFiles('mobile/native/pins.json', 'mobile/native/ios/build.py', 'mobile/native/ios/patches/**', 'mobile/contract/models.json') }}
+          key: ios-inference-${{ runner.arch }}-${{ hashFiles('mobile/native/pins.json', 'mobile/native/ios/build.py', 'mobile/native/ios/patches/**', 'mobile/contract/models.json') }}
 
       - name: Fetch smallest models
         run: python3 mobile/ios/scripts/fetch-smoke-models.py --accept-test-licences
+
+      - name: Fetch additional Speech models
+        run: python3 mobile/ios/scripts/fetch-smoke-models.py --accept-test-licences --speech-models
+
+      # VSNative uses __has_include: preparing headers after its first compile
+      # leaves cached no-runtime stubs even though the dylibs now exist.
+      - name: Prepare all host runtimes before Swift compilation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: mobile/native/ios/build.sh macos-runtimes
 
       - name: Real TTS -> ASR
         env:
@@ -246,7 +282,30 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: mobile/ios/scripts/real-inference.sh
 
+      - name: Real Speech preset and reference models
+        run: |
+          export VOICESTUDIO_REAL_SPEECH=1
+          SHERPA_ONNX_LIBRARY="$(cat mobile/native/ios/build/macos/sherpa-path.txt)"
+          export SHERPA_ONNX_LIBRARY
+          mobile/ios/scripts/check-swift.sh test --filter realSpeechModels --no-parallel
+
+      - name: Fetch OmniVoice saved-voice Speech pack
+        run: python3 mobile/ios/scripts/fetch-smoke-models.py --accept-test-licences --omni-speech
+
+      - name: Real OmniVoice Speech word fidelity
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          export VOICESTUDIO_REAL_OMNI_SPEECH=1
+          SHERPA_ONNX_LIBRARY="$(cat mobile/native/ios/build/macos/sherpa-path.txt)"
+          export SHERPA_ONNX_LIBRARY
+          OMNIVOICE_LIBRARY="$(python3 -c 'import json; print(json.load(open("mobile/native/ios/build/macos/runtime-paths.json"))["omnivoice.cpp"])')"
+          export OMNIVOICE_LIBRARY
+          mobile/ios/scripts/check-swift.sh test --filter realOmniSavedVoice --no-parallel
+
   android-inference:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.runtime != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     defaults:
@@ -290,13 +349,14 @@ jobs:
           ram-size: 4096M
           disk-size: 6G
           working-directory: mobile/android
-          script: ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.voicestudio.mobile.LocalInferenceTest#smallestModelsProduceSpeechAndRecognizeItOffline -Pandroid.testInstrumentationRunnerArguments.localInferenceSmoke=true -Pandroid.testInstrumentationRunnerArguments.downloadSmokeModels=true -Pandroid.testInstrumentationRunnerArguments.acceptModelLicencesForSmoke=true
+          script: ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.voicestudio.mobile.LocalInferenceTest#smallestModelsProduceSpeechAndRecognizeItOffline,com.voicestudio.mobile.LocalInferenceTest#speechPresetAndReferenceModelsProduceAudioOffline -Pandroid.testInstrumentationRunnerArguments.speechInferenceSmoke=true -Pandroid.testInstrumentationRunnerArguments.localInferenceSmoke=true -Pandroid.testInstrumentationRunnerArguments.downloadSmokeModels=true -Pandroid.testInstrumentationRunnerArguments.acceptModelLicencesForSmoke=true
 
   # Google Play phone screenshots from the real debug app (PlayScreenshotTour):
   # phone-first, smallest speech model, English. Nexus 5X is 1080x1920, inside
   # Play's 2:1 limit. Pulled from the emulator as the android-play-screenshots artifact.
   android-screenshots:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.runtime != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     defaults:

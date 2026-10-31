@@ -55,7 +55,8 @@ def test_store_languages_match_the_phone_models():
     assert f"Voice cloning and dubbing cover {len(clone)} languages" in description
     assert languages("asr-stream") == {"en"}, "phone dictation gained languages; update the listing"
     assert "Dictation on the phone is English" in description
-    assert languages("tts") == {"en", "zh"} and "Preset voices are English and Chinese" in description
+    assert {"en", "zh"} <= languages("tts")
+    assert f"Preset speech covers {len(languages('tts'))} languages, depending on the model." in description
 
 
 def test_data_safety_declares_the_report_the_app_sends():

@@ -127,20 +127,21 @@ import com.voicestudio.mobile.local.*
     }
 }
 
-@Composable fun TaskLocation(vm: StudioViewModel, task: String, capabilities: Set<String>, dependencies: Set<String> = emptySet(), content: @Composable (RunLocation,PhoneModel?)->Unit) {
+@Composable fun TaskLocation(vm: StudioViewModel, task: String, capabilities: Set<String>, dependencies: Set<String> = emptySet(), initialLocation: String? = null, content: @Composable (RunLocation,PhoneModel?)->Unit) {
     val host by vm.state.collectAsState()
     val phone by vm.phone.state.collectAsState()
     val preferences by vm.preferences.collectAsState()
     val choices=phone.models.filter {it.capability in capabilities}
     val selected=choices.firstOrNull {it.id==preferences.phoneModels[task]} ?: choices.firstOrNull {it.id in phone.installed&&it.fits(vm.phone.ramBytes)} ?: choices.firstOrNull()
     val ready=selected?.let {it.id in phone.installed&&it.fits(vm.phone.ramBytes)}==true&&dependencies.all {cap -> phone.models.any {it.capability==cap&&it.id in phone.installed&&it.fits(vm.phone.ramBytes)}}
-    val location=routeTask(preferences.runLocations[task],ready,host.connected)
+    var entryLocation by rememberSaveable(initialLocation) {mutableStateOf(initialLocation)}
+    val location=routeTask(entryLocation ?: preferences.runLocations[task],ready,host.connected)
     Column(Modifier.fillMaxSize()) {
         if(host.connected) Row(Modifier.fillMaxWidth().padding(horizontal=VSTheme.inset),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(VSTheme.gap)) {
                 if(LocalDensity.current.fontScale<=1.5f) Text(tr("mobile.local.run_on"),style=MaterialTheme.typography.labelSmall)
                 SingleChoiceSegmentedButtonRow(Modifier.weight(1f)) {
                     listOf("phone" to "mobile.local.this_phone","computer" to "mobile.simple.computer").forEachIndexed {index,(id,key) ->
-                        SegmentedButton(selected=(location==RunLocation.COMPUTER)==(id=="computer"),onClick={vm.phone.cancelInference();vm.preference {it.copy(runLocations=it.runLocations+(task to id))}},shape=SegmentedButtonDefaults.itemShape(index,2)) {Text(tr(key),maxLines=1,overflow=TextOverflow.Ellipsis)}
+                        SegmentedButton(selected=(location==RunLocation.COMPUTER)==(id=="computer"),onClick={entryLocation=id;vm.preference {it.copy(runLocations=it.runLocations+(task to id))};vm.phone.cancelInference();if(task=="clone"&&(location==RunLocation.COMPUTER)!=(id=="computer")) vm.cancelClone()},shape=SegmentedButtonDefaults.itemShape(index,2)) {Text(tr(key),maxLines=1,overflow=TextOverflow.Ellipsis)}
                     }
                 }
         }
@@ -156,7 +157,7 @@ import com.voicestudio.mobile.local.*
 }
 
 /** One explicit Get action starts the dependency list; each gated model keeps its own sheet. */
-@Composable fun MissingModelsCard(vm: StudioViewModel, feature: String, models: List<PhoneModel>) {
+@Composable fun MissingModelsCard(vm: StudioViewModel, feature: String, models: List<PhoneModel>, prominent: Boolean = false) {
     val state by vm.phone.state.collectAsState()
     val progress by vm.phone.downloads.progress.collectAsState()
     val preferences by vm.preferences.collectAsState()
@@ -184,14 +185,21 @@ import com.voicestudio.mobile.local.*
                     Text(label,style=MaterialTheme.typography.labelLarge)
                     if(needed.size==1) Text(tr("mobile.simple.${needed.single().capability}"),style=MaterialTheme.typography.labelSmall,color=role("textMuted"))
                 }
-                if(running) IconAction("common.cancel",Icons.Default.Close) {queue=emptyList();needed.forEach(vm.phone::cancelDownload)}
-                else TextButton(enabled=queue.isEmpty()&&needed.all {it.fits(vm.phone.ramBytes)},onClick={queue=needed.map {it.id}}) {Text(tr("mobile.simple.get"))}
+                if(!prominent) {
+                    if(running) IconAction("common.cancel",Icons.Default.Close) {queue=emptyList();needed.forEach(vm.phone::cancelDownload)}
+                    else TextButton(enabled=queue.isEmpty()&&needed.all {it.fits(vm.phone.ramBytes)},onClick={queue=needed.map {it.id}}) {Text(tr("mobile.local.download"))}
+                }
             }
             needed.firstOrNull {!it.fits(vm.phone.ramBytes)}?.let {Text(tr("mobile.simple.ram",mapOf("ram" to it.minRamGb)),color=role("textMuted"))}
             if(running) {
                 val total=needed.sumOf {progress[it.id]?.total ?: it.totalBytes}
                 val received=needed.sumOf {progress[it.id]?.received ?: 0L}
                 LinearProgressIndicator(progress={(received.toFloat()/total.coerceAtLeast(1)).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth())
+            }
+            if(prominent) {
+                Button(modifier=Modifier.fillMaxWidth(),enabled=running||(queue.isEmpty()&&needed.all {it.fits(vm.phone.ramBytes)}),onClick={
+                    if(running) {queue=emptyList();needed.forEach(vm.phone::cancelDownload)} else queue=needed.map {it.id}
+                }) {Text(tr(if(running) "common.cancel" else "mobile.local.download"))}
             }
         }
     }

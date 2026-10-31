@@ -1,17 +1,18 @@
 <div align="center">
-  <h1><img src="../../docs/logo.png" alt="" width="36" height="36" /> VoiceStudio</h1>
+  <h1><sub><img src="../../docs/logo.png" alt="" width="36" height="36" /></sub> VoiceStudio</h1>
   <p>
     <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="Trendshift における VoiceStudio の人気ランキングバッジ" width="220" height="48" /></a>
   </p>
-  <p><strong>AI ボイススタジオを、あなたの端末で。</strong><br />
-  646 言語で、音声クローン、ボイスデザイン、吹き替え、音声入力、文字起こし、ナレーション。<br />
-  <sub>ノートパソコン、デスクトップ、サーバー、スマートフォン、タブレットなどで動作</sub></p>
+  <h2>AI ボイススタジオを、あなたの端末で。</h2>
+  <h3>646 言語で、音声クローン、ボイスデザイン、吹き替え、音声入力、文字起こし、ナレーション。</h3>
+  <p>ノートパソコン、デスクトップ、サーバー、スマートフォン、タブレットなどで動作</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">公式サイト</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">ダウンロード</a> ·
     <a href="#はじめに">導入ガイド</a> ·
     <a href="#ドキュメント">ドキュメント</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
+    <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
+    <a href="../../README.md">English</a> · <a href="README_CN.md">简体中文</a> · <a href="README_KO.md">한국어</a> · <a href="README_RU.md">Русский</a>
   </p>
   <p>
     <a href="https://github.com/debpalash/VoiceStudio/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/debpalash/VoiceStudio/ci.yml?branch=main&amp;style=flat-square&amp;label=build&amp;labelColor=27272a" alt="CI ステータス" /></a>
@@ -20,8 +21,14 @@
     <a href="https://supermetry.com"><img src="https://app.supermetry.com/px/zfjiv7psp4ed.svg?c=VoiceStudio" alt="閲覧数" /></a>
   </p>
   <p>
-    <sub><a href="../../README.md">English</a> · <a href="README_CN.md">简体中文</a> · <a href="README_KO.md">한국어</a> · <a href="README_RU.md">Русский</a></sub><br />
-    <sub>戦略スポンサー</sub> &nbsp; <a href="https://supermetry.com/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/supermetry-dark.svg" /><img src="../../docs/sponsors/supermetry.svg" alt="Supermetry" height="22" /></picture></a>
+    <sub>戦略スポンサー</sub><br />
+    <a href="https://github.com/debpalash/OpenGTM?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/opengtm-dark.svg" /><img src="../../docs/sponsors/opengtm.svg" alt="OpenGTM" height="32" align="middle" /></picture></a>
+    <a href="https://github.com/debpalash/Opal?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/opal-dark.svg" /><img src="../../docs/sponsors/opal.svg" alt="Opal" height="32" align="middle" /></picture></a>
+    <a href="https://github.com/velixio/supermetry?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/supermetry-dark.svg" /><img src="../../docs/sponsors/supermetry.svg" alt="Supermetry" height="32" align="middle" /></picture></a>
+  </p>
+  <p>
+    <sub>特別スポンサー</sub><br />
+    <a href="https://app.spicrawl.com/signup?utm_source=voicestudio&amp;utm_medium=github_readme&amp;utm_campaign=special_sponsor&amp;utm_content=logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/spicrawl-dark.svg" /><img src="../../docs/sponsors/spicrawl.svg" alt="Spicrawl" height="32" align="middle" /></picture></a>
   </p>
 </div>
 
@@ -174,13 +181,25 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 VoiceStudio は無料で、背後に有料クラウドはありません。開発を続けられるのはスポンサーのおかげです。スポンサー資金はメンテナーの作業時間、テスト用ハードウェア、コード署名、リリース基盤に充てられます。
 
 <p>
-    <a href="https://supermetry.com/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/supermetry-dark.svg" /><img src="../../docs/sponsors/supermetry.svg" alt="Supermetry" height="48" /></picture></a>
+    <a href="https://github.com/debpalash/OpenGTM?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/opengtm-dark.svg" /><img src="../../docs/sponsors/opengtm.svg" alt="OpenGTM" height="48" align="middle" /></picture></a>
+    <a href="https://github.com/debpalash/Opal?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/opal-dark.svg" /><img src="../../docs/sponsors/opal.svg" alt="Opal" height="48" align="middle" /></picture></a>
+    <a href="https://github.com/velixio/supermetry?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/supermetry-dark.svg" /><img src="../../docs/sponsors/supermetry.svg" alt="Supermetry" height="48" align="middle" /></picture></a>
 </p>
 
-**ここにあなたのロゴを。** Development・Company・Strategic スポンサー枠を月額 100 ドルから募集中です。Community スポンサー（25 ドル）は名前入りのリンクを掲載します。スポンサーシップで得られるのは謝辞の掲載であり、機能ではありません。
+スポンサーシップに関するお問い合わせは、[sponsor@voicestudio.sh](mailto:sponsor@voicestudio.sh) までご連絡ください。
 
 <a href="https://github.com/sponsors/debpalash"><img src="https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=githubsponsors&logoColor=white" alt="GitHub Sponsors でスポンサーになる" /></a>
 [Ko-fi](https://ko-fi.com/debpalash) · [PayPal](https://paypal.me/palashCoder) · [プランと特典](../../SPONSORS.md) · [ロゴの掲載を申し込む](https://github.com/debpalash/VoiceStudio/issues/new?template=sponsor.yml)
+
+## その他のプロジェクト
+
+VoiceStudio の開発者による、その他のオープンソースツール。
+
+- **[OpenGTM](https://opengtm.palash.dev/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=related-projects)** — セルフホストの市場開拓ワークスペースで、企業や担当者を探し、情報を充実させます。 [ソースコード](https://github.com/debpalash/OpenGTM).
+- **[Opal](https://opal.palash.dev/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=related-projects)** — ネイティブのオープンソースプレーヤーで、メディアの再生、ストリーミング、閲覧をひとつに。 [ソースコード](https://github.com/debpalash/Opal).
+- **[Supermetry](https://supermetry.com/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=related-projects)** — セルフホスト型の Cookie を使わない分析で、ウェブサイトやプロダクトの利用状況を把握します。 [ソースコード](https://github.com/velixio/supermetry).
+
+その他のプロジェクト一覧: [debpalash](https://github.com/debpalash?tab=repositories) · [velixio](https://github.com/velixio?tab=repositories)
 
 ## チーム
 
@@ -202,3 +221,7 @@ VoiceStudio は無料で、背後に有料クラウドはありません。開�
 ## ライセンスと責任ある利用
 
 アプリには [AGPL-3.0](../../LICENSE) が適用され、その条件のもとで商用利用もできます。モデルの重み、音声、生成物にはそれぞれ独自のライセンスがあり、モデルマネージャーでモデルごとに確認できます（[一覧](../../docs/licensing/model-inventory.md)）。声のクローンは、必ずその声の持ち主の許可を得てから行ってください。詳細：[LICENSE-NOTICE.md](../../LICENSE-NOTICE.md)。
+
+## コミュニティのチュートリアル
+
+- [VoiceStudio の使い方 — Nafay 3D（YouTube）](https://www.youtube.com/watch?v=I-u-A-oisIU)

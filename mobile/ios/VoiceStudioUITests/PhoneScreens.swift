@@ -1,6 +1,108 @@
 import XCTest
 
 final class PhoneScreens: XCTestCase {
+    @MainActor func testSpeechOffersAllEnginesAndExplainsReferenceOnlyModels() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-smoke", "-AppleLanguages", "(en)"]
+        app.launch(); app.declineConsent()
+        let speech = app.buttons["home.speak"]; app.reveal(speech); speech.tap()
+        let picker = app.buttons["Models"]; app.reveal(picker); picker.tap()
+        for name in ["Kitten", "Kokoro", "OmniVoice", "Piper", "Supertonic 3", "Pocket TTS", "ZipVoice"] {
+            let option = app.buttons.matching(NSPredicate(format: "label == %@", name)).firstMatch
+            app.reveal(option); XCTAssertTrue(option.exists)
+        }
+        // The standard ARM simulator host has 7 GB RAM. Exercise the reference
+        // controls with Pocket; OmniVoice's 8 GB requirement remains enforced.
+        let pocket = app.buttons["choice.option.pocket-tts-int8-en"]; app.reveal(pocket); pocket.tap()
+        XCTAssertTrue(app.staticTexts["Choose a saved voice to use this model. You can import one from Gallery."].exists)
+        XCTAssertEqual(app.buttons["Voice"].value as? String, "Choose a voice")
+        XCTAssertTrue(app.buttons["models.get"].exists)
+        XCTAssertFalse(app.buttons["speak.generate"].exists)
+    }
+    @MainActor func testGalleryBrowsesPresetsBeforeDownloadAndSearchesVoiceNames() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-smoke", "-AppleLanguages", "(en)"]
+        app.launch(); app.declineConsent()
+        let gallery = app.buttons["home.gallery"]
+        app.reveal(gallery); gallery.tap()
+        app.buttons["Gallery"].tap(); app.buttons["choice.option.phone"].tap()
+        let first = app.buttons["gallery.preset.kitten-mini-en-fp16.0"]
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        app.reveal(first); first.tap()
+        XCTAssertTrue(app.buttons["models.get"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["speak.generate"].exists)
+        app.buttons["BackButton"].tap()
+        let search = app.textFields["search.field"]
+        app.reveal(search, swipingDown: true); search.tap(); search.typeText("Voice 103")
+        app.buttons["keyboard.done"].tap()
+        let last = app.buttons["gallery.preset.kokoro-multi-int8.102"]
+        XCTAssertTrue(last.waitForExistence(timeout: 5)); app.reveal(last); last.tap()
+        XCTAssertEqual(app.buttons["Models"].value as? String,"Kokoro")
+        XCTAssertEqual(app.buttons["Voice"].value as? String,"Voice 103")
+        XCTAssertTrue(app.buttons["models.get"].isEnabled)
+    }
+    @MainActor func testCommunityGalleryShowsNamedVoicesAndOpensARealRecipeWithoutPairing() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-smoke", "-AppleLanguages", "(en)"]
+        app.launch(); app.declineConsent()
+        let gallery = app.buttons["home.gallery"]; app.reveal(gallery); gallery.tap()
+        XCTAssertTrue(app.staticTexts["The Librarian"].waitForExistence(timeout: 5))
+        let search = app.textFields["search.field"]
+        search.tap(); search.typeText("Thalia"); app.buttons["keyboard.done"].tap()
+        XCTAssertTrue(app.staticTexts["Thalia"].waitForExistence(timeout: 5))
+        let use = app.buttons["Use voice"]; app.reveal(use); use.tap()
+        let dialog = app.alerts.firstMatch
+        XCTAssertTrue(dialog.waitForExistence(timeout: 5))
+        XCTAssertTrue(dialog.buttons["I have permission"].exists)
+        dialog.buttons["Cancel"].tap()
+        app.reveal(search, swipingDown: true); search.tap(); search.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue,count: 6)+"The Librarian")
+        app.buttons["keyboard.done"].tap()
+        let recipe = app.buttons["gallery.community.use.feat_00_the_librarian"]
+        app.reveal(recipe); recipe.tap()
+        let script = app.descendants(matching: .any).matching(identifier: "design.script").firstMatch
+        XCTAssertTrue(script.waitForExistence(timeout: 5))
+        XCTAssertEqual(script.value as? String,"The valley had been quiet for a hundred years, and tonight, for the first time, something stirred beneath the old stone bridge.")
+        XCTAssertEqual(app.buttons["Gender"].value as? String,"female")
+    }
+    @MainActor func testNavigationKeepsAllDestinationsReachableAfterScrolling() {
+        let app = launch()
+        app.swipeUp()
+        for name in ["Home", "Voices", "Dub", "Dictate", "Settings"] {
+            let tab = app.tabBars.buttons[name]
+            XCTAssertTrue(tab.isHittable, name)
+            XCTAssertGreaterThanOrEqual(tab.frame.height, 44)
+        }
+    }
+    @MainActor func testFirstUseOffersSpeechSetupWithoutLosingTheDraft() {
+        let app = launch()
+        let editor = app.textViews["speak.text"]
+        editor.tap(); editor.typeText("My first speech draft.")
+        app.buttons["keyboard.done"].tap()
+        let download = app.buttons["models.get"]
+        XCTAssertTrue(download.isHittable)
+        XCTAssertTrue(download.isEnabled)
+        XCTAssertEqual(download.label, "Download")
+        XCTAssertFalse(app.buttons["speak.generate"].exists)
+        download.tap()
+        XCTAssertTrue(app.buttons["models.accept"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["models.accept"].isEnabled)
+        app.buttons["Close"].tap()
+        XCTAssertEqual(editor.value as? String, "My first speech draft.")
+    }
+    @MainActor func testHomeCloningShortcutOpensCreationAndCancelReturnsHome() {
+        let app = XCUIApplication(); app.launchArguments = ["--ui-smoke", "-AppleLanguages", "(en)"]
+        app.launch(); app.declineConsent()
+        app.buttons["home.voices"].tap()
+        XCTAssertTrue(app.textFields["voices.clone.name"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Create clone"].isEnabled)
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.buttons["home.speak"].waitForExistence(timeout: 5))
+    }
+    @MainActor func testDictationExplainsSetupBeforeInvitingRecording() {
+        let app = launch()
+        app.tabButton("Dictate").tap()
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "Download a model (")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Tap to start"].exists)
+        XCTAssertFalse(app.buttons["dictate.record"].isEnabled)
+        XCTAssertTrue(app.buttons["models.get"].isEnabled)
+    }
     @MainActor private func launch(extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication(); app.launchArguments = ["--ui-smoke","-AppleLanguages","(en)"] + extra
         app.launch(); app.declineConsent()

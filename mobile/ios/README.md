@@ -1,6 +1,6 @@
 # VoiceStudio for iOS
 
-Native SwiftUI app for iOS 17+, iPhone and iPad. Speak, voice cloning, Dictate and dubbing run downloaded models on the phone, offline. Pairing a VoiceStudio computer is optional and adds its engines. Every task remembers its own phone/computer choice; the segmented control appears only while paired. All five tabs work without pairing. Settings contains Connect and Models.
+Native SwiftUI app for iOS 17+, iPhone and iPad. Speech, voice cloning, Dictate and dubbing run downloaded models on the phone, offline. Pairing a VoiceStudio computer is optional and adds its engines. Every task remembers its own phone/computer choice; the segmented control appears only while paired. All five tabs work without pairing. Settings contains Connect and Models.
 ## Build and checks
 
 Swift 6 Command Line Tools, Python 3.9+ and CMake run the macOS package checks. XcodeGen 2.46 generates the app project. Full Xcode with the iOS SDK is required for the app, native xcframeworks and UI tests. Device signing uses your own development team. The app and Share extension need the `group.sh.voicestudio.mobile` App Group enabled in Signing & Capabilities; use a group registered to your team when customizing the bundle IDs. Both targets must use the same group in their entitlements and `PhoneInbox`/`ShareViewController`. Background GPU continuation also needs the `com.apple.developer.background-tasks.continued-processing.gpu` entitlement in the signed app profile on supported iOS26+ hardware; scheduler approval, not a source entitlement file, determines availability. CPU fallback is explicit and preserves checkpoints. The root `package.json` supplies the app version; there is no mobile version mirror.
@@ -34,7 +34,7 @@ python3 mobile/ios/scripts/fetch-smoke-models.py --accept-test-licences --extend
 mobile/ios/scripts/auxiliary-inference.sh
 ```
 
-The smoke fetcher verifies every file's size and SHA-256 from the actual shared catalogue, then stores files under ignored `.cache/inference-models/`. Inference tests themselves use only these local files. Kitten produces actual audio, Whisper transcribes it back, and Zipformer emits incremental and final text. The same smoke cancels real TTS after observing native progress. The auxiliary script runs three real native workflows sequentially to limit peak memory: OmniVoice/Qwen adapters, phone reference creation through ASR followed by cloned Speak, and the full Whisper → Qwen → OmniVoice audio dub pipeline with verified export and completed-checkpoint resume. These tests do not grant acceptance in the app's model store.
+The smoke fetcher verifies every file's size and SHA-256 from the actual shared catalogue, then stores files under ignored `.cache/inference-models/`. Inference tests themselves use only these local files. Kitten produces actual audio, Whisper transcribes it back, and Zipformer emits incremental and final text. The same smoke cancels real TTS after observing native progress. The auxiliary script runs three real native workflows sequentially to limit peak memory: OmniVoice/Qwen adapters, phone reference creation through ASR followed by cloned Speech, and the full Whisper → Qwen → OmniVoice audio dub pipeline with verified export and completed-checkpoint resume. These tests do not grant acceptance in the app's model store.
 
 With full Xcode, prepare the native frameworks before generating or building the app:
 
@@ -54,9 +54,9 @@ Choose an installed simulator name. The native build verifies pinned artifacts, 
 
 ## Phone inference and models
 
-`VoiceStudioKit/LocalEngine` is the single feature-facing interface: synthesize, clone, transcribe, streamTranscribe and translate. C runtime handles remain on detached workers; an atomic cancellation token crosses tasks. The process-wide native permit and model file lease remain owned by that worker until native cleanup finishes, including after cancellation and for streaming. TTS uses sherpa Kitten/Kokoro, offline ASR uses Whisper, and streaming ASR uses the catalogue's Zipformer family. Streaming preserves endpoint finals, produces a final session transcript and rejects sample-rate changes. Whisper handles long input in 20-second windows while reusing the recognizer. Its native decode has no abort callback: cancellation is checked between windows and the current decode must return before cleanup. TTS and OmniVoice cancel through their native callbacks; llama checks between tokens and through its CPU abort callback. Progress reports loading/running/finished; native APIs without fractional callbacks remain indeterminate during the current step. Every locally generated WAV passes `markSynthetic`, which adds a synthetic-audio INFO comment.
+`VoiceStudioKit/LocalEngine` is the single feature-facing interface: synthesize, clone, transcribe, streamTranscribe and translate. C runtime handles remain on detached workers; an atomic cancellation token crosses tasks. The process-wide native permit and model file lease remain owned by that worker until native cleanup finishes, including after cancellation and for streaming. TTS uses sherpa Kitten/Kokoro/Piper/Supertonic; Pocket TTS and ZipVoice use sherpa reference cloning, offline ASR uses Whisper, and streaming ASR uses the catalogue's Zipformer family. Streaming preserves endpoint finals, produces a final session transcript and rejects sample-rate changes. Whisper handles long input in 20-second windows while reusing the recognizer. Its native decode has no abort callback: cancellation is checked between windows and the current decode must return before cleanup. TTS and OmniVoice cancel through their native callbacks; llama checks between tokens and through its CPU abort callback. Progress reports loading/running/finished; native APIs without fractional callbacks remain indeterminate during the current step. Every locally generated WAV passes `markSynthetic`, which adds a synthetic-audio INFO comment.
 
-Speak, clone, Dictate and Dub remember independent This phone / Computer choices. Without a choice, a compatible installed and accepted phone model wins; otherwise a paired computer wins; otherwise a compact download card offers Get and links to Models. A remembered computer choice falls back to the phone or Models prompt while unpaired, matching Android, and applies again after pairing. Speak offers three compact pickers (voice, model, language), a text box, Generate and the existing playback, waveform, seeking, sharing and saving controls. Its phone voice picker includes presets and saved references; reference voices select OmniVoice rather than preset TTS. Phone generations persist locally and can be played or deleted in Recent. Dictate captures mono PCM16 at 16 kHz and sends it directly to `LocalEngine` on the phone route. Neither phone path requires a computer or makes a network request.
+Speech, clone, Dictate and Dub remember independent This phone / Computer choices. Without a choice, a compatible installed and accepted phone model wins; otherwise a paired computer wins; otherwise a compact download card offers Get and links to Models. A remembered computer choice falls back to the phone or Models prompt while unpaired, matching Android, and applies again after pairing. Speech offers three compact pickers (voice, model, language), a text box, Generate and the existing playback, waveform, seeking, sharing and saving controls. Its phone voice picker includes presets and saved references; reference voices select OmniVoice rather than preset TTS. Phone generations persist locally and can be played or deleted in Recent. Dictate captures mono PCM16 at 16 kHz and sends it directly to `LocalEngine` on the phone route. Neither phone path requires a computer or makes a network request.
 
 Models decodes the generated `mobile/contract/models.json`, bundled at build time alongside the locale catalogs. Unknown fields are ignored. Missing or blank product names, invalid revisions, hashes, unsafe file paths, sizes, duplicate IDs and runtime/capability mismatches are rejected. Cards show product name, size, localized capability and one Download/Cancel/Delete action. Feature screens and model cards hide IDs, repository names and licence codes; licence details are in the acceptance sheet. Languages, licence terms and per-model storage are in the licence sheet. Unsupported RAM requirements stay visible with an explanation and cannot download or load. Models has Download, Cancel, Delete, a total storage counter and an explicit mobile-data toggle.
 
@@ -68,7 +68,7 @@ OmniVoice's `tokenizer` role is its audio codec. The clone adapter takes mono 24
 
 ## Phone voices and dubbing
 
-Voices lists phone and computer voices together, with initials, a location badge, preview and rename/delete actions. The toolbar plus opens cloning: name, consent, record or pick a sample, Create clone. The consent details are behind an info button. Phone creation requires a downloaded, accepted Whisper model; it extracts mono 24-kHz reference audio (0.1–30 seconds), transcribes it and atomically publishes reference PCM/WAV plus transcript, creation time and consent time in private, backup-excluded storage. Empty speech and cancelled creation never publish a voice. Recording stops natively at 29 seconds, keeping the sample within the 30-second cloning limit even if UI timers are delayed. Decoding caps accepted duration-rounding tolerance to exactly 30 seconds. OmniVoice must be downloaded and accepted before Speak can synthesize with that reference. Renaming/deleting a phone voice never changes a computer voice.
+Voices lists phone and computer voices together, with initials, a location badge, preview and rename/delete actions. The toolbar plus opens cloning: name, consent, record or pick a sample, Create clone. The consent details are behind an info button. Phone creation requires a downloaded, accepted Whisper model; it extracts mono 24-kHz reference audio (0.1–30 seconds), transcribes it and atomically publishes reference PCM/WAV plus transcript, creation time and consent time in private, backup-excluded storage. Empty speech and cancelled creation never publish a voice. Recording stops natively at 29 seconds, keeping the sample within the 30-second cloning limit even if UI timers are delayed. Decoding caps accepted duration-rounding tolerance to exactly 30 seconds. OmniVoice must be downloaded and accepted before Speech can synthesize with that reference. Renaming/deleting a phone voice never changes a computer voice.
 
 Phone Dub follows Source → Languages → Voice. Pick a local audio/video file, choose up to 20 target languages and either the original speaker or a saved phone voice, give voice permission and tap Dub. More contains model choices and audio-only export. Pasted links remain a computer workflow: phone processing never fetches media from a URL. The three required models (Whisper, Qwen translation and OmniVoice) must be installed, fit the device and have current licence acceptance.
 
@@ -84,7 +84,7 @@ The app icon and launch logo are generated from `docs/logo.png` by `scripts/gene
 
 Connect accepts the desktop Network QR or manual URL/PIN/API key. Health validation rejects unrelated services. API keys are exchanged once for bearer sessions and never saved. Keychain uses `AfterFirstUnlockThisDeviceOnly`; host metadata and job checkpoints use local preferences. PIN-only pairing authorizes HTTP consumption, not remote dictation. Disconnect revokes bearer sessions and clears local credentials even when the host is unavailable. Failed pairing preserves the current host; host changes cancel old operations and clear host-scoped media/data. Redirects are rejected for every paired-host request. Public hosts require HTTPS and system certificate validation; private/LAN/Tailnet hosts may use HTTP.
 
-Computer Speak retains engine/language/profile choices, generation, authenticated playback, waveform/seeking, sharing/saving and history star/delete. Voices retains search, previews, consent-gated recording/file cloning, rename and delete. Dub retains device file/URL ingest, multiple target tracks, voice selection, persisted upload/job monitoring, abort/history/download/share and completion notifications. Computer Dictate uses authenticated WebSocket tickets, PCM16/16 kHz and EOF finalization. Remote or undiscoverable LLM translation destinations require equal-weight consent per host/job/provider; only verified host-loopback endpoints avoid this prompt.
+Computer Speech retains engine/language/profile choices, generation, authenticated playback, waveform/seeking, sharing/saving and history star/delete. Voices retains search, previews, consent-gated recording/file cloning, rename and delete. Dub retains device file/URL ingest, multiple target tracks, voice selection, persisted upload/job monitoring, abort/history/download/share and completion notifications. Computer Dictate uses authenticated WebSocket tickets, PCM16/16 kHz and EOF finalization. Remote or undiscoverable LLM translation destinations require equal-weight consent per host/job/provider; only verified host-loopback endpoints avoid this prompt.
 
 Background URLSession persists computer uploads and completion receipts through relaunch. A refused background session falls back to a foreground transfer with retained staging; that fallback needs app runtime. BGProcessing monitoring is opportunistic and resumes at the next foreground/granted runtime; there is no push relay or guarantee while force-quit. Original media filenames persist through picker display, multipart staging, checkpoints and history. The host pipeline follows upload/ingest → prep events → transcribe → translate → generate → render events; backend task IDs and dub media job IDs are distinct. A crash between host acceptance and client checkpoint persistence can require host inspection before retrying because render has no client idempotency key.
 
@@ -114,12 +114,12 @@ the synthetic-audio metadata using the platform's real encoder and decoder.
 
 All six linked-framework workflows pass on iOS 27.1 with zero skips: native loading,
 video export, Kitten/Whisper/Zipformer inference and cancellation, OmniVoice cloning
-with French translation, persisted phone voices and cloned Speak, and complete
+with French translation, persisted phone voices and cloned Speech, and complete
 audio dubbing with checkpoint reuse. OmniVoice executes on Metal; llama reports zero offloaded GPU
 layers and uses its CPU path in this simulator run. These results are separate from the macOS
 inference runs below and do not establish physical-phone memory or thermal limits.
 
-Local validation on 2026-10-18 passes the Swift 6 package suite (optional inference tests run separately), resource checks, pinned iOS xcframework builds, SwiftUI compilation, the simulator app build, and the unsigned iPhone Release build. Shared contract, theme-token and contact-email checks also pass. Separate opt-in runs exercise all three actual native libraries, Kitten/Whisper/Zipformer inference, phone reference creation and cloned Speak, and the complete audio dub workflow with native translation/cloning and checkpoint reuse. The complete native audio dub smoke passes its French-output, marked export and checkpoint-reuse assertions. Standalone translation, voice creation and cloned Speak pass. The tiny Whisper model can misrecognize the short synthetic source; these tests verify execution and pipeline completion rather than transcription accuracy. The tiny Zipformer recognizes the ending phrase of the synthetic smoke sentence; this is an inference check, not a transcription-accuracy claim.
+Local validation on 2026-10-18 passes the Swift 6 package suite (optional inference tests run separately), resource checks, pinned iOS xcframework builds, SwiftUI compilation, the simulator app build, and the unsigned iPhone Release build. Shared contract, theme-token and contact-email checks also pass. Separate opt-in runs exercise all three actual native libraries, Kitten/Whisper/Zipformer inference, phone reference creation and cloned Speech, and the complete audio dub workflow with native translation/cloning and checkpoint reuse. The complete native audio dub smoke passes its French-output, marked export and checkpoint-reuse assertions. Standalone translation, voice creation and cloned Speech pass. The tiny Whisper model can misrecognize the short synthetic source; these tests verify execution and pipeline completion rather than transcription accuracy. The tiny Zipformer recognizes the ending phrase of the synthetic smoke sentence; this is an inference check, not a transcription-accuracy claim.
 
 `VoiceStudioUITests/PhoneScreens.swift` covers unpaired screens, compact download cards, product names, licence consent, picker selection, dictation action placement and collapsed details; `ScreenshotTour` captures phone and computer screens plus palette/language pickers as retained Xcode test attachments. Validation on 2026-10-19 under full Xcode exercises 20 UI scenarios on the iPhone 17 Pro simulator with iOS 26.5 across a full run and targeted reruns, including Home navigation, collapsed-tab expansion, dark/light screenshots, destructive phone-history actions and remembered Clone routing. Targeted presentation checks also pass on iOS 27.1. The 116-test Kit suite also passes, with five opt-in inference scenarios skipped in that run. The tests cover consent, optional pairing, generation/playback, phone download and licence gates, voice/dub screens, keyboard handling, search, and theme selection. They support both bottom tabs and adaptive side navigation. Download cards preserve separate accessibility identities for opening Models and starting a download. Physical-device model RAM/thermal behavior, download/cellular transitions, microphone/local-network/QR permissions, VoiceOver across all screens, background uploads and real-host end-to-end workflows still require device validation. A signed development Release build was installed and launched on the connected iPhone running iOS 27.0.1 on 2026-10-19, with compact leading tab titles and Settings/Dictate visually checked. macOS inference does not prove iOS execution.
 
@@ -128,13 +128,13 @@ Contract interpretations: Get starts a queue with separate per-model acceptance;
 ## Electron-style mobile Home
 
 Home is the first workspace after consent, using Electron's bundled signal-field
-artwork, shared palette roles, Inter and card hierarchy. Speak, cloning, dubbing,
+artwork, shared palette roles, Inter and card hierarchy. Speech, cloning, dubbing,
 dictation, models and computer pairing have working shortcut cards. Generated
 audio, saved voices and recent dubbing projects come from the actual phone
 libraries, with paired-computer entries alongside them. Audio opens its player,
-saved phone voices select the reference in Speak, and projects open their
+saved phone voices select the reference in Speech, and projects open their
 outputs and resume controls. Empty states are localized and downloads remain
-explicit. Home replaces Speak in the five-item navigation; Speak opens from Home.
+explicit. Home replaces Speech in the five-item navigation; Speech opens from Home.
 Desktop-only workspaces are not advertised as available mobile features.
 
 ## Native iOS presentation
@@ -145,14 +145,14 @@ sheet geometry. The Home wordmark and bundled Electron artwork retain VoiceStudi
 identity and generated palette choices. Content scrolls behind native chrome;
 All five tabs use compact leading navigation titles, with Home aligned opposite
 Projects, and a smaller, Dynamic Type-aware Home wordmark.
-Speak and Dictate keep their main actions inside the bottom safe area. Clone
+Speech and Dictate keep their main actions inside the bottom safe area. Clone
 creation and QR scanning use full-screen workspaces.
 
 Voices presents the library with one creation action; search appears when voices
 exist, and model setup belongs to the creation flow. Clone groups related inputs into
 native form sections. Dub uses one source picker and a compact group for target
 languages, voice and permission, with advanced settings collapsed and one standard
-native Start dubbing action. Speak uses labeled voice/model/language rows with
+native Start dubbing action. Speech uses labeled voice/model/language rows with
 readable values and an overlaid editor placeholder, and Dictate groups recording,
 copying and sharing in one bottom control row. Model download notices use compact
 name/size summaries. Clone remembers its phone/computer choice between presentations.
@@ -165,8 +165,8 @@ visible but disabled until confirmation. Close never accepts or starts a downloa
 Language pickers have Cancel/Confirm actions and discard unconfirmed drafts.
 Large Dynamic Type, native reduced-transparency behavior and reduced-motion
 recording feedback are supported.
-Newer system materials follow the installed iOS version; tab-bar minimization is
-enabled on iOS 26 and later. Content radii and the Home wordmark size are exported
+Newer system materials follow the installed iOS version; the full labeled tab bar
+stays visible while scrolling on iOS 26 and later. Content radii and the Home wordmark size are exported
 from Electron's theme alongside the shared palette. Smoke networking and credentials
 are compiled only into Debug builds for UI automation.
 
@@ -185,7 +185,8 @@ bundled in `Resources/Contributors.xcassets`, mirror
 `scripts/update_contributors.py` and are never fetched at runtime; tapping one opens the
 profile in the browser. Dub is one big source card with an animated vector mark
 (`DubGlyph`, static under Reduce Motion), language and voice tiles, a consent row and live
-job cards. The bottom dock is icon-only; tab names remain accessibility labels.
+job cards. The bottom dock keeps visible tab names alongside its icons and exposes
+the same names to accessibility.
 
 The phone screenshot tour scopes Close to each native sheet and waits for the
 sheet to disappear before interacting with the underlying screen. Settings rows
@@ -214,3 +215,55 @@ and press Option-Command-Return; Run (Command-R) is still a full rebuild.
 
 Home identifies debpalash and velixio with a small core-maintainer star on their
 avatars; VoiceOver announces the localized role.
+
+### Physical iPhone first-use review
+
+The 2026-10-31 iPhone 18 Pro review found hidden navigation labels, an extra
+library step in Home’s cloning shortcut, disabled speech generation before model
+setup, and dictation inviting a tap on a disabled microphone. Navigation now
+keeps visible labels, Home opens clone creation directly, Speech pins model setup
+before generation, and Dictate explains the required download. The same first-use
+flows are implemented on Android. Licence acceptance remains explicit and closing
+a review preserves the speech draft without starting a download.
+
+Gallery opens the public [community catalogue](https://github.com/debpalash/omnivoice-gallery)
+directly on the phone: named design recipes, recorded voices, packs and language
+filters, with author and licence credits. A bundled snapshot and validated cache
+keep browsing useful offline; opening Gallery refreshes its public manifest.
+Recipes prefill native Voice Design. Recordings download only on Play or a
+permission-confirmed import, with bounded HTTPS downloads and SHA-256 verification.
+No model downloads or inference start while browsing. This phone keeps engine
+presets; My computer keeps the paired library. Android implements the same flows.
+
+Physical iPhone 18 Pro verification on 2026-10-31 confirms 50 named community
+entries without pairing/models, Thalia playback, an explicit Cancel/permission
+alert, and The Librarian's correct script and traits in Voice Design. With owner approval, the 166.9 MB Kitten selection was then downloaded and used
+for real speech generation: a 9.0-second, 24 kHz mono WAV appeared in about seven
+seconds including UI overhead, and playback ran on the phone without a paired
+computer. Two presets produced different non-silent audio; pause, resume and
+end-of-file replay passed, and the saved WAV retained its synthetic marker.
+Community design/cloning inference still needs its separate model setup.
+
+Speech exposes all seven phone speech engines in its Models picker. Preset engines
+can generate without a saved voice; OmniVoice, Pocket TTS and ZipVoice require a
+saved reference. Voice Design stays a separate explicit task. Selecting
+a preset-only engine clears an incompatible reference. Downloads stay explicit
+and licence-gated; no user test recordings ship with the model packs. ZipVoice's
+vocoder, pronunciation data and lexicon are size/hash verified with its weights.
+Voice Design remains limited to OmniVoice. The same choices ship on Android.
+
+For the four new packs, explicitly prepare fixtures with
+`python3 mobile/ios/scripts/fetch-smoke-models.py --accept-test-licences --speech-models`.
+Run `realSpeechModelsProduceMarkedAudioOffline` with `VOICESTUDIO_REAL_SPEECH=1`,
+`SHERPA_ONNX_LIBRARY` pointing to the pinned macOS runtime. The tests generate
+their own Piper reference and decode it to 24 kHz for cloning. These fixture receipts never accept terms in the phone app.
+
+OmniVoice Speech never falls back to bare voice design when a reference is
+missing. That path produced non-speech for the short “Hi hello” repro on both the
+phone and CPU. The phone pack now uses Q8_0 base / F32 codec (1.4 GB; 8 GB RAM).
+Its legacy catalogue identifier remains stable; previous model files, voice data
+and licence acceptance are preserved. The native regression runs actual saved-
+voice generation through Whisper and rejects missing or repeated words, beyond
+checking only PCM energy. Use `--omni-speech` with the fixture fetcher to prepare
+the pack and `VOICESTUDIO_REAL_OMNI_SPEECH=1` with both native libraries to run
+`realOmniSavedVoiceSpeechIsRecognizableWithoutRepeats`.

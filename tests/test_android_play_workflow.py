@@ -1,4 +1,9 @@
 from pathlib import Path
+import os
+import shutil
+import subprocess
+import zipfile
+import xml.etree.ElementTree as ET
 
 import pytest
 import yaml
@@ -8,6 +13,18 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "android-play-internal.yml"
 GRADLE = ROOT / "mobile" / "android" / "app" / "build.gradle.kts"
 MOBILE = ROOT / ".github" / "workflows" / "mobile.yml"
+
+
+@pytest.mark.parametrize("feature", ["camera", "camera.any", "camera.autofocus", "microphone"])
+def test_play_does_not_require_optional_recording_or_qr_hardware(feature):
+    """Text speech, imported media and manual pairing work without capture hardware."""
+    android = "{http://schemas.android.com/apk/res/android}"
+    manifest = ET.parse(ROOT / "mobile/android/app/src/main/AndroidManifest.xml").getroot()
+    features = {node.get(android + "name"): node.get(android + "required")
+                for node in manifest.findall("uses-feature")}
+    assert features.get("android.hardware." + feature) == "false", (
+        "Camera permission also implies rear camera/autofocus; explicitly opt out of Play filtering"
+    )
 
 
 def load(path):
@@ -35,6 +52,77 @@ def test_workflow_uploads_only_a_verified_release_bundle_to_internal():
     assert cleanup["name"] == "Remove upload keystore" and cleanup["if"] == "always()"
     build = steps[names.index("Build signed bundle")]
     assert "scripts/android_version_code.py" in build["run"] and ":app:bundleRelease" in build["run"]
+
+
+def test_play_installs_the_native_build_toolchain():
+    """The store workflow must provide the same pinned toolchain as releases."""
+    steps = load(WORKFLOW)["jobs"]["play-internal"]["steps"]
+    setup = next(step for step in steps if step.get("name") == "NDK and CMake")
+    assert '"ndk;27.1.12297006"' in setup["run"]
+    assert '"cmake;3.22.1"' in setup["run"]
+    assert steps.index(setup) < next(i for i, step in enumerate(steps) if step.get("name") == "Build signed bundle")
+
+
+@pytest.fixture(scope="module")
+def signed_bundle_fixtures(tmp_path_factory):
+    """Build real signed archives, including a second trusted co-signer."""
+    if not all(shutil.which(command) for command in ("keytool", "jarsigner")):
+        pytest.skip("JDK signing tools are required")
+    root = tmp_path_factory.mktemp("play-bundle-signatures")
+    for name, subject in (("upload", "Play upload fixture"), ("debug", "Android Debug"), ("other", "Other upload fixture")):
+        subprocess.run([
+            "keytool", "-genkeypair", "-keystore", str(root / f"{name}.jks"),
+            "-storepass", "fixture-password", "-keypass", "fixture-password",
+            "-alias", "upload", "-keyalg", "RSA", "-keysize", "2048",
+            "-validity", "10000", "-dname", f"CN={subject}",
+        ], check=True, capture_output=True)
+    unsigned = root / "unsigned.aab"
+    with zipfile.ZipFile(unsigned, "w") as bundle:
+        bundle.writestr("base/manifest/AndroidManifest.xml", "fixture manifest")
+    for name in ("upload", "debug", "other"):
+        bundle = root / f"{name}.aab"
+        shutil.copyfile(unsigned, bundle)
+        subprocess.run([
+            "jarsigner", "-keystore", str(root / f"{name}.jks"),
+            "-storepass", "fixture-password", str(bundle), "upload",
+        ], check=True, capture_output=True)
+    cosigned = root / "cosigned.aab"
+    shutil.copyfile(root / "upload.aab", cosigned)
+    subprocess.run([
+        "jarsigner", "-keystore", str(root / "other.jks"), "-storepass", "fixture-password",
+        "-sigfile", "OTHER", str(cosigned), "upload",
+    ], check=True, capture_output=True)
+    subprocess.run([
+        "keytool", "-exportcert", "-keystore", str(root / "other.jks"), "-storepass", "fixture-password",
+        "-alias", "upload", "-file", str(root / "other.cer"),
+    ], check=True, capture_output=True)
+    shutil.copyfile(root / "upload.jks", root / "extra-trusted.jks")
+    subprocess.run([
+        "keytool", "-importcert", "-noprompt", "-keystore", str(root / "extra-trusted.jks"),
+        "-storepass", "fixture-password", "-alias", "extra", "-file", str(root / "other.cer"),
+    ], check=True, capture_output=True)
+    return root
+
+
+@pytest.mark.parametrize("kind", ["upload", "unsigned", "tampered", "debug", "other", "cosigned"])
+def test_workflow_verifies_its_actual_upload_key(signed_bundle_fixtures, tmp_path, kind):
+    """Accept only an intact archive signed solely by the configured upload key."""
+    # Run the workflow's real verification against signed archives. Play upload
+    # certificates are normally self-signed; the expected keystore is the trust anchor.
+    fixture = signed_bundle_fixtures
+    target = tmp_path / "app/build/outputs/bundle/release/app-release.aab"
+    target.parent.mkdir(parents=True)
+    shutil.copyfile(fixture / f"{'upload' if kind == 'tampered' else kind}.aab", target)
+    keystore = {"debug": "debug", "cosigned": "extra-trusted"}.get(kind, "upload")
+    shutil.copyfile(fixture / f"{keystore}.jks", tmp_path / "upload.jks")
+    if kind == "tampered":
+        with zipfile.ZipFile(target, "a") as bundle:
+            bundle.writestr("injected.txt", "unsigned content")
+    step = next(step for step in load(WORKFLOW)["jobs"]["play-internal"]["steps"] if step.get("name") == "Verify bundle signature")
+    result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", step["run"]],
+        cwd=tmp_path, capture_output=True, text=True,
+        env={**os.environ, "RUNNER_TEMP": str(tmp_path), "KEYSTORE_PASSWORD": "fixture-password", "KEY_ALIAS": "upload"})
+    assert (result.returncode == 0) == (kind == "upload"), result.stdout + result.stderr
 
 
 def test_signed_android_workflows_share_build_number_source_and_serialization():

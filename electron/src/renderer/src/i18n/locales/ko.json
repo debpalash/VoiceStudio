@@ -3429,7 +3429,7 @@
     "add_details": "세부 정보 추가",
     "step_start": "시작",
     "step_agent": "에이전트",
-    "step_speak": "말하기",
+    "step_speak": "음성 합성",
     "step_condition": "조건",
     "step_call": "통화",
     "step_end": "종료",
@@ -3796,7 +3796,7 @@
       "brought_by": "제공"
     },
     "tabs": {
-      "speak": "말하기",
+      "speak": "음성 합성",
       "voices": "음성",
       "dub": "더빙",
       "dictate": "받아쓰기",
@@ -3844,7 +3844,8 @@
       "unstar": "별표 해제",
       "engine_unavailable": "이 엔진을 사용할 수 없습니다. 컴퓨터에서 설치 상태를 확인하세요.",
       "voice_default": "기본 음성(엔진 프리셋)",
-      "engine_no_cloning": "이 엔진은 참조 오디오를 사용할 수 없습니다. 음성 복제를 지원하는 엔진을 선택하거나 기본 음성을 사용하세요."
+      "engine_no_cloning": "이 엔진은 참조 오디오를 사용할 수 없습니다. 음성 복제를 지원하는 엔진을 선택하거나 기본 음성을 사용하세요.",
+      "reference_required": "이 모델을 사용하려면 저장된 음성을 선택하세요. 갤러리에서 가져올 수 있습니다."
     },
     "voices": {
       "search": "음성 검색",
@@ -4073,7 +4074,7 @@
       "preset_voice": "음성 {{number}}",
       "transfer": "{{total}} 중 {{received}}",
       "privacy": "기기 내 작업은 이 휴대폰 안에서만 처리됩니다. 모델 다운로드, 직접 보내기로 한 신고, 페어링한 컴퓨터만 네트워크를 사용합니다.",
-      "computer_feature": "이 기능은 현재 컴퓨터에서 실행됩니다. 페어링 없이도 이 휴대폰에서 말하기와 받아쓰기를 사용할 수 있습니다.",
+      "computer_feature": "이 기능은 현재 컴퓨터에서 실행됩니다. 페어링 없이도 이 휴대폰에서 음성 합성과 받아쓰기를 사용할 수 있습니다.",
       "accepted": "라이선스 동의함",
       "not_accepted": "라이선스 동의 안 함",
       "receipt": "{{action}} · {{time}} · 앱 {{version}} · 약관 {{fingerprint}}"
@@ -4374,6 +4375,18 @@
       "send": "보내기",
       "export": "내보내기",
       "import": "가져오기"
+    },
+    "support": {
+      "donate": "후원하기",
+      "other_apps": "다른 앱",
+      "other_apps_intro": "VoiceStudio를 지원하는 개발팀과 후원사의 프로젝트입니다.",
+      "gift_note": "후원은 선택 사항입니다. 후원금은 개발을 지원하며 기능, 콘텐츠 또는 서비스를 잠금 해제하지 않습니다.",
+      "pro_scope": "Pro는 컴퓨터용 VoiceStudio에 제작 도구를 추가합니다. 휴대전화 앱의 창작 도구는 계속 무료입니다.",
+      "opengtm": "오픈 소스 영업 자동화로 잠재 고객을 찾고 조사하세요.",
+      "opal": "나만의 라이브러리를 위한 오픈 소스 미디어 플레이어와 브라우저입니다.",
+      "supermetry": "직접 호스팅하는 개인정보 보호 중심 웹 분석입니다.",
+      "spicrawl": "AI 에이전트를 위해 웹 페이지를 Markdown이나 구조화된 데이터로 변환합니다.",
+      "special_sponsor": "특별 후원사"
     }
   },
   "failureCause": {

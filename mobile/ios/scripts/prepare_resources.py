@@ -30,6 +30,12 @@ def prepare_brand_assets(output):
     contributors = runpy.run_path(str(ROOT / "scripts/prepare_mobile_contributors.py"))
     contributors["prepare_ios_icons"](ROOT, output)
 
+    for image in sorted((ROOT / "mobile/contract/support-artwork").glob("*.png")):
+        directory = output / ("support-" + image.stem + ".imageset")
+        directory.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(image, directory / image.name)
+        (directory / "Contents.json").write_text(json.dumps({"images": [{"filename": image.name, "idiom": "universal", "scale": "3x"}], "info": {"version": 1, "author": "xcode"}}), encoding="utf-8")
+
     artwork = output / "HomeArtwork.imageset"
     artwork.mkdir(parents=True, exist_ok=True)
     subprocess.run(["sips", "-s", "format", "png", str(ROOT / "electron/public/signal-field.webp"), "--out", str(artwork / "artwork.png")], check=True, stdout=subprocess.DEVNULL)
@@ -133,7 +139,10 @@ def prepare(output, info):
         raise ValueError("Generate mobile/contract/models.json before building the app")
     shutil.copy2(model_catalogue, catalogs / "models.json")
     shutil.copy2(ROOT / "mobile/contract/design.json", catalogs / "design.json")
+    shutil.copytree(ROOT / "mobile/contract/tts", catalogs / "tts", dirs_exist_ok=True)
+    shutil.copy2(ROOT / "mobile/contract/community-gallery.json", catalogs / "community-gallery.json")
     shutil.copy2(ROOT / "mobile/contract/maintainer-cards.json", catalogs / "maintainer-cards.json")
+    shutil.copy2(ROOT / "mobile/contract/support.json", catalogs / "support.json")
     english = json.loads((source / "en.json").read_text(encoding="utf-8"))
     additions = sorted((ROOT / "mobile/contract").glob("strings*.en.json"))
     for path in additions:

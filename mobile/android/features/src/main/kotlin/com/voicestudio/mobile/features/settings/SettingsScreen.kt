@@ -15,7 +15,7 @@ import com.voicestudio.mobile.features.*
 import com.voicestudio.mobile.designsystem.*
 import com.voicestudio.mobile.l10n.L10n
 
-@Composable fun SettingsScreen(vm:StudioViewModel,version:String,onConnect:()->Unit = {},onModels:()->Unit = {}) {
+@Composable fun SettingsScreen(vm:StudioViewModel,version:String,onConnect:()->Unit = {},onModels:()->Unit = {},onSupport:(String)->Unit = {}) {
     val prefs by vm.preferences.collectAsState()
     val state by vm.state.collectAsState()
     val context=LocalContext.current
@@ -63,6 +63,7 @@ import com.voicestudio.mobile.l10n.L10n
             Toggle("mobile.simple.analytics",prefs.consent==true) {vm.consent(it)}
         }
         Heading("mobile.settings.about")
+        SupportSettingsLinks(onSupport)
         Group {
             SettingsLink("mobile.android.app_name",version) {licenses=true}
             HorizontalDivider(color=role("border"))

@@ -61,12 +61,15 @@ kotlin { jvmToolchain(21); compilerOptions { jvmTarget.set(org.jetbrains.kotlin.
 val bundleCatalogs by tasks.registering {
     val catalogs = repository.resolve("electron/src/renderer/src/i18n/locales")
     val contracts = repository.resolve("mobile/contract")
+    inputs.dir(contracts.resolve("tts"))
+    inputs.file(contracts.resolve("support.json"))
+    inputs.dir(contracts.resolve("support-artwork"))
     inputs.dir(catalogs)
     inputs.file(repository.resolve("electron/public/signal-field.webp"))
     inputs.file(repository.resolve("electron/src/shared/languages.json"))
     inputs.file(repository.resolve("LICENSE"))
     inputs.dir(repository.resolve("electron/src/renderer/src/features/home/contributors"))
-    inputs.files(fileTree(contracts) { include("strings*.en.json", "tokens.json", "openapi.json", "models.json", "design.json", "maintainer-cards.json") })
+    inputs.files(fileTree(contracts) { include("strings*.en.json", "tokens.json", "openapi.json", "models.json", "design.json", "community-gallery.json", "maintainer-cards.json") })
     outputs.dir(layout.buildDirectory.dir("generated/catalogs"))
     outputs.dir(layout.buildDirectory.dir("generated/catalogResources"))
     doLast {
@@ -83,8 +86,12 @@ val bundleCatalogs by tasks.registering {
         catalogs.listFiles()!!.filter { it.extension == "json" }.forEach { it.copyTo(out.resolve(it.name), overwrite = true) }
         contracts.listFiles()!!.filter { it.name.startsWith("strings") && it.name.endsWith(".en.json") }.forEach { it.copyTo(assets.resolve(it.name), overwrite = true) }
         contracts.resolve("models.json").copyTo(assets.resolve("models.json"), overwrite = true)
+        contracts.resolve("tts").copyRecursively(assets.resolve("tts"), overwrite=true)
         contracts.resolve("design.json").copyTo(assets.resolve("design.json"), overwrite = true)
+        contracts.resolve("community-gallery.json").copyTo(assets.resolve("community-gallery.json"), overwrite = true)
         contracts.resolve("maintainer-cards.json").copyTo(assets.resolve("maintainer-cards.json"), overwrite = true)
+        contracts.resolve("support.json").copyTo(assets.resolve("support.json"), overwrite = true)
+        contracts.resolve("support-artwork").copyRecursively(assets.resolve("support-artwork"), overwrite = true)
         contracts.resolve("tokens.json").copyTo(assets.resolve("tokens.json"), overwrite = true)
         val en = JsonSlurper().parse(catalogs.resolve("en.json")) as Map<*, *>
         val label = (en["app"] as Map<*, *>)["name"].toString()

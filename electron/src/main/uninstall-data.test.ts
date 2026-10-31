@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -13,7 +13,7 @@ afterEach(async () => {
 });
 
 async function fixture(): Promise<UninstallRoots & { root: string }> {
-  const root = await mkdtemp(join(tmpdir(), 'VoiceStudio-uninstall-test-'));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'VoiceStudio-uninstall-test-')));
   created.push(root);
   const roots = {
     root,

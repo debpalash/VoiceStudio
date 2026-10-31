@@ -22,7 +22,7 @@ class ReviewRegressionTest {
     private var hashes=0
     private fun downloads(server: MockWebServer, free: ()->Long={Long.MAX_VALUE})=ModelDownloads(
         File(temporary.root,"models"),LicenceGate(File(temporary.root,"licences"),"test"),8_000_000_000,{true},free,
-        OkHttpClient(),listOf(server.url("/").toString()),true,{ file,check -> hashes++;sha256(file,check) })
+        OkHttpClient(),listOf(server.url("/").toString()),true,digest={ file,check -> hashes++;sha256(file,check) })
     @Test fun resumeCountsOnlyRemainingBytesAndDoesNotTrustCorruptCompletedFiles()=runTest {
         MockWebServer().use { server -> server.start()
             target().apply {parentFile!!.mkdirs();writeBytes(content)}

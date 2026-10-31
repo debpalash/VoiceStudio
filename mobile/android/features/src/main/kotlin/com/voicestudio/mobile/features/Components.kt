@@ -340,12 +340,12 @@ fun rowIcon(key: String): ImageVector = when {
     }
 }
 
-@Composable fun DictationTranscript(text:String) {
+@Composable fun DictationTranscript(text:String,emptyDescription:String?=null) {
     if(text.isEmpty()) Column(Modifier.fillMaxWidth().heightIn(min=240.dp),horizontalAlignment=Alignment.CenterHorizontally,
         verticalArrangement=Arrangement.spacedBy(8.dp,Alignment.CenterVertically)) {
         Icon(VSIcons.Wave,null,Modifier.size(40.dp),tint=role("textMuted"))
         Text(tr("mobile.ios.transcript"),style=MaterialTheme.typography.titleMedium)
-        Text(tr("mobile.dictate.tap_to_start"),style=MaterialTheme.typography.bodyMedium,color=role("textMuted"))
+        Text(emptyDescription ?: tr("mobile.dictate.tap_to_start"),style=MaterialTheme.typography.bodyMedium,color=role("textMuted"),textAlign=androidx.compose.ui.text.style.TextAlign.Center)
     } else androidx.compose.foundation.text.selection.SelectionContainer {
         Text(text,modifier=Modifier.fillMaxWidth().heightIn(min=240.dp).semantics {liveRegion=LiveRegionMode.Polite},style=MaterialTheme.typography.bodyLarge)
     }

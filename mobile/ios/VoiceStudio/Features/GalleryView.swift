@@ -4,7 +4,7 @@ import VoiceStudioKit
 struct GalleryView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.vsTheme) private var theme
-    @State private var location = "phone"
+    @State private var location = "community"
     @State private var query = ""
     @State private var items: [CommunityItem] = []
     @State private var total = 0
@@ -16,17 +16,34 @@ struct GalleryView: View {
     @State private var copyTarget: CommunityItem?
     @State private var copied: PhoneVoice?
     @State private var copyTask: Task<Void,Never>?
+    private var phoneModels: [PhoneModel] { model.phone.models.filter { $0.capability == .tts } }
+    private func speakers(_ item: PhoneModel) -> [Int] {
+        let all = Array(0..<max(1,min(128,Int(item.config["num_speakers"]?.number ?? 1))))
+        let search = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if search.isEmpty || item.name.localizedCaseInsensitiveContains(search) { return all }
+        return all.filter { model.t("mobile.local.preset_voice",["number": String($0+1)]).localizedCaseInsensitiveContains(search) }
+    }
     var body: some View {
         Page {
-            ChoicePicker(label: model.t("mobile.local.run_on"),selection: $location,options: [SelectionOption(id: "phone",title: model.t("mobile.local.this_phone")),SelectionOption(id: "computer",title: model.t("mobile.local.my_computer"))])
+            ChoicePicker(label: model.t("nav.gallery"),selection: $location,options: [SelectionOption(id: "community",title: model.t("gallery.zone_community")),SelectionOption(id: "phone",title: model.t("mobile.local.this_phone")),SelectionOption(id: "computer",title: model.t("mobile.local.my_computer"))])
             SearchField(prompt: model.t("mobile.voices.search"),text: $query)
-            if location == "phone" {
-                ForEach(model.phone.models.filter { $0.capability == .tts && model.phone.ready($0) }) { item in
-                    if query.isEmpty || item.name.localizedCaseInsensitiveContains(query) {
+            if location == "community" {
+                CommunityGalleryView(query: query)
+            } else if location == "phone" {
+                Text(model.t("gallery.all_voices",["count": String(phoneModels.reduce(0) { $0 + speakers($1).count })])).font(.headline)
+                if phoneModels.allSatisfy({ speakers($0).isEmpty }) { SearchEmptyState(query: query) }
+                ForEach(phoneModels) { item in
+                    if !speakers(item).isEmpty {
                         Card {
                             Text(item.name).font(.headline)
-                            ForEach(0..<min(128,Int(item.config["num_speakers"]?.number ?? 1)),id: \.self) { speaker in
-                                NavigationLink { SpeakView(initialPhonePreset: speaker,initialPhoneModelID: item.id) } label: { Label(model.t("mobile.local.preset_voice",["number": String(speaker+1)]),systemImage: "waveform") }.frame(minHeight: 44)
+                            if model.phone.ready(item) {
+                                Label(model.t("mobile.ios.status_ready"),systemImage: "checkmark.circle").font(.caption).foregroundStyle(theme.color("textMuted"))
+                            } else {
+                                LocalDownloadPrompt(items: [item],feature: "nav.gallery")
+                            }
+                            ForEach(speakers(item),id: \.self) { speaker in
+                                NavigationLink { SpeakView(initialPhonePreset: speaker,initialPhoneModelID: item.id) } label: { Label(model.t("mobile.local.preset_voice",["number": String(speaker+1)]),systemImage: "waveform").frame(maxWidth: .infinity,minHeight: 44,alignment: .leading) }
+                                    .accessibilityIdentifier("gallery.preset.\(item.id).\(speaker)")
                             }
                         }
                     }
@@ -34,6 +51,8 @@ struct GalleryView: View {
                 NavigationLink(model.t("mobile.local.models")) { ModelsView() }
                 NavigationLink(model.t("mobile.tabs.voices")) { VoicesView() }
             } else if model.connection.client == nil {
+                Text(model.t("gallery.community_explainer")).font(.subheadline).foregroundStyle(theme.color("textMuted"))
+                Text(model.t("mobile.local.pair_settings")).foregroundStyle(theme.color("textMuted"))
                 NavigationLink(model.t("mobile.simple.reconnect")) { ConnectView() }
             } else {
                 Text(model.t("gallery.community_explainer")).font(.subheadline).foregroundStyle(theme.color("textMuted"))
@@ -85,7 +104,7 @@ struct GalleryView: View {
         } }
     }
     private func load() async {
-        guard !loading else { return }; loading = true; defer { loading = false }
+        guard !loading, model.connection.client != nil else { return }; loading = true; defer { loading = false }
         await model.perform { let api = try model.api(), scope = model.hostState.scopeID; let page = try await api.community(offset: items.count); guard scope == model.hostState.scopeID else { throw CancellationError() }; items += page.items; total = page.total }
     }
 }

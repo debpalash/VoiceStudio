@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Opal logo">
+  <defs>
+    <!-- Facet gradients — opal fire, violet-forward, lit from upper-left -->
+    <linearGradient id="fNW" gradientUnits="userSpaceOnUse" x1="70" y1="52" x2="126" y2="130">
+      <stop offset="0" stop-color="#a5e3ff"/>
+      <stop offset="0.55" stop-color="#7fb8fb"/>
+      <stop offset="1" stop-color="#7c6cf0"/>
+    </linearGradient>
+    <linearGradient id="fNE" gradientUnits="userSpaceOnUse" x1="188" y1="54" x2="130" y2="130">
+      <stop offset="0" stop-color="#fbcffc"/>
+      <stop offset="0.5" stop-color="#d59af7"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="fSE" gradientUnits="userSpaceOnUse" x1="190" y1="190" x2="132" y2="132">
+      <stop offset="0" stop-color="#4438b8"/>
+      <stop offset="0.6" stop-color="#5150d6"/>
+      <stop offset="1" stop-color="#6d76f5"/>
+    </linearGradient>
+    <linearGradient id="fSW" gradientUnits="userSpaceOnUse" x1="66" y1="188" x2="124" y2="132">
+      <stop offset="0" stop-color="#3fd6c5"/>
+      <stop offset="0.55" stop-color="#4aa9e8"/>
+      <stop offset="1" stop-color="#5f68ee"/>
+    </linearGradient>
+    <!-- Milky core: off-center hotspot for depth, violet rim -->
+    <radialGradient id="core" gradientUnits="userSpaceOnUse" cx="117" cy="108" r="70">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.4" stop-color="#f3efff"/>
+      <stop offset="0.75" stop-color="#d5c8fb"/>
+      <stop offset="1" stop-color="#9d7bf4"/>
+    </radialGradient>
+    <!-- Specular sweep across the crown -->
+    <linearGradient id="sheen" gradientUnits="userSpaceOnUse" x1="96" y1="34" x2="150" y2="120">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="aura" gradientUnits="userSpaceOnUse" cx="128" cy="128" r="110">
+      <stop offset="0.55" stop-color="#8b5cf6" stop-opacity="0.32"/>
+      <stop offset="1" stop-color="#8b5cf6" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+    <filter id="settle" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="5" stdDeviation="9" flood-color="#312e81" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Aura -->
+  <circle cx="128" cy="128" r="110" fill="url(#aura)" filter="url(#soft)"/>
+
+  <g filter="url(#settle)">
+    <!-- Facets (kite cut around a table) -->
+    <polygon points="128,24 50,128 89,128 128,76"    fill="url(#fNW)"/>
+    <polygon points="128,24 206,128 167,128 128,76"  fill="url(#fNE)"/>
+    <polygon points="206,128 128,232 128,180 167,128" fill="url(#fSE)"/>
+    <polygon points="128,232 50,128 89,128 128,180"   fill="url(#fSW)"/>
+    <!-- Table -->
+    <polygon points="128,76 167,128 128,180 89,128" fill="url(#core)"/>
+
+    <!-- Ambient occlusion where the pavilion meets the table -->
+    <polygon points="167,128 128,232 128,180" fill="#1e1b4b" opacity="0.22"/>
+    <polygon points="128,232 50,128 89,128 128,180" fill="#1e1b4b" opacity="0.10"/>
+
+    <!-- Specular sweep over the crown -->
+    <polygon points="128,24 178,91 128,76 78,91" fill="url(#sheen)"/>
+
+    <!-- Beveled edges: lit above, shadowed below -->
+    <g fill="none" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M50 128 L128 24 L206 128" stroke="#ffffff" stroke-opacity="0.9" stroke-width="3"/>
+      <path d="M50 128 L128 232 L206 128" stroke="#c7bdf6" stroke-opacity="0.5" stroke-width="2.5"/>
+      <path d="M89 128 L128 76 L167 128" stroke="#ffffff" stroke-opacity="0.75" stroke-width="1.6"/>
+      <path d="M89 128 L128 180 L167 128" stroke="#312e81" stroke-opacity="0.35" stroke-width="1.6"/>
+      <path d="M128 24 L128 76 M206 128 L167 128 M128 232 L128 180 M50 128 L89 128"
+            stroke="#ffffff" stroke-opacity="0.55" stroke-width="1.4"/>
+    </g>
+  </g>
+</svg>

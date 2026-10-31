@@ -56,7 +56,7 @@ jobs:
     name: Build omnivoice-tts (${{ matrix.platform }})
     # Runner per platform. A lookup (not `include` entries) so `exclude` can
     # drop a platform: an `include` that matches no combination re-adds one.
-    runs-on: ${{ fromJSON('{"linux-x86_64":"ubuntu-latest","linux-aarch64":"ubuntu-24.04-arm","windows-x86_64":"windows-latest","darwin-arm64":"macos-14"}')[matrix.platform] }}
+    runs-on: ${{ fromJSON('{"linux-x86_64":"ubuntu-latest","linux-aarch64":"ubuntu-24.04-arm","windows-x86_64":"windows-latest","darwin-arm64":"macos-15"}')[matrix.platform] }}
     # linux-aarch64 (Apple Silicon under Asahi Linux) is experimental: the
     # Vulkan (Honeykrisp GPU) build path is new and the hosted arm64 runner has
     # no GPU — it validates that the binary builds; on-host Vulkan acceleration

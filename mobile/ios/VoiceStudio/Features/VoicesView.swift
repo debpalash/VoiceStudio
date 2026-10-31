@@ -191,16 +191,18 @@ struct CloneView: View {
         }
         .task { preference = model.phone.preference("clone") }
         .onChange(of: recorder.seconds) { _, seconds in if seconds >= 29 && recorder.recording { recorder.stop(); audio = recorder.file.map { SelectedMedia(url: $0) } } }
+        .onChange(of: consent) { _, allowed in if !allowed { work?.cancel() } }
         .onChange(of: phase) { _, value in if value != .active { work?.cancel(); if value == .background { recordingTask?.cancel() }; if recorder.recording { recorder.stop(); audio = nil } } }
         .onDisappear { work?.cancel(); recordingTask?.cancel(); recorder.stop(); if let file = recorder.file { try? FileManager.default.removeItem(at: file) } }
     }
     private func create() {
-        guard let audio else { return }
+        guard let audio, consent else { return }
         let route = route
         running = true
         work = Task {
             defer { running = false }
             await model.perform(onPhone: route == .phone) {
+                guard consent else { throw CancellationError() }
                 if route == .phone {
                     guard let asr, let cloneModel, let engine = model.phone.engine, let store = model.phone.voiceStore else { throw ClientError("mobile.local.model_required") }
                     _ = try await store.create(name: name,source: audio.url,consent: consent,asr: asr,cloneModel: cloneModel,engine: engine,decoder: AVPhoneAudioDecoder(),progress: { value in await MainActor.run { progress = value.fraction } })
@@ -208,7 +210,12 @@ struct CloneView: View {
                 } else {
                     let access = audio.url.startAccessingSecurityScopedResource(); defer { if access { audio.url.stopAccessingSecurityScopedResource() } }
                     _ = try await model.api().clone(name: name,filename: audio.uploadName,audio: Data(contentsOf: audio.url))
-                    model.profiles = try await model.api().profiles()
+                    try Task.checkCancellation()
+                    guard consent else { throw CancellationError() }
+                    let profiles = try await model.api().profiles()
+                    try Task.checkCancellation()
+                    guard consent else { throw CancellationError() }
+                    model.profiles = profiles
                 }
                 try Task.checkCancellation(); dismiss()
             }

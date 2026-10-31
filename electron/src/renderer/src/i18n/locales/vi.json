@@ -3429,7 +3429,7 @@
     "add_details": "Thêm chi tiết",
     "step_start": "Bắt đầu",
     "step_agent": "Tác nhân",
-    "step_speak": "Nói",
+    "step_speak": "Giọng nói",
     "step_condition": "Điều kiện",
     "step_call": "Cuộc gọi",
     "step_end": "Kết thúc",
@@ -3796,7 +3796,7 @@
       "brought_by": "Được mang đến bởi"
     },
     "tabs": {
-      "speak": "Nói",
+      "speak": "Giọng nói",
       "voices": "Giọng nói",
       "dub": "Lồng tiếng",
       "dictate": "Đọc chính tả",
@@ -3844,7 +3844,8 @@
       "unstar": "Bỏ gắn sao",
       "engine_unavailable": "Engine này không khả dụng. Hãy kiểm tra cài đặt của nó trên máy tính.",
       "voice_default": "Giọng mặc định (cấu hình sẵn của engine)",
-      "engine_no_cloning": "Engine này không thể dùng âm thanh tham chiếu. Hãy chọn engine hỗ trợ nhân bản giọng nói, hoặc dùng giọng mặc định."
+      "engine_no_cloning": "Engine này không thể dùng âm thanh tham chiếu. Hãy chọn engine hỗ trợ nhân bản giọng nói, hoặc dùng giọng mặc định.",
+      "reference_required": "Chọn giọng đã lưu để dùng mô hình này. Bạn có thể nhập giọng từ thư viện."
     },
     "voices": {
       "search": "Tìm giọng nói",
@@ -4073,7 +4074,7 @@
       "preset_voice": "Giọng {{number}}",
       "transfer": "{{received}} trên {{total}}",
       "privacy": "Tác vụ trên thiết bị ở lại điện thoại này. Chỉ việc tải mô hình, báo cáo bạn chọn gửi và máy tính đã ghép nối dùng mạng.",
-      "computer_feature": "Tính năng này hiện chạy trên máy tính của bạn. Bạn có thể dùng Nói và Đọc chính tả trên điện thoại này mà không cần ghép nối.",
+      "computer_feature": "Tính năng này hiện chạy trên máy tính của bạn. Bạn có thể dùng Giọng nói và Đọc chính tả trên điện thoại này mà không cần ghép nối.",
       "accepted": "Đã chấp nhận giấy phép",
       "not_accepted": "Chưa chấp nhận giấy phép",
       "receipt": "{{action}} · {{time}} · Ứng dụng {{version}} · Điều khoản {{fingerprint}}"
@@ -4374,6 +4375,18 @@
       "import": "Nhập",
       "export": "Xuất",
       "send": "Gửi"
+    },
+    "support": {
+      "donate": "Đóng góp",
+      "other_apps": "Ứng dụng khác",
+      "other_apps_intro": "Các dự án của nhóm chúng tôi và nhà tài trợ VoiceStudio.",
+      "gift_note": "Đóng góp là tự nguyện. Khoản đóng góp hỗ trợ phát triển và không mở khóa tính năng, nội dung hay dịch vụ.",
+      "pro_scope": "Pro bổ sung công cụ sản xuất cho VoiceStudio trên máy tính. Các công cụ sáng tạo trên điện thoại vẫn miễn phí.",
+      "opengtm": "Tìm và nghiên cứu khách hàng tiềm năng bằng công cụ tự động hóa bán hàng mã nguồn mở.",
+      "opal": "Trình phát đa phương tiện và trình duyệt mã nguồn mở cho thư viện của bạn.",
+      "supermetry": "Phân tích web tự lưu trữ, tôn trọng quyền riêng tư.",
+      "spicrawl": "Chuyển trang web thành Markdown hoặc dữ liệu có cấu trúc cho tác nhân AI.",
+      "special_sponsor": "Nhà tài trợ đặc biệt"
     }
   },
   "failureCause": {

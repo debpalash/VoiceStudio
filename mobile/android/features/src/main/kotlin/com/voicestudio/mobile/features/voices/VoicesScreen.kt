@@ -24,10 +24,10 @@ import com.voicestudio.mobile.network.Profile
 import kotlinx.coroutines.*
 import java.io.File
 
-@Composable fun VoicesScreen(vm:StudioViewModel) {
-    TaskLocation(vm,"clone",setOf("clone"),dependencies=setOf("asr")) {location,model -> VoicesContent(vm,location,model)}
+@Composable fun VoicesScreen(vm:StudioViewModel,initialCreating:Boolean=false,onCancel:()->Unit={},onCreated:()->Unit={}) {
+    TaskLocation(vm,"clone",setOf("clone"),dependencies=setOf("asr")) {location,model -> VoicesContent(vm,location,model,initialCreating,onCancel,onCreated)}
 }
-@Composable private fun VoicesContent(vm:StudioViewModel,location: RunLocation,model: PhoneModel?) {
+@Composable private fun VoicesContent(vm:StudioViewModel,location: RunLocation,model: PhoneModel?,initialCreating:Boolean,onCancel:()->Unit,onCreated:()->Unit) {
     val state by vm.state.collectAsState()
     val phone by vm.phone.state.collectAsState()
     val preferences by vm.preferences.collectAsState()
@@ -38,7 +38,7 @@ import java.io.File
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
     val lifecycle=LocalLifecycleOwner.current
-    var cloning by rememberSaveable {mutableStateOf(false)}
+    var cloning by rememberSaveable {mutableStateOf(initialCreating)}
     var more by rememberSaveable {mutableStateOf(false)}
     var query by rememberSaveable {mutableStateOf("")}
     var name by rememberSaveable {mutableStateOf("")}
@@ -53,9 +53,9 @@ import java.io.File
     val recorder=remember {SampleRecorder(context)}
     LaunchedEffect(Unit) {sample?.let {if(!File(it).exists()) sample=null}}
     DisposableEffect(lifecycle) {
-        val observer=LifecycleEventObserver {_,event -> if(event==Lifecycle.Event.ON_STOP) {vm.phone.cancelInference();if(recording) {recorder.discard();recording=false;sample=null}}}
+        val observer=LifecycleEventObserver {_,event -> if(event==Lifecycle.Event.ON_STOP) {vm.phone.cancelInference();if(cloning) vm.cancelClone();if(recording) {recorder.discard();recording=false;sample=null}}}
         lifecycle.lifecycle.addObserver(observer)
-        onDispose {lifecycle.lifecycle.removeObserver(observer);if(recording) recorder.discard();sample?.let {File(it).delete()};sample=null;vm.phone.cancelInference()}
+        onDispose {lifecycle.lifecycle.removeObserver(observer);if(cloning) vm.cancelClone();cloning=false;if(recording) recorder.discard();sample?.let {File(it).delete()};sample=null;vm.phone.cancelInference()}
     }
     LaunchedEffect(recording) {seconds=0;while(recording) {
         delay(1000);seconds++
@@ -86,7 +86,7 @@ import java.io.File
         }
         Field("mobile.voices.name_label",name,{name=it.take(200)})
         Info("mobile.voices.consent_title","mobile.voices.consent_body")
-        ConsentCheck("mobile.simple.voice_consent",permission,{permission=it})
+        ConsentCheck("mobile.simple.voice_consent",permission,{permission=it;if(!it) {vm.phone.cancelInference();vm.cancelClone()}})
         Secondary("mobile.voices.pick_file",!recording) {pick.launch(arrayOf("audio/*"))}
         if(recording) {
             Text(tr("mobile.voices.recording",mapOf("seconds" to seconds)))
@@ -94,10 +94,10 @@ import java.io.File
         } else Secondary("mobile.voices.record",onClick=record)
         if(sample!=null&&!recording) Text(tr("mobile.android.sample_ready"))
         Action("mobile.voices.new_clone",permission&&sample!=null&&name.isNotBlank()&&!state.busy&&!recording&&phone.progress==null&&(location==RunLocation.COMPUTER||cloneReady)) {
-            if(location==RunLocation.COMPUTER) {vm.clone(name,File(sample!!));sample=null;name="";permission=false;cloning=false}
-            else vm.phone.clone(name,File(sample!!),asr!!,model!!,permission) {sample=null;name="";permission=false;cloning=false}
+            if(location==RunLocation.COMPUTER) vm.clone(name,File(sample!!),hasConsent={permission&&cloning}) {if(cloning) {sample=null;name="";permission=false;cloning=false;onCreated()}}
+            else vm.phone.clone(name,File(sample!!),asr!!,model!!,permission) {sample=null;name="";permission=false;cloning=false;onCreated()}
         }
-        Secondary("common.cancel",!recording) {vm.phone.cancelInference();cloning=false;sample?.let {File(it).delete()};sample=null}
+        Secondary("common.cancel",!recording) {vm.phone.cancelInference();vm.cancelClone();cloning=false;sample?.let {File(it).delete()};sample=null;onCancel()}
         }
         if(!cloning) {
         if(profiles.isEmpty()&&!state.catalogLoading) {

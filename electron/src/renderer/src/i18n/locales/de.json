@@ -3429,7 +3429,7 @@
     "add_details": "Details hinzufügen",
     "step_start": "Start",
     "step_agent": "Agent",
-    "step_speak": "Sprechen",
+    "step_speak": "Sprachausgabe",
     "step_condition": "Bedingung",
     "step_call": "Anruf",
     "step_end": "Ende",
@@ -3796,7 +3796,7 @@
       "brought_by": "Bereitgestellt von"
     },
     "tabs": {
-      "speak": "Sprechen",
+      "speak": "Sprachausgabe",
       "voices": "Stimmen",
       "dub": "Synchron",
       "dictate": "Diktat",
@@ -3844,7 +3844,8 @@
       "unstar": "Stern entfernen",
       "engine_unavailable": "Diese Engine ist nicht verfügbar. Prüfe ihre Installation auf deinem Computer.",
       "voice_default": "Standardstimme (Engine-Voreinstellung)",
-      "engine_no_cloning": "Diese Engine kann kein Referenzaudio verwenden. Wähle eine Engine mit Stimmklonen oder nutze die Standardstimme."
+      "engine_no_cloning": "Diese Engine kann kein Referenzaudio verwenden. Wähle eine Engine mit Stimmklonen oder nutze die Standardstimme.",
+      "reference_required": "Wähle eine gespeicherte Stimme für dieses Modell. Du kannst eine aus der Galerie importieren."
     },
     "voices": {
       "search": "Stimmen suchen",
@@ -4073,7 +4074,7 @@
       "preset_voice": "Stimme {{number}}",
       "transfer": "{{received}} von {{total}}",
       "privacy": "Aufgaben auf dem Gerät bleiben auf diesem Telefon. Nur Modell-Downloads, Meldungen, die du sendest, und dein gekoppelter Computer nutzen das Netzwerk.",
-      "computer_feature": "Diese Funktion läuft derzeit auf deinem Computer. Sprechen und Diktat funktionieren auf diesem Telefon ohne Kopplung.",
+      "computer_feature": "Diese Funktion läuft derzeit auf deinem Computer. Sprachausgabe und Diktat funktionieren auf diesem Telefon ohne Kopplung.",
       "accepted": "Lizenz akzeptiert",
       "not_accepted": "Lizenz nicht akzeptiert",
       "receipt": "{{action}} · {{time}} · App {{version}} · Bedingungen {{fingerprint}}"
@@ -4374,6 +4375,18 @@
       "import": "Importieren",
       "export": "Exportieren",
       "send": "Senden"
+    },
+    "support": {
+      "donate": "Spenden",
+      "other_apps": "Weitere Apps",
+      "other_apps_intro": "Projekte unseres Teams und der Sponsoren von VoiceStudio.",
+      "gift_note": "Spenden sind freiwillig. Sie unterstützen die Entwicklung und schalten keine Funktionen, Inhalte oder Dienste frei.",
+      "pro_scope": "Pro ergänzt VoiceStudio auf deinem Computer um Produktionswerkzeuge. Die kreativen Werkzeuge der Handy-App bleiben kostenlos.",
+      "opengtm": "Finde und recherchiere Interessenten mit quelloffener Vertriebsautomatisierung.",
+      "opal": "Ein quelloffener Mediaplayer und Browser für deine Bibliothek.",
+      "supermetry": "Selbst gehostete, datenschutzfreundliche Webanalyse.",
+      "spicrawl": "Wandle Webseiten in Markdown oder strukturierte Daten für KI-Agenten um.",
+      "special_sponsor": "Besonderer Sponsor"
     }
   },
   "failureCause": {

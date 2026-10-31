@@ -3424,6 +3424,234 @@
         ],
         "identified_components": []
       }
+    },
+    {
+      "id": "csukuangfj/vits-piper-en_US-lessac-medium",
+      "license": "GPL-3.0; NOASSERTION",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Piper / Rhasspy contributors; Lessac Blizzard 2013; eSpeak NG contributors",
+      "source_url": "https://huggingface.co/csukuangfj/vits-piper-en_US-lessac-medium",
+      "evidence_url": "https://huggingface.co/csukuangfj/vits-piper-en_US-lessac-medium/blob/83f7470750b36549037551ef7007fa3b4b8697e0/MODEL_CARD",
+      "revision": "83f7470750b36549037551ef7007fa3b4b8697e0",
+      "engines": [
+        "mobile:sherpa-onnx"
+      ],
+      "configured_at": "mobile/contract/models.source.json",
+      "notes": "The selected Piper model card points to the Lessac Blizzard 2013 dataset licence. Its voice/data terms have not been assessed here. The required eSpeak NG data is GPL-3.0. No complete voice, output or commercial-use clearance is asserted.",
+      "runtime_revision": "83f7470750b36549037551ef7007fa3b4b8697e0",
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": "mobile/contract/models.source.json",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "not_required",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "not_assessed",
+          "scope": "Selected phone assets; no complete workflow or distribution clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [
+          {
+            "url": "https://huggingface.co/csukuangfj/vits-piper-en_US-lessac-medium/blob/83f7470750b36549037551ef7007fa3b4b8697e0/MODEL_CARD",
+            "checked_at": "2026-10-31",
+            "method": "read_primary_source"
+          }
+        ],
+        "open_questions": [
+          "Voice/data, output and commercial rights for the intended use; complete component terms."
+        ],
+        "identified_components": [
+          "en_US-lessac-medium.onnx",
+          "tokens.txt",
+          "espeak-ng-data/phondata",
+          "espeak-ng-data/phonindex",
+          "espeak-ng-data/phontab",
+          "espeak-ng-data/intonations",
+          "espeak-ng-data/en_dict",
+          "espeak-ng-data/lang/gmw/en",
+          "espeak-ng-data/lang/gmw/en-US"
+        ]
+      }
+    },
+    {
+      "id": "csukuangfj2/sherpa-onnx-supertonic-3-tts-int8-2026-05-11",
+      "license": "OpenRAIL-M; MIT",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "Supertone Inc.; ONNX conversion by Fangjun Kuang",
+      "source_url": "https://huggingface.co/csukuangfj2/sherpa-onnx-supertonic-3-tts-int8-2026-05-11",
+      "evidence_url": "https://huggingface.co/csukuangfj2/sherpa-onnx-supertonic-3-tts-int8-2026-05-11/blob/cca5a0e6c96e1d2c720986bf7e75fcc81dee3ae4/README.md",
+      "revision": "cca5a0e6c96e1d2c720986bf7e75fcc81dee3ae4",
+      "engines": [
+        "mobile:sherpa-onnx"
+      ],
+      "configured_at": "mobile/contract/models.source.json",
+      "notes": "The conversion repo has an MIT licence, while the original Supertone/supertonic-3 model is OpenRAIL-M. Both are disclosed; the conversion licence does not replace the original weight terms. The selected public voice-style pack is included.",
+      "runtime_revision": "cca5a0e6c96e1d2c720986bf7e75fcc81dee3ae4",
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": "mobile/contract/models.source.json",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "not_required",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "not_assessed",
+          "scope": "Selected phone assets; no complete workflow or distribution clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [
+          {
+            "url": "https://huggingface.co/csukuangfj2/sherpa-onnx-supertonic-3-tts-int8-2026-05-11/blob/cca5a0e6c96e1d2c720986bf7e75fcc81dee3ae4/README.md",
+            "checked_at": "2026-10-31",
+            "method": "read_primary_source"
+          },
+          {
+            "url": "https://huggingface.co/Supertone/supertonic-3/blob/3cadd1ee6394adea1bd021217a0e650ede09a323/LICENSE",
+            "checked_at": "2026-10-31",
+            "method": "read_primary_source"
+          }
+        ],
+        "open_questions": [
+          "Voice/data, output and commercial rights for the intended use; complete component terms."
+        ],
+        "identified_components": [
+          "duration_predictor.int8.onnx",
+          "text_encoder.int8.onnx",
+          "vector_estimator.int8.onnx",
+          "vocoder.int8.onnx",
+          "tts.json",
+          "unicode_indexer.bin",
+          "voice.bin"
+        ]
+      }
+    },
+    {
+      "id": "csukuangfj2/sherpa-onnx-pocket-tts-int8-2026-01-26",
+      "license": "CC-BY-4.0; non-commercial conversion restriction",
+      "commercial_use": false,
+      "review_status": "noncommercial",
+      "credit": "Kyutai; ONNX export by KevinAHM; conversion packaging by Fangjun Kuang",
+      "source_url": "https://huggingface.co/csukuangfj2/sherpa-onnx-pocket-tts-int8-2026-01-26",
+      "evidence_url": "https://huggingface.co/csukuangfj2/sherpa-onnx-pocket-tts-int8-2026-01-26/blob/e715955cf50d18d919d37231513c0e914b83661a/README.md",
+      "revision": "e715955cf50d18d919d37231513c0e914b83661a",
+      "engines": [
+        "mobile:sherpa-onnx"
+      ],
+      "configured_at": "mobile/contract/models.source.json",
+      "notes": "The conversion LICENSE is CC-BY-4.0, but its README additionally states non-commercial use. The linked KevinAHM licence is also CC-BY-4.0. Until clarified, this offered conversion is treated as non-commercial. No upstream test recordings are downloaded or bundled; use only a reference voice you have permission to clone.",
+      "runtime_revision": "e715955cf50d18d919d37231513c0e914b83661a",
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": "mobile/contract/models.source.json",
+      "component_closure": "incomplete",
+      "commercial_inference": "restricted",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "not_required",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "not_assessed",
+          "scope": "Selected phone assets; no complete workflow or distribution clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [
+          {
+            "url": "https://huggingface.co/csukuangfj2/sherpa-onnx-pocket-tts-int8-2026-01-26/blob/e715955cf50d18d919d37231513c0e914b83661a/README.md",
+            "checked_at": "2026-10-31",
+            "method": "read_primary_source"
+          }
+        ],
+        "open_questions": [
+          "Voice/data, output and commercial rights for the intended use; complete component terms."
+        ],
+        "identified_components": [
+          "lm_flow.int8.onnx",
+          "lm_main.int8.onnx",
+          "encoder.onnx",
+          "decoder.int8.onnx",
+          "text_conditioner.onnx",
+          "vocab.json",
+          "token_scores.json"
+        ]
+      }
+    },
+    {
+      "id": "k2-fsa/ZipVoice",
+      "license": "Apache-2.0; MIT; GPL-3.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "ZipVoice / k2-fsa authors; Vocos authors; eSpeak NG contributors",
+      "source_url": "https://huggingface.co/k2-fsa/ZipVoice",
+      "evidence_url": "https://huggingface.co/k2-fsa/ZipVoice/blob/889dd609a42f0de9cf9aac335eae42677becb1b9/README.md",
+      "revision": "889dd609a42f0de9cf9aac335eae42677becb1b9",
+      "engines": [
+        "mobile:sherpa-onnx"
+      ],
+      "configured_at": "mobile/contract/models.source.json",
+      "notes": "ZipVoice weights/code are Apache-2.0. The exact Vocos 24 kHz ONNX release asset is separately hash-pinned; Vocos declares MIT. The bundled release lexicon is retained with attribution; English eSpeak NG data comes from the pinned Kitten conversion and is GPL-3.0. Voice/reference and output rights remain the user responsibility.",
+      "runtime_revision": "889dd609a42f0de9cf9aac335eae42677becb1b9",
+      "runtime_pin_scope": "external",
+      "runtime_pin_source": "mobile/contract/models.source.json",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "not_required",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "not_assessed",
+          "scope": "Selected phone assets; no complete workflow or distribution clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [
+          {
+            "url": "https://huggingface.co/k2-fsa/ZipVoice/blob/889dd609a42f0de9cf9aac335eae42677becb1b9/README.md",
+            "checked_at": "2026-10-31",
+            "method": "read_primary_source"
+          }
+        ],
+        "open_questions": [
+          "Voice/data, output and commercial rights for the intended use; complete component terms."
+        ],
+        "identified_components": [
+          "zipvoice_distill/text_encoder_int8.onnx",
+          "zipvoice_distill/fm_decoder_int8.onnx",
+          "zipvoice_distill/tokens.txt",
+          "vocos_24khz.onnx",
+          "espeak-ng-data/phondata",
+          "espeak-ng-data/phonindex",
+          "espeak-ng-data/phontab",
+          "espeak-ng-data/intonations",
+          "espeak-ng-data/en_dict",
+          "espeak-ng-data/lang/gmw/en",
+          "espeak-ng-data/lang/gmw/en-US",
+          "lexicon.txt"
+        ]
+      }
     }
   ],
   "dynamic_assets": [

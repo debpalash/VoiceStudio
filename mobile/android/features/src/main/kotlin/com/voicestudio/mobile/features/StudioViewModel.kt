@@ -22,6 +22,8 @@ class StudioViewModel @JvmOverloads constructor(application: Application, val st
     var api: VoiceStudioApi? = null
         private set
     private var operation: Job? = null
+    private var cloneOperation: Job? = null
+    private var clonePending = false
     private var retryAction: (() ->Unit)? = null
     val phone = PhoneStudio(application,viewModelScope,::fail) {error,retry -> fail(error,retry)}
     val reports = ContentReports(viewModelScope)
@@ -153,7 +155,37 @@ class StudioViewModel @JvmOverloads constructor(application: Application, val st
     }
     fun star(item: HistoryItem) = run { api?.star(item.id, !item.isStarred); reload() }
     fun deleteHistory(item: HistoryItem) = run { api?.deleteHistory(item.id); reload() }
-    fun clone(name: String, file: File) = run { api?.clone(name, file); file.delete(); reload() }
+    fun clone(name: String, file: File, hasConsent: ()->Boolean, created: ()->Unit = {}) {
+        if(mutable.value.busy) return
+        clonePending=true
+        run {
+            val job=currentCoroutineContext()[Job]
+            cloneOperation=job
+            try {
+                // Retry re-enters this block: never reuse a withdrawn UI consent.
+                if(!hasConsent()) {clonePending=false;return@run}
+                val current=api ?: throw ClientFailure("mobile.android.disconnected_offline")
+                val profile=current.clone(name,file)
+                currentCoroutineContext().ensureActive()
+                if(api!==current) return@run
+                if(!hasConsent()) {clonePending=false;return@run}
+                mutable.update {it.copy(profiles=it.profiles.filterNot {saved -> saved.id==profile.id}+profile)}
+                file.delete()
+                clonePending=false
+                created()
+            } catch(error:CancellationException) {clonePending=false;throw error}
+            finally {if(cloneOperation===job) cloneOperation=null}
+        }
+        // Also own the job before its first dispatch, and rebind above on retry.
+        cloneOperation=operation
+    }
+    fun cancelClone() {
+        if(!clonePending) return
+        clonePending=false
+        cloneOperation?.cancel()
+        cloneOperation=null
+        clearError()
+    }
     fun rename(id: String, name: String) = run { api?.rename(id, name); reload() }
     fun deleteProfile(id: String) = run { api?.deleteProfile(id); reload() }
     fun forget(url: String) = run {
