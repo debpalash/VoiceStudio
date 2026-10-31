@@ -45,6 +45,22 @@ def test_committed_delete_cleans_all_assets(profile):
         assert conn.execute("SELECT count(*) FROM voice_profiles").fetchone()[0] == 0
 
 
+def test_delete_removes_converted_sidecar_copies(profile, monkeypatch):
+    # The PCM copy sent to engine sidecars is the same voice (#3688).
+    import os
+    from api.routers import profiles
+    from services import reference_wav
+    root, _names = profile
+    cache = root / "reference_wav"
+    monkeypatch.setattr(reference_wav, "_cache_dir", lambda: str(cache))
+    cache.mkdir()
+    source_id, name = reference_wav._copy_name(str(root / "ref.wav"))
+    (cache / name).write_bytes(b"converted")
+    (cache / f"{source_id}.source").write_text(os.path.normcase(os.path.realpath(root / "ref.wav")), encoding="utf-8")
+    profiles.delete_profile("voice")
+    assert list(cache.iterdir()) == []
+
+
 def test_cleanup_error_after_commit_does_not_stop_other_assets(profile, monkeypatch, caplog):
     from core import db
     from api.routers import profiles
