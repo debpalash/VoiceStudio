@@ -28,6 +28,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_BACKEND_PORT } from "../config/app-config.mjs";
+import { asciiSafePthFilesSync } from "../electron/scripts/pth-ascii.mjs";
 
 export { DEFAULT_BACKEND_PORT };
 
@@ -158,6 +159,11 @@ export function uvRunArgs(env = process.env) {
  */
 export function createBackendSupervisor({
   spawnBackend = () => spawn("uv", uvRunArgs(), { stdio: "inherit" }),
+  // A `uv sync` (even mid-session) re-writes the editable `.pth` with a
+  // non-ASCII checkout path that Python 3.11 cannot decode on a non-UTF-8 code
+  // page (#1783), so heal it before every launch, reloads and restarts included.
+  healPthFiles = () =>
+    asciiSafePthFilesSync(path.resolve(process.env.UV_PROJECT_ENVIRONMENT || ".venv")),
   watchBackend = (onChange) =>
     watch("backend", { recursive: true }, (_event, filename) => onChange(filename?.toString())),
   killBackend = (proc, sig) => killProcessTree(proc, sig),
@@ -245,6 +251,11 @@ export function createBackendSupervisor({
       });
     }
 
+    try {
+      healPthFiles();
+    } catch {
+      // Best effort: a locked file must not block the launch.
+    }
     let current;
     try {
       current = spawnBackend();

@@ -542,6 +542,9 @@ export async function resolveSpawnPlan(
       error: `The Python environment in ${root} is missing (no ${relative(root, python)}). ${setup}`,
     };
   }
+  // A checkout under a non-ASCII folder needs the same `.pth` heal as the
+  // installed runtime, or Python 3.11 dies before importing anything (#1783).
+  await asciiSafePthFiles(join(root, '.venv')).catch(() => []);
   // Name the import that failed (#2555): "incomplete" alone cannot tell a
   // setup that never ran from one that finished but cannot load a module.
   let failure = '';
