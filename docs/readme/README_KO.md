@@ -26,17 +26,11 @@
     <a href="https://github.com/debpalash/Opal?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/opal-dark.svg" /><img src="../../docs/sponsors/opal.svg" alt="Opal" height="32" align="middle" /></picture></a>
     <a href="https://github.com/velixio/supermetry?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/supermetry-dark.svg" /><img src="../../docs/sponsors/supermetry.svg" alt="Supermetry" height="32" align="middle" /></picture></a>
   </p>
+  <p>
+    <sub>특별 후원사</sub><br />
+    <a href="https://app.spicrawl.com/signup?utm_source=voicestudio&amp;utm_medium=github_readme&amp;utm_campaign=special_sponsor&amp;utm_content=logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/spicrawl-dark.svg" /><img src="../../docs/sponsors/spicrawl.svg" alt="Spicrawl" height="32" align="middle" /></picture></a>
+  </p>
 </div>
-
-<table>
-  <tr><th align="center">특별 후원사 · Spicrawl</th></tr>
-  <tr><td align="center">
-    <a href="https://app.spicrawl.com/signup?utm_source=voicestudio&amp;utm_medium=github_readme&amp;utm_campaign=special_sponsor&amp;utm_content=logo"><img src="../../docs/sponsors/spicrawl.svg" alt="Spicrawl" width="220" /></a><br />
-    <strong>AI 에이전트를 위한 웹 스크래핑.</strong><br />
-    API, CLI 또는 MCP로 웹 페이지를 깔끔한 Markdown이나 구조화된 JSON으로 변환하세요.<br />
-    <a href="https://app.spicrawl.com/signup?utm_source=voicestudio&amp;utm_medium=github_readme&amp;utm_campaign=special_sponsor&amp;utm_content=signup"><strong>Spicrawl 살펴보기</strong></a>
-  </td></tr>
-</table>
 
 <p align="center">
   <a href="../../docs/media/electron/voicestudio.mp4">

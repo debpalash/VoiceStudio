@@ -18,6 +18,8 @@ _README_REPOSITORIES = {
     "Supermetry": "/velixio/supermetry",
 }
 
+_SPECIAL_SPONSORS = {"Spicrawl": "app.spicrawl.com"}
+
 _ENTRY = re.compile(
     r"\{\s*name:\s*'(?P<name>[^']+)',\s*logoUrl:\s*(?P<logo>[^,]+),\s*"
     r"url:\s*'(?P<url>[^']+)',\s*tier:\s*'(?P<tier>[^']+)',?\s*\}"
@@ -90,7 +92,7 @@ def test_in_app_sponsor_uses_a_bundled_logo_and_a_known_tier(sponsor):
 def test_sponsors_md_and_the_app_list_the_same_sponsors():
     links = _logo_links(_current_sponsors_section())
     in_app = {(s["name"], _host(s["url"])) for s in _in_app_sponsors()}
-    assert {(s["name"], _host(s["url"])) for s in links} == in_app
+    assert {(s["name"], _host(s["url"])) for s in links} == in_app | set(_SPECIAL_SPONSORS.items())
     for link in links:
         for asset in link["assets"]:
             assert (_ROOT / asset).is_file(), f"SPONSORS.md: {asset} does not exist"
@@ -99,16 +101,23 @@ def test_sponsors_md_and_the_app_list_the_same_sponsors():
 @pytest.mark.parametrize("path", _READMES, ids=lambda p: p.name)
 def test_readme_logo_row_matches_the_app_and_resolves(path):
     links = _logo_links(path.read_text(encoding="utf-8"))
-    assert {s["name"] for s in links} == {s["name"] for s in _in_app_sponsors()}
-    assert {s["name"] for s in links} == set(_README_REPOSITORIES)
+    assert {s["name"] for s in links} == {s["name"] for s in _in_app_sponsors()} | set(_SPECIAL_SPONSORS)
+    assert {s["name"] for s in links} == set(_README_REPOSITORIES) | set(_SPECIAL_SPONSORS)
     for link in links:
         target = urlsplit(link["url"])
-        assert (target.scheme, target.netloc, target.path.rstrip("/")) == (
-            "https", "github.com", _README_REPOSITORIES[link["name"]]
-        )
-        assert parse_qs(target.query) == {
-            "utm_source": ["voicestudio"], "utm_medium": ["sponsor"],
-            "utm_campaign": ["strategic-sponsor"], "utm_content": ["readme-logo"],
-        }
+        if link["name"] in _SPECIAL_SPONSORS:
+            assert (target.scheme, target.netloc, target.path) == ("https", _SPECIAL_SPONSORS[link["name"]], "/signup")
+            assert parse_qs(target.query.replace("&amp;", "&")) == {
+                "utm_source": ["voicestudio"], "utm_medium": ["github_readme"],
+                "utm_campaign": ["special_sponsor"], "utm_content": ["logo"],
+            }
+        else:
+            assert (target.scheme, target.netloc, target.path.rstrip("/")) == (
+                "https", "github.com", _README_REPOSITORIES[link["name"]]
+            )
+            assert parse_qs(target.query) == {
+                "utm_source": ["voicestudio"], "utm_medium": ["sponsor"],
+                "utm_campaign": ["strategic-sponsor"], "utm_content": ["readme-logo"],
+            }
         for asset in link["assets"]:
             assert (path.parent / asset).resolve().is_file(), f"{path.name}: {asset} does not exist"
