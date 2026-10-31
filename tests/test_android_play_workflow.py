@@ -42,6 +42,7 @@ def test_workflow_uploads_only_a_verified_release_bundle_to_internal():
 
 
 def test_play_installs_the_native_build_toolchain():
+    """The store workflow must provide the same pinned toolchain as releases."""
     steps = load(WORKFLOW)["jobs"]["play-internal"]["steps"]
     setup = next(step for step in steps if step.get("name") == "NDK and CMake")
     assert '"ndk;27.1.12297006"' in setup["run"]
@@ -51,6 +52,7 @@ def test_play_installs_the_native_build_toolchain():
 
 @pytest.fixture(scope="module")
 def signed_bundle_fixtures(tmp_path_factory):
+    """Build real signed archives, including a second trusted co-signer."""
     if not all(shutil.which(command) for command in ("keytool", "jarsigner")):
         pytest.skip("JDK signing tools are required")
     root = tmp_path_factory.mktemp("play-bundle-signatures")
@@ -71,18 +73,35 @@ def signed_bundle_fixtures(tmp_path_factory):
             "jarsigner", "-keystore", str(root / f"{name}.jks"),
             "-storepass", "fixture-password", str(bundle), "upload",
         ], check=True, capture_output=True)
+    cosigned = root / "cosigned.aab"
+    shutil.copyfile(root / "upload.aab", cosigned)
+    subprocess.run([
+        "jarsigner", "-keystore", str(root / "other.jks"), "-storepass", "fixture-password",
+        "-sigfile", "OTHER", str(cosigned), "upload",
+    ], check=True, capture_output=True)
+    subprocess.run([
+        "keytool", "-exportcert", "-keystore", str(root / "other.jks"), "-storepass", "fixture-password",
+        "-alias", "upload", "-file", str(root / "other.cer"),
+    ], check=True, capture_output=True)
+    shutil.copyfile(root / "upload.jks", root / "extra-trusted.jks")
+    subprocess.run([
+        "keytool", "-importcert", "-noprompt", "-keystore", str(root / "extra-trusted.jks"),
+        "-storepass", "fixture-password", "-alias", "extra", "-file", str(root / "other.cer"),
+    ], check=True, capture_output=True)
     return root
 
 
-@pytest.mark.parametrize("kind", ["upload", "unsigned", "tampered", "debug", "other"])
+@pytest.mark.parametrize("kind", ["upload", "unsigned", "tampered", "debug", "other", "cosigned"])
 def test_workflow_verifies_its_actual_upload_key(signed_bundle_fixtures, tmp_path, kind):
+    """Accept only an intact archive signed solely by the configured upload key."""
     # Run the workflow's real verification against signed archives. Play upload
     # certificates are normally self-signed; the expected keystore is the trust anchor.
     fixture = signed_bundle_fixtures
     target = tmp_path / "app/build/outputs/bundle/release/app-release.aab"
     target.parent.mkdir(parents=True)
     shutil.copyfile(fixture / f"{'upload' if kind == 'tampered' else kind}.aab", target)
-    shutil.copyfile(fixture / f"{'debug' if kind == 'debug' else 'upload'}.jks", tmp_path / "upload.jks")
+    keystore = {"debug": "debug", "cosigned": "extra-trusted"}.get(kind, "upload")
+    shutil.copyfile(fixture / f"{keystore}.jks", tmp_path / "upload.jks")
     if kind == "tampered":
         with zipfile.ZipFile(target, "a") as bundle:
             bundle.writestr("injected.txt", "unsigned content")

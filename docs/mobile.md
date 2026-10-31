@@ -372,7 +372,7 @@ answers are in [`store/google-play.md`](../store/google-play.md). One-time setup
 The Play workflow installs the pinned NDK/CMake and reuses the native runtime
 cache. Before uploading, it strictly verifies the bundle against that upload
 key, accepting its self-signed certificate while rejecting unsigned content,
-other signers and Android debug certificates.
+other signers (including extra trusted co-signers) and Android debug certificates.
 
 The version name is the root `package.json` version. Both signed Android
 workflows get their version code from `scripts/android_version_code.py`: UTC

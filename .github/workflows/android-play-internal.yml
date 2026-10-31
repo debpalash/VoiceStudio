@@ -102,6 +102,8 @@ jobs:
           grep -q 'jar verified' "$RUNNER_TEMP/bundle-signature.txt"
           keytool -printcert -jarfile "$AAB" > "$RUNNER_TEMP/bundle-certificate.txt"
           grep -q 'Owner:' "$RUNNER_TEMP/bundle-certificate.txt"
+          # An alias match alone also accepts co-signers trusted by this keystore.
+          test "$(grep -c '^Signer #' "$RUNNER_TEMP/bundle-certificate.txt")" -eq 1
           if grep -q 'CN=Android Debug' "$RUNNER_TEMP/bundle-certificate.txt"; then
             echo "Bundle is debug-signed"; exit 1
           fi
