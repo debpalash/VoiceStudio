@@ -7,9 +7,13 @@ import { LANG_CODES } from '@shared/utils/languages';
  * languages Whisper can transcribe. A target only needs a translator and a
  * voice: Uyghur (#2810) has NLLB-200 (`uig_Arab`), Google and LLM translation,
  * and OmniVoice speaks it, but Whisper cannot transcribe it, so it is a target
- * here and never a source.
+ * here and never a source. Kabyle (Latin script) works the same way with
+ * NLLB-200 (`kab_Latn`) and OmniVoice (`kab`), and no Whisper vocabulary.
  */
-export const TARGET_ONLY_LANGUAGES = [{ code: 'ug', label: 'Uyghur' }] as const;
+export const TARGET_ONLY_LANGUAGES = [
+  { code: 'kab', label: 'Kabyle' },
+  { code: 'ug', label: 'Uyghur' },
+] as const;
 
 /** `LANG_CODES` order, with each target-only language placed alphabetically. */
 export const TRANSLATION_TARGETS: ReadonlyArray<{ code: string; label: string }> =
