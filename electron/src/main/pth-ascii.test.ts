@@ -91,6 +91,25 @@ describe('asciiSafePthFiles (#1783)', () => {
     expect(asciiSafePthFilesSync(join(venv, 'missing'))).toEqual([]);
   });
 
+  it('lets overlapping heals all finish with one complete file', async () => {
+    // Several rounds: the collision (a shared temp file, or Windows refusing a
+    // rename while another heal holds the target open) does not hit every time.
+    for (let round = 0; round < 5; round++) {
+      const venv = mkdtempSync(join(tmpdir(), 'vs-pth-race-'));
+      const windows = join(venv, 'Lib', 'site-packages');
+      mkdirSync(windows, { recursive: true });
+      const pth = join(windows, '_editable_impl_omnivoice.pth');
+      const project = join(venv, CJK_USER, 'project');
+      writeFileSync(pth, project, 'utf8');
+
+      const healed = await Promise.all(Array.from({ length: 4 }, () => asciiSafePthFiles(venv)));
+
+      expect(healed.flat().length).toBeGreaterThanOrEqual(1);
+      expect(readFileSync(pth, 'utf8')).toBe(asciiSafePthText(project));
+      expect(readdirSync(windows)).toEqual(['_editable_impl_omnivoice.pth']);
+    }
+  });
+
   it.skipIf(process.platform === 'win32')(
     'keeps the original permission bits on the replaced file',
     async () => {

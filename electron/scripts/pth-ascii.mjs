@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   chmodSync,
   readdirSync,
@@ -41,8 +42,7 @@ export async function asciiSafePthFiles(venv) {
       const file = join(sitePackages, name);
       const text = healedPthText(await readFile(file).catch(() => null));
       if (text === null) continue;
-      await replaceFile(file, text);
-      rewritten.push(file);
+      if (await replaceFile(file, text)) rewritten.push(file);
     }
   }
   return rewritten;
@@ -71,8 +71,7 @@ export function asciiSafePthFilesSync(venv) {
       }
       const text = healedPthText(bytes);
       if (text === null) continue;
-      replaceFileSync(file, text);
-      rewritten.push(file);
+      if (replaceFileSync(file, text)) rewritten.push(file);
     }
   }
   return rewritten;
@@ -83,6 +82,10 @@ export function asciiSafePthFilesSync(venv) {
  * leaves the original `.pth` intact, and site ignores the temp file because it
  * does not end in .pth. The temp file takes the original's permission bits, so
  * the replacement never exposes the embedded home path more widely.
+ *
+ * Windows refuses to replace a file while another handle holds it open (an
+ * antivirus scan, a concurrent heal), so a refused rename is retried briefly,
+ * as graceful-fs does. Returns false when another heal replaced the file first.
  */
 async function replaceFile(file, text) {
   const temp = tempPath(file);
@@ -90,10 +93,18 @@ async function replaceFile(file, text) {
     const mode = (await stat(file)).mode & 0o7777;
     await writeFile(temp, text, { encoding: 'utf8', mode });
     await chmod(temp, mode);
-    await rename(temp, file);
-  } catch (error) {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await rename(temp, file);
+        return true;
+      } catch (error) {
+        if (!stillNeedsHeal(await readFile(file).catch(() => null))) return false;
+        if (!retryableRename(error, attempt)) throw error;
+        await new Promise((resolve) => setTimeout(resolve, renameBackoffMs(attempt)));
+      }
+    }
+  } finally {
     await rm(temp, { force: true });
-    throw error;
   }
 }
 
@@ -103,15 +114,47 @@ function replaceFileSync(file, text) {
     const mode = statSync(file).mode & 0o7777;
     writeFileSync(temp, text, { encoding: 'utf8', mode });
     chmodSync(temp, mode);
-    renameSync(temp, file);
-  } catch (error) {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        renameSync(temp, file);
+        return true;
+      } catch (error) {
+        if (!stillNeedsHeal(readFileOrNull(file))) return false;
+        if (!retryableRename(error, attempt)) throw error;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, renameBackoffMs(attempt));
+      }
+    }
+  } finally {
     rmSync(temp, { force: true });
-    throw error;
   }
 }
 
+const RENAME_ATTEMPTS = 10;
+
+function retryableRename(error, attempt) {
+  return ['EPERM', 'EACCES', 'EBUSY'].includes(error?.code) && attempt < RENAME_ATTEMPTS;
+}
+
+/** 20, 40, … 180 ms: under a second in total before giving up. */
+function renameBackoffMs(attempt) {
+  return attempt * 20;
+}
+
+function stillNeedsHeal(bytes) {
+  return healedPthText(bytes) !== null;
+}
+
+function readFileOrNull(file) {
+  try {
+    return readFileSync(file);
+  } catch {
+    return null; // Gone: nothing left to heal.
+  }
+}
+
+/** Unique per call, so overlapping heals never write or rename each other's file. */
 function tempPath(file) {
-  return `${file}.${process.pid}.tmp`;
+  return `${file}.${process.pid}.${randomUUID()}.tmp`;
 }
 
 function isPth(name) {
