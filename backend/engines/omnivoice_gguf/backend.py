@@ -405,10 +405,8 @@ def _is_cli_readable_wav(path: Path) -> bool:
             audio_format = 0
             bits = 0
             channels = 0
-            while True:
-                chunk = handle.read(8)
-                if len(chunk) != 8:
-                    return False
+            chunk = handle.read(8)
+            while len(chunk) == 8:
                 chunk_id = chunk[:4]
                 size = int.from_bytes(chunk[4:8], "little")
                 if chunk_id == b"fmt ":
@@ -433,8 +431,10 @@ def _is_cli_readable_wav(path: Path) -> bool:
                 if size & 1 and len(handle.read(1)) != 1:
                     # A chunk with an odd size is padded to an even one.
                     return False
+                chunk = handle.read(8)
     except OSError:
         return False
+    # The header ended without a data chunk the runtime can decode.
     return False
 
 
