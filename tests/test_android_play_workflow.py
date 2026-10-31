@@ -1,4 +1,8 @@
 from pathlib import Path
+import os
+import shutil
+import subprocess
+import zipfile
 
 import pytest
 import yaml
@@ -35,6 +39,58 @@ def test_workflow_uploads_only_a_verified_release_bundle_to_internal():
     assert cleanup["name"] == "Remove upload keystore" and cleanup["if"] == "always()"
     build = steps[names.index("Build signed bundle")]
     assert "scripts/android_version_code.py" in build["run"] and ":app:bundleRelease" in build["run"]
+
+
+def test_play_installs_the_native_build_toolchain():
+    steps = load(WORKFLOW)["jobs"]["play-internal"]["steps"]
+    setup = next(step for step in steps if step.get("name") == "NDK and CMake")
+    assert '"ndk;27.1.12297006"' in setup["run"]
+    assert '"cmake;3.22.1"' in setup["run"]
+    assert steps.index(setup) < next(i for i, step in enumerate(steps) if step.get("name") == "Build signed bundle")
+
+
+@pytest.fixture(scope="module")
+def signed_bundle_fixtures(tmp_path_factory):
+    if not all(shutil.which(command) for command in ("keytool", "jarsigner")):
+        pytest.skip("JDK signing tools are required")
+    root = tmp_path_factory.mktemp("play-bundle-signatures")
+    for name, subject in (("upload", "Play upload fixture"), ("debug", "Android Debug"), ("other", "Other upload fixture")):
+        subprocess.run([
+            "keytool", "-genkeypair", "-keystore", str(root / f"{name}.jks"),
+            "-storepass", "fixture-password", "-keypass", "fixture-password",
+            "-alias", "upload", "-keyalg", "RSA", "-keysize", "2048",
+            "-validity", "10000", "-dname", f"CN={subject}",
+        ], check=True, capture_output=True)
+    unsigned = root / "unsigned.aab"
+    with zipfile.ZipFile(unsigned, "w") as bundle:
+        bundle.writestr("base/manifest/AndroidManifest.xml", "fixture manifest")
+    for name in ("upload", "debug", "other"):
+        bundle = root / f"{name}.aab"
+        shutil.copyfile(unsigned, bundle)
+        subprocess.run([
+            "jarsigner", "-keystore", str(root / f"{name}.jks"),
+            "-storepass", "fixture-password", str(bundle), "upload",
+        ], check=True, capture_output=True)
+    return root
+
+
+@pytest.mark.parametrize("kind", ["upload", "unsigned", "tampered", "debug", "other"])
+def test_workflow_verifies_its_actual_upload_key(signed_bundle_fixtures, tmp_path, kind):
+    # Run the workflow's real verification against signed archives. Play upload
+    # certificates are normally self-signed; the expected keystore is the trust anchor.
+    fixture = signed_bundle_fixtures
+    target = tmp_path / "app/build/outputs/bundle/release/app-release.aab"
+    target.parent.mkdir(parents=True)
+    shutil.copyfile(fixture / f"{'upload' if kind == 'tampered' else kind}.aab", target)
+    shutil.copyfile(fixture / f"{'debug' if kind == 'debug' else 'upload'}.jks", tmp_path / "upload.jks")
+    if kind == "tampered":
+        with zipfile.ZipFile(target, "a") as bundle:
+            bundle.writestr("injected.txt", "unsigned content")
+    step = next(step for step in load(WORKFLOW)["jobs"]["play-internal"]["steps"] if step.get("name") == "Verify bundle signature")
+    result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", step["run"]],
+        cwd=tmp_path, capture_output=True, text=True,
+        env={**os.environ, "RUNNER_TEMP": str(tmp_path), "KEYSTORE_PASSWORD": "fixture-password", "KEY_ALIAS": "upload"})
+    assert (result.returncode == 0) == (kind == "upload"), result.stdout + result.stderr
 
 
 def test_signed_android_workflows_share_build_number_source_and_serialization():
