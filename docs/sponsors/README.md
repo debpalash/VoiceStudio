@@ -16,3 +16,8 @@ services. Sponsor websites open only when the user follows their links.
 Keep the roster in the English and translated READMEs, [SPONSORS.md](../../SPONSORS.md)
 and [`sponsors.js`](../../electron/src/shared/config/sponsors.js) together;
 `tests/test_sponsors_lockstep.py` checks the names, destinations and local assets.
+
+README logo credits open the sponsor GitHub repositories with the existing
+`readme-logo` UTM campaign tags. The in-app Support page and SPONSORS.md use
+website destinations with their own campaign tags. The roster and bundled
+assets are checked together by `tests/test_sponsors_lockstep.py`.

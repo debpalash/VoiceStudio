@@ -12,6 +12,12 @@ _ROOT = Path(__file__).resolve().parents[1]
 _CONFIG = _ROOT / "electron" / "src" / "shared" / "config" / "sponsors.js"
 _READMES = [_ROOT / "README.md", *sorted((_ROOT / "docs" / "readme").glob("README_*.md"))]
 
+_README_REPOSITORIES = {
+    "OpenGTM": "/debpalash/OpenGTM",
+    "Opal": "/debpalash/Opal",
+    "Supermetry": "/velixio/supermetry",
+}
+
 _ENTRY = re.compile(
     r"\{\s*name:\s*'(?P<name>[^']+)',\s*logoUrl:\s*(?P<logo>[^,]+),\s*"
     r"url:\s*'(?P<url>[^']+)',\s*tier:\s*'(?P<tier>[^']+)',?\s*\}"
@@ -93,10 +99,16 @@ def test_sponsors_md_and_the_app_list_the_same_sponsors():
 @pytest.mark.parametrize("path", _READMES, ids=lambda p: p.name)
 def test_readme_logo_row_matches_the_app_and_resolves(path):
     links = _logo_links(path.read_text(encoding="utf-8"))
-    assert {(s["name"], _host(s["url"])) for s in links} == {
-        (s["name"], _host(s["url"])) for s in _in_app_sponsors()
-    }
+    assert {s["name"] for s in links} == {s["name"] for s in _in_app_sponsors()}
+    assert {s["name"] for s in links} == set(_README_REPOSITORIES)
     for link in links:
-        assert parse_qs(urlsplit(link["url"]).query).get("utm_content") == ["readme-logo"]
+        target = urlsplit(link["url"])
+        assert (target.scheme, target.netloc, target.path.rstrip("/")) == (
+            "https", "github.com", _README_REPOSITORIES[link["name"]]
+        )
+        assert parse_qs(target.query) == {
+            "utm_source": ["voicestudio"], "utm_medium": ["sponsor"],
+            "utm_campaign": ["strategic-sponsor"], "utm_content": ["readme-logo"],
+        }
         for asset in link["assets"]:
             assert (path.parent / asset).resolve().is_file(), f"{path.name}: {asset} does not exist"
