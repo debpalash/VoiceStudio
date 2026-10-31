@@ -382,19 +382,60 @@ def _sha256_of_file(p: Path, *, chunk: int = 1 << 20) -> str:
     return h.hexdigest()
 
 
-def _is_riff_wave(path: Path) -> bool:
-    """True when ``path`` carries the RIFF/WAVE header the CLI can parse.
+def _is_cli_readable_wav(path: Path) -> bool:
+    """True when the runtime can read ``path`` as it stands.
 
     The bundled runtime reads WAV containers only (``omnivoice.cpp``
-    ``src/wav.h``: ``read_wav_buf`` rejects anything whose first bytes are
-    not ``RIFF``/``WAVE``), so anything else has to be converted first.
+    ``src/wav.h``: ``read_wav_buf``), and it decodes PCM16, PCM24 and
+    float32 — classic or WAVE_FORMAT_EXTENSIBLE. A RIFF/WAVE container
+    is therefore not enough: a PCM8, PCM32 or mu-law clip is a RIFF/WAVE
+    file the runtime rejects with "[WAV] Unsupported", so it has to be
+    converted like any other reference the CLI cannot read.
+
+    The header is parsed the way ``read_wav_buf`` parses it: the sample
+    format comes from the ``fmt `` chunk, an extensible header collapses
+    to its sub-format, and the ``data`` chunk is only read once a ``fmt ``
+    chunk has been seen.
     """
     try:
         with path.open("rb") as handle:
             header = handle.read(12)
+            if len(header) != 12 or header[:4] != b"RIFF" or header[8:12] != b"WAVE":
+                return False
+            audio_format = 0
+            bits = 0
+            channels = 0
+            while True:
+                chunk = handle.read(8)
+                if len(chunk) != 8:
+                    return False
+                chunk_id = chunk[:4]
+                size = int.from_bytes(chunk[4:8], "little")
+                if chunk_id == b"fmt ":
+                    body = handle.read(min(size, 40))
+                    if len(body) >= 16:
+                        audio_format = int.from_bytes(body[0:2], "little")
+                        channels = int.from_bytes(body[2:4], "little")
+                        bits = int.from_bytes(body[14:16], "little")
+                        if audio_format == 0xFFFE and len(body) >= 40:
+                            # WAVE_FORMAT_EXTENSIBLE collapses to its
+                            # effective sample format (1 -> PCM, 3 -> float).
+                            sub_format = int.from_bytes(body[24:26], "little")
+                            if sub_format in (1, 3):
+                                audio_format = sub_format
+                    handle.seek(size - len(body), 1)
+                elif chunk_id == b"data" and channels > 0:
+                    return (audio_format == 1 and bits in (16, 24)) or (
+                        audio_format == 3 and bits == 32
+                    )
+                else:
+                    handle.seek(size, 1)
+                if size & 1 and len(handle.read(1)) != 1:
+                    # A chunk with an odd size is padded to an even one.
+                    return False
     except OSError:
         return False
-    return len(header) == 12 and header[:4] == b"RIFF" and header[8:12] == b"WAVE"
+    return False
 
 
 def _ffprobe_decoded_bytes(prompt: Path) -> Optional[int]:
@@ -1074,13 +1115,14 @@ def _make_backend_class():
                     transcript_path = Path(t_name)
                     with os.fdopen(t_fd, "w", encoding="utf-8") as handle:
                         handle.write(str(ref_text))
-                # The CLI reads WAV containers only, so a profile reference
-                # stored as MP3/M4A/... has to be converted before it is
-                # handed over (#3655). The original path is validated first —
-                # the conversion reads the file.
+                # The CLI reads WAV containers of a few sample formats only,
+                # so a profile reference stored as MP3/M4A/... — or as a WAV
+                # the runtime cannot decode — has to be converted before it
+                # is handed over (#3655). The original path is validated
+                # first — the conversion reads the file.
                 if ref_audio:
                     prompt = _validated_reference(ref_audio)
-                    if not _is_riff_wave(prompt):
+                    if not _is_cli_readable_wav(prompt):
                         converted_prompt = _convert_reference_to_wav(prompt)
                         ref_audio = str(converted_prompt)
                 argv = self._build_argv(

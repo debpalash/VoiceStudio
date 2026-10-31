@@ -692,6 +692,50 @@ def _cli_wav_format(data: bytes) -> tuple[int, int]:
     return audio_format, bits
 
 
+def _fmt_chunk(
+    audio_format: int,
+    channels: int,
+    sample_rate: int,
+    bits: int,
+    sub_format: int | None = None,
+) -> bytes:
+    """Build a ``fmt `` chunk body.
+
+    ``sub_format`` turns it into a 40-byte WAVE_FORMAT_EXTENSIBLE header
+    that carries the effective sample format at the offset ``read_wav_buf``
+    reads it from.
+    """
+    body = bytearray(16)
+    body[0:2] = audio_format.to_bytes(2, "little")
+    body[2:4] = channels.to_bytes(2, "little")
+    body[4:8] = sample_rate.to_bytes(4, "little")
+    body[8:12] = (sample_rate * channels * bits // 8).to_bytes(4, "little")
+    body[12:14] = (channels * bits // 8).to_bytes(2, "little")
+    body[14:16] = bits.to_bytes(2, "little")
+    if sub_format is not None:
+        body[16:18] = (22).to_bytes(2, "little")
+        body[18:20] = bits.to_bytes(2, "little")
+        body[20:24] = b"\x00\x00\x00\x00"
+        body[24:26] = sub_format.to_bytes(2, "little")
+        body += b"\x00" * 14
+    return bytes(body)
+
+
+def _write_wav_with_fmt(out_path: Path, fmt_body: bytes) -> None:
+    """Write a minimal RIFF/WAVE file with a hand-made ``fmt `` chunk."""
+    data = b"\x00" * 64
+    body = (
+        b"WAVE"
+        + b"fmt "
+        + len(fmt_body).to_bytes(4, "little")
+        + fmt_body
+        + b"data"
+        + len(data).to_bytes(4, "little")
+        + data
+    )
+    out_path.write_bytes(b"RIFF" + len(body).to_bytes(4, "little") + body)
+
+
 def _write_3s_ogg(out_path: Path, sr: int = 24_000) -> None:
     """Write a 3-second mono Ogg Vorbis clip — a non-WAV profile reference.
 
@@ -782,6 +826,83 @@ def test_wav_reference_is_handed_to_the_cli_unchanged(monkeypatch, tmp_path):
     rig.instance.generate("x", ref_audio=str(reference), ref_text="hello there")
 
     assert rig.ref_wav() == reference.resolve()
+
+
+def test_wav_reference_in_a_format_the_runtime_cannot_read_is_converted(monkeypatch, tmp_path):
+    """A RIFF/WAVE clip the runtime cannot decode is converted, not forwarded.
+
+    ``read_wav_buf`` in the pinned ``omnivoice.cpp`` decodes PCM16, PCM24
+    and float32 only, so a PCM8 clip is a RIFF/WAVE file the CLI rejects
+    with "[WAV] Unsupported" — the same opaque failure as a non-WAV
+    reference, and the same fix.
+    """
+    import math
+
+    import numpy as np
+    import soundfile as sf
+
+    reference = tmp_path / "profile-ref.wav"
+    t = np.arange(24_000 * 3, dtype="float32") / 24_000
+    sf.write(reference, (0.05 * np.sin(2 * math.pi * 440 * t)).astype("float32"),
+             24_000, format="WAV", subtype="PCM_U8")
+
+    rig = _PromptRig(monkeypatch, tmp_path)
+    rig.instance.generate("x", ref_audio=str(reference), ref_text="hello there")
+
+    handed_over = rig.ref_wav()
+    assert handed_over != reference.resolve(), "an unreadable WAV was handed to the CLI"
+    # The file the CLI receives must satisfy the runtime's WAV contract.
+    _cli_wav_format(rig.ref_bytes)
+    assert not handed_over.exists()
+    assert reference.exists()
+
+
+@pytest.mark.parametrize(
+    "audio_format,bits,readable",
+    [
+        (1, 16, True),   # PCM16 — the runtime's classic format
+        (1, 24, True),   # PCM24
+        (3, 32, True),   # IEEE float32
+        (1, 8, False),   # PCM8 — RIFF/WAVE, but not decodable
+        (1, 32, False),  # 32-bit integer PCM
+        (7, 8, False),   # mu-law
+    ],
+)
+def test_wav_decision_matches_the_runtime_contract(tmp_path, audio_format, bits, readable):
+    """The engine forwards a WAV exactly when the runtime's reader accepts it.
+
+    ``read_wav_buf`` decodes PCM16, PCM24 and float32 only; every other
+    RIFF/WAVE combination makes the CLI exit with "[WAV] Unsupported", so
+    such a reference has to be converted instead of forwarded.
+    """
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.wav"
+    _write_wav_with_fmt(reference, _fmt_chunk(audio_format, 1, 24_000, bits))
+
+    assert gguf_backend._is_cli_readable_wav(reference) == readable
+
+
+@pytest.mark.parametrize(
+    "sub_format,bits,readable",
+    [
+        (1, 16, True),     # extensible PCM16
+        (3, 32, True),     # extensible IEEE float32
+        (0xF1AC, 16, False),  # extensible ALAC — no sub-format the runtime decodes
+    ],
+)
+def test_extensible_wav_decision_matches_the_runtime_contract(tmp_path, sub_format, bits, readable):
+    """A WAVE_FORMAT_EXTENSIBLE header is judged by its sub-format.
+
+    ``read_wav_buf`` collapses an extensible header to the sub-format it
+    carries and rejects the rest with "[WAV] Unsupported".
+    """
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.wav"
+    _write_wav_with_fmt(reference, _fmt_chunk(0xFFFE, 1, 24_000, bits, sub_format=sub_format))
+
+    assert gguf_backend._is_cli_readable_wav(reference) == readable
 
 
 def test_unreadable_reference_reports_an_actionable_error(monkeypatch, tmp_path):
