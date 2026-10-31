@@ -2439,7 +2439,13 @@ def resolve_omnivoice_checkpoint() -> str:
     and is not a valid model identifier listed on huggingface.co/models"* (#693).
     Fall back to the default rather than 500 on every launch.
     """
-    checkpoint = os.environ.get("OMNIVOICE_MODEL", _DEFAULT_OMNIVOICE_CHECKPOINT).strip()
+    checkpoint = os.environ.get("OMNIVOICE_MODEL", "").strip()
+    if not checkpoint:
+        from services.local_model_paths import get, validate
+        local = get("tts", "omnivoice")
+        if local:
+            return validate("tts", "omnivoice", local)
+        checkpoint = _DEFAULT_OMNIVOICE_CHECKPOINT
     if not checkpoint:
         return _DEFAULT_OMNIVOICE_CHECKPOINT
     if checkpoint == "test":

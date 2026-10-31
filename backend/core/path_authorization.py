@@ -35,7 +35,61 @@ class PathAuthorizationError(ValueError):
     pass
 
 
-def consume(token: str, expected_kind: str) -> str:
+def local_model_root_identity(path: str) -> list[int]:
+    """Identify the canonical directory, refusing newly introduced links."""
+    try:
+        info = os.lstat(path)
+        if os.path.realpath(path) != path or not stat.S_ISDIR(info.st_mode):
+            raise OSError("Model root changed")
+        return [info.st_dev, info.st_ino]
+    except OSError as exc:
+        raise PathAuthorizationError("The selected model folder changed; discover its actual folder again") from exc
+
+
+class LocalModelSelection(str):
+    """Scoped path retaining its object binding through validation/persistence."""
+
+    identity: list[int] | None
+
+    def __new__(cls, path: str, identity: list[int] | None):
+        value = super().__new__(cls, path)
+        value.identity = identity
+        return value
+
+    def check(self) -> None:
+        if local_model_root_identity(self) != self.identity:
+            raise PathAuthorizationError("The selected model folder changed; discover its actual folder again")
+
+
+def issue_local_model_selection(path: str, family: str, engine_id: str) -> str:
+    """Derive a narrowly scoped capability after authorized discovery validation.
+
+    Internal only: no HTTP endpoint may issue a capability from a supplied path.
+    Model files are never touched; only the existing private capability store is
+    written. Generic models-dir consumers cannot redeem this scoped token.
+    """
+    token = secrets.token_hex(32)
+    canonical = os.path.realpath(path)
+    # Discovery supplies a canonical candidate; never silently authorize a swap.
+    if canonical != path:
+        raise PathAuthorizationError("The selected model folder changed; discover its actual folder again")
+    payload = {"token": token, "kind": "models_dir", "path": canonical,
+               "root_identity": local_model_root_identity(canonical),
+               "scope": f"local-model:{family}:{engine_id}"}
+    try:
+        os.makedirs(_AUTH_DIR, mode=0o700, exist_ok=True)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(os.path.join(_AUTH_DIR, f"{token}.json"), flags, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+    except OSError as exc:
+        raise PathAuthorizationError("Could not authorize model selection; check the app data folder permissions and discover again") from exc
+    return token
+
+
+def consume(token: str, expected_kind: str, *, expected_scope: str | None = None) -> str:
     """Consume and return a single desktop-authorized path.
 
     Capability files are one-shot and opened without following symlinks. The
@@ -121,4 +175,11 @@ def consume(token: str, expected_kind: str) -> str:
         raise PathAuthorizationError("Invalid desktop authorization")
     if payload.get("kind") != expected_kind or not isinstance(payload.get("path"), str):
         raise PathAuthorizationError("Desktop authorization does not match this setting")
+    scope = payload.get("scope")
+    if scope is not None and scope != expected_scope:
+        raise PathAuthorizationError("Desktop authorization does not match this engine; discover its models again")
+    if scope is not None and scope.startswith("local-model:"):
+        selected = LocalModelSelection(payload["path"], payload.get("root_identity"))
+        selected.check()
+        return selected
     return payload["path"]
