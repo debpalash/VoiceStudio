@@ -9,6 +9,12 @@ struct SelectionOption: Identifiable {
     var swatch: Theme? = nil
 }
 
+/// RAM recommendations guide a choice without preventing an explicit attempt.
+@MainActor func phoneModelOption(_ item: PhoneModel, model: AppModel, subtitle: String? = nil) -> SelectionOption {
+    SelectionOption(id: item.id, title: item.name,
+                    subtitle: item.fits() ? subtitle : model.t("mobile.simple.ram", ["ram": String(item.min_ram_gb)]))
+}
+
 struct SelectionRow: View {
     @Environment(\.vsTheme) private var theme
     @Environment(\.dynamicTypeSize) private var typeSize

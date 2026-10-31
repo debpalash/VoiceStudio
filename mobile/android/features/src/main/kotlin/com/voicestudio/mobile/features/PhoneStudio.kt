@@ -10,9 +10,16 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.io.File
 
+/** RAM guides model choice; explicit choices stay available on smaller devices. */
+@androidx.compose.runtime.Composable
+fun phoneModelChoice(model: PhoneModel, ramBytes: Long, supporting: String? = null) = Choice(
+    model.id,model.name,supporting=if(model.fits(ramBytes)) supporting
+    else tr("mobile.simple.ram",mapOf("ram" to model.minRamGb))
+)
+
 data class PhoneState(val models: List<PhoneModel> = emptyList(), val installed: Set<String> = emptySet(), val used: Long = 0,
     val storage: Map<String,Long> = emptyMap(), val receipts: Map<String,List<LicenceReceipt>> = emptyMap(), val loading: Boolean = true, val progress: Float? = null, val audio: File? = null, val voices: List<PhoneVoice> = emptyList(), val recent: List<PhoneGeneration> = emptyList(), val dubs: List<PhoneDubRecord> = emptyList()) {
-    fun canRun(model: PhoneModel, ramBytes: Long): Boolean = model.id in installed&&model.fits(ramBytes)&&accepted(model)
+    fun canRun(model: PhoneModel): Boolean = model.id in installed&&accepted(model)
     fun accepted(model: PhoneModel): Boolean = !model.gated || receipts[model.id]?.lastOrNull()?.let {it.accepted&&it.fingerprint==model.licence.termsFingerprint}==true
 }
 class PhoneStudio(context: Context, private val scope: CoroutineScope, private val failure: (Throwable)->Unit, private val retryFailure: (Throwable,()->Unit)->Unit = {error,_ ->failure(error)}) {

@@ -4060,7 +4060,7 @@
       "terms_fingerprint": "Pegada dixital das condicións: {{fingerprint}}",
       "licence_storage": "Non se puideron ler nin gardar os rexistros de licenza modelo. Almacenamento gratuíto e téntao de novo; os modelos permanecen bloqueados.",
       "licence_required": "Acepte primeiro a licenza en Models.",
-      "ram_required": "Necesita {{ram}} GB de RAM. Escolle un modelo máis pequeno ou usa o teu ordenador.",
+      "ram_required": "Recoméndanse {{ram}} GB de RAM. Este modelo pode funcionar amodo ou facer que a aplicación se peche neste dispositivo. Podes probalo igualmente.",
       "wifi_required": "Conéctate á wifi ou permite os datos móbiles en modelos.",
       "storage_required": "Non hai suficiente almacenamento. Libera espazo e téntao de novo.",
       "download_failed": "Fallou a descarga do modelo. Comproba a túa conexión e continúa en Modelos.",
@@ -4077,7 +4077,8 @@
       "computer_feature": "Esta función execútase actualmente no teu ordenador. Podes usar Fala e Ditado neste teléfono sen vincular.",
       "accepted": "Licenza aceptada",
       "not_accepted": "Non se acepta licenza",
-      "receipt": "{{action}} · {{time}} · Aplicación {{version}} · Condicións {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · Aplicación {{version}} · Condicións {{fingerprint}}",
+      "try_anyway": "Probar igualmente"
     },
     "simple": {
       "phone": "Teléfono",
@@ -4125,7 +4126,7 @@
       "remove_job": "Eliminar dobraxe",
       "reconnect": "Reconectar",
       "cancel": "Cancelar",
-      "ram": "Necesita {{ram}} GB de RAM",
+      "ram": "Recoméndanse {{ram}} GB de RAM",
       "analytics": "Analítica",
       "language": "Linguaxe",
       "default_voice": "Voz predeterminada",

@@ -138,9 +138,9 @@ internal fun chooseSpeakModel(models: List<PhoneModel>,installed: Set<String>,ch
             LaunchedEffect(selected?.id,voice?.id) {language=if(voice!=null||selected?.capability=="clone") "auto" else language.takeIf {it in selected?.languages.orEmpty()} ?: selected?.languages?.firstOrNull().orEmpty()}
             val languageChoices=if(voice!=null||selected?.capability=="clone") listOf(Choice("auto",tr("languagePicker.auto"))) else selected?.languages.orEmpty().map {Choice(it,languageName(it,LocalL10n.current.locale))}
             Screen(bottomBar={
-                if(selected!=null&&!phone.canRun(selected,vm.phone.ramBytes)) {
+                if(selected!=null&&!phone.canRun(selected)) {
                     com.voicestudio.mobile.features.models.MissingModelsCard(vm,"mobile.tabs.speak",listOf(selected),prominent=true)
-                } else Action("mobile.speak.generate",text.isNotBlank()&&selected!=null&&phone.canRun(selected,vm.phone.ramBytes)&&validSpeaker&&phone.progress==null&&!exporting) {
+                } else Action("mobile.speak.generate",text.isNotBlank()&&selected!=null&&phone.canRun(selected)&&validSpeaker&&phone.progress==null&&!exporting) {
                     vm.phone.speak(selected!!,text,speaker.toIntOrNull() ?: 0,voice,language.takeUnless {it=="auto"})
                 }
             }) {
@@ -150,7 +150,7 @@ internal fun chooseSpeakModel(models: List<PhoneModel>,installed: Set<String>,ch
                     ChoicePicker("mobile.speak.voice",speaker,(if(selected?.requiresReference==true) listOf(Choice("",tr("mobile.dub.choose_voice"),enabled=false)) else emptyList())+(0 until speakers).map {Choice(it.toString(),if(selected?.supportsDesign==true) tr("mobile.simple.default_voice") else tr("mobile.local.preset_voice",mapOf("number" to it+1)))}+phone.voices.map {Choice("phone:"+it.id,it.name)}) {speaker=it}
                     HorizontalDivider(color=role("border"))
                     ChoicePicker("mobile.local.model",selected?.id.orEmpty(),phone.models.filter {it.supportsSpeech}.map {
-                        Choice(it.id,it.name,enabled=it.fits(vm.phone.ramBytes),supporting=if(it.fits(vm.phone.ramBytes)) tr("mobile.simple.${it.capability}") else tr("mobile.local.ram_required",mapOf("ram" to it.minRamGb)))
+                        phoneModelChoice(it,vm.phone.ramBytes,tr("mobile.simple.${it.capability}"))
                     }) {id ->
                         val chosen=phone.models.first {it.id==id}
                         vm.phone.cancelInference();requestedModel=id
@@ -159,6 +159,9 @@ internal fun chooseSpeakModel(models: List<PhoneModel>,installed: Set<String>,ch
                     }
                     HorizontalDivider(color=role("border"))
                     ChoicePicker("mobile.speak.language",language,languageChoices) {language=it}
+                }
+                if(selected!=null&&!selected.fits(vm.phone.ramBytes)&&phone.canRun(selected)) {
+                    Text(tr("mobile.local.ram_required",mapOf("ram" to selected.minRamGb)),color=role("textMuted"))
                 }
                 if(selected?.requiresReference==true&&voice==null) {
                     Text(tr("mobile.speak.reference_required"),style=MaterialTheme.typography.bodyMedium,color=role("textMuted"))

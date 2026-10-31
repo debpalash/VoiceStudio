@@ -4062,7 +4062,7 @@
       "terms_fingerprint": "Empreinte des conditions : {{fingerprint}}",
       "licence_storage": "Les licences des modèles n'ont pas pu être lues ou enregistrées. Libérez de l'espace et réessayez ; les modèles restent bloqués.",
       "licence_required": "Acceptez d'abord la licence dans Modèles.",
-      "ram_required": "Nécessite {{ram}} Go de RAM. Choisissez un modèle plus léger ou utilisez votre ordinateur.",
+      "ram_required": "{{ram}} Go de RAM recommandés. Ce modèle peut fonctionner lentement ou entraîner la fermeture de l’application sur cet appareil. Vous pouvez quand même l’essayer.",
       "wifi_required": "Connectez-vous au Wi-Fi ou autorisez les données mobiles dans Modèles.",
       "storage_required": "Espace insuffisant. Libérez de l'espace et réessayez.",
       "download_failed": "Le téléchargement du modèle a échoué. Vérifiez votre connexion et reprenez dans Modèles.",
@@ -4079,7 +4079,8 @@
       "computer_feature": "Cette fonction s'exécute actuellement sur votre ordinateur. Parole et Dictée fonctionnent sur ce téléphone sans association.",
       "accepted": "Licence acceptée",
       "not_accepted": "Licence non acceptée",
-      "receipt": "{{action}} · {{time}} · App {{version}} · Conditions {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · App {{version}} · Conditions {{fingerprint}}",
+      "try_anyway": "Essayer quand même"
     },
     "simple": {
       "phone": "Téléphone",
@@ -4127,7 +4128,7 @@
       "remove_job": "Supprimer le doublage",
       "reconnect": "Reconnecter",
       "cancel": "Annuler",
-      "ram": "Nécessite {{ram}} Go de RAM",
+      "ram": "{{ram}} Go de RAM recommandés",
       "analytics": "Analytique",
       "language": "Langue",
       "default_voice": "Voix par défaut",

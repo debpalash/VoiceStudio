@@ -56,7 +56,7 @@ import java.io.File
     val needed=listOfNotNull(tts.takeIf {selections.any {it.startsWith("preset:")}},clone.takeIf {selections.any {it.startsWith("phone:")}})
     val speakers=tts?.option("num_speakers","1")?.toIntOrNull()?.coerceIn(1,128) ?: 1
     val voices=(0 until speakers).map {Choice("preset:$it",tr("mobile.local.preset_voice",mapOf("number" to it+1)))}+phone.voices.map {Choice("phone:"+it.id,it.name)}
-    val valid=plan!=null&&selections.all {selection->voices.any {it.id==selection}}&&needed.isNotEmpty()&&needed.all {phone.canRun(it,vm.phone.ramBytes)}
+    val valid=plan!=null&&selections.all {selection->voices.any {it.id==selection}}&&needed.isNotEmpty()&&needed.all {phone.canRun(it)}
     suspend fun refreshLibrary() {projects=vm.phone.production.list()}
     fun switchProject(next: ProductionProject) {val previous=project;scope.launch {try {if(previous.title.isNotBlank()) vm.phone.production.save(previous);project=next} catch(e:Exception) {vm.fail(e)}}}
     fun fresh() {switchProject(ProductionProject(kind=kind,title=untitled))}
@@ -129,7 +129,7 @@ import java.io.File
                 }
             }
         }
-        if(needed.any {!phone.canRun(it,vm.phone.ramBytes)}) MissingModelsCard(vm,titleKey,needed)
+        if(needed.any {!phone.canRun(it)}) MissingModelsCard(vm,titleKey,needed)
         PhoneJobStatus(running)
         if(running) {
             LinearProgressIndicator(progress={progress},modifier=Modifier.fillMaxWidth())

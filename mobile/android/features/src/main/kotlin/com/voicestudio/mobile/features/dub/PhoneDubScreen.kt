@@ -58,8 +58,8 @@ import java.io.File
         ?: phone.models.firstOrNull {it.capability==capability&&it.id in phone.installed&&it.fits(vm.phone.ramBytes)} ?: phone.models.firstOrNull {it.capability==capability}
     val asr=model("asr");val translator=model("translate")
     val models=listOfNotNull(asr,translator,clone)
-    val missing=models.filterNot {phone.canRun(it,vm.phone.ramBytes)}
-    val ready=models.size==3&&missing.isEmpty()&&models.all {it.fits(vm.phone.ramBytes)}
+    val missing=models.filterNot {phone.canRun(it)}
+    val ready=models.size==3&&missing.isEmpty()
     LaunchedEffect(phone.voices) {if(voice.isNotEmpty()&&phone.voices.none {it.id==voice}) voice=""}
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri ->
         if(uri!=null) scope.launch {

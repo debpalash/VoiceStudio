@@ -219,7 +219,7 @@ All tabs work without pairing once on-device models are installed (see M2); the 
 - `mobile/contract/models.json` is **generated** by
   `uv run python scripts/export_mobile_models.py` from
   `mobile/contract/models.source.json` (which models the phone offers: HF repo,
-  pinned revision, files with SHA-256 and size, capability, languages, minimum
+  pinned revision, files with SHA-256 and size, capability, languages, recommended
   RAM) joined with `docs/licensing/model-license-data.json` (licence, category,
   credit, rights holder). A phone model **must** have a registry entry; adding
   one follows `docs/licensing/model-review-workflow.md`. The contract test fails
@@ -236,7 +236,7 @@ All tabs work without pairing once on-device models are installed (see M2); the 
   Whisper tiny/base and streaming Zipformer provide dictation, and a small
   instruct LLM provides translation.
 - OmniVoice uses the runtime author recommended Q8_0 base and native F32 codec
-  (about 1.4 GB; minimum 8 GB RAM). The legacy `omnivoice-q4-k-m` identifier
+  (about 1.4 GB; 8 GB RAM recommended). The legacy `omnivoice-q4-k-m` identifier
   remains stable for preferences and storage. Older Q4 files are retained; use
   Models to download the new verified files. Licence terms/fingerprints are
   unchanged. Bare Speech synthesis cannot silently fall back to voice design.
@@ -282,8 +282,13 @@ All tabs work without pairing once on-device models are installed (see M2); the 
   not commercial-OK must be accepted on the phone before it is downloaded or
   loaded. Acceptance is recorded locally per model with the fingerprint of the
   exact terms shown, the app version and the time, and can be withdrawn.
-- **Device fit:** each model declares minimum RAM. Models the phone can't run
-  are shown disabled with the reason, never hidden and never attempted.
+- **Device fit:** the catalogue's `min_ram_gb` field is a RAM recommendation,
+  not an installation or inference gate. Models below the recommendation remain
+  selectable with a visible warning that performance may be slow or the app may
+  close. Download prompts offer **Try anyway**; choosing a model never starts a
+  download. Automatic choices prefer recommended models, while explicit choices
+  remain usable after installation. Licence, storage, checksum, consent and
+  cancellation checks still apply; RAM advice never bypasses them.
 
 ### Where each task runs
 

@@ -4060,7 +4060,7 @@
       "terms_fingerprint": "Terms fingerprint: {{fingerprint}}",
       "licence_storage": "Model licence records could not be read or saved. Free storage and try again; models remain blocked.",
       "licence_required": "Accept the licence in Models first.",
-      "ram_required": "Needs {{ram}} GB of RAM. Pick a smaller model or use your computer.",
+      "ram_required": "{{ram}} GB RAM recommended. This model may run slowly or close the app on this device. You can try it anyway.",
       "wifi_required": "Connect to Wi-Fi, or allow mobile data in Models.",
       "storage_required": "Not enough storage. Free some space and try again.",
       "download_failed": "The model download failed. Check your connection and resume in Models.",
@@ -4077,7 +4077,8 @@
       "computer_feature": "This feature currently runs on your computer. You can use Speech and Dictate on this phone without pairing.",
       "accepted": "Licence accepted",
       "not_accepted": "Licence not accepted",
-      "receipt": "{{action}} · {{time}} · App {{version}} · Terms {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · App {{version}} · Terms {{fingerprint}}",
+      "try_anyway": "Try anyway"
     },
     "simple": {
       "phone": "Phone",
@@ -4125,7 +4126,7 @@
       "remove_job": "Delete dub",
       "reconnect": "Reconnect",
       "cancel": "Cancel",
-      "ram": "Needs {{ram}} GB RAM",
+      "ram": "{{ram}} GB RAM recommended",
       "analytics": "Analytics",
       "language": "Language",
       "default_voice": "Default voice",

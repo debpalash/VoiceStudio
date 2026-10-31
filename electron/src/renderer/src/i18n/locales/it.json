@@ -4062,7 +4062,7 @@
       "terms_fingerprint": "Impronta dei termini: {{fingerprint}}",
       "licence_storage": "Impossibile leggere o salvare i record delle licenze dei modelli. Libera spazio e riprova; i modelli restano bloccati.",
       "licence_required": "Prima accetta la licenza in Modelli.",
-      "ram_required": "Richiede {{ram}} GB di RAM. Scegli un modello più piccolo o usa il computer.",
+      "ram_required": "Consigliati {{ram}} GB di RAM. Su questo dispositivo il modello potrebbe essere lento o causare la chiusura dell’app. Puoi comunque provarlo.",
       "wifi_required": "Connettiti al Wi-Fi o consenti i dati mobili in Modelli.",
       "storage_required": "Spazio insufficiente. Libera spazio e riprova.",
       "download_failed": "Download del modello non riuscito. Controlla la connessione e riprendi in Modelli.",
@@ -4079,7 +4079,8 @@
       "computer_feature": "Questa funzione al momento viene eseguita sul computer. Voce sintetica e Dettatura funzionano su questo telefono senza associazione.",
       "accepted": "Licenza accettata",
       "not_accepted": "Licenza non accettata",
-      "receipt": "{{action}} · {{time}} · App {{version}} · Termini {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · App {{version}} · Termini {{fingerprint}}",
+      "try_anyway": "Prova comunque"
     },
     "simple": {
       "phone": "Telefono",
@@ -4127,7 +4128,7 @@
       "remove_job": "Elimina doppiaggio",
       "reconnect": "Riconnetti",
       "cancel": "Annulla",
-      "ram": "Richiede {{ram}} GB di RAM",
+      "ram": "Consigliati {{ram}} GB di RAM",
       "analytics": "Analisi",
       "language": "Lingua",
       "default_voice": "Voce predefinita",

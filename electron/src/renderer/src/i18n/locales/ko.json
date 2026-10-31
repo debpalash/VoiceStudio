@@ -4060,7 +4060,7 @@
       "terms_fingerprint": "약관 지문: {{fingerprint}}",
       "licence_storage": "모델 라이선스 기록을 읽거나 저장할 수 없습니다. 저장 공간을 확보한 후 다시 시도하세요. 모델은 계속 차단됩니다.",
       "licence_required": "먼저 모델에서 라이선스에 동의하세요.",
-      "ram_required": "RAM {{ram}}GB가 필요합니다. 더 작은 모델을 고르거나 컴퓨터를 사용하세요.",
+      "ram_required": "RAM {{ram}}GB 권장. 이 기기에서는 모델이 느리게 실행되거나 앱이 종료될 수 있습니다. 그래도 사용해 볼 수 있습니다.",
       "wifi_required": "Wi-Fi에 연결하거나 모델에서 모바일 데이터를 허용하세요.",
       "storage_required": "저장 공간이 부족합니다. 공간을 확보한 후 다시 시도하세요.",
       "download_failed": "모델 다운로드에 실패했습니다. 연결을 확인하고 모델에서 이어서 받으세요.",
@@ -4077,7 +4077,8 @@
       "computer_feature": "이 기능은 현재 컴퓨터에서 실행됩니다. 페어링 없이도 이 휴대폰에서 음성 합성과 받아쓰기를 사용할 수 있습니다.",
       "accepted": "라이선스 동의함",
       "not_accepted": "라이선스 동의 안 함",
-      "receipt": "{{action}} · {{time}} · 앱 {{version}} · 약관 {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · 앱 {{version}} · 약관 {{fingerprint}}",
+      "try_anyway": "그래도 시도"
     },
     "simple": {
       "phone": "휴대폰",
@@ -4124,7 +4125,7 @@
       "remove_job": "더빙 삭제",
       "reconnect": "다시 연결",
       "cancel": "취소",
-      "ram": "RAM {{ram}}GB 필요",
+      "ram": "RAM {{ram}}GB 권장",
       "analytics": "분석",
       "language": "언어",
       "licence_error": "라이선스 필요",

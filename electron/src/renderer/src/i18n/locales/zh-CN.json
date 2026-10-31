@@ -4056,7 +4056,7 @@
       "terms_fingerprint": "条款指纹：{{fingerprint}}",
       "licence_storage": "无法读取或保存模型许可记录。请释放存储空间后重试；模型仍将被阻止。",
       "licence_required": "请先在“模型”中接受许可。",
-      "ram_required": "需要 {{ram}} GB 内存。请选择更小的模型，或使用电脑。",
+      "ram_required": "建议配备 {{ram}} GB 内存. 此模型在本设备上可能运行缓慢或导致应用关闭。您仍可尝试运行。",
       "wifi_required": "请连接 Wi-Fi，或在“模型”中允许使用移动数据。",
       "storage_required": "存储空间不足。请释放空间后重试。",
       "download_failed": "模型下载失败。请检查网络，并在“模型”中继续下载。",
@@ -4073,7 +4073,8 @@
       "computer_feature": "此功能目前在电脑上运行。无需配对，即可在这部手机上使用语音合成和听写。",
       "accepted": "已接受许可",
       "not_accepted": "未接受许可",
-      "receipt": "{{action}} · {{time}} · 应用 {{version}} · 条款 {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · 应用 {{version}} · 条款 {{fingerprint}}",
+      "try_anyway": "仍要尝试"
     },
     "simple": {
       "phone": "手机",
@@ -4120,7 +4121,7 @@
       "remove_job": "删除配音",
       "reconnect": "重新连接",
       "cancel": "取消",
-      "ram": "需要 {{ram}} GB 内存",
+      "ram": "建议配备 {{ram}} GB 内存",
       "analytics": "分析",
       "language": "语言",
       "default_voice": "默认声音",

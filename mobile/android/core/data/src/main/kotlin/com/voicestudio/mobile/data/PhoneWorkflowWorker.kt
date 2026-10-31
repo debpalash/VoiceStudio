@@ -55,7 +55,7 @@ class PhoneWorkflowWorker(context: Context,params: WorkerParameters): CoroutineW
             require(UUID.fromString(job).toString()==job);setForeground(getForegroundInfo());requirePhonePower(applicationContext)
             val request=withContext(Dispatchers.IO) {Json.decodeFromString<WorkflowJob>(File(applicationContext.noBackupFilesDir,"workflow-jobs/$job.json").readText())}
             val runtime=PhoneRuntime.get(applicationContext)
-            request.models.forEach {model->runtime.licence.requireAccepted(model);if(!runtime.downloads.installed(model)||!model.fits(runtime.ramBytes)) throw ClientFailure("mobile.local.model_required")}
+            request.models.forEach {model->runtime.licence.requireAccepted(model);if(!runtime.downloads.installed(model)) throw ClientFailure("mobile.local.model_required")}
             fun model(capability: String)=request.models.firstOrNull {it.capability==capability}
             val workflow=request.workflow;val selection=workflow.voiceSelection ?: "preset:0"
             val store=PhoneWorkflowStore(File(applicationContext.noBackupFilesDir,"workflows"))

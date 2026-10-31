@@ -4062,7 +4062,7 @@
       "terms_fingerprint": "Impressão digital dos termos: {{fingerprint}}",
       "licence_storage": "Não foi possível ler ou salvar os registros de licença dos modelos. Libere armazenamento e tente novamente; os modelos continuam bloqueados.",
       "licence_required": "Aceite primeiro a licença em Modelos.",
-      "ram_required": "Requer {{ram}} GB de RAM. Escolha um modelo menor ou use seu computador.",
+      "ram_required": "Recomendados {{ram}} GB de RAM. Neste dispositivo, o modelo pode ficar lento ou fazer o aplicativo fechar. Você pode tentar mesmo assim.",
       "wifi_required": "Conecte-se ao Wi-Fi ou permita dados móveis em Modelos.",
       "storage_required": "Armazenamento insuficiente. Libere espaço e tente novamente.",
       "download_failed": "O download do modelo falhou. Verifique sua conexão e retome em Modelos.",
@@ -4079,7 +4079,8 @@
       "computer_feature": "Este recurso roda atualmente no seu computador. Você pode usar Fala e Ditado neste celular sem parear.",
       "accepted": "Licença aceita",
       "not_accepted": "Licença não aceita",
-      "receipt": "{{action}} · {{time}} · App {{version}} · Termos {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · App {{version}} · Termos {{fingerprint}}",
+      "try_anyway": "Tentar mesmo assim"
     },
     "simple": {
       "phone": "Celular",
@@ -4127,7 +4128,7 @@
       "remove_job": "Excluir dublagem",
       "reconnect": "Reconectar",
       "cancel": "Cancelar",
-      "ram": "Requer {{ram}} GB de RAM",
+      "ram": "Recomendados {{ram}} GB de RAM",
       "analytics": "Análises",
       "language": "Idioma",
       "default_voice": "Voz padrão",

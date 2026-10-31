@@ -4060,7 +4060,7 @@
       "terms_fingerprint": "Vingerafdruk van voorwaarden: {{fingerprint}}",
       "licence_storage": "Modellicenties konden niet worden gelezen of opgeslagen. Maak opslagruimte vrij en probeer opnieuw; modellen blijven geblokkeerd.",
       "licence_required": "Accepteer eerst de licentie in Modellen.",
-      "ram_required": "Vereist {{ram}} GB RAM. Kies een kleiner model of gebruik je computer.",
+      "ram_required": "{{ram}} GB RAM aanbevolen. Dit model kan op dit apparaat traag werken of de app laten sluiten. Je kunt het toch proberen.",
       "wifi_required": "Maak verbinding met Wi-Fi of sta mobiele data toe in Modellen.",
       "storage_required": "Onvoldoende opslagruimte. Maak ruimte vrij en probeer opnieuw.",
       "download_failed": "Het downloaden van het model is mislukt. Controleer je verbinding en hervat in Modellen.",
@@ -4077,7 +4077,8 @@
       "computer_feature": "Deze functie draait momenteel op je computer. Je kunt Spraak en Dicteren op deze telefoon gebruiken zonder te koppelen.",
       "accepted": "Licentie geaccepteerd",
       "not_accepted": "Licentie niet geaccepteerd",
-      "receipt": "{{action}} · {{time}} · App {{version}} · Voorwaarden {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · App {{version}} · Voorwaarden {{fingerprint}}",
+      "try_anyway": "Toch proberen"
     },
     "simple": {
       "phone": "Telefoon",
@@ -4125,7 +4126,7 @@
       "remove_job": "Nasynchronisatie verwijderen",
       "reconnect": "Opnieuw verbinden",
       "cancel": "Annuleren",
-      "ram": "Vereist {{ram}} GB RAM",
+      "ram": "{{ram}} GB RAM aanbevolen",
       "analytics": "Analyse",
       "language": "Taal",
       "default_voice": "Standaardstem",

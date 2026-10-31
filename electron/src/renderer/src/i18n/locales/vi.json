@@ -4060,7 +4060,7 @@
       "terms_fingerprint": "Dấu vân tay điều khoản: {{fingerprint}}",
       "licence_storage": "Không đọc hoặc lưu được hồ sơ giấy phép mô hình. Hãy giải phóng dung lượng và thử lại; các mô hình vẫn bị chặn.",
       "licence_required": "Hãy chấp nhận giấy phép trong Mô hình trước.",
-      "ram_required": "Cần {{ram}} GB RAM. Chọn mô hình nhỏ hơn hoặc dùng máy tính của bạn.",
+      "ram_required": "Khuyến nghị {{ram}} GB RAM. Mô hình này có thể chạy chậm hoặc khiến ứng dụng đóng trên thiết bị này. Bạn vẫn có thể thử.",
       "wifi_required": "Kết nối Wi-Fi, hoặc cho phép dữ liệu di động trong Mô hình.",
       "storage_required": "Không đủ dung lượng. Hãy giải phóng bộ nhớ và thử lại.",
       "download_failed": "Tải mô hình thất bại. Kiểm tra kết nối và tiếp tục trong Mô hình.",
@@ -4077,7 +4077,8 @@
       "computer_feature": "Tính năng này hiện chạy trên máy tính của bạn. Bạn có thể dùng Giọng nói và Đọc chính tả trên điện thoại này mà không cần ghép nối.",
       "accepted": "Đã chấp nhận giấy phép",
       "not_accepted": "Chưa chấp nhận giấy phép",
-      "receipt": "{{action}} · {{time}} · Ứng dụng {{version}} · Điều khoản {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · Ứng dụng {{version}} · Điều khoản {{fingerprint}}",
+      "try_anyway": "Vẫn thử"
     },
     "simple": {
       "phone": "Điện thoại",
@@ -4125,7 +4126,7 @@
       "remove_job": "Xóa bản lồng tiếng",
       "reconnect": "Kết nối lại",
       "cancel": "Hủy",
-      "ram": "Cần {{ram}} GB RAM",
+      "ram": "Khuyến nghị {{ram}} GB RAM",
       "analytics": "Phân tích",
       "language": "Ngôn ngữ",
       "default_voice": "Giọng mặc định",

@@ -33,7 +33,6 @@ class PhoneDubWorkerTest {
     }
     @Test fun phoneDubFailurePersistsRecoveryParametersInCheckpointAndWorkData()=runBlocking {
         val app=context as Application
-        org.robolectric.Shadows.shadowOf(app.getSystemService(android.app.ActivityManager::class.java)).setMemoryInfo(android.app.ActivityManager.MemoryInfo().apply {totalMem=0})
         val catalog=app.assets.open("models.json").bufferedReader().use {com.voicestudio.mobile.local.ModelCatalog.decode(it.readText())}
         val models=listOf("asr","translate","clone").map {cap ->catalog.models.first {it.capability==cap}}
         val runtime=com.voicestudio.mobile.local.PhoneRuntime.get(app)
@@ -41,13 +40,13 @@ class PhoneDubWorkerTest {
         val jobs=com.voicestudio.mobile.local.PhoneDubStore(java.io.File(app.noBackupFilesDir,"dubs"))
         val source=java.io.File(app.cacheDir,"fixture.wav").apply {writeText("fixture")}
         val job=jobs.create(source,"Fixture",listOf(com.voicestudio.mobile.local.DubTarget("fr","French")),models,true)
+        val failure=com.voicestudio.mobile.network.ClientFailure("mobile.errors.backend",mapOf("message" to "Foreground initialization failed"))
         val worker=TestListenableWorkerBuilder<PhoneDubWorker>(app).setInputData(workDataOf("job" to job.id))
-            .setForegroundUpdater {_,_,_->CallbackToFutureAdapter.getFuture<Void> {it.set(null);"foreground"}}.build()
-        val ram=models.first().minRamGb.toString()
+            .setForegroundUpdater {_,_,_->CallbackToFutureAdapter.getFuture<Void> {it.setException(failure);"foreground-failure"}}.build()
         val result=worker.doWork() as ListenableWorker.Result.Failure
-        assertEquals("mobile.local.ram_required",result.outputData.getString("error"))
-        assertEquals("{\"ram\":\"$ram\"}",result.outputData.getString("error_params"))
-        assertEquals(mapOf("ram" to ram),jobs.checkpoint(job.id).errorParams)
+        assertEquals(failure.key,result.outputData.getString("error"))
+        assertEquals("{\"message\":\"Foreground initialization failed\"}",result.outputData.getString("error_params"))
+        assertEquals(failure.params,jobs.checkpoint(job.id).errorParams)
     }
     @Test fun invalidCheckpointIsActionableWithoutComputerCredentials()=runBlocking {
         val worker=TestListenableWorkerBuilder<PhoneDubWorker>(context).setInputData(workDataOf("job" to java.util.UUID.randomUUID().toString()))

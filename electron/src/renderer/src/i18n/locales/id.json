@@ -4060,7 +4060,7 @@
       "terms_fingerprint": "Sidik jari ketentuan: {{fingerprint}}",
       "licence_storage": "Catatan lisensi model tidak dapat dibaca atau disimpan. Kosongkan penyimpanan dan coba lagi; model tetap diblokir.",
       "licence_required": "Terima lisensi di Model terlebih dahulu.",
-      "ram_required": "Butuh RAM {{ram}} GB. Pilih model lebih kecil atau gunakan komputer Anda.",
+      "ram_required": "Disarankan RAM {{ram}} GB. Model ini mungkin berjalan lambat atau menyebabkan aplikasi tertutup pada perangkat ini. Anda tetap dapat mencobanya.",
       "wifi_required": "Hubungkan ke Wi-Fi, atau izinkan data seluler di Model.",
       "storage_required": "Penyimpanan tidak cukup. Kosongkan ruang dan coba lagi.",
       "download_failed": "Unduhan model gagal. Periksa koneksi dan lanjutkan di Model.",
@@ -4077,7 +4077,8 @@
       "computer_feature": "Fitur ini saat ini berjalan di komputer Anda. Anda dapat memakai Ucapan dan Dikte di ponsel ini tanpa memasangkan.",
       "accepted": "Lisensi diterima",
       "not_accepted": "Lisensi belum diterima",
-      "receipt": "{{action}} · {{time}} · Aplikasi {{version}} · Ketentuan {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · Aplikasi {{version}} · Ketentuan {{fingerprint}}",
+      "try_anyway": "Tetap coba"
     },
     "simple": {
       "phone": "Ponsel",
@@ -4125,7 +4126,7 @@
       "remove_job": "Hapus sulih suara",
       "reconnect": "Hubungkan ulang",
       "cancel": "Batal",
-      "ram": "Butuh RAM {{ram}} GB",
+      "ram": "Disarankan RAM {{ram}} GB",
       "analytics": "Analitik",
       "language": "Bahasa",
       "default_voice": "Suara default",

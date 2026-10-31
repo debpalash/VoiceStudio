@@ -193,12 +193,16 @@ private actor RangeServer: HTTPTransport {
     await #expect(throws: (any Error).self) { try await store.authorize(model) }
     try await store.delete(model)
 }
-@Test func localLowRamNeverDownloads() async throws {
+@Test func localLowRamRecommendationAllowsVerifiedDownloadAndAcquire() async throws {
     let root = try localDirectory(); defer { try? FileManager.default.removeItem(at: root) }
     let model = try localFixture(), store = try ModelStore(root: root, ram: 1)
     let host = RangeServer(bytes: Data("model".utf8))
-    await #expect(throws: (any Error).self) { try await store.download(model, wifi: { true }, transport: host) }
-    #expect(await host.requests.isEmpty)
+    #expect(!model.fits(ram: 1))
+    try await store.download(model, wifi: { true }, transport: host)
+    #expect(await host.requests.count == 1)
+    let path = try await store.acquire(model)
+    #expect(try Data(contentsOf: path.appendingPathComponent("model.bin")) == Data("model".utf8))
+    await store.release(model)
 }
 @Test func localTaskRoutesWithoutAComputer() {
     #expect(LocalRouting.route(preference: nil, installed: true, paired: false) == .phone)

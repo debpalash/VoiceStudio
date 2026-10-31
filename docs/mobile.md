@@ -215,7 +215,7 @@ not fit together, finish or cancel one before starting another; completed ranges
 remain available for resume. Saved speech keeps the text submitted for that take,
 even if you edit the next script while synthesis is running.
 
-| Model | For | Size | Phone memory |
+| Model | For | Size | Recommended phone memory |
 |---|---|---|---|
 | Kitten (English) / Kokoro (multi-language) | Speech | ~170 MB each | 2–3 GB |
 | Piper Lessac (English) | Speech, one preset voice | 64 MB | 2 GB |
@@ -228,8 +228,11 @@ even if you edit the next script while synthesis is running.
 | Qwen3 1.7B | Dub translation | 1.1 GB | 6 GB |
 
 Some models ask you to accept their licence first (for example OmniVoice is
-for non-commercial use), the same as on the desktop. Models your phone can't
-run are shown greyed out with the reason.
+for non-commercial use), the same as on the desktop. RAM values are
+recommendations: larger models stay selectable, show a warning that they may
+run slowly or close the app, and offer **Try anyway** in their download prompt.
+You can download and run them below the recommendation. Licence acceptance,
+available storage and file verification are still required.
 
 Speech's model picker shows all seven speech engines before installation. OmniVoice, Pocket
 TTS and ZipVoice need a saved voice; import one from Gallery or create one in

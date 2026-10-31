@@ -120,15 +120,26 @@ class LocalPolicyTest {
             assertFalse(d.installed(model()));d.delete(model());assertEquals(0L,d.usedBytes())
         }
     }
-    @Test fun wifiStorageRamAndLicenceBlockBeforeNetwork() = runTest {
+    @Test fun wifiStorageAndLicenceBlockBeforeNetwork() = runTest {
         MockWebServer().use {server ->server.start()
             failure("mobile.local.wifi_required") {downloads(server,wifi={false}).download(model(),false)}
             failure("mobile.local.storage_required") {downloads(server,free={0}).download(model(),false)}
-            failure("mobile.local.ram_required") {downloads(server).download(model().copy(minRamGb=32.0),false)}
             val m=model(true);val gate=gate();val d=downloads(server,gate)
             failure("mobile.local.licence_required") {d.download(m,false)}
             failure("mobile.local.licence_required") {d.withModel(m) {fail()}}
             assertEquals(0,server.requestCount)
+        }
+    }
+    @Test fun ramRecommendationAllowsVerifiedDownloadAndUseOnSmallerDevice() = runTest {
+        MockWebServer().use { server ->
+            server.start();server.enqueue(MockResponse().setBody(Buffer().write(payload)))
+            val m=model().copy(minRamGb=32.0)
+            assertFalse(m.fits(8_000_000_000))
+            val d=downloads(server)
+            d.download(m,false)
+            assertTrue(d.installed(m))
+            assertArrayEquals(payload,d.withModel(m) {File(it,"weights.bin").readBytes()})
+            assertEquals(1,server.requestCount)
         }
     }
     @Test fun verifiedInstalledModelCanBeReacceptedOfflineWithoutDownloadSpace() = runTest {

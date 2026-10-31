@@ -42,7 +42,7 @@ class TranscriptImportSession(application: Application): AndroidViewModel(applic
     val asr=phone.models.firstOrNull {it.id==preferences.phoneModels["file-transcribe"]&&it.capability=="asr"}
         ?: phone.models.firstOrNull {it.capability=="asr"&&it.id in phone.installed}
         ?: phone.models.firstOrNull {it.capability=="asr"}
-    val ready=asr?.let {phone.canRun(it,vm.phone.ramBytes)}==true
+    val ready=asr?.let {phone.canRun(it)}==true
     val manager=remember(context) {WorkManager.getInstance(context)}
     val jobs by remember(manager) {manager.getWorkInfosByTagFlow("transcriptions")}.collectAsState(initial=emptyList())
     var records by remember {mutableStateOf(emptyList<PhoneTranscript>())}

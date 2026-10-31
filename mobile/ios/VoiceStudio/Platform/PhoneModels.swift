@@ -108,10 +108,10 @@ final class WifiState: @unchecked Sendable {
         catch { self.error = ClientError("mobile.errors.file") }
 
     }
-    func ready(_ model: PhoneModel) -> Bool { installed.contains(model.id) && accepted.contains(model.id) && model.fits() }
+    func ready(_ model: PhoneModel) -> Bool { installed.contains(model.id) && accepted.contains(model.id) }
     func candidates(_ capability: ModelCapability) -> [PhoneModel] { models.filter { $0.capability == capability } }
     func preferred(_ capability: ModelCapability) -> PhoneModel? {
-        candidates(capability).first(where: ready) ?? candidates(capability).first(where: { $0.fits() }) ?? candidates(capability).first
+        candidates(capability).first(where: { ready($0) && $0.fits() }) ?? candidates(capability).first(where: ready) ?? candidates(capability).first(where: { $0.fits() }) ?? candidates(capability).first
     }
     func download(_ model: PhoneModel) {
         guard downloads[model.id] == nil, let store else { return }

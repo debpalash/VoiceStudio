@@ -50,7 +50,7 @@ import com.voicestudio.mobile.local.*
                 Text(tr("mobile.simple.${model.capability}"),Modifier.weight(1f),style=MaterialTheme.typography.labelSmall)
                 IconAction("mobile.local.review_licence",Icons.Default.Info) {downloadAfterAccept=false;terms=true}
             }
-            if(!fits) Text(tr("mobile.simple.ram",mapOf("ram" to model.minRamGb)),color=role("textMuted"))
+            if(!fits) Text(tr("mobile.local.ram_required",mapOf("ram" to model.minRamGb)),color=role("textMuted"))
             progress[model.id]?.let {p ->
                 if(p.running) {
                     LinearProgressIndicator(progress={if(p.total>0) (p.received.toFloat()/p.total).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth())
@@ -59,7 +59,7 @@ import com.voicestudio.mobile.local.*
                 p.error?.let {ErrorMessage(it,mapOf("ram" to model.minRamGb))}
             }
             if(downloading) Secondary("common.cancel") {vm.phone.cancelDownload(model)}
-            else if(!installed) Secondary("mobile.local.download",fits) {
+            else if(!installed) Secondary(if(fits) "mobile.local.download" else "mobile.local.try_anyway") {
                 try {if(!vm.phone.licence.accepted(model)) {downloadAfterAccept=true;terms=true} else vm.phone.download(model,preferences.allowMobileModels)} catch(e:Exception) {vm.fail(e)}
             } else Secondary("common.delete") {vm.phone.delete(model)}
         }
@@ -132,8 +132,8 @@ import com.voicestudio.mobile.local.*
     val phone by vm.phone.state.collectAsState()
     val preferences by vm.preferences.collectAsState()
     val choices=phone.models.filter {it.capability in capabilities}
-    val selected=choices.firstOrNull {it.id==preferences.phoneModels[task]} ?: choices.firstOrNull {it.id in phone.installed&&it.fits(vm.phone.ramBytes)} ?: choices.firstOrNull()
-    val ready=selected?.let {it.id in phone.installed&&it.fits(vm.phone.ramBytes)}==true&&dependencies.all {cap -> phone.models.any {it.capability==cap&&it.id in phone.installed&&it.fits(vm.phone.ramBytes)}}
+    val selected=choices.firstOrNull {it.id==preferences.phoneModels[task]} ?: choices.firstOrNull {phone.canRun(it)&&it.fits(vm.phone.ramBytes)} ?: choices.firstOrNull {phone.canRun(it)} ?: choices.firstOrNull {it.fits(vm.phone.ramBytes)} ?: choices.firstOrNull()
+    val ready=selected?.let {phone.canRun(it)}==true&&dependencies.all {cap -> phone.models.any {it.capability==cap&&phone.canRun(it)}}
     var entryLocation by rememberSaveable(initialLocation) {mutableStateOf(initialLocation)}
     val location=routeTask(entryLocation ?: preferences.runLocations[task],ready,host.connected)
     Column(Modifier.fillMaxSize()) {
@@ -152,7 +152,7 @@ import com.voicestudio.mobile.local.*
 @Composable fun TaskModelPicker(vm: StudioViewModel, task: String, capabilities: Set<String>, selected: PhoneModel?, compact: Boolean = false, key: String = task) {
     val phone by vm.phone.state.collectAsState()
     ChoicePicker("mobile.local.model",selected?.id.orEmpty(),phone.models.filter {it.capability in capabilities}.map {
-        Choice(it.id,it.name,enabled=it.fits(vm.phone.ramBytes),supporting=if(it.fits(vm.phone.ramBytes)) tr("mobile.simple.${it.capability}") else tr("mobile.local.ram_required",mapOf("ram" to it.minRamGb)))
+        phoneModelChoice(it,vm.phone.ramBytes,tr("mobile.simple.${it.capability}"))
     },compact=compact) {id -> vm.phone.cancelInference();vm.preference {it.copy(phoneModels=it.phoneModels+(key to id))}}
 }
 
@@ -162,7 +162,9 @@ import com.voicestudio.mobile.local.*
     val progress by vm.phone.downloads.progress.collectAsState()
     val preferences by vm.preferences.collectAsState()
     val context=LocalContext.current
-    val needed=models.distinctBy {it.id}.filterNot {state.canRun(it,vm.phone.ramBytes)}
+    val needed=models.distinctBy {it.id}.filterNot {state.canRun(it)}
+    val recommendation=needed.filterNot {it.fits(vm.phone.ramBytes)}.maxByOrNull {it.minRamGb}
+    val downloadKey=if(recommendation==null) "mobile.local.download" else "mobile.local.try_anyway"
     var queue by rememberSaveable {mutableStateOf(emptyList<String>())}
     var showModels by rememberSaveable {mutableStateOf(false)}
     if(needed.isEmpty()) return
@@ -187,19 +189,19 @@ import com.voicestudio.mobile.local.*
                 }
                 if(!prominent) {
                     if(running) IconAction("common.cancel",Icons.Default.Close) {queue=emptyList();needed.forEach(vm.phone::cancelDownload)}
-                    else TextButton(enabled=queue.isEmpty()&&needed.all {it.fits(vm.phone.ramBytes)},onClick={queue=needed.map {it.id}}) {Text(tr("mobile.local.download"))}
+                    else TextButton(enabled=queue.isEmpty(),onClick={queue=needed.map {it.id}}) {Text(tr(downloadKey))}
                 }
             }
-            needed.firstOrNull {!it.fits(vm.phone.ramBytes)}?.let {Text(tr("mobile.simple.ram",mapOf("ram" to it.minRamGb)),color=role("textMuted"))}
+            recommendation?.let {Text(tr("mobile.local.ram_required",mapOf("ram" to it.minRamGb)),color=role("textMuted"))}
             if(running) {
                 val total=needed.sumOf {progress[it.id]?.total ?: it.totalBytes}
                 val received=needed.sumOf {progress[it.id]?.received ?: 0L}
                 LinearProgressIndicator(progress={(received.toFloat()/total.coerceAtLeast(1)).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth())
             }
             if(prominent) {
-                Button(modifier=Modifier.fillMaxWidth(),enabled=running||(queue.isEmpty()&&needed.all {it.fits(vm.phone.ramBytes)}),onClick={
+                Button(modifier=Modifier.fillMaxWidth(),enabled=running||queue.isEmpty(),onClick={
                     if(running) {queue=emptyList();needed.forEach(vm.phone::cancelDownload)} else queue=needed.map {it.id}
-                }) {Text(tr(if(running) "common.cancel" else "mobile.local.download"))}
+                }) {Text(tr(if(running) "common.cancel" else downloadKey))}
             }
         }
     }

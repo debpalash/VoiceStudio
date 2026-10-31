@@ -4060,7 +4060,7 @@
       "terms_fingerprint": "Fingerabdruck der Bedingungen: {{fingerprint}}",
       "licence_storage": "Die Modelllizenzen konnten nicht gelesen oder gespeichert werden. Gib Speicher frei und versuche es erneut; Modelle bleiben gesperrt.",
       "licence_required": "Akzeptiere zuerst die Lizenz unter Modelle.",
-      "ram_required": "Benötigt {{ram}} GB RAM. Wähle ein kleineres Modell oder nutze deinen Computer.",
+      "ram_required": "{{ram}} GB RAM empfohlen. Auf diesem Gerät kann das Modell langsam laufen oder die App beenden. Du kannst es trotzdem ausprobieren.",
       "wifi_required": "Verbinde dich mit WLAN oder erlaube mobile Daten unter Modelle.",
       "storage_required": "Nicht genug Speicher. Gib Platz frei und versuche es erneut.",
       "download_failed": "Der Modell-Download ist fehlgeschlagen. Prüfe deine Verbindung und setze ihn unter Modelle fort.",
@@ -4077,7 +4077,8 @@
       "computer_feature": "Diese Funktion läuft derzeit auf deinem Computer. Sprachausgabe und Diktat funktionieren auf diesem Telefon ohne Kopplung.",
       "accepted": "Lizenz akzeptiert",
       "not_accepted": "Lizenz nicht akzeptiert",
-      "receipt": "{{action}} · {{time}} · App {{version}} · Bedingungen {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · App {{version}} · Bedingungen {{fingerprint}}",
+      "try_anyway": "Trotzdem versuchen"
     },
     "simple": {
       "phone": "Telefon",
@@ -4125,7 +4126,7 @@
       "remove_job": "Synchronisation löschen",
       "reconnect": "Neu verbinden",
       "cancel": "Abbrechen",
-      "ram": "Benötigt {{ram}} GB RAM",
+      "ram": "{{ram}} GB RAM empfohlen",
       "analytics": "Analytics",
       "language": "Sprache",
       "default_voice": "Standardstimme",

@@ -43,6 +43,7 @@ public struct ModelDownloadTransport: HTTPTransport {
     }
 }
 /// App-private, backup-excluded files. A completed marker alone never authorizes loading.
+/// The retained ram initializer argument is advisory and does not restrict an explicit attempt.
 public actor ModelStore {
     public let root: URL
     private var acceptances: [String: [LicenceAcceptance]] = [:]
@@ -57,9 +58,8 @@ public actor ModelStore {
     private var verified: [URL: VerificationStamp] = [:]
     private let bundledRoot: URL?
     private let fileHash: @Sendable (URL) throws -> String
-    private let ram: UInt64
     private let available: @Sendable (URL) throws -> Int64
-    public init(root: URL, ram: UInt64 = ProcessInfo.processInfo.physicalMemory,
+    public init(root: URL, ram _: UInt64 = ProcessInfo.processInfo.physicalMemory,
                 bundledRoot: URL? = nil,
                 fileHash: @escaping @Sendable (URL) throws -> String = { try ModelHash.file($0) },
                 available: @escaping @Sendable (URL) throws -> Int64 = { url in
@@ -69,7 +69,7 @@ public actor ModelStore {
                     return (try FileManager.default.attributesOfFileSystem(forPath: url.path)[.systemFreeSize] as? NSNumber)?.int64Value ?? 0
                 }) throws {
         self.bundledRoot = bundledRoot ?? Bundle.main.resourceURL?.appendingPathComponent("Catalogs")
-        self.root = root; self.ram = ram; self.available = available; self.fileHash = fileHash
+        self.root = root; self.available = available; self.fileHash = fileHash
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         var excluded = root; var values = URLResourceValues(); values.isExcludedFromBackup = true; try excluded.setResourceValues(values)
         if FileManager.default.fileExists(atPath: root.appendingPathComponent("acceptance.json").path) {
@@ -93,7 +93,6 @@ public actor ModelStore {
         return model.files.allSatisfy { f in hashes[f.path] == f.sha256 && size(directory(model).appendingPathComponent(f.path)) == f.size }
     }
     public func authorize(_ model: PhoneModel) throws -> URL {
-        guard model.fits(ram: ram) else { throw ClientError("mobile.local.ram_required", params: ["ram": String(model.min_ram_gb)]) }
         guard allowed(model) else { throw ClientError("mobile.local.licence_required") }
         guard installed(model) else { throw ClientError("mobile.local.model_required") }
         let identity = try phoneModelPin(model)
@@ -144,7 +143,6 @@ public actor ModelStore {
                          wifi: @escaping @Sendable () async -> Bool,
                          transport supplied: (any HTTPTransport)? = nil,
                          progress: @escaping @Sendable (Double) async -> Void = { _ in }) async throws {
-        guard model.fits(ram: ram) else { throw ClientError("mobile.local.ram_required", params: ["ram": String(model.min_ram_gb)]) }
         try checkPermission(model)
         guard !active.contains(model.id), leases[model.id, default: 0] == 0 else { throw ClientError("sidebarTools.wait") }
         active.insert(model.id)

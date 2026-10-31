@@ -19,9 +19,10 @@ internal fun sha256(file: File, check: ()->Unit = {}): String = file.inputStream
     digest.digest().joinToString("") {"%02x".format(it)}
 }
 data class DownloadProgress(val received: Long = 0, val total: Long = 0, val running: Boolean = false, val error: String? = null)
-/** Dedicated public-download client never carries paired-host PINs or sessions. */
+/** Dedicated public-download client never carries paired-host PINs or sessions.
+ * ramBytes remains a compatible constructor argument; RAM advice is not authorization. */
 class ModelDownloads internal constructor(
-    private val root: File, val licence: LicenceGate, private val ramBytes: Long,
+    private val root: File, val licence: LicenceGate, @Suppress("UNUSED_PARAMETER") ramBytes: Long,
     private val wifi: () -> Boolean, private val freeBytes: () -> Long,
     private val client: OkHttpClient = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).build(),
     private val endpoints: List<String> = listOf("https://huggingface.co", "https://hf-mirror.com"),
@@ -59,10 +60,9 @@ class ModelDownloads internal constructor(
     fun usedBytes(model: PhoneModel): Long = dir(model).walkTopDown().filter {it.isFile}.sumOf {it.length()}
     fun usedBytes(): Long = root.walkTopDown().filter {it.isFile}.sumOf {it.length()}
     private fun networkAllowed(allowMobile: Boolean) {if(!allowMobile&&!wifi()) throw ClientFailure("mobile.local.wifi_required")}
-    private fun fit(model: PhoneModel) {if(!model.fits(ramBytes)) throw ClientFailure("mobile.local.ram_required",mapOf("ram" to model.minRamGb.toString()))}
     suspend fun download(model: PhoneModel, allowMobile: Boolean) = withContext(Dispatchers.IO) {
         lock(model).withLock {
-            fit(model);licence.requireAccepted(model)
+            licence.requireAccepted(model)
             val job=currentCoroutineContext().job
             val directory=dir(model).apply {mkdirs()}
             val catalogue=modelPin(model).identity
@@ -180,7 +180,7 @@ class ModelDownloads internal constructor(
     }}
     /** Deletion and inference share a lease. Rehash only changed files or after a failed native use. */
     suspend fun <T> withModel(model: PhoneModel, use: suspend (File)->T): T = withContext(Dispatchers.IO) {lock(model).withLock {
-        fit(model);licence.requireAccepted(model)
+        licence.requireAccepted(model)
         if(!installed(model)) throw ClientFailure("mobile.local.model_required")
         val job=currentCoroutineContext().job
         val catalogue=modelPin(model).identity

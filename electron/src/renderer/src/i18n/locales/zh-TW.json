@@ -4060,7 +4060,7 @@
       "terms_fingerprint": "條款指紋：{{fingerprint}}",
       "licence_storage": "無法讀取或儲存模型授權記錄。請釋出儲存空間後重試；模型仍會被封鎖。",
       "licence_required": "請先在「模型」中接受授權。",
-      "ram_required": "需要 {{ram}} GB 記憶體。請選擇較小的模型，或使用電腦。",
+      "ram_required": "建議配備 {{ram}} GB 記憶體. 此模型在本裝置上可能執行緩慢或導致應用程式關閉。您仍可嘗試執行。",
       "wifi_required": "請連接 Wi-Fi，或在「模型」中允許使用行動數據。",
       "storage_required": "儲存空間不足。請釋出空間後重試。",
       "download_failed": "模型下載失敗。請檢查連線，並在「模型」中繼續下載。",
@@ -4077,7 +4077,8 @@
       "computer_feature": "此功能目前在電腦上執行。無需配對，即可在這支手機上使用語音合成和聽寫。",
       "accepted": "已接受授權",
       "not_accepted": "未接受授權",
-      "receipt": "{{action}} · {{time}} · App {{version}} · 條款 {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · App {{version}} · 條款 {{fingerprint}}",
+      "try_anyway": "仍要嘗試"
     },
     "simple": {
       "phone": "手機",
@@ -4125,7 +4126,7 @@
       "remove_job": "刪除配音",
       "reconnect": "重新連線",
       "cancel": "取消",
-      "ram": "需要 {{ram}} GB 記憶體",
+      "ram": "建議配備 {{ram}} GB 記憶體",
       "analytics": "分析",
       "language": "語言",
       "default_voice": "預設語音",

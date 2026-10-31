@@ -20,7 +20,7 @@ class PhoneTranscriptionWorker(context: Context,params: WorkerParameters): Corou
             val model=models.firstOrNull {it.id==record.modelID} ?: throw ClientFailure("mobile.local.model_required")
             val runtime=PhoneRuntime.get(applicationContext)
             runtime.licence.requireAccepted(model)
-            if(!runtime.downloads.installed(model)||!model.fits(runtime.ramBytes)) throw ClientFailure("mobile.local.model_required")
+            if(!runtime.downloads.installed(model)) throw ClientFailure("mobile.local.model_required")
             coroutineScope {
                 val updates=Channel<Float>(Channel.CONFLATED)
                 val reporter=launch {for(value in updates) {requirePhonePower(applicationContext);setProgress(workDataOf("percent" to (value*100).toInt()));setForeground(phoneJobForeground(applicationContext,id,"transcriptions.title",(value*100).toInt()))}}

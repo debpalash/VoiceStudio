@@ -4060,7 +4060,7 @@
       "terms_fingerprint": "Villkorens fingeravtryck: {{fingerprint}}",
       "licence_storage": "Modelllicenser kunde inte läsas eller sparas. Frigör lagringsutrymme och försök igen; modellerna förblir blockerade.",
       "licence_required": "Acceptera licensen i Modeller först.",
-      "ram_required": "Kräver {{ram}} GB RAM. Välj en mindre modell eller använd din dator.",
+      "ram_required": "{{ram}} GB RAM rekommenderas. Modellen kan köras långsamt eller få appen att stängas på den här enheten. Du kan prova ändå.",
       "wifi_required": "Anslut till Wi-Fi eller tillåt mobildata i Modeller.",
       "storage_required": "Inte tillräckligt med lagringsutrymme. Frigör utrymme och försök igen.",
       "download_failed": "Modellnedladdningen misslyckades. Kontrollera anslutningen och återuppta i Modeller.",
@@ -4077,7 +4077,8 @@
       "computer_feature": "Den här funktionen körs just nu på din dator. Du kan använda Tal och Diktering på telefonen utan parkoppling.",
       "accepted": "Licens godkänd",
       "not_accepted": "Licens inte godkänd",
-      "receipt": "{{action}} · {{time}} · App {{version}} · Villkor {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · App {{version}} · Villkor {{fingerprint}}",
+      "try_anyway": "Prova ändå"
     },
     "simple": {
       "phone": "Telefon",
@@ -4125,7 +4126,7 @@
       "remove_job": "Ta bort dubbning",
       "reconnect": "Anslut igen",
       "cancel": "Avbryt",
-      "ram": "Kräver {{ram}} GB RAM",
+      "ram": "{{ram}} GB RAM rekommenderas",
       "analytics": "Analys",
       "language": "Språk",
       "default_voice": "Standardröst",

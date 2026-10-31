@@ -4060,7 +4060,7 @@
       "terms_fingerprint": "条件フィンガープリント: {{fingerprint}}",
       "licence_storage": "モデルのライセンス記録を読み込めないか保存できませんでした。空き容量を確保して再試行してください。モデルは引き続き使用できません。",
       "licence_required": "先に「モデル」でライセンスに同意してください。",
-      "ram_required": "RAM が {{ram}} GB 必要です。より小さいモデルを選ぶか、コンピューターを使ってください。",
+      "ram_required": "推奨RAM：{{ram}} GB. この端末ではモデルの動作が遅くなったり、アプリが終了したりする場合があります。それでも試すことができます。",
       "wifi_required": "Wi-Fi に接続するか、「モデル」でモバイルデータを許可してください。",
       "storage_required": "空き容量が足りません。容量を確保して再試行してください。",
       "download_failed": "モデルのダウンロードに失敗しました。接続を確認し、「モデル」で再開してください。",
@@ -4077,7 +4077,8 @@
       "computer_feature": "この機能は現在コンピューターで動作します。ペアリングなしでも、このスマートフォンで読み上げと音声入力を使えます。",
       "accepted": "ライセンスに同意済み",
       "not_accepted": "ライセンス未同意",
-      "receipt": "{{action}} · {{time}} · アプリ {{version}} · 条件 {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · アプリ {{version}} · 条件 {{fingerprint}}",
+      "try_anyway": "試してみる"
     },
     "simple": {
       "phone": "スマートフォン",
@@ -4125,7 +4126,7 @@
       "remove_job": "ダビングを削除",
       "reconnect": "再接続",
       "cancel": "キャンセル",
-      "ram": "RAM {{ram}} GB が必要",
+      "ram": "推奨RAM：{{ram}} GB",
       "analytics": "アナリティクス",
       "language": "言語",
       "default_voice": "デフォルトの音声",
