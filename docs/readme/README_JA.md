@@ -221,3 +221,7 @@ VoiceStudio の開発者による、その他のオープンソースツール�
 ## ライセンスと責任ある利用
 
 アプリには [AGPL-3.0](../../LICENSE) が適用され、その条件のもとで商用利用もできます。モデルの重み、音声、生成物にはそれぞれ独自のライセンスがあり、モデルマネージャーでモデルごとに確認できます（[一覧](../../docs/licensing/model-inventory.md)）。声のクローンは、必ずその声の持ち主の許可を得てから行ってください。詳細：[LICENSE-NOTICE.md](../../LICENSE-NOTICE.md)。
+
+## コミュニティのチュートリアル
+
+- [VoiceStudio の使い方 — Nafay 3D（YouTube）](https://www.youtube.com/watch?v=I-u-A-oisIU)

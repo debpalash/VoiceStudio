@@ -221,3 +221,7 @@ VoiceStudio 免费使用，背后没有付费云服务。赞助者让它持续�
 ## 许可证与负责任使用
 
 [AGPL-3.0](../../LICENSE) 覆盖本应用，包括在其条款下的商业用途。模型权重、声音和生成内容各有其许可证，模型管理器会为每个模型列出（[清单](../../docs/licensing/model-inventory.md)）。只有在声音所有者许可的情况下才能克隆其声音。详情：[LICENSE-NOTICE.md](../../LICENSE-NOTICE.md)。
+
+## 社区教程
+
+- [VoiceStudio 使用教程 — Nafay 3D（YouTube）](https://www.youtube.com/watch?v=I-u-A-oisIU)
