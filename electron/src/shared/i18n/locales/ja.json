@@ -1757,6 +1757,7 @@
     "unexpected": "予期しないエラー: {{message}}",
     "backend_shutting_down": "VoiceStudio を終了しています。アプリを開き直してからもう一度お試しください。",
     "crash_broken_env": "自身の Python 依存関係を読み込んでいる最中に停止しました。メモリや GPU の問題ではなく、環境が不完全か、更新が中途半端なまま残っています。設定 → ログ → バックエンド の「クリーンアップして再試行」を実行してください。環境をゼロから作り直してその場で修復し、音声やプロジェクトには手を触れません。それでも失敗する場合は、クラッシュ詳細に読み込めなかったパッケージ名が出ています。",
+    "crash_external_kill": "The backend process was ended from outside the app — most often security software, an OS policy, or another program — not by a fault in VoiceStudio, so no job was lost. Check your antivirus and any app-control or system policy that may have stopped it, then relaunch.",
     "crash_vram_default": "小さめの GPU では、TTS モデルを読み込んだまま ASR モデルを読み込む際に VRAM が不足するのがよくある原因です。先に TTS モデルをアンロードするか、モデルカタログ → モデル でより小さい ASR モデルを選んでください。",
     "stream_cut_backend_alive": "まず、アプリの前段にあるリバースプロキシやロードバランサーを確認してください。このルートの応答バッファリングを無効にし（proxy_buffering off; X-Accel-Buffering: no）、読み取りタイムアウトを延ばします。接続が切れた間もバックエンドは動き続けていたため、クラッシュではありません。サーバー配信やコンテナ構成ではプロキシが原因のことが多く、デスクトップアプリを直接、または localhost で使えば原因かどうか切り分けられます。",
     "stream_cut_backend_alive_local": "数分待ってから、履歴でジョブを開き直してください。見当たらない場合は 設定 → ログ → バックエンド でバックエンドのログを確認します。長く無反応な処理のあとジョブの途中で接続が切れましたが、バックエンドは動作中で、通常は処理を完了させるため、クラッシュではありません。"
