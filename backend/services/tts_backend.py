@@ -4048,6 +4048,20 @@ def voice_design_support(cls) -> Optional[bool]:
     return value if isinstance(value, bool) else None
 
 
+def backend_supports_seed(backend) -> bool:
+    """Whether this adapter accepts a per-request seed.
+
+    In-process engines are seeded through ``torch.manual_seed`` before the
+    call; an engine in another process (sidecar, binary, server) never sees
+    that, so only these adapters can keep a designed speaker stable across
+    calls by receiving the seed itself.
+    """
+    return bool(
+        getattr(backend, "supports_native_omnivoice_controls", False)
+        or getattr(backend, "supports_generation_seed", False)
+    )
+
+
 def preset_voices_of(cls) -> list[str]:
     """Built-in voice ids an engine class exposes for selection (empty if none)."""
     voices = getattr(cls, "PRESET_VOICES", None)

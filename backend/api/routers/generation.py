@@ -1320,10 +1320,8 @@ def _run_inference(
 
 def _backend_supports_seed(backend) -> bool:
     """Whether this adapter accepts per-request seed controls."""
-    return bool(
-        getattr(backend, "supports_native_omnivoice_controls", False)
-        or getattr(backend, "supports_generation_seed", False)
-    )
+    from services.tts_backend import backend_supports_seed
+    return backend_supports_seed(backend)
 
 
 def _run_backend_inference(
