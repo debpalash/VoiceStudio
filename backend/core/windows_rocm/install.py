@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .artifacts import checked_wheel, download_archive
 from .failures import VerificationFailure, failure_report
-from .recipe import load_recipe, recipe_identity, validate_target
+from .recipe import ct2_supported, load_recipe, recipe_identity, validate_target
 from .verify import PROJECT_ROOT, verify_environment
 
 #: Packages the overlay replaces; everything else stays at its installed version.
@@ -94,12 +94,15 @@ def provision(uv):
             raise
     recipe = load_recipe()
     # Verify CT2 before changing any package, and discard downloads on any failure.
+    # A recipe that pins no HIP CTranslate2 (ROCm 10) has nothing to pre-verify.
     with tempfile.TemporaryDirectory(prefix="voicestudio-windows-rocm-") as temporary:
         folder = Path(temporary)
-        archive = folder / "ctranslate2.zip"
-        ct2 = recipe["ctranslate2"]
-        download_archive(ct2["archive_url"], archive, ct2["archive_size"])
-        wheel = checked_wheel(archive, folder, ct2)
+        wheel = None
+        if ct2_supported(recipe):
+            archive = folder / "ctranslate2.zip"
+            ct2 = recipe["ctranslate2"]
+            download_archive(ct2["archive_url"], archive, ct2["archive_size"])
+            wheel = checked_wheel(archive, folder, ct2)
         constraints = folder / "constraints.txt"
         constraints.write_text(constraints_text(), encoding="utf-8")
         requirements = folder / "rocm-requirements.txt"
@@ -109,9 +112,10 @@ def provision(uv):
             uv, ["-r", str(requirements)], [pin.split("==")[0] for pin in pins], constraints,
             build_isolation_off=("rocm",),
         ))
-        # The CT2 wheel was hash-checked by checked_wheel; its dependencies stay
-        # at their installed versions through the same constraints.
-        run_install(install_command(uv, [str(wheel)], ["ctranslate2"], constraints))
+        if wheel is not None:
+            # The CT2 wheel was hash-checked by checked_wheel; its dependencies stay
+            # at their installed versions through the same constraints.
+            run_install(install_command(uv, [str(wheel)], ["ctranslate2"], constraints))
     return verify_environment()
 
 

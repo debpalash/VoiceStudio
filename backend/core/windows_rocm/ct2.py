@@ -5,7 +5,7 @@ from importlib import metadata, util
 from threading import RLock
 
 from .artifacts import sha256
-from .recipe import expected_versions, load_recipe, recipe_identity, validate_target
+from .recipe import ct2_supported, expected_versions, load_recipe, recipe_identity, validate_target
 from .runtime import initialize_dll_search, package_root
 from .verify import verify_environment
 
@@ -36,6 +36,12 @@ def hip_ct2_available():
     try:
         validate_target()
         recipe = load_recipe()
+        # The ROCm 10 overlay pins no HIP CTranslate2 because the ROCm 7.2.1
+        # binary loads but cannot launch kernels on ROCm 10 (verified on gfx1010:
+        # hipErrorInvalidImage). Device discovery alone would report float16 and
+        # GPU readiness, then fail every real transcription, so refuse here.
+        if not ct2_supported(recipe):
+            return False
         pins = expected_versions(recipe)
         if {name: metadata.version(name) for name in pins} != pins:
             return False

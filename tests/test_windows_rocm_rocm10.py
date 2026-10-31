@@ -1,4 +1,4 @@
-"""Windows ROCm RDNA 2 uses pinned native kernels and safe precision."""
+"""Windows ROCm 10 uses pinned native kernels and safe precision."""
 import json
 import re
 import types
@@ -9,7 +9,7 @@ from core import device_caps
 from core.windows_rocm import install, recipe
 
 
-def test_recipe_has_rdna2_native_variant():
+def test_recipe_has_a_native_windows_rocm10_variant():
     selected = recipe.load_recipe(architecture="gfx1031")
     assert selected["gpu_architectures"] == ["gfx1031"]
     assert selected["torch"]["hip_prefix"] == "7.15."
@@ -17,7 +17,7 @@ def test_recipe_has_rdna2_native_variant():
     assert all("gfx1030" not in p and "gfx1032" not in p for p in selected["runtime"]["packages"])
 
 
-def test_rdna2_urls_are_allowlisted_and_hashed():
+def test_overlay_urls_are_allowlisted_and_hashed():
     selected = recipe.load_recipe(architecture="gfx1031")
     for line in install.hashed_requirements(selected).splitlines():
         url, digest = line.split(" --hash=sha256:")
@@ -25,9 +25,9 @@ def test_rdna2_urls_are_allowlisted_and_hashed():
         assert re.fullmatch(r"[0-9a-f]{64}", digest)
 
 
-def test_missing_rdna2_hash_is_rejected(tmp_path):
+def test_missing_overlay_hash_is_rejected(tmp_path):
     data = json.loads(recipe.RECIPE_PATH.read_text(encoding="utf-8"))
-    device = data["rdna2"]["devices"]["gfx1031"]
+    device = data["rocm10"]["devices"]["gfx1031"]
     del device["wheel_sha256"][device["wheel_files"][0]]
     path = tmp_path / "recipe.json"
     path.write_text(json.dumps(data), encoding="utf-8")
@@ -35,9 +35,9 @@ def test_missing_rdna2_hash_is_rejected(tmp_path):
         recipe.load_recipe(path, architecture="gfx1031")
 
 
-def test_unapproved_rdna2_source_is_rejected(tmp_path):
+def test_unapproved_overlay_source_is_rejected(tmp_path):
     data = json.loads(recipe.RECIPE_PATH.read_text(encoding="utf-8"))
-    data["rdna2"]["torch"]["find_links"] = "https://unapproved.example/"
+    data["rocm10"]["torch"]["find_links"] = "https://unapproved.example/"
     path = tmp_path / "recipe.json"
     path.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(RuntimeError, match="source"):
@@ -129,7 +129,7 @@ def test_rocm10_dll_search_excludes_stale_rocm7_libraries(monkeypatch, tmp_path)
     assert (tmp_path / "_rocm_sdk_libraries_custom" / "bin").resolve() not in directories
 
 
-def test_rdna2_refuses_an_hsa_override_before_imports(monkeypatch):
+def test_overlay_refuses_an_hsa_override_before_imports(monkeypatch):
     from core.windows_rocm import probe
     selected = recipe.load_recipe(architecture="gfx1031")
     monkeypatch.setattr(probe, "validate_target", lambda: None)
@@ -153,7 +153,7 @@ def test_missing_rocm10_kernel_metadata_fails_closed(monkeypatch):
 
 def test_recipe_rejects_a_requirements_file_injection(tmp_path):
     data = json.loads(recipe.RECIPE_PATH.read_text(encoding="utf-8"))
-    section = data["rdna2"]["torch"]
+    section = data["rocm10"]["torch"]
     name = section["wheel_files"][0]
     injected = name + "\nhttps://unapproved.example/wheel.whl"
     section["wheel_files"][0] = injected

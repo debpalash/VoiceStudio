@@ -24,7 +24,11 @@
     "binary_sha256": "37fdba6e52f87422562f7068c7bc19e342d57bf957a161da6d9fdf6d47f93317",
     "required_dlls": ["hipblas.dll", "amdhip64_7.dll"]
   },
-  "rdna2": {
+  "rocm10": {
+    "ctranslate2": {
+      "supported": false,
+      "reason": "No ROCm 10 Windows HIP CTranslate2 build is published or verified; ASR/diarization stay on CPU."
+    },
     "torch": {
       "find_links": "https://stable.repo.amd.com/rocm/whl-next/",
       "packages": [
@@ -65,6 +69,23 @@
       }
     },
     "devices": {
+      "gfx1010": {
+        "packages": [
+          "rocm-sdk-device-gfx1010==10.0.0",
+          "amd-torch-device-gfx1010==2.13.0+rocm10.0.0",
+          "amd-torchvision-device-gfx1010==0.28.0+rocm10.0.0"
+        ],
+        "wheel_files": [
+          "rocm-sdk-device-gfx1010/rocm_sdk_device_gfx1010-10.0.0-py3-none-win_amd64.whl",
+          "amd-torch-device-gfx1010/amd_torch_device_gfx1010-2.13.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl",
+          "amd-torchvision-device-gfx1010/amd_torchvision_device_gfx1010-0.28.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl"
+        ],
+        "wheel_sha256": {
+          "rocm-sdk-device-gfx1010/rocm_sdk_device_gfx1010-10.0.0-py3-none-win_amd64.whl": "2b6da925376de9689ab9f22ce7cc55b6d476722d9458fbd1ec52d4aa066d3e6c",
+          "amd-torch-device-gfx1010/amd_torch_device_gfx1010-2.13.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl": "38e6a84577882d4d2e06214fcd12e841f034a476893d8298526cdd3de7c3acd5",
+          "amd-torchvision-device-gfx1010/amd_torchvision_device_gfx1010-0.28.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl": "3e651c92df12e40844991be3f09a58752eee7f08deb22f8de196918ea4d1eb88"
+        }
+      },
       "gfx1030": {
         "packages": [
           "rocm-sdk-device-gfx1030==10.0.0",
