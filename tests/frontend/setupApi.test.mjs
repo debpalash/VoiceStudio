@@ -139,6 +139,23 @@ test("source setup heals the venv .pth before every uv call, since sync rewrites
   ]);
 });
 
+test("source setup heals the environment uv actually uses (UV_PROJECT_ENVIRONMENT)", async () => {
+  const healed = new Set();
+  await setupApi({
+    env: { UV_PROJECT_ENVIRONMENT: "custom-env" },
+    selectVariant: async () => "cpu",
+    log: () => {},
+    repairNativeLibraries: async () => {},
+    healPthFiles: async (venv) => {
+      healed.add(venv);
+      return [];
+    },
+    run: () => ({ status: 0 }),
+  });
+  assert.equal(healed.size, 1);
+  assert.match([...healed][0], /[\\/]custom-env$/);
+});
+
 test("failed dependency sync never continues into setup or reports success", async () => {
   let count = 0;
   assert.equal(

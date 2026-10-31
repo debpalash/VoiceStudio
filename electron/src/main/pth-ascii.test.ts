@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { asciiSafePthFiles, asciiSafePthText, pythonLiteral } from './pth-ascii';
+import { asciiSafePthFilesSync } from '../../scripts/pth-ascii.mjs';
 
 const CJK_USER = '\u5f20\u4e09'; // a typical non-English Windows username
 
@@ -63,6 +64,20 @@ describe('asciiSafePthFiles (#1783)', () => {
     }
     expect(readFileSync(join(posix, '_virtualenv.pth'), 'utf8')).toBe(ascii);
     expect(await asciiSafePthFiles(venv)).toEqual([]);
+  });
+
+  it('heals synchronously exactly like the async variant', () => {
+    const venv = mkdtempSync(join(tmpdir(), 'vs-pth-sync-'));
+    const windows = join(venv, 'Lib', 'site-packages');
+    mkdirSync(windows, { recursive: true });
+    const project = join(venv, 'โปรเจ็ค', 'VoiceStudio');
+    const pth = join(windows, '_editable_impl_omnivoice.pth');
+    writeFileSync(pth, project, 'utf8');
+
+    expect(asciiSafePthFilesSync(venv)).toEqual([pth]);
+    expect(readFileSync(pth, 'utf8')).toBe(asciiSafePthText(project));
+    expect(asciiSafePthFilesSync(venv)).toEqual([]);
+    expect(asciiSafePthFilesSync(join(venv, 'missing'))).toEqual([]);
   });
 
   it('drops non-ASCII comments and escapes code lines', () => {

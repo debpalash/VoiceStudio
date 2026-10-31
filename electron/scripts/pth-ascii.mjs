@@ -1,3 +1,4 @@
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -28,21 +29,59 @@ export async function asciiSafePthFiles(venv) {
     } catch {
       continue;
     }
-    for (const name of names.filter((entry) => entry.toLowerCase().endsWith('.pth'))) {
+    for (const name of names.filter(isPth)) {
       const file = join(sitePackages, name);
-      const bytes = await readFile(file).catch(() => null);
-      if (!bytes || bytes.every((byte) => byte < 0x80)) continue;
-      let text;
-      try {
-        text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-      } catch {
-        continue; // Not written by uv/pip as UTF-8; leave it alone.
-      }
-      await writeFile(file, asciiSafePthText(text), 'utf8');
+      const text = healedPthText(await readFile(file).catch(() => null));
+      if (text === null) continue;
+      await writeFile(file, text, 'utf8');
       rewritten.push(file);
     }
   }
   return rewritten;
+}
+
+/**
+ * Synchronous `asciiSafePthFiles` for callers that must heal right before a
+ * synchronous spawn, such as the dev backend's reload and crash restarts.
+ */
+export function asciiSafePthFilesSync(venv) {
+  const rewritten = [];
+  for (const sitePackages of sitePackagesDirsSync(venv)) {
+    let names;
+    try {
+      names = readdirSync(sitePackages);
+    } catch {
+      continue;
+    }
+    for (const name of names.filter(isPth)) {
+      const file = join(sitePackages, name);
+      let bytes = null;
+      try {
+        bytes = readFileSync(file);
+      } catch {
+        // Unreadable: leave it for Python to report.
+      }
+      const text = healedPthText(bytes);
+      if (text === null) continue;
+      writeFileSync(file, text, 'utf8');
+      rewritten.push(file);
+    }
+  }
+  return rewritten;
+}
+
+function isPth(name) {
+  return name.toLowerCase().endsWith('.pth');
+}
+
+/** The ASCII rewrite of a `.pth` file's bytes, or null when it needs none. */
+function healedPthText(bytes) {
+  if (!bytes || bytes.every((byte) => byte < 0x80)) return null;
+  try {
+    return asciiSafePthText(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+  } catch {
+    return null; // Not written by uv/pip as UTF-8; leave it alone.
+  }
 }
 
 /** The ASCII-only equivalent of a `.pth` file's text. */
@@ -84,13 +123,30 @@ export function pythonLiteral(value) {
 }
 
 async function sitePackagesDirs(venv) {
-  const dirs = [join(venv, 'Lib', 'site-packages')];
+  let entries = [];
   try {
-    for (const entry of await readdir(join(venv, 'lib'))) {
-      if (entry.startsWith('python')) dirs.push(join(venv, 'lib', entry, 'site-packages'));
-    }
+    entries = await readdir(join(venv, 'lib'));
   } catch {
     // Windows layout, or no venv yet.
   }
-  return dirs;
+  return sitePackagesFrom(venv, entries);
+}
+
+function sitePackagesDirsSync(venv) {
+  let entries = [];
+  try {
+    entries = readdirSync(join(venv, 'lib'));
+  } catch {
+    // Windows layout, or no venv yet.
+  }
+  return sitePackagesFrom(venv, entries);
+}
+
+function sitePackagesFrom(venv, libEntries) {
+  return [
+    join(venv, 'Lib', 'site-packages'),
+    ...libEntries
+      .filter((entry) => entry.startsWith('python'))
+      .map((entry) => join(venv, 'lib', entry, 'site-packages')),
+  ];
 }

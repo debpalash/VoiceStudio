@@ -61,7 +61,7 @@ export async function setupApi({
     // editable `.pth` as UTF-8, which Python 3.11 cannot decode on a non-UTF-8
     // code page (#1783). uv queries the existing venv before syncing and every
     // sync rewrites the file, so heal it before each uv call.
-    await healPthFiles(resolve(root, ".venv")).catch(() => []);
+    await healPthFiles(resolve(root, environment.UV_PROJECT_ENVIRONMENT || ".venv")).catch(() => []);
     const result = run("uv", args, { cwd: root, env: environment, stdio: "inherit" });
     if (result.error) throw result.error;
     if (result.status !== 0) return result.status ?? 1;
