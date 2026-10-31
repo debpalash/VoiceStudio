@@ -15,6 +15,8 @@ describe('formatRelative', () => {
     expect(formatRelative(now / 1000 - 59.6 * 60, 'en', now)).toBe('1 hour ago');
     expect(formatRelative(now / 1000 - 23.6 * 3600, 'en', now)).toBe('yesterday');
     expect(formatRelative(now / 1000 + 59.6, 'en', now)).toBe('in 1 minute');
+    expect(formatRelative(now / 1000 - 31 * 86_400, 'en', now)).toBe('last month');
+    expect(formatRelative(now / 1000 + 31 * 86_400, 'en', now)).toBe('next month');
   });
   it('returns an empty string for missing or malformed stamps', () => {
     expect(formatRelative(null, 'en', now)).toBe('');
