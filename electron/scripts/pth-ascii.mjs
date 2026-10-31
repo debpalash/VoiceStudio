@@ -1,14 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import {
-  chmodSync,
-  readdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
-import { chmod, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import * as nodeFs from 'node:fs';
+import * as nodeFsPromises from 'node:fs/promises';
 import { join } from 'node:path';
 
 /**
@@ -28,21 +20,22 @@ import { join } from 'node:path';
  *
  * Shared by the installed app's runtime and the source-checkout scripts
  * (`setup:api`, `dev:api`), which run under plain Node and cannot import TS.
+ * `fs` is injectable so tests can simulate Windows sharing violations.
  */
-export async function asciiSafePthFiles(venv) {
+export async function asciiSafePthFiles(venv, fs = nodeFsPromises) {
   const rewritten = [];
-  for (const sitePackages of await sitePackagesDirs(venv)) {
+  for (const sitePackages of await sitePackagesDirs(venv, fs)) {
     let names;
     try {
-      names = await readdir(sitePackages);
+      names = await fs.readdir(sitePackages);
     } catch {
       continue;
     }
     for (const name of names.filter(isPth)) {
       const file = join(sitePackages, name);
-      const text = healedPthText(await readFile(file).catch(() => null));
+      const text = healedPthText(await fs.readFile(file).catch(() => null));
       if (text === null) continue;
-      if (await replaceFile(file, text)) rewritten.push(file);
+      if (await replaceFile(file, text, fs)) rewritten.push(file);
     }
   }
   return rewritten;
@@ -52,12 +45,12 @@ export async function asciiSafePthFiles(venv) {
  * Synchronous `asciiSafePthFiles` for callers that must heal right before a
  * synchronous spawn, such as the dev backend's reload and crash restarts.
  */
-export function asciiSafePthFilesSync(venv) {
+export function asciiSafePthFilesSync(venv, fs = nodeFs) {
   const rewritten = [];
-  for (const sitePackages of sitePackagesDirsSync(venv)) {
+  for (const sitePackages of sitePackagesDirsSync(venv, fs)) {
     let names;
     try {
-      names = readdirSync(sitePackages);
+      names = fs.readdirSync(sitePackages);
     } catch {
       continue;
     }
@@ -65,13 +58,13 @@ export function asciiSafePthFilesSync(venv) {
       const file = join(sitePackages, name);
       let bytes = null;
       try {
-        bytes = readFileSync(file);
+        bytes = fs.readFileSync(file);
       } catch {
         // Unreadable: leave it for Python to report.
       }
       const text = healedPthText(bytes);
       if (text === null) continue;
-      if (replaceFileSync(file, text)) rewritten.push(file);
+      if (replaceFileSync(file, text, fs)) rewritten.push(file);
     }
   }
   return rewritten;
@@ -87,45 +80,45 @@ export function asciiSafePthFilesSync(venv) {
  * antivirus scan, a concurrent heal), so a refused rename is retried briefly,
  * as graceful-fs does. Returns false when another heal replaced the file first.
  */
-async function replaceFile(file, text) {
+async function replaceFile(file, text, fs) {
   const temp = tempPath(file);
   try {
-    const mode = (await stat(file)).mode & 0o7777;
-    await writeFile(temp, text, { encoding: 'utf8', mode });
-    await chmod(temp, mode);
+    const mode = (await fs.stat(file)).mode & 0o7777;
+    await fs.writeFile(temp, text, { encoding: 'utf8', mode });
+    await fs.chmod(temp, mode);
     for (let attempt = 1; ; attempt++) {
       try {
-        await rename(temp, file);
+        await fs.rename(temp, file);
         return true;
       } catch (error) {
-        if (!stillNeedsHeal(await readFile(file).catch(() => null))) return false;
+        if (await healedOrGone(file, fs)) return false;
         if (!retryableRename(error, attempt)) throw error;
         await new Promise((resolve) => setTimeout(resolve, renameBackoffMs(attempt)));
       }
     }
   } finally {
-    await rm(temp, { force: true });
+    await fs.rm(temp, { force: true });
   }
 }
 
-function replaceFileSync(file, text) {
+function replaceFileSync(file, text, fs) {
   const temp = tempPath(file);
   try {
-    const mode = statSync(file).mode & 0o7777;
-    writeFileSync(temp, text, { encoding: 'utf8', mode });
-    chmodSync(temp, mode);
+    const mode = fs.statSync(file).mode & 0o7777;
+    fs.writeFileSync(temp, text, { encoding: 'utf8', mode });
+    fs.chmodSync(temp, mode);
     for (let attempt = 1; ; attempt++) {
       try {
-        renameSync(temp, file);
+        fs.renameSync(temp, file);
         return true;
       } catch (error) {
-        if (!stillNeedsHeal(readFileOrNull(file))) return false;
+        if (healedOrGoneSync(file, fs)) return false;
         if (!retryableRename(error, attempt)) throw error;
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, renameBackoffMs(attempt));
       }
     }
   } finally {
-    rmSync(temp, { force: true });
+    fs.rmSync(temp, { force: true });
   }
 }
 
@@ -140,15 +133,24 @@ function renameBackoffMs(attempt) {
   return attempt * 20;
 }
 
-function stillNeedsHeal(bytes) {
-  return healedPthText(bytes) !== null;
+/**
+ * True once another heal replaced the file or it was removed. A target that
+ * cannot be read right now (a transient Windows sharing violation) is not known
+ * to be healed, so the caller keeps retrying instead of reporting success.
+ */
+async function healedOrGone(file, fs) {
+  try {
+    return healedPthText(await fs.readFile(file)) === null;
+  } catch (error) {
+    return error?.code === 'ENOENT';
+  }
 }
 
-function readFileOrNull(file) {
+function healedOrGoneSync(file, fs) {
   try {
-    return readFileSync(file);
-  } catch {
-    return null; // Gone: nothing left to heal.
+    return healedPthText(fs.readFileSync(file)) === null;
+  } catch (error) {
+    return error?.code === 'ENOENT';
   }
 }
 
@@ -209,20 +211,20 @@ export function pythonLiteral(value) {
   return `${out}'`;
 }
 
-async function sitePackagesDirs(venv) {
+async function sitePackagesDirs(venv, fs) {
   let entries = [];
   try {
-    entries = await readdir(join(venv, 'lib'));
+    entries = await fs.readdir(join(venv, 'lib'));
   } catch {
     // Windows layout, or no venv yet.
   }
   return sitePackagesFrom(venv, entries);
 }
 
-function sitePackagesDirsSync(venv) {
+function sitePackagesDirsSync(venv, fs) {
   let entries = [];
   try {
-    entries = readdirSync(join(venv, 'lib'));
+    entries = fs.readdirSync(join(venv, 'lib'));
   } catch {
     // Windows layout, or no venv yet.
   }
