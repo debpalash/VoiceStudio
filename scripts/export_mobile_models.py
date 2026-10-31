@@ -35,6 +35,8 @@ CAPABILITIES = {
     "tts": "sherpa-onnx", "asr": "sherpa-onnx", "asr-stream": "sherpa-onnx",
     "clone": "omnivoice.cpp", "translate": "llama.cpp",
 }
+RUNTIMES = {key: {runtime} for key,runtime in CAPABILITIES.items()}
+RUNTIMES["clone"].add("sherpa-onnx")
 CATEGORIES = {
     "commercial": "commercial-ok", "noncommercial": "non-commercial",
     "conditions": "conditional", "unknown": "unidentified",
@@ -44,9 +46,31 @@ REVISION = re.compile(r"[0-9a-f]{40}\Z")
 REPO = re.compile(r"[A-Za-z0-9][\w.-]*/[\w.-]+\Z")
 ROLES = {
     "model", "encoder", "decoder", "joiner", "tokens", "voices", "tokenizer",
-    "espeak-data", "lexicon", "rule-fst", "dictionary",
+    "espeak-data", "lexicon", "rule-fst", "dictionary", "vocoder", "duration-predictor",
+    "text-encoder", "vector-estimator", "tts-config", "unicode-indexer", "lm-flow", "lm-main",
+    "text-conditioner", "vocab", "token-scores",
 }
 
+
+def valid_asset_url(url: str) -> bool:
+    from urllib.parse import urlparse
+    if not isinstance(url, str):
+        return False
+    try:
+        u = urlparse(url)
+        if u.scheme != "https" or u.username or u.password or u.port is not None or u.query or u.fragment:
+            return False
+    except ValueError:
+        return False
+    parts = u.path.strip("/").split("/")
+    if not all(part not in {".", ".."} and re.fullmatch(r"[A-Za-z0-9_.-]+", part) for part in parts):
+        return False
+    if u.hostname == "huggingface.co":
+        return (len(parts) >= 5 and REPO.fullmatch("/".join(parts[:2])) is not None
+                and parts[2] == "resolve" and REVISION.fullmatch(parts[3]) is not None)
+    return (u.hostname == "github.com" and len(parts) == 6
+            and parts[:4] == ["k2-fsa", "sherpa-onnx", "releases", "download"]
+            and parts[-1].endswith(".onnx"))
 
 def read_json(path: Path) -> dict[str, Any]:
     def unique(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -76,7 +100,7 @@ def validate_source(source: dict[str, Any], *, pinned: bool = True) -> None:
         # is for comes from the app's localized capability label.
         if not isinstance(model.get("name"), str) or not model["name"].strip() or len(model["name"]) > 24:
             raise ValueError(f"{mid}: missing or overlong display name")
-        if model.get("capability") not in CAPABILITIES or model.get("runtime") != CAPABILITIES[model["capability"]]:
+        if model.get("capability") not in CAPABILITIES or model.get("runtime") not in RUNTIMES[model["capability"]]:
             raise ValueError(f"{mid}: invalid capability/runtime pair")
         if not isinstance(model.get("repo"), str) or not REPO.fullmatch(model["repo"]):
             raise ValueError(f"{mid}: invalid HF repo")
@@ -85,7 +109,7 @@ def validate_source(source: dict[str, Any], *, pinned: bool = True) -> None:
         if (type(model.get("min_ram_gb")) not in (int, float) or model["min_ram_gb"] <= 0
                 or model["min_ram_gb"] > 128):
             raise ValueError(f"{mid}: invalid minimum RAM")
-        if model["capability"] in {"clone", "translate"} and model["min_ram_gb"] < 6:
+        if (model["capability"] == "translate" or model["runtime"] == "omnivoice.cpp") and model["min_ram_gb"] < 6:
             raise ValueError(f"{mid}: cloning/translation require at least 6 GB RAM")
         languages = model.get("languages")
         if (not isinstance(languages, list) or not languages
@@ -94,6 +118,8 @@ def validate_source(source: dict[str, Any], *, pinned: bool = True) -> None:
             raise ValueError(f"{mid}: invalid languages")
         if not isinstance(model.get("config"), dict):
             raise ValueError(f"{mid}: missing runtime config")
+        if model["capability"] == "clone" and model["runtime"] == "sherpa-onnx" and model["config"].get("model_type") not in {"pocket","zipvoice"}:
+            raise ValueError(f"{mid}: unsupported reference speech family")
         files = model.get("files")
         if not isinstance(files, list) or not files:
             raise ValueError(f"{mid}: empty file manifest")
@@ -107,14 +133,31 @@ def validate_source(source: dict[str, Any], *, pinned: bool = True) -> None:
             if file.get("role") not in ROLES:
                 raise ValueError(f"{mid}: unknown file role: {file.get('role')}")
             roles.add(file["role"])
+            if file.get("url") is not None and not valid_asset_url(file["url"]):
+                raise ValueError(f"{mid}: invalid fixed asset URL")
+            if file.get("bundled") is not None:
+                asset = file["bundled"]
+                if not safe_file(asset) or file.get("url") is not None:
+                    raise ValueError(f"{mid}: invalid bundled asset")
+                data = (ROOT / "mobile/contract" / asset).read_bytes()
+                if pinned and (len(data) != file["size"] or hashlib.sha256(data).hexdigest() != file["sha256"]):
+                    raise ValueError(f"{mid}: bundled asset pin mismatch")
+
             if pinned and (type(file.get("size")) is not int or file["size"] <= 0
                            or not isinstance(file.get("sha256"), str) or not SHA256.fullmatch(file["sha256"])):
                 raise ValueError(f"{mid}: {path} needs a positive size and 64-hex SHA-256")
+        family = model["config"].get("model_type", "")
+        speech_roles = {
+            "vits": {"model", "tokens", "espeak-data"},
+            "supertonic": {"duration-predictor", "text-encoder", "vector-estimator", "vocoder", "tts-config", "unicode-indexer", "voices"},
+            "pocket": {"lm-flow", "lm-main", "encoder", "decoder", "text-conditioner", "vocab", "token-scores"},
+            "zipvoice": {"encoder", "decoder", "vocoder", "tokens", "espeak-data", "lexicon"},
+        }
         required = {
-            "tts": {"model", "tokens", "voices", "espeak-data"},
+            "tts": speech_roles.get(family, {"model", "tokens", "voices", "espeak-data"}),
             "asr": {"encoder", "decoder", "tokens"},
             "asr-stream": {"encoder", "decoder", "joiner", "tokens"},
-            "clone": {"model", "tokenizer"}, "translate": {"model"},
+            "clone": speech_roles.get(family, {"model", "tokenizer"}), "translate": {"model"},
         }[model["capability"]]
         if not required <= roles:
             raise ValueError(f"{mid}: missing runtime file roles: {required - roles}")
@@ -194,6 +237,14 @@ def pin_source(source: dict[str, Any]) -> dict[str, Any]:
 
         def pin_file(file: dict[str, Any]) -> dict[str, Any]:
             path = file["path"]
+            if file.get("bundled"):
+                data=(ROOT / "mobile/contract" / file["bundled"]).read_bytes()
+                return {**file,"size":len(data),"sha256":hashlib.sha256(data).hexdigest()}
+            if file.get("url"):
+                # Fixed publisher release asset: explicit URL plus SHA-256, never an SDK lookup.
+                if not valid_asset_url(file["url"]):
+                    raise ValueError("Invalid model asset URL")
+                return file
             if path not in siblings:
                 raise ValueError(f"{repo}@{revision}: selected file missing: {path}")
             metadata = siblings[path]

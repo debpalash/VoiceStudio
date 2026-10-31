@@ -3429,7 +3429,7 @@
     "add_details": "Lägg till detaljer",
     "step_start": "Start",
     "step_agent": "Agent",
-    "step_speak": "Tala",
+    "step_speak": "Tal",
     "step_condition": "Villkor",
     "step_call": "Samtal",
     "step_end": "Slut",
@@ -3796,7 +3796,7 @@
       "brought_by": "Presenteras av"
     },
     "tabs": {
-      "speak": "Tala",
+      "speak": "Tal",
       "voices": "Röster",
       "dub": "Dubbning",
       "dictate": "Diktering",
@@ -3844,7 +3844,8 @@
       "unstar": "Ta bort stjärna",
       "engine_unavailable": "Den här motorn är inte tillgänglig. Kontrollera installationen på datorn.",
       "voice_default": "Standardröst (motorns förinställning)",
-      "engine_no_cloning": "Den här motorn kan inte använda referensljud. Välj en motor som stöder röstkloning eller använd standardrösten."
+      "engine_no_cloning": "Den här motorn kan inte använda referensljud. Välj en motor som stöder röstkloning eller använd standardrösten.",
+      "reference_required": "Välj en sparad röst för att använda den här modellen. Du kan importera en från galleriet."
     },
     "voices": {
       "search": "Sök röster",
@@ -4073,7 +4074,7 @@
       "preset_voice": "Röst {{number}}",
       "transfer": "{{received}} av {{total}}",
       "privacy": "Uppgifter på enheten stannar på telefonen. Bara modellnedladdningar, rapporter som du väljer att skicka och din parkopplade dator använder nätverket.",
-      "computer_feature": "Den här funktionen körs just nu på din dator. Du kan använda Tala och Diktering på telefonen utan parkoppling.",
+      "computer_feature": "Den här funktionen körs just nu på din dator. Du kan använda Tal och Diktering på telefonen utan parkoppling.",
       "accepted": "Licens godkänd",
       "not_accepted": "Licens inte godkänd",
       "receipt": "{{action}} · {{time}} · App {{version}} · Villkor {{fingerprint}}"

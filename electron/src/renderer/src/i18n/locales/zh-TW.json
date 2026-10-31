@@ -3429,7 +3429,7 @@
     "add_details": "新增詳情",
     "step_start": "開始",
     "step_agent": "代理",
-    "step_speak": "說話",
+    "step_speak": "語音合成",
     "step_condition": "條件",
     "step_call": "通話",
     "step_end": "結束",
@@ -3796,7 +3796,7 @@
       "brought_by": "由以下開發者為你呈現"
     },
     "tabs": {
-      "speak": "朗讀",
+      "speak": "語音合成",
       "voices": "語音",
       "dub": "配音",
       "dictate": "聽寫",
@@ -3844,7 +3844,8 @@
       "unstar": "取消星星",
       "engine_unavailable": "此引擎無法使用。請在電腦上檢查其安裝情況。",
       "voice_default": "預設語音（引擎預設組）",
-      "engine_no_cloning": "此引擎無法使用參考音訊。請選擇支援聲音複製的引擎，或使用預設語音。"
+      "engine_no_cloning": "此引擎無法使用參考音訊。請選擇支援聲音複製的引擎，或使用預設語音。",
+      "reference_required": "選擇已儲存的聲音以使用此模型。您可以從聲音庫匯入。"
     },
     "voices": {
       "search": "搜尋語音",
@@ -4073,7 +4074,7 @@
       "preset_voice": "語音 {{number}}",
       "transfer": "{{received}}，共 {{total}}",
       "privacy": "裝置端工作只在這支手機上執行。只有模型下載、你選擇傳送的檢舉和已配對的電腦會使用網路。",
-      "computer_feature": "此功能目前在電腦上執行。無需配對，即可在這支手機上使用朗讀和聽寫。",
+      "computer_feature": "此功能目前在電腦上執行。無需配對，即可在這支手機上使用語音合成和聽寫。",
       "accepted": "已接受授權",
       "not_accepted": "未接受授權",
       "receipt": "{{action}} · {{time}} · App {{version}} · 條款 {{fingerprint}}"

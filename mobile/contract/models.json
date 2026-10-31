@@ -606,15 +606,15 @@
       "revision": "361609388ae572a820d085185bbbe2a2aac4b30e",
       "files": [
         {
-          "path": "omnivoice-base-Q4_K_M.gguf",
-          "size": 407485216,
-          "sha256": "4836ba5affcb83c04d08b3e96b6e48ac839947ee3864188739807b68e0e159c6",
+          "path": "omnivoice-base-Q8_0.gguf",
+          "size": 656395008,
+          "sha256": "2882d887921798aea13d45236556bdf8012842ab6f8cd2690943eead6289f298",
           "role": "model"
         },
         {
-          "path": "omnivoice-tokenizer-Q4_K_M.gguf",
-          "size": 252474112,
-          "sha256": "988fc32bc699bce361c44e9af8383be9811960441f293eb5ab4ec6bf6386378d",
+          "path": "omnivoice-tokenizer-F32.gguf",
+          "size": 734300704,
+          "sha256": "83820c6316da023076af7c1d06de5e38dcd09ae9f42203675bf8b3bd9a58e330",
           "role": "tokenizer"
         }
       ],
@@ -631,15 +631,16 @@
         "ru",
         "ar"
       ],
-      "min_ram_gb": 6,
+      "min_ram_gb": 8,
       "config": {
         "sample_rate": 24000,
-        "quantization": "Q4_K_M",
+        "quantization": "Q8_0",
         "reference_sample_rate": 24000,
         "reference_channels": 1,
         "requires_reference_audio": true,
         "requires_reference_text": true,
-        "num_threads": 2
+        "num_threads": 2,
+        "tokenizer_precision": "F32"
       },
       "licence": {
         "id": "CC-BY-NC-4.0; Higgs Audio 2; Meta Llama 3",
@@ -665,7 +666,7 @@
           "documents": []
         }
       },
-      "total_bytes": 659959328
+      "total_bytes": 1390695712
     },
     {
       "id": "qwen3-1-7b-q4-k-m",
@@ -754,6 +755,448 @@
         }
       },
       "total_bytes": 1107409472
+    },
+    {
+      "id": "piper-lessac-en-medium",
+      "name": "Piper",
+      "capability": "tts",
+      "runtime": "sherpa-onnx",
+      "repo": "csukuangfj/vits-piper-en_US-lessac-medium",
+      "files": [
+        {
+          "path": "en_US-lessac-medium.onnx",
+          "size": 63201425,
+          "sha256": "ea793a648ce0370665f99fbf891eae3b3a973565c72b08534bb5b2c04e8f2332",
+          "role": "model"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 921,
+          "sha256": "87c8ef66eae5473ed0cc0366b3964c736ca6c5f676c979522ea31234e47430b9",
+          "role": "tokens"
+        },
+        {
+          "path": "espeak-ng-data/phondata",
+          "size": 550424,
+          "sha256": "4e0288957874029a8c3c9f41a8f517ad4bf18127046decbdd4b9d1d6807ce3a3",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/phonindex",
+          "size": 39074,
+          "sha256": "3ca7b8fa3b42624e4b0f152707e7a39245fce569aa99ea47c055d9e622fcf0c4",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/phontab",
+          "size": 55796,
+          "sha256": "886f3fa402cb0ba73d483aa8ad000af47a6b7cc06293c75a97913fba68a530f6",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/intonations",
+          "size": 2040,
+          "sha256": "3f8af65fd3eda9759a10f021d61361c120871f463515229c925995c7f90918cc",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/en_dict",
+          "size": 166944,
+          "sha256": "71bd330ba8a2e3e8076e631508208ef49449d6147c17b7bd2b4b1e1468292e35",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/lang/gmw/en",
+          "size": 140,
+          "sha256": "4605d5330801de3641c6e366d15f129ea1f5ffbce8722642aba01ace07ab9c83",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/lang/gmw/en-US",
+          "size": 257,
+          "sha256": "41534c2a22df5dd4f1052ff9e1a33a3ea7bff5a26b5c02bdad5ba8ddb7524704",
+          "role": "espeak-data"
+        }
+      ],
+      "languages": [
+        "en"
+      ],
+      "min_ram_gb": 2,
+      "config": {
+        "model_type": "vits",
+        "sample_rate": 22050,
+        "num_speakers": 1,
+        "num_threads": 2,
+        "data_dir": "espeak-ng-data",
+        "speaker_names": [
+          "Lessac"
+        ]
+      },
+      "revision": "83f7470750b36549037551ef7007fa3b4b8697e0",
+      "licence": {
+        "id": "GPL-3.0; NOASSERTION",
+        "category": "unidentified",
+        "requires_acceptance": true,
+        "credit": "Piper / Rhasspy contributors; Lessac Blizzard 2013; eSpeak NG contributors",
+        "rights_holder": "Piper / Rhasspy contributors; Lessac Blizzard 2013; eSpeak NG contributors",
+        "terms_fingerprint": "a898e325a2e68c511a4b5cb81573f15fefac020fc0796df95782c7c63acf03d6",
+        "terms": {
+          "license": "GPL-3.0; NOASSERTION",
+          "credit": "Piper / Rhasspy contributors; Lessac Blizzard 2013; eSpeak NG contributors",
+          "notes": "The selected Piper model card points to the Lessac Blizzard 2013 dataset licence. Its voice/data terms have not been assessed here. The required eSpeak NG data is GPL-3.0. No complete voice, output or commercial-use clearance is asserted.",
+          "license_category": "unknown",
+          "commercial_inference": "unknown",
+          "commercial_outputs": "unknown",
+          "redistribution": "unknown",
+          "voice_rights": "unknown",
+          "source_url": "https://huggingface.co/csukuangfj/vits-piper-en_US-lessac-medium",
+          "evidence_url": "https://huggingface.co/csukuangfj/vits-piper-en_US-lessac-medium/blob/83f7470750b36549037551ef7007fa3b4b8697e0/MODEL_CARD",
+          "evidence_revision": "83f7470750b36549037551ef7007fa3b4b8697e0",
+          "runtime_revision": "83f7470750b36549037551ef7007fa3b4b8697e0",
+          "variants": [],
+          "documents": []
+        }
+      },
+      "total_bytes": 64017021
+    },
+    {
+      "id": "supertonic3-int8",
+      "name": "Supertonic 3",
+      "capability": "tts",
+      "runtime": "sherpa-onnx",
+      "repo": "csukuangfj2/sherpa-onnx-supertonic-3-tts-int8-2026-05-11",
+      "files": [
+        {
+          "path": "duration_predictor.int8.onnx",
+          "size": 3700147,
+          "sha256": "c3eb91414d5ff8a7a239b7fe9e34e7e2bf8a8140d8375ffb14718b1c639325db",
+          "role": "duration-predictor"
+        },
+        {
+          "path": "text_encoder.int8.onnx",
+          "size": 36416150,
+          "sha256": "c7befd5ea8c3119769e8a6c1486c4edc6a3bc8365c67621c881bbb774b9902ff",
+          "role": "text-encoder"
+        },
+        {
+          "path": "vector_estimator.int8.onnx",
+          "size": 78400833,
+          "sha256": "20cd86fa5c6effedfda0e7cffe5b0569ca401c440a0c3a1d72bf39286c0db3fd",
+          "role": "vector-estimator"
+        },
+        {
+          "path": "vocoder.int8.onnx",
+          "size": 25991073,
+          "sha256": "e923d60f53f95eb1ce235f1dc33ec56d9c057823c96fa6f8acf98f32b0da6152",
+          "role": "vocoder"
+        },
+        {
+          "path": "tts.json",
+          "size": 8253,
+          "sha256": "42078d3aef1cd43ab43021f3c54f47d2d75ceb4e75f627f118890128b06a0d09",
+          "role": "tts-config"
+        },
+        {
+          "path": "unicode_indexer.bin",
+          "size": 262144,
+          "sha256": "8402ca48e5189a8950138580b0fff64db6f072f24ac07cd54ba8b2fbb9883b30",
+          "role": "unicode-indexer"
+        },
+        {
+          "path": "voice.bin",
+          "size": 517168,
+          "sha256": "67d5209b0ee8ce6c74105ffbe12fe6a7628aea3b4ba2fcb308a4a67938a93ce8",
+          "role": "voices"
+        }
+      ],
+      "languages": [
+        "en",
+        "ko",
+        "ja",
+        "ar",
+        "bg",
+        "cs",
+        "da",
+        "de",
+        "el",
+        "es",
+        "et",
+        "fi",
+        "fr",
+        "hi",
+        "hr",
+        "hu",
+        "id",
+        "it",
+        "lt",
+        "lv",
+        "nl",
+        "pl",
+        "pt",
+        "ro",
+        "ru",
+        "sk",
+        "sl",
+        "sv",
+        "tr",
+        "uk",
+        "vi"
+      ],
+      "min_ram_gb": 3,
+      "config": {
+        "model_type": "supertonic",
+        "sample_rate": 44100,
+        "num_speakers": 10,
+        "num_threads": 2,
+        "num_steps": 5
+      },
+      "revision": "cca5a0e6c96e1d2c720986bf7e75fcc81dee3ae4",
+      "licence": {
+        "id": "OpenRAIL-M; MIT",
+        "category": "conditional",
+        "requires_acceptance": true,
+        "credit": "Supertone Inc.; ONNX conversion by Fangjun Kuang",
+        "rights_holder": "Supertone Inc.; ONNX conversion by Fangjun Kuang",
+        "terms_fingerprint": "f524f22dd8a1e26c4e9df703d8f109312498fe7e2f3b55c7b40c9625eb9f6fef",
+        "terms": {
+          "license": "OpenRAIL-M; MIT",
+          "credit": "Supertone Inc.; ONNX conversion by Fangjun Kuang",
+          "notes": "The conversion repo has an MIT licence, while the original Supertone/supertonic-3 model is OpenRAIL-M. Both are disclosed; the conversion licence does not replace the original weight terms. The selected public voice-style pack is included.",
+          "license_category": "conditions",
+          "commercial_inference": "unknown",
+          "commercial_outputs": "unknown",
+          "redistribution": "unknown",
+          "voice_rights": "unknown",
+          "source_url": "https://huggingface.co/csukuangfj2/sherpa-onnx-supertonic-3-tts-int8-2026-05-11",
+          "evidence_url": "https://huggingface.co/csukuangfj2/sherpa-onnx-supertonic-3-tts-int8-2026-05-11/blob/cca5a0e6c96e1d2c720986bf7e75fcc81dee3ae4/README.md",
+          "evidence_revision": "cca5a0e6c96e1d2c720986bf7e75fcc81dee3ae4",
+          "runtime_revision": "cca5a0e6c96e1d2c720986bf7e75fcc81dee3ae4",
+          "variants": [],
+          "documents": []
+        }
+      },
+      "total_bytes": 145295768
+    },
+    {
+      "id": "pocket-tts-int8-en",
+      "name": "Pocket TTS",
+      "capability": "clone",
+      "runtime": "sherpa-onnx",
+      "repo": "csukuangfj2/sherpa-onnx-pocket-tts-int8-2026-01-26",
+      "files": [
+        {
+          "path": "lm_flow.int8.onnx",
+          "size": 9962530,
+          "sha256": "8d627d235c44a597da908e1085ebe241cbbe358964c502c5a5063d18851a5529",
+          "role": "lm-flow"
+        },
+        {
+          "path": "lm_main.int8.onnx",
+          "size": 76341079,
+          "sha256": "bfc0c7e7e3d72864fa3bb2ee499f62f21ddc1474b885f5f3ca570f8be73e787e",
+          "role": "lm-main"
+        },
+        {
+          "path": "encoder.onnx",
+          "size": 72713165,
+          "sha256": "e8f2f6d301ffb96e398b138a7dc6d3038622d236044636b73d920bab85890260",
+          "role": "encoder"
+        },
+        {
+          "path": "decoder.int8.onnx",
+          "size": 22693618,
+          "sha256": "12b0857402d31aead94df19d6783b4350d1f740e811f3a3202c70ad89ae11eea",
+          "role": "decoder"
+        },
+        {
+          "path": "text_conditioner.onnx",
+          "size": 16388343,
+          "sha256": "0b84e837d7bfaf2c896627b03e3f080320309f37f4fc7df7698c644f7ba5e6b1",
+          "role": "text-conditioner"
+        },
+        {
+          "path": "vocab.json",
+          "size": 69478,
+          "sha256": "6fb646346cf931016f70c4921aab0900ce7a304b893cb02135c74e294abfea01",
+          "role": "vocab"
+        },
+        {
+          "path": "token_scores.json",
+          "size": 123616,
+          "sha256": "5be2f278caf9b9800741f0fd82bff677f4943ec764c356f907213434b622d958",
+          "role": "token-scores"
+        }
+      ],
+      "languages": [
+        "en"
+      ],
+      "min_ram_gb": 3,
+      "config": {
+        "model_type": "pocket",
+        "sample_rate": 24000,
+        "num_speakers": 0,
+        "num_threads": 2,
+        "reference_required": true,
+        "supports_cloning": true,
+        "num_steps": 10
+      },
+      "revision": "e715955cf50d18d919d37231513c0e914b83661a",
+      "licence": {
+        "id": "CC-BY-4.0; non-commercial conversion restriction",
+        "category": "non-commercial",
+        "requires_acceptance": true,
+        "credit": "Kyutai; ONNX export by KevinAHM; conversion packaging by Fangjun Kuang",
+        "rights_holder": "Kyutai; ONNX export by KevinAHM; conversion packaging by Fangjun Kuang",
+        "terms_fingerprint": "5cc2554d69ffb6031066a81bfb1271fa2076cc01bcfae565e37a641f157b0c56",
+        "terms": {
+          "license": "CC-BY-4.0; non-commercial conversion restriction",
+          "credit": "Kyutai; ONNX export by KevinAHM; conversion packaging by Fangjun Kuang",
+          "notes": "The conversion LICENSE is CC-BY-4.0, but its README additionally states non-commercial use. The linked KevinAHM licence is also CC-BY-4.0. Until clarified, this offered conversion is treated as non-commercial. No upstream test recordings are downloaded or bundled; use only a reference voice you have permission to clone.",
+          "license_category": "noncommercial",
+          "commercial_inference": "restricted",
+          "commercial_outputs": "unknown",
+          "redistribution": "unknown",
+          "voice_rights": "unknown",
+          "source_url": "https://huggingface.co/csukuangfj2/sherpa-onnx-pocket-tts-int8-2026-01-26",
+          "evidence_url": "https://huggingface.co/csukuangfj2/sherpa-onnx-pocket-tts-int8-2026-01-26/blob/e715955cf50d18d919d37231513c0e914b83661a/README.md",
+          "evidence_revision": "e715955cf50d18d919d37231513c0e914b83661a",
+          "runtime_revision": "e715955cf50d18d919d37231513c0e914b83661a",
+          "variants": [],
+          "documents": []
+        }
+      },
+      "total_bytes": 198291829
+    },
+    {
+      "id": "zipvoice-distill-int8-zh-en",
+      "name": "ZipVoice",
+      "capability": "clone",
+      "runtime": "sherpa-onnx",
+      "repo": "k2-fsa/ZipVoice",
+      "files": [
+        {
+          "path": "zipvoice_distill/text_encoder_int8.onnx",
+          "size": 5570211,
+          "sha256": "f2de9a761a85e5ddd125dee6e05bad1c7ee92c11b83b4d775dab216a6aa41379",
+          "role": "encoder"
+        },
+        {
+          "path": "zipvoice_distill/fm_decoder_int8.onnx",
+          "size": 124657100,
+          "sha256": "3cc2e08a96610d7ea1b227398e97cdbbe0414499741d3aec0b8113db2a2ab251",
+          "role": "decoder"
+        },
+        {
+          "path": "zipvoice_distill/tokens.txt",
+          "size": 2570,
+          "sha256": "ce98c1afc5f7a20c2484dffdd68a1fff0a4a2cc707328833750c4476c37cdbda",
+          "role": "tokens"
+        },
+        {
+          "path": "vocos_24khz.onnx",
+          "role": "vocoder",
+          "size": 54157409,
+          "sha256": "bcb3b970e384161c4d634f0bb9e999ff1c471b34c9bc0b1049a5014065ed3cc0",
+          "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos_24khz.onnx"
+        },
+        {
+          "path": "espeak-ng-data/phondata",
+          "size": 550424,
+          "sha256": "4e0288957874029a8c3c9f41a8f517ad4bf18127046decbdd4b9d1d6807ce3a3",
+          "role": "espeak-data",
+          "url": "https://huggingface.co/csukuangfj/kitten-mini-en-v0_1-fp16/resolve/2472be3b6436106f15d361747c225daa209d7bd8/espeak-ng-data/phondata"
+        },
+        {
+          "path": "espeak-ng-data/phonindex",
+          "size": 39074,
+          "sha256": "3ca7b8fa3b42624e4b0f152707e7a39245fce569aa99ea47c055d9e622fcf0c4",
+          "role": "espeak-data",
+          "url": "https://huggingface.co/csukuangfj/kitten-mini-en-v0_1-fp16/resolve/2472be3b6436106f15d361747c225daa209d7bd8/espeak-ng-data/phonindex"
+        },
+        {
+          "path": "espeak-ng-data/phontab",
+          "size": 55796,
+          "sha256": "886f3fa402cb0ba73d483aa8ad000af47a6b7cc06293c75a97913fba68a530f6",
+          "role": "espeak-data",
+          "url": "https://huggingface.co/csukuangfj/kitten-mini-en-v0_1-fp16/resolve/2472be3b6436106f15d361747c225daa209d7bd8/espeak-ng-data/phontab"
+        },
+        {
+          "path": "espeak-ng-data/intonations",
+          "size": 2040,
+          "sha256": "3f8af65fd3eda9759a10f021d61361c120871f463515229c925995c7f90918cc",
+          "role": "espeak-data",
+          "url": "https://huggingface.co/csukuangfj/kitten-mini-en-v0_1-fp16/resolve/2472be3b6436106f15d361747c225daa209d7bd8/espeak-ng-data/intonations"
+        },
+        {
+          "path": "espeak-ng-data/en_dict",
+          "size": 166944,
+          "sha256": "71bd330ba8a2e3e8076e631508208ef49449d6147c17b7bd2b4b1e1468292e35",
+          "role": "espeak-data",
+          "url": "https://huggingface.co/csukuangfj/kitten-mini-en-v0_1-fp16/resolve/2472be3b6436106f15d361747c225daa209d7bd8/espeak-ng-data/en_dict"
+        },
+        {
+          "path": "espeak-ng-data/lang/gmw/en",
+          "size": 140,
+          "sha256": "4605d5330801de3641c6e366d15f129ea1f5ffbce8722642aba01ace07ab9c83",
+          "role": "espeak-data",
+          "url": "https://huggingface.co/csukuangfj/kitten-mini-en-v0_1-fp16/resolve/2472be3b6436106f15d361747c225daa209d7bd8/espeak-ng-data/lang/gmw/en"
+        },
+        {
+          "path": "espeak-ng-data/lang/gmw/en-US",
+          "size": 257,
+          "sha256": "41534c2a22df5dd4f1052ff9e1a33a3ea7bff5a26b5c02bdad5ba8ddb7524704",
+          "role": "espeak-data",
+          "url": "https://huggingface.co/csukuangfj/kitten-mini-en-v0_1-fp16/resolve/2472be3b6436106f15d361747c225daa209d7bd8/espeak-ng-data/lang/gmw/en-US"
+        },
+        {
+          "path": "lexicon.txt",
+          "role": "lexicon",
+          "bundled": "tts/zipvoice-lexicon.txt",
+          "size": 1727147,
+          "sha256": "c94b049d970e971acdc2a7e5e7b23ca594222a9d640e417c711f2ad1e7bb7d46"
+        }
+      ],
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "min_ram_gb": 3,
+      "config": {
+        "model_type": "zipvoice",
+        "sample_rate": 24000,
+        "num_speakers": 0,
+        "num_threads": 2,
+        "reference_required": true,
+        "supports_cloning": true,
+        "data_dir": "espeak-ng-data",
+        "num_steps": 8
+      },
+      "revision": "889dd609a42f0de9cf9aac335eae42677becb1b9",
+      "licence": {
+        "id": "Apache-2.0; MIT; GPL-3.0",
+        "category": "conditional",
+        "requires_acceptance": true,
+        "credit": "ZipVoice / k2-fsa authors; Vocos authors; eSpeak NG contributors",
+        "rights_holder": "ZipVoice / k2-fsa authors; Vocos authors; eSpeak NG contributors",
+        "terms_fingerprint": "c68a507245c86472b017c41b2d167351431bdfd09407997a805deea2f6d07348",
+        "terms": {
+          "license": "Apache-2.0; MIT; GPL-3.0",
+          "credit": "ZipVoice / k2-fsa authors; Vocos authors; eSpeak NG contributors",
+          "notes": "ZipVoice weights/code are Apache-2.0. The exact Vocos 24 kHz ONNX release asset is separately hash-pinned; Vocos declares MIT. The bundled release lexicon is retained with attribution; English eSpeak NG data comes from the pinned Kitten conversion and is GPL-3.0. Voice/reference and output rights remain the user responsibility.",
+          "license_category": "conditions",
+          "commercial_inference": "unknown",
+          "commercial_outputs": "unknown",
+          "redistribution": "unknown",
+          "voice_rights": "unknown",
+          "source_url": "https://huggingface.co/k2-fsa/ZipVoice",
+          "evidence_url": "https://huggingface.co/k2-fsa/ZipVoice/blob/889dd609a42f0de9cf9aac335eae42677becb1b9/README.md",
+          "evidence_revision": "889dd609a42f0de9cf9aac335eae42677becb1b9",
+          "runtime_revision": "889dd609a42f0de9cf9aac335eae42677becb1b9",
+          "variants": [],
+          "documents": []
+        }
+      },
+      "total_bytes": 186929112
     }
   ]
 }

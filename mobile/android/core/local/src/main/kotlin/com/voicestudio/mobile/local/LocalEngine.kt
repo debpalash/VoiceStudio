@@ -43,11 +43,35 @@ internal object NativeBridge {
     external fun translateText(model: String, prompt: String, formatted: Boolean, control: NativeControl): ByteArray?
 }
 
+internal fun speechDataDirectory(model:PhoneModel,dir:File):String {
+    if(model.files.none {it.role=="espeak-data"}) return ""
+    val path=File(dir,model.option("data_dir","espeak-ng-data")).canonicalFile
+    if(!path.path.startsWith(dir.canonicalPath+File.separator)) throw ClientFailure("mobile.local.model_incompatible")
+    return path.path
+}
+/** Family-specific native configuration shared by real inference and contract tests. */
+internal fun speechTtsConfig(model:PhoneModel,dir:File,language:String?):OfflineTtsConfig {
+    val data=speechDataDirectory(model,dir)
+    val config=OfflineTtsModelConfig(numThreads=2,provider="cpu")
+    fun role(name:String)=model.role(dir,name)
+    val lexicon=model.files.filter {it.role=="lexicon"}.joinToString(",") {File(dir,it.path).absolutePath}
+    when(model.option("model_type",if(model.id.contains("kitten")) "kitten" else "kokoro")) {
+        "kitten"->config.kitten=OfflineTtsKittenModelConfig(model=role("model"),voices=role("voices"),tokens=role("tokens"),dataDir=data)
+        "kokoro"->config.kokoro=OfflineTtsKokoroModelConfig(model=role("model"),voices=role("voices"),tokens=role("tokens"),dataDir=data,lexicon=lexicon,lang=language ?: model.option("lang"),dictDir=role("dictionary"))
+        "vits"->config.vits=OfflineTtsVitsModelConfig(model=role("model"),tokens=role("tokens"),dataDir=data,lexicon=lexicon)
+        "supertonic"->config.supertonic=OfflineTtsSupertonicModelConfig(durationPredictor=role("duration-predictor"),textEncoder=role("text-encoder"),vectorEstimator=role("vector-estimator"),vocoder=role("vocoder"),ttsJson=role("tts-config"),unicodeIndexer=role("unicode-indexer"),voiceStyle=role("voices"))
+        "pocket"->config.pocket=OfflineTtsPocketModelConfig(lmFlow=role("lm-flow"),lmMain=role("lm-main"),encoder=role("encoder"),decoder=role("decoder"),textConditioner=role("text-conditioner"),vocabJson=role("vocab"),tokenScoresJson=role("token-scores"),voiceEmbeddingCacheCapacity=1)
+        "zipvoice"->config.zipvoice=OfflineTtsZipVoiceModelConfig(encoder=role("encoder"),decoder=role("decoder"),tokens=role("tokens"),vocoder=role("vocoder"),dataDir=data,lexicon=lexicon,featScale=.1f,tShift=.5f,targetRms=.1f,guidanceScale=1f)
+        else->throw ClientFailure("mobile.local.model_incompatible")
+    }
+    return OfflineTtsConfig(model=config,maxNumSentences=1,ruleFsts=model.files.filter {it.role=="rule-fst"}.joinToString(",") {File(dir,it.path).absolutePath})
+}
+
 class PhoneLocalEngine(private val models: ModelDownloads): LocalEngine {
     companion object {private val nativeLease=Mutex()}
     internal suspend fun <T> execute(model: PhoneModel, capability: String, progress: (Float)->Unit, block: suspend (File,Job)->T): T =
         withContext(Dispatchers.Default) {
-            if(model.capability != capability) throw ClientFailure("mobile.local.model_incompatible")
+            if(!model.supports(capability)) throw ClientFailure("mobile.local.model_incompatible")
             try {
                 nativeLease.withLock {models.withModel(model) { directory ->
                     currentCoroutineContext().ensureActive();progress(0f)
@@ -59,21 +83,18 @@ class PhoneLocalEngine(private val models: ModelDownloads): LocalEngine {
             catch(e:LinkageError) {throw ClientFailure("mobile.local.runtime_failed")}
             catch(e:Exception) {throw ClientFailure("mobile.local.inference_failed")}
         }
-    override suspend fun synthesize(model: PhoneModel, text: String, speaker: Int, speed: Float, language: String?, progress: (Float)->Unit): LocalAudio = execute(model,"tts",progress) {dir,job ->
-        require(text.isNotBlank() && text.length<=20000 && speed in .5f..2f && (language==null||language in model.languages))
-        val dataDir=dataDirectory(model,dir)
-        val config=OfflineTtsModelConfig(numThreads=2,provider="cpu")
-        when(model.option("model_type",model.option("type",if(model.id.contains("kitten")) "kitten" else "kokoro"))) {
-            "kitten" -> config.kitten=OfflineTtsKittenModelConfig(model=model.role(dir,"model"),voices=model.role(dir,"voices"),tokens=model.role(dir,"tokens"),dataDir=dataDir)
-            "kokoro" -> config.kokoro=OfflineTtsKokoroModelConfig(model=model.role(dir,"model"),voices=model.role(dir,"voices"),tokens=model.role(dir,"tokens"),dataDir=dataDir,
-                lexicon=model.files.filter {it.role=="lexicon"}.joinToString(",") {File(dir,it.path).absolutePath},lang=language ?: model.option("lang"),dictDir=model.role(dir,"dict"))
-            else -> throw ClientFailure("mobile.local.model_incompatible")
-        }
-        val tts=OfflineTts(config=OfflineTtsConfig(model=config,maxNumSentences=1,ruleFsts=model.files.filter {it.role=="rule-fst"}.joinToString(",") {File(dir,it.path).absolutePath}))
+    override suspend fun synthesize(model: PhoneModel,text: String,speaker: Int,speed: Float,language: String?,progress: (Float)->Unit): LocalAudio {
+        if(model.requiresReference) throw ClientFailure("mobile.speak.reference_required")
+        return sherpaSpeech(model,text,speaker,speed,language,null,"",progress)
+    }
+    private suspend fun sherpaSpeech(model:PhoneModel,text:String,speaker:Int,speed:Float,language:String?,reference:LocalAudio?,referenceText:String,progress:(Float)->Unit):LocalAudio = execute(model,if(reference==null) "tts" else "clone",progress) {dir,job ->
+        require(text.isNotBlank()&&text.length<=20000&&speed in .5f..2f&&(language==null||language in model.languages))
+        val tts=OfflineTts(config=speechTtsConfig(model,dir,language))
         try {
-            if(speaker !in 0 until tts.numSpeakers()) throw ClientFailure("mobile.local.model_incompatible")
+            if(reference==null&&speaker !in 0 until tts.numSpeakers()) throw ClientFailure("mobile.local.model_incompatible")
             var chunks=0
-            val audio=tts.generateWithCallback(text,speaker,speed,NativeTtsCallback {
+            val generation=GenerationConfig(sid=speaker,speed=speed,referenceAudio=reference?.samples ?: floatArrayOf(),referenceSampleRate=reference?.sampleRate ?: 0,referenceText=referenceText,numSteps=model.option("num_steps","8").toIntOrNull() ?: 8,extra=if(model.option("model_type")=="supertonic") mapOf("lang" to (language ?: model.languages.first())) else emptyMap())
+            val audio=tts.generateWithConfigAndCallback(text,generation,NativeTtsCallback {
                 if(!job.isActive||!models.licence.accepted(model)) 0 else {chunks++;progress((chunks.toFloat()/(chunks+1)).coerceAtMost(.95f));1}
             })
             job.ensureActive();LocalAudio(audio.samples,audio.sampleRate)
@@ -137,7 +158,15 @@ class PhoneLocalEngine(private val models: ModelDownloads): LocalEngine {
             } finally {stream.release();recognizer.release()}
         }
     }.flowOn(Dispatchers.Default)
-    override suspend fun clone(model: PhoneModel, text: String, reference: LocalAudio, referenceText: String, progress: (Float)->Unit): LocalAudio = execute(model,"clone",progress) {dir,job ->
+    override suspend fun clone(model: PhoneModel,text: String,reference: LocalAudio,referenceText: String,progress:(Float)->Unit): LocalAudio {
+        require(text.isNotBlank()&&reference.sampleRate==24000&&reference.samples.size in 1..720000&&reference.samples.all {it.isFinite()})
+        if(model.runtime=="sherpa-onnx") {
+            require(model.supportsCloning&&(referenceText.isNotBlank()||model.option("model_type")=="pocket"))
+            return sherpaSpeech(model,text,0,1f,null,reference,referenceText,progress)
+        }
+        return omniClone(model,text,reference,referenceText,progress)
+    }
+    private suspend fun omniClone(model:PhoneModel,text:String,reference:LocalAudio,referenceText:String,progress:(Float)->Unit):LocalAudio=execute(model,"clone",progress) {dir,job ->
         require(text.isNotBlank() && text.length<=20000 && reference.sampleRate==24000 && reference.samples.size in 1..720000 && reference.samples.all {it.isFinite()} && referenceText.isNotBlank())
         NativeBridge.load()
         val codec=model.role(dir,"codec").ifEmpty {model.role(dir,"audio-tokenizer").ifEmpty {model.role(dir,"tokenizer")}}
@@ -147,6 +176,7 @@ class PhoneLocalEngine(private val models: ModelDownloads): LocalEngine {
         LocalAudio(result ?: throw ClientFailure("mobile.local.inference_failed"),24000)
     }
     override suspend fun design(model: PhoneModel,text: String,instruction: String,seed: Long,progress: (Float)->Unit): LocalAudio = execute(model,"clone",progress) {dir,job ->
+        require(model.supportsDesign)
         require(text.isNotBlank()&&text.length<=2000&&instruction.length<=2000&&seed>=0)
         NativeBridge.load()
         val codec=model.role(dir,"codec").ifEmpty {model.role(dir,"audio-tokenizer").ifEmpty {model.role(dir,"tokenizer")}}
@@ -164,13 +194,7 @@ class PhoneLocalEngine(private val models: ModelDownloads): LocalEngine {
         job.ensureActive();models.licence.requireAccepted(model)
         result?.toString(Charsets.UTF_8) ?: throw ClientFailure("mobile.local.inference_failed")
     }
-    private fun dataDirectory(model: PhoneModel, directory: File): String {
-        val path=model.option("data_dir").ifEmpty {model.files.firstOrNull {"espeak-ng-data/" in it.path}?.path?.substringBefore("espeak-ng-data/")?.plus("espeak-ng-data").orEmpty()}
-        if(path.isBlank()) return ""
-        val result=File(directory,path).canonicalFile
-        if(!result.path.startsWith(directory.canonicalPath+File.separator)) throw ClientFailure("mobile.local.model_incompatible")
-        return result.path
-    }
+
 }
 /** Every local synthetic export passes this marker (RIFF INFO provenance). */
 fun markSynthetic(audio: LocalAudio, file: File) {

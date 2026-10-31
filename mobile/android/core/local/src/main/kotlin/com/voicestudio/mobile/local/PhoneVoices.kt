@@ -54,7 +54,7 @@ class PhoneVoiceStore(private val root: File) {
     }}
     suspend fun create(name: String, source: File, consent: Boolean, asr: PhoneModel, cloneModel: PhoneModel, engine: LocalEngine,
         decoder: AudioDecoder = AndroidAudioDecoder(), progress: (Float)->Unit = {}): PhoneVoice = withContext(Dispatchers.IO) {
-        require(consent&&asr.capability=="asr"&&cloneModel.capability=="clone"&&name.trim().isNotEmpty()&&name.length<=200)
+        require(consent&&asr.capability=="asr"&&cloneModel.supportsCloning&&name.trim().isNotEmpty()&&name.length<=200)
         val id=UUID.randomUUID().toString()
         val dir=directory(id).apply {mkdirs()}
         try {
@@ -72,14 +72,24 @@ class PhoneVoiceStore(private val root: File) {
             progress(1f);voice
         } catch(e:Throwable) {dir.deleteRecursively();throw e}
     }
-    suspend fun saveDesign(name: String,text: String,audio: LocalAudio,model: PhoneModel,instruction: String,seed: Long): PhoneVoice = withContext(Dispatchers.IO) {mutex.withLock {
+    suspend fun importCommunity(entry:GalleryEntry,source:File,consent:Boolean,decoder:AudioDecoder=AndroidAudioDecoder()):PhoneVoice=withContext(Dispatchers.IO) {
+        require(consent&&entry.type=="voice"&&source.length()<=32*1024*1024)
+        val audio=requireNotNull(entry.audio)
+        require(java.security.MessageDigest.getInstance("SHA-256").digest(source.readBytes()).joinToString("") {"%02x".format(it)}==audio.sha256)
+        val scratch=File.createTempFile("community-",".pcm",source.parentFile)
+        try {
+            val pcm=decoder.decode(source,scratch,30)
+            installHandoff(entry.name,audio.ref_text,pcm.read(0,pcm.frames.toInt()),buildJsonObject {put("sourceAttribution",JsonObject(entry.attribution.mapValues {JsonPrimitive(it.value)}))},PhoneAudioProcessing.containsSyntheticMarker(source),consent)
+        } finally {scratch.delete()}
+    }
+    suspend fun saveDesign(name: String,text: String,audio: LocalAudio,model: PhoneModel,instruction: String,seed: Long,attribution: Map<String,String>?=null): PhoneVoice = withContext(Dispatchers.IO) {mutex.withLock {
         require(name.isNotBlank()&&name.length<=200&&text.isNotBlank()&&audio.sampleRate==24000&&audio.samples.size in 2400..720000&&audio.samples.all {it.isFinite()}&&seed>=0)
         val id=UUID.randomUUID().toString();val dir=directory(id).apply {mkdirs()}
         try {
             writePcm(audio,File(dir,"reference.pcm"));markSynthetic(audio,File(dir,"reference.wav"))
             currentCoroutineContext().ensureActive()
             val now=System.currentTimeMillis()
-            val voice=PhoneVoice(id,name.trim(),text,now,now,modelRepo=model.repo,modelRevision=model.revision,designInstruction=instruction,designSeed=seed)
+            val voice=PhoneVoice(id,name.trim(),text,now,now,modelRepo=model.repo,modelRevision=model.revision,designInstruction=instruction,designSeed=seed,sourceAttribution=attribution)
             atomicText(File(dir,"voice.json"),LocalJson.encodeToString(PhoneVoice.serializer(),voice));voice
         } catch(e:Throwable) {dir.deleteRecursively();throw e}
     }}

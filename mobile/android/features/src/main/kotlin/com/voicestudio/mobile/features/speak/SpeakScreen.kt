@@ -89,12 +89,12 @@ import kotlinx.coroutines.*
 internal fun speakModelKey(capability: String)=if(capability=="clone") "speak-clone" else "speak"
 internal fun chooseSpeakModel(models: List<PhoneModel>,installed: Set<String>,choices: Map<String,String>,capability: String): PhoneModel? {
     val matching=models.filter {it.capability==capability}
-    return matching.firstOrNull {it.id==choices[speakModelKey(capability)]} ?: matching.firstOrNull {it.id in installed} ?: matching.firstOrNull()
+    return models.firstOrNull {it.id==choices[speakModelKey(capability)]&&(if(capability=="tts") it.supportsSpeech else it.capability==capability)} ?: matching.firstOrNull {it.id in installed} ?: matching.firstOrNull()
 }
 
-@Composable fun SpeakScreen(vm: StudioViewModel, initialPhoneVoiceID: String? = null, initialComputerVoiceID: String? = null, initialPhonePreset: Int? = null, initialPhoneModelID: String? = null, initialText: String? = null) {
+@Composable fun SpeakScreen(vm: StudioViewModel, initialPhoneVoiceID: String? = null, initialComputerVoiceID: String? = null, initialPhonePreset: Int? = null, initialPhoneModelID: String? = null, initialText: String? = null, openGallery: (() -> Unit)? = null) {
     var text by rememberSaveable(initialText) {mutableStateOf(initialText.orEmpty())}
-    com.voicestudio.mobile.features.models.TaskLocation(vm,"speak",setOf("tts","clone")) {location,model ->
+    com.voicestudio.mobile.features.models.TaskLocation(vm,"speak",setOf("tts","clone"),initialLocation=when {initialComputerVoiceID!=null->"computer";initialPhoneVoiceID!=null||initialPhonePreset!=null->"phone";else->null}) {location,model ->
         if(location==com.voicestudio.mobile.local.RunLocation.COMPUTER) ComputerSpeakScreen(vm,text,{text=it},initialComputerVoiceID)
         else {
             val phone by vm.phone.state.collectAsState()
@@ -106,7 +106,7 @@ internal fun chooseSpeakModel(models: List<PhoneModel>,installed: Set<String>,ch
             val prefs by vm.preferences.collectAsState()
             var requestedModel by remember(initialPhoneModelID) {mutableStateOf(initialPhoneModelID)}
             LaunchedEffect(prefs.phoneModels[speakModelKey(capability)]) {if(prefs.phoneModels[speakModelKey(capability)]==requestedModel) requestedModel=null}
-            val selected=phone.models.firstOrNull {it.id==requestedModel&&it.capability==capability} ?: chooseSpeakModel(phone.models,phone.installed,prefs.phoneModels,capability)
+            val selected=phone.models.firstOrNull {it.id==requestedModel&&it.supportsSpeech&&(voice==null||it.supportsCloning)} ?: chooseSpeakModel(phone.models,phone.installed,prefs.phoneModels,capability)
             LaunchedEffect(phone.voices) {if(speaker.startsWith("phone:")&&voice==null) speaker="0"}
             var exportFormat by rememberSaveable {mutableStateOf("wav")}
             var exporting by remember {mutableStateOf(false)}
@@ -131,27 +131,39 @@ internal fun chooseSpeakModel(models: List<PhoneModel>,installed: Set<String>,ch
                 }
             }
             DisposableEffect(Unit) {onDispose {vm.phone.cancelInference()}}
-            val speakers=selected?.option("num_speakers",selected.option("speaker_count","1"))?.toIntOrNull()?.coerceIn(1,128) ?: 1
+            val speakers=if(selected?.requiresReference==true) 0 else selected?.option("num_speakers",selected.option("speaker_count","1"))?.toIntOrNull()?.coerceIn(1,128) ?: 1
             val validSpeaker=voice!=null||speaker.toIntOrNull()?.let {it in 0 until speakers}==true
-            LaunchedEffect(selected?.id,speakers) {if(voice==null&&!validSpeaker) speaker="0"}
+            LaunchedEffect(selected?.id,speakers) {if(voice==null&&!validSpeaker) speaker=if(selected?.requiresReference==true) "" else "0"}
             var language by rememberSaveable {mutableStateOf("en")}
-            LaunchedEffect(selected?.id,voice?.id) {language=if(voice!=null) "auto" else language.takeIf {it in selected?.languages.orEmpty()} ?: selected?.languages?.firstOrNull().orEmpty()}
-            val languageChoices=if(voice!=null) listOf(Choice("auto",tr("languagePicker.auto"))) else selected?.languages.orEmpty().map {Choice(it,languageName(it,LocalL10n.current.locale))}
+            LaunchedEffect(selected?.id,voice?.id) {language=if(voice!=null||selected?.capability=="clone") "auto" else language.takeIf {it in selected?.languages.orEmpty()} ?: selected?.languages?.firstOrNull().orEmpty()}
+            val languageChoices=if(voice!=null||selected?.capability=="clone") listOf(Choice("auto",tr("languagePicker.auto"))) else selected?.languages.orEmpty().map {Choice(it,languageName(it,LocalL10n.current.locale))}
             Screen(bottomBar={
-                Action("mobile.speak.generate",text.isNotBlank()&&selected!=null&&phone.canRun(selected,vm.phone.ramBytes)&&validSpeaker&&phone.progress==null&&!exporting) {
+                if(selected!=null&&!phone.canRun(selected,vm.phone.ramBytes)) {
+                    com.voicestudio.mobile.features.models.MissingModelsCard(vm,"mobile.tabs.speak",listOf(selected),prominent=true)
+                } else Action("mobile.speak.generate",text.isNotBlank()&&selected!=null&&phone.canRun(selected,vm.phone.ramBytes)&&validSpeaker&&phone.progress==null&&!exporting) {
                     vm.phone.speak(selected!!,text,speaker.toIntOrNull() ?: 0,voice,language.takeUnless {it=="auto"})
                 }
             }) {
                 ScreenTitle("mobile.tabs.speak")
                 Field("mobile.speak.placeholder",text,{text=it},multiline=true)
                 Group {
-                    ChoicePicker("mobile.speak.voice",speaker,(0 until speakers).map {Choice(it.toString(),tr("mobile.local.preset_voice",mapOf("number" to it+1)))}+phone.voices.map {Choice("phone:"+it.id,it.name)}) {speaker=it}
+                    ChoicePicker("mobile.speak.voice",speaker,(if(selected?.requiresReference==true) listOf(Choice("",tr("mobile.dub.choose_voice"),enabled=false)) else emptyList())+(0 until speakers).map {Choice(it.toString(),if(selected?.supportsDesign==true) tr("mobile.simple.default_voice") else tr("mobile.local.preset_voice",mapOf("number" to it+1)))}+phone.voices.map {Choice("phone:"+it.id,it.name)}) {speaker=it}
                     HorizontalDivider(color=role("border"))
-                    com.voicestudio.mobile.features.models.TaskModelPicker(vm,"speak",setOf(capability),selected,key=speakModelKey(capability))
+                    ChoicePicker("mobile.local.model",selected?.id.orEmpty(),phone.models.filter {it.supportsSpeech}.map {
+                        Choice(it.id,it.name,enabled=it.fits(vm.phone.ramBytes),supporting=if(it.fits(vm.phone.ramBytes)) tr("mobile.simple.${it.capability}") else tr("mobile.local.ram_required",mapOf("ram" to it.minRamGb)))
+                    }) {id ->
+                        val chosen=phone.models.first {it.id==id}
+                        vm.phone.cancelInference();requestedModel=id
+                        if(voice!=null&&!chosen.supportsCloning) speaker="0"
+                        vm.preference {prefs -> prefs.copy(phoneModels=prefs.phoneModels+(speakModelKey(if(voice!=null&&chosen.supportsCloning) "clone" else "tts") to id)+(if(chosen.supportsCloning) mapOf("speak-clone" to id) else emptyMap()))}
+                    }
                     HorizontalDivider(color=role("border"))
                     ChoicePicker("mobile.speak.language",language,languageChoices) {language=it}
                 }
-                if(selected?.let {!phone.canRun(it,vm.phone.ramBytes)}!=false) selected?.let {com.voicestudio.mobile.features.models.MissingModelsCard(vm,"mobile.tabs.speak",listOf(it))}
+                if(selected?.requiresReference==true&&voice==null) {
+                    Text(tr("mobile.speak.reference_required"),style=MaterialTheme.typography.bodyMedium,color=role("textMuted"))
+                    openGallery?.let {Secondary("nav.gallery",phone.progress==null,it)}
+                }
                 phone.progress?.let {p ->
                     LinearProgressIndicator(progress={p},modifier=Modifier.fillMaxWidth())
                     Secondary("common.cancel") {vm.phone.cancelInference()}

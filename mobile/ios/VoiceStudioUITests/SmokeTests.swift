@@ -86,8 +86,9 @@ final class SmokeTests: XCTestCase {
         let saved = app.staticTexts["Saved audio for deletion review"]
         XCTAssertTrue(saved.waitForExistence(timeout: 5))
         let delete = app.buttons["Delete"]
+        let primaryAction = app.buttons["speak.generate"].exists ? app.buttons["speak.generate"] : app.buttons["models.get"]
         for _ in 0..<8 {
-            if delete.isHittable && delete.frame.maxY < app.buttons["speak.generate"].frame.minY { break }
+            if delete.isHittable && delete.frame.maxY < primaryAction.frame.minY { break }
             app.swipeUp()
         }
         XCTAssertTrue(delete.isHittable)

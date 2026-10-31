@@ -144,7 +144,9 @@ val LocalHostPlayerFactory=staticCompositionLocalOf<(Context,VoiceStudioApi)->Pl
 val LocalAudioPlayerFactory=staticCompositionLocalOf<(Context)->Player> {
     { context -> ExoPlayer.Builder(context).build() }
 }
-@Composable fun LocalAudioPlayer(file: File, failure: (Throwable)->Unit) {
+@Composable fun LocalAudioPlayer(file: File, failure: (Throwable)->Unit) { LocalAudioPlayer(file,false,failure=failure) }
+
+@Composable fun LocalAudioPlayer(file: File, autoPlay:Boolean, playRequest:Long=0, failure: (Throwable)->Unit) {
     val context=LocalContext.current
     val factory=LocalAudioPlayerFactory.current
     val player=remember(file) {factory(context)}
@@ -161,6 +163,7 @@ val LocalAudioPlayerFactory=staticCompositionLocalOf<(Context)->Player> {
         player.addListener(listener);player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)));player.prepare()
         onDispose {player.removeListener(listener);player.release()}
     }
+    LaunchedEffect(player,autoPlay,playRequest) {if(autoPlay) {player.seekTo(0);player.play()}}
     LaunchedEffect(player) {while(isActive) {position=player.currentPosition.coerceAtLeast(0);duration=player.duration.coerceAtLeast(0);delay(250)}}
     Group {
         Column(Modifier.fillMaxWidth().padding(VSTheme.inset)) {

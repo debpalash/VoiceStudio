@@ -3429,7 +3429,7 @@
     "add_details": "Ayrıntı ekle",
     "step_start": "Başlangıç",
     "step_agent": "Aracı",
-    "step_speak": "Konuş",
+    "step_speak": "Konuşma",
     "step_condition": "Koşul",
     "step_call": "Arama",
     "step_end": "Bitiş",
@@ -3796,7 +3796,7 @@
       "brought_by": "Sizlere sunanlar"
     },
     "tabs": {
-      "speak": "Konuş",
+      "speak": "Konuşma",
       "voices": "Sesler",
       "dub": "Dublaj",
       "dictate": "Dikte",
@@ -3844,7 +3844,8 @@
       "unstar": "Yıldızı kaldır",
       "engine_unavailable": "Bu motor kullanılamıyor. Bilgisayarınızdaki kurulumunu kontrol edin.",
       "voice_default": "Varsayılan ses (motor ön ayarı)",
-      "engine_no_cloning": "Bu motor referans ses kullanamaz. Ses klonlamayı destekleyen bir motor seçin veya varsayılan sesi kullanın."
+      "engine_no_cloning": "Bu motor referans ses kullanamaz. Ses klonlamayı destekleyen bir motor seçin veya varsayılan sesi kullanın.",
+      "reference_required": "Bu modeli kullanmak için kayıtlı bir ses seçin. Galeriden bir ses içe aktarabilirsiniz."
     },
     "voices": {
       "search": "Seslerde ara",
@@ -4073,7 +4074,7 @@
       "preset_voice": "Ses {{number}}",
       "transfer": "{{received}} / toplam {{total}}",
       "privacy": "Cihaz içi görevler bu telefonda kalır. Yalnızca model indirmeleri, göndermeyi seçtiğiniz bildirimler ve eşleştirilmiş bilgisayarınız ağı kullanır.",
-      "computer_feature": "Bu özellik şu anda bilgisayarınızda çalışır. Konuş ve Dikte'yi eşleştirmeden bu telefonda kullanabilirsiniz.",
+      "computer_feature": "Bu özellik şu anda bilgisayarınızda çalışır. Konuşma ve Dikte'yi eşleştirmeden bu telefonda kullanabilirsiniz.",
       "accepted": "Lisans kabul edildi",
       "not_accepted": "Lisans kabul edilmedi",
       "receipt": "{{action}} · {{time}} · Uygulama {{version}} · Şartlar {{fingerprint}}"

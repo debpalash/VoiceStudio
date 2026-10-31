@@ -3455,7 +3455,7 @@
     "add_details": "Dodaj szczegóły",
     "step_start": "Start",
     "step_agent": "Agent",
-    "step_speak": "Mów",
+    "step_speak": "Mowa",
     "step_condition": "Warunek",
     "step_call": "Połączenie",
     "step_end": "Koniec",
@@ -3822,7 +3822,7 @@
       "brought_by": "Przygotowane dla Ciebie przez"
     },
     "tabs": {
-      "speak": "Mów",
+      "speak": "Mowa",
       "voices": "Głosy",
       "dub": "Dubbing",
       "dictate": "Dyktowanie",
@@ -3870,7 +3870,8 @@
       "unstar": "Usuń gwiazdkę",
       "engine_unavailable": "Ten silnik jest niedostępny. Sprawdź jego instalację na komputerze.",
       "voice_default": "Głos domyślny (ustawienie silnika)",
-      "engine_no_cloning": "Ten silnik nie może używać nagrania referencyjnego. Wybierz silnik obsługujący klonowanie głosu lub użyj głosu domyślnego."
+      "engine_no_cloning": "Ten silnik nie może używać nagrania referencyjnego. Wybierz silnik obsługujący klonowanie głosu lub użyj głosu domyślnego.",
+      "reference_required": "Wybierz zapisany głos, aby użyć tego modelu. Możesz zaimportować go z galerii."
     },
     "voices": {
       "search": "Szukaj głosów",
@@ -4099,7 +4100,7 @@
       "preset_voice": "Głos {{number}}",
       "transfer": "{{received}} z {{total}}",
       "privacy": "Zadania na urządzeniu zostają na tym telefonie. Z sieci korzystają tylko pobieranie modeli, zgłoszenia, które zdecydujesz się wysłać, oraz sparowany komputer.",
-      "computer_feature": "Ta funkcja działa obecnie na Twoim komputerze. Możesz używać Mów i Dyktowanie na tym telefonie bez parowania.",
+      "computer_feature": "Ta funkcja działa obecnie na Twoim komputerze. Możesz używać funkcji „Mowa” i „Dyktowanie” na tym telefonie bez parowania.",
       "accepted": "Licencja zaakceptowana",
       "not_accepted": "Licencja niezaakceptowana",
       "receipt": "{{action}} · {{time}} · Aplikacja {{version}} · Warunki {{fingerprint}}"

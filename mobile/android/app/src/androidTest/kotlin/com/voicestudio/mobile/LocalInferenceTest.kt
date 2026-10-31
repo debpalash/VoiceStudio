@@ -28,7 +28,7 @@ class LocalInferenceTest {
         assumeTrue(arguments.getString("localInferenceSmoke")=="true")
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val catalogue=context.assets.open("models.json").bufferedReader().use {ModelCatalog.decode(it.readText())}
-        val tts=catalogue.models.filter {it.capability=="tts"}.minBy {it.totalBytes}
+        val tts=catalogue.models.first {it.id=="kitten-mini-en-fp16"}
         val asr=catalogue.models.filter {it.capability=="asr"}.minBy {it.totalBytes}
         val stream=catalogue.models.first {it.capability=="asr-stream"}
         val ram=android.app.ActivityManager.MemoryInfo().also {context.getSystemService(android.app.ActivityManager::class.java).getMemoryInfo(it)}.totalMem
@@ -57,12 +57,44 @@ class LocalInferenceTest {
         val live=engine.streamTranscribe(stream,chunks.asFlow()).toList()
         assertTrue(live.isNotEmpty());assertTrue(live.last().final);assertTrue(live.last().text.isNotBlank())
     }
+    @Test fun speechPresetAndReferenceModelsProduceAudioOffline() = runBlocking {
+        val args=InstrumentationRegistry.getArguments()
+        assumeTrue(args.getString("speechInferenceSmoke")=="true")
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val catalog=context.assets.open("models.json").bufferedReader().use {ModelCatalog.decode(it.readText())}
+        val ids=listOf("piper-lessac-en-medium","supertonic3-int8","pocket-tts-int8-en","zipvoice-distill-int8-zh-en")
+        val selected=ids.map {id->catalog.models.first {it.id==id}}
+        val kitten=catalog.models.first {it.id=="kitten-mini-en-fp16"}
+        val ram=android.app.ActivityManager.MemoryInfo().also {context.getSystemService(android.app.ActivityManager::class.java).getMemoryInfo(it)}.totalMem
+        assertTrue("Provision at least 3 GB of RAM for the Speech inference smoke",selected.all {it.fits(ram)})
+        val root=File(context.noBackupFilesDir,"speech-smoke").apply {mkdirs()}
+        val gate=LicenceGate(File(root,"licences.json"),BuildConfig.VERSION_NAME)
+        for(model in selected+kitten) if(model.gated) {
+            assertEquals("Review the exact fixture terms first","true",args.getString("acceptModelLicencesForSmoke"));gate.record(model,true)
+        }
+        val downloads=ModelDownloads(File(root,"models"),gate,ram,{path->context.assets.open(path)}) {true}
+        if(args.getString("downloadSmokeModels")=="true") for(model in selected+kitten) downloads.download(model,false)
+        for(model in selected+kitten) assertTrue(downloads.installed(model))
+        val engine=PhoneLocalEngine(downloads)
+        val referenceText="The quick brown fox jumps over the lazy dog."
+        val reference=engine.synthesize(kitten,referenceText,language="en")
+        for(model in selected) {
+            val audio=if(model.requiresReference) engine.clone(model,"Hello. This is a local speech test.",reference,referenceText)
+                else engine.synthesize(model,"Hello. This is a local speech test.",language="en")
+            assertEquals(model.option("sample_rate").toInt(),audio.sampleRate)
+            assertTrue(audio.samples.size>audio.sampleRate/2)
+            assertTrue(audio.samples.all {it.isFinite()})
+            assertTrue(audio.samples.any {kotlin.math.abs(it)>.01f})
+            val file=File(root,model.id+".wav");markSynthetic(audio,file)
+            assertTrue(file.readBytes().toString(Charsets.ISO_8859_1).contains("VoiceStudio synthetic audio"))
+        }
+    }
     @Test fun phoneVoiceUsesRealDecoderWhisperAndOmniVoice() = runBlocking {
         val args=InstrumentationRegistry.getArguments()
         assumeTrue(args.getString("cloneInferenceSmoke")=="true")
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val catalog=context.assets.open("models.json").bufferedReader().use {ModelCatalog.decode(it.readText())}
-        val tts=catalog.models.filter {it.capability=="tts"}.minBy {it.totalBytes}
+        val tts=catalog.models.first {it.id=="kitten-mini-en-fp16"}
         val asr=catalog.models.filter {it.capability=="asr"}.minBy {it.totalBytes}
         val clone=catalog.models.first {it.capability=="clone"}
         val ram=android.app.ActivityManager.MemoryInfo().also {context.getSystemService(android.app.ActivityManager::class.java).getMemoryInfo(it)}.totalMem

@@ -136,9 +136,11 @@ def prepare_headers(sherpa, omni, llama):
 
 
 def macos_sherpa():
-    if platform.machine() != 'arm64':
-        raise RuntimeError('pins.json supplies only macOS arm64 shared sherpa')
-    item = PINS['sherpa-onnx']['macos_arm64_shared']
+    architecture = platform.machine()
+    archive_key = {'arm64': 'macos_arm64_shared', 'x86_64': 'macos_x64_shared'}.get(architecture)
+    if archive_key is None:
+        raise RuntimeError('Unsupported macOS sherpa architecture: ' + architecture)
+    item = PINS['sherpa-onnx'][archive_key]
     archive = download(item['url'], BUILD / 'downloads' / ('sherpa-macos-' + item['sha256'] + '.tar.bz2'), item['sha256'])
     output = BUILD / 'macos' / item['sha256']
     output.mkdir(parents=True, exist_ok=True)
@@ -253,7 +255,7 @@ def macos_runtimes():
     prepare_headers(sherpa, omni, llama)
     for name, directory, target in [('omnivoice', omni, 'omnivoice'), ('llama', llama, 'llama')]:
         commit = PINS['omnivoice.cpp' if name == 'omnivoice' else 'llama.cpp']['source']['commit']
-        build = BUILD / 'macos' / (name + '-' + commit + '-archive')
+        build = BUILD / 'macos' / (name + '-' + commit + '-' + platform.machine() + '-archive')
         if name == 'omnivoice':
             build.mkdir(parents=True, exist_ok=True)
             directory = stamp_omni_source(directory, build)

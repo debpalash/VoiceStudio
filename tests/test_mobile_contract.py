@@ -154,7 +154,7 @@ def test_mobile_models_are_pinned_and_have_complete_manifests():
     assert len(ids) == len(set(ids))
     assert {model["capability"] for model in catalogue["models"]} == set(mobile_models.CAPABILITIES)
     for model in catalogue["models"]:
-        assert model["runtime"] == mobile_models.CAPABILITIES[model["capability"]]
+        assert model["runtime"] in mobile_models.RUNTIMES[model["capability"]]
         assert mobile_models.REVISION.fullmatch(model["revision"])
         assert model["total_bytes"] == sum(file["size"] for file in model["files"])
         for file in model["files"]:
@@ -188,8 +188,10 @@ def test_mobile_models_registry_licence_gates_and_fingerprints():
     assert omni["licence"]["category"] == "non-commercial"
     assert omni["licence"]["requires_acceptance"] is True
     assert {file["path"] for file in omni["files"]} == {
-        "omnivoice-base-Q4_K_M.gguf", "omnivoice-tokenizer-Q4_K_M.gguf",
+        "omnivoice-base-Q8_0.gguf", "omnivoice-tokenizer-F32.gguf",
     }
+    assert omni["min_ram_gb"] >= 8
+    assert omni["config"]["requires_reference_audio"] is True
     translation = next(model for model in catalogue["models"] if model["capability"] == "translate")
     assert translation["total_bytes"] <= 1_200_000_000
     assert translation["licence"]["category"] == "commercial-ok"
@@ -463,3 +465,32 @@ def test_mobile_voice_design_traits_match_electron():
                 for part in key.split("."):
                     value = value[part]
                 assert isinstance(value, str) and value
+
+
+def test_speech_catalogue_offers_native_model_families_with_honest_reference_requirements():
+    models=json.loads((CONTRACT / "models.json").read_text())["models"]
+    families={m["config"].get("model_type"):m for m in models if m["capability"] in {"tts","clone"}}
+    assert {"kitten","kokoro","vits","supertonic","pocket","zipvoice"} <= families.keys()
+    for family in ("pocket","zipvoice"):
+        assert families[family]["config"]["reference_required"] is True
+        assert families[family]["config"]["supports_cloning"] is True
+        assert families[family]["config"]["num_speakers"] == 0
+
+
+@pytest.mark.parametrize("url,accepted", [
+    ("https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/vocos-24khz.onnx", True),
+    ("https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/nested/vocos.onnx", False),
+    ("https://github.com/k2-fsa/sherpa-onnx/releases/download/./vocos.onnx", False),
+    ("https://github.com/k2-fsa/sherpa-onnx/releases/download/../vocos.onnx", False),
+    ("https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/model%20name.onnx", False),
+    ("https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/model name.onnx", False),
+    ("https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/vocos.onnx?raw=1", False),
+    ("https://user@github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/vocos.onnx", False),
+    ("https://github.com:443/k2-fsa/sherpa-onnx/releases/download/v1.13.8/vocos.onnx", False),
+    ("https://github.com:invalid/k2-fsa/sherpa-onnx/releases/download/v1.13.8/vocos.onnx", False),
+    ("https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/vocos.onnx#fragment", False),
+    ("https://github.com/other/project/releases/download/v1/vocos.onnx", False),
+    ("http://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/vocos.onnx", False),
+])
+def test_mobile_release_asset_urls_match_native_boundaries(url, accepted):
+    assert mobile_models.valid_asset_url(url) is accepted

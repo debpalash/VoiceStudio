@@ -206,7 +206,8 @@ final class WifiState: @unchecked Sendable {
     func chooseModel(_ task: String, _ id: String) { modelChoices[task] = id; UserDefaults.standard.set(id,forKey: "model."+task) }
     func selectedModel(_ task: String, _ capability: ModelCapability) -> PhoneModel? {
         let id = modelChoices[task] ?? UserDefaults.standard.string(forKey: "model."+task)
-        return candidates(capability).first { $0.id == id } ?? preferred(capability)
+        let choices = task == "speak-tts" ? models.filter(\.supportsSpeech) : candidates(capability)
+        return choices.first { $0.id == id } ?? preferred(capability)
     }
     func preference(_ task: String) -> TaskLocation? { UserDefaults.standard.string(forKey: "run-on." + task).flatMap(TaskLocation.init(rawValue:)) }
     func choose(_ task: String, _ location: TaskLocation) { UserDefaults.standard.set(location.rawValue, forKey: "run-on." + task) }

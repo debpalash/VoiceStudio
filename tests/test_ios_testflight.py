@@ -202,3 +202,14 @@ def test_info_plist_carries_the_content_reports_url(tmp_path, monkeypatch):
     prepare_resources.prepare(tmp_path / "bundle", tmp_path / "Info.plist")
     info = plistlib.loads((tmp_path / "Info.plist").read_bytes())
     assert info["VoiceStudioContentReportsURL"] == "https://dev-appapi.voicestudio.sh"
+
+
+def test_host_inference_prepares_all_runtime_headers_before_compiling_swift():
+    # __has_include compiles no-runtime stubs when the generated headers are
+    # absent. Adding a header later does not invalidate SwiftPM's cached C object.
+    workflow = yaml.load((ROOT / ".github/workflows/mobile.yml").read_text(), Loader=yaml.BaseLoader)
+    steps = workflow["jobs"]["ios-inference"]["steps"]
+    prepare = next(i for i, step in enumerate(steps) if "mobile/native/ios/build.sh macos-runtimes" in step.get("run", ""))
+    first_compile = next(i for i, step in enumerate(steps) if any(command in step.get("run", "") for command in ("real-inference.sh", "check-swift.sh")))
+    assert prepare < first_compile, "Provision every runtime header before SwiftPM compiles VSNative.c"
+    assert "if" not in steps[prepare], "Cache hits must restore generated headers too"

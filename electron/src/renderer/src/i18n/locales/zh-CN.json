@@ -3424,7 +3424,7 @@
     "add_details": "添加详情",
     "step_start": "开始",
     "step_agent": "智能体",
-    "step_speak": "说话",
+    "step_speak": "语音合成",
     "step_condition": "条件",
     "step_call": "通话",
     "step_end": "结束",
@@ -3792,7 +3792,7 @@
       "brought_by": "由以下开发者为你呈现"
     },
     "tabs": {
-      "speak": "朗读",
+      "speak": "语音合成",
       "voices": "声音",
       "dub": "配音",
       "dictate": "听写",
@@ -3840,7 +3840,8 @@
       "unstar": "取消加星",
       "engine_unavailable": "此引擎不可用。请在电脑上检查其安装情况。",
       "voice_default": "默认声音（引擎预设）",
-      "engine_no_cloning": "此引擎无法使用参考音频。请选择支持语音克隆的引擎，或使用默认声音。"
+      "engine_no_cloning": "此引擎无法使用参考音频。请选择支持语音克隆的引擎，或使用默认声音。",
+      "reference_required": "选择已保存的声音以使用此模型。您可以从声音库导入。"
     },
     "voices": {
       "search": "搜索声音",
@@ -4069,7 +4070,7 @@
       "preset_voice": "声音 {{number}}",
       "transfer": "{{received}}，共 {{total}}",
       "privacy": "设备端任务只在这部手机上运行。只有模型下载、你选择发送的举报和已配对的电脑会使用网络。",
-      "computer_feature": "此功能目前在电脑上运行。无需配对，即可在这部手机上使用朗读和听写。",
+      "computer_feature": "此功能目前在电脑上运行。无需配对，即可在这部手机上使用语音合成和听写。",
       "accepted": "已接受许可",
       "not_accepted": "未接受许可",
       "receipt": "{{action}} · {{time}} · 应用 {{version}} · 条款 {{fingerprint}}"

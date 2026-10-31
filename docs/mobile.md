@@ -42,7 +42,7 @@ Electron and Android.
 
 ## What you can do
 
-- **Speak**: type text, pick a voice and language, generate, play, share.
+- **Speech**: type text, pick a voice and language, generate, play, share.
   Switching between the phone and computer keeps your script.
 - **Voices**: clone a voice from a recording or an audio file. Voices you
   clone on the phone stay on the phone.
@@ -50,6 +50,8 @@ Electron and Android.
   OmniVoice generates the cloned preview. Both models must be installed. Saving
   publishes a voice only after that preview succeeds; playback plays the clone,
   while the original recording stays separate for reference conditioning.
+  Withdrawing voice consent cancels cloning on the phone or computer; the form
+  stays open so you can review it before trying again.
 - **Dub**: pick a video or audio file and target languages; the phone
   transcribes, translates and re-voices it in the original speaker's voice.
   Play completed dubs directly in the app, including after using Dictate;
@@ -144,9 +146,9 @@ Electron and Android.
   starting recording or inference. Saved voice-design recipes reopen for editing.
 
 Production workspaces are available from **Home** on both iOS and Android.
-Install models in Models first. Voice design and saved-voice speech use
-OmniVoice and its existing licence gate; translation uses the phone translation
-model. Voice designs save their generated sample, traits and seed. References
+Install models in Models first. Voice Design uses OmniVoice. Saved-voice speech
+uses OmniVoice, Pocket TTS or ZipVoice, with each model’s licence gate; translation
+uses the phone translation model. Voice designs save their generated sample, traits and seed. References
 are limited to 30 seconds; longer design results remain playable/shareable.
 
 Stories, books, workflows and queued dubs keep completed work on disk. Android
@@ -196,7 +198,8 @@ an unapproved voice or open a file/URL. Keep VoiceStudio active on this screen.
 ## On-device models
 
 Open **Models** and download what you need. Nothing downloads until you tap
-it; files come from Hugging Face and are checked before use. Wi-Fi only unless
+it; model files come from pinned Hugging Face revisions or an explicitly listed
+GitHub release component and are checked before use. Wi-Fi only unless
 you allow mobile data.
 
 Concurrent downloads reserve their combined remaining disk space. If they will
@@ -206,15 +209,29 @@ even if you edit the next script while synthesis is running.
 
 | Model | For | Size | Phone memory |
 |---|---|---|---|
-| Kitten (English) / Kokoro (multi-language) | Speak | ~170 MB each | 2–3 GB |
+| Kitten (English) / Kokoro (multi-language) | Speech | ~170 MB each | 2–3 GB |
+| Piper Lessac (English) | Speech, one preset voice | 64 MB | 2 GB |
+| Supertonic 3 (31 languages) | Speech, ten preset voices | 145 MB | 3 GB |
+| Pocket TTS (English) | Speech with a saved voice | 198 MB | 3 GB |
+| ZipVoice (English / Chinese) | Speech with a saved voice and transcript | 187 MB | 3 GB |
 | Whisper tiny / base | Transcription, dubbing | 100–160 MB | 2–3 GB |
 | Zipformer | Live dictation (English) | 44 MB | 2 GB |
-| OmniVoice | Voice cloning, dubbing | 660 MB | 6 GB |
+| OmniVoice (Q8 / F32 codec) | Speech with a saved voice, voice design, dubbing | 1.4 GB | 8 GB |
 | Qwen3 1.7B | Dub translation | 1.1 GB | 6 GB |
 
 Some models ask you to accept their licence first (for example OmniVoice is
 for non-commercial use), the same as on the desktop. Models your phone can't
 run are shown greyed out with the reason.
+
+Speech's model picker shows all seven speech engines before installation. OmniVoice, Pocket
+TTS and ZipVoice need a saved voice; import one from Gallery or create one in
+Voices. Their Generate action stays unavailable until a reference is selected.
+Create a designed voice in Voice Design, save it, then select it in Speech.
+Choosing a preset-only
+engine clears an incompatible saved voice. Selecting a model starts no download.
+Pocket's conversion has conflicting licence statements and is treated as
+non-commercial; Piper's training-data rights remain unresolved. Review the exact
+terms shown before accepting any new pack.
 
 ## Pair a computer (optional)
 
@@ -232,7 +249,7 @@ Plain `http://` works only for addresses on your own network (home Wi-Fi,
 
 ## Report a result
 
-Every generated result (a Speak take, a cloned voice, a finished dub) has a
+Every generated result (a Speech take, a cloned voice, a finished dub) has a
 **Report** action. Pick what's wrong, optionally add a note or the text you
 typed, and tap **Send report**. It sends only the reason, your note, that text
 if you ticked it, the app version and the model that made the result to the
@@ -394,3 +411,10 @@ version codes do not make builds with different signing keys interchangeable.
 Android keeps a failed computer dubbing job visible while you stay on the Dub
 screen. Worker updates do not dismiss the error, and reopening the screen does
 not repeat an error already shown.
+
+OmniVoice's phone pack uses a Q8_0 language model and full-precision F32 audio
+codec. Earlier Q4 files are kept in the model folder, but the updated pack needs
+its new files downloaded from Models. Existing voice recordings, generated clips
+and licence acceptance are preserved. Speech requires a saved reference; it no
+longer invokes reference-free voice design, which could return noise for short
+text such as “Hi hello”.

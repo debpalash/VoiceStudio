@@ -133,6 +133,8 @@ def prepare(output, info):
         raise ValueError("Generate mobile/contract/models.json before building the app")
     shutil.copy2(model_catalogue, catalogs / "models.json")
     shutil.copy2(ROOT / "mobile/contract/design.json", catalogs / "design.json")
+    shutil.copytree(ROOT / "mobile/contract/tts", catalogs / "tts", dirs_exist_ok=True)
+    shutil.copy2(ROOT / "mobile/contract/community-gallery.json", catalogs / "community-gallery.json")
     shutil.copy2(ROOT / "mobile/contract/maintainer-cards.json", catalogs / "maintainer-cards.json")
     english = json.loads((source / "en.json").read_text(encoding="utf-8"))
     additions = sorted((ROOT / "mobile/contract").glob("strings*.en.json"))

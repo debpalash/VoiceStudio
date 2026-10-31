@@ -3431,7 +3431,7 @@
     "add_details": "Adicionar detalhes",
     "step_start": "Início",
     "step_agent": "Agente",
-    "step_speak": "Falar",
+    "step_speak": "Fala",
     "step_condition": "Condição",
     "step_call": "Chamada",
     "step_end": "Fim",
@@ -3798,7 +3798,7 @@
       "brought_by": "Oferecido por"
     },
     "tabs": {
-      "speak": "Falar",
+      "speak": "Fala",
       "voices": "Vozes",
       "dub": "Dublagem",
       "dictate": "Ditado",
@@ -3846,7 +3846,8 @@
       "unstar": "Remover estrela",
       "engine_unavailable": "Este motor não está disponível. Verifique a instalação dele no seu computador.",
       "voice_default": "Voz padrão (predefinição do motor)",
-      "engine_no_cloning": "Este motor não pode usar áudio de referência. Escolha um motor com suporte a clonagem de voz ou use a voz padrão."
+      "engine_no_cloning": "Este motor não pode usar áudio de referência. Escolha um motor com suporte a clonagem de voz ou use a voz padrão.",
+      "reference_required": "Escolha uma voz salva para usar este modelo. Você pode importar uma da galeria."
     },
     "voices": {
       "search": "Pesquisar vozes",
@@ -4075,7 +4076,7 @@
       "preset_voice": "Voz {{number}}",
       "transfer": "{{received}} de {{total}}",
       "privacy": "As tarefas no dispositivo ficam neste celular. Apenas downloads de modelos, denúncias que você escolher enviar e seu computador pareado usam a rede.",
-      "computer_feature": "Este recurso roda atualmente no seu computador. Você pode usar Falar e Ditado neste celular sem parear.",
+      "computer_feature": "Este recurso roda atualmente no seu computador. Você pode usar Fala e Ditado neste celular sem parear.",
       "accepted": "Licença aceita",
       "not_accepted": "Licença não aceita",
       "receipt": "{{action}} · {{time}} · App {{version}} · Termos {{fingerprint}}"

@@ -17,6 +17,10 @@ class SpeakModelChoiceTest {
         assertEquals("tts-b",chooseSpeakModel(models,setOf("tts-a"),choices,"tts")?.id)
         assertEquals("clone-b",chooseSpeakModel(models,emptySet(),choices,"clone")?.id)
     }
+    @Test fun explicitReferenceOnlyChoiceStaysVisibleBeforeVoiceSelection() {
+        assertEquals("clone-b",chooseSpeakModel(models,setOf("tts-a"),mapOf("speak" to "clone-b"),"tts")?.id)
+        assertEquals("tts-a",chooseSpeakModel(models,setOf("clone-b"),emptyMap(),"tts")?.id)
+    }
     @Test fun withoutAChoiceFirstInstalledThenFirstModelOfThatCapability() {
         assertEquals("clone-b",chooseSpeakModel(models,setOf("clone-b"),emptyMap(),"clone")?.id)
         assertEquals("tts-a",chooseSpeakModel(models,emptySet(),emptyMap(),"tts")?.id)

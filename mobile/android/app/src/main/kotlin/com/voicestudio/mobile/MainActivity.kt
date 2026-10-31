@@ -148,10 +148,14 @@ fun contentReportClient()=ContentReportClient(BuildConfig.CONTENT_REPORTS_URL,Bu
                         composable("host-dubs") {com.voicestudio.mobile.features.dub.ComputerDubScreen(vm)}
                         composable("projects") {com.voicestudio.mobile.features.dub.PhoneProjectScreen(vm)}
                         composable("project/{id}") {entry -> com.voicestudio.mobile.features.dub.PhoneProjectScreen(vm,entry.arguments?.getString("id"))}
-                        composable("host-voice/{id}") {entry -> SpeakScreen(vm,initialComputerVoiceID=entry.arguments?.getString("id"))}
-                        composable("voice/{id}") {entry -> SpeakScreen(vm,entry.arguments?.getString("id"))}
-                        composable("speak") {SpeakScreen(vm)}
+                        composable("host-voice/{id}") {entry -> SpeakScreen(vm,initialComputerVoiceID=entry.arguments?.getString("id"),openGallery={nav.navigate("gallery")})}
+                        composable("voice/{id}") {entry -> SpeakScreen(vm,entry.arguments?.getString("id"),openGallery={nav.navigate("gallery")})}
+                        composable("speak") {SpeakScreen(vm,openGallery={nav.navigate("gallery")})}
                         composable("design") {VoiceDesignScreen(vm)}
+                        composable("community-design/{recipe}") {entry ->
+                            val recipe=remember(entry) {runCatching {kotlinx.serialization.json.Json.decodeFromString<com.voicestudio.mobile.local.GalleryEntry>(entry.arguments?.getString("recipe").orEmpty())}.getOrNull()}
+                            VoiceDesignScreen(vm,recipe)
+                        }
                         composable("stories") {ProductionScreen(vm,"stories")}
                         composable("audiobook") {ProductionScreen(vm,"audiobook")}
                         composable("batch") {com.voicestudio.mobile.features.dub.BatchDubScreen(vm)}
@@ -160,9 +164,10 @@ fun contentReportClient()=ContentReportClient(BuildConfig.CONTENT_REPORTS_URL,Bu
                         composable("calls") {CallsScreen(vm)}
                         composable("local-api") {LocalAPIScreen(vm,onVoices={nav.navigate("voices")})}
                         composable("gallery") {GalleryScreen(vm) {nav.navigate(it)}}
-                        composable("preset/{model}/{speaker}") {entry -> SpeakScreen(vm,initialPhonePreset=entry.arguments?.getString("speaker")?.toIntOrNull(),initialPhoneModelID=entry.arguments?.getString("model"))}
+                        composable("preset/{model}/{speaker}") {entry -> SpeakScreen(vm,initialPhonePreset=entry.arguments?.getString("speaker")?.toIntOrNull(),initialPhoneModelID=entry.arguments?.getString("model"),openGallery={nav.navigate("gallery")})}
                         composable("tools") {VoiceToolsScreen(vm)}
                         composable("voices") {VoicesScreen(vm)}
+                        composable("clone") {VoicesScreen(vm,initialCreating=true,onCancel={nav.popBackStack()},onCreated={nav.navigate("voices") {popUpTo("clone") {inclusive=true}}})}
                         composable("dub") {DubScreen(vm)}
                         composable("dictate") {DictateScreen(vm,onHistory={nav.navigate("transcriptions")})}
                         composable("transcriptions") {TranscriptsScreen(vm,onDictate={nav.navigate("dictate")})}

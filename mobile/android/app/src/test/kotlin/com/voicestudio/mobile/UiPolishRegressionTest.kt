@@ -45,15 +45,15 @@ class UiPolishRegressionTest {
             }
             compose.onNodeWithTag("home.speak").performScrollTo().performClick()
             noIdentifiers()
-            compose.onAllNodesWithText("Get").assertCountEquals(1)
+            compose.onAllNodesWithText("Download").assertCountEquals(1)
             tab("Voices");noIdentifiers()
             compose.onNodeWithText("Clone a voice").performClick()
-            compose.onAllNodesWithText("Get").assertCountEquals(1)
+            compose.onAllNodesWithText("Download").assertCountEquals(1)
             tab("Dub");noIdentifiers()
-            compose.onAllNodesWithText("Get").assertCountEquals(1)
+            compose.onAllNodesWithText("Download").assertCountEquals(1)
             compose.onNodeWithText("Dub needs 3 downloads",substring=true).assertExists()
             tab("Dictate");noIdentifiers()
-            compose.onAllNodesWithText("Get").assertCountEquals(1)
+            compose.onAllNodesWithText("Download").assertCountEquals(1)
             compose.onNodeWithContentDescription("Copy").assertIsDisplayed()
             compose.onNodeWithContentDescription("Share").assertIsDisplayed()
             val copy=compose.onNodeWithContentDescription("Copy").fetchSemanticsNode().boundsInRoot
@@ -89,7 +89,7 @@ class UiPolishRegressionTest {
                 }
             }}
             compose.waitUntil(15000) {shadowOf(Looper.getMainLooper()).idle();!vm.phone.state.value.loading}
-            compose.onNodeWithText("Get").performClick()
+            compose.onNodeWithText("Download").performClick()
             compose.onNodeWithText("Whisper Tiny").assertExists()
             compose.onNodeWithText("Accept").assertIsNotEnabled()
             Assert.assertTrue(vm.phone.downloads.progress.value.isEmpty())
