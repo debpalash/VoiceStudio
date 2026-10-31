@@ -1236,13 +1236,26 @@ export class BackendSupervisor extends EventEmitter<{
               reject(controller.signal.reason);
               return;
             }
-            const child = spawn(command, args, {
-              cwd,
-              env: { ...childEnv(this.port, this.runtimeRegion), ...env },
-              windowsHide: true,
-              detached: process.platform !== 'win32',
-              stdio: ['pipe', 'pipe', 'pipe'],
-            });
+            const launchFailed = (err: unknown) =>
+              reject(
+                Object.assign(new Error(spawnFailureMessage(command, err)), {
+                  code: (err as NodeJS.ErrnoException | undefined)?.code,
+                }),
+              );
+            let child: ChildProcess;
+            try {
+              child = spawn(command, args, {
+                cwd,
+                env: { ...childEnv(this.port, this.runtimeRegion), ...env },
+                windowsHide: true,
+                detached: process.platform !== 'win32',
+                stdio: ['pipe', 'pipe', 'pipe'],
+              });
+            } catch (err) {
+              // Windows throws a refused launch here instead of emitting `error`.
+              launchFailed(err);
+              return;
+            }
             this.child = child;
             let capturedStdout = '';
             child.stdin?.on('error', () => {});
@@ -1251,13 +1264,7 @@ export class BackendSupervisor extends EventEmitter<{
             });
             this.attachLineReader(child.stdout, 'out');
             this.attachLineReader(child.stderr, 'err');
-            child.on('error', (err) =>
-              reject(
-                Object.assign(new Error(spawnFailureMessage(command, err)), {
-                  code: (err as NodeJS.ErrnoException | undefined)?.code,
-                }),
-              ),
-            );
+            child.on('error', launchFailed);
             child.on('close', (code) => {
               if (this.child === child) this.child = null;
               if (code === 0) resolve(capturedStdout);
