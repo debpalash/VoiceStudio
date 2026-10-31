@@ -349,7 +349,9 @@ answers are in [`store/google-play.md`](../store/google-play.md). One-time setup
 1. Create the app in the Play Console with the package name
    `sh.voicestudio.mobile` and keep Play App Signing on (Google holds the app
    signing key; CI only holds the upload key).
-2. Create an upload key once and keep a backup in the team password manager:
+2. Reuse the upload key from the `mobile-release` environment so builds keep
+   their signing identity. Keep a backup in the team password manager. Only if
+   no key exists yet, create it once:
    `keytool -genkeypair -v -keystore upload.jks -alias upload -keyalg RSA -keysize 4096 -validity 10000`.
 3. Create a Google Cloud service account with a JSON key, then invite its email
    in the Play Console (Users and permissions) with release access to this app.
