@@ -25,7 +25,8 @@ export function formatRelative(
   let delta = (then - now) / 1000;
   const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
   for (const { amount, unit } of DIVISIONS) {
-    if (Math.abs(delta) < amount) return rtf.format(Math.round(delta), unit);
+    const rounded = Math.round(delta);
+    if (Math.abs(delta) < amount && Math.abs(rounded) < amount) return rtf.format(rounded, unit);
     delta /= amount;
   }
   return '';
