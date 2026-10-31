@@ -325,11 +325,23 @@ submits the app for App Store review. One-time setup in the Apple Developer team
    and Apple issues none for a team without devices.
 3. Create an App Store Connect API key with the **Admin** role (Users and
    Access → Integrations). Admin lets CI create the cloud-managed Apple
-   Distribution certificate and App Store profile, so no `.p12` is stored.
+   Distribution certificate and App Store profile during export.
 4. Create the `app-store-connect` environment (Settings → Environments), limit
    it to the `main` branch, and add `APP_STORE_CONNECT_KEY_ID`,
    `APP_STORE_CONNECT_ISSUER_ID` and `APP_STORE_CONNECT_API_KEY` (the full
    `.p8` text). `APPLE_TEAM_ID` is shared with macOS notarization.
+5. Export one existing **Apple Development** identity for that same paid team
+   from Keychain Access as a password-protected `.p12`. Include its private key;
+   a downloaded `.cer` alone cannot sign. Add the base64 file as
+   `IOS_ARCHIVE_CERTIFICATE` and its password as
+   `IOS_ARCHIVE_CERTIFICATE_PASSWORD` in both `app-store-connect` and
+   `mobile-release`. Never commit either value or revoke an active certificate
+   to free a slot for a CI rerun. Each runner imports this existing identity
+   into a temporary keychain, verifies its team and private key, then removes
+   the keychain and decoded certificate. Xcode may create provisioning profiles
+   for the app, Share extension and widget. Export still uses Apple's
+   cloud-managed **Apple Distribution** identity; the `.p12` is only for the
+   development-signed archive. Rotate these secrets when the identity expires.
 
 The workflow builds on the `macos-26` runner because App Store Connect accepts
 only the current iOS SDK; the `mobile` and `mobile-release` iOS jobs use the same runner.
@@ -382,6 +394,12 @@ cache. Before uploading, it strictly verifies the bundle against that upload
 key, accepting its self-signed certificate while rejecting unsigned content,
 other signers (including extra trusted co-signers) and Android debug certificates.
 
+Camera, autofocus and microphone hardware are optional: text-to-speech, imported
+media and manual pairing work without them. The Android manifest explicitly
+opts out of the rear-camera and autofocus requirements implied by the camera
+permission, so Play does not exclude devices that lack them. QR scanning still
+asks for camera permission when used.
+
 The version name is the root `package.json` version. Both signed Android
 workflows get their version code from `scripts/android_version_code.py`: UTC
 minutes since 2020-01-01 (seconds jumped too far for Play). They share a concurrency
@@ -420,7 +438,8 @@ to production automatically.
   workflows, `ANDROID_UPLOAD_KEYSTORE`, `ANDROID_UPLOAD_KEYSTORE_PASSWORD`,
   `ANDROID_UPLOAD_KEY_ALIAS`, `ANDROID_UPLOAD_KEY_PASSWORD`,
   `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`,
-  `APP_STORE_CONNECT_API_KEY` and `APPLE_TEAM_ID`.
+  `APP_STORE_CONNECT_API_KEY`, `APPLE_TEAM_ID`, `IOS_ARCHIVE_CERTIFICATE` and
+  `IOS_ARCHIVE_CERTIFICATE_PASSWORD` (the last two are required for signed iOS archives).
 
 Android updates also require the installed app's signing certificate. Google
 Play App Signing may use a different certificate from the APK upload key;

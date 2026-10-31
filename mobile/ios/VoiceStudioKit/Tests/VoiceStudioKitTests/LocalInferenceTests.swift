@@ -698,9 +698,14 @@ func realSpeechModelsProduceMarkedAudioOffline(id: String) async throws {
         let pcm = try await AVPhoneAudioDecoder().decode(source: referenceURL,output: decoded.appendingPathComponent("reference.pcm"),maxSeconds: 30,progress: { _ in })
         audio = try await engine.clone(model: model,text: phrase,reference: pcm.read(start: 0,count: pcm.frames),referenceText: referenceText)
         if id == "zipvoice-distill-int8-zh-en" {
-            let chinese = try await engine.clone(model: model,text: "\u{4f60}\u{597d}\u{ff0c}\u{8fd9}\u{662f}\u{672c}\u{5730}\u{8bed}\u{97f3}\u{6d4b}\u{8bd5}\u{3002}",reference: pcm.read(start: 0,count: pcm.frames),referenceText: referenceText)
+            // Several sentences give reference-dependent speech duration margin
+            // above the nontrivial-audio guard without prescribing a speaking rate.
+            let chinese = try await engine.clone(model: model,text: "\u{4f60}\u{597d}\u{ff0c}\u{8fd9}\u{662f}\u{672c}\u{5730}\u{8bed}\u{97f3}\u{6d4b}\u{8bd5}\u{3002}\u{6240}\u{6709}\u{58f0}\u{97f3}\u{90fd}\u{5728}\u{8fd9}\u{53f0}\u{8bbe}\u{5907}\u{4e0a}\u{751f}\u{6210}\u{ff0c}\u{4e0d}\u{9700}\u{8981}\u{8fde}\u{63a5}\u{4e91}\u{7aef}\u{670d}\u{52a1}\u{3002}",reference: pcm.read(start: 0,count: pcm.frames),referenceText: referenceText)
+            #expect(chinese.sampleRate == Int(model.config["sample_rate"]?.number ?? 24000))
             #expect(chinese.samples.count > chinese.sampleRate)
+            #expect(chinese.samples.allSatisfy { $0.isFinite })
             #expect(chinese.samples.contains { abs($0) > 0.01 })
+            print("Speech inference \(id) Chinese: \(Double(chinese.samples.count)/Double(chinese.sampleRate)) seconds at \(chinese.sampleRate) Hz")
         }
     } else { audio = try await engine.synthesize(model: model.selectingLanguage("en"),text: phrase) }
     #expect(audio.sampleRate == Int(model.config["sample_rate"]?.number ?? 24000))

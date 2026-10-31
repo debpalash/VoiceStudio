@@ -207,8 +207,31 @@ jobs:
           umask 077
           printf '%s\n' "$ASC_KEY" > "$RUNNER_TEMP/asc_api_key.p8"
 
-      # Automatic signing with the API key creates the cloud-managed Apple
-      # Distribution certificate and App Store profile; no .p12 is stored.
+      # Release recovery can check out an older tag without today's helper.
+      # Pin signing tools to the workflow's own reviewed commit, outside that tree.
+      - name: Checkout signing tools
+        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .ci-signing-tools
+          sparse-checkout: mobile/ios/scripts/archive_signing.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Install reusable archive identity
+        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios
+        env:
+          IOS_ARCHIVE_CERTIFICATE: ${{ secrets.IOS_ARCHIVE_CERTIFICATE }}
+          IOS_ARCHIVE_CERTIFICATE_PASSWORD: ${{ secrets.IOS_ARCHIVE_CERTIFICATE_PASSWORD }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          cp ".ci-signing-tools/mobile/ios/scripts/archive_signing.py" "$RUNNER_TEMP/archive_signing.py"
+          python3 "$RUNNER_TEMP/archive_signing.py" install
+
+      # Reuse the installed development identity for the archive. Export still
+      # uses Apple's cloud-managed Distribution certificate and App Store profile.
       - name: Archive
         if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios
         env:
@@ -225,7 +248,7 @@ jobs:
             -authenticationKeyPath "$RUNNER_TEMP/asc_api_key.p8" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic CODE_SIGN_IDENTITY="Apple Development" \
             archive
 
       - name: Export IPA
@@ -260,7 +283,12 @@ jobs:
 
       - name: Remove API key
         if: always()
-        run: rm -f "$RUNNER_TEMP/asc_api_key.p8"
+        run: |
+          rm -f "$RUNNER_TEMP/asc_api_key.p8"
+          if [ -f "$RUNNER_TEMP/archive_signing.py" ]; then
+            trap 'rm -f "$RUNNER_TEMP/archive_signing.py"' EXIT
+            python3 "$RUNNER_TEMP/archive_signing.py" cleanup
+          fi
 
   # Tag builds gather every binary into a draft prerelease; nothing is public until
   # the owner publishes it. Skipped for manual runs, which only produce artifacts.
