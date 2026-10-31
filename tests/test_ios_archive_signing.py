@@ -143,12 +143,15 @@ def test_signed_older_release_uses_the_workflows_own_signing_tools():
 
 
 def test_signing_tools_sparse_checkout_contains_every_consumed_helper(tmp_path):
-    workflow = yaml.load((ROOT / ".github/workflows/mobile-release.yml").read_text(), Loader=yaml.BaseLoader)
-    steps = workflow["jobs"]["ios"]["steps"]
-    tools = next(step for step in steps if step.get("name") == "Checkout signing tools")["with"]
     checkout = tmp_path / "signing-tools"
     subprocess.run(["git", "clone", "--shared", "--no-checkout", str(ROOT), str(checkout)],
                    check=True, capture_output=True)
+    # Both the workflow and files come from one committed snapshot, like job.workflow_sha.
+    source = subprocess.run(["git", "show", "HEAD:.github/workflows/mobile-release.yml"],
+                            cwd=checkout, check=True, capture_output=True, text=True).stdout
+    workflow = yaml.load(source, Loader=yaml.BaseLoader)
+    steps = workflow["jobs"]["ios"]["steps"]
+    tools = next(step for step in steps if step.get("name") == "Checkout signing tools")["with"]
     subprocess.run(["git", "sparse-checkout", "set", "--no-cone", "--stdin"], cwd=checkout,
                    input=tools["sparse-checkout"].encode(), check=True, capture_output=True)
     subprocess.run(["git", "checkout", "--force", "HEAD"], cwd=checkout, check=True, capture_output=True)

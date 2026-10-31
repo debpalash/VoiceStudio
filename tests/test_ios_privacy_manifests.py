@@ -69,3 +69,22 @@ def test_archive_gate_rejects_missing_dynamic_framework_manifest(tmp_path, monke
     declaration.unlink()
     with pytest.raises(ValueError, match="Privacy manifest is missing: OmniVoice.framework"):
         verifier.validate(app)
+
+
+def test_share_inbox_uses_one_configured_group_for_signing_and_runtime(tmp_path):
+    import yaml
+
+    project = yaml.safe_load((ROOT / "mobile/ios/VoiceStudio/project.yml").read_text())
+    group = project["settings"]["base"]["VS_APP_GROUP_IDENTIFIER"]
+    assert group == "group.sh.voicestudio.mobile.development"
+    assert project["targets"]["VoiceStudio"]["settings"]["base"]["PRODUCT_BUNDLE_IDENTIFIER"] == "sh.voicestudio.mobile"
+    assert project["targets"]["VoiceStudioShare"]["settings"]["base"]["PRODUCT_BUNDLE_IDENTIFIER"] == "sh.voicestudio.mobile.development.share"
+    generated_info = tmp_path / "Info.plist"
+    load("mobile/ios/scripts/prepare_resources.py").prepare(tmp_path / "app", generated_info)
+    for target, info in [("VoiceStudio", generated_info),
+                         ("VoiceStudioShare", ROOT / "mobile/ios/VoiceStudioShare/Info.plist")]:
+        directory = ROOT / "mobile/ios" / target
+        entitlement = plistlib.loads((directory / f"{target}.entitlements").read_bytes())
+        runtime = plistlib.loads(info.read_bytes())["VoiceStudioAppGroupIdentifier"]
+        assert entitlement["com.apple.security.application-groups"] == [runtime]
+        assert runtime == "$(VS_APP_GROUP_IDENTIFIER)"

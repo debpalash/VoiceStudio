@@ -6,7 +6,7 @@
 	<true/>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.sh.voicestudio.mobile</string>
+		<string>$(VS_APP_GROUP_IDENTIFIER)</string>
 	</array>
 </dict>
 </plist>
