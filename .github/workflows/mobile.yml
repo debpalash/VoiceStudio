@@ -229,6 +229,7 @@ jobs:
             -scheme VoiceStudio -configuration Release -sdk iphoneos \
             -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/device" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+          python3 mobile/ios/scripts/validate_privacy_manifests.py "$RUNNER_TEMP/device/Build/Products/Release-iphoneos/VoiceStudio.app"
           mkdir -p "$RUNNER_TEMP/ipa/Payload"
           cp -R "$RUNNER_TEMP/device/Build/Products/Release-iphoneos/VoiceStudio.app" "$RUNNER_TEMP/ipa/Payload/"
           (cd "$RUNNER_TEMP/ipa" && zip -qry "$RUNNER_TEMP/VoiceStudio-unsigned.ipa" Payload)

@@ -118,6 +118,7 @@ def build_number(value):
 
 def prepare(output, info):
     output.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(IOS / "PrivacyInfo.xcprivacy", output / "PrivacyInfo.xcprivacy")
     # Load the sibling by location: release checks also import this script by file path.
     workspace = runpy.run_path(str(IOS / "scripts/prepare_workspace_resources.py"))
     workspace["prepare"](output)
