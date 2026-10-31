@@ -2199,7 +2199,7 @@
   },
   "backend": {
     "setup_required": "Installa ambiente locale",
-    "setup_hint": "Scarica Python e le dipendenze dell’app (diversi GB). I modelli vocali vengono installati separatamente quando li scegli.",
+    "setup_hint": "L’app è installata. Configura ora l’ambiente di esecuzione locale: scarica Python e le librerie di IA (diversi GB). I modelli vocali vengono scaricati separatamente quando li scegli.",
     "installing": "Installazione…",
     "setup_space": "Libera almeno {{gib}} GiB sull’unità dell’app, poi riprova.",
     "repair_failed": "La riparazione automatica dell’ambiente Python non è terminata. Controlla il registro del motore, poi premi Riprova.",
@@ -2548,7 +2548,7 @@
     "change": "Cambia…",
     "reset_default": "Ripristina le impostazioni predefinite",
     "region_label": "Area di download",
-    "free_space": "{{free}} GB liberi su questa unità, ne servono circa {{needed}} GB"
+    "free_space": "{{free}} GiB liberi su questa unità; l’ambiente di esecuzione richiede almeno {{needed}} GiB"
   },
   "asr_missing": {
     "message": "Nessun modello di riconoscimento vocale è installato — questa funzione ne richiede uno per trascrivere l'audio.",

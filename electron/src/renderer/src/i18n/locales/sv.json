@@ -2197,7 +2197,7 @@
   },
   "backend": {
     "setup_required": "Installera lokal körmiljö",
-    "setup_hint": "Hämta Python och appens beroenden (flera GB). Röstmodeller installeras separat när du väljer dem.",
+    "setup_hint": "Appen är installerad. Konfigurera nu den lokala körmiljön: ladda ner Python och AI-bibliotek (flera GB). Röstmodeller laddas ner separat när du väljer dem.",
     "installing": "Installerar…",
     "setup_space": "Frigör minst {{gib}} GiB på appens disk och försök igen.",
     "repair_failed": "Den automatiska reparationen av Python-miljön blev inte klar. Kontrollera motorloggen och tryck på Försök igen.",
@@ -2546,7 +2546,7 @@
     "change": "Ändra…",
     "reset_default": "Återställ till standard",
     "region_label": "Nedladdningsregion",
-    "free_space": "{{free}} GB ledigt på den här enheten, cirka {{needed}} GB behövs"
+    "free_space": "{{free}} GiB ledigt på den här enheten; körmiljön behöver minst {{needed}} GiB"
   },
   "asr_missing": {
     "message": "Ingen tal-till-text-modell är installerad — den här funktionen behöver en för att transkribera ljud.",

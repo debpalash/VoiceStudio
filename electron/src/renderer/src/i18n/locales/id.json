@@ -2197,7 +2197,7 @@
   },
   "backend": {
     "setup_required": "Instal runtime lokal",
-    "setup_hint": "Unduh Python dan dependensi aplikasi (beberapa GB). Model suara diinstal secara terpisah saat Anda memilihnya.",
+    "setup_hint": "Aplikasi telah terpasang. Selanjutnya, siapkan lingkungan runtime lokal: unduh Python dan pustaka AI (beberapa GB). Model suara diunduh secara terpisah saat Anda memilihnya.",
     "installing": "Memasang…",
     "setup_space": "Kosongkan setidaknya {{gib}} GiB di drive aplikasi, lalu coba lagi.",
     "repair_failed": "Perbaikan otomatis lingkungan Python tidak selesai. Periksa log mesin, lalu tekan Coba lagi.",
@@ -2546,7 +2546,7 @@
     "change": "Ubah…",
     "reset_default": "Atur ulang ke default",
     "region_label": "Wilayah unduhan",
-    "free_space": "{{free}} GB tersedia di drive ini, dibutuhkan sekitar {{needed}} GB"
+    "free_space": "{{free}} GiB kosong di drive ini; runtime memerlukan setidaknya {{needed}} GiB"
   },
   "asr_missing": {
     "message": "Tidak ada model ucapan-ke-teks yang terpasang — fitur ini membutuhkannya untuk mentranskripsi audio.",

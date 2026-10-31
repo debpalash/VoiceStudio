@@ -218,11 +218,23 @@ function importFailure(error: unknown): Error {
 }
 const RUNTIME_SCHEMA = 'electron-runtime-v2-cudnn8';
 const CUDNN8_PROBE_PREFIX = 'VOICESTUDIO_CUDNN8_PROBE=';
-const REQUIRED_ENV_BYTES = 9 * 1024 ** 3;
-// No CUDA wheels: torch itself is ~0.2 GB; the rest is ordinary dependencies plus
-// the uv cache copy that cannot hardlink across volumes. macOS wheels never carry
-// CUDA either (an Apple Silicon runtime measured 1.9 GB plus a 1.8 GB uv cache).
-const REQUIRED_CPU_ENV_BYTES = 5 * 1024 ** 3;
+/** Shared by the install preflight and the first-run status shown before setup. */
+export function runtimeRequiredGib(
+  platform: NodeJS.Platform = process.platform,
+  variant?: TorchVariant,
+): number {
+  if (variant === undefined) {
+    try {
+      variant = resolveTorchVariant(process.env, platform).variant;
+    } catch {
+      // Status estimates must remain readable for unsupported overrides. Installation
+      // still validates the actual selection before calling this helper.
+      variant = 'default';
+    }
+  }
+  // macOS has no CUDA wheels; CPU installs also keep a smaller uv cache copy.
+  return platform === 'darwin' || variant === 'cpu' ? 5 : 9;
+}
 export type RuntimePhase = 'checking' | 'downloading_uv' | 'installing_deps' | 'verifying';
 export type RuntimeRegion = 'auto' | 'global' | 'china' | 'russia' | 'restricted';
 export type RuntimeRunner = (
@@ -612,9 +624,7 @@ export async function runtimeDependenciesReady(
       if (!ready) {
         const module = lastImportAttempted(stdout);
         const detail = probeFailureDetail(error, stderr);
-        onFailure?.(
-          module && !stderr.trim() ? `${detail} (importing ${module})` : detail,
-        );
+        onFailure?.(module && !stderr.trim() ? `${detail} (importing ${module})` : detail);
       }
       resolve(ready);
     };
@@ -1184,10 +1194,7 @@ export async function installRuntime(
   await pruneInterruptedUvDownloads(runtimeUvCache(project));
   const torch = resolveTorchVariant();
   const windowsRocm = windowsRocmSelected(torch.variant);
-  const requiredBytes =
-    torch.variant === 'cpu' || process.platform === 'darwin'
-      ? REQUIRED_CPU_ENV_BYTES
-      : REQUIRED_ENV_BYTES;
+  const requiredBytes = runtimeRequiredGib(process.platform, torch.variant) * 1024 ** 3;
   const disk = await statfs(project);
   if (disk.bavail * disk.bsize < requiredBytes) {
     throw Object.assign(

@@ -363,7 +363,7 @@
     "port_in_use_short": "Port {{port}} is in use",
     "log_label": "Engine log",
     "setup_required": "Install local runtime",
-    "setup_hint": "Download Python and app dependencies (several GB). Voice models are installed separately when you choose them.",
+    "setup_hint": "The app is installed. Set up the local runtime next: download Python and AI libraries (several GB). Voice models are downloaded separately when you choose them.",
     "installing": "Installing…",
     "setup_space": "Free at least {{gib}} GiB on the app’s drive, then retry.",
     "repair_failed": "Automatic repair of the Python environment did not finish. Check the engine log, then press Retry.",
@@ -2627,7 +2627,7 @@
     "change": "Change…",
     "reset_default": "Reset to default",
     "region_label": "Download region",
-    "free_space": "{{free}} GB free on this drive, about {{needed}} GB needed"
+    "free_space": "{{free}} GiB free on this drive; at least {{needed}} GiB needed for the runtime"
   },
   "asr_missing": {
     "message": "No speech-to-text model is installed — this feature needs one to transcribe audio.",

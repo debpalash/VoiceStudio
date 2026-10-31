@@ -2197,7 +2197,7 @@
   },
   "backend": {
     "setup_required": "安裝本機執行環境",
-    "setup_hint": "下載 Python 和應用程式相依套件（數 GB）。語音模型將在您選擇時個別安裝。",
+    "setup_hint": "應用程式已安裝。接下來設定本機執行環境：下載 Python 和 AI 程式庫（數 GB）。語音模型會在您選擇時另外下載。",
     "installing": "正在安裝依賴項…",
     "setup_space": "請在應用程式所在磁碟上釋出至少 {{gib}} GiB 空間，然後重試。",
     "repair_failed": "Python 環境的自動修復未完成。請查看引擎記錄，然後按一下重試。",
@@ -2546,7 +2546,7 @@
     "change": "變更…",
     "reset_default": "重設為預設值",
     "region_label": "下載區域",
-    "free_space": "此磁碟可用空間 {{free}} GB，大約需要 {{needed}} GB"
+    "free_space": "此磁碟可用空間 {{free}} GiB；執行環境至少需要 {{needed}} GiB"
   },
   "asr_missing": {
     "message": "尚未安裝語音轉文字模型 — 此功能需要一個模型來轉錄音訊。",
