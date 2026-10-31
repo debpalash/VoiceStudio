@@ -18,10 +18,11 @@ _ALLOWED_SOURCES = frozenset({
 
 # AMD's rocminfo PCI-to-gfx mapping: https://github.com/ROCm/rocminfo/blob/amd-staging_deprecated/rocm_agent_enumerator
 # gfx1010 is the RDNA 1 part this overlay has hardware evidence for (Navi 10:
-# RX 5700 / 5700 XT / 5600 XT class) and it ships its own pinned device wheel on
-# the same AMD index. gfx1011 (Navi 12) and gfx1012 (Navi 14) have device wheels
-# there too, but no such card was available to verify them, so they stay out: an
-# unlisted card keeps CPU routing instead of an unproven GPU path.
+# RX 5700 / 5700 XT / 5600 XT, which all enumerate as 0x731f) and it ships its own
+# pinned device wheel on the same index. gfx1011 (Navi 12) and gfx1012 (Navi 14,
+# the RX 5500 XT class) have device wheels there too, but no such card was
+# available to verify them, so they stay out: an unlisted card keeps CPU routing
+# instead of an unproven GPU path.
 _RDNA_PCI_IDS = {
     "gfx1010": frozenset("7310 7312 7318 7319 731a 731b 731e 731f".split()),
     "gfx1030": frozenset("73a0 73a1 73a2 73a3 73a5 73a8 73a9 73ab 73ac 73ad 73ae 73af 73bf".split()),

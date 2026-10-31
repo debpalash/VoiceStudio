@@ -224,6 +224,53 @@ def test_locked_ct2_requirement_refuses_to_guess(monkeypatch):
         installer.locked_ct2_requirement("uv-custom")
 
 
+def test_a_healthy_overlay_still_restores_a_missing_cpu_ct2(monkeypatch):
+    """A verifying ROCm 10 install must not skip the CPU CTranslate2 repair.
+
+    ``verify_environment()`` reports ready without CTranslate2 on this overlay, so
+    returning early there left every ASR path broken after a successful setup.
+    The repair must also NOT re-fetch the AMD wheels: only the one package.
+    """
+    import importlib
+
+    installer = importlib.import_module("core.windows_rocm.install")
+
+    selected = recipe.load_recipe(architecture="gfx1010")
+    monkeypatch.setattr(installer, "validate_target", lambda: None)
+    monkeypatch.setattr(installer, "load_recipe", lambda: selected)
+    # The overlay verifies clean ...
+    monkeypatch.setattr(installer, "verify_environment", lambda: {"ready": True})
+    # ... but ctranslate2 is absent.
+    monkeypatch.setattr(installer, "_cpu_ct2_missing", lambda: True)
+    monkeypatch.setattr(installer, "locked_ct2_requirement", lambda uv: "ctranslate2==4.4.0")
+    monkeypatch.setattr(installer, "download_archive", lambda *a: pytest.fail("no AMD re-download"))
+    monkeypatch.setattr(installer, "checked_wheel", lambda *a: pytest.fail("no CT2 archive"))
+
+    commands = []
+    monkeypatch.setattr(installer, "run_install", lambda command: commands.append(command))
+
+    assert installer.provision("uv-custom") == {"ready": True}
+    # Exactly one install pass, for the missing package only.
+    assert len(commands) == 1
+    assert commands[0][-1] == "ctranslate2==4.4.0"
+
+
+def test_a_healthy_overlay_with_cpu_ct2_installs_nothing(monkeypatch):
+    """The reuse path stays a no-op when the package is already there."""
+    import importlib
+
+    installer = importlib.import_module("core.windows_rocm.install")
+
+    monkeypatch.setattr(installer, "validate_target", lambda: None)
+    monkeypatch.setattr(installer, "load_recipe", lambda: recipe.load_recipe(architecture="gfx1010"))
+    monkeypatch.setattr(installer, "verify_environment", lambda: {"ready": True})
+    monkeypatch.setattr(installer, "_cpu_ct2_missing", lambda: False)
+    monkeypatch.setattr(installer, "run_install", lambda command: pytest.fail("unexpected install"))
+    monkeypatch.setattr(installer, "download_archive", lambda *a: pytest.fail("unexpected download"))
+
+    assert installer.provision("uv-custom") == {"ready": True}
+
+
 def test_a_recipe_with_a_hip_ct2_never_adds_the_cpu_pass(monkeypatch):
     """The 7.2.1 recipe keeps its pinned HIP wheel and must not also install PyPI CT2."""
     import importlib

@@ -151,9 +151,10 @@ version, prompt length and step count.
 ## What is NOT validated here
 
 - No packaged/installed Electron build was exercised on this GPU.
-- No `gfx1011` / `gfx1012` hardware: those device wheels exist on AMD's index but
-  are deliberately outside the recipe, so an RX 5500/5600 XT class card keeps CPU
-  routing rather than an unverified GPU path.
+- No `gfx1011` (Navi 12) or `gfx1012` (Navi 14, e.g. the RX 5500 XT) hardware: those
+  device wheels exist on AMD's index but are deliberately outside the recipe, so such
+  a card keeps CPU routing rather than an unverified GPU path. Navi 10 parts
+  (RX 5700 / 5700 XT / 5600 XT) all enumerate as `gfx1010` and are covered.
 - No ASR/diarization on GPU, for the reason above.
 - No multi-GPU or mixed-AMD host: selection refuses those by design.
 - Windows 10 and Windows-on-ARM are out of scope, as the install guide states.
