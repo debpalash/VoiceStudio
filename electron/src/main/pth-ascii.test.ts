@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -63,6 +63,7 @@ describe('asciiSafePthFiles (#1783)', () => {
       expect(bytes.toString('utf8')).toContain('\\u5f20\\u4e09');
     }
     expect(readFileSync(join(posix, '_virtualenv.pth'), 'utf8')).toBe(ascii);
+    expect(readdirSync(windows).filter((name) => name.endsWith('.tmp'))).toEqual([]);
     expect(await asciiSafePthFiles(venv)).toEqual([]);
   });
 
@@ -76,6 +77,8 @@ describe('asciiSafePthFiles (#1783)', () => {
 
     expect(asciiSafePthFilesSync(venv)).toEqual([pth]);
     expect(readFileSync(pth, 'utf8')).toBe(asciiSafePthText(project));
+    // Replaced through a sibling temp file that must not be left behind.
+    expect(readdirSync(windows)).toEqual(['_editable_impl_omnivoice.pth']);
     expect(asciiSafePthFilesSync(venv)).toEqual([]);
     expect(asciiSafePthFilesSync(join(venv, 'missing'))).toEqual([]);
   });

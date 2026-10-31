@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { readdir, readFile, writeFile } from 'node:fs/promises';
+import { readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /**
@@ -33,7 +33,14 @@ export async function asciiSafePthFiles(venv) {
       const file = join(sitePackages, name);
       const text = healedPthText(await readFile(file).catch(() => null));
       if (text === null) continue;
-      await writeFile(file, text, 'utf8');
+      const temp = tempPath(file);
+      try {
+        await writeFile(temp, text, 'utf8');
+        await rename(temp, file);
+      } catch (error) {
+        await rm(temp, { force: true });
+        throw error;
+      }
       rewritten.push(file);
     }
   }
@@ -63,11 +70,26 @@ export function asciiSafePthFilesSync(venv) {
       }
       const text = healedPthText(bytes);
       if (text === null) continue;
-      writeFileSync(file, text, 'utf8');
+      const temp = tempPath(file);
+      try {
+        writeFileSync(temp, text, 'utf8');
+        renameSync(temp, file);
+      } catch (error) {
+        rmSync(temp, { force: true });
+        throw error;
+      }
       rewritten.push(file);
     }
   }
   return rewritten;
+}
+
+/**
+ * A sibling path for an atomic replace: an interrupted heal leaves the original
+ * `.pth` intact, and site ignores the temp file because it does not end in .pth.
+ */
+function tempPath(file) {
+  return `${file}.${process.pid}.tmp`;
 }
 
 function isPth(name) {
