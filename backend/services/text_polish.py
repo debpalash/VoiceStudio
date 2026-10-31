@@ -74,6 +74,9 @@ def polish_text(text: str) -> str:
         if not out:
             return ""
 
-    # Script-matched stop: fullwidth U+3002 when the sentence ends in CJK.
-    out += "\u3002" if _CJK.search(out[-1]) else "."
+    # Script-matched stop: fullwidth U+3002 when the sentence ends in CJK,
+    # looking past a closing quote/bracket (a CJK sentence ending in a corner
+    # bracket or fullwidth paren is still CJK).
+    tail = out.rstrip(_CLOSERS) or out
+    out += "\u3002" if _CJK.search(tail[-1]) else "."
     return out
