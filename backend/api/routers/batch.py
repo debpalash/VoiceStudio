@@ -614,7 +614,11 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
                     if backend is None:
                         raise RuntimeError("the local TTS fallback was not prepared")
                     if voice["seed"] is not None:
-                        torch.manual_seed(voice["seed"] + i)
+                        # One job, one voice: every segment renders from the
+                        # job's seed, matching _render_native_batch below.
+                        # Advancing it per segment changed the speaker between
+                        # lines of the same batch (#3730).
+                        torch.manual_seed(voice["seed"])
                     audio_out = backend.generate(
                         text=text, language=lang,
                         ref_audio=voice["ref_audio"], ref_text=voice["ref_text"],
