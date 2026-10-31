@@ -12,7 +12,10 @@ import sys
 
 
 def command(args, **kwargs):
-    result = subprocess.run(args, capture_output=True, **kwargs)
+    try:
+        result = subprocess.run(args, capture_output=True, timeout=300, **kwargs)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"Signing operation timed out: {Path(args[0]).name} {args[1]}") from None
     if result.returncode:
         # Never include command arguments, certificate subjects or keychain output:
         # security import and partition-list commands contain ephemeral passwords.

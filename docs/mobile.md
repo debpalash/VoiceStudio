@@ -438,7 +438,8 @@ to production automatically.
   workflows, `ANDROID_UPLOAD_KEYSTORE`, `ANDROID_UPLOAD_KEYSTORE_PASSWORD`,
   `ANDROID_UPLOAD_KEY_ALIAS`, `ANDROID_UPLOAD_KEY_PASSWORD`,
   `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`,
-  `APP_STORE_CONNECT_API_KEY` and `APPLE_TEAM_ID`.
+  `APP_STORE_CONNECT_API_KEY`, `APPLE_TEAM_ID`, `IOS_ARCHIVE_CERTIFICATE` and
+  `IOS_ARCHIVE_CERTIFICATE_PASSWORD` (the last two are required for signed iOS archives).
 
 Android updates also require the installed app's signing certificate. Google
 Play App Signing may use a different certificate from the APK upload key;

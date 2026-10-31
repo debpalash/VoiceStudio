@@ -87,6 +87,37 @@ def test_all_signed_ios_archives_require_reusable_identity_and_cleanup(filename,
     assert install.get("if") == archive.get("if")
     cleanup = next(step for step in steps if step.get("name") == "Remove API key")
     assert cleanup["if"] == "always()" and "archive_signing.py" in cleanup["run"] and " cleanup" in cleanup["run"]
+    assert 'CODE_SIGN_IDENTITY="Apple Development"' in archive["run"]
+    export = next(step for step in steps if "-exportArchive" in step.get("run", ""))
+    assert "Add :method string app-store-connect" in export["run"]
+    assert '-exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"' in export["run"]
+
+
+@pytest.mark.parametrize("filename,job", [("ios-testflight.yml", "testflight"), ("mobile-release.yml", "ios")])
+def test_workflow_cleanup_removes_helper_but_preserves_failure_and_recovery_marker(filename, job, tmp_path):
+    workflow = yaml.load((ROOT / ".github/workflows" / filename).read_text(), Loader=yaml.BaseLoader)
+    cleanup = next(step for step in workflow["jobs"][job]["steps"] if step.get("name") == "Remove API key")
+    helper = tmp_path / "archive_signing.py"
+    helper.write_text("raise SystemExit(17)\n")
+    marker = tmp_path / "voicestudio-ios-keychains.json"
+    marker.write_text('["/tmp/existing.keychain-db"]')
+    api_key = tmp_path / "asc_api_key.p8"
+    api_key.write_text("fixture")
+    result = subprocess.run(["bash", "-e", "-c", cleanup["run"]], cwd=tmp_path,
+                            env={**os.environ, "RUNNER_TEMP": str(tmp_path)}, capture_output=True, text=True)
+    assert result.returncode == 17, result.stderr
+    assert not helper.exists() and not api_key.exists()
+    assert marker.is_file()
+
+
+def test_command_timeout_is_bounded_and_does_not_expose_signing_arguments(monkeypatch):
+    def timeout(args, **kwargs):
+        assert kwargs["timeout"] == 300
+        raise subprocess.TimeoutExpired(args, kwargs["timeout"], output=b"fixture-private-output")
+
+    monkeypatch.setattr(subprocess, "run", timeout)
+    with pytest.raises(RuntimeError, match="^Signing operation timed out: security import$"):
+        signing.command(["security", "import", "fixture.p12", "-P", "fixture-secret"])
 
 
 def test_unsigned_older_release_cleanup_needs_no_new_signing_helper(tmp_path):
