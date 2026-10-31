@@ -31,7 +31,7 @@ import java.io.File
     val state by vm.state.collectAsState()
     val phone by vm.phone.state.collectAsState()
     val preferences by vm.preferences.collectAsState()
-    val asr=phone.models.filter {it.capability=="asr"}.let {items -> items.firstOrNull {it.id==preferences.phoneModels["clone-asr"]} ?: items.firstOrNull {phone.canRun(it)} ?: items.firstOrNull()}
+    val asr=phone.preferredModel(phone.models.filter {it.capability=="asr"},vm.phone.ramBytes,preferences.phoneModels["clone-asr"])
     val cloneReady=model?.let {it.capability=="clone"&&phone.canRun(it)}==true&&asr?.let {phone.canRun(it)}==true
     val profiles=phone.voices.map {Profile("phone:"+it.id,it.name,audioUrl=it.id)}+state.profiles
     fun local(profile: Profile)=phone.voices.firstOrNull {"phone:"+it.id==profile.id}

@@ -151,10 +151,7 @@ struct SpeakView: View {
                     ChoicePicker(label: model.t("mobile.speak.language"), selection: $phoneLanguage, options: languageOptions, compact: false)
 
                 }.disabled(generating)
-                if let phoneModel, !phoneModel.fits(), model.phone.ready(phoneModel) {
-                    Text(model.t("mobile.local.ram_required", ["ram": String(phoneModel.min_ram_gb)]))
-                        .font(.callout).foregroundStyle(theme.color("textMuted"))
-                }
+                ModelRamWarning(items: [phoneModel].compactMap { $0 })
                 if phoneModel?.requiresReference == true && phoneVoice == nil {
                     Text(model.t("mobile.speak.reference_required")).font(.callout).foregroundStyle(theme.color("textMuted"))
                     NavigationLink(model.t("nav.gallery")) { GalleryView() }.disabled(generating)

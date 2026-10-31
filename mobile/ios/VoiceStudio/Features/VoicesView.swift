@@ -165,8 +165,8 @@ struct CloneView: View {
                 Section {
                     Text(model.t("mobile.calls.clone_hint")).font(.subheadline).foregroundStyle(theme.color("textMuted"))
                     DisclosureGroup(model.t("mobile.simple.more")) {
-                        ChoicePicker(label: model.t("mobile.simple.clone"), selection: Binding(get: { cloneModel?.id ?? "" }, set: { model.phone.chooseModel("clone",$0) }), options: model.phone.candidates(.clone).map { phoneModelOption($0,model: model) })
-                        ChoicePicker(label: model.t("mobile.simple.asr"), selection: Binding(get: { asr?.id ?? "" }, set: { model.phone.chooseModel("clone-asr",$0) }), options: model.phone.candidates(.asr).map { phoneModelOption($0,model: model) })
+                        PhoneModelPicker(label: model.t("mobile.simple.clone"), selection: Binding(get: { cloneModel?.id ?? "" }, set: { model.phone.chooseModel("clone",$0) }), items: model.phone.candidates(.clone))
+                        PhoneModelPicker(label: model.t("mobile.simple.asr"), selection: Binding(get: { asr?.id ?? "" }, set: { model.phone.chooseModel("clone-asr",$0) }), items: model.phone.candidates(.asr))
                     }
                 }.listRowBackground(theme.color("surface"))
             }

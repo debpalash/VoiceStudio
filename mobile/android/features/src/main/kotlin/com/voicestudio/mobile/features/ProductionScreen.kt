@@ -48,8 +48,8 @@ import java.io.File
     val progress=(active?.progress?.getInt("percent",0) ?: 0)/100f
     var deleting by remember {mutableStateOf<ProductionProject?>(null)}
     val running=active!=null
-    val tts=chooseModel(phone.models,phone.installed,prefs.phoneModels,"production-tts","tts")
-    val clone=chooseModel(phone.models,phone.installed,prefs.phoneModels,"production-clone","clone")
+    val tts=phone.preferredModel(phone.models.filter {it.capability=="tts"},vm.phone.ramBytes,prefs.phoneModels["production-tts"])
+    val clone=phone.preferredModel(phone.models.filter {it.capability=="clone"},vm.phone.ramBytes,prefs.phoneModels["production-clone"])
     val configuration=listOfNotNull(tts,clone).joinToString("|") {modelPin(it).identity}
     val plan=remember(project.script,project.pronunciations,project.speed) {runCatching {project.plan()}.getOrNull()}
     val selections=plan?.segments?.map {project.voice(it.role)} ?: listOf(project.defaultVoice)
@@ -176,6 +176,3 @@ import java.io.File
 @Composable private fun VoiceCastPicker(name: String,value: String,choices: List<Choice>,change: (String)->Unit) {
     Column {Text(name,style=MaterialTheme.typography.titleSmall);ChoicePicker("mobile.speak.voice",value,choices,change=change)}
 }
-
-private fun chooseModel(models: List<PhoneModel>,installed: Set<String>,choices: Map<String,String>,task: String,capability: String): PhoneModel? =
-    models.filter {it.capability==capability}.let {options -> options.firstOrNull {it.id==choices[task]} ?: options.firstOrNull {it.id in installed} ?: options.firstOrNull()}

@@ -45,7 +45,7 @@ private data class VoiceToolResult(val titleKey: String,val file: File,val subje
     var work by remember {mutableStateOf<Job?>(null)}
     var progress by remember {mutableStateOf(0f)}
     val running=work?.isActive==true
-    fun selected(task: String,capability: String)=phone.models.filter {it.capability==capability}.let {models -> models.firstOrNull {it.id==prefs.phoneModels[task]} ?: models.firstOrNull {it.id in phone.installed} ?: models.firstOrNull()}
+    fun selected(task: String,capability: String)=phone.preferredModel(phone.models.filter {it.capability==capability},vm.phone.ramBytes,prefs.phoneModels[task])
     val tts=selected("production-tts","tts")
     val clone=selected("production-clone","clone")
     val asr=selected("convert-asr","asr")

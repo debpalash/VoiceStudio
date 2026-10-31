@@ -54,8 +54,7 @@ import java.io.File
     var savePath by rememberSaveable {mutableStateOf<String?>(null)}
     val catalog=rememberLanguageCatalog(vm::fail)
     val languages=catalog?.dubChoices().orEmpty()
-    fun model(capability: String): PhoneModel? = phone.models.firstOrNull {it.capability==capability&&it.id==prefs.phoneModels["dub-$capability"]}
-        ?: phone.models.firstOrNull {it.capability==capability&&it.id in phone.installed&&it.fits(vm.phone.ramBytes)} ?: phone.models.firstOrNull {it.capability==capability}
+    fun model(capability: String): PhoneModel? = phone.preferredModel(phone.models.filter {it.capability==capability},vm.phone.ramBytes,prefs.phoneModels["dub-$capability"])
     val asr=model("asr");val translator=model("translate")
     val models=listOfNotNull(asr,translator,clone)
     val missing=models.filterNot {phone.canRun(it)}
@@ -188,6 +187,6 @@ import java.io.File
 @Composable fun BatchDubScreen(vm: StudioViewModel) {
     val phone by vm.phone.state.collectAsState();val prefs by vm.preferences.collectAsState()
     val models=phone.models.filter {it.capability=="clone"}
-    val clone=models.firstOrNull {it.id==prefs.phoneModels["dub"]} ?: models.firstOrNull {it.id in phone.installed} ?: models.firstOrNull()
+    val clone=phone.preferredModel(models,vm.phone.ramBytes,prefs.phoneModels["dub"])
     PhoneDubScreen(vm,clone,batchMode=true)
 }

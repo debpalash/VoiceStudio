@@ -37,7 +37,7 @@ import java.util.UUID
     var starting by remember {mutableStateOf(false)}
     var work by remember {mutableStateOf<Job?>(null)}
     var copied by remember {mutableStateOf(false)}
-    fun selected(task:String,capability:String)=phone.models.filter {it.capability==capability}.let {items ->items.firstOrNull {it.id==preferences.phoneModels[task]} ?: items.firstOrNull {phone.canRun(it)} ?: items.firstOrNull()}
+    fun selected(task:String,capability:String)=phone.preferredModel(phone.models.filter {it.capability==capability},vm.phone.ramBytes,preferences.phoneModels[task])
     val item=selected(if(source=="saved") "phone-api-clone" else "phone-api",if(source=="saved") "clone" else "tts")
     val asr=selected("phone-api-asr","asr");val translator=selected("phone-api-translate","translate")
     val savedVoice=phone.voices.firstOrNull {it.id==voiceID} ?: phone.voices.firstOrNull()

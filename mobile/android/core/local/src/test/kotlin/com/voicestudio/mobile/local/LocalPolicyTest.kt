@@ -133,9 +133,12 @@ class LocalPolicyTest {
     @Test fun ramRecommendationAllowsVerifiedDownloadAndUseOnSmallerDevice() = runTest {
         MockWebServer().use { server ->
             server.start();server.enqueue(MockResponse().setBody(Buffer().write(payload)))
-            val m=model().copy(minRamGb=32.0)
+            val m=model(true).copy(minRamGb=32.0)
             assertFalse(m.fits(8_000_000_000))
-            val d=downloads(server)
+            val gate=gate();val d=downloads(server,gate)
+            failure("mobile.local.licence_required") {d.download(m,false)}
+            assertEquals(0,server.requestCount)
+            gate.record(m,true)
             d.download(m,false)
             assertTrue(d.installed(m))
             assertArrayEquals(payload,d.withModel(m) {File(it,"weights.bin").readBytes()})

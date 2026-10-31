@@ -24,6 +24,8 @@ class UiPolishRegressionTest {
     @get:Rule val compose=createComposeRule()
     @Test fun tabsHaveOneDownloadCardAndNoRawModelLabelsOrToolbarGear()=runBlocking {
         val app=ApplicationProvider.getApplicationContext<Application>()
+        shadowOf(app.getSystemService(android.app.ActivityManager::class.java)).setMemoryInfo(
+            android.app.ActivityManager.MemoryInfo().apply {totalMem=16_000_000_000})
         androidx.work.testing.WorkManagerTestInitHelper.initializeTestWorkManager(app)
         val store=SessionStore(app,object:CredentialVault {
             override fun read(host:String):Secret?=null

@@ -20,6 +20,9 @@ fun phoneModelChoice(model: PhoneModel, ramBytes: Long, supporting: String? = nu
 data class PhoneState(val models: List<PhoneModel> = emptyList(), val installed: Set<String> = emptySet(), val used: Long = 0,
     val storage: Map<String,Long> = emptyMap(), val receipts: Map<String,List<LicenceReceipt>> = emptyMap(), val loading: Boolean = true, val progress: Float? = null, val audio: File? = null, val voices: List<PhoneVoice> = emptyList(), val recent: List<PhoneGeneration> = emptyList(), val dubs: List<PhoneDubRecord> = emptyList()) {
     fun canRun(model: PhoneModel): Boolean = model.id in installed&&accepted(model)
+    fun preferredModel(candidates: List<PhoneModel>, ramBytes: Long, preference: String? = null): PhoneModel? =
+        candidates.firstOrNull {it.id==preference} ?: candidates.firstOrNull {canRun(it)&&it.fits(ramBytes)}
+            ?: candidates.firstOrNull {canRun(it)} ?: candidates.firstOrNull {it.fits(ramBytes)} ?: candidates.firstOrNull()
     fun accepted(model: PhoneModel): Boolean = !model.gated || receipts[model.id]?.lastOrNull()?.let {it.accepted&&it.fingerprint==model.licence.termsFingerprint}==true
 }
 class PhoneStudio(context: Context, private val scope: CoroutineScope, private val failure: (Throwable)->Unit, private val retryFailure: (Throwable,()->Unit)->Unit = {error,_ ->failure(error)}) {

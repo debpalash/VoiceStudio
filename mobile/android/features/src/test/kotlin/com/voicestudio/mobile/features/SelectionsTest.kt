@@ -5,6 +5,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SelectionsTest {
+    @Test fun automaticPhoneChoicePrefersRecommendedInstalledModelButHonorsExplicitChoice() {
+        val licence=com.voicestudio.mobile.local.ModelLicence("mit","commercial-ok",false,"Fixture","Fixture","a".repeat(64))
+        val heavy=com.voicestudio.mobile.local.PhoneModel("heavy","clone","omnivoice.cpp","fixture/heavy","a".repeat(40),emptyList(),1,listOf("en"),8.0,licence)
+        val small=heavy.copy(id="small",minRamGb=3.0)
+        val candidates=listOf(heavy,small)
+        val state=PhoneState(installed=setOf(heavy.id,small.id))
+        assertEquals(small,state.preferredModel(candidates,7_512_518_656))
+        assertEquals(heavy,state.preferredModel(candidates,7_512_518_656,heavy.id))
+        assertEquals(heavy,state.copy(installed=setOf(heavy.id)).preferredModel(candidates,7_512_518_656))
+        assertEquals(small,PhoneState().preferredModel(candidates,7_512_518_656))
+    }
     private val family=EngineFamily("kitten",listOf(
         Engine("kitten","KittenTTS",supportsCloning=false),
         Engine("clone","VoiceStudio",supportsCloning=true),

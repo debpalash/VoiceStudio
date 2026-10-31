@@ -69,7 +69,7 @@ struct LocalAPIView: View {
         .onDisappear { stop() }
     }
     private func modelPicker(_ task: String,_ capability: ModelCapability) -> some View {
-        ChoicePicker(label: model.t("mobile.local.model"),selection: Binding(get: { model.phone.selectedModel(task,capability)?.id ?? "" },set: { model.phone.chooseModel(task,$0) }),options: model.phone.candidates(capability).map { phoneModelOption($0,model: model) })
+        PhoneModelPicker(label: model.t("mobile.local.model"),selection: Binding(get: { model.phone.selectedModel(task,capability)?.id ?? "" },set: { model.phone.chooseModel(task,$0) }), items: model.phone.candidates(capability))
     }
     private func start() {
         guard ready, let engine = model.phone.engine, let selected = Int(speaker) else { return }

@@ -132,7 +132,7 @@ import com.voicestudio.mobile.local.*
     val phone by vm.phone.state.collectAsState()
     val preferences by vm.preferences.collectAsState()
     val choices=phone.models.filter {it.capability in capabilities}
-    val selected=choices.firstOrNull {it.id==preferences.phoneModels[task]} ?: choices.firstOrNull {phone.canRun(it)&&it.fits(vm.phone.ramBytes)} ?: choices.firstOrNull {phone.canRun(it)} ?: choices.firstOrNull {it.fits(vm.phone.ramBytes)} ?: choices.firstOrNull()
+    val selected=phone.preferredModel(choices,vm.phone.ramBytes,preferences.phoneModels[task])
     val ready=selected?.let {phone.canRun(it)}==true&&dependencies.all {cap -> phone.models.any {it.capability==cap&&phone.canRun(it)}}
     var entryLocation by rememberSaveable(initialLocation) {mutableStateOf(initialLocation)}
     val location=routeTask(entryLocation ?: preferences.runLocations[task],ready,host.connected)
@@ -151,9 +151,20 @@ import com.voicestudio.mobile.local.*
 
 @Composable fun TaskModelPicker(vm: StudioViewModel, task: String, capabilities: Set<String>, selected: PhoneModel?, compact: Boolean = false, key: String = task) {
     val phone by vm.phone.state.collectAsState()
-    ChoicePicker("mobile.local.model",selected?.id.orEmpty(),phone.models.filter {it.capability in capabilities}.map {
-        phoneModelChoice(it,vm.phone.ramBytes,tr("mobile.simple.${it.capability}"))
-    },compact=compact) {id -> vm.phone.cancelInference();vm.preference {it.copy(phoneModels=it.phoneModels+(key to id))}}
+    Column(verticalArrangement=Arrangement.spacedBy(VSTheme.gap)) {
+        ChoicePicker("mobile.local.model",selected?.id.orEmpty(),phone.models.filter {it.capability in capabilities}.map {
+            phoneModelChoice(it,vm.phone.ramBytes,tr("mobile.simple.${it.capability}"))
+        },compact=compact) {id -> vm.phone.cancelInference();vm.preference {it.copy(phoneModels=it.phoneModels+(key to id))}}
+        ModelRamWarning(vm,listOfNotNull(selected))
+    }
+}
+
+/** Keep advice visible after setup; installation does not change the device's RAM. */
+@Composable fun ModelRamWarning(vm: StudioViewModel, models: List<PhoneModel>) {
+    val phone by vm.phone.state.collectAsState()
+    models.filter {phone.canRun(it)&&!it.fits(vm.phone.ramBytes)}.maxByOrNull {it.minRamGb}?.let {
+        Text(tr("mobile.local.ram_required",mapOf("ram" to it.minRamGb)),style=MaterialTheme.typography.bodyMedium,color=role("textMuted"))
+    }
 }
 
 /** One explicit Get action starts the dependency list; each gated model keeps its own sheet. */

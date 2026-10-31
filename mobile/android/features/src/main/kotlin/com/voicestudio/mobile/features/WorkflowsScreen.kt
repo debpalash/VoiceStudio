@@ -47,7 +47,7 @@ private fun workflowStepKey(kind: String)=if(kind=="normalize") "mobile.producti
     var result by remember {mutableStateOf<PhoneWorkflowResult?>(null)}
     var subject by remember {mutableStateOf<ReportSubject?>(null)}
     val running=activeWorker!=null
-    fun model(task: String,capability: String)=phone.models.filter {it.capability==capability}.let {models ->models.firstOrNull {it.id==prefs.phoneModels[task]} ?: models.firstOrNull {it.id in phone.installed} ?: models.firstOrNull()}
+    fun model(task: String,capability: String)=phone.preferredModel(phone.models.filter {it.capability==capability},vm.phone.ramBytes,prefs.phoneModels[task])
     val recognizer=model("workflow-asr","asr");val tts=model("production-tts","tts");val clone=model("production-clone","clone");val translator=model("workflow-translate","translate")
     val speaks=workflow.steps.any {it.kind=="speak"};val translates=workflow.steps.any {it.kind=="translate"}
     val selected=if(voice.startsWith("phone:")) clone else tts

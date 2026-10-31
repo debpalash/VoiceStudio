@@ -25,6 +25,10 @@ class FirstUseFlowsTest {
         androidx.work.testing.WorkManagerTestInitHelper.initializeTestWorkManager(app)
         shadowOf(app.getSystemService(android.app.ActivityManager::class.java)).setMemoryInfo(
             android.app.ActivityManager.MemoryInfo().apply {totalMem=ramBytes})
+        // Acceptance may attempt a download, but these UI tests cannot contact model hosts.
+        shadowOf(app.getSystemService(android.net.ConnectivityManager::class.java)).apply {
+            clearAllNetworks();setActiveNetworkInfo(null)
+        }
         val store=SessionStore(app,object:CredentialVault {
             override fun read(host:String):Secret?=null
             override fun write(host:String,secret:Secret?)=Unit
@@ -88,6 +92,41 @@ class FirstUseFlowsTest {
             Assert.assertTrue(vm.phone.downloads.progress.value.isEmpty())
             compose.onNodeWithText("Decline").performClick()
             Assert.assertTrue(vm.phone.downloads.progress.value.isEmpty())
+            compose.onNodeWithText("Try anyway").performClick()
+            compose.onNodeWithContentDescription("I have the rights this licence requires for my use.").performScrollTo().performClick()
+            compose.onNodeWithText("Accept").assertIsEnabled().performClick()
+            compose.waitUntil(15000) {
+                shadowOf(Looper.getMainLooper()).idle()
+                vm.phone.state.value.accepted(omni)&&vm.state.value.error?.key=="mobile.local.wifi_required"
+            }
+            // Reaching the offline network policy proves Try anyway invoked download
+            // after recording consent, without a RAM rejection or external request.
+            Assert.assertFalse(omni.id in vm.phone.state.value.installed)
+        }
+    }
+
+    @Test fun installedDesignModelKeepsTheMemoryWarningBeforeGeneration()=runBlocking {
+        withPhone(ramBytes=7_512_518_656) {vm ->
+            val app=ApplicationProvider.getApplicationContext<Application>()
+            val omni=vm.phone.state.value.models.first {it.supportsDesign}
+            val directory=java.io.File(app.noBackupFilesDir,"models/${omni.id}").apply {mkdirs()}
+            // Structural installation fixture only; this test never invokes inference.
+            omni.files.forEach {file ->
+                val target=java.io.File(directory,file.path).apply {parentFile!!.mkdirs()}
+                java.io.RandomAccessFile(target,"rw").use {it.setLength(file.size)}
+            }
+            java.io.File(directory,".verified").writeText(omni.revision+omni.files.joinToString {it.path+it.sha256+it.size})
+            try {
+                vm.phone.licence.record(omni,true)
+                runBlocking {vm.phone.refresh()}
+                Assert.assertFalse(omni.fits(vm.phone.ramBytes))
+                compose.onNodeWithTag("home.design").performScrollTo().performClick()
+                compose.onNodeWithText("Generate").assertExists()
+                compose.onNodeWithText("Try anyway").assertDoesNotExist()
+                val l=com.voicestudio.mobile.l10n.L10n.load(app,"en")
+                compose.onNodeWithText(l.t("mobile.local.ram_required",mapOf("ram" to omni.minRamGb))).assertExists()
+                Assert.assertNull(vm.phone.state.value.progress)
+            } finally {directory.deleteRecursively()}
         }
     }
 

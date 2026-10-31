@@ -87,9 +87,9 @@ import kotlinx.coroutines.*
 
 /** Preset speech and saved-voice cloning use different models, so each keeps its own remembered choice. */
 internal fun speakModelKey(capability: String)=if(capability=="clone") "speak-clone" else "speak"
-internal fun chooseSpeakModel(models: List<PhoneModel>,installed: Set<String>,choices: Map<String,String>,capability: String): PhoneModel? {
+internal fun chooseSpeakModel(models: List<PhoneModel>,installed: Set<String>,choices: Map<String,String>,capability: String, ramBytes: Long = Long.MAX_VALUE): PhoneModel? {
     val matching=models.filter {it.capability==capability}
-    return models.firstOrNull {it.id==choices[speakModelKey(capability)]&&(if(capability=="tts") it.supportsSpeech else it.capability==capability)} ?: matching.firstOrNull {it.id in installed} ?: matching.firstOrNull()
+    return models.firstOrNull {it.id==choices[speakModelKey(capability)]&&(if(capability=="tts") it.supportsSpeech else it.capability==capability)} ?: matching.firstOrNull {it.id in installed&&it.fits(ramBytes)} ?: matching.firstOrNull {it.id in installed} ?: matching.firstOrNull {it.fits(ramBytes)} ?: matching.firstOrNull()
 }
 
 @Composable fun SpeakScreen(vm: StudioViewModel, initialPhoneVoiceID: String? = null, initialComputerVoiceID: String? = null, initialPhonePreset: Int? = null, initialPhoneModelID: String? = null, initialText: String? = null, openGallery: (() -> Unit)? = null) {
@@ -106,7 +106,7 @@ internal fun chooseSpeakModel(models: List<PhoneModel>,installed: Set<String>,ch
             val prefs by vm.preferences.collectAsState()
             var requestedModel by remember(initialPhoneModelID) {mutableStateOf(initialPhoneModelID)}
             LaunchedEffect(prefs.phoneModels[speakModelKey(capability)]) {if(prefs.phoneModels[speakModelKey(capability)]==requestedModel) requestedModel=null}
-            val selected=phone.models.firstOrNull {it.id==requestedModel&&it.supportsSpeech&&(voice==null||it.supportsCloning)} ?: chooseSpeakModel(phone.models,phone.installed,prefs.phoneModels,capability)
+            val selected=phone.models.firstOrNull {it.id==requestedModel&&it.supportsSpeech&&(voice==null||it.supportsCloning)} ?: chooseSpeakModel(phone.models,phone.installed,prefs.phoneModels,capability,vm.phone.ramBytes)
             LaunchedEffect(phone.voices) {if(speaker.startsWith("phone:")&&voice==null) speaker="0"}
             var exportFormat by rememberSaveable {mutableStateOf("wav")}
             var exporting by remember {mutableStateOf(false)}
@@ -160,9 +160,7 @@ internal fun chooseSpeakModel(models: List<PhoneModel>,installed: Set<String>,ch
                     HorizontalDivider(color=role("border"))
                     ChoicePicker("mobile.speak.language",language,languageChoices) {language=it}
                 }
-                if(selected!=null&&!selected.fits(vm.phone.ramBytes)&&phone.canRun(selected)) {
-                    Text(tr("mobile.local.ram_required",mapOf("ram" to selected.minRamGb)),color=role("textMuted"))
-                }
+                com.voicestudio.mobile.features.models.ModelRamWarning(vm,listOfNotNull(selected))
                 if(selected?.requiresReference==true&&voice==null) {
                     Text(tr("mobile.speak.reference_required"),style=MaterialTheme.typography.bodyMedium,color=role("textMuted"))
                     openGallery?.let {Secondary("nav.gallery",phone.progress==null,it)}

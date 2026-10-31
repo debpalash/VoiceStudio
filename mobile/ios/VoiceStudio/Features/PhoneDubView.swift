@@ -128,7 +128,7 @@ struct PhoneDubView: View {
         .onDisappear { creating?.cancel() }
     }
     private func phoneModel(_ task: String,_ capability: ModelCapability) -> some View {
-        ChoicePicker(label: model.t("mobile.simple."+capability.rawValue),selection: Binding(get: { model.phone.selectedModel(task,capability)?.id ?? "" },set: { model.phone.chooseModel(task,$0) }),options: model.phone.candidates(capability).map { phoneModelOption($0,model: model,subtitle: model.t("mobile.simple." + $0.capability.rawValue)) })
+        PhoneModelPicker(label: model.t("mobile.simple."+capability.rawValue),selection: Binding(get: { model.phone.selectedModel(task,capability)?.id ?? "" },set: { model.phone.chooseModel(task,$0) }), items: model.phone.candidates(capability), showCapability: true)
     }
     private func start() {
         let sources = batchMode ? batchSources : source.map { [$0] } ?? []

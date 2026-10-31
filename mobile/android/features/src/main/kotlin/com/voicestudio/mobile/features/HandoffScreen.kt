@@ -28,7 +28,7 @@ private data class HandoffImport(val file: File,val preview: HandoffPreview)
     var notice by remember {mutableStateOf<String?>(null)}
     val configuration=listOf("tts","clone").mapNotNull {capability->
         val options=phone.models.filter {it.capability==capability};val key=if(capability=="tts") "production-tts" else "production-clone"
-        options.firstOrNull {it.id==preferences.phoneModels[key]} ?: options.firstOrNull {it.id in phone.installed} ?: options.firstOrNull()
+        phone.preferredModel(options,vm.phone.ramBytes,preferences.phoneModels[key])
     }.joinToString("|") {modelPin(it).identity}
     suspend fun refresh() {vm.phone.refresh();projects=vm.phone.production.list()}
     fun run(action: suspend ()->Unit) {
