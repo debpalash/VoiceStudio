@@ -1,4 +1,5 @@
-import { readFileSync, writeFileSync, renameSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { renameSyncWithRetry } from './rename-retry';
 import type { NativeCrashRecord } from '../preload/index.d';
 import { nativeCrashExcerpt } from '../shared/utils/crashReport';
 import { scrubText } from '../shared/utils/scrub';
@@ -122,7 +123,7 @@ export class CrashJournal {
         encoding: 'utf8',
         mode: 0o600,
       });
-      renameSync(this.path + '.tmp', this.path);
+      renameSyncWithRetry(this.path + '.tmp', this.path);
     } catch {
       /* retain in memory when storage is unavailable */
     }

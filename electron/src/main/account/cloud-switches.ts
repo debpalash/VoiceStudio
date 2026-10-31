@@ -1,5 +1,6 @@
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { renameSyncWithRetry } from '../rename-retry';
 
 /** Owner rule 2026-10-16: off by default; skipping setup means off; sync implies account. */
 export interface CloudSwitches {
@@ -44,7 +45,7 @@ export class CloudSwitchStore {
     try {
       mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
       writeFileSync(temporary, JSON.stringify(this.value), { encoding: 'utf8', mode: 0o600 });
-      renameSync(temporary, this.path);
+      renameSyncWithRetry(temporary, this.path);
     } catch (error) {
       rmSync(temporary, { force: true });
       throw error;
