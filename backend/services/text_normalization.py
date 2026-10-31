@@ -684,7 +684,18 @@ _SPACE_GROUP_RE = re.compile(
 )
 
 
+# English reads "2 100 meters" as two numbers, so only a run whose groups are
+# all "000" ("10 000", "1 000 000", "12 000%") is kept whole there: a "000"
+# group never starts a number of its own, and the integer rule used to speak
+# the leading group and leave the zeros behind ("ten 000").
+_EN_SPACE_GROUP_RE = re.compile(
+    r"(?<![\w.,:/$%-])-?\d{1,3}(?: 000)+(?:\s?%)?(?![\w:/%-])(?![.,]\d)"
+)
+
+
 def _grouped_spans(text: str, lang: str) -> list[tuple[int, int]]:
+    if lang == "en":
+        return [g.span() for g in _EN_SPACE_GROUP_RE.finditer(text)]
     if lang not in _COMMA_DECIMAL_LANGS:
         return []
     return [g.span() for g in _SPACE_GROUP_RE.finditer(text)]
