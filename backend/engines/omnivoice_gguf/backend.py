@@ -505,6 +505,18 @@ def _reference_decoded_bytes(prompt: Path) -> int:
     return decoded
 
 
+def _remove_quietly(path: Path) -> None:
+    """Delete ``path`` without ever raising.
+
+    A leftover temporary file is not worth failing the call over, so a
+    removal failure is logged and the caller keeps its own error.
+    """
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        logger.debug("Could not remove the temporary file %s", path, exc_info=True)
+
+
 def _convert_reference_to_wav(prompt: Path) -> Path:
     """Decode ``prompt`` into a temporary WAV the GGUF CLI can read.
 
@@ -548,11 +560,7 @@ def _convert_reference_to_wav(prompt: Path) -> Path:
         # BaseException so an interrupted write does not leave the temp file
         # behind either. A write failure keeps its own cause — the user
         # cannot fix it by re-uploading the clip.
-        try:
-            target.unlink()
-        except OSError:
-            # Already gone, or not ours to remove.
-            pass
+        _remove_quietly(target)
         raise
     return target
 
@@ -1146,10 +1154,7 @@ def _make_backend_class():
                 for leftover in (out_path, transcript_path, converted_prompt):
                     if leftover is None:
                         continue
-                    try:
-                        leftover.unlink(missing_ok=True)
-                    except OSError:
-                        pass
+                    _remove_quietly(leftover)
 
             if samples.ndim > 1:
                 samples = samples.mean(axis=1)
