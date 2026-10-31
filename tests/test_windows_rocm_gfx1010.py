@@ -138,7 +138,14 @@ def test_a_gfx1010_report_without_ct2_is_ready(monkeypatch):
     assert verify.validate_report(report, recipe.load_recipe(architecture="gfx1010"))["ready"] is True
 
 
-def test_installer_skips_the_ct2_archive_on_the_rocm10_overlay(monkeypatch, tmp_path):
+def test_installer_skips_the_ct2_archive_but_restores_the_locked_cpu_build(monkeypatch):
+    """The overlay must leave a working CPU CTranslate2 behind.
+
+    ``windowsRocmSyncArgs()`` excludes ``ctranslate2`` from the frozen sync, so
+    skipping the HIP archive without a replacement would leave a fresh ROCm 10
+    environment with no CTranslate2 at all: ``faster_whisper`` cannot import, the
+    app's own import check fails, and even the CPU fallback disappears.
+    """
     import importlib
 
     installer = importlib.import_module("core.windows_rocm.install")
@@ -157,12 +164,57 @@ def test_installer_skips_the_ct2_archive_on_the_rocm10_overlay(monkeypatch, tmp_
         lambda *a: pytest.fail("ROCm 10 must not download the 7.2.1 CT2 archive"),
     )
     monkeypatch.setattr(installer, "checked_wheel", lambda *a: pytest.fail("unexpected CT2 wheel"))
+
     commands = []
     monkeypatch.setattr(installer, "run_install", lambda command: commands.append(command))
     with pytest.raises(failures.VerificationFailure):
         installer.provision("uv-custom")
-    # Exactly one install pass: the overlay itself, with no CT2 follow-up.
-    assert len(commands) == 1
+
+    # Two passes: the overlay itself, then the locked CPU CTranslate2.
+    assert len(commands) == 2
+    overlay, cpu_ct2 = commands
+    assert "-r" in overlay
+    # The CPU build must come from the lock/index, never from a pinned URL, and
+    # it must be reinstalled so a stale HIP binary is actually replaced.
+    assert "ctranslate2" in cpu_ct2
+    assert not any(str(arg).startswith("http") for arg in cpu_ct2)
+    assert "--reinstall-package" in cpu_ct2 and "ctranslate2" in cpu_ct2
+
+
+def test_a_recipe_with_a_hip_ct2_never_adds_the_cpu_pass(monkeypatch):
+    """The 7.2.1 recipe keeps its pinned HIP wheel and must not also install PyPI CT2."""
+    import importlib
+
+    installer = importlib.import_module("core.windows_rocm.install")
+    failures = importlib.import_module("core.windows_rocm.failures")
+
+    selected = {**recipe.load_recipe(architecture="gfx1010")}
+    selected["ctranslate2"] = {
+        "version": "4.8.2",
+        "archive_url": "https://github.com/OpenNMT/CTranslate2/releases/download/x.zip",
+        "archive_size": 1,
+        "archive_sha256": "0" * 64,
+        "wheel_member": "w/ctranslate2.whl",
+        "wheel_sha256": "0" * 64,
+        "binary_sha256": "0" * 64,
+    }
+    monkeypatch.setattr(installer, "validate_target", lambda: None)
+    monkeypatch.setattr(installer, "load_recipe", lambda: selected)
+
+    def verify():
+        raise failures.VerificationFailure("package_missing", "missing")
+
+    monkeypatch.setattr(installer, "verify_environment", verify)
+    monkeypatch.setattr(installer, "download_archive", lambda *a: None)
+    monkeypatch.setattr(installer, "checked_wheel", lambda *a: "wheel.whl")
+    commands = []
+    monkeypatch.setattr(installer, "run_install", lambda command: commands.append(command))
+    with pytest.raises(failures.VerificationFailure):
+        installer.provision("uv-custom")
+
+    assert len(commands) == 2
+    assert commands[1][-1] == "wheel.whl"  # the verified HIP wheel, not a bare name
+
 
 
 def test_gfx1010_window_opens_no_hsa_override(monkeypatch):
@@ -191,3 +243,53 @@ def test_the_recipe_names_gfx1010_and_its_validated_siblings():
     assert set(data["rocm10"]["devices"]) == {"gfx1010", "gfx1030", "gfx1031", "gfx1032"}
     # The stock (7.2.1) matrix is untouched by this overlay.
     assert "gfx1010" not in data["gpu_architectures"]
+
+
+def test_availability_status_defers_to_the_cpu_path_on_the_rocm10_overlay(monkeypatch):
+    """A recipe without HIP CT2 must not hide the CPU fallback.
+
+    ``availability_status()`` answers the engine picker. Returning a failure here
+    would mark both faster-whisper backends unavailable even though a perfectly
+    good CPU CTranslate2 is installed, leaving the user no way to pick them
+    without disabling GPU use for the whole app.
+    """
+    from core.windows_rocm import ct2
+
+    monkeypatch.setattr(ct2, "windows_hip_installed", lambda: True)
+    monkeypatch.setattr(ct2, "hip_ct2_available", lambda: pytest.fail("must not probe HIP CT2"))
+    monkeypatch.setattr(
+        "core.device_caps.detect_host_caps",
+        lambda: type("Caps", (), {"family": "rocm"})(),
+    )
+    monkeypatch.setattr(ct2, "recipe_has_hip_ct2", lambda: False)
+    assert ct2.availability_status() is None
+
+
+def test_availability_status_still_reports_a_broken_hip_ct2(monkeypatch):
+    """On a recipe that DOES pin HIP CT2, a failed verification stays a failure."""
+    from core.windows_rocm import ct2
+
+    monkeypatch.setattr(ct2, "windows_hip_installed", lambda: True)
+    monkeypatch.setattr(
+        "core.device_caps.detect_host_caps",
+        lambda: type("Caps", (), {"family": "rocm"})(),
+    )
+    monkeypatch.setattr(ct2, "recipe_has_hip_ct2", lambda: True)
+    monkeypatch.setattr(ct2.util, "find_spec", lambda name: object())
+    monkeypatch.setattr(ct2, "hip_ct2_available", lambda: False)
+    status = ct2.availability_status()
+    assert status is not None
+    assert status[0] is False
+    assert "verification failed" in status[1].lower()
+
+
+def test_gpu_device_available_stays_false_on_the_rocm10_overlay(monkeypatch):
+    """The ASR worker must pick cpu for CT2 on this overlay, never a fake cuda."""
+    from core.windows_rocm import ct2
+
+    monkeypatch.setattr(
+        "core.device_caps.detect_host_caps",
+        lambda: type("Caps", (), {"family": "rocm"})(),
+    )
+    monkeypatch.setattr(ct2, "hip_ct2_available", lambda: False)
+    assert ct2.gpu_device_available() is False

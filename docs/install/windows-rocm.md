@@ -46,23 +46,33 @@ The pinned HIP CTranslate2 **4.8.2** is built against the ROCm 7.2.1 SDK. On ROC
 it loads and reports a device with `float16` support, but every inference fails at
 kernel launch (`hipErrorInvalidImage: device kernel image is invalid`, measured on an
 RX 5700 / `gfx1010`). Device discovery alone therefore cannot tell you it works, and
-the ROCm 10 overlay deliberately installs **no** CTranslate2 and reports
-`ct2_supported: false` instead of inheriting the 7.2.1 binary. Consequences:
+the ROCm 10 overlay deliberately does not install that HIP binary, reporting
+`ct2_supported: false` instead. Consequences:
 
 - PyTorch TTS engines run on the GPU and are the reason to opt in here.
 - Everything backed by CTranslate2 — faster-whisper ASR, diarization — stays on the
   CPU. Its `hip_ct2_available()` returns `False` on this overlay without probing,
   so no path advertises GPU ASR that would then fail.
-- Installing a CTranslate2 wheel yourself does not change that; the recipe pins none.
+- Setup still installs the project's **locked CPU** `ctranslate2`, because the
+  frozen sync skips that package along with its HIP replacement. Leaving it out
+  would break `faster-whisper` entirely — and with it the CPU fallback users are
+  meant to keep. `availability_status()` therefore reports "no opinion" rather
+  than "unavailable" on this overlay, so the CPU backend stays selectable in
+  Settings → Performance.
+- Installing a HIP CTranslate2 wheel yourself does not make ASR use the GPU; the
+  recipe pins none, and the refusal is by recipe, not by what happens to be
+  importable.
 
 ### What setup downloads, and how it is checked
 
 Setup downloads from AMD's `repo.radeon.com` for the existing recipe or
 `stable.repo.amd.com` for RDNA 1 and 2. For the 7.2.1 recipe it also downloads the
 OpenNMT/CTranslate2 GitHub release (the HIP CTranslate2 archive); the ROCm 10
-overlay downloads no CTranslate2 at all. Every file has a SHA-256 in the recipe, and
-setup refuses a file whose bytes differ. Every other package keeps the version your
-environment already has, so the overlay never quietly upgrades dependencies.
+overlay downloads no CTranslate2 archive and instead installs the project's locked
+CPU build through the normal package index. Every AMD file has a SHA-256 in the
+recipe, and setup refuses a file whose bytes differ. Every other package keeps the
+version your environment already has, so the overlay never quietly upgrades
+dependencies.
 
 Before this release, `OMNIVOICE_TORCH_VARIANT=rocm` was ignored on Windows. It
 now selects this stack. If it is already set on a machine with a working CUDA
@@ -138,7 +148,6 @@ the report omits transcripts and user paths. Model-free readiness and local CT2
 inference are reported as different scopes. On the ROCm 10 overlay (RDNA 1 and 2)
 there is no verified HIP CTranslate2, so the speech-scope smoke is unavailable and
 the model-free report says so with `ct2_supported: false`.
-
 ## Engine boundaries
 
 | Path | Windows ROCm behavior |

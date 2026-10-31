@@ -116,6 +116,15 @@ def provision(uv):
             # The CT2 wheel was hash-checked by checked_wheel; its dependencies stay
             # at their installed versions through the same constraints.
             run_install(install_command(uv, [str(wheel)], ["ctranslate2"], constraints))
+        else:
+            # The overlay skipped the locked CPU CTranslate2 along with its HIP
+            # replacement (torch-variant.mjs excludes it from the frozen sync), so
+            # this is the only pass that can put it back. Without it a fresh ROCm 10
+            # environment has no ctranslate2 at all: faster-whisper cannot import,
+            # the app's own import check fails, and even the CPU fallback is gone.
+            # The locked version comes from the project lock, not from us, so it
+            # keeps the lockfile's supply-chain review.
+            run_install(install_command(uv, ["ctranslate2"], ["ctranslate2"], constraints))
     return verify_environment()
 
 

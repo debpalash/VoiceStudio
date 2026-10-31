@@ -64,7 +64,7 @@ Known non-fatal warning printed once per process on this GPU:
 
 ```
 MIOpen: Warning [OpenRuntimeLibraryForDevice] CK grouped conv library not found
-for device gfx1010: 找不到指定的模块。
+for device gfx1010: <the missing-module message, localized by Windows>
 ```
 
 MIOpen falls back to its non-CK path and the grouped convolution above still
@@ -174,8 +174,9 @@ bun run dev:api          # then use the UI, or POST /generate as the app does
 
 ## Antivirus note (false positive, not a delivery problem)
 
-While validating this change, Huorong (火绒) quarantined one bytecode file five
-times and popped a notification each time:
+While validating this change, Huorong (the security suite installed on the test
+machine) quarantined one bytecode file five times and popped a notification each
+time:
 
 ```
 TrojanDownloader/Python.Agent.ac

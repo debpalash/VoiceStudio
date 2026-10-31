@@ -89,6 +89,19 @@ def prepare_import():
     initialize_dll_search()
 
 
+def recipe_has_hip_ct2():
+    """Whether the selected recipe pins a HIP CTranslate2 at all.
+
+    False for the ROCm 10 overlay, which installs the locked CPU build instead.
+    Callers use this to tell "this recipe never promised GPU CT2" apart from
+    "GPU CT2 was promised and failed", because only the second is a failure.
+    """
+    try:
+        return ct2_supported(load_recipe())
+    except Exception:  # noqa: BLE001 - unreadable recipe must not claim either way
+        return True
+
+
 def availability_status():
     """Windows HIP availability is child-only; generic/explicit CPU paths stay old."""
     if not windows_hip_installed():
@@ -96,6 +109,12 @@ def availability_status():
     from core.device_caps import detect_host_caps
 
     if detect_host_caps().family != "rocm":
+        return None
+    # A recipe that ships no HIP CT2 keeps faster-whisper on the CPU. Returning
+    # a failure here would mark the whole backend unavailable — including the CPU
+    # fallback the user is supposed to be able to pick — so defer to the generic
+    # CPU checks below by answering None.
+    if not recipe_has_hip_ct2():
         return None
     if not util.find_spec("faster_whisper"):
         return False, "faster-whisper is not installed"
