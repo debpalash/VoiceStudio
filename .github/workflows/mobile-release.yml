@@ -216,7 +216,9 @@ jobs:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
           path: .ci-signing-tools
-          sparse-checkout: mobile/ios/scripts/archive_signing.py
+          sparse-checkout: |
+            mobile/ios/scripts/archive_signing.py
+            mobile/ios/scripts/validate_privacy_manifests.py
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
@@ -258,6 +260,7 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          python3 .ci-signing-tools/mobile/ios/scripts/validate_privacy_manifests.py "$RUNNER_TEMP/VoiceStudio.xcarchive/Products/Applications/VoiceStudio.app"
           /usr/libexec/PlistBuddy -c 'Add :method string app-store-connect' \
             -c 'Add :destination string export' \
             -c "Add :teamID string $TEAM_ID" \

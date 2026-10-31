@@ -323,6 +323,17 @@ submits the app for App Store review. One-time setup in the Apple Developer team
 
 1. Register the App ID `sh.voicestudio.mobile` (Certificates, Identifiers &
    Profiles → Identifiers) and create the app in App Store Connect with it.
+   The same team must own the existing Share ID
+   `sh.voicestudio.mobile.development.share` and `sh.voicestudio.mobile.widget`.
+   Assign the existing `group.sh.voicestudio.mobile.development` App Group to
+   both the app and Share extension, then refresh their profiles. The Share ID
+   and group retain their registered names for store builds; the main app keeps
+   the App Store record’s `sh.voicestudio.mobile` ID. For another team, change
+   the bundle IDs and `VS_APP_GROUP_IDENTIFIER` in `project.yml`; that one group
+   setting supplies both entitlements and runtime bundle metadata.
+   Automatic signing cannot claim an identifier that Apple reports as unavailable
+   or use a profile missing the shared App Group entitlement. See Apple's
+   [App Groups setup](https://developer.apple.com/help/account/identifiers/enable-app-capabilities).
 2. Register at least one iPhone under Devices (its UDID is in Finder when it
    is connected). Automatic signing archives with a development profile first,
    and Apple issues none for a team without devices.
@@ -345,6 +356,9 @@ submits the app for App Store review. One-time setup in the Apple Developer team
    for the app, Share extension and widget. Export still uses Apple's
    cloud-managed **Apple Distribution** identity; the `.p12` is only for the
    development-signed archive. Rotate these secrets when the identity expires.
+   Validate an export with both OpenSSL and `security import` into a temporary
+   keychain before setting the secrets: parsing a PKCS#12 certificate alone does
+   not prove Apple's Security framework can import its encrypted private key.
 
 The workflow builds on the `macos-26` runner because App Store Connect accepts
 only the current iOS SDK; the `mobile` and `mobile-release` iOS jobs use the same runner.
@@ -352,6 +366,16 @@ The app icon is `Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png`, a
 1024×1024 opaque PNG rendered from `mobile/ios/VoiceStudio/AppIcon.svg`.
 Generated `Brand.xcassets` supplies launch and Home artwork; it removes the former
 generated app icon so incremental builds also bundle exactly one icon catalog.
+
+Privacy manifests ship in the app, both extensions and the embedded OmniVoice
+and llama frameworks. The app declares private preferences (`CA92.1`), model and
+render storage checks (`E174.1`), private file metadata (`C617.1`) and files the
+user explicitly selects (`3B52.1`). The Share extension declares selected-file
+metadata; the native frameworks declare private model-file metadata. The widget
+uses none of these APIs. These manifests declare no tracking; they do not enable
+telemetry. Apple's [required-reason API policy](https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api)
+applies to each executable bundle, so the unsigned CI build, TestFlight archive
+and signed release export all validate the packaged declarations before upload.
 
 `Info.plist` declares `ITSAppUsesNonExemptEncryption` as `NO`: the app uses
 only the system's HTTPS and hashing, which are exempt, so builds skip the

@@ -10,7 +10,8 @@ final class ShareViewController: UIViewController {
         view.backgroundColor = .systemBackground
         let spinner = UIActivityIndicatorView(style: .large); spinner.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(spinner); NSLayoutConstraint.activate([spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor)]); spinner.startAnimating()
-        guard let group = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.sh.voicestudio.mobile"),let item = extensionContext?.inputItems.first as? NSExtensionItem,let provider = item.attachments?.first else { finish(false); return }
+        guard let identifier = Bundle.main.object(forInfoDictionaryKey: "VoiceStudioAppGroupIdentifier") as? String,
+              let group = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: identifier),let item = extensionContext?.inputItems.first as? NSExtensionItem,let provider = item.attachments?.first else { finish(false); return }
         let directory = group.appendingPathComponent("Inbox")
         do { try FileManager.default.createDirectory(at: directory,withIntermediateDirectories: true) } catch { finish(false); return }
         let id = UUID().uuidString

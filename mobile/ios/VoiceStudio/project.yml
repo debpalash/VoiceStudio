@@ -14,6 +14,7 @@ settings:
     SWIFT_STRICT_CONCURRENCY: complete
     IPHONEOS_DEPLOYMENT_TARGET: '17.0'
     TARGETED_DEVICE_FAMILY: '1,2'
+    VS_APP_GROUP_IDENTIFIER: group.sh.voicestudio.mobile.development
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: 'NO'
 targets:
@@ -75,7 +76,7 @@ targets:
       Release: ../.generated/Version.xcconfig
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: sh.voicestudio.mobile.share
+        PRODUCT_BUNDLE_IDENTIFIER: sh.voicestudio.mobile.development.share
         INFOPLIST_FILE: ../VoiceStudioShare/Info.plist
         CODE_SIGN_ENTITLEMENTS: ../VoiceStudioShare/VoiceStudioShare.entitlements
         SKIP_INSTALL: 'YES'

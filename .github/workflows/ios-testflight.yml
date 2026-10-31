@@ -107,6 +107,7 @@ jobs:
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           APP="$RUNNER_TEMP/VoiceStudio.xcarchive/Products/Applications/VoiceStudio.app"
+          python3 mobile/ios/scripts/validate_privacy_manifests.py "$APP"
           codesign --verify --deep --strict "$APP"
           codesign -dvv "$APP" 2>&1 | grep -qx "TeamIdentifier=$TEAM_ID"
           test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$APP/Info.plist")" = "$VOICESTUDIO_IOS_BUILD_NUMBER"
