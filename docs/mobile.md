@@ -394,6 +394,12 @@ cache. Before uploading, it strictly verifies the bundle against that upload
 key, accepting its self-signed certificate while rejecting unsigned content,
 other signers (including extra trusted co-signers) and Android debug certificates.
 
+Camera, autofocus and microphone hardware are optional: text-to-speech, imported
+media and manual pairing work without them. The Android manifest explicitly
+opts out of the rear-camera and autofocus requirements implied by the camera
+permission, so Play does not exclude devices that lack them. QR scanning still
+asks for camera permission when used.
+
 The version name is the root `package.json` version. Both signed Android
 workflows get their version code from `scripts/android_version_code.py`: UTC
 minutes since 2020-01-01 (seconds jumped too far for Play). They share a concurrency
