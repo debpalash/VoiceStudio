@@ -34,7 +34,8 @@ from services.dub_batching import (
     native_batch_width as _native_batch_width,
 )
 from services.tts_backend import (
-    active_backend_id, ensure_active_engine_licence, resolve_generation_backend,
+    active_backend_id, backend_supports_seed, ensure_active_engine_licence,
+    resolve_generation_backend,
 )
 
 router = APIRouter()
@@ -614,7 +615,19 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
                     if backend is None:
                         raise RuntimeError("the local TTS fallback was not prepared")
                     if voice["seed"] is not None:
-                        torch.manual_seed(voice["seed"] + i)
+                        # One job, one voice: every segment renders from the
+                        # job's seed, matching _render_native_batch below.
+                        # Advancing it per segment changed the speaker between
+                        # lines of the same batch (#3730).
+                        torch.manual_seed(voice["seed"])
+                    # An out-of-process engine never sees the parent's torch
+                    # seed; hand it the same seed per call so the speaker is
+                    # stable there too (#3730).
+                    seed_kwargs = (
+                        {"seed": voice["seed"]}
+                        if voice["seed"] is not None and backend_supports_seed(backend)
+                        else {}
+                    )
                     audio_out = backend.generate(
                         text=text, language=lang,
                         ref_audio=voice["ref_audio"], ref_text=voice["ref_text"],
@@ -622,6 +635,7 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
                         duration=dur, num_step=_batch_num_step,
                         guidance_scale=2.0, speed=1.0,
                         denoise=True, postprocess_output=_batch_postprocess,
+                        **seed_kwargs,
                     )
                     if not getattr(backend, "applies_own_mastering", False):
                         audio_out = apply_mastering(audio_out, sample_rate=sr)

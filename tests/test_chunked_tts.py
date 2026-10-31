@@ -310,7 +310,7 @@ def test_arabic_comma_is_a_clause_boundary():
 def test_long_pause_spans_are_chunked_through_engine(client, monkeypatch):
     # A real Urdu script had 1,000+ char spans between [pause] markers; each
     # went to the engine in one shot and the audio degraded. Each long span
-    # must now fan out into sentence chunks with per-chunk seeds.
+    # must now fan out into sentence chunks that share the take's seed (#3730).
     fake = _make_fake_engine("fake-pause-chunk-engine")
     fake.calls = []
     monkeypatch.setitem(_tts_mod()._REGISTRY, "fake-pause-chunk-engine", fake)
@@ -328,7 +328,7 @@ def test_long_pause_spans_are_chunked_through_engine(client, monkeypatch):
     assert all(len(t) <= 800 for t, _ in fake.calls)
     assert all(t.endswith(_UR_STOP) for t, _ in fake.calls)
     assert " ".join(t for t, _ in fake.calls).split() == (span + " " + span).split()
-    assert [kw.get("seed") for _, kw in fake.calls] == [7 + i for i in range(len(fake.calls))]
+    assert [kw.get("seed") for _, kw in fake.calls] == [7] * len(fake.calls)
 
 
 def test_dropped_chunk_log_scrubs_secrets_and_home_paths(monkeypatch, caplog):

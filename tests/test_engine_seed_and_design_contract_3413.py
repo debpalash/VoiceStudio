@@ -46,6 +46,24 @@ def _out_of_process(cls) -> bool:
                 or getattr(cls, "runs_out_of_process", False))
 
 
+def test_the_shared_seed_capability_helper_matches_both_flags():
+    """Batch and /generate must agree on which adapters take a per-call seed."""
+    from services.tts_backend import backend_supports_seed
+
+    class _NativeProxy:
+        supports_native_omnivoice_controls = True
+
+    class _Sidecar:
+        supports_generation_seed = True
+
+    class _Plain:
+        pass
+
+    assert backend_supports_seed(_NativeProxy())
+    assert backend_supports_seed(_Sidecar())
+    assert not backend_supports_seed(_Plain())
+
+
 def test_an_adapter_that_reads_seed_declares_it():
     for cls in _all_backend_classes():
         source = inspect.getsource(cls.generate)
