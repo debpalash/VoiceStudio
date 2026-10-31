@@ -28,6 +28,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_BACKEND_PORT } from "../config/app-config.mjs";
+import { asciiSafePthFiles } from "../electron/scripts/pth-ascii.mjs";
 
 export { DEFAULT_BACKEND_PORT };
 
@@ -322,7 +323,10 @@ export function createBackendSupervisor({
   return { start, stop };
 }
 
-function main() {
+async function main() {
+  // A manual `uv sync` re-writes the editable `.pth` with a non-ASCII checkout
+  // path that Python 3.11 cannot decode on a non-UTF-8 code page (#1783).
+  await asciiSafePthFiles(path.resolve(".venv")).catch(() => []);
   const supervisor = createBackendSupervisor();
 
   // A Ctrl+C / concurrently teardown is a DELIBERATE stop — no scary banner

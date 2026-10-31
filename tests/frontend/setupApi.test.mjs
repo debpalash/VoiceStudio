@@ -108,6 +108,37 @@ test("source setup syncs the locked CPU graph and post-install cannot re-sync CU
   assert.equal(calls[0][2].cwd, calls[1][2].cwd);
 });
 
+test("source setup heals the venv .pth before every uv call, since sync rewrites it (#1783)", async () => {
+  const events = [];
+  assert.equal(
+    await setupApi({
+      platform: "win32",
+      arch: "x64",
+      selectVariant: async () => "cuda",
+      log: () => {},
+      repairNativeLibraries: async () => {},
+      healPthFiles: async (venv) => {
+        events.push(["heal", venv]);
+        if (events.length === 1) throw Error("file locked");
+        return [];
+      },
+      run: (_cmd, args) => {
+        events.push(["uv", args[0]]);
+        return { status: 0 };
+      },
+    }),
+    0,
+  );
+  const venv = events[0][1];
+  assert.match(venv, /[\\/]\.venv$/);
+  assert.deepEqual(events, [
+    ["heal", venv],
+    ["uv", "sync"],
+    ["heal", venv],
+    ["uv", "run"],
+  ]);
+});
+
 test("failed dependency sync never continues into setup or reports success", async () => {
   let count = 0;
   assert.equal(

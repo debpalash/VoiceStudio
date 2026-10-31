@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { repairSourceNativeLibraries } from "../electron/scripts/native-compat.mjs";
+import { asciiSafePthFiles } from "../electron/scripts/pth-ascii.mjs";
 import {
   selectTorchVariant,
   torchSyncArgs,
@@ -19,6 +20,7 @@ export async function setupApi({
   selectVariant = selectTorchVariant,
   log = console.log,
   repairNativeLibraries = repairSourceNativeLibraries,
+  healPthFiles = asciiSafePthFiles,
 } = {}) {
   // PyTorch publishes no Intel-Mac wheels, so the locked sync can only fail
   // part-way and leave an environment the app reports as incomplete (#3584).
@@ -55,6 +57,11 @@ export async function setupApi({
       : []),
     ["run", "--no-sync", "python", "scripts/setup.py"],
   ]) {
+    // A checkout under a non-ASCII folder gets its path written into the
+    // editable `.pth` as UTF-8, which Python 3.11 cannot decode on a non-UTF-8
+    // code page (#1783). uv queries the existing venv before syncing and every
+    // sync rewrites the file, so heal it before each uv call.
+    await healPthFiles(resolve(root, ".venv")).catch(() => []);
     const result = run("uv", args, { cwd: root, env: environment, stdio: "inherit" });
     if (result.error) throw result.error;
     if (result.status !== 0) return result.status ?? 1;
