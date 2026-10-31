@@ -130,6 +130,38 @@ class FirstUseFlowsTest {
         }
     }
 
+    @Test fun installedCloneAndDubKeepAdviceWithCollapsedAdvancedControls()=runBlocking {
+        withPhone(ramBytes=7_512_518_656) {vm ->
+            val app=ApplicationProvider.getApplicationContext<Application>()
+            val items=listOf("clone","asr","translate").map {capability ->vm.phone.state.value.models.first {it.capability==capability}}
+            val directories=items.map {item ->
+                val directory=java.io.File(app.noBackupFilesDir,"models/${item.id}").apply {mkdirs()}
+                item.files.forEach {file ->
+                    val target=java.io.File(directory,file.path).apply {parentFile!!.mkdirs()}
+                    java.io.RandomAccessFile(target,"rw").use {it.setLength(file.size)}
+                }
+                java.io.File(directory,".verified").writeText(item.revision+item.files.joinToString {it.path+it.sha256+it.size})
+                vm.phone.licence.record(item,true)
+                directory
+            }
+            try {
+                runBlocking {vm.phone.refresh()}
+                val l=com.voicestudio.mobile.l10n.L10n.load(app,"en")
+                val warning=l.t("mobile.local.ram_required",mapOf("ram" to items.first().minRamGb))
+                compose.onNodeWithTag("home.voices").performScrollTo().performClick()
+                compose.onAllNodesWithText(warning).assertCountEquals(1)
+                compose.onNodeWithText("More").performScrollTo().performClick()
+                compose.onAllNodesWithText(warning).assertCountEquals(1)
+                compose.onNodeWithText("Cancel").performScrollTo().performClick()
+                compose.onNodeWithTag("home.dub").performScrollTo().performClick()
+                compose.onAllNodesWithText(warning).assertCountEquals(1)
+                compose.onNodeWithText("More").performScrollTo().performClick()
+                compose.onAllNodesWithText(warning).assertCountEquals(1)
+                Assert.assertNull(vm.phone.state.value.progress)
+            } finally {directories.forEach {it.deleteRecursively()}}
+        }
+    }
+
     @Test fun communityGalleryHasNamedVoicesWithoutAComputerOrModels()=runBlocking {
         withPhone {vm ->
             compose.onNodeWithTag("home.gallery").performScrollTo().performClick()

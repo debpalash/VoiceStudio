@@ -76,12 +76,13 @@ import java.io.File
         if(location!=RunLocation.COMPUTER) {
             Text(tr("mobile.calls.clone_hint"),color=role("textMuted"))
             if(!cloneReady) MissingModelsCard(vm,"mobile.tabs.voices",listOfNotNull(model,asr))
+            ModelRamWarning(vm,listOfNotNull(model,asr))
             Secondary("mobile.simple.more") {more=!more}
             if(more) {
                 Heading("mobile.simple.clone")
-                TaskModelPicker(vm,"clone",setOf("clone"),model)
+                TaskModelPicker(vm,"clone",setOf("clone"),model,showRamWarning=false)
                 Heading("mobile.simple.asr")
-                TaskModelPicker(vm,"clone-asr",setOf("asr"),asr)
+                TaskModelPicker(vm,"clone-asr",setOf("asr"),asr,showRamWarning=false)
             }
         }
         Field("mobile.voices.name_label",name,{name=it.take(200)})

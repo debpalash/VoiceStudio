@@ -149,13 +149,13 @@ import com.voicestudio.mobile.local.*
     }
 }
 
-@Composable fun TaskModelPicker(vm: StudioViewModel, task: String, capabilities: Set<String>, selected: PhoneModel?, compact: Boolean = false, key: String = task) {
+@Composable fun TaskModelPicker(vm: StudioViewModel, task: String, capabilities: Set<String>, selected: PhoneModel?, compact: Boolean = false, key: String = task, showRamWarning: Boolean = true) {
     val phone by vm.phone.state.collectAsState()
     Column(verticalArrangement=Arrangement.spacedBy(VSTheme.gap)) {
         ChoicePicker("mobile.local.model",selected?.id.orEmpty(),phone.models.filter {it.capability in capabilities}.map {
             phoneModelChoice(it,vm.phone.ramBytes,tr("mobile.simple.${it.capability}"))
         },compact=compact) {id -> vm.phone.cancelInference();vm.preference {it.copy(phoneModels=it.phoneModels+(key to id))}}
-        ModelRamWarning(vm,listOfNotNull(selected))
+        if(showRamWarning) ModelRamWarning(vm,listOfNotNull(selected))
     }
 }
 

@@ -33,12 +33,13 @@ struct PhoneModelPicker: View {
     @Binding var selection: String
     let items: [PhoneModel]
     var showCapability = false
+    var showRamWarning = true
     var body: some View {
         VStack(alignment: .leading, spacing: VSTokens.spacingGap) {
             ChoicePicker(label: label, selection: $selection, options: items.map {
                 phoneModelOption($0, model: model, subtitle: showCapability ? model.t("mobile.simple." + $0.capability.rawValue) : nil)
             })
-            ModelRamWarning(items: items.filter { $0.id == selection })
+            if showRamWarning { ModelRamWarning(items: items.filter { $0.id == selection }) }
         }
     }
 }

@@ -100,12 +100,13 @@ import java.io.File
             Box(Modifier.weight(1f)) {ConsentCheck("mobile.simple.voice_consent",consent) {consent=it}}
             Info("mobile.voices.consent_title","mobile.voices.consent_body")
         }
+        ModelRamWarning(vm,models)
         Secondary("mobile.simple.more") {more=!more}
         if(more) {
             Toggle("mobile.simple.audio_only",audioOnly) {audioOnly=it}
-            TaskModelPicker(vm,"dub-asr",setOf("asr"),asr)
-            TaskModelPicker(vm,"dub-translate",setOf("translate"),translator)
-            TaskModelPicker(vm,"dub",setOf("clone"),clone)
+            TaskModelPicker(vm,"dub-asr",setOf("asr"),asr,showRamWarning=false)
+            TaskModelPicker(vm,"dub-translate",setOf("translate"),translator,showRamWarning=false)
+            TaskModelPicker(vm,"dub",setOf("clone"),clone,showRamWarning=false)
         }
         MissingModelsCard(vm,"mobile.tabs.dub",missing)
         Action("mobile.simple.dub",ready&&consent&&(if(batchMode) batchPaths.isNotEmpty() else path!=null)&&targets.isNotEmpty()&&!copying&&!state.busy) {
