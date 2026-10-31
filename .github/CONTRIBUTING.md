@@ -494,14 +494,16 @@ test-only PR. Docker Hub overview edits still publish through the small
     timed out, no retries) and keeps PyPI on any doubt
     (`electron/src/main/pypi-mirror.ts`); and Hugging Face model downloads
     (gated on install state or an explicit user action).
-  - **Windows ROCm setup the user explicitly selects** (owner-approved
-    2026-10-26): the matched AMD SDK and PyTorch wheels from `repo.radeon.com`,
-    and the pinned HIP CTranslate2 archive from OpenNMT/CTranslate2 GitHub
+  - **Windows ROCm setup the user explicitly selects:** the matched AMD SDK
+    and PyTorch wheels from `repo.radeon.com` (owner-approved 2026-10-26) or
+    `stable.repo.amd.com` (RDNA 1 and 2), and — for the 7.2.1 recipe only — the
+    pinned HIP CTranslate2 archive from OpenNMT/CTranslate2 GitHub
     Releases. Every artifact is SHA-256 pinned in
     `scripts/windows-rocm-recipe.json` and verified before use. This opt-in
     installer keeps every other package at its installed (locked) version and
     uses the usual package indexes only for anything new; verification
     and the optional local-model smoke test never acquire models or use the network.
+    The ROCm 10 recipe installs no CTranslate2, so it downloads nothing from GitHub.
     The VC++ Redistributable is a manual prerequisite; opted-in Windows ROCm
     source setup checks it locally and stops when it is missing.
   - **Galleries the user opens or enables:** the community gallery manifest

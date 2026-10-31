@@ -247,6 +247,16 @@ def _snapshot_path(repo: str, revision: str) -> str:
     return snapshot_download(repo, revision=revision)
 
 
+def _rocm_rdna2(torch):
+    """RDNA 2 bf16 GEMM can crash rocBLAS even when Torch claims support (#2372)."""
+    if not getattr(getattr(torch, "version", None), "hip", None):
+        return False
+    try:
+        return str(torch.cuda.get_device_properties(0).gcnArchName).lower().startswith("gfx103")
+    except Exception:  # noqa: BLE001 - unknown ROCm architecture uses safe precision
+        return True
+
+
 def _load_model(stdout):
     """Cold-construct the MOSS-TTS-v1.5 processor + model.
 
@@ -284,7 +294,7 @@ def _load_model(stdout):
         device = "cpu"  # MOSS is untested on MPS; fall back to CPU for safety
     if device == "xpu":
         _patch_xpu_mem_get_info(torch)
-    dtype = torch.bfloat16 if device != "cpu" else torch.float32
+    dtype = torch.bfloat16 if device != "cpu" and not (device == "cuda" and _rocm_rdna2(torch)) else torch.float32
     # "sdpa" works on CUDA + CPU and needs no extra dep. flash_attention_2
     # (Ampere+ CUDA, optional flash-attn) is opt-in via env.
     attn = os.environ.get("OMNIVOICE_MOSS_TTS_V15_ATTN", "sdpa")

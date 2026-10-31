@@ -35,6 +35,7 @@ def _fake_torch(monkeypatch, *, hip, available=True, bf16=True):
     fake.cuda = types.SimpleNamespace(
         is_available=lambda: available,
         is_bf16_supported=lambda: bf16,
+        get_device_properties=lambda index: types.SimpleNamespace(gcnArchName="gfx1100"),
     )
     fake.version = types.SimpleNamespace(hip=hip)
     monkeypatch.setitem(sys.modules, "torch", fake)
@@ -209,3 +210,10 @@ def test_disabling_reduced_precision_short_circuits_the_probe(sidecar, monkeypat
     monkeypatch.setattr(sidecar, "_bf16_probe", _must_not_probe(sidecar))
     kw = sidecar._model_init_kwargs("/nowhere", version="2.5", reduced_precision=False)
     assert kw["use_bf16"] is False
+
+@pytest.mark.parametrize("gfx", ["gfx1030", "gfx1031", "gfx1032"])
+def test_rdna2_never_enables_or_probes_bf16(sidecar, monkeypatch, gfx):
+    fake = _fake_torch(monkeypatch, hip="7.15")
+    fake.cuda.get_device_properties = lambda index: types.SimpleNamespace(gcnArchName=gfx)
+    monkeypatch.setattr(sidecar, "_bf16_probe", _must_not_probe(sidecar))
+    assert sidecar._torch_bf16_supported() is False

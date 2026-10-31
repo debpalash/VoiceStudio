@@ -31,7 +31,7 @@ it('shows the Windows ROCm torch source as AMD, not the Linux PyTorch index', as
   process.env.OMNIVOICE_TORCH_VARIANT = 'rocm';
   try {
     const hosts = await runtimeDownloadHosts(join(__dirname, '..', '..', '..'), 'win32', 'x64');
-    expect(hosts.get('torch')).toBe('repo.radeon.com');
+    expect(hosts.get('torch')).toBe('repo.radeon.com / stable.repo.amd.com');
     const linux = await runtimeDownloadHosts(join(__dirname, '..', '..', '..'), 'linux', 'x64');
     expect(linux.get('torch')).toBe('download.pytorch.org');
   } finally {
