@@ -1,0 +1,51 @@
+name: Docker Hub description
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "deploy/dockerhub-overview.md"
+      - ".github/workflows/dockerhub-description.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dockerhub-description-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOCKERHUB_IMAGE: palashdeb/omnivoice-studio
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  description:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Check Docker Hub credentials
+        id: credentials
+        env:
+          HUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          HUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          enabled=false
+          if [ -n "$HUB_USERNAME" ] && [ -n "$HUB_TOKEN" ]; then enabled=true; fi
+          echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
+      # Description-edit scope is separate from image-push scope. Preserve the
+      # existing non-gating behavior when the configured token cannot edit it.
+      - name: Update Docker Hub description
+        if: steps.credentials.outputs.enabled == 'true'
+        continue-on-error: true
+        uses: peter-evans/dockerhub-description@432a30c9e07499fd01da9f8a49f0faf9e0ca5b77 # v4.0.2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.DOCKERHUB_IMAGE }}
+          short-description: "Local ElevenLabs alternative: voice cloning, design & video dubbing in 646 languages. No API keys."
+          readme-filepath: ./deploy/dockerhub-overview.md

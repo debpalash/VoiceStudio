@@ -156,6 +156,13 @@ private final class NativeConfiguration {
         value.threads = Int32(max(1, min(4, ProcessInfo.processInfo.activeProcessorCount)))
         value.sample_rate = Int32(model.config["sample_rate"]?.number ?? 16000)
         value.cpu_only = NativeExecutionContext.compute == .cpuOnly ? 1 : 0
+        value.duration_predictor = c(model.path(role: "duration-predictor",root: root)); value.text_encoder = c(model.path(role: "text-encoder",root: root))
+        value.vector_estimator = c(model.path(role: "vector-estimator",root: root)); value.vocoder = c(model.path(role: "vocoder",root: root))
+        value.tts_config = c(model.path(role: "tts-config",root: root)); value.unicode_indexer = c(model.path(role: "unicode-indexer",root: root))
+        value.lm_flow = c(model.path(role: "lm-flow",root: root)); value.lm_main = c(model.path(role: "lm-main",root: root))
+        value.text_conditioner = c(model.path(role: "text-conditioner",root: root)); value.vocab = c(model.path(role: "vocab",root: root)); value.token_scores = c(model.path(role: "token-scores",root: root))
+        value.num_steps = Int32(model.config["num_steps"]?.number ?? 8)
+
     }
     deinit { for p in strings { free(p) } }
 }
@@ -181,7 +188,7 @@ public actor NativeLocalEngine: LocalEngine {
     }
     func execute<T: Sendable>(_ model: PhoneModel, capability: ModelCapability, progress: @escaping EngineProgressHandler,
                               body: @escaping @Sendable (PhoneModel, URL, String, NativeCancellation) throws -> T) async throws -> T {
-        guard model.capability == capability else { throw ClientError("mobile.local.model_incompatible") }
+        guard model.supports(capability) else { throw ClientError("mobile.local.model_incompatible") }
         _ = try await store.acquire(model)
         let token: NativeCancellation
         do { token = try NativeCancellation() } catch { await store.release(model); throw error }
@@ -225,6 +232,8 @@ public actor NativeLocalEngine: LocalEngine {
         return result
     }
     public func synthesize(model: PhoneModel, text: String, speaker: Int = 0, speed: Float = 1, progress: @escaping EngineProgressHandler = { _ in }) async throws -> LocalAudio {
+        guard !model.requiresReference else { throw ClientError("mobile.speak.reference_required") }
+
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, speaker >= 0, speaker <= Int(Int32.max), speed.isFinite, speed > 0, speed <= 4, speaker < Int(model.config["num_speakers"]?.number ?? 1) else { throw ClientError("mobile.local.model_incompatible") }
         return try await execute(model, capability: .tts, progress: progress) { m, root, library, token in
             let config = NativeConfiguration(model: m, root: root, library: library)
@@ -276,16 +285,20 @@ public actor NativeLocalEngine: LocalEngine {
     }
     public func clone(model: PhoneModel, text: String, reference: PCMChunk, referenceText: String, progress: @escaping EngineProgressHandler = { _ in }) async throws -> LocalAudio {
         try Self.validate(reference)
-        guard reference.sampleRate == 24000, !text.isEmpty, !referenceText.isEmpty else { throw ClientError("mobile.local.model_incompatible") }
+        guard reference.sampleRate == 24000, reference.samples.count <= 720000, !text.isEmpty, text.utf16.count <= 20000, (!referenceText.isEmpty || model.option("model_type") == "pocket") else { throw ClientError("mobile.local.model_incompatible") }
         return try await execute(model, capability: .clone, progress: progress) { m, root, library, token in
             let config = NativeConfiguration(model: m, root: root, library: library)
-            guard !m.path(role: "codec", root: root).isEmpty || !m.path(role: "tokenizer", root: root).isEmpty else { throw ClientError("mobile.local.model_incompatible") }
+            guard m.runtime == .sherpa || !m.path(role: "codec", root: root).isEmpty || !m.path(role: "tokenizer", root: root).isEmpty else { throw ClientError("mobile.local.model_incompatible") }
             var output = VSAudio(); defer { vs_audio_free(&output) }
-            let rc = reference.samples.withUnsafeBufferPointer { vs_clone(&config.value, text, referenceText, $0.baseAddress, Int32($0.count), token.pointer, &output) }
+            let rc = reference.samples.withUnsafeBufferPointer { samples in
+                if m.runtime == .sherpa { return vs_sherpa_clone(&config.value,text,referenceText,samples.baseAddress,Int32(samples.count),Int32(reference.sampleRate),token.pointer,&output) }
+                return vs_clone(&config.value,text,referenceText,samples.baseAddress,Int32(samples.count),token.pointer,&output)
+            }
             try Self.check(rc); return try Self.audio(output)
         }
     }
     public func design(model: PhoneModel, text: String, instruction: String, seed: UInt64, progress: @escaping EngineProgressHandler = { _ in }) async throws -> LocalAudio {
+        guard model.supportsDesign else { throw ClientError("mobile.local.model_incompatible") }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.utf16.count <= 2000, instruction.utf8.count <= 2000 else { throw ClientError("mobile.local.model_incompatible") }
         return try await execute(model,capability: .clone,progress: progress) { m,root,library,token in
             let config = NativeConfiguration(model: m,root: root,library: library)

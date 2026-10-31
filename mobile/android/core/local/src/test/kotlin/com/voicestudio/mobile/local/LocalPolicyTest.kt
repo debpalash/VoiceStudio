@@ -33,6 +33,31 @@ class LocalPolicyTest {
     private suspend fun failure(key: String, block: suspend ()->Unit) {
         try {block();fail("Expected $key")} catch(e:ClientFailure) {assertEquals(key,e.key)}
     }
+    @Test fun omniSpeechRequiresAReferenceBeforeLoadingAnyModel() = runTest {
+        val m=fixtureModel("clone")
+        assertTrue(m.supportsSpeech&&m.supportsDesign&&m.requiresReference)
+        val d=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{true})
+        failure("mobile.speak.reference_required") {PhoneLocalEngine(d).synthesize(m,"Hi hello")}
+    }
+    @Test fun nativeSpeechConfigCannotEscapeItsInstalledFrontendDirectory() {
+        val m=model().let {it.copy(files=it.files.map {f->f.copy(role="espeak-data")},config=JsonObject(mapOf("model_type" to JsonPrimitive("vits"),"data_dir" to JsonPrimitive("../outside"))))}
+        try {speechDataDirectory(m,temporary.root);fail("Escaping frontend accepted")} catch(e:ClientFailure) {assertEquals("mobile.local.model_incompatible",e.key)}
+    }
+    @Test fun bundledSpeechFrontendInstallsOfflineAndRejectsCorruption() = runTest {
+        val m=model().let {it.copy(files=it.files.map {f->f.copy(bundled="tts/frontend.txt")})}
+        var corrupt=true
+        val d=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{false},{Long.MAX_VALUE},bundledAssets={ (if(corrupt) ByteArray(payload.size) else payload).inputStream() })
+        failure("mobile.local.checksum_failed") {d.download(m,false)}
+        assertFalse(d.installed(m));corrupt=false
+        d.download(m,false);assertTrue(d.installed(m))
+        assertArrayEquals(payload,d.withModel(m) {File(it,"weights.bin").readBytes()})
+    }
+    @Test fun fixedSpeechComponentsRequireApprovedPinnedSources() {
+        assertTrue(ModelAssetSource.validUrl("https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos_24khz.onnx"))
+        assertTrue(ModelAssetSource.validUrl("https://huggingface.co/owner/model/resolve/"+"a".repeat(40)+"/encoder.onnx"))
+        for(url in listOf("https://github.com/other/repo/releases/download/tag/model.onnx","https://huggingface.co/owner/model/resolve/main/model.onnx","https://huggingface.co/owner/model/resolve/"+"a".repeat(40)+"/../outside")) assertFalse(ModelAssetSource.validUrl(url))
+        assertFalse(ModelAssetSource.validBundled("../outside"))
+    }
     @Test fun contractAndRoutingFailClosed() {
         val m=model();assertEquals("fixture",m.id);assertTrue(m.fits(2_000_000_000));assertFalse(m.fits(1_999_999_999))
         assertEquals(RunLocation.PHONE,routeTask(null,true,true))

@@ -20,6 +20,9 @@ private struct DesignedTake {
 }
 
 struct VoiceDesignView: View {
+    var communityRecipe: GalleryEntry? = nil
+    @State private var appliedCommunityRecipe = false
+    @State private var sourceAttribution: [String:String]?
     @Environment(AppModel.self) private var model
     @Environment(\.vsTheme) private var theme
     @AppStorage("design.seed") private var seed = 42
@@ -37,10 +40,11 @@ struct VoiceDesignView: View {
     @State private var work: Task<Void,Never>?
     @State private var shared: SharedFile?
     @State private var reporting: ContentReportSubject?
-    private var engineModel: PhoneModel? { model.phone.selectedModel("design",.clone) }
+    private var engineModel: PhoneModel? { let chosen = model.phone.selectedModel("design",.clone); return chosen?.supportsDesign == true ? chosen : model.phone.candidates(.clone).first(where: \.supportsDesign) }
     private var instruction: String { (categories.compactMap { traits[$0.id] }.filter { !$0.isEmpty }+[extraInstruction].filter { !$0.isEmpty }).joined(separator: ", ") }
     var body: some View {
         Page {
+            if let communityRecipe { Text(communityRecipe.name).font(.headline) }
             Text(model.t("mobile.local.this_phone")).font(.caption).foregroundStyle(theme.color("textMuted"))
             VStack(spacing: VSTokens.spacingGap) {
                 ChoicePicker(label: model.t("mobile.books.restore_recipe"),selection: Binding(get: { recipeID },set: { id in
@@ -51,6 +55,7 @@ struct VoiceDesignView: View {
                     for category in categories { traits[category.id] = category.options.first { tokens.contains($0.token) }?.token }
                     let known = Set(categories.flatMap { $0.options.map(\.token) })
                     extraInstruction = tokens.filter { !known.contains($0) }.joined(separator: ", ")
+                    sourceAttribution = voice.sourceAttribution
                     seed = Int(clamping: voice.designSeed ?? 42); script = voice.transcript; name = voice.name; take = nil; savedVoice = nil; player.clear()
                     if let source = model.phone.candidates(.clone).first(where: { $0.repo == voice.modelRepo && $0.revision == voice.modelRevision }) { model.phone.chooseModel("design",source.id) }
                 }),options: [SelectionOption(id: "",title: model.t("common.not_set"))]+model.phone.voices.filter { $0.designInstruction != nil }.map { SelectionOption(id: $0.id.uuidString,title: $0.name) })
@@ -65,7 +70,7 @@ struct VoiceDesignView: View {
                     Button(model.t("clone.seed_reroll"),systemImage: "shuffle") { seed = Int.random(in: 0...Int(UInt32.max)) }.studioButton(.tertiary)
                 }
                 TextField(model.t("clone.script"),text: $script,axis: .vertical).lineLimit(4...8).accessibilityIdentifier("design.script")
-                ChoicePicker(label: model.t("mobile.speak.engine"),selection: Binding(get: { engineModel?.id ?? "" },set: { model.phone.chooseModel("design",$0) }),options: model.phone.candidates(.clone).map { SelectionOption(id: $0.id,title: $0.name,enabled: $0.fits()) })
+                ChoicePicker(label: model.t("mobile.speak.engine"),selection: Binding(get: { engineModel?.id ?? "" },set: { model.phone.chooseModel("design",$0) }),options: model.phone.candidates(.clone).filter(\.supportsDesign).map { SelectionOption(id: $0.id,title: $0.name,enabled: $0.fits()) })
             }.disabled(running)
             if let item = engineModel, !model.phone.ready(item) { LocalDownloadPrompt(items: [item],feature: "nav.design") }
             if running {
@@ -94,6 +99,14 @@ struct VoiceDesignView: View {
             do {
                 guard let file = Bundle.main.url(forResource: "design",withExtension: "json",subdirectory: "Catalogs") else { throw ClientError("mobile.local.catalogue_failed") }
                 categories = try JSONDecoder().decode(DesignCatalogue.self,from: Data(contentsOf: file)).categories
+                if let recipe = communityRecipe, !appliedCommunityRecipe {
+                    let tokens = (recipe.instruct ?? "").components(separatedBy: ", ")
+                    for category in categories { traits[category.id] = category.options.first { tokens.contains($0.token) }?.token }
+                    let known = Set(categories.flatMap { $0.options.map(\.token) })
+                    extraInstruction = tokens.filter { !known.contains($0) }.joined(separator: ", ")
+                    sourceAttribution = recipe.attribution
+                    script = recipe.sample_script ?? ""; name = recipe.name; seed = 42; appliedCommunityRecipe = true
+                }
             } catch { model.error = ClientError("mobile.local.catalogue_failed") }
         }
         .sheet(item: $shared) { ShareSheet(items: [$0.url]) }
@@ -117,7 +130,7 @@ struct VoiceDesignView: View {
     }
     private func save(_ take: DesignedTake) {
         Task { await model.performPhone {
-            savedVoice = try await model.phone.voiceStore?.saveDesign(name: name,text: take.text,audio: take.audio,model: take.model,instruction: take.instruction,seed: take.seed)
+            savedVoice = try await model.phone.voiceStore?.saveDesign(name: name,text: take.text,audio: take.audio,model: take.model,instruction: take.instruction,seed: take.seed,attribution: sourceAttribution)
             await model.phone.refresh()
         } }
     }

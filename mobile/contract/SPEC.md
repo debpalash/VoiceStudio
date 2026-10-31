@@ -82,7 +82,13 @@ no accounts. M1 (below) is the computer connection; M2 is on-device inference.
 ## Screens (M1)
 
 Bottom navigation: **Home**, **Voices**, **Dub**, **Dictate**, **Settings**.
-Home is the default after consent. The compact hero places the wordmark and feature
+Home is the default after consent. All five navigation destinations keep visible
+text labels; iOS keeps the full tab bar visible while scrolling. The Home voice
+cloning shortcut opens creation directly, while the Voices tab opens the library.
+Before a speech model is ready, Speech pins its explicit Download action in place
+of a disabled Generate button. Downloading still requires each model’s exact
+licence consent. Dictate explains the model download and its size before it
+invites recording. The compact hero places the wordmark and feature
 summary beside the labeled contributor column; accessibility text sizes can stack them.
 Both apps show larger core-maintainer portraits
 above a two-row horizontal scroller of remaining contributors; tapping a core maintainer opens a scrollable
@@ -91,9 +97,9 @@ Profile metadata and brand artwork derive from Electron and are bundled offline.
 External pages open only on an explicit link tap. It adapts Electron's dashboard with the same
 bundled `electron/public/signal-field.webp` artwork, generated palettes, Inter,
 card hierarchy, recent generated audio, recent dubbing projects and saved voices.
-Its working shortcuts open Speak, voice cloning, Dub, Dictate, Models, Connect
-and the M3 production workspaces below. Speak stays reachable from Home; it is not a sixth bottom tab. Recent
-phone audio plays locally, saved phone voices open Speak with that reference
+Its working shortcuts open Speech, voice cloning, Dub, Dictate, Models, Connect
+and the M3 production workspaces below. Speech stays reachable from Home; it is not a sixth bottom tab. Recent
+phone audio plays locally, saved phone voices open Speech with that reference
 selected, and project rows open that project's outputs/resume controls. Computer
 libraries are shown only from the paired host. Empty sections use localized
 empty states; Home never starts downloads or external requests on its own.
@@ -119,7 +125,7 @@ All tabs work without pairing once on-device models are installed (see M2); the 
      On 401 ask again. "Disconnect" calls `DELETE /api/auth/session`.
    - Saved hosts list (URL, label, last seen); one active host.
    - See `docs/api-auth.md`, `docs/sharing.md`.
-3. **Speak** (TTS)
+3. **Speech** (TTS)
    - Text editor, voice picker (`GET /profiles`), engine/language pickers
      from `GET /engines` and backend language data, Generate → `POST /generate`.
    - Play result in-app (streamed from the host), waveform/progress scrubber,
@@ -176,7 +182,7 @@ All tabs work without pairing once on-device models are installed (see M2); the 
   (private vs public hosts).
 - API client against a mock server: health check, PIN header, session
   exchange/revoke, 401 handling, generate, dub upload + progress.
-- UI smoke: launch → consent → connect (mocked) → Speak generates → play.
+- UI smoke: launch → consent → connect (mocked) → Speech generates → play.
 
 ## M2 — on-device inference (owner-set 2026-10-18)
 
@@ -208,10 +214,32 @@ All tabs work without pairing once on-device models are installed (see M2); the 
   credit, rights holder). A phone model **must** have a registry entry; adding
   one follows `docs/licensing/model-review-workflow.md`. The contract test fails
   on drift, on a missing registry entry, or on a file without a checksum.
-- Initial set: KittenTTS mini and Kokoro multi-language (TTS), Whisper tiny/base
-  and a streaming Zipformer (dictation), OmniVoice-GGUF `Q4_K_M` (cloning), and
-  one small instruct LLM for translation (chosen through the review workflow;
-  must be commercial-OK or accepted like any other gated model).
+- Speech offers KittenTTS mini, Kokoro multi-language, Piper Lessac, Supertonic 3,
+  Pocket TTS, ZipVoice and OmniVoice-GGUF (Q8_0 base / F32 codec). Piper/Supertonic use preset
+  voices; Pocket/ZipVoice require a saved reference (ZipVoice also uses its
+  transcript). OmniVoice also requires a saved reference in Speech; Voice Design
+  is a separate explicit task. Reference-only models show guidance and disable Generate until a saved
+  voice is selected. Model selection is independent of voice selection; choosing
+  a preset-only engine clears an incompatible saved voice. Voice Design lists
+  only engines that actually support design. Nothing is downloaded by selecting
+  a model. Licence review and explicit installation still apply to every pack.
+  Whisper tiny/base and streaming Zipformer provide dictation, and a small
+  instruct LLM provides translation.
+- OmniVoice uses the runtime author recommended Q8_0 base and native F32 codec
+  (about 1.4 GB; minimum 8 GB RAM). The legacy `omnivoice-q4-k-m` identifier
+  remains stable for preferences and storage. Older Q4 files are retained; use
+  Models to download the new verified files. Licence terms/fingerprints are
+  unchanged. Bare Speech synthesis cannot silently fall back to voice design.
+- Model files normally resolve from their repository's fixed revision. Separate
+  components may specify an allowlisted HTTPS `url` (fixed HF revision or the
+  k2-fsa sherpa-onnx ONNX release assets), or a safe `bundled` path relative to the
+  contract resources. Both retain mandatory byte counts and SHA-256 checks;
+  bundled frontend data is copied only during explicit model installation and
+  can finish offline. ZipVoice includes its separately pinned Vocos vocoder,
+  English eSpeak files and bundled bilingual lexicon. User voice recordings are
+  never included in model downloads. Pocket's conflicting conversion terms are
+  disclosed conservatively as non-commercial; Piper's training-data rights remain
+  unresolved in the review. Existing model fingerprints are unchanged.
 - `models.json` shape (both apps decode exactly this; unknown keys ignored):
 
   ```json
@@ -249,7 +277,7 @@ All tabs work without pairing once on-device models are installed (see M2); the 
 
 ### Where each task runs
 
-- Every task (Speak, clone, Dictate, Dub) has **Run on: This phone / My
+- Every task (Speech, clone, Dictate, Dub) has **Run on: This phone / My
   computer**. Default: This phone when the needed model is installed; otherwise
   the computer if one is paired; otherwise an inline prompt to download the
   model (with its size). The choice is remembered per task.
@@ -298,7 +326,7 @@ offensive output; both apps ship it. The server is VoiceStudio's app API
 repository). It needs no sign-in and accepts no audio or identifiers.
 
 - **Where:** every generated result the app shows has a **Report** action,
-  whether it ran on the phone or the paired computer: a Speak result and its
+  whether it ran on the phone or the paired computer: a Speech result and its
   recent takes (`task: speak`), the cloned-voice result on Voices
   (`task: clone`) and a finished dub (`task: dub`).
 - **Sheet:** title, a required reason chosen from five (`sexual`, `hateful`,
@@ -317,7 +345,7 @@ repository). It needs no sign-in and accepts no audio or identifiers.
   | `platform` | `android` / `ios` |
   | `app_version` | root `package.json` version |
   | `task` | `speak` / `clone` / `dub` |
-  | `model_id` | phone: the `repo` from `models.json` of the model that made it (Speak: the TTS or clone model; a cloned voice: the `clone` model that generated its saved preview (legacy voices can retain their ASR attribution); a dub: its pinned `clone` model; results saved before this feature: `unknown`); computer: the engine id the host reported, else `unknown` (characters outside `0-9A-Za-z._/:-` removed, at most 128) |
+  | `model_id` | phone: the `repo` from `models.json` of the model that made it (Speech: the TTS or clone model; a cloned voice: the `clone` model that generated its saved preview (legacy voices can retain their ASR attribution); a dub: its pinned `clone` model; results saved before this feature: `unknown`); computer: the engine id the host reported, else `unknown` (characters outside `0-9A-Za-z._/:-` removed, at most 128) |
   | `model_revision` | phone only: the model's `revision` |
   | `runs_on` | `phone` / `computer` |
 
@@ -368,7 +396,7 @@ Workflows on both platforms. These are native screens; no embedded desktop UI.
   line reuses unaffected audio. Disk-streamed marked WAV and chapter outputs
   export as WAV, MP3, AAC/M4A and chaptered M4B (up to 255 chapters). The same
   pinned, source-built LAME encoder ships on both; cancellation and atomic
-  replacement preserve earlier results. Speak also exports WAV/M4A/MP3.
+  replacement preserve earlier results. Speech also exports WAV/M4A/MP3.
 - **Batch dubbing** publishes requests before enqueueing. Native durable queues
   resume checkpointed work; cancellation preserves completed segments. No watch
   folders or automatic imports. Host/source changes invalidate stale results.
@@ -421,16 +449,24 @@ Workflows on both platforms. These are native screens; no embedded desktop UI.
   gain, actual peak normalization with a −50 dBFS silence guard, and a noise gate.
   It preserves source media and synthetic provenance, supports WAV/M4A/MP3,
   and never loads a model or marks natural-only DSP as synthetic.
-- **Gallery** defaults to installed phone presets and opens Speak with the
-  selected model/speaker. My computer loads the paginated community catalogue
-  through the paired client, displays author/licence/language, previews only on
-  Play and materializes a host profile only on Use voice. Host changes discard
-  gallery results, preview and selected profiles. Copy to phone requires a separate
-  explicit voice-permission action and requests the host's bounded stored voice
-  bundle. A valid transcript and reference up to 30 seconds are installed under
-  a fresh phone identity; author/licence attribution remains visible and travels
-  with project archives. No model download/inference or direct external networking
-  is introduced.
+- **Gallery** opens the public `debpalash/omnivoice-gallery` community catalogue
+  directly on either phone, without pairing or installed models. Both builds bundle
+  the same `community-gallery.json` snapshot (upstream manifest, 2026-10-26, retaining
+  per-item author/licence); refresh it from the repository when updating the seed.
+  Opening Gallery may refresh the jsDelivr manifest, never app startup. A validated
+  disk cache or bundled seed stays available offline. Search, pack and language
+  filters show named designed recipes and recorded voices with attribution.
+  Use voice opens a recipe in native Voice Design with its actual instruction,
+  script and name; generation still requires explicit model download/licence consent.
+  Recordings download only on Play or an explicitly confirmed import. HTTPS hosts
+  and redirects are allowlisted, manifests bounded to 4 MiB and recordings to 32 MiB;
+  SHA-256 is verified before caching, playback or import. Import requires voice
+  permission, a nonempty transcript and reference up to 30 seconds. It preserves
+  author/licence attribution and synthetic provenance without inference or ASR.
+  This phone retains bundled engine presets with model/speaker selection in Speech.
+  My computer retains paired community browsing and stored voice-bundle copying;
+  switching hosts discards those host results. All generation stays on the chosen
+  device and all gallery downloads are initiated by entering Gallery or its controls.
 - **Workflows** retain ordered legacy recipes and support typed acyclic graphs
   with yes/no contains/equals/starts/ends conditions and compatible branch joins.
   Transcription, translation, speech, ASR/re-synthesis conversion and normalization

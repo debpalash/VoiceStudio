@@ -422,6 +422,16 @@ hard rules from the first prompt.
 
 ## Quality gates your PR must pass
 
+Documentation-only and test-only changes skip runtime tests, desktop/mobile builds
+and Docker image rebuilds on pull requests and pushes to `main`. The required
+`Tests (backend + frontend)` check reports the explicit skip so branch protection
+still works. Mixed changes, workflow/build configuration, dependencies and bundled
+app icons still run their normal checks; unknown or truncated change lists run
+all checks. Manual runs and scheduled audits remain full runs. CLA, commit identity
+and secret scanning still run. Run changed tests locally before submitting a
+test-only PR. Docker Hub overview edits still publish through the small
+`dockerhub-description.yml` workflow without rebuilding images.
+
 - **Gallery pin:** a PR that changes the `omnivoice-gallery` submodule must
   move it forward along the gallery's `main` (`.github/workflows/gallery-pin.yml`).
   If it fails on a PR that never meant to touch the gallery, the checkout had a

@@ -3844,7 +3844,8 @@
       "unstar": "Desestrela",
       "engine_unavailable": "Este motor non está dispoñible. Comprobe a súa instalación no seu ordenador.",
       "voice_default": "Voz predeterminada (predefinido do motor)",
-      "engine_no_cloning": "Este motor non pode usar o audio de referencia. Escolle un motor que admita a clonación de voz ou utiliza a voz predeterminada."
+      "engine_no_cloning": "Este motor non pode usar o audio de referencia. Escolle un motor que admita a clonación de voz ou utiliza a voz predeterminada.",
+      "reference_required": "Escolle unha voz gardada para usar este modelo. Podes importar unha da galería."
     },
     "voices": {
       "search": "Busca voces",
@@ -4073,7 +4074,7 @@
       "preset_voice": "Voz {{number}}",
       "transfer": "{{received}} de {{total}}",
       "privacy": "As tarefas do dispositivo permanecen neste teléfono. Só as descargas de modelos, os informes que escollas enviar e o teu ordenador asociado usan a rede.",
-      "computer_feature": "Esta función execútase actualmente no teu ordenador. Podes usar Speak and Dictate neste teléfono sen vincular.",
+      "computer_feature": "Esta función execútase actualmente no teu ordenador. Podes usar Fala e Ditado neste teléfono sen vincular.",
       "accepted": "Licenza aceptada",
       "not_accepted": "Non se acepta licenza",
       "receipt": "{{action}} · {{time}} · Aplicación {{version}} · Condicións {{fingerprint}}"

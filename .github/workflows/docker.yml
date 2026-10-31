@@ -46,8 +46,8 @@
 # (Docker Hub push gated on the DOCKERHUB_USERNAME/DOCKERHUB_TOKEN secrets;
 # if unset the build still pushes to GHCR.)
 #
-# On main pushes the Docker Hub repository overview is also synced from
-# deploy/dockerhub-overview.md (source of truth for the hub.docker.com page).
+# Docker Hub overview text is published separately by dockerhub-description.yml
+# when deploy/dockerhub-overview.md changes, without rebuilding these images.
 #
 # NOTE: the Docker image is the headless web-server build of VoiceStudio (FastAPI
 # backend + pre-built React frontend served over HTTP).  The desktop
@@ -60,10 +60,24 @@ on:
   push:
     branches: [main]
     # A merge that only touches these cannot change what the image contains, so it
-    # does not rebuild two ~35 minute images. deploy/dockerhub-overview.md (the Docker
-    # Hub page, synced by this workflow), the Dockerfile and README.md (copied into
-    # the image) are deliberately NOT listed. Release and manual runs are unaffected.
+    # does not rebuild the GPU images. Docker Hub overview text has a separate
+    # lightweight publishing workflow; Markdown and tests skip image rebuilds.
+    # Release/manual runs are unaffected.
     paths-ignore:
+      - "**/*.md"
+      - "**/*.mdx"
+      - "**/*.rst"
+      - "**/*.adoc"
+      - "tests/**"
+      - "test/**"
+      - "**/tests/**"
+      - "**/test/**"
+      - "**/__tests__/**"
+      - "**/*.test.*"
+      - "**/*.spec.*"
+      - "**/test_*.py"
+      - "**/*_test.py"
+      - "**/conftest.py"
       - "docs/**"
       - "mobile/**"
       - "changelog.d/**"
@@ -268,28 +282,6 @@ jobs:
                 "${DOCKERHUB_IMAGE}:${SOURCE_TAG}"
             done
           fi
-
-      # Sync the Docker Hub repository overview from deploy/dockerhub-overview.md.
-      # Only on main pushes (the overview tracks the rolling preview) and only
-      # when Docker Hub creds are present, mirroring the push gating above.
-      #
-      # continue-on-error: the overview text is cosmetic, and the description
-      # PATCH 403s unless DOCKERHUB_TOKEN carries description-edit scope (many
-      # fine-grained Docker Hub tokens that can push still can't edit the
-      # description). The image build+push is what matters — a creds-scope
-      # mismatch on this cosmetic step must not fail the whole Docker run. To
-      # actually sync the overview, use a token with read/write (incl.
-      # description) scope, or the account password.
-      - name: Update Docker Hub description
-        if: steps.dockerhub.outputs.enabled == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        continue-on-error: true
-        uses: peter-evans/dockerhub-description@432a30c9e07499fd01da9f8a49f0faf9e0ca5b77 # v4.0.2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ env.DOCKERHUB_IMAGE }}
-          short-description: "Local ElevenLabs alternative: voice cloning, design & video dubbing in 646 languages. No API keys."
-          readme-filepath: ./deploy/dockerhub-overview.md
 
   # ── ROCm/AMD GPU image variant (#1165) ──────────────────────────────────
   # Same Dockerfile, ROCm PyTorch base swapped in via the BASE_IMAGE

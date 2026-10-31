@@ -14,7 +14,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.*
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.voicestudio.mobile.designsystem.*
@@ -28,7 +27,7 @@ internal fun isWorkspace(route:String)=route in tabs
         route=="home" -> "nav.home"
         route=="transcriptions" -> "transcriptions.title"
         route=="handoff" -> "mobile.handoff.title"
-        route=="design" -> "nav.design"
+        route=="design"||route.startsWith("community-design/") -> "nav.design"
         route=="stories" -> "nav.stories"
         route=="audiobook" -> "audiobook.title"
         route=="batch" -> "batch.title"
@@ -43,6 +42,7 @@ internal fun isWorkspace(route:String)=route in tabs
         route=="projects"||route.startsWith("project/") -> "projects.title"
         route=="host-dubs" -> "mobile.dub.history"
         route=="speak"||route.startsWith("voice/")||route.startsWith("host-voice/") -> "mobile.tabs.speak"
+        route=="clone" -> "mobile.voices.new_clone"
         else -> "mobile.tabs.$route"
     }
     Row(Modifier.fillMaxWidth().statusBarsPadding().heightIn(min=52.dp).padding(horizontal=VSTheme.inset),
@@ -55,7 +55,7 @@ internal fun isWorkspace(route:String)=route in tabs
     }
 }
 
-/** A compact native dock; all five destinations retain their spoken names and Tab roles. */
+/** Visible names keep all five destinations discoverable before learning their icons. */
 @Composable internal fun StudioDock(workspace:String,navigate:(String)->Unit) {
     Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal=VSTheme.inset,vertical=8.dp),contentAlignment=Alignment.Center) {
         Surface(shape=CircleShape,color=role("surfaceOverlay"),border=BorderStroke(VSTheme.borderWidth,role("border")),
@@ -64,12 +64,14 @@ internal fun isWorkspace(route:String)=route in tabs
                 tabs.forEach {tab ->
                     val label=tr(if(tab=="home") "nav.home" else "mobile.tabs.$tab")
                     val selected=workspace==tab
-                    Box(Modifier.weight(1f).heightIn(min=48.dp).selectable(selected=selected,role=Role.Tab,onClick={navigate(tab)})
-                        .semantics {contentDescription=label;text=AnnotatedString(label)},contentAlignment=Alignment.Center) {
+                    Column(Modifier.weight(1f).heightIn(min=60.dp).selectable(selected=selected,role=Role.Tab,onClick={navigate(tab)})
+                        .semantics {contentDescription=label},horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center) {
                         Box(Modifier.size(52.dp,40.dp).background(if(selected) role("messageSurface") else androidx.compose.ui.graphics.Color.Transparent,CircleShape),contentAlignment=Alignment.Center) {
                             Icon(when(tab) {"home" -> Icons.Default.Home;"voices" -> Icons.Default.Person;"dub" -> VSIcons.Video;"dictate" -> VSIcons.Mic;else -> Icons.Default.Settings},null,
                                 Modifier.size(24.dp),tint=role(if(selected) "messageAction" else "textMuted"))
                         }
+                        Text(label,style=MaterialTheme.typography.labelSmall,maxLines=1,overflow=TextOverflow.Ellipsis,
+                            color=role(if(selected) "messageAction" else "textMuted"))
                     }
                 }
             }

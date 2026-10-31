@@ -65,7 +65,15 @@ jobs:
       pull-requests: read
     outputs:
       electron: ${{ steps.detect.outputs.electron }}
+      runtime: ${{ steps.scope.outputs.runtime }}
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/ci_scope.py
       - id: detect
         shell: bash
         env:
@@ -112,7 +120,7 @@ jobs:
   installer:
     name: Electron installer contracts
     needs: changes
-    if: ${{ !cancelled() && needs.changes.result != 'skipped' }}
+    if: ${{ !cancelled() && needs.changes.result != 'skipped' && needs.changes.outputs.runtime != 'false' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -143,7 +151,7 @@ jobs:
     needs: changes
     # Must report even if `changes` failed, so a detection error never skips the gate;
     # only a rejected external approval (changes skipped) stops it.
-    if: ${{ !cancelled() && needs.changes.result != 'skipped' }}
+    if: ${{ !cancelled() && needs.changes.result != 'skipped' && needs.changes.outputs.runtime != 'false' }}
     runs-on: ubuntu-22.04
     env:
       # Same restricted-network resilience the smoke matrix already sets. This
@@ -256,7 +264,7 @@ jobs:
   test-electron:
     name: Tests (Electron)
     needs: changes
-    if: ${{ !cancelled() && needs.changes.result != 'skipped' && needs.changes.outputs.electron != 'false' }}
+    if: ${{ !cancelled() && needs.changes.result != 'skipped' && needs.changes.outputs.electron != 'false' && needs.changes.outputs.runtime != 'false' }}
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -313,7 +321,7 @@ jobs:
   electron-smokes:
     name: Electron renderer smokes
     needs: changes
-    if: ${{ !cancelled() && needs.changes.result != 'skipped' && needs.changes.outputs.electron != 'false' }}
+    if: ${{ !cancelled() && needs.changes.result != 'skipped' && needs.changes.outputs.electron != 'false' && needs.changes.outputs.runtime != 'false' }}
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -392,6 +400,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
+      RUNTIME_NEEDED: ${{ needs.changes.outputs.runtime }}
+      CHANGES_RESULT: ${{ needs.changes.result }}
       PYTHON: ${{ needs.test-python.result }}
       ELECTRON: ${{ needs.test-electron.result }}
       SMOKES: ${{ needs.electron-smokes.result }}
@@ -400,6 +410,13 @@ jobs:
       - name: Both test jobs passed
         run: |
           echo "Python: $PYTHON, Electron: $ELECTRON, smokes: $SMOKES (needed: $ELECTRON_NEEDED)"
+          if [ "$RUNTIME_NEEDED" = false ] && [ "$CHANGES_RESULT" = success ]; then
+            for result in "$PYTHON" "$ELECTRON" "$SMOKES"; do
+              [ "$result" = skipped ] || exit 1
+            done
+            echo "Documentation/test-only change: runtime CI skipped."
+            exit 0
+          fi
           [ "$PYTHON" = success ] || exit 1
           # Skipped is only acceptable when change detection said nothing in this
           # PR can affect the Electron jobs.
@@ -416,7 +433,7 @@ jobs:
   ui-crawler:
     name: UI crawler (${{ matrix.shard }}/3)
     needs: changes
-    if: ${{ !cancelled() && needs.changes.result != 'skipped' && needs.changes.outputs.electron != 'false' }}
+    if: ${{ !cancelled() && needs.changes.result != 'skipped' && needs.changes.outputs.electron != 'false' && needs.changes.outputs.runtime != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
@@ -474,7 +491,7 @@ jobs:
   linux-native-package:
     name: Linux native package
     needs: changes
-    if: ${{ !cancelled() && needs.changes.result != 'skipped' && needs.changes.outputs.electron != 'false' }}
+    if: ${{ !cancelled() && needs.changes.result != 'skipped' && needs.changes.outputs.electron != 'false' && needs.changes.outputs.runtime != 'false' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -505,7 +522,7 @@ jobs:
   electron-ui:
     name: Desktop UI (${{ matrix.label }})
     needs: changes
-    if: ${{ !cancelled() && needs.changes.result != 'skipped' && needs.changes.outputs.electron != 'false' }}
+    if: ${{ !cancelled() && needs.changes.result != 'skipped' && needs.changes.outputs.electron != 'false' && needs.changes.outputs.runtime != 'false' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -590,6 +607,9 @@ jobs:
     # After the Python tests (the fast-failing half), not the whole test gate: waiting for
     # the Electron jobs too left these 1-4 minute jobs idle for ~9 minutes of every run.
     needs: test-python
+    # Internal approval is intentionally skipped; override implicit success()
+    # so that skipped ancestor does not silently skip these code checks too.
+    if: ${{ !cancelled() && needs.test-python.result == 'success' }}
     strategy:
       fail-fast: false
       matrix:

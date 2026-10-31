@@ -183,7 +183,7 @@ def test_hostile_file_names_cannot_start_a_workflow_command(tmp_path):
 
 
 @pytest.mark.parametrize("event", ["push", "workflow_dispatch"])
-def test_main_pushes_and_manual_runs_always_run_everything(tmp_path, event):
+def test_legacy_electron_scope_remains_conservative_off_pull_requests(tmp_path, event):
     assert _detect(tmp_path, _mod("docs/only.md"), event=event)[0] == "electron=true"
 
 
@@ -213,7 +213,10 @@ def test_the_electron_jobs_are_gated_on_the_detection_and_survive_its_failure():
         assert "!cancelled()" in condition and "outputs.electron != 'false'" in condition, name
         assert "needs.changes.result != 'skipped'" in condition, name
     # the merge gate always reports, even if detection broke
-    assert jobs["test-python"]["needs"] == "changes" and jobs["test-python"]["if"] == "${{ !cancelled() && needs.changes.result != 'skipped' }}"
+    assert jobs["test-python"]["needs"] == "changes"
+    python_condition = jobs["test-python"]["if"]
+    assert "!cancelled()" in python_condition and "needs.changes.result != 'skipped'" in python_condition
+    assert "needs.changes.outputs.runtime != 'false'" in python_condition
     # `test` is the required check: it must wait for both halves and always report,
     # and may accept a skipped Electron half only when detection said "false".
     assert set(jobs["test"]["needs"]) == {"changes", "test-python", "test-electron", "electron-smokes"}
@@ -266,7 +269,7 @@ def test_security_code_scanners_skip_docs_only_prs_but_the_secret_scan_never_doe
 
 
 def _security_detect(rows, tmp_path, event="pull_request"):
-    script = SECURITY["jobs"]["changes"]["steps"][0]["run"]
+    script = next(step["run"] for step in SECURITY["jobs"]["changes"]["steps"] if step.get("id") == "detect")
     gh = tmp_path / "gh"
     gh.write_text("#!/bin/sh\nprintf '%s\\n' \"$FAKE_ROWS\"\n", encoding="utf-8")
     gh.chmod(0o755)
@@ -301,11 +304,14 @@ def test_security_change_detection_runs_everything_off_pull_requests(tmp_path):
 DOCKER = yaml.safe_load((ROOT / ".github/workflows/docker.yml").read_text(encoding="utf-8"))
 
 
-def test_docker_main_pushes_skip_only_changes_that_cannot_alter_the_image():
+def test_docker_main_pushes_skip_docs_and_tests_but_keep_runtime_changes():
     ignored = set(DOCKER[True]["push"]["paths-ignore"])
     assert {"docs/**", "mobile/**", "changelog.d/**"} <= ignored
-    # these reach the image or the Docker Hub page, so they must still rebuild
-    for path in ("deploy/dockerhub-overview.md", "deploy/Dockerfile", "README.md", "backend/main.py",
+    # Markdown and tests skip images by owner policy. Docker Hub text publishes
+    # separately; test_docker_workflow.py validates that lightweight trigger.
+    for path in ("README.md", "deploy/dockerhub-overview.md", "tests/test_api.py", "electron/tests/installer.test.mjs"):
+        assert any(_matches(path, pattern) for pattern in ignored), path
+    for path in ("deploy/Dockerfile", "backend/main.py",
                  ".github/workflows/docker.yml", "pyproject.toml"):
         assert not any(_matches(path, pattern) for pattern in ignored), path
     assert "paths-ignore" not in (DOCKER[True].get("release") or {})
@@ -313,8 +319,10 @@ def test_docker_main_pushes_skip_only_changes_that_cannot_alter_the_image():
 
 def _matches(path, pattern):
     import fnmatch
-    regex = fnmatch.translate(pattern.replace("**", "\0")).replace("\\\0", ".*").replace("\0", ".*")
-    return re.match(regex, path) is not None
+    # GitHub's leading **/ also matches zero directory segments.
+    return fnmatch.fnmatchcase(path, pattern) or (
+        pattern.startswith("**/") and fnmatch.fnmatchcase(path, pattern[3:])
+    )
 
 
 def test_fork_pull_requests_wait_for_approval_before_any_job_runs():

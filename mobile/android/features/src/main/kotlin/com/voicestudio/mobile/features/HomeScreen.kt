@@ -70,15 +70,15 @@ private val destinations = listOf(
             Surface(shape=MaterialTheme.shapes.large, color=role("canvas")) {
                 Box {
                     artwork?.let { Image(it,null,Modifier.matchParentSize(),contentScale=ContentScale.Crop,alpha=.25f) }
-                    HomeHero(Modifier.fillMaxWidth().padding(12.dp))
+                    HomeHero(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=8.dp))
                 }
             }
             BoxWithConstraints {
                 val columns = if(maxWidth >= 326.dp * LocalDensity.current.fontScale) 2 else 1
-                Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     destinations.chunked(columns).forEach { group ->
                         Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                            group.forEach { item -> HomeCard(item,Modifier.weight(1f)) {navigate(item.route)} }
+                            group.forEach { item -> HomeCard(item,Modifier.weight(1f)) {navigate(if(item.route=="voices") "clone" else item.route)} }
                         }
                     }
                 }
@@ -126,7 +126,7 @@ private val destinations = listOf(
 @Composable private fun HomeCard(item: HomeDestination, modifier: Modifier, click: ()->Unit) {
     Surface(onClick=click,modifier=modifier.testTag("home.${item.route}"),shape=MaterialTheme.shapes.large,
         color=role(if(item.primary) "surfaceRaised" else "surface"),border=BorderStroke(VSTheme.borderWidth,role("border"))) {
-        Column(Modifier.heightIn(min=if(item.primary) 124.dp else 112.dp).padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.heightIn(min=if(item.primary) 120.dp else 112.dp).padding(horizontal=12.dp,vertical=8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
                 Surface(shape=androidx.compose.foundation.shape.CircleShape,color=role("messageSurface")) {
                     Icon(item.icon,null,Modifier.size(32.dp).padding(6.dp),tint=role("messageAction"))

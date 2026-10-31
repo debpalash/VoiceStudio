@@ -27,7 +27,7 @@
     "format:check": "vp fmt --check",
     "test": "bun run locale:check && vp test --run && vp test --run --config vite.shared.config.ts",
     "test:watch": "vp test",
-    "test:desktop-ui": "node tests/local-first.test.mjs && node tests/fake-health-backend.test.mjs && node tests/desktop-harness-ports.test.mjs && node tests/desktop-ui.test.mjs",
+    "test:desktop-ui": "node tests/local-first.test.mjs && node tests/fake-health-backend.test.mjs && node tests/desktop-harness-ports.test.mjs && node tests/desktop-harness-exit.test.mjs && node tests/desktop-ui.test.mjs",
     "smoke:server": "vite --config tests/renderer-smoke.vite.config.mjs",
     "smoke:live-routes": "node tests/live-route-health.mjs",
     "smoke:account-live": "node tests/account-sign-in-live.mjs",

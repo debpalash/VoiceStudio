@@ -3431,7 +3431,7 @@
     "add_details": "Ajouter des détails",
     "step_start": "Début",
     "step_agent": "Agent",
-    "step_speak": "Parler",
+    "step_speak": "Parole",
     "step_condition": "Condition",
     "step_call": "Appel",
     "step_end": "Fin",
@@ -3798,7 +3798,7 @@
       "brought_by": "Proposé par"
     },
     "tabs": {
-      "speak": "Parler",
+      "speak": "Parole",
       "voices": "Voix",
       "dub": "Doublage",
       "dictate": "Dictée",
@@ -3846,7 +3846,8 @@
       "unstar": "Supprimer la star",
       "engine_unavailable": "Ce moteur n'est pas disponible. Vérifiez son installation sur votre ordinateur.",
       "voice_default": "Voix par défaut (préréglage du moteur)",
-      "engine_no_cloning": "Ce moteur ne peut pas utiliser d'audio de référence. Choisissez un moteur qui prend en charge le clonage vocal, ou utilisez la voix par défaut."
+      "engine_no_cloning": "Ce moteur ne peut pas utiliser d'audio de référence. Choisissez un moteur qui prend en charge le clonage vocal, ou utilisez la voix par défaut.",
+      "reference_required": "Choisissez une voix enregistrée pour utiliser ce modèle. Vous pouvez en importer une depuis la galerie."
     },
     "voices": {
       "search": "Rechercher des voix",
@@ -4075,7 +4076,7 @@
       "preset_voice": "Voix {{number}}",
       "transfer": "{{received}} sur {{total}}",
       "privacy": "Les tâches sur l'appareil restent sur ce téléphone. Seuls les téléchargements de modèles, les signalements que vous choisissez d'envoyer et votre ordinateur associé utilisent le réseau.",
-      "computer_feature": "Cette fonction s'exécute actuellement sur votre ordinateur. Parler et Dictée fonctionnent sur ce téléphone sans association.",
+      "computer_feature": "Cette fonction s'exécute actuellement sur votre ordinateur. Parole et Dictée fonctionnent sur ce téléphone sans association.",
       "accepted": "Licence acceptée",
       "not_accepted": "Licence non acceptée",
       "receipt": "{{action}} · {{time}} · App {{version}} · Conditions {{fingerprint}}"

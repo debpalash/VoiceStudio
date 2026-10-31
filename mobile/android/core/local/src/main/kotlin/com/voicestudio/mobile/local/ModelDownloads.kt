@@ -26,9 +26,11 @@ class ModelDownloads internal constructor(
     private val client: OkHttpClient = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).build(),
     private val endpoints: List<String> = listOf("https://huggingface.co", "https://hf-mirror.com"),
     private val allowTestHttp: Boolean = false,
+    private val bundledAssets: ((String)->java.io.InputStream)? = null,
     private val digest: (File, ()->Unit)->String = ::sha256
 ) {
     constructor(root: File, licence: LicenceGate, ramBytes: Long, wifi: () -> Boolean) : this(root,licence,ramBytes,wifi,{root.apply {mkdirs()}.usableSpace})
+    constructor(root:File,licence:LicenceGate,ramBytes:Long,bundledAssets:(String)->java.io.InputStream,wifi:()->Boolean):this(root,licence,ramBytes,wifi,{root.apply {mkdirs()}.usableSpace},bundledAssets=bundledAssets)
     private data class VerifiedStamp(val size: Long, val modified: Long, val catalogue: String)
     private val verified=ConcurrentHashMap<File,VerifiedStamp>()
     private fun stamp(file: File, catalogue: String)=VerifiedStamp(file.length(),file.lastModified(),catalogue)
@@ -70,7 +72,7 @@ class ModelDownloads internal constructor(
                 f.size-partial
             }
             val needed=remainingBytes()
-            if(needed>0) networkAllowed(allowMobile)
+            if(model.files.any {it.bundled==null&&it !in completedFiles&&File(directory,it.path+".part").length()<it.size}) networkAllowed(allowMobile)
             // Read current partial lengths so retries and completed writes are not counted twice.
             // completedFiles is updated under this same monitor after each successful install.
             synchronized(reservations) {
@@ -88,7 +90,12 @@ class ModelDownloads internal constructor(
                     val part=File(directory,f.path+".part")
                     if(part.length()>f.size) part.delete()
                     var last: IOException?=null
-                    for(endpoint in endpoints) {
+                    if(f.bundled!=null) {
+                        require(f.url==null&&ModelAssetSource.validBundled(f.bundled))
+                        val load=bundledAssets ?: throw ClientFailure("mobile.local.catalogue_failed")
+                        load(f.bundled).use {input->part.outputStream().use {output->input.copyTo(output)}}
+                    }
+                    else for(endpoint in endpoints) {
                         try {
                             transfer(endpoint,model,f,part,allowMobile) { received -> mutable.update {it+(model.id to DownloadProgress(completed+received,model.totalBytes,true))} }
                             last=null;break
@@ -119,10 +126,11 @@ class ModelDownloads internal constructor(
     // Keep in step with iOS ModelRedirectDelegate.allowed (SPEC M2): mirror CDN
     // subdomains download like the apex host, and other ports are refused, on every platform.
     internal fun allowed(url: HttpUrl): Boolean = allowTestHttp || (url.scheme=="https" && url.port==443 && url.username.isEmpty() && url.password.isEmpty() &&
-        (url.host in setOf("huggingface.co","hf-mirror.com","hf.co") || url.host.endsWith(".huggingface.co") || url.host.endsWith(".hf.co") || url.host.endsWith(".hf-mirror.com")))
+        (url.host in setOf("huggingface.co","hf-mirror.com","hf.co","github.com","release-assets.githubusercontent.com","objects.githubusercontent.com") || url.host.endsWith(".huggingface.co") || url.host.endsWith(".hf.co") || url.host.endsWith(".hf-mirror.com")))
     private suspend fun transfer(endpoint: String, model: PhoneModel, file: ModelFile, partial: File, allowMobile: Boolean, report: (Long)->Unit) {
         if(partial.length()==file.size) return
-        var url=endpoint.toHttpUrl().newBuilder().addPathSegments(model.repo).addPathSegment("resolve").addPathSegment(model.revision).addPathSegments(file.path).build()
+        if(file.url!=null&&!ModelAssetSource.validUrl(file.url)) throw ClientFailure("mobile.local.catalogue_failed")
+        var url=if(file.url!=null) file.url.toHttpUrl().let {fixed->if(fixed.host=="huggingface.co") fixed.newBuilder().host(endpoint.toHttpUrl().host).build() else fixed} else endpoint.toHttpUrl().newBuilder().addPathSegments(model.repo).addPathSegment("resolve").addPathSegment(model.revision).addPathSegments(file.path).build()
         repeat(10) {
             networkAllowed(allowMobile);licence.requireAccepted(model);currentCoroutineContext().ensureActive()
             if(!allowed(url)) throw ClientFailure("mobile.local.download_failed")

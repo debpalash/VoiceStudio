@@ -150,20 +150,23 @@ struct ModelDownloadButton: View {
     @Environment(AppModel.self) private var model
     let items: [PhoneModel]
     var titleKey = "mobile.simple.get"
+    var prominent = false
     @State private var queue = ModelDownloadQueue([])
     @State private var reviewing: PhoneModel?
     @State private var continueDownloads = false
     private var downloading: Bool { items.contains { model.phone.progress[$0.id] != nil } }
     var body: some View {
-        Button(model.t(downloading ? "common.cancel" : titleKey)) {
+        Button {
             if downloading {
                 queue = ModelDownloadQueue([])
                 for item in items { model.phone.cancel(item) }
             } else {
                 queue = ModelDownloadQueue(items); advance()
             }
+        } label: {
+            Text(model.t(downloading ? "common.cancel" : titleKey)).frame(maxWidth: prominent ? .infinity : nil)
         }.disabled(items.isEmpty || !items.allSatisfy { $0.fits() })
-            .studioButton(.tertiary)
+            .studioButton(prominent ? .primary : .tertiary)
             .accessibilityIdentifier("models.get")
             .sheet(item: $reviewing, onDismiss: {
                 if continueDownloads { continueDownloads = false; advance() }
@@ -207,6 +210,7 @@ struct LocalDownloadPrompt: View {
     let items: [PhoneModel]
     let feature: String
     var compact = false
+    var prominent = false
     private var needed: [PhoneModel] { items.filter { !model.phone.ready($0) } }
     private var progress: Double? {
         guard needed.contains(where: { model.phone.progress[$0.id] != nil }) else { return nil }
@@ -244,8 +248,9 @@ struct LocalDownloadPrompt: View {
                             }.frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }.studioButton(.tertiary).accessibilityIdentifier("models.open").accessibilityLabel(title)
-                    ModelDownloadButton(items: needed)
+                    if !prominent { ModelDownloadButton(items: needed, titleKey: "mobile.local.download") }
                 }
+                if prominent { ModelDownloadButton(items: needed, titleKey: "mobile.local.download", prominent: true) }
                 if let progress { ProgressView(value: progress).accessibilityLabel(model.t("mobile.local.download")) }
                 if let item = needed.first(where: { !$0.fits() }) {
                     Text(model.t("mobile.simple.ram", ["ram": String(item.min_ram_gb)])).font(.caption)

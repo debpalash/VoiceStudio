@@ -35,7 +35,7 @@ struct SpeakView: View {
     @State private var shared: SharedFile?
     private var phoneVoice: PhoneVoice? { model.phone.voices.first { "phone:"+$0.id.uuidString == speakerID } }
     private var capability: ModelCapability { phoneVoice == nil ? .tts : .clone }
-    private var phoneModel: PhoneModel? { model.phone.candidates(capability).first { $0.id == phoneModelID } ?? model.phone.selectedModel("speak-"+capability.rawValue,capability) }
+    private var phoneModel: PhoneModel? { model.phone.models.filter(\.supportsSpeech).first { $0.id == phoneModelID } ?? model.phone.selectedModel("speak-"+capability.rawValue,capability) }
     private var localReady: Bool { phoneModel.map(model.phone.ready) ?? false }
     private var route: TaskRoute { LocalRouting.route(preference: preference, installed: localReady, paired: model.connection.client != nil) }
     @State private var text = ""
@@ -60,7 +60,6 @@ struct SpeakView: View {
             if route == .connect { NavigationLink(model.t("mobile.settings.connection")) { ConnectView() } }
             speechEditor
             speechOptions
-            if route == .download { LocalDownloadPrompt(items: phoneModel.map { [$0] } ?? [], feature: "mobile.tabs.speak") }
             if player.file != nil || player.playing {
                 AudioPlayerView(player: player)
                 if let result { ReportButton(subject: result, reporting: $reporting).studioButton(.tertiary) }
@@ -73,7 +72,11 @@ struct SpeakView: View {
             recentGenerations.disabled(exporting)
         }.navigationTitle(model.t("mobile.tabs.speak")).navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            generationControls.padding(.horizontal, Theme.compactInset).padding(.vertical, VSTokens.spacingGap / 2)
+            Group {
+                if route == .download {
+                    LocalDownloadPrompt(items: phoneModel.map { [$0] } ?? [], feature: "mobile.tabs.speak", prominent: true)
+                } else { generationControls }
+            }.padding(.horizontal, Theme.compactInset).padding(.vertical, VSTokens.spacingGap / 2)
         }
         .onChange(of: model.inventory?.tts.active, initial: true) { _, _ in selection.reconcile(inventory: model.inventory, profiles: model.profiles) }
         .onChange(of: model.profiles.map(\.id)) { _, _ in selection.reconcile(inventory: model.inventory, profiles: model.profiles) }
@@ -85,9 +88,12 @@ struct SpeakView: View {
                 Task { await model.perform { try await model.api().deleteHistory(item.id); model.history = try await model.api().history() } }
             }
         }
-        .onAppear { if let initialText,text.isEmpty { text = initialText }; hostScope = model.hostState.scopeID; preference = initialPhoneVoiceID == nil && initialPhonePreset == nil ? model.phone.preference("speak") : .phone; if let id = initialPhoneVoiceID { speakerID = "phone:" + id }; if let preset = initialPhonePreset { speakerID = String(preset); if let id = initialPhoneModelID { phoneModelID = id; model.phone.chooseModel("speak",id) } }; if let id = initialComputerVoiceID { preference = .computer; selection.chooseProfile(id, profiles: model.profiles, inventory: model.inventory, catalog: model.languages) } }
+        .onAppear { if let initialText,text.isEmpty { text = initialText }; hostScope = model.hostState.scopeID; preference = initialPhoneVoiceID == nil && initialPhonePreset == nil ? model.phone.preference("speak") : .phone; if let id = initialPhoneVoiceID { speakerID = "phone:" + id }; if let preset = initialPhonePreset { speakerID = String(preset); if let id = initialPhoneModelID { phoneModelID = id; model.phone.chooseModel("speak-tts",id) } }; if let id = initialComputerVoiceID { preference = .computer; selection.chooseProfile(id, profiles: model.profiles, inventory: model.inventory, catalog: model.languages) } }
         .task { await model.phone.refresh(); reconcilePhone() }
-        .onChange(of: speakerID) { _, _ in reconcilePhone() }
+        .onChange(of: speakerID) { _, _ in
+            if phoneVoice != nil, phoneModel?.supportsCloning != true { phoneModelID = model.phone.selectedModel("speak-clone",.clone)?.id ?? "" }
+            reconcilePhone()
+        }
         .onChange(of: phoneModel?.id) { _, _ in reconcilePhone() }
         .onChange(of: model.phone.voices) { _, _ in if speakerID.hasPrefix("phone:") && phoneVoice == nil { speakerID = "0" } }
         .onDisappear { exportTask?.cancel(); generation?.cancel(); if hostScope != model.hostState.scopeID { player.clear() } else { player.pause() } }
@@ -107,24 +113,28 @@ struct SpeakView: View {
     private var speakerOptions: [SelectionOption] {
         let count = min(128, Int(phoneModel?.config["num_speakers"]?.number ?? 1))
         let presets: [SelectionOption] = (0..<count).map { index in
-            SelectionOption(id: String(index), title: model.t("mobile.local.preset_voice", ["number": String(index + 1)]))
+            SelectionOption(id: String(index), title: phoneModel?.supportsDesign == true ? model.t("mobile.simple.default_voice") : model.t("mobile.local.preset_voice", ["number": String(index + 1)]))
         }
         let saved: [SelectionOption] = model.phone.voices.map { SelectionOption(id: "phone:" + $0.id.uuidString, title: $0.name) }
-        return presets + saved
+        return (phoneModel?.requiresReference == true ? [SelectionOption(id: "", title: model.t("mobile.dub.choose_voice"), enabled: false)] : presets) + saved
     }
     private var phoneModelBinding: Binding<String> {
         Binding(get: { phoneModel?.id ?? "" }, set: { id in
+            guard let chosen = model.phone.models.first(where: { $0.id == id && $0.supportsSpeech }) else { return }
             phoneModelID = id
+            if phoneVoice != nil && !chosen.supportsCloning { speakerID = "0" }
             model.phone.chooseModel("speak-" + capability.rawValue, id)
+            if chosen.supportsCloning { model.phone.chooseModel("speak-clone", id) }
+            reconcilePhone()
         })
     }
     private var modelOptions: [SelectionOption] {
-        model.phone.candidates(capability).map { item in
+        model.phone.models.filter(\.supportsSpeech).map { item in
             SelectionOption(id: item.id, title: item.name, subtitle: model.t("mobile.simple." + item.capability.rawValue), enabled: item.fits())
         }
     }
     private var languageOptions: [SelectionOption] {
-        if phoneVoice != nil { return [SelectionOption(id: "auto", title: model.t("mobile.ios.language_auto"))] }
+        if phoneVoice != nil || phoneModel?.capability == .clone { return [SelectionOption(id: "auto", title: model.t("mobile.ios.language_auto"))] }
         let locale = Locale(identifier: model.l10n.locale)
         return (phoneModel?.languages ?? []).map { code in
             SelectionOption(id: code, title: locale.localizedString(forLanguageCode: code) ?? code)
@@ -141,6 +151,10 @@ struct SpeakView: View {
                     ChoicePicker(label: model.t("mobile.speak.language"), selection: $phoneLanguage, options: languageOptions, compact: false)
 
                 }.disabled(generating)
+                if phoneModel?.requiresReference == true && phoneVoice == nil {
+                    Text(model.t("mobile.speak.reference_required")).font(.callout).foregroundStyle(theme.color("textMuted"))
+                    NavigationLink(model.t("nav.gallery")) { GalleryView() }.disabled(generating)
+                }
             } else {
             VStack(alignment: .leading, spacing: 0) {
                 VoicePicker(selection: Binding(get: { selection.profileID }, set: {
@@ -207,7 +221,7 @@ struct SpeakView: View {
                                 let reference = try await store.reference(voice)
                                 audio = try await engine.clone(model: phoneModel,text: submittedText,reference: reference,referenceText: voice.transcript,progress: report)
                             } else {
-                                audio = try await engine.synthesize(model: phoneModel.selectingLanguage(phoneLanguage),text: submittedText,speaker: Int(speakerID) ?? 0,speed: 1,progress: report)
+                                audio = try await engine.synthesize(model: phoneModel.capability == .clone ? phoneModel : phoneModel.selectingLanguage(phoneLanguage),text: submittedText,speaker: Int(speakerID) ?? 0,speed: 1,progress: report)
                             }
                             let saved = try await model.phone.generationStore?.save(text: submittedText,audio: audio,model: phoneModel)
                             await model.phone.refresh()
@@ -229,7 +243,7 @@ struct SpeakView: View {
                 Label(model.t(generating ? "mobile.speak.generating" : "mobile.speak.generate"), systemImage: "waveform")
                     .frame(maxWidth: .infinity)
             }.studioButton(.primary)
-                .disabled(exporting || model.busy || model.phone.activeDub != nil || generating || (route != .phone && route != .computer) || (route == .computer && !selection.canGenerate(in: model.inventory, profiles: model.profiles)) || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled((route == .phone && phoneModel?.requiresReference == true && phoneVoice == nil) || exporting || model.busy || model.phone.activeDub != nil || generating || (route != .phone && route != .computer) || (route == .computer && !selection.canGenerate(in: model.inventory, profiles: model.profiles)) || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityIdentifier("speak.generate")
             if generating {
                 if let value = localProgress { ProgressView(value: value.fraction).accessibilityLabel(model.t("mobile.ios.progress")) }
@@ -254,11 +268,12 @@ struct SpeakView: View {
         .computer(.speak, id: id, engine: model.computerEngines[id], typedText: text)
     }
     private func reconcilePhone() {
-        if phoneVoice != nil { phoneLanguage = "auto" }
-        else {
-            if !(phoneModel?.languages.contains(phoneLanguage) ?? false) { phoneLanguage = phoneModel?.languages.first ?? "en" }
+        if phoneVoice != nil || phoneModel?.capability == .clone { phoneLanguage = "auto" }
+        else if !(phoneModel?.languages.contains(phoneLanguage) ?? false) { phoneLanguage = phoneModel?.languages.first ?? "en" }
+        if phoneVoice == nil {
             let count = min(128,Int(phoneModel?.config["num_speakers"]?.number ?? 1))
-            if !(0..<max(1,count)).contains(Int(speakerID) ?? -1) { speakerID = "0" }
+            if phoneModel?.requiresReference == true { speakerID = "" }
+            else if !(0..<max(1,count)).contains(Int(speakerID) ?? -1) { speakerID = "0" }
         }
     }
 

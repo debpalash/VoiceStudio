@@ -3429,7 +3429,7 @@
     "add_details": "Tambah detail",
     "step_start": "Mulai",
     "step_agent": "Agen",
-    "step_speak": "Bicara",
+    "step_speak": "Ucapan",
     "step_condition": "Kondisi",
     "step_call": "Panggilan",
     "step_end": "Selesai",
@@ -3796,7 +3796,7 @@
       "brought_by": "Dipersembahkan oleh"
     },
     "tabs": {
-      "speak": "Bicara",
+      "speak": "Ucapan",
       "voices": "Suara",
       "dub": "Sulih suara",
       "dictate": "Dikte",
@@ -3844,7 +3844,8 @@
       "unstar": "Hapus bintang",
       "engine_unavailable": "Mesin ini tidak tersedia. Periksa instalasinya di komputer Anda.",
       "voice_default": "Suara default (preset mesin)",
-      "engine_no_cloning": "Mesin ini tidak dapat memakai audio referensi. Pilih mesin yang mendukung kloning suara, atau gunakan suara default."
+      "engine_no_cloning": "Mesin ini tidak dapat memakai audio referensi. Pilih mesin yang mendukung kloning suara, atau gunakan suara default.",
+      "reference_required": "Pilih suara tersimpan untuk menggunakan model ini. Anda dapat mengimpornya dari Galeri."
     },
     "voices": {
       "search": "Cari suara",
@@ -4073,7 +4074,7 @@
       "preset_voice": "Suara {{number}}",
       "transfer": "{{received}} dari {{total}}",
       "privacy": "Tugas di perangkat tetap di ponsel ini. Hanya unduhan model, laporan yang Anda pilih untuk dikirim, dan komputer yang dipasangkan yang memakai jaringan.",
-      "computer_feature": "Fitur ini saat ini berjalan di komputer Anda. Anda dapat memakai Bicara dan Dikte di ponsel ini tanpa memasangkan.",
+      "computer_feature": "Fitur ini saat ini berjalan di komputer Anda. Anda dapat memakai Ucapan dan Dikte di ponsel ini tanpa memasangkan.",
       "accepted": "Lisensi diterima",
       "not_accepted": "Lisensi belum diterima",
       "receipt": "{{action}} · {{time}} · Aplikasi {{version}} · Ketentuan {{fingerprint}}"

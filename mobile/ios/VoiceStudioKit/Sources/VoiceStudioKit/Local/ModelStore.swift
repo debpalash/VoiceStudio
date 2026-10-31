@@ -14,7 +14,7 @@ public struct DownloadPolicy: Sendable {
 public final class ModelRedirectDelegate: NSObject, URLSessionTaskDelegate, Sendable {
     public static func allowed(_ url: URL) -> Bool {
         guard url.scheme == "https", url.user == nil, url.password == nil, url.port == nil || url.port == 443, let host = url.host?.lowercased() else { return false }
-        return ["huggingface.co", "hf-mirror.com", "hf.co", "xethub.hf.co"].contains(host) || host.hasSuffix(".huggingface.co") || host.hasSuffix(".hf.co") || host.hasSuffix(".hf-mirror.com")
+        return ["huggingface.co", "hf-mirror.com", "hf.co", "xethub.hf.co", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"].contains(host) || host.hasSuffix(".huggingface.co") || host.hasSuffix(".hf.co") || host.hasSuffix(".hf-mirror.com")
     }
     public func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
         guard let url = request.url, Self.allowed(url) else { completionHandler(nil); return }
@@ -55,10 +55,12 @@ public actor ModelStore {
         let identity: String
     }
     private var verified: [URL: VerificationStamp] = [:]
+    private let bundledRoot: URL?
     private let fileHash: @Sendable (URL) throws -> String
     private let ram: UInt64
     private let available: @Sendable (URL) throws -> Int64
     public init(root: URL, ram: UInt64 = ProcessInfo.processInfo.physicalMemory,
+                bundledRoot: URL? = nil,
                 fileHash: @escaping @Sendable (URL) throws -> String = { try ModelHash.file($0) },
                 available: @escaping @Sendable (URL) throws -> Int64 = { url in
                     let values = try url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey])
@@ -66,6 +68,7 @@ public actor ModelStore {
                     if let capacity = values.volumeAvailableCapacity, capacity > 0 { return Int64(capacity) }
                     return (try FileManager.default.attributesOfFileSystem(forPath: url.path)[.systemFreeSize] as? NSNumber)?.int64Value ?? 0
                 }) throws {
+        self.bundledRoot = bundledRoot ?? Bundle.main.resourceURL?.appendingPathComponent("Catalogs")
         self.root = root; self.ram = ram; self.available = available; self.fileHash = fileHash
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         var excluded = root; var values = URLResourceValues(); values.isExcludedFromBackup = true; try excluded.setResourceValues(values)
@@ -161,6 +164,12 @@ public actor ModelStore {
             let part = partial(model, f)
             try FileManager.default.createDirectory(at: part.deletingLastPathComponent(), withIntermediateDirectories: true)
             if size(part) > f.size { try FileManager.default.removeItem(at: part) }
+            if let asset = f.bundled {
+                guard ModelAssetSource.validBundled(asset),f.url == nil,let bundledRoot else { throw ClientError("mobile.local.catalogue_failed") }
+                let source = bundledRoot.appendingPathComponent(asset)
+                if FileManager.default.fileExists(atPath: part.path) { try FileManager.default.removeItem(at: part) }
+                try FileManager.default.copyItem(at: source,to: part)
+            }
             while size(part) < f.size {
                 try Task.checkCancellation(); try checkPermission(model)
                 let onWifi = await wifi()
@@ -171,7 +180,12 @@ public actor ModelStore {
                 var received = false
                 for host in ["huggingface.co", "hf-mirror.com"] {
                     do {
-                        let url = URL(string: "https://\(host)/\(model.repo)/resolve/\(model.revision)/\(f.path)")!
+                        let url: URL
+                        if let fixed = f.url {
+                            guard ModelAssetSource.validURL(fixed),var components = URLComponents(string: fixed) else { throw ClientError("mobile.local.catalogue_failed") }
+                            if components.host == "huggingface.co" { components.host = host }
+                            guard let selected = components.url else { throw ClientError("mobile.local.catalogue_failed") }; url = selected
+                        } else { url = URL(string: "https://\(host)/\(model.repo)/resolve/\(model.revision)/\(f.path)")! }
                         var request = URLRequest(url: url)
                         let end = min(offset + 4_194_303, f.size - 1)
                         request.setValue("bytes=\(offset)-\(end)", forHTTPHeaderField: "Range")
