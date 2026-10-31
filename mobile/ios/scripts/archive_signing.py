@@ -57,8 +57,11 @@ def cleanup():
             command(["security", "list-keychains", "-d", "user", "-s", *previous])
             search_list.unlink()
     finally:
-        if keychain.exists():
-            command(["security", "delete-keychain", str(keychain)])
+        try:
+            keychain.with_suffix(".p12").unlink(missing_ok=True)
+        finally:
+            if keychain.exists():
+                command(["security", "delete-keychain", str(keychain)])
 
 
 def install():

@@ -145,6 +145,8 @@ def test_cleanup_deletes_private_keychain_even_when_search_list_restore_fails(tm
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     keychain, search_list = signing.paths()
     keychain.touch()
+    decoded = keychain.with_suffix(".p12")
+    decoded.write_bytes(b"fixture-private-identity")
     search_list.write_text('["/tmp/existing.keychain-db"]')
 
     def run(args, **kwargs):
@@ -158,3 +160,13 @@ def test_cleanup_deletes_private_keychain_even_when_search_list_restore_fails(tm
     with pytest.raises(RuntimeError, match="fixture restore failure"):
         signing.cleanup()
     assert not keychain.exists()
+    assert not decoded.exists()
+
+
+def test_cleanup_removes_decoded_identity_after_interrupted_install(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    keychain, _ = signing.paths()
+    decoded = keychain.with_suffix(".p12")
+    decoded.write_bytes(b"fixture-private-identity")
+    signing.cleanup()
+    assert not decoded.exists()
