@@ -7,6 +7,8 @@ export { nvidiaDriverPresent, cudaOnlyPackages } from '../../scripts/torch-varia
 import { inspectRuntimeInterpreter } from './runtime-interpreter';
 import { RuntimeLaunchRefusedError, runtimeLaunchRefusal } from './runtime-launch-refusal';
 import { WINDOWS_ROCM_IMPORT_TIMEOUT_MS } from './runtime-probe';
+import { RUNTIME_IMPORT_PROBE, lastImportAttempted } from './runtime-import-probe';
+export { RUNTIME_IMPORT_PROBE, lastImportAttempted } from './runtime-import-probe';
 import {
   windowsRocmSelected,
   windowsRocmStamp,
@@ -180,33 +182,6 @@ export const OUTDATED_SYSTEM_LIBRARY_CODE = 'OUTDATED_SYSTEM_LIBRARY';
 export const MIN_MSVCP140_VERSION = [14, 40] as const;
 /** Windows exit status for an access violation, unsigned and signed. */
 const ACCESS_VIOLATION_EXIT_CODES = new Set<unknown>([3221225477, -1073741819]);
-const RUNTIME_IMPORT_MODULES = [
-  'fastapi',
-  'uvicorn',
-  'omnivoice',
-  'faster_whisper',
-  'sentencepiece',
-  'torch',
-  'torchaudio',
-  'torchvision',
-] as const;
-const IMPORT_MARKER = 'VOICESTUDIO_IMPORT=';
-/**
- * Imports every runtime module, announcing each one first. A native import that
- * dies with an access violation (exit code 3221225477) leaves no traceback, so
- * the last announcement is the only evidence of which module crashed (#3293).
- */
-export const RUNTIME_IMPORT_PROBE = RUNTIME_IMPORT_MODULES.map(
-  (name) => `print('${IMPORT_MARKER}${name}', flush=True)\nimport ${name}`,
-).join('\n');
-/** The module an import probe was loading when its output stopped, if it said. */
-export function lastImportAttempted(output: unknown): string | null {
-  const marked = String(output ?? '')
-    .split(/\r?\n/)
-    .filter((line) => line.startsWith(IMPORT_MARKER))
-    .at(-1);
-  return marked ? marked.slice(IMPORT_MARKER.length).trim() || null : null;
-}
 function importFailure(error: unknown): Error {
   const failure = error as { code?: unknown; message?: unknown; stdout?: unknown } | null;
   const module = lastImportAttempted(failure?.stdout);

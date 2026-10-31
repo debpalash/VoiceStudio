@@ -2,6 +2,7 @@ import { decideMissingRuntime, runtimeWasInstalled } from './runtime-repair';
 import { windowsRocmInstalled, windowsRocmRequested } from './runtime-windows-rocm';
 import { runtimeProjectReady } from './runtime-readiness';
 import { runRuntimeProbe } from './runtime-probe';
+import { selectedPythonPath, shouldBypassManagedRuntime, validatePythonRuntime } from './runtime-python-selection';
 import { RuntimeLaunchRefusedError } from './runtime-launch-refusal';
 import { pypiFilesHost } from './pypi-mirror';
 import {
@@ -490,6 +491,21 @@ export async function resolveSpawnPlan(
   const root = backendRoot();
   const override = parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD);
   if (override) return { argv: override, cwd: root };
+  const selectedPython = selectedPythonPath();
+  if (selectedPython) {
+    // The external interpreter uses bundled sources; no managed project exists yet.
+    const project = root;
+    const validation = await validatePythonRuntime(selectedPython, project);
+    if (!validation.ok) {
+      const missing = validation.missingModules?.length
+        ? ` Missing modules: ${validation.missingModules.join(', ')}.`
+        : '';
+      return {
+        error: `The selected Python runtime is not compatible${validation.version ? ` (Python ${validation.version})` : ''}.${missing} ${validation.detail ?? 'Validation failed.'} Select another interpreter or return to the managed runtime.`,
+      };
+    }
+    return { argv: [selectedPython, '-m', ...UVICORN_ARGS, '--port', String(port)], cwd: project };
+  }
   if (app.isPackaged) {
     const project = packagedProject ?? join(defaultRuntimeRoot(), 'project');
     // Heals runtimes installed before #1783 was fixed without a repair run.
@@ -605,6 +621,7 @@ function childEnv(
   delete env.PYTHONPATH;
   env.PYTHONUNBUFFERED = '1';
   env.PYTHONUTF8 = '1';
+  env.PYTHONDONTWRITEBYTECODE = '1';
   // Arms backend/core/parent_liveness.py: stdin EOF == "the shell is gone".
   env.OMNIVOICE_DESKTOP_CONTAINED = '1';
   env.OMNIVOICE_PORT = String(port);
@@ -1028,7 +1045,13 @@ export class BackendSupervisor extends EventEmitter<{
         }
       }
 
-      if (app.isPackaged && !parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD)) {
+      if (
+        !shouldBypassManagedRuntime(
+          app.isPackaged,
+          selectedPythonPath(),
+          process.env.OMNIVOICE_BACKEND_CMD,
+        )
+      ) {
         const { project, ready } = await this.resolveRuntimeProject();
         if (!ready) {
           if (gen === this.generation) {
