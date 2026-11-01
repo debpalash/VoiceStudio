@@ -444,3 +444,28 @@ def test_bootstrap_install_failure_reports_uvs_error_not_a_host_guess(monkeypatc
     assert "resolver: no wheel for torchcodec" in message
     assert "non-CUDA" not in message
     assert "docs/engines/moss-tts-v15.md" in message
+
+
+def test_rdna2_moss_uses_fp32(monkeypatch):
+    import io
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from engines.moss_tts_v15 import main
+
+    torch = SimpleNamespace(
+        version=SimpleNamespace(hip="7.15"),
+        accelerator=SimpleNamespace(current_accelerator=lambda **kw: SimpleNamespace(type="cuda")),
+        cuda=SimpleNamespace(get_device_properties=lambda i: SimpleNamespace(gcnArchName="gfx1032")),
+        bfloat16="bf16", float32="fp32",
+    )
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    processor = Mock()
+    processor.model_config.sampling_rate = 24000
+    factory = Mock()
+    factory.from_pretrained.return_value.to.return_value = factory.from_pretrained.return_value
+    monkeypatch.setitem(sys.modules, "transformers", SimpleNamespace(
+        AutoModel=factory, AutoProcessor=SimpleNamespace(from_pretrained=lambda *a, **kw: processor)))
+    monkeypatch.setattr(main, "_snapshot_path", lambda *a: "local-fixture")
+    monkeypatch.setattr(main, "_state", None)
+    main._load_model(io.BytesIO())
+    assert factory.from_pretrained.call_args.kwargs["torch_dtype"] == "fp32"

@@ -102,6 +102,16 @@ def _measure_vram_mb() -> float:
 _runtime = None
 
 
+def _rocm_rdna2(torch):
+    """RDNA 2 bf16 GEMM can crash rocBLAS even when Torch claims support (#2372)."""
+    if not getattr(getattr(torch, "version", None), "hip", None):
+        return False
+    try:
+        return str(torch.cuda.get_device_properties(0).gcnArchName).lower().startswith("gfx103")
+    except Exception:  # noqa: BLE001 - unknown ROCm architecture uses safe precision
+        return True
+
+
 def _load_runtime(stdout):
     """Cold-construct the dots.tts runtime.
 
@@ -126,6 +136,8 @@ def _load_runtime(stdout):
     except Exception:
         default_precision = "float32"  # Probe failure must not force half precision.
     precision = os.environ.get("OMNIVOICE_DOTS_TTS_PRECISION", default_precision)
+    if _rocm_rdna2(torch) and precision.strip().lower() in ("bfloat16", "bf16"):
+        precision = "float32"
     optimize = os.environ.get("OMNIVOICE_DOTS_TTS_OPTIMIZE", "0") == "1"
 
     _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 50})

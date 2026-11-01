@@ -23,21 +23,32 @@ probe.validate_target = lambda: None
 probe.metadata.version = versions.__getitem__
 probe.package_root = lambda name: __import__('pathlib').Path('unused')
 probe.sha256 = lambda path: recipe['ctranslate2']['binary_sha256']
+probe.ct2_supported = lambda selected: True
 probe.initialize_dll_search = lambda: None
 probe.sysconfig.get_platform = lambda: 'win-amd64'
 
 class Tensor:
     device = SimpleNamespace(type='cuda')
+    shape = (1, 8, 16)
     def __matmul__(self, other): return self
     def __eq__(self, other): return self
     def __getitem__(self, index): return self
     def item(self): return 4.0
+    def all(self): return self
+
+class Conv1d:
+    def __init__(self, *args, **kwargs): pass
+    def cuda(self): return self
+    def to(self, dtype): return self
+    def __call__(self, samples): return Tensor()
 
 sys.modules['torch'] = SimpleNamespace(
     version=SimpleNamespace(hip='7.2.53211'),
     cuda=SimpleNamespace(is_available=lambda: True, synchronize=lambda: None,
         get_device_properties=lambda index: SimpleNamespace(gcnArchName='gfx1100')),
-    ones=lambda *a, **kw: Tensor(), all=lambda tensor: tensor)
+    nn=SimpleNamespace(Conv1d=Conv1d),
+    float16='float16',
+    ones=lambda *a, **kw: Tensor(), all=lambda tensor: tensor, isfinite=lambda tensor: tensor)
 sys.modules['ctranslate2'] = SimpleNamespace(
     get_cuda_device_count=lambda: 1, get_supported_compute_types=lambda device: {'float16'})
 sys.modules['torchaudio'] = SimpleNamespace()
