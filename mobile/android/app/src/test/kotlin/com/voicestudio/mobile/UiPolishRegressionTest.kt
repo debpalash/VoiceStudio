@@ -139,7 +139,7 @@ class UiPolishRegressionTest {
             compose.setContent {androidx.compose.runtime.CompositionLocalProvider(LocalL10n provides l) {
                 VoiceStudioTheme {
                     val phone=vm.phone.state.collectAsStateWithLifecycle().value
-                    com.voicestudio.mobile.features.models.MissingModelsCard(vm,"mobile.tabs.speak",phone.models.filter {it.capability=="tts"}.take(1))
+                    com.voicestudio.mobile.features.models.MissingModelsCard(vm,"mobile.tabs.speak",listOfNotNull(phone.models.firstOrNull {it.capability=="tts"},phone.models.firstOrNull {it.capability=="asr"}))
                 }
             }}
             compose.waitUntil(15000) {shadowOf(Looper.getMainLooper()).idle();!vm.phone.state.value.loading}
@@ -150,6 +150,11 @@ class UiPolishRegressionTest {
             vm.phone.downloads.paused(model.id,model.totalBytes)
             val paused=vm.phone.downloads.progress.value.getValue(model.id)
             compose.onNodeWithText(modelDownloadDescription(app,l,paused)).assertExists()
+            val other=vm.phone.state.value.models.first {it.capability=="asr"}
+            vm.phone.downloads.paused(model.id,model.totalBytes,"mobile.local.storage_required")
+            vm.phone.downloads.scheduled(other.id,other.totalBytes)
+            compose.onNodeWithContentDescription("Cancel").performClick()
+            Assert.assertEquals("mobile.local.storage_required",vm.phone.downloads.progress.value[model.id]?.error)
         } finally {vm.viewModelScope.cancel()}
     }
     @Test fun pickerShowsVisibleSelectedMark() {

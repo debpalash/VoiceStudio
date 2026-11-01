@@ -208,14 +208,15 @@ class ModelDownloads internal constructor(
     }
     private class RangeUnsupported: IOException()
     private suspend fun resilientTransfer(model: PhoneModel,file: ModelFile,partial: File,allowMobile: Boolean,report: (Long,String,Long)->Unit) {
-        if(file.size-partial.length()<chunkSize*2) { retryTransfer(model,file,partial,allowMobile,report);return }
-        val directory=rangesDir(partial).apply {mkdirs()}
-        // Bind reusable ranges to this exact immutable file, even after catalogue updates.
-        val identity=File(directory,"identity")
-        if(!identity.isFile||identity.readText()!=file.sha256) {directory.listFiles().orEmpty().forEach {it.delete()};identity.writeText(file.sha256)}
+        val directory=rangesDir(partial)
         var width=2
         var previousRate=0.0
         try {
+            if(file.size-partial.length()<chunkSize*2) {retryTransfer(model,file,partial,allowMobile,report);return}
+            directory.mkdirs()
+            // Bind reusable ranges to this exact immutable file, even after catalogue updates.
+            val identity=File(directory,"identity")
+            if(!identity.isFile||identity.readText()!=file.sha256) {directory.listFiles().orEmpty().forEach {it.delete()};identity.writeText(file.sha256)}
             while(partial.length()<file.size) {
                 checkReservedSpace()
                 val start=partial.length()
@@ -367,7 +368,7 @@ class ModelDownloads internal constructor(
                                 if(response.code==429||response.code in 500..599||response.code in listOf(408,403)) throw RetryDownloadFailure(response.code,response.header("Retry-After"))
                                 throw PermanentDownloadFailure("Download HTTP ${response.code}")
                             }
-                            if(ranged&&response.code==200) throw RangeUnsupported()
+                            if(!wholeFile&&(ranged||offset>0)&&response.code==200) throw RangeUnsupported()
                             val start=if(response.code==206) offset else 0L
                             if(response.code==206 && response.header("Content-Range")!="bytes ${lower+offset}-$upper/${file.size}") throw PermanentDownloadFailure("Invalid range")
                             val body=response.body ?: throw IOException()

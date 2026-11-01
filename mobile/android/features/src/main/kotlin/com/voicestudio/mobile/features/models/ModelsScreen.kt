@@ -203,7 +203,7 @@ import com.voicestudio.mobile.data.modelDownloadDescription
                     if(needed.size==1) Text(tr("mobile.simple.${needed.single().capability}"),style=MaterialTheme.typography.labelSmall,color=role("textMuted"))
                 }
                 if(!prominent) {
-                    if(running) IconAction("common.cancel",Icons.Default.Close) {queue=emptyList();needed.forEach(vm.phone::cancelDownload)}
+                    if(running) IconAction("common.cancel",Icons.Default.Close) {queue=emptyList();needed.filter {progress[it.id]?.running==true}.forEach(vm.phone::cancelDownload)}
                     else TextButton(enabled=queue.isEmpty(),onClick={queue=needed.map {it.id}}) {Text(tr(downloadKey))}
                 }
             }
@@ -220,7 +220,7 @@ import com.voicestudio.mobile.data.modelDownloadDescription
             }
             if(prominent) {
                 Button(modifier=Modifier.fillMaxWidth(),enabled=running||queue.isEmpty(),onClick={
-                    if(running) {queue=emptyList();needed.forEach(vm.phone::cancelDownload)} else queue=needed.map {it.id}
+                    if(running) {queue=emptyList();needed.filter {progress[it.id]?.running==true}.forEach(vm.phone::cancelDownload)} else queue=needed.map {it.id}
                 }) {Text(tr(if(running) "common.cancel" else downloadKey))}
             }
         }

@@ -181,6 +181,20 @@ class LocalPolicyTest {
             assertArrayEquals(bytes.copyOfRange(0,5),partial.readBytes());assertFalse(d.installed(m))
         }
     }
+    @Test fun serialWholeFallbackRejectsCorruptionBeforeReplacingThePrefix() = runTest {
+        MockWebServer().use {server ->
+            val bytes=ByteArray(1024) {(it%251).toByte()}
+            val m=model().let {it.copy(files=listOf(it.files.single().copy(size=1024,sha256=hash(bytes))),totalBytes=1024)}
+            val partial=File(temporary.root,"models/fixture/weights.bin.part").apply {parentFile!!.mkdirs();writeBytes(bytes.copyOfRange(0,5))}
+            server.dispatcher=object:okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest)=MockResponse().setBody(Buffer().write(ByteArray(1024)))
+            }
+            server.start()
+            val d=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{true},{Long.MAX_VALUE},OkHttpClient.Builder().followRedirects(false).build(),listOf(server.url("/").toString()),true,chunkSize=2048)
+            failure("mobile.local.checksum_failed") {d.download(m,false)}
+            assertArrayEquals(bytes.copyOfRange(0,5),partial.readBytes());assertFalse(d.installed(m))
+        }
+    }
     @Test fun interruptedWholeFallbackRetainsTheLongerContiguousPrefix() = runTest {
         MockWebServer().use {server ->
             val bytes=ByteArray(1024) {(it%251).toByte()}
@@ -283,7 +297,9 @@ class LocalPolicyTest {
         }
     }
     @Test fun serverIgnoringRangeRestartsWithoutAppending() = runTest {
-        MockWebServer().use {server -> server.start();server.enqueue(MockResponse().setBody(Buffer().write(payload)))
+        MockWebServer().use {server -> server.start()
+            server.enqueue(MockResponse().setBody(Buffer().write(payload)))
+            server.enqueue(MockResponse().setBody(Buffer().write(payload)))
             File(temporary.root,"models/fixture/weights.bin.part").apply {parentFile!!.mkdirs();writeBytes(payload.copyOfRange(0,5))}
             val d=downloads(server);d.download(model(),false);assertTrue(d.installed(model()))
         }
