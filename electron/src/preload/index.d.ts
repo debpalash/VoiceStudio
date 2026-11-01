@@ -105,6 +105,23 @@ export interface RuntimeLocation {
   custom: boolean;
 }
 
+export interface PythonRuntimeCandidate {
+  pythonPath: string;
+  source: string;
+  version?: string;
+}
+export interface PythonRuntimeDiscoveryWarning {
+  path: string;
+  reason: 'permission_denied' | 'scan_limit' | 'read_error';
+}
+export interface PythonDiscoveryResult {
+  candidates: PythonRuntimeCandidate[];
+  warnings: PythonRuntimeDiscoveryWarning[];
+  partial: boolean;
+  scannedRoots: string[];
+}
+export interface PythonRepairPlan { interpreter: string; packages: string[]; }
+
 export interface BackendConnection {
   remote: boolean;
   url: string;
@@ -429,6 +446,65 @@ export interface VoiceStudioBridge {
     setRuntimeRegion(region: RuntimeRegion): Promise<RuntimeRegion>;
     chooseRuntimeLocation(title: string): Promise<RuntimeLocation | null>;
     useDefaultRuntimeLocation(): Promise<RuntimeLocation>;
+    getPythonRuntime(): Promise<{
+      selection: { pythonPath: string } | null;
+      overrideActive: boolean;
+    }>;
+    choosePythonRuntime(title?: string): Promise<{
+      ok: boolean;
+      canceled?: boolean;
+      pythonPath?: string;
+      version?: string;
+      missingModules?: string[];
+      detail?: string;
+      token?: string;
+      repairPlan?: PythonRepairPlan;
+    }>;
+    confirmPythonRuntime(token: string): Promise<{
+      ok: boolean;
+      pythonPath: string;
+      version?: string;
+      missingModules?: string[];
+      detail?: string;
+      repairPlan?: PythonRepairPlan;
+    }>;
+    planPythonRepair(selectionToken: string): Promise<{
+      ok: boolean;
+      pythonPath: string;
+      version?: string;
+      missingModules?: string[];
+      detail?: string;
+      repairToken?: string;
+      repairPlan?: PythonRepairPlan;
+    }>;
+    installPythonRepair(request: {
+      token: string;
+      pythonPath: string;
+      packages: string[];
+    }): Promise<{
+      ok: boolean;
+      pythonPath: string;
+      version?: string;
+      missingModules?: string[];
+      detail?: string;
+      installed: boolean;
+      canceled?: boolean;
+      token?: string;
+      repairToken?: string;
+      outputTail?: string;
+    }>;
+    onPythonRepairProgress(callback: (event: { text: string; stream: 'stdout' | 'stderr' }) => void): () => void;
+    useManagedPython(): Promise<{ ok: boolean }>;
+    discoverPythonRuntimes(): Promise<PythonDiscoveryResult>;
+    useDiscoveredPythonRuntime(pythonPath: string): Promise<{
+      ok: boolean;
+      pythonPath: string;
+      version?: string;
+      missingModules?: string[];
+      detail?: string;
+      token?: string;
+      repairPlan?: PythonRepairPlan;
+    }>;
     getConnection(): Promise<BackendConnection>;
     getHostSnapshot(): Promise<HostSnapshotLike>;
     testRemote(input: { url: string; apiKey: string }): Promise<RemoteBackendProbe>;

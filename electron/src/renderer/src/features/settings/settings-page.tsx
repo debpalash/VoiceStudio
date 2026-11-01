@@ -44,9 +44,18 @@ import { cn } from '@/lib/utils';
 import { SettingsContent, SettingsPageTitleContext } from './settings-layout';
 import { SettingsNav, type SettingsLocation } from './settings-nav';
 import { AppearanceResetButton, AppearanceSettings, GeneralSettings } from './settings-preferences';
+import { ExistingPythonSettings } from './existing-python-settings';
 import { rememberSettingsRoute } from '@/lib/settings-route';
 
-// Pause fill (#3611) sits with the pronunciation dictionary: both shape how
+function PerformanceAndPythonSettings() {
+  return (
+    <>
+      <ExistingPythonSettings />
+      <PerformanceSettings />
+    </>
+  );
+}
+
 // the generated speech sounds.
 function SpeechOutputSettings() {
   return (
@@ -130,7 +139,7 @@ const extraSettings = [
     to: '/settings/performance',
     label: 'settings.perf_title',
     Icon: CpuIcon,
-    Component: PerformanceSettings,
+    Component: PerformanceAndPythonSettings,
     fields: [
       'settings.perf_title',
       'settings.compute_device_title',

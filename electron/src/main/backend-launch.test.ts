@@ -1,7 +1,13 @@
 // @vitest-environment node
 import { afterEach, expect, it, vi } from 'vitest';
 import { join, resolve } from 'node:path';
-const state = vi.hoisted(() => ({ installed: true, packaged: false, ready: true, checkout: true }));
+const state = vi.hoisted(() => ({ installed: true, packaged: false, ready: true, checkout: true, selected: null as string | null }));
+const validateSelected = vi.hoisted(() => vi.fn(async (pythonPath: string, _cwd: string) => ({ ok: true, pythonPath })));
+vi.mock('./runtime-python-selection', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./runtime-python-selection')>()),
+  selectedPythonPath: () => state.selected,
+  validatePythonRuntime: validateSelected,
+}));
 vi.mock('electron', () => ({
   app: {
     get isPackaged() {
@@ -48,7 +54,23 @@ afterEach(() => {
   state.ready = true;
   state.packaged = false;
   state.checkout = true;
+  state.selected = null;
+  validateSelected.mockClear();
   vi.unstubAllEnvs();
+});
+it('runs a selected interpreter against bundled resources, never the absent managed project', async () => {
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  state.packaged = true;
+  state.selected = '/existing/bin/python';
+  const original = process.resourcesPath;
+  Object.defineProperty(process, 'resourcesPath', { configurable: true, value: '/packaged/resources' });
+  try {
+    const plan = await resolveSpawnPlan(3912, '/missing/managed/project');
+    expect(plan).toMatchObject({ cwd: '/packaged/resources' });
+    expect(validateSelected).toHaveBeenCalledWith('/existing/bin/python', '/packaged/resources');
+  } finally {
+    Object.defineProperty(process, 'resourcesPath', { configurable: true, value: original });
+  }
 });
 it.each(['darwin', 'win32', 'linux'] as const)(
   'leaves China downloads eligible for automatic failover on %s',

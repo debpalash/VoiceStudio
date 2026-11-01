@@ -9,6 +9,7 @@ export interface RuntimeProbeOptions {
   onClose?: (child: ChildProcess) => void;
   /** Resolve with stderr appended to stdout (uv writes its plan and debug log there). */
   captureStderr?: boolean;
+  onOutput?: (text: string, stream: 'stdout' | 'stderr') => void;
 }
 
 /** Terminate the probe tree; its close event remains the cleanup/settlement gate. */
@@ -72,13 +73,17 @@ export function runRuntimeProbe(
     options.signal?.addEventListener('abort', abort, { once: true });
     child.stdin?.on('error', () => {});
     child.stdout?.on('data', (chunk: Buffer | string) => {
-      stdout = (stdout + chunk.toString()).slice(-65_536);
+      const text = chunk.toString();
+      stdout = (stdout + text).slice(-65_536);
+      options.onOutput?.(text, 'stdout');
     });
     let stderr = '';
     if (options.captureStderr)
       child.stderr?.on('data', (chunk: Buffer | string) => {
+        const text = chunk.toString();
         // A verbose uv dry run lists hundreds of packages; keep enough for all of them.
-        stderr = (stderr + chunk.toString()).slice(-4_194_304);
+        stderr = (stderr + text).slice(-4_194_304);
+        options.onOutput?.(text, 'stderr');
       });
     child.once('error', (error) => {
       failure ??= error;
@@ -93,6 +98,7 @@ export function runRuntimeProbe(
         reject(
           Object.assign(failure ?? new Error(`Runtime setup exited with code ${code}`), {
             stdout,
+            stderr,
             code: failure && 'code' in failure ? failure.code : code,
           }),
         );
