@@ -302,6 +302,8 @@ All tabs work without pairing once on-device models are installed (see M2); the 
   Models offers Pause, Resume, Cancel and Delete. Pause/Cancel retain partial
   files; Cancel removes the automatic restore intent; Delete removes partials too.
   Android's ongoing notification displays transfer status and offers Pause.
+  Terminal failure reasons persist with paused intents and appear on both Models
+  and feature download cards; retry clears the old reason.
   Local diagnostic records are bounded status/host metadata only: no signed URLs,
   credentials, user content or automatic diagnostic uploads.
 - **Licence acceptance matches the desktop:** a model whose licence category is

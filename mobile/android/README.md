@@ -316,6 +316,7 @@ guaranteed. Each file must match size and SHA-256 before installation. Native
 loads reuse verification only while file metadata and catalogue identity match.
 Bounded local download diagnostics contain status/host metadata, never signed
 URLs, credentials or user content; OS job stop reasons are stored locally.
+Terminal model-download failures retain their localized reason across relaunch and show it on Models and feature download cards. Retrying clears the saved failure; explicit pauses remain distinct from failures.
 
 Phone files and local licence receipts live under Android's `noBackupFilesDir`;
 they are app-private and excluded from cloud and device backups. Non-commercial,

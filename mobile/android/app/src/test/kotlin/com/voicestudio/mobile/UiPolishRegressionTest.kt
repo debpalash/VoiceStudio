@@ -125,6 +125,30 @@ class UiPolishRegressionTest {
             vm.viewModelScope.cancel()
         }
     }
+    @Test fun featureDownloadCardExplainsATerminalBackgroundFailure()=runBlocking<Unit> {
+        val app=ApplicationProvider.getApplicationContext<Application>()
+        androidx.work.testing.WorkManagerTestInitHelper.initializeTestWorkManager(app)
+        shadowOf(app.getSystemService(android.app.ActivityManager::class.java)).setMemoryInfo(
+            android.app.ActivityManager.MemoryInfo().apply {totalMem=16_000_000_000})
+        val vm=StudioViewModel(app,SessionStore(app,object:CredentialVault {
+            override fun read(host:String):Secret?=null
+            override fun write(host:String,secret:Secret?)=Unit
+        }))
+        val l=L10n.load(app,"en")
+        try {
+            compose.setContent {androidx.compose.runtime.CompositionLocalProvider(LocalL10n provides l) {
+                VoiceStudioTheme {
+                    val phone=vm.phone.state.collectAsStateWithLifecycle().value
+                    com.voicestudio.mobile.features.models.MissingModelsCard(vm,"mobile.tabs.speak",phone.models.filter {it.capability=="tts"}.take(1))
+                }
+            }}
+            compose.waitUntil(15000) {shadowOf(Looper.getMainLooper()).idle();!vm.phone.state.value.loading}
+            val model=vm.phone.state.value.models.first {it.capability=="tts"}
+            vm.phone.downloads.paused(model.id,model.totalBytes,"mobile.local.storage_required")
+            compose.onNodeWithText(l.t("mobile.local.storage_required")).assertExists()
+            compose.onNodeWithText("Retry").assertIsEnabled()
+        } finally {vm.viewModelScope.cancel()}
+    }
     @Test fun pickerShowsVisibleSelectedMark() {
         val app=ApplicationProvider.getApplicationContext<Application>()
         compose.setContent {androidx.compose.runtime.CompositionLocalProvider(LocalL10n provides L10n.load(app,"en")) {

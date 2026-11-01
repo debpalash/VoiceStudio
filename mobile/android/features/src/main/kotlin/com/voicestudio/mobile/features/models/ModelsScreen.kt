@@ -64,7 +64,7 @@ import com.voicestudio.mobile.data.modelDownloadDescription
                 Secondary("mobile.downloads.pause") {vm.phone.pauseDownload(model)}
                 Secondary("common.cancel") {vm.phone.cancelDownload(model)}
             }
-            else if(!installed) Secondary(if(progress[model.id]?.stage=="paused") "mobile.simple.resume" else if(fits) "mobile.local.download" else "mobile.local.try_anyway") {
+            else if(!installed) Secondary(if(progress[model.id]?.error!=null) "mobile.simple.retry" else if(progress[model.id]?.stage=="paused") "mobile.simple.resume" else if(fits) "mobile.local.download" else "mobile.local.try_anyway") {
                 try {if(!vm.phone.licence.accepted(model)) {downloadAfterAccept=true;terms=true} else vm.phone.download(model,preferences.allowMobileModels)} catch(e:Exception) {vm.fail(e)}
             } else Secondary("common.delete") {vm.phone.delete(model)}
         }
@@ -180,7 +180,7 @@ import com.voicestudio.mobile.data.modelDownloadDescription
     val context=LocalContext.current
     val needed=models.distinctBy {it.id}.filterNot {state.canRun(it)}
     val recommendation=needed.filterNot {it.fits(vm.phone.ramBytes)}.maxByOrNull {it.minRamGb}
-    val downloadKey=if(recommendation==null) "mobile.local.download" else "mobile.local.try_anyway"
+    val downloadKey=if(needed.any {progress[it.id]?.error!=null}) "mobile.simple.retry" else if(recommendation==null) "mobile.local.download" else "mobile.local.try_anyway"
     var queue by rememberSaveable {mutableStateOf(emptyList<String>())}
     var showModels by rememberSaveable {mutableStateOf(false)}
     if(needed.isEmpty()) return
@@ -209,6 +209,7 @@ import com.voicestudio.mobile.data.modelDownloadDescription
                 }
             }
             recommendation?.let {Text(tr("mobile.local.ram_required",mapOf("ram" to it.minRamGb)),color=role("textMuted"))}
+            needed.mapNotNull {progress[it.id]?.error}.distinct().forEach {ErrorMessage(it)}
             if(running) {
                 val total=needed.sumOf {progress[it.id]?.total ?: it.totalBytes}
                 val received=needed.sumOf {progress[it.id]?.received ?: 0L}

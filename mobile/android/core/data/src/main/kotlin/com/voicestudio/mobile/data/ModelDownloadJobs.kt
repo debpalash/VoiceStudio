@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 /** The UI submits durable intents; services/workers, never a ViewModel, own transfers. */
 object ModelDownloadJobs {
-    @Serializable internal data class IntentRecord(val model: String,val pin: String,val mobile: Boolean,val jobID: Int,val paused: Boolean=false)
+    @Serializable internal data class IntentRecord(val model: String,val pin: String,val mobile: Boolean,val jobID: Int,val paused: Boolean=false,val error: String?=null)
     private val active=ConcurrentHashMap<String,Job>()
     private fun preferences(context: Context)=context.getSharedPreferences("model-downloads",Context.MODE_PRIVATE)
     @Synchronized private fun read(context: Context): List<IntentRecord> = runCatching {
@@ -49,7 +49,7 @@ object ModelDownloadJobs {
             val info=JobInfo.Builder(item.jobID,ComponentName(context,ModelDownloadService::class.java))
                 .setUserInitiated(true).setRequiredNetwork(network).setEstimatedNetworkBytes(total,0).setExtras(extras).build()
             if(context.getSystemService(JobScheduler::class.java).schedule(info)!=JobScheduler.RESULT_SUCCESS) {
-                pause(context,item.model)
+                pause(context,item.model,"mobile.local.download_failed")
                 throw ClientFailure("mobile.local.download_failed")
             }
         } else {
@@ -65,7 +65,7 @@ object ModelDownloadJobs {
             try {
                 val model=models.firstOrNull {it.id==item.model&&modelPin(it).identity==item.pin}
                 if(model==null) {cancel(context,item.model);continue}
-                if(item.paused) {PhoneRuntime.get(context).downloads.paused(item.model);continue}
+                if(item.paused) {PhoneRuntime.get(context).downloads.paused(item.model,model.totalBytes,item.error);continue}
                 if(PhoneRuntime.get(context).downloads.installed(model)) {finished(context,item.model);continue}
                 if(Build.VERSION.SDK_INT<34||scheduler.getPendingJob(item.jobID)==null) schedule(context,item,model.totalBytes)
                 else PhoneRuntime.get(context).downloads.scheduled(item.model,model.totalBytes,if(item.mobile) "waiting_network" else "waiting")
@@ -73,13 +73,13 @@ object ModelDownloadJobs {
             catch(e:Exception) {onFailure(e as? ClientFailure ?: ClientFailure("mobile.local.download_failed"))}
         }
     }
-    @Synchronized fun pause(context: Context,id: String) {
+    @Synchronized fun pause(context: Context,id: String,error: String?=null) {
         val saved=read(context);val item=saved.firstOrNull {it.model==id}
-        write(context,saved.map {if(it.model==id) it.copy(paused=true) else it})
+        write(context,saved.map {if(it.model==id) it.copy(paused=true,error=error) else it})
         if(item!=null&&Build.VERSION.SDK_INT>=34) context.getSystemService(JobScheduler::class.java).cancel(item.jobID)
         WorkManager.getInstance(context).cancelUniqueWork("model:$id")
         active[id]?.cancel()
-        PhoneRuntime.get(context).downloads.paused(id)
+        PhoneRuntime.get(context).downloads.paused(id,error=error)
     }
     fun cancel(context: Context,id: String) {pause(context,id);finished(context,id)}
     suspend fun stop(context: Context,id: String) {val job=active[id];cancel(context,id);job?.join()}
@@ -137,7 +137,7 @@ class ModelDownloadService: JobService() {
                 if(e is ClientFailure&&e.key=="mobile.local.wifi_required") {
                     PhoneRuntime.get(this@ModelDownloadService).downloads.scheduled(id,PhoneRuntime.get(this@ModelDownloadService).downloads.progress.value[id]?.total ?: 0)
                     jobFinished(params,true)
-                } else {ModelDownloadJobs.pause(this@ModelDownloadService,id);jobFinished(params,false)}
+                } else {ModelDownloadJobs.pause(this@ModelDownloadService,id,(e as? ClientFailure)?.key ?: "mobile.local.download_failed");jobFinished(params,false)}
             }
             finally {updates.cancel();jobs.remove(params.jobId)}
         }
@@ -166,7 +166,7 @@ class ModelDownloadWorker(context: Context,params: WorkerParameters): CoroutineW
             Result.success()
         } catch(e:CancellationException) {ModelDownloadJobs.waiting(applicationContext,model);throw e} catch(e:ClientFailure) {
             if(e.key=="mobile.local.wifi_required") {ModelDownloadJobs.waiting(applicationContext,model);Result.retry()}
-            else {ModelDownloadJobs.pause(applicationContext,model);Result.failure()}
-        } catch(e:Exception) {ModelDownloadJobs.pause(applicationContext,model);Result.failure()}
+            else {ModelDownloadJobs.pause(applicationContext,model,e.key);Result.failure()}
+        } catch(e:Exception) {ModelDownloadJobs.pause(applicationContext,model,"mobile.local.download_failed");Result.failure()}
     }
 }

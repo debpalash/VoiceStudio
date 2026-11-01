@@ -27,11 +27,13 @@ final class WifiState: @unchecked Sendable {
     private(set) var progress: [String: Double] = [:]
     private(set) var downloadDetails: [String: ModelDownloadProgress] = [:]
     private(set) var paused = Set<String>()
+    private(set) var downloadFailures: [String:ClientError] = [:]
     private(set) var used: Int64 = 0
     private(set) var modelBytes: [String: Int64] = [:]
     var error: ClientError?
     var allowMobileData: Bool { didSet { UserDefaults.standard.set(allowMobileData, forKey: "models.mobile-data") } }
     @ObservationIgnored private var downloads: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var downloadTokens: [String: UUID] = [:]
     @ObservationIgnored private let wifi = WifiState()
     private(set) var store: ModelStore?
     private(set) var dubs: [PhoneDubRecord] = []
@@ -54,6 +56,7 @@ final class WifiState: @unchecked Sendable {
         let pin: String
         let mobile: Bool
         var paused: Bool
+        var failure: String? = nil
     }
     private var intents: [DownloadIntent] = []
     private var queueURL: URL?
@@ -105,6 +108,7 @@ final class WifiState: @unchecked Sendable {
         if let queueURL,let data = try? Data(contentsOf: queueURL),let saved = try? JSONDecoder().decode([DownloadIntent].self,from: data) {
             intents = saved.filter { item in models.contains { $0.id == item.id && (try? phoneModelPin($0)) == item.pin } }
             paused = Set(intents.filter(\.paused).map(\.id))
+            for item in intents { if let failure = item.failure { downloadFailures[item.id] = ClientError(failure) } }
         }
         Task {
             await ModelDownloadSessions.reconcile(authorized: Set(intents.map(\.id)))
@@ -157,13 +161,20 @@ final class WifiState: @unchecked Sendable {
         guard let pin = try? phoneModelPin(model) else { error = ClientError("mobile.local.catalogue_failed"); return }
         intents.removeAll { $0.id == model.id }
         intents.append(DownloadIntent(id: model.id,pin: pin,mobile: allowMobileData,paused: false))
-        guard saveIntents() else { return }
+        guard saveIntents() else {
+            intents.removeAll { $0.id == model.id }; paused.insert(model.id)
+            downloadFailures[model.id] = error ?? ClientError("mobile.simple.checkpoint_failed")
+            return
+        }
         paused.remove(model.id)
+        if error == downloadFailures[model.id] { error = nil }
+        downloadFailures.removeValue(forKey: model.id)
         startDownload(model,mobile: allowMobileData)
     }
     private func startDownload(_ model: PhoneModel,mobile: Bool) {
         guard downloads[model.id] == nil,let store else { return }
         progress[model.id] = 0
+        let token = UUID(); downloadTokens[model.id] = token
         let policy = DownloadPolicy(allowMobileData: mobile); let wifi = wifi
         downloads[model.id] = Task {
             let monitor = Task {
@@ -176,7 +187,7 @@ final class WifiState: @unchecked Sendable {
                 }
             }
             defer { monitor.cancel() }
-            defer { downloads[model.id] = nil; progress[model.id] = nil; downloadDetails[model.id] = nil }
+            defer { downloads[model.id] = nil; progress[model.id] = nil; downloadDetails[model.id] = nil; downloadTokens.removeValue(forKey: model.id) }
             do {
                 let transport = try ModelDownloadSessions.transport(allowMobile: mobile)
                 while true {
@@ -189,7 +200,10 @@ final class WifiState: @unchecked Sendable {
                     }
                     do {
                         try await store.download(model,policy: policy,wifi: { wifi.wifi },transport: transport,details: { details in
-                            await MainActor.run { self.downloadDetails[model.id] = details; self.progress[model.id] = details.fraction }
+                            await MainActor.run {
+                                guard self.downloadTokens[model.id] == token else { return }
+                                self.downloadDetails[model.id] = details; self.progress[model.id] = details.fraction
+                            }
                         })
                         intents.removeAll { $0.id == model.id }; saveIntents(); paused.remove(model.id)
                         await ModelDownloadSessions.remove(modelID: model.id)
@@ -198,8 +212,11 @@ final class WifiState: @unchecked Sendable {
                 }
             } catch is CancellationError {} catch {
                 if !Task.isCancelled {
-                    self.error = error as? ClientError ?? ClientError("mobile.local.download_failed")
-                    for index in intents.indices where intents[index].id == model.id { intents[index].paused = true }
+                    let failure = error as? ClientError ?? ClientError("mobile.local.download_failed")
+                    self.error = failure; downloadFailures[model.id] = failure
+                    for index in intents.indices where intents[index].id == model.id {
+                        intents[index].paused = true; intents[index].failure = failure.key
+                    }
                     paused.insert(model.id); saveIntents()
                 }
             }
@@ -208,10 +225,12 @@ final class WifiState: @unchecked Sendable {
     }
     func pause(_ model: PhoneModel) {
         for index in intents.indices where intents[index].id == model.id { intents[index].paused = true }
-        paused.insert(model.id); saveIntents(); downloads[model.id]?.cancel()
+        paused.insert(model.id); saveIntents(); downloadTokens.removeValue(forKey: model.id); downloads[model.id]?.cancel()
     }
     func cancel(_ model: PhoneModel) {
         intents.removeAll { $0.id == model.id }; paused.remove(model.id); saveIntents()
+        if error == downloadFailures[model.id] { error = nil }
+        downloadFailures.removeValue(forKey: model.id); downloadTokens.removeValue(forKey: model.id)
         downloads[model.id]?.cancel()
     }
     func delete(_ model: PhoneModel) async {

@@ -28,6 +28,7 @@ struct ModelsView: View {
                     }
                     Text(ByteCountFormatter.string(fromByteCount: item.total_bytes, countStyle: .file)).font(.subheadline).foregroundStyle(theme.color("textMuted"))
                     if !item.fits() { Text(model.t("mobile.local.ram_required", ["ram": String(item.min_ram_gb)])) }
+                    if let failure = phone.downloadFailures[item.id] { Text(model.t(failure.key)).foregroundStyle(theme.color("error")) }
                     if let value = phone.progress[item.id] {
                         if let details = phone.downloadDetails[item.id] { ModelDownloadStatus(details: details) }
                         else { ProgressView(value: value).accessibilityLabel(model.t("mobile.local.download")) }
@@ -38,7 +39,7 @@ struct ModelsView: View {
                     } else if phone.installed.contains(item.id) {
                         Button(model.t("common.delete"), role: .destructive) { Task { await phone.delete(item) } }
                     } else {
-                        if phone.paused.contains(item.id) { Text(model.t("mobile.downloads.paused")) }
+                        if phone.paused.contains(item.id) && phone.downloadFailures[item.id] == nil { Text(model.t("mobile.downloads.paused")) }
                         ModelDownloadButton(items: [item], titleKey: phone.paused.contains(item.id) ? "mobile.simple.resume" : "mobile.local.download")
                     }
 
@@ -160,6 +161,11 @@ struct ModelDownloadButton: View {
     @State private var reviewing: PhoneModel?
     @State private var continueDownloads = false
     private var downloading: Bool { items.contains { model.phone.progress[$0.id] != nil } }
+    private var actionKey: String {
+        if downloading { return "common.cancel" }
+        if items.contains(where: { model.phone.downloadFailures[$0.id] != nil }) { return "mobile.simple.retry" }
+        return items.allSatisfy { $0.fits() } ? titleKey : "mobile.local.try_anyway"
+    }
     var body: some View {
         Button {
             if downloading {
@@ -169,7 +175,7 @@ struct ModelDownloadButton: View {
                 queue = ModelDownloadQueue(items); advance()
             }
         } label: {
-            Text(model.t(downloading ? "common.cancel" : items.allSatisfy { $0.fits() } ? titleKey : "mobile.local.try_anyway")).frame(maxWidth: prominent ? .infinity : nil)
+            Text(model.t(actionKey)).frame(maxWidth: prominent ? .infinity : nil)
         }.disabled(items.isEmpty)
             .studioButton(prominent ? .primary : .tertiary)
             .accessibilityIdentifier("models.get")
@@ -259,6 +265,9 @@ struct LocalDownloadPrompt: View {
                     Text(model.t("mobile.local.ram_required", ["ram": String(item.min_ram_gb)])).font(.caption)
                 }
                 if prominent { ModelDownloadButton(items: needed, titleKey: "mobile.local.download", prominent: true) }
+                ForEach(needed) { item in
+                    if let failure = model.phone.downloadFailures[item.id] { Text(model.t(failure.key)).font(.caption).foregroundStyle(theme.color("error")) }
+                }
                 if progress != nil {
                     ForEach(needed) { item in
                         if let details = model.phone.downloadDetails[item.id] {

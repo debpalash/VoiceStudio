@@ -85,6 +85,22 @@ class ModelDownloadJobsTest {
         assertFalse(com.voicestudio.mobile.local.PhoneRuntime.get(app).downloads.progress.value[model.id]!!.running)
         ModelDownloadJobs.cancel(app,second.id)
     }
+    @Test fun terminalFailureReasonSurvivesRestorationAndClearsOnRetry() {
+        ModelDownloadJobs.enqueue(app,model,false)
+        ModelDownloadJobs.pause(app,model.id,"mobile.local.storage_required")
+        val downloads=com.voicestudio.mobile.local.PhoneRuntime.get(app).downloads
+        // Discard the in-memory error so restoration must recover the saved reason.
+        downloads.paused(model.id)
+        assertNull(downloads.progress.value[model.id]?.error)
+        ModelDownloadJobs.restore(app,listOf(model))
+        assertEquals("mobile.local.storage_required",downloads.progress.value[model.id]?.error)
+        assertEquals("failed",downloads.progress.value[model.id]?.stage)
+        assertEquals(model.totalBytes,downloads.progress.value[model.id]?.total)
+        assertTrue(scheduler.allPendingJobs.isEmpty())
+        ModelDownloadJobs.enqueue(app,model,false)
+        assertNull(downloads.progress.value[model.id]?.error)
+        assertFalse(app.getSharedPreferences("model-downloads",0).getString("queue","")!!.contains("mobile.local.storage_required"))
+    }
     @Test fun cancelledDownloadHasNoAutomaticRestoreIntent() {
         ModelDownloadJobs.enqueue(app,model,false);ModelDownloadJobs.cancel(app,model.id)
         ModelDownloadJobs.restore(app,listOf(model))

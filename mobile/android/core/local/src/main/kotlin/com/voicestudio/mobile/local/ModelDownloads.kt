@@ -60,7 +60,7 @@ class ModelDownloads internal constructor(
     private val mutable=MutableStateFlow<Map<String,DownloadProgress>>(emptyMap())
     val progress=mutable.asStateFlow()
     fun scheduled(id: String,total: Long,stage: String="waiting") {mutable.update {if(it[id]?.running==true) it else it+(id to (it[id] ?: DownloadProgress(total=total)).copy(total=total,running=true,stage=stage,error=null))}}
-    fun paused(id: String) {mutable.update {it+(id to (it[id] ?: DownloadProgress()).copy(running=false,stage="paused",bytesPerSecond=0.0,etaSeconds=null))}}
+    fun paused(id: String,total: Long?=null,error: String?=null) {mutable.update {it+(id to (it[id] ?: DownloadProgress()).let {p ->p.copy(total=total ?: p.total,running=false,stage=if(error==null) "paused" else "failed",error=error,bytesPerSecond=0.0,etaSeconds=null)})}}
     private fun dir(model: PhoneModel)=File(root,model.id)
     private fun identity(model: PhoneModel)=model.revision+model.files.joinToString {it.path+it.sha256+it.size}
     fun installed(model: PhoneModel): Boolean = runCatching {
