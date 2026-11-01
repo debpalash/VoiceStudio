@@ -50,6 +50,7 @@ export const CHANNELS = {
   permissionsOpenSettings: 'permissions:openSettings',
   filesAuthorizeMediaTool: 'files:authorizeMediaTool',
   filesAuthorizeModelsDirectory: 'files:authorizeModelsDirectory',
+  filesChooseEngineModelDirectory: 'files:chooseEngineModelDirectory',
   filesExtractScript: 'files:extractScript',
   backendGetStatus: 'backend:getStatus',
   backendAcknowledgeCrash: 'backend:acknowledgeCrash',
@@ -565,6 +566,17 @@ export function registerIpc(
       selected = picked.filePaths[0];
     }
     return authorizeModelsDirectory(await backendDataDirectory(supervisor), selected);
+  });
+  ipcMain.handle(CHANNELS.filesChooseEngineModelDirectory, async (event: IpcMainInvokeEvent, raw: unknown) => {
+    const owner = getMainWindow();
+    assertTrustedMainFrame(event, owner);
+    if (typeof raw !== 'string' || !['omnivoice', 'mlx-audio'].includes(raw))
+      throw new Error('Unsupported engine local model selector');
+    const picked = await dialog.showOpenDialog(owner, {
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (picked.canceled || !picked.filePaths[0]) return null;
+    return authorizeModelsDirectory(await backendDataDirectory(supervisor), picked.filePaths[0]);
   });
 
   ipcMain.handle(CHANNELS.filesSaveAudio, async (event, raw: unknown): Promise<SaveAudioResult> => {

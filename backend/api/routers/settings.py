@@ -1073,6 +1073,10 @@ class _ModelsDirBody(BaseModel):
     authorization: str = Field(description="One-shot native desktop authorization")
 
 
+class _LocalModelBody(BaseModel):
+    authorization: str = Field(description="One-shot native desktop authorization")
+
+
 @router.get("/storage/models-dir")
 def get_models_dir():
     """Current models directory: the persisted choice (from the durable env
@@ -1132,6 +1136,86 @@ def set_models_dir(body: _ModelsDirBody):
 
     user_env.set_user_env(_MODELS_DIR_ENV, path)
     return {"configured": path, "effective": _effective_models_dir(), "restart_required": True}
+
+
+@router.get("/engines/{family}/{engine_id}/local-model")
+def get_local_model(family: str, engine_id: str):
+    from services import local_model_paths
+    if not local_model_paths.supported(family, engine_id):
+        raise HTTPException(404, "This engine does not support local model folders")
+    return local_model_paths.state(family, engine_id)
+
+
+async def _change_local_model(family: str, engine_id: str, path: str | None):
+    from services import local_model_paths, model_manager
+    from core.path_authorization import PathAuthorizationError
+    # This lock is the same exclusion held by OmniVoice generation/load routes.
+    # Reject instead of waiting indefinitely behind a long synthesis.
+    if model_manager._model_lock.locked():
+        raise HTTPException(409, "An engine is busy; wait for generation to finish")
+    async with model_manager._model_lock:
+        # Cold-load threads and API mutation must not cross, either.
+        lock = model_manager._model_load_thread_lock
+        if not lock.acquire(blocking=False):
+            raise HTTPException(409, "An engine is loading; try again when it finishes")
+        try:
+            return local_model_paths.change(family, engine_id, path)
+        except PathAuthorizationError as exc:
+            raise HTTPException(403, detail=str(exc)) from exc
+        except local_model_paths.EngineBusyError as exc:
+            raise HTTPException(409, detail=str(exc)) from exc
+        except local_model_paths.LocalModelError as exc:
+            raise HTTPException(400, detail=str(exc)) from exc
+        finally:
+            lock.release()
+
+
+@router.put("/engines/{family}/{engine_id}/local-model")
+async def set_local_model(family: str, engine_id: str, body: _LocalModelBody):
+    from core.path_authorization import PathAuthorizationError, consume
+    from services import local_model_paths
+    if not local_model_paths.supported(family, engine_id):
+        raise HTTPException(404, "This engine does not support local model folders")
+    try:
+        raw = consume(body.authorization, "models_dir", expected_scope=f"local-model:{family}:{engine_id}")
+    except PathAuthorizationError as exc:
+        raise HTTPException(403, detail=str(exc)) from exc
+    except local_model_paths.LocalModelError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+    return await _change_local_model(family, engine_id, raw)
+
+
+@router.post("/engines/{family}/{engine_id}/local-model/discover")
+def discover_local_models(family: str, engine_id: str, body: _LocalModelBody):
+    """List direct child checkpoint candidates under one native-authorized folder.
+
+    Discovery is read-only: it never persists a candidate, loads an engine, or
+    downloads missing files. The capability is consumed even on failure.
+    """
+    from core.path_authorization import PathAuthorizationError, consume
+    from services import local_model_paths
+    if not local_model_paths.supported(family, engine_id):
+        raise HTTPException(404, "This engine does not support local model folders")
+    try:
+        parent = consume(body.authorization, "models_dir")
+        result = local_model_paths.discover(family, engine_id, parent)
+        from core.path_authorization import issue_local_model_selection
+        for candidate in result["candidates"]:
+            if candidate["validation"]["status"] == "valid":
+                candidate["authorization"] = issue_local_model_selection(candidate["path"], family, engine_id)
+        return result
+    except PathAuthorizationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except local_model_paths.LocalModelError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/engines/{family}/{engine_id}/local-model")
+async def clear_local_model(family: str, engine_id: str):
+    from services import local_model_paths
+    if not local_model_paths.supported(family, engine_id):
+        raise HTTPException(404, "This engine does not support local model folders")
+    return await _change_local_model(family, engine_id, None)
 
 
 # ── Storage report (Settings → Storage) ────────────────────────────────────

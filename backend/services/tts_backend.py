@@ -2985,6 +2985,7 @@ class MLXAudioBackend(TTSBackend):
     @classmethod
     def configured_identity(cls) -> str:
         from core import prefs
+        from services.local_model_paths import get as local_model_path
         key = prefs.resolve(
             "mlx_audio_model_id",
             env="OMNIVOICE_MLX_AUDIO_MODEL",
@@ -2992,6 +2993,13 @@ class MLXAudioBackend(TTSBackend):
         )
         # Accept either a curated key ("kokoro") or a full HF repo id
         # ("mlx-community/Kokoro-82M-bf16") — flexibility for power users.
+        # An explicit environment override remains authoritative. Otherwise a
+        # validated local folder wins over the curated HF repo selection.
+        if not os.environ.get("OMNIVOICE_MLX_AUDIO_MODEL"):
+            local = local_model_path("tts", "mlx-audio")
+            if local:
+                from services.local_model_paths import validate
+                return validate("tts", "mlx-audio", local)
         return cls.CURATED_MODELS.get(key, key)
 
     def built_identity(self) -> Optional[str]:
@@ -3059,6 +3067,9 @@ class MLXAudioBackend(TTSBackend):
     def _ensure_loaded(self):
         if self._model is not None:
             return
+        if os.path.isabs(self._model_id or ""):
+            from services.local_model_paths import validate
+            validate("tts", "mlx-audio", self._model_id)
         if self._curated_key() == "melotts":
             _ensure_melotts_text_frontend()
         elif self._curated_key() == "kokoro":
