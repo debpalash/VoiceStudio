@@ -5,6 +5,7 @@ import importlib.util
 import io
 import json
 import os
+import shutil
 from pathlib import Path
 import tempfile
 import types
@@ -105,6 +106,7 @@ class AndroidRepositoryTests(unittest.TestCase):
         self.assertEqual(json.loads(unquote(deep.removeprefix('obtainium://app/'))), config)
         self.assertEqual(config['url'], 'https://github.com/debpalash/VoiceStudio')
 
+    @unittest.skipIf(os.name == 'nt' or shutil.which('bash') is None, 'requires the POSIX workflow shell')
     def test_release_workflow_dispatches_the_repository_only_for_stable(self):
         import yaml
         workflow = yaml.safe_load((ROOT / '.github/workflows/electron-release.yml').read_text())
@@ -125,6 +127,19 @@ class AndroidRepositoryTests(unittest.TestCase):
                     self.assertEqual(log.read_text().strip(), 'workflow run android-repository.yml --ref main')
                 else:
                     self.assertFalse(log.exists())
+
+    def test_docker_dispatch_is_independent_of_android_failure_after_publication(self):
+        import yaml
+        workflow = yaml.safe_load((ROOT / '.github/workflows/electron-release.yml').read_text())
+        steps = workflow['jobs']['release']['steps']
+        publish = next(step for step in steps if step.get('id') == 'publish_release')
+        docker = next(step for step in steps if step.get('name') == 'Publish release container images')
+        self.assertIn('inputs.publish == true', publish['if'])
+        # A status function bypasses GitHub's implicit success() guard, while
+        # the publication outcome prevents dispatching images for a failed draft.
+        self.assertIn('!cancelled()', docker['if'])
+        self.assertIn("steps.publish_release.outcome == 'success'", docker['if'])
+        self.assertNotIn('continue-on-error', next(step for step in steps if 'gh workflow run android-repository.yml' in step.get('run', '')))
 
     def test_store_metadata_is_complete_and_reuses_the_current_brand_art(self):
         locale = ROOT / 'fastlane/metadata/android/en-US'
