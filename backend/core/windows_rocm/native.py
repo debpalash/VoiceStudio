@@ -11,6 +11,7 @@ from .recipe import expected_versions, load_recipe
 _SDK_ROOTS = {
     "rocm-sdk-core": "_rocm_sdk_core",
     "rocm-sdk-libraries-custom": "_rocm_sdk_libraries_custom",
+    "rocm-sdk-libraries": "_rocm_sdk_libraries",
 }
 
 

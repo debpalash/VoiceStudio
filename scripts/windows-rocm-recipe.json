@@ -23,5 +23,99 @@
     "wheel_sha256": "d5b9b0d34b23584638fc087bf99a85b0ba9917b84860d5fbddcc73b0aedd4fd4",
     "binary_sha256": "37fdba6e52f87422562f7068c7bc19e342d57bf957a161da6d9fdf6d47f93317",
     "required_dlls": ["hipblas.dll", "amdhip64_7.dll"]
+  },
+  "rdna2": {
+    "torch": {
+      "find_links": "https://stable.repo.amd.com/rocm/whl-next/",
+      "packages": [
+        "torch==2.13.0+rocm10.0.0",
+        "torchaudio==2.11.0.2+rocm10.0.0",
+        "torchvision==0.28.0+rocm10.0.0"
+      ],
+      "wheel_files": [
+        "torch/torch-2.13.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl",
+        "torchaudio/torchaudio-2.11.0.2%2Brocm10.0.0-cp312-cp312-win_amd64.whl",
+        "torchvision/torchvision-0.28.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl"
+      ],
+      "wheel_sha256": {
+        "torch/torch-2.13.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl": "4ff21da558065d6c28773f9053eadec4897c579e1f34f623db3825755198b164",
+        "torchaudio/torchaudio-2.11.0.2%2Brocm10.0.0-cp312-cp312-win_amd64.whl": "25c1857654c9232474bd88da29f91979482d243a2b096e0b22381c4e6bd65cf5",
+        "torchvision/torchvision-0.28.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl": "ecf20b27fba1b8e189c029be01b984f3a582053c67e5e35f27e3b83a3202b819"
+      },
+      "hip_prefix": "7.15."
+    },
+    "runtime": {
+      "packages": [
+        "rocm==10.0.0",
+        "rocm-bootstrap==0.3.0",
+        "rocm-sdk-core==10.0.0",
+        "rocm-sdk-libraries==10.0.0"
+      ],
+      "wheel_files": [
+        "rocm/rocm-10.0.0.tar.gz",
+        "rocm-bootstrap/rocm_bootstrap-0.3.0-py3-none-any.whl",
+        "rocm-sdk-core/rocm_sdk_core-10.0.0-py3-none-win_amd64.whl",
+        "rocm-sdk-libraries/rocm_sdk_libraries-10.0.0-py3-none-win_amd64.whl"
+      ],
+      "wheel_sha256": {
+        "rocm/rocm-10.0.0.tar.gz": "65b5982249612a310135f5e061b9f28909e8ad718a1ddb3f1abba92298b7216b",
+        "rocm-bootstrap/rocm_bootstrap-0.3.0-py3-none-any.whl": "62d0160ecdd86f7132dbab9aec257cb2c96327df2592b0633aa6bb56399cc095",
+        "rocm-sdk-core/rocm_sdk_core-10.0.0-py3-none-win_amd64.whl": "066195cb0f7df02e6009facb17652dd992d13fae44d87652e5ab928d5b4f0851",
+        "rocm-sdk-libraries/rocm_sdk_libraries-10.0.0-py3-none-win_amd64.whl": "bfc7a1bd3b6050fb4d36d8ac2eea80d3afd70c5604a29142463d6cb890fc73bf"
+      }
+    },
+    "devices": {
+      "gfx1030": {
+        "packages": [
+          "rocm-sdk-device-gfx1030==10.0.0",
+          "amd-torch-device-gfx1030==2.13.0+rocm10.0.0",
+          "amd-torchvision-device-gfx1030==0.28.0+rocm10.0.0"
+        ],
+        "wheel_files": [
+          "rocm-sdk-device-gfx1030/rocm_sdk_device_gfx1030-10.0.0-py3-none-win_amd64.whl",
+          "amd-torch-device-gfx1030/amd_torch_device_gfx1030-2.13.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl",
+          "amd-torchvision-device-gfx1030/amd_torchvision_device_gfx1030-0.28.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl"
+        ],
+        "wheel_sha256": {
+          "rocm-sdk-device-gfx1030/rocm_sdk_device_gfx1030-10.0.0-py3-none-win_amd64.whl": "19ada0359b499c19c1ecb1cba21b067fce89b4f0b0de6f0f7b76cbef85dcb85b",
+          "amd-torch-device-gfx1030/amd_torch_device_gfx1030-2.13.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl": "2408b4a3422b81763a55f9b4a3c1eb4f97b838d379b01fdea4b214c590b582ec",
+          "amd-torchvision-device-gfx1030/amd_torchvision_device_gfx1030-0.28.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl": "9039c172ff23d87a9fd694f48d7606ab13b0e3cd062d3b42fa4531520e86fe3c"
+        }
+      },
+      "gfx1031": {
+        "packages": [
+          "rocm-sdk-device-gfx1031==10.0.0",
+          "amd-torch-device-gfx1031==2.13.0+rocm10.0.0",
+          "amd-torchvision-device-gfx1031==0.28.0+rocm10.0.0"
+        ],
+        "wheel_files": [
+          "rocm-sdk-device-gfx1031/rocm_sdk_device_gfx1031-10.0.0-py3-none-win_amd64.whl",
+          "amd-torch-device-gfx1031/amd_torch_device_gfx1031-2.13.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl",
+          "amd-torchvision-device-gfx1031/amd_torchvision_device_gfx1031-0.28.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl"
+        ],
+        "wheel_sha256": {
+          "rocm-sdk-device-gfx1031/rocm_sdk_device_gfx1031-10.0.0-py3-none-win_amd64.whl": "ab7cbfb41e1ada00fb7254c974f7386303cdd1139a170fb022e84e6f10d9f5f2",
+          "amd-torch-device-gfx1031/amd_torch_device_gfx1031-2.13.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl": "6a4d9a9a2edfafa8eac1378a8b20747f31e567129128dce78d52deeba6c326bd",
+          "amd-torchvision-device-gfx1031/amd_torchvision_device_gfx1031-0.28.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl": "ddcf26c0d35d2de88d6ca394d2d69251ba5d7016407bacf1e78455f78b30dda5"
+        }
+      },
+      "gfx1032": {
+        "packages": [
+          "rocm-sdk-device-gfx1032==10.0.0",
+          "amd-torch-device-gfx1032==2.13.0+rocm10.0.0",
+          "amd-torchvision-device-gfx1032==0.28.0+rocm10.0.0"
+        ],
+        "wheel_files": [
+          "rocm-sdk-device-gfx1032/rocm_sdk_device_gfx1032-10.0.0-py3-none-win_amd64.whl",
+          "amd-torch-device-gfx1032/amd_torch_device_gfx1032-2.13.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl",
+          "amd-torchvision-device-gfx1032/amd_torchvision_device_gfx1032-0.28.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl"
+        ],
+        "wheel_sha256": {
+          "rocm-sdk-device-gfx1032/rocm_sdk_device_gfx1032-10.0.0-py3-none-win_amd64.whl": "5d0581e077cc1a482e70430539c63e60c4b4d7b9b82be0ac0bab6d62c3feb4de",
+          "amd-torch-device-gfx1032/amd_torch_device_gfx1032-2.13.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl": "c04b6e42b8b3b74f7f08fc20a478f1a929ffd532eaa8e77383149db05bf351a3",
+          "amd-torchvision-device-gfx1032/amd_torchvision_device_gfx1032-0.28.0%2Brocm10.0.0-cp312-cp312-win_amd64.whl": "2470d02b3c2e7448032c2eb686ae19b9ab6a4d9eb84514117c389751d9de0071"
+        }
+      }
+    }
   }
 }

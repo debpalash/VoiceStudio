@@ -39,3 +39,23 @@ def test_precision_probe_failure_uses_safe_default_or_explicit_override(monkeypa
         monkeypatch.setenv("OMNIVOICE_DOTS_TTS_PRECISION", override)
     main._load_runtime(io.BytesIO())
     assert loader.from_pretrained.call_args.kwargs["precision"] == (override or "float32")
+
+@pytest.mark.parametrize("override", [None, "bfloat16", " BF16 "])
+def test_rdna2_never_selects_bf16(monkeypatch, override):
+    from engines.dots_tts import main
+
+    fake = SimpleNamespace(
+        version=SimpleNamespace(hip="7.15"),
+        cuda=SimpleNamespace(is_available=lambda: True,
+                             get_device_properties=lambda i: SimpleNamespace(gcnArchName="gfx1031")),
+    )
+    monkeypatch.setitem(sys.modules, "torch", fake)
+    loader = Mock()
+    monkeypatch.setitem(sys.modules, "dots_tts.runtime", SimpleNamespace(DotsTtsRuntime=loader))
+    monkeypatch.setattr(main, "_runtime", None)
+    if override:
+        monkeypatch.setenv("OMNIVOICE_DOTS_TTS_PRECISION", override)
+    else:
+        monkeypatch.delenv("OMNIVOICE_DOTS_TTS_PRECISION", raising=False)
+    main._load_runtime(io.BytesIO())
+    assert loader.from_pretrained.call_args.kwargs["precision"] == "float32"
