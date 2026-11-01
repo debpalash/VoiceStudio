@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { join, resolve } from 'node:path';
 const state = vi.hoisted(() => ({
   installed: true,
@@ -62,6 +62,9 @@ import {
   spawnFailureMessage,
   startupTimeoutMessage,
 } from './backend';
+// These launch/setup cases model a supported local-runtime host. Intel and
+// Rosetta behavior is exercised below with explicit hostIssue values.
+beforeEach(() => vi.stubGlobal('process', { ...process, arch: 'arm64' }));
 afterEach(() => {
   state.installed = true;
   state.ready = true;
@@ -69,6 +72,7 @@ afterEach(() => {
   state.checkout = true;
   state.bundledOnly = false;
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 it('store builds launch only bundled Python, ignoring external command overrides', async () => {
   state.packaged = true;
