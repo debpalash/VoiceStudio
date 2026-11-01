@@ -12,7 +12,17 @@
 // the bundle seal on macOS (signMac).
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  closeSync,
+  existsSync,
+  openSync,
+  readFileSync,
+  readSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -123,9 +133,14 @@ const MACH_O_MAGICS = new Set([
   'bebafeca',
 ]);
 
-function isMachO(path) {
-  const header = readFileSync(path).subarray(0, 4).toString('hex');
-  return MACH_O_MAGICS.has(header);
+export function isMachO(path) {
+  const descriptor = openSync(path, 'r');
+  try {
+    const header = Buffer.alloc(4);
+    return readSync(descriptor, header, 0, 4, 0) === 4 && MACH_O_MAGICS.has(header.toString('hex'));
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 /** The codesign arguments @electron/osx-sign uses for one file. */

@@ -20,6 +20,7 @@ import {
 } from './runtime-project';
 import { collectHostSnapshot, freeGb, type HostSnapshot } from './host-snapshot';
 import { runtimeSetupSupported } from './distribution';
+import { bundledPython, bundledRuntimeEnv } from './bundled-runtime';
 import { asciiSafePthFiles } from './pth-ascii';
 import { devProbeStamped, writeDevProbeStamp } from './dev-probe-stamp';
 import { CrashJournal } from './crash-journal';
@@ -488,6 +489,21 @@ export async function resolveSpawnPlan(
   hostIssue: ReturnType<typeof platformSetupIssue> = platformSetupIssue(),
 ): Promise<SpawnPlan | SpawnPlanError> {
   const root = backendRoot();
+  if (app.isPackaged && !runtimeSetupSupported()) {
+    if (hostIssue === 'unsupported_platform' || hostIssue === 'wrong_architecture') {
+      return {
+        error:
+          'This Intel Mac cannot run the local VoiceStudio backend: PyTorch no longer publishes ' +
+          'Intel-Mac wheels. Connect the app to a VoiceStudio backend on another computer, or ' +
+          'use the Apple Silicon build on an Apple Silicon Mac.',
+        setupIssue: 'unsupported_platform',
+      };
+    }
+    return {
+      argv: [bundledPython(root), '-s', '-B', '-m', ...UVICORN_ARGS, '--port', String(port)],
+      cwd: root,
+    };
+  }
   const override = parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD);
   if (override) return { argv: override, cwd: root };
   if (app.isPackaged) {
@@ -575,8 +591,9 @@ function childEnv(
   _region: RuntimeRegion = 'auto',
   platform = process.platform,
 ): NodeJS.ProcessEnv {
+  const bundled = app.isPackaged && !runtimeSetupSupported();
   const env: NodeJS.ProcessEnv = {
-    ...(app.isPackaged ? legacyStorageEnv(legacyTauriRoots()) : {}),
+    ...(app.isPackaged && !bundled ? legacyStorageEnv(legacyTauriRoots()) : {}),
     ...process.env,
   };
   const scopedRoot = app.isPackaged ? scopedRuntimeRoot() : null;
@@ -605,6 +622,13 @@ function childEnv(
   delete env.PYTHONPATH;
   env.PYTHONUNBUFFERED = '1';
   env.PYTHONUTF8 = '1';
+  if (app.isPackaged && !runtimeSetupSupported()) {
+    const selectedData = env.OMNIVOICE_DATA_DIR;
+    Object.assign(env, bundledRuntimeEnv(backendRoot(), app.getPath('userData')));
+    // Keep an explicit data pointer even when its bookmark is stale/malformed.
+    // Access must fail visibly; never redirect existing data to an empty default.
+    if (selectedData) env.OMNIVOICE_DATA_DIR = selectedData;
+  }
   // Arms backend/core/parent_liveness.py: stdin EOF == "the shell is gone".
   env.OMNIVOICE_DESKTOP_CONTAINED = '1';
   env.OMNIVOICE_PORT = String(port);
@@ -621,7 +645,10 @@ function childEnv(
   // while the binary sat inside the app bundle. findUv() knows where to look;
   // hand the answer over instead of keeping it. An explicit override from the
   // environment still wins.
-  const uv = bundledUvEnv(env.OMNIVOICE_BUNDLED_UV, findUv);
+  const uv =
+    app.isPackaged && !runtimeSetupSupported()
+      ? undefined
+      : bundledUvEnv(env.OMNIVOICE_BUNDLED_UV, findUv);
   if (uv) env.OMNIVOICE_BUNDLED_UV = uv;
   else delete env.OMNIVOICE_BUNDLED_UV;
   // #2599: LAN devices load the web UI from this backend. Serve the build
@@ -873,13 +900,16 @@ export class BackendSupervisor extends EventEmitter<{
   /** Machine and runtime facts for bug reports; works while the backend is down. */
   async hostSnapshot(): Promise<HostSnapshot> {
     // Same location resolveSpawnPlan() launches from.
-    const project = app.isPackaged
-      ? (this.runtimeProject ?? join(storedRuntimeRoot() ?? defaultRuntimeRoot(), 'project'))
-      : backendRoot();
+    const bundled = app.isPackaged && !runtimeSetupSupported();
+    const project = bundled
+      ? backendRoot()
+      : app.isPackaged
+        ? (this.runtimeProject ?? join(storedRuntimeRoot() ?? defaultRuntimeRoot(), 'project'))
+        : backendRoot();
     return collectHostSnapshot({
       runtimeProject: project,
-      runtimePython: runtimePython(project),
-      uv: findUvAsync,
+      runtimePython: bundled ? bundledPython(project) : runtimePython(project),
+      uv: bundled ? async () => null : findUvAsync,
       gpu: async () => {
         const info = (await app.getGPUInfo('basic')) as {
           gpuDevice?: {
@@ -1028,7 +1058,11 @@ export class BackendSupervisor extends EventEmitter<{
         }
       }
 
-      if (app.isPackaged && !parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD)) {
+      if (
+        app.isPackaged &&
+        runtimeSetupSupported() &&
+        !parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD)
+      ) {
         const { project, ready } = await this.resolveRuntimeProject();
         if (!ready) {
           if (gen === this.generation) {

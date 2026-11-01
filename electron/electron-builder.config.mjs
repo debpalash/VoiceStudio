@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { packageNativeHelper } from './native-helper-build.mjs';
 import { finalizeOmnivoiceTts, omnivoiceTtsResources, signMac } from './omnivoice-tts-bundle.mjs';
 import { repairSnapArtifacts } from './snap-template-payload.mjs';
+import { signMasRuntime } from './mas-runtime-bundle.mjs';
 import { APP_ID, PRODUCT_NAME } from '../config/app-config.mjs';
 import { DISTRIBUTION_PROFILE, DISTRIBUTION_TARGET } from '../config/distributions.mjs';
 
@@ -18,6 +19,14 @@ const { version } = JSON.parse(readFileSync(resolve(here, '../package.json'), 'u
 const storeMetadata = JSON.parse(readFileSync(resolve(here, '../store/metadata.json'), 'utf-8'));
 const storeIdentity = storeMetadata.identity;
 const isMacAppStore = DISTRIBUTION_TARGET === 'mac-app-store';
+// Intel Macs retain their existing remote-backend UI. Never ship an arm64
+// interpreter in an x64 package (the release matrix always names its target).
+const macRuntimeArch = process.env.VOICESTUDIO_RUST_TARGET?.startsWith('x86_64')
+  ? 'x64'
+  : process.env.VOICESTUDIO_RUST_TARGET?.startsWith('aarch64')
+    ? 'arm64'
+    : process.arch;
+const bundlesMasRuntime = isMacAppStore && macRuntimeArch === 'arm64';
 // Direct downloads are `VoiceStudio-<version>-<os>-<arch>.<ext>`; store builds
 // keep a label so they never collide with them. Releases up to v0.5.7-beta.3
 // used `VoiceStudio-Electron-*`; the installers still resolve those names.
@@ -113,7 +122,8 @@ const bundledUvResources =
     ? [{ from: uvSource, to: `tools/uv${uvExtension}` }]
     : [];
 // OmniVoice GGUF runtime, staged by the release workflows (#2780).
-const bundledOmnivoiceTtsResources = isMacAppStore ? [] : omnivoiceTtsResources();
+const bundledOmnivoiceTtsResources =
+  isMacAppStore && !bundlesMasRuntime ? [] : omnivoiceTtsResources();
 const notarizeMac =
   !isMacAppStore &&
   Boolean(
@@ -190,8 +200,14 @@ export default {
     { from: '../LICENSE-NOTICE.md', to: 'LICENSE-NOTICE.md' },
     { from: '../config/app.json', to: 'config/app.json' },
     { from: 'T3CODE-LICENSE.txt', to: 'electron/T3CODE-LICENSE.txt' },
-    ...bundledUvResources,
+    ...(!isMacAppStore ? bundledUvResources : []),
     ...bundledOmnivoiceTtsResources,
+    ...(bundlesMasRuntime
+      ? [
+          { from: 'build/python-runtime', to: 'python-runtime' },
+          { from: 'build/media-tools', to: 'media-tools' },
+        ]
+      : []),
   ],
   asar: true,
   afterPack: async (context) => {
@@ -224,7 +240,11 @@ export default {
     ...(adhocSignMac ? { identity: '-' } : {}),
     // Signs the bundled GGUF runtime and refreshes its checksum manifest
     // before the bundle seal (electron/omnivoice-tts-bundle.mjs).
-    ...(bundledOmnivoiceTtsResources.length ? { sign: signMac } : {}),
+    ...(isMacAppStore
+      ? { sign: signMasRuntime }
+      : bundledOmnivoiceTtsResources.length
+        ? { sign: signMac }
+        : {}),
     notarize: notarizeMac,
     extendInfo: {
       NSMicrophoneUsageDescription: readFileSync(resolve(here, 'build/Info.plist'), 'utf8')
