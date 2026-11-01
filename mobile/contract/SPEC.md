@@ -272,12 +272,43 @@ All tabs work without pairing once on-device models are installed (see M2); the 
   `role` tells the runtime what a file is (e.g. `model`, `tokens`, `voices`,
   `encoder`, `decoder`, `joiner`, `espeak-data`, `tokenizer`); `config` carries
   runtime options (sample rate, speaker count, prompt template).
-- **Downloads only when the user starts them**, from Hugging Face (falling back
-  to `hf-mirror.com` exactly like the desktop endpoint race), resumable, Wi-Fi
-  only unless the user allows mobile data, verified by SHA-256 before use,
-  stored in app-private storage excluded from backups. A Models screen shows
-  each model's size, languages, licence and storage, with Download, Cancel and
-  Delete, and the total space used.
+- **Downloads only when the user starts them**, from Hugging Face with the
+  approved `hf-mirror.com` fallback. Persist exact catalogue pins, network policy
+  and pause state before scheduling. Reattach active work after relaunch; paused
+  and cancelled work never starts automatically. Licence withdrawal stops work.
+  Wi-Fi only unless the user allows mobile data. Store all files privately and
+  exclude them from backups; verify size/SHA-256 before making a model ready.
+  Large files use bounded parallel HTTP ranges: start with two, allow up to four
+  transfers across models, and reduce concurrency when measured throughput falls.
+  Compare sources using useful range transfers, without extra probe downloads.
+  Completed ranges and the existing contiguous partial formats remain reusable
+  after interruption, including an interrupted assembly. Reserve missing bytes
+  plus transient assembly space; release each source range only after its copied
+  bytes are durable. Strictly validate range
+  boundaries and fall back to one plain whole-file GET when ranges are unsupported;
+  keep the saved prefix until the replacement validates, including HTTP 206.
+  Retain completed fallback bodies for verification after relaunch.
+  Retry transient network/408/429/5xx failures with bounded exponential backoff,
+  jitter and `Retry-After`; retry 403 from the original pinned URL to refresh
+  expiring delivery URLs. Permanent failures require an explicit retry.
+  iOS uses system background URLSession tasks and durable completion receipts;
+  Android uses user-initiated transfer jobs on API 34+ and foreground WorkManager
+  jobs on older supported devices; blocked foreground promotion retries without
+  pausing the intent. Task start and cancellation are ordered so a stopped task
+  cannot start afterward. OS scheduling, user force-stop/force-quit,
+  battery, thermal and connectivity restrictions can still interrupt transfers;
+  retained ranges remain resumable. Background execution is not a guarantee.
+  Models and feature download cards display percentage, received/total bytes,
+  smoothed transfer speed and ETA (estimating until enough samples exist), with
+  separate waiting, retry and verification states. Resumed bytes and duplicate
+  retry traffic do not inflate speed; verification must finish before Ready.
+  Models offers Pause, Resume, Cancel and Delete. Pause/Cancel retain partial
+  files; Cancel removes the automatic restore intent; Delete removes partials too.
+  Android's ongoing notification displays transfer status and offers Pause.
+  Terminal failure reasons persist with paused intents and appear on both Models
+  and feature download cards; retry clears the old reason.
+  Local diagnostic records are bounded status/host metadata only: no signed URLs,
+  credentials, user content or automatic diagnostic uploads.
 - **Licence acceptance matches the desktop:** a model whose licence category is
   not commercial-OK must be accepted on the phone before it is downloaded or
   loaded. Acceptance is recorded locally per model with the fingerprint of the

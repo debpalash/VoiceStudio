@@ -66,10 +66,14 @@ class UiPolishRegressionTest {
             Assert.assertTrue(compose.onAllNodesWithTag("palette-swatch",useUnmergedTree=true).fetchSemanticsNodes().isNotEmpty())
             compose.onAllNodesWithTag("choice-check",useUnmergedTree=true).assertCountEquals(1)
             Assert.assertFalse(vm.phone.downloads.progress.value.values.any {it.running})
-        } finally {vm.viewModelScope.cancel()}
+        } finally {
+            vm.phone.state.value.models.forEach {ModelDownloadJobs.cancel(app,it.id)}
+            vm.viewModelScope.cancel()
+        }
     }
     @Test fun dubGetRequiresSeparateConsentAndDeclineStopsTheQueue()=runBlocking {
         val app=ApplicationProvider.getApplicationContext<Application>()
+        androidx.work.testing.WorkManagerTestInitHelper.initializeTestWorkManager(app)
         shadowOf(app.getSystemService(android.app.ActivityManager::class.java)).setMemoryInfo(
             android.app.ActivityManager.MemoryInfo().apply {totalMem=16_000_000_000})
         // The test cannot contact model hosts, even after acceptance.
@@ -105,7 +109,52 @@ class UiPolishRegressionTest {
             compose.onNodeWithText("Accept").assertDoesNotExist()
             val clone=vm.phone.state.value.models.first {it.capability=="clone"}
             Assert.assertFalse(vm.phone.licence.accepted(clone))
-            Assert.assertFalse(vm.phone.downloads.progress.value.values.any {it.running})
+            val jobs=app.getSystemService(android.app.job.JobScheduler::class.java).allPendingJobs
+                .filter {it.service.className==ModelDownloadService::class.java.name}
+            Assert.assertFalse(jobs.any {it.extras.getString("model")==clone.id})
+            val asr=vm.phone.state.value.models.first {it.capability=="asr"}
+            Assert.assertTrue(jobs.any {it.extras.getString("model")==asr.id})
+            Assert.assertEquals("waiting",vm.phone.downloads.progress.value[asr.id]?.stage)
+            jobs.forEach {job ->
+                val requested=vm.phone.state.value.models.single {it.id==job.extras.getString("model")}
+                Assert.assertTrue(vm.phone.licence.accepted(requested))
+                Assert.assertTrue(job.requiredNetwork!!.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI))
+            }
+        } finally {
+            vm.phone.state.value.models.forEach {ModelDownloadJobs.cancel(app,it.id)}
+            vm.viewModelScope.cancel()
+        }
+    }
+    @Test fun featureDownloadCardExplainsATerminalBackgroundFailure()=runBlocking<Unit> {
+        val app=ApplicationProvider.getApplicationContext<Application>()
+        androidx.work.testing.WorkManagerTestInitHelper.initializeTestWorkManager(app)
+        shadowOf(app.getSystemService(android.app.ActivityManager::class.java)).setMemoryInfo(
+            android.app.ActivityManager.MemoryInfo().apply {totalMem=16_000_000_000})
+        val vm=StudioViewModel(app,SessionStore(app,object:CredentialVault {
+            override fun read(host:String):Secret?=null
+            override fun write(host:String,secret:Secret?)=Unit
+        }))
+        val l=L10n.load(app,"en")
+        try {
+            compose.setContent {androidx.compose.runtime.CompositionLocalProvider(LocalL10n provides l) {
+                VoiceStudioTheme {
+                    val phone=vm.phone.state.collectAsStateWithLifecycle().value
+                    com.voicestudio.mobile.features.models.MissingModelsCard(vm,"mobile.tabs.speak",listOfNotNull(phone.models.firstOrNull {it.capability=="tts"},phone.models.firstOrNull {it.capability=="asr"}))
+                }
+            }}
+            compose.waitUntil(15000) {shadowOf(Looper.getMainLooper()).idle();!vm.phone.state.value.loading}
+            val model=vm.phone.state.value.models.first {it.capability=="tts"}
+            vm.phone.downloads.paused(model.id,model.totalBytes,"mobile.local.storage_required")
+            compose.onNodeWithText(l.t("mobile.local.storage_required")).assertExists()
+            compose.onNodeWithText("Retry").assertIsEnabled()
+            vm.phone.downloads.paused(model.id,model.totalBytes)
+            val paused=vm.phone.downloads.progress.value.getValue(model.id)
+            compose.onNodeWithText(modelDownloadDescription(app,l,paused)).assertExists()
+            val other=vm.phone.state.value.models.first {it.capability=="asr"}
+            vm.phone.downloads.paused(model.id,model.totalBytes,"mobile.local.storage_required")
+            vm.phone.downloads.scheduled(other.id,other.totalBytes)
+            compose.onNodeWithContentDescription("Cancel").performClick()
+            Assert.assertEquals("mobile.local.storage_required",vm.phone.downloads.progress.value[model.id]?.error)
         } finally {vm.viewModelScope.cancel()}
     }
     @Test fun pickerShowsVisibleSelectedMark() {

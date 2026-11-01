@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.voicestudio.mobile.designsystem.*
 import com.voicestudio.mobile.features.*
 import com.voicestudio.mobile.local.*
+import com.voicestudio.mobile.data.modelDownloadDescription
 
 @Composable fun ModelsScreen(vm: StudioViewModel) {
     val state by vm.phone.state.collectAsState()
@@ -52,14 +53,17 @@ import com.voicestudio.mobile.local.*
             }
             if(!fits) Text(tr("mobile.local.ram_required",mapOf("ram" to model.minRamGb)),color=role("textMuted"))
             progress[model.id]?.let {p ->
-                if(p.running) {
+                if(p.running||p.stage=="paused") {
                     LinearProgressIndicator(progress={if(p.total>0) (p.received.toFloat()/p.total).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth())
-                    Text(tr("mobile.local.transfer",mapOf("received" to Formatter.formatFileSize(context,p.received),"total" to Formatter.formatFileSize(context,p.total))))
+                    Text(modelDownloadDescription(context,LocalL10n.current,p),style=MaterialTheme.typography.bodySmall)
                 }
                 p.error?.let {ErrorMessage(it,mapOf("ram" to model.minRamGb))}
             }
-            if(downloading) Secondary("common.cancel") {vm.phone.cancelDownload(model)}
-            else if(!installed) Secondary(if(fits) "mobile.local.download" else "mobile.local.try_anyway") {
+            if(downloading) Row(horizontalArrangement=Arrangement.spacedBy(VSTheme.gap)) {
+                Secondary("mobile.downloads.pause") {vm.phone.pauseDownload(model)}
+                Secondary("common.cancel") {vm.phone.cancelDownload(model)}
+            }
+            else if(!installed) Secondary(if(progress[model.id]?.error!=null) "mobile.simple.retry" else if(progress[model.id]?.stage=="paused") "mobile.simple.resume" else if(fits) "mobile.local.download" else "mobile.local.try_anyway") {
                 try {if(!vm.phone.licence.accepted(model)) {downloadAfterAccept=true;terms=true} else vm.phone.download(model,preferences.allowMobileModels)} catch(e:Exception) {vm.fail(e)}
             } else Secondary("common.delete") {vm.phone.delete(model)}
         }
@@ -175,7 +179,7 @@ import com.voicestudio.mobile.local.*
     val context=LocalContext.current
     val needed=models.distinctBy {it.id}.filterNot {state.canRun(it)}
     val recommendation=needed.filterNot {it.fits(vm.phone.ramBytes)}.maxByOrNull {it.minRamGb}
-    val downloadKey=if(recommendation==null) "mobile.local.download" else "mobile.local.try_anyway"
+    val downloadKey=if(needed.any {progress[it.id]?.error!=null}) "mobile.simple.retry" else if(recommendation==null) "mobile.local.download" else "mobile.local.try_anyway"
     var queue by rememberSaveable {mutableStateOf(emptyList<String>())}
     var showModels by rememberSaveable {mutableStateOf(false)}
     if(needed.isEmpty()) return
@@ -199,19 +203,24 @@ import com.voicestudio.mobile.local.*
                     if(needed.size==1) Text(tr("mobile.simple.${needed.single().capability}"),style=MaterialTheme.typography.labelSmall,color=role("textMuted"))
                 }
                 if(!prominent) {
-                    if(running) IconAction("common.cancel",Icons.Default.Close) {queue=emptyList();needed.forEach(vm.phone::cancelDownload)}
+                    if(running) IconAction("common.cancel",Icons.Default.Close) {queue=emptyList();needed.filter {progress[it.id]?.running==true}.forEach(vm.phone::cancelDownload)}
                     else TextButton(enabled=queue.isEmpty(),onClick={queue=needed.map {it.id}}) {Text(tr(downloadKey))}
                 }
             }
             recommendation?.let {Text(tr("mobile.local.ram_required",mapOf("ram" to it.minRamGb)),color=role("textMuted"))}
-            if(running) {
+            needed.mapNotNull {progress[it.id]?.error}.distinct().forEach {ErrorMessage(it)}
+            if(running||needed.any {progress[it.id]?.stage=="paused"}) {
                 val total=needed.sumOf {progress[it.id]?.total ?: it.totalBytes}
                 val received=needed.sumOf {progress[it.id]?.received ?: 0L}
                 LinearProgressIndicator(progress={(received.toFloat()/total.coerceAtLeast(1)).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth())
+                needed.forEach {item->progress[item.id]?.takeIf {it.running||it.stage=="paused"}?.let {p->
+                    if(needed.size>1) Text(item.name,style=MaterialTheme.typography.labelSmall)
+                    Text(modelDownloadDescription(LocalContext.current,LocalL10n.current,p),style=MaterialTheme.typography.bodySmall)
+                }}
             }
             if(prominent) {
                 Button(modifier=Modifier.fillMaxWidth(),enabled=running||queue.isEmpty(),onClick={
-                    if(running) {queue=emptyList();needed.forEach(vm.phone::cancelDownload)} else queue=needed.map {it.id}
+                    if(running) {queue=emptyList();needed.filter {progress[it.id]?.running==true}.forEach(vm.phone::cancelDownload)} else queue=needed.map {it.id}
                 }) {Text(tr(if(running) "common.cancel" else downloadKey))}
             }
         }

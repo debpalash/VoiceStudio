@@ -10,12 +10,13 @@ private func localDirectory() throws -> URL {
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
 }
-private func localFixture(bytes: Data = Data("model".utf8), gated: Bool = false, capability: String = "tts", fingerprint: String = String(repeating: "a", count: 64), id: String = "fixture") throws -> PhoneModel {
+private func localFixture(bytes: Data = Data("model".utf8), gated: Bool = false, capability: String = "tts", fingerprint: String = String(repeating: "a", count: 64), id: String = "fixture", declaredSize: Int? = nil) throws -> PhoneModel {
     let runtime = capability == "clone" ? "omnivoice.cpp" : capability == "translate" ? "llama.cpp" : "sherpa-onnx"
+    let size = declaredSize ?? bytes.count
     let object: [String: Any] = ["schema_version": 1, "models": [[
         "id": id, "name": "Fixture", "capability": capability, "runtime": runtime, "repo": "owner/model", "revision": String(repeating: "b", count: 40),
-        "files": [["path": "model.bin", "size": bytes.count, "sha256": SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined(), "role": "model"]],
-        "total_bytes": bytes.count, "languages": ["en"], "min_ram_gb": 1,
+        "files": [["path": "model.bin", "size": size, "sha256": SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined(), "role": "model"]],
+        "total_bytes": size, "languages": ["en"], "min_ram_gb": 1,
         "licence": ["id": "test", "category": gated ? "non-commercial" : "commercial-ok", "requires_acceptance": false, "credit": "Fixture", "rights_holder": "Fixture", "terms_fingerprint": fingerprint],
         "config": ["model_type": "kitten", "prompt_template": "Translate {text} from {source_language} to {target_language}"]
     ]]]
@@ -385,15 +386,15 @@ private struct LoopbackRangeTransport: HTTPTransport {
         return try await transport.download(local)
     }
 }
-@Test func localDownloadResumesUsingRealURLSessionAndLoopbackServer() async throws {
+@Test func localDownloadRetriesUsingRealURLSessionAndLoopbackServer() async throws {
     let root = try localDirectory(); defer { try? FileManager.default.removeItem(at: root) }
     let server = try LoopbackRangeHost()
     let transport = LoopbackRangeTransport(port: server.port)
     let bytes = Data(repeating: 17, count: 4_194_313)
     let model = try localFixture(bytes: bytes)
     let first = try ModelStore(root: root, available: { _ in 100_000_000_000 })
-    await #expect(throws: (any Error).self) { try await first.download(model, wifi: { true }, transport: transport) }
-    #expect(await !first.installed(model))
+    try await first.download(model, wifi: { true }, transport: transport)
+    #expect(await first.installed(model))
     let restored = try ModelStore(root: root, available: { _ in 100_000_000_000 })
     try await restored.download(model, wifi: { true }, transport: transport)
     let path = try await restored.authorize(model)
@@ -766,4 +767,191 @@ func realOmniSavedVoiceSpeechIsRecognizableWithoutRepeats() async throws {
     } catch let error as ClientError {
         #expect(error.key == "mobile.speak.reference_required")
     }
+}
+
+private actor RecoveringRangeServer: HTTPTransport {
+    let server: RangeServer
+    var failures = 0
+    init(bytes: Data) { server = RangeServer(bytes: bytes) }
+    func send(_ request: URLRequest) async throws -> HTTPReply { throw ClientError("unused") }
+    func download(_ request: URLRequest) async throws -> DownloadReply {
+        if failures < 2 { failures += 1; throw URLError(.networkConnectionLost) }
+        return try await server.download(request)
+    }
+}
+@Test func localDownloadRetriesTransientNetworkErrorsAutomatically() async throws {
+    let root = try localDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+    let model = try localFixture(),store = try ModelStore(root: root,available: { _ in 100_000_000_000 })
+    let server = RecoveringRangeServer(bytes: Data("model".utf8))
+    try await store.download(model,wifi: { true },transport: server)
+    #expect(await store.installed(model))
+}
+
+private actor ParallelRangeServer: HTTPTransport {
+    let server: RangeServer
+    private var active = 0
+    private(set) var peak = 0
+    init(bytes: Data) { server = RangeServer(bytes: bytes) }
+    func send(_ request: URLRequest) async throws -> HTTPReply { throw ClientError("unused") }
+    func download(_ request: URLRequest) async throws -> DownloadReply {
+        active += 1; peak = max(peak,active)
+        defer { active -= 1 }
+        try await Task.sleep(for: .milliseconds(50))
+        return try await server.download(request)
+    }
+}
+@Test func parallelModelDownloadReusesCompletedRangesAfterRelaunch() async throws {
+    let root = try localDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+    let bytes = Data(repeating: 37,count: 50_331_648+73),model = try localFixture(bytes: bytes)
+    let chunk = root.appendingPathComponent(model.id+"/.partial/"+model.files[0].sha256+".ranges/0-16777215")
+    try FileManager.default.createDirectory(at: chunk.deletingLastPathComponent(),withIntermediateDirectories: true)
+    try bytes.prefix(16_777_216).write(to: chunk)
+    let store = try ModelStore(root: root,available: { _ in 100_000_000_000 }),server = ParallelRangeServer(bytes: bytes)
+    try await store.download(model,wifi: { true },transport: server)
+    #expect(await store.installed(model))
+    #expect(await server.peak >= 2)
+    #expect(await server.peak <= 4)
+    let requests = await server.server.requests
+    #expect(!requests.contains { $0.value(forHTTPHeaderField: "Range") == "bytes=0-16777215" })
+    let installed = try await store.authorize(model)
+    #expect(try Data(contentsOf: installed.appendingPathComponent("model.bin")) == bytes)
+}
+
+private final class DownloadTestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0.0
+    func advance() { lock.withLock { value += 1 } }
+    func read() -> Double { lock.withLock { value } }
+}
+private actor DownloadSnapshots {
+    var values: [ModelDownloadProgress] = []
+    func append(_ value: ModelDownloadProgress) { values.append(value) }
+}
+@Test func downloadMetricsExcludeResumedBytesAndResetEtaDuringRetry() async {
+    let clock = DownloadTestClock(),snapshots = DownloadSnapshots()
+    let meter = DownloadMeter(total: 1000,clock: { clock.read() },publish: { await snapshots.append($0) })
+    await meter.seed("file",bytes: 500); clock.advance()
+    await meter.update("file",bytes: 500)
+    #expect(await snapshots.values.last?.bytesPerSecond == 0)
+    #expect(await snapshots.values.last?.etaSeconds == nil)
+    clock.advance(); await meter.update("file",bytes: 600)
+    #expect(await snapshots.values.last!.bytesPerSecond > 0)
+    #expect(await snapshots.values.last!.bytesPerSecond <= 100)
+    clock.advance(); await meter.update("file",bytes: 550)
+    #expect(await snapshots.values.last?.received == 600)
+    await meter.update("file",bytes: 600,stage: "retrying",retry: 8)
+    #expect(await snapshots.values.last?.etaSeconds == nil)
+    #expect(await snapshots.values.last?.bytesPerSecond == 0)
+}
+
+private actor WholeRangeFallbackServer: HTTPTransport {
+    let server: RangeServer
+    var first = true
+    private(set) var ranges: [String] = []
+    init(bytes: Data) { server = RangeServer(bytes: bytes) }
+    func send(_ request: URLRequest) async throws -> HTTPReply { throw ClientError("unused") }
+    func download(_ request: URLRequest) async throws -> DownloadReply {
+        ranges.append(request.value(forHTTPHeaderField: "Range") ?? "")
+        if first { first = false; throw ModelRangeUnsupported() }
+        // A full-file response can legally arrive as 206; keep that response shape
+        // while asserting the caller's actual fallback request has no Range header.
+        var responseRequest = request
+        if request.value(forHTTPHeaderField: "Range") == nil { responseRequest.setValue("bytes=0-12",forHTTPHeaderField: "Range") }
+        return try await server.download(responseRequest)
+    }
+}
+@Test func fullFile206FallbackReplacesTheResumedPrefix() async throws {
+    let root = try localDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+    let bytes = Data("model-fixture".utf8),model = try localFixture(bytes: bytes)
+    let part = root.appendingPathComponent(model.id+"/.partial/"+model.files[0].sha256)
+    try FileManager.default.createDirectory(at: part.deletingLastPathComponent(),withIntermediateDirectories: true)
+    try bytes.prefix(5).write(to: part)
+    let store = try ModelStore(root: root,available: { _ in 100_000_000_000 }),server = WholeRangeFallbackServer(bytes: bytes)
+    try await store.download(model,wifi: { true },transport: server)
+    #expect(await server.ranges == ["bytes=5-12",""])
+    #expect(await store.installed(model))
+    let installed = try await store.authorize(model)
+    #expect(try Data(contentsOf: installed.appendingPathComponent("model.bin")) == bytes)
+}
+private struct LargeRangeTransport: HTTPTransport {
+    let server: RangeServer
+    var preferredRangeBytes: Int64 { 67_108_864 }
+    func send(_ request: URLRequest) async throws -> HTTPReply { throw ClientError("unused") }
+    func download(_ request: URLRequest) async throws -> DownloadReply { try await server.download(request) }
+}
+@Test func backgroundRangesReserveAssemblySpaceBeforeStartingNetwork() async throws {
+    let root = try localDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+    // Only manifest metadata is needed: an unsafe transfer must be refused before fetching bytes.
+    for size in [83_886_080,134_217_728] {
+        // Exercise both a serial 64-MiB copy and parallel 64-MiB assembly.
+        let model = try localFixture(id: "fixture-\(size)",declaredSize: size)
+        let store = try ModelStore(root: root,available: { _ in Int64(size)+16_777_216 })
+        let server = RangeServer(bytes: Data("model".utf8),failAfter: 0)
+        do {
+            try await store.download(model,wifi: { true },transport: LargeRangeTransport(server: server))
+            Issue.record("Transfer started without assembly space")
+        } catch let error as ClientError { #expect(error.key == "mobile.local.storage_required") }
+        #expect(await server.requests.isEmpty)
+    }
+}
+
+private actor IgnoredRangeServer: HTTPTransport {
+    let server: RangeServer
+    let count: Int
+    let corruptWhole: Bool
+    private(set) var ranges: [String] = []
+    init(bytes: Data,corruptWhole: Bool = false) { server = RangeServer(bytes: bytes); count = bytes.count; self.corruptWhole = corruptWhole }
+    func send(_ request: URLRequest) async throws -> HTTPReply { throw ClientError("unused") }
+    func download(_ request: URLRequest) async throws -> DownloadReply {
+        let range = request.value(forHTTPHeaderField: "Range")
+        ranges.append(range ?? "")
+        var whole = request; whole.setValue("bytes=0-\(count-1)",forHTTPHeaderField: "Range")
+        let reply = try await server.download(whole)
+        if range == nil && corruptWhole { try Data(repeating: 0,count: count).write(to: reply.file) }
+        return DownloadReply(file: reply.file,status: range == nil ? 206 : 200,headers: range == nil ? reply.headers : [:])
+    }
+}
+@Test func ignoredResumedRangeUsesOnePlainWholeFileFallback() async throws {
+    let root = try localDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+    let bytes = Data("model-fixture".utf8),model = try localFixture(bytes: bytes)
+    let part = root.appendingPathComponent(model.id+"/.partial/"+model.files[0].sha256)
+    try FileManager.default.createDirectory(at: part.deletingLastPathComponent(),withIntermediateDirectories: true)
+    try bytes.prefix(5).write(to: part)
+    let store = try ModelStore(root: root,available: { _ in 100_000_000_000 }),server = IgnoredRangeServer(bytes: bytes)
+    try await store.download(model,wifi: { true },transport: server)
+    #expect(await server.ranges == ["bytes=5-12",""])
+    #expect(await store.installed(model))
+}
+@Test func ignoredParallelRangesFallBackToExactlyOneWholeFileRequest() async throws {
+    let root = try localDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+    let bytes = Data(repeating: 23,count: 33_554_433),model = try localFixture(bytes: bytes)
+    let store = try ModelStore(root: root,available: { _ in 100_000_000_000 }),server = IgnoredRangeServer(bytes: bytes)
+    try await store.download(model,wifi: { true },transport: server)
+    #expect(await server.ranges.filter { $0.isEmpty }.count == 1)
+    #expect(await store.installed(model))
+}
+
+@Test func corruptWholeFallbackKeepsTheSavedPrefix() async throws {
+    let root = try localDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+    let bytes = Data("model-fixture".utf8),model = try localFixture(bytes: bytes)
+    let part = root.appendingPathComponent(model.id+"/.partial/"+model.files[0].sha256)
+    try FileManager.default.createDirectory(at: part.deletingLastPathComponent(),withIntermediateDirectories: true)
+    try bytes.prefix(5).write(to: part)
+    let store = try ModelStore(root: root,available: { _ in 100_000_000_000 })
+    do {
+        try await store.download(model,wifi: { true },transport: IgnoredRangeServer(bytes: bytes,corruptWhole: true))
+        Issue.record("Corrupted fallback installed")
+    } catch let error as ClientError { #expect(error.key == "mobile.local.checksum_failed") }
+    #expect(try Data(contentsOf: part) == bytes.prefix(5))
+    #expect(await !store.installed(model))
+}
+@Test func completedWholeFallbackIsVerifiedAfterRelaunchWithoutNetwork() async throws {
+    let root = try localDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+    let bytes = Data("model-fixture".utf8),model = try localFixture(bytes: bytes)
+    let part = root.appendingPathComponent(model.id+"/.partial/"+model.files[0].sha256)
+    try FileManager.default.createDirectory(at: part.deletingLastPathComponent(),withIntermediateDirectories: true)
+    try bytes.prefix(5).write(to: part); try bytes.write(to: part.appendingPathExtension("whole"))
+    let store = try ModelStore(root: root,available: { _ in 0 }),server = RangeServer(bytes: bytes,failAfter: 0)
+    try await store.download(model,wifi: { false },transport: server)
+    #expect(await store.installed(model)); #expect(await server.requests.isEmpty)
 }

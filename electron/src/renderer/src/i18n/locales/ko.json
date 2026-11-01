@@ -4388,6 +4388,18 @@
       "supermetry": "직접 호스팅하는 개인정보 보호 중심 웹 분석입니다.",
       "spicrawl": "AI 에이전트를 위해 웹 페이지를 Markdown이나 구조화된 데이터로 변환합니다.",
       "special_sponsor": "특별 후원사"
+    },
+    "downloads": {
+      "pause": "일시 중지",
+      "paused": "일시 중지됨",
+      "connecting": "연결 중…",
+      "waiting": "Wi-Fi 연결 대기 중…",
+      "retrying": "{{seconds}}초 후 다시 시도…",
+      "verifying": "모델 검증 중…",
+      "speed": "{{speed}}/초",
+      "eta": "약 {{time}} 남음",
+      "estimating": "남은 시간 계산 중…",
+      "waiting_network": "연결 대기 중…"
     }
   },
   "failureCause": {

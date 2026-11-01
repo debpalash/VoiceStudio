@@ -4388,6 +4388,18 @@
       "supermetry": "自分のサーバーで動かせる、プライバシーに配慮したウェブ解析。",
       "spicrawl": "AIエージェント向けにウェブページをMarkdownや構造化データに変換します。",
       "special_sponsor": "特別スポンサー"
+    },
+    "downloads": {
+      "pause": "一時停止",
+      "paused": "一時停止中",
+      "connecting": "接続中…",
+      "waiting": "Wi-Fi接続を待っています…",
+      "retrying": "{{seconds}}秒後に再試行…",
+      "verifying": "モデルを検証中…",
+      "speed": "{{speed}}/秒",
+      "eta": "残り約{{time}}",
+      "estimating": "残り時間を推定中…",
+      "waiting_network": "接続を待っています…"
     }
   },
   "failureCause": {

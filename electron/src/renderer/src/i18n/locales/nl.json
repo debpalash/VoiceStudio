@@ -4388,6 +4388,18 @@
       "supermetry": "Zelf gehoste, privacyvriendelijke webstatistieken.",
       "spicrawl": "Zet webpagina’s om in Markdown of gestructureerde gegevens voor AI-agenten.",
       "special_sponsor": "Speciale sponsor"
+    },
+    "downloads": {
+      "pause": "Pauzeren",
+      "paused": "Gepauzeerd",
+      "connecting": "Verbinden…",
+      "waiting": "Wachten op wifi…",
+      "retrying": "Opnieuw proberen over {{seconds}} s…",
+      "verifying": "Model controleren…",
+      "speed": "{{speed}}/s",
+      "eta": "Nog ongeveer {{time}}",
+      "estimating": "Resterende tijd schatten…",
+      "waiting_network": "Wachten op verbinding…"
     }
   },
   "failureCause": {

@@ -4388,6 +4388,18 @@
       "supermetry": "自行託管、重視隱私的網站分析工具。",
       "spicrawl": "將網頁轉換為適用於 AI 代理程式的 Markdown 或結構化資料。",
       "special_sponsor": "特別贊助商"
+    },
+    "downloads": {
+      "pause": "暫停",
+      "paused": "已暫停",
+      "connecting": "正在連線…",
+      "waiting": "正在等待 Wi-Fi…",
+      "retrying": "{{seconds}} 秒後重試…",
+      "verifying": "正在驗證模型…",
+      "speed": "{{speed}}/秒",
+      "eta": "大約還需 {{time}}",
+      "estimating": "正在估算剩餘時間…",
+      "waiting_network": "正在等待網路連線…"
     }
   },
   "failureCause": {

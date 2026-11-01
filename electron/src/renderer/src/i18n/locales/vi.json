@@ -4388,6 +4388,18 @@
       "supermetry": "Phân tích web tự lưu trữ, tôn trọng quyền riêng tư.",
       "spicrawl": "Chuyển trang web thành Markdown hoặc dữ liệu có cấu trúc cho tác nhân AI.",
       "special_sponsor": "Nhà tài trợ đặc biệt"
+    },
+    "downloads": {
+      "pause": "Tạm dừng",
+      "paused": "Đã tạm dừng",
+      "connecting": "Đang kết nối…",
+      "waiting": "Đang chờ Wi-Fi…",
+      "retrying": "Thử lại sau {{seconds}} giây…",
+      "verifying": "Đang xác minh mô hình…",
+      "speed": "{{speed}}/giây",
+      "eta": "Còn khoảng {{time}}",
+      "estimating": "Đang ước tính thời gian còn lại…",
+      "waiting_network": "Đang chờ kết nối…"
     }
   },
   "failureCause": {

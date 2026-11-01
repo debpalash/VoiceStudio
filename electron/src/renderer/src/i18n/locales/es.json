@@ -4390,6 +4390,18 @@
       "supermetry": "Analítica web autohospedada que respeta la privacidad.",
       "spicrawl": "Convierte páginas web en Markdown o datos estructurados para agentes de IA.",
       "special_sponsor": "Patrocinador especial"
+    },
+    "downloads": {
+      "pause": "Pausar",
+      "paused": "En pausa",
+      "connecting": "Conectando…",
+      "waiting": "Esperando Wi-Fi…",
+      "retrying": "Reintentando en {{seconds}} s…",
+      "verifying": "Verificando el modelo…",
+      "speed": "{{speed}}/s",
+      "eta": "Quedan unos {{time}}",
+      "estimating": "Calculando el tiempo restante…",
+      "waiting_network": "Esperando conexión…"
     }
   },
   "failureCause": {
