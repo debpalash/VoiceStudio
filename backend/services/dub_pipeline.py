@@ -79,7 +79,11 @@ logger = logging.getLogger("omnivoice.dub_pipeline")
 def _media_process_error(tool: str, returncode: int, stderr: bytes, *, paths=()) -> str:
     """Keep the actionable end of native diagnostics without leaking paths."""
     from core.scrub import scrub_text
-    detail = stderr.decode(errors="replace")
+    detail = stderr.decode(errors="replace").replace("\r\n", "\n")
+    # Progress bars (Demucs tqdm, ffmpeg stats) redraw one line with "\r";
+    # keep only each line's final frame so they can't push the real error
+    # out of the tail (#3751).
+    detail = "\n".join(line.rsplit("\r", 1)[-1] for line in detail.split("\n"))
     # Input/output may live outside home directories (mounted media, Windows
     # drive roots). Remove the exact command paths before generic scrubbing.
     for path in sorted((str(p) for p in paths if p), key=len, reverse=True):
@@ -1752,7 +1756,7 @@ async def ingest_pipeline(
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                logger.warning("Demucs failed for %s, falling back to mixed audio: %s", log_safe(job_id), log_safe(e))
+                logger.warning("Demucs failed for %s, falling back to mixed audio: %s", log_safe(job_id), log_safe(e, limit=12100))
                 # plan-04: surface the degradation (job continues with mixed audio).
                 yield prep_event("warning", **failure.build_failure(e, stage="demucs", include_diagnostic=False))
                 vocals_path = audio_path

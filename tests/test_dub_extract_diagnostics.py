@@ -21,6 +21,18 @@ async def test_extract_error_preserves_failure_after_long_banner(tmp_path, monke
     assert "/home/private/" not in output
 
 
+@pytest.mark.parametrize("eol", ["\n", "\r\n"])
+def test_progress_frames_do_not_bury_native_error(eol):
+    from services import dub_pipeline
+    bar = "".join(f"\r {i}%|█████| {i}/100 [02:25<00:01, 24.7seconds/s]" for i in range(101))
+    stderr = (bar + eol + "Traceback (most recent call last):" + eol + "MemoryError" + eol).encode()
+    error = dub_pipeline._media_process_error("Demucs", 1, stderr)
+    assert "MemoryError" in error
+    assert "Traceback" in error
+    assert " 99%" not in error
+    assert "100%" in error
+
+
 def test_empty_native_diagnostic_retains_exit_code():
     from services import dub_pipeline
     assert "code 7" in dub_pipeline._media_process_error("FFmpeg", 7, b"")
