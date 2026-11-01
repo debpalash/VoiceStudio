@@ -101,28 +101,63 @@ def pcm16_mono(wav_tensor: torch.Tensor) -> torch.Tensor:
     return (wav * 32767).round().clamp(-32768, 32767).to(torch.int16)
 
 
+def _is_resource_failure(exc: BaseException) -> bool:
+    """Out-of-memory is not a format problem; decoding again elsewhere would repeat it."""
+    oom = getattr(torch, "OutOfMemoryError", None)
+    return (oom is not None and isinstance(exc, oom)) or "out of memory" in str(exc).lower()
+
+
 def load_audio(source: PathOrBuf) -> tuple[torch.Tensor, int]:
-    """Read normalized channel-first audio even when TorchCodec is unavailable."""
+    """Read normalized channel-first audio even when TorchCodec is unavailable.
+
+    torchaudio is tried first. When it cannot decode the input (no TorchCodec,
+    or a container its backends do not read, such as M4A/AAC without FFmpeg
+    shared libraries), soundfile and then the ffmpeg CLI are tried. If every
+    decoder fails, torchaudio's own error is raised with the fallback's chained,
+    so corrupt input still reports the primary decoder's message (#3689).
+    Out-of-memory and size-limit failures (ValueError) are never retried.
+    """
     position = source.tell() if hasattr(source, "tell") and getattr(source, "seekable", lambda: False)() else None
+    primary_error: RuntimeError | None = None
     if torchaudio is not None:
         try:
             return torchaudio.load(source)
         except (ImportError, RuntimeError) as exc:
-            if isinstance(exc, RuntimeError) and "could not load libtorchcodec" not in str(exc).lower():
+            if _is_resource_failure(exc):
                 raise
+            if isinstance(exc, RuntimeError) and "could not load libtorchcodec" not in str(exc).lower():
+                primary_error = exc
             if position is not None:
                 source.seek(position)
+    try:
+        samples, sample_rate = _load_audio_fallback(source, position)
+    except RuntimeError as fallback_error:
+        if primary_error is None:
+            raise
+        raise primary_error from fallback_error
+    return torch.from_numpy(samples.T), sample_rate
+
+
+class AudioDecoderUnavailable(RuntimeError):
+    """No installed decoder reads this format; the message says how to fix it."""
+
+
+def _load_audio_fallback(source: PathOrBuf, position: int | None) -> tuple[np.ndarray, int]:
+    """Decode with soundfile, then the ffmpeg CLI. Returns (frames x channels, rate)."""
     import soundfile as sf
     try:
         samples, sample_rate = sf.read(source, dtype="float32", always_2d=True)
-    except RuntimeError:
+    except RuntimeError as unsupported:
         # libsndfile does not support every accepted upload container (AAC,
         # M4A in particular). Decode with the already-installed ffmpeg.
         from services.ffmpeg_utils import find_ffmpeg, local_inputs_only
 
         ffmpeg = find_ffmpeg()
         if not ffmpeg:
-            raise
+            raise AudioDecoderUnavailable(
+                "Decoding this audio format requires ffmpeg. Install it (Settings → Audio tools) "
+                "or convert the file to WAV."
+            ) from unsupported
         temporary = None
         try:
             if hasattr(source, "read"):
@@ -155,17 +190,27 @@ def load_audio(source: PathOrBuf) -> tuple[torch.Tensor, int]:
                             shutil.disk_usage(tempfile.gettempdir()).free - _DECODE_DISK_RESERVE)
                 if limit <= 0:
                     raise ValueError("Audio exceeds the decoding size limit; free temporary storage or use a shorter clip.")
-                subprocess.run(
-                    local_inputs_only(
-                        [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
-                         "-i", filename,
-                         "-map", "0:a:0", "-f", "wav", "-c:a", "pcm_f32le",
-                         "-fs", str(limit), "pipe:1"],
-                        tool="ffmpeg",
-                    ),
-                    stdout=decoded, stderr=subprocess.PIPE, check=True, timeout=120,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                )
+                try:
+                    subprocess.run(
+                        local_inputs_only(
+                            [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin",
+                             "-i", filename,
+                             "-map", "0:a:0", "-f", "wav", "-c:a", "pcm_f32le",
+                             "-fs", str(limit), "pipe:1"],
+                            tool="ffmpeg",
+                        ),
+                        stdout=decoded, stderr=subprocess.PIPE, check=True, timeout=120,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    )
+                except subprocess.CalledProcessError as failed:
+                    from core.failure import strip_ffmpeg_banner
+
+                    detail = strip_ffmpeg_banner((failed.stderr or b"").decode("utf-8", "replace")).strip()[-300:]
+                    raise RuntimeError(
+                        f"ffmpeg could not decode the audio: {detail or f'exit {failed.returncode}'}"
+                    ) from failed
+                except subprocess.TimeoutExpired as slow:
+                    raise RuntimeError("ffmpeg took too long to decode the audio; use a shorter clip.") from slow
                 # ffmpeg exits successfully at -fs; never return truncated audio.
                 if decoded.seek(0, os.SEEK_END) >= limit:
                     raise ValueError("Audio exceeds the decoding size limit; use a shorter clip.")
@@ -174,7 +219,7 @@ def load_audio(source: PathOrBuf) -> tuple[torch.Tensor, int]:
         finally:
             if temporary is not None:
                 os.unlink(temporary)
-    return torch.from_numpy(samples.T), sample_rate
+    return samples, sample_rate
 
 @dataclass(frozen=True)
 class AudioInfo:
