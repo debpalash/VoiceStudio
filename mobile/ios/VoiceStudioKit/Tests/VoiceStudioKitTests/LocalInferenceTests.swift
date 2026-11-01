@@ -898,14 +898,16 @@ private struct LargeRangeTransport: HTTPTransport {
 private actor IgnoredRangeServer: HTTPTransport {
     let server: RangeServer
     let count: Int
+    let corruptWhole: Bool
     private(set) var ranges: [String] = []
-    init(bytes: Data) { server = RangeServer(bytes: bytes); count = bytes.count }
+    init(bytes: Data,corruptWhole: Bool = false) { server = RangeServer(bytes: bytes); count = bytes.count; self.corruptWhole = corruptWhole }
     func send(_ request: URLRequest) async throws -> HTTPReply { throw ClientError("unused") }
     func download(_ request: URLRequest) async throws -> DownloadReply {
         let range = request.value(forHTTPHeaderField: "Range")
         ranges.append(range ?? "")
         var whole = request; whole.setValue("bytes=0-\(count-1)",forHTTPHeaderField: "Range")
         let reply = try await server.download(whole)
+        if range == nil && corruptWhole { try Data(repeating: 0,count: count).write(to: reply.file) }
         return DownloadReply(file: reply.file,status: range == nil ? 206 : 200,headers: range == nil ? reply.headers : [:])
     }
 }
@@ -927,4 +929,29 @@ private actor IgnoredRangeServer: HTTPTransport {
     try await store.download(model,wifi: { true },transport: server)
     #expect(await server.ranges.filter { $0.isEmpty }.count == 1)
     #expect(await store.installed(model))
+}
+
+@Test func corruptWholeFallbackKeepsTheSavedPrefix() async throws {
+    let root = try localDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+    let bytes = Data("model-fixture".utf8),model = try localFixture(bytes: bytes)
+    let part = root.appendingPathComponent(model.id+"/.partial/"+model.files[0].sha256)
+    try FileManager.default.createDirectory(at: part.deletingLastPathComponent(),withIntermediateDirectories: true)
+    try bytes.prefix(5).write(to: part)
+    let store = try ModelStore(root: root,available: { _ in 100_000_000_000 })
+    do {
+        try await store.download(model,wifi: { true },transport: IgnoredRangeServer(bytes: bytes,corruptWhole: true))
+        Issue.record("Corrupted fallback installed")
+    } catch let error as ClientError { #expect(error.key == "mobile.local.checksum_failed") }
+    #expect(try Data(contentsOf: part) == bytes.prefix(5))
+    #expect(await !store.installed(model))
+}
+@Test func completedWholeFallbackIsVerifiedAfterRelaunchWithoutNetwork() async throws {
+    let root = try localDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+    let bytes = Data("model-fixture".utf8),model = try localFixture(bytes: bytes)
+    let part = root.appendingPathComponent(model.id+"/.partial/"+model.files[0].sha256)
+    try FileManager.default.createDirectory(at: part.deletingLastPathComponent(),withIntermediateDirectories: true)
+    try bytes.prefix(5).write(to: part); try bytes.write(to: part.appendingPathExtension("whole"))
+    let store = try ModelStore(root: root,available: { _ in 0 }),server = RangeServer(bytes: bytes,failAfter: 0)
+    try await store.download(model,wifi: { false },transport: server)
+    #expect(await store.installed(model)); #expect(await server.requests.isEmpty)
 }

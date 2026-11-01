@@ -157,6 +157,11 @@ public actor ModelStore {
         for file in model.files where try !verify(directory(model).appendingPathComponent(file.path),file: file,identity: identity) {
             let part = partial(model,file)
             if size(part) > file.size { try FileManager.default.removeItem(at: part) }
+            let whole = part.appendingPathExtension("whole")
+            if size(whole) == file.size {
+                if try verify(whole,file: file,identity: identity) { try promoteWhole(whole,to: part,identity: identity) }
+                else { try FileManager.default.removeItem(at: whole) }
+            }
             try recoverRanges(part,total: file.size)
         }
         reservations[model.id] = try model.files.filter {
@@ -201,10 +206,7 @@ public actor ModelStore {
                     assemblyReservations[model.id] = max(assemblyReservations[model.id,default: 0],size(part))
                     try checkDownloadSpace()
                     let whole = try await downloadRange(model,file: f,offset: 0,end: f.size-1,transport: transport,meter: meter,base: 0,wholeFile: true)
-                    defer { try? FileManager.default.removeItem(at: whole.file) }
-                    try Task.checkCancellation(); try checkPermission(model)
-                    if FileManager.default.fileExists(atPath: part.path) { try FileManager.default.removeItem(at: part) }
-                    try FileManager.default.moveItem(at: whole.file,to: part)
+                    try await stageWhole(whole,model: model,file: f,part: part,identity: identity,meter: meter)
                     await meter.replaceFile(f.path,rangePrefix: f.sha256+":",bytes: f.size)
                 }
             }
@@ -224,12 +226,11 @@ public actor ModelStore {
                     reply = try await downloadRange(model,file: f,offset: 0,end: f.size-1,transport: transport,meter: meter,base: 0,wholeFile: true)
                     wholeFile = true
                 }
-                defer { try? FileManager.default.removeItem(at: reply.file) }
-                try Task.checkCancellation(); try checkPermission(model)
                 if wholeFile || reply.status == 200 {
-                    if FileManager.default.fileExists(atPath: part.path) { try FileManager.default.removeItem(at: part) }
-                    try FileManager.default.moveItem(at: reply.file,to: part)
+                    try await stageWhole(reply,model: model,file: f,part: part,identity: identity,meter: meter)
                 } else {
+                    defer { try? FileManager.default.removeItem(at: reply.file) }
+                    try Task.checkCancellation(); try checkPermission(model)
                     try append(reply.file,to: part)
                 }
                 await progress(Double(completed + size(part)) / Double(model.total_bytes))
@@ -297,6 +298,25 @@ public actor ModelStore {
         try Task.checkCancellation(); try checkPermission(model)
         if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
         try FileManager.default.moveItem(at: reply.file,to: destination)
+    }
+    private func promoteWhole(_ whole: URL,to part: URL,identity: String) throws {
+        if FileManager.default.fileExists(atPath: part.path) { try FileManager.default.removeItem(at: part) }
+        try FileManager.default.moveItem(at: whole,to: part)
+        verified.removeValue(forKey: whole); verified[part] = try stamp(part,identity: identity)
+    }
+    private func stageWhole(_ reply: DownloadReply,model: PhoneModel,file: PhoneModel.File,part: URL,identity: String,meter: DownloadMeter) async throws {
+        let whole = part.appendingPathExtension("whole")
+        if FileManager.default.fileExists(atPath: whole.path) { try FileManager.default.removeItem(at: whole) }
+        try FileManager.default.moveItem(at: reply.file,to: whole)
+        // Persist before hashing so cancellation/relaunch can reuse the complete body.
+        await meter.replaceFile(file.path,rangePrefix: file.sha256+":",bytes: file.size)
+        await meter.update("",bytes: 0,stage: "verifying")
+        guard try verify(whole,file: file,identity: identity) else {
+            try? FileManager.default.removeItem(at: whole)
+            throw ClientError("mobile.local.checksum_failed")
+        }
+        try Task.checkCancellation(); try checkPermission(model)
+        try promoteWhole(whole,to: part,identity: identity)
     }
     private func append(_ source: URL,to destination: URL,offset: UInt64 = 0) throws {
         if !FileManager.default.fileExists(atPath: destination.path) {

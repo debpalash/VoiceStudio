@@ -286,7 +286,8 @@ All tabs work without pairing once on-device models are installed (see M2); the 
   plus transient assembly space; release each source range only after its copied
   bytes are durable. Strictly validate range
   boundaries and fall back to one plain whole-file GET when ranges are unsupported;
-  replace the saved prefix for a complete fallback response, including HTTP 206.
+  keep the saved prefix until the replacement validates, including HTTP 206.
+  Retain completed fallback bodies for verification after relaunch.
   Retry transient network/408/429/5xx failures with bounded exponential backoff,
   jitter and `Retry-After`; retry 403 from the original pinned URL to refresh
   expiring delivery URLs. Permanent failures require an explicit retry.

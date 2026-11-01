@@ -131,6 +131,77 @@ class LocalPolicyTest {
             assertEquals(0,server.requestCount)
         }
     }
+    @Test fun unsupportedParallelRangesReplaceAResumedPrefixUsingPlain206() = runTest {
+        MockWebServer().use {server ->
+            val bytes=ByteArray(1024) {(it%251).toByte()}
+            val m=model().let {it.copy(files=listOf(it.files.single().copy(size=1024,sha256=hash(bytes))),totalBytes=1024)}
+            File(temporary.root,"models/fixture/weights.bin.part").apply {parentFile!!.mkdirs();writeBytes(bytes.copyOfRange(0,5))}
+            val requests=java.util.concurrent.CopyOnWriteArrayList<String>()
+            server.dispatcher=object:okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse {
+                    val range=request.getHeader("Range");requests+=range ?: "whole"
+                    return MockResponse().setResponseCode(if(range==null) 206 else 200)
+                        .setHeader("Content-Range","bytes 0-1023/1024").setBody(Buffer().write(bytes))
+                }
+            }
+            server.start()
+            val d=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{true},{Long.MAX_VALUE},OkHttpClient.Builder().followRedirects(false).build(),listOf(server.url("/").toString()),true,chunkSize=256)
+            d.download(m,false)
+            assertEquals(1,requests.count {it=="whole"});assertTrue(d.installed(m))
+            assertArrayEquals(bytes,File(temporary.root,"models/fixture/weights.bin").readBytes())
+        }
+    }
+    @Test fun failedWholeFallbackKeepsTheOriginalPrefix() = runTest {
+        MockWebServer().use {server ->
+            val bytes=ByteArray(1024) {(it%251).toByte()}
+            val m=model().let {it.copy(files=listOf(it.files.single().copy(size=1024,sha256=hash(bytes))),totalBytes=1024)}
+            val partial=File(temporary.root,"models/fixture/weights.bin.part").apply {parentFile!!.mkdirs();writeBytes(bytes.copyOfRange(0,5))}
+            server.dispatcher=object:okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest)=if(request.getHeader("Range")==null) MockResponse().setResponseCode(404)
+                    else MockResponse().setBody(Buffer().write(bytes))
+            }
+            server.start()
+            val d=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{true},{Long.MAX_VALUE},OkHttpClient.Builder().followRedirects(false).build(),listOf(server.url("/").toString()),true,chunkSize=256)
+            failure("mobile.local.download_failed") {d.download(m,false)}
+            assertArrayEquals(bytes.copyOfRange(0,5),partial.readBytes())
+            assertFalse(d.installed(m))
+        }
+    }
+    @Test fun wholeFallbackRejectsCorruptionBeforeReplacingThePrefix() = runTest {
+        MockWebServer().use {server ->
+            val bytes=ByteArray(1024) {(it%251).toByte()}
+            val m=model().let {it.copy(files=listOf(it.files.single().copy(size=1024,sha256=hash(bytes))),totalBytes=1024)}
+            val partial=File(temporary.root,"models/fixture/weights.bin.part").apply {parentFile!!.mkdirs();writeBytes(bytes.copyOfRange(0,5))}
+            server.dispatcher=object:okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest)=MockResponse().setBody(Buffer().write(if(request.getHeader("Range")==null) ByteArray(1024) else bytes))
+            }
+            server.start()
+            val d=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{true},{Long.MAX_VALUE},OkHttpClient.Builder().followRedirects(false).build(),listOf(server.url("/").toString()),true,chunkSize=256)
+            failure("mobile.local.checksum_failed") {d.download(m,false)}
+            assertArrayEquals(bytes.copyOfRange(0,5),partial.readBytes());assertFalse(d.installed(m))
+        }
+    }
+    @Test fun interruptedWholeFallbackRetainsTheLongerContiguousPrefix() = runTest {
+        MockWebServer().use {server ->
+            val bytes=ByteArray(1024) {(it%251).toByte()}
+            val m=model().let {it.copy(files=listOf(it.files.single().copy(size=1024,sha256=hash(bytes))),totalBytes=1024)}
+            File(temporary.root,"models/fixture/weights.bin.part").apply {parentFile!!.mkdirs();writeBytes(bytes.copyOfRange(0,5))}
+            File(temporary.root,"models/fixture/weights.bin.part.whole-${hash(bytes)}").writeBytes(bytes.copyOfRange(0,256))
+            val requests=java.util.concurrent.CopyOnWriteArrayList<String>()
+            server.dispatcher=object:okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse {
+                    val range=request.getHeader("Range")!!;requests+=range
+                    val bounds=range.removePrefix("bytes=").split('-').map {it.toInt()}
+                    return MockResponse().setResponseCode(206).setHeader("Content-Range","bytes ${bounds[0]}-${bounds[1]}/1024")
+                        .setBody(Buffer().write(bytes.copyOfRange(bounds[0],bounds[1]+1)))
+                }
+            }
+            server.start()
+            val d=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{true},{Long.MAX_VALUE},OkHttpClient.Builder().followRedirects(false).build(),listOf(server.url("/").toString()),true,chunkSize=256)
+            d.download(m,false)
+            assertTrue(d.installed(m));assertTrue(requests.all {it.substringAfter("bytes=").substringBefore('-').toInt()>=256})
+        }
+    }
     @Test fun omniSpeechRequiresAReferenceBeforeLoadingAnyModel() = runTest {
         val m=fixtureModel("clone")
         assertTrue(m.supportsSpeech&&m.supportsDesign&&m.requiresReference)

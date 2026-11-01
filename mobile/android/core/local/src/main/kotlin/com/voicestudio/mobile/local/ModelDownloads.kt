@@ -56,6 +56,14 @@ class ModelDownloads internal constructor(
     private val connections=Semaphore(4)
     private val locks=ConcurrentHashMap<String,Mutex>()
     private val reservations=HashMap<String,()->Long>()
+    private val wholeDownloads=ConcurrentHashMap<File,File>()
+    private fun wholeFile(partial: File,file: ModelFile)=File(partial.parentFile,partial.name+".whole-"+file.sha256)
+    private fun replacePartial(whole: File,partial: File,catalogue: String,checked: Boolean=true) {
+        try {java.nio.file.Files.move(whole.toPath(),partial.toPath(),java.nio.file.StandardCopyOption.REPLACE_EXISTING)}
+        catch(e:IOException) {throw ClientFailure("mobile.local.storage_required")}
+        verified.remove(whole);verified.remove(partial)
+        if(checked) verified[partial]=stamp(partial,catalogue)
+    }
     private fun lock(model: PhoneModel)=locks.getOrPut(model.id) {Mutex()}
     private val mutable=MutableStateFlow<Map<String,DownloadProgress>>(emptyMap())
     val progress=mutable.asStateFlow()
@@ -80,11 +88,26 @@ class ModelDownloads internal constructor(
             model.files.filterNot {it in completedFiles}.forEach {
                 val partial=File(directory,it.path+".part")
                 if(partial.length()>it.size&&!partial.delete()) throw ClientFailure("mobile.local.storage_required")
+                val whole=wholeFile(partial,it)
+                if(whole.length()==it.size) {
+                    if(verifiedFile(whole,it,catalogue) {job.ensureActive()}) replacePartial(whole,partial,catalogue)
+                    else whole.delete()
+                } else if(whole.isFile) {
+                    // A failed whole response is still a contiguous prefix of this
+                    // immutable file. Keep the longer prefix; hash before activation.
+                    if(whole.length() in 1 until it.size&&whole.length()>partial.length()) replacePartial(whole,partial,catalogue,checked=false)
+                    else whole.delete()
+                }
                 recoverRanges(partial,it)
             }
             fun remainingBytes()=model.files.filterNot {it in completedFiles}.sumOf { f ->
-                val partial=File(directory,f.path+".part").length().takeIf {it<=f.size} ?: 0L
-                f.size-partial-savedRanges(File(directory,f.path+".part"),f.size,f.sha256)
+                val path=File(directory,f.path+".part")
+                val whole=wholeDownloads[path]
+                if(whole!=null) (f.size-whole.length()).coerceAtLeast(0)
+                else {
+                    val partial=path.length().takeIf {it<=f.size} ?: 0L
+                    f.size-partial-savedRanges(path,f.size,f.sha256)
+                }
             }
             val needed=remainingBytes()
             val assembly=if(model.files.any {it !in completedFiles&&it.bundled==null&&it.size-File(directory,it.path+".part").length()>=chunkSize*2}) chunkSize else 0L
@@ -126,13 +149,13 @@ class ModelDownloads internal constructor(
                     else resilientTransfer(model,f,part,allowMobile) {bytes,stage,retry -> report(f,bytes,stage,retry)}
                     currentCoroutineContext().ensureActive()
                     report(f,part.length(),"verifying")
-                    if(part.length()!=f.size||digest(part) {job.ensureActive()}!=f.sha256) {part.delete();throw ClientFailure("mobile.local.checksum_failed")}
+                    if(!verifiedFile(part,f,catalogue) {job.ensureActive()}) {part.delete();throw ClientFailure("mobile.local.checksum_failed")}
                     licence.requireAccepted(model)
                     synchronized(reservations) {
                         if(!part.renameTo(target)) throw ClientFailure("mobile.local.storage_required")
                         completedFiles.add(f)
                     }
-                    verified[target]=stamp(target,catalogue)
+                    verified.remove(part);verified[target]=stamp(target,catalogue)
                     completed+=f.size
                 }
                 licence.requireAccepted(model)
@@ -243,7 +266,22 @@ class ModelDownloads internal constructor(
             directory.deleteRecursively()
         } catch(e:RangeUnsupported) {
             directory.deleteRecursively()
-            retryTransfer(model,file,partial,allowMobile,report)
+            // Keep the saved prefix until a plain whole-file response is complete
+            // and verified. Its staging bytes count toward the shared reservation.
+            val whole=wholeFile(partial,file)
+            wholeDownloads[partial]=whole
+            try {
+                checkReservedSpace()
+                retryTransfer(model,file,whole,allowMobile,report,wholeFile=true)
+                report(file.size,"verifying",0)
+                val catalogue=modelPin(model).identity
+                val job=currentCoroutineContext().job
+                if(!verifiedFile(whole,file,catalogue) {job.ensureActive()}) {
+                    whole.delete();throw ClientFailure("mobile.local.checksum_failed")
+                }
+                currentCoroutineContext().ensureActive();licence.requireAccepted(model)
+                replacePartial(whole,partial,catalogue)
+            } finally {wholeDownloads.remove(partial)}
         }
     }
     private fun diagnostic(model: PhoneModel,event: String,host: String,status: Int?) {
@@ -256,7 +294,7 @@ class ModelDownloads internal constructor(
     }
     private class PermanentDownloadFailure(message: String): IOException(message)
     private class RetryDownloadFailure(val status: Int, val retryAfter: String?): IOException("HTTP $status")
-    private suspend fun retryTransfer(model: PhoneModel,file: ModelFile,partial: File,allowMobile: Boolean,report: (Long,String,Long)->Unit,lower: Long=0,upper: Long=file.size-1) {
+    private suspend fun retryTransfer(model: PhoneModel,file: ModelFile,partial: File,allowMobile: Boolean,report: (Long,String,Long)->Unit,lower: Long=0,upper: Long=file.size-1,wholeFile: Boolean=false) {
         var failure: IOException?=null
         val permanent=mutableSetOf<String>()
         val deliveryEndpoints=if(file.url?.toHttpUrl()?.host?.let {it!="huggingface.co"}==true) endpoints.take(1) else endpoints
@@ -272,7 +310,7 @@ class ModelDownloads internal constructor(
                 for(seconds in cooldown downTo 1) {report(partial.length(),"retrying",seconds);retryDelay(1000)}
                 val before=System.nanoTime();val initial=partial.length()
                 try {
-                    transfer(endpoint,model,file,partial,allowMobile,{report(it,"downloading",0)},lower,upper)
+                    transfer(endpoint,model,file,partial,allowMobile,{report(it,"downloading",0)},lower,upper,wholeFile)
                     val elapsed=(System.nanoTime()-before)/1e9
                     if(elapsed>=0.1&&partial.length()>initial) sourceRates[endpoint]=(partial.length()-initial)/elapsed
                     diagnostic(model,"received",endpoint.toHttpUrl().host,null)
@@ -303,10 +341,10 @@ class ModelDownloads internal constructor(
     // subdomains download like the apex host, and other ports are refused, on every platform.
     internal fun allowed(url: HttpUrl): Boolean = allowTestHttp || (url.scheme=="https" && url.port==443 && url.username.isEmpty() && url.password.isEmpty() &&
         (url.host in setOf("huggingface.co","hf-mirror.com","hf.co","github.com","release-assets.githubusercontent.com","objects.githubusercontent.com") || url.host.endsWith(".huggingface.co") || url.host.endsWith(".hf.co") || url.host.endsWith(".hf-mirror.com")))
-    private suspend fun transfer(endpoint: String, model: PhoneModel, file: ModelFile, partial: File, allowMobile: Boolean, report: (Long)->Unit, lower: Long=0, upper: Long=file.size-1) = connections.withPermit {
-        exchange(endpoint,model,file,partial,allowMobile,report,lower,upper)
+    private suspend fun transfer(endpoint: String, model: PhoneModel, file: ModelFile, partial: File, allowMobile: Boolean, report: (Long)->Unit, lower: Long=0, upper: Long=file.size-1,wholeFile: Boolean=false) = connections.withPermit {
+        exchange(endpoint,model,file,partial,allowMobile,report,lower,upper,wholeFile)
     }
-    private suspend fun exchange(endpoint: String, model: PhoneModel, file: ModelFile, partial: File, allowMobile: Boolean, report: (Long)->Unit, lower: Long, upper: Long) {
+    private suspend fun exchange(endpoint: String, model: PhoneModel, file: ModelFile, partial: File, allowMobile: Boolean, report: (Long)->Unit, lower: Long, upper: Long,wholeFile: Boolean) {
         if(partial.length()>upper-lower+1) partial.delete()
         if(partial.length()==upper-lower+1) return
         if(file.url!=null&&!ModelAssetSource.validUrl(file.url)) throw ClientFailure("mobile.local.catalogue_failed")
@@ -314,9 +352,9 @@ class ModelDownloads internal constructor(
         repeat(10) {
             networkAllowed(allowMobile);licence.requireAccepted(model);currentCoroutineContext().ensureActive()
             if(!allowed(url)) throw ClientFailure("mobile.local.download_failed")
-            val offset=partial.length()
+            val offset=if(wholeFile) 0L else partial.length()
             val ranged=lower>0||upper<file.size-1
-            val request=Request.Builder().url(url).header("Accept-Encoding","identity").apply {if(ranged) header("Range","bytes=${lower+offset}-$upper") else if(offset>0) header("Range","bytes=$offset-")}.build()
+            val request=Request.Builder().url(url).header("Accept-Encoding","identity").apply {if(!wholeFile) {if(ranged) header("Range","bytes=${lower+offset}-$upper") else if(offset>0) header("Range","bytes=$offset-")}}.build()
             val call=client.newCall(request)
             coroutineScope {
                 val cancellation=launch {try {awaitCancellation()} finally {call.cancel()}}

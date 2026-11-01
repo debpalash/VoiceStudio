@@ -302,7 +302,9 @@ compare Hugging Face and the approved hf-mirror.com source without probe traffic
 Completed ranges and legacy contiguous partials survive relaunch and interrupted
 assembly. Space reservations include the temporary assembly copy; each source
 range is released only after its copied bytes are durable. Responses must match exact range boundaries. Unsupported ranges fall
-back to one stream. Transient failures retry with backoff, jitter and Retry-After;
+back to one plain GET, staging and verifying the complete replacement before
+replacing a saved prefix. Interrupted fallbacks retain the longer contiguous
+prefix or the complete body for reuse. Transient failures retry with backoff, jitter and Retry-After;
 403 retries refresh the original pinned delivery URL. Permanent errors retain data
 for explicit retry. Redirects remain restricted to approved HTTPS delivery hosts.
 The dedicated client never carries computer credentials.
