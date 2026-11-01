@@ -11,7 +11,7 @@ import uuid
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, File, Form, UploadFile, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -19,6 +19,7 @@ from core.db import db_conn
 from core.config import VOICES_DIR, OUTPUTS_DIR
 from core import event_bus
 from core.audio_validation import resolve_regular_file
+from api.dependencies import require_admin, require_consumer
 from core.file_cleanup import FileCleanupError, unlink_if_present
 from core.media_types import MEDIA_EXTS, media_extension, unsupported_media_detail
 from core.url_safety import (
@@ -34,7 +35,7 @@ from services.ffmpeg_utils import spawn_subprocess
 
 logger = logging.getLogger("omnivoice.gallery")
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_consumer)])
 
 VOICE_GALLERY_DIR = Path(os.path.join(OUTPUTS_DIR, "voice_gallery"))
 VOICE_GALLERY_DIR.mkdir(parents=True, exist_ok=True)
@@ -145,7 +146,7 @@ def get_voice(voice_id: str):
     return r
 
 
-@router.delete("/gallery/voices/{voice_id}")
+@router.delete("/gallery/voices/{voice_id}", dependencies=[Depends(require_admin)])
 def delete_voice(voice_id: str):
     """Delete a voice from the gallery."""
     with db_conn() as conn:
@@ -169,7 +170,7 @@ def delete_voice(voice_id: str):
     return {"success": True}
 
 
-@router.post("/gallery/search/youtube")
+@router.post("/gallery/search/youtube", dependencies=[Depends(require_admin)])
 async def search_youtube(
     query: str = Query(..., description="User-supplied search terms or video title"),
     category: str = Query("import", description="Free-form tag stored with results"),
@@ -229,7 +230,7 @@ async def search_youtube(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/gallery/download")
+@router.post("/gallery/download", dependencies=[Depends(require_admin)])
 async def download_youtube_clip(
     video_url: str = Query(..., description="YouTube video URL"),
     start_time: float = Query(0, ge=0, description="Start time in seconds"),
@@ -395,7 +396,7 @@ async def _cut_local_clip(source: str, output_path: str, start: float, duration:
     return frames / rate
 
 
-@router.post("/gallery/upload")
+@router.post("/gallery/upload", dependencies=[Depends(require_admin)])
 async def upload_voice_clip(
     name: str = Form(...),
     character: str = Form(""),
@@ -675,7 +676,7 @@ def _materialize_gallery_profile(
     return result
 
 
-@router.post("/gallery/voices/{voice_id}/save-as-profile")
+@router.post("/gallery/voices/{voice_id}/save-as-profile", dependencies=[Depends(require_admin)])
 async def save_voice_as_profile(
     voice_id: str,
     profile_name: str = Query(..., description="Name for the voice profile"),
@@ -711,7 +712,7 @@ def preview_voice(voice_id: str):
 
 # ── Library management endpoints ──────────────────────────────────────────
 
-@router.patch("/gallery/voices/{voice_id}")
+@router.patch("/gallery/voices/{voice_id}", dependencies=[Depends(require_admin)])
 def update_voice(voice_id: str, body: dict):
     """Update voice metadata — name, tags, is_favorite."""
     with db_conn() as conn:
@@ -745,7 +746,7 @@ def update_voice(voice_id: str, body: dict):
     return {"success": True, "updated": list(body.keys())}
 
 
-@router.post("/gallery/voices/batch-delete")
+@router.post("/gallery/voices/batch-delete", dependencies=[Depends(require_admin)])
 def batch_delete_voices(body: dict):
     """Delete multiple voices by ID list."""
     ids = body.get("ids", [])
@@ -771,7 +772,7 @@ def batch_delete_voices(body: dict):
     return {"deleted": deleted, "failed": failed}
 
 
-@router.post("/gallery/voices/{voice_id}/to-profile")
+@router.post("/gallery/voices/{voice_id}/to-profile", dependencies=[Depends(require_admin)])
 def voice_to_profile(voice_id: str):
     """Create a voice profile from a gallery clip."""
     result = _materialize_gallery_profile(voice_id)
