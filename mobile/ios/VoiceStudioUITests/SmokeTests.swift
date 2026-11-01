@@ -377,7 +377,8 @@ final class SmokeTests: XCTestCase {
     }
 
     @MainActor private func dismissUsingDone(_ app: XCUIApplication) {
-        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        // A visible keyboard is the negative control for the dismissal assertion.
+        XCTAssertTrue(app.keyboards.firstMatch.wait(for: \.isHittable, toEqual: true, timeout: 5))
         let done = app.buttons["keyboard.done"]
         XCTAssertTrue(done.wait(for: \.isHittable, toEqual: true, timeout: 5))
         done.tap()
@@ -385,7 +386,8 @@ final class SmokeTests: XCTestCase {
     }
 
     @MainActor private func assertKeyboardDismissed(_ app: XCUIApplication) {
-        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: app.keyboards.firstMatch)
+        // iOS may retain an accessibility keyboard container after it is visually hidden.
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false OR hittable == false"), object: app.keyboards.firstMatch)
         XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 5), .completed)
     }
 }
