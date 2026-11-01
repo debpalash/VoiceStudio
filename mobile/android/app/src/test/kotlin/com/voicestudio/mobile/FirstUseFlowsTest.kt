@@ -39,7 +39,10 @@ class FirstUseFlowsTest {
             compose.setContent {StudioApp(vm)}
             compose.waitUntil(15000) {shadowOf(Looper.getMainLooper()).idle();!vm.state.value.loading&&!vm.phone.state.value.loading}
             check(vm)
-        } finally {vm.viewModelScope.cancel()}
+        } finally {
+            vm.phone.state.value.models.forEach {ModelDownloadJobs.cancel(app,it.id)}
+            vm.viewModelScope.cancel()
+        }
     }
 
     @Test fun destinationsHaveVisibleTextAndHomeStartsCloningDirectly()=runBlocking {
@@ -97,10 +100,16 @@ class FirstUseFlowsTest {
             compose.onNodeWithText("Accept").assertIsEnabled().performClick()
             compose.waitUntil(15000) {
                 shadowOf(Looper.getMainLooper()).idle()
-                vm.phone.state.value.accepted(omni)&&vm.state.value.error?.key=="mobile.local.wifi_required"
+                vm.phone.state.value.accepted(omni)&&vm.phone.downloads.progress.value[omni.id]?.stage=="waiting"
             }
-            // Reaching the offline network policy proves Try anyway invoked download
-            // after recording consent, without a RAM rejection or external request.
+            // Offline downloads remain queued after consent, including on smaller devices.
+            // The OS network constraint prevents this request from contacting model hosts.
+            val app=ApplicationProvider.getApplicationContext<Application>()
+            val job=app.getSystemService(android.app.job.JobScheduler::class.java).allPendingJobs.single {it.extras.getString("model")==omni.id}
+            Assert.assertTrue(job.requiredNetwork!!.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI))
+            Assert.assertTrue(job.requiredNetwork!!.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED))
+            compose.onNodeWithText(l.t("mobile.downloads.waiting"),substring=true).assertExists()
+            Assert.assertNull(vm.state.value.error)
             Assert.assertFalse(omni.id in vm.phone.state.value.installed)
         }
     }

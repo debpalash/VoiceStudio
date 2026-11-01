@@ -66,10 +66,14 @@ class UiPolishRegressionTest {
             Assert.assertTrue(compose.onAllNodesWithTag("palette-swatch",useUnmergedTree=true).fetchSemanticsNodes().isNotEmpty())
             compose.onAllNodesWithTag("choice-check",useUnmergedTree=true).assertCountEquals(1)
             Assert.assertFalse(vm.phone.downloads.progress.value.values.any {it.running})
-        } finally {vm.viewModelScope.cancel()}
+        } finally {
+            vm.phone.state.value.models.forEach {ModelDownloadJobs.cancel(app,it.id)}
+            vm.viewModelScope.cancel()
+        }
     }
     @Test fun dubGetRequiresSeparateConsentAndDeclineStopsTheQueue()=runBlocking {
         val app=ApplicationProvider.getApplicationContext<Application>()
+        androidx.work.testing.WorkManagerTestInitHelper.initializeTestWorkManager(app)
         shadowOf(app.getSystemService(android.app.ActivityManager::class.java)).setMemoryInfo(
             android.app.ActivityManager.MemoryInfo().apply {totalMem=16_000_000_000})
         // The test cannot contact model hosts, even after acceptance.
@@ -105,8 +109,21 @@ class UiPolishRegressionTest {
             compose.onNodeWithText("Accept").assertDoesNotExist()
             val clone=vm.phone.state.value.models.first {it.capability=="clone"}
             Assert.assertFalse(vm.phone.licence.accepted(clone))
-            Assert.assertFalse(vm.phone.downloads.progress.value.values.any {it.running})
-        } finally {vm.viewModelScope.cancel()}
+            val jobs=app.getSystemService(android.app.job.JobScheduler::class.java).allPendingJobs
+                .filter {it.service.className==ModelDownloadService::class.java.name}
+            Assert.assertFalse(jobs.any {it.extras.getString("model")==clone.id})
+            val asr=vm.phone.state.value.models.first {it.capability=="asr"}
+            Assert.assertTrue(jobs.any {it.extras.getString("model")==asr.id})
+            Assert.assertEquals("waiting",vm.phone.downloads.progress.value[asr.id]?.stage)
+            jobs.forEach {job ->
+                val requested=vm.phone.state.value.models.single {it.id==job.extras.getString("model")}
+                Assert.assertTrue(vm.phone.licence.accepted(requested))
+                Assert.assertTrue(job.requiredNetwork!!.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI))
+            }
+        } finally {
+            vm.phone.state.value.models.forEach {ModelDownloadJobs.cancel(app,it.id)}
+            vm.viewModelScope.cancel()
+        }
     }
     @Test fun pickerShowsVisibleSelectedMark() {
         val app=ApplicationProvider.getApplicationContext<Application>()
