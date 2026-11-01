@@ -107,4 +107,26 @@ class ModelDownloadJobsTest {
         assertTrue(scheduler.allPendingJobs.isEmpty())
         assertEquals("[]",app.getSharedPreferences("model-downloads",0).getString("queue",null))
     }
+    @Test fun failedPauseStillStopsScheduledWorkAndCancelRetriesIntentRemoval() {
+        ModelDownloadJobs.enqueue(app,model,false)
+        val preferences=app.getSharedPreferences("model-downloads",0)
+        var commits=0
+        val editor=org.mockito.Mockito.mock(android.content.SharedPreferences.Editor::class.java)
+        org.mockito.Mockito.`when`(editor.putString(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString())).thenReturn(editor)
+        org.mockito.Mockito.`when`(editor.commit()).thenAnswer {commits++;false}
+        val failingPreferences=org.mockito.Mockito.mock(android.content.SharedPreferences::class.java)
+        org.mockito.Mockito.`when`(failingPreferences.getString("queue","[]")).thenAnswer {preferences.getString("queue","[]")}
+        org.mockito.Mockito.`when`(failingPreferences.edit()).thenReturn(editor)
+        val context=object: android.content.ContextWrapper(app) {
+            override fun getSharedPreferences(name: String,mode: Int)=if(name=="model-downloads") failingPreferences else super.getSharedPreferences(name,mode)
+        }
+        try {ModelDownloadJobs.pause(context,model.id);fail("Persistence failure must be reported")}
+        catch(e:com.voicestudio.mobile.network.ClientFailure) {assertEquals("mobile.simple.checkpoint_failed",e.key)}
+        assertTrue(scheduler.allPendingJobs.isEmpty())
+        commits=0
+        try {ModelDownloadJobs.cancel(context,model.id);fail("Persistence failure must be reported")}
+        catch(e:com.voicestudio.mobile.network.ClientFailure) {assertEquals("mobile.simple.checkpoint_failed",e.key)}
+        assertEquals("Cancel must attempt both pause and intent removal",2,commits)
+    }
+
 }

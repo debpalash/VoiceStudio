@@ -75,13 +75,16 @@ object ModelDownloadJobs {
     }
     @Synchronized fun pause(context: Context,id: String,error: String?=null) {
         val saved=read(context);val item=saved.firstOrNull {it.model==id}
-        write(context,saved.map {if(it.model==id) it.copy(paused=true,error=error) else it})
-        if(item!=null&&Build.VERSION.SDK_INT>=34) context.getSystemService(JobScheduler::class.java).cancel(item.jobID)
-        WorkManager.getInstance(context).cancelUniqueWork("model:$id")
-        active[id]?.cancel()
-        PhoneRuntime.get(context).downloads.paused(id,error=error)
+        try {
+            write(context,saved.map {if(it.model==id) it.copy(paused=true,error=error) else it})
+        } finally {
+            if(item!=null&&Build.VERSION.SDK_INT>=34) context.getSystemService(JobScheduler::class.java).cancel(item.jobID)
+            WorkManager.getInstance(context).cancelUniqueWork("model:$id")
+            active[id]?.cancel()
+            PhoneRuntime.get(context).downloads.paused(id,error=error)
+        }
     }
-    fun cancel(context: Context,id: String) {pause(context,id);finished(context,id)}
+    fun cancel(context: Context,id: String) {try {pause(context,id)} finally {finished(context,id)}}
     suspend fun stop(context: Context,id: String) {val job=active[id];cancel(context,id);job?.join()}
     @Synchronized internal fun finished(context: Context,id: String) {write(context,read(context).filterNot {it.model==id})}
     internal fun waiting(context: Context,id: String) {

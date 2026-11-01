@@ -53,11 +53,10 @@ import com.voicestudio.mobile.data.modelDownloadDescription
             }
             if(!fits) Text(tr("mobile.local.ram_required",mapOf("ram" to model.minRamGb)),color=role("textMuted"))
             progress[model.id]?.let {p ->
-                if(p.running) {
+                if(p.running||p.stage=="paused") {
                     LinearProgressIndicator(progress={if(p.total>0) (p.received.toFloat()/p.total).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth())
                     Text(modelDownloadDescription(context,LocalL10n.current,p),style=MaterialTheme.typography.bodySmall)
                 }
-                if(!p.running&&p.stage=="paused") Text(tr("mobile.downloads.paused"))
                 p.error?.let {ErrorMessage(it,mapOf("ram" to model.minRamGb))}
             }
             if(downloading) Row(horizontalArrangement=Arrangement.spacedBy(VSTheme.gap)) {
@@ -210,11 +209,11 @@ import com.voicestudio.mobile.data.modelDownloadDescription
             }
             recommendation?.let {Text(tr("mobile.local.ram_required",mapOf("ram" to it.minRamGb)),color=role("textMuted"))}
             needed.mapNotNull {progress[it.id]?.error}.distinct().forEach {ErrorMessage(it)}
-            if(running) {
+            if(running||needed.any {progress[it.id]?.stage=="paused"}) {
                 val total=needed.sumOf {progress[it.id]?.total ?: it.totalBytes}
                 val received=needed.sumOf {progress[it.id]?.received ?: 0L}
                 LinearProgressIndicator(progress={(received.toFloat()/total.coerceAtLeast(1)).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth())
-                needed.forEach {item->progress[item.id]?.takeIf {it.running}?.let {p->
+                needed.forEach {item->progress[item.id]?.takeIf {it.running||it.stage=="paused"}?.let {p->
                     if(needed.size>1) Text(item.name,style=MaterialTheme.typography.labelSmall)
                     Text(modelDownloadDescription(LocalContext.current,LocalL10n.current,p),style=MaterialTheme.typography.bodySmall)
                 }}

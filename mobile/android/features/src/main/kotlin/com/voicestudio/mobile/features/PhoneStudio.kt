@@ -67,8 +67,8 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
         if(downloads.progress.value[model.id]?.running==true) return
         try {ModelDownloadJobs.enqueue(application,model,allowMobile)} catch(e:Exception) {retryFailure(e) {download(model,allowMobile)}}
     }
-    fun pauseDownload(model: PhoneModel) {ModelDownloadJobs.pause(application,model.id)}
-    fun cancelDownload(model: PhoneModel) {ModelDownloadJobs.cancel(application,model.id)}
+    fun pauseDownload(model: PhoneModel) {try {ModelDownloadJobs.pause(application,model.id)} catch(e:Exception) {failure(e)}}
+    fun cancelDownload(model: PhoneModel) {try {ModelDownloadJobs.cancel(application,model.id)} catch(e:Exception) {failure(e)}}
     fun delete(model: PhoneModel) {scope.launch {
         try {ModelDownloadJobs.stop(application,model.id);cancelInference();downloads.delete(model);refresh()}
         catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}

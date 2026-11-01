@@ -147,6 +147,9 @@ class UiPolishRegressionTest {
             vm.phone.downloads.paused(model.id,model.totalBytes,"mobile.local.storage_required")
             compose.onNodeWithText(l.t("mobile.local.storage_required")).assertExists()
             compose.onNodeWithText("Retry").assertIsEnabled()
+            vm.phone.downloads.paused(model.id,model.totalBytes)
+            val paused=vm.phone.downloads.progress.value.getValue(model.id)
+            compose.onNodeWithText(modelDownloadDescription(app,l,paused)).assertExists()
         } finally {vm.viewModelScope.cancel()}
     }
     @Test fun pickerShowsVisibleSelectedMark() {
