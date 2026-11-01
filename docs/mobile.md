@@ -316,8 +316,9 @@ tests both apps.
 ## TestFlight (maintainers)
 
 The `iOS TestFlight` workflow signs the iPhone app and uploads it to TestFlight
-for the team's internal testers. It prepares the pinned native inference runtimes
-before generating and archiving the Xcode project, including on a clean runner.
+for the team's internal testers by default. Its manual `audience` choice also
+supports `external` for a public TestFlight beta. It prepares the pinned native
+inference runtimes before generating and archiving the Xcode project, including on a clean runner.
 It is dispatched by hand from `main` and never
 submits the app for App Store review. One-time setup in the Apple Developer team:
 
@@ -360,6 +361,17 @@ submits the app for App Store review. One-time setup in the Apple Developer team
    Validate an export with both OpenSSL and `security import` into a temporary
    keychain before setting the secrets: parsing a PKCS#12 certificate alone does
    not prove Apple's Security framework can import its encrypted private key.
+
+For a public beta, dispatch from the latest `main` with
+`gh workflow run ios-testflight.yml --ref main -f audience=external`. This creates
+an external-eligible build; uploads marked Internal Only cannot be reassigned to
+external groups. In App Store Connect, create an external group, complete Test
+Information, add the build and submit it for Beta App Review. Once approved,
+create its public link and set **Tester Limit** to the desired capacity (for
+example, **100**). The limit applies to testers joining through that link.
+Regular dispatches retain the `internal` default. Neither audience submits an
+App Store version for public sale. See Apple's
+[external testing and public-link instructions](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers).
 
 The workflow builds on the `macos-26` runner because App Store Connect accepts
 only the current iOS SDK; the `mobile` and `mobile-release` iOS jobs use the same runner.
