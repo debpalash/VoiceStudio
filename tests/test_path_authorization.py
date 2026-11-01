@@ -27,7 +27,9 @@ import json
 import logging
 import os
 import secrets
+import sys
 from types import ModuleType
+from unittest.mock import Mock
 
 import pytest
 
@@ -98,6 +100,20 @@ def test_consume_is_one_shot(auth):
     assert auth.consume(token, "dub_export") == "/out.wav"
     with pytest.raises(auth.Error):
         auth.consume(token, "dub_export")
+
+
+def test_bundled_backend_refreshes_its_own_scopes_only_after_a_valid_native_grant(auth, monkeypatch):
+    module = ModuleType("_voicestudio_sandbox_bookmarks")
+    module.restore = Mock()
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.setenv("VOICESTUDIO_BUNDLED_CODE_ONLY", "1")
+    token = _token()
+    auth.write(token, "models_dir", "/selected-models")
+    assert auth.consume(token, "models_dir") == "/selected-models"
+    module.restore.assert_called_once()
+    with pytest.raises(auth.Error):
+        auth.consume(token, "models_dir")
+    module.restore.assert_called_once()
 
 
 def test_wrong_kind_is_rejected(auth):

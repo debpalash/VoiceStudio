@@ -24,6 +24,7 @@ export function bundledRuntimeEnv(resourcesPath: string, userData: string): Node
   return {
     VOICESTUDIO_BUNDLED_CODE_ONLY: '1',
     VOICESTUDIO_BUNDLED_RESOURCES: resourcesPath,
+    VOICESTUDIO_SANDBOX_BOOKMARKS: join(userData, 'security-scoped-directories.json'),
     PYTHONNOUSERSITE: '1',
     PYTHONDONTWRITEBYTECODE: '1',
     OMNIVOICE_DATA_DIR: join(userData, 'data'),

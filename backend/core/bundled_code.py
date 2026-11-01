@@ -17,7 +17,7 @@ _SYSTEM_ROOTS = (Path("/System/Library"), Path("/usr/lib"))
 _SYSTEM_COMMANDS = frozenset({
     "/usr/bin/uname", "/usr/bin/sw_vers", "/usr/sbin/sysctl", "/usr/bin/which",
     "/usr/bin/open", "/usr/bin/osascript", "/usr/bin/security", "/usr/bin/afplay", "/usr/bin/file",
-    "/usr/bin/xattr",
+    "/usr/bin/xattr", "/usr/sbin/ioreg",
 })
 _INSTALLER_MODULES = frozenset({"pip", "ensurepip", "venv", "uv"})
 
@@ -26,10 +26,13 @@ def _inside(path: Path, root: Path) -> bool:
     return path.resolve().is_relative_to(root)
 
 
-def install() -> None:
+def install() -> bool:
+    """Return whether the process-wide policy is active, including repeat calls."""
     global _installed
-    if _installed or os.environ.get("VOICESTUDIO_BUNDLED_CODE_ONLY") != "1":
-        return
+    if _installed:
+        return _installed
+    if os.environ.get("VOICESTUDIO_BUNDLED_CODE_ONLY") != "1":
+        return False
     raw = os.environ.get("VOICESTUDIO_BUNDLED_RESOURCES", "")
     if not raw or not Path(raw).is_absolute():
         raise SystemExit("BUNDLED_CODE_POLICY: missing signed resource directory")
@@ -70,3 +73,4 @@ def install() -> None:
 
     sys.addaudithook(audit)
     _installed = True
+    return _installed

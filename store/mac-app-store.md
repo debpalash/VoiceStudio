@@ -45,9 +45,18 @@ do not silently remove those capabilities or declare that catalogue ready.
 
 The private development candidate has passed deep/strict signature validation
 and an offline backend startup from its own `sh.voicestudio.pro` container on
-2026-11-01. This does not establish Apple Distribution signing, receipt
+2026-11-01. An explicit KittenTTS weight download followed by UI generation
+produced a finite, non-silent 9.14-second WAV at 24 kHz. This does not establish
+Apple Distribution signing, receipt
 validation, microphone/accessibility behavior or persistent external-folder
 access. Those checks remain separate release evidence.
+
+Folder authorization is process-specific. Electron persists private opaque
+bookmark records, restores its own access before startup, and passes the journal
+location to bundled Python. Python resolves and starts the grants independently
+through Core Foundation before reading configured data. A newly consumed native
+path capability refreshes the already-running backend's scopes; choosing a new
+models directory does not rely on inherited Powerbox access or interrupt work.
 
 ## Apple requirements checked
 
@@ -99,7 +108,8 @@ bun run --cwd electron typecheck
 VOICESTUDIO_DISTRIBUTION=mac-app-store node electron/tests/packaging-contract.mjs
 uv run pytest tests/test_mac_app_store_workflow.py -q
 uv run pytest tests/test_mas_python_runtime.py tests/test_mas_media_runtime.py \
-  tests/test_bundled_code_policy.py tests/test_bundled_espeak.py -q
+  tests/test_bundled_code_policy.py tests/test_bundled_espeak.py \
+  tests/test_sandbox_bookmarks.py tests/test_path_authorization.py -q
 ```
 
 The first command is expected to fail while the bundled-runtime ledger remains

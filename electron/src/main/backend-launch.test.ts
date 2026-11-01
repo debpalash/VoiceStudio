@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   ready: true,
   checkout: true,
   bundledOnly: false,
+  bundledManifestMissing: false,
 }));
 vi.mock('./distribution', () => ({
   runtimeSetupSupported: () => !state.bundledOnly,
@@ -15,7 +16,10 @@ vi.mock('./distribution', () => ({
   }),
 }));
 vi.mock('./bundled-runtime', () => ({
-  bundledPython: (root: string) => join(root, 'python-runtime', 'bin', 'python3.11'),
+  bundledPython: (root: string) => {
+    if (state.bundledManifestMissing) throw new Error('Bundled manifest is missing');
+    return join(root, 'python-runtime', 'bin', 'python3.11');
+  },
   bundledRuntimeEnv: (_root: string, data: string) => ({
     VOICESTUDIO_BUNDLED_CODE_ONLY: '1',
     OMNIVOICE_DATA_DIR: join(data, 'data'),
@@ -53,6 +57,7 @@ vi.mock('./legacy-storage', () => ({
   }),
 }));
 import {
+  BackendSupervisor,
   devRendererPort,
   loadBlockMessage,
   resolveSpawnPlan,
@@ -71,6 +76,7 @@ afterEach(() => {
   state.packaged = false;
   state.checkout = true;
   state.bundledOnly = false;
+  state.bundledManifestMissing = false;
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
@@ -117,6 +123,15 @@ it('store builds preserve an explicit data pointer instead of silently starting 
   expect(managedBackendSpawnOptions(3912).env?.OMNIVOICE_DATA_DIR).toBe(
     '/selected/inaccessible-data',
   );
+});
+it('keeps host diagnostics available when a store package has no local interpreter', async () => {
+  state.packaged = true;
+  state.bundledOnly = true;
+  state.bundledManifestMissing = true;
+  const facts = await new BackendSupervisor().hostSnapshot();
+  expect(facts.os).toEqual(expect.any(String));
+  expect(facts.ramGb).toBeGreaterThan(0);
+  expect(facts.runtime.pythonPresent).toBeNull();
 });
 it.each(['darwin', 'win32', 'linux'] as const)(
   'leaves China downloads eligible for automatic failover on %s',

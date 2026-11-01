@@ -31,8 +31,8 @@ def test_staged_media_preserves_source_bytes_provenance_and_pending_clearance(tm
         stager().stage_media(source, target, archive)
 
 
-def test_media_staging_does_not_follow_unverified_symlink_inputs(tmp_path):
-    (tmp_path / "ffmpeg").symlink_to("ffprobe")
+def test_media_staging_does_not_follow_unverified_symlink_inputs(tmp_path, symlink_or_skip):
+    symlink_or_skip(tmp_path / "ffmpeg", "ffprobe")
     (tmp_path / "ffprobe").write_bytes(b"tool")
     with pytest.raises(ValueError):
         stager().stage_media(tmp_path, tmp_path / "output", {})

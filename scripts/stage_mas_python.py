@@ -99,7 +99,9 @@ def runtime_customization() -> str:
         "mimetypes.knownfiles = []\nmimetypes.init(files=[])\n"
         "os.environ['VOICESTUDIO_BUNDLED_CODE_ONLY'] = '1'\n"
         "os.environ['VOICESTUDIO_BUNDLED_RESOURCES'] = str(Path(__file__).resolve().parents[4])\n"
-        "from _voicestudio_bundled_code import install\ninstall()\n"
+        "from _voicestudio_bundled_code import install\n"
+        "if not install():\n    raise SystemExit('Bundled code policy is inactive')\n"
+        "from _voicestudio_sandbox_bookmarks import restore\nrestore()\n"
     )
 
 
@@ -167,6 +169,7 @@ def stage_runtime(base: Path, packages: Path, output: Path, lock: Path, version:
             raise ValueError("The runtime already contains a sitecustomize module")
         policy = Path(__file__).resolve().parents[1] / "backend/core/bundled_code.py"
         shutil.copy2(policy, destination_packages / "_voicestudio_bundled_code.py")
+        shutil.copy2(policy.with_name("sandbox_bookmarks.py"), destination_packages / "_voicestudio_sandbox_bookmarks.py")
         customization.write_text(runtime_customization(), encoding="utf-8")
         patches = stage_phonemizer(scratch, destination_packages)
         check_tree(scratch)

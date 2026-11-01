@@ -906,9 +906,16 @@ export class BackendSupervisor extends EventEmitter<{
       : app.isPackaged
         ? (this.runtimeProject ?? join(storedRuntimeRoot() ?? defaultRuntimeRoot(), 'project'))
         : backendRoot();
+    let python: string | null = null;
+    try {
+      python = bundled ? bundledPython(project) : runtimePython(project);
+    } catch {
+      // Intel store packages have no local interpreter. A missing/corrupt
+      // runtime on any host must not prevent collecting the remaining facts.
+    }
     return collectHostSnapshot({
       runtimeProject: project,
-      runtimePython: bundled ? bundledPython(project) : runtimePython(project),
+      runtimePython: python,
       uv: bundled ? async () => null : findUvAsync,
       gpu: async () => {
         const info = (await app.getGPUInfo('basic')) as {

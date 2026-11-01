@@ -1,12 +1,12 @@
 import { app } from 'electron';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 
 import { currentDistributionProfile } from './distribution';
 
 interface DirectoryGrant {
-  path: string;
+  id: string;
   bookmark: string;
 }
 
@@ -32,22 +32,22 @@ export class DirectoryBookmarks {
       raw.some(
         (item) =>
           !item ||
-          typeof item.path !== 'string' ||
-          !isAbsolute(item.path) ||
+          typeof item.id !== 'string' ||
+          !/^[0-9a-f]{64}$/.test(item.id) ||
           typeof item.bookmark !== 'string' ||
           !item.bookmark,
       ) ||
-      new Set(raw.map((item) => item.path)).size !== raw.length
+      new Set(raw.map((item) => item.id)).size !== raw.length
     ) {
       return ['authorization_store_invalid'];
     }
     const failed: string[] = [];
     for (const item of raw as DirectoryGrant[]) {
-      this.records.set(item.path, item.bookmark);
+      this.records.set(item.id, item.bookmark);
       try {
-        this.leases.set(item.path, this.start(item.bookmark));
+        this.leases.set(item.id, this.start(item.bookmark));
       } catch {
-        failed.push(item.path);
+        failed.push(item.id);
       }
     }
     return failed;
@@ -57,22 +57,23 @@ export class DirectoryBookmarks {
     if (!bookmark || !isAbsolute(path))
       throw new Error('The selected file did not include sandbox authorization');
     const stop = this.start(bookmark);
+    const id = createHash('sha256').update(path).digest('hex');
     try {
-      const entries = new Map(this.records).set(path, bookmark);
+      const entries = new Map(this.records).set(id, bookmark);
       mkdirSync(dirname(this.file), { recursive: true });
       const temporary = `${this.file}.${randomUUID()}.tmp`;
       try {
         writeFileSync(
           temporary,
-          JSON.stringify([...entries].map(([path, bookmark]) => ({ path, bookmark }))),
+          JSON.stringify([...entries].map(([id, bookmark]) => ({ id, bookmark }))),
           { mode: 0o600, flag: 'wx' },
         );
         renameSync(temporary, this.file);
       } finally {
         rmSync(temporary, { force: true });
       }
-      this.leases.get(path)?.();
-      this.leases.set(path, stop);
+      this.leases.get(id)?.();
+      this.leases.set(id, stop);
       this.records = entries;
     } catch (error) {
       stop();

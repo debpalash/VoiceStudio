@@ -21,6 +21,7 @@ it('persists private folder grants, restores them on restart and releases them o
     first.retain(join(root, 'selected'), 'scoped-bookmark');
     if (process.platform !== 'win32') expect(statSync(file).mode & 0o077).toBe(0);
     expect(JSON.parse(readFileSync(file, 'utf8'))).toHaveLength(1);
+    expect(readFileSync(file, 'utf8')).not.toContain(root);
     first.close();
     expect(second.restore()).toEqual([]);
     expect(start).toHaveBeenCalledWith('scoped-bookmark');
@@ -38,11 +39,11 @@ it('keeps stale selections distinct from a new empty default and tolerates a cor
   const root = mkdtempSync(join(tmpdir(), 'folder-grants-'));
   const file = join(root, 'grants.json');
   try {
-    writeFileSync(file, JSON.stringify([{ path: join(root, 'selected'), bookmark: 'stale' }]));
+    writeFileSync(file, JSON.stringify([{ id: 'a'.repeat(64), bookmark: 'stale' }]));
     const stale = new DirectoryBookmarks(file, () => {
       throw new Error('stale bookmark');
     });
-    expect(stale.restore()).toEqual([join(root, 'selected')]);
+    expect(stale.restore()).toEqual(['a'.repeat(64)]);
     writeFileSync(file, '{corrupt');
     const corrupt = new DirectoryBookmarks(file, vi.fn());
     expect(corrupt.restore()).toEqual(['authorization_store_invalid']);

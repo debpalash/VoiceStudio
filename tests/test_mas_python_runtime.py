@@ -22,14 +22,14 @@ def load_stager():
     return module
 
 
-def fixture_runtime(tmp_path):
+def fixture_runtime(tmp_path, symlink_or_skip):
     base = tmp_path / "base"
     packages = tmp_path / "environment/lib/python3.11/site-packages"
     (base / "bin").mkdir(parents=True)
     (base / "lib/python3.11").mkdir(parents=True)
     (base / "lib/python3.11/os.py").write_text("# stdlib\n")
     (base / "bin/python3.11").write_bytes(b"interpreter fixture")
-    (base / "bin/python3").symlink_to("python3.11")
+    symlink_or_skip(base / "bin/python3", "python3.11")
     packages.mkdir(parents=True)
     (packages / "sample.py").write_text("VALUE = 42\n")
     (packages / "sample_assets").mkdir()
@@ -41,9 +41,9 @@ def fixture_runtime(tmp_path):
     return base, packages
 
 
-def test_staging_preserves_relative_links_licenses_and_records_hashes(tmp_path):
+def test_staging_preserves_relative_links_licenses_and_records_hashes(tmp_path, symlink_or_skip):
     stage = load_stager()
-    base, packages = fixture_runtime(tmp_path)
+    base, packages = fixture_runtime(tmp_path, symlink_or_skip)
     lock = tmp_path / "uv.lock"
     lock.write_text('version = 1\n')
     target = tmp_path / "bundle/python-runtime"
@@ -59,15 +59,15 @@ def test_staging_preserves_relative_links_licenses_and_records_hashes(tmp_path):
 
 
 @pytest.mark.parametrize("escape", ["absolute-link", "relative-link", "pth"])
-def test_staging_rejects_dependencies_on_paths_outside_the_bundle(tmp_path, escape):
+def test_staging_rejects_dependencies_on_paths_outside_the_bundle(tmp_path, escape, symlink_or_skip):
     stage = load_stager()
-    base, packages = fixture_runtime(tmp_path)
+    base, packages = fixture_runtime(tmp_path, symlink_or_skip)
     outside = tmp_path / "private-source"
     outside.write_text("outside bundle\n")
     if escape == "pth":
         (packages / "editable.pth").write_text(str(outside) + "\n")
     else:
-        (packages / "external").symlink_to(outside if escape == "absolute-link" else "../../../../private-source")
+        symlink_or_skip(packages / "external", outside if escape == "absolute-link" else "../../../../private-source")
     lock = tmp_path / "uv.lock"
     lock.write_text("version = 1\n")
     target = tmp_path / "python-runtime"
