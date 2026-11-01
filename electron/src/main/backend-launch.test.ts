@@ -1,7 +1,30 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { join, resolve } from 'node:path';
-const state = vi.hoisted(() => ({ installed: true, packaged: false, ready: true, checkout: true }));
+const state = vi.hoisted(() => ({
+  installed: true,
+  packaged: false,
+  ready: true,
+  checkout: true,
+  bundledOnly: false,
+  bundledManifestMissing: false,
+}));
+vi.mock('./distribution', () => ({
+  runtimeSetupSupported: () => !state.bundledOnly,
+  currentDistributionProfile: () => ({
+    fileAccess: state.bundledOnly ? 'sandbox-scoped' : 'user-selected',
+  }),
+}));
+vi.mock('./bundled-runtime', () => ({
+  bundledPython: (root: string) => {
+    if (state.bundledManifestMissing) throw new Error('Bundled manifest is missing');
+    return join(root, 'python-runtime', 'bin', 'python3.11');
+  },
+  bundledRuntimeEnv: (_root: string, data: string) => ({
+    VOICESTUDIO_BUNDLED_CODE_ONLY: '1',
+    OMNIVOICE_DATA_DIR: join(data, 'data'),
+  }),
+}));
 vi.mock('electron', () => ({
   app: {
     get isPackaged() {
@@ -34,6 +57,7 @@ vi.mock('./legacy-storage', () => ({
   }),
 }));
 import {
+  BackendSupervisor,
   devRendererPort,
   loadBlockMessage,
   resolveSpawnPlan,
@@ -51,8 +75,63 @@ afterEach(() => {
   state.ready = true;
   state.packaged = false;
   state.checkout = true;
+  state.bundledOnly = false;
+  state.bundledManifestMissing = false;
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+});
+it('store builds launch only bundled Python, ignoring external command overrides', async () => {
+  state.packaged = true;
+  state.bundledOnly = true;
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '["external-python"]');
+  vi.stubEnv('OMNIVOICE_DATA_DIR', undefined);
+  const original = process.resourcesPath;
+  Object.defineProperty(process, 'resourcesPath', {
+    value: '/signed/resources',
+    configurable: true,
+  });
+  try {
+    expect(await resolveSpawnPlan(3912, '/legacy/project', undefined)).toEqual({
+      argv: [
+        join('/signed/resources', 'python-runtime', 'bin', 'python3.11'),
+        '-s',
+        '-B',
+        '-m',
+        'uvicorn',
+        'main:app',
+        '--app-dir',
+        'backend',
+        '--host',
+        '127.0.0.1',
+        '--port',
+        '3912',
+      ],
+      cwd: '/signed/resources',
+    });
+    expect(managedBackendSpawnOptions(3912).env).toMatchObject({
+      VOICESTUDIO_BUNDLED_CODE_ONLY: '1',
+      OMNIVOICE_DATA_DIR: join('/user-data', 'data'),
+    });
+  } finally {
+    Object.defineProperty(process, 'resourcesPath', { value: original, configurable: true });
+  }
+});
+it('store builds preserve an explicit data pointer instead of silently starting with empty data', () => {
+  state.packaged = true;
+  state.bundledOnly = true;
+  vi.stubEnv('OMNIVOICE_DATA_DIR', '/selected/inaccessible-data');
+  expect(managedBackendSpawnOptions(3912).env?.OMNIVOICE_DATA_DIR).toBe(
+    '/selected/inaccessible-data',
+  );
+});
+it('keeps host diagnostics available when a store package has no local interpreter', async () => {
+  state.packaged = true;
+  state.bundledOnly = true;
+  state.bundledManifestMissing = true;
+  const facts = await new BackendSupervisor().hostSnapshot();
+  expect(facts.os).toEqual(expect.any(String));
+  expect(facts.ramGb).toBeGreaterThan(0);
+  expect(facts.runtime.pythonPresent).toBeNull();
 });
 it.each(['darwin', 'win32', 'linux'] as const)(
   'leaves China downloads eligible for automatic failover on %s',

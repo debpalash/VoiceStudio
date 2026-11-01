@@ -121,4 +121,15 @@ def consume(token: str, expected_kind: str) -> str:
         raise PathAuthorizationError("Invalid desktop authorization")
     if payload.get("kind") != expected_kind or not isinstance(payload.get("path"), str):
         raise PathAuthorizationError("Desktop authorization does not match this setting")
+    if os.environ.get("VOICESTUDIO_BUNDLED_CODE_ONLY") == "1" and payload["path"]:
+        # Electron's newly selected folder extends its own sandbox only. Pick
+        # up the journal in this already-running child before using that path.
+        # An empty path resets to the container default and needs no grant.
+        try:
+            from _voicestudio_sandbox_bookmarks import restore
+            scoped = restore(payload["path"])
+        except Exception as exc:
+            raise PathAuthorizationError("Invalid or expired desktop authorization") from exc
+        if not scoped:
+            raise PathAuthorizationError("Invalid or expired desktop authorization")
     return payload["path"]

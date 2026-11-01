@@ -43,7 +43,11 @@ import { inspectDataRelocation, relocateDataDirectory } from './data-relocation'
 import { createUninstallPlan, scanUninstallTargets, type UninstallRoots } from './uninstall-data';
 import { scheduleUninstallCleanup } from './uninstall-cleanup';
 import { sendToLiveWindow } from './window-safety';
-import { securityScopedDialogOptions, withSecurityScopedBookmark } from './security-scoped-files';
+import {
+  retainSecurityScopedDirectory,
+  securityScopedDialogOptions,
+  withSecurityScopedBookmark,
+} from './security-scoped-files';
 
 export const CHANNELS = {
   permissionsGetState: 'permissions:getState',
@@ -421,11 +425,15 @@ export function registerIpc(
     if (supervisor.connection.remote) throw new Error('local_only');
     if (!supervisor.status.managed) throw new Error('backend_not_managed');
     const source = await backendDataDirectory(supervisor);
-    const picked = await dialog.showOpenDialog(owner, {
-      defaultPath: dirname(source),
-      properties: ['openDirectory', 'createDirectory'],
-    });
+    const picked = await dialog.showOpenDialog(
+      owner,
+      securityScopedDialogOptions<Electron.OpenDialogOptions>({
+        defaultPath: dirname(source),
+        properties: ['openDirectory', 'createDirectory'],
+      }),
+    );
     if (picked.canceled || !picked.filePaths[0]) return null;
+    retainSecurityScopedDirectory(picked);
     const plan = await inspectDataRelocation(source, picked.filePaths[0]);
     relocationSelection = {
       authorization: randomUUID(),
@@ -545,10 +553,14 @@ export function registerIpc(
     const owner = getMainWindow();
     assertTrustedMainFrame(event, owner);
     const kind = assertMediaTool(raw);
-    const picked = await dialog.showOpenDialog(owner, {
-      properties: ['openFile'],
-    });
+    const picked = await dialog.showOpenDialog(
+      owner,
+      securityScopedDialogOptions<Electron.OpenDialogOptions>({
+        properties: ['openFile'],
+      }),
+    );
     if (picked.canceled || !picked.filePaths[0]) return null;
+    retainSecurityScopedDirectory(picked);
     return authorizeMediaTool(await backendDataDirectory(supervisor), picked.filePaths[0], kind);
   });
 
@@ -558,10 +570,14 @@ export function registerIpc(
     if (typeof raw !== 'boolean') throw new Error('Invalid models-directory request');
     let selected = '';
     if (!raw) {
-      const picked = await dialog.showOpenDialog(owner, {
-        properties: ['openDirectory', 'createDirectory'],
-      });
+      const picked = await dialog.showOpenDialog(
+        owner,
+        securityScopedDialogOptions<Electron.OpenDialogOptions>({
+          properties: ['openDirectory', 'createDirectory'],
+        }),
+      );
       if (picked.canceled || !picked.filePaths[0]) return null;
+      retainSecurityScopedDirectory(picked);
       selected = picked.filePaths[0];
     }
     return authorizeModelsDirectory(await backendDataDirectory(supervisor), selected);

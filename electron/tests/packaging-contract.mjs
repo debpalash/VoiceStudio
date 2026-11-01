@@ -16,6 +16,7 @@ import {
   readManifest,
 } from '../omnivoice-tts-bundle.mjs';
 import { APP_ID, PRODUCT_NAME } from '../../config/app-config.mjs';
+import { verifyMediaInventory, verifyRuntimeInventory } from '../mas-runtime-bundle.mjs';
 import { DISTRIBUTION_PROFILE, DISTRIBUTION_TARGET } from '../../config/distributions.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const installerProcessesTest = spawnSync(
@@ -23,13 +24,25 @@ const installerProcessesTest = spawnSync(
   ['--test', resolve(root, 'tests/windows-installer-processes.test.mjs')],
   { encoding: 'utf8' },
 );
-assert.equal(installerProcessesTest.status, 0, installerProcessesTest.stdout + installerProcessesTest.stderr);
+assert.equal(
+  installerProcessesTest.status,
+  0,
+  installerProcessesTest.stdout + installerProcessesTest.stderr,
+);
 const distributionIdentityTest = spawnSync(
   process.execPath,
-  ['--test', resolve(root, 'tests/distribution-identity.test.mjs')],
+  [
+    '--test',
+    resolve(root, 'tests/distribution-identity.test.mjs'),
+    resolve(root, 'tests/mas-runtime-bundle.test.mjs'),
+  ],
   { encoding: 'utf8' },
 );
-assert.equal(distributionIdentityTest.status, 0, distributionIdentityTest.stdout + distributionIdentityTest.stderr);
+assert.equal(
+  distributionIdentityTest.status,
+  0,
+  distributionIdentityTest.stdout + distributionIdentityTest.stderr,
+);
 if (process.platform === 'linux') {
   const librariesTest = spawnSync(
     process.execPath,
@@ -166,6 +179,7 @@ if (DISTRIBUTION_TARGET === 'mac-app-store') {
     'com.apple.security.cs.allow-jit',
     'com.apple.security.device.audio-input',
     'com.apple.security.files.user-selected.read-write',
+    'com.apple.security.files.bookmarks.app-scope',
     'com.apple.security.network.client',
     'com.apple.security.network.server',
   ]) {
@@ -219,9 +233,30 @@ for (const [label, dir] of [
   }
 }
 const bundledUvSource = config.extraResources.find((item) => /^tools\/uv(?:\.exe)?$/.test(item.to));
-if (process.env.VOICESTUDIO_RUST_TARGET || process.env.VOICESTUDIO_BUNDLED_UV) {
+if (
+  DISTRIBUTION_TARGET !== 'mac-app-store' &&
+  (process.env.VOICESTUDIO_RUST_TARGET || process.env.VOICESTUDIO_BUNDLED_UV)
+) {
   assert(bundledUvSource, 'Release builds package the pinned uv executable');
   assert(existsSync(bundledUvSource.from), 'Bundled uv source exists');
+}
+if (DISTRIBUTION_TARGET === 'mac-app-store') {
+  assert.equal(bundledUvSource, undefined, 'MAS never ships an executable installer');
+  for (const resource of ['python-runtime', 'media-tools']) {
+    assert.equal(
+      config.extraResources.some((item) => item.to === resource),
+      artifactArch === 'arm64',
+      `Only Apple silicon MAS packages stage ${resource}`,
+    );
+  }
+  if (artifactRequested && artifactArch === 'arm64') {
+    verifyRuntimeInventory(
+      resolve(artifactResources, 'python-runtime'),
+      resolve(root, '../uv.lock'),
+      artifactArch === 'arm64' ? 'arm64' : 'x86_64',
+    );
+    verifyMediaInventory(resolve(artifactResources, 'media-tools'));
+  }
 }
 if (artifactRequested && bundledUvSource) {
   assert(existsSync(resolve(artifactResources, bundledUvSource.to)), 'Packaged uv executable');
