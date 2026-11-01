@@ -304,8 +304,9 @@ public actor ModelStore {
         var permanent = Set<String>()
         for attempt in 0..<5 {
             var retryAfter: Int?
-            let hosts = ["huggingface.co","hf-mirror.com"]
-            let sources = sourceRates.count >= hosts.count ? hosts.sorted { sourceRates[$0,default: 0] > sourceRates[$1,default: 0] } : (offset >= max(16_777_216,transport.preferredRangeBytes) ? Array(hosts.reversed()) : hosts)
+            let fixedHost = file.url.flatMap { URL(string: $0)?.host }
+            let hosts = fixedHost != nil && fixedHost != "huggingface.co" ? [fixedHost!] : ["huggingface.co","hf-mirror.com"]
+            let sources = hosts.allSatisfy { sourceRates[$0] != nil } ? hosts.sorted { sourceRates[$0,default: 0] > sourceRates[$1,default: 0] } : (offset >= max(16_777_216,transport.preferredRangeBytes) ? Array(hosts.reversed()) : hosts)
             for host in sources where !permanent.contains(host) {
                 try Task.checkCancellation(); try checkPermission(model)
                 if let until = sourceCooldowns[host],until > Date() { try await Task.sleep(for: .seconds(until.timeIntervalSinceNow)) }
@@ -345,7 +346,7 @@ public actor ModelStore {
                     } else { throw ClientError("mobile.local.download_failed") }
                 } catch is ModelRangeUnsupported { throw ModelRangeUnsupported() }
                 catch is CancellationError { throw CancellationError() }
-                catch let error as ClientError { lastFailure = error; permanent.insert(host) }
+                catch let error as ClientError { if lastFailure == nil { lastFailure = error }; permanent.insert(host) }
                 catch { if Task.isCancelled { throw CancellationError() }; lastFailure = error }
             }
             // Test/application-level validation failures are permanent; network failures are retried.

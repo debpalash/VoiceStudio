@@ -40,7 +40,7 @@ object ModelDownloadJobs {
         schedule(context,item,model.totalBytes)
     }
     private fun schedule(context: Context,item: IntentRecord,total: Long) {
-        PhoneRuntime.get(context).downloads.scheduled(item.model,total)
+        PhoneRuntime.get(context).downloads.scheduled(item.model,total,if(item.mobile) "waiting_network" else "waiting")
         if(Build.VERSION.SDK_INT>=34) {
             val extras=PersistableBundle().apply {putString("model",item.model)}
             val network=NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).apply {
@@ -67,7 +67,7 @@ object ModelDownloadJobs {
             if(item.paused) {PhoneRuntime.get(context).downloads.paused(item.model);continue}
             if(PhoneRuntime.get(context).downloads.installed(model)) {finished(context,item.model);continue}
             if(Build.VERSION.SDK_INT<34||scheduler.getPendingJob(item.jobID)==null) schedule(context,item,model.totalBytes)
-            else PhoneRuntime.get(context).downloads.scheduled(item.model,model.totalBytes)
+            else PhoneRuntime.get(context).downloads.scheduled(item.model,model.totalBytes,if(item.mobile) "waiting_network" else "waiting")
         }
     }
     @Synchronized fun pause(context: Context,id: String) {
@@ -81,6 +81,11 @@ object ModelDownloadJobs {
     fun cancel(context: Context,id: String) {pause(context,id);finished(context,id)}
     suspend fun stop(context: Context,id: String) {val job=active[id];cancel(context,id);job?.join()}
     @Synchronized internal fun finished(context: Context,id: String) {write(context,read(context).filterNot {it.model==id})}
+    internal fun waiting(context: Context,id: String) {
+        val item=read(context).firstOrNull {it.model==id&&!it.paused} ?: return
+        val downloads=PhoneRuntime.get(context).downloads
+        downloads.scheduled(id,downloads.progress.value[id]?.total ?: 0,if(item.mobile) "waiting_network" else "waiting")
+    }
     internal suspend fun run(context: Context,id: String) {
         val item=read(context).firstOrNull {it.model==id&&!it.paused} ?: return
         val model=withContext(Dispatchers.IO) {context.assets.open("models.json").bufferedReader().use {ModelCatalog.decode(it.readText()).models.firstOrNull {m->m.id==id&&modelPin(m).identity==item.pin}}}
@@ -124,7 +129,7 @@ class ModelDownloadService: JobService() {
                 }
             }
             try {ModelDownloadJobs.run(this@ModelDownloadService,id);jobFinished(params,false)}
-            catch(e:CancellationException) {throw e}
+            catch(e:CancellationException) {ModelDownloadJobs.waiting(this@ModelDownloadService,id);throw e}
             catch(e:Exception) {
                 if(e is ClientFailure&&e.key=="mobile.local.wifi_required") {
                     PhoneRuntime.get(this@ModelDownloadService).downloads.scheduled(id,PhoneRuntime.get(this@ModelDownloadService).downloads.progress.value[id]?.total ?: 0)
@@ -156,8 +161,8 @@ class ModelDownloadWorker(context: Context,params: WorkerParameters): CoroutineW
                 try {ModelDownloadJobs.run(applicationContext,model)} finally {reporter.cancel()}
             }
             Result.success()
-        } catch(e:CancellationException) {throw e} catch(e:ClientFailure) {
-            if(e.key=="mobile.local.wifi_required") Result.retry()
+        } catch(e:CancellationException) {ModelDownloadJobs.waiting(applicationContext,model);throw e} catch(e:ClientFailure) {
+            if(e.key=="mobile.local.wifi_required") {ModelDownloadJobs.waiting(applicationContext,model);Result.retry()}
             else {ModelDownloadJobs.pause(applicationContext,model);Result.failure()}
         } catch(e:Exception) {ModelDownloadJobs.pause(applicationContext,model);Result.failure()}
     }

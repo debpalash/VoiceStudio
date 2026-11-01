@@ -4394,7 +4394,8 @@
       "verifying": "正在验证模型…",
       "speed": "{{speed}}/秒",
       "eta": "大约还需 {{time}}",
-      "estimating": "正在估算剩余时间…"
+      "estimating": "正在估算剩余时间…",
+      "waiting_network": "正在等待网络连接…"
     }
   },
   "failureCause": {

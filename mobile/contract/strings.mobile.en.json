@@ -408,7 +408,8 @@
       "verifying": "Verifying model…",
       "speed": "{{speed}}/s",
       "eta": "About {{time}} left",
-      "estimating": "Estimating time left…"
+      "estimating": "Estimating time left…",
+      "waiting_network": "Waiting for a connection…"
     }
   }
 }

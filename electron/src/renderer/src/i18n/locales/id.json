@@ -4398,7 +4398,8 @@
       "verifying": "Memverifikasi model…",
       "speed": "{{speed}}/dtk",
       "eta": "Sekitar {{time}} lagi",
-      "estimating": "Memperkirakan waktu tersisa…"
+      "estimating": "Memperkirakan waktu tersisa…",
+      "waiting_network": "Menunggu koneksi…"
     }
   },
   "failureCause": {

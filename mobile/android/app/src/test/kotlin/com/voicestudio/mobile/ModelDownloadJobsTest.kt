@@ -48,6 +48,29 @@ class ModelDownloadJobsTest {
         ModelDownloadJobs.enqueue(app,model,true)
         assertFalse(scheduler.allPendingJobs.single().requiredNetwork!!.hasTransport(NetworkCapabilities.TRANSPORT_WIFI))
     }
+    @Test fun catalogueChangesDiscardStaleAutomaticIntents() {
+        ModelDownloadJobs.enqueue(app,model,false)
+        ModelDownloadJobs.restore(app,listOf(model.copy(revision="b".repeat(40))))
+        assertTrue(scheduler.allPendingJobs.isEmpty())
+        assertEquals("[]",app.getSharedPreferences("model-downloads",0).getString("queue",null))
+    }
+    @Test fun progressPresentationShowsPercentSpeedEtaAndVerificationSeparately() {
+        val l=com.voicestudio.mobile.l10n.L10n.load(app,"en")
+        val progress=com.voicestudio.mobile.local.DownloadProgress(500,1000,true,bytesPerSecond=100.0,etaSeconds=5.0)
+        val text=com.voicestudio.mobile.data.modelDownloadDescription(app,l,progress)
+        assertTrue(text.contains("50%"));assertTrue(text.contains("/s"));assertTrue(text.contains("00:05"))
+        val verifying=com.voicestudio.mobile.data.modelDownloadDescription(app,l,progress.copy(stage="verifying"))
+        assertTrue(verifying.contains("Verifying model"));assertFalse(verifying.contains("00:05"))
+    }
+    @Test @Config(sdk=[33]) fun olderPhonesUseOneDurableWorkerAndPauseStopsIt() {
+        ModelDownloadJobs.enqueue(app,model,false)
+        val manager=androidx.work.WorkManager.getInstance(app)
+        val infos=manager.getWorkInfosForUniqueWork("model:${model.id}").get(5,java.util.concurrent.TimeUnit.SECONDS)
+        assertEquals(1,infos.size)
+        ModelDownloadJobs.pause(app,model.id)
+        ModelDownloadJobs.restore(app,listOf(model))
+        assertTrue(app.getSharedPreferences("model-downloads",0).getString("queue","")!!.contains("\"paused\":true"))
+    }
     @Test fun cancelledDownloadHasNoAutomaticRestoreIntent() {
         ModelDownloadJobs.enqueue(app,model,false);ModelDownloadJobs.cancel(app,model.id)
         ModelDownloadJobs.restore(app,listOf(model))

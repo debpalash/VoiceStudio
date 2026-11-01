@@ -4398,7 +4398,8 @@
       "verifying": "Model controleren…",
       "speed": "{{speed}}/s",
       "eta": "Nog ongeveer {{time}}",
-      "estimating": "Resterende tijd schatten…"
+      "estimating": "Resterende tijd schatten…",
+      "waiting_network": "Wachten op verbinding…"
     }
   },
   "failureCause": {

@@ -4398,7 +4398,8 @@
       "verifying": "Verifierar modellen…",
       "speed": "{{speed}}/s",
       "eta": "Ungefär {{time}} kvar",
-      "estimating": "Beräknar återstående tid…"
+      "estimating": "Beräknar återstående tid…",
+      "waiting_network": "Väntar på anslutning…"
     }
   },
   "failureCause": {

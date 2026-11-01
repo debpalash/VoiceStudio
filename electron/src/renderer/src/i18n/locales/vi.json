@@ -4398,7 +4398,8 @@
       "verifying": "Đang xác minh mô hình…",
       "speed": "{{speed}}/giây",
       "eta": "Còn khoảng {{time}}",
-      "estimating": "Đang ước tính thời gian còn lại…"
+      "estimating": "Đang ước tính thời gian còn lại…",
+      "waiting_network": "Đang chờ kết nối…"
     }
   },
   "failureCause": {

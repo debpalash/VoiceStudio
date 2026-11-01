@@ -8,14 +8,16 @@ final class WifiState: @unchecked Sendable {
     private let monitor = NWPathMonitor()
     private let lock = NSLock()
     private var permitted = false
+    private var online = false
     init() {
         monitor.pathUpdateHandler = { [weak self] path in
             guard let self else { return }
-            lock.withLock { permitted = path.status == .satisfied && (path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet)) && !path.isExpensive }
+            lock.withLock { online = path.status == .satisfied; permitted = path.status == .satisfied && (path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet)) && !path.isExpensive }
         }
         monitor.start(queue: DispatchQueue(label: "com.voicestudio.model-network"))
     }
     var wifi: Bool { lock.withLock { permitted } }
+    var connected: Bool { lock.withLock { online } }
     deinit { monitor.cancel() }
 }
 @MainActor @Observable final class PhoneModels {
@@ -164,6 +166,16 @@ final class WifiState: @unchecked Sendable {
         progress[model.id] = 0
         let policy = DownloadPolicy(allowMobileData: mobile); let wifi = wifi
         downloads[model.id] = Task {
+            let monitor = Task {
+                while !Task.isCancelled {
+                    if !wifi.connected || (!mobile && !wifi.wifi),var value = downloadDetails[model.id] {
+                        value.stage = mobile ? "waiting_network" : "waiting"; value.bytesPerSecond = 0; value.etaSeconds = nil
+                        downloadDetails[model.id] = value
+                    }
+                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                }
+            }
+            defer { monitor.cancel() }
             defer { downloads[model.id] = nil; progress[model.id] = nil; downloadDetails[model.id] = nil }
             do {
                 let transport = try ModelDownloadSessions.transport(allowMobile: mobile)
@@ -180,6 +192,7 @@ final class WifiState: @unchecked Sendable {
                             await MainActor.run { self.downloadDetails[model.id] = details; self.progress[model.id] = details.fraction }
                         })
                         intents.removeAll { $0.id == model.id }; saveIntents(); paused.remove(model.id)
+                        await ModelDownloadSessions.remove(modelID: model.id)
                         break
                     } catch let error as ClientError where error.key == "mobile.local.wifi_required" { continue }
                 }

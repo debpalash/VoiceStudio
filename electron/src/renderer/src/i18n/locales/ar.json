@@ -4450,7 +4450,8 @@
       "verifying": "جارٍ التحقق من النموذج…",
       "speed": "{{speed}}/ث",
       "eta": "متبقٍ نحو {{time}}",
-      "estimating": "جارٍ تقدير الوقت المتبقي…"
+      "estimating": "جارٍ تقدير الوقت المتبقي…",
+      "waiting_network": "في انتظار الاتصال…"
     }
   },
   "failureCause": {

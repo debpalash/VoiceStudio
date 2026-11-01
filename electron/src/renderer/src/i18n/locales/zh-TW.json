@@ -4398,7 +4398,8 @@
       "verifying": "正在驗證模型…",
       "speed": "{{speed}}/秒",
       "eta": "大約還需 {{time}}",
-      "estimating": "正在估算剩餘時間…"
+      "estimating": "正在估算剩餘時間…",
+      "waiting_network": "正在等待網路連線…"
     }
   },
   "failureCause": {

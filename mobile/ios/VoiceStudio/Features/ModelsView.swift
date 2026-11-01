@@ -32,8 +32,8 @@ struct ModelsView: View {
                         if let details = phone.downloadDetails[item.id] { ModelDownloadStatus(details: details) }
                         else { ProgressView(value: value).accessibilityLabel(model.t("mobile.local.download")) }
                         HStack {
-                            Button(model.t("mobile.downloads.pause")) { phone.pause(item) }
-                            Button(model.t("common.cancel")) { phone.cancel(item) }
+                            Button(model.t("mobile.downloads.pause")) { phone.pause(item) }.studioButton(.tertiary)
+                            Button(model.t("common.cancel")) { phone.cancel(item) }.studioButton(.tertiary)
                         }
                     } else if phone.installed.contains(item.id) {
                         Button(model.t("common.delete"), role: .destructive) { Task { await phone.delete(item) } }
@@ -276,7 +276,7 @@ struct ModelDownloadStatus: View {
     let details: ModelDownloadProgress
     private var state: String {
         switch details.stage {
-        case "waiting","connecting","verifying","paused": return model.t("mobile.downloads."+details.stage)
+        case "waiting","waiting_network","connecting","verifying","paused": return model.t("mobile.downloads."+details.stage)
         case "retrying": return model.t("mobile.downloads.retrying",["seconds": String(details.retrySeconds)])
         default:
             let speed = model.t("mobile.downloads.speed",["speed": ByteCountFormatter.string(fromByteCount: Int64(details.bytesPerSecond),countStyle: .file)])

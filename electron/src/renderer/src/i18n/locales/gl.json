@@ -4398,7 +4398,8 @@
       "verifying": "Verificando o modelo…",
       "speed": "{{speed}}/s",
       "eta": "Quedan uns {{time}}",
-      "estimating": "Calculando o tempo restante…"
+      "estimating": "Calculando o tempo restante…",
+      "waiting_network": "Agardando pola conexión…"
     }
   },
   "failureCause": {

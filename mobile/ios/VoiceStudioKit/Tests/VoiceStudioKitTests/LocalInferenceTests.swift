@@ -385,15 +385,15 @@ private struct LoopbackRangeTransport: HTTPTransport {
         return try await transport.download(local)
     }
 }
-@Test func localDownloadResumesUsingRealURLSessionAndLoopbackServer() async throws {
+@Test func localDownloadRetriesUsingRealURLSessionAndLoopbackServer() async throws {
     let root = try localDirectory(); defer { try? FileManager.default.removeItem(at: root) }
     let server = try LoopbackRangeHost()
     let transport = LoopbackRangeTransport(port: server.port)
     let bytes = Data(repeating: 17, count: 4_194_313)
     let model = try localFixture(bytes: bytes)
     let first = try ModelStore(root: root, available: { _ in 100_000_000_000 })
-    await #expect(throws: (any Error).self) { try await first.download(model, wifi: { true }, transport: transport) }
-    #expect(await !first.installed(model))
+    try await first.download(model, wifi: { true }, transport: transport)
+    #expect(await first.installed(model))
     let restored = try ModelStore(root: root, available: { _ in 100_000_000_000 })
     try await restored.download(model, wifi: { true }, transport: transport)
     let path = try await restored.authorize(model)
@@ -770,11 +770,11 @@ func realOmniSavedVoiceSpeechIsRecognizableWithoutRepeats() async throws {
 
 private actor RecoveringRangeServer: HTTPTransport {
     let server: RangeServer
-    var failed = false
+    var failures = 0
     init(bytes: Data) { server = RangeServer(bytes: bytes) }
     func send(_ request: URLRequest) async throws -> HTTPReply { throw ClientError("unused") }
     func download(_ request: URLRequest) async throws -> DownloadReply {
-        if !failed { failed = true; throw URLError(.networkConnectionLost) }
+        if failures < 2 { failures += 1; throw URLError(.networkConnectionLost) }
         return try await server.download(request)
     }
 }

@@ -4398,7 +4398,8 @@
       "verifying": "Modell wird überprüft…",
       "speed": "{{speed}}/s",
       "eta": "Noch etwa {{time}}",
-      "estimating": "Restzeit wird geschätzt…"
+      "estimating": "Restzeit wird geschätzt…",
+      "waiting_network": "Warten auf eine Verbindung…"
     }
   },
   "failureCause": {

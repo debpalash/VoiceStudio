@@ -58,7 +58,7 @@ class ModelDownloads internal constructor(
     private fun lock(model: PhoneModel)=locks.getOrPut(model.id) {Mutex()}
     private val mutable=MutableStateFlow<Map<String,DownloadProgress>>(emptyMap())
     val progress=mutable.asStateFlow()
-    fun scheduled(id: String,total: Long) {mutable.update {if(it[id]?.running==true) it else it+(id to (it[id] ?: DownloadProgress(total=total)).copy(total=total,running=true,stage="waiting",error=null))}}
+    fun scheduled(id: String,total: Long,stage: String="waiting") {mutable.update {if(it[id]?.running==true) it else it+(id to (it[id] ?: DownloadProgress(total=total)).copy(total=total,running=true,stage=stage,error=null))}}
     fun paused(id: String) {mutable.update {it+(id to (it[id] ?: DownloadProgress()).copy(running=false,stage="paused",bytesPerSecond=0.0,etaSeconds=null))}}
     private fun dir(model: PhoneModel)=File(root,model.id)
     private fun identity(model: PhoneModel)=model.revision+model.files.joinToString {it.path+it.sha256+it.size}
@@ -241,9 +241,10 @@ class ModelDownloads internal constructor(
     private suspend fun retryTransfer(model: PhoneModel,file: ModelFile,partial: File,allowMobile: Boolean,report: (Long,String,Long)->Unit,lower: Long=0,upper: Long=file.size-1) {
         var failure: IOException?=null
         val permanent=mutableSetOf<String>()
+        val deliveryEndpoints=if(file.url?.toHttpUrl()?.host?.let {it!="huggingface.co"}==true) endpoints.take(1) else endpoints
         repeat(5) { attempt ->
-            val sources=endpoints.distinct().let { list ->
-                if(sourceRates.size>=list.size) list.sortedByDescending {sourceRates[it] ?: 0.0}
+            val sources=deliveryEndpoints.distinct().let { list ->
+                if(list.all {sourceRates.containsKey(it)}) list.sortedByDescending {sourceRates[it] ?: 0.0}
                 else if(list.size>1&&lower>0) list.drop((lower/chunkSize%list.size).toInt())+list.take((lower/chunkSize%list.size).toInt())
                 else list
             }
@@ -260,7 +261,7 @@ class ModelDownloads internal constructor(
                     return
                 }
                 catch(e:RangeUnsupported) {throw e}
-                catch(e:PermanentDownloadFailure) {failure=e;permanent+=endpoint}
+                catch(e:PermanentDownloadFailure) {if(failure==null) failure=e;permanent+=endpoint}
                 catch(e:IOException) {
                     currentCoroutineContext().ensureActive();failure=e
                     diagnostic(model,e.javaClass.simpleName,endpoint.toHttpUrl().host,(e as? RetryDownloadFailure)?.status)
@@ -270,7 +271,7 @@ class ModelDownloads internal constructor(
                     }
                 }
             }
-            if(permanent.containsAll(endpoints)) throw failure ?: IOException("Download failed")
+            if(permanent.containsAll(deliveryEndpoints)) throw failure ?: IOException("Download failed")
             if(attempt<4) {
                 val retry=(failure as? RetryDownloadFailure)?.retryAfter?.let { value ->
                     value.toLongOrNull() ?: runCatching { (java.time.ZonedDateTime.parse(value,java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli()-System.currentTimeMillis()+999)/1000 }.getOrNull()

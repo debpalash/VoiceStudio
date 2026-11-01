@@ -4426,7 +4426,8 @@
       "verifying": "Weryfikacja modelu…",
       "speed": "{{speed}}/s",
       "eta": "Pozostało około {{time}}",
-      "estimating": "Szacowanie pozostałego czasu…"
+      "estimating": "Szacowanie pozostałego czasu…",
+      "waiting_network": "Oczekiwanie na połączenie…"
     }
   },
   "failureCause": {

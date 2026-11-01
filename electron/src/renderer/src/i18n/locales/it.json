@@ -4400,7 +4400,8 @@
       "verifying": "Verifica del modello…",
       "speed": "{{speed}}/s",
       "eta": "Circa {{time}} rimanenti",
-      "estimating": "Stima del tempo rimanente…"
+      "estimating": "Stima del tempo rimanente…",
+      "waiting_network": "In attesa di connessione…"
     }
   },
   "failureCause": {

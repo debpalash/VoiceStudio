@@ -36,6 +36,7 @@ camera-view = { module = "androidx.camera:camera-view", version = "1.5.0" }
 zxing = { module = "com.google.zxing:core", version = "3.5.3" }
 junit = { module = "junit:junit", version = "4.13.2" }
 robolectric = { module = "org.robolectric:robolectric", version = "4.16" }
+robolectric-legacy-sdk = { module = "org.robolectric:android-all-instrumented", version = "13-robolectric-9030017-i7" }
 robolectric-sdk = { module = "org.robolectric:android-all-instrumented", version = "14-robolectric-10818077-i7" }
 test-core = { module = "androidx.test:core-ktx", version = "1.7.0" }
 test-runner = { module = "androidx.test:runner", version = "1.7.0" }
