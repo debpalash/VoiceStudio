@@ -1136,10 +1136,12 @@ unaffected and works normally.
 > deep-links the exact OS pane described above. The dictation blocker rechecks
 > Accessibility while it is visible and closes as soon as macOS reports the grant.
 
-## 17. Windows: backend won't start with a non-English (CJK) username — `UnicodeDecodeError` in `site`
+## 17. Windows: backend won't start with a non-English username or checkout folder — `UnicodeDecodeError` in `site`
 
-**Symptom:** the app never gets past first-run setup / "starting_backend", and
-the backend log shows the interpreter dying before any VoiceStudio code runs:
+**Symptom:** the app never gets past first-run setup / "starting_backend" (or,
+in a source checkout, `bun run setup:api` / `bun run dev` fails at
+`Querying Python at …\.venv\Scripts\python.exe`), and the log shows the
+interpreter dying before any VoiceStudio code runs:
 
 ```
 Fatal Python error: init_import_site: Failed to import the site module
@@ -1152,12 +1154,16 @@ UnicodeDecodeError: 'gbk' codec can't decode byte 0x80 in position 11: illegal m
 the managed environment lives under a Windows user profile whose account name
 contains non-ASCII characters (most commonly CJK), `uv sync`'s editable
 install `.pth` embeds that path in UTF-8, which is rarely a valid byte
-sequence in the active ANSI code page (`gbk`, `shift_jis`, etc.), and the
-interpreter can never start (#1783).
+sequence in the active ANSI code page (`gbk`, `shift_jis`, `cp874`, etc.), and
+the interpreter can never start (#1783). A source checkout cloned under a
+non-ASCII folder (for example `C:\โปรเจ็ค\VoiceStudio`) hits the same failure
+through its own `.venv`.
 
 **Fix:** VoiceStudio now rewrites those `.pth` entries to ASCII-only paths after
 each runtime install and before each launch, so existing environments recover
-on the next start. If the backend still cannot start, keep the app
+on the next start. In a source checkout, `bun run setup:api` does the same
+before each `uv` step, and `bun run dev` / `bun run dev:api` before starting the
+backend, so re-running setup heals an existing `.venv`. If the backend still cannot start, keep the app
 environment on an ASCII-only path. On the first-run
 setup screen, press **Change…** beside **App environment** and pick a folder
 such as `C:\VoiceStudio` before setup starts. An environment that cannot start
