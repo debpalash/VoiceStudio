@@ -1,6 +1,7 @@
 """Apple requires declarations in the executable's own bundle, including SDKs."""
 import importlib.util
 import plistlib
+import re
 from pathlib import Path
 
 import pytest
@@ -80,7 +81,8 @@ def test_share_inbox_uses_one_configured_group_for_signing_and_runtime(tmp_path)
     app_id = project["targets"]["VoiceStudio"]["settings"]["base"]["PRODUCT_BUNDLE_IDENTIFIER"]
     for extension in ["VoiceStudioShare", "VoiceStudioWidget"]:
         extension_id = project["targets"][extension]["settings"]["base"]["PRODUCT_BUNDLE_IDENTIFIER"]
-        assert extension_id.startswith(app_id + ".")
+        # App Store export permits exactly one identifier component after the app ID.
+        assert re.fullmatch(re.escape(app_id) + r"\.[A-Za-z0-9-]+", extension_id), extension_id
     generated_info = tmp_path / "Info.plist"
     load("mobile/ios/scripts/prepare_resources.py").prepare(tmp_path / "app", generated_info)
     for target, info in [("VoiceStudio", generated_info),
