@@ -23,6 +23,9 @@ public final class ModelDownloadStartGate: @unchecked Sendable {
         }
     }
     public func cancel(_ operation: () -> Void) {
-        lock.withLock { cancelled = true; operation() }
+        lock.withLock {
+            guard !cancelled else { return }
+            cancelled = true; operation()
+        }
     }
 }

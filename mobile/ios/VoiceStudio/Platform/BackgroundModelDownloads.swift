@@ -75,8 +75,13 @@ final class BackgroundModelDownloads: NSObject, HTTPTransport, URLSessionDownloa
     }
     private func stopWaiting(_ task: URLSessionDownloadTask) {
         // Suspending keeps the system-owned partial range available for Resume.
-        task.suspend()
-        lock.withLock { pending.removeValue(forKey: task.taskIdentifier) }?.continuation.resume(throwing: CancellationError())
+        let waiting = lock.withLock {
+            // URLSession suspension counts nest; cancellation can arrive before
+            // registration or race the failed-start cleanup.
+            if task.state == .running { task.suspend() }
+            return pending.removeValue(forKey: task.taskIdentifier)
+        }
+        waiting?.continuation.resume(throwing: CancellationError())
     }
     private func ownerKey(_ id: String) -> String { SHA256.hash(data: Data(id.utf8)).map { String(format: "%02x",$0) }.joined() }
     func reconcile(authorized: Set<String>) async {

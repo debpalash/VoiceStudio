@@ -34,3 +34,11 @@ import Testing
     #expect(started.wait(timeout: .now()+5) == .success)
     #expect(!gate.start {})
 }
+
+@Test func backgroundCancellationCleanupRunsOnce() {
+    let gate = ModelDownloadStartGate()
+    var stops = 0
+    gate.cancel { stops += 1 }
+    gate.cancel { stops += 1 }
+    #expect(stops == 1)
+}

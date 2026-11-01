@@ -65,7 +65,11 @@ object ModelDownloadJobs {
             try {
                 val model=models.firstOrNull {it.id==item.model&&modelPin(it).identity==item.pin}
                 if(model==null) {cancel(context,item.model);continue}
-                if(item.paused) {PhoneRuntime.get(context).downloads.paused(item.model,model.totalBytes,item.error);continue}
+                val downloads=PhoneRuntime.get(context).downloads
+                if(downloads.progress.value[item.model]?.error=="mobile.simple.checkpoint_failed") {
+                    pauseInBackground(context,item.model,"mobile.simple.checkpoint_failed");continue
+                }
+                if(item.paused) {downloads.paused(item.model,model.totalBytes,item.error);continue}
                 if(PhoneRuntime.get(context).downloads.installed(model)) {finished(context,item.model);continue}
                 if(Build.VERSION.SDK_INT<34||scheduler.getPendingJob(item.jobID)==null) schedule(context,item,model.totalBytes)
                 else PhoneRuntime.get(context).downloads.scheduled(item.model,model.totalBytes,if(item.mobile) "waiting_network" else "waiting")
@@ -84,12 +88,17 @@ object ModelDownloadJobs {
             PhoneRuntime.get(context).downloads.paused(id,error=error)
         }
     }
-    internal fun pauseInBackground(context: Context,id: String,error: String?=null) {
+    @Synchronized internal fun pauseInBackground(context: Context,id: String,error: String?=null) {
         try {pause(context,id,error)}
-        catch(e:ClientFailure) {PhoneRuntime.get(context).downloads.paused(id,error=e.key)}
+        catch(e:ClientFailure) {
+            // A failed commit may still update SharedPreferences' in-memory copy.
+            // Retry with the failure reason so restoration cannot silently clear it.
+            try {pause(context,id,e.key)} catch(_:ClientFailure) {}
+            PhoneRuntime.get(context).downloads.paused(id,error=e.key)
+        }
     }
     fun cancel(context: Context,id: String) {try {pause(context,id)} finally {finished(context,id)}}
-    suspend fun stop(context: Context,id: String) {val job=active[id];cancel(context,id);job?.join()}
+    suspend fun stop(context: Context,id: String) {cancel(context,id);active[id]?.join()}
     @Synchronized internal fun finished(context: Context,id: String) {write(context,read(context).filterNot {it.model==id})}
     internal fun waiting(context: Context,id: String) {
         val item=read(context).firstOrNull {it.model==id&&!it.paused} ?: return
@@ -97,13 +106,15 @@ object ModelDownloadJobs {
         downloads.scheduled(id,downloads.progress.value[id]?.total ?: 0,if(item.mobile) "waiting_network" else "waiting")
     }
     internal suspend fun run(context: Context,id: String) {
-        val item=read(context).firstOrNull {it.model==id&&!it.paused} ?: return
-        val model=withContext(Dispatchers.IO) {context.assets.open("models.json").bufferedReader().use {ModelCatalog.decode(it.readText()).models.firstOrNull {m->m.id==id&&modelPin(m).identity==item.pin}}}
-            ?: throw ClientFailure("mobile.local.catalogue_failed")
         val job=currentCoroutineContext().job
-        active.putIfAbsent(id,job)?.let { previous -> previous.join();run(context,id);return }
-        try {PhoneRuntime.get(context).downloads.download(model,item.mobile);finished(context,id)}
-        finally {active.remove(id,job)}
+        active.putIfAbsent(id,job)?.let {previous -> previous.join();run(context,id);return}
+        try {
+            val item=read(context).firstOrNull {it.model==id&&!it.paused} ?: return
+            val model=withContext(Dispatchers.IO) {context.assets.open("models.json").bufferedReader().use {ModelCatalog.decode(it.readText()).models.firstOrNull {m->m.id==id&&modelPin(m).identity==item.pin}}}
+                ?: throw ClientFailure("mobile.local.catalogue_failed")
+            currentCoroutineContext().ensureActive()
+            PhoneRuntime.get(context).downloads.download(model,item.mobile);finished(context,id)
+        } finally {active.remove(id,job)}
     }
     internal suspend fun notification(context: Context,id: String): Notification {
         val prefs=SessionStore(context).preferences.first()

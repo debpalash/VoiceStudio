@@ -8,6 +8,7 @@ import androidx.work.testing.WorkManagerTestInitHelper
 import com.voicestudio.mobile.data.ModelDownloadJobs
 import com.voicestudio.mobile.local.ModelCatalog
 import com.voicestudio.mobile.local.PhoneModel
+import kotlinx.coroutines.launch
 import org.junit.*
 import org.junit.Assert.*
 import org.junit.runner.RunWith
@@ -141,6 +142,52 @@ class ModelDownloadJobsTest {
         assertEquals(androidx.work.ListenableWorker.Result.retry(),worker.doWork())
         assertFalse(app.getSharedPreferences("model-downloads",0).getString("queue","")!!.contains("\"paused\":true"))
         assertNull(com.voicestudio.mobile.local.PhoneRuntime.get(app).downloads.progress.value[model.id]?.error)
+    }
+
+    @Test fun backgroundPauseRetriesPersistenceAndKeepsItsErrorOnRestore() {
+        ModelDownloadJobs.enqueue(app,model,false)
+        val preferences=app.getSharedPreferences("model-downloads",0)
+        var commits=0
+        var queued=""
+        val editor=org.mockito.Mockito.mock(android.content.SharedPreferences.Editor::class.java)
+        org.mockito.Mockito.`when`(editor.putString(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString())).thenAnswer {queued=it.getArgument(1);editor}
+        org.mockito.Mockito.`when`(editor.commit()).thenAnswer {++commits>1&&preferences.edit().putString("queue",queued).commit()}
+        val proxy=org.mockito.Mockito.mock(android.content.SharedPreferences::class.java)
+        org.mockito.Mockito.`when`(proxy.getString("queue","[]")).thenAnswer {preferences.getString("queue","[]")}
+        org.mockito.Mockito.`when`(proxy.edit()).thenReturn(editor)
+        val context=object:android.content.ContextWrapper(app) {
+            override fun getSharedPreferences(name:String,mode:Int)=if(name=="model-downloads") proxy else super.getSharedPreferences(name,mode)
+        }
+        com.voicestudio.mobile.data.ModelDownloadPauseReceiver().onReceive(context,android.content.Intent().putExtra("model",model.id))
+        assertEquals(2,commits)
+        com.voicestudio.mobile.local.PhoneRuntime.get(app).downloads.paused(model.id)
+        ModelDownloadJobs.restore(app,listOf(model))
+        assertTrue(scheduler.allPendingJobs.isEmpty())
+        assertEquals("mobile.simple.checkpoint_failed",com.voicestudio.mobile.local.PhoneRuntime.get(app).downloads.progress.value[model.id]?.error)
+    }
+    @Test @Config(sdk=[33]) fun pauseDuringCatalogueLookupCancelsTheRegisteredWorker()=kotlinx.coroutines.runBlocking {
+        ModelDownloadJobs.enqueue(app,model,false)
+        val entered=java.util.concurrent.CountDownLatch(1)
+        val release=java.util.concurrent.CountDownLatch(1)
+        val context=object:android.content.ContextWrapper(app) {
+            override fun getApplicationContext():android.content.Context=this
+            override fun getAssets():android.content.res.AssetManager {
+                if(Thread.currentThread().stackTrace.any {it.className.contains("ModelDownloadJobs\$run")}) {
+                    entered.countDown();check(release.await(10,java.util.concurrent.TimeUnit.SECONDS))
+                }
+                return app.assets
+            }
+        }
+        val worker=androidx.work.testing.TestListenableWorkerBuilder<com.voicestudio.mobile.data.ModelDownloadWorker>(context)
+            .setInputData(androidx.work.workDataOf("model" to model.id))
+            .setForegroundUpdater {_,_,_->androidx.concurrent.futures.CallbackToFutureAdapter.getFuture<Void> {it.set(null);"promoted"}}.build()
+        val work=kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {worker.doWork()}
+        try {
+            assertTrue(entered.await(10,java.util.concurrent.TimeUnit.SECONDS))
+            ModelDownloadJobs.pause(app,model.id)
+        } finally {release.countDown()}
+        work.join()
+        assertTrue("Pause must cancel a worker still loading the catalogue",work.isCancelled)
     }
 
 }
