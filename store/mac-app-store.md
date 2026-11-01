@@ -59,6 +59,8 @@ path capability refreshes the already-running backend's scopes; choosing a new
 models directory does not rely on inherited Powerbox access or interrupt work.
 Resetting the models directory to the container default needs no external grant,
 so an unavailable external drive cannot prevent that reset.
+The media-tool file picker also retains its bookmark before issuing a path
+capability; file access does not relax the bundled-code execution policy.
 
 ## Apple requirements checked
 

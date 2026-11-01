@@ -553,10 +553,14 @@ export function registerIpc(
     const owner = getMainWindow();
     assertTrustedMainFrame(event, owner);
     const kind = assertMediaTool(raw);
-    const picked = await dialog.showOpenDialog(owner, {
-      properties: ['openFile'],
-    });
+    const picked = await dialog.showOpenDialog(
+      owner,
+      securityScopedDialogOptions<Electron.OpenDialogOptions>({
+        properties: ['openFile'],
+      }),
+    );
     if (picked.canceled || !picked.filePaths[0]) return null;
+    retainSecurityScopedDirectory(picked);
     return authorizeMediaTool(await backendDataDirectory(supervisor), picked.filePaths[0], kind);
   });
 
