@@ -1,4 +1,4 @@
-# iOS TestFlight — signs the companion app with the team's App Store Connect API
+# iOS TestFlight — signs the native iPhone/iPad app with the team's App Store Connect API
 # key and uploads it to TestFlight. Owner-dispatched from `main` only; nothing is
 # submitted for App Store review (see docs/mobile.md → TestFlight).
 
@@ -6,6 +6,13 @@ name: iOS TestFlight
 
 on:
   workflow_dispatch:
+    inputs:
+      audience:
+        description: TestFlight audience (external builds need Beta App Review)
+        type: choice
+        required: true
+        default: internal
+        options: [internal, external]
 
 permissions:
   contents: read
@@ -124,13 +131,19 @@ jobs:
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TESTFLIGHT_AUDIENCE: ${{ inputs.audience || 'internal' }}
         run: |
+          case "$TESTFLIGHT_AUDIENCE" in
+            internal) testflight_internal_only=true ;;
+            external) testflight_internal_only=false ;;
+            *) echo "::error::Unsupported TestFlight audience"; exit 1 ;;
+          esac
           /usr/libexec/PlistBuddy -c 'Add :method string app-store-connect' \
             -c 'Add :destination string upload' \
             -c "Add :teamID string $TEAM_ID" \
             -c 'Add :signingStyle string automatic' \
             -c 'Add :manageAppVersionAndBuildNumber bool false' \
-            -c 'Add :testFlightInternalTestingOnly bool true' \
+            -c "Add :testFlightInternalTestingOnly bool $testflight_internal_only" \
             "$RUNNER_TEMP/ExportOptions.plist"
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/VoiceStudio.xcarchive" \
