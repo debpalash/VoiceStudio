@@ -24,6 +24,12 @@ const installerProcessesTest = spawnSync(
   { encoding: 'utf8' },
 );
 assert.equal(installerProcessesTest.status, 0, installerProcessesTest.stdout + installerProcessesTest.stderr);
+const distributionIdentityTest = spawnSync(
+  process.execPath,
+  ['--test', resolve(root, 'tests/distribution-identity.test.mjs')],
+  { encoding: 'utf8' },
+);
+assert.equal(distributionIdentityTest.status, 0, distributionIdentityTest.stdout + distributionIdentityTest.stderr);
 if (process.platform === 'linux') {
   const librariesTest = spawnSync(
     process.execPath,
@@ -87,7 +93,11 @@ const artifactExecutable = resolve(
 const electronPackage = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
 assert.match(electronPackage.author?.email ?? '', /@/, 'Linux package declares a maintainer email');
 assert.equal(config.productName, PRODUCT_NAME, 'Builder uses the central product name');
-assert.equal(config.appId, APP_ID, 'Builder uses the central application ID');
+assert.equal(
+  config.appId,
+  DISTRIBUTION_TARGET === 'mac-app-store' ? 'sh.voicestudio.pro' : APP_ID,
+  'Builder uses the registered identity for the selected distribution',
+);
 const storeLabel = {
   'microsoft-store': 'MicrosoftStore-',
   'mac-app-store': 'MacAppStore-',

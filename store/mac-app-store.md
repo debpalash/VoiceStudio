@@ -2,11 +2,12 @@
 
 Status: `built` is blocked; no package has been submitted.
 
-Branch: `feat/mac-app-store`
+App Store Connect: [VoiceStudio Pro for Mac](https://appstoreconnect.apple.com/apps/6829361961/distribution/macos/version/inflight).
 
-Final commit: record when the platform branch is ready for review.
-
-Bundle identifier: `com.voicestudio.desktop`
+Bundle identifier: `sh.voicestudio.pro`, recorded in
+`store/metadata.json` → `identity.macAppStore`. Only MAS packages use this
+identifier; other distribution targets retain `com.voicestudio.desktop`.
+Provisioning profiles must authorize the MAS identifier.
 
 The manual `mac-app-store.yml` workflow prepares private, signed MAS packages
 for arm64 and x64. It has read-only repository permissions, never uploads to App

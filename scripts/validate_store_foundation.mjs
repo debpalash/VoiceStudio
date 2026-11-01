@@ -30,6 +30,8 @@ export function bundledOnlyRuntimeBlockers(components) {
 assert.equal(metadata.schemaVersion, 1);
 assert.equal(metadata.identity.productName, PRODUCT_NAME);
 assert.equal(metadata.identity.applicationId, APP_ID);
+assert.match(metadata.identity.macAppStore.applicationId, /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/);
+assert.match(metadata.identity.macAppStore.appStoreConnectId, /^\d+$/);
 assert.equal(metadata.identity.license, "AGPL-3.0-only");
 assert(metadata.identity.publisherLegalName);
 assert(metadata.listing.shortDescription.length <= 100);

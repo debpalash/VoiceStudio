@@ -3,6 +3,10 @@
   "identity": {
     "productName": "VoiceStudio",
     "applicationId": "com.voicestudio.desktop",
+    "macAppStore": {
+      "applicationId": "sh.voicestudio.pro",
+      "appStoreConnectId": "6829361961"
+    },
     "publisherLegalName": "Yupcha Softwares Private Limited",
     "license": "AGPL-3.0-only",
     "defaultLocale": "en-US"
