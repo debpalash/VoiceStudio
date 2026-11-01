@@ -19,7 +19,7 @@ def handoff(tmp_path, monkeypatch):
         monkeypatch.setattr(routes, name, directory)
     app = FastAPI()
     app.include_router(routes.router)
-    return TestClient(app), routes, db
+    return TestClient(app, client=("127.0.0.1", 50000)), routes, db
 
 
 @pytest.mark.parametrize('tracks,selected,translations,text,job_language,expected_codes,expected_translations', [

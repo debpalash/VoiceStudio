@@ -66,7 +66,9 @@ def batch():
 def client(batch):
     app = FastAPI()
     app.include_router(batch.router)
-    return TestClient(app)
+    # Loopback peer so the router's require_admin gate lets these handler tests
+    # through; remote denial is covered by the policy tests.
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 @pytest.fixture

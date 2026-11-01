@@ -9,8 +9,9 @@ import contextlib
 import shutil
 import tempfile
 import torch
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from api.dependencies import require_admin
 from core import voice_leases
 from services.reference_transcript import stored_reference_transcript
 from core.db import db_conn
@@ -453,7 +454,7 @@ def resolve_consistent_ref(job: dict, speaker_key: str, memo: dict | None = None
     return ref
 
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 
 _SOURCE_CHANGED_MESSAGE = (
     "The subtitles changed while this dub was rendering. The previous track "

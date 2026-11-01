@@ -40,7 +40,8 @@ import re
 import tempfile
 from typing import Annotated, Any, Literal, Optional, Union
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from api.dependencies import require_consumer
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.routing import APIRoute
@@ -147,7 +148,7 @@ class OpenAIErrorRoute(APIRoute):
         return route
 
 
-router = APIRouter(prefix="/v1", tags=["OpenAI-Compatible Audio API"], route_class=OpenAIErrorRoute)
+router = APIRouter(prefix="/v1", tags=["OpenAI-Compatible Audio API"], route_class=OpenAIErrorRoute, dependencies=[Depends(require_consumer)])
 
 
 # ── OpenAI model / voice aliases ────────────────────────────────────────────

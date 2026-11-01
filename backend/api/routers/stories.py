@@ -10,13 +10,14 @@ import os
 import re
 import tempfile
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
+from api.dependencies import require_admin
 from fastapi.responses import Response
 
 from services.ffmpeg_utils import find_ffmpeg, spawn_subprocess
 from core.http_headers import content_disposition
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 
 # format -> (ffmpeg audio codec, mime type, file extension). Strict whitelist so
 # the operator-uploaded `format` can never inject arbitrary ffmpeg arguments.

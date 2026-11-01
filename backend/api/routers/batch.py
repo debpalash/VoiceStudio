@@ -18,8 +18,9 @@ import asyncio
 import logging
 from typing import Optional, List
 
-from fastapi import APIRouter, File, UploadFile, HTTPException, Form
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Form
 from fastapi.responses import JSONResponse
+from api.dependencies import require_admin
 from pydantic import BaseModel
 
 from core.config import DATA_DIR
@@ -37,7 +38,7 @@ from services.tts_backend import (
     active_backend_id, ensure_active_engine_licence, resolve_generation_backend,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 logger = logging.getLogger("omnivoice.batch")
 
 # Compatibility values emitted by the established Tauri Batch picker. They
