@@ -1,0 +1,2 @@
+# Isolated repository publisher; these packages are not shipped in the app.
+fdroidserver==2.4.5
