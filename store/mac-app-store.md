@@ -57,6 +57,8 @@ location to bundled Python. Python resolves and starts the grants independently
 through Core Foundation before reading configured data. A newly consumed native
 path capability refreshes the already-running backend's scopes; choosing a new
 models directory does not rely on inherited Powerbox access or interrupt work.
+Resetting the models directory to the container default needs no external grant,
+so an unavailable external drive cannot prevent that reset.
 
 ## Apple requirements checked
 

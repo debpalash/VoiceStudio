@@ -130,6 +130,19 @@ def test_failed_sandbox_scope_is_an_authorization_error_and_never_returns_a_path
         auth.consume(token, "models_dir")
 
 
+def test_bundled_models_folder_reset_does_not_require_unrelated_folder_grants(auth, monkeypatch):
+    module = ModuleType("_voicestudio_sandbox_bookmarks")
+    module.restore = Mock(return_value=False)  # An external drive is no longer mounted.
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.setenv("VOICESTUDIO_BUNDLED_CODE_ONLY", "1")
+    token = _token()
+    auth.write(token, "models_dir", "")
+    assert auth.consume(token, "models_dir") == ""
+    module.restore.assert_not_called()
+    with pytest.raises(auth.Error):
+        auth.consume(token, "models_dir")
+
+
 def test_wrong_kind_is_rejected(auth):
     token = _token()
     auth.write(token, "dub_export", "/out.wav")
