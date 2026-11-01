@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import re
 
 from core.render_trace import timed as _render_timed
 import math
@@ -36,6 +37,11 @@ import torch
 from core.prefs import resolve
 
 logger = logging.getLogger("omnivoice.watermark")
+
+#: Filename torch.hub gives a downloaded checkpoint: ``sha1(url)[:24]``
+#: (see ``audioseal.loader.load_model_checkpoint``). Used to recognise the
+#: cached AudioSeal generator blob — see ``_generator_checkpoint_cached``.
+_TORCH_HUB_BLOB_NAME = re.compile(r"[0-9a-f]{24}")
 
 
 # ── Lazy-loaded AudioSeal models ──────────────────────────────────────────
@@ -194,6 +200,40 @@ def _check_available() -> bool:
     return _audioseal_available
 
 
+def _watermark_device() -> torch.device:
+    """Device for the AudioSeal models: CUDA when the host has it, else CPU.
+
+    Embedding used to run the generator on CPU unconditionally (#1190 sized
+    the watermark pool around that: "CPU work that holds no VRAM"). Measured
+    on a CUDA host, a 12 s clip costs ~0.38 s on CPU vs ~0.08 s on the GPU —
+    the stage was the single slowest non-synthesis step of a short generate
+    and scales linearly with audio length (a 10-minute chapter ≈ 19 s of pure
+    CPU embedding). The generator is ~58 MB, so VRAM cost is nil next to the
+    TTS model, and the work stays on the dedicated watermark pool so it never
+    occupies a GPU synthesis worker.
+
+    ``OMNIVOICE_WATERMARK_DEVICE=cpu|cuda`` forces a device (rollback /
+    debugging); anything else, including unset, means "best available".
+    """
+    override = (os.environ.get("OMNIVOICE_WATERMARK_DEVICE") or "").strip().lower()
+    if override in {"cpu", "cuda"}:
+        return torch.device(override)
+    try:
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+    except Exception:  # noqa: BLE001 — a broken CUDA probe must not disable marking
+        logger.debug("CUDA availability probe failed; watermarking on CPU", exc_info=True)
+    return torch.device("cpu")
+
+
+def _model_device(model) -> torch.device:
+    """The device *model* actually lives on (never trust the request)."""
+    try:
+        return next(model.parameters()).device
+    except Exception:  # noqa: BLE001 — parameter-less stub in tests
+        return torch.device("cpu")
+
+
 def _get_generator(mark_prefetched: bool = False):
     """Lazy-load the AudioSeal generator model.
 
@@ -216,13 +256,19 @@ def _get_generator(mark_prefetched: bool = False):
                 )
             from audioseal import AudioSeal
             try:
+                device = _watermark_device()
                 _generator = AudioSeal.load_generator("audioseal_wm_16bits")
+                if _model_device(_generator) != device and hasattr(_generator, "to"):
+                    _generator = _generator.to(device)
             except Exception:
                 _generator_failed_at = time.monotonic()
                 raise
             _generator_failed_at = None
             _generator.eval()
-            logger.info("AudioSeal generator loaded (16-bit message mode)")
+            logger.info(
+                "AudioSeal generator loaded (16-bit message mode, device=%s)",
+                _model_device(_generator),
+            )
             _prefetched_unused = mark_prefetched
         elif not mark_prefetched:
             _prefetched_unused = False
@@ -236,9 +282,15 @@ def _get_detector():
         _last_used = time.monotonic()
         if _detector is None:
             from audioseal import AudioSeal
+            device = _watermark_device()
             _detector = AudioSeal.load_detector("audioseal_detector_16bits")
+            if _model_device(_detector) != device and hasattr(_detector, "to"):
+                _detector = _detector.to(device)
             _detector.eval()
-            logger.info("AudioSeal detector loaded (16-bit message mode)")
+            logger.info(
+                "AudioSeal detector loaded (16-bit message mode, device=%s)",
+                _model_device(_detector),
+            )
         return _detector
 
 
@@ -248,12 +300,52 @@ def _generator_checkpoint_cached() -> bool:
     AudioSeal 0.2 stores the checkpoint in ``<cache>/audioseal`` even though
     it uses huggingface_hub to fetch it. Keep startup local-first: an ordinary
     boot may consume that file, but must never turn prefetch into a download.
+
+    Two on-disk layouts must both count as "cached", because
+    ``audioseal.loader`` picks between them by the shape of the model card's
+    ``checkpoint:`` field:
+
+    * A repo-style URI (``facebook/audioseal/generator_base.pth``) goes
+      through ``hf_hub_download(local_dir=...)`` and lands under its original
+      filename — ``generator_base.pth``.
+    * A resolve URL (``https://huggingface.co/facebook/audioseal/resolve/main/
+      generator_base.pth`` — what the shipped ``audioseal_wm_16bits`` card
+      actually uses) does NOT match the repo prefix, so the loader falls to
+      its ``torch.hub`` branch, which stores the blob as
+      ``sha1(url)[:24]`` — a 24-char lowercase hex name.
+
+    Checking only the first layout made the prefetch report "not cached" on
+    every boot of an installation whose checkpoint arrived via the resolve
+    URL (the common case): the generator then loaded inline inside the first
+    synthesis instead of overlapping startup, and offline hosts — where a
+    download is impossible anyway — paid the full import+load on the first
+    generate. A file must be non-empty to count, so an interrupted download
+    is still "not cached".
     """
     cache_root = os.environ.get("AUDIOSEAL_CACHE_DIR") or os.environ.get(
         "XDG_CACHE_HOME"
     )
     root = Path(cache_root).expanduser() if cache_root else Path.home() / ".cache"
-    return (root / "audioseal" / "generator_base.pth").is_file()
+    cache_dir = root / "audioseal"
+    if not cache_dir.is_dir():
+        return False
+    try:
+        entries = list(cache_dir.iterdir())
+    except OSError:
+        return False
+    for entry in entries:
+        try:
+            if not entry.is_file() or entry.stat().st_size == 0:
+                continue
+        except OSError:
+            continue
+        # Original filename (hf_hub_download layout) or the torch.hub
+        # sha1[:24] blob name (resolve-URL layout).
+        if entry.name == "generator_base.pth" or _TORCH_HUB_BLOB_NAME.fullmatch(
+            entry.name
+        ):
+            return True
+    return False
 
 
 def prefetch_generator(*, allow_download: bool = False) -> None:
@@ -511,7 +603,15 @@ def embed_watermark(
 
     try:
         generator = _get_generator()
-        msg = torch.tensor(message or OMNI_MESSAGE, dtype=torch.int32).unsqueeze(0)
+        # Run the embedding on whatever device the generator was loaded onto
+        # (CUDA when available — see _watermark_device), then hand the caller
+        # a tensor on the device it gave us. Skipping the hop raises
+        # "Input type (torch.cuda.FloatTensor) and weight type
+        # (torch.FloatTensor) should be the same" inside the generator, which
+        # the except below would swallow into an UNMARKED take — a silent
+        # provenance failure (EU AI Act Art. 50(2)), not just a slow one.
+        device = _model_device(generator)
+        msg = torch.tensor(message or OMNI_MESSAGE, dtype=torch.int32).unsqueeze(0).to(device)
 
         # AudioSeal expects (batch, channels, samples) — normalise input
         original_shape = waveform.shape
@@ -521,6 +621,7 @@ def embed_watermark(
             audio = waveform.unsqueeze(0).unsqueeze(0)  # (1, 1, S)
         else:
             audio = waveform
+        audio = audio.to(device)
 
         # AudioSeal 0.2 ignores sample_rate: normalize each bounded chunk
         # explicitly, then add only the resampled watermark to the source.
@@ -553,6 +654,10 @@ def embed_watermark(
             # Lower the host peak by the overshoot (the residual stays put).
             gain *= (scaled_peak - excess) / scaled_peak
             watermarked = _embed(audio * gain)
+        # Keep the watermarked tensor on the caller's original device
+        # (the embed path runs on the generator's device).
+        if watermarked.device != waveform.device:
+            watermarked = watermarked.to(waveform.device)
 
         # Restore original shape
         if len(original_shape) == 2:
@@ -608,6 +713,9 @@ def detect_watermark(
             audio = waveform.unsqueeze(0).unsqueeze(0)
         else:
             audio = waveform
+        # Same device hop as embed_watermark: a CUDA-resident detector with a
+        # CPU clip (or vice versa) raises inside detect_watermark().
+        audio = audio.to(_model_device(detector))
 
         # Detect per chunk and keep the best hit: bounds memory the same way
         # embedding does, and a splice where only part of the file is

@@ -405,6 +405,58 @@ def find_ffprobe():
     return None
 
 
+def _shim_matches(path: str, real_size: int) -> bool:
+    """True when *path* really exposes a file of *real_size* bytes.
+
+    A link that was created but does not resolve to the same bytes is worse
+    than none: the shim directory is published ahead of the real binary's
+    directory on PATH, so a dud `<tool>.exe` there shadows the working binary
+    for every dependency that shells out by bare name.
+    """
+    try:
+        return os.path.getsize(path) == real_size
+    except OSError:
+        return False
+
+
+def _materialize_shim(real: str, dest: str, real_size: int) -> bool:
+    """Expose *real* at *dest*, trying cheap links before a full copy.
+
+    Each attempt is VERIFIED before it is accepted. That matters on Windows
+    without Developer Mode: `os.symlink` requires a privilege most machines do
+    not grant, and some sandboxed/virtualised filesystems answer it by creating
+    a zero-byte regular file instead of failing — a silent, broken shim. A link
+    that does not resolve to the real bytes is therefore rejected and the next
+    strategy is tried.
+
+    Order: symlink (no disk) -> hardlink (no disk, same volume only) -> copy.
+    """
+    for make in (
+        lambda: os.symlink(real, dest),
+        lambda: os.link(real, dest),
+        lambda: shutil.copyfile(real, dest),
+    ):
+        try:
+            make()
+        except (OSError, NotImplementedError):
+            _discard(dest)
+            continue
+        if _shim_matches(dest, real_size):
+            return True
+        # Created but hollow — fall through to the next strategy.
+        _discard(dest)
+    return False
+
+
+def _discard(path: str) -> None:
+    """Best-effort removal; a partial shim must never survive."""
+    try:
+        if os.path.lexists(path):
+            os.unlink(path)
+    except OSError:
+        pass
+
+
 def _bare_name_shim(real: str, tool: str) -> "str | None":
     """Directory exposing *real* under the bare name ``<tool>[.exe]``, or None.
 
@@ -428,25 +480,55 @@ def _bare_name_shim(real: str, tool: str) -> "str | None":
         directory = os.path.join(DATA_DIR, "media_tools", "shims")
         link = os.path.join(directory, exe)
         os.makedirs(directory, exist_ok=True)
+        real_size = os.path.getsize(real)
         if os.path.lexists(link):
             try:
                 # Symlink/hardlink: same file. A copy must match byte for byte
                 # (a corrupt copy, or a changed binary of equal size, must not
                 # keep shadowing the validated one).
-                if os.path.samefile(link, real) or (
-                    not os.path.islink(link) and filecmp.cmp(link, real, shallow=False)
-                ):
+                #
+                # Size first: a truncated or zero-byte left-over is the common
+                # case (a previous copy was interrupted), and comparing sizes
+                # settles it without reading ~100 MB from each side.
+                if os.path.getsize(link) != real_size:
+                    logger.debug("stale %s shim (size %s != %s); rebuilding",
+                                 tool, os.path.getsize(link), real_size)
+                elif os.path.samefile(link, real):
+                    return directory
+                elif not os.path.islink(link) and filecmp.cmp(link, real, shallow=False):
                     return directory
             except OSError:
                 pass
-            os.unlink(link)
-        try:
-            os.symlink(real, link)
-        except (OSError, NotImplementedError):
             try:
-                os.link(real, link)
+                os.unlink(link)
             except OSError:
-                shutil.copy2(real, link)
+                return None
+        # A shim is published AHEAD of the real binary's directory on PATH, so
+        # it must never exist half-written: a 0-byte ffmpeg.exe would shadow the
+        # working binary for every dependency that shells out by bare name.
+        # Build it beside the target under a temporary name and swap it in
+        # atomically, then confirm the swap landed before trusting it.
+        tmp = os.path.join(directory, f".{exe}.{os.getpid()}.tmp")
+        try:
+            if not _materialize_shim(real, tmp, real_size):
+                raise OSError(errno.EIO, f"{tool} shim could not be materialized")
+            os.replace(tmp, link)
+        except (OSError, NotImplementedError) as e:
+            # Nothing partial may survive to shadow the validated binary.
+            try:
+                if os.path.lexists(tmp):
+                    os.unlink(tmp)
+            except OSError:
+                pass
+            logger.debug("bare-name %s shim unavailable (errno=%s)",
+                         tool, getattr(e, "errno", None))
+            return None
+        try:
+            if os.path.getsize(link) != real_size:
+                os.unlink(link)
+                return None
+        except OSError:
+            return None
         return directory
     except OSError as e:
         # errno only: the exception text carries absolute (home) paths.

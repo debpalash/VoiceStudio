@@ -380,9 +380,10 @@ async def _render_archetype_wav(a: dict, out_path: Path, *, allow_model_load: bo
     # never raises (degrades to unmarked on failure). User-uploaded/recorded
     # reference audio is human speech and is never marked — this only touches
     # audio the engine synthesized.
-    # Runs on the dedicated watermark pool (#1190): AudioSeal embedding is CPU
-    # work that holds no VRAM, so it must not occupy a GPU worker ahead of the
-    # next generate on 1-worker hosts.
+    # Runs on the dedicated watermark pool (#1190): the ~58 MB generator must
+    # not occupy a GPU worker ahead of the next generate on 1-worker hosts.
+    # It does run on CUDA when the host has it (watermark.py
+    # _watermark_device, ~4.6x faster than CPU on a 12 s clip).
     from services.watermark import mark_synthetic_async
     audio_tensor = await mark_synthetic_async(
         audio_tensor, model.sampling_rate,

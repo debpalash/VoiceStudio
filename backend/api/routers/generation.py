@@ -1631,8 +1631,10 @@ async def _finalize_generation(
     # user's watermark setting + AudioSeal availability and passes the audio
     # through unchanged on any failure, so it never breaks generation.
     # Dispatched to the dedicated watermark pool, not the GPU pool (#1190):
-    # AudioSeal embedding is CPU work that holds no VRAM, so occupying a GPU
-    # worker with it only delays the next generate on 1-worker hosts.
+    # the generator is a ~58 MB model, so it must not occupy a GPU synthesis
+    # worker. It does run on CUDA when the host has it (watermark.py
+    # _watermark_device) — measured ~4.6x faster than CPU on a 12 s clip —
+    # with the audio/result moved between devices inside embed_watermark.
     if not already_marked:
         from services.watermark import mark_synthetic_async
         audio_tensor = await mark_synthetic_async(
@@ -2391,11 +2393,12 @@ async def generate_speech(
                 # mark, moved off this GPU job in #1190): the preview PCM
                 # leaves the app the moment it's yielded, before
                 # _finalize_generation marks the assembled take, so it needs
-                # its own mark — but AudioSeal embedding is CPU work, and
-                # doing it here held the GPU worker for the whole embed on
-                # every one of N chunks. `raw` stays unmarked — the saved
-                # artifact gets exactly one whole-take mark in the finalize
-                # path (no double-embed on the file users keep).
+                # its own mark — dispatched to the dedicated watermark pool
+                # so the embed never holds a GPU synthesis worker (it runs
+                # on CUDA when available, watermark.py _watermark_device).
+                # `raw` stays unmarked — the saved artifact gets exactly one
+                # whole-take mark in the finalize path (no double-embed on
+                # the file users keep).
                 return raw, preview, sr
             except ValueError:
                 raise
@@ -2499,9 +2502,11 @@ async def generate_speech(
                     # single whole-take mark (embed_watermark returns a new
                     # tensor; audio_tensor itself is untouched).
                     # Runs on the dedicated watermark pool, not the GPU pool
-                    # (#1190): AudioSeal embedding is CPU work that owns no
-                    # VRAM, and on a 1-worker host it used to serialize
-                    # directly ahead of the next generate.
+                    # (#1190): the ~58 MB generator must not occupy a GPU
+                    # synthesis worker. It does run on CUDA when the host
+                    # has it (watermark.py _watermark_device, ~4.6x faster
+                    # than CPU on a 12 s clip), with audio/result moved
+                    # between devices inside embed_watermark.
                     from services.watermark import mark_synthetic_async
                     _preview = await mark_synthetic_async(
                         audio_tensor, sample_rate,
@@ -2536,8 +2541,10 @@ async def generate_speech(
                         )
                         parts.append(raw)
                         # Provenance-mark the streamed copy off the GPU pool
-                        # (#1169 mark, #1190 placement): CPU-only AudioSeal
-                        # work must not occupy a GPU worker between chunks.
+                        # (#1169 mark, #1190 placement): the small AudioSeal
+                        # generator must not occupy a GPU worker between
+                        # chunks — it embeds on the dedicated watermark pool
+                        # (CUDA when available, watermark.py _watermark_device).
                         from services.watermark import mark_synthetic_async
                         preview = await mark_synthetic_async(
                             preview, sample_rate,

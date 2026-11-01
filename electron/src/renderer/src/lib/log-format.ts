@@ -19,11 +19,15 @@ export function stripLogAnsi(line: string): string {
 
 export function logSeverity(line: string): LogSeverity {
   const value = stripLogAnsi(line);
+  // Word-boundary anchored on purpose: render traces print "'failures': 0"
+  // on every healthy generate, and a bare substring match on "failure"
+  // classified each of those lines as an error — painting the Settings log
+  // viewer red on success and polluting repair-agent problem reports.
   if (
     /(?:^|[\s[.:_-])(?:critical|fatal|error|exception|traceback|panic)(?:$|[\s\].:_-])/i.test(
       value,
     ) ||
-    /(?:failed|failure|crashed|unexpectedly stopped|unhandled rejection)/i.test(value)
+    /\b(?:failed|failure|crashed|unexpectedly stopped|unhandled rejection)\b/i.test(value)
   ) {
     return 'error';
   }
