@@ -39,8 +39,11 @@ final class PhoneScreens: XCTestCase {
         app.buttons["keyboard.done"].tap()
         let last = app.buttons["gallery.preset.kokoro-multi-int8.102"]
         XCTAssertTrue(last.waitForExistence(timeout: 5)); app.reveal(last); last.tap()
-        XCTAssertEqual(app.buttons["Models"].value as? String,"Kokoro")
-        XCTAssertEqual(app.buttons["Voice"].value as? String,"Voice 103")
+        // During navigation the outgoing Gallery Models button can still be in the snapshot.
+        for (label, value) in [("Models", "Kokoro"), ("Voice", "Voice 103")] {
+            let selection = app.buttons.matching(NSPredicate(format: "label == %@ AND value == %@", label, value)).firstMatch
+            XCTAssertTrue(selection.wait(for: \.isHittable, toEqual: true, timeout: 5))
+        }
         XCTAssertTrue(app.buttons["models.get"].isEnabled)
     }
     @MainActor func testCommunityGalleryShowsNamedVoicesAndOpensARealRecipeWithoutPairing() {
