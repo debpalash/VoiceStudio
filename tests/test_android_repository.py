@@ -4,9 +4,11 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
 import types
+import subprocess
 import unittest
 from unittest.mock import patch
 from urllib.parse import parse_qs, unquote, urlparse
@@ -102,6 +104,27 @@ class AndroidRepositoryTests(unittest.TestCase):
         deep = parse_qs(urlparse(link).query)['r'][0]
         self.assertEqual(json.loads(unquote(deep.removeprefix('obtainium://app/'))), config)
         self.assertEqual(config['url'], 'https://github.com/debpalash/VoiceStudio')
+
+    def test_release_workflow_dispatches_the_repository_only_for_stable(self):
+        import yaml
+        workflow = yaml.safe_load((ROOT / '.github/workflows/electron-release.yml').read_text())
+        step = next(item for item in workflow['jobs']['release']['steps']
+                    if 'gh workflow run android-repository.yml' in item.get('run', ''))
+        self.assertIn('inputs.publish == true', step['if'])
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            command = root / 'gh'
+            command.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$DISPATCH_LOG"\n')
+            command.chmod(0o755)
+            for channel in ('stable', 'beta'):
+                log = root / f'{channel}.txt'
+                subprocess.run(['bash', '-eu', '-c', step['run']], check=True,
+                    env={**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH'],
+                         'CHANNEL': channel, 'DISPATCH_LOG': str(log)})
+                if channel == 'stable':
+                    self.assertEqual(log.read_text().strip(), 'workflow run android-repository.yml --ref main')
+                else:
+                    self.assertFalse(log.exists())
 
     def test_store_metadata_is_complete_and_reuses_the_current_brand_art(self):
         locale = ROOT / 'fastlane/metadata/android/en-US'

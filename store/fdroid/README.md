@@ -20,7 +20,8 @@ in-place update between differently signed installations.
 ## Obtainium
 
 Add `https://github.com/debpalash/VoiceStudio` in Obtainium, or import
-[`../obtainium.json`](../obtainium.json). The repository's landing page also has
+[the generated import file](https://debpalash.github.io/VoiceStudio/obtainium.json).
+The repository's landing page also has
 an import link. Obtainium follows published APK releases, not CI artifacts or
 unreleased commits on `main`. Prereleases are an explicit client choice.
 
@@ -28,8 +29,11 @@ unreleased commits on `main`. Prereleases are an explicit client choice.
 
 [`android-repository.yml`](../../.github/workflows/android-repository.yml) tests
 the publisher on pull requests using a fresh, temporary index key. Production
-deployments run after relevant merges to `main`, stable release publication, or
-a manual dispatch from `main`. They rebuild the indexes with the persistent key
+deployments run from `main` after relevant merges, stable release publication,
+or a manual dispatch. Human-published release events dispatch trusted `main`;
+tag workflows have no access to the persistent repository key. The release publisher explicitly dispatches the
+repository workflow after publishing a stable release: a `GITHUB_TOKEN` release
+cannot trigger a second workflow through its `release` event. They rebuild the indexes with the persistent key
 in the `github-pages` environment and publish only the generated public site.
 
 The environment needs `FDROID_REPO_KEYSTORE_B64` (PKCS12, alias `voicestudio`)

@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/android-repository.yml'
+      - '.github/workflows/electron-release.yml'
       - 'scripts/prepare_android_repository.py'
       - 'tests/test_android_repository.py'
       - 'store/fdroid/**'
@@ -29,9 +30,25 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  dispatch-release:
+    # Human-published releases run from a tag. Dispatch trusted main instead of
+    # making the persistent index key available to tag workflows.
+    if: >-
+      github.repository == 'debpalash/VoiceStudio' &&
+      github.event_name == 'release' && !github.event.release.prerelease && !github.event.release.draft
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+    steps:
+      - name: Refresh from main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run android-repository.yml --repo "$GITHUB_REPOSITORY" --ref main
+
   prepare:
     # Fork PRs receive only a fresh preview key; publishing secrets live in the
     # github-pages environment and are available only to the deploy job.
+    if: github.event_name != 'release'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -71,9 +88,8 @@ jobs:
     needs: prepare
     if: >-
       github.repository == 'debpalash/VoiceStudio' &&
-      ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-       (github.event_name == 'release' && !github.event.release.prerelease && !github.event.release.draft))
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     environment:
       name: github-pages
