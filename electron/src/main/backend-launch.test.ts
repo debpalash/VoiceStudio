@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { join, resolve } from 'node:path';
 const state = vi.hoisted(() => ({ installed: true, packaged: false, ready: true, checkout: true }));
 vi.mock('electron', () => ({
@@ -43,12 +43,16 @@ import {
   spawnFailureMessage,
   startupTimeoutMessage,
 } from './backend';
+// These launch/setup cases model a supported local-runtime host. Intel and
+// Rosetta behavior is exercised below with explicit hostIssue values.
+beforeEach(() => vi.stubGlobal('process', { ...process, arch: 'arm64' }));
 afterEach(() => {
   state.installed = true;
   state.ready = true;
   state.packaged = false;
   state.checkout = true;
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 it.each(['darwin', 'win32', 'linux'] as const)(
   'leaves China downloads eligible for automatic failover on %s',
