@@ -473,7 +473,7 @@ as root, so files it adds there are root-owned on the host.
   follows `main`, not releases. For a released version, pull `:stable` or the
   exact `:X.Y.Z` tag and recreate the container. The running version is shown
   in **Settings → About → Version** (read live from the backend).
-- **Checking which version is running:** `docker exec <container> python3 -c "import importlib.metadata; print(importlib.metadata.version('omnivoice'))"`, or hit the `/health` endpoint — it returns `{"status": "ok", "device": ..., "version": "0.3.x"}`. Use the container name listed by `docker compose ps` (or `omnivoice` for the `docker run` examples).
+- **Checking which version is running:** `docker exec <container> python3 -c "import importlib.metadata; print(importlib.metadata.version('omnivoice'))"`, or hit the `/health` endpoint — it returns `{"status": "ok", "device": ..., "engine": ..., "version": "0.3.x"}`, where `device` is what the active TTS engine generates on (`vulkan (...)`, `cuda (...)`, `rocm (...)`, `xpu (...)`, `mps` or `cpu`). Use the container name listed by `docker compose ps` (or `omnivoice` for the `docker run` examples).
 - **Watching startup:** the port answers within about a second of container
   start, but heavy initialization (PyTorch, API routes, database migration)
   continues in the background. During that window `/health` returns **503**
