@@ -25,6 +25,7 @@ import { devProbeStamped, writeDevProbeStamp } from './dev-probe-stamp';
 import { CrashJournal } from './crash-journal';
 import { nativeFaultSummary } from '../shared/utils/crashReport';
 import {
+  backendLogEvidence,
   backendStartupFailure,
   isBrokenEnvironmentOutput,
   windowsLoadBlock,
@@ -765,26 +766,77 @@ export function loadBlockMessage(
   );
 }
 
+/**
+ * The backend's own log file, resolved the way backend/core/config.py's
+ * `get_app_data_dir` does: an explicit `OMNIVOICE_DATA_DIR` wins, then the
+ * platform default (`~/Library/Application Support/OmniVoice` on macOS,
+ * `%APPDATA%/OmniVoice` on Windows, `~/.omnivoice` on Linux). The backend
+ * writes this log independently of the output the shell captured, so it is
+ * the evidence that survives a silent readiness timeout.
+ */
+function backendLogPath(): string {
+  const custom = process.env.OMNIVOICE_DATA_DIR?.trim();
+  const dataDir = custom
+    ? custom
+    : process.platform === 'darwin'
+      ? join(homedir(), 'Library', 'Application Support', 'OmniVoice')
+      : process.platform === 'win32'
+        ? join(process.env.APPDATA ?? '', 'OmniVoice')
+        : join(homedir(), '.omnivoice');
+  return join(dataDir, 'omnivoice.log');
+}
+
+/**
+ * The tail of the backend's own log, for quoting in a silent startup timeout.
+ *
+ * Best-effort and exception-free: a missing log, a directory in its place or a
+ * permission error all return an empty tail (and the same path), so failure
+ * reporting can never be broken by trying to read it. Lines are scrubbed like
+ * captured process output and bounded by the same tail limit as the status
+ * view; the returned path is scrubbed too, so a home directory never leaks.
+ */
+function readBackendLogTail(): { path: string; tail: string[] } {
+  const path = backendLogPath();
+  try {
+    const tail = readFileSync(path, 'utf8')
+      .split(/\r?\n/)
+      .map((line) => scrubText(cleanProcessLine(line)))
+      .filter((line) => line.length > 0)
+      .slice(-LOG_TAIL_LINES);
+    return { path: scrubText(path), tail };
+  } catch {
+    return { path: scrubText(path), tail: [] };
+  }
+}
+
 /** The startup-budget failure says what the launch actually did, so a report
  *  shows where startup stalled instead of asking for the log (#2445): the
- *  backend's last line, "no output" for a managed process that never printed,
- *  or "nothing spawned" for an attach-only wait that owns no process. */
+ *  backend's last line, the tail of the backend's own log for a managed
+ *  process that never printed, or "nothing spawned" for an attach-only wait
+ *  that owns no process. */
 export function startupTimeoutMessage(
   port: number,
   budgetMs: number,
-  { owned, lastOutput }: { owned: boolean; lastOutput?: string },
+  {
+    owned,
+    lastOutput,
+    logPath,
+    logTail,
+  }: { owned: boolean; lastOutput?: string; logPath?: string; logTail?: readonly string[] },
 ): string {
   const base =
     `Backend did not answer on port ${port} within ${Math.round(budgetMs / 1000)} s ` +
     '(OMNIVOICE_STARTUP_BUDGET_S).';
   if (!owned) return `${base} Nothing was spawned for this attempt.`;
   const advice =
-    ' Slow disks and antivirus scanning of the runtime folder are the usual cause: click Retry, ' +
+    'Slow disks and antivirus scanning of the runtime folder are the usual cause: click Retry, ' +
     'exclude the VoiceStudio runtime folder from real-time scanning, or raise OMNIVOICE_STARTUP_BUDGET_S ' +
     '(for example 900).';
-  return lastOutput
-    ? `${base} Last output: ${lastOutput}${advice}`
-    : `${base} It printed no output.${advice}`;
+  if (lastOutput) return `${base} Last output: ${lastOutput} ${advice}`;
+  if (logPath !== undefined) {
+    return `${base} ${backendLogEvidence(logPath, logTail ?? [])}\n${advice}`;
+  }
+  return `${base} It printed no output. ${advice}`;
 }
 
 function delay(ms: number): Promise<void> {
@@ -2054,9 +2106,17 @@ export class BackendSupervisor extends EventEmitter<{
         // Taken before teardown too: killing the child can append shutdown
         // output, which must not replace the startup line the report needs.
         const lastOutput = owned ? this.childLog.at(-1) : undefined;
+        // A managed backend that never printed still wrote its own log, so
+        // quote that instead of reporting a bare "It printed no output.".
+        const log = owned && !lastOutput ? readBackendLogTail() : undefined;
         await this.killChild();
         this.setStage('failed', {
-          message: startupTimeoutMessage(this.port, budgetMs, { owned, lastOutput }),
+          message: startupTimeoutMessage(this.port, budgetMs, {
+            owned,
+            lastOutput,
+            logPath: log?.path,
+            logTail: log?.tail,
+          }),
         });
         return;
       }
