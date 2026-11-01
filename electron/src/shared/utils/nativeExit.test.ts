@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   describeExitCode,
+  isExternalKillExit,
   isNativeFaultExit,
   normalizeExitCode,
   normalizeSignal,
@@ -45,6 +46,27 @@ describe.each([
     expect(ntStatusName(code)).toBeNull();
     expect(isNativeFaultExit({ exitCode: code })).toBe(false);
     expect(describeExitCode(code)).toBe(String(code));
+  });
+});
+
+describe('external termination (0xFFFFFFFF / -1)', () => {
+  test('both encodings collapse to one unsigned value and classify together', () => {
+    expect(normalizeExitCode(-1)).toBe(4294967295);
+    expect(normalizeExitCode(4294967295)).toBe(4294967295);
+    expect(isExternalKillExit(-1)).toBe(true);
+    expect(isExternalKillExit(4294967295)).toBe(true);
+    expect(isExternalKillExit(0)).toBe(false);
+    expect(isExternalKillExit(null)).toBe(false);
+  });
+  test('is never reported as a native fault', () => {
+    expect(isNativeFaultExit({ exitCode: -1 })).toBe(false);
+    expect(isNativeFaultExit({ exitCode: 4294967295 })).toBe(false);
+    expect(ntStatusName(-1)).toBeNull();
+    expect(ntStatusName(4294967295)).toBeNull();
+  });
+  test('description names the external termination with its hex form', () => {
+    expect(describeExitCode(-1)).toBe('-1 (0xFFFFFFFF EXTERNAL_TERMINATION)');
+    expect(describeExitCode(4294967295)).toBe('4294967295 (0xFFFFFFFF EXTERNAL_TERMINATION)');
   });
 });
 
