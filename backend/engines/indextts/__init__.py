@@ -141,6 +141,9 @@ class IndexTTS2Backend(SubprocessBackend):
     id = "indextts2"
     display_name = "IndexTTS 2.5 (multilingual emotion-controlled cloning)"
     supports_voice_design = False  # requires ref audio for timbre
+    # The sidecar reads text/ref_audio/language only — no quality knobs (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
     supports_emotion = True  # graded emo_vector / emo_text / emo_alpha (#1208)
     _DEFAULT_SAMPLE_RATE = 24000
     # Explicit so IndexTTS2 stops advertising the inherited CPU-only default:

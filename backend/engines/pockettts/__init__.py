@@ -67,6 +67,9 @@ class PocketTTSBackend(SubprocessBackend):
     id = "pockettts"
     requires_hf_auth = True
     display_name = "PocketTTS (Kyutai, 6 langs, CPU-only, MIT/CC-BY-4.0)"
+    # The sidecar protocol carries no quality knobs — explicit values 400 (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
     _DEFAULT_SAMPLE_RATE = 24_000
     # CPU-only by design (honest hardware reporting, like supertonic3): Kyutai
     # ships no CUDA/MPS path and reports no GPU speedup for this model.

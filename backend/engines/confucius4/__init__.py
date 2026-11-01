@@ -61,6 +61,9 @@ class Confucius4Backend(SubprocessBackend):
         "Confucius4-TTS (LLM, 14 langs, cross-lingual zero-shot clone, Apache-2.0)"
     )
     supports_voice_design = False  # timbre comes from a reference clip
+    # The sidecar reads text/ref_audio/language only (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
     # Upstream vocoder rate (config target_sample_rate) — confirmed 22 050 Hz by
     # a live run (2026-07-02); still re-read from the sidecar's ready/audio frames.
     _DEFAULT_SAMPLE_RATE = 22050

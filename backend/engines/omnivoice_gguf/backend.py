@@ -547,6 +547,11 @@ def _make_backend_class():
         gpu_compat = ("cuda", "vulkan", "mps", "cpu")
 
         supports_voice_design = False
+        # The bundled omnivoice-tts CLI has no num_step/guidance_scale
+        # flags (verified against the C++ usage text) — explicit values are
+        # rejected at the API boundary with a 400 (#3654).
+        supports_num_step = False
+        supports_guidance_scale = False
         # The seed reaches the binary as --seed; the parent's torch RNG never
         # does, so /generate must forward it (#3413).
         supports_generation_seed = True

@@ -39,6 +39,10 @@ class CosyVoiceSubprocessBackend(SubprocessBackend):
 
     id = "cosyvoice"
     display_name = "CosyVoice 3 (9 langs, zero-shot, instruct, Apache-2.0)"
+    # The sidecar speaks the same protocol as the in-process backend, whose
+    # generate() reads language/ref/instruct only — no quality knobs (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
     gpu_compat = ("cuda", "cpu")
     # instruct + reference → inference_instruct2 (emotion, dialect, pace).
     instruct_directs_delivery = True

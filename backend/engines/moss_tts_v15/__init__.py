@@ -86,6 +86,9 @@ class MossTTSV15Backend(SubprocessBackend):
         "MOSS-TTS-v1.5 (8B, 31 langs, zero-shot clone, Apache-2.0)"
     )
     supports_voice_design = False  # requires ref audio for timbre cloning
+    # The sidecar reads text/ref_audio/language/tokens only (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
     _DEFAULT_SAMPLE_RATE = 24000
     # Accelerator routing requires its matching runtime in the isolated venv.
     # MPS remains untested and is deliberately excluded.
