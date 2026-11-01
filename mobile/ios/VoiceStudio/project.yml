@@ -76,7 +76,7 @@ targets:
       Release: ../.generated/Version.xcconfig
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: sh.voicestudio.mobile.development.share
+        PRODUCT_BUNDLE_IDENTIFIER: sh.voicestudio.mobile.shareextension
         INFOPLIST_FILE: ../VoiceStudioShare/Info.plist
         CODE_SIGN_ENTITLEMENTS: ../VoiceStudioShare/VoiceStudioShare.entitlements
         SKIP_INSTALL: 'YES'
