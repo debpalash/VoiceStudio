@@ -41,7 +41,7 @@ import {
 } from './dub-session';
 import { DubTranslationToggles } from './dub-translation-toggles';
 
-// Targets include translate-and-speak-only languages (Uyghur, #2810).
+// Targets include translate-and-speak-only languages (Kabyle, Uyghur).
 const targetOptions = TRANSLATION_TARGET_LABELS;
 // #3143: Brazilian and European Portuguese are separate target choices; each
 // maps to the "Portuguese" track plus its dialect.

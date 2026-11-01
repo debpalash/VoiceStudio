@@ -1,7 +1,7 @@
 /**
- * #2810: Uyghur. OmniVoice speaks it and NLLB-200 / Google / LLM engines
- * translate into it, but Whisper cannot transcribe it, so it is a translation
- * target and never a speech-recognition source.
+ * #2810: Uyghur; Kabyle. OmniVoice speaks both and NLLB-200 / Google / LLM
+ * engines translate into them, but Whisper cannot transcribe them, so they are
+ * translation targets and never speech-recognition sources.
  */
 import { render, screen } from '@testing-library/react';
 import { expect, it } from 'vitest';
@@ -17,9 +17,20 @@ import {
 it('offers Uyghur as a translation target only', () => {
   expect(translationTargetCode('Uyghur')).toBe('ug');
   expect(LANG_CODES.some((item) => item.code === 'ug')).toBe(false);
-  expect(TRANSLATION_TARGETS).toHaveLength(LANG_CODES.length + 1);
+  expect(TRANSLATION_TARGETS).toHaveLength(LANG_CODES.length + 2);
   const at = TRANSLATION_TARGET_LABELS.indexOf('Uyghur');
   expect(TRANSLATION_TARGET_LABELS.slice(at - 1, at + 2)).toEqual(['Urdu', 'Uyghur', 'Uzbek']);
+});
+
+it('offers Kabyle as a translation target only', () => {
+  expect(translationTargetCode('Kabyle')).toBe('kab');
+  expect(LANG_CODES.some((item) => item.code === 'kab')).toBe(false);
+  const at = TRANSLATION_TARGET_LABELS.indexOf('Kabyle');
+  expect(TRANSLATION_TARGET_LABELS.slice(at - 1, at + 2)).toEqual([
+    'Javanese',
+    'Kabyle',
+    'Kannada',
+  ]);
 });
 
 it('shows Uyghur with its native name and finds it by either spelling', () => {
@@ -30,6 +41,15 @@ it('shows Uyghur with its native name and finds it by either spelling', () => {
   // The engine vocabulary spells it "Uighur"; both name the same language.
   expect(languageSupported('Uyghur', ['english', 'uighur'])).toBe(true);
   expect(languageSupported('Uyghur', ['english'])).toBe(false);
+});
+
+it('shows Kabyle with its native name and finds it by either spelling', () => {
+  const [kabyle] = languageOptions(['Kabyle'], 'en', 'Auto');
+  expect(kabyle.code).toBe('kab');
+  expect(kabyle.native).toBe('Taqbaylit');
+  expect(kabyle.search).toEqual(expect.arrayContaining(['kabyle', 'taqbaylit', 'kab']));
+  expect(languageSupported('Kabyle', ['english', 'kabyle'])).toBe(true);
+  expect(languageSupported('Kabyle', ['english'])).toBe(false);
 });
 
 it('lets right-to-left script text set its own direction', () => {
