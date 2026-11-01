@@ -138,9 +138,11 @@ tasks.withType<Test>().configureEach { systemProperty("androidRoot", rootDir.abs
 // Resolve the SDK through Gradle, then let Robolectric read it offline. Its
 // default Maven resolver writes a lock in user.home, outside sandbox roots.
 val robolectricSdk by configurations.creating
- dependencies { robolectricSdk(libs.robolectric.sdk) }
+val robolectricLegacySdk by configurations.creating
+ dependencies { robolectricSdk(libs.robolectric.sdk);robolectricLegacySdk(libs.robolectric.legacy.sdk) }
 val prepareRobolectricSdk by tasks.registering(Sync::class) {
     from(robolectricSdk)
+    from(robolectricLegacySdk)
     into(layout.buildDirectory.dir("robolectric-sdk"))
 }
 tasks.withType<Test>().configureEach {

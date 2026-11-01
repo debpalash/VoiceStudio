@@ -8,14 +8,16 @@ final class WifiState: @unchecked Sendable {
     private let monitor = NWPathMonitor()
     private let lock = NSLock()
     private var permitted = false
+    private var online = false
     init() {
         monitor.pathUpdateHandler = { [weak self] path in
             guard let self else { return }
-            lock.withLock { permitted = path.status == .satisfied && (path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet)) && !path.isExpensive }
+            lock.withLock { online = path.status == .satisfied; permitted = path.status == .satisfied && (path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet)) && !path.isExpensive }
         }
         monitor.start(queue: DispatchQueue(label: "com.voicestudio.model-network"))
     }
     var wifi: Bool { lock.withLock { permitted } }
+    var connected: Bool { lock.withLock { online } }
     deinit { monitor.cancel() }
 }
 @MainActor @Observable final class PhoneModels {
@@ -23,11 +25,15 @@ final class WifiState: @unchecked Sendable {
     private(set) var installed = Set<String>()
     private(set) var accepted = Set<String>()
     private(set) var progress: [String: Double] = [:]
+    private(set) var downloadDetails: [String: ModelDownloadProgress] = [:]
+    private(set) var paused = Set<String>()
+    private(set) var downloadFailures: [String:ClientError] = [:]
     private(set) var used: Int64 = 0
     private(set) var modelBytes: [String: Int64] = [:]
     var error: ClientError?
     var allowMobileData: Bool { didSet { UserDefaults.standard.set(allowMobileData, forKey: "models.mobile-data") } }
     @ObservationIgnored private var downloads: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var downloadTokens: [String: UUID] = [:]
     @ObservationIgnored private let wifi = WifiState()
     private(set) var store: ModelStore?
     private(set) var dubs: [PhoneDubRecord] = []
@@ -45,6 +51,26 @@ final class WifiState: @unchecked Sendable {
     private(set) var workflowStore: PhoneWorkflowStore?
     private(set) var transcriptStore: PhoneTranscriptStore?
     private(set) var engine: (any LocalEngine)?
+    private struct DownloadIntent: Codable {
+        let id: String
+        let pin: String
+        let mobile: Bool
+        var paused: Bool
+        var failure: String? = nil
+    }
+    private var intents: [DownloadIntent] = []
+    private var queueURL: URL?
+    @discardableResult private func saveIntents() -> Bool {
+        do {
+            guard let queueURL else { throw ClientError("mobile.simple.checkpoint_failed") }
+            try JSONEncoder().encode(intents).write(to: queueURL,options: .atomic)
+            return true
+        } catch {
+            // A stale active intent must never undo an explicit stop after relaunch.
+            if let queueURL { try? FileManager.default.removeItem(at: queueURL) }
+            self.error = ClientError("mobile.simple.checkpoint_failed"); return false
+        }
+    }
     init(bundle: Bundle = .main) {
         allowMobileData = UserDefaults.standard.bool(forKey: "models.mobile-data")
         pendingDubs = (UserDefaults.standard.stringArray(forKey: "dub.queue") ?? []).compactMap(UUID.init(uuidString:))
@@ -57,6 +83,7 @@ final class WifiState: @unchecked Sendable {
                 #endif
                 return try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("PhoneModels", isDirectory: true)
             }()
+            queueURL = root.appendingPathComponent(".download-queue.json")
             let store = try ModelStore(root: root)
             self.store = store; engine = NativeLocalEngine(store: store)
             guard let url = bundle.url(forResource: "models", withExtension: "json", subdirectory: "Catalogs") else { throw ClientError("mobile.local.catalogue_failed") }
@@ -77,6 +104,22 @@ final class WifiState: @unchecked Sendable {
             // Initialization remains usable for the paired-host flows; the Models page explains the failure.
 
             self.error = error as? ClientError ?? ClientError("mobile.local.catalogue_failed")
+        }
+        if let queueURL,let data = try? Data(contentsOf: queueURL),let saved = try? JSONDecoder().decode([DownloadIntent].self,from: data) {
+            intents = saved.filter { item in models.contains { $0.id == item.id && (try? phoneModelPin($0)) == item.pin } }
+            paused = Set(intents.filter(\.paused).map(\.id))
+            for item in intents { if let failure = item.failure { downloadFailures[item.id] = ClientError(failure) } }
+        }
+        Task {
+            await ModelDownloadSessions.reconcile(authorized: Set(intents.map(\.id)))
+            for item in intents where !item.paused {
+                if let model = models.first(where: { $0.id == item.id }) {
+                    if await store?.installed(model) == true {
+                        intents.removeAll { $0.id == item.id }; saveIntents()
+                        await ModelDownloadSessions.remove(modelID: model.id)
+                    } else { startDownload(model,mobile: item.mobile) }
+                }
+            }
         }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--ui-smoke"),
@@ -114,29 +157,92 @@ final class WifiState: @unchecked Sendable {
         candidates(capability).first(where: { ready($0) && $0.fits() }) ?? candidates(capability).first(where: ready) ?? candidates(capability).first(where: { $0.fits() }) ?? candidates(capability).first
     }
     func download(_ model: PhoneModel) {
-        guard downloads[model.id] == nil, let store else { return }
+        guard downloads[model.id] == nil else { return }
+        guard let pin = try? phoneModelPin(model) else { error = ClientError("mobile.local.catalogue_failed"); return }
+        intents.removeAll { $0.id == model.id }
+        intents.append(DownloadIntent(id: model.id,pin: pin,mobile: allowMobileData,paused: false))
+        guard saveIntents() else {
+            intents.removeAll { $0.id == model.id }; paused.insert(model.id)
+            downloadFailures[model.id] = error ?? ClientError("mobile.simple.checkpoint_failed")
+            return
+        }
+        paused.remove(model.id)
+        if error == downloadFailures[model.id] { error = nil }
+        downloadFailures.removeValue(forKey: model.id)
+        startDownload(model,mobile: allowMobileData)
+    }
+    private func startDownload(_ model: PhoneModel,mobile: Bool) {
+        guard downloads[model.id] == nil,let store else { return }
         progress[model.id] = 0
-        let policy = DownloadPolicy(allowMobileData: allowMobileData); let wifi = wifi
+        let token = UUID(); downloadTokens[model.id] = token
+        let policy = DownloadPolicy(allowMobileData: mobile); let wifi = wifi
         downloads[model.id] = Task {
-            defer { downloads[model.id] = nil; progress[model.id] = nil }
+            let monitor = Task {
+                while !Task.isCancelled {
+                    if !wifi.connected || (!mobile && !wifi.wifi),var value = downloadDetails[model.id] {
+                        value.stage = mobile ? "waiting_network" : "waiting"; value.bytesPerSecond = 0; value.etaSeconds = nil
+                        downloadDetails[model.id] = value
+                    }
+                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                }
+            }
+            defer { monitor.cancel() }
+            defer { downloads[model.id] = nil; progress[model.id] = nil; downloadDetails[model.id] = nil; downloadTokens.removeValue(forKey: model.id) }
             do {
-                try await store.download(model, policy: policy, wifi: { wifi.wifi }, progress: { fraction in
-                    await MainActor.run { self.progress[model.id] = fraction }
-                })
-            } catch is CancellationError {} catch { self.error = error as? ClientError ?? ClientError("mobile.local.download_failed") }
+                let transport = try ModelDownloadSessions.transport(allowMobile: mobile)
+                while true {
+                    try Task.checkCancellation()
+                    if !mobile && !wifi.wifi {
+                        var waiting = downloadDetails[model.id] ?? ModelDownloadProgress(received: 0,total: model.total_bytes)
+                        waiting.stage = "waiting"; waiting.bytesPerSecond = 0; waiting.etaSeconds = nil
+                        downloadDetails[model.id] = waiting
+                        try await Task.sleep(for: .seconds(2)); continue
+                    }
+                    do {
+                        try await store.download(model,policy: policy,wifi: { wifi.wifi },transport: transport,details: { details in
+                            await MainActor.run {
+                                guard self.downloadTokens[model.id] == token else { return }
+                                self.downloadDetails[model.id] = details; self.progress[model.id] = details.fraction
+                            }
+                        })
+                        intents.removeAll { $0.id == model.id }; saveIntents(); paused.remove(model.id)
+                        await ModelDownloadSessions.remove(modelID: model.id)
+                        break
+                    } catch let error as ClientError where error.key == "mobile.local.wifi_required" { continue }
+                }
+            } catch is CancellationError {} catch {
+                if !Task.isCancelled {
+                    let failure = error as? ClientError ?? ClientError("mobile.local.download_failed")
+                    self.error = failure; downloadFailures[model.id] = failure
+                    for index in intents.indices where intents[index].id == model.id {
+                        intents[index].paused = true; intents[index].failure = failure.key
+                    }
+                    paused.insert(model.id); saveIntents()
+                }
+            }
             await refresh()
         }
     }
-    func cancel(_ model: PhoneModel) { downloads[model.id]?.cancel() }
+    func pause(_ model: PhoneModel) {
+        for index in intents.indices where intents[index].id == model.id { intents[index].paused = true }
+        paused.insert(model.id); saveIntents(); downloadTokens.removeValue(forKey: model.id); downloads[model.id]?.cancel()
+    }
+    func cancel(_ model: PhoneModel) {
+        intents.removeAll { $0.id == model.id }; paused.remove(model.id); saveIntents()
+        if error == downloadFailures[model.id] { error = nil }
+        downloadFailures.removeValue(forKey: model.id); downloadTokens.removeValue(forKey: model.id)
+        downloads[model.id]?.cancel()
+    }
     func delete(_ model: PhoneModel) async {
         guard let store else { return }
-        downloads[model.id]?.cancel(); await downloads[model.id]?.value
+        cancel(model); await downloads[model.id]?.value
+        await ModelDownloadSessions.remove(modelID: model.id)
         do { try await store.delete(model); await refresh() }
         catch { self.error = error as? ClientError ?? ClientError("mobile.errors.file") }
     }
     @discardableResult func accept(_ model: PhoneModel, accepted: Bool) async -> Bool {
         guard let store else { return false }
-        if !accepted { downloads[model.id]?.cancel() }
+        if !accepted { cancel(model) }
         do {
             guard let version = AppVersion.full(info: Bundle.main.infoDictionary) else { throw ClientError("mobile.local.model_incompatible") }
             try await store.accept(model, fingerprint: model.licence.terms_fingerprint, appVersion: version, accepted: accepted)

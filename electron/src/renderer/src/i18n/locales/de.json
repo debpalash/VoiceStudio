@@ -4388,6 +4388,18 @@
       "supermetry": "Selbst gehostete, datenschutzfreundliche Webanalyse.",
       "spicrawl": "Wandle Webseiten in Markdown oder strukturierte Daten für KI-Agenten um.",
       "special_sponsor": "Besonderer Sponsor"
+    },
+    "downloads": {
+      "pause": "Pausieren",
+      "paused": "Pausiert",
+      "connecting": "Verbindung wird hergestellt…",
+      "waiting": "Warten auf WLAN…",
+      "retrying": "Neuer Versuch in {{seconds}} s…",
+      "verifying": "Modell wird überprüft…",
+      "speed": "{{speed}}/s",
+      "eta": "Noch etwa {{time}}",
+      "estimating": "Restzeit wird geschätzt…",
+      "waiting_network": "Warten auf eine Verbindung…"
     }
   },
   "failureCause": {
