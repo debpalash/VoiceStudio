@@ -233,11 +233,15 @@ export function terminalInstallView(
 /** Localised remaining time ("3 min", "1.5 hr") for a download ETA. */
 export function formatInstallEta(seconds: number | null | undefined, locale?: string): string {
   if (!seconds || seconds <= 0 || !Number.isFinite(seconds)) return '';
+  // Pick the unit from the rounded-up value, so 59.4 s reads "1 min" and
+  // 59 min 1 s reads "1 hr" instead of "60 sec" / "60 min".
+  const wholeSeconds = Math.ceil(seconds);
+  const wholeMinutes = Math.ceil(seconds / 60);
   const [value, unit] =
-    seconds < 60
-      ? [Math.ceil(seconds), 'second']
-      : seconds < 3600
-        ? [Math.ceil(seconds / 60), 'minute']
+    wholeSeconds < 60
+      ? [wholeSeconds, 'second']
+      : wholeMinutes < 60
+        ? [wholeMinutes, 'minute']
         : [Math.round((seconds / 3600) * 10) / 10, 'hour'];
   try {
     return new Intl.NumberFormat(locale, {
