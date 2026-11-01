@@ -1756,7 +1756,7 @@ async def ingest_pipeline(
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                logger.warning("Demucs failed for %s, falling back to mixed audio: %s", log_safe(job_id), log_safe(e, limit=2100))
+                logger.warning("Demucs failed for %s, falling back to mixed audio: %s", log_safe(job_id), log_safe(e, limit=12100))
                 # plan-04: surface the degradation (job continues with mixed audio).
                 yield prep_event("warning", **failure.build_failure(e, stage="demucs", include_diagnostic=False))
                 vocals_path = audio_path
