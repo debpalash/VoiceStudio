@@ -113,6 +113,7 @@ final class BackgroundModelDownloads: NSObject, HTTPTransport, URLSessionDownloa
     func urlSession(_ session: URLSession,task: URLSessionTask,didCompleteWithError error: (any Error)?) {
         guard let key = task.taskDescription else { return }
         if let data = (error as NSError?)?.userInfo[NSURLSessionDownloadTaskResumeData] as? Data { try? data.write(to: path(key,"resume"),options: .atomic) }
+        else if error != nil { try? FileManager.default.removeItem(at: path(key,"resume")) }
         let state = lock.withLock { () -> (Pending?,(any Error)?) in
             if failures[task.taskIdentifier] == nil,let error { failures[task.taskIdentifier] = error }
             let waiting = pending.removeValue(forKey: task.taskIdentifier)
@@ -148,7 +149,7 @@ final class BackgroundModelDownloads: NSObject, HTTPTransport, URLSessionDownloa
     // challenges outside the public model hosts and validate the final response too.
     func urlSession(_ session: URLSession,task: URLSessionTask,didReceive challenge: URLAuthenticationChallenge,completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition,URLCredential?) -> Void) {
         let host = challenge.protectionSpace.host
-        guard let url = URL(string: "https://\(host)"),ModelRedirectDelegate.allowed(url),challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust else { completionHandler(.cancelAuthenticationChallenge,nil);return }
+        guard let url = URL(string: "https://\(host)"),ModelRedirectDelegate.allowed(url),challenge.protectionSpace.port == 443,challenge.protectionSpace.protocol == "https",challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust else { completionHandler(.cancelAuthenticationChallenge,nil);return }
         completionHandler(.performDefaultHandling,nil)
     }
     func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {

@@ -281,16 +281,12 @@ public actor ModelStore {
     private func persistRange(_ model: PhoneModel,file: PhoneModel.File,lower: Int64,upper: Int64,chunks: URL,transport: any HTTPTransport,meter: DownloadMeter) async throws -> Int {
         let destination = chunks.appendingPathComponent("\(lower)-\(upper)")
         if size(destination) == upper-lower+1 { return 206 }
-        try await connections.acquire()
-        do {
-            let reply = try await downloadRange(model,file: file,offset: lower,end: upper,transport: transport,meter: meter,base: 0,meterKey: file.sha256+":\(lower)")
-            defer { try? FileManager.default.removeItem(at: reply.file) }
-            try Task.checkCancellation(); try checkPermission(model)
-            if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
-            try FileManager.default.moveItem(at: reply.file,to: destination)
-            await connections.release()
-            return reply.status
-        } catch { await connections.release(); throw error }
+        let reply = try await downloadRange(model,file: file,offset: lower,end: upper,transport: transport,meter: meter,base: 0,meterKey: file.sha256+":\(lower)")
+        defer { try? FileManager.default.removeItem(at: reply.file) }
+        try Task.checkCancellation(); try checkPermission(model)
+        if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
+        try FileManager.default.moveItem(at: reply.file,to: destination)
+        return reply.status
     }
     private func append(_ source: URL,to destination: URL,offset: UInt64 = 0) throws {
         if !FileManager.default.fileExists(atPath: destination.path) {
@@ -327,7 +323,12 @@ public actor ModelStore {
                 let request = scoped as URLRequest
                 let before = ProcessInfo.processInfo.systemUptime
                 do {
-                    let reply = try await transport.download(request,progress: { count in await meter.update(meterKey ?? file.path,bytes: base+min(count,end-offset+1)) })
+                    try await connections.acquire()
+                    let reply: DownloadReply
+                    do {
+                        reply = try await transport.download(request,progress: { count in await meter.update(meterKey ?? file.path,bytes: base+min(count,end-offset+1)) })
+                        await connections.release()
+                    } catch { await connections.release(); throw error }
                     let count = size(reply.file)
                     let elapsed = ProcessInfo.processInfo.systemUptime-before
                     if elapsed >= 0.1 && (reply.status == 200 || reply.status == 206) { sourceRates[host] = Double(count)/elapsed }
