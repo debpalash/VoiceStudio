@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { SaveAudioButton } from '@/components/save-audio-button';
 import { WaveformPlayer } from '@/components/waveform-player';
-import { audioUrl } from '@/lib/api/client';
+import { audioMp3Url, audioUrl } from '@/lib/api/client';
 import type { HistoryItem } from '@/lib/api/types';
 import { reuseTake, takeSettings } from '@/lib/store/takes';
 import { useGenerateClone } from '@/hooks/use-generate';
@@ -205,6 +205,7 @@ export function TakeDetails({ item }: { item: HistoryItem }) {
         {item.audio_path && (
           <SaveAudioButton
             url={audioUrl(item.audio_path)}
+            mp3Url={audioMp3Url(item.audio_path)}
             suggestedName={`voicestudio-${item.id}.wav`}
             iconOnly
           />

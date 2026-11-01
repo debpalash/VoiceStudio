@@ -8801,6 +8801,47 @@
     "summary": "Use Archetype"
    }
   },
+  "/audio/{audio_id}.mp3": {
+   "get": {
+    "description": "Serve the same render as /audio/<id>.wav, encoded as MP3 for export.\n\nUnlike Ogg/Opus this is a one-shot download, so it is not cached.",
+    "operationId": "generated_mp3_audio__audio_id__mp3_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "audio_id",
+      "required": true,
+      "schema": {
+       "title": "Audio Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "audio/mpeg": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Generated Mp3"
+   }
+  },
   "/audio/{audio_id}.ogg": {
    "get": {
     "description": "Serve the same render as /audio/<id>.wav, encoded as Ogg/Opus.",
@@ -8819,8 +8860,11 @@
     "responses": {
      "200": {
       "content": {
-       "application/json": {
-        "schema": {}
+       "audio/ogg": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
        }
       },
       "description": "Successful Response"
@@ -8857,8 +8901,11 @@
     "responses": {
      "200": {
       "content": {
-       "application/json": {
-        "schema": {}
+       "audio/ogg": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
        }
       },
       "description": "Successful Response"

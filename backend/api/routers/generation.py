@@ -86,8 +86,26 @@ def _cached_ogg(key: tuple[str, int, int, int]) -> bytes | None:
         return encoded
 
 
-@router.get("/audio/{audio_id}.ogg", dependencies=[Depends(reject_cross_site_get)])
-@router.get("/audio/{audio_id}.opus", dependencies=[Depends(reject_cross_site_get)])
+# Encoded audio routes return bytes, not JSON; say so in the OpenAPI contract.
+def _binary_audio(media_type: str) -> dict:
+    return {
+        "response_class": Response,
+        "responses": {
+            200: {"content": {media_type: {"schema": {"type": "string", "format": "binary"}}}},
+        },
+    }
+
+
+@router.get(
+    "/audio/{audio_id}.ogg",
+    dependencies=[Depends(reject_cross_site_get)],
+    **_binary_audio("audio/ogg"),
+)
+@router.get(
+    "/audio/{audio_id}.opus",
+    dependencies=[Depends(reject_cross_site_get)],
+    **_binary_audio("audio/ogg"),
+)
 async def generated_ogg_opus(audio_id: str):
     """Serve the same render as /audio/<id>.wav, encoded as Ogg/Opus."""
     if not re.fullmatch(r"[0-9a-f]{8}", audio_id):
@@ -125,7 +143,7 @@ async def generated_ogg_opus(audio_id: str):
                     status_code=503, detail="Ogg/Opus encoding timed out; try again later"
                 ) from exc
             except RuntimeError as exc:
-                logger.warning("Ogg/Opus encoding failed: %s", exc)
+                logger.warning("Ogg/Opus encoding failed: %s", log_safe(exc))
                 raise HTTPException(status_code=503, detail=str(exc)) from exc
             if len(encoded) <= _OGG_CACHE_LIMIT:
                 global _ogg_cache_bytes
@@ -136,6 +154,37 @@ async def generated_ogg_opus(audio_id: str):
                     _ogg_cache_bytes += len(encoded)
     return Response(encoded, media_type="audio/ogg")
 
+
+
+@router.get(
+    "/audio/{audio_id}.mp3",
+    dependencies=[Depends(reject_cross_site_get)],
+    **_binary_audio("audio/mpeg"),
+)
+async def generated_mp3(audio_id: str):
+    """Serve the same render as /audio/<id>.wav, encoded as MP3 for export.
+
+    Unlike Ogg/Opus this is a one-shot download, so it is not cached."""
+    if not re.fullmatch(r"[0-9a-f]{8}", audio_id):
+        raise HTTPException(status_code=404, detail="Audio file not found")
+    path = _safe_output_path(f"{audio_id}.wav")
+    if path is None or not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Audio file not found")
+    from services.audio_io import encode_mp3
+    try:
+        encoded = await encode_mp3(path)
+    except asyncio.TimeoutError as exc:
+        logger.warning("MP3 encoding timed out")
+        raise HTTPException(
+            status_code=503, detail="MP3 encoding timed out; try again later"
+        ) from exc
+    except RuntimeError as exc:
+        logger.warning("MP3 encoding failed: %s", log_safe(exc))
+        raise HTTPException(
+            status_code=503,
+            detail=f"{exc}. Check ffmpeg in Settings → Audio tools, then try again.",
+        ) from exc
+    return Response(encoded, media_type="audio/mpeg")
 
 # Same containers POST /profiles stores for a clone reference. /generate used
 # to write every upload with suffix=".wav"; pydub then passes -f wav to ffmpeg,
