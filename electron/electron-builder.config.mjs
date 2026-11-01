@@ -132,7 +132,7 @@ const adhocSignMac = !isMacAppStore && !process.env.CSC_LINK;
 
 /** @type {import('electron-builder').Configuration} */
 export default {
-  appId: APP_ID,
+  appId: isMacAppStore ? storeIdentity.macAppStore.applicationId : APP_ID,
   productName: PRODUCT_NAME,
   extraMetadata: {
     version,
