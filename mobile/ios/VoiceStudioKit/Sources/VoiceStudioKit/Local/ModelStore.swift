@@ -51,6 +51,7 @@ public actor ModelStore {
     private var sourceRates: [String:Double] = [:]
     private var sourceCooldowns: [String:Date] = [:]
     private var reservations: [String: [PhoneModel.File]] = [:]
+    private var assemblyReservations: [String: Int64] = [:]
     private var leases: [String: Int] = [:]
     private struct VerificationStamp: Equatable {
         let size: Int64
@@ -149,14 +150,27 @@ public actor ModelStore {
         try checkPermission(model)
         guard !active.contains(model.id), leases[model.id, default: 0] == 0 else { throw ClientError("sidebarTools.wait") }
         active.insert(model.id)
-        defer { active.remove(model.id); reservations.removeValue(forKey: model.id) }
+        defer { active.remove(model.id); reservations.removeValue(forKey: model.id); assemblyReservations.removeValue(forKey: model.id) }
         let transport = supplied ?? ModelDownloadTransport(policy: policy)
         try FileManager.default.createDirectory(at: directory(model), withIntermediateDirectories: true)
         let identity = try phoneModelPin(model)
-        for file in model.files where try !verify(directory(model).appendingPathComponent(file.path),file: file,identity: identity) { try recoverRanges(partial(model,file),total: file.size) }
+        for file in model.files where try !verify(directory(model).appendingPathComponent(file.path),file: file,identity: identity) {
+            let part = partial(model,file)
+            if size(part) > file.size { try FileManager.default.removeItem(at: part) }
+            try recoverRanges(part,total: file.size)
+        }
         reservations[model.id] = try model.files.filter {
             try !verify(directory(model).appendingPathComponent($0.path), file: $0, identity: identity)
         }
+        let chunkSize = max(16_777_216,transport.preferredRangeBytes)
+        // A saved range coexists with its appended copy until the write is synchronized.
+        assemblyReservations[model.id] = reservations[model.id]?.map { file -> Int64 in
+            guard file.bundled == nil else { return 0 }
+            let missing = max(0,file.size-size(partial(model,file)))
+            let copy = min(missing,missing >= chunkSize*2 ? chunkSize : transport.preferredRangeBytes)
+            // The existing margin covers legacy four-MiB copies and small fixtures.
+            return copy > 4_194_304 ? copy : 0
+        }.max() ?? 0
         if reservations[model.id]?.isEmpty == false { try checkDownloadSpace() }
         let meter = DownloadMeter(total: model.total_bytes) { value in
             await details(value); await progress(value.fraction)
@@ -184,7 +198,11 @@ public actor ModelStore {
                 do { try await downloadParallel(model,file: f,part: part,policy: policy,wifi: wifi,transport: transport,meter: meter) }
                 catch is ModelRangeUnsupported {
                     try? FileManager.default.removeItem(at: part.appendingPathExtension("ranges"))
-                    let whole = try await downloadRange(model,file: f,offset: 0,end: f.size-1,transport: transport,meter: meter,base: 0)
+                    assemblyReservations[model.id] = max(assemblyReservations[model.id,default: 0],size(part))
+                    try checkDownloadSpace()
+                    let whole = try await downloadRange(model,file: f,offset: 0,end: f.size-1,transport: transport,meter: meter,base: 0,wholeFile: true)
+                    defer { try? FileManager.default.removeItem(at: whole.file) }
+                    try Task.checkCancellation(); try checkPermission(model)
                     if FileManager.default.fileExists(atPath: part.path) { try FileManager.default.removeItem(at: part) }
                     try FileManager.default.moveItem(at: whole.file,to: part)
                     await meter.replaceFile(f.path,rangePrefix: f.sha256+":",bytes: f.size)
@@ -198,11 +216,17 @@ public actor ModelStore {
                 try checkDownloadSpace()
                 let end = min(offset + transport.preferredRangeBytes - 1, f.size - 1)
                 let reply: DownloadReply
+                var wholeFile = false
                 do { reply = try await downloadRange(model,file: f,offset: offset,end: end,transport: transport,meter: meter,base: offset) }
-                catch is ModelRangeUnsupported { reply = try await downloadRange(model,file: f,offset: 0,end: f.size-1,transport: transport,meter: meter,base: 0) }
+                catch is ModelRangeUnsupported {
+                    assemblyReservations[model.id] = max(assemblyReservations[model.id,default: 0],size(part))
+                    try checkDownloadSpace()
+                    reply = try await downloadRange(model,file: f,offset: 0,end: f.size-1,transport: transport,meter: meter,base: 0,wholeFile: true)
+                    wholeFile = true
+                }
                 defer { try? FileManager.default.removeItem(at: reply.file) }
                 try Task.checkCancellation(); try checkPermission(model)
-                if reply.status == 200 {
+                if wholeFile || reply.status == 200 {
                     if FileManager.default.fileExists(atPath: part.path) { try FileManager.default.removeItem(at: part) }
                     try FileManager.default.moveItem(at: reply.file,to: part)
                 } else {
@@ -245,28 +269,15 @@ public actor ModelStore {
                 let saved = chunks.appendingPathComponent("\(lower)-\(upper)")
                 if size(saved) == upper-lower+1 { await meter.seed(file.sha256+":\(lower)",bytes: size(saved)) }
             }
-            let replies = try await withThrowingTaskGroup(of: Int.self) { group in
+            try await withThrowingTaskGroup(of: Void.self) { group in
                 for (lower,upper) in ranges {
                     group.addTask {
                         try await self.persistRange(model,file: file,lower: lower,upper: upper,chunks: chunks,transport: transport,meter: meter)
                     }
                 }
-                var statuses: [Int] = []
-                for try await status in group { statuses.append(status) }
-                return statuses
+                for try await _ in group {}
             }
-            // A server ignoring ranges is supported by accepting one validated whole file.
-            if replies.contains(200) {
-                if let whole = ranges.map({ chunks.appendingPathComponent("\($0.0)-\($0.1)") }).first(where: { size($0) == file.size }) {
-                    if FileManager.default.fileExists(atPath: part.path) { try FileManager.default.removeItem(at: part) }
-                    try FileManager.default.moveItem(at: whole,to: part)
-                    try? FileManager.default.removeItem(at: chunks)
-                    await meter.replaceFile(file.path,rangePrefix: file.sha256+":",bytes: file.size)
-                    await meter.update("",bytes: 0)
-                    return
-                }
-                throw ClientError("mobile.local.download_failed")
-            }
+            try checkDownloadSpace()
             for (lower,upper) in ranges {
                 let saved = chunks.appendingPathComponent("\(lower)-\(upper)")
                 try append(saved,to: part)
@@ -278,15 +289,14 @@ public actor ModelStore {
         }
         try? FileManager.default.removeItem(at: chunks)
     }
-    private func persistRange(_ model: PhoneModel,file: PhoneModel.File,lower: Int64,upper: Int64,chunks: URL,transport: any HTTPTransport,meter: DownloadMeter) async throws -> Int {
+    private func persistRange(_ model: PhoneModel,file: PhoneModel.File,lower: Int64,upper: Int64,chunks: URL,transport: any HTTPTransport,meter: DownloadMeter) async throws {
         let destination = chunks.appendingPathComponent("\(lower)-\(upper)")
-        if size(destination) == upper-lower+1 { return 206 }
+        if size(destination) == upper-lower+1 { return }
         let reply = try await downloadRange(model,file: file,offset: lower,end: upper,transport: transport,meter: meter,base: 0,meterKey: file.sha256+":\(lower)")
         defer { try? FileManager.default.removeItem(at: reply.file) }
         try Task.checkCancellation(); try checkPermission(model)
         if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
         try FileManager.default.moveItem(at: reply.file,to: destination)
-        return reply.status
     }
     private func append(_ source: URL,to destination: URL,offset: UInt64 = 0) throws {
         if !FileManager.default.fileExists(atPath: destination.path) {
@@ -299,7 +309,7 @@ public actor ModelStore {
         while let bytes = try reader.read(upToCount: 1_048_576), !bytes.isEmpty { try writer.write(contentsOf: bytes) }
         try writer.synchronize()
     }
-    private func downloadRange(_ model: PhoneModel,file: PhoneModel.File,offset: Int64,end: Int64,transport: any HTTPTransport,meter: DownloadMeter,base: Int64,meterKey: String? = nil) async throws -> DownloadReply {
+    private func downloadRange(_ model: PhoneModel,file: PhoneModel.File,offset: Int64,end: Int64,transport: any HTTPTransport,meter: DownloadMeter,base: Int64,meterKey: String? = nil,wholeFile: Bool = false) async throws -> DownloadReply {
         var lastFailure: (any Error)?
         var permanent = Set<String>()
         for attempt in 0..<5 {
@@ -318,9 +328,10 @@ public actor ModelStore {
                     guard let selected = components.url else { throw ClientError("mobile.local.catalogue_failed") }; url = selected
                 } else { url = URL(string: "https://\(host)/\(model.repo)/resolve/\(model.revision)/\(file.path)")! }
                 let scoped = NSMutableURLRequest(url: url)
-                scoped.setValue("bytes=\(offset)-\(end)",forHTTPHeaderField: "Range")
+                if !wholeFile { scoped.setValue("bytes=\(offset)-\(end)",forHTTPHeaderField: "Range") }
                 scoped.setValue("identity",forHTTPHeaderField: "Accept-Encoding")
                 URLProtocol.setProperty(model.id,forKey: "VoiceStudioModel",in: scoped)
+                URLProtocol.setProperty(file.size,forKey: "VoiceStudioExpectedBytes",in: scoped)
                 let request = scoped as URLRequest
                 let before = ProcessInfo.processInfo.systemUptime
                 do {
@@ -334,6 +345,10 @@ public actor ModelStore {
                     let elapsed = ProcessInfo.processInfo.systemUptime-before
                     if elapsed >= 0.1 && (reply.status == 200 || reply.status == 206) { sourceRates[host] = Double(count)/elapsed }
                     diagnostic(model,event: "response",host: host,status: reply.status)
+                    if reply.status == 200 && (offset > 0 || end < file.size-1) {
+                        try? FileManager.default.removeItem(at: reply.file)
+                        throw ModelRangeUnsupported()
+                    }
                     if reply.status == 200 && count == file.size { return reply }
                     if reply.status == 206 && count == end-offset+1 && reply.headers["content-range"] == "bytes \(offset)-\(end)/\(file.size)" { return reply }
                     try? FileManager.default.removeItem(at: reply.file)
@@ -377,7 +392,8 @@ public actor ModelStore {
                 let bounds = file.lastPathComponent.split(separator: "-").compactMap { Int64($0) }
                 return bounds.count == 2 && bounds[0] <= offset && bounds[1] >= offset && bounds[1] < total && size(file) == bounds[1]-bounds[0]+1
             }),let lower = Int64(saved.lastPathComponent.split(separator: "-")[0]) else { return }
-            guard try available(root) >= size(saved)-(offset-lower) else { throw ClientError("mobile.local.storage_required") }
+            let otherReservations = remainingDownloadBytes()+assemblyReservations.values.reduce(0,+)
+            guard try available(root) >= otherReservations+size(saved)-(offset-lower)+16_777_216 else { throw ClientError("mobile.local.storage_required") }
             try append(saved,to: part,offset: UInt64(offset-lower))
             try FileManager.default.removeItem(at: saved)
         }
@@ -390,16 +406,20 @@ public actor ModelStore {
             return sum+size(url)
         }
     }
-    private func checkDownloadSpace() throws {
+    private func remainingDownloadBytes() -> Int64 {
         // Already persisted ranges occupy real disk space, so reserve only bytes still missing.
-        let remaining = reservations.reduce(Int64(0)) { total, entry in
+        reservations.reduce(Int64(0)) { total, entry in
             total + entry.value.reduce(Int64(0)) { subtotal, file in
                 let part = root.appendingPathComponent(entry.key).appendingPathComponent(".partial/" + file.sha256)
                 return subtotal + max(0, file.size - size(part) - savedRangeBytes(part,total: file.size))
             }
         }
-        if remaining > 0 {
-            guard try available(root) >= remaining + 16_777_216 else { throw ClientError("mobile.local.storage_required") }
+    }
+    private func checkDownloadSpace() throws {
+        let remaining = remainingDownloadBytes()
+        let assembly = assemblyReservations.values.reduce(0,+)
+        if remaining > 0 || assembly > 0 {
+            guard try available(root) >= remaining + assembly + 16_777_216 else { throw ClientError("mobile.local.storage_required") }
         }
     }
     private func directory(_ model: PhoneModel) -> URL { root.appendingPathComponent(model.id, isDirectory: true) }

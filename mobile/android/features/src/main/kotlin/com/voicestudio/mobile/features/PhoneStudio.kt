@@ -44,7 +44,11 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
     init {scope.launch {
         try {
             val models=withContext(Dispatchers.IO) {application.assets.open("models.json").bufferedReader().use {ModelCatalog.decode(it.readText()).models}}
-            mutable.update {it.copy(models=models,loading=false)};ModelDownloadJobs.restore(application,models);refresh()
+            mutable.update {it.copy(models=models,loading=false)}
+            try {ModelDownloadJobs.restore(application,models,failure)}
+            catch(e:CancellationException) {throw e}
+            catch(e:Exception) {failure(e as? ClientFailure ?: ClientFailure("mobile.local.download_failed"))}
+            refresh()
             scope.launch {downloads.progress.map {it.mapValues {entry->entry.value.running to entry.value.stage}}.distinctUntilChanged().collect {refresh()}}
         } catch(e:CancellationException) {throw e} catch(e:Exception) {mutable.update {it.copy(loading=false)};failure(ClientFailure("mobile.local.catalogue_failed"))}
     }}

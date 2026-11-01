@@ -119,6 +119,18 @@ class LocalPolicyTest {
         val retry=meter.update("weights",600,"retrying",8)
         assertEquals(0.0,retry.bytesPerSecond,0.0);assertNull(retry.etaSeconds)
     }
+    @Test fun segmentedDownloadReservesAssemblySpaceBeforeContactingTheServer() = runTest {
+        MockWebServer().use {server ->
+            server.start();server.dispatcher=object:okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest)=MockResponse().setResponseCode(404)
+            }
+            val bytes=ByteArray(1024)
+            val m=model().let {it.copy(files=listOf(it.files.single().copy(size=1024,sha256=hash(bytes))),totalBytes=1024)}
+            val d=ModelDownloads(File(temporary.root,"models"),gate(),8_000_000_000,{true},{1024L+16*1024*1024},OkHttpClient.Builder().followRedirects(false).build(),listOf(server.url("/").toString()),true,chunkSize=256)
+            failure("mobile.local.storage_required") {d.download(m,false)}
+            assertEquals(0,server.requestCount)
+        }
+    }
     @Test fun omniSpeechRequiresAReferenceBeforeLoadingAnyModel() = runTest {
         val m=fixtureModel("clone")
         assertTrue(m.supportsSpeech&&m.supportsDesign&&m.requiresReference)

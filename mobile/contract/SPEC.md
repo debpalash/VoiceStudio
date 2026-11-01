@@ -282,8 +282,11 @@ All tabs work without pairing once on-device models are installed (see M2); the 
   transfers across models, and reduce concurrency when measured throughput falls.
   Compare sources using useful range transfers, without extra probe downloads.
   Completed ranges and the existing contiguous partial formats remain reusable
-  after interruption, including an interrupted assembly. Strictly validate range
-  boundaries and fall back to a whole stream when ranges are unsupported.
+  after interruption, including an interrupted assembly. Reserve missing bytes
+  plus transient assembly space; release each source range only after its copied
+  bytes are durable. Strictly validate range
+  boundaries and fall back to one plain whole-file GET when ranges are unsupported;
+  replace the saved prefix for a complete fallback response, including HTTP 206.
   Retry transient network/408/429/5xx failures with bounded exponential backoff,
   jitter and `Retry-After`; retry 403 from the original pinned URL to refresh
   expiring delivery URLs. Permanent failures require an explicit retry.

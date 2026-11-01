@@ -71,6 +71,20 @@ class ModelDownloadJobsTest {
         ModelDownloadJobs.restore(app,listOf(model))
         assertTrue(app.getSharedPreferences("model-downloads",0).getString("queue","")!!.contains("\"paused\":true"))
     }
+    @Test fun oneRejectedRestoreDoesNotBlockTheOtherQueuedModels() {
+        val second=model.copy(id=model.id+"-second")
+        ModelDownloadJobs.enqueue(app,model,false);ModelDownloadJobs.enqueue(app,second,false)
+        val rejected=scheduler.allPendingJobs.single {it.extras.getString("model")==model.id}.id
+        scheduler.cancelAll()
+        org.robolectric.Shadows.shadowOf(scheduler).failOnJob(rejected)
+        val failures=mutableListOf<Throwable>()
+        ModelDownloadJobs.restore(app,listOf(model,second)) {failures+=it}
+        assertEquals(1,failures.size)
+        assertEquals("mobile.local.download_failed",(failures.single() as com.voicestudio.mobile.network.ClientFailure).key)
+        assertEquals(second.id,scheduler.allPendingJobs.single().extras.getString("model"))
+        assertFalse(com.voicestudio.mobile.local.PhoneRuntime.get(app).downloads.progress.value[model.id]!!.running)
+        ModelDownloadJobs.cancel(app,second.id)
+    }
     @Test fun cancelledDownloadHasNoAutomaticRestoreIntent() {
         ModelDownloadJobs.enqueue(app,model,false);ModelDownloadJobs.cancel(app,model.id)
         ModelDownloadJobs.restore(app,listOf(model))

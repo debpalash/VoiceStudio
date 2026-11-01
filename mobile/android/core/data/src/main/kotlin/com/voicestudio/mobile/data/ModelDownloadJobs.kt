@@ -59,15 +59,18 @@ object ModelDownloadJobs {
         }
     }
     /** Called only when the phone UI opens. Existing OS jobs retain ownership. */
-    fun restore(context: Context,models: List<PhoneModel>) {
+    fun restore(context: Context,models: List<PhoneModel>,onFailure: (Throwable)->Unit = {}) {
         val scheduler=context.getSystemService(JobScheduler::class.java)
         for(item in read(context)) {
-            val model=models.firstOrNull {it.id==item.model&&modelPin(it).identity==item.pin}
-            if(model==null) {cancel(context,item.model);continue}
-            if(item.paused) {PhoneRuntime.get(context).downloads.paused(item.model);continue}
-            if(PhoneRuntime.get(context).downloads.installed(model)) {finished(context,item.model);continue}
-            if(Build.VERSION.SDK_INT<34||scheduler.getPendingJob(item.jobID)==null) schedule(context,item,model.totalBytes)
-            else PhoneRuntime.get(context).downloads.scheduled(item.model,model.totalBytes,if(item.mobile) "waiting_network" else "waiting")
+            try {
+                val model=models.firstOrNull {it.id==item.model&&modelPin(it).identity==item.pin}
+                if(model==null) {cancel(context,item.model);continue}
+                if(item.paused) {PhoneRuntime.get(context).downloads.paused(item.model);continue}
+                if(PhoneRuntime.get(context).downloads.installed(model)) {finished(context,item.model);continue}
+                if(Build.VERSION.SDK_INT<34||scheduler.getPendingJob(item.jobID)==null) schedule(context,item,model.totalBytes)
+                else PhoneRuntime.get(context).downloads.scheduled(item.model,model.totalBytes,if(item.mobile) "waiting_network" else "waiting")
+            } catch(e:CancellationException) {throw e}
+            catch(e:Exception) {onFailure(e as? ClientFailure ?: ClientFailure("mobile.local.download_failed"))}
         }
     }
     @Synchronized fun pause(context: Context,id: String) {

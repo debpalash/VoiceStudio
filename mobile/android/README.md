@@ -300,7 +300,8 @@ Large files use parallel 16-MiB ranges, initially two and up to four transfers
 across models, adapting concurrency to measured throughput. Useful range transfers
 compare Hugging Face and the approved hf-mirror.com source without probe traffic.
 Completed ranges and legacy contiguous partials survive relaunch and interrupted
-assembly. Responses must match exact range boundaries. Unsupported ranges fall
+assembly. Space reservations include the temporary assembly copy; each source
+range is released only after its copied bytes are durable. Responses must match exact range boundaries. Unsupported ranges fall
 back to one stream. Transient failures retry with backoff, jitter and Retry-After;
 403 retries refresh the original pinned delivery URL. Permanent errors retain data
 for explicit retry. Redirects remain restricted to approved HTTPS delivery hosts.

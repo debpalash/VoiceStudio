@@ -10,12 +10,13 @@ private func localDirectory() throws -> URL {
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
 }
-private func localFixture(bytes: Data = Data("model".utf8), gated: Bool = false, capability: String = "tts", fingerprint: String = String(repeating: "a", count: 64), id: String = "fixture") throws -> PhoneModel {
+private func localFixture(bytes: Data = Data("model".utf8), gated: Bool = false, capability: String = "tts", fingerprint: String = String(repeating: "a", count: 64), id: String = "fixture", declaredSize: Int? = nil) throws -> PhoneModel {
     let runtime = capability == "clone" ? "omnivoice.cpp" : capability == "translate" ? "llama.cpp" : "sherpa-onnx"
+    let size = declaredSize ?? bytes.count
     let object: [String: Any] = ["schema_version": 1, "models": [[
         "id": id, "name": "Fixture", "capability": capability, "runtime": runtime, "repo": "owner/model", "revision": String(repeating: "b", count: 40),
-        "files": [["path": "model.bin", "size": bytes.count, "sha256": SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined(), "role": "model"]],
-        "total_bytes": bytes.count, "languages": ["en"], "min_ram_gb": 1,
+        "files": [["path": "model.bin", "size": size, "sha256": SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined(), "role": "model"]],
+        "total_bytes": size, "languages": ["en"], "min_ram_gb": 1,
         "licence": ["id": "test", "category": gated ? "non-commercial" : "commercial-ok", "requires_acceptance": false, "credit": "Fixture", "rights_holder": "Fixture", "terms_fingerprint": fingerprint],
         "config": ["model_type": "kitten", "prompt_template": "Translate {text} from {source_language} to {target_language}"]
     ]]]
@@ -841,4 +842,89 @@ private actor DownloadSnapshots {
     await meter.update("file",bytes: 600,stage: "retrying",retry: 8)
     #expect(await snapshots.values.last?.etaSeconds == nil)
     #expect(await snapshots.values.last?.bytesPerSecond == 0)
+}
+
+private actor WholeRangeFallbackServer: HTTPTransport {
+    let server: RangeServer
+    var first = true
+    private(set) var ranges: [String] = []
+    init(bytes: Data) { server = RangeServer(bytes: bytes) }
+    func send(_ request: URLRequest) async throws -> HTTPReply { throw ClientError("unused") }
+    func download(_ request: URLRequest) async throws -> DownloadReply {
+        ranges.append(request.value(forHTTPHeaderField: "Range") ?? "")
+        if first { first = false; throw ModelRangeUnsupported() }
+        // A full-file response can legally arrive as 206; keep that response shape
+        // while asserting the caller's actual fallback request has no Range header.
+        var responseRequest = request
+        if request.value(forHTTPHeaderField: "Range") == nil { responseRequest.setValue("bytes=0-12",forHTTPHeaderField: "Range") }
+        return try await server.download(responseRequest)
+    }
+}
+@Test func fullFile206FallbackReplacesTheResumedPrefix() async throws {
+    let root = try localDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+    let bytes = Data("model-fixture".utf8),model = try localFixture(bytes: bytes)
+    let part = root.appendingPathComponent(model.id+"/.partial/"+model.files[0].sha256)
+    try FileManager.default.createDirectory(at: part.deletingLastPathComponent(),withIntermediateDirectories: true)
+    try bytes.prefix(5).write(to: part)
+    let store = try ModelStore(root: root,available: { _ in 100_000_000_000 }),server = WholeRangeFallbackServer(bytes: bytes)
+    try await store.download(model,wifi: { true },transport: server)
+    #expect(await server.ranges == ["bytes=5-12",""])
+    #expect(await store.installed(model))
+    let installed = try await store.authorize(model)
+    #expect(try Data(contentsOf: installed.appendingPathComponent("model.bin")) == bytes)
+}
+private struct LargeRangeTransport: HTTPTransport {
+    let server: RangeServer
+    var preferredRangeBytes: Int64 { 67_108_864 }
+    func send(_ request: URLRequest) async throws -> HTTPReply { throw ClientError("unused") }
+    func download(_ request: URLRequest) async throws -> DownloadReply { try await server.download(request) }
+}
+@Test func backgroundRangesReserveAssemblySpaceBeforeStartingNetwork() async throws {
+    let root = try localDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+    // Only manifest metadata is needed: an unsafe transfer must be refused before fetching bytes.
+    for size in [83_886_080,134_217_728] {
+        // Exercise both a serial 64-MiB copy and parallel 64-MiB assembly.
+        let model = try localFixture(id: "fixture-\(size)",declaredSize: size)
+        let store = try ModelStore(root: root,available: { _ in Int64(size)+16_777_216 })
+        let server = RangeServer(bytes: Data("model".utf8),failAfter: 0)
+        do {
+            try await store.download(model,wifi: { true },transport: LargeRangeTransport(server: server))
+            Issue.record("Transfer started without assembly space")
+        } catch let error as ClientError { #expect(error.key == "mobile.local.storage_required") }
+        #expect(await server.requests.isEmpty)
+    }
+}
+
+private actor IgnoredRangeServer: HTTPTransport {
+    let server: RangeServer
+    let count: Int
+    private(set) var ranges: [String] = []
+    init(bytes: Data) { server = RangeServer(bytes: bytes); count = bytes.count }
+    func send(_ request: URLRequest) async throws -> HTTPReply { throw ClientError("unused") }
+    func download(_ request: URLRequest) async throws -> DownloadReply {
+        let range = request.value(forHTTPHeaderField: "Range")
+        ranges.append(range ?? "")
+        var whole = request; whole.setValue("bytes=0-\(count-1)",forHTTPHeaderField: "Range")
+        let reply = try await server.download(whole)
+        return DownloadReply(file: reply.file,status: range == nil ? 206 : 200,headers: range == nil ? reply.headers : [:])
+    }
+}
+@Test func ignoredResumedRangeUsesOnePlainWholeFileFallback() async throws {
+    let root = try localDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+    let bytes = Data("model-fixture".utf8),model = try localFixture(bytes: bytes)
+    let part = root.appendingPathComponent(model.id+"/.partial/"+model.files[0].sha256)
+    try FileManager.default.createDirectory(at: part.deletingLastPathComponent(),withIntermediateDirectories: true)
+    try bytes.prefix(5).write(to: part)
+    let store = try ModelStore(root: root,available: { _ in 100_000_000_000 }),server = IgnoredRangeServer(bytes: bytes)
+    try await store.download(model,wifi: { true },transport: server)
+    #expect(await server.ranges == ["bytes=5-12",""])
+    #expect(await store.installed(model))
+}
+@Test func ignoredParallelRangesFallBackToExactlyOneWholeFileRequest() async throws {
+    let root = try localDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+    let bytes = Data(repeating: 23,count: 33_554_433),model = try localFixture(bytes: bytes)
+    let store = try ModelStore(root: root,available: { _ in 100_000_000_000 }),server = IgnoredRangeServer(bytes: bytes)
+    try await store.download(model,wifi: { true },transport: server)
+    #expect(await server.ranges.filter { $0.isEmpty }.count == 1)
+    #expect(await store.installed(model))
 }

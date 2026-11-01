@@ -46,7 +46,10 @@ final class BackgroundModelDownloads: NSObject, HTTPTransport, URLSessionDownloa
         guard let url = request.url, ModelRedirectDelegate.allowed(url) else { throw ClientError("mobile.local.download_failed") }
         let identity = url.absoluteString + "|" + (request.value(forHTTPHeaderField: "Range") ?? "")
         let owner = URLProtocol.property(forKey: "VoiceStudioModel",in: request) as? String ?? "unscoped"
-        let key = ownerKey(owner)+"."+SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x",$0) }.joined()
+        let bounds = request.value(forHTTPHeaderField: "Range")?.dropFirst(6).split(separator: "-").compactMap { Int64($0) } ?? []
+        let maximum = bounds.count == 2 ? bounds[1]-bounds[0]+1 : (URLProtocol.property(forKey: "VoiceStudioExpectedBytes",in: request) as? Int64 ?? 0)
+        // Keep the byte bound in OS-owned task metadata, including after relaunch/resume.
+        let key = ownerKey(owner)+"."+SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x",$0) }.joined()+".\(maximum)"
         if let cached = receipt(key) { return cached }
         let tasks = await session.allTasks
         let task: URLSessionDownloadTask
@@ -99,6 +102,10 @@ final class BackgroundModelDownloads: NSObject, HTTPTransport, URLSessionDownloa
         guard let final = http.url,ModelRedirectDelegate.allowed(final) else {
             lock.withLock { failures[downloadTask.taskIdentifier] = ClientError("mobile.local.download_failed") }; return
         }
+        let maximum = Int64(key.split(separator: ".").last ?? "") ?? 0
+        if maximum > 0,let size = try? location.resourceValues(forKeys: [.fileSizeKey]).fileSize,Int64(size) > maximum {
+            lock.withLock { failures[downloadTask.taskIdentifier] = ClientError("mobile.local.download_failed") }; return
+        }
         do {
             let destination = path(key,"body")
             if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
@@ -125,10 +132,11 @@ final class BackgroundModelDownloads: NSObject, HTTPTransport, URLSessionDownloa
         else { waiting.continuation.resume(throwing: state.1 ?? error ?? ClientError("mobile.local.download_failed")) }
     }
     func urlSession(_ session: URLSession,downloadTask: URLSessionDownloadTask,didWriteData bytesWritten: Int64,totalBytesWritten: Int64,totalBytesExpectedToWrite: Int64) {
-        guard downloadTask.taskDescription != nil else { return }
-        if let range = downloadTask.originalRequest?.value(forHTTPHeaderField: "Range")?.dropFirst(6).split(separator: "-"),range.count == 2,let lower = Int64(range[0]),let upper = Int64(range[1]),
-           totalBytesWritten > upper-lower+1 || totalBytesExpectedToWrite > upper-lower+1 {
-            lock.withLock { failures[downloadTask.taskIdentifier] = (downloadTask.response as? HTTPURLResponse)?.statusCode == 200 ? ModelRangeUnsupported() : ClientError("mobile.local.download_failed") }
+        guard let key = downloadTask.taskDescription else { return }
+        let maximum = Int64(key.split(separator: ".").last ?? "") ?? 0
+        if maximum > 0 && (totalBytesWritten > maximum || totalBytesExpectedToWrite > maximum) {
+            let ignoredRange = downloadTask.originalRequest?.value(forHTTPHeaderField: "Range") != nil && (downloadTask.response as? HTTPURLResponse)?.statusCode == 200
+            lock.withLock { failures[downloadTask.taskIdentifier] = ignoredRange ? ModelRangeUnsupported() : ClientError("mobile.local.download_failed") }
             downloadTask.cancel();return
         }
         let now = ProcessInfo.processInfo.systemUptime

@@ -77,18 +77,23 @@ class ModelDownloads internal constructor(
             val directory=dir(model).apply {mkdirs()}
             val catalogue=modelPin(model).identity
             val completedFiles=model.files.filter {verifiedFile(File(directory,it.path),it,catalogue) {job.ensureActive()}}.toMutableSet()
-            model.files.filterNot {it in completedFiles}.forEach {recoverRanges(File(directory,it.path+".part"),it)}
+            model.files.filterNot {it in completedFiles}.forEach {
+                val partial=File(directory,it.path+".part")
+                if(partial.length()>it.size&&!partial.delete()) throw ClientFailure("mobile.local.storage_required")
+                recoverRanges(partial,it)
+            }
             fun remainingBytes()=model.files.filterNot {it in completedFiles}.sumOf { f ->
                 val partial=File(directory,f.path+".part").length().takeIf {it<=f.size} ?: 0L
                 f.size-partial-savedRanges(File(directory,f.path+".part"),f.size,f.sha256)
             }
             val needed=remainingBytes()
+            val assembly=if(model.files.any {it !in completedFiles&&it.bundled==null&&it.size-File(directory,it.path+".part").length()>=chunkSize*2}) chunkSize else 0L
             if(model.files.any {it.bundled==null&&it !in completedFiles&&File(directory,it.path+".part").length()<it.size}) networkAllowed(allowMobile)
             // Read current partial lengths so retries and completed writes are not counted twice.
             // completedFiles is updated under this same monitor after each successful install.
             synchronized(reservations) {
-                if(needed>0 && freeBytes()-reservations.values.sumOf {it()}<needed+16*1024*1024) throw ClientFailure("mobile.local.storage_required")
-                reservations[model.id]=::remainingBytes
+                if(needed+assembly>0 && freeBytes()-reservations.values.sumOf {it()}<needed+assembly+16*1024*1024) throw ClientFailure("mobile.local.storage_required")
+                reservations[model.id]={remainingBytes()+assembly}
             }
             val meter=DownloadMeter(model.totalBytes)
             model.files.forEach { f -> meter.seed(f.path,if(f in completedFiles) f.size else (File(directory,f.path+".part").length()+savedRanges(File(directory,f.path+".part"),f.size,f.sha256)).coerceAtMost(f.size)) }
@@ -152,6 +157,10 @@ class ModelDownloads internal constructor(
             }
         }
     }
+    private fun checkReservedSpace() = synchronized(reservations) {
+        val reserved=reservations.values.sumOf {it()}
+        if(reserved>0&&freeBytes()<reserved+16*1024*1024) throw ClientFailure("mobile.local.storage_required")
+    }
     private fun recoverRanges(partial: File,file: ModelFile) {
         val directory=rangesDir(partial)
         if(runCatching {File(directory,"identity").readText()}.getOrNull()!=file.sha256) return
@@ -162,7 +171,9 @@ class ModelDownloads internal constructor(
                 bounds.size==2&&bounds[0]<=offset&&bounds[1]>=offset&&bounds[1]<file.size&&chunk.length()==bounds[1]-bounds[0]+1
             } ?: return
             val lower=saved.name.substringBefore('-').toLong()
-            if(freeBytes()<saved.length()-(offset-lower)) throw ClientFailure("mobile.local.storage_required")
+            synchronized(reservations) {
+                if(freeBytes()<reservations.values.sumOf {it()}+saved.length()-(offset-lower)+16*1024*1024) throw ClientFailure("mobile.local.storage_required")
+            }
             RandomAccessFile(saved,"r").use {input ->RandomAccessFile(partial,"rw").use {output ->
                 input.seek(offset-lower);output.seek(offset)
                 val buffer=ByteArray(65536)
@@ -183,6 +194,7 @@ class ModelDownloads internal constructor(
         var previousRate=0.0
         try {
             while(partial.length()<file.size) {
+                checkReservedSpace()
                 val start=partial.length()
                 val ranges=(0 until width).mapNotNull { index ->
                     val lower=start+index*chunkSize
@@ -208,16 +220,21 @@ class ModelDownloads internal constructor(
                         }
                     }}.awaitAll()
                 }
-                // Only append contiguous completed chunks; no sparse holes can masquerade as saved bytes.
+                // Release each source only after its copy is durable, keeping peak
+                // assembly overhead to one chunk rather than the entire batch.
+                checkReservedSpace()
                 RandomAccessFile(partial,"rw").use {output ->
                     output.seek(start)
-                    ranges.forEach {(lower,upper)->File(directory,"$lower-$upper").inputStream().use {input->
-                        val buffer=ByteArray(65536)
-                        while(true) {currentCoroutineContext().ensureActive();val n=input.read(buffer);if(n<0) break;output.write(buffer,0,n)}
-                    }}
-                    output.fd.sync()
+                    ranges.forEach {(lower,upper)->
+                        val saved=File(directory,"$lower-$upper")
+                        saved.inputStream().use {input->
+                            val buffer=ByteArray(65536)
+                            while(true) {currentCoroutineContext().ensureActive();val n=input.read(buffer);if(n<0) break;output.write(buffer,0,n)}
+                        }
+                        output.fd.sync()
+                        if(!saved.delete()) throw ClientFailure("mobile.local.storage_required")
+                    }
                 }
-                ranges.forEach {(lower,upper)->File(directory,"$lower-$upper").delete()}
                 report(partial.length(),"downloading",0)
                 val rate=(partial.length()-start)/((System.nanoTime()-before)/1e9).coerceAtLeast(0.001)
                 width=if(previousRate>0&&rate<previousRate*0.85) 2 else 4
