@@ -26,7 +26,8 @@ data class DownloadProgress(val received: Long = 0, val total: Long = 0, val run
 class ModelDownloads internal constructor(
     private val root: File, val licence: LicenceGate, @Suppress("UNUSED_PARAMETER") ramBytes: Long,
     private val wifi: () -> Boolean, private val freeBytes: () -> Long,
-    private val client: OkHttpClient = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).build(),
+    private val client: OkHttpClient = OkHttpClient.Builder().followRedirects(false).followSslRedirects(false)
+        .connectTimeout(30,java.util.concurrent.TimeUnit.SECONDS).readTimeout(120,java.util.concurrent.TimeUnit.SECONDS).build(),
     private val endpoints: List<String> = listOf("https://huggingface.co", "https://hf-mirror.com"),
     private val allowTestHttp: Boolean = false,
     private val bundledAssets: ((String)->java.io.InputStream)? = null,
