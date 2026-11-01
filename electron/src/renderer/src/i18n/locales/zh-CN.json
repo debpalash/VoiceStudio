@@ -2197,7 +2197,7 @@
   },
   "backend": {
     "setup_required": "安装本地运行环境",
-    "setup_hint": "下载 Python 和应用依赖项（数 GB）。语音模型将在您选择时单独安装。",
+    "setup_hint": "应用已安装。接下来配置本地运行环境：下载 Python 和 AI 依赖库（数 GB）。语音模型会在您选择时单独下载。",
     "installing": "正在安装依赖项…",
     "setup_space": "请在应用所在磁盘上释放至少 {{gib}} GiB 空间，然后重试。",
     "repair_failed": "Python 环境的自动修复未完成。请查看引擎日志，然后点击重试。",
@@ -2541,7 +2541,7 @@
     "storage_temp": "临时文件",
     "change": "更改…",
     "region_label": "下载区域",
-    "free_space": "此磁盘可用空间 {{free}} GB，大约需要 {{needed}} GB",
+    "free_space": "此磁盘可用空间 {{free}} GiB；运行环境至少需要 {{needed}} GiB",
     "reset_default": "恢复默认设置"
   },
   "asr_missing": {

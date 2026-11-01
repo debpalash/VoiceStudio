@@ -2197,7 +2197,7 @@
   },
   "backend": {
     "setup_required": "Yerel çalışma ortamını yükle",
-    "setup_hint": "Python ve uygulama bağımlılıklarını indirin (birkaç GB). Ses modelleri seçtiğinizde ayrı olarak yüklenir.",
+    "setup_hint": "Uygulama yüklendi. Şimdi yerel çalışma ortamını kurun: Python ve yapay zekâ kitaplıklarını indirin (birkaç GB). Ses modelleri, siz seçtiğinizde ayrı olarak indirilir.",
     "installing": "Bağımlılıklar…",
     "setup_space": "Uygulamanın sürücüsünde en az {{gib}} GiB alan açıp yeniden deneyin.",
     "repair_failed": "Python ortamının otomatik onarımı tamamlanamadı. Motor günlüğünü kontrol edip Yeniden dene’ye basın.",
@@ -2546,7 +2546,7 @@
     "change": "Değiştir…",
     "reset_default": "Varsayılana sıfırla",
     "region_label": "İndirme bölgesi",
-    "free_space": "Bu sürücüde {{free}} GB boş alan var, yaklaşık {{needed}} GB gerekli"
+    "free_space": "Bu sürücüde {{free}} GiB boş alan var; çalışma ortamı için en az {{needed}} GiB gerekli"
   },
   "asr_missing": {
     "message": "Yüklü bir konuşmadan metne modeli yok — bu özellik sesi yazıya dökmek için bir model gerektirir.",

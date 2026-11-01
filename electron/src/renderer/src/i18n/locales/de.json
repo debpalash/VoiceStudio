@@ -2197,7 +2197,7 @@
   },
   "backend": {
     "setup_required": "Lokale Laufzeit installieren",
-    "setup_hint": "Python und App-Abhängigkeiten herunterladen (mehrere GB). Sprachmodelle werden separat installiert, wenn du sie auswählst.",
+    "setup_hint": "Die App ist installiert. Richten Sie nun die lokale Laufzeitumgebung ein: Python und KI-Bibliotheken werden heruntergeladen (mehrere GB). Sprachmodelle werden separat heruntergeladen, wenn Sie sie auswählen.",
     "installing": "Abhängigkeiten…",
     "setup_space": "Gib mindestens {{gib}} GiB auf dem Laufwerk der App frei und versuche es erneut.",
     "repair_failed": "Die automatische Reparatur der Python-Umgebung wurde nicht abgeschlossen. Prüfe das Engine-Protokoll und klicke dann auf Erneut versuchen.",
@@ -2546,7 +2546,7 @@
     "change": "Ändern…",
     "reset_default": "Auf Standard zurücksetzen",
     "region_label": "Download-Region",
-    "free_space": "{{free}} GB frei auf diesem Laufwerk, etwa {{needed}} GB nötig"
+    "free_space": "{{free}} GiB auf diesem Laufwerk frei; mindestens {{needed}} GiB für die Laufzeitumgebung erforderlich"
   },
   "asr_missing": {
     "message": "Es ist kein Sprache-zu-Text-Modell installiert — diese Funktion benötigt eines zum Transkribieren.",
