@@ -104,16 +104,30 @@ def test_consume_is_one_shot(auth):
 
 def test_bundled_backend_refreshes_its_own_scopes_only_after_a_valid_native_grant(auth, monkeypatch):
     module = ModuleType("_voicestudio_sandbox_bookmarks")
-    module.restore = Mock()
+    module.restore = Mock(return_value=True)
     monkeypatch.setitem(sys.modules, module.__name__, module)
     monkeypatch.setenv("VOICESTUDIO_BUNDLED_CODE_ONLY", "1")
     token = _token()
     auth.write(token, "models_dir", "/selected-models")
     assert auth.consume(token, "models_dir") == "/selected-models"
-    module.restore.assert_called_once()
+    module.restore.assert_called_once_with('/selected-models')
     with pytest.raises(auth.Error):
         auth.consume(token, "models_dir")
     module.restore.assert_called_once()
+
+
+@pytest.mark.parametrize('throws', [False, True])
+def test_failed_sandbox_scope_is_an_authorization_error_and_never_returns_a_path(auth, monkeypatch, throws):
+    module = ModuleType("_voicestudio_sandbox_bookmarks")
+    module.restore = Mock(return_value=False)
+    if throws:
+        module.restore.side_effect = RuntimeError('native grant failed')
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.setenv("VOICESTUDIO_BUNDLED_CODE_ONLY", "1")
+    token = _token()
+    auth.write(token, "models_dir", "/selected-models")
+    with pytest.raises(auth.Error, match="Invalid or expired desktop authorization"):
+        auth.consume(token, "models_dir")
 
 
 def test_wrong_kind_is_rejected(auth):

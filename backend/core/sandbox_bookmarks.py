@@ -18,6 +18,15 @@ import sys
 import threading
 
 
+class FolderAccess:
+    def __init__(self, path: Path, close):
+        self.path = path.resolve()
+        self.close = close
+
+    def covers(self, path: Path) -> bool:
+        return path.resolve().is_relative_to(self.path)
+
+
 def access_bookmark(value: str):
     raw = base64.b64decode(value, validate=True)
     if not raw or len(raw) > 1024 * 1024:
@@ -33,6 +42,8 @@ def access_bookmark(value: str):
     cf.CFURLCreateByResolvingBookmarkData.restype = pointer
     cf.CFURLStartAccessingSecurityScopedResource.argtypes = [pointer]
     cf.CFURLStartAccessingSecurityScopedResource.restype = ctypes.c_ubyte
+    cf.CFURLGetFileSystemRepresentation.argtypes = [pointer, ctypes.c_ubyte, pointer, ctypes.c_long]
+    cf.CFURLGetFileSystemRepresentation.restype = ctypes.c_ubyte
     cf.CFURLStopAccessingSecurityScopedResource.argtypes = [pointer]
     cf.CFURLStopAccessingSecurityScopedResource.restype = None
     cf.CFRelease.argtypes = [pointer]
@@ -57,6 +68,11 @@ def access_bookmark(value: str):
     if not cf.CFURLStartAccessingSecurityScopedResource(url):
         cf.CFRelease(url)
         raise PermissionError("Sandbox folder authorization needs renewal")
+    path = ctypes.create_string_buffer(4096)
+    if not cf.CFURLGetFileSystemRepresentation(url, 1, path, len(path)):
+        cf.CFURLStopAccessingSecurityScopedResource(url)
+        cf.CFRelease(url)
+        raise PermissionError("Sandbox folder authorization could not be resolved")
     closed = False
 
     def close():
@@ -65,7 +81,11 @@ def access_bookmark(value: str):
             closed = True
             cf.CFURLStopAccessingSecurityScopedResource(url)
             cf.CFRelease(url)
-    return close
+    try:
+        return FolderAccess(Path(os.fsdecode(path.value)), close)
+    except (OSError, ValueError, RuntimeError):
+        close()
+        raise
 
 
 class FolderGrants:
@@ -95,29 +115,42 @@ class FolderGrants:
                 if previous and previous[0] == item["bookmark"]:
                     continue
                 try:
-                    close = self.start(item["bookmark"])
+                    access = self.start(item["bookmark"])
                 except (OSError, ValueError, RuntimeError):
                     ok = False
                     continue
                 if previous:
-                    previous[1]()
-                self.leases[item["id"]] = (item["bookmark"], close)
+                    previous[1].close()
+                self.leases[item["id"]] = (item["bookmark"], access)
         return ok
 
     def close(self):
         with self.lock:
-            for _, close in self.leases.values():
-                close()
+            for _, access in self.leases.values():
+                access.close()
             self.leases.clear()
+
+    def covers(self, path: Path) -> bool:
+        with self.lock:
+            return any(access.covers(path) for _, access in self.leases.values())
 
 
 _grants = FolderGrants()
 atexit.register(_grants.close)
 
 
-def restore():
+def restore(required_path: str | None = None) -> bool:
     if sys.platform != "darwin" or os.environ.get("VOICESTUDIO_BUNDLED_CODE_ONLY") != "1":
-        return
+        return True
     file = os.environ.get("VOICESTUDIO_SANDBOX_BOOKMARKS")
-    if file and not _grants.refresh(Path(file)):
+    if not file:
+        return required_path is None
+    ok = _grants.refresh(Path(file))
+    if not ok:
         logging.getLogger("omnivoice.sandbox").warning("Sandbox folder authorization needs renewal")
+    if required_path:
+        path = Path(required_path)
+        # The journal lives in the app's own userData container. It already
+        # has static access there; other destinations need an active scope.
+        return path.resolve().is_relative_to(Path(file).parent.resolve()) or _grants.covers(path)
+    return ok
