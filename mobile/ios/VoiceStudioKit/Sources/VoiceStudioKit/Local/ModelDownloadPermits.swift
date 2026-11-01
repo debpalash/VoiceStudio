@@ -10,3 +10,19 @@ actor ModelDownloadPermits {
     }
     func release() { available += 1 }
 }
+
+/// Orders native task start and cancellation, including cancellation before registration.
+public final class ModelDownloadStartGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+    public init() {}
+    public func start(_ operation: () -> Void) -> Bool {
+        lock.withLock {
+            guard !cancelled else { return false }
+            operation(); return true
+        }
+    }
+    public func cancel(_ operation: () -> Void) {
+        lock.withLock { cancelled = true; operation() }
+    }
+}

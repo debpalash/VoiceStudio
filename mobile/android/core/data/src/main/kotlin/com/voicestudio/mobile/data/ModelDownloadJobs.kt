@@ -84,6 +84,10 @@ object ModelDownloadJobs {
             PhoneRuntime.get(context).downloads.paused(id,error=error)
         }
     }
+    internal fun pauseInBackground(context: Context,id: String,error: String?=null) {
+        try {pause(context,id,error)}
+        catch(e:ClientFailure) {PhoneRuntime.get(context).downloads.paused(id,error=e.key)}
+    }
     fun cancel(context: Context,id: String) {try {pause(context,id)} finally {finished(context,id)}}
     suspend fun stop(context: Context,id: String) {val job=active[id];cancel(context,id);job?.join()}
     @Synchronized internal fun finished(context: Context,id: String) {write(context,read(context).filterNot {it.model==id})}
@@ -118,7 +122,7 @@ object ModelDownloadJobs {
 }
 
 class ModelDownloadPauseReceiver: BroadcastReceiver() {
-    override fun onReceive(context: Context,intent: Intent) {intent.getStringExtra("model")?.let {ModelDownloadJobs.pause(context,it)}}
+    override fun onReceive(context: Context,intent: Intent) {intent.getStringExtra("model")?.let {ModelDownloadJobs.pauseInBackground(context,it)}}
 }
 
 @android.annotation.TargetApi(34)
@@ -140,7 +144,7 @@ class ModelDownloadService: JobService() {
                 if(e is ClientFailure&&e.key=="mobile.local.wifi_required") {
                     PhoneRuntime.get(this@ModelDownloadService).downloads.scheduled(id,PhoneRuntime.get(this@ModelDownloadService).downloads.progress.value[id]?.total ?: 0)
                     jobFinished(params,true)
-                } else {ModelDownloadJobs.pause(this@ModelDownloadService,id,(e as? ClientFailure)?.key ?: "mobile.local.download_failed");jobFinished(params,false)}
+                } else {ModelDownloadJobs.pauseInBackground(this@ModelDownloadService,id,(e as? ClientFailure)?.key ?: "mobile.local.download_failed");jobFinished(params,false)}
             }
             finally {updates.cancel();jobs.remove(params.jobId)}
         }
@@ -161,7 +165,8 @@ class ModelDownloadWorker(context: Context,params: WorkerParameters): CoroutineW
     override suspend fun doWork(): Result {
         val model=inputData.getString("model") ?: return Result.failure()
         return try {
-            setForeground(getForegroundInfo())
+            try {setForeground(getForegroundInfo())}
+            catch(e:IllegalStateException) {ModelDownloadJobs.waiting(applicationContext,model);return Result.retry()}
             coroutineScope {
                 val reporter=launch {while(isActive) {setForeground(getForegroundInfo());delay(1000)}}
                 try {ModelDownloadJobs.run(applicationContext,model)} finally {reporter.cancel()}
@@ -169,7 +174,7 @@ class ModelDownloadWorker(context: Context,params: WorkerParameters): CoroutineW
             Result.success()
         } catch(e:CancellationException) {ModelDownloadJobs.waiting(applicationContext,model);throw e} catch(e:ClientFailure) {
             if(e.key=="mobile.local.wifi_required") {ModelDownloadJobs.waiting(applicationContext,model);Result.retry()}
-            else {ModelDownloadJobs.pause(applicationContext,model,e.key);Result.failure()}
-        } catch(e:Exception) {ModelDownloadJobs.pause(applicationContext,model,"mobile.local.download_failed");Result.failure()}
+            else {ModelDownloadJobs.pauseInBackground(applicationContext,model,e.key);Result.failure()}
+        } catch(e:Exception) {ModelDownloadJobs.pauseInBackground(applicationContext,model,"mobile.local.download_failed");Result.failure()}
     }
 }

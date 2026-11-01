@@ -57,6 +57,7 @@ final class BackgroundModelDownloads: NSObject, HTTPTransport, URLSessionDownloa
         else if let data = try? Data(contentsOf: path(key,"resume")) { task = session.downloadTask(withResumeData: data) }
         else { task = session.downloadTask(with: request) }
         task.taskDescription = key
+        let startGate = ModelDownloadStartGate()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 lock.withLock { pending[task.taskIdentifier] = Pending(continuation: continuation,progress: progress) }
@@ -68,9 +69,9 @@ final class BackgroundModelDownloads: NSObject, HTTPTransport, URLSessionDownloa
                     task.cancel()
                     lock.withLock { pending.removeValue(forKey: task.taskIdentifier) }?.continuation.resume(throwing: error)
                 } else if Task.isCancelled { self.stopWaiting(task) }
-                else { task.resume() }
+                else if !startGate.start({ task.resume() }) { self.stopWaiting(task) }
             }
-        } onCancel: { self.stopWaiting(task) }
+        } onCancel: { startGate.cancel { self.stopWaiting(task) } }
     }
     private func stopWaiting(_ task: URLSessionDownloadTask) {
         // Suspending keeps the system-owned partial range available for Resume.

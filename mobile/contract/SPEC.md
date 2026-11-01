@@ -293,7 +293,9 @@ All tabs work without pairing once on-device models are installed (see M2); the 
   expiring delivery URLs. Permanent failures require an explicit retry.
   iOS uses system background URLSession tasks and durable completion receipts;
   Android uses user-initiated transfer jobs on API 34+ and foreground WorkManager
-  jobs on older supported devices. OS scheduling, user force-stop/force-quit,
+  jobs on older supported devices; blocked foreground promotion retries without
+  pausing the intent. Task start and cancellation are ordered so a stopped task
+  cannot start afterward. OS scheduling, user force-stop/force-quit,
   battery, thermal and connectivity restrictions can still interrupt transfers;
   retained ranges remain resumable. Background execution is not a guarantee.
   Models and feature download cards display percentage, received/total bytes,

@@ -127,6 +127,20 @@ class ModelDownloadJobsTest {
         try {ModelDownloadJobs.cancel(context,model.id);fail("Persistence failure must be reported")}
         catch(e:com.voicestudio.mobile.network.ClientFailure) {assertEquals("mobile.simple.checkpoint_failed",e.key)}
         assertEquals("Cancel must attempt both pause and intent removal",2,commits)
+        com.voicestudio.mobile.data.ModelDownloadPauseReceiver().onReceive(context,android.content.Intent().putExtra("model",model.id))
+        assertEquals("mobile.simple.checkpoint_failed",com.voicestudio.mobile.local.PhoneRuntime.get(app).downloads.progress.value[model.id]?.error)
+    }
+
+    @Test @Config(sdk=[33]) fun blockedForegroundPromotionRetriesWithoutPausingTheIntent()=kotlinx.coroutines.runBlocking {
+        ModelDownloadJobs.enqueue(app,model,false)
+        val worker=androidx.work.testing.TestListenableWorkerBuilder<com.voicestudio.mobile.data.ModelDownloadWorker>(app)
+            .setInputData(androidx.work.workDataOf("model" to model.id))
+            .setForegroundUpdater {_,_,_->androidx.concurrent.futures.CallbackToFutureAdapter.getFuture<Void> {
+                it.setException(IllegalStateException("Background foreground service start blocked"));"blocked"
+            }}.build()
+        assertEquals(androidx.work.ListenableWorker.Result.retry(),worker.doWork())
+        assertFalse(app.getSharedPreferences("model-downloads",0).getString("queue","")!!.contains("\"paused\":true"))
+        assertNull(com.voicestudio.mobile.local.PhoneRuntime.get(app).downloads.progress.value[model.id]?.error)
     }
 
 }
