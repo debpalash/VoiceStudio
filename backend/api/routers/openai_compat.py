@@ -35,6 +35,7 @@ import base64
 import io
 import json
 import logging
+import math
 import os
 import re
 import tempfile
@@ -907,9 +908,11 @@ def _reported_language(result: dict, requested: Optional[str], task: str) -> str
 
 def _num(value, default: float = 0.0) -> float:
     try:
-        return float(value) if value is not None else default
+        number = float(value) if value is not None else default
     except (TypeError, ValueError):
         return default
+    # MLX Whisper's temperature fallback can leave NaN/inf scores; strict JSON rejects them.
+    return number if math.isfinite(number) else default
 
 
 def _result_segments(result: dict) -> list[dict]:
