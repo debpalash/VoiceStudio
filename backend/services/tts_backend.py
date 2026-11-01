@@ -4332,14 +4332,15 @@ def language_options(backend_id: str) -> Optional[list[str]]:
     Adapter constructors configure references only. Never load weights or call
     get_active_tts_backend here: discovery must not switch or unload an engine.
     """
-    from omnivoice.utils.lang_map import LANG_NAME_TO_ID
+    from omnivoice.utils.lang_map import APP_LANGUAGE_NAMES, LANG_NAME_TO_ID
     from core.language_variants import with_variant_names
 
     backend = None
     try:
-        # The native OmniVoice adapters use this exact vocabulary at inference.
+        # The native OmniVoice adapters use this exact vocabulary at inference,
+        # plus the app picker names it resolves ("Arabic" for dub, #3651).
         if backend_id in {"omnivoice", "omnivoice-subprocess", "omnivoice-gguf"}:
-            return with_variant_names(sorted(LANG_NAME_TO_ID))
+            return with_variant_names(sorted(set(LANG_NAME_TO_ID) | set(APP_LANGUAGE_NAMES)))
         backend = get_backend_class(backend_id)()
         if backend_id == "mlx-audio" and backend.model_identity() == backend.CURATED_MODELS.get("kokoro"):
             return with_variant_names(_installed_kokoro_language_options())

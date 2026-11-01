@@ -678,6 +678,31 @@ LANG_NAME_TO_ID = {
 LANG_NAMES = set(LANG_NAME_TO_ID.keys())
 LANG_IDS = set(LANG_NAME_TO_ID.values())
 
+# VoiceStudio's dub, batch and translation pickers name some languages, and
+# tag them, differently from the TSV (``electron/src/shared/utils/languages.js``).
+# Unresolved, "Arabic" made synthesis fall back to language-agnostic mode and
+# the dub pre-flight reject a language this model speaks (#3651). Kurdish and
+# Arabic follow the varieties the NLLB translator writes (kmr_Latn, arb_Arab).
+APP_LANGUAGE_NAMES = {
+    "arabic": "arb",
+    "chinese (simplified)": "zh",
+    "chinese (traditional)": "zh",
+    "haitian creole": "ht",
+    "kurdish": "kmr",
+    "kyrgyz": "ky",
+    "pashto": "ps",
+    "punjabi": "pa",
+    "uyghur": "ug",
+}
+APP_LANGUAGE_IDS = {
+    "ar": "arb",
+    "cmn-hans": "zh",
+    "cmn-hant": "zh",
+    "jw": "jv",
+    "ku": "kmr",
+    "ne": "npi",
+}
+
 # Exceptions where .title() doesn't match the canonical casing from the TSV.
 _TITLE_EXCEPTIONS = {
     "fe'fe'": "Fe'fe'",
