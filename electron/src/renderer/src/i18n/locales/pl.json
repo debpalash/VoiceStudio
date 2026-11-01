@@ -4416,6 +4416,17 @@
       "supermetry": "Samodzielnie hostowana analityka internetowa szanująca prywatność.",
       "spicrawl": "Zamieniaj strony internetowe na Markdown lub dane strukturalne dla agentów AI.",
       "special_sponsor": "Sponsor specjalny"
+    },
+    "downloads": {
+      "pause": "Wstrzymaj",
+      "paused": "Wstrzymano",
+      "connecting": "Łączenie…",
+      "waiting": "Oczekiwanie na Wi-Fi…",
+      "retrying": "Ponowna próba za {{seconds}} s…",
+      "verifying": "Weryfikacja modelu…",
+      "speed": "{{speed}}/s",
+      "eta": "Pozostało około {{time}}",
+      "estimating": "Szacowanie pozostałego czasu…"
     }
   },
   "failureCause": {

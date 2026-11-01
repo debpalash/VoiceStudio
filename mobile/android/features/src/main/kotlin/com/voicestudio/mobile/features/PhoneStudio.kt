@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.voicestudio.mobile.local.*
+import com.voicestudio.mobile.data.ModelDownloadJobs
 import com.voicestudio.mobile.network.ClientFailure
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -39,12 +40,12 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
     val dubs=PhoneDubStore(File(application.noBackupFilesDir,"dubs"))
     private val mutable=MutableStateFlow(PhoneState())
     val state=mutable.asStateFlow()
-    private val jobs=mutableMapOf<String,Job>()
     private var inference: Job?=null
     init {scope.launch {
         try {
             val models=withContext(Dispatchers.IO) {application.assets.open("models.json").bufferedReader().use {ModelCatalog.decode(it.readText()).models}}
-            mutable.update {it.copy(models=models,loading=false)};refresh()
+            mutable.update {it.copy(models=models,loading=false)};ModelDownloadJobs.restore(application,models);refresh()
+            scope.launch {downloads.progress.map {it.mapValues {entry->entry.value.running to entry.value.stage}}.distinctUntilChanged().collect {refresh()}}
         } catch(e:CancellationException) {throw e} catch(e:Exception) {mutable.update {it.copy(loading=false)};failure(ClientFailure("mobile.local.catalogue_failed"))}
     }}
     suspend fun refresh() = withContext(Dispatchers.IO) {
@@ -59,22 +60,18 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
         mutable.update {it.copy(voices=phoneVoices,recent=recent,dubs=phoneDubs)}
     }
     fun download(model: PhoneModel, allowMobile: Boolean) {
-        if(jobs[model.id]?.isActive==true) return
-        jobs[model.id]=scope.launch {
-            try {downloads.download(model,allowMobile)}
-            catch(e:CancellationException) {throw e}
-            catch(e:Exception) {retryFailure(e) {download(model,allowMobile)}}
-            finally {withContext(NonCancellable) {refresh()}}
-        }
+        if(downloads.progress.value[model.id]?.running==true) return
+        try {ModelDownloadJobs.enqueue(application,model,allowMobile)} catch(e:Exception) {retryFailure(e) {download(model,allowMobile)}}
     }
-    fun cancelDownload(model: PhoneModel) {jobs[model.id]?.cancel()}
+    fun pauseDownload(model: PhoneModel) {ModelDownloadJobs.pause(application,model.id)}
+    fun cancelDownload(model: PhoneModel) {ModelDownloadJobs.cancel(application,model.id)}
     fun delete(model: PhoneModel) {scope.launch {
-        try {jobs[model.id]?.cancelAndJoin();cancelInference();downloads.delete(model);refresh()}
+        try {ModelDownloadJobs.stop(application,model.id);cancelInference();downloads.delete(model);refresh()}
         catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}
     }}
     fun accept(model: PhoneModel, accepted: Boolean, fingerprint: String, completed: (Boolean)->Unit = {}) {scope.launch {
         try {
-            if(!accepted) {jobs[model.id]?.cancelAndJoin();cancelInference()}
+            if(!accepted) {ModelDownloadJobs.stop(application,model.id);cancelInference()}
             withContext(Dispatchers.IO) {licence.record(model,accepted,fingerprint)};refresh();completed(true)
         } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e);completed(false)}
     }}

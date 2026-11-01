@@ -48,6 +48,8 @@ public actor ModelStore {
     public let root: URL
     private var acceptances: [String: [LicenceAcceptance]] = [:]
     private var active = Set<String>()
+    private var sourceRates: [String:Double] = [:]
+    private var sourceCooldowns: [String:Date] = [:]
     private var reservations: [String: [PhoneModel.File]] = [:]
     private var leases: [String: Int] = [:]
     private struct VerificationStamp: Equatable {
@@ -142,6 +144,7 @@ public actor ModelStore {
     public func download(_ model: PhoneModel, policy: DownloadPolicy = DownloadPolicy(),
                          wifi: @escaping @Sendable () async -> Bool,
                          transport supplied: (any HTTPTransport)? = nil,
+                         details: @escaping @Sendable (ModelDownloadProgress) async -> Void = { _ in },
                          progress: @escaping @Sendable (Double) async -> Void = { _ in }) async throws {
         try checkPermission(model)
         guard !active.contains(model.id), leases[model.id, default: 0] == 0 else { throw ClientError("sidebarTools.wait") }
@@ -150,10 +153,19 @@ public actor ModelStore {
         let transport = supplied ?? ModelDownloadTransport(policy: policy)
         try FileManager.default.createDirectory(at: directory(model), withIntermediateDirectories: true)
         let identity = try phoneModelPin(model)
+        for file in model.files where try !verify(directory(model).appendingPathComponent(file.path),file: file,identity: identity) { try recoverRanges(partial(model,file),total: file.size) }
         reservations[model.id] = try model.files.filter {
             try !verify(directory(model).appendingPathComponent($0.path), file: $0, identity: identity)
         }
         if reservations[model.id]?.isEmpty == false { try checkDownloadSpace() }
+        let meter = DownloadMeter(total: model.total_bytes) { value in
+            await details(value); await progress(value.fraction)
+        }
+        for file in model.files {
+            let destination = directory(model).appendingPathComponent(file.path)
+            await meter.seed(file.path,bytes: (try verify(destination,file: file,identity: identity)) ? file.size : size(partial(model,file)))
+        }
+        await meter.update("",bytes: 0)
         var completed: Int64 = 0
         for f in model.files {
             try Task.checkCancellation(); try checkPermission(model)
@@ -168,51 +180,37 @@ public actor ModelStore {
                 if FileManager.default.fileExists(atPath: part.path) { try FileManager.default.removeItem(at: part) }
                 try FileManager.default.copyItem(at: source,to: part)
             }
+            if f.bundled == nil && f.size-size(part) >= max(16_777_216,transport.preferredRangeBytes)*2 {
+                do { try await downloadParallel(model,file: f,part: part,policy: policy,wifi: wifi,transport: transport,meter: meter) }
+                catch is ModelRangeUnsupported {
+                    try? FileManager.default.removeItem(at: part.appendingPathExtension("ranges"))
+                    let whole = try await downloadRange(model,file: f,offset: 0,end: f.size-1,transport: transport,meter: meter,base: 0)
+                    if FileManager.default.fileExists(atPath: part.path) { try FileManager.default.removeItem(at: part) }
+                    try FileManager.default.moveItem(at: whole.file,to: part)
+                    await meter.replaceFile(f.path,rangePrefix: f.sha256+":",bytes: f.size)
+                }
+            }
             while size(part) < f.size {
                 try Task.checkCancellation(); try checkPermission(model)
                 let onWifi = await wifi()
                 guard policy.allowMobileData || onWifi else { throw ClientError("mobile.local.wifi_required") }
                 let offset = size(part)
                 try checkDownloadSpace()
-                var lastFailure: (any Error)?
-                var received = false
-                for host in ["huggingface.co", "hf-mirror.com"] {
-                    do {
-                        let url: URL
-                        if let fixed = f.url {
-                            guard ModelAssetSource.validURL(fixed),var components = URLComponents(string: fixed) else { throw ClientError("mobile.local.catalogue_failed") }
-                            if components.host == "huggingface.co" { components.host = host }
-                            guard let selected = components.url else { throw ClientError("mobile.local.catalogue_failed") }; url = selected
-                        } else { url = URL(string: "https://\(host)/\(model.repo)/resolve/\(model.revision)/\(f.path)")! }
-                        var request = URLRequest(url: url)
-                        let end = min(offset + 4_194_303, f.size - 1)
-                        request.setValue("bytes=\(offset)-\(end)", forHTTPHeaderField: "Range")
-                        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
-                        let reply = try await transport.download(request)
-                        defer { try? FileManager.default.removeItem(at: reply.file) }
-                        try Task.checkCancellation(); try checkPermission(model)
-                        let count = size(reply.file)
-                        if reply.status == 200 {
-                            guard count == f.size else { throw ClientError("mobile.local.download_failed") }
-                            if FileManager.default.fileExists(atPath: part.path) { try FileManager.default.removeItem(at: part) }
-                            try FileManager.default.moveItem(at: reply.file, to: part)
-                        } else {
-                            guard reply.status == 206, count == end - offset + 1,
-                                  reply.headers["content-range"] == "bytes \(offset)-\(end)/\(f.size)" else { throw ClientError("mobile.local.download_failed") }
-                            if !FileManager.default.fileExists(atPath: part.path) { FileManager.default.createFile(atPath: part.path, contents: nil) }
-                            let writer = try FileHandle(forWritingTo: part); defer { try? writer.close() }
-                            try writer.seekToEnd()
-                            let reader = try FileHandle(forReadingFrom: reply.file); defer { try? reader.close() }
-                            while let bytes = try reader.read(upToCount: 1_048_576), !bytes.isEmpty { try writer.write(contentsOf: bytes) }
-                            try writer.synchronize()
-                        }
-                        received = true; break
-                    } catch is CancellationError { throw CancellationError() }
-                    catch { if Task.isCancelled { throw CancellationError() }; lastFailure = error }
+                let end = min(offset + transport.preferredRangeBytes - 1, f.size - 1)
+                let reply: DownloadReply
+                do { reply = try await downloadRange(model,file: f,offset: offset,end: end,transport: transport,meter: meter,base: offset) }
+                catch is ModelRangeUnsupported { reply = try await downloadRange(model,file: f,offset: 0,end: f.size-1,transport: transport,meter: meter,base: 0) }
+                defer { try? FileManager.default.removeItem(at: reply.file) }
+                try Task.checkCancellation(); try checkPermission(model)
+                if reply.status == 200 {
+                    if FileManager.default.fileExists(atPath: part.path) { try FileManager.default.removeItem(at: part) }
+                    try FileManager.default.moveItem(at: reply.file,to: part)
+                } else {
+                    try append(reply.file,to: part)
                 }
-                guard received else { throw lastFailure ?? ClientError("mobile.local.download_failed") }
                 await progress(Double(completed + size(part)) / Double(model.total_bytes))
             }
+            await meter.update("",bytes: 0,stage: "verifying")
             guard try verify(part,file: f,identity: identity) else { try? FileManager.default.removeItem(at: part); throw ClientError("mobile.local.checksum_failed") }
             try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
             if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
@@ -226,12 +224,176 @@ public actor ModelStore {
         try JSONEncoder().encode(Dictionary(uniqueKeysWithValues: model.files.map { ($0.path, $0.sha256) })).write(to: directory(model).appendingPathComponent("verified.json"), options: .atomic)
         await progress(1)
     }
+    private let connections = ModelDownloadPermits(limit: 4)
+    private func downloadParallel(_ model: PhoneModel,file: PhoneModel.File,part: URL,policy: DownloadPolicy,wifi: @escaping @Sendable () async -> Bool,transport: any HTTPTransport,meter: DownloadMeter) async throws {
+        let chunkSize = max(16_777_216,transport.preferredRangeBytes)
+        let chunks = part.appendingPathExtension("ranges")
+        try FileManager.default.createDirectory(at: chunks,withIntermediateDirectories: true)
+        // Hash-named parent partials bind these receipts to the immutable catalogue file.
+        var width = 2, previousRate = 0.0
+        while size(part) < file.size {
+            try Task.checkCancellation(); try checkPermission(model)
+            let onWifi = await wifi()
+            guard policy.allowMobileData || onWifi else { throw ClientError("mobile.local.wifi_required") }
+            try checkDownloadSpace()
+            let start = size(part), before = ProcessInfo.processInfo.systemUptime
+            let ranges = (0..<width).compactMap { index -> (Int64,Int64)? in
+                let lower = start+Int64(index)*chunkSize
+                return lower < file.size ? (lower,min(file.size-1,lower+chunkSize-1)) : nil
+            }
+            for (lower,upper) in ranges {
+                let saved = chunks.appendingPathComponent("\(lower)-\(upper)")
+                if size(saved) == upper-lower+1 { await meter.seed(file.sha256+":\(lower)",bytes: size(saved)) }
+            }
+            let replies = try await withThrowingTaskGroup(of: Int.self) { group in
+                for (lower,upper) in ranges {
+                    group.addTask {
+                        try await self.persistRange(model,file: file,lower: lower,upper: upper,chunks: chunks,transport: transport,meter: meter)
+                    }
+                }
+                var statuses: [Int] = []
+                for try await status in group { statuses.append(status) }
+                return statuses
+            }
+            // A server ignoring ranges is supported by accepting one validated whole file.
+            if replies.contains(200) {
+                if let whole = ranges.map({ chunks.appendingPathComponent("\($0.0)-\($0.1)") }).first(where: { size($0) == file.size }) {
+                    if FileManager.default.fileExists(atPath: part.path) { try FileManager.default.removeItem(at: part) }
+                    try FileManager.default.moveItem(at: whole,to: part)
+                    try? FileManager.default.removeItem(at: chunks)
+                    await meter.replaceFile(file.path,rangePrefix: file.sha256+":",bytes: file.size)
+                    await meter.update("",bytes: 0)
+                    return
+                }
+                throw ClientError("mobile.local.download_failed")
+            }
+            for (lower,upper) in ranges {
+                let saved = chunks.appendingPathComponent("\(lower)-\(upper)")
+                try append(saved,to: part)
+                try FileManager.default.removeItem(at: saved)
+            }
+            let rate = Double(size(part)-start)/max(0.001,ProcessInfo.processInfo.systemUptime-before)
+            width = previousRate > 0 && rate < previousRate*0.85 ? 2 : 4
+            previousRate = rate
+        }
+        try? FileManager.default.removeItem(at: chunks)
+    }
+    private func persistRange(_ model: PhoneModel,file: PhoneModel.File,lower: Int64,upper: Int64,chunks: URL,transport: any HTTPTransport,meter: DownloadMeter) async throws -> Int {
+        let destination = chunks.appendingPathComponent("\(lower)-\(upper)")
+        if size(destination) == upper-lower+1 { return 206 }
+        try await connections.acquire()
+        do {
+            let reply = try await downloadRange(model,file: file,offset: lower,end: upper,transport: transport,meter: meter,base: 0,meterKey: file.sha256+":\(lower)")
+            defer { try? FileManager.default.removeItem(at: reply.file) }
+            try Task.checkCancellation(); try checkPermission(model)
+            if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
+            try FileManager.default.moveItem(at: reply.file,to: destination)
+            await connections.release()
+            return reply.status
+        } catch { await connections.release(); throw error }
+    }
+    private func append(_ source: URL,to destination: URL,offset: UInt64 = 0) throws {
+        if !FileManager.default.fileExists(atPath: destination.path) {
+            guard FileManager.default.createFile(atPath: destination.path,contents: nil) else { throw ClientError("mobile.local.storage_required") }
+        }
+        let writer = try FileHandle(forWritingTo: destination); defer { try? writer.close() }
+        try writer.seekToEnd()
+        let reader = try FileHandle(forReadingFrom: source); defer { try? reader.close() }
+        try reader.seek(toOffset: offset)
+        while let bytes = try reader.read(upToCount: 1_048_576), !bytes.isEmpty { try writer.write(contentsOf: bytes) }
+        try writer.synchronize()
+    }
+    private func downloadRange(_ model: PhoneModel,file: PhoneModel.File,offset: Int64,end: Int64,transport: any HTTPTransport,meter: DownloadMeter,base: Int64,meterKey: String? = nil) async throws -> DownloadReply {
+        var lastFailure: (any Error)?
+        var permanent = Set<String>()
+        for attempt in 0..<5 {
+            var retryAfter: Int?
+            let hosts = ["huggingface.co","hf-mirror.com"]
+            let sources = sourceRates.count >= hosts.count ? hosts.sorted { sourceRates[$0,default: 0] > sourceRates[$1,default: 0] } : (offset >= max(16_777_216,transport.preferredRangeBytes) ? Array(hosts.reversed()) : hosts)
+            for host in sources where !permanent.contains(host) {
+                try Task.checkCancellation(); try checkPermission(model)
+                if let until = sourceCooldowns[host],until > Date() { try await Task.sleep(for: .seconds(until.timeIntervalSinceNow)) }
+                try Task.checkCancellation(); try checkPermission(model)
+                let url: URL
+                if let fixed = file.url {
+                    guard ModelAssetSource.validURL(fixed),var components = URLComponents(string: fixed) else { throw ClientError("mobile.local.catalogue_failed") }
+                    if components.host == "huggingface.co" { components.host = host }
+                    guard let selected = components.url else { throw ClientError("mobile.local.catalogue_failed") }; url = selected
+                } else { url = URL(string: "https://\(host)/\(model.repo)/resolve/\(model.revision)/\(file.path)")! }
+                let scoped = NSMutableURLRequest(url: url)
+                scoped.setValue("bytes=\(offset)-\(end)",forHTTPHeaderField: "Range")
+                scoped.setValue("identity",forHTTPHeaderField: "Accept-Encoding")
+                URLProtocol.setProperty(model.id,forKey: "VoiceStudioModel",in: scoped)
+                let request = scoped as URLRequest
+                let before = ProcessInfo.processInfo.systemUptime
+                do {
+                    let reply = try await transport.download(request,progress: { count in await meter.update(meterKey ?? file.path,bytes: base+min(count,end-offset+1)) })
+                    let count = size(reply.file)
+                    let elapsed = ProcessInfo.processInfo.systemUptime-before
+                    if elapsed >= 0.1 && (reply.status == 200 || reply.status == 206) { sourceRates[host] = Double(count)/elapsed }
+                    diagnostic(model,event: "response",host: host,status: reply.status)
+                    if reply.status == 200 && count == file.size { return reply }
+                    if reply.status == 206 && count == end-offset+1 && reply.headers["content-range"] == "bytes \(offset)-\(end)/\(file.size)" { return reply }
+                    try? FileManager.default.removeItem(at: reply.file)
+                    if reply.status == 429 || reply.status == 408 || reply.status == 403 || (500...599).contains(reply.status) {
+                        if let raw = reply.headers["retry-after"] {
+                            retryAfter = Int(raw) ?? HTTPDate.secondsUntil(raw)
+                        }
+                        lastFailure = URLError(.badServerResponse)
+                        if reply.status == 429 { sourceCooldowns[host] = Date().addingTimeInterval(Double(min(3600,max(1,retryAfter ?? 1)))) ; break }
+                    } else { throw ClientError("mobile.local.download_failed") }
+                } catch is ModelRangeUnsupported { throw ModelRangeUnsupported() }
+                catch is CancellationError { throw CancellationError() }
+                catch let error as ClientError { lastFailure = error; permanent.insert(host) }
+                catch { if Task.isCancelled { throw CancellationError() }; lastFailure = error }
+            }
+            // Test/application-level validation failures are permanent; network failures are retried.
+            if permanent.count == hosts.count { throw lastFailure ?? ClientError("mobile.local.download_failed") }
+            if attempt < 4 {
+                let seconds = min(3600,max(1,retryAfter ?? ((1 << attempt)+Int.random(in: 0...1))))
+                for remaining in stride(from: seconds,through: 1,by: -1) {
+                    await meter.update(meterKey ?? file.path,bytes: base,stage: "retrying",retry: remaining)
+                    try await Task.sleep(for: .seconds(1))
+                }
+            }
+        }
+        throw lastFailure ?? ClientError("mobile.local.download_failed")
+    }
+    private func diagnostic(_ model: PhoneModel,event: String,host: String,status: Int) {
+        // Only local, bounded status metadata; never URLs or credentials.
+        let log = directory(model).appendingPathComponent(".download-events")
+        let previous = (try? String(contentsOf: log,encoding: .utf8))?.split(separator: "\n").suffix(31).map(String.init) ?? []
+        let records = previous+["\(Date().timeIntervalSince1970) \(event) \(host) \(status)"]
+        try? Data(records.joined(separator: "\n").utf8).write(to: log,options: .atomic)
+    }
+    private func recoverRanges(_ part: URL,total: Int64) throws {
+        let directory = part.appendingPathExtension("ranges")
+        while size(part) < total {
+            let offset = size(part)
+            let files = (try? FileManager.default.contentsOfDirectory(at: directory,includingPropertiesForKeys: nil)) ?? []
+            guard let saved = files.first(where: { file in
+                let bounds = file.lastPathComponent.split(separator: "-").compactMap { Int64($0) }
+                return bounds.count == 2 && bounds[0] <= offset && bounds[1] >= offset && bounds[1] < total && size(file) == bounds[1]-bounds[0]+1
+            }),let lower = Int64(saved.lastPathComponent.split(separator: "-")[0]) else { return }
+            guard try available(root) >= size(saved)-(offset-lower) else { throw ClientError("mobile.local.storage_required") }
+            try append(saved,to: part,offset: UInt64(offset-lower))
+            try FileManager.default.removeItem(at: saved)
+        }
+    }
+    private func savedRangeBytes(_ part: URL,total: Int64) -> Int64 {
+        let chunks = (try? FileManager.default.contentsOfDirectory(at: part.appendingPathExtension("ranges"),includingPropertiesForKeys: nil)) ?? []
+        return chunks.reduce(0) { sum,url in
+            let bounds = url.lastPathComponent.split(separator: "-").compactMap { Int64($0) }
+            guard bounds.count == 2,bounds[0] >= size(part),bounds[1] < total,size(url) == bounds[1]-bounds[0]+1 else { return sum }
+            return sum+size(url)
+        }
+    }
     private func checkDownloadSpace() throws {
         // Already persisted ranges occupy real disk space, so reserve only bytes still missing.
         let remaining = reservations.reduce(Int64(0)) { total, entry in
             total + entry.value.reduce(Int64(0)) { subtotal, file in
                 let part = root.appendingPathComponent(entry.key).appendingPathComponent(".partial/" + file.sha256)
-                return subtotal + max(0, file.size - size(part))
+                return subtotal + max(0, file.size - size(part) - savedRangeBytes(part,total: file.size))
             }
         }
         if remaining > 0 {
@@ -241,4 +403,12 @@ public actor ModelStore {
     private func directory(_ model: PhoneModel) -> URL { root.appendingPathComponent(model.id, isDirectory: true) }
     private func partial(_ model: PhoneModel, _ file: PhoneModel.File) -> URL { directory(model).appendingPathComponent(".partial/" + file.sha256) }
     private func size(_ url: URL) -> Int64 { (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.int64Value ?? 0 }
+}
+
+private enum HTTPDate {
+    static func secondsUntil(_ raw: String) -> Int? {
+        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        return formatter.date(from: raw).map { Int(ceil($0.timeIntervalSinceNow)) }
+    }
 }

@@ -291,15 +291,30 @@ Models cards show name, size, capability and one Download / Cancel / Delete
 action. Their licence action opens languages, declared terms and actual storage;
 Delete there can also remove partial downloads. The list shows total model storage. Models above the phone's
 physical RAM are disabled, using decimal GB (`min_ram_gb * 1,000,000,000`).
-Downloads start only from a user action, use Hugging Face with hf-mirror.com
-fallback, resume with HTTP Range, enforce Wi-Fi unless mobile data is explicitly
-allowed, and reject low storage. A server ignoring Range restarts that file.
-Redirects stay HTTPS on the default port, on Hugging Face/HF CDN or mirror hosts
-and their subdomains, matching iOS. The dedicated
-client never carries computer credentials. Incomplete files remain resumable;
-Delete removes them too. Every file must match size and SHA-256 before an
-installation marker is written; native loads reuse verification while the file stamp
-(size, modification time and catalogue identity) is unchanged.
+Downloads start only from a user action. A durable queue records catalogue pins,
+Wi-Fi/mobile-data policy and pause state. Android 14+ uses user-initiated transfer
+jobs; older supported versions use foreground WorkManager jobs, independently of
+ViewModel lifetime. An ongoing notification shows progress and offers Pause.
+Reopening restores eligible queued work; paused/cancelled work remains stopped.
+Large files use parallel 16-MiB ranges, initially two and up to four transfers
+across models, adapting concurrency to measured throughput. Useful range transfers
+compare Hugging Face and the approved hf-mirror.com source without probe traffic.
+Completed ranges and legacy contiguous partials survive relaunch and interrupted
+assembly. Responses must match exact range boundaries. Unsupported ranges fall
+back to one stream. Transient failures retry with backoff, jitter and Retry-After;
+403 retries refresh the original pinned delivery URL. Permanent errors retain data
+for explicit retry. Redirects remain restricted to approved HTTPS delivery hosts.
+The dedicated client never carries computer credentials.
+
+Models and feature cards show percentage, received/total bytes, smoothed speed,
+ETA and waiting/retrying/verifying states. Resumed bytes and duplicate retries
+never inflate speed. Pause/Cancel retain partial files; Cancel removes the restore
+intent, and Delete removes partials too. OS force-stop, thermal, battery and
+connectivity restrictions can interrupt transfers; background execution is not
+guaranteed. Each file must match size and SHA-256 before installation. Native
+loads reuse verification only while file metadata and catalogue identity match.
+Bounded local download diagnostics contain status/host metadata, never signed
+URLs, credentials or user content; OS job stop reasons are stored locally.
 
 Phone files and local licence receipts live under Android's `noBackupFilesDir`;
 they are app-private and excluded from cloud and device backups. Non-commercial,

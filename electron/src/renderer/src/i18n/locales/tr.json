@@ -4388,6 +4388,17 @@
       "supermetry": "Kendi sunucunuzda barındırılan, gizliliğe saygılı web analitiği.",
       "spicrawl": "Web sayfalarını yapay zekâ aracıları için Markdown veya yapılandırılmış veriye dönüştürün.",
       "special_sponsor": "Özel sponsor"
+    },
+    "downloads": {
+      "pause": "Duraklat",
+      "paused": "Duraklatıldı",
+      "connecting": "Bağlanıyor…",
+      "waiting": "Wi-Fi bekleniyor…",
+      "retrying": "{{seconds}} sn sonra yeniden deneniyor…",
+      "verifying": "Model doğrulanıyor…",
+      "speed": "{{speed}}/sn",
+      "eta": "Yaklaşık {{time}} kaldı",
+      "estimating": "Kalan süre hesaplanıyor…"
     }
   },
   "failureCause": {

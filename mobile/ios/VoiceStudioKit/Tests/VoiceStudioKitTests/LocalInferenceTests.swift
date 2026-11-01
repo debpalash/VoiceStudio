@@ -767,3 +767,78 @@ func realOmniSavedVoiceSpeechIsRecognizableWithoutRepeats() async throws {
         #expect(error.key == "mobile.speak.reference_required")
     }
 }
+
+private actor RecoveringRangeServer: HTTPTransport {
+    let server: RangeServer
+    var failed = false
+    init(bytes: Data) { server = RangeServer(bytes: bytes) }
+    func send(_ request: URLRequest) async throws -> HTTPReply { throw ClientError("unused") }
+    func download(_ request: URLRequest) async throws -> DownloadReply {
+        if !failed { failed = true; throw URLError(.networkConnectionLost) }
+        return try await server.download(request)
+    }
+}
+@Test func localDownloadRetriesTransientNetworkErrorsAutomatically() async throws {
+    let root = try localDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+    let model = try localFixture(),store = try ModelStore(root: root,available: { _ in 100_000_000_000 })
+    let server = RecoveringRangeServer(bytes: Data("model".utf8))
+    try await store.download(model,wifi: { true },transport: server)
+    #expect(await store.installed(model))
+}
+
+private actor ParallelRangeServer: HTTPTransport {
+    let server: RangeServer
+    private var active = 0
+    private(set) var peak = 0
+    init(bytes: Data) { server = RangeServer(bytes: bytes) }
+    func send(_ request: URLRequest) async throws -> HTTPReply { throw ClientError("unused") }
+    func download(_ request: URLRequest) async throws -> DownloadReply {
+        active += 1; peak = max(peak,active)
+        defer { active -= 1 }
+        try await Task.sleep(for: .milliseconds(50))
+        return try await server.download(request)
+    }
+}
+@Test func parallelModelDownloadReusesCompletedRangesAfterRelaunch() async throws {
+    let root = try localDirectory(); defer { try? FileManager.default.removeItem(at: root) }
+    let bytes = Data(repeating: 37,count: 50_331_648+73),model = try localFixture(bytes: bytes)
+    let chunk = root.appendingPathComponent(model.id+"/.partial/"+model.files[0].sha256+".ranges/0-16777215")
+    try FileManager.default.createDirectory(at: chunk.deletingLastPathComponent(),withIntermediateDirectories: true)
+    try bytes.prefix(16_777_216).write(to: chunk)
+    let store = try ModelStore(root: root,available: { _ in 100_000_000_000 }),server = ParallelRangeServer(bytes: bytes)
+    try await store.download(model,wifi: { true },transport: server)
+    #expect(await store.installed(model))
+    #expect(await server.peak >= 2)
+    #expect(await server.peak <= 4)
+    let requests = await server.server.requests
+    #expect(!requests.contains { $0.value(forHTTPHeaderField: "Range") == "bytes=0-16777215" })
+    let installed = try await store.authorize(model)
+    #expect(try Data(contentsOf: installed.appendingPathComponent("model.bin")) == bytes)
+}
+
+private final class DownloadTestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0.0
+    func advance() { lock.withLock { value += 1 } }
+    func read() -> Double { lock.withLock { value } }
+}
+private actor DownloadSnapshots {
+    var values: [ModelDownloadProgress] = []
+    func append(_ value: ModelDownloadProgress) { values.append(value) }
+}
+@Test func downloadMetricsExcludeResumedBytesAndResetEtaDuringRetry() async {
+    let clock = DownloadTestClock(),snapshots = DownloadSnapshots()
+    let meter = DownloadMeter(total: 1000,clock: { clock.read() },publish: { await snapshots.append($0) })
+    await meter.seed("file",bytes: 500); clock.advance()
+    await meter.update("file",bytes: 500)
+    #expect(await snapshots.values.last?.bytesPerSecond == 0)
+    #expect(await snapshots.values.last?.etaSeconds == nil)
+    clock.advance(); await meter.update("file",bytes: 600)
+    #expect(await snapshots.values.last!.bytesPerSecond > 0)
+    #expect(await snapshots.values.last!.bytesPerSecond <= 100)
+    clock.advance(); await meter.update("file",bytes: 550)
+    #expect(await snapshots.values.last?.received == 600)
+    await meter.update("file",bytes: 600,stage: "retrying",retry: 8)
+    #expect(await snapshots.values.last?.etaSeconds == nil)
+    #expect(await snapshots.values.last?.bytesPerSecond == 0)
+}

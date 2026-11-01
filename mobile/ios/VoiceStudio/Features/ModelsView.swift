@@ -29,12 +29,17 @@ struct ModelsView: View {
                     Text(ByteCountFormatter.string(fromByteCount: item.total_bytes, countStyle: .file)).font(.subheadline).foregroundStyle(theme.color("textMuted"))
                     if !item.fits() { Text(model.t("mobile.local.ram_required", ["ram": String(item.min_ram_gb)])) }
                     if let value = phone.progress[item.id] {
-                        ProgressView(value: value).accessibilityLabel(model.t("mobile.local.download"))
-                        Button(model.t("common.cancel")) { phone.cancel(item) }
+                        if let details = phone.downloadDetails[item.id] { ModelDownloadStatus(details: details) }
+                        else { ProgressView(value: value).accessibilityLabel(model.t("mobile.local.download")) }
+                        HStack {
+                            Button(model.t("mobile.downloads.pause")) { phone.pause(item) }
+                            Button(model.t("common.cancel")) { phone.cancel(item) }
+                        }
                     } else if phone.installed.contains(item.id) {
                         Button(model.t("common.delete"), role: .destructive) { Task { await phone.delete(item) } }
                     } else {
-                        ModelDownloadButton(items: [item], titleKey: "mobile.local.download")
+                        if phone.paused.contains(item.id) { Text(model.t("mobile.downloads.paused")) }
+                        ModelDownloadButton(items: [item], titleKey: phone.paused.contains(item.id) ? "mobile.simple.resume" : "mobile.local.download")
                     }
 
                 }.listRowBackground(theme.color("surface"))
@@ -254,7 +259,41 @@ struct LocalDownloadPrompt: View {
                     Text(model.t("mobile.local.ram_required", ["ram": String(item.min_ram_gb)])).font(.caption)
                 }
                 if prominent { ModelDownloadButton(items: needed, titleKey: "mobile.local.download", prominent: true) }
-                if let progress { ProgressView(value: progress).accessibilityLabel(model.t("mobile.local.download")) }
+                if progress != nil {
+                    ForEach(needed) { item in
+                        if let details = model.phone.downloadDetails[item.id] {
+                            if needed.count > 1 { Text(item.name).font(.caption) }
+                            ModelDownloadStatus(details: details)
+                        }
+                    }
+                }
         }
+    }
+}
+
+struct ModelDownloadStatus: View {
+    @Environment(AppModel.self) private var model
+    let details: ModelDownloadProgress
+    private var state: String {
+        switch details.stage {
+        case "waiting","connecting","verifying","paused": return model.t("mobile.downloads."+details.stage)
+        case "retrying": return model.t("mobile.downloads.retrying",["seconds": String(details.retrySeconds)])
+        default:
+            let speed = model.t("mobile.downloads.speed",["speed": ByteCountFormatter.string(fromByteCount: Int64(details.bytesPerSecond),countStyle: .file)])
+            let eta: String
+            if let seconds = details.etaSeconds,seconds.isFinite,seconds >= 0 {
+                let formatter = DateComponentsFormatter(); formatter.allowedUnits = [.hour,.minute,.second]; formatter.unitsStyle = .positional; formatter.zeroFormattingBehavior = .pad
+                eta = model.t("mobile.downloads.eta",["time": formatter.string(from: ceil(seconds)) ?? ""])
+            } else { eta = model.t("mobile.downloads.estimating") }
+            return speed+" · "+eta
+        }
+    }
+    var body: some View {
+        VStack(alignment: .leading,spacing: 4) {
+            ProgressView(value: details.fraction).accessibilityLabel(model.t("mobile.local.download"))
+            Text(details.fraction.formatted(.percent.precision(.fractionLength(0)).locale(Locale(identifier: model.l10n.locale))))
+            Text(model.t("mobile.local.transfer",["received": ByteCountFormatter.string(fromByteCount: details.received,countStyle: .file),"total": ByteCountFormatter.string(fromByteCount: details.total,countStyle: .file)]))
+            Text(state)
+        }.font(.caption).monospacedDigit().fixedSize(horizontal: false,vertical: true)
     }
 }

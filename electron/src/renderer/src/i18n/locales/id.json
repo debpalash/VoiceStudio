@@ -4388,6 +4388,17 @@
       "supermetry": "Analitik web yang dihosting sendiri dan ramah privasi.",
       "spicrawl": "Ubah halaman web menjadi Markdown atau data terstruktur untuk agen AI.",
       "special_sponsor": "Sponsor khusus"
+    },
+    "downloads": {
+      "pause": "Jeda",
+      "paused": "Dijeda",
+      "connecting": "Menghubungkan…",
+      "waiting": "Menunggu Wi-Fi…",
+      "retrying": "Mencoba lagi dalam {{seconds}} dtk…",
+      "verifying": "Memverifikasi model…",
+      "speed": "{{speed}}/dtk",
+      "eta": "Sekitar {{time}} lagi",
+      "estimating": "Memperkirakan waktu tersisa…"
     }
   },
   "failureCause": {

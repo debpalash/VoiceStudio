@@ -4388,6 +4388,17 @@
       "supermetry": "Analítica web aloxada por ti e respectuosa coa privacidade.",
       "spicrawl": "Converte páxinas web en Markdown ou datos estruturados para axentes de IA.",
       "special_sponsor": "Patrocinador especial"
+    },
+    "downloads": {
+      "pause": "Pausar",
+      "paused": "En pausa",
+      "connecting": "Conectando…",
+      "waiting": "Agardando pola wifi…",
+      "retrying": "Novo intento en {{seconds}} s…",
+      "verifying": "Verificando o modelo…",
+      "speed": "{{speed}}/s",
+      "eta": "Quedan uns {{time}}",
+      "estimating": "Calculando o tempo restante…"
     }
   },
   "failureCause": {

@@ -4388,6 +4388,17 @@
       "supermetry": "Self-hosted, privacy-friendly web analytics.",
       "spicrawl": "Turn web pages into Markdown or structured data for AI agents.",
       "special_sponsor": "Special sponsor"
+    },
+    "downloads": {
+      "pause": "Pause",
+      "paused": "Paused",
+      "connecting": "Connecting…",
+      "waiting": "Waiting for Wi-Fi…",
+      "retrying": "Retrying in {{seconds}}s…",
+      "verifying": "Verifying model…",
+      "speed": "{{speed}}/s",
+      "eta": "About {{time}} left",
+      "estimating": "Estimating time left…"
     }
   },
   "failureCause": {

@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.voicestudio.mobile.designsystem.*
 import com.voicestudio.mobile.features.*
 import com.voicestudio.mobile.local.*
+import com.voicestudio.mobile.data.modelDownloadDescription
 
 @Composable fun ModelsScreen(vm: StudioViewModel) {
     val state by vm.phone.state.collectAsState()
@@ -54,12 +55,16 @@ import com.voicestudio.mobile.local.*
             progress[model.id]?.let {p ->
                 if(p.running) {
                     LinearProgressIndicator(progress={if(p.total>0) (p.received.toFloat()/p.total).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth())
-                    Text(tr("mobile.local.transfer",mapOf("received" to Formatter.formatFileSize(context,p.received),"total" to Formatter.formatFileSize(context,p.total))))
+                    Text(modelDownloadDescription(context,LocalL10n.current,p),style=MaterialTheme.typography.bodySmall)
                 }
+                if(!p.running&&p.stage=="paused") Text(tr("mobile.downloads.paused"))
                 p.error?.let {ErrorMessage(it,mapOf("ram" to model.minRamGb))}
             }
-            if(downloading) Secondary("common.cancel") {vm.phone.cancelDownload(model)}
-            else if(!installed) Secondary(if(fits) "mobile.local.download" else "mobile.local.try_anyway") {
+            if(downloading) Row(horizontalArrangement=Arrangement.spacedBy(VSTheme.gap)) {
+                Secondary("mobile.downloads.pause") {vm.phone.pauseDownload(model)}
+                Secondary("common.cancel") {vm.phone.cancelDownload(model)}
+            }
+            else if(!installed) Secondary(if(progress[model.id]?.stage=="paused") "mobile.simple.resume" else if(fits) "mobile.local.download" else "mobile.local.try_anyway") {
                 try {if(!vm.phone.licence.accepted(model)) {downloadAfterAccept=true;terms=true} else vm.phone.download(model,preferences.allowMobileModels)} catch(e:Exception) {vm.fail(e)}
             } else Secondary("common.delete") {vm.phone.delete(model)}
         }
@@ -208,6 +213,10 @@ import com.voicestudio.mobile.local.*
                 val total=needed.sumOf {progress[it.id]?.total ?: it.totalBytes}
                 val received=needed.sumOf {progress[it.id]?.received ?: 0L}
                 LinearProgressIndicator(progress={(received.toFloat()/total.coerceAtLeast(1)).coerceIn(0f,1f)},modifier=Modifier.fillMaxWidth())
+                needed.forEach {item->progress[item.id]?.takeIf {it.running}?.let {p->
+                    if(needed.size>1) Text(item.name,style=MaterialTheme.typography.labelSmall)
+                    Text(modelDownloadDescription(LocalContext.current,LocalL10n.current,p),style=MaterialTheme.typography.bodySmall)
+                }}
             }
             if(prominent) {
                 Button(modifier=Modifier.fillMaxWidth(),enabled=running||queue.isEmpty(),onClick={

@@ -4384,6 +4384,17 @@
       "supermetry": "自行托管、注重隐私的网站分析工具。",
       "spicrawl": "将网页转换为适用于 AI 智能体的 Markdown 或结构化数据。",
       "special_sponsor": "特别赞助商"
+    },
+    "downloads": {
+      "pause": "暂停",
+      "paused": "已暂停",
+      "connecting": "正在连接…",
+      "waiting": "正在等待 Wi-Fi…",
+      "retrying": "{{seconds}} 秒后重试…",
+      "verifying": "正在验证模型…",
+      "speed": "{{speed}}/秒",
+      "eta": "大约还需 {{time}}",
+      "estimating": "正在估算剩余时间…"
     }
   },
   "failureCause": {

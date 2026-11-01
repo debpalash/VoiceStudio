@@ -4388,6 +4388,17 @@
       "supermetry": "Webbanalys på egen server med respekt för integriteten.",
       "spicrawl": "Omvandla webbsidor till Markdown eller strukturerade data för AI-agenter.",
       "special_sponsor": "Särskild sponsor"
+    },
+    "downloads": {
+      "pause": "Pausa",
+      "paused": "Pausad",
+      "connecting": "Ansluter…",
+      "waiting": "Väntar på Wi-Fi…",
+      "retrying": "Försöker igen om {{seconds}} s…",
+      "verifying": "Verifierar modellen…",
+      "speed": "{{speed}}/s",
+      "eta": "Ungefär {{time}} kvar",
+      "estimating": "Beräknar återstående tid…"
     }
   },
   "failureCause": {
