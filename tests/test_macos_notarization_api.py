@@ -82,4 +82,59 @@ def test_release_workflow_uses_api_secrets_and_prepares_a_key_file():
     assert "APPLE_ID" not in packaging["env"]
     assert "APPLE_APP_SPECIFIC_PASSWORD" not in packaging["env"]
     assert packaging["working-directory"] == "electron"
-    assert "source ../scripts/prepare-apple-notarization.sh" in packaging["run"]
+    assert 'source "$RUNNER_TEMP/prepare-apple-notarization.sh"' in packaging["run"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Exercises the macOS packaging shell")
+def test_old_tag_packaging_uses_workflow_helper_and_overrides_legacy_config(tmp_path):
+    import yaml
+    workflow = yaml.safe_load((ROOT / ".github/workflows/electron-release.yml").read_text(encoding="utf-8"))
+    steps = [s for job in workflow["jobs"].values() for s in job.get("steps", [])]
+    load = next(s for s in steps if s.get("name") == "Load notarization helper from workflow")
+    package = next(s for s in steps if "CSC_LINK" in s.get("env", {}))
+    # Simulate a checked-out historical tag: no new helper, password-based defaults.
+    checkout = tmp_path / "old-tag" / "electron"
+    checkout.mkdir(parents=True)
+    (checkout / "package.json").write_text('{"type":"module"}')
+    (checkout / "electron-builder.config.mjs").write_text(
+        'export default {mac:{notarize:false,hardenedRuntime:false}};')
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    (fake / "gh").write_text(
+        '#!/bin/bash\n[[ "$*" == *"?ref=workflow-sha"* ]] || exit 1\n'
+        'cat "$HELPER_SOURCE"\n')
+    (fake / "bun").write_text('#!/bin/bash\nprintf "%s\\n" "$@" > "$CAPTURE_ARGS"\n')
+    for file in fake.iterdir():
+        file.chmod(0o755)
+    runner = tmp_path / "runner"
+    runner.mkdir()
+    args_path = tmp_path / "args.txt"
+    env = {**clean_env(), **CERT, **API, "APPLE_API_KEY": "TEST PRIVATE KEY",
+           "PATH": str(fake) + os.pathsep + os.environ["PATH"],
+           "RUNNER_TEMP": str(runner), "RUNNER_OS": "macOS", "GITHUB_SHA": "workflow-sha",
+           "GITHUB_REPOSITORY": "test/repo", "PUBLISH": "true", "ALLOW_UNSIGNED": "false",
+           "HELPER_SOURCE": str(ROOT / "scripts/prepare-apple-notarization.sh"),
+           "CAPTURE_ARGS": str(args_path)}
+    subprocess.run(["bash", "-e", "-c", load["run"]], cwd=checkout, env=env, check=True)
+    script = package["run"].split("node tests/packaging-contract.mjs")[0]
+    script = script.replace("${{ matrix.platform }}", "darwin").replace("${{ matrix.flags }}", "--mac --arm64")
+    subprocess.run(["bash", "-e", "-c", script], cwd=checkout, env=env, check=True)
+    args = args_path.read_text().splitlines()[2:]  # bun x electron-builder
+    assert "--config.mac.notarize=true" in args
+    assert "--config.mac.hardenedRuntime=true" in args
+    assert not list(runner.glob("apple-notary.*"))
+    # Exercise the pinned builder's real CLI normalization and schema coercion.
+    js = """
+const { createRequire } = await import('node:module');
+const { realpathSync } = await import('node:fs');
+const require = createRequire(realpathSync(process.env.BUILDER_PACKAGE));
+const builder = require('./out/builder.js');
+const { getConfig, validateConfiguration } = require('app-builder-lib/out/util/config/config.js');
+const options = builder.normalizeOptions(builder.configureBuildCommand(builder.createYargs()).parse(JSON.parse(process.env.TEST_ARGS)));
+const config = await getConfig(process.cwd(), null, options.config);
+await validateConfiguration(config, {isEnabled:false});
+if (config.mac.notarize !== true || config.mac.hardenedRuntime !== true) throw new Error('Legacy config was not overridden');
+"""
+    subprocess.run(["node", "--input-type=module", "-e", js], cwd=checkout,
+        env={**clean_env(), "BUILDER_PACKAGE": str(ROOT / "electron/node_modules/electron-builder/package.json"),
+             "TEST_ARGS": json.dumps(args)}, check=True, capture_output=True, text=True)

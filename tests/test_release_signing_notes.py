@@ -66,6 +66,8 @@ def test_every_package_leg_reports_and_mac_check_ignores_allow_unsigned():
 
 
 def test_mac_package_discovers_the_imported_developer_id(tmp_path):
+    import shutil
+    shutil.copy(ROOT / "scripts/prepare-apple-notarization.sh", tmp_path)
     # electron-builder's findIdentity returns null without a lookup when discovery is
     # off and no identity is named, so a supplied certificate was silently ignored.
     import os
@@ -73,7 +75,7 @@ def test_mac_package_discovers_the_imported_developer_id(tmp_path):
     package = next(s for s in load_workflow()["jobs"]["package"]["steps"] if s.get("name") == "Package without publishing")
     script = package["run"].split("set -o pipefail")[0].replace("${{ matrix.platform }}", "darwin")
     for link, expected in [("base64-p12", "true"), ("", "false")]:
-        env = dict(os.environ, CSC_LINK=link, CSC_KEY_PASSWORD="x", CSC_IDENTITY_AUTO_DISCOVERY="false", PUBLISH="false")
+        env = dict(os.environ, CSC_LINK=link, CSC_KEY_PASSWORD="x", CSC_IDENTITY_AUTO_DISCOVERY="false", PUBLISH="false", RUNNER_TEMP=str(tmp_path))
         out = subprocess.run(["bash", "-e", "-c", script + 'echo "$CSC_IDENTITY_AUTO_DISCOVERY"'],
                              cwd=ROOT / "electron", env=env, capture_output=True, text=True, check=True).stdout.strip()
         assert out == expected, link
@@ -120,6 +122,8 @@ def test_release_notes_helper_comes_from_the_workflow_commit(tmp_path):
     (1, "codesign failed", 1, False),
 ])
 def test_package_builds_again_only_when_stapling_fails(tmp_path, failures, message, calls, ok):
+    import shutil
+    shutil.copy(ROOT / "scripts/prepare-apple-notarization.sh", tmp_path)
     # A dropped connection to Apple's ticket server failed beta.2 after notarization.
     import os
     import subprocess

@@ -15,4 +15,9 @@ if [ -n "${APPLE_API_KEY:-}${APPLE_API_KEY_ID:-}${APPLE_API_ISSUER:-}" ]; then
   trap 'rm -rf -- "$NOTARY_KEY_DIR"' EXIT
   (umask 077; printf '%s' "$APPLE_API_KEY" > "$NOTARY_KEY_DIR/AuthKey.p8")
   export APPLE_API_KEY="$NOTARY_KEY_DIR/AuthKey.p8"
+  if [ -n "${CSC_LINK:-}" ] && [ -n "${CSC_KEY_PASSWORD:-}" ]; then
+    # Older tag configs derive these from Apple password variables. Override
+    # them through electron-builder so rebuilding a tag still notarizes by API.
+    mac_notarization_args=(--config.mac.notarize=true --config.mac.hardenedRuntime=true)
+  fi
 fi

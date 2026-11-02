@@ -75,6 +75,11 @@ file. In GitHub Secrets, it is the PEM file content; the workflow prepares the
 path before invoking electron-builder. The API key authenticates notarization;
 the Developer ID certificate and its password still sign the application.
 
+The packaging workflow loads key preparation from its own commit, even when
+checking out an older release tag. With complete certificate/API credentials,
+it explicitly enables notarization and Hardened Runtime in electron-builder,
+so older password-based configuration cannot silently skip notarization.
+
 ## Local development
 
 For **local test artifacts only**, remove the quarantine attribute so an
