@@ -284,7 +284,7 @@ def test_load_uses_full_precision_without_cuda(monkeypatch, tmp_path, cuda):
 def test_managed_install_probes_late_imports_and_restores_dependencies():
     from services import sidecar_install
     spec = sidecar_install.SPECS['cosyvoice']
-    reqs = _REQUIREMENTS.read_text()
+    reqs = _REQUIREMENTS.read_text(encoding="utf-8")
     for dependency in ('gdown==6.4.0', 'wget==3.2', 'pyarrow==25.0.1'):
         assert dependency in reqs
     assert 'cosyvoice.dataset.processor' in spec.probe_code

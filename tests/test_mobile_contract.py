@@ -183,7 +183,7 @@ def test_mobile_models_registry_licence_gates_and_fingerprints():
         assert licence["terms"] == model_acceptance.terms(info, model["repo"])
         assert licence["credit"] and licence["rights_holder"] and licence["id"]
     omni = next(model for model in catalogue["models"] if model["capability"] == "clone")
-    desktop = json.loads((ROOT / "backend/engines/omnivoice_gguf/quant_map.json").read_text())["_meta"]
+    desktop = json.loads((ROOT / "backend/engines/omnivoice_gguf/quant_map.json").read_text(encoding="utf-8"))["_meta"]
     assert (omni["repo"], omni["revision"]) == (desktop["source_model"], desktop["source_commit_sha"])
     assert omni["licence"]["category"] == "non-commercial"
     assert omni["licence"]["requires_acceptance"] is True
@@ -311,7 +311,7 @@ def test_mobile_models_check_command_detects_stale_output(monkeypatch, tmp_path,
     assert mobile_models.main() == 0
     monkeypatch.setattr(sys, "argv", ["export_mobile_models.py", "--check"])
     assert mobile_models.main() == 0
-    data = json.loads(output.read_text())
+    data = json.loads(output.read_text(encoding="utf-8"))
     data["models"][0]["total_bytes"] += 1
     output.write_text(json.dumps(data))
     assert mobile_models.main() == 1
@@ -321,7 +321,7 @@ def test_mobile_models_pin_retains_desktop_omnivoice_revision(monkeypatch):
     source = _mobile_models_source()
     source["models"] = [next(row for row in source["models"] if row["capability"] == "clone")]
     model = source["models"][0]
-    expected = json.loads((ROOT / "backend/engines/omnivoice_gguf/quant_map.json").read_text())["_meta"]
+    expected = json.loads((ROOT / "backend/engines/omnivoice_gguf/quant_map.json").read_text(encoding="utf-8"))["_meta"]
     requests = []
 
     def request(path):
@@ -425,9 +425,9 @@ def test_ios_home_contributors_match_electron_snapshot():
     """The iOS Home cluster mirrors Electron's bundled snapshot, avatars included (offline)."""
     import re
 
-    data = (ROOT / "electron/src/renderer/src/features/home/home-contributors-data.ts").read_text()
+    data = (ROOT / "electron/src/renderer/src/features/home/home-contributors-data.ts").read_text(encoding="utf-8")
     electron = re.findall(r"login: '([^']+)'", data)
-    swift = (ROOT / "mobile/ios/VoiceStudio/Features/HomeContributors.swift").read_text()
+    swift = (ROOT / "mobile/ios/VoiceStudio/Features/HomeContributors.swift").read_text(encoding="utf-8")
     ios = re.findall(r'"([^"]+)"', re.search(r"static let logins = \[(.*?)\]", swift, re.S).group(1))
     assert ios == electron
     core = re.findall(r"'([^']+)'", re.search(r"homeCoreMaintainers = \[(.*?)\]", data, re.S).group(1))
@@ -440,11 +440,11 @@ def test_ios_home_contributors_match_electron_snapshot():
 def test_android_home_contributors_match_electron_snapshot():
     import re
 
-    electron = re.findall(r"login: '([^']+)'", (ROOT / "electron/src/renderer/src/features/home/home-contributors-data.ts").read_text())
-    kotlin = (ROOT / "mobile/android/features/src/main/kotlin/com/voicestudio/mobile/features/HomeContributors.kt").read_text()
+    electron = re.findall(r"login: '([^']+)'", (ROOT / "electron/src/renderer/src/features/home/home-contributors-data.ts").read_text(encoding="utf-8"))
+    kotlin = (ROOT / "mobile/android/features/src/main/kotlin/com/voicestudio/mobile/features/HomeContributors.kt").read_text(encoding="utf-8")
     android = re.findall(r'"([^"]+)"', re.search(r"val logins = listOf\((.*?)\)", kotlin, re.S).group(1))
     assert android == electron
-    data = (ROOT / "electron/src/renderer/src/features/home/home-contributors-data.ts").read_text()
+    data = (ROOT / "electron/src/renderer/src/features/home/home-contributors-data.ts").read_text(encoding="utf-8")
     core = re.findall(r"'([^']+)'", re.search(r"homeCoreMaintainers = \[(.*?)\]", data, re.S).group(1))
     android_core = re.findall(r'"([^"]+)"', re.search(r"coreMaintainers = setOf\((.*?)\)", kotlin, re.S).group(1))
     assert set(android_core) == set(core) == {"debpalash", "velixio"}
@@ -456,8 +456,8 @@ def test_android_home_contributors_match_electron_snapshot():
 def test_mobile_voice_design_traits_match_electron():
     result = subprocess.run([_bun(), "scripts/export-mobile-design.ts", "--check"], cwd=ROOT, capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
-    catalogue = json.loads((CONTRACT / "design.json").read_text())
-    locales = [json.loads(path.read_text()) for path in (ROOT / "electron/src/renderer/src/i18n/locales").glob("*.json")]
+    catalogue = json.loads((CONTRACT / "design.json").read_text(encoding="utf-8"))
+    locales = [json.loads(path.read_text(encoding="utf-8")) for path in (ROOT / "electron/src/renderer/src/i18n/locales").glob("*.json")]
     for category in catalogue["categories"]:
         for key in [category["label"], *[option["label"] for option in category["options"]]]:
             for locale in locales:
@@ -468,7 +468,7 @@ def test_mobile_voice_design_traits_match_electron():
 
 
 def test_speech_catalogue_offers_native_model_families_with_honest_reference_requirements():
-    models=json.loads((CONTRACT / "models.json").read_text())["models"]
+    models=json.loads((CONTRACT / "models.json").read_text(encoding="utf-8"))["models"]
     families={m["config"].get("model_type"):m for m in models if m["capability"] in {"tts","clone"}}
     assert {"kitten","kokoro","vits","supertonic","pocket","zipvoice"} <= families.keys()
     for family in ("pocket","zipvoice"):

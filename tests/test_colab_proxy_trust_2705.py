@@ -25,7 +25,7 @@ PROXY_HOST = PROXY.removeprefix("https://")
 
 
 def _launch_cell() -> str:
-    cells = json.loads(NOTEBOOK.read_text())["cells"]
+    cells = json.loads(NOTEBOOK.read_text(encoding="utf-8"))["cells"]
     return next("".join(c["source"]) for c in cells
                 if "# ── 5. Launch the backend" in "".join(c["source"]))
 

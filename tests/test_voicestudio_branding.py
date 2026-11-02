@@ -12,11 +12,11 @@ from packaging.version import Version
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CURRENT_VERSION = json.loads((ROOT / "package.json").read_text())["version"]
+CURRENT_VERSION = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["version"]
 
 
 def test_current_version_is_in_lockstep_everywhere() -> None:
-    package = json.loads((ROOT / "package.json").read_text())
+    package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
     assert package["version"] == CURRENT_VERSION
 
     mirrors = {
@@ -24,38 +24,38 @@ def test_current_version_is_in_lockstep_everywhere() -> None:
         "backend/core/version.py": r'(?m)^_FALLBACK_VERSION = "([^"]+)"',
     }
     for path, pattern in mirrors.items():
-        match = re.search(pattern, (ROOT / path).read_text())
+        match = re.search(pattern, (ROOT / path).read_text(encoding="utf-8"))
         assert match and match.group(1) == CURRENT_VERSION, path
 
     lock_contracts = {"uv.lock": r'name = "omnivoice"\s+version = "([^"]+)"'}
     for path, pattern in lock_contracts.items():
-        match = re.search(pattern, (ROOT / path).read_text())
+        match = re.search(pattern, (ROOT / path).read_text(encoding="utf-8"))
         # uv writes the PEP 440 form of a beta (0.5.9b1 for 0.5.9-beta.1).
         assert match and Version(match.group(1)) == Version(CURRENT_VERSION), path
 
 
 def test_visible_brand_surfaces_say_voicestudio() -> None:
     visible_files = ("electron/build/Info.plist", "electron/src/renderer/index.html")
-    product_name = json.loads((ROOT / "config/app.json").read_text())["productName"]
+    product_name = json.loads((ROOT / "config/app.json").read_text(encoding="utf-8"))["productName"]
     assert product_name == "VoiceStudio"
     for path in visible_files:
-        text = (ROOT / path).read_text()
+        text = (ROOT / path).read_text(encoding="utf-8")
         assert "__APP_PRODUCT_NAME__" in text, path
         assert "OmniVoice needs" not in text, path
         assert "OmniVoice may" not in text, path
         assert "OmniVoice Gallery" not in text, path
 
-    readme = (ROOT / "README.md").read_text()
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "**VoiceStudio** (default, powered by k2-fsa/OmniVoice)" in readme
     assert "**OmniVoice** (default)" not in readme
 
 
 def test_brand_mark_is_shared_and_fills_the_icon() -> None:
-    mark = (ROOT / "electron/src/shared/components/brand/VoiceStudioMark.jsx").read_text()
-    header = (ROOT / "electron/src/shared/components/Header.jsx").read_text()
-    about = (ROOT / "electron/src/shared/components/settings/AboutTab.jsx").read_text()
-    logo = (ROOT / "docs/logo.svg").read_text()
-    favicon = (ROOT / "electron/public/favicon.svg").read_text()
+    mark = (ROOT / "electron/src/shared/components/brand/VoiceStudioMark.jsx").read_text(encoding="utf-8")
+    header = (ROOT / "electron/src/shared/components/Header.jsx").read_text(encoding="utf-8")
+    about = (ROOT / "electron/src/shared/components/settings/AboutTab.jsx").read_text(encoding="utf-8")
+    logo = (ROOT / "docs/logo.svg").read_text(encoding="utf-8")
+    favicon = (ROOT / "electron/public/favicon.svg").read_text(encoding="utf-8")
 
     signature = "M6 34c4 0 5-7 9-7"
     assert signature in mark
@@ -69,7 +69,7 @@ def test_brand_mark_is_shared_and_fills_the_icon() -> None:
     # mark uses the full tile and keeps only a narrow 2-unit outer margin.
     assert 'x="2" y="2" width="60" height="60"' in logo
     assert "<circle" not in logo
-    assert 'src="docs/logo.png"' in (ROOT / "README.md").read_text()
+    assert 'src="docs/logo.png"' in (ROOT / "README.md").read_text(encoding="utf-8")
 
 
 def test_waveform_stroke_is_never_filled() -> None:
@@ -77,10 +77,10 @@ def test_waveform_stroke_is_never_filled() -> None:
     # waveform's closed curves painted a black band across every icon.
     signature = "M6 34c4 0 5-7 9-7"
     tracked = subprocess.run(["git", "ls-files", "*.svg"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
-    svgs = [ROOT / name for name in tracked if signature in (ROOT / name).read_text()]
+    svgs = [ROOT / name for name in tracked if signature in (ROOT / name).read_text(encoding="utf-8")]
     assert len(svgs) >= 3
     for svg in svgs:
-        stroke = re.search(rf'<path d="{re.escape(signature)}[^>]*>', svg.read_text())
+        stroke = re.search(rf'<path d="{re.escape(signature)}[^>]*>', svg.read_text(encoding="utf-8"))
         assert stroke and 'fill="none"' in stroke.group(0), svg
 
 
@@ -122,7 +122,7 @@ def test_canonical_logo_changes_run_mobile_builds(event: str) -> None:
 
 
 def test_python_package_metadata_points_to_voicestudio() -> None:
-    pyproject = (ROOT / "pyproject.toml").read_text()
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert 'Homepage = "https://github.com/debpalash/VoiceStudio"' in pyproject
     assert 'Repository = "https://github.com/debpalash/VoiceStudio"' in pyproject
     assert '"Upstream TTS Model" = "https://github.com/k2-fsa/OmniVoice"' in pyproject
@@ -141,20 +141,20 @@ def test_engine_help_names_the_app_not_the_upstream_model() -> None:
     )
     stale_help = re.compile(r"(?:restart|reinstall|re-launch|Run) OmniVoice")
     for path in paths:
-        text = (ROOT / path).read_text()
+        text = (ROOT / path).read_text(encoding="utf-8")
         assert not stale_help.search(text), path
 
 
 def test_compatibility_identifiers_stay_stable() -> None:
-    package = json.loads((ROOT / "package.json").read_text())
+    package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
     assert package["name"] == "omnivoice-studio-monorepo"
-    assert 'name = "omnivoice"' in (ROOT / "pyproject.toml").read_text()
-    app_config = json.loads((ROOT / "config/app.json").read_text())
+    assert 'name = "omnivoice"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    app_config = json.loads((ROOT / "config/app.json").read_text(encoding="utf-8"))
     assert app_config["appId"] == "com.voicestudio.desktop"
 
 
 def test_active_source_launch_is_electron_and_web_ports_clean_quietly() -> None:
-    scripts = json.loads((ROOT / "package.json").read_text())["scripts"]
+    scripts = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["scripts"]
     assert scripts["dev"] == "bun run --cwd electron dev"
     assert not any("tauri" in name for name in scripts)
     command = scripts["predev:web"]
@@ -163,7 +163,7 @@ def test_active_source_launch_is_electron_and_web_ports_clean_quietly() -> None:
 
 
 def test_icon_rail_has_no_static_section_captions_and_keeps_air_between_items() -> None:
-    rail = (ROOT / "electron/src/shared/components/NavRail.jsx").read_text()
+    rail = (ROOT / "electron/src/shared/components/NavRail.jsx").read_text(encoding="utf-8")
     for stale_caption in ("Start", "Create", "Workflows", "Reference"):
         assert stale_caption not in rail
     assert "pt-[18px]" in rail
@@ -171,7 +171,7 @@ def test_icon_rail_has_no_static_section_captions_and_keeps_air_between_items() 
 
 
 def test_electron_launch_preserves_an_existing_backend():
-    scripts = json.loads((ROOT / "package.json").read_text())["scripts"]
+    scripts = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["scripts"]
     for name in ("predev", "predesktop"):
         assert "clear-dev-ports" not in scripts[name]
         assert "desktop-runtime-preflight" not in scripts[name]

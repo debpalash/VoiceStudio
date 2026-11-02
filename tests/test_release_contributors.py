@@ -88,7 +88,7 @@ def _prepare(release, monkeypatch, tmp_path, changelog, **kwargs):
     for suffix in ("mac-arm64.dmg", "mac-x64.dmg", "linux-x64.deb"):
         (assets / f"VoiceStudio-1.2.3-beta.1-{suffix}").write_bytes(b"x")
     release.prepare(assets, "v1.2.3-beta.1", **kwargs)
-    return (assets / "RELEASE_NOTES.md").read_text()
+    return (assets / "RELEASE_NOTES.md").read_text(encoding="utf-8")
 
 
 CHANGELOG = "## [Unreleased]\n\n## [1.2.3-beta.1] — 2026-10-24\n\n- A fix (#1)\n\n## [1.2.2] — 2026-10-01\n\n- Old\n"

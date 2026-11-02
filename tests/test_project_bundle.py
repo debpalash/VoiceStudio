@@ -77,7 +77,7 @@ def test_symlinks_duplicates_compressed_bombs_and_corrupt_headers_are_refused(tm
 
 
 def test_fingerprints_extra_assets_and_future_versions_fail_without_publication(tmp_path):
-    base=json.loads((FIXTURES/'desktop-book.json').read_text())
+    base=json.loads((FIXTURES/'desktop-book.json').read_text(encoding="utf-8"))
     for index,change in enumerate([lambda m:m.update(version=2),lambda m:m.update(format='other'),lambda m:m.update(voices=[{'id':'x','metadata':{},'reference':'missing.wav'}]),lambda m:m['document'].update(desktop={'draft':{'lines':'bad'}})]):
         manifest=copy.deepcopy(base);change(manifest)
         with pytest.raises(ArchiveError):b.validate_manifest(manifest)
@@ -126,7 +126,7 @@ def test_repeated_phone_paragraphs_keep_voice_but_get_unique_desktop_line_ids():
     lambda document: document['desktop']['draft'].update(lines=[{'id':[], 'text':'Bad'}]),
 ])
 def test_malformed_editable_manuscript_collections_are_rejected(change):
-    manifest = json.loads((FIXTURES/'desktop-book.json').read_text())
+    manifest = json.loads((FIXTURES/'desktop-book.json').read_text(encoding="utf-8"))
     change(manifest['document'])
     with pytest.raises(ArchiveError): b.validate_manifest(manifest)
 
@@ -142,7 +142,7 @@ def test_export_rejects_invalid_desktop_draft_before_resolving_bindings(draft):
 
 @pytest.mark.parametrize('collection', ['cast','lines'])
 def test_duplicate_desktop_identities_are_rejected_before_unchanged_snapshot_import(collection):
-    manifest = json.loads((FIXTURES/'desktop-book.json').read_text())
+    manifest = json.loads((FIXTURES/'desktop-book.json').read_text(encoding="utf-8"))
     manifest['document']['desktop']['draft'][collection] = [{'id':'same'},{'id':'same'}]
     with pytest.raises(ArchiveError): b.validate_manifest(manifest)
     with pytest.raises(ArchiveError): b.manuscript_document(manifest['document']['desktop'])

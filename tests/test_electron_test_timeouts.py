@@ -11,5 +11,5 @@ ELECTRON = Path(__file__).resolve().parents[1] / "electron"
 
 def test_both_vitest_suites_allow_slow_ci_runners():
     for config in ("vite.config.ts", "vite.shared.config.ts"):
-        text = (ELECTRON / config).read_text()
+        text = (ELECTRON / config).read_text(encoding="utf-8")
         assert "testTimeout: process.env.CI ? 30_000 : 5_000" in text, config

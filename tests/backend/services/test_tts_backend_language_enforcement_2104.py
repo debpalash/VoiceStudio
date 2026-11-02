@@ -198,7 +198,7 @@ def test_every_picker_label_resolves_to_an_explicit_code(_StubBackend):
     root = Path(__file__).resolve().parents[3]
     be = _StubBackend(["en"])
     for picker in [root / "electron/src/shared/languages.json", root / "electron/src/renderer/src/lib/languages.json"]:
-        for label in json.loads(picker.read_text()):
+        for label in json.loads(picker.read_text(encoding="utf-8")):
             code = be._normalize_language_code(label)
             if label.lower() == "auto":
                 assert code is None

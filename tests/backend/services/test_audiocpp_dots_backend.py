@@ -127,7 +127,7 @@ def test_dots_server_serves_the_dots_family(tmp_path, monkeypatch, mods):
 
     assert seen == [bootstrap.DOTS]
     assert backend._server_json == tmp_path / "data" / "audiocpp-dots" / "server.json"
-    config = json.loads(backend._server_json.read_text())
+    config = json.loads(backend._server_json.read_text(encoding="utf-8"))
     assert config["port"] == 17861
     assert config["models"][0]["family"] == "dots_tts"
     assert config["models"][0]["id"].startswith("dots-tts-soar-")

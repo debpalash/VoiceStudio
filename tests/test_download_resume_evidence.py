@@ -231,7 +231,7 @@ def test_checkpoint_unlink_failure_preserves_partial_and_destination(tmp_path, r
         asyncio.run(download())
     assert fetched == []
     assert destination.read_bytes() == b'previous verified model'
-    assert checkpoint.read_text() == record
+    assert checkpoint.read_text(encoding="utf-8") == record
     if partial is None:
         assert not path.exists()
     else:

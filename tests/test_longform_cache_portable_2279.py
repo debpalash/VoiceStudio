@@ -258,10 +258,10 @@ def test_miss_names_the_changed_input(data_dirs, caplog):
     assert "reference audio" not in caplog.text
     # The record holds digests only — no script, transcript or lexicon text.
     records = list((cache / "inputs").iterdir())
-    blob = "".join(p.read_text() for p in records)
+    blob = "".join(p.read_text(encoding="utf-8") for p in records)
     for text in ("Why", "transcript", "hello", "LEXICON-SENTINEL", "v1.wav"):
         assert text not in blob
-    assert all(isinstance(json.loads(p.read_text()), dict) for p in records)
+    assert all(isinstance(json.loads(p.read_text(encoding="utf-8")), dict) for p in records)
 
 
 # ── Durable publication ─────────────────────────────────────────────────────
@@ -353,7 +353,7 @@ def test_backend_startup_records_the_voices_root(tmp_path, monkeypatch):
     cache = outputs / lr.LONGFORM_CACHE_SUBDIR
     cache.mkdir(parents=True)
     lr.record_startup_voices_root()
-    roots = json.loads((cache / lr.VOICES_ROOTS_FILE).read_text())
+    roots = json.loads((cache / lr.VOICES_ROOTS_FILE).read_text(encoding="utf-8"))
     assert roots == [str(tmp_path / "voices")]
 
 

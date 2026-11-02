@@ -79,18 +79,18 @@ def test_rendered_files_satisfy_mobile_contract_parsers():
 
 def test_current_files_round_trip_unchanged():
     """The committed snapshot is exactly what the generator would write for the same data."""
-    ts = uc.DATA_TS.read_text()
+    ts = uc.DATA_TS.read_text(encoding="utf-8")
     people = [{"login": l, "commits": int(c)} for l, c in re.findall(r"login: '([^']+)', commits: (\d+)", ts)]
     assert uc.render_ts(people, uc.parse_core(ts), uc.parse_date(ts)) == ts
     logins = [p["login"] for p in people]
-    assert uc.render_swift(uc.SWIFT.read_text(), logins) == uc.SWIFT.read_text()
-    assert uc.render_kotlin(uc.KOTLIN.read_text(), logins) == uc.KOTLIN.read_text()
+    assert uc.render_swift(uc.SWIFT.read_text(encoding="utf-8"), logins) == uc.SWIFT.read_text(encoding="utf-8")
+    assert uc.render_kotlin(uc.KOTLIN.read_text(encoding="utf-8"), logins) == uc.KOTLIN.read_text(encoding="utf-8")
     core = uc.parse_core(ts)
     for readme in uc.READMES:
-        assert uc.render_readme(readme.read_text(), [l for l in logins if l not in core], readme) == readme.read_text()
+        assert uc.render_readme(readme.read_text(encoding="utf-8"), [l for l in logins if l not in core], readme) == readme.read_text(encoding="utf-8")
     for login in logins:
         imageset = uc.XCASSETS / f"contributor-{login}.imageset"
-        assert (imageset / "Contents.json").read_text() == uc.imageset_contents(login)
+        assert (imageset / "Contents.json").read_text(encoding="utf-8") == uc.imageset_contents(login)
         assert (imageset / f"{login}.png").read_bytes() == (uc.AVATARS / f"{login}.png").read_bytes()
 
 
@@ -124,19 +124,19 @@ def test_main_writes_every_target_then_is_idempotent(sandbox):
         return _image("JPEG" if "ana" in url else "PNG", "blue" if "ana" in url else "green")
 
     assert uc.main(fetch) == 0
-    ts = uc.DATA_TS.read_text()
+    ts = uc.DATA_TS.read_text(encoding="utf-8")
     assert re.findall(r"login: '([^']+)'", ts) == ["debpalash", "ana"] and "2020-01-01" not in ts
     assert sorted(p.name for p in uc.AVATARS.iterdir()) == ["ana.png", "debpalash.png"]
     assert sorted(p.name for p in uc.XCASSETS.iterdir()) == ["contributor-ana.imageset", "contributor-debpalash.imageset"]
-    assert uc.SWIFT.read_text() == 'static let logins = ["debpalash", "ana"]\n'
-    assert uc.KOTLIN.read_text() == 'val logins = listOf("debpalash", "ana")\n'
-    assert "github.com/ana.png" in uc.READMES[0].read_text() and "github.com/debpalash" not in uc.READMES[0].read_text()
+    assert uc.SWIFT.read_text(encoding="utf-8") == 'static let logins = ["debpalash", "ana"]\n'
+    assert uc.KOTLIN.read_text(encoding="utf-8") == 'val logins = listOf("debpalash", "ana")\n'
+    assert "github.com/ana.png" in uc.READMES[0].read_text(encoding="utf-8") and "github.com/debpalash" not in uc.READMES[0].read_text(encoding="utf-8")
 
     # Same data on a later day: nothing changes, the snapshot date included.
     people = uc.select_contributors(rows)
     avatars = {p["login"]: uc.normalise_png(fetch(uc.avatar_url(p["avatar_url"]))) for p in people}
     assert uc.apply(people, avatars, "2099-12-31") == []
-    assert uc.DATA_TS.read_text() == ts
+    assert uc.DATA_TS.read_text(encoding="utf-8") == ts
 
 
 def test_main_refuses_without_owner(sandbox):

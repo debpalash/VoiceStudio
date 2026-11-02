@@ -70,7 +70,7 @@ def test_externalized_graph_survives_retry_then_is_cleaned(fu, monkeypatch, tmp_
     async def spawn(cmd, **kwargs):
         flag = '-filter_complex_script' if '-filter_complex_script' in cmd else '-/filter_complex'
         path = Path(cmd[cmd.index(flag) + 1])
-        assert path.read_text() == '[0:a]anull[out]'
+        assert path.read_text(encoding="utf-8") == '[0:a]anull[out]'
         paths.append(path)
         return Process(cmd)
     monkeypatch.setattr(fu, '_spawn_with_retry', spawn)

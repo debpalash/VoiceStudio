@@ -79,7 +79,7 @@ def test_install_and_cleanup_preserve_other_keychains_and_remove_decoded_identit
 
 @pytest.mark.parametrize("filename,job,archive_name", [("ios-testflight.yml", "testflight", "Archive signed app"), ("mobile-release.yml", "ios", "Archive")])
 def test_all_signed_ios_archives_require_reusable_identity_and_cleanup(filename, job, archive_name):
-    workflow = yaml.load((ROOT / ".github/workflows" / filename).read_text(), Loader=yaml.BaseLoader)
+    workflow = yaml.load((ROOT / ".github/workflows" / filename).read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
     steps = workflow["jobs"][job]["steps"]
     install = next(step for step in steps if step.get("name") == "Install reusable archive identity")
     archive = next(step for step in steps if step.get("name") == archive_name)
@@ -96,7 +96,7 @@ def test_all_signed_ios_archives_require_reusable_identity_and_cleanup(filename,
 
 @pytest.mark.parametrize("filename,job", [("ios-testflight.yml", "testflight"), ("mobile-release.yml", "ios")])
 def test_workflow_cleanup_removes_helper_but_preserves_failure_and_recovery_marker(filename, job, tmp_path):
-    workflow = yaml.load((ROOT / ".github/workflows" / filename).read_text(), Loader=yaml.BaseLoader)
+    workflow = yaml.load((ROOT / ".github/workflows" / filename).read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
     cleanup = next(step for step in workflow["jobs"][job]["steps"] if step.get("name") == "Remove API key")
     helper = tmp_path / "archive_signing.py"
     helper.write_text("raise SystemExit(17)\n")
@@ -122,7 +122,7 @@ def test_command_timeout_is_bounded_and_does_not_expose_signing_arguments(monkey
 
 
 def test_unsigned_older_release_cleanup_needs_no_new_signing_helper(tmp_path):
-    workflow = yaml.load((ROOT / ".github/workflows/mobile-release.yml").read_text(), Loader=yaml.BaseLoader)
+    workflow = yaml.load((ROOT / ".github/workflows/mobile-release.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
     cleanup = next(step for step in workflow["jobs"]["ios"]["steps"] if step.get("name") == "Remove API key")
     result = subprocess.run(["bash", "-e", "-c", cleanup["run"]], cwd=tmp_path,
                             env={**os.environ, "RUNNER_TEMP": str(tmp_path)}, capture_output=True, text=True)
@@ -130,7 +130,7 @@ def test_unsigned_older_release_cleanup_needs_no_new_signing_helper(tmp_path):
 
 
 def test_signed_older_release_uses_the_workflows_own_signing_tools():
-    workflow = yaml.load((ROOT / ".github/workflows/mobile-release.yml").read_text(), Loader=yaml.BaseLoader)
+    workflow = yaml.load((ROOT / ".github/workflows/mobile-release.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
     steps = workflow["jobs"]["ios"]["steps"]
     tools = next(step for step in steps if step.get("name") == "Checkout signing tools")
     install = next(step for step in steps if step.get("name") == "Install reusable archive identity")

@@ -8,7 +8,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "microsoft-store.yml"
 
 
 def load_workflow():
-    return yaml.load(WORKFLOW.read_text(), Loader=yaml.BaseLoader)
+    return yaml.load(WORKFLOW.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
 
 
 def test_store_workflow_is_manual_signed_and_distribution_scoped():
@@ -47,7 +47,7 @@ def test_staging_is_owner_gated_immutable_and_does_not_submit_listing():
     stage_script = stage["steps"][-1]["run"]
     assert "Refusing to replace immutable Store package" in stage_script
     assert "--clobber" not in stage_script
-    source = WORKFLOW.read_text()
+    source = WORKFLOW.read_text(encoding="utf-8")
     assert "store-submission-api" not in source
     assert "Partner Center submission remains owner-gated" in source
 

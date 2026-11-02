@@ -173,7 +173,7 @@ def test_cancel_stops_an_in_flight_snapshot_download_and_cleans_up(
     assert sorted(p.name for p in (repo / "blobs").iterdir()) == ["oldblob"]
     assert sorted(p.name for p in (repo / "snapshots").iterdir()) == [OLD_COMMIT]
     assert (repo / "snapshots" / OLD_COMMIT / "model.safetensors").read_bytes() == b"old weights"
-    assert (repo / "refs" / "main").read_text() == OLD_COMMIT
+    assert (repo / "refs" / "main").read_text(encoding="utf-8") == OLD_COMMIT
     assert not (cache / ".locks" / FOLDER).exists()
     other = cache / "models--someone--other" / "blobs"
     assert sorted(p.name for p in other.iterdir()) == ["busy.incomplete", "keep"]
@@ -317,8 +317,8 @@ def test_rollback_removes_only_what_the_download_added(tmp_path):
     assert sorted(p.name for p in (repo / "snapshots" / OLD_COMMIT).iterdir()) == [
         "model.safetensors"
     ]
-    assert (repo / "refs" / "main").read_text() == OLD_COMMIT
-    assert (repo / "voicestudio-revision").read_text() == OLD_COMMIT + "\n"
+    assert (repo / "refs" / "main").read_text(encoding="utf-8") == OLD_COMMIT
+    assert (repo / "voicestudio-revision").read_text(encoding="utf-8") == OLD_COMMIT + "\n"
     assert (tmp_path / "models--someone--other" / "blobs" / "busy.incomplete").exists()
 
 
