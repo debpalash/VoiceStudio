@@ -105,7 +105,7 @@ def _run(tmp_path, *, choco_exit, succeed_on_attempt=None):
         [shutil.which("bash") or "/bin/bash", str(script)],
         capture_output=True, text=True, env=env, timeout=120,
     )
-    attempts = int(counter.read_text().strip()) if counter.exists() else 0
+    attempts = int(counter.read_text(encoding="utf-8").strip()) if counter.exists() else 0
     return proc, attempts
 
 

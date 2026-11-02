@@ -94,7 +94,7 @@ def test_token_checks_go_only_to_hugging_face(tmp_path):
     paths = {r["url"].split("huggingface.co", 1)[1] for r in authed}
     assert "/api/whoami-v2" in paths
     assert any(p.endswith("/.gitattributes") for p in paths), paths
-    assert Path(env["HF_TOKEN_PATH"]).read_text() == _TOKEN
+    assert Path(env["HF_TOKEN_PATH"]).read_text(encoding="utf-8") == _TOKEN
 
     control = [r for r in result["control"] if r["auth"]]
     assert control and control[0]["url"].startswith("https://hf-mirror.com/"), result["control"]

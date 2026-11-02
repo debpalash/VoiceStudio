@@ -193,7 +193,7 @@ def test_save_writes_both_store_and_hub_files(fresh_resolver, monkeypatch):
 
     from services import settings_store
     assert settings_store.get_hf_token() == APP_TOKEN
-    assert Path(constants.HF_TOKEN_PATH).read_text() == APP_TOKEN
+    assert Path(constants.HF_TOKEN_PATH).read_text(encoding="utf-8") == APP_TOKEN
 
 
 def test_save_never_writes_a_git_credential(fresh_resolver, monkeypatch):
@@ -308,7 +308,7 @@ def test_save_and_clear_use_the_same_real_hub_files(fresh_resolver, monkeypatch)
     from huggingface_hub import constants
     _mock_whoami(monkeypatch, {APP_TOKEN: {"name": "test", "auth": {"accessToken": {"role": "read", "displayName": "synthetic"}}}})
     fresh_resolver.save_app_token(APP_TOKEN)
-    assert Path(constants.HF_TOKEN_PATH).read_text() == APP_TOKEN
+    assert Path(constants.HF_TOKEN_PATH).read_text(encoding="utf-8") == APP_TOKEN
     assert Path(constants.HF_STORED_TOKENS_PATH).exists()
     assert fresh_resolver._read_hf_cli() == APP_TOKEN
     fresh_resolver.clear_app_token()

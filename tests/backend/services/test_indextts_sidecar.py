@@ -474,7 +474,7 @@ def test_no_indextts_import_in_tts_backend():
     Anything that triggers an `import indextts` at module load time
     re-opens #42.
     """
-    src = (REPO_ROOT / "backend" / "services" / "tts_backend.py").read_text()
+    src = (REPO_ROOT / "backend" / "services" / "tts_backend.py").read_text(encoding="utf-8")
     # Allow comments / docstring mentions of the package name; reject
     # actual import statements at module scope.
     for bad in ("from indextts", "import indextts"):
@@ -492,7 +492,7 @@ def test_no_indextts_import_in_tts_backend():
 
 def test_sidecar_imports_indextts():
     """backend/engines/indextts/main.py imports indextts (lazy, inside fn)."""
-    src = (REPO_ROOT / "backend" / "engines" / "indextts" / "main.py").read_text()
+    src = (REPO_ROOT / "backend" / "engines" / "indextts" / "main.py").read_text(encoding="utf-8")
     assert "from indextts.infer_v2_5 import IndexTTS2" in src
     assert "from indextts.infer_v2 import IndexTTS2" in src
 

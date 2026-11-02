@@ -32,4 +32,4 @@ def test_macos_sherpa_uses_the_matching_verified_archive(tmp_path, monkeypatch, 
     library = builder.macos_sherpa()
     pin = builder.PINS["sherpa-onnx"][key]
     assert requested == [(pin["url"], pin["sha256"])]
-    assert (tmp_path / "macos/sherpa-path.txt").read_text() == library
+    assert (tmp_path / "macos/sherpa-path.txt").read_text(encoding="utf-8") == library

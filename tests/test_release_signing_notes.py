@@ -48,7 +48,7 @@ def test_missing_reports_fail(tmp_path):
 
 
 def load_workflow():
-    return yaml.load((ROOT / ".github/workflows/electron-release.yml").read_text(), Loader=yaml.BaseLoader)
+    return yaml.load((ROOT / ".github/workflows/electron-release.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
 
 
 def test_every_package_leg_reports_and_mac_check_ignores_allow_unsigned():
@@ -108,7 +108,7 @@ def test_release_notes_helper_comes_from_the_workflow_commit(tmp_path):
     env = dict(os.environ, PATH=f"{fake}{os.pathsep}{os.environ['PATH']}", GITHUB_SHA="workflow-sha",
                GITHUB_REPOSITORY="debpalash/VoiceStudio", RUNNER_TEMP=str(tmp_path))
     subprocess.run(["bash", "-e", "-c", describe["run"]], cwd=work, env=env, check=True)
-    text = (work / "release-assets/RELEASE_NOTES.md").read_text()
+    text = (work / "release-assets/RELEASE_NOTES.md").read_text(encoding="utf-8")
     # The table leads the notes; the changelog follows unchanged.
     assert "| Linux x64 |" in text
     assert text.index("### Installer signing") < text.index("**Highlights**")
@@ -138,4 +138,4 @@ def test_package_builds_again_only_when_stapling_fails(tmp_path, failures, messa
                CSC_LINK="", PUBLISH="false")
     result = subprocess.run(["bash", "-e", "-c", script], env=env, capture_output=True, text=True)
     assert (result.returncode == 0) is ok, result.stdout + result.stderr
-    assert len(count.read_text().splitlines()) == calls
+    assert len(count.read_text(encoding="utf-8").splitlines()) == calls

@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.mark.parametrize('flavor,empty,success', [('cuda', False, True), ('rocm', False, True), ('cuda', True, False)])
 def test_compat_install_is_isolated_and_cuda_only(tmp_path, flavor, empty, success, machine='x86_64'):
-    dockerfile = (ROOT / 'deploy/Dockerfile').read_text()
+    dockerfile = (ROOT / 'deploy/Dockerfile').read_text(encoding="utf-8")
     match = re.search(r'RUN if \[ "\$GPU_FLAVOR" = "cuda" \] && \[ "\$\(uname -m\)" != "aarch64" \]; then \\\n.*?    fi', dockerfile, re.S)
     assert match, 'CUDA compatibility install is absent'
     script = match[0].removeprefix('RUN ').replace('\\\n', '')
@@ -45,7 +45,7 @@ if not {empty!r}: (root/'nvidia/cudnn/lib/libcudnn_ops_infer.so.8').touch()
 
 def test_compat_install_is_skipped_on_aarch64(tmp_path):
     """#2831: no aarch64 cuDNN 8 wheel exists, so a CUDA arm64 build must not fail on it."""
-    dockerfile = (ROOT / 'deploy/Dockerfile').read_text()
+    dockerfile = (ROOT / 'deploy/Dockerfile').read_text(encoding="utf-8")
     match = re.search(r'RUN if \[ "\$GPU_FLAVOR" = "cuda" \] && \[ "\$\(uname -m\)" != "aarch64" \]; then \\\n.*?    fi', dockerfile, re.S)
     script = match[0].removeprefix('RUN ').replace('\\\n', '')
     bindir = tmp_path / 'bin'

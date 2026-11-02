@@ -21,7 +21,7 @@ def test_staged_media_preserves_source_bytes_provenance_and_pending_clearance(tm
     target = tmp_path / "app resources/media-tools"
     archive = {"url": "https://example.invalid/pinned.zip", "sha256": "a" * 64, "bytes": 12}
     stager().stage_media(source, target, archive)
-    manifest = json.loads((target / "provenance.json").read_text())
+    manifest = json.loads((target / "provenance.json").read_text(encoding="utf-8"))
     assert manifest["archive"] == archive
     assert manifest["redistributionApproved"] is False
     for item in manifest["files"]:

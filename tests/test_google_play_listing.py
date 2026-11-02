@@ -7,7 +7,7 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-LISTING = json.loads((ROOT / "store/google-play/listing.json").read_text())
+LISTING = json.loads((ROOT / "store/google-play/listing.json").read_text(encoding="utf-8"))
 
 
 def test_text_fits_play_limits():
@@ -18,7 +18,7 @@ def test_text_fits_play_limits():
 
 
 def test_package_name_matches_the_app():
-    gradle = (ROOT / "mobile/android/app/build.gradle.kts").read_text()
+    gradle = (ROOT / "mobile/android/app/build.gradle.kts").read_text(encoding="utf-8")
     assert f'applicationId = "{LISTING["packageName"]}"' in gradle
 
 
@@ -26,7 +26,7 @@ def test_every_manifest_permission_is_declared():
     # A new permission needs its Play Console reason written before it ships. Library
     # modules merge into the app, so read every module's manifest (#3257 review).
     manifests = [p for p in (ROOT / "mobile/android").rglob("src/main/AndroidManifest.xml") if "build" not in p.parts]
-    used = {name for path in manifests for name in re.findall(r'uses-permission android:name="([^"]+)"', path.read_text())}
+    used = {name for path in manifests for name in re.findall(r'uses-permission android:name="([^"]+)"', path.read_text(encoding="utf-8"))}
     assert "android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" in used
     assert used == set(LISTING["permissions"])
 
@@ -42,7 +42,7 @@ def test_graphics_meet_play_specs():
 
 
 def languages(capability):
-    models = json.loads((ROOT / "mobile/contract/models.json").read_text())["models"]
+    models = json.loads((ROOT / "mobile/contract/models.json").read_text(encoding="utf-8"))["models"]
     return set().union(*(m["languages"] for m in models if m["capability"] == capability))
 
 
@@ -61,7 +61,7 @@ def test_store_languages_match_the_phone_models():
 
 def test_data_safety_declares_the_report_the_app_sends():
     # The Report sheet sends user-written text to VoiceStudio (mobile/contract/SPEC.md).
-    spec = (ROOT / "mobile/contract/SPEC.md").read_text()
+    spec = (ROOT / "mobile/contract/SPEC.md").read_text(encoding="utf-8")
     assert "## Reporting generated content" in spec
     safety = LISTING["dataSafety"]
     assert safety["collectsData"] and not safety["sharesData"] and safety["encryptedInTransit"]
@@ -72,7 +72,7 @@ def test_data_safety_declares_the_report_the_app_sends():
 def test_in_app_privacy_line_names_every_network_use():
     # The phone's Home/Settings privacy line must list what the data safety form
     # declares; it missed content reports when they shipped (#3268).
-    strings = json.loads((ROOT / "mobile/contract/strings.mobile.en.json").read_text())
+    strings = json.loads((ROOT / "mobile/contract/strings.mobile.en.json").read_text(encoding="utf-8"))
     line = strings["mobile"]["local"]["privacy"]
     assert LISTING["dataSafety"]["collectsData"]
     for use in ("model downloads", "reports", "paired computer"):

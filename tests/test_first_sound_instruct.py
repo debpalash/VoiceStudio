@@ -6,7 +6,7 @@ def test_first_sound_instruction_passes_runtime_taxonomy_validation():
     from omnivoice.models.omnivoice import _resolve_instruct
 
     defaults = json.loads(
-        (Path(__file__).parents[1] / "electron/src/shared/utils/firstSound.json").read_text()
+        (Path(__file__).parents[1] / "electron/src/shared/utils/firstSound.json").read_text(encoding="utf-8")
     )
     instruct = defaults["instruct"]
     # VoiceDesign requires a nonempty description; OmniVoice validates tokens.

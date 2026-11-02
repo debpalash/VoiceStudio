@@ -40,7 +40,7 @@ def test_recipe_identity_invalidates_on_any_byte_change(tmp_path):
     path = tmp_path / "recipe.json"
     path.write_text(json.dumps(recipe.load_recipe()))
     initial = recipe.recipe_identity(path)
-    path.write_text(path.read_text() + "\n")
+    path.write_text(path.read_text(encoding="utf-8") + "\n")
     assert recipe.recipe_identity(path) != initial
     recipe.validate_target("win32", (3, 12), "win-amd64")
 

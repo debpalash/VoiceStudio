@@ -135,7 +135,7 @@ def test_windows_build_ships_its_cpp_runtime_with_checksums(tmp_path):
         "vcruntime140_1.dll": "vcrt1", "vcomp140.dll": "omp",
     })
     assert result.returncode == 0, result.stdout + result.stderr
-    manifest = (tmp_path / "bin" / "checksums.sha256").read_text()
+    manifest = (tmp_path / "bin" / "checksums.sha256").read_text(encoding="utf-8")
     for name in ("omnivoice-tts-windows-x86_64.exe", "ggml-cpu-haswell.dll", "msvcp140.dll",
                  "vcruntime140.dll", "vcruntime140_1.dll", "vcomp140.dll"):
         assert (tmp_path / "bin" / name).is_file(), name

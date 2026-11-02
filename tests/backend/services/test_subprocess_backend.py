@@ -438,7 +438,7 @@ def test_sidecar_crash_releases_resources(monkeypatch, echo_backend):
 
 def test_no_multiprocessing_imports():
     """Locked decision D4 — no `mp.Process`/`mp.fork`/`mp.spawn` allowed."""
-    src = (REPO_ROOT / "backend" / "services" / "subprocess_backend.py").read_text()
+    src = (REPO_ROOT / "backend" / "services" / "subprocess_backend.py").read_text(encoding="utf-8")
     for bad in ("mp.Process", "mp.fork", "mp.spawn",
                 "multiprocessing.Process", "multiprocessing.fork",
                 "multiprocessing.spawn"):
