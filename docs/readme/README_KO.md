@@ -310,6 +310,7 @@ export OMNIVOICE_API_KEY="$(openssl rand -hex 32)"
 docker run -d --name omnivoice \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable
 printf 'API key: %s\n' "$OMNIVOICE_API_KEY"

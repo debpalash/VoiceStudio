@@ -85,6 +85,7 @@ docker pull ghcr.io/debpalash/voicestudio:stable
 docker run -d --name omnivoice \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable
 ```
@@ -104,6 +105,7 @@ Open [http://localhost:3900](http://localhost:3900). The first run downloads
 docker run -d --name omnivoice --gpus all \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable
 ```
@@ -123,6 +125,7 @@ native `linux/arm64` image:
 docker run -d --name omnivoice --gpus all \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable-cuda-arm64
 ```
@@ -164,6 +167,7 @@ docker run -d --name omnivoice \
   --device /dev/kfd --device /dev/dri \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable-rocm
 ```
@@ -188,6 +192,7 @@ docker run -d --name omnivoice \
   --ipc=host --shm-size 8G \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable-rocm
 ```
@@ -426,6 +431,7 @@ so. If the host is yours alone, you can let it skip the PIN:
 docker run -d -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
   -e OMNIVOICE_TRUST_HOST_LOOPBACK=1 \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v voicestudio_data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable
 ```

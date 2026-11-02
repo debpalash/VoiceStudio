@@ -27,6 +27,31 @@ def test_every_studio_docker_run_passes_the_admin_key(relative_path):
         assert '-e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY"' in command
 
 
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "README.md",
+        "docs/readme/README_CN.md",
+        "docs/readme/README_JA.md",
+        "docs/readme/README_KO.md",
+        "docs/readme/README_RU.md",
+        "docs/install/docker.md",
+        "deploy/dockerhub-overview.md",
+    ],
+)
+def test_docker_commands_use_the_mounted_data_directory(relative_path):
+    """Keep saved work on the named volume when a container is replaced."""
+    text = (ROOT / relative_path).read_text(encoding="utf-8")
+    commands = [
+        block
+        for block in re.findall(r"```(?:bash|sh)\n(.*?)```", text, flags=re.DOTALL)
+        if "docker run" in block and ":/app/omnivoice_data" in block
+    ]
+    assert commands
+    for command in commands:
+        assert "-e OMNIVOICE_DATA_DIR=/app/omnivoice_data" in command
+
+
 def test_every_compose_studio_service_receives_the_admin_key():
     text = (ROOT / "deploy/docker-compose.yml").read_text(encoding="utf-8")
     studio_half = text.split("worker-gpu:", 1)[0]
