@@ -21,7 +21,8 @@ jobs:
     timeout-minutes: 60
     container:
       image: archlinux:base-devel
-      options: --security-opt seccomp=unconfined
+      # Permit Chromium's namespace sandbox inside this disposable CI container.
+      options: --security-opt seccomp=unconfined --security-opt apparmor=unconfined --cap-add=SYS_ADMIN
     steps:
       - name: Install validation tools
         run: pacman -Syu --noconfirm --needed git sudo namcap desktop-file-utils xorg-server-xvfb xorg-xauth
@@ -38,7 +39,7 @@ jobs:
       - name: Build the actual VCS package
         run: |
           cd /tmp/aur-build
-          sudo -u builder env OMNIVOICE_BUILD_JOBS=2 CARGO_BUILD_JOBS=2 \
+          sudo -u builder env OMNIVOICE_BUILD_JOBS=4 CARGO_BUILD_JOBS=2 \
             NODE_OPTIONS=--max-old-space-size=4096 \
             makepkg --syncdeps --noconfirm --cleanbuild
           sudo -u builder makepkg --printsrcinfo > /tmp/aur-build/.SRCINFO
@@ -53,6 +54,7 @@ jobs:
             VOICESTUDIO_PACKAGED_EXE=/usr/bin/voicestudio \
             xvfb-run -a node src/voicestudio/electron/tests/packaged-smoke.mjs --setup
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
         with:
           name: voicestudio-git-aur
           include-hidden-files: true
@@ -60,3 +62,9 @@ jobs:
             /tmp/aur-build/PKGBUILD
             /tmp/aur-build/.SRCINFO
           retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: voicestudio-git-debug-package
+          path: /tmp/aur-build/voicestudio-git-*.pkg.tar.zst
+          retention-days: 3

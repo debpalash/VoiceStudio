@@ -55,7 +55,15 @@ build() {
   # runtime-dispatched CPU variants and the optional Vulkan backend.
   local runtime_commit
   runtime_commit=$(node -p "JSON.parse(require('fs').readFileSync('backend/engines/omnivoice_gguf/quant_map.json', 'utf8'))._meta.runtime_commit_sha")
-  bash scripts/build-omnivoice-tts.sh --platform linux-x86_64 --commit-sha "$runtime_commit"
+  (
+    # The pinned runtime defines FORTIFY_SOURCE=2 itself. Arch's default =3
+    # conflicts with that definition and breaks its -Werror ABI check. Keep
+    # the upstream level for this build, retaining all other makepkg flags.
+    export CFLAGS="$(sed -E 's/-D_FORTIFY_SOURCE=[0-9]+/-D_FORTIFY_SOURCE=2/g' <<< "$CFLAGS")"
+    export CXXFLAGS="$(sed -E 's/-D_FORTIFY_SOURCE=[0-9]+/-D_FORTIFY_SOURCE=2/g' <<< "$CXXFLAGS")"
+    export CPPFLAGS="$(sed -E 's/-D_FORTIFY_SOURCE=[0-9]+/-D_FORTIFY_SOURCE=2/g' <<< "$CPPFLAGS")"
+    bash scripts/build-omnivoice-tts.sh --platform linux-x86_64 --commit-sha "$runtime_commit"
+  )
   install -d electron/build/omnivoice-tts
   cp -a bin/. electron/build/omnivoice-tts/
 
