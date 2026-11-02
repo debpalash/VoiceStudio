@@ -75,7 +75,7 @@ def test_mac_package_discovers_the_imported_developer_id(tmp_path):
     for link, expected in [("base64-p12", "true"), ("", "false")]:
         env = dict(os.environ, CSC_LINK=link, CSC_KEY_PASSWORD="x", CSC_IDENTITY_AUTO_DISCOVERY="false", PUBLISH="false")
         out = subprocess.run(["bash", "-e", "-c", script + 'echo "$CSC_IDENTITY_AUTO_DISCOVERY"'],
-                             env=env, capture_output=True, text=True, check=True).stdout.strip()
+                             cwd=ROOT / "electron", env=env, capture_output=True, text=True, check=True).stdout.strip()
         assert out == expected, link
 
 
@@ -136,6 +136,6 @@ def test_package_builds_again_only_when_stapling_fails(tmp_path, failures, messa
     (fake / "bun").chmod(0o755)
     env = dict(os.environ, PATH=f"{fake}{os.pathsep}{os.environ['PATH']}", RUNNER_TEMP=str(tmp_path),
                CSC_LINK="", PUBLISH="false")
-    result = subprocess.run(["bash", "-e", "-c", script], env=env, capture_output=True, text=True)
+    result = subprocess.run(["bash", "-e", "-c", script], cwd=ROOT / "electron", env=env, capture_output=True, text=True)
     assert (result.returncode == 0) is ok, result.stdout + result.stderr
     assert len(count.read_text().splitlines()) == calls

@@ -152,9 +152,8 @@ Anyway"**. You confirm once per install; later launches work by double-click.
 
 The maintained Electron release workflow uses a Developer ID Application
 certificate (`ELECTRON_MACOS_CSC_LINK` and `ELECTRON_MACOS_CSC_KEY_PASSWORD`)
-plus `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` for
-notarization. The Apple password is an **app-specific password**, not the
-account login password. See [the release guide](../RELEASING.md#credentials)
+plus `APPLE_API_KEY`, `APPLE_API_KEY_ID` and `APPLE_API_ISSUER` for
+notarization with an App Store Connect team API key. See [the release guide](../RELEASING.md#credentials)
 for all platform credentials and verification gates. An Apple Developer
 membership is required; the archived Tauri workflow's `APPLE_CERTIFICATE`
 secrets do not sign Electron installers.

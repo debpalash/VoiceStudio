@@ -201,17 +201,20 @@ jobs:
         env:
           CSC_LINK: ${{ matrix.platform == 'darwin' && secrets.ELECTRON_MACOS_CSC_LINK || matrix.platform == 'win32' && secrets.ELECTRON_WINDOWS_CSC_LINK || '' }}
           CSC_KEY_PASSWORD: ${{ matrix.platform == 'darwin' && secrets.ELECTRON_MACOS_CSC_KEY_PASSWORD || matrix.platform == 'win32' && secrets.ELECTRON_WINDOWS_CSC_KEY_PASSWORD || '' }}
-          APPLE_ID: ${{ matrix.platform == 'darwin' && secrets.APPLE_ID || '' }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.platform == 'darwin' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ matrix.platform == 'darwin' && secrets.APPLE_TEAM_ID || '' }}
+          APPLE_API_KEY: ${{ matrix.platform == 'darwin' && secrets.APPLE_API_KEY || '' }}
+          APPLE_API_KEY_ID: ${{ matrix.platform == 'darwin' && secrets.APPLE_API_KEY_ID || '' }}
+          APPLE_API_ISSUER: ${{ matrix.platform == 'darwin' && secrets.APPLE_API_ISSUER || '' }}
           PUBLISH: ${{ inputs.publish }}
           ALLOW_UNSIGNED: ${{ inputs.allow_unsigned }}
         working-directory: electron
         run: |
           if [ "${{ matrix.platform }}" = darwin ] && [ "$PUBLISH" = true ] && [ "$ALLOW_UNSIGNED" != true ]; then
-            if [ -z "${CSC_LINK:-}" ] || [ -z "${CSC_KEY_PASSWORD:-}" ] || [ -z "${APPLE_ID:-}" ] || [ -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ] || [ -z "${APPLE_TEAM_ID:-}" ]; then
+            if [ -z "${CSC_LINK:-}" ] || [ -z "${CSC_KEY_PASSWORD:-}" ] || [ -z "${APPLE_API_KEY:-}" ] || [ -z "${APPLE_API_KEY_ID:-}" ] || [ -z "${APPLE_API_ISSUER:-}" ]; then
               echo "Signed macOS publication requires Developer ID and Apple notarization credentials"; exit 1
             fi
+          fi
+          if [ "${{ matrix.platform }}" = darwin ]; then
+            source ../scripts/prepare-apple-notarization.sh
           fi
           # An empty CSC_LINK is interpreted as the working directory by the
           # signer. Omit absent credentials rather than passing empty strings.
