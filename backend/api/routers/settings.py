@@ -1154,20 +1154,24 @@ async def _change_local_model(family: str, engine_id: str, path: str | None):
     if model_manager._model_lock.locked():
         raise HTTPException(409, "An engine is busy; wait for generation to finish")
     async with model_manager._model_lock:
-        # Cold-load threads and API mutation must not cross, either.
-        lock = model_manager._model_load_thread_lock
-        if not lock.acquire(blocking=False):
-            raise HTTPException(409, "An engine is loading; try again when it finishes")
+        def change_in_worker():
+            # The RLock must be acquired and released on the worker thread.
+            lock = model_manager._model_load_thread_lock
+            if not lock.acquire(blocking=False):
+                raise HTTPException(409, "An engine is loading; try again when it finishes")
+            try:
+                return local_model_paths.change(family, engine_id, path)
+            finally:
+                lock.release()
+
         try:
-            return local_model_paths.change(family, engine_id, path)
+            return await model_manager.run_release(change_in_worker)
         except PathAuthorizationError as exc:
             raise HTTPException(403, detail=str(exc)) from exc
         except local_model_paths.EngineBusyError as exc:
             raise HTTPException(409, detail=str(exc)) from exc
         except local_model_paths.LocalModelError as exc:
             raise HTTPException(400, detail=str(exc)) from exc
-        finally:
-            lock.release()
 
 
 @router.put("/engines/{family}/{engine_id}/local-model")

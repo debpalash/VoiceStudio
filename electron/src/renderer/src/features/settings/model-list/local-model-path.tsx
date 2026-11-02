@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { getBridge } from '@/components/bridge';
 import { Button } from '@/components/ui/button';
 import { ApiError, apiJson } from '@/lib/api/client';
+import { useBackendStatus } from '@/hooks/use-backend-status';
 
 const SUPPORTED = new Set(['omnivoice', 'mlx-audio']);
 type Props = { family: 'tts' | 'asr'; engineId: string };
@@ -34,6 +35,7 @@ export function LocalModelPath(props: Props) {
 function LocalModelPathControl({ family, engineId }: Props) {
   const { t } = useTranslation();
   const bridge = getBridge();
+  const backend = useBackendStatus();
   const client = useQueryClient();
   const [busy, setBusy] = useState<'search' | 'save' | 'reset' | null>(null);
   const locked = useRef(false);
@@ -42,14 +44,15 @@ function LocalModelPathControl({ family, engineId }: Props) {
   const [notice, setNotice] = useState('');
   const [discovery, setDiscovery] = useState<Discovery | null>(null);
   const supported = family === 'tts' && SUPPORTED.has(engineId);
+  const localSelectionAllowed = supported && !backend.remote;
   const endpoint = `/api/settings/engines/${family}/${engineId}/local-model`;
   const queryKey = ['local-model-path', family, engineId];
   const path = useQuery({
     queryKey,
-    enabled: supported && Boolean(bridge?.files.chooseEngineModelDirectory),
+    enabled: localSelectionAllowed && Boolean(bridge?.files.chooseEngineModelDirectory),
     queryFn: ({ signal }) => apiJson<State>(endpoint, { signal }),
   });
-  if (!supported || !bridge?.files.chooseEngineModelDirectory) return null;
+  if (!localSelectionAllowed || !bridge?.files.chooseEngineModelDirectory) return null;
 
   const run = async (operation: 'search' | 'save' | 'reset', action: () => Promise<void>) => {
     if (locked.current) return;

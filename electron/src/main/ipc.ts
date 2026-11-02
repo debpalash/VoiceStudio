@@ -6,6 +6,7 @@ import {
   assertMediaTool,
   authorizeMediaTool,
   authorizeModelsDirectory,
+  authorizeModelsDirectoryReadOnly,
 } from './media-authorization';
 import { isTrustedRenderer } from './trusted-renderer';
 import { replaceFile } from './replace-file';
@@ -570,13 +571,16 @@ export function registerIpc(
   ipcMain.handle(CHANNELS.filesChooseEngineModelDirectory, async (event: IpcMainInvokeEvent, raw: unknown) => {
     const owner = getMainWindow();
     assertTrustedMainFrame(event, owner);
+    if (supervisor.connection.remote) throw new Error('Local model selection requires a local backend');
     if (typeof raw !== 'string' || !['omnivoice', 'mlx-audio'].includes(raw))
       throw new Error('Unsupported engine local model selector');
     const picked = await dialog.showOpenDialog(owner, {
       properties: ['openDirectory', 'createDirectory'],
     });
     if (picked.canceled || !picked.filePaths[0]) return null;
-    return authorizeModelsDirectory(await backendDataDirectory(supervisor), picked.filePaths[0]);
+    const dataDirectory = await backendDataDirectory(supervisor);
+    if (supervisor.connection.remote) throw new Error('Local model selection requires a local backend');
+    return authorizeModelsDirectoryReadOnly(dataDirectory, picked.filePaths[0]);
   });
 
   ipcMain.handle(CHANNELS.filesSaveAudio, async (event, raw: unknown): Promise<SaveAudioResult> => {

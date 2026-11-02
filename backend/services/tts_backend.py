@@ -3067,8 +3067,10 @@ class MLXAudioBackend(TTSBackend):
     def _ensure_loaded(self):
         if self._model is not None:
             return
-        if os.path.isabs(self._model_id or ""):
-            from services.local_model_paths import validate
+        from services.local_model_paths import get as local_model_path, validate
+        if (not os.environ.get("OMNIVOICE_MLX_AUDIO_MODEL", "").strip()
+                and self._model_id
+                and self._model_id == local_model_path("tts", "mlx-audio")):
             validate("tts", "mlx-audio", self._model_id)
         if self._curated_key() == "melotts":
             _ensure_melotts_text_frontend()

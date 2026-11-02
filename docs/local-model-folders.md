@@ -1,6 +1,6 @@
 # Local model folders in Settings
 
-VoiceStudio supports an explicit local checkpoint folder for the existing **OmniVoice** and **MLX-Audio** TTS engines. The control is shown on each supported engine row under Settings → Models → TTS and uses the native folder picker.
+VoiceStudio supports an explicit local checkpoint folder for the existing **OmniVoice** and **MLX-Audio** TTS engines. The control is shown on each supported engine row under Settings → Models → TTS and uses the native folder picker. This control is available only for a local backend; a desktop directory selection cannot authorize a remote server's filesystem. Readable, read-only source folders are supported without creating probe files in them.
 
 The folder must contain `config.json` and at least one supported weight file (`.safetensors` or `.bin`), plus the engine-specific tokenizer and sub-checkpoint assets. OmniVoice metadata must identify an OmniVoice/VoiceStudio checkpoint. Qwen Base metadata is rejected for MLX VoiceDesign; a VoiceDesign checkpoint must identify itself as such. Settings reports the saved path, model name/type, file-validation result, and the runtime cache state. File validation is inspection only; `valid` does not claim that synthesis has run or that a real checkpoint can load. The `loaded`/`not_loaded` indicator reports cached runtime state only; it does not load or probe the checkpoint.
 

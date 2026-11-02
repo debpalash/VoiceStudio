@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-const mock = vi.hoisted(() => ({ api: vi.fn(), choose: vi.fn(), native: true }));
+const mock = vi.hoisted(() => ({ api: vi.fn(), choose: vi.fn(), native: true, remote: false }));
 vi.mock('@/lib/api/client', async (load) => ({
   ...await load<typeof import('@/lib/api/client')>(), apiJson: mock.api,
 }));
@@ -10,11 +10,13 @@ vi.mock('@/components/bridge', () => ({
   getBridge: () => mock.native ? { files: { chooseEngineModelDirectory: mock.choose } } : null,
 }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+vi.mock('@/hooks/use-backend-status', () => ({ useBackendStatus: () => ({ remote: mock.remote }) }));
 import { LocalModelPath } from './local-model-path';
 import { ApiError } from '@/lib/api/client';
 
 beforeEach(() => {
   mock.native = true;
+  mock.remote = false;
   mock.api.mockResolvedValue({ path: '/models/local' });
 });
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
@@ -215,4 +217,13 @@ it.each([
   expect(await screen.findByTestId('local-model-loading')).toHaveTextContent(key);
   expect(screen.getByTestId('local-model-validation')).toHaveTextContent('modelSettings.localModelValidationUnknown');
   expect(screen.queryByText('RAW VALIDATION')).not.toBeInTheDocument();
+});
+
+
+it('hides local model controls and makes no filesystem selection for remote backends', () => {
+  mock.remote = true;
+  mount();
+  expect(screen.queryByRole('button')).toBeNull();
+  expect(mock.api).not.toHaveBeenCalled();
+  expect(mock.choose).not.toHaveBeenCalled();
 });

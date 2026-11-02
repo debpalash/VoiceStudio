@@ -309,8 +309,10 @@ def test_missing_persisted_omnivoice_does_not_resolve_default(api, tmp_path):
     model = checkpoint(tmp_path / "model")
     assert client.put(URL, json=cap(model)).status_code == 200
     (model / "config.json").unlink()
+    assert mm.resolve_omnivoice_checkpoint() == str(model)
+    assert client.get(URL).json()["validation"]["status"] != "valid"
     with pytest.raises(paths.LocalModelError):
-        mm.resolve_omnivoice_checkpoint()
+        paths.validate("tts", "omnivoice", mm.resolve_omnivoice_checkpoint())
 
 
 @pytest.mark.parametrize("replacement", ["symlink", "directory"])
@@ -366,3 +368,76 @@ def test_discovered_identity_is_rechecked_immediately_before_persistence(api, tm
     assert response.status_code == 403
     assert paths.get("tts", "omnivoice") is None
     mm.unload_shared_model.assert_not_called()
+
+
+@pytest.mark.parametrize("override", ["env", "pref"])
+def test_existing_absolute_mlx_models_skip_gui_format_validation(api, monkeypatch, tmp_path, override):
+    client, cap, mm, tts, app = api
+    model_path = str(tmp_path / "kokoro")
+    if override == "env":
+        monkeypatch.setenv("OMNIVOICE_MLX_AUDIO_MODEL", model_path)
+    backend = tts.MLXAudioBackend()
+    backend._model_id = model_path
+    validator = Mock(side_effect=paths.LocalModelError("not VoiceDesign"))
+    monkeypatch.setattr(paths, "validate", validator)
+    monkeypatch.setattr(paths, "get", lambda *_: None)
+    monkeypatch.setattr(tts, "_harden_mlx_audio_eos_ids", lambda: None)
+    loader = Mock(return_value=object())
+    module = types.ModuleType("mlx_audio.tts.utils")
+    module.load_model = loader
+    monkeypatch.setitem(sys.modules, "mlx_audio.tts.utils", module)
+    backend._ensure_loaded()
+    loader.assert_called_once_with(model_path)
+    validator.assert_not_called()
+
+
+def test_missing_saved_omnivoice_still_resolves_for_inventory(api, monkeypatch, tmp_path):
+    client, cap, mm, tts, app = api
+    missing = str(tmp_path / "gone")
+    monkeypatch.setattr(paths, "get", lambda *_: missing)
+    assert mm.resolve_omnivoice_checkpoint() == missing
+    assert client.get(URL).json()["validation"]["status"] != "valid"
+
+
+def test_local_model_change_runs_off_event_loop(api, monkeypatch):
+    client, cap, mm, tts, app = api
+    from api.routers import settings
+    async def scenario():
+        loop_thread = threading.get_ident()
+        def change(*_):
+            assert threading.get_ident() != loop_thread
+            assert mm._model_load_thread_lock._is_owned()
+            assert mm._model_lock.locked()
+            return {"ok": True}
+        monkeypatch.setattr(paths, "change", change)
+        assert await settings._change_local_model("tts", "omnivoice", None) == {"ok": True}
+        assert not mm._model_lock.locked()
+    asyncio.run(scenario())
+
+
+def test_local_model_change_keeps_loop_responsive_and_lock_until_cancelled_worker_finishes(api, monkeypatch):
+    client, cap, mm, tts, app = api
+    from api.routers import settings
+    started = threading.Event()
+    release = threading.Event()
+    def change(*_):
+        started.set()
+        assert release.wait(5), "test worker was not released"
+        return {"ok": True}
+    monkeypatch.setattr(paths, "change", change)
+    async def scenario():
+        task = asyncio.create_task(settings._change_local_model("tts", "omnivoice", None))
+        try:
+            assert await asyncio.wait_for(asyncio.to_thread(started.wait, 2), 3)
+            await asyncio.sleep(0)
+            assert mm._model_lock.locked()
+            task.cancel()
+            await asyncio.sleep(0)
+            assert not task.done()
+            assert mm._model_lock.locked()
+        finally:
+            release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert not mm._model_lock.locked()
+    asyncio.run(scenario())
