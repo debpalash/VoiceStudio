@@ -52,6 +52,19 @@ def test_docker_commands_use_the_mounted_data_directory(relative_path):
         assert "-e OMNIVOICE_DATA_DIR=/app/omnivoice_data" in command
 
 
+def test_quadlet_uses_the_mounted_data_directory():
+    """Podman must persist the same application data as Docker."""
+    text = (ROOT / "docs/install/docker.md").read_text(encoding="utf-8")
+    units = [block for block in re.findall(r"```ini\n(.*?)```", text, re.DOTALL)
+             if "[Container]" in block]
+    assert units
+    for unit in units:
+        destination = re.search(r"^Volume=[^:]+:(.+)$", unit, re.MULTILINE)
+        data_dir = re.search(r"^Environment=OMNIVOICE_DATA_DIR=(.+)$", unit, re.MULTILINE)
+        assert destination and data_dir
+        assert data_dir[1] == destination[1]
+
+
 def test_every_compose_studio_service_receives_the_admin_key():
     text = (ROOT / "deploy/docker-compose.yml").read_text(encoding="utf-8")
     studio_half = text.split("worker-gpu:", 1)[0]

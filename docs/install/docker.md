@@ -16,6 +16,11 @@ weights download from Hugging Face when you install a model.
 and [`palashdeb/omnivoice-studio` on Docker Hub](https://hub.docker.com/r/palashdeb/omnivoice-studio) — same images, same tags.
 The former `ghcr.io/debpalash/omnivoice-studio` path remains a compatible alias.
 
+**Upgrading an existing container?** Follow the
+[backup and path-preserving migration procedure](docker-data-recovery.md)
+**before** recreating or removing it. The commands below are for a fresh
+installation; older commands may have kept application data inside the container.
+
 ## Architecture
 
 The standard CUDA/CPU images and all ROCm variants are `linux/amd64`. The only
@@ -243,6 +248,7 @@ AddDevice=/dev/dri
 PublishPort=127.0.0.1:3900:3900
 Volume=omnivoice-data:/app/omnivoice_data
 Environment=OMNIVOICE_API_KEY=replace-with-a-long-random-key
+Environment=OMNIVOICE_DATA_DIR=/app/omnivoice_data
 ```
 
 Release pins exist too: `:stable-rocm`, `:0.5.6-rocm`, `:0.5-rocm` mirror
