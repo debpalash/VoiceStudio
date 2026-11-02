@@ -101,7 +101,7 @@
 | :--- | :--- |
 | <img src="../../docs/assets/platforms/apple.svg" alt="" width="20" height="20" />&nbsp;**macOS**（Apple Silicon）<br /><sub>稳定</sub> | `.dmg` · [指南](../../docs/install/macos.md)<br /><sub>Metal（MPS）</sub> |
 | <img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" />&nbsp;**Windows 10/11**（x64）<br /><sub>稳定</sub> | `.exe` · [指南](../../docs/install/windows.md)<br /><sub>NVIDIA CUDA · [AMD ROCm（可选）](../../docs/install/windows-rocm.md) · CPU</sub> |
-| <img src="../../docs/assets/platforms/linux.svg" alt="" width="20" height="20" />&nbsp;**Linux**（x64）<br /><sub>稳定</sub> | `.AppImage` · `.deb` · <a href="https://snapcraft.io/voicestudio"><img src="https://img.shields.io/badge/Snap%20Store-27272a?style=flat-square&amp;logo=snapcraft&amp;logoColor=ffffff" alt="Snap Store" height="20" /></a> · [Nix](../../docs/install/nix.md) · [指南](../../docs/install/linux.md)<br /><sub>NVIDIA CUDA · CPU</sub> |
+| <img src="../../docs/assets/platforms/linux.svg" alt="" width="20" height="20" />&nbsp;**Linux**（x64）<br /><sub>稳定</sub> | `.AppImage` · `.deb` · <a href="https://snapcraft.io/voicestudio"><img src="https://img.shields.io/badge/Snap%20Store-27272a?style=flat-square&amp;logo=snapcraft&amp;logoColor=ffffff" alt="Snap Store" height="20" /></a> · <a href="https://aur.archlinux.org/packages/voicestudio-bin"><img src="https://img.shields.io/badge/AUR-1793d1?style=flat-square&amp;logo=archlinux&amp;logoColor=ffffff" alt="AUR (yay / pacman)" height="20" /></a> · [Nix](../../docs/install/nix.md) · [指南](../../docs/install/linux.md)<br /><sub>NVIDIA CUDA · CPU</sub> |
 | <img src="../../docs/assets/platforms/docker.svg" alt="" width="20" height="20" />&nbsp;**Docker**<br /><sub>稳定</sub> | [GHCR](../../docs/install/docker.md "ghcr.io/debpalash/voicestudio")<br /><sub>NVIDIA CUDA · AMD ROCm</sub> |
 | <img src="../../docs/assets/platforms/android.svg" alt="" width="20" height="20" />&nbsp;**Android** 10+<br /><sub>预览版</sub> | `.apk` · [指南](../../docs/mobile.md#install)<br /><sub>设备端运行，可离线</sub> |
 | <img src="../../docs/assets/platforms/apple.svg" alt="" width="20" height="20" />&nbsp;**iPhone / iPad**（iOS 17+）<br /><sub>预览版</sub> | `.ipa`（侧载） · [指南](../../docs/mobile.md#install)<br /><sub>设备端运行，可离线</sub> |
@@ -130,7 +130,7 @@ irm https://voicestudio.sh/install.ps1 | iex
 > 在 macOS 上看到“VoiceStudio 已损坏，无法打开”，是 Gatekeeper 拦截了应用，并不是下载文件损坏。参见 [Gatekeeper 修复方法](../../docs/install/macos.md#gatekeeper-quarantine)。
 
 <details>
-<summary><strong>更多安装方式</strong>：指定版本、当前 main、卸载、从源码安装、通过编码智能体安装</summary>
+<summary><strong>更多安装方式</strong>：Arch Linux、指定版本、当前 main、卸载、从源码安装、通过编码智能体安装</summary>
 
 ```sh
 curl -fsSL https://voicestudio.sh/install | sh -s -- --version X.Y.Z   # 安装指定版本
@@ -141,6 +141,24 @@ curl -fsSL https://voicestudio.sh/install | sh -s -- --uninstall       # 卸载�
 如果无法访问 `voicestudio.sh`，可直接从仓库运行脚本：
 `curl -fsSL https://raw.githubusercontent.com/debpalash/VoiceStudio/main/scripts/install.sh | sh`。
 前置要求与脚本行为：[安装脚本说明](../../docs/install/script.md)。
+
+**Arch Linux（AUR / yay / pacman）**
+
+使用 `yay` 安装稳定版：
+
+```sh
+yay -S voicestudio-bin
+```
+
+也可以手动构建 AUR 软件包，再使用 `pacman` 安装：
+
+```sh
+sudo pacman -S --needed base-devel git
+git clone https://aur.archlinux.org/voicestudio-bin.git
+cd voicestudio-bin
+makepkg -s
+sudo pacman -U ./voicestudio-bin-*.pkg.tar.zst
+```
 
 **从源码安装**
 
