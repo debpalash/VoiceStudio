@@ -49,9 +49,9 @@ jobs:
           cd /tmp/aur-build
           pacman -U --noconfirm voicestudio-git-*.pkg.tar.zst
           sudo -u builder env HF_HUB_OFFLINE=1 HF_HUB_CACHE=/tmp/aur-empty-hf-cache \
-            VOICESTUDIO_SKIP_BACKEND=1 VOICESTUDIO_DISABLE_UPDATER=1 \
+            VOICESTUDIO_DISABLE_UPDATER=1 \
             VOICESTUDIO_PACKAGED_EXE=/usr/bin/voicestudio \
-            xvfb-run -a node src/voicestudio/electron/tests/packaged-smoke.mjs
+            xvfb-run -a node src/voicestudio/electron/tests/packaged-smoke.mjs --setup
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: voicestudio-git-aur
