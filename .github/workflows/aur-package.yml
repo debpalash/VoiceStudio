@@ -44,7 +44,7 @@ jobs:
             makepkg --syncdeps --noconfirm --cleanbuild
           sudo -u builder makepkg --printsrcinfo > /tmp/aur-build/.SRCINFO
           namcap PKGBUILD
-          desktop-file-validate pkg/voicestudio-git/usr/share/applications/voicestudio.desktop
+          desktop-file-validate pkg/voicestudio-git/usr/share/applications/VoiceStudio.desktop
       - name: Install and launch the package without downloading models
         run: |
           cd /tmp/aur-build
