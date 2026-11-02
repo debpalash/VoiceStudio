@@ -24,7 +24,7 @@ Repository policy comes from [AGENTS.md](../../AGENTS.md) and
 | Profiles and workspaces | [Profile unification](voice-studio-unification.md) · [Workspace navigation](workspace-connectivity.md) · [Voice console](voice-console-10x.md) | [Projects](../electron-projects.md) |
 | Dictation | [Flow design](2026-07-16-dictation-flow-program.md) | [Dictation guide](../features/dictation.md) |
 | Remote authentication | [Security design](2026-08-13-remote-admin-session-hardening.md) | [API authentication](../api-auth.md) |
-| License-client proposal | [Candidate client protocol](commercial-license-client.md) | [Model review](../licensing/model-review-workflow.md) |
+| License-client proposal | [Candidate client protocol](commercial-license-client.md) | [Checkout release contract](desktop-pro-page.md) |
 | Installer investigation | [Review](installer-redesign/review.md) · [Findings](installer-redesign/readme.md) | [Installation troubleshooting](../install/troubleshooting.md) |
 
 For current priorities use the [live roadmap](../ROADMAP.md). Superseded Tauri
