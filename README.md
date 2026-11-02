@@ -187,6 +187,8 @@ Upgrading from 0.5.3 or older (the Tauri app)? [Install the new app separately](
 
 ## Documentation
 
+[All guides](docs/README.md)
+
 | Need | Start here |
 |---|---|
 | Setup help | [Troubleshooting](docs/install/troubleshooting.md) · [Model downloads](docs/downloading-models.md) |

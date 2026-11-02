@@ -3,7 +3,7 @@
 **Date:** 2026-06-25
 **Status:** Proposed
 **Target line:** v0.3.x (continuous-to-main; no RC, no deferral to v0.4)
-**Related:** `docs/specs/2026-06-12-elevenlabs-parity-program.md` (this is the "perceived-quality" half that program left open), issues #674/#679 (design-mode profile_id handling).
+**Related:** [Expressive speech](../expressive-speech.md) describes current engine support and remaining design work; issues #674/#679 cover design-mode profile_id handling.
 
 ---
 
