@@ -84,7 +84,7 @@ def contributors_section(repo, tag, gh=_gh):
 
 
 def prepare(assets, tag, sunset_tag=None, repo=None, gh=_gh):
-    version = json.loads(Path("package.json").read_text())["version"]
+    version = json.loads(Path("package.json").read_text(encoding="utf-8"))["version"]
     if tag != f"v{version}":
         raise ValueError("Tag must match package version")
     channel = channel_for(version)
@@ -95,7 +95,7 @@ def prepare(assets, tag, sunset_tag=None, repo=None, gh=_gh):
         for p in files]}
     verify_release(release, assets, channel=channel, version=version)
     for manifest in assets.glob(f"electron-{channel}-*.yml"):
-        text = manifest.read_text()
+        text = manifest.read_text(encoding="utf-8")
         artifact = re.search(r"^\s+- url:\s*(.+)$", text, re.M)[1].strip().strip("'\"")
         expected = re.search(r"^\s{4}sha512:\s*(.+)$", text, re.M)[1].strip().strip("'\"")
         actual = base64.b64encode(hashlib.sha512((assets / artifact).read_bytes()).digest()).decode()
@@ -108,9 +108,9 @@ def prepare(assets, tag, sunset_tag=None, repo=None, gh=_gh):
     # prerelease, so betas carry no sunset feeds.
     if sunset_tag and channel == "stable":
         for name in ("latest.json", "latest-user.json"):
-            validate_sunset(json.loads((assets / name).read_text()), sunset_tag)
+            validate_sunset(json.loads((assets / name).read_text(encoding="utf-8")), sunset_tag)
     section = re.search(rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## |\Z)",
-                        Path("CHANGELOG.md").read_text(), re.M | re.S)
+                        Path("CHANGELOG.md").read_text(encoding="utf-8"), re.M | re.S)
     if not section or not section[1].strip():
         raise ValueError("Write versioned CHANGELOG notes before release")
     notes = section[1].strip() + "\n"
@@ -124,10 +124,10 @@ def prepare(assets, tag, sunset_tag=None, repo=None, gh=_gh):
             block = ""
         if block:
             notes += "\n" + block
-    (assets / "RELEASE_NOTES.md").write_text(notes)
+    (assets / "RELEASE_NOTES.md").write_text(notes, encoding="utf-8")
     (assets / "SHA256SUMS.txt").write_text("\n".join(
         f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}" for p in sorted(files)
-        if p.name not in {"SHA256SUMS.txt", "RELEASE_NOTES.md"}) + "\n")
+        if p.name not in {"SHA256SUMS.txt", "RELEASE_NOTES.md"}) + "\n", encoding="utf-8")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -139,7 +139,7 @@ if __name__ == "__main__":
                         help="Print stable or beta for the package version and exit")
     args = parser.parse_args()
     if args.print_channel:
-        print(channel_for(json.loads(Path("package.json").read_text())["version"]))
+        print(channel_for(json.loads(Path("package.json").read_text(encoding="utf-8"))["version"]))
     elif args.assets and args.tag:
         prepare(args.assets, args.tag, args.sunset_tag, repo=args.repo)
     else:

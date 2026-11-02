@@ -82,7 +82,7 @@ def _prepare(release, monkeypatch, tmp_path, changelog, **kwargs):
     monkeypatch.setattr(release, "verify_release", lambda *a, **k: None)
     monkeypatch.chdir(tmp_path)
     Path("package.json").write_text(json.dumps({"version": "1.2.3-beta.1"}))
-    Path("CHANGELOG.md").write_text(changelog)
+    Path("CHANGELOG.md").write_text(changelog, encoding="utf-8")
     assets = tmp_path / "assets"
     assets.mkdir(exist_ok=True)
     for suffix in ("mac-arm64.dmg", "mac-x64.dmg", "linux-x64.deb"):
