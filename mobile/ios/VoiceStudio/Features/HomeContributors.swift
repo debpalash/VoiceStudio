@@ -5,7 +5,7 @@ import VoiceStudioKit
 /// `electron/src/renderer/src/features/home/home-contributors-data.ts`.
 /// Avatars and profile metadata are bundled: nothing is fetched at runtime.
 enum HomeContributors {
-    static let logins = ["debpalash", "velixio", "kevin9327", "jaketame", "psiberfunk", "rudycelekli", "paoloantinori", "Chang-Jin-Lee", "swadhinbiswas", "BichengWang", "nirmalchatur", "Shivendra-Coherent", "marreiradigital", "nvtoan0201-swe"]
+    static let logins = ["debpalash", "velixio", "kevin9327", "jaketame", "psiberfunk", "rudycelekli", "paoloantinori", "Chang-Jin-Lee", "swadhinbiswas", "BichengWang", "adrianchen91", "nirmalchatur", "Shivendra-Coherent", "alvig060121-afk", "marreiradigital", "mvanhorn", "nvtoan0201-swe", "XiaoPuOuO"]
     static let coreMaintainers: Set<String> = ["debpalash", "velixio"]
     static let repository = URL(string: "https://github.com/debpalash/VoiceStudio")!
     static func profile(_ login: String) -> URL { URL(string: "https://github.com/" + login)! }
