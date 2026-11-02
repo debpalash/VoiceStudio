@@ -10,7 +10,7 @@ spark identifies creation. The product voice is clear, calm, and direct.
 | Primary vector mark | `docs/logo.svg` |
 | README mark | `docs/logo.png` and `docs/logo-256.png` |
 | Browser icon | `electron/public/favicon.svg` |
-| In-app mark | `frontend/src/components/brand/VoiceStudioMark.jsx` |
+| In-app mark | `electron/src/shared/components/brand/VoiceStudioMark.jsx` |
 | Desktop/platform icons | `electron/build/icons/` |
 | macOS menu-bar templates | `electron/build/icons/trayTemplate.svg` and `trayRecordingTemplate.svg` |
 | Electron sidebar and browser icon | `electron/public/favicon.svg` via `electron/src/renderer/src/lib/brand.ts` |

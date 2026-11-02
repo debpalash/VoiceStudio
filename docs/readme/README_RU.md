@@ -101,7 +101,7 @@
 | :--- | :--- |
 | <img src="../../docs/assets/platforms/apple.svg" alt="" width="20" height="20" />&nbsp;**macOS** (Apple Silicon)<br /><sub>Стабильная</sub> | `.dmg` · [руководство](../../docs/install/macos.md)<br /><sub>Metal (MPS)</sub> |
 | <img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" />&nbsp;**Windows 10/11** (x64)<br /><sub>Стабильная</sub> | `.exe` · [руководство](../../docs/install/windows.md)<br /><sub>NVIDIA CUDA · [AMD ROCm (по желанию)](../../docs/install/windows-rocm.md) · CPU</sub> |
-| <img src="../../docs/assets/platforms/linux.svg" alt="" width="20" height="20" />&nbsp;**Linux** (x64)<br /><sub>Стабильная</sub> | `.AppImage` · `.deb` · <a href="https://snapcraft.io/voicestudio"><img src="https://img.shields.io/badge/Snap%20Store-27272a?style=flat-square&amp;logo=snapcraft&amp;logoColor=ffffff" alt="Snap Store" height="20" /></a> · [Nix](../../docs/install/nix.md) · [руководство](../../docs/install/linux.md)<br /><sub>NVIDIA CUDA · CPU</sub> |
+| <img src="../../docs/assets/platforms/linux.svg" alt="" width="20" height="20" />&nbsp;**Linux** (x64)<br /><sub>Стабильная</sub> | `.AppImage` · `.deb` · <a href="https://snapcraft.io/voicestudio"><img src="https://img.shields.io/badge/Snap%20Store-27272a?style=flat-square&amp;logo=snapcraft&amp;logoColor=ffffff" alt="Snap Store" height="20" /></a> · <a href="https://aur.archlinux.org/packages/voicestudio-bin"><img src="https://img.shields.io/badge/AUR-1793d1?style=flat-square&amp;logo=archlinux&amp;logoColor=ffffff" alt="AUR (yay / pacman)" height="20" /></a> · [Nix](../../docs/install/nix.md) · [руководство](../../docs/install/linux.md)<br /><sub>NVIDIA CUDA · CPU</sub> |
 | <img src="../../docs/assets/platforms/docker.svg" alt="" width="20" height="20" />&nbsp;**Docker**<br /><sub>Стабильная</sub> | [GHCR](../../docs/install/docker.md "ghcr.io/debpalash/voicestudio")<br /><sub>NVIDIA CUDA · AMD ROCm</sub> |
 | <img src="../../docs/assets/platforms/android.svg" alt="" width="20" height="20" />&nbsp;**Android** 10+<br /><sub>Предварительная</sub> | `.apk` · [руководство](../../docs/mobile.md#install)<br /><sub>На устройстве, офлайн</sub> |
 | <img src="../../docs/assets/platforms/apple.svg" alt="" width="20" height="20" />&nbsp;**iPhone / iPad** (iOS 17+)<br /><sub>Предварительная</sub> | `.ipa` (sideload) · [руководство](../../docs/mobile.md#install)<br /><sub>На устройстве, офлайн</sub> |
@@ -130,7 +130,7 @@ irm https://voicestudio.sh/install.ps1 | iex
 > Сообщение macOS «Программа VoiceStudio повреждена, и её не удаётся открыть» означает, что приложение заблокировал Gatekeeper, а не что загрузка повреждена. [Как снять блокировку](../../docs/install/macos.md#gatekeeper-quarantine).
 
 <details>
-<summary><strong>Другие способы установки</strong>: конкретная версия, текущий main, удаление, из исходного кода, с помощью агента</summary>
+<summary><strong>Другие способы установки</strong>: Arch Linux, конкретная версия, текущий main, удаление, из исходного кода, с помощью агента</summary>
 
 ```sh
 curl -fsSL https://voicestudio.sh/install | sh -s -- --version X.Y.Z   # конкретный релиз
@@ -141,6 +141,24 @@ curl -fsSL https://voicestudio.sh/install | sh -s -- --uninstall       # уда�
 Если `voicestudio.sh` недоступен, запустите скрипт прямо из репозитория:
 `curl -fsSL https://raw.githubusercontent.com/debpalash/VoiceStudio/main/scripts/install.sh | sh`.
 Требования и поведение: [руководство по установщику](../../docs/install/script.md).
+
+**Arch Linux (AUR / yay / pacman)**
+
+Установите стабильную версию через `yay`:
+
+```sh
+yay -S voicestudio-bin
+```
+
+Или соберите пакет из AUR вручную и установите его через `pacman`:
+
+```sh
+sudo pacman -S --needed base-devel git
+git clone https://aur.archlinux.org/voicestudio-bin.git
+cd voicestudio-bin
+makepkg -s
+sudo pacman -U ./voicestudio-bin-*.pkg.tar.zst
+```
 
 **Из исходного кода**
 
