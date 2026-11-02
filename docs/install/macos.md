@@ -38,6 +38,22 @@ run). Power users can inspect or override the binaries in
 Optional but recommended: **a Hugging Face account** for diarization and the
 larger TTS models. See [docs/setup/huggingface-token.md](../setup/huggingface-token.md).
 
+## Install with Homebrew
+
+The [official tap](https://github.com/debpalash/homebrew-tap) installs the released
+DMG for your Mac’s architecture:
+
+```sh
+brew tap debpalash/tap
+brew trust --cask debpalash/tap/voicestudio
+brew install --cask debpalash/tap/voicestudio
+```
+
+The trust step is required by recent Homebrew versions for third-party casks.
+Check the cask before trusting it with `brew cat --cask debpalash/tap/voicestudio`.
+Intel Macs still need a backend on another computer. If macOS blocks the first
+launch, follow the [Gatekeeper instructions](#gatekeeper-quarantine).
+
 ## Install (DMG)
 
 Download the DMG that matches your Mac (check **Apple menu → About This Mac →

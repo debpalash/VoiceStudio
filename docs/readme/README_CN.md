@@ -97,40 +97,311 @@
 
 ## 支持平台
 
-| 平台与状态 | 下载与加速 |
-| :--- | :--- |
-| <img src="../../docs/assets/platforms/apple.svg" alt="" width="20" height="20" />&nbsp;**macOS**（Apple Silicon）<br /><sub>稳定</sub> | `.dmg` · [指南](../../docs/install/macos.md)<br /><sub>Metal（MPS）</sub> |
-| <img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" />&nbsp;**Windows 10/11**（x64）<br /><sub>稳定</sub> | `.exe` · [指南](../../docs/install/windows.md)<br /><sub>NVIDIA CUDA · [AMD ROCm（可选）](../../docs/install/windows-rocm.md) · CPU</sub> |
-| <img src="../../docs/assets/platforms/linux.svg" alt="" width="20" height="20" />&nbsp;**Linux**（x64）<br /><sub>稳定</sub> | `.AppImage` · `.deb` · <a href="https://snapcraft.io/voicestudio"><img src="https://img.shields.io/badge/Snap%20Store-27272a?style=flat-square&amp;logo=snapcraft&amp;logoColor=ffffff" alt="Snap Store" height="20" /></a> · <a href="https://aur.archlinux.org/packages/voicestudio-bin"><img src="https://img.shields.io/badge/AUR-1793d1?style=flat-square&amp;logo=archlinux&amp;logoColor=ffffff" alt="AUR (yay / pacman)" height="20" /></a> · [Nix](../../docs/install/nix.md) · [指南](../../docs/install/linux.md)<br /><sub>NVIDIA CUDA · CPU</sub> |
-| <img src="../../docs/assets/platforms/docker.svg" alt="" width="20" height="20" />&nbsp;**Docker**<br /><sub>稳定</sub> | [GHCR](../../docs/install/docker.md "ghcr.io/debpalash/voicestudio")<br /><sub>NVIDIA CUDA · AMD ROCm</sub> |
-| <img src="../../docs/assets/platforms/android.svg" alt="" width="20" height="20" />&nbsp;**Android** 10+<br /><sub>预览版</sub> | `.apk` · [指南](../../docs/mobile.md#install)<br /><sub>设备端运行，可离线</sub> |
-| <img src="../../docs/assets/platforms/apple.svg" alt="" width="20" height="20" />&nbsp;**iPhone / iPad**（iOS 17+）<br /><sub>预览版</sub> | `.ipa`（侧载） · [指南](../../docs/mobile.md#install)<br /><sub>设备端运行，可离线</sub> |
-| <img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" />&nbsp;**Windows on ARM**<br /><sub>实验性</sub> | `.exe` · [指南](../../docs/install/windows.md)<br /><sub>CPU（x64 后端在模拟层中运行）</sub> |
-| <img src="../../docs/assets/platforms/apple.svg" alt="" width="20" height="20" />&nbsp;**Intel Mac**<br /><sub>受限</sub> | `.dmg` · [原因](../../docs/install/macos.md)<br /><sub>仅应用界面，需连接远程后端</sub> |
+选择你的系统，再展开相应的安装方式。
 
-桌面端和手机安装包都在[最新发行版](https://github.com/debpalash/VoiceStudio/releases/latest)中，Docker 镜像则发布在 GHCR。没有 GPU？应用在 CPU 上也能完整使用，只是速度较慢。原生 GGUF 引擎还能通过 Vulkan 使用 AMD、Intel 和 NVIDIA GPU；在 Windows 和 Linux 上，OmniVoice GGUF 会自动选择 GPU 和模型量化（[OmniVoice](../../docs/engines/omnivoice-gguf.md#vulkan-acceleration)、[CosyVoice](../../docs/engines/cosyvoice-gguf.md)）。各引擎在不同硬件上的速度：[性能说明](../../docs/performance.md)。
+<a id="install-macos"></a>
 
-## 开始使用
+<details>
+<summary><img src="../../docs/assets/platforms/apple.svg" alt="" width="20" height="20" /> <strong>macOS</strong> · Homebrew · DMG · 安装脚本</summary>
 
-**macOS / Linux**
+<blockquote>
+
+**稳定版 · Apple Silicon**<br />macOS 13.3+ · Apple Silicon：通过 Metal（MPS）运行本地引擎。
+
+<a href="https://github.com/debpalash/homebrew-tap"><img src="https://img.shields.io/badge/Homebrew-27272a?style=flat-square&amp;logo=homebrew&amp;logoColor=ffffff" alt="Homebrew" height="20" /></a>
+
+```sh
+brew tap debpalash/tap
+brew trust --cask debpalash/tap/voicestudio
+brew install --cask debpalash/tap/voicestudio
+```
+
+<details>
+<summary>DMG</summary>
+
+下载适合你的 Mac 的 DMG，打开后将 VoiceStudio 拖入 Applications。
+
+[下载](https://github.com/debpalash/VoiceStudio/releases/latest) · [指南](../../docs/install/macos.md)
+
+</details>
+
+<details>
+<summary>一条命令安装</summary>
 
 ```sh
 curl -fsSL https://voicestudio.sh/install | sh
 ```
 
-**Windows**（PowerShell）
+</details>
+
+<details>
+<summary>Intel Mac · 远程后端 · 受限</summary>
+
+Intel Mac 可运行应用界面；请连接另一台电脑上的 VoiceStudio 后端。
+
+[指南](../../docs/install/macos.md)
+
+</details>
+
+> [!NOTE]
+> 在 macOS 上看到“VoiceStudio 已损坏，无法打开”，是 Gatekeeper 拦截了应用，并不是下载文件损坏。参见 [Gatekeeper 修复方法](../../docs/install/macos.md#gatekeeper-quarantine)。
+
+</blockquote>
+
+</details>
+
+<a id="install-windows"></a>
+
+<details>
+<summary><img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" /> <strong>Windows</strong> · PowerShell · EXE</summary>
+
+<blockquote>
+
+**稳定版 · x64**<br />Windows 10/11 x64 · NVIDIA CUDA · AMD ROCm（需主动启用）· CPU。
 
 ```powershell
 irm https://voicestudio.sh/install.ps1 | iex
 ```
 
-也可以从上表下载安装包。然后打开**声音克隆**，选择声音或添加一段清晰的参考录音，输入文本并生成。下载任何模型之前，应用都会先征求你的同意。
-
-> [!NOTE]
-> 在 macOS 上看到“VoiceStudio 已损坏，无法打开”，是 Gatekeeper 拦截了应用，并不是下载文件损坏。参见 [Gatekeeper 修复方法](../../docs/install/macos.md#gatekeeper-quarantine)。
+[下载 Windows 安装程序](https://github.com/debpalash/VoiceStudio/releases/latest) · [指南](../../docs/install/windows.md) · [AMD ROCm](../../docs/install/windows-rocm.md)
 
 <details>
-<summary><strong>更多安装方式</strong>：Arch Linux、指定版本、当前 main、卸载、从源码安装、通过编码智能体安装</summary>
+<summary>Windows on ARM · 实验性</summary>
+
+应用界面原生运行；x64 Python 后端通过模拟在 CPU 上运行。
+
+[下载](https://github.com/debpalash/VoiceStudio/releases/latest) · [指南](../../docs/install/windows.md)
+
+</details>
+
+</blockquote>
+
+</details>
+
+<a id="install-linux"></a>
+
+<details open>
+<summary><img src="../../docs/assets/platforms/linux.svg" alt="" width="20" height="20" /> <strong>Linux</strong> · AUR · Snap · DEB · AppImage · Nix</summary>
+
+<blockquote>
+
+**稳定版 · x64**<br />Linux x64 · NVIDIA CUDA · CPU · 支持的 GGUF 引擎可使用 Vulkan。
+
+<details>
+<summary>一条命令安装</summary>
+
+```sh
+curl -fsSL https://voicestudio.sh/install | sh
+```
+
+</details>
+
+<details>
+<summary>Arch / Manjaro / EndeavourOS · AUR</summary>
+
+<a href="https://aur.archlinux.org/packages/voicestudio-bin"><img src="https://img.shields.io/badge/AUR-1793d1?style=flat-square&amp;logo=archlinux&amp;logoColor=ffffff" alt="AUR" height="20" /></a>
+
+```sh
+yay -S voicestudio-bin
+```
+
+也可以使用 `paru -S voicestudio-bin` 安装。
+
+[开发源码版](https://aur.archlinux.org/packages/voicestudio-git) · `yay -S voicestudio-git`
+
+<details>
+<summary>从 AUR 构建并使用 pacman 安装</summary>
+
+```sh
+sudo pacman -S --needed base-devel git
+git clone https://aur.archlinux.org/voicestudio-bin.git
+cd voicestudio-bin
+makepkg -s
+sudo pacman -U ./voicestudio-bin-*.pkg.tar.zst
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>Ubuntu / Debian / Linux Mint · DEB</summary>
+
+将 `.deb` 下载到当前目录，再安装：
+
+[下载](https://github.com/debpalash/VoiceStudio/releases/latest)
+
+```sh
+sudo apt install ./VoiceStudio-*-linux-x64.deb
+```
+
+</details>
+
+<details>
+<summary>Snap · Ubuntu、Fedora、openSUSE 等</summary>
+
+<a href="https://snapcraft.io/voicestudio"><img src="https://img.shields.io/badge/Snap%20Store-27272a?style=flat-square&amp;logo=snapcraft&amp;logoColor=ffffff" alt="Snap Store" height="20" /></a>
+
+[安装 snapd](https://snapcraft.io/docs/installing-snapd) 后运行：
+
+```sh
+sudo snap install voicestudio
+```
+
+如需启用麦克风访问：
+
+```sh
+sudo snap connect voicestudio:audio-record
+```
+
+</details>
+
+<details>
+<summary>各类 Linux 发行版 · AppImage</summary>
+
+将 AppImage 下载到当前目录，再启动：
+
+[下载](https://github.com/debpalash/VoiceStudio/releases/latest)
+
+```sh
+chmod +x VoiceStudio-*-linux-x64.AppImage
+./VoiceStudio-*-linux-x64.AppImage
+```
+
+</details>
+
+<details>
+<summary>Nix / NixOS · 源码环境</summary>
+
+进入仓库提供的 FHS 开发环境，再从源码启动：
+
+```sh
+git clone https://github.com/debpalash/VoiceStudio.git
+cd VoiceStudio
+nix develop .#fhs
+bun run dev
+```
+
+[指南](../../docs/install/nix.md)
+
+</details>
+
+[指南](../../docs/install/linux.md)
+
+</blockquote>
+
+</details>
+
+<a id="install-docker"></a>
+
+<details>
+<summary><img src="../../docs/assets/platforms/docker.svg" alt="" width="20" height="20" /> <strong>Docker</strong> · GHCR · Docker Hub</summary>
+
+<blockquote>
+
+稳定版镜像 · CPU · NVIDIA CUDA · AMD ROCm。
+
+<a href="https://github.com/debpalash/VoiceStudio/pkgs/container/voicestudio"><img src="https://img.shields.io/badge/GHCR-27272a?style=flat-square&amp;logo=github&amp;logoColor=ffffff" alt="GHCR" height="20" /></a>
+
+**在本机使用 CPU 运行（Bash）**
+
+```sh
+export OMNIVOICE_API_KEY="$(openssl rand -hex 32)"
+docker run -d --name omnivoice \
+  -p 127.0.0.1:3900:3900 \
+  -e OMNIVOICE_API_KEY \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
+  -v omnivoice-data:/app/omnivoice_data \
+  ghcr.io/debpalash/voicestudio:stable
+printf 'API key: %s\n' "$OMNIVOICE_API_KEY"
+```
+
+打开 http://localhost:3900，并使用下方输出的 API 密钥。
+
+[NVIDIA、AMD ROCm 和 Compose 使用说明](../../docs/install/docker.md)
+
+[Docker Hub 镜像](https://hub.docker.com/r/palashdeb/omnivoice-studio): `palashdeb/omnivoice-studio:stable`
+
+</blockquote>
+
+</details>
+
+<a id="install-android"></a>
+
+<details>
+<summary><img src="../../docs/assets/platforms/android.svg" alt="" width="20" height="20" /> <strong>Android</strong> · APK · Obtainium · F-Droid 软件仓库</summary>
+
+<blockquote>
+
+Android 10+ · 预览版 · 下载模型后可在设备上离线运行。
+
+[下载 APK](https://github.com/debpalash/VoiceStudio/releases/latest) · [指南](../../docs/mobile.md#install)
+
+<details>
+<summary>F-Droid · VoiceStudio 软件仓库</summary>
+
+在兼容 F-Droid 的客户端中添加此仓库，并按照指南核对指纹。
+
+```text
+https://debpalash.github.io/VoiceStudio/fdroid/repo
+```
+
+[指南](../../store/fdroid/README.md)
+
+</details>
+
+<details>
+<summary>Obtainium · GitHub 发行版</summary>
+
+在 Obtainium 中添加此来源，或导入提供的配置。
+
+```text
+https://github.com/debpalash/VoiceStudio
+```
+
+[导入配置](https://debpalash.github.io/VoiceStudio/obtainium.json)
+
+</details>
+
+<details>
+<summary>通过 USB 使用 adb 安装</summary>
+
+```sh
+adb install -r VoiceStudio-*-android.apk
+```
+
+</details>
+
+</blockquote>
+
+</details>
+
+<a id="install-ios"></a>
+
+<details>
+<summary><img src="../../docs/assets/platforms/apple.svg" alt="" width="20" height="20" /> <strong>iPhone / iPad</strong> · IPA · 侧载</summary>
+
+<blockquote>
+
+iOS / iPadOS 17+ · 预览版 · 下载模型后可在设备上离线运行。
+
+下载 IPA，并按照指南完成签名和侧载。
+
+[下载](https://github.com/debpalash/VoiceStudio/releases/latest) · [指南](../../docs/mobile.md#install)
+
+</blockquote>
+
+</details>
+
+桌面端和手机安装包都在[最新发行版](https://github.com/debpalash/VoiceStudio/releases/latest)中，Docker 镜像则发布在 GHCR。没有 GPU？应用在 CPU 上也能完整使用，只是速度较慢。原生 GGUF 引擎还能通过 Vulkan 使用 AMD、Intel 和 NVIDIA GPU；在 Windows 和 Linux 上，OmniVoice GGUF 会自动选择 GPU 和模型量化（[OmniVoice](../../docs/engines/omnivoice-gguf.md#vulkan-acceleration)、[CosyVoice](../../docs/engines/cosyvoice-gguf.md)）。各引擎在不同硬件上的速度：[性能说明](../../docs/performance.md)。
+
+
+## 开始使用
+
+按上方方式安装后，打开 **Voice cloning**，选择一个声音或添加清晰的参考录音，输入文本并生成。应用会在下载模型前征求你的同意。
+
+<details>
+<summary><strong>更多安装方式</strong>：指定版本、当前 main、卸载、从源码安装、通过编码智能体安装</summary>
 
 ```sh
 curl -fsSL https://voicestudio.sh/install | sh -s -- --version X.Y.Z   # 安装指定版本
@@ -141,24 +412,6 @@ curl -fsSL https://voicestudio.sh/install | sh -s -- --uninstall       # 卸载�
 如果无法访问 `voicestudio.sh`，可直接从仓库运行脚本：
 `curl -fsSL https://raw.githubusercontent.com/debpalash/VoiceStudio/main/scripts/install.sh | sh`。
 前置要求与脚本行为：[安装脚本说明](../../docs/install/script.md)。
-
-**Arch Linux（AUR / yay / pacman）**
-
-使用 `yay` 安装稳定版：
-
-```sh
-yay -S voicestudio-bin
-```
-
-也可以手动构建 AUR 软件包，再使用 `pacman` 安装：
-
-```sh
-sudo pacman -S --needed base-devel git
-git clone https://aur.archlinux.org/voicestudio-bin.git
-cd voicestudio-bin
-makepkg -s
-sudo pacman -U ./voicestudio-bin-*.pkg.tar.zst
-```
 
 **从源码安装**
 

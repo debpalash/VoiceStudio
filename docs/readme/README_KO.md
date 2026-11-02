@@ -97,40 +97,311 @@
 
 ## 지원 플랫폼
 
-| 플랫폼 및 상태 | 다운로드 및 가속 |
-| :--- | :--- |
-| <img src="../../docs/assets/platforms/apple.svg" alt="" width="20" height="20" />&nbsp;**macOS** (Apple Silicon)<br /><sub>안정</sub> | `.dmg` · [가이드](../../docs/install/macos.md)<br /><sub>Metal (MPS)</sub> |
-| <img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" />&nbsp;**Windows 10/11** (x64)<br /><sub>안정</sub> | `.exe` · [가이드](../../docs/install/windows.md)<br /><sub>NVIDIA CUDA · [AMD ROCm (선택)](../../docs/install/windows-rocm.md) · CPU</sub> |
-| <img src="../../docs/assets/platforms/linux.svg" alt="" width="20" height="20" />&nbsp;**Linux** (x64)<br /><sub>안정</sub> | `.AppImage` · `.deb` · <a href="https://snapcraft.io/voicestudio"><img src="https://img.shields.io/badge/Snap%20Store-27272a?style=flat-square&amp;logo=snapcraft&amp;logoColor=ffffff" alt="Snap Store" height="20" /></a> · <a href="https://aur.archlinux.org/packages/voicestudio-bin"><img src="https://img.shields.io/badge/AUR-1793d1?style=flat-square&amp;logo=archlinux&amp;logoColor=ffffff" alt="AUR (yay / pacman)" height="20" /></a> · [Nix](../../docs/install/nix.md) · [가이드](../../docs/install/linux.md)<br /><sub>NVIDIA CUDA · CPU</sub> |
-| <img src="../../docs/assets/platforms/docker.svg" alt="" width="20" height="20" />&nbsp;**Docker**<br /><sub>안정</sub> | [GHCR](../../docs/install/docker.md "ghcr.io/debpalash/voicestudio")<br /><sub>NVIDIA CUDA · AMD ROCm</sub> |
-| <img src="../../docs/assets/platforms/android.svg" alt="" width="20" height="20" />&nbsp;**Android** 10+<br /><sub>프리뷰</sub> | `.apk` · [가이드](../../docs/mobile.md#install)<br /><sub>기기에서 실행, 오프라인 지원</sub> |
-| <img src="../../docs/assets/platforms/apple.svg" alt="" width="20" height="20" />&nbsp;**iPhone / iPad** (iOS 17+)<br /><sub>프리뷰</sub> | `.ipa` (사이드로드) · [가이드](../../docs/mobile.md#install)<br /><sub>기기에서 실행, 오프라인 지원</sub> |
-| <img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" />&nbsp;**Windows on ARM**<br /><sub>실험적</sub> | `.exe` · [가이드](../../docs/install/windows.md)<br /><sub>CPU (x64 백엔드를 에뮬레이션으로 실행)</sub> |
-| <img src="../../docs/assets/platforms/apple.svg" alt="" width="20" height="20" />&nbsp;**Intel Mac**<br /><sub>제한적</sub> | `.dmg` · [이유](../../docs/install/macos.md)<br /><sub>앱 UI만 지원, 원격 백엔드에 연결</sub> |
+운영체제를 선택하고 원하는 설치 방법을 펼쳐 보세요.
 
-데스크톱과 휴대폰 설치 파일은 [최신 릴리스](https://github.com/debpalash/VoiceStudio/releases/latest)에 있고, Docker 이미지는 GHCR에서 받을 수 있습니다. GPU가 없나요? CPU만으로도 모든 기능을 쓸 수 있으며, 속도만 느립니다. 선택 기능인 네이티브 GGUF 엔진은 AMD GPU를 포함해 Vulkan도 사용할 수 있습니다([OmniVoice](../../docs/engines/omnivoice-gguf.md#vulkan-acceleration), [CosyVoice](../../docs/engines/cosyvoice-gguf.md)). 엔진과 하드웨어별 속도는 [성능](../../docs/performance.md) 문서를 참고하세요.
+<a id="install-macos"></a>
 
-## 시작하기
+<details>
+<summary><img src="../../docs/assets/platforms/apple.svg" alt="" width="20" height="20" /> <strong>macOS</strong> · Homebrew · DMG · 설치 스크립트</summary>
 
-**macOS / Linux**
+<blockquote>
+
+**안정 · Apple Silicon**<br />macOS 13.3+ · Apple Silicon: Metal(MPS)로 로컬 엔진 실행.
+
+<a href="https://github.com/debpalash/homebrew-tap"><img src="https://img.shields.io/badge/Homebrew-27272a?style=flat-square&amp;logo=homebrew&amp;logoColor=ffffff" alt="Homebrew" height="20" /></a>
+
+```sh
+brew tap debpalash/tap
+brew trust --cask debpalash/tap/voicestudio
+brew install --cask debpalash/tap/voicestudio
+```
+
+<details>
+<summary>DMG</summary>
+
+Mac에 맞는 DMG를 내려받아 열고 VoiceStudio를 Applications로 드래그하세요.
+
+[다운로드](https://github.com/debpalash/VoiceStudio/releases/latest) · [가이드](../../docs/install/macos.md)
+
+</details>
+
+<details>
+<summary>명령 한 줄로 설치</summary>
 
 ```sh
 curl -fsSL https://voicestudio.sh/install | sh
 ```
 
-**Windows** (PowerShell)
+</details>
+
+<details>
+<summary>Intel Mac · 원격 백엔드 · 제한됨</summary>
+
+Intel Mac에서는 앱 UI를 사용할 수 있습니다. 다른 컴퓨터의 VoiceStudio 백엔드에 연결하세요.
+
+[가이드](../../docs/install/macos.md)
+
+</details>
+
+> [!NOTE]
+> macOS에서 "VoiceStudio가 손상되었기 때문에 열 수 없습니다"라는 메시지는 Gatekeeper가 앱을 차단했다는 뜻이지, 다운로드한 파일이 손상되었다는 뜻이 아닙니다. [Gatekeeper 해결 방법](../../docs/install/macos.md#gatekeeper-quarantine)을 참고하세요.
+
+</blockquote>
+
+</details>
+
+<a id="install-windows"></a>
+
+<details>
+<summary><img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" /> <strong>Windows</strong> · PowerShell · EXE</summary>
+
+<blockquote>
+
+**안정 · x64**<br />Windows 10/11 x64 · NVIDIA CUDA · AMD ROCm(선택하여 활성화) · CPU.
 
 ```powershell
 irm https://voicestudio.sh/install.ps1 | iex
 ```
 
-위 표에서 설치 파일을 내려받아도 됩니다. 그런 다음 **음성 복제**를 열고, 목소리를 고르거나 깨끗한 참조 녹음을 추가한 뒤 텍스트를 입력하고 생성하세요. 모델을 내려받기 전에는 항상 먼저 확인을 요청합니다.
-
-> [!NOTE]
-> macOS에서 "VoiceStudio가 손상되었기 때문에 열 수 없습니다"라는 메시지는 Gatekeeper가 앱을 차단했다는 뜻이지, 다운로드한 파일이 손상되었다는 뜻이 아닙니다. [Gatekeeper 해결 방법](../../docs/install/macos.md#gatekeeper-quarantine)을 참고하세요.
+[Windows 설치 프로그램 다운로드](https://github.com/debpalash/VoiceStudio/releases/latest) · [가이드](../../docs/install/windows.md) · [AMD ROCm](../../docs/install/windows-rocm.md)
 
 <details>
-<summary><strong>다른 설치 방법</strong>: Arch Linux, 특정 버전, 최신 main, 제거, 소스에서 설치, 코딩 에이전트로 설치</summary>
+<summary>Windows on ARM · 실험적</summary>
+
+앱 UI는 네이티브로 실행되며 x64 Python 백엔드는 CPU 에뮬레이션으로 실행됩니다.
+
+[다운로드](https://github.com/debpalash/VoiceStudio/releases/latest) · [가이드](../../docs/install/windows.md)
+
+</details>
+
+</blockquote>
+
+</details>
+
+<a id="install-linux"></a>
+
+<details open>
+<summary><img src="../../docs/assets/platforms/linux.svg" alt="" width="20" height="20" /> <strong>Linux</strong> · AUR · Snap · DEB · AppImage · Nix</summary>
+
+<blockquote>
+
+**안정 · x64**<br />Linux x64 · NVIDIA CUDA · CPU · 지원되는 GGUF 엔진에서 Vulkan 사용 가능.
+
+<details>
+<summary>명령 한 줄로 설치</summary>
+
+```sh
+curl -fsSL https://voicestudio.sh/install | sh
+```
+
+</details>
+
+<details>
+<summary>Arch / Manjaro / EndeavourOS · AUR</summary>
+
+<a href="https://aur.archlinux.org/packages/voicestudio-bin"><img src="https://img.shields.io/badge/AUR-1793d1?style=flat-square&amp;logo=archlinux&amp;logoColor=ffffff" alt="AUR" height="20" /></a>
+
+```sh
+yay -S voicestudio-bin
+```
+
+`paru -S voicestudio-bin`으로도 설치할 수 있습니다.
+
+[개발 소스 버전](https://aur.archlinux.org/packages/voicestudio-git) · `yay -S voicestudio-git`
+
+<details>
+<summary>AUR에서 빌드하고 pacman으로 설치</summary>
+
+```sh
+sudo pacman -S --needed base-devel git
+git clone https://aur.archlinux.org/voicestudio-bin.git
+cd voicestudio-bin
+makepkg -s
+sudo pacman -U ./voicestudio-bin-*.pkg.tar.zst
+```
+
+</details>
+
+</details>
+
+<details>
+<summary>Ubuntu / Debian / Linux Mint · DEB</summary>
+
+`.deb`를 현재 폴더에 내려받은 뒤 설치하세요:
+
+[다운로드](https://github.com/debpalash/VoiceStudio/releases/latest)
+
+```sh
+sudo apt install ./VoiceStudio-*-linux-x64.deb
+```
+
+</details>
+
+<details>
+<summary>Snap · Ubuntu, Fedora, openSUSE 등</summary>
+
+<a href="https://snapcraft.io/voicestudio"><img src="https://img.shields.io/badge/Snap%20Store-27272a?style=flat-square&amp;logo=snapcraft&amp;logoColor=ffffff" alt="Snap Store" height="20" /></a>
+
+[snapd 설치](https://snapcraft.io/docs/installing-snapd) 후 실행하세요:
+
+```sh
+sudo snap install voicestudio
+```
+
+마이크 접근을 활성화하려면:
+
+```sh
+sudo snap connect voicestudio:audio-record
+```
+
+</details>
+
+<details>
+<summary>다양한 Linux 배포판 · AppImage</summary>
+
+AppImage를 현재 폴더에 내려받은 뒤 실행하세요:
+
+[다운로드](https://github.com/debpalash/VoiceStudio/releases/latest)
+
+```sh
+chmod +x VoiceStudio-*-linux-x64.AppImage
+./VoiceStudio-*-linux-x64.AppImage
+```
+
+</details>
+
+<details>
+<summary>Nix / NixOS · 소스 실행 환경</summary>
+
+저장소의 FHS 개발 환경에 들어간 뒤 소스에서 실행하세요:
+
+```sh
+git clone https://github.com/debpalash/VoiceStudio.git
+cd VoiceStudio
+nix develop .#fhs
+bun run dev
+```
+
+[가이드](../../docs/install/nix.md)
+
+</details>
+
+[가이드](../../docs/install/linux.md)
+
+</blockquote>
+
+</details>
+
+<a id="install-docker"></a>
+
+<details>
+<summary><img src="../../docs/assets/platforms/docker.svg" alt="" width="20" height="20" /> <strong>Docker</strong> · GHCR · Docker Hub</summary>
+
+<blockquote>
+
+안정 버전 이미지 · CPU · NVIDIA CUDA · AMD ROCm.
+
+<a href="https://github.com/debpalash/VoiceStudio/pkgs/container/voicestudio"><img src="https://img.shields.io/badge/GHCR-27272a?style=flat-square&amp;logo=github&amp;logoColor=ffffff" alt="GHCR" height="20" /></a>
+
+**로컬 CPU로 실행(Bash)**
+
+```sh
+export OMNIVOICE_API_KEY="$(openssl rand -hex 32)"
+docker run -d --name omnivoice \
+  -p 127.0.0.1:3900:3900 \
+  -e OMNIVOICE_API_KEY \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
+  -v omnivoice-data:/app/omnivoice_data \
+  ghcr.io/debpalash/voicestudio:stable
+printf 'API key: %s\n' "$OMNIVOICE_API_KEY"
+```
+
+http://localhost:3900을 열고 아래에 출력된 API 키를 사용하세요.
+
+[NVIDIA, AMD ROCm 및 Compose 안내](../../docs/install/docker.md)
+
+[Docker Hub 미러](https://hub.docker.com/r/palashdeb/omnivoice-studio): `palashdeb/omnivoice-studio:stable`
+
+</blockquote>
+
+</details>
+
+<a id="install-android"></a>
+
+<details>
+<summary><img src="../../docs/assets/platforms/android.svg" alt="" width="20" height="20" /> <strong>Android</strong> · APK · Obtainium · F-Droid 저장소</summary>
+
+<blockquote>
+
+Android 10+ · 미리보기 · 모델 다운로드 후 기기에서 오프라인 실행.
+
+[APK 다운로드](https://github.com/debpalash/VoiceStudio/releases/latest) · [가이드](../../docs/mobile.md#install)
+
+<details>
+<summary>F-Droid · VoiceStudio 저장소</summary>
+
+F-Droid 호환 클라이언트에 이 저장소를 추가하고 가이드에서 지문을 확인하세요.
+
+```text
+https://debpalash.github.io/VoiceStudio/fdroid/repo
+```
+
+[가이드](../../store/fdroid/README.md)
+
+</details>
+
+<details>
+<summary>Obtainium · GitHub 릴리스</summary>
+
+Obtainium에 이 소스를 추가하거나 제공된 설정을 가져오세요.
+
+```text
+https://github.com/debpalash/VoiceStudio
+```
+
+[설정 가져오기](https://debpalash.github.io/VoiceStudio/obtainium.json)
+
+</details>
+
+<details>
+<summary>USB와 adb로 설치</summary>
+
+```sh
+adb install -r VoiceStudio-*-android.apk
+```
+
+</details>
+
+</blockquote>
+
+</details>
+
+<a id="install-ios"></a>
+
+<details>
+<summary><img src="../../docs/assets/platforms/apple.svg" alt="" width="20" height="20" /> <strong>iPhone / iPad</strong> · IPA · 사이드로드</summary>
+
+<blockquote>
+
+iOS / iPadOS 17+ · 미리보기 · 모델 다운로드 후 기기에서 오프라인 실행.
+
+IPA를 내려받고 서명 및 사이드로드 안내를 따르세요.
+
+[다운로드](https://github.com/debpalash/VoiceStudio/releases/latest) · [가이드](../../docs/mobile.md#install)
+
+</blockquote>
+
+</details>
+
+데스크톱과 휴대폰 설치 파일은 [최신 릴리스](https://github.com/debpalash/VoiceStudio/releases/latest)에 있고, Docker 이미지는 GHCR에서 받을 수 있습니다. GPU가 없나요? CPU만으로도 모든 기능을 쓸 수 있으며, 속도만 느립니다. 선택 기능인 네이티브 GGUF 엔진은 AMD GPU를 포함해 Vulkan도 사용할 수 있습니다([OmniVoice](../../docs/engines/omnivoice-gguf.md#vulkan-acceleration), [CosyVoice](../../docs/engines/cosyvoice-gguf.md)). 엔진과 하드웨어별 속도는 [성능](../../docs/performance.md) 문서를 참고하세요.
+
+
+## 시작하기
+
+위 방법으로 설치한 다음 **Voice cloning**을 열고, 음성을 선택하거나 깨끗한 참조 녹음을 추가하고, 텍스트를 입력해 생성하세요. 앱은 모델을 다운로드하기 전에 동의를 구합니다.
+
+<details>
+<summary><strong>다른 설치 방법</strong>: 특정 버전, 최신 main, 제거, 소스에서 설치, 코딩 에이전트로 설치</summary>
 
 ```sh
 curl -fsSL https://voicestudio.sh/install | sh -s -- --version X.Y.Z   # 특정 릴리스
@@ -141,24 +412,6 @@ curl -fsSL https://voicestudio.sh/install | sh -s -- --uninstall       # 데이�
 `voicestudio.sh`에 접속할 수 없다면 저장소에서 스크립트를 바로 실행하세요:
 `curl -fsSL https://raw.githubusercontent.com/debpalash/VoiceStudio/main/scripts/install.sh | sh`.
 요구 사항과 동작: [설치 스크립트 가이드](../../docs/install/script.md).
-
-**Arch Linux (AUR / yay / pacman)**
-
-`yay`로 안정 버전을 설치하세요:
-
-```sh
-yay -S voicestudio-bin
-```
-
-AUR 패키지를 직접 빌드한 뒤 `pacman`으로 설치할 수도 있습니다:
-
-```sh
-sudo pacman -S --needed base-devel git
-git clone https://aur.archlinux.org/voicestudio-bin.git
-cd voicestudio-bin
-makepkg -s
-sudo pacman -U ./voicestudio-bin-*.pkg.tar.zst
-```
 
 **소스에서 설치**
 
