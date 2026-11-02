@@ -105,11 +105,12 @@ Gatekeeper, and neither means the download is broken:
 - **"VoiceStudio cannot be opened because the developer cannot be verified"**:
   the milder form of the same check, which offers an Open path.
 
-Release builds are not notarized yet because that needs signing secrets the
-public release CI does not hold (tracked in #1779). Some builds are signed ad
-hoc (`identity: '-'`), which is not an Apple identity. Environments that forbid
-the workarounds below need a signed, notarized release; bypassing Gatekeeper is
-not a substitute.
+The release workflow requires Developer ID signing and notarization unless an
+unsigned release is explicitly approved. Older releases and local test builds
+may be signed ad hoc (`identity: '-'`), which is not an Apple identity. Check
+the signing status for the specific release you downloaded. Environments that
+require signed, notarized apps must use a qualifying release; bypassing
+Gatekeeper is not a substitute.
 
 **Check the download first.** Compute its SHA-256 and compare it with
 `SHA256SUMS.txt` from the same GitHub Release:
