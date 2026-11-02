@@ -50,7 +50,7 @@ class ReviewUiRegressionTest {
             compose.onNodeWithText("VoiceStudio").assertExists()
             for(route in listOf("speak","voices","dub","dictate","models","connect")) {
                 compose.onNodeWithTag("home.$route").performScrollTo().performClick()
-                assertEquals(route,destination)
+                assertEquals(if(route=="voices") "clone" else route,destination)
             }
             compose.onNodeWithText("Your generations will appear here.").performScrollTo().assertIsDisplayed()
             compose.onNodeWithText("No projects yet").performScrollTo().assertIsDisplayed()
@@ -82,6 +82,41 @@ class ReviewUiRegressionTest {
             compose.onNode(hasText("Connect") and hasClickAction()).performScrollTo().assertIsEnabled()
         } finally {vm.viewModelScope.cancel()}
     }
+    @Test fun speechOffersAllEnginesAndRequiresSavedVoiceForReferenceOnlyModels() {
+        shadowOf(app.getSystemService(android.app.ActivityManager::class.java)).setMemoryInfo(android.app.ActivityManager.MemoryInfo().apply {totalMem=16_000_000_000})
+        val vm=vm()
+        try {
+            content {SpeakScreen(vm)}
+            await {!vm.phone.state.value.loading&&vm.phone.state.value.models.isNotEmpty()}
+            compose.waitUntil(5000) {compose.onAllNodesWithText("Kitten").fetchSemanticsNodes().isNotEmpty()}
+            compose.onNodeWithContentDescription("Model, currently Kitten").performScrollTo().performClick()
+            for(name in listOf("Kitten","Kokoro","OmniVoice","Piper","Supertonic 3","Pocket TTS","ZipVoice")) {
+                compose.onNodeWithText("Search").performTextReplacement(name)
+                compose.onAllNodes(hasText(name) and hasClickAction() and !hasSetTextAction()).onLast().assertExists()
+            }
+            compose.onNodeWithText("Search").performTextReplacement("Pocket TTS")
+            compose.onNode(hasText("Pocket TTS") and hasClickAction() and !hasSetTextAction()).performScrollTo().performClick()
+            compose.onNodeWithText("Choose a saved voice to use this model. You can import one from Gallery.").performScrollTo().assertExists()
+            assertTrue(vm.phone.state.value.installed.isEmpty())
+            assertNull(vm.phone.state.value.progress)
+            compose.onNodeWithText("Voice 1").assertDoesNotExist()
+        } finally {vm.viewModelScope.cancel()}
+    }
+    @Test fun omniSpeechDoesNotOfferUnconditionedDefaultVoice() {
+        shadowOf(app.getSystemService(android.app.ActivityManager::class.java)).setMemoryInfo(android.app.ActivityManager.MemoryInfo().apply {totalMem=16_000_000_000})
+        val vm=vm()
+        try {
+            content {SpeakScreen(vm)}
+            await {!vm.phone.state.value.loading&&vm.phone.state.value.models.isNotEmpty()}
+            compose.waitUntil(5000) {compose.onAllNodesWithText("Kitten").fetchSemanticsNodes().isNotEmpty()}
+            compose.onNodeWithContentDescription("Model, currently Kitten").performScrollTo().performClick()
+            compose.onNodeWithText("Search").performTextReplacement("OmniVoice")
+            compose.onNode(hasText("OmniVoice") and hasClickAction() and !hasSetTextAction()).performClick()
+            compose.onNodeWithText("Choose a saved voice to use this model. You can import one from Gallery.").performScrollTo().assertExists()
+            compose.onNodeWithText("Default voice").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Voice, currently Choose a voice").assertExists()
+        } finally {vm.viewModelScope.cancel()}
+    }
     @Test fun modelSwitchDropsOutOfRangePresetImmediately() {
         shadowOf(app.getSystemService(android.app.ActivityManager::class.java)).setMemoryInfo(android.app.ActivityManager.MemoryInfo().apply {totalMem=16_000_000_000})
         val vm=vm()
@@ -92,12 +127,18 @@ class ReviewUiRegressionTest {
             val kitten=vm.phone.state.value.models.first {it.id.contains("kitten")}
             vm.preference {it.copy(phoneModels=it.phoneModels+("speak" to kokoro.id))}
             await {vm.preferences.value.phoneModels["speak"]==kokoro.id}
-            compose.onNodeWithContentDescription("Voice, currently Voice 1").performClick()
+            // The picker must receive the screen's collected preference before
+            // opening it; the view-model flow can update a frame earlier.
+            compose.waitUntil(5000) {compose.onAllNodesWithText("Kokoro").fetchSemanticsNodes().isNotEmpty()}
+            compose.onNodeWithContentDescription("Voice, currently Voice 1").performScrollTo().performClick()
             compose.onNodeWithText("Search").performTextInput("103")
             compose.onNode(hasText("Voice 103") and !hasSetTextAction()).performClick()
             compose.onNodeWithText("Voice 103").assertExists()
             vm.preference {it.copy(phoneModels=it.phoneModels+("speak" to kitten.id))}
             await {vm.preferences.value.phoneModels["speak"]==kitten.id}
+            // Preferences are collected by the screen before its selection-reset
+            // effect renders the replacement preset; wait for that visible state.
+            compose.waitUntil(5000) {compose.onAllNodesWithText("Voice 1").fetchSemanticsNodes().isNotEmpty()}
             compose.onNodeWithText("Voice 1").assertExists()
             compose.onNodeWithText("Voice 103").assertDoesNotExist()
         } finally {vm.viewModelScope.cancel()}

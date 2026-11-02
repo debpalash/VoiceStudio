@@ -37,12 +37,12 @@ import java.util.UUID
     var starting by remember {mutableStateOf(false)}
     var work by remember {mutableStateOf<Job?>(null)}
     var copied by remember {mutableStateOf(false)}
-    fun selected(task:String,capability:String)=phone.models.filter {it.capability==capability}.let {items ->items.firstOrNull {it.id==preferences.phoneModels[task]} ?: items.firstOrNull {phone.canRun(it,vm.phone.ramBytes)} ?: items.firstOrNull()}
+    fun selected(task:String,capability:String)=phone.preferredModel(phone.models.filter {it.capability==capability},vm.phone.ramBytes,preferences.phoneModels[task])
     val item=selected(if(source=="saved") "phone-api-clone" else "phone-api",if(source=="saved") "clone" else "tts")
     val asr=selected("phone-api-asr","asr");val translator=selected("phone-api-translate","translate")
     val savedVoice=phone.voices.firstOrNull {it.id==voiceID} ?: phone.voices.firstOrNull()
     val needed=listOfNotNull(item.takeIf {speech},asr.takeIf {transcription},translator.takeIf {translation})
-    val ready=(speech||transcription||translation)&&(!speech||(item!=null&&phone.canRun(item,vm.phone.ramBytes)&&(source=="preset"||savedVoice!=null)))&&(!transcription||(asr!=null&&phone.canRun(asr,vm.phone.ramBytes)))&&(!translation||(translator!=null&&phone.canRun(translator,vm.phone.ramBytes)))
+    val ready=(speech||transcription||translation)&&(!speech||(item!=null&&phone.canRun(item)&&(source=="preset"||savedVoice!=null)))&&(!transcription||(asr!=null&&phone.canRun(asr)))&&(!translation||(translator!=null&&phone.canRun(translator)))
     fun stop() {work?.cancel();server?.close();server=null;copied=false}
     DisposableEffect(lifecycle) {
         val observer=LifecycleEventObserver {_,event -> if(event==Lifecycle.Event.ON_STOP) stop()}
@@ -88,7 +88,7 @@ import java.util.UUID
             if(transcription&&!starting) {TaskModelPicker(vm,"phone-api-asr",setOf("asr"),asr);Text(tr("mobile.host.audio_hint"))}
             Toggle("mobile.host.allow_translation",translation) {if(!starting) translation=it}
             if(translation&&!starting) TaskModelPicker(vm,"phone-api-translate",setOf("translate"),translator)
-            if(needed.any {!phone.canRun(it,vm.phone.ramBytes)}) MissingModelsCard(vm,"mobile.host.title",needed)
+            if(needed.any {!phone.canRun(it)}) MissingModelsCard(vm,"mobile.host.title",needed)
             Action("mobile.host.start",!starting&&ready) {
                 val selected=item;val voice=speaker.toInt();val localNetwork=lan;val useSaved=source=="saved";val saved=savedVoice
                 val features=PhoneServerCapabilities(

@@ -12,7 +12,27 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
+  changes:
+    name: Changed runtime paths
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      runtime: ${{ steps.scope.outputs.runtime }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/ci_scope.py
+
   install:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.runtime != 'false' }}
     name: Install (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60

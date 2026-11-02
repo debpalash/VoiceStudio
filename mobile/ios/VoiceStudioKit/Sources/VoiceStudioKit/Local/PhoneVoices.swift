@@ -59,7 +59,7 @@ public actor PhoneVoiceStore {
         }.sorted { $0.createdAt > $1.createdAt }
     }
     public func create(name: String, source: URL, consent: Bool, asr: PhoneModel, cloneModel: PhoneModel, engine: any LocalEngine, decoder: any PhoneAudioDecoder, progress: @escaping EngineProgressHandler = { _ in }) async throws -> PhoneVoice {
-        guard consent, asr.capability == .asr, cloneModel.capability == .clone, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, name.count <= 200 else { throw ClientError("mobile.simple.clone_failed") }
+        guard consent, asr.capability == .asr, cloneModel.supportsCloning, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, name.count <= 200 else { throw ClientError("mobile.simple.clone_failed") }
         let id = UUID(), now = Date()
         // Publish metadata only after extraction and successful ASR. Failed/cancelled work leaves no voice.
         let actualDir = root.appendingPathComponent(id.uuidString)
@@ -81,7 +81,15 @@ public actor PhoneVoiceStore {
             try PrivateFiles.write(voice,to: actualDir.appendingPathComponent("voice.json")); return voice
         } catch { try? FileManager.default.removeItem(at: actualDir); throw error }
     }
-    public func saveDesign(name: String, text: String, audio: LocalAudio, model: PhoneModel, instruction: String, seed: UInt64) throws -> PhoneVoice {
+    public func importCommunity(_ entry: GalleryEntry,source: URL,consent: Bool,decoder: any PhoneAudioDecoder = AVPhoneAudioDecoder()) async throws -> PhoneVoice {
+        guard consent, entry.type == "voice", let audio = entry.audio, (try source.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? Int.max) <= 32*1024*1024,
+              try ModelHash.file(source) == audio.sha256 else { throw ClientError("mobile.handoff.voices_required") }
+        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString+".pcm")
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let pcm = try await decoder.decode(source: source,output: scratch,maxSeconds: 30,progress: { _ in })
+        return try installHandoff(name: entry.name,transcript: audio.ref_text,reference: pcm.read(start: 0,count: pcm.frames),metadata: ["sourceAttribution":.object(entry.attribution.mapValues(JSONValue.string))],synthetic: try PhoneAudioProcessing.containsSyntheticMarker(source),consent: consent)
+    }
+    public func saveDesign(name: String, text: String, audio: LocalAudio, model: PhoneModel, instruction: String, seed: UInt64, attribution: [String:String]? = nil) throws -> PhoneVoice {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, name.count <= 200, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               audio.sampleRate == 24000, (2400...720000).contains(audio.samples.count), audio.samples.allSatisfy(\.isFinite) else { throw ClientError("mobile.simple.clone_failed") }
         let id = UUID(), now = Date(), dir = try directory(id)
@@ -90,7 +98,7 @@ public actor PhoneVoiceStore {
             try PCMFile.write(PCMChunk(samples: audio.samples,sampleRate: audio.sampleRate),to: dir.appendingPathComponent("reference.pcm"))
             try audio.markSynthetic().write(to: dir.appendingPathComponent("reference.wav"),options: .atomic)
             try Task.checkCancellation()
-            let voice = PhoneVoice(id: id,name: name.trimmingCharacters(in: .whitespacesAndNewlines),transcript: text,createdAt: now,consentAt: now,sampleRate: 24000,modelRepo: model.repo,modelRevision: model.revision,designInstruction: instruction,designSeed: seed)
+            let voice = PhoneVoice(id: id,name: name.trimmingCharacters(in: .whitespacesAndNewlines),transcript: text,createdAt: now,consentAt: now,sampleRate: 24000,modelRepo: model.repo,modelRevision: model.revision,designInstruction: instruction,designSeed: seed,sourceAttribution: attribution)
             try PrivateFiles.write(voice,to: dir.appendingPathComponent("voice.json")); return voice
         } catch { try? FileManager.default.removeItem(at: dir); throw error }
     }

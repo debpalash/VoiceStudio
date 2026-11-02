@@ -48,15 +48,15 @@ import java.io.File
     val progress=(active?.progress?.getInt("percent",0) ?: 0)/100f
     var deleting by remember {mutableStateOf<ProductionProject?>(null)}
     val running=active!=null
-    val tts=chooseModel(phone.models,phone.installed,prefs.phoneModels,"production-tts","tts")
-    val clone=chooseModel(phone.models,phone.installed,prefs.phoneModels,"production-clone","clone")
+    val tts=phone.preferredModel(phone.models.filter {it.capability=="tts"},vm.phone.ramBytes,prefs.phoneModels["production-tts"])
+    val clone=phone.preferredModel(phone.models.filter {it.capability=="clone"},vm.phone.ramBytes,prefs.phoneModels["production-clone"])
     val configuration=listOfNotNull(tts,clone).joinToString("|") {modelPin(it).identity}
     val plan=remember(project.script,project.pronunciations,project.speed) {runCatching {project.plan()}.getOrNull()}
     val selections=plan?.segments?.map {project.voice(it.role)} ?: listOf(project.defaultVoice)
     val needed=listOfNotNull(tts.takeIf {selections.any {it.startsWith("preset:")}},clone.takeIf {selections.any {it.startsWith("phone:")}})
     val speakers=tts?.option("num_speakers","1")?.toIntOrNull()?.coerceIn(1,128) ?: 1
     val voices=(0 until speakers).map {Choice("preset:$it",tr("mobile.local.preset_voice",mapOf("number" to it+1)))}+phone.voices.map {Choice("phone:"+it.id,it.name)}
-    val valid=plan!=null&&selections.all {selection->voices.any {it.id==selection}}&&needed.isNotEmpty()&&needed.all {phone.canRun(it,vm.phone.ramBytes)}
+    val valid=plan!=null&&selections.all {selection->voices.any {it.id==selection}}&&needed.isNotEmpty()&&needed.all {phone.canRun(it)}
     suspend fun refreshLibrary() {projects=vm.phone.production.list()}
     fun switchProject(next: ProductionProject) {val previous=project;scope.launch {try {if(previous.title.isNotBlank()) vm.phone.production.save(previous);project=next} catch(e:Exception) {vm.fail(e)}}}
     fun fresh() {switchProject(ProductionProject(kind=kind,title=untitled))}
@@ -129,7 +129,7 @@ import java.io.File
                 }
             }
         }
-        if(needed.any {!phone.canRun(it,vm.phone.ramBytes)}) MissingModelsCard(vm,titleKey,needed)
+        if(needed.any {!phone.canRun(it)}) MissingModelsCard(vm,titleKey,needed)
         PhoneJobStatus(running)
         if(running) {
             LinearProgressIndicator(progress={progress},modifier=Modifier.fillMaxWidth())
@@ -176,6 +176,3 @@ import java.io.File
 @Composable private fun VoiceCastPicker(name: String,value: String,choices: List<Choice>,change: (String)->Unit) {
     Column {Text(name,style=MaterialTheme.typography.titleSmall);ChoicePicker("mobile.speak.voice",value,choices,change=change)}
 }
-
-private fun chooseModel(models: List<PhoneModel>,installed: Set<String>,choices: Map<String,String>,task: String,capability: String): PhoneModel? =
-    models.filter {it.capability==capability}.let {options -> options.firstOrNull {it.id==choices[task]} ?: options.firstOrNull {it.id in installed} ?: options.firstOrNull()}

@@ -1,5 +1,4 @@
 import { _electron as electron } from 'playwright';
-import { once } from 'node:events';
 import { execFileSync } from 'node:child_process';
 import {
   appendFileSync,
@@ -16,6 +15,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { DEFAULT_FIXTURES, startHealthBackend } from './fake-health-backend.mjs';
+import { forceAndWaitForExit } from './desktop-harness-exit.mjs';
 import { isAllowedRequest, STAR_COUNT_STUB, STAR_COUNT_URL } from './local-first.mjs';
 
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -210,18 +210,17 @@ export async function withApp(t, options, body) {
     // The crashed process cannot return its request log afterward.
     await collectGuards(started);
     const signal = AbortSignal.timeout(30_000);
-    const exited = once(started.child, 'exit', { signal });
-    const closed = once(started.app, 'close', { signal });
     started.expectedExit = true;
-    if (process.platform === 'win32') {
-      // Playwright launches through cmd.exe on Windows. Killing only that
-      // wrapper leaves Electron alive and its inherited output pipes open.
-      execFileSync('taskkill.exe', ['/PID', String(started.child.pid), '/T', '/F'], {
-        windowsHide: true,
-        timeout: 10_000,
-      });
-    } else started.child.kill('SIGKILL');
-    await Promise.all([exited, closed]);
+    await forceAndWaitForExit(started.child, started.app, () => {
+      if (process.platform === 'win32') {
+        // Playwright launches through cmd.exe. Kill the entire tree and verify
+        // both the wrapper exit and Electron close, even if taskkill races a child.
+        execFileSync('taskkill.exe', ['/PID', String(started.child.pid), '/T', '/F'], {
+          windowsHide: true,
+          timeout: 10_000,
+        });
+      } else started.child.kill('SIGKILL');
+    }, signal);
   };
   session.relaunch = async () => {
     const previous = live.at(-1);

@@ -29,6 +29,18 @@ typedef struct {
     int32_t threads;
     int32_t sample_rate;
     int32_t cpu_only; // 0 preserves foreground acceleration, 1 forbids GPU allocation.
+    const char *duration_predictor;
+    const char *text_encoder;
+    const char *vector_estimator;
+    const char *vocoder;
+    const char *tts_config;
+    const char *unicode_indexer;
+    const char *lm_flow;
+    const char *lm_main;
+    const char *text_conditioner;
+    const char *vocab;
+    const char *token_scores;
+    int32_t num_steps;
 } VSConfig;
 typedef struct { float *samples; int32_t count; int32_t sample_rate; } VSAudio;
 void vs_audio_free(VSAudio *audio);
@@ -36,6 +48,7 @@ void vs_text_free(char *text);
 int vs_runtime_available(const char *runtime, const char *library);
 int vs_cpu_runtime_available(const char *runtime, const char *library);
 int vs_synthesize(const VSConfig *config, const char *text, int32_t speaker, float speed, VSCancel *cancel, VSAudio *audio);
+int vs_sherpa_clone(const VSConfig *config,const char *text,const char *reference_text,const float *reference,int32_t count,int32_t rate,VSCancel *cancel,VSAudio *audio);
 int vs_transcribe(const VSConfig *config, const float *samples, int32_t count, int32_t rate, VSCancel *cancel, char **text);
 /// token=1: one recognised token with window-relative start/end (end<=start when untimed); token=0: a whole window.
 typedef struct { double start; double end; char *text; int32_t window; int32_t token; } VSSegment;

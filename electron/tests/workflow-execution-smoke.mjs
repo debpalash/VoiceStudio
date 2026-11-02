@@ -117,7 +117,7 @@ try {
   await page.goto(base + '/#/workflows');
   await fromTemplate('Batch narration · Normalize audio');
   await page.getByLabel('Scripts', { exact: true }).fill('First lesson\n---\nSecond lesson');
-  await page.locator('.react-flow__node').filter({ hasText: 'Speak' }).click();
+  await page.locator('.react-flow__node').filter({ hasText: 'Speech' }).click();
   await page.getByRole('button', { name: 'Target voice', exact: true }).click();
   await page.getByRole('option').filter({ hasText: 'Demo voice' }).click();
   await page.locator('.workflow-intro').getByRole('button', { name: 'Run workflow' }).click();
@@ -199,7 +199,7 @@ try {
     .getByLabel('Add audio', { exact: true })
     .setInputFiles({ name: 'lesson.wav', mimeType: 'audio/wav', buffer: wav });
   await page.getByText('lesson.wav', { exact: true }).waitFor();
-  await page.locator('.react-flow__node').filter({ hasText: 'Speak' }).click();
+  await page.locator('.react-flow__node').filter({ hasText: 'Speech' }).click();
   await page.getByRole('button', { name: 'Target voice', exact: true }).click();
   await page.getByRole('option').filter({ hasText: 'Demo voice' }).click();
   await page.locator('.workflow-intro').getByRole('button', { name: 'Run workflow' }).click();

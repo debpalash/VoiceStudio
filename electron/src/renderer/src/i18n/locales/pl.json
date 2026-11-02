@@ -3492,7 +3492,7 @@
     "add_details": "Dodaj szczegóły",
     "step_start": "Start",
     "step_agent": "Agent",
-    "step_speak": "Mów",
+    "step_speak": "Mowa",
     "step_condition": "Warunek",
     "step_call": "Połączenie",
     "step_end": "Koniec",
@@ -3859,7 +3859,7 @@
       "brought_by": "Przygotowane dla Ciebie przez"
     },
     "tabs": {
-      "speak": "Mów",
+      "speak": "Mowa",
       "voices": "Głosy",
       "dub": "Dubbing",
       "dictate": "Dyktowanie",
@@ -3907,7 +3907,8 @@
       "unstar": "Usuń gwiazdkę",
       "engine_unavailable": "Ten silnik jest niedostępny. Sprawdź jego instalację na komputerze.",
       "voice_default": "Głos domyślny (ustawienie silnika)",
-      "engine_no_cloning": "Ten silnik nie może używać nagrania referencyjnego. Wybierz silnik obsługujący klonowanie głosu lub użyj głosu domyślnego."
+      "engine_no_cloning": "Ten silnik nie może używać nagrania referencyjnego. Wybierz silnik obsługujący klonowanie głosu lub użyj głosu domyślnego.",
+      "reference_required": "Wybierz zapisany głos, aby użyć tego modelu. Możesz zaimportować go z galerii."
     },
     "voices": {
       "search": "Szukaj głosów",
@@ -4122,7 +4123,7 @@
       "terms_fingerprint": "Odcisk warunków: {{fingerprint}}",
       "licence_storage": "Nie udało się odczytać ani zapisać licencji modeli. Zwolnij miejsce i spróbuj ponownie; modele pozostają zablokowane.",
       "licence_required": "Najpierw zaakceptuj licencję w Modelach.",
-      "ram_required": "Wymaga {{ram}} GB RAM. Wybierz mniejszy model lub użyj komputera.",
+      "ram_required": "Zalecane {{ram}} GB pamięci RAM. Na tym urządzeniu model może działać wolno lub spowodować zamknięcie aplikacji. Mimo to możesz go wypróbować.",
       "wifi_required": "Połącz się z Wi-Fi lub zezwól na dane mobilne w Modelach.",
       "storage_required": "Za mało miejsca. Zwolnij miejsce i spróbuj ponownie.",
       "download_failed": "Pobieranie modelu nie powiodło się. Sprawdź połączenie i wznów w Modelach.",
@@ -4136,10 +4137,11 @@
       "preset_voice": "Głos {{number}}",
       "transfer": "{{received}} z {{total}}",
       "privacy": "Zadania na urządzeniu zostają na tym telefonie. Z sieci korzystają tylko pobieranie modeli, zgłoszenia, które zdecydujesz się wysłać, oraz sparowany komputer.",
-      "computer_feature": "Ta funkcja działa obecnie na Twoim komputerze. Możesz używać Mów i Dyktowanie na tym telefonie bez parowania.",
+      "computer_feature": "Ta funkcja działa obecnie na Twoim komputerze. Możesz używać funkcji „Mowa” i „Dyktowanie” na tym telefonie bez parowania.",
       "accepted": "Licencja zaakceptowana",
       "not_accepted": "Licencja niezaakceptowana",
-      "receipt": "{{action}} · {{time}} · Aplikacja {{version}} · Warunki {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · Aplikacja {{version}} · Warunki {{fingerprint}}",
+      "try_anyway": "Wypróbuj mimo to"
     },
     "simple": {
       "phone": "Telefon",
@@ -4187,7 +4189,7 @@
       "remove_job": "Usuń dubbing",
       "reconnect": "Połącz ponownie",
       "cancel": "Anuluj",
-      "ram": "Wymaga {{ram}} GB RAM",
+      "ram": "Zalecane {{ram}} GB pamięci RAM",
       "analytics": "Analityka",
       "language": "Język",
       "default_voice": "Domyślny głos",
@@ -4439,6 +4441,30 @@
       "import": "Importuj",
       "export": "Eksportuj",
       "send": "Wyślij"
+    },
+    "support": {
+      "donate": "Wesprzyj",
+      "other_apps": "Inne aplikacje",
+      "other_apps_intro": "Projekty naszego zespołu i sponsorów VoiceStudio.",
+      "gift_note": "Wsparcie jest dobrowolne. Wpłaty wspierają rozwój i nie odblokowują funkcji, treści ani usług.",
+      "pro_scope": "Pro dodaje narzędzia produkcyjne do VoiceStudio na komputerze. Narzędzia kreatywne aplikacji mobilnej pozostają bezpłatne.",
+      "opengtm": "Znajduj i analizuj potencjalnych klientów dzięki automatyzacji sprzedaży o otwartym kodzie.",
+      "opal": "Odtwarzacz multimediów i przeglądarka o otwartym kodzie do własnej biblioteki.",
+      "supermetry": "Samodzielnie hostowana analityka internetowa szanująca prywatność.",
+      "spicrawl": "Zamieniaj strony internetowe na Markdown lub dane strukturalne dla agentów AI.",
+      "special_sponsor": "Sponsor specjalny"
+    },
+    "downloads": {
+      "pause": "Wstrzymaj",
+      "paused": "Wstrzymano",
+      "connecting": "Łączenie…",
+      "waiting": "Oczekiwanie na Wi-Fi…",
+      "retrying": "Ponowna próba za {{seconds}} s…",
+      "verifying": "Weryfikacja modelu…",
+      "speed": "{{speed}}/s",
+      "eta": "Pozostało około {{time}}",
+      "estimating": "Szacowanie pozostałego czasu…",
+      "waiting_network": "Oczekiwanie na połączenie…"
     }
   },
   "failureCause": {

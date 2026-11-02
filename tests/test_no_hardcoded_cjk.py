@@ -40,6 +40,7 @@ _ALLOWED_PREFIXES = (
     "docs/readme/",  # translated READMEs and their native language-switcher links
 )
 _ALLOWED_FILES = {
+    "mobile/contract/tts/zipvoice-lexicon.txt",  # Pinned multilingual pronunciation data, not UI copy.
     "electron/src/main/blank-window-guard.ts",  # Matches localized window text.
     "README.md",  # Presents translated project copy.
     "docs/data_preparation.md",  # Includes multilingual data examples.

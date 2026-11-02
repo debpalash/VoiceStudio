@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "sourceRepository": "debpalash/VoiceStudio",
+  "repositoryUrl": "https://debpalash.github.io/VoiceStudio/fdroid/repo",
+  "applicationId": "sh.voicestudio.mobile",
+  "apkSignerSha256": "a4cdfd177375f4b8f9448996c34e246c73f1ffa97447a47b842051e27ea74730",
+  "repositorySignerSha256": "b0eebdf9745a00faff4edafbf63e2b20521117c5b368bd30752afca9fc50b798"
+}

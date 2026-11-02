@@ -11,7 +11,7 @@ mobile/native/ios/build.sh macos-runtimes
 mobile/native/ios/build.sh ios
 ```
 
-- `macos-sherpa` downloads the arm64 shared archive, verifies the SHA-256 in `pins.json`, verifies the pinned sherpa source tree and prepares its C header. It prints `SHERPA_ONNX_LIBRARY`.
+- `macos-sherpa` downloads the arm64 or x86_64 shared archive matching the host process architecture, verifies the SHA-256 in `pins.json`, verifies the pinned sherpa source tree and prepares its C header. It prints `SHERPA_ONNX_LIBRARY`.
 - `macos-runtimes` also builds the pinned OmniVoice and llama shared libraries for CPU tests, fetches OmniVoice's exact ggml gitlink, and prepares all C headers. It prints each library path. No model is downloaded.
 - `ios` checks for an iOS SDK before fetching anything. It invokes sherpa's pinned `build-ios.sh`, verifies and uses llama's pinned prebuilt device framework, builds llama's missing simulator slice with its pinned `build-xcframework.sh ios-sim`, and builds OmniVoice for device arm64 and simulator arm64/x86_64 using CMake/Xcode. It exposes all four frameworks under `build/xcframeworks/` for XcodeGen: sherpa, ONNXRuntime, llama, and OmniVoice.
 
@@ -43,3 +43,8 @@ python3 mobile/native/ios/prepare-notices.py
 ```
 
 The generator checks runtime sources against their pinned Git trees and dependency archives against the SHA-256 in that pinned sherpa source. It retains original copyright/licence/notice texts and generates source references and notice hashes. Package resource preparation checks the manifest before bundling it; native builds copy the same texts into their notices directory. Native cache identities include the legal manifest. This command needs network access only for uncached pinned sources; the app never fetches notices at runtime.
+
+The native inference CI job uses the standard `macos-15-intel` runner (14 GB RAM)
+to meet OmniVoice's 8 GB model gate. Architecture-specific verified archives,
+build directories and CI cache keys keep Intel and Apple Silicon libraries
+separate. The app and simulator UI retain their real hardware eligibility checks.

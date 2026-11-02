@@ -3466,7 +3466,7 @@
     "add_details": "Details hinzufügen",
     "step_start": "Start",
     "step_agent": "Agent",
-    "step_speak": "Sprechen",
+    "step_speak": "Sprachausgabe",
     "step_condition": "Bedingung",
     "step_call": "Anruf",
     "step_end": "Ende",
@@ -3833,7 +3833,7 @@
       "brought_by": "Bereitgestellt von"
     },
     "tabs": {
-      "speak": "Sprechen",
+      "speak": "Sprachausgabe",
       "voices": "Stimmen",
       "dub": "Synchron",
       "dictate": "Diktat",
@@ -3881,7 +3881,8 @@
       "unstar": "Stern entfernen",
       "engine_unavailable": "Diese Engine ist nicht verfügbar. Prüfe ihre Installation auf deinem Computer.",
       "voice_default": "Standardstimme (Engine-Voreinstellung)",
-      "engine_no_cloning": "Diese Engine kann kein Referenzaudio verwenden. Wähle eine Engine mit Stimmklonen oder nutze die Standardstimme."
+      "engine_no_cloning": "Diese Engine kann kein Referenzaudio verwenden. Wähle eine Engine mit Stimmklonen oder nutze die Standardstimme.",
+      "reference_required": "Wähle eine gespeicherte Stimme für dieses Modell. Du kannst eine aus der Galerie importieren."
     },
     "voices": {
       "search": "Stimmen suchen",
@@ -4096,7 +4097,7 @@
       "terms_fingerprint": "Fingerabdruck der Bedingungen: {{fingerprint}}",
       "licence_storage": "Die Modelllizenzen konnten nicht gelesen oder gespeichert werden. Gib Speicher frei und versuche es erneut; Modelle bleiben gesperrt.",
       "licence_required": "Akzeptiere zuerst die Lizenz unter Modelle.",
-      "ram_required": "Benötigt {{ram}} GB RAM. Wähle ein kleineres Modell oder nutze deinen Computer.",
+      "ram_required": "{{ram}} GB RAM empfohlen. Auf diesem Gerät kann das Modell langsam laufen oder die App beenden. Du kannst es trotzdem ausprobieren.",
       "wifi_required": "Verbinde dich mit WLAN oder erlaube mobile Daten unter Modelle.",
       "storage_required": "Nicht genug Speicher. Gib Platz frei und versuche es erneut.",
       "download_failed": "Der Modell-Download ist fehlgeschlagen. Prüfe deine Verbindung und setze ihn unter Modelle fort.",
@@ -4110,10 +4111,11 @@
       "preset_voice": "Stimme {{number}}",
       "transfer": "{{received}} von {{total}}",
       "privacy": "Aufgaben auf dem Gerät bleiben auf diesem Telefon. Nur Modell-Downloads, Meldungen, die du sendest, und dein gekoppelter Computer nutzen das Netzwerk.",
-      "computer_feature": "Diese Funktion läuft derzeit auf deinem Computer. Sprechen und Diktat funktionieren auf diesem Telefon ohne Kopplung.",
+      "computer_feature": "Diese Funktion läuft derzeit auf deinem Computer. Sprachausgabe und Diktat funktionieren auf diesem Telefon ohne Kopplung.",
       "accepted": "Lizenz akzeptiert",
       "not_accepted": "Lizenz nicht akzeptiert",
-      "receipt": "{{action}} · {{time}} · App {{version}} · Bedingungen {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · App {{version}} · Bedingungen {{fingerprint}}",
+      "try_anyway": "Trotzdem versuchen"
     },
     "simple": {
       "phone": "Telefon",
@@ -4161,7 +4163,7 @@
       "remove_job": "Synchronisation löschen",
       "reconnect": "Neu verbinden",
       "cancel": "Abbrechen",
-      "ram": "Benötigt {{ram}} GB RAM",
+      "ram": "{{ram}} GB RAM empfohlen",
       "analytics": "Analytics",
       "language": "Sprache",
       "default_voice": "Standardstimme",
@@ -4411,6 +4413,30 @@
       "import": "Importieren",
       "export": "Exportieren",
       "send": "Senden"
+    },
+    "support": {
+      "donate": "Spenden",
+      "other_apps": "Weitere Apps",
+      "other_apps_intro": "Projekte unseres Teams und der Sponsoren von VoiceStudio.",
+      "gift_note": "Spenden sind freiwillig. Sie unterstützen die Entwicklung und schalten keine Funktionen, Inhalte oder Dienste frei.",
+      "pro_scope": "Pro ergänzt VoiceStudio auf deinem Computer um Produktionswerkzeuge. Die kreativen Werkzeuge der Handy-App bleiben kostenlos.",
+      "opengtm": "Finde und recherchiere Interessenten mit quelloffener Vertriebsautomatisierung.",
+      "opal": "Ein quelloffener Mediaplayer und Browser für deine Bibliothek.",
+      "supermetry": "Selbst gehostete, datenschutzfreundliche Webanalyse.",
+      "spicrawl": "Wandle Webseiten in Markdown oder strukturierte Daten für KI-Agenten um.",
+      "special_sponsor": "Besonderer Sponsor"
+    },
+    "downloads": {
+      "pause": "Pausieren",
+      "paused": "Pausiert",
+      "connecting": "Verbindung wird hergestellt…",
+      "waiting": "Warten auf WLAN…",
+      "retrying": "Neuer Versuch in {{seconds}} s…",
+      "verifying": "Modell wird überprüft…",
+      "speed": "{{speed}}/s",
+      "eta": "Noch etwa {{time}}",
+      "estimating": "Restzeit wird geschätzt…",
+      "waiting_network": "Warten auf eine Verbindung…"
     }
   },
   "failureCause": {

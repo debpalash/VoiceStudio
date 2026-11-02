@@ -9,7 +9,6 @@ struct PhoneIncoming: Identifiable {
 }
 @MainActor @Observable final class PhoneInbox {
     static let shared = PhoneInbox()
-    static let group = "group.sh.voicestudio.mobile"
     var incoming: PhoneIncoming?
     var route: String?
     func receive(_ url: URL) throws {
@@ -34,7 +33,9 @@ struct PhoneIncoming: Identifiable {
         else { incoming = PhoneIncoming(file: destination) }
     }
     func collect() {
-        guard incoming == nil,let group = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.group) else { return }
+        guard incoming == nil,
+              let identifier = Bundle.main.object(forInfoDictionaryKey: "VoiceStudioAppGroupIdentifier") as? String,
+              let group = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: identifier) else { return }
         let directory = group.appendingPathComponent("Inbox")
         guard let files = try? FileManager.default.contentsOfDirectory(at: directory,includingPropertiesForKeys: [.creationDateKey]) else { return }
         for marker in files.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) where marker.pathExtension == "json" {

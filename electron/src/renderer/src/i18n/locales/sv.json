@@ -3466,7 +3466,7 @@
     "add_details": "Lägg till detaljer",
     "step_start": "Start",
     "step_agent": "Agent",
-    "step_speak": "Tala",
+    "step_speak": "Tal",
     "step_condition": "Villkor",
     "step_call": "Samtal",
     "step_end": "Slut",
@@ -3833,7 +3833,7 @@
       "brought_by": "Presenteras av"
     },
     "tabs": {
-      "speak": "Tala",
+      "speak": "Tal",
       "voices": "Röster",
       "dub": "Dubbning",
       "dictate": "Diktering",
@@ -3881,7 +3881,8 @@
       "unstar": "Ta bort stjärna",
       "engine_unavailable": "Den här motorn är inte tillgänglig. Kontrollera installationen på datorn.",
       "voice_default": "Standardröst (motorns förinställning)",
-      "engine_no_cloning": "Den här motorn kan inte använda referensljud. Välj en motor som stöder röstkloning eller använd standardrösten."
+      "engine_no_cloning": "Den här motorn kan inte använda referensljud. Välj en motor som stöder röstkloning eller använd standardrösten.",
+      "reference_required": "Välj en sparad röst för att använda den här modellen. Du kan importera en från galleriet."
     },
     "voices": {
       "search": "Sök röster",
@@ -4096,7 +4097,7 @@
       "terms_fingerprint": "Villkorens fingeravtryck: {{fingerprint}}",
       "licence_storage": "Modelllicenser kunde inte läsas eller sparas. Frigör lagringsutrymme och försök igen; modellerna förblir blockerade.",
       "licence_required": "Acceptera licensen i Modeller först.",
-      "ram_required": "Kräver {{ram}} GB RAM. Välj en mindre modell eller använd din dator.",
+      "ram_required": "{{ram}} GB RAM rekommenderas. Modellen kan köras långsamt eller få appen att stängas på den här enheten. Du kan prova ändå.",
       "wifi_required": "Anslut till Wi-Fi eller tillåt mobildata i Modeller.",
       "storage_required": "Inte tillräckligt med lagringsutrymme. Frigör utrymme och försök igen.",
       "download_failed": "Modellnedladdningen misslyckades. Kontrollera anslutningen och återuppta i Modeller.",
@@ -4110,10 +4111,11 @@
       "preset_voice": "Röst {{number}}",
       "transfer": "{{received}} av {{total}}",
       "privacy": "Uppgifter på enheten stannar på telefonen. Bara modellnedladdningar, rapporter som du väljer att skicka och din parkopplade dator använder nätverket.",
-      "computer_feature": "Den här funktionen körs just nu på din dator. Du kan använda Tala och Diktering på telefonen utan parkoppling.",
+      "computer_feature": "Den här funktionen körs just nu på din dator. Du kan använda Tal och Diktering på telefonen utan parkoppling.",
       "accepted": "Licens godkänd",
       "not_accepted": "Licens inte godkänd",
-      "receipt": "{{action}} · {{time}} · App {{version}} · Villkor {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · App {{version}} · Villkor {{fingerprint}}",
+      "try_anyway": "Prova ändå"
     },
     "simple": {
       "phone": "Telefon",
@@ -4161,7 +4163,7 @@
       "remove_job": "Ta bort dubbning",
       "reconnect": "Anslut igen",
       "cancel": "Avbryt",
-      "ram": "Kräver {{ram}} GB RAM",
+      "ram": "{{ram}} GB RAM rekommenderas",
       "analytics": "Analys",
       "language": "Språk",
       "default_voice": "Standardröst",
@@ -4411,6 +4413,30 @@
       "import": "Importera",
       "export": "Exportera",
       "send": "Skicka"
+    },
+    "support": {
+      "donate": "Donera",
+      "other_apps": "Andra appar",
+      "other_apps_intro": "Projekt från vårt team och VoiceStudios sponsorer.",
+      "gift_note": "Donationer är frivilliga. De stöder utvecklingen utan att låsa upp funktioner, innehåll eller tjänster.",
+      "pro_scope": "Pro ger VoiceStudio produktionsverktyg på datorn. Mobilappens kreativa verktyg är fortsatt gratis.",
+      "opengtm": "Hitta och undersök potentiella kunder med försäljningsautomatisering med öppen källkod.",
+      "opal": "En mediaspelare och webbläsare med öppen källkod för ditt bibliotek.",
+      "supermetry": "Webbanalys på egen server med respekt för integriteten.",
+      "spicrawl": "Omvandla webbsidor till Markdown eller strukturerade data för AI-agenter.",
+      "special_sponsor": "Särskild sponsor"
+    },
+    "downloads": {
+      "pause": "Pausa",
+      "paused": "Pausad",
+      "connecting": "Ansluter…",
+      "waiting": "Väntar på Wi-Fi…",
+      "retrying": "Försöker igen om {{seconds}} s…",
+      "verifying": "Verifierar modellen…",
+      "speed": "{{speed}}/s",
+      "eta": "Ungefär {{time}} kvar",
+      "estimating": "Beräknar återstående tid…",
+      "waiting_network": "Väntar på anslutning…"
     }
   },
   "failureCause": {

@@ -6,6 +6,7 @@
     "source": {"repo": "https://github.com/k2-fsa/sherpa-onnx", "tag": "v1.13.8", "commit": "11afbd009a7f8c08f4bcf2fc1b265d0df4670fbf"},
     "android_aar": {"url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar", "sha256": "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96"},
     "macos_arm64_shared": {"url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-osx-arm64-shared-lib.tar.bz2", "sha256": "ae77050cdae565496059d96f5ab33d77b397a0864282a4e4a26e3b3b3effb948"},
+    "macos_x64_shared": {"url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-osx-x64-shared-lib.tar.bz2", "sha256": "0f88371565a06372889c76266e253abd1b415fcc6f98232cabd968933efb0711"},
     "ios": "built from source at the commit above with its build-ios.sh (needs Xcode; CI macOS runner)"
   },
   "omnivoice.cpp": {

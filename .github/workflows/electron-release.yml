@@ -425,6 +425,7 @@ jobs:
           gh release edit "$TAG" --prerelease="$PRERELEASE" --notes-file release-assets/RELEASE_NOTES.md
           find release-assets -maxdepth 1 -type f ! -name RELEASE_NOTES.md -print0 | xargs -0 gh release upload "$TAG" --clobber
       - name: Publish only when explicitly requested
+        id: publish_release
         if: github.event_name == 'workflow_dispatch' && inputs.publish == true
         run: |
           if [ "$CHANNEL" = beta ]; then
@@ -432,11 +433,18 @@ jobs:
           else
             gh release edit "$TAG" --draft=false --prerelease=false --latest
           fi
+      # GITHUB_TOKEN publication does not emit another workflow's release event.
+      - name: Update the Android repository after stable publication
+        if: github.event_name == 'workflow_dispatch' && inputs.publish == true
+        run: |
+          if [ "$CHANNEL" = stable ]; then
+            gh workflow run android-repository.yml --ref main
+          fi
       # docker.yml publishes release images on `release: published`, which a
       # GITHUB_TOKEN publish cannot trigger; dispatch its release backfill path.
       # Only Stable moves `:stable`; a beta gets `:beta` and its exact tag.
       - name: Publish release container images
-        if: github.event_name == 'workflow_dispatch' && inputs.publish == true
+        if: ${{ !cancelled() && steps.publish_release.outcome == 'success' && github.event_name == 'workflow_dispatch' && inputs.publish == true }}
         run: |
           PROMOTE=false
           if [ "$CHANNEL" = stable ]; then PROMOTE=true; fi

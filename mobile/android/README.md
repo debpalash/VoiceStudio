@@ -67,7 +67,7 @@ in `app/build/`; no copied logo binaries are checked in.
 ## Screens and behavior
 
 All five tabs are reachable without pairing. Consent dismissal means No.
-Speak, Clone, Dictate and Dub remember their own Run on choice. An installed
+Speech, Clone, Dictate and Dub remember their own Run on choice. An installed
 phone model is preferred; otherwise the paired computer is used or a
 compact card offers Get with the total download size. Dub groups its ASR,
 translation and cloning dependencies in one card; each gated model has its own
@@ -84,10 +84,10 @@ puts the privacy explanation behind its info action, and shows contributors in o
 scrollable row with a fixed All link; the six task cards fit above the dock at
 360 × 800 dp with the default text size.
 
-[Home screenshot](../../docs/media/mobile/android-home.png) · [Speak screenshot](../../docs/media/mobile/android-speak.png) Settings groups related rows;
+[Home screenshot](../../docs/media/mobile/android-home.png) · [Speech screenshot](../../docs/media/mobile/android-speak.png) Settings groups related rows;
 Empty voice and dictation screens show a centered explanation and their primary action.
 
-Speak has a large editor with placeholder-only copy, grouped voice/model/language
+Speech has a large editor with placeholder-only copy, grouped voice/model/language
 rows, a fixed Generate action above the dock, a compact player and recent rows. Switching speech models resets any
 preset speaker outside the new model's range; Generate requires a valid speaker. Dictate places Copy and Share beside the microphone above the dock while the transcript scrolls: tap
 starts/stops; hold records until release. Connect keeps URL/PIN
@@ -122,7 +122,7 @@ job monitoring. Long jobs already running on the old computer continue there.
 
 All forms resize their scroll viewport for the keyboard. Background taps,
 primary/secondary actions and navigation dismiss focus; single-line fields have
-the native Done action. The multiline Speak editor keeps Return for newlines
+the native Done action. The multiline Speech editor keeps Return for newlines
 and offers a visible Done toolbar while focused. Rename and picker dialogs use
 their own window's focus manager. Android retains its normal keyboard-first Back
 handling; reaching Generate only requires scrolling or Done.
@@ -134,12 +134,12 @@ name. This applies to voice, engine, language, palette and dub targets. Every
 searchable list shows the query when no matches remain.
 
 Tabs render their content without navigation fades. Language catalogs and locale
-mapping load off the UI thread and are cached; Speak and Dub show inline loading
+mapping load off the UI thread and are cached; Speech and Dub show inline loading
 indicators with their controls already visible. History/profile refreshes show
 inline progress rather than hiding the screen. Dictate keeps its controls visible
 while checking readiness.
 
-Speak has text, backend voice/engine/language pickers, generation, host-streamed
+Speech has text, backend voice/engine/language pickers, generation, host-streamed
 Media3 playback, an accessible seek/progress slider, system share/save, and
 recent history with star/delete. Voices has search, previews, rename/delete,
 permission-gated recording or file selection and explicit clone consent.
@@ -251,7 +251,7 @@ available offline in About.
   unpaired origins, URL credentials and credential query parameters are rejected.
   Media3 uses this same client; no WebView/DownloadManager bypass exists.
 - There is no `/languages` route. Both pickers use the build-bundled desktop
-  `languages.json`; Speak defaults to Auto, or a selected profile's language.
+  `languages.json`; Speech defaults to Auto, or a selected profile's language.
   Dub excludes Auto, maps names to ISO codes through Android locale data when
   available, and preserves the canonical name for long-tail languages. The
   host determines which languages its selected translator/engine supports.
@@ -291,15 +291,34 @@ Models cards show name, size, capability and one Download / Cancel / Delete
 action. Their licence action opens languages, declared terms and actual storage;
 Delete there can also remove partial downloads. The list shows total model storage. Models above the phone's
 physical RAM are disabled, using decimal GB (`min_ram_gb * 1,000,000,000`).
-Downloads start only from a user action, use Hugging Face with hf-mirror.com
-fallback, resume with HTTP Range, enforce Wi-Fi unless mobile data is explicitly
-allowed, and reject low storage. A server ignoring Range restarts that file.
-Redirects stay HTTPS on the default port, on Hugging Face/HF CDN or mirror hosts
-and their subdomains, matching iOS. The dedicated
-client never carries computer credentials. Incomplete files remain resumable;
-Delete removes them too. Every file must match size and SHA-256 before an
-installation marker is written; native loads reuse verification while the file stamp
-(size, modification time and catalogue identity) is unchanged.
+Downloads start only from a user action. A durable queue records catalogue pins,
+Wi-Fi/mobile-data policy and pause state. Android 14+ uses user-initiated transfer
+jobs; older supported versions use foreground WorkManager jobs, independently of
+ViewModel lifetime. An ongoing notification shows progress and offers Pause.
+Reopening restores eligible queued work; paused/cancelled work remains stopped.
+Large files use parallel 16-MiB ranges, initially two and up to four transfers
+across models, adapting concurrency to measured throughput. Useful range transfers
+compare Hugging Face and the approved hf-mirror.com source without probe traffic.
+Completed ranges and legacy contiguous partials survive relaunch and interrupted
+assembly. Space reservations include the temporary assembly copy; each source
+range is released only after its copied bytes are durable. Responses must match exact range boundaries. Unsupported ranges fall
+back to one plain GET, staging and verifying the complete replacement before
+replacing a saved prefix. Interrupted fallbacks retain the longer contiguous
+prefix or the complete body for reuse. Transient failures retry with backoff, jitter and Retry-After;
+403 retries refresh the original pinned delivery URL. Permanent errors retain data
+for explicit retry. Redirects remain restricted to approved HTTPS delivery hosts.
+The dedicated client never carries computer credentials.
+
+Models and feature cards show percentage, received/total bytes, smoothed speed,
+ETA and waiting/retrying/verifying states. Resumed bytes and duplicate retries
+never inflate speed. Pause/Cancel retain partial files; Cancel removes the restore
+intent, and Delete removes partials too. OS force-stop, thermal, battery and
+connectivity restrictions can interrupt transfers; background execution is not
+guaranteed. Each file must match size and SHA-256 before installation. Native
+loads reuse verification only while file metadata and catalogue identity match.
+Bounded local download diagnostics contain status/host metadata, never signed
+URLs, credentials or user content; OS job stop reasons are stored locally.
+Terminal model-download failures retain their localized reason across relaunch and show it on Models and feature download cards. Retrying clears the saved failure; explicit pauses remain distinct from failures.
 
 Phone files and local licence receipts live under Android's `noBackupFilesDir`;
 they are app-private and excluded from cloud and device backups. Non-commercial,
@@ -313,7 +332,7 @@ A changed fingerprint or withdrawal blocks use without deleting weights.
 offline transcription, streaming transcription and translation. Feature screens
 call only this interface. Timed ASR exposes speech windows with native Whisper
 token timestamps, retaining window bounds when the runtime provides no timing.
-sherpa uses Kitten/Kokoro for TTS, Whisper in at most
+sherpa uses Kitten/Kokoro/Piper/Supertonic for TTS and Pocket/ZipVoice for reference cloning, Whisper in at most
 20-second windows for offline ASR, and Zipformer with utterance endpoint resets
 for live dictation. Tap/hold capture releases on lifecycle stop and screen
 exit; normal Stop drains the recognizer for its final transcript. Generated
@@ -327,7 +346,7 @@ private reference audio, name and consent time atomically. Cancelled or failed
 creation removes the unpublished voice. Rename and Delete operate on its phone
 storage. The clone task remembers its own Run on choice; creating a phone voice
 requires ASR, while speaking with it requires an installed, accepted OmniVoice.
-Speak lists presets and phone voices in one picker, switches to the cloning
+Speech lists presets and phone voices in one picker, switches to the cloning
 model for a phone voice, and stores generated WAVs and compact recent rows
 privately. Exports are copied into the share provider's cache on an IO thread.
 Native inference is serialized across phone tasks to bound memory use. Kokoro
@@ -417,7 +436,7 @@ rename/delete, picker routing and streaming resampling. Phone dub checks cover
 multi-language output, timing/padding/mixing, provenance, checkpoint replay,
 corrupt render recovery, blank-reference transcript fallback, persisted error parameters,
 model/licence changes and foreground cancellation. The
-launch → consent → Settings → Connect → mock host → Speak → Play smoke preserves
+launch → consent → Settings → Connect → mock host → Speech → Play smoke preserves
 the computer flow. Tests use local mock servers and an empty HF cache.
 Robolectric's API 34 instrumented SDK is resolved by Gradle into app build
 outputs and then used offline.
@@ -469,13 +488,13 @@ behavior require their separate model/device checks.
 ## Electron-style mobile Home
 
 Home is the first workspace after consent, using Electron's bundled signal-field
-artwork, shared palette roles, Inter and card hierarchy. Speak, cloning, dubbing,
+artwork, shared palette roles, Inter and card hierarchy. Speech, cloning, dubbing,
 dictation, models and computer pairing have working shortcut cards. Generated
 audio, saved voices and recent dubbing projects come from the actual phone
 libraries, with paired-computer entries alongside them. Audio opens its player,
-saved phone voices select the reference in Speak, and projects open their
+saved phone voices select the reference in Speech, and projects open their
 outputs and resume controls. Empty states are localized and downloads remain
-explicit. Home replaces Speak in the five-item navigation; Speak opens from Home.
+explicit. Home replaces Speech in the five-item navigation; Speech opens from Home.
 Desktop-only workspaces are not advertised as available mobile features.
 
 ## Home, Dub and dock
@@ -486,3 +505,19 @@ images from `electron/.../home/contributors` into the APK assets, nothing is fet
 `tests/test_mobile_contract.py` guards the list; `scripts/update_contributors.py` regenerates it). Dub opens with a dashed source card and the animated
 `DubGlyph`. The compact dock uses an accessible icon for each workspace, with 48 dp touch targets and native Tab selection semantics.
 
+
+Speech lists all seven phone speech engines independently of the selected voice.
+OmniVoice, Pocket TTS and ZipVoice require a saved voice and show guidance until one is
+selected. Choosing a preset-only engine clears an incompatible reference;
+Voice Design remains a separate explicit task. It
+shows only OmniVoice. The shared catalogue pins all component files, including
+ZipVoice's separate vocoder and bundled lexicon; every file is size/hash checked.
+Downloads and licence review remain explicit. See the shared contract for the
+conversion-specific licence restrictions.
+
+OmniVoice Speech requires a saved voice and rejects bare synthesis before model
+loading; it cannot silently route to voice design. The shared pack uses the Q8_0
+base and native F32 codec (1.4 GB, 8 GB RAM), retaining the stable legacy model
+identifier and existing licence acceptance. Models downloads the replacement
+files explicitly; previous recordings and files are preserved. Native speech
+validation checks recognizable words and rejects repetitions.

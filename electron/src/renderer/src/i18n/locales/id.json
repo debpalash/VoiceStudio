@@ -3466,7 +3466,7 @@
     "add_details": "Tambah detail",
     "step_start": "Mulai",
     "step_agent": "Agen",
-    "step_speak": "Bicara",
+    "step_speak": "Ucapan",
     "step_condition": "Kondisi",
     "step_call": "Panggilan",
     "step_end": "Selesai",
@@ -3833,7 +3833,7 @@
       "brought_by": "Dipersembahkan oleh"
     },
     "tabs": {
-      "speak": "Bicara",
+      "speak": "Ucapan",
       "voices": "Suara",
       "dub": "Sulih suara",
       "dictate": "Dikte",
@@ -3881,7 +3881,8 @@
       "unstar": "Hapus bintang",
       "engine_unavailable": "Mesin ini tidak tersedia. Periksa instalasinya di komputer Anda.",
       "voice_default": "Suara default (preset mesin)",
-      "engine_no_cloning": "Mesin ini tidak dapat memakai audio referensi. Pilih mesin yang mendukung kloning suara, atau gunakan suara default."
+      "engine_no_cloning": "Mesin ini tidak dapat memakai audio referensi. Pilih mesin yang mendukung kloning suara, atau gunakan suara default.",
+      "reference_required": "Pilih suara tersimpan untuk menggunakan model ini. Anda dapat mengimpornya dari Galeri."
     },
     "voices": {
       "search": "Cari suara",
@@ -4096,7 +4097,7 @@
       "terms_fingerprint": "Sidik jari ketentuan: {{fingerprint}}",
       "licence_storage": "Catatan lisensi model tidak dapat dibaca atau disimpan. Kosongkan penyimpanan dan coba lagi; model tetap diblokir.",
       "licence_required": "Terima lisensi di Model terlebih dahulu.",
-      "ram_required": "Butuh RAM {{ram}} GB. Pilih model lebih kecil atau gunakan komputer Anda.",
+      "ram_required": "Disarankan RAM {{ram}} GB. Model ini mungkin berjalan lambat atau menyebabkan aplikasi tertutup pada perangkat ini. Anda tetap dapat mencobanya.",
       "wifi_required": "Hubungkan ke Wi-Fi, atau izinkan data seluler di Model.",
       "storage_required": "Penyimpanan tidak cukup. Kosongkan ruang dan coba lagi.",
       "download_failed": "Unduhan model gagal. Periksa koneksi dan lanjutkan di Model.",
@@ -4110,10 +4111,11 @@
       "preset_voice": "Suara {{number}}",
       "transfer": "{{received}} dari {{total}}",
       "privacy": "Tugas di perangkat tetap di ponsel ini. Hanya unduhan model, laporan yang Anda pilih untuk dikirim, dan komputer yang dipasangkan yang memakai jaringan.",
-      "computer_feature": "Fitur ini saat ini berjalan di komputer Anda. Anda dapat memakai Bicara dan Dikte di ponsel ini tanpa memasangkan.",
+      "computer_feature": "Fitur ini saat ini berjalan di komputer Anda. Anda dapat memakai Ucapan dan Dikte di ponsel ini tanpa memasangkan.",
       "accepted": "Lisensi diterima",
       "not_accepted": "Lisensi belum diterima",
-      "receipt": "{{action}} · {{time}} · Aplikasi {{version}} · Ketentuan {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · Aplikasi {{version}} · Ketentuan {{fingerprint}}",
+      "try_anyway": "Tetap coba"
     },
     "simple": {
       "phone": "Ponsel",
@@ -4161,7 +4163,7 @@
       "remove_job": "Hapus sulih suara",
       "reconnect": "Hubungkan ulang",
       "cancel": "Batal",
-      "ram": "Butuh RAM {{ram}} GB",
+      "ram": "Disarankan RAM {{ram}} GB",
       "analytics": "Analitik",
       "language": "Bahasa",
       "default_voice": "Suara default",
@@ -4411,6 +4413,30 @@
       "import": "Impor",
       "export": "Ekspor",
       "send": "Kirim"
+    },
+    "support": {
+      "donate": "Donasi",
+      "other_apps": "Aplikasi lain",
+      "other_apps_intro": "Proyek dari tim kami dan sponsor VoiceStudio.",
+      "gift_note": "Donasi bersifat opsional. Donasi mendukung pengembangan tanpa membuka fitur, konten, atau layanan.",
+      "pro_scope": "Pro menambahkan alat produksi ke VoiceStudio di komputer Anda. Alat kreatif aplikasi ponsel tetap gratis.",
+      "opengtm": "Temukan dan teliti calon pelanggan dengan otomatisasi penjualan sumber terbuka.",
+      "opal": "Pemutar media dan peramban sumber terbuka untuk koleksi Anda.",
+      "supermetry": "Analitik web yang dihosting sendiri dan ramah privasi.",
+      "spicrawl": "Ubah halaman web menjadi Markdown atau data terstruktur untuk agen AI.",
+      "special_sponsor": "Sponsor khusus"
+    },
+    "downloads": {
+      "pause": "Jeda",
+      "paused": "Dijeda",
+      "connecting": "Menghubungkan…",
+      "waiting": "Menunggu Wi-Fi…",
+      "retrying": "Mencoba lagi dalam {{seconds}} dtk…",
+      "verifying": "Memverifikasi model…",
+      "speed": "{{speed}}/dtk",
+      "eta": "Sekitar {{time}} lagi",
+      "estimating": "Memperkirakan waktu tersisa…",
+      "waiting_network": "Menunggu koneksi…"
     }
   },
   "failureCause": {

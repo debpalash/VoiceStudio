@@ -3468,7 +3468,7 @@
     "add_details": "Aggiungi dettagli",
     "step_start": "Inizio",
     "step_agent": "Agente",
-    "step_speak": "Parla",
+    "step_speak": "Voce sintetica",
     "step_condition": "Condizione",
     "step_call": "Chiamata",
     "step_end": "Fine",
@@ -3835,7 +3835,7 @@
       "brought_by": "Offerto da"
     },
     "tabs": {
-      "speak": "Parla",
+      "speak": "Voce sintetica",
       "voices": "Voci",
       "dub": "Doppiaggio",
       "dictate": "Dettatura",
@@ -3883,7 +3883,8 @@
       "unstar": "Elimina stella",
       "engine_unavailable": "Questo motore non è disponibile. Controlla la sua installazione sul computer.",
       "voice_default": "Voce predefinita (preset del motore)",
-      "engine_no_cloning": "Questo motore non può usare audio di riferimento. Scegli un motore che supporti la clonazione vocale oppure usa la voce predefinita."
+      "engine_no_cloning": "Questo motore non può usare audio di riferimento. Scegli un motore che supporti la clonazione vocale oppure usa la voce predefinita.",
+      "reference_required": "Scegli una voce salvata per usare questo modello. Puoi importarne una dalla galleria."
     },
     "voices": {
       "search": "Cerca voci",
@@ -4098,7 +4099,7 @@
       "terms_fingerprint": "Impronta dei termini: {{fingerprint}}",
       "licence_storage": "Impossibile leggere o salvare i record delle licenze dei modelli. Libera spazio e riprova; i modelli restano bloccati.",
       "licence_required": "Prima accetta la licenza in Modelli.",
-      "ram_required": "Richiede {{ram}} GB di RAM. Scegli un modello più piccolo o usa il computer.",
+      "ram_required": "Consigliati {{ram}} GB di RAM. Su questo dispositivo il modello potrebbe essere lento o causare la chiusura dell’app. Puoi comunque provarlo.",
       "wifi_required": "Connettiti al Wi-Fi o consenti i dati mobili in Modelli.",
       "storage_required": "Spazio insufficiente. Libera spazio e riprova.",
       "download_failed": "Download del modello non riuscito. Controlla la connessione e riprendi in Modelli.",
@@ -4112,10 +4113,11 @@
       "preset_voice": "Voce {{number}}",
       "transfer": "{{received}} di {{total}}",
       "privacy": "Le attività sul dispositivo restano su questo telefono. Solo i download dei modelli, le segnalazioni che scegli di inviare e il computer associato usano la rete.",
-      "computer_feature": "Questa funzione al momento viene eseguita sul computer. Parla e Dettatura funzionano su questo telefono senza associazione.",
+      "computer_feature": "Questa funzione al momento viene eseguita sul computer. Voce sintetica e Dettatura funzionano su questo telefono senza associazione.",
       "accepted": "Licenza accettata",
       "not_accepted": "Licenza non accettata",
-      "receipt": "{{action}} · {{time}} · App {{version}} · Termini {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · App {{version}} · Termini {{fingerprint}}",
+      "try_anyway": "Prova comunque"
     },
     "simple": {
       "phone": "Telefono",
@@ -4163,7 +4165,7 @@
       "remove_job": "Elimina doppiaggio",
       "reconnect": "Riconnetti",
       "cancel": "Annulla",
-      "ram": "Richiede {{ram}} GB di RAM",
+      "ram": "Consigliati {{ram}} GB di RAM",
       "analytics": "Analisi",
       "language": "Lingua",
       "default_voice": "Voce predefinita",
@@ -4413,6 +4415,30 @@
       "import": "Importa",
       "export": "Esportazione",
       "send": "Invia"
+    },
+    "support": {
+      "donate": "Dona",
+      "other_apps": "Altre app",
+      "other_apps_intro": "Progetti del nostro team e degli sponsor di VoiceStudio.",
+      "gift_note": "Le donazioni sono facoltative. Sostengono lo sviluppo senza sbloccare funzioni, contenuti o servizi.",
+      "pro_scope": "Pro aggiunge strumenti di produzione a VoiceStudio sul computer. Gli strumenti creativi dell’app mobile restano gratuiti.",
+      "opengtm": "Trova e analizza potenziali clienti con automazione delle vendite open source.",
+      "opal": "Un lettore multimediale e browser open source per la tua libreria.",
+      "supermetry": "Analisi web autogestita e rispettosa della privacy.",
+      "spicrawl": "Trasforma pagine web in Markdown o dati strutturati per agenti IA.",
+      "special_sponsor": "Sponsor speciale"
+    },
+    "downloads": {
+      "pause": "Pausa",
+      "paused": "In pausa",
+      "connecting": "Connessione…",
+      "waiting": "In attesa del Wi-Fi…",
+      "retrying": "Nuovo tentativo tra {{seconds}} s…",
+      "verifying": "Verifica del modello…",
+      "speed": "{{speed}}/s",
+      "eta": "Circa {{time}} rimanenti",
+      "estimating": "Stima del tempo rimanente…",
+      "waiting_network": "In attesa di connessione…"
     }
   },
   "failureCause": {

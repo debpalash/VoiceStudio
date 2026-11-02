@@ -1,5 +1,6 @@
 #include "VSNative.h"
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <math.h>
 #include <stdatomic.h>
@@ -53,7 +54,7 @@ static void sherpa_close(void *handle) {
     if(handle) dlclose(handle);
 #endif
 }
-int vs_synthesize(const VSConfig *c, const char *text, int32_t speaker, float speed, VSCancel *cancel, VSAudio *out) {
+static int sherpa_generate(const VSConfig *c,const char *text,int32_t speaker,float speed,const char *reference_text,const float *reference,int32_t reference_count,int32_t reference_rate,VSCancel *cancel,VSAudio *out) {
     if(vs_cancelled(cancel)) return -4;
     void *lib = sherpa_open(c->library); if(!lib) return -1;
     RESOLVE(lib, SherpaOnnxCreateOfflineTts); RESOLVE(lib, SherpaOnnxDestroyOfflineTts);
@@ -64,14 +65,40 @@ int vs_synthesize(const VSConfig *c, const char *text, int32_t speaker, float sp
         cfg.model.kitten.model=c->model; cfg.model.kitten.voices=c->voices; cfg.model.kitten.tokens=c->tokens; cfg.model.kitten.data_dir=c->data_dir; cfg.model.kitten.length_scale=1;
     } else if(!strcmp(c->family,"kokoro")) {
         cfg.model.kokoro.model=c->model; cfg.model.kokoro.voices=c->voices; cfg.model.kokoro.tokens=c->tokens; cfg.model.kokoro.data_dir=c->data_dir; cfg.model.kokoro.lexicon=c->lexicon; cfg.model.kokoro.lang=c->language; cfg.model.kokoro.length_scale=1;
+    } else if(!strcmp(c->family,"vits")) {
+        cfg.model.vits.model=c->model; cfg.model.vits.tokens=c->tokens; cfg.model.vits.data_dir=c->data_dir; cfg.model.vits.lexicon=c->lexicon;
+        cfg.model.vits.noise_scale=0.667f; cfg.model.vits.noise_scale_w=0.8f; cfg.model.vits.length_scale=1;
+    } else if(!strcmp(c->family,"supertonic")) {
+        cfg.model.supertonic.duration_predictor=c->duration_predictor; cfg.model.supertonic.text_encoder=c->text_encoder;
+        cfg.model.supertonic.vector_estimator=c->vector_estimator; cfg.model.supertonic.vocoder=c->vocoder;
+        cfg.model.supertonic.tts_json=c->tts_config; cfg.model.supertonic.unicode_indexer=c->unicode_indexer; cfg.model.supertonic.voice_style=c->voices;
+    } else if(!strcmp(c->family,"pocket")) {
+        if(!reference || reference_count<=0) { sherpa_close(lib); return -2; }
+        cfg.model.pocket.lm_flow=c->lm_flow; cfg.model.pocket.lm_main=c->lm_main; cfg.model.pocket.encoder=c->encoder; cfg.model.pocket.decoder=c->decoder;
+        cfg.model.pocket.text_conditioner=c->text_conditioner; cfg.model.pocket.vocab_json=c->vocab; cfg.model.pocket.token_scores_json=c->token_scores; cfg.model.pocket.voice_embedding_cache_capacity=1;
+    } else if(!strcmp(c->family,"zipvoice")) {
+        if(!reference || reference_count<=0 || !reference_text || !*reference_text) { sherpa_close(lib); return -2; }
+        cfg.model.zipvoice.encoder=c->encoder; cfg.model.zipvoice.decoder=c->decoder; cfg.model.zipvoice.tokens=c->tokens;
+        cfg.model.zipvoice.vocoder=c->vocoder; cfg.model.zipvoice.data_dir=c->data_dir; cfg.model.zipvoice.lexicon=c->lexicon;
+        cfg.model.zipvoice.feat_scale=0.1f; cfg.model.zipvoice.t_shift=0.5f; cfg.model.zipvoice.target_rms=0.1f; cfg.model.zipvoice.guidance_scale=1.0f;
     } else { sherpa_close(lib); return -2; }
     const SherpaOnnxOfflineTts *tts=p_SherpaOnnxCreateOfflineTts(&cfg);
     if(!tts) { sherpa_close(lib); return -3; }
     SherpaOnnxGenerationConfig gen={0}; gen.sid=speaker; gen.speed=speed; gen.silence_scale=0.2f;
+    gen.reference_audio=reference; gen.reference_audio_len=reference_count; gen.reference_sample_rate=reference_rate; gen.reference_text=reference_text;
+    gen.num_steps=c->num_steps>0?c->num_steps:8;
+    char extra[96];
+    if(!strcmp(c->family,"supertonic")) { snprintf(extra,sizeof(extra),"{\"lang\":\"%.24s\"}",c->language&&*c->language?c->language:"en"); gen.extra=extra; }
     const SherpaOnnxGeneratedAudio *a = vs_cancelled(cancel) ? NULL : p_SherpaOnnxOfflineTtsGenerateWithConfig(tts,text,&gen,tts_progress,cancel);
     int rc = vs_cancelled(cancel) ? -4 : a ? audio_copy(out,a->samples,a->n,a->sample_rate) : -3;
     if(a) p_SherpaOnnxDestroyOfflineTtsGeneratedAudio(a);
     p_SherpaOnnxDestroyOfflineTts(tts); sherpa_close(lib); return rc;
+}
+int vs_synthesize(const VSConfig *c,const char *text,int32_t speaker,float speed,VSCancel *cancel,VSAudio *out) {
+    return sherpa_generate(c,text,speaker,speed,NULL,NULL,0,0,cancel,out);
+}
+int vs_sherpa_clone(const VSConfig *c,const char *text,const char *reference_text,const float *reference,int32_t count,int32_t rate,VSCancel *cancel,VSAudio *out) {
+    return sherpa_generate(c,text,0,1,reference_text,reference,count,rate,cancel,out);
 }
 static int transcribe_impl(const VSConfig *c, const float *samples, int32_t n, int32_t rate, VSCancel *cancel, char **text, VSSegments *segments) {
     if(vs_cancelled(cancel)) return -4;
@@ -192,6 +219,7 @@ void vs_stream_free(VSStream *s) {
 }
 #else
 int vs_synthesize(const VSConfig *c,const char *t,int32_t s,float speed,VSCancel *v,VSAudio *a) { return -1; }
+int vs_sherpa_clone(const VSConfig *c,const char *t,const char *rt,const float *r,int32_t n,int32_t rate,VSCancel *v,VSAudio *a) { return -1; }
 int vs_transcribe(const VSConfig *c,const float *s,int32_t n,int32_t r,VSCancel *v,char **t) { return -1; }
 int vs_transcribe_segments(const VSConfig *c,const float *s,int32_t n,int32_t r,VSCancel *v,VSSegments *out) { return -1; }
 VSStream *vs_stream_create(const VSConfig *c) { return NULL; }

@@ -178,6 +178,17 @@ def consume(token: str, expected_kind: str, *, expected_scope: str | None = None
     scope = payload.get("scope")
     if scope is not None and scope != expected_scope:
         raise PathAuthorizationError("Desktop authorization does not match this engine; discover its models again")
+    if os.environ.get("VOICESTUDIO_BUNDLED_CODE_ONLY") == "1" and payload["path"]:
+        # Electron's newly selected folder extends its own sandbox only. Pick
+        # up the journal in this already-running child before using that path.
+        # An empty path resets to the container default and needs no grant.
+        try:
+            from _voicestudio_sandbox_bookmarks import restore
+            scoped = restore(payload["path"])
+        except Exception as exc:
+            raise PathAuthorizationError("Invalid or expired desktop authorization") from exc
+        if not scoped:
+            raise PathAuthorizationError("Invalid or expired desktop authorization")
     if scope is not None and scope.startswith("local-model:"):
         selected = LocalModelSelection(payload["path"], payload.get("root_identity"))
         selected.check()

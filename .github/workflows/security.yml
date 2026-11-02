@@ -58,7 +58,15 @@ jobs:
       pull-requests: read
     outputs:
       code: ${{ steps.detect.outputs.code }}
+      runtime: ${{ steps.scope.outputs.runtime }}
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/ci_scope.py
       - id: detect
         shell: bash
         env:
@@ -107,7 +115,7 @@ jobs:
   codeql:
     name: CodeQL (${{ matrix.language }})
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && needs.changes.outputs.runtime != 'false' }}
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -157,7 +165,7 @@ jobs:
   bandit:
     name: Python SAST (bandit)
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && needs.changes.outputs.runtime != 'false' }}
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -199,7 +207,7 @@ jobs:
   dependencies:
     name: Dependency audit
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && needs.changes.outputs.runtime != 'false' }}
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

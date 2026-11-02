@@ -54,7 +54,6 @@ class PhoneDubWorker(context: Context,params: WorkerParameters): CoroutineWorker
             val models=request.models.map {pin ->catalog.models.firstOrNull {it.id==pin.id} ?: throw ClientFailure("mobile.local.model_required")}
             val authorize={requirePhonePower(applicationContext);models.forEach {model ->
                 runtime.licence.requireAccepted(model)
-                if(!model.fits(runtime.ramBytes)) throw ClientFailure("mobile.local.ram_required",mapOf("ram" to model.minRamGb.toString()))
                 if(!runtime.downloads.installed(model)) throw ClientFailure("mobile.local.model_required")
             }}
             coroutineScope {
