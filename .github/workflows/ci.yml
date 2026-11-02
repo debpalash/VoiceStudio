@@ -208,6 +208,22 @@ jobs:
         # Backing off between whole attempts is what actually clears it.
         run: bash scripts/uv-sync-retry.sh --all-extras
 
+      # Cache ~/.bun/install/cache keyed on bun.lock — `bun install` drops
+      # from ~15 s cold to near-instant on warm cache.
+      - name: Cache bun deps
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install Electron deps
+        # --frozen-lockfile so an Electron workspace change that forgets to
+        # regenerate the root bun.lock fails HERE (fast) instead of only in the
+        # Docker build (deploy/Dockerfile), which is what reddened main on #485.
+        run: bun install --frozen-lockfile
+
       # HF_HUB_OFFLINE=1 is a recurrence guard, not an optimization: a test
       # that reaches huggingface.co fails fast and loud instead of silently
       # downloading model weights mid-suite (the preload_model() Hub-probe
@@ -233,24 +249,7 @@ jobs:
         env:
           HF_HUB_OFFLINE: "1"  # same no-silent-downloads guard as tests/
 
-      # Cache ~/.bun/install/cache keyed on bun.lock — `bun install` drops
-      # from ~15 s cold to near-instant on warm cache.
-      - name: Cache bun deps
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Install Electron deps
-        # --frozen-lockfile so an Electron workspace change that forgets to
-        # regenerate the root bun.lock fails HERE (fast) instead of only in the
-        # Docker build (deploy/Dockerfile), which is what reddened main on #485.
-        run: bun install --frozen-lockfile
-
-      # Mobile theme tokens are generated from the Electron theme and need its
-      # deps installed, so the pytest copy of this check skips before this point.
+      # Check the generated mobile files explicitly as well as through pytest.
       - name: Mobile theme tokens match Electron
         run: bun --no-install scripts/export-mobile-tokens.ts --check
 
