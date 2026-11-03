@@ -32,20 +32,21 @@ export function languageCode(name: string) {
 // speaks it — the "Choose a supported language" gate fired before any
 // request was sent, for plain Arabic and for every Arabic dialect choice
 // (the dialect is only a translation hint; the gate sees the base
-// language). The backend already resolves "Standard Arabic" to "ar" (see
-// services/text_normalization.py and api/routers/voice_convert.py), so the
-// comparison folds the qualified form's code too. This is a base-name
-// equivalence, not a variant inference: a dialect entry such as
-// "Egyptian Arabic" ("arz") still does not satisfy a bare "Arabic"
-// request, and vice versa.
+// language). The comparison therefore folds the qualified form's code on
+// the engine side only ("arb" → "ar"). The fold is deliberately
+// one-directional: folding the request side too would newly enable
+// "Standard Arabic" on engines that advertise bare "arabic" (e.g.
+// VoxCPM2, which declares "ar"), but the backend resolves that request
+// to "arb" and `_check_language` rejects it — the gate would green-light
+// a generation that cannot run. This is a base-name equivalence, not a
+// variant inference: a dialect entry such as "Egyptian Arabic" ("arz")
+// still does not satisfy a bare "Arabic" request, and vice versa.
 const STANDARD_FORM_CODES: Record<string, string> = { arb: 'ar' };
 const foldCode = (code: string) => STANDARD_FORM_CODES[code] ?? code;
 
 export function languageSupported(name: string, supported?: readonly string[] | null) {
   if (name.toLowerCase() === 'auto' || supported == null) return true;
-  const code = foldCode(
-    languageCode(name) || (codeValues.has(name.toLowerCase()) ? name.toLowerCase() : ''),
-  );
+  const code = languageCode(name) || (codeValues.has(name.toLowerCase()) ? name.toLowerCase() : '');
   return supported.some(
     (candidate) =>
       candidate.toLowerCase() === name.toLowerCase() ||
