@@ -1,7 +1,13 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { DIRECTORY_RENAME, renameWithRetry, retryTransient } from './rename-retry';
+import {
+  DIRECTORY_RENAME,
+  FILE_RENAME,
+  renameSyncWithRetry,
+  renameWithRetry,
+  retryTransient,
+} from './rename-retry';
 
 function failing(codes: string[]) {
   const calls: string[] = [];
@@ -74,11 +80,73 @@ describe('renameWithRetry', () => {
   });
 
   it('is the only main-process module that renames through node:fs directly', () => {
-    const offenders = readdirSync(__dirname)
+    const offenders = readdirSync(__dirname, { recursive: true, encoding: 'utf8' })
+      .map((name) => name.replaceAll('\\', '/'))
       .filter(
         (name) => name.endsWith('.ts') && !name.endsWith('.test.ts') && name !== 'rename-retry.ts',
       )
-      .filter((name) => /(?<![\w.])rename\(/.test(readFileSync(join(__dirname, name), 'utf8')));
+      .filter((name) =>
+        /(?<![\w.])rename(?:Sync)?\(/.test(readFileSync(join(__dirname, name), 'utf8')),
+      );
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('renameSyncWithRetry', () => {
+  function failingSync(codes: string[]) {
+    const calls: string[] = [];
+    const rename = (from: string, to: string) => {
+      calls.push(`${from}->${to}`);
+      const code = codes.shift();
+      if (code) throw Object.assign(new Error(code), { code });
+    };
+    return { calls, rename };
+  }
+
+  it('replaces a journal Defender still holds on Windows', () => {
+    const fs = failingSync(['EPERM', 'EBUSY']);
+    const waits: number[] = [];
+    renameSyncWithRetry('crashes.json.tmp', 'crashes.json', {
+      platform: 'win32',
+      rename: fs.rename,
+      sleep: (ms) => void waits.push(ms),
+    });
+    expect(fs.calls).toHaveLength(3);
+    expect(waits).toEqual([25, 50]);
+  });
+
+  it('gives up after the file budget with the last error', () => {
+    const fs = failingSync(Array(20).fill('EACCES'));
+    const waits: number[] = [];
+    expect(() =>
+      renameSyncWithRetry('a', 'b', {
+        platform: 'win32',
+        rename: fs.rename,
+        sleep: (ms) => void waits.push(ms),
+      }),
+    ).toThrow(expect.objectContaining({ code: 'EACCES' }));
+    expect(fs.calls).toHaveLength(FILE_RENAME.attempts!);
+    expect(Math.max(...waits)).toBe(FILE_RENAME.capMs);
+  });
+
+  it('fails at once on other errors and other platforms', () => {
+    const missing = failingSync(['ENOENT']);
+    expect(() =>
+      renameSyncWithRetry('a', 'b', { platform: 'win32', rename: missing.rename, sleep: () => {} }),
+    ).toThrow(expect.objectContaining({ code: 'ENOENT' }));
+    expect(missing.calls).toHaveLength(1);
+    const linux = failingSync(['EPERM']);
+    expect(() =>
+      renameSyncWithRetry('a', 'b', { platform: 'linux', rename: linux.rename, sleep: () => {} }),
+    ).toThrow(expect.objectContaining({ code: 'EPERM' }));
+    expect(linux.calls).toHaveLength(1);
+  });
+
+  it('waits for real between attempts by default', () => {
+    const fs = failingSync(['EBUSY']);
+    const started = performance.now();
+    renameSyncWithRetry('a', 'b', { platform: 'win32', rename: fs.rename });
+    expect(fs.calls).toHaveLength(2);
+    expect(performance.now() - started).toBeGreaterThanOrEqual(20);
   });
 });
