@@ -202,7 +202,7 @@ We can mirror this by extending the CI matrix once Phases A–D are green:
 
 | Target | Runner | PyInstaller variant | Notes |
 |---|---|---|---|
-| macOS Apple Silicon | `macos-14` (ARM) | `backend.spec` (MPS/MLX) | Our primary |
+| macOS Apple Silicon | `macos-15` (ARM) | `backend.spec` (MPS/MLX) | Our primary |
 | macOS Intel | `macos-13` | `backend.spec` (MPS/x64 torch) | MLX absent — falls back to CPU Whisper |
 | Windows x64 (NVIDIA) | `windows-2022` | `backend.spec` + `--bootloader` + CUDA | Requires second CUDA tarball (`cuda-libs-cu128-v1.tar.gz`) |
 | Linux x64 | `ubuntu-22.04` | `backend.spec` | Best-effort — untested |

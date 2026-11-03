@@ -243,7 +243,7 @@ def test_electron_release_scopes_signing_secrets_and_gates_unsigned_owner_dispat
     assert guard["env"]["OWNER"] == "${{ github.repository_owner }}"
     assert guard["env"]["DISPATCH_ACTOR"] == "${{ github.actor }}"
     assert guard["env"]["RERUN_ACTOR"] == "${{ github.triggering_actor }}"
-    publish = jobs["release"]["steps"][-1]
+    publish = next(step for step in jobs["release"]["steps"] if step.get("id") == "publish_release")
     assert publish["if"] == "github.event_name == 'workflow_dispatch' && inputs.publish == true"
 
 

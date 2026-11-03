@@ -142,7 +142,10 @@ fun contentReportClient()=ContentReportClient(BuildConfig.CONTENT_REPORTS_URL,Bu
                         enterTransition={androidx.compose.animation.EnterTransition.None}, exitTransition={androidx.compose.animation.ExitTransition.None},
                         popEnterTransition={androidx.compose.animation.EnterTransition.None}, popExitTransition={androidx.compose.animation.ExitTransition.None}) {
                         composable("connect") {ConnectScreen(vm)}
-                        composable("settings") {SettingsScreen(vm,BuildConfig.VERSION_NAME,onConnect={nav.navigate("connect")},onModels={nav.navigate("models")})}
+                        composable("settings") {SettingsScreen(vm,BuildConfig.VERSION_NAME,onConnect={nav.navigate("connect")},onModels={nav.navigate("models")},onSupport={nav.navigate(it)})}
+                        composable("donate") {com.voicestudio.mobile.features.settings.DonateScreen()}
+                        composable("pro") {com.voicestudio.mobile.features.settings.ProScreen()}
+                        composable("other-apps") {com.voicestudio.mobile.features.settings.OtherAppsScreen()}
                         composable("models") {com.voicestudio.mobile.features.models.ModelsScreen(vm)}
                         composable("home") {HomeScreen(vm) {nav.navigate(it)}}
                         composable("host-dubs") {com.voicestudio.mobile.features.dub.ComputerDubScreen(vm)}

@@ -1,0 +1,70 @@
+name: Arch source package
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'packaging/aur/**'
+      - '.github/workflows/aur-package.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aur-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  arch:
+    name: Build and launch on Arch Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container:
+      image: archlinux:base-devel
+      # Permit Chromium's namespace sandbox inside this disposable CI container.
+      options: --security-opt seccomp=unconfined --security-opt apparmor=unconfined --cap-add=SYS_ADMIN
+    steps:
+      - name: Install validation tools
+        run: pacman -Syu --noconfirm --needed git sudo namcap desktop-file-utils xorg-server-xvfb xorg-xauth
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Create unprivileged package builder
+        run: |
+          useradd -m builder
+          printf 'builder ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/builder
+          install -d -o builder -g builder /tmp/aur-build
+          cp packaging/aur/voicestudio-git/PKGBUILD /tmp/aur-build/
+          chown builder:builder /tmp/aur-build/PKGBUILD
+      - name: Build the actual VCS package
+        run: |
+          cd /tmp/aur-build
+          sudo -u builder env OMNIVOICE_BUILD_JOBS=4 CARGO_BUILD_JOBS=2 \
+            NODE_OPTIONS=--max-old-space-size=4096 \
+            makepkg --syncdeps --noconfirm --cleanbuild
+          sudo -u builder makepkg --printsrcinfo > /tmp/aur-build/.SRCINFO
+          namcap PKGBUILD
+          desktop-file-validate pkg/voicestudio-git/usr/share/applications/VoiceStudio.desktop
+      - name: Install and launch the package without downloading models
+        run: |
+          cd /tmp/aur-build
+          pacman -U --noconfirm voicestudio-git-*.pkg.tar.zst
+          sudo -u builder env HF_HUB_OFFLINE=1 HF_HUB_CACHE=/tmp/aur-empty-hf-cache \
+            VOICESTUDIO_DISABLE_UPDATER=1 \
+            VOICESTUDIO_PACKAGED_EXE=/usr/bin/voicestudio \
+            xvfb-run -a node src/voicestudio/electron/tests/packaged-smoke.mjs --setup
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: voicestudio-git-aur
+          include-hidden-files: true
+          path: |
+            /tmp/aur-build/PKGBUILD
+            /tmp/aur-build/.SRCINFO
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: voicestudio-git-debug-package
+          path: /tmp/aur-build/voicestudio-git-*.pkg.tar.zst
+          retention-days: 3

@@ -130,7 +130,7 @@ struct SpeakView: View {
     }
     private var modelOptions: [SelectionOption] {
         model.phone.models.filter(\.supportsSpeech).map { item in
-            SelectionOption(id: item.id, title: item.name, subtitle: model.t("mobile.simple." + item.capability.rawValue), enabled: item.fits())
+            phoneModelOption(item,model: model,subtitle: model.t("mobile.simple." + item.capability.rawValue))
         }
     }
     private var languageOptions: [SelectionOption] {
@@ -151,6 +151,7 @@ struct SpeakView: View {
                     ChoicePicker(label: model.t("mobile.speak.language"), selection: $phoneLanguage, options: languageOptions, compact: false)
 
                 }.disabled(generating)
+                ModelRamWarning(items: [phoneModel].compactMap { $0 })
                 if phoneModel?.requiresReference == true && phoneVoice == nil {
                     Text(model.t("mobile.speak.reference_required")).font(.callout).foregroundStyle(theme.color("textMuted"))
                     NavigationLink(model.t("nav.gallery")) { GalleryView() }.disabled(generating)

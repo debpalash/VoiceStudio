@@ -10,12 +10,16 @@ final class PhoneScreens: XCTestCase {
             let option = app.buttons.matching(NSPredicate(format: "label == %@", name)).firstMatch
             app.reveal(option); XCTAssertTrue(option.exists)
         }
-        // The standard ARM simulator host has 7 GB RAM. Exercise the reference
-        // controls with Pocket; OmniVoice's 8 GB requirement remains enforced.
-        let pocket = app.buttons["choice.option.pocket-tts-int8-en"]; app.reveal(pocket); pocket.tap()
+        // The standard ARM host has 7 GB RAM; explicit OmniVoice selection must stay available.
+        let omni = app.buttons["choice.option.omnivoice-q4-k-m"]; app.reveal(omni)
+        XCTAssertTrue(omni.isEnabled); omni.tap()
         XCTAssertTrue(app.staticTexts["Choose a saved voice to use this model. You can import one from Gallery."].exists)
         XCTAssertEqual(app.buttons["Voice"].value as? String, "Choose a voice")
-        XCTAssertTrue(app.buttons["models.get"].exists)
+        XCTAssertTrue(app.buttons["models.get"].isEnabled)
+        if ProcessInfo.processInfo.physicalMemory < 8_000_000_000 {
+            XCTAssertEqual(app.buttons["models.get"].label, "Try anyway")
+            XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "RAM recommended")).firstMatch.exists)
+        }
         XCTAssertFalse(app.buttons["speak.generate"].exists)
     }
     @MainActor func testGalleryBrowsesPresetsBeforeDownloadAndSearchesVoiceNames() {
@@ -35,8 +39,11 @@ final class PhoneScreens: XCTestCase {
         app.buttons["keyboard.done"].tap()
         let last = app.buttons["gallery.preset.kokoro-multi-int8.102"]
         XCTAssertTrue(last.waitForExistence(timeout: 5)); app.reveal(last); last.tap()
-        XCTAssertEqual(app.buttons["Models"].value as? String,"Kokoro")
-        XCTAssertEqual(app.buttons["Voice"].value as? String,"Voice 103")
+        // During navigation the outgoing Gallery Models button can still be in the snapshot.
+        for (label, value) in [("Models", "Kokoro"), ("Voice", "Voice 103")] {
+            let selection = app.buttons.matching(NSPredicate(format: "label == %@ AND value == %@", label, value)).firstMatch
+            XCTAssertTrue(selection.wait(for: \.isHittable, toEqual: true, timeout: 5))
+        }
         XCTAssertTrue(app.buttons["models.get"].isEnabled)
     }
     @MainActor func testCommunityGalleryShowsNamedVoicesAndOpensARealRecipeWithoutPairing() {

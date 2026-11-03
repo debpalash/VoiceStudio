@@ -59,7 +59,7 @@ import kotlinx.coroutines.*
             if(presets.isEmpty()) SearchEmpty(query)
             presets.forEach {(model,speakers) ->
                 Text(model.name,style=MaterialTheme.typography.titleMedium)
-                if(phone.canRun(model,vm.phone.ramBytes)) Text(tr("mobile.ios.status_ready"),color=role("textMuted"))
+                if(phone.canRun(model)) Text(tr("mobile.ios.status_ready"),color=role("textMuted"))
                 else com.voicestudio.mobile.features.models.MissingModelsCard(vm,"nav.gallery",listOf(model))
                 speakers.forEach {speaker ->
                     TextButton(modifier=Modifier.testTag("gallery.preset.${model.id}.$speaker"),onClick={vm.run {

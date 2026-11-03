@@ -6,6 +6,7 @@ one CI run per push, plus a scam-guard run per review-bot comment.
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 import yaml
 
@@ -62,3 +63,15 @@ def test_mobile_builds_on_pull_requests_only_for_mobile_changes():
 def test_platform_smokes_start_after_the_python_tests_not_the_whole_gate():
     needs = _load("ci.yml")["jobs"]["smoke-matrix"]["needs"]
     assert needs == "test-python", "waiting on `test` delays the smokes by the Electron jobs' runtime"
+
+
+def test_workflows_do_not_schedule_retired_macos_runners():
+    # Parse first: historical comments are fine, scheduling an unavailable image is not.
+    # macOS 14 is already in scheduled brownout and retires on November 2, 2026.
+    retired = re.compile(r"\bmacos-(?:1[0-4])(?:-(?:large|xlarge))?\b")
+    offenders = {}
+    for path in (ROOT / ".github/workflows").glob("*.y*ml"):
+        labels = retired.findall(yaml.safe_dump(_load(path.name)))
+        if labels:
+            offenders[path.name] = sorted(set(labels))
+    assert not offenders, f"Use a maintained macOS runner: {offenders}"

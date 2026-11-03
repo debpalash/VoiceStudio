@@ -4060,7 +4060,7 @@
       "terms_fingerprint": "Dấu vân tay điều khoản: {{fingerprint}}",
       "licence_storage": "Không đọc hoặc lưu được hồ sơ giấy phép mô hình. Hãy giải phóng dung lượng và thử lại; các mô hình vẫn bị chặn.",
       "licence_required": "Hãy chấp nhận giấy phép trong Mô hình trước.",
-      "ram_required": "Cần {{ram}} GB RAM. Chọn mô hình nhỏ hơn hoặc dùng máy tính của bạn.",
+      "ram_required": "Khuyến nghị {{ram}} GB RAM. Mô hình này có thể chạy chậm hoặc khiến ứng dụng đóng trên thiết bị này. Bạn vẫn có thể thử.",
       "wifi_required": "Kết nối Wi-Fi, hoặc cho phép dữ liệu di động trong Mô hình.",
       "storage_required": "Không đủ dung lượng. Hãy giải phóng bộ nhớ và thử lại.",
       "download_failed": "Tải mô hình thất bại. Kiểm tra kết nối và tiếp tục trong Mô hình.",
@@ -4077,7 +4077,8 @@
       "computer_feature": "Tính năng này hiện chạy trên máy tính của bạn. Bạn có thể dùng Giọng nói và Đọc chính tả trên điện thoại này mà không cần ghép nối.",
       "accepted": "Đã chấp nhận giấy phép",
       "not_accepted": "Chưa chấp nhận giấy phép",
-      "receipt": "{{action}} · {{time}} · Ứng dụng {{version}} · Điều khoản {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · Ứng dụng {{version}} · Điều khoản {{fingerprint}}",
+      "try_anyway": "Vẫn thử"
     },
     "simple": {
       "phone": "Điện thoại",
@@ -4125,7 +4126,7 @@
       "remove_job": "Xóa bản lồng tiếng",
       "reconnect": "Kết nối lại",
       "cancel": "Hủy",
-      "ram": "Cần {{ram}} GB RAM",
+      "ram": "Khuyến nghị {{ram}} GB RAM",
       "analytics": "Phân tích",
       "language": "Ngôn ngữ",
       "default_voice": "Giọng mặc định",
@@ -4375,6 +4376,30 @@
       "import": "Nhập",
       "export": "Xuất",
       "send": "Gửi"
+    },
+    "support": {
+      "donate": "Đóng góp",
+      "other_apps": "Ứng dụng khác",
+      "other_apps_intro": "Các dự án của nhóm chúng tôi và nhà tài trợ VoiceStudio.",
+      "gift_note": "Đóng góp là tự nguyện. Khoản đóng góp hỗ trợ phát triển và không mở khóa tính năng, nội dung hay dịch vụ.",
+      "pro_scope": "Pro bổ sung công cụ sản xuất cho VoiceStudio trên máy tính. Các công cụ sáng tạo trên điện thoại vẫn miễn phí.",
+      "opengtm": "Tìm và nghiên cứu khách hàng tiềm năng bằng công cụ tự động hóa bán hàng mã nguồn mở.",
+      "opal": "Trình phát đa phương tiện và trình duyệt mã nguồn mở cho thư viện của bạn.",
+      "supermetry": "Phân tích web tự lưu trữ, tôn trọng quyền riêng tư.",
+      "spicrawl": "Chuyển trang web thành Markdown hoặc dữ liệu có cấu trúc cho tác nhân AI.",
+      "special_sponsor": "Nhà tài trợ đặc biệt"
+    },
+    "downloads": {
+      "pause": "Tạm dừng",
+      "paused": "Đã tạm dừng",
+      "connecting": "Đang kết nối…",
+      "waiting": "Đang chờ Wi-Fi…",
+      "retrying": "Thử lại sau {{seconds}} giây…",
+      "verifying": "Đang xác minh mô hình…",
+      "speed": "{{speed}}/giây",
+      "eta": "Còn khoảng {{time}}",
+      "estimating": "Đang ước tính thời gian còn lại…",
+      "waiting_network": "Đang chờ kết nối…"
     }
   },
   "failureCause": {

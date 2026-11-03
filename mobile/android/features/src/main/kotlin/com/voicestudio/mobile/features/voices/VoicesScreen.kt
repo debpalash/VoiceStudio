@@ -31,8 +31,8 @@ import java.io.File
     val state by vm.state.collectAsState()
     val phone by vm.phone.state.collectAsState()
     val preferences by vm.preferences.collectAsState()
-    val asr=phone.models.filter {it.capability=="asr"}.let {items -> items.firstOrNull {it.id==preferences.phoneModels["clone-asr"]} ?: items.firstOrNull {phone.canRun(it,vm.phone.ramBytes)} ?: items.firstOrNull()}
-    val cloneReady=model?.let {it.capability=="clone"&&phone.canRun(it,vm.phone.ramBytes)}==true&&asr?.let {phone.canRun(it,vm.phone.ramBytes)}==true
+    val asr=phone.preferredModel(phone.models.filter {it.capability=="asr"},vm.phone.ramBytes,preferences.phoneModels["clone-asr"])
+    val cloneReady=model?.let {it.capability=="clone"&&phone.canRun(it)}==true&&asr?.let {phone.canRun(it)}==true
     val profiles=phone.voices.map {Profile("phone:"+it.id,it.name,audioUrl=it.id)}+state.profiles
     fun local(profile: Profile)=phone.voices.firstOrNull {"phone:"+it.id==profile.id}
     val context=LocalContext.current
@@ -76,12 +76,13 @@ import java.io.File
         if(location!=RunLocation.COMPUTER) {
             Text(tr("mobile.calls.clone_hint"),color=role("textMuted"))
             if(!cloneReady) MissingModelsCard(vm,"mobile.tabs.voices",listOfNotNull(model,asr))
+            ModelRamWarning(vm,listOfNotNull(model,asr))
             Secondary("mobile.simple.more") {more=!more}
             if(more) {
                 Heading("mobile.simple.clone")
-                TaskModelPicker(vm,"clone",setOf("clone"),model)
+                TaskModelPicker(vm,"clone",setOf("clone"),model,showRamWarning=false)
                 Heading("mobile.simple.asr")
-                TaskModelPicker(vm,"clone-asr",setOf("asr"),asr)
+                TaskModelPicker(vm,"clone-asr",setOf("asr"),asr,showRamWarning=false)
             }
         }
         Field("mobile.voices.name_label",name,{name=it.take(200)})

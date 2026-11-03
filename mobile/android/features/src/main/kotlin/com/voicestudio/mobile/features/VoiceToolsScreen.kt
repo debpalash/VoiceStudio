@@ -45,14 +45,14 @@ private data class VoiceToolResult(val titleKey: String,val file: File,val subje
     var work by remember {mutableStateOf<Job?>(null)}
     var progress by remember {mutableStateOf(0f)}
     val running=work?.isActive==true
-    fun selected(task: String,capability: String)=phone.models.filter {it.capability==capability}.let {models -> models.firstOrNull {it.id==prefs.phoneModels[task]} ?: models.firstOrNull {it.id in phone.installed} ?: models.firstOrNull()}
+    fun selected(task: String,capability: String)=phone.preferredModel(phone.models.filter {it.capability==capability},vm.phone.ramBytes,prefs.phoneModels[task])
     val tts=selected("production-tts","tts")
     val clone=selected("production-clone","clone")
     val asr=selected("convert-asr","asr")
     val speakers=tts?.option("num_speakers","1")?.toIntOrNull()?.coerceIn(1,128) ?: 1
     val choices=(0 until speakers).map {Choice("preset:$it",tr("mobile.local.preset_voice",mapOf("number" to it+1)))}+phone.voices.map {Choice("phone:"+it.id,it.name)}
     val needed=if(mode=="convert") listOfNotNull(asr,clone) else listOfNotNull(tts.takeIf {listOf(voiceA,voiceB).any {it.startsWith("preset:")}},clone.takeIf {listOf(voiceA,voiceB).any {it.startsWith("phone:")}})
-    val ready=!running&&!recording&&needed.isNotEmpty()&&needed.all {phone.canRun(it,vm.phone.ramBytes)}&&if(mode=="convert") source!=null&&phone.voices.any {it.id==voice}&&asr!=null&&clone!=null else text.isNotBlank()&&text.length<=2000&&listOf(voiceA,voiceB).all {selection -> choices.any {it.id==selection}}
+    val ready=!running&&!recording&&needed.isNotEmpty()&&needed.all {phone.canRun(it)}&&if(mode=="convert") source!=null&&phone.voices.any {it.id==voice}&&asr!=null&&clone!=null else text.isNotBlank()&&text.length<=2000&&listOf(voiceA,voiceB).all {selection -> choices.any {it.id==selection}}
     val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri -> if(uri!=null) scope.launch {
         try {val file=copyMedia(context,uri,"wav");source?.delete();source=file} catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}
     }}
@@ -94,7 +94,7 @@ private data class VoiceToolResult(val titleKey: String,val file: File,val subje
             }
         }
         if(!running) TaskModelPicker(vm,"production-clone",setOf("clone"),clone,key="production-clone")
-        if(needed.any {!phone.canRun(it,vm.phone.ramBytes)}) MissingModelsCard(vm,"tools.title",needed)
+        if(needed.any {!phone.canRun(it)}) MissingModelsCard(vm,"tools.title",needed)
         if(running) {
             LinearProgressIndicator(progress={progress},modifier=Modifier.fillMaxWidth())
             Secondary("common.cancel") {work?.cancel()}

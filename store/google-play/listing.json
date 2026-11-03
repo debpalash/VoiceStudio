@@ -33,7 +33,12 @@
     ]
   },
   "category": "Music & Audio",
-  "tags": ["Text to speech", "Speech to text", "Voice recorder", "Translation"],
+  "tags": [
+    "Text to speech",
+    "Speech to text",
+    "Voice recorder",
+    "Translation"
+  ],
   "contact": {
     "website": "https://voicestudio.sh",
     "email": "Set in Play Console by the account owner",
@@ -52,7 +57,9 @@
         "type": "App activity → Other user-generated content",
         "what": "A content report the user chooses to send: reason, optional note, optionally the text they entered, app version and the model that made the result",
         "optional": true,
-        "purposes": ["Fraud prevention, security, and compliance"],
+        "purposes": [
+          "Fraud prevention, security, and compliance"
+        ],
         "ephemeral": false,
         "linkedToIdentity": false
       }
@@ -70,7 +77,8 @@
     "android.permission.POST_NOTIFICATIONS": "Tell the user when a dubbing job finishes.",
     "android.permission.FOREGROUND_SERVICE": "Keep a long dubbing job running with a visible progress notification.",
     "android.permission.FOREGROUND_SERVICE_DATA_SYNC": "Upload a video to the user's own computer for dubbing and download the result, started by the user.",
-    "android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING": "Dub a video on the phone (transcribe, translate, voice and mux) with a visible progress notification, started by the user; Android 15 and newer."
+    "android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING": "Dub a video on the phone (transcribe, translate, voice and mux) with a visible progress notification, started by the user; Android 15 and newer.",
+    "android.permission.RUN_USER_INITIATED_JOBS": "Download phone models after the user taps Download, with a visible progress notification and Pause control; Android 14 and newer. No transfers start without a saved user request."
   },
   "appContent": {
     "ads": false,
@@ -90,7 +98,11 @@
     },
     "generativeAi": {
       "generatesContent": true,
-      "kinds": ["Synthetic speech", "Voice clones", "Translated dubbing"],
+      "kinds": [
+        "Synthetic speech",
+        "Voice clones",
+        "Translated dubbing"
+      ],
       "consentBeforeCloning": true,
       "inAppReporting": "Report action on every generated result sends a report inside the app (mobile/contract/SPEC.md → Reporting generated content)."
     },

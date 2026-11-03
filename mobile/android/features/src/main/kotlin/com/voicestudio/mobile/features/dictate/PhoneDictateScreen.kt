@@ -72,6 +72,7 @@ internal class PhoneDictation(private val engine: LocalEngine, private val scope
     val holdStart=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::fail) {if(holding&&ready&&model!=null) controller.start(model)}
     DictationLayout(content={
         ScreenTitle("mobile.tabs.dictate")
+        com.voicestudio.mobile.features.models.ModelRamWarning(vm,listOfNotNull(model))
         DictationTranscript(text,when {
             !ready&&model!=null -> tr("mobile.local.inline_download",mapOf("size" to android.text.format.Formatter.formatFileSize(context,model.totalBytes)))
             active -> tr("mobile.dictate.listening")

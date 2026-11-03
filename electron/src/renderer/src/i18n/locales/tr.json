@@ -4060,7 +4060,7 @@
       "terms_fingerprint": "Şartlar parmak izi: {{fingerprint}}",
       "licence_storage": "Model lisans kayıtları okunamadı veya kaydedilemedi. Depolama alanı açıp tekrar deneyin; modeller engelli kalır.",
       "licence_required": "Önce Modeller'de lisansı kabul edin.",
-      "ram_required": "{{ram}} GB RAM gerekir. Daha küçük bir model seçin veya bilgisayarınızı kullanın.",
+      "ram_required": "{{ram}} GB RAM önerilir. Bu model bu cihazda yavaş çalışabilir veya uygulamanın kapanmasına neden olabilir. Yine de deneyebilirsiniz.",
       "wifi_required": "Wi-Fi'ye bağlanın veya Modeller'de mobil veriye izin verin.",
       "storage_required": "Yeterli depolama yok. Yer açıp tekrar deneyin.",
       "download_failed": "Model indirilemedi. Bağlantınızı kontrol edip Modeller'de devam edin.",
@@ -4077,7 +4077,8 @@
       "computer_feature": "Bu özellik şu anda bilgisayarınızda çalışır. Konuşma ve Dikte'yi eşleştirmeden bu telefonda kullanabilirsiniz.",
       "accepted": "Lisans kabul edildi",
       "not_accepted": "Lisans kabul edilmedi",
-      "receipt": "{{action}} · {{time}} · Uygulama {{version}} · Şartlar {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · Uygulama {{version}} · Şartlar {{fingerprint}}",
+      "try_anyway": "Yine de dene"
     },
     "simple": {
       "phone": "Telefon",
@@ -4125,7 +4126,7 @@
       "remove_job": "Dublajı sil",
       "reconnect": "Yeniden bağlan",
       "cancel": "İptal",
-      "ram": "{{ram}} GB RAM gerekir",
+      "ram": "{{ram}} GB RAM önerilir",
       "analytics": "Analitik",
       "language": "Dil",
       "default_voice": "Varsayılan ses",
@@ -4375,6 +4376,30 @@
       "import": "İçe aktar",
       "export": "Dışa aktar",
       "send": "Gönder"
+    },
+    "support": {
+      "donate": "Bağış yap",
+      "other_apps": "Diğer uygulamalar",
+      "other_apps_intro": "Ekibimizin ve VoiceStudio sponsorlarının projeleri.",
+      "gift_note": "Bağış isteğe bağlıdır. Bağışlar geliştirmeyi destekler; özellik, içerik veya hizmet açmaz.",
+      "pro_scope": "Pro, bilgisayarınızdaki VoiceStudio’ya üretim araçları ekler. Telefon uygulamasının yaratıcı araçları ücretsiz kalır.",
+      "opengtm": "Açık kaynaklı satış otomasyonuyla potansiyel müşterileri bulun ve araştırın.",
+      "opal": "Kendi kitaplığınız için açık kaynaklı medya oynatıcı ve tarayıcı.",
+      "supermetry": "Kendi sunucunuzda barındırılan, gizliliğe saygılı web analitiği.",
+      "spicrawl": "Web sayfalarını yapay zekâ aracıları için Markdown veya yapılandırılmış veriye dönüştürün.",
+      "special_sponsor": "Özel sponsor"
+    },
+    "downloads": {
+      "pause": "Duraklat",
+      "paused": "Duraklatıldı",
+      "connecting": "Bağlanıyor…",
+      "waiting": "Wi-Fi bekleniyor…",
+      "retrying": "{{seconds}} sn sonra yeniden deneniyor…",
+      "verifying": "Model doğrulanıyor…",
+      "speed": "{{speed}}/sn",
+      "eta": "Yaklaşık {{time}} kaldı",
+      "estimating": "Kalan süre hesaplanıyor…",
+      "waiting_network": "Bağlantı bekleniyor…"
     }
   },
   "failureCause": {

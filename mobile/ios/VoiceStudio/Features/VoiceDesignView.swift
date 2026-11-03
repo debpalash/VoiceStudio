@@ -70,7 +70,7 @@ struct VoiceDesignView: View {
                     Button(model.t("clone.seed_reroll"),systemImage: "shuffle") { seed = Int.random(in: 0...Int(UInt32.max)) }.studioButton(.tertiary)
                 }
                 TextField(model.t("clone.script"),text: $script,axis: .vertical).lineLimit(4...8).accessibilityIdentifier("design.script")
-                ChoicePicker(label: model.t("mobile.speak.engine"),selection: Binding(get: { engineModel?.id ?? "" },set: { model.phone.chooseModel("design",$0) }),options: model.phone.candidates(.clone).filter(\.supportsDesign).map { SelectionOption(id: $0.id,title: $0.name,enabled: $0.fits()) })
+                PhoneModelPicker(label: model.t("mobile.speak.engine"),selection: Binding(get: { engineModel?.id ?? "" },set: { model.phone.chooseModel("design",$0) }), items: model.phone.candidates(.clone).filter(\.supportsDesign))
             }.disabled(running)
             if let item = engineModel, !model.phone.ready(item) { LocalDownloadPrompt(items: [item],feature: "nav.design") }
             if running {

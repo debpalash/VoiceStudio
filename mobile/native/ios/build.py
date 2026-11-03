@@ -202,6 +202,15 @@ def stamp_omni_source(verified, output):
     return target
 
 
+def install_framework_privacy(bundle):
+    """Each embedded dynamic library needs a declaration in its own bundle."""
+    source = HERE / 'PrivacyInfo.xcprivacy'
+    target = bundle / 'PrivacyInfo.xcprivacy'
+    if target.is_file() and target.read_bytes() != source.read_bytes():
+        raise RuntimeError('Review changed upstream privacy declaration: ' + str(bundle))
+    shutil.copy2(source, target)
+
+
 def framework(name, library, headers, output, platform_name):
     import plistlib
     target = output / (name + '.framework')
@@ -212,6 +221,8 @@ def framework(name, library, headers, output, platform_name):
     (target / 'Modules').mkdir(exist_ok=True)
     (target / 'Modules/module.modulemap').write_text('framework module ' + name + ' { umbrella "../Headers" export * }\n')
     (target / 'Info.plist').write_bytes(plistlib.dumps({'CFBundleIdentifier': 'com.voicestudio.native.' + name, 'CFBundleName': name, 'CFBundleExecutable': name, 'CFBundlePackageType': 'FMWK', 'CFBundleShortVersionString': '1.0', 'CFBundleVersion': '1', 'MinimumOSVersion': '17.0', 'CFBundleSupportedPlatforms': [platform_name]}))
+    if name in {'OmniVoice', 'llama'}:
+        install_framework_privacy(target)
     run('install_name_tool', '-id', '@rpath/' + name + '.framework/' + name, target / name)
     return target
 
@@ -271,7 +282,7 @@ def ios():
     # Fail before downloading if the SDK is absent.
     run('xcrun', '--sdk', 'iphoneos', '--show-sdk-path')
     toolchain = subprocess.check_output(['xcodebuild', '-version'], text=True) + subprocess.check_output(['xcrun', '--sdk', 'iphoneos', '--show-sdk-version'], text=True)
-    pin_key = hashlib.sha256((HERE.parent / 'pins.json').read_bytes() + (HERE / 'build.py').read_bytes() + (HERE / 'patches/omnivoice-metal-transfers.patch').read_bytes() + (HERE / 'patches/omnivoice-scoped-backend.patch').read_bytes() + (ROOT / 'mobile/ios/VoiceStudio/Resources/NativeLicences/sources.json').read_bytes() + toolchain.encode()).hexdigest()
+    pin_key = hashlib.sha256((HERE.parent / 'pins.json').read_bytes() + (HERE / 'build.py').read_bytes() + (HERE / 'PrivacyInfo.xcprivacy').read_bytes() + (HERE / 'patches/omnivoice-metal-transfers.patch').read_bytes() + (HERE / 'patches/omnivoice-scoped-backend.patch').read_bytes() + (ROOT / 'mobile/ios/VoiceStudio/Resources/NativeLicences/sources.json').read_bytes() + toolchain.encode()).hexdigest()
     output = BUILD / 'ios' / pin_key
     stable = BUILD / 'xcframeworks'
     sherpa, _ = source(**{k: PINS['sherpa-onnx']['source'][k] for k in ('repo', 'commit')})
@@ -316,6 +327,12 @@ def ios():
             library = next(build.rglob('libomnivoice.dylib'))
             frameworks.append(framework('OmniVoice', library, [omni / 'src/omnivoice.h'], output / sdk, platform_name))
         run('xcodebuild', '-create-xcframework', '-framework', frameworks[0], '-framework', frameworks[1], '-output', output / 'OmniVoice.xcframework')
+        for name in ('llama', 'OmniVoice'):
+            bundles = list((output / (name + '.xcframework')).glob('*/' + name + '.framework'))
+            if not bundles:
+                raise RuntimeError('Missing framework slices: ' + name)
+            for bundle in bundles:
+                install_framework_privacy(bundle)
         notices(output)
         receipt = {'toolchain': toolchain, 'pins_sha256': digest(HERE.parent / 'pins.json'), 'build_script_sha256': digest(HERE / 'build.py'), 'patches': {p.name: digest(p) for p in sorted((HERE / 'patches').glob('*.patch'))}, 'artifacts': {str(p.relative_to(output)): digest(p) for p in output.rglob('*') if p.is_file()}}
         (output / 'complete.json').write_text(json.dumps(receipt, indent=2))

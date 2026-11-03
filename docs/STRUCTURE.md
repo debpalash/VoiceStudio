@@ -106,8 +106,9 @@ VoiceStudio/
 │                                from scripts/ (see docs/install/script.md)
 │
 ├── docs/                        ⟵ engineering references, product imagery and brand material
+│   ├── README.md                current documentation index and maintenance policy
 │   ├── STRUCTURE.md             this map
-│   ├── ROADMAP.md               planned direction
+│   ├── ROADMAP.md               links to the live roadmap and issue trackers
 │   ├── RELEASING.md             complete multi-channel shipping checklist
 │   ├── features.yaml            source inventory consumed by docs-drift.yml
 │   ├── adr/                     durable architectural decisions

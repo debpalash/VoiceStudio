@@ -54,12 +54,11 @@ import java.io.File
     var savePath by rememberSaveable {mutableStateOf<String?>(null)}
     val catalog=rememberLanguageCatalog(vm::fail)
     val languages=catalog?.dubChoices().orEmpty()
-    fun model(capability: String): PhoneModel? = phone.models.firstOrNull {it.capability==capability&&it.id==prefs.phoneModels["dub-$capability"]}
-        ?: phone.models.firstOrNull {it.capability==capability&&it.id in phone.installed&&it.fits(vm.phone.ramBytes)} ?: phone.models.firstOrNull {it.capability==capability}
+    fun model(capability: String): PhoneModel? = phone.preferredModel(phone.models.filter {it.capability==capability},vm.phone.ramBytes,prefs.phoneModels["dub-$capability"])
     val asr=model("asr");val translator=model("translate")
     val models=listOfNotNull(asr,translator,clone)
-    val missing=models.filterNot {phone.canRun(it,vm.phone.ramBytes)}
-    val ready=models.size==3&&missing.isEmpty()&&models.all {it.fits(vm.phone.ramBytes)}
+    val missing=models.filterNot {phone.canRun(it)}
+    val ready=models.size==3&&missing.isEmpty()
     LaunchedEffect(phone.voices) {if(voice.isNotEmpty()&&phone.voices.none {it.id==voice}) voice=""}
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri ->
         if(uri!=null) scope.launch {
@@ -101,12 +100,13 @@ import java.io.File
             Box(Modifier.weight(1f)) {ConsentCheck("mobile.simple.voice_consent",consent) {consent=it}}
             Info("mobile.voices.consent_title","mobile.voices.consent_body")
         }
+        ModelRamWarning(vm,models)
         Secondary("mobile.simple.more") {more=!more}
         if(more) {
             Toggle("mobile.simple.audio_only",audioOnly) {audioOnly=it}
-            TaskModelPicker(vm,"dub-asr",setOf("asr"),asr)
-            TaskModelPicker(vm,"dub-translate",setOf("translate"),translator)
-            TaskModelPicker(vm,"dub",setOf("clone"),clone)
+            TaskModelPicker(vm,"dub-asr",setOf("asr"),asr,showRamWarning=false)
+            TaskModelPicker(vm,"dub-translate",setOf("translate"),translator,showRamWarning=false)
+            TaskModelPicker(vm,"dub",setOf("clone"),clone,showRamWarning=false)
         }
         MissingModelsCard(vm,"mobile.tabs.dub",missing)
         Action("mobile.simple.dub",ready&&consent&&(if(batchMode) batchPaths.isNotEmpty() else path!=null)&&targets.isNotEmpty()&&!copying&&!state.busy) {
@@ -188,6 +188,6 @@ import java.io.File
 @Composable fun BatchDubScreen(vm: StudioViewModel) {
     val phone by vm.phone.state.collectAsState();val prefs by vm.preferences.collectAsState()
     val models=phone.models.filter {it.capability=="clone"}
-    val clone=models.firstOrNull {it.id==prefs.phoneModels["dub"]} ?: models.firstOrNull {it.id in phone.installed} ?: models.firstOrNull()
+    val clone=phone.preferredModel(models,vm.phone.ramBytes,prefs.phoneModels["dub"])
     PhoneDubScreen(vm,clone,batchMode=true)
 }

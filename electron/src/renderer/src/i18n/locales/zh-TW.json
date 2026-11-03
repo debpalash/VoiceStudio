@@ -4060,7 +4060,7 @@
       "terms_fingerprint": "條款指紋：{{fingerprint}}",
       "licence_storage": "無法讀取或儲存模型授權記錄。請釋出儲存空間後重試；模型仍會被封鎖。",
       "licence_required": "請先在「模型」中接受授權。",
-      "ram_required": "需要 {{ram}} GB 記憶體。請選擇較小的模型，或使用電腦。",
+      "ram_required": "建議配備 {{ram}} GB 記憶體. 此模型在本裝置上可能執行緩慢或導致應用程式關閉。您仍可嘗試執行。",
       "wifi_required": "請連接 Wi-Fi，或在「模型」中允許使用行動數據。",
       "storage_required": "儲存空間不足。請釋出空間後重試。",
       "download_failed": "模型下載失敗。請檢查連線，並在「模型」中繼續下載。",
@@ -4077,7 +4077,8 @@
       "computer_feature": "此功能目前在電腦上執行。無需配對，即可在這支手機上使用語音合成和聽寫。",
       "accepted": "已接受授權",
       "not_accepted": "未接受授權",
-      "receipt": "{{action}} · {{time}} · App {{version}} · 條款 {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · App {{version}} · 條款 {{fingerprint}}",
+      "try_anyway": "仍要嘗試"
     },
     "simple": {
       "phone": "手機",
@@ -4125,7 +4126,7 @@
       "remove_job": "刪除配音",
       "reconnect": "重新連線",
       "cancel": "取消",
-      "ram": "需要 {{ram}} GB 記憶體",
+      "ram": "建議配備 {{ram}} GB 記憶體",
       "analytics": "分析",
       "language": "語言",
       "default_voice": "預設語音",
@@ -4375,6 +4376,30 @@
       "import": "匯入",
       "export": "匯出",
       "send": "傳送"
+    },
+    "support": {
+      "donate": "捐贈",
+      "other_apps": "其他應用程式",
+      "other_apps_intro": "來自我們團隊以及支持 VoiceStudio 的贊助商的專案。",
+      "gift_note": "捐贈完全自願，用於支持開發，不會解鎖任何功能、內容或服務。",
+      "pro_scope": "Pro 為電腦版 VoiceStudio 增添製作工具。手機應用程式的創作工具仍然免費。",
+      "opengtm": "透過開源銷售自動化工具尋找並研究潛在客戶。",
+      "opal": "為個人媒體庫打造的開源媒體播放器與瀏覽器。",
+      "supermetry": "自行託管、重視隱私的網站分析工具。",
+      "spicrawl": "將網頁轉換為適用於 AI 代理程式的 Markdown 或結構化資料。",
+      "special_sponsor": "特別贊助商"
+    },
+    "downloads": {
+      "pause": "暫停",
+      "paused": "已暫停",
+      "connecting": "正在連線…",
+      "waiting": "正在等待 Wi-Fi…",
+      "retrying": "{{seconds}} 秒後重試…",
+      "verifying": "正在驗證模型…",
+      "speed": "{{speed}}/秒",
+      "eta": "大約還需 {{time}}",
+      "estimating": "正在估算剩餘時間…",
+      "waiting_network": "正在等待網路連線…"
     }
   },
   "failureCause": {

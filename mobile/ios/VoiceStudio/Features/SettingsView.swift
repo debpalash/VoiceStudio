@@ -36,6 +36,14 @@ struct SettingsView: View {
                 InfoButton(title: model.t("mobile.simple.privacy"), detail: model.t("mobile.local.privacy"), row: true, icon: "shield")
                 Toggle(isOn: $model.analytics) { Label(model.t("mobile.simple.analytics"),systemImage: "chart.bar") }.frame(minHeight: 44).accessibilityIdentifier("settings.analytics")
             }
+            Section(model.t("donate.title")) {
+                NavigationLink { DonateView() } label: { Label(model.t("mobile.support.donate"), systemImage: "heart") }
+                    .accessibilityIdentifier("settings.donate")
+                NavigationLink { ProView() } label: { Label(model.t("proPage.title"), systemImage: "sparkles") }
+                    .accessibilityIdentifier("settings.pro")
+                NavigationLink { OtherAppsView() } label: { Label(model.t("mobile.support.other_apps"), systemImage: "square.grid.2x2") }
+                    .accessibilityIdentifier("settings.other-apps")
+            }
             Section {
                 HStack { Label(model.t("mobile.ios.app_name"),systemImage: "info.circle"); Spacer(); Text(AppVersion.full(info: Bundle.main.infoDictionary) ?? model.t("common.unknown")) }
                 NavigationLink { LicensesView() } label: { Label(model.t("mobile.settings.licenses"),systemImage: "doc.text") }

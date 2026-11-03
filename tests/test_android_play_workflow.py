@@ -3,6 +3,7 @@ import os
 import shutil
 import subprocess
 import zipfile
+import xml.etree.ElementTree as ET
 
 import pytest
 import yaml
@@ -12,6 +13,18 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "android-play-internal.yml"
 GRADLE = ROOT / "mobile" / "android" / "app" / "build.gradle.kts"
 MOBILE = ROOT / ".github" / "workflows" / "mobile.yml"
+
+
+@pytest.mark.parametrize("feature", ["camera", "camera.any", "camera.autofocus", "microphone"])
+def test_play_does_not_require_optional_recording_or_qr_hardware(feature):
+    """Text speech, imported media and manual pairing work without capture hardware."""
+    android = "{http://schemas.android.com/apk/res/android}"
+    manifest = ET.parse(ROOT / "mobile/android/app/src/main/AndroidManifest.xml").getroot()
+    features = {node.get(android + "name"): node.get(android + "required")
+                for node in manifest.findall("uses-feature")}
+    assert features.get("android.hardware." + feature) == "false", (
+        "Camera permission also implies rear camera/autofocus; explicitly opt out of Play filtering"
+    )
 
 
 def load(path):

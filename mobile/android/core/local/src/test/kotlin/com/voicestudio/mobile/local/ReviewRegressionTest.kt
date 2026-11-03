@@ -32,7 +32,8 @@ class ReviewRegressionTest {
             val downloads=downloads(server) {available}
             downloads.download(selection,false)
             assertTrue(downloads.installed(selection));assertEquals(1,server.requestCount)
-            target().writeBytes(ByteArray(content.size));target().setLastModified(target().lastModified()+2000)
+            val beforeTamper=target().lastModified()
+            target().writeBytes(ByteArray(content.size));target().setLastModified(beforeTamper+2000)
             available=16*1024*1024L
             try {downloads.download(selection,false);fail("Damaged completed bytes need storage too")}
             catch(e:ClientFailure) {assertEquals("mobile.local.storage_required",e.key)}
@@ -49,7 +50,8 @@ class ReviewRegressionTest {
             downloads.withModel(changed) {};assertEquals(3,hashes)
             try {downloads.withModel(changed) {throw IllegalStateException("native load")}} catch(_:IllegalStateException) {}
             downloads.withModel(changed) {};assertEquals(4,hashes)
-            target().writeBytes(ByteArray(content.size));target().setLastModified(target().lastModified()+2000)
+            val beforeTamper=target().lastModified()
+            target().writeBytes(ByteArray(content.size));target().setLastModified(beforeTamper+2000)
             try {downloads.withModel(changed) {};fail("Changed bytes accepted")}
             catch(e:ClientFailure) {assertEquals("mobile.local.checksum_failed",e.key)}
             assertFalse(downloads.installed(model))

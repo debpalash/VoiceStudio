@@ -40,7 +40,7 @@ private data class DesignedTake(val audio: LocalAudio,val text: String,val instr
     var work by remember {mutableStateOf<Job?>(null)}
     var progress by remember {mutableStateOf(0f)}
     val running=work?.isActive==true
-    val item=phone.models.filter {it.supportsDesign}.let {models -> models.firstOrNull {it.id==prefs.phoneModels["design"]} ?: models.firstOrNull {it.id in phone.installed} ?: models.firstOrNull()}
+    val item=phone.preferredModel(phone.models.filter {it.supportsDesign},vm.phone.ramBytes,prefs.phoneModels["design"])
     LaunchedEffect(Unit) {
         try {
             vm.phone.refresh()
@@ -74,14 +74,15 @@ private data class DesignedTake(val audio: LocalAudio,val text: String,val instr
             }
             Field("clone.seed_label",seed.toString(),{value->value.toLongOrNull()?.takeIf {it>=0}?.let {seed=it}})
             Secondary("clone.seed_reroll") {seed=kotlin.random.Random.nextLong(0,0x1_0000_0000L)}
-            ChoicePicker("mobile.local.model",item?.id.orEmpty(),phone.models.filter {it.supportsDesign}.map {Choice(it.id,it.name,enabled=it.fits(vm.phone.ramBytes))}) {id->vm.preference {it.copy(phoneModels=it.phoneModels+("design" to id))}}
+            ChoicePicker("mobile.local.model",item?.id.orEmpty(),phone.models.filter {it.supportsDesign}.map {phoneModelChoice(it,vm.phone.ramBytes)}) {id->vm.preference {it.copy(phoneModels=it.phoneModels+("design" to id))}}
         }
+        com.voicestudio.mobile.features.models.ModelRamWarning(vm,listOfNotNull(item))
         Field("clone.script",script,{if(!running) script=it},multiline=true)
-        if(item!=null&&!phone.canRun(item,vm.phone.ramBytes)) MissingModelsCard(vm,"nav.design",listOf(item))
+        if(item!=null&&!phone.canRun(item)) MissingModelsCard(vm,"nav.design",listOf(item))
         if(running) {
             LinearProgressIndicator(progress={progress},modifier=Modifier.fillMaxWidth())
             Secondary("common.cancel") {work?.cancel()}
-        } else Action("mobile.speak.generate",script.isNotBlank()&&script.length<=2000&&categories.isNotEmpty()&&item?.let {phone.canRun(it,vm.phone.ramBytes)}==true) {
+        } else Action("mobile.speak.generate",script.isNotBlank()&&script.length<=2000&&categories.isNotEmpty()&&item?.let {phone.canRun(it)}==true) {
             val text=script;val instruction=(categories.mapNotNull {traits[it.id]}.filter {it.isNotEmpty()}+listOf(extraInstruction).filter {it.isNotEmpty()}).joinToString(", ");val selectedSeed=seed
             val producer=requireNotNull(item)
             take=null;saved=false;progress=0f

@@ -1,0 +1,8 @@
+VoiceStudio runs voice AI on your Android phone. Download a model to generate speech, clone a voice with consent, transcribe recordings, or dub audio and video. Once downloaded, compatible models work offline.
+
+You can also pair with your own VoiceStudio computer and choose where each task runs. No account or API key is required for local use.
+
+Model weights are separate downloads with their own licences, including non-commercial and unassessed terms. Review the model terms before downloading or using its output commercially. Only clone voices you have permission to use.
+
+Source code: https://github.com/debpalash/VoiceStudio
+Privacy: https://voicestudio.sh/privacy

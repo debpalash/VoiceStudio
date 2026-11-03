@@ -155,6 +155,16 @@ All tabs work without pairing once on-device models are installed (see M2); the 
      leaves the phone: nothing but requests to the paired host), About
      (version from the root `package.json`, licenses incl. Inter, model
      licenses link to the host).
+   - **Donate**, **VoiceStudio Pro** and **Other Apps** open native pages on
+     both platforms. Their bundled `support.json` catalog and project artwork
+     work offline, without pairing, analytics or automatic provider requests.
+     Donation destinations reuse the desktop's optional giving channels; gifts
+     never unlock app functionality, content or services. Pro explains the
+     existing computer production tools and keeps phone creation free; it has
+     no mobile checkout, licence activation or implied mobile entitlement.
+     Other Apps credits OpenGTM, Opal, Supermetry and Spicrawl with descriptive
+     copy and explicit strategic/special sponsor labels. External destinations
+     open only when tapped. Screens support accessibility text and tablets.
 
 ## Platform rules
 
@@ -209,7 +219,7 @@ All tabs work without pairing once on-device models are installed (see M2); the 
 - `mobile/contract/models.json` is **generated** by
   `uv run python scripts/export_mobile_models.py` from
   `mobile/contract/models.source.json` (which models the phone offers: HF repo,
-  pinned revision, files with SHA-256 and size, capability, languages, minimum
+  pinned revision, files with SHA-256 and size, capability, languages, recommended
   RAM) joined with `docs/licensing/model-license-data.json` (licence, category,
   credit, rights holder). A phone model **must** have a registry entry; adding
   one follows `docs/licensing/model-review-workflow.md`. The contract test fails
@@ -226,7 +236,7 @@ All tabs work without pairing once on-device models are installed (see M2); the 
   Whisper tiny/base and streaming Zipformer provide dictation, and a small
   instruct LLM provides translation.
 - OmniVoice uses the runtime author recommended Q8_0 base and native F32 codec
-  (about 1.4 GB; minimum 8 GB RAM). The legacy `omnivoice-q4-k-m` identifier
+  (about 1.4 GB; 8 GB RAM recommended). The legacy `omnivoice-q4-k-m` identifier
   remains stable for preferences and storage. Older Q4 files are retained; use
   Models to download the new verified files. Licence terms/fingerprints are
   unchanged. Bare Speech synthesis cannot silently fall back to voice design.
@@ -262,18 +272,54 @@ All tabs work without pairing once on-device models are installed (see M2); the 
   `role` tells the runtime what a file is (e.g. `model`, `tokens`, `voices`,
   `encoder`, `decoder`, `joiner`, `espeak-data`, `tokenizer`); `config` carries
   runtime options (sample rate, speaker count, prompt template).
-- **Downloads only when the user starts them**, from Hugging Face (falling back
-  to `hf-mirror.com` exactly like the desktop endpoint race), resumable, Wi-Fi
-  only unless the user allows mobile data, verified by SHA-256 before use,
-  stored in app-private storage excluded from backups. A Models screen shows
-  each model's size, languages, licence and storage, with Download, Cancel and
-  Delete, and the total space used.
+- **Downloads only when the user starts them**, from Hugging Face with the
+  approved `hf-mirror.com` fallback. Persist exact catalogue pins, network policy
+  and pause state before scheduling. Reattach active work after relaunch; paused
+  and cancelled work never starts automatically. Licence withdrawal stops work.
+  Wi-Fi only unless the user allows mobile data. Store all files privately and
+  exclude them from backups; verify size/SHA-256 before making a model ready.
+  Large files use bounded parallel HTTP ranges: start with two, allow up to four
+  transfers across models, and reduce concurrency when measured throughput falls.
+  Compare sources using useful range transfers, without extra probe downloads.
+  Completed ranges and the existing contiguous partial formats remain reusable
+  after interruption, including an interrupted assembly. Reserve missing bytes
+  plus transient assembly space; release each source range only after its copied
+  bytes are durable. Strictly validate range
+  boundaries and fall back to one plain whole-file GET when ranges are unsupported;
+  keep the saved prefix until the replacement validates, including HTTP 206.
+  Retain completed fallback bodies for verification after relaunch.
+  Retry transient network/408/429/5xx failures with bounded exponential backoff,
+  jitter and `Retry-After`; retry 403 from the original pinned URL to refresh
+  expiring delivery URLs. Permanent failures require an explicit retry.
+  iOS uses system background URLSession tasks and durable completion receipts;
+  Android uses user-initiated transfer jobs on API 34+ and foreground WorkManager
+  jobs on older supported devices; blocked foreground promotion retries without
+  pausing the intent. Task start and cancellation are ordered so a stopped task
+  cannot start afterward. OS scheduling, user force-stop/force-quit,
+  battery, thermal and connectivity restrictions can still interrupt transfers;
+  retained ranges remain resumable. Background execution is not a guarantee.
+  Models and feature download cards display percentage, received/total bytes,
+  smoothed transfer speed and ETA (estimating until enough samples exist), with
+  separate waiting, retry and verification states. Resumed bytes and duplicate
+  retry traffic do not inflate speed; verification must finish before Ready.
+  Models offers Pause, Resume, Cancel and Delete. Pause/Cancel retain partial
+  files; Cancel removes the automatic restore intent; Delete removes partials too.
+  Android's ongoing notification displays transfer status and offers Pause.
+  Terminal failure reasons persist with paused intents and appear on both Models
+  and feature download cards; retry clears the old reason.
+  Local diagnostic records are bounded status/host metadata only: no signed URLs,
+  credentials, user content or automatic diagnostic uploads.
 - **Licence acceptance matches the desktop:** a model whose licence category is
   not commercial-OK must be accepted on the phone before it is downloaded or
   loaded. Acceptance is recorded locally per model with the fingerprint of the
   exact terms shown, the app version and the time, and can be withdrawn.
-- **Device fit:** each model declares minimum RAM. Models the phone can't run
-  are shown disabled with the reason, never hidden and never attempted.
+- **Device fit:** the catalogue's `min_ram_gb` field is a RAM recommendation,
+  not an installation or inference gate. Models below the recommendation remain
+  selectable with a visible warning that performance may be slow or the app may
+  close. Download prompts offer **Try anyway**; choosing a model never starts a
+  download. Automatic choices prefer recommended models, while explicit choices
+  remain usable after installation. Licence, storage, checksum, consent and
+  cancellation checks still apply; RAM advice never bypasses them.
 
 ### Where each task runs
 

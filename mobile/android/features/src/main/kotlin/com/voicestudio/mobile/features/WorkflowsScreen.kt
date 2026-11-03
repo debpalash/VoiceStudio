@@ -47,7 +47,7 @@ private fun workflowStepKey(kind: String)=if(kind=="normalize") "mobile.producti
     var result by remember {mutableStateOf<PhoneWorkflowResult?>(null)}
     var subject by remember {mutableStateOf<ReportSubject?>(null)}
     val running=activeWorker!=null
-    fun model(task: String,capability: String)=phone.models.filter {it.capability==capability}.let {models ->models.firstOrNull {it.id==prefs.phoneModels[task]} ?: models.firstOrNull {it.id in phone.installed} ?: models.firstOrNull()}
+    fun model(task: String,capability: String)=phone.preferredModel(phone.models.filter {it.capability==capability},vm.phone.ramBytes,prefs.phoneModels[task])
     val recognizer=model("workflow-asr","asr");val tts=model("production-tts","tts");val clone=model("production-clone","clone");val translator=model("workflow-translate","translate")
     val speaks=workflow.steps.any {it.kind=="speak"};val translates=workflow.steps.any {it.kind=="translate"}
     val selected=if(voice.startsWith("phone:")) clone else tts
@@ -57,7 +57,7 @@ private fun workflowStepKey(kind: String)=if(kind=="normalize") "mobile.producti
     val voices=(0 until speakers).map {Choice("preset:$it",tr("mobile.local.preset_voice",mapOf("number" to it+1)))}+phone.voices.map {Choice("phone:"+it.id,it.name)}
     val catalog=rememberLanguageCatalog(vm::fail)
     val graphReady=nodes.filter {it.kind in setOf("speak","convert")}.all {node ->voices.any {it.id==node.voiceId}&&(if(node.voiceId.orEmpty().startsWith("phone:")) clone!=null else tts!=null)&&(node.kind!="convert"||node.voiceId.orEmpty().startsWith("phone:"))}
-    val valid=workflow.valid&&input.length<=20000&&needed.all {phone.canRun(it,vm.phone.ramBytes)}&&if(workflow.graph!=null) graphReady&&(if(workflow.graph!!.needsAudio) workflow.inputFile!=null else input.isNotBlank())&&(!nodes.any {it.kind in setOf("transcribe","convert")}||recognizer!=null)&&(!nodes.any {it.kind=="translate"}||translator!=null) else (input.isNotBlank()||workflow.steps.firstOrNull()?.kind=="transcribe")&&(workflow.steps.firstOrNull()?.kind!="transcribe"||(workflow.inputFile!=null&&recognizer!=null))&&(!translates||translator!=null)&&(!speaks||(selected!=null&&voices.any {it.id==voice}))
+    val valid=workflow.valid&&input.length<=20000&&needed.all {phone.canRun(it)}&&if(workflow.graph!=null) graphReady&&(if(workflow.graph!!.needsAudio) workflow.inputFile!=null else input.isNotBlank())&&(!nodes.any {it.kind in setOf("transcribe","convert")}||recognizer!=null)&&(!nodes.any {it.kind=="translate"}||translator!=null) else (input.isNotBlank()||workflow.steps.firstOrNull()?.kind=="transcribe")&&(workflow.steps.firstOrNull()?.kind!="transcribe"||(workflow.inputFile!=null&&recognizer!=null))&&(!translates||translator!=null)&&(!speaks||(selected!=null&&voices.any {it.id==voice}))
     suspend fun reload() {library=vm.phone.workflows.list();runs=vm.phone.workflows.graphRuns(workflow)}
     LaunchedEffect(Unit) {try {vm.phone.refresh();reload()} catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}}
     LaunchedEffect(workflow.id) {
@@ -151,7 +151,7 @@ private fun workflowStepKey(kind: String)=if(kind=="normalize") "mobile.producti
             Secondary("common.save",workflow.name.isNotBlank()) {scope.launch {try {workflow=workflow.copy(inputText=input,voiceSelection=voice);vm.phone.workflows.save(workflow);reload()} catch(e:Exception) {vm.fail(e)}}}
         }
         }
-        if(needed.any {!phone.canRun(it,vm.phone.ramBytes)}) MissingModelsCard(vm,"workflows.title",needed)
+        if(needed.any {!phone.canRun(it)}) MissingModelsCard(vm,"workflows.title",needed)
         if(running) {
             LinearProgressIndicator(progress={progress},modifier=Modifier.fillMaxWidth())
             Text(tr("mobile.jobs.checkpointed"))

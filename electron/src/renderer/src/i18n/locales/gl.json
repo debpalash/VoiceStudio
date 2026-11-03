@@ -4060,7 +4060,7 @@
       "terms_fingerprint": "Pegada dixital das condicións: {{fingerprint}}",
       "licence_storage": "Non se puideron ler nin gardar os rexistros de licenza modelo. Almacenamento gratuíto e téntao de novo; os modelos permanecen bloqueados.",
       "licence_required": "Acepte primeiro a licenza en Models.",
-      "ram_required": "Necesita {{ram}} GB de RAM. Escolle un modelo máis pequeno ou usa o teu ordenador.",
+      "ram_required": "Recoméndanse {{ram}} GB de RAM. Este modelo pode funcionar amodo ou facer que a aplicación se peche neste dispositivo. Podes probalo igualmente.",
       "wifi_required": "Conéctate á wifi ou permite os datos móbiles en modelos.",
       "storage_required": "Non hai suficiente almacenamento. Libera espazo e téntao de novo.",
       "download_failed": "Fallou a descarga do modelo. Comproba a túa conexión e continúa en Modelos.",
@@ -4077,7 +4077,8 @@
       "computer_feature": "Esta función execútase actualmente no teu ordenador. Podes usar Fala e Ditado neste teléfono sen vincular.",
       "accepted": "Licenza aceptada",
       "not_accepted": "Non se acepta licenza",
-      "receipt": "{{action}} · {{time}} · Aplicación {{version}} · Condicións {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · Aplicación {{version}} · Condicións {{fingerprint}}",
+      "try_anyway": "Probar igualmente"
     },
     "simple": {
       "phone": "Teléfono",
@@ -4125,7 +4126,7 @@
       "remove_job": "Eliminar dobraxe",
       "reconnect": "Reconectar",
       "cancel": "Cancelar",
-      "ram": "Necesita {{ram}} GB de RAM",
+      "ram": "Recoméndanse {{ram}} GB de RAM",
       "analytics": "Analítica",
       "language": "Linguaxe",
       "default_voice": "Voz predeterminada",
@@ -4375,6 +4376,30 @@
       "import": "Importar",
       "export": "Exportar",
       "send": "Enviar"
+    },
+    "support": {
+      "donate": "Doar",
+      "other_apps": "Outras aplicacións",
+      "other_apps_intro": "Proxectos do noso equipo e dos patrocinadores de VoiceStudio.",
+      "gift_note": "Doar é opcional. As doazóns apoian o desenvolvemento e non desbloquean funcións, contido nin servizos.",
+      "pro_scope": "Pro engade ferramentas de produción a VoiceStudio no ordenador. As ferramentas creativas da aplicación móbil seguen sendo gratuítas.",
+      "opengtm": "Atopa e investiga posibles clientes con automatización de vendas de código aberto.",
+      "opal": "Un reprodutor multimedia e navegador de código aberto para a túa biblioteca.",
+      "supermetry": "Analítica web aloxada por ti e respectuosa coa privacidade.",
+      "spicrawl": "Converte páxinas web en Markdown ou datos estruturados para axentes de IA.",
+      "special_sponsor": "Patrocinador especial"
+    },
+    "downloads": {
+      "pause": "Pausar",
+      "paused": "En pausa",
+      "connecting": "Conectando…",
+      "waiting": "Agardando pola wifi…",
+      "retrying": "Novo intento en {{seconds}} s…",
+      "verifying": "Verificando o modelo…",
+      "speed": "{{speed}}/s",
+      "eta": "Quedan uns {{time}}",
+      "estimating": "Calculando o tempo restante…",
+      "waiting_network": "Agardando pola conexión…"
     }
   },
   "failureCause": {

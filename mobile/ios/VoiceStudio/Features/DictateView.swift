@@ -35,6 +35,7 @@ struct DictateView: View {
                 Text(reason).fixedSize(horizontal: false, vertical: true)
                 Button(model.t("mobile.simple.retry")) { Task { await readiness() } }
             }
+            if route == .phone { ModelRamWarning(items: [phoneModel].compactMap { $0 }) }
             if text.isEmpty {
                 Spacer(minLength: 0)
                 ContentUnavailableView {
