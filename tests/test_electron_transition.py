@@ -186,7 +186,7 @@ def test_release_preserves_authored_announcement_and_contributors(monkeypatch, t
     monkeypatch.setattr(module, "verify_release", lambda *args, **kwargs: None)
     monkeypatch.chdir(tmp_path)
     Path("package.json").write_text(json.dumps({"version": "1.2.3"}))
-    notes = "**A new desktop**\n\n![UI](https://example.com/ui.png)\n\n### Contributors\n\n- @contributor — thanks!\n"
+    notes = "**A new desktop**\n\n![UI](https://example.com/ui.png)\n\n### Contributors\n\n- @contributor — thanks! ☃\n"
     Path("CHANGELOG.md").write_text("## [Unreleased]\n\n- Later\n\n## [1.2.3] — 2026-09-17\n\n" + notes + "\n## [1.2.2] — 2026-09-10\n\n- Older\n", encoding="utf-8")
     assets = tmp_path / "assets"
     assets.mkdir()
