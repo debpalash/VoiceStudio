@@ -4577,5 +4577,18 @@
     "room_tone": "Wypełniaj pauzy tłem pomieszczenia",
     "room_tone_note": "Znaczniki [pause] i przerwy w audiobookach dostają ciche tło samego nagrania zamiast cyfrowej ciszy, więc dźwięk nie urywa się między wersami.",
     "env_pinned": "Ustawione przez {{env}}. Zmień lub usuń tę wartość, aby użyć tego przełącznika."
+  },
+  "setupHelp": {
+    "title": "Konfiguracja wygląda na zablokowaną",
+    "stalled_hint": "Pobieranie nie postępuje od pięciu minut. Poczekaj, anuluj i spróbuj ponownie lub poproś o pomoc. Pobierz dziennik konfiguracji, aby go udostępnić.",
+    "download_log": "Pobierz dziennik konfiguracji",
+    "discord": "Uzyskaj pomoc na Discordzie",
+    "check_connection": "Sprawdź połączenie pobierania",
+    "checking": "Sprawdzanie połączenia…",
+    "check_hint": "Pobiera małą próbkę z serwera danego pakietu (do 15 sekund). Nic nie jest wysyłane. Udany test nie gwarantuje ukończenia całego pobierania.",
+    "check_ok": "{{host}} odpowiedział: {{rate}} KB/s dla tej próbki.",
+    "check_failed": "Nie udało się ukończyć testu {{host}}. Szczegóły są w dzienniku konfiguracji.",
+    "check_unavailable": "Nie ma jeszcze pobierania pakietu, które można sprawdzić.",
+    "connection_error": "Połączenie pobierania pakietu nie powiodło się. Wznów, aby spróbować ponownie; ukończone pobrania zostają zachowane."
   }
 }

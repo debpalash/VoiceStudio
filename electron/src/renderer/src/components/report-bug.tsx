@@ -73,7 +73,7 @@ function reachabilitySection(
   return lines;
 }
 
-export function ReportBug({ error }: { error?: Error | string }) {
+export function ReportBug({ error, setup = false }: { error?: Error | string; setup?: boolean }) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -141,6 +141,21 @@ export function ReportBug({ error }: { error?: Error | string }) {
         `**App:** VoiceStudio ${__APP_VERSION__} (build ${__BUILD_COMMIT__})`,
         '**Shell:** Electron',
       ];
+      if (setup) {
+        const diagnostics = await withDeadline(
+          bridge?.backend?.getSetupDiagnostics?.().catch(() => null) ?? Promise.resolve(null),
+          3000,
+        );
+        context.push(
+          '## Runtime setup',
+          `Stage: ${backend?.stage ?? 'unknown'}`,
+          `Progress: ${JSON.stringify(backend?.setupProgress ?? {})}`,
+          'Attach the downloaded voicestudio-setup.log for the full setup history.',
+          '```',
+          clampCrashTail(scrubText(diagnostics ?? backend?.logTail.join('\n') ?? '')),
+          '```',
+        );
+      }
       if (staleBuild) {
         context.push(
           `**Build status:** OUTDATED — v${staleBuild.latest} was already available when this was filed`,

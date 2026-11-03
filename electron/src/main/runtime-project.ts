@@ -261,9 +261,9 @@ async function effectiveRegion(region: RuntimeRegion, signal: AbortSignal): Prom
   return 'restricted';
 }
 
-function runtimeDownloadEnv(effective: RuntimeRegion): NodeJS.ProcessEnv {
+export function runtimeDownloadEnv(effective: RuntimeRegion): NodeJS.ProcessEnv {
   return {
-    UV_HTTP_TIMEOUT: process.env.UV_HTTP_TIMEOUT || '120',
+    UV_HTTP_TIMEOUT: process.env.UV_HTTP_TIMEOUT || '900',
     UV_HTTP_CONNECT_TIMEOUT: process.env.UV_HTTP_CONNECT_TIMEOUT || '30',
     UV_HTTP_RETRIES: process.env.UV_HTTP_RETRIES || '5',
     ...(effective === 'china' && !process.env.UV_INDEX_URL
@@ -612,9 +612,7 @@ export async function runtimeDependenciesReady(
       if (!ready) {
         const module = lastImportAttempted(stdout);
         const detail = probeFailureDetail(error, stderr);
-        onFailure?.(
-          module && !stderr.trim() ? `${detail} (importing ${module})` : detail,
-        );
+        onFailure?.(module && !stderr.trim() ? `${detail} (importing ${module})` : detail);
       }
       resolve(ready);
     };
@@ -1242,6 +1240,9 @@ export async function installRuntime(
     TMP: scratch,
     TMPDIR: scratch,
   };
+  downloads.log?.(
+    `Download settings: UV_HTTP_TIMEOUT=${env.UV_HTTP_TIMEOUT}, UV_HTTP_CONNECT_TIMEOUT=${env.UV_HTTP_CONNECT_TIMEOUT}, UV_HTTP_RETRIES=${env.UV_HTTP_RETRIES}; proxy configured: ${Object.keys(env).some((key) => /^(https?|all)_proxy$/i.test(key))}`,
+  );
   if (!uv) {
     phase('downloading_uv');
     await mkdir(tools, { recursive: true });

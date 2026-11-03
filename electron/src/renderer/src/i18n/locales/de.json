@@ -4549,5 +4549,18 @@
     "room_tone": "Pausen mit Raumklang füllen",
     "room_tone_note": "[pause]-Marker und Hörbuch-Lücken erhalten den leisen Hintergrund der Aufnahme statt digitaler Stille, damit der Klang zwischen den Zeilen nicht abbricht.",
     "env_pinned": "Durch {{env}} festgelegt. Ändere oder entferne den Wert, um diesen Schalter zu nutzen."
+  },
+  "setupHelp": {
+    "title": "Die Einrichtung scheint festzuhängen",
+    "stalled_hint": "Seit fünf Minuten kein Downloadfortschritt. Weiter warten, abbrechen und erneut versuchen oder Hilfe holen. Lade das Einrichtungsprotokoll zum Teilen herunter.",
+    "download_log": "Einrichtungsprotokoll herunterladen",
+    "discord": "Hilfe auf Discord",
+    "check_connection": "Downloadverbindung prüfen",
+    "checking": "Verbindung wird geprüft…",
+    "check_hint": "Lädt eine kleine Datenprobe vom betroffenen Paketserver herunter (bis zu 15 Sekunden). Es wird nichts hochgeladen. Ein erfolgreicher Test garantiert keinen vollständigen Download.",
+    "check_ok": "{{host}} antwortete: {{rate}} KB/s bei dieser Probe.",
+    "check_failed": "Die Prüfung für {{host}} konnte nicht abgeschlossen werden. Details stehen im Einrichtungsprotokoll.",
+    "check_unavailable": "Es ist noch kein Paketdownload zum Prüfen verfügbar.",
+    "connection_error": "Die Verbindung zum Paketdownload ist fehlgeschlagen. Zum erneuten Versuch fortsetzen; abgeschlossene Downloads bleiben erhalten."
   }
 }
