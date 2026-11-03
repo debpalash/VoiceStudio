@@ -21,7 +21,11 @@ def client():
     gallery._init_gallery_db()
     app = FastAPI()
     app.include_router(gallery.router)
-    return TestClient(app)
+    # Loopback peer so the router's require_consumer / require_admin gates
+    # (which reject a non-loopback, credential-less TestClient host) let these
+    # handler tests through. Authorization itself is asserted separately in
+    # test_gallery_authorization below.
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 def _gallery_voice(
@@ -248,3 +252,18 @@ def test_gallery_preview_preserves_non_wav_content_type(client):
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "audio/mpeg"
+
+
+def test_gallery_denies_non_loopback_clients_without_credentials(monkeypatch):
+    """The real gates, without any fixture override: a non-loopback caller with
+    no consumer credential (default TestClient host, server mode unset) is
+    rejected on both reads and mutations."""
+    monkeypatch.delenv("OMNIVOICE_SERVER_MODE", raising=False)
+    init_db()
+    gallery._init_gallery_db()
+    app = FastAPI()
+    app.include_router(gallery.router)
+    with TestClient(app) as anonymous:
+        assert anonymous.get("/gallery/voices").status_code == 403
+        assert anonymous.delete("/gallery/voices/some-id").status_code == 403
+        assert anonymous.post("/gallery/voices/batch-delete", json={"ids": []}).status_code == 403
