@@ -210,7 +210,7 @@ def test_info_plist_carries_the_content_reports_url(tmp_path, monkeypatch):
 def test_host_inference_prepares_all_runtime_headers_before_compiling_swift():
     # __has_include compiles no-runtime stubs when the generated headers are
     # absent. Adding a header later does not invalidate SwiftPM's cached C object.
-    workflow = yaml.load((ROOT / ".github/workflows/mobile.yml").read_text(), Loader=yaml.BaseLoader)
+    workflow = yaml.load((ROOT / ".github/workflows/mobile.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
     steps = workflow["jobs"]["ios-inference"]["steps"]
     prepare = next(i for i, step in enumerate(steps) if "mobile/native/ios/build.sh macos-runtimes" in step.get("run", ""))
     first_compile = next(i for i, step in enumerate(steps) if any(command in step.get("run", "") for command in ("real-inference.sh", "check-swift.sh")))

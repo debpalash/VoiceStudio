@@ -77,7 +77,7 @@ def _run(tmp_path, *args, consented=True, with_info=True):
     proc = subprocess.run(
         ["bash", SH, *args], capture_output=True, text=True, env=env, timeout=60
     )
-    curl_args = curl_log.read_text() if curl_log.exists() else ""
+    curl_args = curl_log.read_text(encoding="utf-8") if curl_log.exists() else ""
     return proc, curl_args
 
 

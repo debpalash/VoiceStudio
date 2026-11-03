@@ -318,7 +318,7 @@ def test_hf_home_marker_present_after_bootstrap(
     assert bootstrap.is_indextts_installed() is True
     bootstrap.resolve_indextts_venv()
 
-    assert marker.read_text() == marker_text
+    assert marker.read_text(encoding="utf-8") == marker_text
     assert marker.stat().st_mtime == marker_mtime
 
 

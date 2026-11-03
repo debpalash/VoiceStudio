@@ -197,7 +197,7 @@ class WorkflowTests(unittest.TestCase):
     def test_receipt_identity_corruption_rejected(self):
         p = self.prepare(); self.commit(p)
         path = self.service.store / "receipts" / f"{p['plan_digest']}.json"
-        original = json.loads(path.read_text())
+        original = json.loads(path.read_text(encoding="utf-8"))
         for field in ("repo_id", "registry_digest"):
             bad = copy.deepcopy(original); bad["receipt"][field] = "different"
             path.write_text(json.dumps(bad))
@@ -250,7 +250,7 @@ class WorkflowTests(unittest.TestCase):
         path = self.service.store / "receipts" / f"{p['plan_digest']}.json"
         path.write_text('{"schema_version": 99}')
         self.assert_code("receipt_invalid", self.commit, p)
-        self.assertEqual(path.read_text(), '{"schema_version": 99}')
+        self.assertEqual(path.read_text(encoding="utf-8"), '{"schema_version": 99}')
 
     def test_receipt_paths_reject_untrusted_names(self):
         for value in ("../outside", "/tmp/file", "a" * 63, "a" * 65,
@@ -432,12 +432,12 @@ class ProductionTests(unittest.TestCase):
         self.assertEqual(migrated["dynamic_assets"], old["dynamic_assets"])
 
     def test_explicit_legacy_scope_and_separate_cache(self):
-        source = (ROOT / "backend/api/routers/model_licenses.py").read_text()
+        source = (ROOT / "backend/api/routers/model_licenses.py").read_text(encoding="utf-8")
         self.assertIn('store / "artifacts"', source)
         self.assertIn('cache_dir=cache_dir', source)
         self.assertNotIn('snapshot_download(', source)
         self.assertNotIn('install_model(', source)
-        router = (ROOT / "backend/api/routers/setup/__init__.py").read_text()
+        router = (ROOT / "backend/api/routers/setup/__init__.py").read_text(encoding="utf-8")
         self.assertLess(router.index('include_router(_model_licenses_router)'),
                         router.index('include_router(_download_router)'))
 

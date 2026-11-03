@@ -8,7 +8,7 @@ WORKFLOW = ROOT / ".github" / "workflows" / "mac-app-store.yml"
 
 
 def load_workflow():
-    return yaml.load(WORKFLOW.read_text(), Loader=yaml.BaseLoader)
+    return yaml.load(WORKFLOW.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
 
 
 def test_workflow_is_manual_private_and_distribution_scoped():
@@ -16,7 +16,7 @@ def test_workflow_is_manual_private_and_distribution_scoped():
     assert set(workflow["on"]) == {"workflow_dispatch"}
     assert workflow["permissions"] == {"contents": "read"}
     assert workflow["env"]["VOICESTUDIO_DISTRIBUTION"] == "mac-app-store"
-    source = WORKFLOW.read_text()
+    source = WORKFLOW.read_text(encoding="utf-8")
     assert "--publish never" in source
     assert "altool" not in source
     assert "notarytool" not in source
