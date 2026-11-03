@@ -26,13 +26,14 @@ data class PhoneState(val models: List<PhoneModel> = emptyList(), val installed:
             ?: candidates.firstOrNull {canRun(it)} ?: candidates.firstOrNull {it.fits(ramBytes)} ?: candidates.firstOrNull()
     fun accepted(model: PhoneModel): Boolean = !model.gated || receipts[model.id]?.lastOrNull()?.let {it.accepted&&it.fingerprint==model.licence.termsFingerprint}==true
 }
-class PhoneStudio(context: Context, private val scope: CoroutineScope, private val failure: (Throwable)->Unit, private val retryFailure: (Throwable,()->Unit)->Unit = {error,_ ->failure(error)}) {
+class PhoneStudio(context: Context, private val scope: CoroutineScope, private val failure: (Throwable)->Unit, private val retryFailure: (Throwable,()->Unit)->Unit = {error,_ ->failure(error)},
+    engine: LocalEngine? = null, private val decoder: AudioDecoder = AndroidAudioDecoder()) {
     private val application=context.applicationContext
     private val runtime=PhoneRuntime.get(application)
     val ramBytes=runtime.ramBytes
     val licence=runtime.licence
     val downloads=runtime.downloads
-    val engine=runtime.engine
+    val engine=engine ?: runtime.engine
     val voices=PhoneVoiceStore(File(application.noBackupFilesDir,"voices"))
     val production=ProductionStore(File(application.noBackupFilesDir,"production"))
     val workflows=PhoneWorkflowStore(File(application.noBackupFilesDir,"workflows"))
@@ -118,7 +119,7 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
         if(inference?.isActive==true) return
         inference=scope.launch {
             mutable.update {it.copy(progress=0f)}
-            try {voices.create(name,file,consent,model,cloneModel,engine,progress={p -> mutable.update {it.copy(progress=p)}});refresh();withContext(Dispatchers.IO) {file.delete()};created()}
+            try {voices.create(name,file,consent,model,cloneModel,engine,decoder,progress={p -> mutable.update {it.copy(progress=p)}});refresh();withContext(Dispatchers.IO) {file.delete()};created()}
             catch(e:CancellationException) {throw e} catch(e:Exception) {retryFailure(e) {clone(name,file,model,cloneModel,consent,created)}}
             finally {mutable.update {it.copy(progress=null)}}
         }
