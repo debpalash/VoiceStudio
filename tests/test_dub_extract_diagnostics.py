@@ -44,3 +44,45 @@ def test_native_error_redacts_non_home_command_paths(path):
     error = dub_pipeline._media_process_error("FFmpeg", 1, (path + ": Permission denied").encode(), paths=(path,))
     assert path not in error
     assert "Permission denied" in error
+
+
+def test_trailing_carriage_return_keeps_the_last_progress_frame():
+    from services import dub_pipeline
+    error = dub_pipeline._media_process_error("FFmpeg", -9, b"size=1kB\rsize=99kB time=00:01:02\r")
+    assert "size=99kB time=00:01:02" in error
+    assert "size=1kB" not in error
+
+
+@pytest.mark.asyncio
+async def test_nonprocess_demucs_error_scrubs_private_paths(tmp_path, monkeypatch, caplog):
+    from pathlib import Path
+    from services import dub_pipeline
+
+    async def extracted(args):
+        Path(args[-2]).write_bytes(b"audio")
+        return SimpleNamespace(returncode=0), b"", b""
+
+    async def fail_demucs(*args, **kwargs):
+        raise OSError("Cannot move /Users/private-person/voices/stem.wav")
+        yield  # Make this the same async iterator as the real stderr reader.
+
+    monkeypatch.setattr(dub_pipeline, "find_ffmpeg", lambda: "ffmpeg")
+    monkeypatch.setattr(dub_pipeline, "validate_media_source", lambda *_: None)
+    monkeypatch.setattr(dub_pipeline, "require_audio_stream", lambda *_: None)
+    monkeypatch.setattr(dub_pipeline, "run_proc_factory", lambda *_: extracted)
+    monkeypatch.setattr(dub_pipeline, "find_cached_job", lambda *_: None)
+    monkeypatch.setattr(dub_pipeline, "begin_ingest", lambda *_: None)
+    monkeypatch.setattr(dub_pipeline, "end_ingest", lambda *_: None)
+    monkeypatch.setattr(dub_pipeline, "put_and_save_job", lambda *_, **__: True)
+    monkeypatch.setattr(dub_pipeline, "merge_and_save_job", lambda *_, **__: True)
+    monkeypatch.setattr(dub_pipeline, "get_best_device", lambda: "cpu")
+    monkeypatch.setattr(dub_pipeline, "run_proc_streaming_stderr", fail_demucs)
+    events = [event async for event in dub_pipeline.ingest_pipeline(
+        "diagnostic-private", str(tmp_path),
+        {"kind": "upload", "path": str(tmp_path / "input.wav"), "input_type": "audio"},
+    )]
+    assert any("demucs_done" in event for event in events)
+    warning = "\n".join(record.getMessage() for record in caplog.records if "Demucs failed" in record.getMessage())
+    assert "Cannot move" in warning
+    assert "private-person" not in warning
+    assert "private-person" not in "\n".join(events)
