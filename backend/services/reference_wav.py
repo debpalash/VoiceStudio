@@ -8,8 +8,8 @@ anything else. Decoding once here, where ffmpeg and the full fallback chain
 live, keeps every engine venv free of extra audio dependencies.
 
 Each converted copy is named ``<source id>-<version>.wav``. The source id
-derives from the source's real path and ``<source id>.source`` records that
-path, so a copy is removed with its voice: when the source file is gone
+derives from the source's real path and ``<source id>.source`` records a
+relative reference, so a copy is removed with its voice: when the source file is gone
 (profile deleted, take replaced) or superseded by a newer version. Copies
 are deleted only through :func:`core.voice_leases.remove_if_unused`, so a
 copy a sidecar request still holds is never removed under it.
@@ -90,11 +90,25 @@ def _copy_name(path: str) -> tuple[str, str]:
     return source_id, f"{source_id}-{_digest(f'{info.st_size}:{info.st_mtime_ns}')}.wav"
 
 
+def _relative_source_reference(path: str, directory: str) -> str | None:
+    """Keep private absolute paths out of persisted cache metadata."""
+    try:
+        return os.path.relpath(_source_key(path), _source_key(directory))
+    except ValueError:
+        # Windows paths on different drives have no relative representation.
+        # Conversion still works; its temporary copy is discarded at pruning.
+        return None
+
+
 def _source_exists(directory: str, source_id: str) -> bool:
     try:
         with open(os.path.join(directory, source_id + ".source"), encoding="utf-8",
                   errors="surrogateescape") as handle:
-            return os.path.isfile(handle.read())
+            reference = handle.read()
+            # Old absolute metadata is not retained across cache pruning.
+            return bool(reference) and not os.path.isabs(reference) and os.path.isfile(
+                os.path.join(_source_key(directory), reference)
+            )
     except OSError:
         return False  # unknown source: drop the copy rather than keep a voice around
 
@@ -195,9 +209,11 @@ def sidecar_reference_wav(path: str, lease: Optional[voice_leases.VoiceFileLease
         wave, sample_rate = load_audio(path)
         mono = wave.float().mean(dim=0).clamp(-1.0, 1.0).numpy()
         os.makedirs(directory, exist_ok=True)
-        with open(os.path.join(directory, source_id + ".source"), "w", encoding="utf-8",
-                  errors="surrogateescape") as handle:
-            handle.write(_source_key(path))
+        reference = _relative_source_reference(path, directory)
+        if reference is not None:
+            with open(os.path.join(directory, source_id + ".source"), "w", encoding="utf-8",
+                      errors="surrogateescape") as handle:
+                handle.write(reference)
         fd, temporary = tempfile.mkstemp(suffix=".tmp", dir=directory)
         try:
             with os.fdopen(fd, "wb") as handle:

@@ -247,3 +247,25 @@ def test_subprocess_backend_sends_the_converted_reference(tmp_path, rw):
     assert sent["ref_audio"] != str(path)
     assert _wave_frames(sent["ref_audio"])[:3] == (1, 2, RATE)
     assert sent["language"] == "en"
+
+
+def test_source_metadata_uses_a_relative_reference(tmp_path, cache, rw):
+    path = tmp_path / "ref.flac"
+    sf.write(path, _tone(), RATE, format="FLAC")
+    rw.sidecar_reference_wav(str(path))
+    source_id, _ = rw._copy_name(str(path))
+    stored = (cache / f"{source_id}.source").read_text(encoding="utf-8")
+    assert not os.path.isabs(stored)
+    assert os.path.realpath(cache / stored) == os.path.realpath(path)
+
+
+
+def test_conversion_without_a_relative_source_keeps_no_absolute_metadata(tmp_path, cache, rw, monkeypatch):
+    path = tmp_path / "ref.flac"
+    sf.write(path, _tone(), RATE, format="FLAC")
+    monkeypatch.setattr(rw, "_relative_source_reference", lambda *_: None)
+    converted = rw.sidecar_reference_wav(str(path))
+    assert rw.is_plain_pcm_wav(converted)
+    assert not list(cache.glob("*.source"))
+    rw.prune_reference_copies()
+    assert not os.path.exists(converted)

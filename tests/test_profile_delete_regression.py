@@ -56,7 +56,7 @@ def test_delete_removes_converted_sidecar_copies(profile, monkeypatch):
     cache.mkdir()
     source_id, name = reference_wav._copy_name(str(root / "ref.wav"))
     (cache / name).write_bytes(b"converted")
-    (cache / f"{source_id}.source").write_text(os.path.normcase(os.path.realpath(root / "ref.wav")), encoding="utf-8")
+    (cache / f"{source_id}.source").write_text(os.path.relpath(os.path.realpath(root / "ref.wav"), os.path.realpath(cache)), encoding="utf-8")
     profiles.delete_profile("voice")
     assert list(cache.iterdir()) == []
 
