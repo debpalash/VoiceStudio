@@ -11,7 +11,7 @@ import tempfile
 import torch
 from fastapi import APIRouter, Depends, HTTPException
 
-from api.dependencies import require_admin
+from api.dependencies import require_consumer_reads_admin_writes
 from core import voice_leases
 from services.reference_transcript import stored_reference_transcript
 from core.db import db_conn
@@ -454,7 +454,7 @@ def resolve_consistent_ref(job: dict, speaker_key: str, memo: dict | None = None
     return ref
 
 
-router = APIRouter(dependencies=[Depends(require_admin)])
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 
 _SOURCE_CHANGED_MESSAGE = (
     "The subtitles changed while this dub was rendering. The previous track "

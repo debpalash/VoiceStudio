@@ -6,7 +6,7 @@ import asyncio
 import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
-from api.dependencies import require_admin
+from api.dependencies import require_consumer_reads_admin_writes
 from fastapi.responses import JSONResponse
 
 from schemas.requests import AgentFitRequest, TranslateRequest
@@ -22,7 +22,7 @@ from services.translator import (
 )
 from api.routers.dub_core import _get_job, _save_job
 
-router = APIRouter(dependencies=[Depends(require_admin)])
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 logger = logging.getLogger("omnivoice.api")
 
 _NLLB_REPO_ID = "facebook/nllb-200-distilled-600M"

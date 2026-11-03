@@ -8,12 +8,12 @@ environment, including test/CI without model weights.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from api.dependencies import require_admin
+from api.dependencies import require_consumer_reads_admin_writes
 from pydantic import BaseModel, Field
 
 from core.describe_voice import parse_description
 
-router = APIRouter(dependencies=[Depends(require_admin)])
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 
 
 class DescribeRequest(BaseModel):

@@ -289,7 +289,9 @@ Admin routes — `/system/*` (including `set-env`, **RCE-class**),
 bindings and pronunciation settings — sit on a
 stricter gate (`require_admin`, `backend/api/dependencies.py`) than consumption.
 Voice/profile, project, audiobook, dubbing, translation, capture, glossary,
-persona and watermark mutations also use this admin gate. The OpenAI-compatible
+persona and watermark mutations also use this admin gate. Their read-only
+metadata and saved audio remain available to authenticated consumers, including
+PIN-paired phones. The OpenAI-compatible
 `/v1` API retains its consumption gate. A pending designed-voice preview can
 synthesize and save audio even though it is a GET, so it requires an admin
 credential too. Same-origin media requests can use an admin-session cookie

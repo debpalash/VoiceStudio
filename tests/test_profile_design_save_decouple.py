@@ -354,3 +354,26 @@ def test_traversal_profile_id_is_rejected(iso):
     for evil in ("../../etc/passwd", "..", "a/b", "foo/../bar", "x\x00y", "/abs", ""):
         resp = asyncio.run(prof.get_profile_audio(evil, _media_request()))
         assert getattr(resp, "status_code", None) == 404, (evil, resp)
+
+
+def test_pin_pairing_can_list_profiles_but_cannot_modify_them(iso, monkeypatch):
+    from types import SimpleNamespace
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    _, _, prof = iso
+    monkeypatch.delenv("OMNIVOICE_SERVER_MODE", raising=False)
+    monkeypatch.delenv("OMNIVOICE_API_KEY", raising=False)
+    monkeypatch.delenv("OMNIVOICE_TRUSTED_NETWORKS", raising=False)
+    app = FastAPI()
+    app.state.network_share = SimpleNamespace(pin="654321")
+    app.include_router(prof.router)
+    with TestClient(app, client=("10.0.0.5", 50000)) as client:
+        anonymous = client.get("/profiles")
+        listing = client.get("/profiles", headers={"X-Omnivoice-Pin": "654321"})
+        creation = client.post("/profiles", headers={"X-Omnivoice-Pin": "654321"}, data={"name": "unauthorized"})
+        deletion = client.delete("/profiles/missing", headers={"X-Omnivoice-Pin": "654321"})
+    assert anonymous.status_code == 403
+    assert listing.status_code == 200
+    assert creation.status_code == 403
+    assert deletion.status_code == 403

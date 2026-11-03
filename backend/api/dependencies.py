@@ -219,6 +219,19 @@ async def require_admin(request: Request) -> None:
     check_admin(request)
 
 
+async def require_consumer_reads_admin_writes(request: Request) -> None:
+    """Keep shared content readable while requiring admin for mutations.
+
+    PIN-paired phones need metadata and saved audio on desktop too. A router's
+    write operations remain administrative; lazy GET synthesis has its own
+    media-action gate because it also writes state.
+    """
+    if request.method.upper() in SAFE_HTTP_METHODS:
+        require_consumer(request)
+    else:
+        check_admin(request)
+
+
 def check_admin(request: Request) -> None:
     """Gate RCE/filesystem-capable admin routers.
 

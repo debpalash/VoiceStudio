@@ -84,32 +84,18 @@ def _mutating_route_functions(
 
 @pytest.mark.parametrize(
     "filename",
-    [
-        "audiobook.py",
-        "batch.py",
-        "capture.py",
-        "describe_voice.py",
-        "dub_generate.py",
-        "dub_translate.py",
-        "glossary.py",
-        "marketplace.py",
-        "mcp_bindings.py",
-        "media_tools.py",
-        "personas.py",
-        "profiles.py",
-        "project_bundles.py",
-        "projects.py",
-        "stories.py",
-        "telephony_twilio.py",
-        "voice_convert.py",
-        "watermark.py",
-        "settings.py",
-        "system.py",
-    ],
+    ["mcp_bindings.py", "media_tools.py", "telephony_twilio.py", "settings.py", "system.py"],
 )
 def test_privileged_router_uses_method_aware_admin_guard(filename):
     dependencies = _dependency_names(_router_assignment(_tree(filename)))
     assert "require_admin" in dependencies
+    assert "require_loopback" not in dependencies
+
+
+@pytest.mark.parametrize("filename", ['audiobook.py', 'batch.py', 'capture.py', 'describe_voice.py', 'dub_generate.py', 'dub_translate.py', 'glossary.py', 'marketplace.py', 'personas.py', 'profiles.py', 'project_bundles.py', 'projects.py', 'stories.py', 'voice_convert.py', 'watermark.py'])
+def test_content_router_keeps_consumer_reads_and_admin_writes(filename):
+    dependencies = _dependency_names(_router_assignment(_tree(filename)))
+    assert "require_consumer_reads_admin_writes" in dependencies
     assert "require_loopback" not in dependencies
 
 

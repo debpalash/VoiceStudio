@@ -11,7 +11,7 @@ import threading
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from api.dependencies import require_admin
+from api.dependencies import require_consumer_reads_admin_writes
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from core.config import OUTPUTS_DIR, VOICES_DIR, DUB_DIR
@@ -21,7 +21,7 @@ from core.path_security import resolve_within, UnsafePath
 from core.safe_archive import ArchiveError
 from services import project_bundle as bundles
 
-router = APIRouter(prefix='/project-bundles', tags=['Project handoff'], dependencies=[Depends(require_admin)])
+router = APIRouter(prefix='/project-bundles', tags=['Project handoff'], dependencies=[Depends(require_consumer_reads_admin_writes)])
 logger = logging.getLogger(__name__)
 EXPORT_RETENTION_SECONDS = 24 * 60 * 60
 MAX_RETAINED_EXPORTS = 20

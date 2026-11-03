@@ -39,7 +39,7 @@ from core.render_trace import call as trace_call, stage as trace_stage
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
-from api.dependencies import require_admin
+from api.dependencies import require_consumer_reads_admin_writes
 from pydantic import BaseModel, ConfigDict, Field
 
 from services.audiobook import (
@@ -61,7 +61,7 @@ from services import longform_resume  # pure (no torch) — durable resume manif
 from services.longform_progress import RenderProgress, chapter_weight
 
 logger = logging.getLogger("omnivoice.audiobook")
-router = APIRouter(dependencies=[Depends(require_admin)])
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 
 # A cover filename as produced by /audiobook/cover: 12 hex chars + image ext.
 # An exact-match allowlist is the strongest barrier (and the one CodeQL's

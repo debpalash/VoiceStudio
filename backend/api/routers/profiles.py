@@ -12,7 +12,7 @@ import threading
 from datetime import datetime, timezone
 from typing import Literal, Optional
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, HTTPException
-from api.dependencies import require_admin, require_admin_media_action
+from api.dependencies import require_consumer_reads_admin_writes, require_admin_media_action
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
@@ -29,7 +29,7 @@ from core.profile_images import MAX_IMAGE_BYTES, normalize_portrait
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from core.path_security import upload_suffix
 
-router = APIRouter(dependencies=[Depends(require_admin)])
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 logger = logging.getLogger("omnivoice.profiles")
 
 

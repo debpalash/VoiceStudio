@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from api.dependencies import require_admin
+from api.dependencies import require_consumer_reads_admin_writes
 from fastapi.responses import StreamingResponse
 
 from core.config import OUTPUTS_DIR, VOICES_DIR
@@ -47,7 +47,7 @@ from core.safe_archive import ArchiveError, copy_member, open_bounded_zip, read_
 
 logger = logging.getLogger("omnivoice.marketplace")
 
-router = APIRouter(prefix="/marketplace", tags=["Voice Marketplace"], dependencies=[Depends(require_admin)])
+router = APIRouter(prefix="/marketplace", tags=["Voice Marketplace"], dependencies=[Depends(require_consumer_reads_admin_writes)])
 
 # Local marketplace directory for published voices
 MARKETPLACE_DIR = Path(OUTPUTS_DIR) / "marketplace"

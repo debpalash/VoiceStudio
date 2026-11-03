@@ -5,7 +5,7 @@ import os
 import tempfile
 import logging
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
-from api.dependencies import require_admin
+from api.dependencies import require_consumer_reads_admin_writes
 # NOTE: no module-level `import torchaudio` here — torchaudio can fail to load
 # (missing TorchCodec shared libs, arm64 hosts), and a module-level import in
 # an api.routers module runs inside the ml_imports startup phase, turning a
@@ -19,7 +19,7 @@ from core.public_errors import public_failure
 
 logger = logging.getLogger("omnivoice.watermark_api")
 
-router = APIRouter(dependencies=[Depends(require_admin)])
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 
 
 @router.post("/watermark/detect")

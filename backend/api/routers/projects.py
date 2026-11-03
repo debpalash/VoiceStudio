@@ -2,14 +2,14 @@ import uuid
 import time
 import json
 from fastapi import APIRouter, Depends, HTTPException
-from api.dependencies import require_admin
+from api.dependencies import require_consumer_reads_admin_writes
 from pydantic import BaseModel
 
 from core.db import db_conn
 from core import event_bus
 from schemas.requests import ProjectSaveRequest
 
-router = APIRouter(dependencies=[Depends(require_admin)])
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 
 
 class ProjectRenameRequest(BaseModel):
