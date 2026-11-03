@@ -5,7 +5,7 @@ from importlib import metadata, util
 from threading import RLock
 
 from .artifacts import sha256
-from .recipe import expected_versions, load_recipe, recipe_identity, validate_target
+from .recipe import ct2_supported, expected_versions, load_recipe, recipe_identity, validate_target
 from .runtime import initialize_dll_search, package_root
 from .verify import verify_environment
 
@@ -36,6 +36,12 @@ def hip_ct2_available():
     try:
         validate_target()
         recipe = load_recipe()
+        # The ROCm 10 overlay pins no HIP CTranslate2 because the ROCm 7.2.1
+        # binary loads but cannot launch kernels on ROCm 10 (verified on gfx1010:
+        # hipErrorInvalidImage). Device discovery alone would report float16 and
+        # GPU readiness, then fail every real transcription, so refuse here.
+        if not ct2_supported(recipe):
+            return False
         pins = expected_versions(recipe)
         if {name: metadata.version(name) for name in pins} != pins:
             return False
@@ -83,6 +89,19 @@ def prepare_import():
     initialize_dll_search()
 
 
+def recipe_has_hip_ct2():
+    """Whether the selected recipe pins a HIP CTranslate2 at all.
+
+    False for the ROCm 10 overlay, which installs the locked CPU build instead.
+    Callers use this to tell "this recipe never promised GPU CT2" apart from
+    "GPU CT2 was promised and failed", because only the second is a failure.
+    """
+    try:
+        return ct2_supported(load_recipe())
+    except Exception:  # noqa: BLE001 - unreadable recipe must not claim either way
+        return True
+
+
 def availability_status():
     """Windows HIP availability is child-only; generic/explicit CPU paths stay old."""
     if not windows_hip_installed():
@@ -90,6 +109,12 @@ def availability_status():
     from core.device_caps import detect_host_caps
 
     if detect_host_caps().family != "rocm":
+        return None
+    # A recipe that ships no HIP CT2 keeps faster-whisper on the CPU. Returning
+    # a failure here would mark the whole backend unavailable — including the CPU
+    # fallback the user is supposed to be able to pick — so defer to the generic
+    # CPU checks below by answering None.
+    if not recipe_has_hip_ct2():
         return None
     if not util.find_spec("faster_whisper"):
         return False, "faster-whisper is not installed"

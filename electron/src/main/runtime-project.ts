@@ -337,10 +337,11 @@ export async function runtimeDownloadHosts(
 ): Promise<Map<string, string>> {
   const lock = await readFile(join(bundle, 'uv.lock'), 'utf8');
   const rocm = resolveTorchVariant(process.env, platform, arch).variant === 'rocm';
-  // Windows ROCm installs from AMD's repository (the recipe), not PyTorch's index.
+  // Windows selects one of two AMD sources after inspecting the GPU; both
+  // are possible here because the setup progress map is built before that probe.
   const rocmHost =
     platform === 'win32'
-      ? 'repo.radeon.com'
+      ? 'repo.radeon.com / stable.repo.amd.com'
       : new URL(process.env.OMNIVOICE_TORCH_INDEX || ROCM_TORCH_INDEX).host;
   const hosts = setupDownloadHosts(lock, {
     pytorchIndex: cpuTorchApplies(platform, arch),
