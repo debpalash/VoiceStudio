@@ -264,6 +264,9 @@ def test_gallery_denies_non_loopback_clients_without_credentials(monkeypatch):
     app = FastAPI()
     app.include_router(gallery.router)
     with TestClient(app) as anonymous:
-        assert anonymous.get("/gallery/voices").status_code == 403
-        assert anonymous.delete("/gallery/voices/some-id").status_code == 403
-        assert anonymous.post("/gallery/voices/batch-delete", json={"ids": []}).status_code == 403
+        listing = anonymous.get("/gallery/voices")
+        deletion = anonymous.delete("/gallery/voices/some-id")
+        batch_deletion = anonymous.post("/gallery/voices/batch-delete", json={"ids": []})
+        assert listing.status_code == 403
+        assert deletion.status_code == 403
+        assert batch_deletion.status_code == 403
