@@ -37,6 +37,7 @@ Read it before opening a proposal; the licence check in particular ends most of 
 
 - [Git](https://git-scm.com/)
 - `curl` (used by the Bun / uv / rustup install one-liners on macOS and Linux)
+- [Node.js 22](https://nodejs.org/) (Electron development and validation scripts)
 - [Bun](https://bun.sh/) (frontend package manager)
 - [uv](https://docs.astral.sh/uv/) (Python environment manager)
 - [ffmpeg](https://ffmpeg.org/) (audio/video processing)
