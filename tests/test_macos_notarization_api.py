@@ -119,7 +119,7 @@ def test_old_tag_packaging_uses_workflow_helper_and_overrides_legacy_config(tmp_
     script = package["run"].split("node tests/packaging-contract.mjs")[0]
     script = script.replace("${{ matrix.platform }}", "darwin").replace("${{ matrix.flags }}", "--mac --arm64")
     subprocess.run(["bash", "-e", "-c", script], cwd=checkout, env=env, check=True)
-    args = args_path.read_text().splitlines()[2:]  # bun x electron-builder
+    args = args_path.read_text(encoding="utf-8").splitlines()[2:]  # bun x electron-builder
     assert "--config.mac.notarize=true" in args
     assert "--config.mac.hardenedRuntime=true" in args
     assert not list(runner.glob("apple-notary.*"))
