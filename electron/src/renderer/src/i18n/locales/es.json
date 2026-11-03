@@ -2199,7 +2199,7 @@
   },
   "backend": {
     "setup_required": "Instalar entorno local",
-    "setup_hint": "Descarga Python y las dependencias de la aplicación (varios GB). Los modelos de voz se instalan por separado cuando los eliges.",
+    "setup_hint": "La aplicación está instalada. Configure ahora el entorno de ejecución local: descargue Python y las bibliotecas de IA (varios GB). Los modelos de voz se descargan por separado cuando los elige.",
     "installing": "Instalando…",
     "setup_space": "Libera al menos {{gib}} GiB en la unidad de la aplicación y vuelve a intentarlo.",
     "repair_failed": "La reparación automática del entorno de Python no terminó. Revisa el registro del motor y pulsa Reintentar.",
@@ -2548,7 +2548,7 @@
     "change": "Cambiar…",
     "reset_default": "Restablecer los valores predeterminados",
     "region_label": "Región de descarga",
-    "free_space": "{{free}} GB libres en esta unidad, se necesitan unos {{needed}} GB"
+    "free_space": "{{free}} GiB libres en esta unidad; el entorno de ejecución necesita al menos {{needed}} GiB"
   },
   "asr_missing": {
     "message": "No hay ningún modelo de voz a texto instalado — esta función necesita uno para transcribir audio.",

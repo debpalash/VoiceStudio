@@ -2197,7 +2197,7 @@
   },
   "backend": {
     "setup_required": "Lokale runtime installeren",
-    "setup_hint": "Download Python en app-afhankelijkheden (meerdere GB). Spraakmodellen worden afzonderlijk geïnstalleerd wanneer je ze kiest.",
+    "setup_hint": "De app is geïnstalleerd. Stel nu de lokale runtime in: download Python en AI-bibliotheken (enkele GB). Stemmodellen worden afzonderlijk gedownload wanneer u ze kiest.",
     "installing": "Afhankelijkheden…",
     "setup_space": "Maak minstens {{gib}} GiB vrij op de schijf van de app en probeer het opnieuw.",
     "repair_failed": "Het automatisch herstellen van de Python-omgeving is niet voltooid. Bekijk het enginelogboek en kies Opnieuw proberen.",
@@ -2546,7 +2546,7 @@
     "change": "Wijzigen…",
     "reset_default": "Resetten naar standaard",
     "region_label": "Downloadregio",
-    "free_space": "{{free}} GB vrij op deze schijf, ongeveer {{needed}} GB nodig"
+    "free_space": "{{free}} GiB vrij op deze schijf; minstens {{needed}} GiB nodig voor de runtime"
   },
   "asr_missing": {
     "message": "Er is geen spraak-naar-tekstmodel geïnstalleerd — deze functie heeft er een nodig om audio te transcriberen.",

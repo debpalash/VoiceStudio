@@ -30,7 +30,8 @@ vi.mock('node:net', () => ({
     return server;
   },
 }));
-vi.mock('./runtime-project', () => ({
+vi.mock('./runtime-project', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./runtime-project')>()),
   runtimeReady: async () => true,
   runtimeCompatible: async () => true,
   runtimeDependenciesReady: async () => true,
@@ -178,7 +179,9 @@ it('never classifies download-period health timeouts on a live managed child as 
     await vi.advanceTimersByTimeAsync(20_000);
     expect(supervisor.status.stage).toBe('unresponsive');
     // v0.5.6's wording must not come back in any stage.
-    expect(supervisor.status.message ?? '').not.toMatch(/temporarily not responding|Waiting for recovery/i);
+    expect(supervisor.status.message ?? '').not.toMatch(
+      /temporarily not responding|Waiting for recovery/i,
+    );
     // No destructive recovery: the child was observed, never killed or respawned.
     expect(supervisor.status.managed).toBe(true);
     expect(child.exitCode).toBeNull();
@@ -590,5 +593,7 @@ it('demotes a recovering remote whose credentials are rejected, even after incon
 
 it('asserts the desktop origin in main-owned backend headers', () => {
   const supervisor = new BackendSupervisor();
-  expect(supervisor.requestHeaders()).toMatchObject({ 'X-VoiceStudio-Desktop-Origin': 'app://voicestudio' });
+  expect(supervisor.requestHeaders()).toMatchObject({
+    'X-VoiceStudio-Desktop-Origin': 'app://voicestudio',
+  });
 });

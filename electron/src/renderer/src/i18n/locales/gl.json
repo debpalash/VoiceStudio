@@ -363,7 +363,7 @@
     "port_in_use_short": "O porto {{port}} está en uso",
     "log_label": "Rexistro do motor",
     "setup_required": "Instalar o tempo de execución local",
-    "setup_hint": "Descarga Python e dependencias da aplicación (varios GB). Os modelos de voz instálanse por separado cando os elixes.",
+    "setup_hint": "A aplicación está instalada. Configura agora o contorno de execución local: descarga Python e as bibliotecas de IA (varios GB). Os modelos de voz descárganse por separado cando os escolles.",
     "installing": "Instalando…",
     "setup_space": "Libera polo menos {{gib}} GiB na unidade da aplicación e, a continuación, téntao de novo.",
     "repair_failed": "A reparación automática do ambiente Python non rematou. Comprobe o rexistro do motor e prema Reintento.",
@@ -2627,7 +2627,7 @@
     "change": "Cambiar…",
     "reset_default": "Restablecer os valores predeterminados",
     "region_label": "Descargar region",
-    "free_space": "{{free}} GB gratis nesta unidade, uns {{needed}} GB necesarios"
+    "free_space": "{{free}} GiB libres nesta unidade; o contorno de execución precisa polo menos {{needed}} GiB"
   },
   "asr_missing": {
     "message": "Non hai instalado ningún modelo de voz a texto; esta función necesita un para transcribir o audio.",

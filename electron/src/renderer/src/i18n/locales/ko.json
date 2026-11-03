@@ -2197,7 +2197,7 @@
   },
   "backend": {
     "setup_required": "로컬 실행 환경 설치",
-    "setup_hint": "Python과 앱 종속 항목을 다운로드합니다(수 GB). 음성 모델은 선택할 때 별도로 설치됩니다.",
+    "setup_hint": "앱이 설치되었습니다. 다음으로 로컬 실행 환경을 설정하고 Python 및 AI 라이브러리(수 GB)를 다운로드하세요. 음성 모델은 선택할 때 별도로 다운로드됩니다.",
     "installing": "종속성…",
     "setup_space": "앱 드라이브에 최소 {{gib}} GiB의 여유 공간을 확보한 후 다시 시도하세요.",
     "repair_failed": "Python 환경 자동 복구가 완료되지 않았습니다. 엔진 로그를 확인한 뒤 다시 시도를 누르세요.",
@@ -2545,7 +2545,7 @@
     "change": "변경…",
     "reset_default": "기본값으로 재설정",
     "region_label": "다운로드 지역",
-    "free_space": "이 드라이브의 여유 공간은 {{free}}GB이며 약 {{needed}}GB가 필요합니다",
+    "free_space": "이 드라이브의 여유 공간: {{free}} GiB. 실행 환경에 최소 {{needed}} GiB가 필요합니다",
     "storage_temp": "임시 파일"
   },
   "asr_missing": {
