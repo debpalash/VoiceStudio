@@ -79,7 +79,7 @@ def test_story_archive_routes_roundtrip_phone_chapter_edits(tmp_path,monkeypatch
         directory = tmp_path/name; directory.mkdir()
         monkeypatch.setattr(routes,name,directory)
     app = FastAPI(); app.include_router(routes.router)
-    client = TestClient(app)
+    client = TestClient(app, client=("127.0.0.1", 50000))
     exported = client.post('/project-bundles/export',json={'kind':'stories','project':story()})
     assert exported.status_code == 200,exported.text
     archive = tmp_path/'desktop.vsproject'

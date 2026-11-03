@@ -21,11 +21,12 @@ import os
 import tempfile
 import time
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from api.dependencies import require_admin
 from typing import Optional
 from core.path_security import upload_suffix
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 logger = logging.getLogger("omnivoice.capture")
 
 

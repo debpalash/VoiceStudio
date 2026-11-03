@@ -22,7 +22,8 @@ from utils.fsops import safe_replace
 import time
 import uuid
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from api.dependencies import require_admin
 from fastapi.responses import StreamingResponse
 
 from core import event_bus
@@ -33,7 +34,7 @@ from core.logging_utils import log_safe
 from core.http_headers import content_disposition
 from services import persona_bundle as pb
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 logger = logging.getLogger("omnivoice.personas")
 
 

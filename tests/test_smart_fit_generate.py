@@ -175,7 +175,7 @@ def generate_client(patched_generate):
 
     app = FastAPI()
     app.include_router(dg.router)
-    with TestClient(app) as client:
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
         yield client
 
 

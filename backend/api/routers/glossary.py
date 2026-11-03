@@ -23,13 +23,14 @@ import unicodedata
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from api.dependencies import require_admin
 from pydantic import BaseModel, Field
 
 from core.db import db_conn
 
 logger = logging.getLogger("omnivoice.glossary")
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────

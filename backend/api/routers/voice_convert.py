@@ -43,10 +43,11 @@ import os
 import tempfile
 import time
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from api.dependencies import require_admin
 from core.path_security import upload_suffix
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 logger = logging.getLogger("omnivoice.convert")
 
 #: ffmpeg's atempo filter is well-behaved in [0.5, 2.0] per stage. Convert

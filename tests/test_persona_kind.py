@@ -141,7 +141,7 @@ def test_marketplace_install_preserves_design_kind(iso):
 
     app = FastAPI()
     app.include_router(mk.router)
-    with TestClient(app) as client:
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
         published = client.post("/marketplace/publish/original-aria")
         assert published.status_code == 200
         bundle_name = os.path.basename(published.json()["bundle_path"])
@@ -167,7 +167,7 @@ def test_marketplace_install_legacy_bundle_defaults_to_clone(iso):
     bundle.write_bytes(_make_bundle({"bundle_version": 1, "profile_name": "Legacy"}))
     app = FastAPI()
     app.include_router(mk.router)
-    with TestClient(app) as client:
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
         installed = client.post("/marketplace/install/legacy.omnivoice")
     assert installed.status_code == 200
     with db.db_conn() as conn:
