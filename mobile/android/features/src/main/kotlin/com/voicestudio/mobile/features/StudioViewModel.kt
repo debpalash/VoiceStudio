@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.work.WorkManager
 import com.voicestudio.mobile.data.*
 import com.voicestudio.mobile.network.*
+import com.voicestudio.mobile.local.LocalEngine
+import com.voicestudio.mobile.local.AudioDecoder
+import com.voicestudio.mobile.local.AndroidAudioDecoder
 import kotlinx.coroutines.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
@@ -15,7 +18,8 @@ import java.io.File
     val error: ClientFailure? = null, val canRetry: Boolean = false, val profiles: List<Profile> = emptyList(), val engines: EngineFamily = EngineFamily(),
     val history: List<HistoryItem> = emptyList(), val dubHistory: List<DubHistory> = emptyList(), val audio: String? = null)
 
-class StudioViewModel @JvmOverloads constructor(application: Application, val store: SessionStore = SessionStore(application)) : AndroidViewModel(application) {
+class StudioViewModel @JvmOverloads constructor(application: Application, val store: SessionStore = SessionStore(application),
+    phoneEngine: LocalEngine? = null, audioDecoder: AudioDecoder = AndroidAudioDecoder()) : AndroidViewModel(application) {
     val preferences = store.preferences.stateIn(viewModelScope, SharingStarted.Eagerly, Preferences())
     private val mutable = MutableStateFlow(StudioState())
     val state: StateFlow<StudioState> = mutable.asStateFlow()
@@ -25,7 +29,7 @@ class StudioViewModel @JvmOverloads constructor(application: Application, val st
     private var cloneOperation: Job? = null
     private var clonePending = false
     private var retryAction: (() ->Unit)? = null
-    val phone = PhoneStudio(application,viewModelScope,::fail) {error,retry -> fail(error,retry)}
+    val phone = PhoneStudio(application,viewModelScope,::fail, {error,retry -> fail(error,retry)},phoneEngine,audioDecoder)
     val reports = ContentReports(viewModelScope)
     // Host takes made in this session: playback path -> engine id and full typed text, for reports.
     private val computerTakes = mutableMapOf<String,Pair<String,String>>()

@@ -52,7 +52,7 @@ class FirstUseFlowsTest {
             }
             compose.onNodeWithTag("home.voices").performScrollTo().performClick()
             compose.onNodeWithText("Voice name").assertExists()
-            compose.onNodeWithText("Cancel").performScrollTo().performClick()
+            compose.onNodeWithText("Cancel").assertIsDisplayed().performClick()
             compose.onNodeWithTag("home.speak").assertExists()
             Assert.assertFalse(vm.phone.downloads.progress.value.values.any {it.running})
         }
@@ -161,7 +161,7 @@ class FirstUseFlowsTest {
                 compose.onAllNodesWithText(warning).assertCountEquals(1)
                 compose.onNodeWithText("More").performScrollTo().performClick()
                 compose.onAllNodesWithText(warning).assertCountEquals(1)
-                compose.onNodeWithText("Cancel").performScrollTo().performClick()
+                compose.onNodeWithText("Cancel").assertIsDisplayed().performClick()
                 compose.onNodeWithTag("home.dub").performScrollTo().performClick()
                 compose.onAllNodesWithText(warning).assertCountEquals(1)
                 compose.onNodeWithText("More").performScrollTo().performClick()
