@@ -36,7 +36,12 @@ vi.mock('./bridge', () => ({
       ? {
           files: { openExternal: mock.open },
           updates: { getState: mock.updateState },
-          backend: { getStatus: mock.backendStatus, getHostSnapshot: mock.hostSnapshot },
+          backend: {
+            getStatus: mock.backendStatus,
+            getHostSnapshot: mock.hostSnapshot,
+            getSetupDiagnostics: async () =>
+              "Setup attempt: 900 second timeout\ncannot decrypt peer's message in /home/private-user/runtime",
+          },
         }
       : null,
 }));
@@ -108,6 +113,24 @@ it('opens browser context before awaiting diagnostics and reports blocked popups
   await screen.findByRole('alert');
   expect(open).toHaveBeenCalledWith('about:blank', '_blank');
   expect(mock.api).not.toHaveBeenCalled();
+});
+
+it('includes setup diagnostics in a reviewable GitHub report without a working backend', async () => {
+  mock.api.mockRejectedValue(new Error('backend not installed'));
+  mock.backendStatus.mockResolvedValue({
+    stage: 'setup_required',
+    logTail: [],
+    setupProgress: { stalledSeconds: 300 },
+  });
+  render(<ReportBug error="Runtime setup failed" setup />);
+  await submitReport('Torch download stopped at 13 MB');
+  await waitFor(() => expect(mock.open).toHaveBeenCalledTimes(1));
+  const body = new URL(mock.open.mock.calls[0]![0]).searchParams.get('body')!;
+  expect(body).toContain('Runtime setup');
+  expect(body).toContain('900 second timeout');
+  expect(body).toContain("cannot decrypt peer's message");
+  expect(body).toContain('voicestudio-setup.log');
+  expect(body).not.toContain('private-user');
 });
 it('navigates the reserved browser window after diagnostics resolve', async () => {
   mock.native = false;

@@ -4551,5 +4551,18 @@
     "room_tone": "Preencher pausas com tom de sala",
     "room_tone_note": "Os marcadores [pause] e os intervalos dos audiolivros recebem o fundo silencioso da própria gravação em vez de silêncio digital, para que o som não corte entre as linhas.",
     "env_pinned": "Definido por {{env}}. Altere ou limpe-o para usar este botão."
+  },
+  "setupHelp": {
+    "title": "A instalação parece bloqueada",
+    "stalled_hint": "O download não avança há cinco minutos. Aguarde, cancele e tente novamente ou peça ajuda. Baixe o registro da instalação para compartilhar.",
+    "download_log": "Baixar registro da instalação",
+    "discord": "Obter ajuda no Discord",
+    "check_connection": "Verificar conexão de download",
+    "checking": "Verificando conexão…",
+    "check_hint": "Baixa uma pequena amostra do servidor do pacote afetado (até 15 segundos). Nada é enviado. Um teste bem-sucedido não garante a conclusão do download completo.",
+    "check_ok": "{{host}} respondeu: {{rate}} KB/s nesta amostra.",
+    "check_failed": "Não foi possível concluir a verificação de {{host}}. Os detalhes estão no registro da instalação.",
+    "check_unavailable": "Ainda não há um download de pacote disponível para verificar.",
+    "connection_error": "A conexão de download do pacote falhou. Retome para tentar novamente; os downloads concluídos são preservados."
   }
 }

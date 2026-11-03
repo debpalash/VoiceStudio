@@ -4549,5 +4549,18 @@
     "room_tone": "Duraklamaları oda sesiyle doldur",
     "room_tone_note": "[pause] işaretleri ve sesli kitap boşlukları dijital sessizlik yerine kaydın kendi sessiz arka planını alır; böylece ses satırlar arasında kesilmez.",
     "env_pinned": "{{env}} tarafından belirlendi. Bu anahtarı kullanmak için değiştirin veya temizleyin."
+  },
+  "setupHelp": {
+    "title": "Kurulum takılmış görünüyor",
+    "stalled_hint": "İndirme beş dakikadır ilerlemiyor. Bekleyin, iptal edip yeniden deneyin veya yardım isteyin. Paylaşmak için kurulum günlüğünü indirin.",
+    "download_log": "Kurulum günlüğünü indir",
+    "discord": "Discord üzerinden yardım al",
+    "check_connection": "İndirme bağlantısını kontrol et",
+    "checking": "Bağlantı kontrol ediliyor…",
+    "check_hint": "İlgili paket sunucusundan küçük bir örnek indirir (en fazla 15 saniye). Hiçbir şey yüklenmez. Başarılı kontrol, tüm indirmenin tamamlanacağını garanti etmez.",
+    "check_ok": "{{host}} yanıt verdi: bu örnekte {{rate}} KB/sn.",
+    "check_failed": "{{host}} kontrolü tamamlanamadı. Ayrıntılar kurulum günlüğünde.",
+    "check_unavailable": "Henüz kontrol edilecek bir paket indirmesi yok.",
+    "connection_error": "Paket indirme bağlantısı başarısız oldu. Yeniden denemek için sürdürün; tamamlanan indirmeler korunur."
   }
 }

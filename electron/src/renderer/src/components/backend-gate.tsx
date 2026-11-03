@@ -1,6 +1,7 @@
 import { SetupGate } from './setup-gate';
 import { SetupProgressCard } from './setup-progress-card';
 import { ReportBug } from './report-bug';
+import { SetupSupport } from './setup-support';
 import { CrashDetails } from './crash-details';
 import {
   BackendOfflineBar,
@@ -566,6 +567,9 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
               </CollapsibleContent>
             </Collapsible>
           ) : null}
+          {(installing || setupFailed || (setup && status.runtimeInterrupted)) && (
+            <SetupSupport key={`${status.stage}:${status.message ?? ''}`} status={status} />
+          )}
           {failed && <ReportBug error={status.message} />}
           {failed && <CrashDetails />}
           <ConfirmDialog

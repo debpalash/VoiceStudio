@@ -350,6 +350,16 @@ export interface AccountPublicState {
   links: { profile: string; plan: string } | null;
 }
 
+export interface SetupConnectionCheck {
+  status: 'ok' | 'failed' | 'unavailable';
+  host?: string;
+  bytes?: number;
+  elapsedMs?: number;
+  bytesPerSecond?: number;
+  error?: string;
+  checkedAt: number;
+}
+
 export interface VoiceStudioBridge {
   /** VoiceStudio Cloud account; never carries a token. */
   account: {
@@ -431,6 +441,8 @@ export interface VoiceStudioBridge {
     useDefaultRuntimeLocation(): Promise<RuntimeLocation>;
     getConnection(): Promise<BackendConnection>;
     getHostSnapshot(): Promise<HostSnapshotLike>;
+    getSetupDiagnostics(): Promise<string>;
+    checkSetupConnection(): Promise<SetupConnectionCheck>;
     testRemote(input: { url: string; apiKey: string }): Promise<RemoteBackendProbe>;
     useRemote(input: { url: string; apiKey: string }): Promise<RemoteBackendProbe>;
     useLocal(): Promise<BackendConnection>;

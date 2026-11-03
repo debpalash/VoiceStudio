@@ -4549,5 +4549,18 @@
     "room_tone": "Lấp khoảng dừng bằng âm nền phòng",
     "room_tone_note": "Dấu [pause] và các khoảng trống trong sách nói sẽ có nền yên tĩnh của chính bản thu thay vì im lặng kỹ thuật số, để âm thanh không bị ngắt giữa các dòng.",
     "env_pinned": "Được đặt bởi {{env}}. Hãy đổi hoặc xóa để dùng công tắc này."
+  },
+  "setupHelp": {
+    "title": "Quá trình thiết lập có vẻ bị kẹt",
+    "stalled_hint": "Tải xuống không tiến triển trong năm phút. Tiếp tục chờ, hủy rồi thử lại hoặc nhờ trợ giúp. Tải nhật ký thiết lập để chia sẻ.",
+    "download_log": "Tải nhật ký thiết lập",
+    "discord": "Nhận trợ giúp trên Discord",
+    "check_connection": "Kiểm tra kết nối tải xuống",
+    "checking": "Đang kiểm tra kết nối…",
+    "check_hint": "Tải một mẫu nhỏ từ máy chủ của gói bị ảnh hưởng (tối đa 15 giây). Không tải lên bất cứ gì. Kiểm tra thành công không đảm bảo toàn bộ quá trình tải xuống sẽ hoàn tất.",
+    "check_ok": "{{host}} đã phản hồi: {{rate}} KB/giây trong mẫu này.",
+    "check_failed": "Không thể hoàn tất kiểm tra {{host}}. Chi tiết có trong nhật ký thiết lập.",
+    "check_unavailable": "Chưa có lượt tải gói nào để kiểm tra.",
+    "connection_error": "Kết nối tải gói thất bại. Tiếp tục để thử lại; các bản tải xuống hoàn tất được giữ nguyên."
   }
 }

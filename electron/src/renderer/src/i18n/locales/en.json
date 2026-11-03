@@ -4549,5 +4549,18 @@
     "room_tone": "Fill pauses with room tone",
     "room_tone_note": "[pause] markers and audiobook gaps get the take's own quiet background instead of digital silence, so the sound doesn't cut out between lines.",
     "env_pinned": "Set by {{env}}. Change or clear it to use this switch."
+  },
+  "setupHelp": {
+    "title": "Setup appears stuck",
+    "stalled_hint": "No download progress for five minutes. Keep waiting, cancel and retry, or ask for help. Download the setup log to share.",
+    "download_log": "Download setup log",
+    "discord": "Get help on Discord",
+    "check_connection": "Check download connection",
+    "checking": "Checking connection…",
+    "check_hint": "Downloads a small sample from the affected package server (up to 15 seconds). Nothing is uploaded. Success does not guarantee the full download will finish.",
+    "check_ok": "{{host}} responded: {{rate}} KB/s in this sample.",
+    "check_failed": "Could not complete the check for {{host}}. Details are in the setup log.",
+    "check_unavailable": "No package download is available to check yet.",
+    "connection_error": "The package download connection failed. Resume to try again; completed downloads are kept."
   }
 }
