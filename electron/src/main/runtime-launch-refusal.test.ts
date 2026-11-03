@@ -14,14 +14,17 @@ vi.mock('node:child_process', async (original) => ({
   spawn: vi.fn(),
   spawnSync: vi.fn(),
 }));
+vi.mock('./distribution', () => ({ runtimeSetupSupported: () => true }));
 vi.mock('./runtime-project', async (original) => ({
   ...(await original<typeof import('./runtime-project')>()),
   // Structural metadata is intact; run the real dependency probe beneath it.
   runtimeReady: vi.fn(async () => true),
   runtimeCompatible: vi.fn(async () => false),
   stageRuntimeSources: vi.fn(async () => undefined),
+  installRuntime: vi.fn(),
 }));
-import { runtimePython, runtimeReady, runtimeCompatible } from './runtime-project';
+import { installRuntime, runtimePython, runtimeReady, runtimeCompatible } from './runtime-project';
+import { runRuntimeProbe } from './runtime-probe';
 import { BackendSupervisor } from './backend';
 
 beforeEach(async () => {
@@ -43,6 +46,8 @@ afterEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
   vi.clearAllMocks();
+  vi.mocked(spawn).mockReset();
+  vi.mocked(installRuntime).mockReset();
   if (originalResources) Object.defineProperty(process, 'resourcesPath', originalResources);
   else delete (process as { resourcesPath?: string }).resourcesPath;
   await rm(host.data, { recursive: true, force: true });
@@ -226,4 +231,54 @@ it('preserves refusal of the selected default when there is no healthy alternati
   expect(value.status.message).toContain(runtimePython(own));
   expect(repair).not.toHaveBeenCalled();
   expect(spawn).not.toHaveBeenCalled();
+});
+
+const uv = String.raw`C:\rt\uv.exe`;
+
+function refuseSpawn(code = 'UNKNOWN') {
+  vi.mocked(spawn).mockImplementation((() => {
+    throw Object.assign(new Error(`spawn ${code}`), { code, syscall: 'spawn' });
+  }) as never);
+}
+
+it.each(['UNKNOWN', 'EPERM'])(
+  'rejects a timed probe whose launch Windows refuses (%s) with the program and code',
+  async (code) => {
+    refuseSpawn(code);
+    const probe = runRuntimeProbe(uv, ['sync'], String.raw`C:\rt`, {}, { timeoutMs: 1000 });
+    await expect(probe).rejects.toMatchObject({
+      name: 'RuntimeLaunchRefusedError',
+      program: uv,
+      message: `spawn ${code}`,
+      code,
+    });
+  },
+);
+
+it.each([
+  ['an untimed', undefined],
+  ['a timed', { timeoutMs: 1000 }],
+] as const)('names the program when setup runs %s step Windows refuses', async (_kind, options) => {
+  failProbe('callback', 1, "ModuleNotFoundError: No module named 'torch'");
+  refuseSpawn();
+  vi.mocked(spawnSync).mockReturnValue({
+    stdout: 'VerifiedAndReputablePolicyState REG_DWORD 0x1',
+  } as ReturnType<typeof spawnSync>);
+  vi.mocked(installRuntime).mockImplementation((async (
+    _bundle: string,
+    project: string,
+    _uv: string,
+    run: (...args: unknown[]) => Promise<unknown>,
+  ) => {
+    await run(uv, ['sync'], project, undefined, options);
+  }) as never);
+  const value = new BackendSupervisor();
+  vi.spyOn(value as unknown as { probe: () => Promise<boolean> }, 'probe').mockResolvedValue(false);
+  (value as unknown as { stage: string }).stage = 'setup_required';
+
+  await value.setupRuntime();
+
+  expect(value.status.stage).toBe('setup_required');
+  expect(value.status.message).toContain(`Could not start ${uv}: spawn UNKNOWN`);
+  expect(value.status.message).toContain('Windows Smart App Control blocked it.');
 });
