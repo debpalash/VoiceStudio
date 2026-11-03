@@ -91,6 +91,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
   const status = useBackendStatus();
   const [reachedReady, setReachedReady] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+  const [connectionOpen, setConnectionOpen] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [choosingLocation, setChoosingLocation] = useState(false);
   const [choosingRegion, setChoosingRegion] = useState(false);
@@ -260,7 +261,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                             ? 'backend.repair_failed'
                             : 'backend.failed',
                         {
-                          gib: status.setupRequiredGib ?? 9,
+                          gib: status.setupRequiredGib,
                         },
                       )
                     : status.message}
@@ -315,11 +316,21 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                   {t('backend.setup_unsupported_platform')}
                 </p>
               ) : null}
-              {wrongArchitecture || unsupportedPlatform ? (
-                <div className="w-full text-left">
+              <div className="w-full text-left">
+                {wrongArchitecture || unsupportedPlatform ? (
                   <RemoteBackendSettings />
-                </div>
-              ) : null}
+                ) : (
+                  <Collapsible open={connectionOpen} onOpenChange={setConnectionOpen}>
+                    <CollapsibleTrigger render={<Button variant="outline" className="w-full" />}>
+                      {t('settings.remote_backend_title')}
+                      <ChevronDownIcon className="size-4" />
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      {connectionOpen ? <RemoteBackendSettings /> : null}
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+              </div>
               <div className="grid w-full grid-cols-2 gap-2">
                 <label className="space-y-1 text-left text-xs text-muted-foreground">
                   <span>{t('settings.language')}</span>
@@ -393,19 +404,20 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                       >
                         {status.runtimePath}
                       </p>
-                      {status.runtimeFreeGib !== undefined ? (
+                      {status.runtimeFreeGib !== undefined &&
+                      status.setupRequiredGib !== undefined ? (
                         <p
                           data-testid="setup-free-space"
                           className={cn(
                             'mt-1 text-xs',
-                            status.runtimeFreeGib < (status.setupRequiredGib ?? 9)
+                            status.runtimeFreeGib < status.setupRequiredGib
                               ? 'text-warning'
                               : 'text-muted-foreground',
                           )}
                         >
                           {t('firstrun.free_space', {
                             free: status.runtimeFreeGib,
-                            needed: status.setupRequiredGib ?? 9,
+                            needed: status.setupRequiredGib,
                           })}
                         </p>
                       ) : null}
