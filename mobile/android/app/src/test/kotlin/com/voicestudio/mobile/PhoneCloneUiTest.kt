@@ -93,7 +93,7 @@ class PhoneCloneUiTest {
         val request=shadowOf(compose.activity).nextStartedActivityForResult
         val source=File(app.cacheDir,"selected.wav").apply {writeText("selected recording")}
         compose.runOnIdle {shadowOf(compose.activity).receiveResult(request.intent,Activity.RESULT_OK,Intent().setData(Uri.fromFile(source)))}
-        await {File(app.filesDir,"uploads").listFiles().orEmpty().any {it.length()>0}}
+        await {compose.onAllNodesWithText(l.t("mobile.android.sample_ready")).fetchSemanticsNodes().isNotEmpty()}
         compose.onNodeWithText(l.t("mobile.android.sample_ready")).assertExists()
         compose.onNode(hasText("Clone a voice") and hasClickAction()).assertIsDisplayed().assertIsEnabled().performClick()
         await {vm.phone.state.value.progress==0f}
