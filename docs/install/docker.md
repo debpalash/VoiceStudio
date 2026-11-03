@@ -16,6 +16,11 @@ weights download from Hugging Face when you install a model.
 and [`palashdeb/omnivoice-studio` on Docker Hub](https://hub.docker.com/r/palashdeb/omnivoice-studio) — same images, same tags.
 The former `ghcr.io/debpalash/omnivoice-studio` path remains a compatible alias.
 
+**Upgrading an existing container?** Follow the
+[backup and path-preserving migration procedure](docker-data-recovery.md)
+**before** recreating or removing it. The commands below are for a fresh
+installation; older commands may have kept application data inside the container.
+
 ## Architecture
 
 The standard CUDA/CPU images and all ROCm variants are `linux/amd64`. The only
@@ -85,6 +90,7 @@ docker pull ghcr.io/debpalash/voicestudio:stable
 docker run -d --name omnivoice \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable
 ```
@@ -104,6 +110,7 @@ Open [http://localhost:3900](http://localhost:3900). The first run downloads
 docker run -d --name omnivoice --gpus all \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable
 ```
@@ -123,6 +130,7 @@ native `linux/arm64` image:
 docker run -d --name omnivoice --gpus all \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable-cuda-arm64
 ```
@@ -164,6 +172,7 @@ docker run -d --name omnivoice \
   --device /dev/kfd --device /dev/dri \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable-rocm
 ```
@@ -188,6 +197,7 @@ docker run -d --name omnivoice \
   --ipc=host --shm-size 8G \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable-rocm
 ```
@@ -238,6 +248,7 @@ AddDevice=/dev/dri
 PublishPort=127.0.0.1:3900:3900
 Volume=omnivoice-data:/app/omnivoice_data
 Environment=OMNIVOICE_API_KEY=replace-with-a-long-random-key
+Environment=OMNIVOICE_DATA_DIR=/app/omnivoice_data
 ```
 
 Release pins exist too: `:stable-rocm`, `:0.5.6-rocm`, `:0.5-rocm` mirror
@@ -426,6 +437,7 @@ so. If the host is yours alone, you can let it skip the PIN:
 docker run -d -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
   -e OMNIVOICE_TRUST_HOST_LOOPBACK=1 \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v voicestudio_data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable
 ```

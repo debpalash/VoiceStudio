@@ -4,8 +4,9 @@ The shared publishing foundation keeps identity, disclosures, distribution
 policy, assets and artifact provenance consistent across stores. It does not
 publish or reserve listings.
 
-The execution sequence and platform-worker acceptance criteria are in
-[`STORE-PUBLISHING-HANDOVER.md`](STORE-PUBLISHING-HANDOVER.md).
+Use the platform runbooks below for packaging and submission. Start changes
+from freshly fetched `origin/main`; the original foundation-branch handover
+is retired.
 
 ## Canonical inputs
 
@@ -37,10 +38,8 @@ to weaken the shared policy.
 The Linux implementation and evidence checklist live in the
 [`Snap Store runbook`](store-publishing/snap-store.md).
 
-Build order should be Windows, Linux, then macOS. Windows reuses the current
-signed installer and updater contract; Linux introduces confinement; macOS has
-the largest architecture change because downloaded executable code is not part
-of the approved foundation.
+Windows reuses the signed installer and updater contract; Linux introduces
+confinement; macOS requires sandboxed packaging with bundled executables.
 
 Each worker owns only its package configuration, platform CI, store-specific
 assets and submission runbook. Changes to shared identity, privacy,

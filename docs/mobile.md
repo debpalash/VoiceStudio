@@ -22,6 +22,10 @@ Each release attaches the phone apps next to the desktop installers on the
 
 - **Android:** download `VoiceStudio-<version>-android.apk` on the phone, open
   it and allow installs from that source when Android asks.
+  For release updates, add `https://github.com/debpalash/VoiceStudio` in
+  [Obtainium](https://obtainium.imranr.dev/), or add the
+  [publisher-operated F-Droid repository](../store/fdroid/README.md). It carries
+  the same release-signed APK; it is separate from F-Droid.org's main catalogue.
 - **iPhone:** download `VoiceStudio-<version>-ios-unsigned.ipa` and install it
   with a sideloading tool that signs it with your own Apple ID (for example
   Sideloadly). With a free Apple ID the install expires after 7 days; turn on
