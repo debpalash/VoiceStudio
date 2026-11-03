@@ -4551,5 +4551,18 @@
     "room_tone": "Riempi le pause con il tono ambiente",
     "room_tone_note": "I marcatori [pause] e gli stacchi degli audiolibri ricevono il sottofondo silenzioso della ripresa invece del silenzio digitale, così il suono non si interrompe tra le righe.",
     "env_pinned": "Impostato da {{env}}. Modificalo o rimuovilo per usare questo interruttore."
+  },
+  "setupHelp": {
+    "title": "La configurazione sembra bloccata",
+    "stalled_hint": "Il download non avanza da cinque minuti. Attendi, annulla e riprova oppure chiedi aiuto. Scarica il registro di configurazione per condividerlo.",
+    "download_log": "Scarica il registro di configurazione",
+    "discord": "Ricevi assistenza su Discord",
+    "check_connection": "Verifica la connessione di download",
+    "checking": "Verifica della connessione…",
+    "check_hint": "Scarica un piccolo campione dal server del pacchetto interessato (fino a 15 secondi). Non viene caricato nulla. Un test riuscito non garantisce il completamento del download.",
+    "check_ok": "{{host}} ha risposto: {{rate}} KB/s per questo campione.",
+    "check_failed": "Impossibile completare la verifica di {{host}}. I dettagli sono nel registro di configurazione.",
+    "check_unavailable": "Non è ancora disponibile un download di pacchetto da verificare.",
+    "connection_error": "La connessione di download del pacchetto non è riuscita. Riprendi per riprovare; i download completati vengono conservati."
   }
 }

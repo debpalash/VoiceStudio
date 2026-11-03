@@ -4549,5 +4549,18 @@
     "room_tone": "Fyll pauser med rumston",
     "room_tone_note": "[pause]-markörer och luckor i ljudböcker får tagningens egen tysta bakgrund i stället för digital tystnad, så att ljudet inte bryts mellan raderna.",
     "env_pinned": "Styrs av {{env}}. Ändra eller rensa den för att använda det här reglaget."
+  },
+  "setupHelp": {
+    "title": "Installationen verkar ha fastnat",
+    "stalled_hint": "Nedladdningen har inte gått framåt på fem minuter. Vänta, avbryt och försök igen eller be om hjälp. Ladda ned installationsloggen för att dela den.",
+    "download_log": "Ladda ned installationslogg",
+    "discord": "Få hjälp på Discord",
+    "check_connection": "Kontrollera nedladdningsanslutning",
+    "checking": "Kontrollerar anslutning…",
+    "check_hint": "Laddar ned ett litet prov från den berörda paketservern (högst 15 sekunder). Inget laddas upp. En lyckad kontroll garanterar inte att hela nedladdningen slutförs.",
+    "check_ok": "{{host}} svarade: {{rate}} kB/s för detta prov.",
+    "check_failed": "Kontrollen av {{host}} kunde inte slutföras. Detaljer finns i installationsloggen.",
+    "check_unavailable": "Det finns ännu ingen paketnedladdning att kontrollera.",
+    "connection_error": "Anslutningen för paketnedladdningen misslyckades. Återuppta för att försöka igen; slutförda nedladdningar sparas."
   }
 }

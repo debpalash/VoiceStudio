@@ -465,7 +465,7 @@ Russia, sometimes on corporate proxies.
 
 **Fix:** see [linux.md#restricted-networks-china--russia](linux.md#restricted-networks-china--russia)
 (same env vars work on macOS and Windows — `UV_PYTHON_INSTALL_MIRROR`,
-`UV_HTTP_TIMEOUT=120`, `UV_HTTP_RETRIES=5`, `UV_PYTHON_PREFERENCE=only-system`).
+`UV_HTTP_TIMEOUT=900`, `UV_HTTP_RETRIES=5`, `UV_PYTHON_PREFERENCE=only-system`).
 
 **Linked issues:**
 [#57](https://github.com/debpalash/VoiceStudio/issues/57),
@@ -1217,7 +1217,7 @@ VoiceStudio now tries, in order: the default GitHub host → a gh-proxy mirror �
    setup uses your system proxy, or `HTTPS_PROXY` when it is set. See
    [First-run setup is slow or stalls on a download](#first-run-setup-is-slow-or-stalls-on-a-download).
 5. The bootstrap already raises the network budget for you
-   (`UV_HTTP_TIMEOUT=120`, `UV_HTTP_CONNECT_TIMEOUT=30`, `UV_HTTP_RETRIES=5`);
+   (`UV_HTTP_TIMEOUT=900`, `UV_HTTP_CONNECT_TIMEOUT=30`, `UV_HTTP_RETRIES=5`);
    you can raise them further in the environment if a mirror is very slow.
 
 **Linked issues:** [#130](https://github.com/debpalash/VoiceStudio/issues/130), [#60](https://github.com/debpalash/VoiceStudio/issues/60), [#57](https://github.com/debpalash/VoiceStudio/issues/57)
@@ -1231,7 +1231,7 @@ low speed (about 1 MB/s) on a fast connection, or shows **No data from
 **What the screen shows:** while dependencies download, the setup screen names
 the host the current download comes from. When no data has arrived for 45
 seconds, it says the download has stalled and names that host. The setup log
-(**Details**, and `bootstrap.log` afterwards; see
+(**Details** or **Download setup log**; see
 [Reading the first-run install log](#reading-the-first-run-install-log-after-setup-finishes))
 records each source host, a progress line every 30 seconds, and when the
 download stalled or resumed. Attach those lines to a bug report.
@@ -1324,20 +1324,55 @@ The Activity panel on the first-run screen shows the install as it happens, and
 that screen closes the moment setup succeeds — so it is not where you go
 afterwards to check what was installed, or to attach the log to a bug report.
 
-The same lines are written to **`bootstrap.log`**, beside the backend logs:
+Electron retains a redacted, timestamped **`setup.log`** across retries and app
+restarts. **Download setup log** works during installation, after failure, and
+when resuming an interrupted installation, before the backend is available.
+It saves `voicestudio-setup.log` to a location you choose. Nothing is uploaded.
+Normal app shutdown waits for pending setup log writes before exiting.
+
+Default locations of the retained log (portable/profile configurations may differ):
 
 | Platform | Location |
 |---|---|
-| macOS | `~/Library/Logs/OmniVoice/bootstrap.log` |
-| Windows | `%LOCALAPPDATA%\OmniVoice\Logs\bootstrap.log` |
-| Linux | `~/.local/state/OmniVoice/bootstrap.log` |
+| macOS | `~/Library/Application Support/VoiceStudio/setup.log` |
+| Windows | `%APPDATA%\VoiceStudio\setup.log` |
+| Linux | `~/.config/VoiceStudio/setup.log` |
 
-`OMNIVOICE_LOG_DIR` moves it, along with the other logs.
+The log includes attempt times, phases, download hosts, effective uv timeouts,
+proxy presence (not proxy credentials), progress, connection-check results, and
+error chains. Export adds the app version, OS, architecture and current status.
+Credentials, signed URL query strings and home-directory usernames are redacted.
+The retained history is bounded: when full, it keeps the initial context and
+latest lines, marking omitted content. Review the file before attaching it.
 
-It covers the current run only — it is truncated when a bootstrap starts, so a
-retry replaces the previous attempt rather than appending to it. If you need
-the log from an attempt that has already been superseded, copy it before
-retrying.
+After **five minutes without download progress**, setup offers **Report a bug**,
+**Get help on Discord**, and **Check download connection**. These also appear
+immediately after an installation failure. The warning clears when progress
+resumes; it does not cancel the installation. GitHub opens a prefilled report
+for you to review and submit; attach the downloaded log manually. Discord opens
+the official server. No report or log is submitted automatically.
+
+**Check download connection** makes a user-requested, bounded sample download
+from the affected package's pinned URL, using setup's proxy settings. It requests
+only artifacts from the lockfile compiled into the app, so changing a local
+runtime lockfile cannot redirect the diagnostic request. The check requests
+256 KiB and stops after at most 15 seconds, including connection setup. It can
+identify a blocked or failing package host; a successful sample does not prove
+that a multi-gigabyte download will finish. If no matching artifact is known,
+the check reports that it is unavailable instead of testing an unrelated host.
+The existing Auto region speed check only compares PyPI and its regional mirror;
+it does not choose a mirror for PyTorch's own servers.
+
+Setup defaults to `UV_HTTP_TIMEOUT=900` (15 minutes),
+`UV_HTTP_CONNECT_TIMEOUT=30`, and `UV_HTTP_RETRIES=5` for uv commands, including
+sync retries and fallbacks. Explicit environment overrides are preserved.
+The five-minute support prompt is independent of these timeouts. A large file
+may take longer than 15 minutes in total while continuing to make progress.
+
+If the error chain ends with `cannot decrypt peer's message`, the package
+connection failed while reading encrypted data. The preceding cache-write error
+does not by itself mean the disk is full. Resume to try again, and share the
+setup log if it repeats; completed downloads are retained.
 
 ## RTX 50-series (Blackwell, `sm_120`): backend never starts
 

@@ -4549,5 +4549,18 @@
     "room_tone": "Pauzes vullen met ruimtetoon",
     "room_tone_note": "[pause]-markeringen en luisterboekpauzes krijgen de stille achtergrond van de opname zelf in plaats van digitale stilte, zodat het geluid tussen regels niet wegvalt.",
     "env_pinned": "Ingesteld door {{env}}. Wijzig of wis het om deze schakelaar te gebruiken."
+  },
+  "setupHelp": {
+    "title": "De installatie lijkt vastgelopen",
+    "stalled_hint": "De download is al vijf minuten niet gevorderd. Wacht verder, annuleer en probeer opnieuw of vraag om hulp. Download het installatielogboek om te delen.",
+    "download_log": "Installatielogboek downloaden",
+    "discord": "Hulp krijgen op Discord",
+    "check_connection": "Downloadverbinding controleren",
+    "checking": "Verbinding controleren…",
+    "check_hint": "Downloadt een klein voorbeeld van de betreffende pakketserver (maximaal 15 seconden). Er wordt niets geüpload. Een geslaagde controle garandeert niet dat de volledige download lukt.",
+    "check_ok": "{{host}} antwoordde: {{rate}} KB/s bij dit voorbeeld.",
+    "check_failed": "De controle van {{host}} kon niet worden voltooid. Details staan in het installatielogboek.",
+    "check_unavailable": "Er is nog geen pakketdownload beschikbaar om te controleren.",
+    "connection_error": "De verbinding voor de pakketdownload is mislukt. Hervat om opnieuw te proberen; voltooide downloads blijven bewaard."
   }
 }
