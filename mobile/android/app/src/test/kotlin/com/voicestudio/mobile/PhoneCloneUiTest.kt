@@ -95,7 +95,7 @@ class PhoneCloneUiTest {
         compose.runOnIdle {shadowOf(compose.activity).receiveResult(request.intent,Activity.RESULT_OK,Intent().setData(Uri.fromFile(source)))}
         await {File(app.filesDir,"uploads").listFiles().orEmpty().any {it.length()>0}}
         compose.onNodeWithText(l.t("mobile.android.sample_ready")).assertExists()
-        compose.onNodeWithText("Clone a voice").assertIsDisplayed().assertIsEnabled().performClick()
+        compose.onNode(hasText("Clone a voice") and hasClickAction()).assertIsDisplayed().assertIsEnabled().performClick()
         await {vm.phone.state.value.progress==0f}
     }
     private fun await(predicate:()->Boolean) {compose.waitUntil(15000) {shadowOf(Looper.getMainLooper()).idle();predicate()}}
@@ -104,7 +104,7 @@ class PhoneCloneUiTest {
             SemanticsMatcher.expectValue(SemanticsProperties.ProgressBarRangeInfo,ProgressBarRangeInfo(value,0f..1f)))
         compose.onNodeWithText("Choose audio file").assertIsNotEnabled()
         compose.onNodeWithText("Record").assertIsNotEnabled()
-        compose.onNodeWithText("Clone a voice").assertIsNotEnabled()
+        compose.onNode(hasText("Clone a voice") and hasClickAction()).assertIsNotEnabled()
         compose.onNodeWithText("Cancel").assertIsDisplayed()
     }
     @Test fun selectedRecordingShowsEveryStageAndPublishesAPlayableVoice() {
