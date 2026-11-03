@@ -1,9 +1,10 @@
 import { app } from 'electron';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 
 import { currentDistributionProfile } from './distribution';
+import { renameSyncWithRetry } from './rename-retry';
 
 interface DirectoryGrant {
   id: string;
@@ -68,7 +69,7 @@ export class DirectoryBookmarks {
           JSON.stringify([...entries].map(([id, bookmark]) => ({ id, bookmark }))),
           { mode: 0o600, flag: 'wx' },
         );
-        renameSync(temporary, this.file);
+        renameSyncWithRetry(temporary, this.file);
       } finally {
         rmSync(temporary, { force: true });
       }
