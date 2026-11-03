@@ -1328,6 +1328,7 @@ Electron retains a redacted, timestamped **`setup.log`** across retries and app
 restarts. **Download setup log** works during installation, after failure, and
 when resuming an interrupted installation, before the backend is available.
 It saves `voicestudio-setup.log` to a location you choose. Nothing is uploaded.
+Normal app shutdown waits for pending setup log writes before exiting.
 
 Default locations of the retained log (portable/profile configurations may differ):
 
@@ -1353,6 +1354,8 @@ the official server. No report or log is submitted automatically.
 
 **Check download connection** makes a user-requested, bounded sample download
 from the affected package's pinned URL, using setup's proxy settings. It requests
+only artifacts from the lockfile compiled into the app, so changing a local
+runtime lockfile cannot redirect the diagnostic request. The check requests
 256 KiB and stops after at most 15 seconds, including connection setup. It can
 identify a blocked or failing package host; a successful sample does not prove
 that a multi-gigabyte download will finish. If no matching artifact is known,

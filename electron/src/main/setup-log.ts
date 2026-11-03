@@ -1,4 +1,4 @@
-import { mkdir, readFile, stat } from 'node:fs/promises';
+import { mkdir, open } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { cleanProcessLine } from './setup-progress';
 import { scrubText } from '../shared/utils/scrub';
@@ -46,16 +46,36 @@ export class SetupLog {
     this.flush();
   }
 
-  private flush(): Promise<void> {
+  flush(): Promise<void> {
     if (this.writing) return this.writing;
     this.writing = (async () => {
       if (!this.loaded) {
         this.loaded = true;
         try {
-          // Do not read an unexpectedly large or externally replaced file into memory.
-          const info = await stat(this.path);
-          if (info.isFile() && info.size <= MAX_CHARS * 4)
-            this.text = bounded(scrubSetupText(await readFile(this.path, 'utf8')) + '\n');
+          // Inspect and read the same open file, even if its path is replaced.
+          const file = await open(this.path, 'r');
+          try {
+            const info = await file.stat();
+            if (info.isFile() && info.size <= MAX_CHARS * 4) {
+              // Also bound reads if another writer grows the opened file after stat.
+              const buffer = Buffer.alloc(MAX_CHARS * 4 + 1);
+              let length = 0;
+              while (length < buffer.length) {
+                const { bytesRead } = await file.read(
+                  buffer,
+                  length,
+                  buffer.length - length,
+                  length,
+                );
+                if (!bytesRead) break;
+                length += bytesRead;
+              }
+              if (length <= MAX_CHARS * 4)
+                this.text = bounded(scrubSetupText(buffer.toString('utf8', 0, length)) + '\n');
+            }
+          } finally {
+            await file.close();
+          }
         } catch {
           /* First install, or unavailable log directory. */
         }

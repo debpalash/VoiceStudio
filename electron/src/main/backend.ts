@@ -52,7 +52,8 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { access, readFile, rm, stat } from 'node:fs/promises';
+import { access, rm, stat } from 'node:fs/promises';
+import setupLock from '../../../uv.lock?raw';
 import { cpus, homedir, release, totalmem } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { app } from 'electron';
@@ -927,8 +928,9 @@ export class BackendSupervisor extends EventEmitter<{
     this.setupCheck = (async (): Promise<SetupConnectionCheck> => {
       if (!['installing', 'setup_required'].includes(this.stage) || this.remoteUrl)
         return { status: 'unavailable', checkedAt: Date.now() };
-      const lock = await readFile(join(backendRoot(), 'uv.lock'), 'utf8');
-      const url = setupProbeUrl(lock, this.setupProgress.snapshot(), {
+      // Compile the approved artifact catalog into the app; mutable local files
+      // must not supply destinations or data for this diagnostic request.
+      const url = setupProbeUrl(setupLock, this.setupProgress.snapshot(), {
         platform: process.platform,
         arch: process.arch,
         pythonMinor: Number(/3\.(\d+)/.exec(managedPythonRequest())?.[1] ?? 11),
@@ -1545,6 +1547,7 @@ export class BackendSupervisor extends EventEmitter<{
     this.exitCode = undefined;
     this.exitSignal = undefined;
     this.setStage('idle', { managed: false, message: undefined });
+    await this.setupLog.flush();
   }
 
   async testRemote(url: string, apiKey: string): Promise<RemoteBackendProbe> {

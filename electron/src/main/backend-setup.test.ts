@@ -90,6 +90,28 @@ import {
   platformSetupIssue,
 } from './backend';
 import { app } from 'electron';
+import { SetupLog } from './setup-log';
+
+it('waits for pending setup log writes before shutdown completes without a backend child', async () => {
+  let finish!: () => void;
+  const persisted = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const flush = vi.spyOn(SetupLog.prototype, 'flush').mockReturnValue(persisted);
+  const supervisor = new BackendSupervisor();
+  let stopped = false;
+  const shutdown = supervisor.shutdown().then(() => {
+    stopped = true;
+  });
+  try {
+    await vi.waitFor(() => expect(flush).toHaveBeenCalled());
+    expect(stopped).toBe(false);
+  } finally {
+    finish();
+    await shutdown;
+  }
+  expect(stopped).toBe(true);
+});
 
 beforeEach(() => {
   // Generic installation fixtures need a supported host. Intel cases override it.

@@ -1,12 +1,18 @@
 // @vitest-environment node
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import * as fs from 'node:fs/promises';
+import { mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { SetupLog, scrubSetupText } from './setup-log';
+
+vi.mock('node:fs/promises', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:fs/promises')>()),
+}));
 
 const roots: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 async function fixture() {
@@ -59,4 +65,31 @@ it('redacts home paths, tokens and short proxy passwords before saving', () => {
   expect(text).toContain('https://REDACTED@proxy.example/');
   expect(text).not.toContain('alice');
   expect(text).not.toContain('hf_');
+});
+
+it('reads the opened log rather than a replacement at the same path', async () => {
+  const path = join(await fixture(), 'setup.log');
+  await writeFile(path, 'Original setup context');
+  const realOpen = fs.open;
+  const opened = vi.spyOn(fs, 'open').mockImplementationOnce(async (...args) => {
+    const file = await realOpen(...args);
+    await rename(path, path + '.previous');
+    await writeFile(path, 'Unrelated replacement contents');
+    return file;
+  });
+  const exported = await new SetupLog(path).read();
+  expect(opened).toHaveBeenCalled();
+  expect(exported).toContain('Original setup context');
+  expect(exported).not.toContain('Unrelated replacement');
+});
+
+it('ignores oversized retained files and flushes queued final entries without an export', async () => {
+  const path = join(await fixture(), 'setup.log');
+  await writeFile(path, 'Unrelated'.repeat(150_000));
+  const log = new SetupLog(path);
+  log.append('Application closing during setup');
+  await log.flush();
+  const saved = await readFile(path, 'utf8');
+  expect(saved).toContain('Application closing during setup');
+  expect(saved).not.toContain('Unrelated');
 });
