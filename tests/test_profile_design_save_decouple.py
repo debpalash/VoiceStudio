@@ -278,7 +278,8 @@ def test_lazy_sample_renders_on_first_audio_request(iso, monkeypatch):
     assert ref, "the lazily-rendered sample should be persisted on the row"
 
 
-def test_remote_pending_render_requires_an_admin_credential(iso, monkeypatch):
+@pytest.mark.parametrize("credential", ["bearer", "session_cookie"])
+def test_remote_pending_render_requires_an_admin_credential(iso, monkeypatch, credential):
     """A non-loopback media GET without a real admin credential cannot
     materialize a pending sample; server mode with a valid API key can."""
     _, db, prof = iso
@@ -325,8 +326,21 @@ def test_remote_pending_render_requires_an_admin_credential(iso, monkeypatch):
     monkeypatch.setenv("OMNIVOICE_SERVER_MODE", "1")
     monkeypatch.setenv("OMNIVOICE_API_KEY", "s3cret-key")
     scope = _media_request("10.0.0.5").scope
-    scope["headers"] = [(b"authorization", b"Bearer s3cret-key")]
-    resp = asyncio.run(prof.get_profile_audio(pid, StarletteRequest(scope)))
+    from services.admin_sessions import admin_session_store
+    if credential == "session_cookie":
+        session = admin_session_store.issue("s3cret-key")
+        scope["headers"] = [
+            (b"cookie", f"ov_session={session.token}".encode()),
+            (b"sec-fetch-site", b"same-origin"),
+            (b"referer", b"http://testserver/profiles"),
+        ]
+    else:
+        scope["headers"] = [(b"authorization", b"Bearer s3cret-key")]
+    try:
+        resp = asyncio.run(prof.get_profile_audio(pid, StarletteRequest(scope)))
+    finally:
+        if credential == "session_cookie":
+            admin_session_store.revoke(session.token)
     assert getattr(resp, "status_code", 200) == 200
     assert len(renders) == 1
 
