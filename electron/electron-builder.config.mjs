@@ -129,9 +129,9 @@ const notarizeMac =
   Boolean(
     process.env.CSC_LINK &&
     process.env.CSC_KEY_PASSWORD &&
-    process.env.APPLE_ID &&
-    process.env.APPLE_APP_SPECIFIC_PASSWORD &&
-    process.env.APPLE_TEAM_ID,
+    process.env.APPLE_API_KEY &&
+    process.env.APPLE_API_KEY_ID &&
+    process.env.APPLE_API_ISSUER,
   );
 
 // electron-builder never signs ad hoc on its own when no certificate exists, so

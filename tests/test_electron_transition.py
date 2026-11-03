@@ -254,20 +254,23 @@ def test_electron_release_scopes_signing_secrets_and_gates_unsigned_owner_dispat
 ])
 def test_packaging_omits_empty_signing_credentials(tmp_path, credentials, expected):
     import os
+    import shutil
     import subprocess
     import yaml
+    shutil.copy(ROOT / 'scripts/prepare-apple-notarization.sh', tmp_path)
     workflow = yaml.load((ROOT / '.github/workflows/electron-release.yml').read_text(), Loader=yaml.BaseLoader)
     step = next(s for s in workflow['jobs']['package']['steps'] if s.get('name') == 'Package without publishing')
     for name, body in [('bun', 'printf "%s|%s" "${CSC_LINK+x}" "${CSC_KEY_PASSWORD+x}" > "$CAPTURE_PATH"'), ('node', 'exit 0')]:
         executable = tmp_path / name
         executable.write_text('#!/bin/sh\n' + body + '\n')
         executable.chmod(0o755)
-    env = {k: v for k, v in os.environ.items() if k not in {'CSC_LINK', 'CSC_KEY_PASSWORD'}}
+    env = {k: v for k, v in os.environ.items() if not k.startswith(('CSC_', 'APPLE_'))}
     env.update(credentials)
     capture = tmp_path / 'signing-env'
-    env.update(PATH=str(tmp_path) + os.pathsep + env['PATH'], CAPTURE_PATH=str(capture), RUNNER_TEMP=str(tmp_path))
+    env.update(PATH=str(tmp_path) + os.pathsep + env['PATH'], CAPTURE_PATH=str(capture),
+               RUNNER_TEMP=str(tmp_path), RUNNER_OS='macOS', PUBLISH='false')
     script = step['run'].replace('${{ matrix.flags }}', '--mac --arm64').replace('${{ matrix.platform }}', 'darwin').replace('${{ matrix.arch }}', 'arm64')
-    subprocess.run(['bash', '-e', '-c', script], env=env, check=True)
+    subprocess.run(['bash', '-e', '-c', script], cwd=ROOT / 'electron', env=env, check=True)
     assert capture.read_text() == expected
 
 

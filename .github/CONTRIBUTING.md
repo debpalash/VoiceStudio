@@ -37,6 +37,7 @@ Read it before opening a proposal; the licence check in particular ends most of 
 
 - [Git](https://git-scm.com/)
 - `curl` (used by the Bun / uv / rustup install one-liners on macOS and Linux)
+- [Node.js 22](https://nodejs.org/) (Electron development and validation scripts)
 - [Bun](https://bun.sh/) (frontend package manager)
 - [uv](https://docs.astral.sh/uv/) (Python environment manager)
 - [ffmpeg](https://ffmpeg.org/) (audio/video processing)
@@ -174,6 +175,9 @@ Open an [issue](https://github.com/debpalash/VoiceStudio/issues/new) with:
 2. **Keep PRs focused** — one feature or fix per PR
 3. **Run tests** before pushing:
    ```bash
+   # Packaging tests use Electron dependencies, including electron-builder.
+   bun install --frozen-lockfile
+
    # Backend tests (the same two runs as CI; -n auto runs tests/ in parallel,
    # optional locally, it is about 4x faster on 4 cores)
    uv run pytest tests/ -q -n auto
@@ -313,6 +317,9 @@ disposing JSDOM. Keep deferred focus restoration in that same realm; advance
 only the current fake-timer tick rather than flushing unrelated future timers.
 
 ```bash
+# Packaging tests in tests/ load the installed Electron tooling.
+bun install --frozen-lockfile
+
 # Run the backend suites CI runs (kept separate: backend/tests is isolated)
 uv run pytest tests/ -q
 uv run pytest backend/tests/ -q
