@@ -280,7 +280,7 @@ export UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
 export UV_PYTHON_PREFERENCE=only-system
 
 # Be tolerant of slow links
-export UV_HTTP_TIMEOUT=120
+export UV_HTTP_TIMEOUT=900
 export UV_HTTP_RETRIES=5
 ```
 

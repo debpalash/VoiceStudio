@@ -465,7 +465,7 @@ Russia, sometimes on corporate proxies.
 
 **Fix:** see [linux.md#restricted-networks-china--russia](linux.md#restricted-networks-china--russia)
 (same env vars work on macOS and Windows — `UV_PYTHON_INSTALL_MIRROR`,
-`UV_HTTP_TIMEOUT=120`, `UV_HTTP_RETRIES=5`, `UV_PYTHON_PREFERENCE=only-system`).
+`UV_HTTP_TIMEOUT=900`, `UV_HTTP_RETRIES=5`, `UV_PYTHON_PREFERENCE=only-system`).
 
 **Linked issues:**
 [#57](https://github.com/debpalash/VoiceStudio/issues/57),
@@ -1217,7 +1217,7 @@ VoiceStudio now tries, in order: the default GitHub host → a gh-proxy mirror �
    setup uses your system proxy, or `HTTPS_PROXY` when it is set. See
    [First-run setup is slow or stalls on a download](#first-run-setup-is-slow-or-stalls-on-a-download).
 5. The bootstrap already raises the network budget for you
-   (`UV_HTTP_TIMEOUT=120`, `UV_HTTP_CONNECT_TIMEOUT=30`, `UV_HTTP_RETRIES=5`);
+   (`UV_HTTP_TIMEOUT=900`, `UV_HTTP_CONNECT_TIMEOUT=30`, `UV_HTTP_RETRIES=5`);
    you can raise them further in the environment if a mirror is very slow.
 
 **Linked issues:** [#130](https://github.com/debpalash/VoiceStudio/issues/130), [#60](https://github.com/debpalash/VoiceStudio/issues/60), [#57](https://github.com/debpalash/VoiceStudio/issues/57)
