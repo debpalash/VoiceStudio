@@ -4549,5 +4549,18 @@
     "room_tone": "Encher as pausas co ton da sala",
     "room_tone_note": "Os marcadores [pause] e os ocos dos audiolibros reciben o fondo tranquilo da propia toma en vez de silencio dixital, para que o son non se corte entre liñas.",
     "env_pinned": "Defíneo {{env}}. Cámbiao ou bórrao para usar este interruptor."
+  },
+  "setupHelp": {
+    "title": "A instalación parece bloqueada",
+    "stalled_hint": "A descarga non avanzou en cinco minutos. Sigue agardando, cancela e reintenta ou pide axuda. Descarga o rexistro de instalación para compartilo.",
+    "download_log": "Descargar o rexistro de instalación",
+    "discord": "Obter axuda en Discord",
+    "check_connection": "Comprobar a conexión de descarga",
+    "checking": "Comprobando a conexión…",
+    "check_hint": "Descarga unha pequena mostra do servidor do paquete afectado (ata 15 segundos). Non se envía nada. Un resultado correcto non garante que remate a descarga completa.",
+    "check_ok": "{{host}} respondeu: {{rate}} KB/s nesta mostra.",
+    "check_failed": "Non se puido completar a comprobación de {{host}}. Os detalles están no rexistro de instalación.",
+    "check_unavailable": "Aínda non hai ningunha descarga de paquete dispoñible para comprobar.",
+    "connection_error": "Fallou a conexión de descarga do paquete. Retoma para reintentar; consérvanse as descargas completadas."
   }
 }

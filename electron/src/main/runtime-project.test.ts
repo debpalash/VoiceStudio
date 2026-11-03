@@ -16,6 +16,7 @@ import { PYPI_SPEED_SAMPLE_BYTES } from './pypi-mirror';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import {
   installRuntime,
+  runtimeDownloadEnv,
   promoteLegacyRuntimeCaches,
   CUDNN8_COMPAT_PIN,
   MISSING_SYSTEM_LIBRARY_CODE,
@@ -110,6 +111,49 @@ afterEach(async () => {
 });
 
 describe('packaged runtime setup', () => {
+  it('gives large downloads 900 seconds while preserving explicit timeout overrides', () => {
+    vi.stubEnv('UV_HTTP_TIMEOUT', '');
+    vi.stubEnv('UV_HTTP_CONNECT_TIMEOUT', '');
+    vi.stubEnv('UV_HTTP_RETRIES', '');
+    for (const region of ['auto', 'global', 'china', 'russia', 'restricted'] as const) {
+      expect(runtimeDownloadEnv(region)).toMatchObject({
+        UV_HTTP_TIMEOUT: '900',
+        UV_HTTP_CONNECT_TIMEOUT: '30',
+        UV_HTTP_RETRIES: '5',
+      });
+    }
+    vi.stubEnv('UV_HTTP_TIMEOUT', '1800');
+    expect(runtimeDownloadEnv('global').UV_HTTP_TIMEOUT).toBe('1800');
+  });
+  it('passes the timeout to both the mirrored sync and its origin fallback', async () => {
+    vi.stubEnv('UV_HTTP_TIMEOUT', '');
+    const { bundle, project } = await fixture();
+    await writeFile(
+      join(bundle, 'uv.lock'),
+      'url = "https://files.pythonhosted.org/packages/test.whl"',
+    );
+    const environments: NodeJS.ProcessEnv[] = [];
+    const run = vi.fn(
+      async (_command: string, args: string[], _cwd: string, env?: NodeJS.ProcessEnv) => {
+        if (args[0] !== 'sync' || args.includes('--dry-run')) return undefined;
+        environments.push(env ?? {});
+        if (environments.length === 1) throw new Error('mirror connection reset');
+        await interpreter(project);
+        return undefined;
+      },
+    );
+    await installRuntime(
+      bundle,
+      project,
+      'uv',
+      run,
+      new AbortController().signal,
+      undefined,
+      'china',
+    );
+    expect(environments).toHaveLength(2);
+    for (const env of environments) expect(env.UV_HTTP_TIMEOUT).toBe('900');
+  });
   it.each(['win32', 'linux'] as const)(
     'does not import torch for the CUDA compatibility probe on a %s CPU runtime',
     async (platform) => {
@@ -487,7 +531,13 @@ describe('packaged runtime setup', () => {
         return undefined;
       });
       await installRuntime(
-        bundle, project, 'uv', run, new AbortController().signal, undefined, 'global',
+        bundle,
+        project,
+        'uv',
+        run,
+        new AbortController().signal,
+        undefined,
+        'global',
       );
       expect(importFailures).toBe(existing ? 1 : 0);
       for (const [, args] of run.mock.calls) {

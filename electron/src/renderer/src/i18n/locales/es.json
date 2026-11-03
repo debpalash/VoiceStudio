@@ -4551,5 +4551,18 @@
     "room_tone": "Rellenar pausas con tono de sala",
     "room_tone_note": "Los marcadores [pause] y los huecos de los audiolibros reciben el fondo silencioso de la propia toma en lugar de silencio digital, para que el sonido no se corte entre líneas.",
     "env_pinned": "Lo fija {{env}}. Cámbialo o bórralo para usar este interruptor."
+  },
+  "setupHelp": {
+    "title": "La instalación parece atascada",
+    "stalled_hint": "La descarga no avanza desde hace cinco minutos. Sigue esperando, cancela y reintenta o pide ayuda. Descarga el registro de instalación para compartirlo.",
+    "download_log": "Descargar registro de instalación",
+    "discord": "Obtener ayuda en Discord",
+    "check_connection": "Comprobar conexión de descarga",
+    "checking": "Comprobando conexión…",
+    "check_hint": "Descarga una pequeña muestra del servidor del paquete afectado (hasta 15 segundos). No se sube nada. Un resultado correcto no garantiza que termine la descarga completa.",
+    "check_ok": "{{host}} respondió: {{rate}} KB/s en esta muestra.",
+    "check_failed": "No se pudo completar la comprobación de {{host}}. Los detalles están en el registro de instalación.",
+    "check_unavailable": "Todavía no hay ninguna descarga de paquete que comprobar.",
+    "connection_error": "Falló la conexión de descarga del paquete. Reanuda para reintentar; se conservan las descargas completadas."
   }
 }

@@ -4551,5 +4551,18 @@
     "room_tone": "Remplir les pauses avec l'ambiance de la pièce",
     "room_tone_note": "Les marqueurs [pause] et les blancs des livres audio reçoivent le fond calme de la prise au lieu d'un silence numérique, pour que le son ne se coupe pas entre les lignes.",
     "env_pinned": "Défini par {{env}}. Modifiez-le ou supprimez-le pour utiliser cet interrupteur."
+  },
+  "setupHelp": {
+    "title": "L’installation semble bloquée",
+    "stalled_hint": "Aucune progression du téléchargement depuis cinq minutes. Patientez, annulez et réessayez, ou demandez de l’aide. Téléchargez le journal d’installation pour le partager.",
+    "download_log": "Télécharger le journal d’installation",
+    "discord": "Obtenir de l’aide sur Discord",
+    "check_connection": "Tester la connexion de téléchargement",
+    "checking": "Test de la connexion…",
+    "check_hint": "Télécharge un petit échantillon depuis le serveur du paquet concerné (15 secondes maximum). Rien n’est envoyé. Un test réussi ne garantit pas la fin du téléchargement complet.",
+    "check_ok": "{{host}} a répondu : {{rate}} Ko/s pour cet échantillon.",
+    "check_failed": "Impossible de terminer le test de {{host}}. Les détails figurent dans le journal d’installation.",
+    "check_unavailable": "Aucun téléchargement de paquet n’est encore disponible pour le test.",
+    "connection_error": "La connexion de téléchargement du paquet a échoué. Reprenez pour réessayer ; les téléchargements terminés sont conservés."
   }
 }

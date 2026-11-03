@@ -4549,5 +4549,18 @@
     "room_tone": "Isi jeda dengan nada ruangan",
     "room_tone_note": "Penanda [pause] dan jeda buku audio mendapat latar senyap dari rekaman itu sendiri, bukan keheningan digital, sehingga suara tidak terputus di antara baris.",
     "env_pinned": "Ditetapkan oleh {{env}}. Ubah atau hapus untuk memakai sakelar ini."
+  },
+  "setupHelp": {
+    "title": "Penyiapan tampaknya macet",
+    "stalled_hint": "Unduhan tidak maju selama lima menit. Tunggu, batalkan dan coba lagi, atau minta bantuan. Unduh log penyiapan untuk dibagikan.",
+    "download_log": "Unduh log penyiapan",
+    "discord": "Dapatkan bantuan di Discord",
+    "check_connection": "Periksa koneksi unduhan",
+    "checking": "Memeriksa koneksi…",
+    "check_hint": "Mengunduh sampel kecil dari server paket terkait (hingga 15 detik). Tidak ada yang diunggah. Pemeriksaan yang berhasil tidak menjamin seluruh unduhan selesai.",
+    "check_ok": "{{host}} merespons: {{rate}} KB/dtk pada sampel ini.",
+    "check_failed": "Pemeriksaan {{host}} tidak dapat diselesaikan. Detail ada di log penyiapan.",
+    "check_unavailable": "Belum ada unduhan paket yang dapat diperiksa.",
+    "connection_error": "Koneksi unduhan paket gagal. Lanjutkan untuk mencoba lagi; unduhan yang selesai tetap disimpan."
   }
 }
