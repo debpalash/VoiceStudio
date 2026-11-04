@@ -9,6 +9,12 @@ razem z procesem zasobnika i uruchom ją ponownie, a następnie potwierdź insta
 Nie trzeba ustawiać zmiennych w terminalu. Domyślna konfiguracja Windows nadal
 wybiera CUDA dla NVIDIA, a poza tym CPU.
 
+Tłumaczenie NLLB również uwzględnia wybrane w aplikacji urządzenie obliczeniowe.
+Zachowany w pamięci model przechodzi między CPU i akceleratorem po zmianie wyboru,
+a po opuszczeniu akceleratora zwalnia jego pamięć podręczną. Nieudane umieszczenie
+na GPU zachowuje dotychczasową ścieżkę awaryjną CPU. Nadal wymagane są lokalne
+wagi i akceptacja warunków modelu.
+
 Test połączenia w konfiguratorze uwzględnia ABI Pythona i wariant Torch wybranego
 środowiska, także zapisane preferencje i jawne nadpisania zmiennymi środowiskowymi.
 Sprawdza wyłącznie adresy pakietów zapisane w dołączonym pliku blokady zależności.

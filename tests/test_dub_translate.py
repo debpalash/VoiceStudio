@@ -104,7 +104,7 @@ async def test_nllb_batches_segments_by_target_language(monkeypatch):
     """NLLB pays one forward pass per batch while preserving row order/targets."""
     from api.routers import dub_translate
     from schemas.requests import TranslateRequest
-    from services import translation_engines
+    from services import model_manager, translation_engines
 
     class FakeTokenizer:
         src_lang = None
@@ -131,6 +131,7 @@ async def test_nllb_batches_segments_by_target_language(monkeypatch):
     monkeypatch.setattr(dub_translate, "_nllb_tokenizer", FakeTokenizer())
     monkeypatch.setattr(dub_translate, "_nllb_model", model)
     monkeypatch.setattr(dub_translate, "_nllb_device", "cpu")
+    monkeypatch.setattr(model_manager, "get_best_device", lambda: "cpu")
     monkeypatch.setattr(translation_engines, "is_installed", lambda _: True)
     monkeypatch.setattr(translation_engines, "is_ready", lambda _: True)
     monkeypatch.setenv("OMNIVOICE_NLLB_BATCH_SIZE", "2")
@@ -197,6 +198,7 @@ async def test_nllb_mps_fallback_releases_the_old_allocator(monkeypatch):
             return [f"translated:{text}" for text in input_ids.values]
 
     flushed = Mock()
+    monkeypatch.setattr(model_manager, "get_best_device", lambda: "mps")
     monkeypatch.setattr(model_manager, "release_device_cache", flushed)
     monkeypatch.setattr(dub_translate, "_nllb_tokenizer", Tokenizer())
     monkeypatch.setattr(dub_translate, "_nllb_model", Model())

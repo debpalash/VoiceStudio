@@ -11,6 +11,12 @@ engines on the CPU until you opt in here; the setup screen's GPU check and
 option does not enable the Ryzen AI NPU, install a graphics driver, or download
 models.
 
+NLLB translation follows the app's compute-device selection too. A retained model
+moves between CPU and the selected accelerator when that choice changes, and
+releases the previous accelerator's cached blocks after moving away. A failed
+accelerator placement retains the existing CPU fallback; model terms and locally
+installed weights are still required.
+
 The setup connection check uses the selected runtime's Python ABI and Torch
 variant, including saved choices and explicit environment overrides. It samples
 only package URLs present in the bundled lock; an AMD recipe artifact absent
