@@ -104,6 +104,8 @@ Kies uw motoren en download alleen de modellen die u nodig heeft.
 
 Begin met **VoiceStudio** (standaard, mogelijk gemaakt door k2-fsa/OmniVoice), of kies uit tientallen andere zoekmachines in Model Manager. Zie de [features & engine catalogue](../../docs/feature-catalog.md).
 
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
+
 <a id="platforms"></a>
 
 ## Platformen
@@ -528,4 +530,4 @@ Bedankt aan iedereen die code, rapporten, vertalingen en ideeën stuurt. [Alle b
 
 - [VoiceStudio walkthrough door Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
 
-<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>

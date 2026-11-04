@@ -104,6 +104,8 @@ Motorlarınızı seçin ve yalnızca ihtiyacınız olan modelleri indirin.
 
 **VoiceStudio** (varsayılan, k2-fsa/ OmniVoice tarafından desteklenmektedir) ile başlayın veya Model Yöneticisindeki düzinelerce diğer motor arasından seçim yapın. [Özellikler ve motor kataloğuna](../../docs/feature-catalog.md) bakın.
 
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
+
 <a id="platforms"></a>
 
 ## Platformlar
@@ -528,4 +530,4 @@ Kod, rapor, çeviri ve fikir gönderen herkese teşekkür ederiz. [Katkıda bulu
 
 - [VoiceStudio Nafay 3D (YouTube) tarafından izlenecek yol](https://www.youtube.com/watch?v=I-u-A-oisIU)
 
-<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>

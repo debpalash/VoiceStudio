@@ -104,6 +104,8 @@
 
 從預設的 **VoiceStudio**（由 k2-fsa/OmniVoice 驅動）開始，或在模型管理器中從數十種其他引擎中挑選。參見[功能與引擎目錄](../../docs/feature-catalog.md)。
 
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
+
 <a id="platforms"></a>
 
 ## 支援平臺
@@ -530,4 +532,4 @@ VoiceStudio 免費使用，背後沒有付費雲服務。贊助者讓它持續�
 
 - [VoiceStudio 使用教程 — Nafay 3D（YouTube）](https://www.youtube.com/watch?v=I-u-A-oisIU)
 
-<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>

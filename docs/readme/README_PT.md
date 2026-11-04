@@ -104,6 +104,8 @@ Escolha seus motores e baixe apenas os modelos que você precisa.
 
 Comece com o **VoiceStudio** (padrão, desenvolvido com k2-fsa/OmniVoice) ou escolha entre dezenas de outros mecanismos no Model Manager. Consulte o [catálogo de recursos e mecanismos](../../docs/feature-catalog.md).
 
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
+
 <a id="platforms"></a>
 
 ## Plataformas
@@ -528,4 +530,4 @@ Obrigado a todos que enviam códigos, relatórios, traduções e ideias. [Todos 
 
 - [Passo a passo do VoiceStudio por Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
 
-<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>

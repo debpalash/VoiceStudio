@@ -104,6 +104,8 @@ Chọn công cụ của bạn và chỉ tải xuống những mô hình bạn c�
 
 Bắt đầu với **VoiceStudio** (mặc định, được cung cấp bởi k2-fsa/ OmniVoice) hoặc chọn từ hàng chục công cụ khác trong Trình quản lý mô hình. Xem [danh mục tính năng và động cơ](../../docs/feature-catalog.md).
 
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
+
 <a id="platforms"></a>
 
 ## Nền tảng
@@ -528,4 +530,4 @@ Cảm ơn tất cả những người đã gửi mã, báo cáo, bản dịch v�
 
 - [Hướng dẫn VoiceStudio của Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
 
-<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
