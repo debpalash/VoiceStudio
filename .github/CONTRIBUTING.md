@@ -538,7 +538,8 @@ test-only PR. Docker Hub overview edits still publish through the small
     reason, optional note and typed text, app version and model; no audio,
     account or device identifier (`mobile/contract/SPEC.md` → Reporting
     generated content; required by Google Play's AI-generated content policy).
-  - PostHog analytics only after a yes at the first-run consent prompt
+  - PostHog analytics only after a yes at the first-run consent prompt, asked before
+    runtime setup on a fresh install so setup stage and failure code can be counted
     (`backend/core/analytics.py`, allowlisted content-free metadata).
   - The GitHub star count (no credentials or referrer, refreshed every 20
     minutes while shown).
