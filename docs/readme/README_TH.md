@@ -6,15 +6,15 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100,000 ดาวบน GitHub — ขอบคุณทุกการสนับสนุน!</a></strong>
   </p>
-  <p><strong>สตูดิโอเสียง AI บนอุปกรณ์ของคุณ</strong><br />
-  โคลนและออกแบบเสียง พากย์เสียง เขียนตามคำบอก ถอดเสียง และสร้างเสียงบรรยายได้ใน 646 ภาษา<br />
-  <sub>ทำงานบนแล็ปท็อป เดสก์ท็อป เซิร์ฟเวอร์ โทรศัพท์ แท็บเล็ต และอื่นๆ อีกมากมาย</sub></p>
+  <h2>สตูดิโอเสียง AI บนอุปกรณ์ของคุณ</h2>
+  <h3>โคลนและออกแบบเสียง พากย์เสียง เขียนตามคำบอก ถอดเสียง และสร้างเสียงบรรยายได้ใน 646 ภาษา</h3>
+  <p>ทำงานบนแล็ปท็อป เดสก์ท็อป เซิร์ฟเวอร์ โทรศัพท์ แท็บเล็ต และอื่นๆ อีกมากมาย</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">เว็บไซต์</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">ดาวน์โหลด</a> ·
     <a href="#get-started">เริ่มต้นใช้งาน</a> ·
     <a href="#documentation">เอกสาร</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -527,3 +527,5 @@ VoiceStudio ใช้งานได้ฟรีและไม่ต้อง�
 ## บทเรียนจากชุมชน
 
 - [VoiceStudio คำแนะนำโดย Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>

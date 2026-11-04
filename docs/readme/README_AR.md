@@ -6,15 +6,15 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100,000 نجمة على GitHub — شكرًا لكم!</a></strong>
   </p>
-  <p><strong>استوديو أصوات بالذكاء الاصطناعي. على جهازك.</strong><br />
-  استنساخ الأصوات وتصميمها، والدبلجة، والإملاء، والتفريغ الصوتي، والسرد بـ646 لغة.<br />
-  <sub>يعمل على الكمبيوتر المحمول وسطح المكتب والخوادم والهاتف والأجهزة اللوحية والمزيد</sub></p>
+  <h2>استوديو أصوات بالذكاء الاصطناعي. على جهازك.</h2>
+  <h3>استنساخ الأصوات وتصميمها، والدبلجة، والإملاء، والتفريغ الصوتي، والسرد بـ646 لغة.</h3>
+  <p>يعمل على الكمبيوتر المحمول وسطح المكتب والخوادم والهاتف والأجهزة اللوحية والمزيد</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">الموقع</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">تنزيل</a> ·
     <a href="#get-started">ابدأ الآن</a> ·
     <a href="#documentation">التوثيق</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -527,3 +527,5 @@ VoiceStudio مجاني ولا يعتمد على خدمة سحابية مدفوع
 ## دروس المجتمع
 
 - [إرشادات حول VoiceStudio بواسطة Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>

@@ -6,15 +6,15 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">GitHub スター10万達成。ありがとうございます！</a></strong>
   </p>
-  <p><strong>AI ボイススタジオを、あなたの端末で。</strong><br />
-  646 言語で、音声クローン、ボイスデザイン、吹き替え、音声入力、文字起こし、ナレーション。<br />
-  <sub>ノートパソコン、デスクトップ、サーバー、スマートフォン、タブレットなどで動作</sub></p>
+  <h2>AI ボイススタジオを、あなたの端末で。</h2>
+  <h3>646 言語で、音声クローン、ボイスデザイン、吹き替え、音声入力、文字起こし、ナレーション。</h3>
+  <p>ノートパソコン、デスクトップ、サーバー、スマートフォン、タブレットなどで動作</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">公式サイト</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">ダウンロード</a> ·
     <a href="#はじめに">導入ガイド</a> ·
     <a href="#ドキュメント">ドキュメント</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -530,3 +530,5 @@ VoiceStudio の開発者による、その他のオープンソースツール�
 ## コミュニティのチュートリアル
 
 - [VoiceStudio の使い方 — Nafay 3D（YouTube）](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>

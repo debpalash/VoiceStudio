@@ -6,15 +6,15 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">GitHub'da 100.000 yıldız — teşekkürler!</a></strong>
   </p>
-  <p><strong>Yapay zekâ ses stüdyosu. Kendi cihazınızda.</strong><br />
-  646 dilde ses klonlayın ve tasarlayın, dublaj yapın, dikte edin, yazıya dökün ve seslendirin.<br />
-  <sub>Dizüstü bilgisayarınızda, masaüstü bilgisayarınızda, sunucularınızda, telefonunuzda, tabletlerinizde ve daha fazlasında çalışır</sub></p>
+  <h2>Yapay zekâ ses stüdyosu. Kendi cihazınızda.</h2>
+  <h3>646 dilde ses klonlayın ve tasarlayın, dublaj yapın, dikte edin, yazıya dökün ve seslendirin.</h3>
+  <p>Dizüstü bilgisayarınızda, masaüstü bilgisayarınızda, sunucularınızda, telefonunuzda, tabletlerinizde ve daha fazlasında çalışır</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Web sitesi</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">İndir</a> ·
     <a href="#get-started">Başlarken</a> ·
     <a href="#documentation">Belgeler</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -527,3 +527,5 @@ Kod, rapor, çeviri ve fikir gönderen herkese teşekkür ederiz. [Katkıda bulu
 ## Topluluk eğitimleri
 
 - [VoiceStudio Nafay 3D (YouTube) tarafından izlenecek yol](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>

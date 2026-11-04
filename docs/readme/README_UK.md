@@ -6,15 +6,15 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100 000 зірок на GitHub — дякуємо!</a></strong>
   </p>
-  <p><strong>Студія голосу зі ШІ. На вашому пристрої.</strong><br />
-  Клонуйте й створюйте голоси, дублюйте, диктуйте, транскрибуйте та озвучуйте 646 мовами.<br />
-  <sub>Працює на вашому ноутбуці, настільному комп’ютері, серверах, телефоні, планшетах тощо</sub></p>
+  <h2>Студія голосу зі ШІ. На вашому пристрої.</h2>
+  <h3>Клонуйте й створюйте голоси, дублюйте, диктуйте, транскрибуйте та озвучуйте 646 мовами.</h3>
+  <p>Працює на вашому ноутбуці, настільному комп’ютері, серверах, телефоні, планшетах тощо</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Вебсайт</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Завантажити</a> ·
     <a href="#get-started">Початок роботи</a> ·
     <a href="#documentation">Документація</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -527,3 +527,5 @@ VoiceStudio безкоштовний і не залежить від платн�
 ## Підручники спільноти
 
 - [VoiceStudio покрокове керівництво від Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>

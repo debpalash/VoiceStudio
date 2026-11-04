@@ -6,15 +6,15 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">GitHub Star 突破 10 萬，感謝大家！</a></strong>
   </p>
-  <p><strong>AI 語音工作室，就在你的裝置上。</strong><br />
-  支援 646 種語言的聲音克隆、聲音設計、配音、聽寫、轉錄與有聲朗讀。<br />
-  <sub>可在你的膝上型電腦、桌上型電腦、伺服器、手機、平板電腦等裝置上執行</sub></p>
+  <h2>AI 語音工作室，就在你的裝置上。</h2>
+  <h3>支援 646 種語言的聲音克隆、聲音設計、配音、聽寫、轉錄與有聲朗讀。</h3>
+  <p>可在你的膝上型電腦、桌上型電腦、伺服器、手機、平板電腦等裝置上執行</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">官網</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">下載</a> ·
     <a href="#開始使用">快速上手</a> ·
     <a href="#文件">文件</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -529,3 +529,5 @@ VoiceStudio 免費使用，背後沒有付費雲服務。贊助者讓它持續�
 ## 社群教程
 
 - [VoiceStudio 使用教程 — Nafay 3D（YouTube）](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>

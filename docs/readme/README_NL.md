@@ -6,15 +6,15 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100.000 GitHub-sterren — bedankt!</a></strong>
   </p>
-  <p><strong>AI-stemstudio. Op je eigen apparaat.</strong><br />
-  Kloon en ontwerp stemmen, maak nasynchronisaties, dicteer, transcribeer en lees voor in 646 talen.<br />
-  <sub>Draait op uw laptop, desktop, servers, telefoon, tablets en meer</sub></p>
+  <h2>AI-stemstudio. Op je eigen apparaat.</h2>
+  <h3>Kloon en ontwerp stemmen, maak nasynchronisaties, dicteer, transcribeer en lees voor in 646 talen.</h3>
+  <p>Draait op uw laptop, desktop, servers, telefoon, tablets en meer</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Website</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Downloaden</a> ·
     <a href="#get-started">Aan de slag</a> ·
     <a href="#documentation">Documentatie</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -527,3 +527,5 @@ Bedankt aan iedereen die code, rapporten, vertalingen en ideeën stuurt. [Alle b
 ## Community-tutorials
 
 - [VoiceStudio walkthrough door Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
