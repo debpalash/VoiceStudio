@@ -91,8 +91,8 @@
       "upstream_access": "unknown",
       "audit_observations": {
         "commercial_inference": {
-          "status": "mixed_bundle_requires_per_file_records",
-          "summary": "This repo contains unrelated models. VoiceStudio downloads Breeze TTS 2 Q8_0 and Sortformer 4spk v1 Q8_0 only. Both have noncommercial upstream signals but different governing terms; see file variants."
+          "status": "selected_package_requires_provenance_review",
+          "summary": "Breeze TTS 2 Q8_0 only. Sortformer diarisation and dots.tts have separate package records and are not downloaded or accepted with this package."
         },
         "output_terms": {
           "status": "not_assessed",
@@ -111,8 +111,7 @@
           "Reference voice and input rights, consent, training-provenance scope"
         ],
         "identified_components": [
-          "Breeze-TTS-2-GGUF/breeze-tts-2-q8_0.gguf",
-          "Sortformer-Diar-4spk-v1-GGUF/sortformer-diar-4spk-v1-q8_0.gguf"
+          "Breeze-TTS-2-GGUF/breeze-tts-2-q8_0.gguf"
         ]
       },
       "variants": [
@@ -139,7 +138,59 @@
             "terms_version": "1.1; 2026-09-01",
             "full_workflow_cleared": false
           }
+        }
+      ]
+    },
+    {
+      "id": "audio-cpp/audio.cpp-gguf:sortformer-diar-4spk-v1-q8_0",
+      "license": "cc-by-nc-4.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "nvidia/diar_sortformer_4spk-v1 (GGUF repack: audio-cpp/audio.cpp-gguf)",
+      "source_url": "https://huggingface.co/audio-cpp/audio.cpp-gguf/tree/dc6fecccc2b0c6bdda0a8b2f38fa61394fee0b9c/Sortformer-Diar-4spk-v1-GGUF",
+      "evidence_url": "https://huggingface.co/nvidia/diar_sortformer_4spk-v1",
+      "revision": "dc6fecccc2b0c6bdda0a8b2f38fa61394fee0b9c",
+      "engines": [
+        "audiocpp-sortformer"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Only Sortformer-Diar-4spk-v1-GGUF/sortformer-diar-4spk-v1-q8_0.gguf. CC-BY-NC-4.0 is the recorded upstream licence signal; quantization provenance, component closure and output terms remain unverified. Does not include Breeze TTS.",
+      "runtime_revision": "dc6fecccc2b0c6bdda0a8b2f38fa61394fee0b9c",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "noncommercial_upstream_signal_quantization_unverified",
+          "summary": "Selected Sortformer Q8_0 package only. Upstream inference licence is noncommercial; this record does not verify quantization provenance or grant commercial/output rights."
         },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [
+          {
+            "url": "https://github.com/debpalash/VoiceStudio/blob/06c6e077f0fc35149efefc3561e9be5ae835d916/backend/config/models.yaml",
+            "checked_at": "2026-10-09",
+            "method": "read_pinned_source"
+          }
+        ],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": [
+          "Sortformer-Diar-4spk-v1-GGUF/sortformer-diar-4spk-v1-q8_0.gguf"
+        ]
+      },
+      "variants": [
         {
           "id": "audiocpp:sortformer-diar-4spk-v1-q8_0",
           "label": "Sortformer-Diar-4spk-v1-GGUF/sortformer-diar-4spk-v1-q8_0.gguf",

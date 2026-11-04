@@ -9,6 +9,7 @@ from core import prefs
 PYANNOTE = "pyannote"
 SORTFORMER = "audiocpp-sortformer"
 SORTFORMER_REPO = "audio-cpp/audio.cpp-gguf"
+SORTFORMER_MODEL_ID = "audio-cpp/audio.cpp-gguf:sortformer-diar-4spk-v1-q8_0"
 SORTFORMER_FILE = "Sortformer-Diar-4spk-v1-GGUF/sortformer-diar-4spk-v1-q8_0.gguf"
 
 _SORTFORMER_MODEL_MISSING = "Install the Sortformer model bundle"
@@ -38,7 +39,7 @@ def sortformer_model_path() -> Path:
         return Path(configured).expanduser().resolve()
 
     # An installed-only lookup never reaches the network. Installation remains
-    # an explicit Model Library action through the reviewed audio.cpp bundle.
+    # an explicit Model Library action through the Sortformer package.
     from huggingface_hub import hf_hub_download
     from services.hf_revisions import revision_for
 
@@ -68,7 +69,7 @@ def selected_model_repos() -> list[str]:
     if selected_backend() == SORTFORMER:
         if os.environ.get("OMNIVOICE_DIARIZATION_MODEL", "").strip():
             return []
-        return [SORTFORMER_REPO]
+        return [SORTFORMER_MODEL_ID]
     return list(PYANNOTE_REPOS)
 
 
@@ -88,7 +89,7 @@ def select_backend(backend: str) -> None:
 def sortformer_status() -> dict:
     """Return path-free readiness for the model and its native executable."""
     status = {
-        "model": SORTFORMER_REPO,
+        "model": SORTFORMER_MODEL_ID,
         "model_installed": False,
         "runtime_installed": False,
         "installed": False,

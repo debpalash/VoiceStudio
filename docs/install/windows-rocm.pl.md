@@ -155,6 +155,19 @@ dotychczasowe ostrzeżenie oraz fallback, więc nagranie może nie zawierać
 niewidocznego znaku wodnego. AudioSeal używa dotychczasowych domyślnych
 konstruktorów CPU. Te zasady cache dotyczą także pozostałych wspieranych platform.
 
+## Osobny pakiet natywnego rozpoznawania mówców
+
+Sortformer jest osobną, opcjonalną ścieżką rozpoznawania mówców przez Vulkan
+w audio.cpp. W Ustawienia → Modele → Rozpoznawanie mówców jego pakiet wybiera
+wyłącznie plik Q8_0 o wielkości 176 MB; instalacja i akceptacja nie obejmują Breeze
+TTS. Istniejące wagi pozostają w cache, a usunięcie pakietu zachowuje pliki innych
+modeli. Rejestr wskazuje licencję źródłowego modelu CC-BY-NC-4.0, lecz pochodzenie
+kwantyzacji oraz pełne warunki komponentów i wyników nadal są niezweryfikowane.
+Zmiana zapisanych warunków może wyświetlić zwykłą prośbę o ponowną akceptację.
+To niezależna ścieżka od WhisperX: pozostają limity czterech mówców i 120 sekund,
+bez wymuszenia dokładnej liczby osób. Sam test natywnego programu na Radeonie
+nie potwierdza całego przepływu katalogu i dubbingu.
+
 ## Zakres dowodów i ograniczenia
 
 Produkcyjny backend przetestowano na RX 9070 XT z niezmienionym domyślnym modelem

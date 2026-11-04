@@ -45,7 +45,7 @@ GATED_MLX = "mlx-community/whisper-large-v3-turbo"        # unknown → gated
 COMMERCIAL_MLX = "mlx-community/whisper-large-v3-mlx"      # MIT → open
 GATED_SHERPA = "sherpa-whisper-tiny"                       # unknown → gated
 COMMERCIAL_SHERPA = "sherpa-zipformer-en-20m"              # Apache → open
-SORTFORMER = "audio-cpp/audio.cpp-gguf"                    # non-commercial
+SORTFORMER = "audio-cpp/audio.cpp-gguf:sortformer-diar-4spk-v1-q8_0"
 
 
 @pytest.fixture
@@ -250,6 +250,21 @@ def test_diarisation_gates_only_the_selected_model(store, monkeypatch):
     monkeypatch.setattr(dr, "selected_backend", lambda: dr.SORTFORMER)
     _accept(SORTFORMER)
     dr.ensure_selected_accepted()
+
+
+def test_sortformer_acceptance_does_not_require_breeze_terms(store, monkeypatch):
+    from services import diarization_runtime as dr
+
+    selected = "audio-cpp/audio.cpp-gguf:sortformer-diar-4spk-v1-q8_0"
+    monkeypatch.delenv("OMNIVOICE_DIARIZATION_MODEL", raising=False)
+    monkeypatch.setattr(dr, "selected_backend", lambda: dr.SORTFORMER)
+    _accept(selected)
+    assert not ma.status("audio-cpp/audio.cpp-gguf")["accepted"]
+    dr.ensure_selected_accepted()
+    ma.revoke(selected)
+    with pytest.raises(ma.ModelLicenceNotAccepted) as error:
+        dr.ensure_selected_accepted()
+    assert error.value.models[0]["repo_id"] == selected
 
 
 def test_native_sortformer_refuses_before_touching_the_model(store, monkeypatch):

@@ -184,6 +184,19 @@ inference are reported as different scopes.
 | Unavailable forced alignment                           | Keeps the transcript and native word timestamps; alignment precision can be lower. It does not discard requested speech or translation content.                               |
 | Optional engine sidecars                               | Separate environments and compatibility. Main readiness never certifies them.                                                                                                 |
 
+### Separate native diarisation package
+
+Sortformer provides a separate optional native diarisation path through audio.cpp's
+Vulkan runtime. In Settings → Models → Diarisation, its own package selects only
+the 176 MB Q8_0 file; installing or accepting it does not include Breeze TTS.
+Existing cached files are reused and other packages' weights remain untouched.
+Its recorded upstream terms have a CC-BY-NC-4.0 signal, while quantization
+provenance and complete component/output terms remain unverified. Changed recorded
+terms use the normal acceptance prompt. This is separate from the qualified
+WhisperX GPU ASR/alignment profile: Sortformer retains its four-speaker,
+120-second and no-enforced-exact-count limits. A direct native Radeon diagnostic
+does not qualify the complete catalogue/dubbing workflow.
+
 ### Qualified WhisperX and alignment
 
 Choose **WhisperX** in **Model Catalogue > ASR > Use** on an already configured
