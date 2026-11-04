@@ -104,7 +104,7 @@ Scegli i tuoi motori e scarica solo i modelli che ti servono.
 
 Inizia con **VoiceStudio** (predefinito, basato su k2-fsa/OmniVoice) o scegli tra decine di altri motori nel Gestore modelli. Consulta il [catalogo delle funzionalità e del motore](../../docs/feature-catalog.md).
 
-<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
 
 <a id="platforms"></a>
 
@@ -530,4 +530,4 @@ Grazie a tutti coloro che inviano codice, report, traduzioni e idee. [Tutti i co
 
 - [Procedura dettagliata su VoiceStudio di Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
 
-<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
