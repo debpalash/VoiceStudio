@@ -320,6 +320,16 @@ def test_startup_initializes_temp_cache_without_invalidating_warm_context(qualif
     assert pipelines.pipeline_error("cuda", capability="whisperx-asr") is None
 
 
+def test_startup_selects_aten_after_actual_temp_selection_falls_back_to_unicode(qualified, monkeypatch):
+    fallback = qualified.scratch / "\u017b fallback"
+    fallback.mkdir()
+    monkeypatch.setattr(runtime.tempfile, "tempdir", None)
+    monkeypatch.setattr(runtime.tempfile, "_get_default_tempdir", lambda: str(fallback))
+    assert pipelines.initialize_torch_execution() == "aten"
+    assert runtime.tempfile.gettempdir() == str(fallback)
+    assert pipelines.pipeline_error("cuda", capability="whisperx-asr") is None
+
+
 @pytest.mark.parametrize("damage", ["override", "missing-header", "wrong-version", "wrong-gpu", "failed-ct2", "missing-temp", "manual-cache", "disabled-backend"])
 def test_aten_does_not_admit_damaged_or_unregistered_context(qualified, monkeypatch, damage):
     directory = qualified.scratch / "\u017b"

@@ -75,6 +75,7 @@ def initialize_torch_execution():
     with _EXECUTION_LOCK:
         if _EXECUTION_PROFILE is not None:
             return _EXECUTION_PROFILE[1] if _whisperx_profile_error() is None else None
+        context = execution_context(initialize=True)
         if _whisperx_profile_error() is None:
             mode = "miopen"
         elif _whisperx_profile_error(allow_unicode=True, check_dispatch=False) is None:
@@ -84,7 +85,6 @@ def initialize_torch_execution():
         torch = sys.modules["torch"]
         if not torch.backends.cudnn.enabled:
             return None
-        context = execution_context(initialize=True)
         if _whisperx_profile_error(allow_unicode=mode == "aten", check_dispatch=False) is not None:
             return None
         if mode == "aten":
