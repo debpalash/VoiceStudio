@@ -11,15 +11,34 @@ import {
   verifyRuntimeInventory,
 } from '../mas-runtime-bundle.mjs';
 
-test('signing targets exclude binary weights, static archives and symlink aliases', () => {
+test('signing targets exclude binary weights and static archives', () => {
   const root = mkdtempSync(join(tmpdir(), 'mas-signing-'));
   try {
     mkdirSync(join(root, 'lib'));
     writeFileSync(join(root, 'lib', 'native.so'), Buffer.from('cffaedfe01020304', 'hex'));
-    symlinkSync('native.so', join(root, 'lib', 'native-link.so'));
     writeFileSync(join(root, 'lib', 'weights.pth'), Buffer.from('80010203040506', 'hex'));
     writeFileSync(join(root, 'lib', 'archive.a'), '!<arch>\n');
     writeFileSync(join(root, 'lib', 'LICENSE'), 'notice');
+    assert.deepEqual(runtimeSignTargets(root), [join(root, 'lib', 'native.so')]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('signing targets exclude symlink aliases', (context) => {
+  const root = mkdtempSync(join(tmpdir(), 'mas-signing-'));
+  try {
+    mkdirSync(join(root, 'lib'));
+    writeFileSync(join(root, 'lib', 'native.so'), Buffer.from('cffaedfe01020304', 'hex'));
+    try {
+      symlinkSync('native.so', join(root, 'lib', 'native-link.so'));
+    } catch (error) {
+      if (process.platform === 'win32' && ['EPERM', 'EACCES'].includes(error.code)) {
+        context.skip('File symlinks require privileges unavailable on this Windows host');
+        return;
+      }
+      throw error;
+    }
     assert.deepEqual(runtimeSignTargets(root), [join(root, 'lib', 'native.so')]);
   } finally {
     rmSync(root, { recursive: true, force: true });
