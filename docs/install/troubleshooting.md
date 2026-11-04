@@ -50,13 +50,13 @@ Before digging through the entries below, let the app diagnose itself:
 
 ## Install failure codes
 
-On Windows, the setup screen warns before the download if Smart App Control is on, and setup runs the pinned Python once before downloading packages, so a blocked machine finds out early. If you opt in to anonymous stats, which is off unless you say yes, the code and setup stage are all that is sent.
+On Windows, the setup screen warns before the download if Smart App Control is on, and setup runs the pinned Python once before downloading packages, so a blocked machine finds out early. If you opt in to anonymous stats, which is off unless you say yes, setup sends the code and setup stage with the app version, platform and install channel. File names, antivirus names and logs are never part of it.
 
 Install and startup failures show a code on the failure screen and in the in-app report. Reports include the facts behind the code, and you review them on GitHub before submitting. Nothing is sent otherwise. A failure with no code means VoiceStudio has no evidence for a specific cause yet; the report still has the raw message.
 
 ### `WINDOWS_APP_CONTROL_BLOCKED`
 
-Windows Smart App Control, WDAC or AppLocker refused to run the engine or load one of its files. Antivirus exclusions cannot help. With Smart App Control, either turn it off (Windows Security → App & browser control → Smart App Control settings; Windows cannot turn it back on without a reset), connect VoiceStudio to an engine on another computer, or run the engine in WSL or [Docker](docker.md). On a work PC, ask IT to allow the runtime folder.
+Windows Smart App Control, WDAC or AppLocker refused to run the engine or load one of its files. Antivirus exclusions cannot help. With Smart App Control, either turn it off (Windows Security → App & browser control → Smart App Control settings), connect VoiceStudio to an engine on another computer, or run the engine in WSL or [Docker](docker.md). On a work PC, ask IT to allow the runtime folder.
 
 ### `ANTIVIRUS_BLOCKED`
 
@@ -76,11 +76,11 @@ The runtime folder is on a drive mounted with `noexec`. Choose a folder on anoth
 
 ### `RUNTIME_DOWNLOAD_STALLED`
 
-A runtime download received no data for a long time. Retry continues from what has already arrived. Try another network, turn off your VPN or choose another download region.
+A runtime download received no data for a long time. Retry keeps finished packages and resumes large multi-connection downloads, but other partial downloads start again. Try another network, turn off your VPN or choose another download region.
 
 ### `RUNTIME_DOWNLOAD_INTERRUPTED`
 
-The connection dropped during a runtime download, as in `peer closed connection without sending TLS close_notify`. Retry continues from what has already arrived. The same advice as `RUNTIME_DOWNLOAD_STALLED` applies if it repeats.
+The connection dropped during a runtime download, as in `peer closed connection without sending TLS close_notify`. Retry keeps finished packages and resumes large multi-connection downloads, but other partial downloads start again. The same advice as `RUNTIME_DOWNLOAD_STALLED` applies if it repeats.
 
 ### `DISK_FULL`
 
@@ -1525,9 +1525,9 @@ block one even when the app itself is trusted (#3209, #1779). Smart App Control
 has no per-app exceptions. Your options:
 
 - **Turn Smart App Control off** in Windows Security → App & browser control →
-  Smart App Control settings, then restart VoiceStudio. This is a one-way
-  switch: Windows cannot turn Smart App Control back on without a reset or
-  reinstall of Windows.
+  Smart App Control settings, then restart VoiceStudio. Current Windows
+  updates can turn it back on from the same page; older Windows versions may
+  need a reset to re-enable it.
 - **Keep it on and run the engine where it does not apply:** a WSL2 Linux distro
   or [Docker](docker.md) on the same PC (both run Linux binaries, which Smart App
   Control does not check), or another computer, then connect to it in
@@ -1673,7 +1673,7 @@ reconnecting automatically; the workspace stays usable.
   Microsoft → Windows → CodeIntegrity → Operational shows event 3077 for it.
   Unlike antivirus it has **no per-app exceptions**, so an exclusion cannot help.
   Either turn it off (Windows Security → App & browser control → Smart App
-  Control settings; Windows cannot turn it back on without a reset) or connect
+  Control settings) or connect
   VoiceStudio to an engine running on another computer. The app says this only
   when it reads Smart App Control as on or in evaluation
   (`VerifiedAndReputablePolicyState` 1 or 2 under

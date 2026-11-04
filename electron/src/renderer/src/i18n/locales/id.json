@@ -2198,7 +2198,7 @@
   "backend": {
     "setup_required": "Instal runtime lokal",
     "setup_hint": "Unduh Python dan dependensi aplikasi (beberapa GB). Model suara diinstal secara terpisah saat Anda memilihnya.",
-    "setup_smart_app_control": "Smart App Control Windows aktif dan dapat memblokir mesin lokal setelah diunduh. Fitur ini tidak memiliki pengecualian per aplikasi. Anda dapat mematikannya di Keamanan Windows → Kontrol aplikasi & browser (Windows tidak dapat menyalakannya lagi tanpa reset), menghubungkan ke mesin di komputer lain, menjalankan mesin di WSL atau Docker, atau tetap menginstal.",
+    "setup_smart_app_control": "Smart App Control Windows aktif dan dapat memblokir mesin lokal setelah diunduh. Fitur ini tidak memiliki pengecualian per aplikasi. Anda dapat mematikannya di Keamanan Windows → Kontrol aplikasi & browser, menghubungkan ke mesin di komputer lain, menjalankan mesin di WSL atau Docker, atau tetap menginstal.",
     "installing": "Memasang…",
     "setup_space": "Kosongkan setidaknya {{gib}} GiB di drive aplikasi, lalu coba lagi.",
     "repair_failed": "Perbaikan otomatis lingkungan Python tidak selesai. Periksa log mesin, lalu tekan Coba lagi.",
@@ -2229,7 +2229,7 @@
     "port_in_use_short": "Port {{port}} sedang digunakan",
     "proxy_bypass_help": "Tutup VoiceStudio sepenuhnya, atur HTTP_PROXY/HTTPS_PROXY ke URL proksi dan NO_PROXY ke host yang dikecualikan di terminal, lalu jalankan VoiceStudio dari terminal itu. Mencoba lagi di aplikasi yang masih berjalan tidak memuat variabel lingkungan baru.",
     "hint_spawn_blocked": "Sistem operasi atau perangkat lunak keamanan Anda menolak menjalankan mesin lokal. Tambahkan folder runtime VoiceStudio ke pengecualian antivirus (Windows: Keamanan Windows → Perlindungan virus & ancaman → Kelola pengaturan → Pengecualian), pastikan folder itu tidak berada di dalam folder yang disinkronkan ke cloud seperti OneDrive, lalu coba lagi.",
-    "hint_smart_app_control": "Smart App Control Windows memblokir mesin lokal. Fitur ini tidak punya pengecualian per aplikasi, jadi pengecualian antivirus tidak akan membantu. Matikan di Keamanan Windows → Kontrol aplikasi & browser → Pengaturan Smart App Control (Windows tidak bisa menyalakannya lagi tanpa reset), atau hubungkan VoiceStudio ke mesin di komputer lain, lalu coba lagi.",
+    "hint_smart_app_control": "Smart App Control Windows memblokir mesin lokal. Fitur ini tidak punya pengecualian per aplikasi, jadi pengecualian antivirus tidak akan membantu. Matikan di Keamanan Windows → Kontrol aplikasi & browser → Pengaturan Smart App Control, atau hubungkan VoiceStudio ke mesin di komputer lain, lalu coba lagi.",
     "hint_slow_start": "Mesin masih memulai saat batas waktu tunggu habis. Komputer lambat, terutama tanpa GPU khusus, dan peluncuran pertama setelah instalasi (antivirus memindai setiap berkas baru) dapat memerlukan beberapa menit. Tutup aplikasi yang boros memori lalu coba lagi; peluncuran berikutnya jauh lebih cepat.",
     "hint_synced_folder": "Lokasi ini berada di dalam folder yang disinkronkan ke cloud (OneDrive, Dropbox, iCloud Drive, Google Drive). Placeholder khusus daring dan penguncian berkas merusak lingkungan Python. Pindahkan VoiceStudio ke folder lokal biasa (misalnya C:\\VoiceStudio di Windows atau ~/VoiceStudio di macOS dan Linux), lalu siapkan ulang.",
     "cause_app_control_policy": "Kebijakan kontrol aplikasi Windows memblokir mesin",

@@ -2198,7 +2198,7 @@
   "backend": {
     "setup_required": "安装本地运行环境",
     "setup_hint": "下载 Python 和应用依赖项（数 GB）。语音模型将在您选择时单独安装。",
-    "setup_smart_app_control": "Windows 智能应用控制已开启,可能会在下载后阻止本地引擎。它不支持按应用设置例外。你可以在 Windows 安全中心 → 应用和浏览器控制中关闭它(不重置系统就无法重新开启),连接到另一台电脑上的引擎,在 WSL 或 Docker 中运行引擎,或者继续安装。",
+    "setup_smart_app_control": "Windows 智能应用控制已开启,可能会在下载后阻止本地引擎。它不支持按应用设置例外。你可以在 Windows 安全中心 → 应用和浏览器控制中关闭它,连接到另一台电脑上的引擎,在 WSL 或 Docker 中运行引擎,或者继续安装。",
     "installing": "正在安装依赖项…",
     "setup_space": "请在应用所在磁盘上释放至少 {{gib}} GiB 空间，然后重试。",
     "repair_failed": "Python 环境的自动修复未完成。请查看引擎日志，然后点击重试。",
@@ -2229,7 +2229,7 @@
     "port_in_use_short": "端口 {{port}} 已被占用",
     "proxy_bypass_help": "完全退出 VoiceStudio，在终端中将 HTTP_PROXY/HTTPS_PROXY 设为代理 URL，将 NO_PROXY 设为排除的主机，然后从该终端启动 VoiceStudio。在当前应用中重试不会加载新的环境变量。",
     "hint_spawn_blocked": "操作系统或安全软件拒绝启动本地引擎。请将 VoiceStudio 的运行时文件夹添加到杀毒软件的排除项（Windows：Windows 安全中心 → 病毒和威胁防护 → 管理设置 → 排除项），并确认它不在 OneDrive 等云同步文件夹内，然后重试。",
-    "hint_smart_app_control": "Windows 智能应用控制阻止了本地引擎。它不支持按应用设置例外，因此添加杀毒软件排除项无效。请在 Windows 安全中心 → 应用和浏览器控制 → 智能应用控制设置 中将其关闭（不重置系统就无法再次开启），或将 VoiceStudio 连接到另一台电脑上运行的引擎，然后重试。",
+    "hint_smart_app_control": "Windows 智能应用控制阻止了本地引擎。它不支持按应用设置例外，因此添加杀毒软件排除项无效。请在 Windows 安全中心 → 应用和浏览器控制 → 智能应用控制设置 中将其关闭，或将 VoiceStudio 连接到另一台电脑上运行的引擎，然后重试。",
     "hint_slow_start": "等待超时时，引擎仍在启动。电脑较慢（尤其是没有独立显卡）以及安装后的首次启动（杀毒软件会扫描每个新文件）可能需要几分钟。请关闭占用大量内存的应用后重试；之后的启动会快得多。",
     "hint_synced_folder": "此位置位于云同步文件夹（OneDrive、Dropbox、iCloud Drive、Google Drive）内。仅在线的占位文件和文件锁定会破坏 Python 环境。请将 VoiceStudio 移到普通本地文件夹（例如 Windows 上的 C:\\VoiceStudio，或 macOS 和 Linux 上的 ~/VoiceStudio），然后重新设置。",
     "cause_app_control_policy": "Windows 应用控制策略阻止了引擎",

@@ -2198,7 +2198,7 @@
   "backend": {
     "setup_required": "Yerel çalışma ortamını yükle",
     "setup_hint": "Python ve uygulama bağımlılıklarını indirin (birkaç GB). Ses modelleri seçtiğinizde ayrı olarak yüklenir.",
-    "setup_smart_app_control": "Windows Akıllı Uygulama Denetimi açık ve yerel motoru indirildikten sonra engelleyebilir. Uygulama başına istisna yoktur. Windows Güvenliği → Uygulama ve tarayıcı denetimi bölümünden kapatabilir (Windows sıfırlama olmadan yeniden açamaz), başka bir bilgisayardaki motora bağlanabilir, motoru WSL veya Docker içinde çalıştırabilir ya da yine de yükleyebilirsiniz.",
+    "setup_smart_app_control": "Windows Akıllı Uygulama Denetimi açık ve yerel motoru indirildikten sonra engelleyebilir. Uygulama başına istisna yoktur. Windows Güvenliği → Uygulama ve tarayıcı denetimi bölümünden kapatabilir, başka bir bilgisayardaki motora bağlanabilir, motoru WSL veya Docker içinde çalıştırabilir ya da yine de yükleyebilirsiniz.",
     "installing": "Bağımlılıklar…",
     "setup_space": "Uygulamanın sürücüsünde en az {{gib}} GiB alan açıp yeniden deneyin.",
     "repair_failed": "Python ortamının otomatik onarımı tamamlanamadı. Motor günlüğünü kontrol edip Yeniden dene’ye basın.",
@@ -2229,7 +2229,7 @@
     "port_in_use_short": "{{port}} bağlantı noktası kullanımda",
     "proxy_bypass_help": "VoiceStudio’yu tamamen kapatın, terminalde HTTP_PROXY/HTTPS_PROXY değerini proxy URL’sine ve NO_PROXY değerini hariç tutulacak sunuculara ayarlayın, ardından VoiceStudio’yu o terminalden başlatın. Açık uygulamada yeniden denemek yeni ortam değişkenlerini yüklemez.",
     "hint_spawn_blocked": "İşletim sisteminiz veya güvenlik yazılımınız yerel motorun başlatılmasını reddetti. VoiceStudio çalışma zamanı klasörünü antivirüs dışlamalarınıza ekleyin (Windows: Windows Güvenliği → Virüs ve tehdit koruması → Ayarları yönet → Dışlamalar), klasörün OneDrive gibi bulutla eşitlenen bir klasörde olmadığından emin olun ve yeniden deneyin.",
-    "hint_smart_app_control": "Windows Akıllı Uygulama Denetimi yerel motoru engelledi. Uygulama başına istisna tanımıyor, bu yüzden antivirüs dışlaması işe yaramaz. Windows Güvenliği → Uygulama ve tarayıcı denetimi → Akıllı Uygulama Denetimi ayarları bölümünden kapatın (Windows sıfırlanmadan tekrar açamaz) ya da VoiceStudio’yu başka bir bilgisayarda çalışan bir motora bağlayıp yeniden deneyin.",
+    "hint_smart_app_control": "Windows Akıllı Uygulama Denetimi yerel motoru engelledi. Uygulama başına istisna tanımıyor, bu yüzden antivirüs dışlaması işe yaramaz. Windows Güvenliği → Uygulama ve tarayıcı denetimi → Akıllı Uygulama Denetimi ayarları bölümünden kapatın ya da VoiceStudio’yu başka bir bilgisayarda çalışan bir motora bağlayıp yeniden deneyin.",
     "hint_slow_start": "Bekleme süresi dolduğunda motor hâlâ başlıyordu. Yavaş bilgisayarlar, özellikle ayrı ekran kartı olmayanlar, ve bir kurulumdan sonraki ilk başlatma (antivirüs her yeni dosyayı tarar) birkaç dakika sürebilir. Çok bellek kullanan uygulamaları kapatıp yeniden deneyin; sonraki başlatmalar çok daha hızlıdır.",
     "hint_synced_folder": "Bu konum, bulutla eşitlenen bir klasörde (OneDrive, Dropbox, iCloud Drive, Google Drive). Yalnızca çevrimiçi yer tutucular ve dosya kilitleme Python ortamını bozar. VoiceStudio'yu normal bir yerel klasöre (örneğin Windows'ta C:\\VoiceStudio, macOS ve Linux'ta ~/VoiceStudio) taşıyın ve yeniden kurun.",
     "cause_app_control_policy": "Bir Windows uygulama denetimi ilkesi motoru engelledi",

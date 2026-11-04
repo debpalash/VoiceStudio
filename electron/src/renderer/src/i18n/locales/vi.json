@@ -2198,7 +2198,7 @@
   "backend": {
     "setup_required": "Cài đặt môi trường cục bộ",
     "setup_hint": "Tải Python và các thành phần phụ thuộc của ứng dụng (vài GB). Mô hình giọng nói được cài riêng khi bạn chọn.",
-    "setup_smart_app_control": "Smart App Control của Windows đang bật và có thể chặn công cụ cục bộ sau khi tải xuống. Tính năng này không có ngoại lệ theo ứng dụng. Bạn có thể tắt trong Bảo mật Windows → Kiểm soát ứng dụng và trình duyệt (Windows không thể bật lại nếu không đặt lại máy), kết nối với công cụ trên máy khác, chạy công cụ trong WSL hoặc Docker, hoặc vẫn cài đặt.",
+    "setup_smart_app_control": "Smart App Control của Windows đang bật và có thể chặn công cụ cục bộ sau khi tải xuống. Tính năng này không có ngoại lệ theo ứng dụng. Bạn có thể tắt trong Bảo mật Windows → Kiểm soát ứng dụng và trình duyệt, kết nối với công cụ trên máy khác, chạy công cụ trong WSL hoặc Docker, hoặc vẫn cài đặt.",
     "installing": "Đang…",
     "setup_space": "Giải phóng ít nhất {{gib}} GiB trên ổ đĩa của ứng dụng rồi thử lại.",
     "repair_failed": "Tự động sửa môi trường Python chưa hoàn tất. Hãy kiểm tra nhật ký công cụ rồi nhấn Thử lại.",
@@ -2229,7 +2229,7 @@
     "port_in_use_short": "Cổng {{port}} đang được sử dụng",
     "proxy_bypass_help": "Thoát hoàn toàn VoiceStudio, đặt HTTP_PROXY/HTTPS_PROXY thành URL proxy và NO_PROXY thành các máy chủ được loại trừ trong terminal, rồi mở VoiceStudio từ terminal đó. Thử lại trong ứng dụng đang mở không tải các biến môi trường mới.",
     "hint_spawn_blocked": "Hệ điều hành hoặc phần mềm bảo mật của bạn đã từ chối khởi chạy engine cục bộ. Hãy thêm thư mục runtime của VoiceStudio vào danh sách loại trừ của phần mềm diệt virus (Windows: Bảo mật Windows → Bảo vệ khỏi virus và mối đe dọa → Quản lý cài đặt → Loại trừ), đảm bảo thư mục này không nằm trong thư mục đồng bộ đám mây như OneDrive, rồi thử lại.",
-    "hint_smart_app_control": "Smart App Control của Windows đã chặn công cụ cục bộ. Tính năng này không có ngoại lệ cho từng ứng dụng nên loại trừ trong phần mềm diệt virus sẽ không giúp được. Hãy tắt nó trong Bảo mật Windows → Kiểm soát ứng dụng và trình duyệt → Cài đặt Smart App Control (Windows không thể bật lại nếu không đặt lại máy), hoặc kết nối VoiceStudio với công cụ chạy trên máy tính khác, rồi thử lại.",
+    "hint_smart_app_control": "Smart App Control của Windows đã chặn công cụ cục bộ. Tính năng này không có ngoại lệ cho từng ứng dụng nên loại trừ trong phần mềm diệt virus sẽ không giúp được. Hãy tắt nó trong Bảo mật Windows → Kiểm soát ứng dụng và trình duyệt → Cài đặt Smart App Control, hoặc kết nối VoiceStudio với công cụ chạy trên máy tính khác, rồi thử lại.",
     "hint_slow_start": "Engine vẫn đang khởi động thì hết thời gian chờ. Máy chậm, nhất là máy không có GPU rời, và lần khởi chạy đầu tiên sau khi cài đặt (phần mềm diệt virus quét mọi tệp mới) có thể mất vài phút. Hãy đóng các ứng dụng tốn nhiều bộ nhớ rồi thử lại; những lần khởi động sau nhanh hơn nhiều.",
     "hint_synced_folder": "Vị trí này nằm trong thư mục đồng bộ đám mây (OneDrive, Dropbox, iCloud Drive, Google Drive). Các tệp giữ chỗ chỉ có trên mạng và việc khóa tệp làm hỏng môi trường Python. Hãy chuyển VoiceStudio sang một thư mục cục bộ thông thường (ví dụ C:\\VoiceStudio trên Windows hoặc ~/VoiceStudio trên macOS và Linux) rồi thiết lập lại.",
     "cause_app_control_policy": "Chính sách kiểm soát ứng dụng của Windows đã chặn công cụ",

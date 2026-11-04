@@ -2198,7 +2198,7 @@
   "backend": {
     "setup_required": "Installera lokal körmiljö",
     "setup_hint": "Hämta Python och appens beroenden (flera GB). Röstmodeller installeras separat när du väljer dem.",
-    "setup_smart_app_control": "Smart App Control i Windows är på och kan blockera den lokala motorn efter hämtningen. Det finns inga undantag per app. Du kan stänga av det i Windows-säkerhet → Appar och webbläsarkontroll (Windows kan inte slå på det igen utan återställning), ansluta till en motor på en annan dator, köra motorn i WSL eller Docker eller installera ändå.",
+    "setup_smart_app_control": "Smart App Control i Windows är på och kan blockera den lokala motorn efter hämtningen. Det finns inga undantag per app. Du kan stänga av det i Windows-säkerhet → Appar och webbläsarkontroll, ansluta till en motor på en annan dator, köra motorn i WSL eller Docker eller installera ändå.",
     "installing": "Installerar…",
     "setup_space": "Frigör minst {{gib}} GiB på appens disk och försök igen.",
     "repair_failed": "Den automatiska reparationen av Python-miljön blev inte klar. Kontrollera motorloggen och tryck på Försök igen.",
@@ -2229,7 +2229,7 @@
     "port_in_use_short": "Port {{port}} används",
     "proxy_bypass_help": "Avsluta VoiceStudio helt, ange proxyadressen i HTTP_PROXY/HTTPS_PROXY och undantagna värdar i NO_PROXY i en terminal och starta sedan VoiceStudio därifrån. Ett nytt försök i den öppna appen läser inte in nya miljövariabler.",
     "hint_spawn_blocked": "Operativsystemet eller säkerhetsprogramvaran vägrade starta den lokala motorn. Lägg till VoiceStudios körtidsmapp bland undantagen i ditt antivirusprogram (Windows: Windows-säkerhet → Virus- och hotskydd → Hantera inställningar → Undantag), kontrollera att den inte ligger i en molnsynkad mapp som OneDrive och försök igen.",
-    "hint_smart_app_control": "Windows Smart appkontroll blockerade den lokala motorn. Den saknar undantag per app, så ett undantag i antivirusprogrammet hjälper inte. Stäng av den i Windows-säkerhet → App- och webbläsarkontroll → Inställningar för Smart appkontroll (Windows kan inte slå på den igen utan en återställning), eller anslut VoiceStudio till en motor på en annan dator och försök igen.",
+    "hint_smart_app_control": "Windows Smart appkontroll blockerade den lokala motorn. Den saknar undantag per app, så ett undantag i antivirusprogrammet hjälper inte. Stäng av den i Windows-säkerhet → App- och webbläsarkontroll → Inställningar för Smart appkontroll, eller anslut VoiceStudio till en motor på en annan dator och försök igen.",
     "hint_slow_start": "Motorn höll fortfarande på att starta när väntetiden tog slut. Långsamma datorer, särskilt utan dedikerat grafikkort, och den första starten efter en installation (antivirusprogrammet skannar varje ny fil) kan ta flera minuter. Stäng minneskrävande appar och försök igen; senare starter går mycket snabbare.",
     "hint_synced_folder": "Den här platsen ligger i en molnsynkad mapp (OneDrive, Dropbox, iCloud Drive, Google Drive). Platshållare som bara finns online och fillåsning förstör Python-miljön. Flytta VoiceStudio till en vanlig lokal mapp (till exempel C:\\VoiceStudio i Windows eller ~/VoiceStudio i macOS och Linux) och konfigurera den på nytt.",
     "cause_app_control_policy": "En princip för programkontroll i Windows blockerade motorn",
