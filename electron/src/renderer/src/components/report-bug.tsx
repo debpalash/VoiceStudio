@@ -6,6 +6,7 @@ import { contactAge, lastBackendContact } from '@shared/utils/backendContact';
 import { clampCrashTail } from '@shared/utils/crashReport';
 import { scrubText } from '@shared/utils/scrub';
 import { formatHostSnapshot, withDeadline } from '@shared/utils/hostSnapshot';
+import { collapseRepeatedLines, formatFailureFacts } from '@shared/utils/installFailure';
 import { describeExitCode, isNativeFaultExit } from '@shared/utils/nativeExit';
 import { _adaptLastRunCrash, type LastRunCrashRecord } from '@shared/utils/runCrashRecord';
 import { getBackendStatusSnapshot } from '@/hooks/use-backend-status';
@@ -81,7 +82,21 @@ export function ReportBug({ error, setup = false }: { error?: Error | string; se
   const [dialogOpen, setDialogOpen] = useState(false);
   const [summary, setSummary] = useState('');
   const [showRequired, setShowRequired] = useState(false);
+  const [hasInstallFailure, setHasInstallFailure] = useState(false);
   const pending = useRef(false);
+  const saveDiagnostics = async () => {
+    const bridge = getBridge();
+    if (!bridge) return;
+    try {
+      const data = await bridge.backend.getSetupDiagnostics();
+      await bridge.files.saveData({
+        data: new TextEncoder().encode(data),
+        suggestedName: 'voicestudio-setup.log',
+      });
+    } catch {
+      setFailed(true);
+    }
+  };
   const report = async (skipFreshness = false, staleBuild?: KnownUpdate) => {
     if (pending.current) return;
     pending.current = true;
@@ -210,7 +225,7 @@ export function ReportBug({ error, setup = false }: { error?: Error | string; se
             scrubText(backend.message),
             '',
             '```',
-            clampCrashTail(scrubText(backend.logTail.join('\n'))),
+            clampCrashTail(scrubText(collapseRepeatedLines(backend.logTail).join('\n'))),
             '```',
             '',
           ]
@@ -256,9 +271,17 @@ export function ReportBug({ error, setup = false }: { error?: Error | string; se
         const tail = clampCrashTail(scrubText(lines.join('\n')).trim(), 1000);
         if (tail) diagnosticSection.push('## Current backend log', '', '```', tail, '```', '');
       }
+      const installFailure = backend?.failure;
+      // By code point: a UTF-16 slice can split an emoji and make encodeURIComponent throw.
+      const shortSummary = Array.from(summaryText).slice(0, 100).join('');
       const url = composeBugReportUrl({
-        // By code point: a UTF-16 slice can split an emoji and make encodeURIComponent throw.
-        title: `[Bug] ${Array.from(summaryText).slice(0, 100).join('')}`,
+        title: installFailure
+          ? `[Install] ${installFailure.code}: ${shortSummary}`
+          : `[Bug] ${shortSummary}`,
+        labels: installFailure ? 'bug,install' : 'bug',
+        factsSection: installFailure
+          ? formatFailureFacts(installFailure).map((line) => scrubText(line))
+          : [],
         error,
         ctx: context.join('\n'),
         crashSection,
@@ -298,6 +321,7 @@ export function ReportBug({ error, setup = false }: { error?: Error | string; se
                   .join(''),
               );
             setShowRequired(false);
+            setHasInstallFailure(Boolean(getBridge() && getBackendStatusSnapshot()?.failure));
             setDialogOpen(true);
           }}
         >
@@ -357,9 +381,15 @@ export function ReportBug({ error, setup = false }: { error?: Error | string; se
                 {(['app', 'system', 'engines', 'logs', 'pages'] as const).map((item) => (
                   <li key={item}>{t(`reportBug.sent_${item}`)}</li>
                 ))}
+                {hasInstallFailure ? <li>{t('reportBug.sent_install_failure')}</li> : null}
               </ul>
               <p className="mt-2 text-muted-foreground">{t('reportBug.not_sent')}</p>
             </div>
+            {hasInstallFailure ? (
+              <Button type="button" variant="ghost" size="sm" onClick={() => void saveDiagnostics()}>
+                {t('reportBug.save_diagnostics')}
+              </Button>
+            ) : null}
             <DialogFooter>
               <DialogClose render={<Button type="button" variant="outline" />}>
                 {t('common.cancel')}

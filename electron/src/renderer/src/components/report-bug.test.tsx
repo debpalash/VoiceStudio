@@ -468,3 +468,33 @@ it('survives a lone surrogate in the description', async () => {
   await submitReport('broken \ud83d text');
   await waitFor(() => expect(mock.open).toHaveBeenCalledTimes(1));
 });
+
+it('titles a coded failure by code and leads the report with its facts', async () => {
+  mock.api.mockRejectedValue(new Error('offline'));
+  mock.backendStatus.mockResolvedValue({
+    stage: 'failed',
+    managed: true,
+    message: 'Could not start python.exe: spawn UNKNOWN',
+    logTail: Array(40).fill('spawn UNKNOWN'),
+    failure: {
+      code: 'EXEC_REFUSED',
+      stage: 'failed',
+      program: 'python.exe',
+      programLocation: 'runtime',
+      smartAppControl: 'off',
+      signature: 'NotSigned',
+    },
+  });
+  render(<ReportBug />);
+  await submitReport('spawn UNKNOWN');
+  await waitFor(() => expect(mock.open).toHaveBeenCalledTimes(1));
+  const url = new URL(mock.open.mock.calls[0]![0]);
+  const body = url.searchParams.get('body')!;
+  expect(url.searchParams.get('title')).toBe('[Install] EXEC_REFUSED: spawn UNKNOWN');
+  expect(url.searchParams.get('labels')).toBe('bug,install');
+  expect(body).toContain('<!-- vs-failure:EXEC_REFUSED:1 -->');
+  expect(body).toContain('- Program: python.exe (runtime)');
+  expect(body).toContain('- Smart App Control: off');
+  expect(body.indexOf('## Install failure')).toBeLessThan(body.indexOf('## Environment'));
+  expect(body).toContain('spawn UNKNOWN (×40)');
+});

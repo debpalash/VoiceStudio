@@ -78,7 +78,7 @@ body:
     id: logs
     attributes:
       label: Logs / diagnostic bundle
-      description: Drag a diagnostic bundle, or paste the install/bootstrap log. Headless self-check — `python backend/main.py --diagnose`.
+      description: If the app opens, use its Report button instead: it fills this in for you. Otherwise paste the install log, or drag in the file from Report → Save full diagnostics.
       render: text
   - type: textarea
     id: tried
