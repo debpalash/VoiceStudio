@@ -15,8 +15,7 @@
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Pobierz</a> ·
     <a href="#get-started">Pierwsze kroki</a> ·
     <a href="#documentation">Dokumentacja</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
-    <a href="#readme-languages">20 języków</a>
+    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
