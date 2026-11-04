@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { RuntimeLaunchRefusedError } from './runtime-launch-refusal';
 import { existsSync } from 'node:fs';
 import { cp, mkdtemp, mkdir, readFile, rm, writeFile, statfs, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -376,10 +377,12 @@ describe('packaged runtime setup', () => {
       'installing_deps',
       'verifying',
     ]);
-    // The dry run that plans multi-connection downloads (#3411), the sync, the
-    // import check, and off macOS the CUDA compatibility probe.
-    expect(run.mock.calls).toHaveLength(process.platform === 'darwin' ? 3 : 4);
-    expect(run.mock.calls[0]![1]).toEqual(expect.arrayContaining(['-v', 'sync', '--dry-run']));
+    // Preparing and finding Python for the interpreter check, the dry run that
+    // plans multi-connection downloads (#3411), the sync, the import check, and
+    // off macOS the CUDA compatibility probe.
+    expect(run.mock.calls).toHaveLength(process.platform === 'darwin' ? 5 : 6);
+    expect(run.mock.calls[0]![1]).toEqual(expect.arrayContaining(['python', 'install']));
+    expect(run.mock.calls[2]![1]).toEqual(expect.arrayContaining(['-v', 'sync', '--dry-run']));
     expect(await runtimeReady(bundle, project)).toBe(true);
     await writeFile(join(bundle, 'uv.lock'), 'updated dependencies');
     expect(await runtimeReady(bundle, project)).toBe(false);
@@ -1228,6 +1231,32 @@ describe('packaged runtime setup', () => {
     await expect(installRuntime(bundle, project, 'uv', run, controller.signal)).rejects.toThrow();
     expect(run).toHaveBeenCalledTimes(1);
     expect(await runtimeReady(bundle, project)).toBe(false);
+  });
+  it('stops before any wheel downloads when the interpreter is refused', async () => {
+    const { bundle, project } = await fixture();
+    const run = vi.fn(async (command: string, args: string[]) => {
+      if (args[0] === 'python' && args[1] === 'find') return '/managed/python\n';
+      if (command === '/managed/python')
+        throw Object.assign(new Error('Could not start /managed/python: spawn UNKNOWN'), {
+          code: 'UNKNOWN',
+        });
+    });
+    const refused = await installRuntime(bundle, project, 'uv', run, new AbortController().signal).catch(
+      (error: unknown) => error,
+    );
+    expect(refused).toBeInstanceOf(RuntimeLaunchRefusedError);
+    expect((refused as RuntimeLaunchRefusedError).program).toBe('/managed/python');
+    expect((refused as Error).message).toBe('spawn UNKNOWN');
+    expect(run.mock.calls.some(([, args]) => args.includes('sync'))).toBe(false);
+  });
+  it('leaves other interpreter check problems for the sync to report', async () => {
+    const { bundle, project } = await fixture();
+    const run = vi.fn(async (_command: string, args: string[]) => {
+      if (args[0] === 'python') throw new Error('download failed');
+      await interpreter(project);
+    });
+    await installRuntime(bundle, project, 'uv', run, new AbortController().signal);
+    expect(run.mock.calls.some(([, args]) => args.includes('sync'))).toBe(true);
   });
   it('pins the release workflow installer version', async () => {
     const release = await readFile(

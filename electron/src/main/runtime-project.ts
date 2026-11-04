@@ -225,6 +225,8 @@ const REQUIRED_ENV_BYTES = 9 * 1024 ** 3;
 const REQUIRED_CPU_ENV_BYTES = 5 * 1024 ** 3;
 export type RuntimePhase = 'checking' | 'downloading_uv' | 'installing_deps' | 'verifying';
 export type RuntimeRegion = 'auto' | 'global' | 'china' | 'russia' | 'restricted';
+const CANARY_TIMEOUT_MS = 60_000;
+
 export type RuntimeRunner = (
   command: string,
   args: string[],
@@ -1161,6 +1163,61 @@ function errorSummary(error: unknown): string {
 }
 
 /** Called only by the user's install action; normal startup never downloads. */
+/**
+ * Runs the pinned interpreter once before gigabytes of wheels arrive, so a machine
+ * that refuses it finds out now. Only a refusal stops setup and it removes nothing;
+ * any other problem here is left for the sync to report. It cannot prove wheel
+ * binaries will load: the verifying phase still covers those.
+ */
+async function interpreterCanary(
+  uv: string,
+  project: string,
+  env: NodeJS.ProcessEnv,
+  run: RuntimeRunner,
+  signal: AbortSignal,
+  downloads: MirrorReporter,
+): Promise<void> {
+  const refused = (program: string, error: unknown) => {
+    const refusal = runtimeLaunchRefusal(program, error);
+    if (!refusal) return null;
+    // The runner's wrapped message already names the program; keep it from repeating.
+    const code = String((error as { code?: unknown }).code);
+    return new RuntimeLaunchRefusedError(
+      program,
+      Object.assign(new Error(`spawn ${code}`), { code, syscall: 'spawn' }),
+    );
+  };
+  const request = managedPythonRequest();
+  let python = '';
+  try {
+    await run(uv, ['python', 'install', request], project, env);
+    signal.throwIfAborted();
+    const found = await run(uv, ['python', 'find', '--managed-python', request], project, env, {
+      timeoutMs: CANARY_TIMEOUT_MS,
+      quiet: true,
+    });
+    python = typeof found === 'string' ? (found.trim().split('\n').at(-1) ?? '').trim() : '';
+  } catch (error) {
+    signal.throwIfAborted();
+    const refusal = refused(uv, error);
+    if (refusal) throw refusal;
+    downloads.log?.('Skipping the interpreter check: uv could not prepare Python here.');
+    return;
+  }
+  if (!python) return;
+  try {
+    await run(python, ['-c', 'import _ctypes'], project, env, {
+      timeoutMs: CANARY_TIMEOUT_MS,
+      quiet: true,
+    });
+  } catch (error) {
+    signal.throwIfAborted();
+    const refusal = refused(python, error);
+    if (refusal) throw refusal;
+    downloads.log?.('The interpreter check did not pass; continuing with setup.');
+  }
+}
+
 export async function installRuntime(
   bundle: string,
   project: string,
@@ -1304,6 +1361,7 @@ export async function installRuntime(
   const pythonArgs = existingPython
     ? ['--python', runtimePython(project)]
     : ['--managed-python', '--python', managedPythonRequest()];
+  if (!existingPython) await interpreterCanary(uv, project, env, run, signal, downloads);
   const cpuTorch = torch.variant === 'cpu';
   // A failed native import may leave distribution metadata intact, so uv's
   // ordinary sync would otherwise consider the broken wheel already satisfied.
