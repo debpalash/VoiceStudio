@@ -24,11 +24,18 @@ The installer:
 - installs the reviewed `indextts-2.5` source revision in an isolated Python 3.11 venv;
 - downloads the reviewed `IndexTeam/IndexTTS-2.5` model revision;
 - resumes partial model downloads;
-- on an AMD ROCm host (`OMNIVOICE_TORCH_VARIANT=rocm`, or a host already
+- on a Linux AMD ROCm host (`OMNIVOICE_TORCH_VARIANT=rocm`, or a host already
   running ROCm torch), installs PyTorch's ROCm build so the engine uses the
   GPU — upstream's own configuration pulls the CUDA wheel, which cannot see
   an AMD GPU;
 - saves `OMNIVOICE_INDEXTTS_DIR` and activates the engine without a restart.
+
+Native Windows HIP is not qualified for this IndexTTS recipe. Its reviewed source
+requires Python below 3.12 and Torch/audio 2.8, whereas the current native Windows
+HIP stack uses Python 3.12 and Torch/audio 2.9.1. A dedicated compatible source
+and dependency variant needs its own validation; the main app's AMD runtime choice
+does not provide it. Existing CPU, CUDA and user-managed environments retain their
+current behavior. See the per-engine scope in the [Windows ROCm guide](../install/windows-rocm.md).
 
 An app-managed IndexTTS-2 checkout remains intact while 2.5 installs into a
 separate directory. VoiceStudio switches to 2.5 only after the new source,

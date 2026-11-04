@@ -228,10 +228,22 @@ retain MIOpen, and separate sidecar interpreters keep their own dispatch policy.
 Availability and warm reuse verify the selected flag and native context; a later
 change requires a backend restart. CPU, CUDA, MPS and Linux defaults are preserved.
 
-Validation status: source regression controls pass; the retained Unicode tiny-model
-diagnostic supports the mechanism. Default-large-v3, concurrent resident-model and
-current packaged qualification of this new variant remain pending. This is not a
-claim that HIPRTC's Unicode include handling itself has been repaired.
+At source `4bb861465`, an RX 9070 XT completed a standalone production-initializer
+test with its own physical Unicode SDK, TEMP and custom cache roots. The normal
+default `large-v3` resolver constructed the VAD, HIP CT2 and GPU aligner without
+replacing admission. Cold and warm requests timed all 12 recognized words; their
+complete outputs and VAD boundaries matched the preserved ASCII MIOpen outputs.
+A real resident NLLB-600M generation interleaved with VAD in another thread, with
+GPU weights/forwards and the selected dispatch stable throughout. This is request
+interleaving, not simultaneous-kernel or performance evidence. The Unicode worker
+and controller exited zero, with unchanged protected files and closed Jobs.
+
+The earlier paired diagnostic remains failed: its short-operator overlap check
+used a coarse Windows clock. Its complete ASCII outputs are comparison data,
+not a relabelled passing run. The scoped successor uses a high-resolution clock.
+Normal `main.py` startup, OmniVoice/other TTS, sidecars and the current packaged
+app still need their own qualification. This does not repair HIPRTC's Unicode
+include handling or qualify every model sharing this process.
 
 Versions, paths, headers, device metadata and CT2 integrity/readiness are checked
 before every ASR/alignment cache reuse. Rejections remain retryable compatibility
@@ -390,8 +402,8 @@ readiness but failed actual VAD kernel compilation: HIPRTC could not find the
 rocRAND header. The same interpreter completed GPU VAD when pointed at the
 existing ASCII SDK header root. Unicode SDK paths therefore remain a known
 limitation of the MIOpen route, distinct from the disk-cache workaround. The
-startup-only compiled ATen/HIP candidate above avoids that compiler route;
-its separate real-model qualification is pending. Speaker diarization remains gated:
+startup-only compiled ATen/HIP variant above avoids that compiler route and has
+the bounded ASR/alignment evidence described there. Speaker diarization remains gated:
 direct cached wav2vec2 library alignment completed with 18 timed words and an
 observed GPU forward, but does not certify the gated application pipeline.
 Clean Windows, packaged GUI execution and upstream CI remain separate gates.

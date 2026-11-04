@@ -99,10 +99,23 @@ Dostępność i ponowne użycie modeli sprawdzają wybrany tryb oraz kontekst ś
 późniejsza zmiana wymaga restartu backendu. Domyślne zachowanie CPU/CUDA/MPS/Linux
 pozostaje zachowane.
 
-Stan walidacji: testy regresyjne kodu przechodzą; wcześniejsza diagnostyka z małym
-modelem potwierdza mechanizm. Kwalifikacja domyślnego large-v3, równoległych modeli
-i aktualnej paczki dla tego wariantu pozostaje do wykonania. Sam kompilator HIPRTC
-nadal nie ma potwierdzonej obsługi ścieżek nagłówków Unicode.
+Dla źródeł `4bb861465` RX 9070 XT przeszedł osobny test rzeczywistej funkcji
+inicjalizacji z własnym SDK, TEMP i pamięcią podręczną w ścieżkach Unicode.
+Zwykły wybór domyślnego `large-v3` utworzył VAD, HIP CT2 i aligner GPU bez
+zastępowania kontroli zgodności. Zimne i ponowne wywołanie uzyskały czasy dla
+12 z 12 rozpoznanych słów; pełne wyniki i granice VAD były identyczne z zachowanymi
+wynikami ASCII/MIOpen. Rzeczywista generacja NLLB-600M w drugim wątku przeplatała
+się z VAD; wagi i obserwowane obliczenia były na GPU, a wybrany tryb pozostawał
+stały. To potwierdza przeplatanie zadań, a nie jednoczesne jądra ani wydajność.
+Proces testowy i kontroler zakończyły się kodem zero, pliki chronione pozostały
+niezmienione, a zadania i uchwyty zostały zamknięte.
+
+Wcześniejsza próba pary nadal ma wynik błędny: do pomiaru nakładania krótkich
+operatorów użyła zegara Windows o zbyt małej rozdzielczości. Jej pełne wyniki ASCII
+służą do porównania; nie zmieniono poprzedniego wyniku na zaliczony. Osobna próba
+Unicode korzysta z dokładnego zegara. Zwykły start `main.py`, OmniVoice i inne TTS,
+osobne procesy silników oraz aktualna paczka wymagają własnej walidacji. Sam
+HIPRTC nadal nie ma naprawionej obsługi ścieżek nagłówków Unicode.
 
 ## Zarządzany CosyVoice
 
