@@ -31,7 +31,7 @@ function ctl(over: Partial<ConstructorParameters<typeof AccountController>[0]> =
       avatar: async () => null,
       entitlements: async () => null,
     } as never,
-    remembered: true,
+    remembered: () => true,
     links: {
       profile: 'https://app.example/app/settings/profile',
       plan: 'https://app.example/app/settings/plan',
@@ -213,4 +213,16 @@ it('hands the renderer the dashboard profile and plan links only while signed in
     session: { state: () => ({ signedIn: false, signingIn: false, notice: null }) } as never,
   });
   expect((await signedOut.publicState()).links).toBeNull();
+});
+
+it('asks whether sign-in is remembered only with account features on', async () => {
+  // The answer comes from safeStorage, which can raise a Keychain prompt on macOS.
+  const remembered = vi.fn(() => false);
+  const c = ctl({ remembered });
+  await c.setSwitches({ accountEnabled: false });
+  expect((await c.publicState()).remembered).toBe(true);
+  expect(remembered).not.toHaveBeenCalled();
+  await c.setSwitches({ accountEnabled: true });
+  expect((await c.publicState()).remembered).toBe(false);
+  expect(remembered).toHaveBeenCalled();
 });
