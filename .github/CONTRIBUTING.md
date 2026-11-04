@@ -111,6 +111,12 @@ Unused bundles are removed on later launches; cleanup failures do not prevent
 a valid cached bundle from starting. Native OS locks release automatically when
 all holders exit, including after a crash.
 
+Editing a main-process file restarts the dev app: the new instance waits up to
+20 seconds for the old one to close, then takes over. On macOS the main and
+preload watch builds poll for file changes, because the native watcher can end
+the first build without writing it. Until you turn account features on, no
+build touches the macOS Keychain.
+
 Product builds read the app name, application ID, and the backend/web/Electron
 development ports from `config/app.json`. Change that manifest instead of
 copying new defaults into launchers or runtime modules.
