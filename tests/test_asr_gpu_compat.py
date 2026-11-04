@@ -18,7 +18,7 @@ _EXPECTED = {
     "whisperx": ("cuda", "cpu"),
     "faster-whisper": ("cuda", "cpu"),
     "mlx-whisper": ("mps", "cpu"),
-    "pytorch-whisper": ("cuda", "mps", "cpu"),
+    "pytorch-whisper": ("cuda", "rocm", "mps", "cpu"),
     "nemo-parakeet": ("cuda", "cpu"),
     # MLX runs on Apple Silicon's unified-memory GPU only; is_available
     # hard-gates on mlx_supported(), so claiming cpu would be false.
@@ -65,10 +65,45 @@ def test_compat_values_are_valid(engine_id):
         assert "cpu" not in compat  # would be a false claim — is_available gates on CUDA
 
 
-def test_no_asr_engine_falsely_claims_rocm():
-    # ROCm is intentionally unclaimed until verified per engine (see ABC note).
+def test_only_qualified_pytorch_backend_declares_static_rocm():
     for engine_id in _EXPECTED:
-        assert "rocm" not in _cls(engine_id).gpu_compat
+        assert ("rocm" in _cls(engine_id).gpu_compat) == (engine_id == "pytorch-whisper")
+
+
+@pytest.mark.parametrize("family", ["rocm", "cuda", "mps", "cpu"])
+def test_pytorch_runtime_routing_matches_supported_host(family):
+    from core.device_caps import HostCaps
+    from services.engine_routing import runtime_compute_profile
+
+    caps = HostCaps(family=family, available_families=tuple(dict.fromkeys((family, "cpu"))))
+    profile = runtime_compute_profile(_cls("pytorch-whisper"), caps)
+    assert profile["effective_device"] == family
+    assert profile["routing_status"] == ("cpu_only" if family == "cpu" else "accelerated")
+
+
+@pytest.mark.parametrize("device,family", [("cuda:0", "rocm"), ("cuda:0", "cuda"),
+                                           ("mps", "mps"), ("cpu", "cpu")])
+def test_pytorch_loaded_evidence_reports_pipeline_device(device, family):
+    from types import SimpleNamespace
+    from core.device_caps import HostCaps
+    from services.engine_evidence import snapshot
+    from services.engine_routing import runtime_compute_profile
+
+    backend_class = _cls("pytorch-whisper")
+    backend = backend_class(asr_pipe=SimpleNamespace(device=device))
+    caps = HostCaps(family=family, available_families=tuple(dict.fromkeys((family, "cpu"))))
+    evidence = snapshot(engine_id="pytorch-whisper", engine_cls=backend_class,
+                        instance=backend, routing=runtime_compute_profile(backend_class, caps), caps=caps)
+    assert evidence["evidence_state"] == "loaded"
+    assert evidence["actual_execution_device"] == device
+    assert evidence["actual_execution_provider"] == "torch"
+
+
+def test_pytorch_unloaded_evidence_does_not_claim_a_provider():
+    backend = _cls("pytorch-whisper")()
+    assert not backend.execution_evidence_loaded()
+    assert backend.execution_device is None
+    assert backend.execution_provider is None
 
 
 def test_nemo_parakeet_has_no_cuda_gate(monkeypatch):

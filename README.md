@@ -109,6 +109,8 @@ Start with **VoiceStudio** (default, powered by k2-fsa/OmniVoice), or pick from 
 
 Choose your system, then expand an installation method.
 
+Choose desktop runtime packages during setup or under **Settings → Performance → Runtime packages**. Native Windows ROCm requires Windows 11 x64 and a GPU in AMD's supported matrix; optional engines have separate qualification limits ([requirements](docs/install/windows-rocm.md)).
+
 <a id="install-macos"></a>
 
 <details>

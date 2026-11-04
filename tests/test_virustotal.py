@@ -26,7 +26,7 @@ class VirusTotalTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.path = Path(self.temporary.name) / 'public "sample".zip'
+        self.path = Path(self.temporary.name) / "public 'sample'.zip"
         self.path.write_bytes(b"public sample bytes\x00\xff")
         self.client = vt.Client("private-test-key")
         self.client.opener = Mock()
@@ -47,6 +47,21 @@ class VirusTotalTests(unittest.TestCase):
         self.client.opener.open.side_effect = upload
         self.assertEqual(self.client.upload(self.path), "analysis-1")
         self.assertEqual(sent, [f"{vt.API}/files"])
+
+    def test_multipart_sanitizes_double_quotes_without_creating_an_invalid_filename(self):
+        quoted_path = Mock(spec=Path, wraps=self.path)
+        quoted_path.name = 'public "sample".zip'
+
+        chunks, length = vt.multipart(quoted_path, "test-boundary")
+        body = b"".join(chunks)
+
+        self.assertEqual(length, len(body))
+        self.assertIn(b'filename="public__sample_.zip"', body)
+        self.assertNotIn(b'filename="public "sample".zip"', body)
+        self.assertNotIn(str(self.path.parent).encode(), body)
+        self.assertIn(self.path.read_bytes(), body)
+        quoted_path.open.assert_called_once_with("rb")
+        self.client.opener.open.assert_not_called()
 
     def test_large_upload_gets_one_use_url_then_uploads(self):
         upload_url = "https://www.virustotal.com/_ah/upload/one-use-token"
@@ -225,7 +240,14 @@ class VirusTotalTests(unittest.TestCase):
         import zipfile
 
         archive_path = Path(self.temporary.name) / "source.zip"
-        vt.source_archive(archive_path)
+        with patch.dict(os.environ, {
+            "GIT_CONFIG_COUNT": "2",
+            "GIT_CONFIG_KEY_0": "core.autocrlf",
+            "GIT_CONFIG_VALUE_0": "false",
+            "GIT_CONFIG_KEY_1": "core.eol",
+            "GIT_CONFIG_VALUE_1": "lf",
+        }):
+            vt.source_archive(archive_path)
         committed_attributes = subprocess.check_output(["git", "show", "HEAD:.gitattributes"], cwd=ROOT)
         with zipfile.ZipFile(archive_path) as archive:
             self.assertEqual(archive.read("VoiceStudio-main/.gitattributes"), committed_attributes)

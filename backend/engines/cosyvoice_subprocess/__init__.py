@@ -4,7 +4,8 @@ The in-process engine needs CosyVoice importable from VoiceStudio's own
 interpreter, which upstream's setup (its own Python 3.10 environment, pins
 that conflict with the app's) never provides. The one-click installer clones a
 reviewed CosyVoice commit and the Matcha-TTS code it vendors as a submodule
-into ``DATA_DIR/engines/cosyvoice/``, builds a Python 3.10 venv from a trimmed
+into ``DATA_DIR/engines/cosyvoice/``, builds a private venv (normally Python
+3.10, or 3.12 for explicitly selected Windows HIP) from a trimmed
 requirements list (``requirements.txt`` beside this file), downloads the
 CosyVoice 3 weights, and this class runs the model there in a sidecar.
 
@@ -17,6 +18,8 @@ from __future__ import annotations
 
 import math
 import os
+import sys
+from dataclasses import replace
 from pathlib import Path
 
 from services.expression import COSYVOICE_INLINE_TAGS
@@ -32,6 +35,15 @@ def own_venv_python() -> "Path | None":
     from services.sidecar_install import engine_venv_python
 
     return engine_venv_python(VENV_ENV_VAR)
+
+
+def _runtime_device(caps, environment) -> str:
+    cpu = (
+        caps.requested_family == "cpu"
+        or environment.get("OMNIVOICE_DEVICE", "").strip().lower() == "cpu"
+        or environment.get("OMNIVOICE_TORCH_VARIANT", "").strip().lower() == "cpu"
+    )
+    return "cuda" if caps.family == "rocm" and not cpu else "cpu"
 
 
 class CosyVoiceSubprocessBackend(SubprocessBackend):
@@ -54,6 +66,64 @@ class CosyVoiceSubprocessBackend(SubprocessBackend):
     #: Upstream's speech tokenizer refuses clips longer than 30 s; callers
     #: split longer sources (services.voice_conversion).
     max_vc_source_seconds = 30.0
+
+    @classmethod
+    def runtime_compute_profile(cls, caps) -> dict:
+        environment = os.environ.copy()
+        profile = super().runtime_compute_profile(caps)
+        if sys.platform != "win32":
+            return profile
+        from services.sidecar_install import cosyvoice_rocm_verified
+
+        if cosyvoice_rocm_verified():
+            from services.engine_routing import resolve_routing
+
+            compatibility = ("rocm", "cpu")
+            profile["gpu_compat"] = compatibility
+            routing_caps = replace(caps, family="cpu") if (
+                caps.family == "rocm" and _runtime_device(caps, environment) == "cpu"
+            ) else caps
+            profile.update(resolve_routing(compatibility, routing_caps, profile["min_vram_gb"]))
+        return profile
+
+    def _managed_runtime_device(self, environment):
+        if sys.platform != "win32":
+            return None
+        from services.sidecar_install import cosyvoice_rocm_verified
+
+        if not cosyvoice_rocm_verified():
+            return None
+        from core.device_caps import detect_host_caps
+
+        capabilities = detect_host_caps()
+        return _runtime_device(capabilities, environment)
+
+    def _child_environment(self) -> dict[str, str]:
+        environment = super()._child_environment()
+        environment.pop("VOICESTUDIO_COSYVOICE_ROCM_CHECKOUT", None)
+        device = self._managed_runtime_device(environment)
+        if device is not None:
+            from core.windows_rocm.cosyvoice import child_environment
+
+            environment["OMNIVOICE_DEVICE"] = device
+            return child_environment(environment, Path(environment[VENV_ENV_VAR]))
+        return environment
+
+    def _spawn(self) -> None:
+        environment = self._child_environment()
+        device = environment.get("OMNIVOICE_DEVICE") if (
+            "VOICESTUDIO_COSYVOICE_ROCM_CHECKOUT" in environment
+        ) else None
+        if self._proc is not None and self._proc.poll() is None:
+            if getattr(self, "_cosyvoice_spawn_device", None) != device:
+                current = self._proc
+                self._send({"op": "shutdown"})
+                self._reap_unusable_process(current, grace_period_s=3)
+                if not self._retry_timeout_cleanup():
+                    raise RuntimeError("CosyVoice is still stopping after a device change")
+                self._proc = None
+        super()._spawn(environment=environment)
+        self._cosyvoice_spawn_device = device
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:

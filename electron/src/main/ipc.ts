@@ -61,6 +61,8 @@ export const CHANNELS = {
   backendSetupRuntime: 'backend:setupRuntime',
   backendCleanSetupRuntime: 'backend:cleanSetupRuntime',
   backendSetRuntimeRegion: 'backend:setRuntimeRegion',
+  backendSetRuntimeTorchPreference: 'backend:setRuntimeTorchPreference',
+  backendBeginRuntimeTorchSetup: 'backend:beginRuntimeTorchSetup',
   backendChooseRuntimeLocation: 'backend:chooseRuntimeLocation',
   backendUseDefaultRuntimeLocation: 'backend:useDefaultRuntimeLocation',
   backendGetConnection: 'backend:getConnection',
@@ -339,6 +341,7 @@ export function registerIpc(
     authorization: string;
     source: string;
     target: string;
+    requestedTarget: string;
     createdAt: number;
   } | null = null;
   supervisor.subscribe((status: BackendStatus) => broadcast(CHANNELS.backendStatus, status));
@@ -449,6 +452,7 @@ export function registerIpc(
       authorization: randomUUID(),
       source: plan.source,
       target: plan.target,
+      requestedTarget: picked.filePaths[0],
       createdAt: Date.now(),
     };
     return { ...plan, authorization: relocationSelection.authorization };
@@ -478,12 +482,17 @@ export function registerIpc(
       sendToLiveWindow(owner, CHANNELS.maintenanceRelocationProgress, { stage });
     maintenanceBusy = true;
     try {
-      return await relocateDataDirectory(selected.source, selected.target, {
-        stop: () => supervisor.shutdown(),
-        start: () => supervisor.start(),
-        verify: (target) => waitForBackendDataDirectory(supervisor, target),
-        progress,
-      });
+      return await relocateDataDirectory(
+        selected.source,
+        selected.target,
+        {
+          stop: () => supervisor.shutdown(),
+          start: () => supervisor.start(),
+          verify: (target) => waitForBackendDataDirectory(supervisor, target),
+          progress,
+        },
+        selected.requestedTarget,
+      );
     } finally {
       maintenanceBusy = false;
     }
@@ -539,6 +548,23 @@ export function registerIpc(
     const owner = getMainWindow();
     assertTrustedMainFrame(event, owner);
     return supervisor.setRuntimeRegion(raw);
+  });
+  ipcMain.handle(CHANNELS.backendSetRuntimeTorchPreference, (event, raw: unknown) => {
+    const owner = getMainWindow();
+    assertTrustedMainFrame(event, owner);
+    if (maintenanceBusy) throw new Error('maintenance_busy');
+    return supervisor.setRuntimeTorchPreference(raw);
+  });
+  ipcMain.handle(CHANNELS.backendBeginRuntimeTorchSetup, async (event, raw: unknown) => {
+    const owner = getMainWindow();
+    assertTrustedMainFrame(event, owner);
+    if (maintenanceBusy) throw new Error('maintenance_busy');
+    maintenanceBusy = true;
+    try {
+      await supervisor.beginRuntimeTorchSetup(raw);
+    } finally {
+      maintenanceBusy = false;
+    }
   });
   ipcMain.handle(CHANNELS.backendChooseRuntimeLocation, async (event, rawTitle: unknown) => {
     const owner = getMainWindow();

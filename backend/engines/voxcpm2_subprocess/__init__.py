@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -54,6 +55,21 @@ class VoxCPM2SubprocessBackend(SubprocessBackend):
     # parity test pins every sidecar to its in-process class.
     max_ref_seconds = 30.0
     ref_strategy = "head"
+
+    @classmethod
+    def runtime_compute_profile(cls, caps) -> dict:
+        profile = super().runtime_compute_profile(caps)
+        if sys.platform != "win32" or caps.family != "rocm":
+            return profile
+        from services.sidecar_install import voxcpm2_rocm_verified
+
+        if voxcpm2_rocm_verified():
+            from services.engine_routing import resolve_routing
+
+            compatibility = ("cuda", "rocm", "mps", "cpu")
+            profile["gpu_compat"] = compatibility
+            profile.update(resolve_routing(compatibility, caps, profile["min_vram_gb"]))
+        return profile
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:
@@ -108,6 +124,18 @@ class VoxCPM2SubprocessBackend(SubprocessBackend):
         from services.audio_dsp import trim_trailing_silence
         from services.tts_backend import prepare_voxcpm_reference
 
+        from services.sidecar_install import voxcpm2_rocm_verified
+
+        if voxcpm2_rocm_verified():
+            from core.device_caps import detect_host_caps
+
+            capabilities = detect_host_caps()
+            if capabilities.requested_family == "cpu":
+                kw["_voxcpm2_runtime_device"] = "cpu"
+            elif capabilities.family == "rocm":
+                kw["_voxcpm2_runtime_device"] = "cuda"
+            else:
+                raise RuntimeError("device_runtime")
         prepare_voxcpm_reference(kw)
         wav = super().generate(text, **kw)
         return trim_trailing_silence(wav, self.sample_rate)

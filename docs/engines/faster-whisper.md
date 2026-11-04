@@ -10,7 +10,8 @@ fallback on non-Apple machines.
 - **Model Catalogue**, ASR tab → **Use** on the Faster-Whisper row, or
 - pin it with `OMNIVOICE_ASR_BACKEND=faster-whisper`.
 
-Auto-detect only picks it when [whisperx](whisperx.md) is unavailable.
+Auto-detect picks it when [whisperx](whisperx.md) is unavailable and prefers it
+on the qualified native Windows HIP route, even when WhisperX is installed.
 
 ## Best at
 
@@ -24,10 +25,16 @@ Auto-detect only picks it when [whisperx](whisperx.md) is unavailable.
 
 - **CUDA** — float16, with automatic degradation (below).
 - **CPU** — int8 on macOS, Windows, and Linux.
-- **Apple Silicon GPU / ROCm** — not supported: CTranslate2 has no Metal or
-  HIP build, so those hosts run on CPU
-  ([#1529](https://github.com/debpalash/VoiceStudio/issues/1529)); auto-detect
-  routes them to mlx-whisper / pytorch-whisper instead.
+- **Windows AMD ROCm** — GPU with the matched Python 3.12/ROCm 7.2.1/HIP
+  CTranslate2 4.8.2 recipe; see [Windows ROCm setup](../install/windows-rocm.md).
+  The pinned HIP archive is essential: installing AMD PyTorch does not turn
+  an ordinary CUDA-only CTranslate2 wheel into a HIP build. Separate pending
+  RDNA 2 work does not extend this recipe's supported GPU list.
+- **Apple Silicon GPU** — CTranslate2 has no Metal backend; auto-detect prefers
+  mlx-whisper, with CPU available.
+- **Linux AMD ROCm** — the ordinary CTranslate2 installation remains CPU-only;
+  auto-detect prefers pytorch-whisper instead
+  ([#1529](https://github.com/debpalash/VoiceStudio/issues/1529)).
 
 ## Model selection
 

@@ -1,8 +1,9 @@
 """cosyvoice sidecar: CosyVoice in the engine's own venv (one-click install).
 
 Launched as ``<engine venv python> main.py`` by CosyVoiceSubprocessBackend.
-The venv holds only CosyVoice's own dependencies, so this file imports nothing
-from the app. CosyVoice is not a package: like upstream's own ``example.py``,
+The venv holds only CosyVoice's own dependencies. Qualified Windows HIP loads
+the standard-library-only attestation helper by path. CosyVoice is not a package:
+like upstream's own ``example.py``,
 this puts the checkout and its ``third_party/Matcha-TTS`` on ``sys.path``.
 
 The mode mapping mirrors the in-process CosyVoiceBackend. For a CosyVoice 3
@@ -17,6 +18,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import importlib.util
 import json
 import os
 import re
@@ -24,6 +26,7 @@ import struct
 import sys
 import threading
 import traceback
+from pathlib import Path
 
 # Mirrors services/subprocess_backend.py::MAX_FRAME_BYTES.
 MAX_FRAME_BYTES = 64 * 1024 * 1024
@@ -47,6 +50,8 @@ _LANG_TAGS = {
 }
 
 _MODEL = None
+_ROCM_SUPPORT = None
+_MODEL_DEVICE = None
 
 # -- wire protocol -----------------------------------------------------------
 
@@ -207,9 +212,43 @@ def _repair_qwen_cache(model):
     encoder.forward_one_step = forward_one_step
 
 
+def _windows_rocm_support():
+    global _ROCM_SUPPORT
+    checkout = os.environ.get("VOICESTUDIO_COSYVOICE_ROCM_CHECKOUT")
+    if sys.platform != "win32" or not checkout:
+        if _ROCM_SUPPORT is not None:
+            raise RuntimeError("invalid_report")
+        return None
+    if (os.path.normcase(os.path.abspath(checkout)) != os.path.normcase(os.path.abspath(_checkout()))
+            or os.path.normcase(os.path.abspath(sys.executable))
+            != os.path.normcase(os.path.abspath(Path(checkout) / ".venv/Scripts/python.exe"))):
+        raise RuntimeError("invalid_report")
+    if _ROCM_SUPPORT is None:
+        helper = Path(__file__).resolve().parents[2] / "core/windows_rocm/cosyvoice.py"
+        specification = importlib.util.spec_from_file_location("_cosyvoice_windows_rocm", helper)
+        _ROCM_SUPPORT = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(_ROCM_SUPPORT)
+    if _ROCM_SUPPORT.read_verified_install(Path(checkout)) is None:
+        raise RuntimeError("invalid_report")
+    return _ROCM_SUPPORT
+
+
 def _load_model(stdout):
-    global _MODEL
+    global _MODEL, _MODEL_DEVICE
+    support = _windows_rocm_support()
+    device = None
+    if support is not None:
+        selected = os.environ.get("OMNIVOICE_DEVICE", "auto").strip().lower()
+        if os.environ.get("OMNIVOICE_TORCH_VARIANT", "").strip().lower() == "cpu":
+            selected = "cpu"
+        if selected not in {"auto", "rocm", "cuda", "cpu"}:
+            raise RuntimeError("device_runtime")
+        device = "cpu" if selected == "cpu" else "cuda"
+        if _MODEL_DEVICE is not None and _MODEL_DEVICE != device:
+            raise RuntimeError("device_runtime")
     if _MODEL is not None:
+        if support is not None:
+            support.validate_model_device(_MODEL, device)
         return _MODEL
     checkout = _checkout()
     model_dir = _model_dir(checkout)
@@ -225,6 +264,8 @@ def _load_model(stdout):
             sys.path.insert(0, path)
     _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 0})
     with _heartbeat(stdout, "loading_model"):
+        if support is not None:
+            support.prepare_imports(Path(checkout))
         from cosyvoice.cli.cosyvoice import AutoModel  # type: ignore[import-not-found]  # noqa: PLC0415
 
         import torch  # noqa: PLC0415
@@ -232,6 +273,8 @@ def _load_model(stdout):
         with _qwen_full_precision_load():
             model = AutoModel(model_dir=model_dir)
         _repair_qwen_cache(model)
+        if support is not None:
+            support.validate_model_device(model, device)
         if not torch.cuda.is_available():
             # Upstream's Qwen weights may load as bf16 even though its CPU
             # token inputs are fp32. Keep CUDA's chosen precision unchanged.
@@ -241,6 +284,7 @@ def _load_model(stdout):
                 if component is not None and hasattr(component, "float"):
                     component.float()
         _MODEL = model
+        _MODEL_DEVICE = device
     _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 100})
     return _MODEL
 

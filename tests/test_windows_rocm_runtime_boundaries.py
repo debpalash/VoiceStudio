@@ -92,3 +92,51 @@ def test_package_root_ignores_a_stray_folder_in_the_working_directory(tmp_path, 
     monkeypatch.syspath_prepend(str(tmp_path))
     root = runtime.package_root("ctranslate2")
     assert root is None or tmp_path not in root.parents
+
+
+@pytest.mark.parametrize("package,distribution", [
+    ("ctranslate2", "ctranslate2"), ("_rocm_sdk_devel", "rocm-sdk-devel"),
+])
+def test_package_root_uses_only_interpreter_distribution_records(tmp_path, monkeypatch, package, distribution):
+    from core.windows_rocm import runtime
+
+    purelib = str(tmp_path / "purelib")
+    platlib = str(tmp_path / "platlib")
+    root = tmp_path / "installed" / package
+    root.mkdir(parents=True)
+    calls = []
+
+    def distributions(**options):
+        calls.append(options)
+        return iter([SimpleNamespace(locate_file=lambda name: root if name == package else None)])
+
+    monkeypatch.setattr(runtime.sysconfig, "get_paths", lambda: {"purelib": purelib, "platlib": platlib})
+    monkeypatch.setattr(runtime.metadata, "distributions", distributions)
+
+    assert runtime.package_root(package) == root
+    assert calls == [{"name": distribution, "path": [purelib, platlib]}]
+
+
+def test_sdk_header_lookup_uses_distribution_record_without_unpacking(tmp_path, monkeypatch):
+    from core.windows_rocm import runtime
+
+    root = tmp_path / "SDK with spaces"
+    header = root / "include/rocrand/rocrand_xorwow.h"
+    header.parent.mkdir(parents=True)
+    header.write_text("fixture", encoding="utf-8")
+    versions = {"torch": "2.9.1+rocm7.2.1", "rocm-sdk-devel": "7.2.1"}
+    calls = []
+    monkeypatch.setattr(runtime, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setattr(runtime.metadata, "version", versions.__getitem__)
+    monkeypatch.setattr(runtime, "dll_directories", lambda: [])
+    monkeypatch.setattr(runtime, "package_root", lambda name: calls.append(name) or root)
+    monkeypatch.setattr(runtime, "import_module", lambda name: pytest.fail("unexpected SDK expansion"))
+    monkeypatch.setenv("ROCM_PATH", "")
+    monkeypatch.delenv("ROCM_PATH")
+    monkeypatch.setenv("MIOPEN_CUSTOM_CACHE_DIR", "")
+    monkeypatch.delenv("MIOPEN_CUSTOM_CACHE_DIR")
+
+    runtime.initialize_dll_search()
+
+    assert calls == ["_rocm_sdk_devel"]
+    assert runtime.os.environ["ROCM_PATH"] == str(root)

@@ -83,6 +83,37 @@ it there, in a separate process. It installs the CUDA build of PyTorch on an
 NVIDIA GPU, the CPU build on other Windows and Linux machines, and the
 regular build on Apple Silicon.
 
+With explicit Windows ROCm setup (the desktop's **AMD ROCm** runtime-package
+choice, or `OMNIVOICE_TORCH_VARIANT=rocm` for source setup), a **new**
+managed install instead uses Python 3.12, VoxCPM 2.0.3, Torch/audio
+2.9.1+rocm7.2.1, TorchCodec 0.8.1 and the complete SDK packages from the
+[pinned Windows recipe](../install/windows-rocm.md). Its own bounded native
+probe must import the engine and pass a real HIP kernel before publishing
+its atomic installation receipt. This does not install CTranslate2 into
+the sidecar or change another engine's environment.
+
+Only this verified managed environment advertises ROCm acceleration. Its
+worker also checks the selected device and actual model parameters; a broken
+receipt or unexpected CPU model fails instead of certifying GPU execution.
+Missing required package metadata also rejects the receipt without crashing
+the engine inventory, so an incomplete managed installation remains repairable.
+Explicit CPU execution remains available. Other platforms and default installs
+retain their existing recipes. Model-free readiness is separate from real
+model synthesis and quality validation.
+
+An isolated RX 9070 XT test completed this actual managed installation and
+generated both ordinary and reference-conditioned 48 kHz speech through the
+production parent adapter and sidecar, with the cached VoxCPM2 checkpoint and
+both offline flags. The worker reported bfloat16 on HIP and 5.3–5.5 GB of live
+GPU allocations. This is a bounded hardware result, not a clean-Windows,
+all-language, voice-quality or long-workflow certification.
+
+An existing healthy CPU install or user-managed environment is preserved.
+To replace an app-managed CPU install deliberately, use **Uninstall**, keep
+the Windows ROCm opt-in selected, then **Install** in the catalogue. Shared
+model caches are retained. User-managed clones require their own dependency
+management; the app does not overwrite them.
+
 Nothing it installs touches VoiceStudio itself or any other engine, and
 **Uninstall** in the same row removes only that folder. An existing
 `pip install voxcpm` setup keeps working as it is. The button is not offered

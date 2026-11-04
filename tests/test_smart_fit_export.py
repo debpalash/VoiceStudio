@@ -28,6 +28,7 @@ import re
 import subprocess
 import uuid
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -459,7 +460,150 @@ def test_video(tmp_path_factory):
     return path
 
 
+@pytest.fixture
+def resolved_media_tools(monkeypatch):
+    if not (_FFMPEG and _FFPROBE):
+        pytest.skip("ffmpeg/ffprobe not available")
+    monkeypatch.setenv("FFMPEG_PATH", _FFMPEG)
+    monkeypatch.setenv("OMNIVOICE_FFPROBE_PATH", _FFPROBE)
+
+
+class TestRetimeFrameRateGuard:
+    @pytest.mark.parametrize("probe_state", ["missing", "unusable"])
+    def test_real_probe_resolver_rejects_missing_and_unusable_tools(
+        self, tmp_path, monkeypatch, probe_state,
+    ):
+        from core import config
+        from services import ffmpeg_utils, video_retime
+
+        monkeypatch.setattr(config, "DUB_DIR", str(tmp_path))
+        candidate = tmp_path / "ffprobe.exe"
+        if probe_state == "unusable":
+            candidate.write_bytes(b"not an executable image")
+        monkeypatch.setenv("OMNIVOICE_FFPROBE_PATH", str(candidate))
+        monkeypatch.delenv("FFPROBE_PATH", raising=False)
+        monkeypatch.setenv("PATH", str(tmp_path / "empty-path"))
+        monkeypatch.setattr(ffmpeg_utils, "_acquired_bundled", lambda tool: None)
+        monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: None)
+        monkeypatch.setattr(ffmpeg_utils, "_BINARY_OK", {})
+        monkeypatch.setattr(video_retime, "find_ffprobe", ffmpeg_utils.find_ffprobe, raising=False)
+        monkeypatch.setattr(video_retime, "probe_frame_rates", ffmpeg_utils.probe_frame_rates)
+        runner = AsyncMock(side_effect=AssertionError("missing probe must stop before render"))
+        monkeypatch.setattr(video_retime, "run_ffmpeg", runner)
+        source = tmp_path / "source.mp4"
+        source.write_bytes(b"source remains intact")
+        output = tmp_path / "previous.mp4"
+        output.write_bytes(b"previous output remains intact")
+        with pytest.raises(FileNotFoundError) as failure:
+            asyncio.run(video_retime.prepare_smart_fit_video(
+                job_id=None, ffmpeg="ffmpeg", video_path=str(source),
+                plan=_PLAN, orig_dur=_ORIG_DUR, track_dur=_EXPECTED_DUR + 0.5,
+                work_path=str(output),
+            ))
+        assert failure.value.filename == "ffprobe"
+        if probe_state == "unusable":
+            assert ffmpeg_utils._BINARY_OK[str(candidate)] is False
+        runner.assert_not_called()
+        assert source.read_bytes() == b"source remains intact"
+        assert output.read_bytes() == b"previous output remains intact"
+        assert not Path(str(output) + ".slices").exists()
+
+    @pytest.mark.parametrize("mode", ["batch", "tail", "direct"])
+    @pytest.mark.parametrize("rates", [
+        None, ("0/0", "N/A"), ("nan", "inf"), ("1/0", "-30"),
+    ])
+    @pytest.mark.parametrize("probe_available", [False, True])
+    def test_unknown_rate_fails_before_render_and_preserves_files(
+        self, tmp_path, monkeypatch, mode, rates, probe_available,
+    ):
+        from core import config
+        from services import video_retime
+
+        monkeypatch.setattr(config, "DUB_DIR", str(tmp_path))
+        source = tmp_path / "source.mp4"
+        source.write_bytes(b"source remains intact")
+        output = tmp_path / "previous.mp4"
+        output.write_bytes(b"previous output remains intact")
+        runner = AsyncMock(return_value=(0, b"", b""))
+        monkeypatch.setattr(video_retime, "run_ffmpeg", runner)
+        monkeypatch.setattr(video_retime, "probe_frame_rates", AsyncMock(return_value=rates))
+        monkeypatch.setattr(
+            video_retime, "find_ffprobe",
+            lambda: "ffprobe" if probe_available else None, raising=False,
+        )
+        expected_error = video_retime.RetimeError if probe_available else FileNotFoundError
+        with pytest.raises(expected_error) as failure:
+            if mode == "direct":
+                asyncio.run(video_retime.render_retimed_video(
+                    job_id=None, ffmpeg="ffmpeg", video_path=str(source),
+                    chunks=expand_retime_chunks(_PLAN, _ORIG_DUR),
+                    out_path=str(output), batch_size=2,
+                ))
+            else:
+                asyncio.run(video_retime.prepare_smart_fit_video(
+                    job_id=None, ffmpeg="ffmpeg", video_path=str(source),
+                    plan=_PLAN, orig_dur=_ORIG_DUR,
+                    track_dur=_EXPECTED_DUR + (0.5 if mode == "tail" else 0.0),
+                    work_path=str(output), single_pass_max=1 if mode == "batch" else 48,
+                ))
+        if probe_available:
+            assert failure.value.stage == "probe"
+            assert failure.value.code == "video_retime_fps_unavailable"
+        else:
+            from core.failure import classify
+
+            assert failure.value.filename == "ffprobe"
+            assert classify(failure.value) == "MEDIA_TOOL_MISSING"
+        runner.assert_not_called()
+        assert source.read_bytes() == b"source remains intact"
+        assert output.read_bytes() == b"previous output remains intact"
+        assert not Path(str(output) + ".slices").exists()
+
+    @pytest.mark.parametrize("plan", [
+        [], [{"orig_start": 1.0, "orig_end": 3.0, "stretch_ratio": 1.0}],
+    ])
+    def test_no_retime_does_not_require_probe(self, tmp_path, monkeypatch, plan):
+        from core import config
+        from services import video_retime
+
+        monkeypatch.setattr(config, "DUB_DIR", str(tmp_path))
+        probe = AsyncMock(side_effect=AssertionError("copy path must not probe"))
+        runner = AsyncMock(side_effect=AssertionError("copy path must not render"))
+        monkeypatch.setattr(video_retime, "probe_frame_rates", probe)
+        monkeypatch.setattr(video_retime, "run_ffmpeg", runner)
+        decision = asyncio.run(video_retime.prepare_smart_fit_video(
+            job_id=None, ffmpeg="ffmpeg", video_path=str(tmp_path / "source.mp4"),
+            plan=plan, orig_dur=_ORIG_DUR, track_dur=_EXPECTED_DUR,
+            work_path=str(tmp_path / "unused.mp4"), single_pass_max=1,
+        ))
+        assert decision is None
+        probe.assert_not_called()
+        runner.assert_not_called()
+
+    def test_single_pass_without_tail_keeps_legacy_graph_when_rate_unknown(
+        self, tmp_path, monkeypatch,
+    ):
+        from core import config
+        from services import video_retime
+
+        monkeypatch.setattr(config, "DUB_DIR", str(tmp_path))
+        monkeypatch.setattr(video_retime, "probe_frame_rates", AsyncMock(return_value=None))
+        runner = AsyncMock(side_effect=AssertionError("filter decision must not render"))
+        monkeypatch.setattr(video_retime, "run_ffmpeg", runner)
+        decision = asyncio.run(video_retime.prepare_smart_fit_video(
+            job_id=None, ffmpeg="ffmpeg", video_path=str(tmp_path / "source.mp4"),
+            plan=_PLAN, orig_dur=_ORIG_DUR, track_dur=_EXPECTED_DUR,
+            work_path=str(tmp_path / "unused.mp4"),
+        ))
+        assert decision.mode == "filter"
+        assert decision.video_dur == _EXPECTED_DUR
+        assert "fps=" not in decision.graph
+        assert "tpad=" not in decision.graph
+        runner.assert_not_called()
+
+
 @needs_ffmpeg
+@pytest.mark.usefixtures("resolved_media_tools")
 class TestRetimeExecutorIntegration:
     @pytest.fixture(autouse=True)
     def _sandbox_dub_dir(self, tmp_path, monkeypatch):
@@ -470,6 +614,21 @@ class TestRetimeExecutorIntegration:
         the full-suite reload ordering."""
         import core.config as _cfg
         monkeypatch.setattr(_cfg, "DUB_DIR", str(tmp_path))
+
+    def test_direct_render_with_known_fps_does_not_require_probe(self, test_video, tmp_path, monkeypatch):
+        from services import video_retime
+
+        probe = AsyncMock(side_effect=AssertionError("known source rate needs no additional probe"))
+        monkeypatch.setattr(video_retime, "probe_frame_rates", probe)
+        monkeypatch.setattr(video_retime, "find_ffprobe", lambda: None, raising=False)
+        output = tmp_path / "known_rate.mp4"
+        asyncio.run(video_retime.render_retimed_video(
+            job_id=None, ffmpeg=_FFMPEG, video_path=str(test_video),
+            chunks=expand_retime_chunks(_PLAN, _ORIG_DUR),
+            out_path=str(output), batch_size=2, out_fps="30/1",
+        ))
+        assert _probe_stream_durations(str(output))["video"] == pytest.approx(_EXPECTED_DUR, abs=0.05)
+        probe.assert_not_called()
 
     def test_single_pass_decision_renders_to_expected_duration(self, test_video, tmp_path):
         decision = asyncio.run(prepare_smart_fit_video(
@@ -581,7 +740,47 @@ def _last_cue_end_s(srt_text: str) -> float:
 
 
 @needs_ffmpeg
+@pytest.mark.usefixtures("resolved_media_tools")
 class TestDownloadEndpointIntegration:
+    @pytest.mark.parametrize("probe_available", [False, True])
+    @pytest.mark.parametrize("endpoint", ["download", "preview-video"])
+    def test_unknown_rate_blocks_export_without_replacing_files(
+        self, export_app, test_video, monkeypatch, probe_available, endpoint,
+    ):
+        from services import video_retime
+
+        client, dc, tmp_path = export_app
+        job_id = _seed_retime_job(dc, tmp_path, test_video, _EXPECTED_DUR + 0.5)
+        job_dir = tmp_path / "dub_jobs" / job_id
+        source_before = (job_dir / "source.mp4").read_bytes()
+        exports = job_dir / "exports"
+        exports.mkdir()
+        previous = exports / ("preview_v2_de_nobg.mp4" if endpoint == "preview-video" else "previous.mp4")
+        previous.write_bytes(b"previous output remains intact")
+        os.utime(previous, (0, 0))
+        monkeypatch.setattr(video_retime, "probe_frame_rates", AsyncMock(return_value=None))
+        monkeypatch.setattr(
+            video_retime, "find_ffprobe",
+            lambda: _FFPROBE if probe_available else None, raising=False,
+        )
+        parameters = {"preserve_bg": 0}
+        parameters.update(
+            {"lang": "de"} if endpoint == "preview-video"
+            else {"default_track": "de", "include_tracks": "de"}
+        )
+        response = client.get(f"/dub/{endpoint}/{job_id}", params=parameters)
+        assert response.status_code == 503
+        detail = response.json()["detail"]
+        assert detail["stage"] == "video-retime"
+        if probe_available:
+            assert detail["code"] == "video_retime_fps_unavailable"
+        else:
+            assert detail["docs_topic"] == "MEDIA_TOOL_MISSING"
+            assert detail["hint"]
+        assert list(exports.iterdir()) == [previous]
+        assert previous.read_bytes() == b"previous output remains intact"
+        assert (job_dir / "source.mp4").read_bytes() == source_before
+
     def test_export_apad_branch_video_longer_than_track(self, export_app, test_video):
         """Track shorter than the retimed video → audio silence-padded."""
         client, dc, tmp_path = export_app

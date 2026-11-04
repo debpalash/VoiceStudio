@@ -102,11 +102,10 @@ jobs:
           sudo apt-get install -y glslc libvulkan-dev spirv-headers
 
       # Windows: the LunarG SDK provides glslc and the headers; the build script
-      # detects it through VULKAN_SDK. A failed SDK install degrades to the CPU
-      # build (the check below then warns) rather than failing the release.
+      # detects it through VULKAN_SDK. Desktop releases require the Vulkan
+      # module so AMD/Intel users do not silently receive a CPU-only runtime.
       - name: Vulkan SDK (Windows GPU backend)
         if: matrix.platform == 'windows-x86_64'
-        continue-on-error: true
         uses: jakoch/install-vulkan-sdk-action@d17de7e2f5e50efb5d2123efed18497d3c58c533 # v1.7.0
         with:
           vulkan_version: 1.4.309.0
@@ -124,9 +123,8 @@ jobs:
             --platform "$PLATFORM" \
             --commit-sha "$PIN_SHA"
       # The installers' AMD/Intel GPU acceleration is the optional ggml-vulkan
-      # module beside the binary. Linux x64 must ship it (its deps come from
-      # apt above); a Windows leg without it only warns, since its SDK step is
-      # allowed to fail.
+      # module beside the binary. Both desktop platforms must ship it;
+      # CPU-only computers still use the runtime's CPU fallback.
       - name: Check the Vulkan GPU module was built
         if: matrix.platform == 'linux-x86_64' || matrix.platform == 'windows-x86_64'
         shell: bash
@@ -135,10 +133,8 @@ jobs:
         run: |
           if ls bin/ | grep -q 'ggml-vulkan'; then
             echo "Vulkan module: $(ls bin/ | grep 'ggml-vulkan')"
-          elif [ "$PLATFORM" = linux-x86_64 ]; then
-            echo "::error::linux-x86_64 built without the ggml-vulkan module"; exit 1
           else
-            echo "::warning::$PLATFORM built without the ggml-vulkan module (CPU-only runtime)"
+            echo "::error::$PLATFORM built without the ggml-vulkan module"; exit 1
           fi
       - name: Upload binary artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
