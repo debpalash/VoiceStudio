@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "mobile/android/install-sdk-packages.sh"
@@ -22,6 +23,21 @@ def test_workflows_install_sdk_packages_through_the_retrying_script():
     assert direct == []
     using = [path.name for path in workflows if SCRIPT.name in path.read_text(encoding="utf-8")]
     assert sorted(using) == ["android-play-internal.yml", "mobile-release.yml", "mobile.yml"]
+
+
+def test_release_recovery_of_an_older_tag_still_finds_the_installer():
+    """`release_ref` can check out a tag that predates the script."""
+    workflow = yaml.safe_load((ROOT / ".github/workflows/mobile-release.yml").read_text(encoding="utf-8"))
+    steps = next(job["steps"] for job in workflow["jobs"].values() if any(
+        step.get("name") == "NDK and CMake" for step in job["steps"]
+    ))
+    names = [step.get("name") for step in steps]
+    tools = steps[names.index("Checkout Android SDK installer")]
+    assert tools["with"]["ref"] == "${{ job.workflow_sha }}"
+    assert SCRIPT.relative_to(ROOT).as_posix() in tools["with"]["sparse-checkout"]
+    install = steps[names.index("NDK and CMake")]
+    assert names.index(tools["name"]) < names.index(install["name"])
+    assert f'{tools["with"]["path"]}/{SCRIPT.relative_to(ROOT).as_posix()}' in install["run"]
 
 
 def run_with_failures(tmp_path: Path, failures: int) -> tuple[subprocess.CompletedProcess, int]:
