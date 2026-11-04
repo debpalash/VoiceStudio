@@ -350,7 +350,7 @@ Ouvrez http://localhost:3900 et utilisez la clé API imprimée ci-dessous.
 <a id="install-android"></a>
 
 <details>
-<summary><img src="../../docs/assets/platforms/android.svg" alt="" width="20" height="20" /> <strong>Android</strong> · APK · Obtenirium · Dépôt F-Droid</summary>
+<summary><img src="../../docs/assets/platforms/android.svg" alt="" width="20" height="20" /> <strong>Android</strong> · APK · Obtainium · Dépôt F-Droid</summary>
 
 <blockquote>
 
@@ -372,9 +372,9 @@ https://debpalash.github.io/VoiceStudio/fdroid/repo
 </details>
 
 <details>
-<summary>Obtenirium · Sorties GitHub</summary>
+<summary>Obtainium · Sorties GitHub</summary>
 
-Ajoutez cette source dans Obtenirium ou importez la configuration fournie.
+Ajoutez cette source dans Obtainium ou importez la configuration fournie.
 
 ```text
 https://github.com/debpalash/VoiceStudio
