@@ -1,4 +1,5 @@
 import type { HostSnapshotLike } from '../shared/utils/hostSnapshot';
+import type { InstallFailure } from '../shared/utils/installFailure';
 /**
  * The contextBridge surface exposed to the renderer as `window.voicestudio`.
  *
@@ -30,6 +31,8 @@ export interface NativeCrashRecord {
 }
 export interface BackendStatus {
   lastCrash?: NativeCrashRecord;
+  /** Code and facts for the current install or startup failure. */
+  failure?: InstallFailure;
   stage: BackendStage;
   setupIssue?:
     | 'space'

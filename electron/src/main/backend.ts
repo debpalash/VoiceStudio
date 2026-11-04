@@ -24,6 +24,13 @@ import {
   type RuntimeRegion,
 } from './runtime-project';
 import { collectHostSnapshot, freeGb, type HostSnapshot } from './host-snapshot';
+import { collectTrustFacts, programBasename, runProbe, type TrustFacts } from './install-doctor';
+import {
+  classifyInstallFailure,
+  launchRefused,
+  refusedProgram,
+  type InstallFailure,
+} from '../shared/utils/installFailure';
 import { runtimeSetupSupported } from './distribution';
 import { bundledPython, bundledRuntimeEnv } from './bundled-runtime';
 import { asciiSafePthFiles } from './pth-ascii';
@@ -717,6 +724,21 @@ export function smartAppControlFromRegistry(output: string): SmartAppControl {
   );
 }
 
+/** The diagnosis runs beside the failure screen, so it must not block the main process. */
+async function readSmartAppControlAsync(): Promise<SmartAppControl> {
+  const output = await runProbe(
+    'reg.exe',
+    [
+      'query',
+      String.raw`HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy`,
+      '/v',
+      'VerifiedAndReputablePolicyState',
+    ],
+    { timeoutMs: 3000 },
+  );
+  return smartAppControlFromRegistry(output);
+}
+
 /** Read only after a launch was already refused, so the 3 s cap never delays a healthy start. */
 function readSmartAppControl(platform = process.platform): SmartAppControl {
   if (platform !== 'win32') return 'unknown';
@@ -843,6 +865,8 @@ export class BackendSupervisor extends EventEmitter<{
   private testedRemote: { url: string; session: RemoteSession | null } | null = null;
 
   private stage: BackendStage = 'idle';
+  private failure: InstallFailure | undefined;
+  private failureDiagnosis = 0;
   private managed = false;
   private message: string | undefined;
   private exitCode: number | null | undefined;
@@ -916,6 +940,7 @@ export class BackendSupervisor extends EventEmitter<{
         `Free space (GiB, last checked): ${this.runtimeFreeGib ?? 'unknown'}`,
         `Progress: ${JSON.stringify(this.setupProgress.snapshot())}`,
         this.message ?? '',
+        ...(this.failure ? [`Failure: ${JSON.stringify(this.failure)}`] : []),
         '',
         await this.setupLog.read(),
       ].join('\n'),
@@ -1049,6 +1074,7 @@ export class BackendSupervisor extends EventEmitter<{
       status.setupProgress = this.setupProgress.snapshot();
     }
     if (this.message !== undefined) status.message = this.message;
+    if (this.failure) status.failure = this.failure;
     if (this.diagnosis) status.diagnosis = this.diagnosis;
     if (this.exitCode !== undefined) status.exitCode = this.exitCode;
     if (this.exitSignal !== undefined) status.exitSignal = this.exitSignal;
@@ -1217,7 +1243,10 @@ export class BackendSupervisor extends EventEmitter<{
       if (gen !== this.generation) return;
       const message = runtimeFailureMessage(error);
       this.pushLog('err', message);
-      this.setStage('failed', { message });
+      this.setStage('failed', {
+        ...(error instanceof RuntimeLaunchRefusedError ? { managed: true } : {}),
+        message,
+      });
     }
   }
 
@@ -1692,7 +1721,79 @@ export class BackendSupervisor extends EventEmitter<{
     this.diagnosis = patch.diagnosis;
     if ('managed' in patch) this.managed = patch.managed ?? false;
     if ('message' in patch) this.message = patch.message;
+    this.diagnoseFailure();
     this.emitStatus();
+  }
+
+  /**
+   * Names the current failure straight away, then adds what the OS can say about
+   * a refusal. The probes run after the failure is on screen and only after a
+   * refusal, so they can neither delay the error nor slow a healthy start.
+   */
+  private diagnoseFailure(): void {
+    const diagnosis = ++this.failureDiagnosis;
+    const failing =
+      ['failed', 'crashed', 'port_in_use', 'unresponsive'].includes(this.stage) ||
+      (this.stage === 'setup_required' && (Boolean(this.message) || Boolean(this.setupIssue)));
+    if (!failing || this.remoteUrl) {
+      this.failure = undefined;
+      return;
+    }
+    const progress = this.setupProgress.snapshot();
+    const program = refusedProgram(this.message);
+    const refused =
+      launchRefused(this.message) ||
+      /Windows refused to load/.test(this.message ?? '') ||
+      windowsLoadBlock(this.childErrorLog) !== null;
+    const custom = Boolean(parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD));
+    const build = (trust: TrustFacts = {}): InstallFailure => ({
+      code: classifyInstallFailure({
+        stage: this.stage,
+        message: this.message,
+        setupIssue: this.setupIssue,
+        exitCode: this.exitCode,
+        signal: this.exitSignal,
+        logLines: [...this.childLog, ...this.childErrorLog],
+        stalled: progress.stalled,
+        ...trust,
+      }),
+      stage: this.stage,
+      elapsedSeconds: Math.round((Date.now() - this.startedAt) / 1000),
+      setupPhase: this.stage === 'setup_required' ? this.setupPhase : undefined,
+      ...(program
+        ? {
+            program: programBasename(program),
+            programLocation: custom
+              ? ('custom' as const)
+              : this.runtimeProject && program.startsWith(dirname(this.runtimeProject))
+                ? ('runtime' as const)
+                : ('other' as const),
+          }
+        : {}),
+      errorCode: /\b(UNKNOWN|EPERM|EACCES|ENOENT|ENOSPC)\b/.exec(this.message ?? '')?.[1],
+      ...(typeof this.exitCode === 'number' ? { exitCode: this.exitCode } : {}),
+      ...(this.exitSignal ? { signal: String(this.exitSignal) } : {}),
+      ...(progress.downloadHost ? { downloadHost: progress.downloadHost } : {}),
+      ...(progress.downloadedBytes ? { downloadedBytes: progress.downloadedBytes } : {}),
+      ...(progress.stalledSeconds ? { stalledSeconds: progress.stalledSeconds } : {}),
+      proxyConfigured: Boolean(
+        process.env.HTTPS_PROXY || process.env.https_proxy || process.env.ALL_PROXY,
+      ),
+      region: this.runtimeRegion,
+      ...(this.runtimeFreeGib !== undefined ? { diskFreeGb: this.runtimeFreeGib } : {}),
+      ...trust,
+    });
+    this.failure = build();
+    if (!refused) return;
+    void collectTrustFacts({
+      program,
+      run: runProbe,
+      readSmartAppControl: readSmartAppControlAsync,
+    }).then((trust) => {
+      if (diagnosis !== this.failureDiagnosis) return;
+      this.failure = build(trust);
+      this.emitStatus();
+    });
   }
 
   private async resolveRuntimeProject(): Promise<{ project: string; ready: boolean }> {
@@ -1828,7 +1929,9 @@ export class BackendSupervisor extends EventEmitter<{
         detached: process.platform !== 'win32',
       });
     } catch (err) {
+      // The launch was ours: reports must not call this an attached backend.
       this.setStage('failed', {
+        managed: runtimeOwned,
         message: spawnFailureMessage(command, err, { runtimeOwned }),
       });
       return;
@@ -1857,6 +1960,7 @@ export class BackendSupervisor extends EventEmitter<{
       if (gen !== this.generation) return;
       this.child = null;
       this.setStage('failed', {
+        managed: runtimeOwned,
         message: spawnFailureMessage(command, err, { runtimeOwned }),
       });
     });
