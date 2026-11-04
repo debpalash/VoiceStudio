@@ -10,6 +10,7 @@ vi.mock('@/hooks/use-backend-status', () => ({
       'x'.repeat(2000),
       'RuntimeError: wrapper',
     ],
+    failure: mock.snapshotFailure,
   }),
 }));
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -20,6 +21,7 @@ import {
   recordBackendContact,
 } from '@shared/utils/backendContact';
 const mock = vi.hoisted(() => ({
+  snapshotFailure: undefined as { code: string; stage: string } | undefined,
   crashed: false,
   native: true,
   api: vi.fn(),
@@ -49,6 +51,7 @@ vi.mock('@/router', () => ({ router: { navigate: mock.navigate } }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 import { ReportBug } from './report-bug';
 beforeEach(() => {
+  mock.snapshotFailure = undefined;
   clearBreadcrumbs();
   _resetBackendContactForTests();
   mock.updateState.mockResolvedValue({
@@ -501,13 +504,7 @@ it('titles a coded failure by code and leads the report with its facts', async (
 
 it('shows a failed diagnostics save inside the report dialog', async () => {
   mock.api.mockRejectedValue(new Error('offline'));
-  mock.backendStatus.mockResolvedValue({
-    stage: 'failed',
-    managed: true,
-    message: 'Could not start python.exe: spawn UNKNOWN',
-    logTail: [],
-    failure: { code: 'EXEC_REFUSED', stage: 'failed' },
-  });
+  mock.snapshotFailure = { code: 'EXEC_REFUSED', stage: 'failed' };
   render(<ReportBug />);
   fireEvent.click(screen.getByRole('button', { name: 'reportBug.label' }));
   // The bridge mock has no saveData, so saving rejects.
