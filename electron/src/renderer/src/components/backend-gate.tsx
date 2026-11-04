@@ -35,11 +35,13 @@ import { ConfirmDialog } from '@/features/clone/confirm-dialog';
 import { RemoteBackendSettings } from '@/features/settings/remote-backend-settings';
 import { useBackendStatus } from '@/hooks/use-backend-status';
 import { isBackendBusy } from '@shared/utils/backendStage';
+import { backendCauseAction } from '@shared/utils/backendHint';
+import { DEFAULT_DOCS } from '@shared/utils/errorDocsMap';
 import {
-  backendCauseAction,
-  backendFailureCause,
-  backendFailureHints,
-} from '@shared/utils/backendHint';
+  classifyInstallFailure,
+  failureDocsAnchor,
+  failureGuidance,
+} from '@shared/utils/installFailure';
 import { scrubText } from '@shared/utils/scrub';
 import i18n, { APP_LANGUAGE_ITEMS, APP_LANGUAGES, setAppLanguage, type AppLocale } from '@/i18n';
 import { brandIcon } from '@/lib/brand';
@@ -144,7 +146,24 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
 
   const failed = RETRYABLE.has(status.stage);
   // One named cause and one primary action, instead of a raw error to decode.
-  const cause = failed && !setup ? backendFailureCause(status.message) : null;
+  const failureCode =
+    status.failure?.code ??
+    (failed || setupFailed
+      ? classifyInstallFailure({
+          stage: status.stage,
+          message: status.message,
+          setupIssue: status.setupIssue,
+          exitCode: status.exitCode,
+          signal: status.exitSignal,
+        })
+      : null);
+  const guidance = failureCode
+    ? failureGuidance(failureCode, {
+        message: status.message,
+        smartAppControl: status.failure?.smartAppControl,
+      })
+    : null;
+  const cause = guidance?.cause ?? null;
   const pillState: BackendPillState = failed ? 'failed' : reachedReady ? 'recovering' : 'starting';
   // Only an installed app reports `runtimePath`: its runtime is app-managed and movable.
   const causeAction = backendCauseAction(cause, { managedRuntime: Boolean(status.runtimePath) });
@@ -275,13 +294,23 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
             {installing && status.setupPhase === 'installing_deps' ? (
               <SetupDownloadNotice progress={status.setupProgress} />
             ) : null}
-            {failed && !setup
-              ? backendFailureHints(status.message).map((key) => (
+            {guidance
+              ? guidance.hints.map((key) => (
                   <p key={key} className="text-sm text-muted-foreground" data-testid="backend-hint">
                     {t(key)}
                   </p>
                 ))
               : null}
+            {failureCode && failureCode !== 'UNCLASSIFIED' ? (
+              <p className="text-xs text-muted-foreground" data-testid="backend-failure-code">
+                <code>{failureCode}</code> ·{' '}
+                <ExternalLink
+                  href={`${DEFAULT_DOCS}#${failureDocsAnchor(failureCode)}`}
+                >
+                  {t('backend.fix_docs')}
+                </ExternalLink>
+              </p>
+            ) : null}
             {failed && status.diagnosis === 'auth_required' ? (
               // The gated workspace hides Settings, so credentials must be repairable here.
               <div className="w-full pt-2 text-left">
