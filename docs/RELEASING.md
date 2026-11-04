@@ -350,3 +350,14 @@ To turn it on (Settings → Rules → Rulesets → `main`):
 3. Merge PRs with **Merge when ready** (the queue button) instead of **Merge**. `gh pr merge N --merge` joins the queue once it is on.
 
 Try it on one PR first. If a queued PR stalls, a required check name in the ruleset no longer matches a job or status the queue commit reports: compare the ruleset with `tests/test_merge_queue.py`.
+
+### Fork container publishing
+
+The Docker workflow publishes canonical `voicestudio`, compatibility
+`omnivoice-studio`, and `voicestudio-buildcache` packages under the lowercase
+repository owner on GHCR. Forks publish only into their own GHCR namespace;
+upstream remains under `ghcr.io/debpalash`. CUDA, ROCm and CUDA arm64 share this
+namespace rule, including registry layer caches and manual release backfills.
+Docker Hub publishing still requires its existing explicit credentials and
+retains its configured image coordinate. Publishing a preview from a fork does
+not publish an upstream application release.
