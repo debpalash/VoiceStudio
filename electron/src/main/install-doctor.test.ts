@@ -4,6 +4,8 @@ import {
   mountIsNoexec,
   parseWindowsTrust,
   programBasename,
+  runProbe,
+  WINDOWS_BLOCK_MATCH,
   WINDOWS_TRUST_SCRIPT,
 } from './install-doctor';
 
@@ -101,4 +103,24 @@ describe('parsers', () => {
   it('only counts recent block events', () => {
     expect(WINDOWS_TRUST_SCRIPT).toContain('AddMinutes(-10)');
   });
+});
+
+describe.runIf(process.platform === 'win32')('Windows block matching', () => {
+  const root = 'C:\\Users\\a\\VS';
+  const program = 'C:\\Users\\a\\tools\\python.exe';
+  it.each([
+    ['\\Device\\HarddiskVolume3\\Users\\a\\VS\\.python\\python.exe', 'yes'],
+    ['c:\\users\\a\\vs\\x.dll', 'yes'],
+    ['\\Device\\HarddiskVolume3\\Users\\a\\tools\\python.exe', 'yes'],
+    ['\\Device\\HarddiskVolume3\\Users\\a\\VS-old\\x.dll', 'no'],
+    ['\\Device\\HarddiskVolume3\\Windows\\python.exe', 'no'],
+  ])('%s -> %s', async (event, expected) => {
+    const script = `${WINDOWS_BLOCK_MATCH}
+if(Test-VsBlock $env:VS_E $env:VS_R $env:VS_P){'yes'}else{'no'}`;
+    const output = await runProbe('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+      env: { ...process.env, VS_E: event, VS_R: root, VS_P: program },
+      timeoutMs: 30_000,
+    });
+    expect(output.trim()).toBe(expected);
+  }, 40_000);
 });

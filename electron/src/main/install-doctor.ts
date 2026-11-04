@@ -38,6 +38,14 @@ export const runProbe: ProbeRunner = (command, args, { env, timeoutMs }) =>
   });
 
 /**
+ * Events name the volume by device (\Device\HarddiskVolume3\...), which a drive
+ * letter cannot be compared to without more Win32 calls, so paths compare below the
+ * volume. A folder boundary keeps a sibling like runtime-old from matching.
+ */
+export const WINDOWS_BLOCK_MATCH = String.raw`function Get-VsPath($p){([string]$p -replace '/','\') -replace '^(\\\\\?\\)?([A-Za-z]:|\\Device\\[^\\]+)',''}
+function Test-VsBlock($n,$runtime,$prog){$p=Get-VsPath $n;$base=(Get-VsPath $runtime).TrimEnd('\');($base -and $p.StartsWith($base+'\',[StringComparison]::OrdinalIgnoreCase)) -or ($prog -and $p -ieq (Get-VsPath $prog))}`;
+
+/**
  * The refused path arrives through the environment, never the script text, so a
  * crafted file name cannot become PowerShell code. Only recent blocks of this
  * runtime's files or this program count: anything else says nothing about this launch.
@@ -45,9 +53,8 @@ export const runProbe: ProbeRunner = (command, args, { env, timeoutMs }) =>
 export const WINDOWS_TRUST_SCRIPT = String.raw`$ErrorActionPreference='SilentlyContinue'
 $r=@{blocked=@();antivirus=@();signature=$null}
 $events=Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-CodeIntegrity/Operational';Id=3077;StartTime=(Get-Date).AddMinutes(-10)} -MaxEvents 5
-$root=$env:VS_PROBE_RUNTIME -replace '^[A-Za-z]:',''
-$prog=if($env:VS_PROBE_PROGRAM){[IO.Path]::GetFileName($env:VS_PROBE_PROGRAM)}else{''}
-foreach($e in $events){$n=[string]$e.Properties[1].Value;if(-not $n){continue};$f=[IO.Path]::GetFileName($n);if(($root -and $n.IndexOf($root,[StringComparison]::OrdinalIgnoreCase) -ge 0) -or ($prog -and $f -ieq $prog)){$r.blocked+=$f}}
+${WINDOWS_BLOCK_MATCH}
+foreach($e in $events){$n=[string]$e.Properties[1].Value;if($n -and (Test-VsBlock $n $env:VS_PROBE_RUNTIME $env:VS_PROBE_PROGRAM)){$r.blocked+=[IO.Path]::GetFileName($n)}}
 $r.antivirus=@(Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct -OperationTimeoutSec 2|ForEach-Object{$_.displayName})
 if($env:VS_PROBE_PROGRAM){$r.signature=[string](Get-AuthenticodeSignature -LiteralPath $env:VS_PROBE_PROGRAM).Status}
 $r|ConvertTo-Json -Compress`;
