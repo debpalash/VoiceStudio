@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { fixture, runner, report, recipe } from './runtime-windows-rocm.fixture';
+import { fixture, runner, report, recipe, beforeFixtureRemoval } from './runtime-windows-rocm.fixture';
 import { execFile } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -41,6 +41,7 @@ async function prepared() {
   );
   vi.mocked(execFile).mockClear();
   const supervisor = new BackendSupervisor();
+  beforeFixtureRemoval(() => supervisor.shutdown());
   const internal = supervisor as unknown as {
     resolveRuntimeProject: () => Promise<{ ready: boolean }>;
     runtimeProject: string;

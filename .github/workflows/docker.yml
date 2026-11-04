@@ -41,8 +41,9 @@
 #   :sha-xxxx-cuda-arm64 — specific commit SHA
 # The un-suffixed and `-rocm` tags stay linux/amd64 only.
 #
-# Images land at: ghcr.io/debpalash/voicestudio, the legacy GHCR alias
-# ghcr.io/debpalash/omnivoice-studio, and docker.io/palashdeb/omnivoice-studio
+# GHCR images and layer caches use the lowercase repository owner namespace.
+# Upstream: ghcr.io/debpalash/voicestudio and its omnivoice-studio alias.
+# Docker Hub remains docker.io/palashdeb/omnivoice-studio
 # (Docker Hub push gated on the DOCKERHUB_USERNAME/DOCKERHUB_TOKEN secrets;
 # if unset the build still pushes to GHCR.)
 #
@@ -114,18 +115,13 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  # Keep registry coordinates explicit. VoiceStudio is the canonical GHCR
-  # path; the old path remains a compatibility alias during the migration.
-  IMAGE_NAME: debpalash/voicestudio
-  # Compatibility alias: keep existing deployments on the same tag stream.
-  LEGACY_IMAGE_NAME: debpalash/omnivoice-studio
   DOCKERHUB_IMAGE: palashdeb/omnivoice-studio
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   # BuildKit layer cache. It lives in GHCR, not the Actions cache: the GHA cache is
   # capped at 10 GB per repository and these layers (one is 4 GB, 5+ GB in total)
   # evicted the iOS native-runtime, Gradle and bun caches, so mobile CI kept paying
   # a 17 minute rebuild. A separate package keeps the cache out of the image's tags.
-  BUILDCACHE_IMAGE: ghcr.io/debpalash/voicestudio-buildcache
+  # Resolve all GHCR coordinates per job before metadata/cache consumers.
 
 jobs:
   build-and-push:
@@ -153,10 +149,15 @@ jobs:
             test "$PACKAGE_VERSION" = "$TAG_VERSION"
           fi
 
-      - name: Resolve image source commit
+      - &image-source
+        name: Resolve image source commit
         id: source
         shell: bash
         run: |
+          OWNER="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | LC_ALL=C tr 'A-Z' 'a-z')"
+          echo "IMAGE_NAME=${OWNER}/voicestudio" >> "$GITHUB_ENV"
+          echo "LEGACY_IMAGE_NAME=${OWNER}/omnivoice-studio" >> "$GITHUB_ENV"
+          echo "BUILDCACHE_IMAGE=ghcr.io/${OWNER}/voicestudio-buildcache" >> "$GITHUB_ENV"
           echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
@@ -314,12 +315,7 @@ jobs:
             test "$PACKAGE_VERSION" = "$TAG_VERSION"
           fi
 
-      - name: Resolve image source commit
-        id: source
-        shell: bash
-        run: |
-          echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
-          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - *image-source
 
       # The ROCm base (~25 GB unpacked) plus build layers need every GB.
       # Same reclaim list as the CUDA job above — keep them identical
@@ -462,12 +458,7 @@ jobs:
             test "$PACKAGE_VERSION" = "$TAG_VERSION"
           fi
 
-      - name: Resolve image source commit
-        id: source
-        shell: bash
-        run: |
-          echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
-          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - *image-source
 
       # The aarch64 torch wheel alone is 3.4 GB. Same reclaim list as the
       # other jobs (paths absent on the arm64 image are simply skipped).
