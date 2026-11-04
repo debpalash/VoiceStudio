@@ -39,13 +39,15 @@ export const runProbe: ProbeRunner = (command, args, { env, timeoutMs }) =>
 
 /**
  * The refused path arrives through the environment, never the script text, so a
- * crafted file name cannot become PowerShell code. Only recent blocks count: an
- * old event says nothing about this launch.
+ * crafted file name cannot become PowerShell code. Only recent blocks of this
+ * runtime's files or this program count: anything else says nothing about this launch.
  */
 export const WINDOWS_TRUST_SCRIPT = String.raw`$ErrorActionPreference='SilentlyContinue'
 $r=@{blocked=@();antivirus=@();signature=$null}
 $events=Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-CodeIntegrity/Operational';Id=3077;StartTime=(Get-Date).AddMinutes(-10)} -MaxEvents 5
-foreach($e in $events){$n=$e.Properties[1].Value;if($n){$r.blocked+=[IO.Path]::GetFileName([string]$n)}}
+$root=$env:VS_PROBE_RUNTIME -replace '^[A-Za-z]:',''
+$prog=if($env:VS_PROBE_PROGRAM){[IO.Path]::GetFileName($env:VS_PROBE_PROGRAM)}else{''}
+foreach($e in $events){$n=[string]$e.Properties[1].Value;if(-not $n){continue};$f=[IO.Path]::GetFileName($n);if(($root -and $n.IndexOf($root,[StringComparison]::OrdinalIgnoreCase) -ge 0) -or ($prog -and $f -ieq $prog)){$r.blocked+=$f}}
 $r.antivirus=@(Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct -OperationTimeoutSec 2|ForEach-Object{$_.displayName})
 if($env:VS_PROBE_PROGRAM){$r.signature=[string](Get-AuthenticodeSignature -LiteralPath $env:VS_PROBE_PROGRAM).Status}
 $r|ConvertTo-Json -Compress`;
@@ -90,6 +92,8 @@ export interface TrustProbeInput {
   platform?: NodeJS.Platform;
   /** Full path of the refused program, when known. */
   program?: string;
+  /** Runtime folder; a block event only counts as evidence inside it. */
+  runtimeRoot?: string;
   readSmartAppControl: () => Promise<SmartAppControlState>;
   run?: ProbeRunner;
   readMountInfo?: () => Promise<string>;
@@ -106,7 +110,11 @@ export async function collectTrustFacts(input: TrustProbeInput): Promise<TrustFa
         'powershell.exe',
         ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_TRUST_SCRIPT],
         {
-          env: { ...process.env, VS_PROBE_PROGRAM: program ?? '' },
+          env: {
+            ...process.env,
+            VS_PROBE_PROGRAM: program ?? '',
+            VS_PROBE_RUNTIME: input.runtimeRoot ?? '',
+          },
           timeoutMs: TRUST_PROBE_DEADLINE_MS,
         },
       )

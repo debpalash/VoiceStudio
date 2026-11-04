@@ -1808,6 +1808,7 @@ export class BackendSupervisor extends EventEmitter<{
     if (!refused) return;
     void collectTrustFacts({
       program,
+      runtimeRoot: this.runtimeProject ? dirname(this.runtimeProject) : undefined,
       run: runProbe,
       readSmartAppControl: readSmartAppControlAsync,
     }).then((trust) => {

@@ -13,10 +13,18 @@ describe('collectTrustFacts', () => {
   it('passes the refused path by environment, never in the script', async () => {
     const program = "C:\\x'; Remove-Item C:\\ ;'\\python.exe";
     const run = vi.fn(async () => '{"blocked":["python.exe"],"antivirus":"Defender","signature":"NotSigned"}');
-    const facts = await collectTrustFacts({ platform: 'win32', program, run, readSmartAppControl: sac });
+    const facts = await collectTrustFacts({
+      platform: 'win32',
+      program,
+      runtimeRoot: 'C:\\runtime',
+      run,
+      readSmartAppControl: sac,
+    });
     const [, args, options] = run.mock.calls[0] as unknown as [string, string[], { env: NodeJS.ProcessEnv }];
     expect(args.join(' ')).not.toContain('Remove-Item');
     expect(options.env.VS_PROBE_PROGRAM).toBe(program);
+    expect(WINDOWS_TRUST_SCRIPT).toContain('$env:VS_PROBE_RUNTIME');
+    expect(options.env.VS_PROBE_RUNTIME).toBe('C:\\runtime');
     expect(facts).toEqual({
       smartAppControl: 'on',
       blockedFiles: ['python.exe'],
