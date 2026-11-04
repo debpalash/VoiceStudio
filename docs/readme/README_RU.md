@@ -16,8 +16,22 @@
     <a href="#быстрый-старт">Начало работы</a> ·
     <a href="#справка">Документация</a> ·
     <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
-    <a href="../../README.md">English</a> · <a href="README_CN.md">简体中文</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a>
+    <a href="#readme-languages">20 языков</a>
   </p>
+  <!-- README_LANGUAGES_START -->
+  <a id="readme-languages"></a>
+  <details>
+    <summary><strong>🌐 Читать на своём языке</strong></summary>
+    <p>
+    <a href="../../README.md" lang="en">English</a> · <a href="README_CN.md" lang="zh-CN">简体中文</a> · <a href="README_JA.md" lang="ja">日本語</a> · <a href="README_KO.md" lang="ko">한국어</a> · <strong lang="ru">Русский</strong><br />
+    <a href="README_AR.md" lang="ar">العربية</a> · <a href="README_DE.md" lang="de">Deutsch</a> · <a href="README_ES.md" lang="es">Español</a> · <a href="README_FR.md" lang="fr">Français</a> · <a href="README_HI.md" lang="hi">हिन्दी</a><br />
+    <a href="README_ID.md" lang="id">Bahasa Indonesia</a> · <a href="README_IT.md" lang="it">Italiano</a> · <a href="README_NL.md" lang="nl">Nederlands</a> · <a href="README_PL.md" lang="pl">Polski</a> · <a href="README_PT.md" lang="pt">Português</a><br />
+    <a href="README_TH.md" lang="th">ไทย</a> · <a href="README_TR.md" lang="tr">Türkçe</a> · <a href="README_TW.md" lang="zh-TW">繁體中文</a> · <a href="README_UK.md" lang="uk">Українська</a> · <a href="README_VI.md" lang="vi">Tiếng Việt</a>
+    </p>
+  </details>
+  <!-- README_LANGUAGES_END -->
+
+
   <p>
     <a href="https://github.com/debpalash/VoiceStudio/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/debpalash/VoiceStudio/ci.yml?branch=main&amp;style=flat-square&amp;label=build&amp;labelColor=27272a" alt="Статус CI" /></a>
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/github/v/release/debpalash/VoiceStudio?style=flat-square&amp;labelColor=27272a&amp;color=52525b" alt="Последний релиз" /></a>
@@ -51,6 +65,8 @@
   <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/badge/%D0%A1%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C-993f61?style=for-the-badge&amp;logo=github&amp;logoColor=ffffff" alt="Скачать" height="24" /></a>
   <a href="#быстрый-старт"><img src="https://img.shields.io/badge/%D0%9D%D0%B0%D1%87%D0%B0%D0%BB%D0%BE%20%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D1%8B-27272a?style=for-the-badge" alt="Начало работы" height="24" /></a>
 </p>
+
+<a id="what-you-can-do"></a>
 
 ## Возможности
 
@@ -98,6 +114,8 @@
 - **Интеграция и автоматизация** — Локальный API, MCP, сохранённые сценарии и отслеживание папок
 
 Из коробки работает **VoiceStudio** — штатный движок, построенный на k2-fsa/OmniVoice; ещё несколько десятков альтернатив ставятся из менеджера моделей. Полный список — в [каталоге функций и движков](../../docs/feature-catalog.md).
+
+<a id="platforms"></a>
 
 ## Платформы
 
@@ -400,9 +418,11 @@ iOS / iPadOS 17+ · Предварительная версия · После з
 Установщики для компьютера и телефона лежат в [последнем релизе](https://github.com/debpalash/VoiceStudio/releases/latest), а образы Docker публикуются в GHCR. Нет видеокарты? Приложение полностью работает на процессоре, просто медленнее. Необязательные нативные GGUF-движки могут использовать Vulkan, в том числе на видеокартах AMD ([OmniVoice](../../docs/engines/omnivoice-gguf.md#vulkan-acceleration), [CosyVoice](../../docs/engines/cosyvoice-gguf.md)). Сколько занимает генерация на разных движках и железе, показано в [обзоре быстродействия](../../docs/performance.md).
 
 
+<a id="get-started"></a>
+
 ## Быстрый старт
 
-Установите приложение одним из способов выше. Затем откройте **Voice cloning**, выберите голос или добавьте чистую эталонную запись, введите текст и запустите генерацию. Приложение запросит согласие перед загрузкой моделей.
+Установите приложение одним из способов выше. Затем откройте **Клонирование голоса**, выберите голос или добавьте чистую эталонную запись, введите текст и запустите генерацию. Приложение запросит согласие перед загрузкой моделей.
 
 <details>
 <summary><strong>Другие способы установки</strong>: конкретная версия, текущий main, удаление, из исходного кода, с помощью агента</summary>
@@ -425,6 +445,8 @@ cd VoiceStudio
 bun run dev
 ```
 
+`bun run dev` устанавливает зависимости JavaScript, а при использовании поддерживаемого локального бэкенда — также зависимости Python, после чего запускает Electron. Если нужно только пересоздать окружение Python, выполните `bun run setup:api` напрямую.
+
 Зависимости и настройка бэкенда описаны в [инструкции к Electron](../../electron/README.md).
 
 **Через ИИ-агента** (например, Claude Code, Codex или Cursor) — передайте ему такой запрос:
@@ -438,7 +460,11 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 
 </details>
 
+<a id="documentation"></a>
+
 ## Справка
+
+[Все руководства](../../docs/README.md)
 
 | Задача | Куда смотреть |
 |---|---|
@@ -450,6 +476,8 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 | Для разработчиков | [Правила для контрибьюторов](../../.github/CONTRIBUTING.md) ([подпишите CLA](../../.github/CONTRIBUTING.md#contribution-licensing) перед первым PR) · [История версий](../../CHANGELOG.md) |
 
 Скиллы для ИИ-агентов ставятся командой `npx skills add debpalash/VoiceStudio`: **voicestudio** — для аудиозадач, **voicestudio-maintainer** — для поддержки самого репозитория.
+
+<a id="sponsors"></a>
 
 ## Поддержка проекта
 
@@ -466,6 +494,8 @@ VoiceStudio бесплатен, и за ним нет платного обла�
 <a href="https://github.com/sponsors/debpalash"><img src="https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=githubsponsors&logoColor=white" alt="Поддержать через GitHub Sponsors" /></a>
 [Ko-fi](https://ko-fi.com/debpalash) · [PayPal](https://paypal.me/palashCoder) · [Уровни и привилегии](../../SPONSORS.md) · [Разместить логотип](https://github.com/debpalash/VoiceStudio/issues/new?template=sponsor.yml)
 
+<a id="other-projects"></a>
+
 ## Другие проекты
 
 Другие инструменты с открытым исходным кодом от создателей VoiceStudio.
@@ -476,7 +506,11 @@ VoiceStudio бесплатен, и за ним нет платного обла�
 
 Другие проекты: [debpalash](https://github.com/debpalash?tab=repositories) · [velixio](https://github.com/velixio?tab=repositories)
 
+<a id="team"></a>
+
 ## Команда проекта
+
+<a id="core-team"></a>
 
 ### Основная команда
 
@@ -487,15 +521,21 @@ VoiceStudio бесплатен, и за ним нет платного обла�
 </tr>
 </table>
 
+<a id="contributors"></a>
+
 ### Участники
 
 <a href="https://github.com/kevin9327"><img src="https://github.com/kevin9327.png?size=96" width="44" height="44" alt="@kevin9327" title="@kevin9327"></a> <a href="https://github.com/jaketame"><img src="https://github.com/jaketame.png?size=96" width="44" height="44" alt="@jaketame" title="@jaketame"></a> <a href="https://github.com/psiberfunk"><img src="https://github.com/psiberfunk.png?size=96" width="44" height="44" alt="@psiberfunk" title="@psiberfunk"></a> <a href="https://github.com/rudycelekli"><img src="https://github.com/rudycelekli.png?size=96" width="44" height="44" alt="@rudycelekli" title="@rudycelekli"></a> <a href="https://github.com/paoloantinori"><img src="https://github.com/paoloantinori.png?size=96" width="44" height="44" alt="@paoloantinori" title="@paoloantinori"></a> <a href="https://github.com/Chang-Jin-Lee"><img src="https://github.com/Chang-Jin-Lee.png?size=96" width="44" height="44" alt="@Chang-Jin-Lee" title="@Chang-Jin-Lee"></a> <a href="https://github.com/swadhinbiswas"><img src="https://github.com/swadhinbiswas.png?size=96" width="44" height="44" alt="@swadhinbiswas" title="@swadhinbiswas"></a> <a href="https://github.com/BichengWang"><img src="https://github.com/BichengWang.png?size=96" width="44" height="44" alt="@BichengWang" title="@BichengWang"></a> <a href="https://github.com/nirmalchatur"><img src="https://github.com/nirmalchatur.png?size=96" width="44" height="44" alt="@nirmalchatur" title="@nirmalchatur"></a> <a href="https://github.com/Shivendra-Coherent"><img src="https://github.com/Shivendra-Coherent.png?size=96" width="44" height="44" alt="@Shivendra-Coherent" title="@Shivendra-Coherent"></a> <a href="https://github.com/marreiradigital"><img src="https://github.com/marreiradigital.png?size=96" width="44" height="44" alt="@marreiradigital" title="@marreiradigital"></a> <a href="https://github.com/nvtoan0201-swe"><img src="https://github.com/nvtoan0201-swe.png?size=96" width="44" height="44" alt="@nvtoan0201-swe" title="@nvtoan0201-swe"></a>
 
 Спасибо всем, кто присылает код, сообщения об ошибках, переводы и идеи. [Все участники](https://github.com/debpalash/VoiceStudio/graphs/contributors) · [Как помочь проекту](../../.github/CONTRIBUTING.md)
 
+<a id="license--responsible-use"></a>
+
 ## Лицензия и этичное использование
 
 На приложение распространяется лицензия [AGPL-3.0](../../LICENSE), в том числе на коммерческое использование на её условиях. У весов моделей, голосов и сгенерированного результата свои лицензии; менеджер моделей показывает их для каждой модели ([полный перечень](../../docs/licensing/model-inventory.md)). Клонируйте голос только с разрешения его владельца. Подробности: [LICENSE-NOTICE.md](../../LICENSE-NOTICE.md).
+
+<a id="community-tutorials"></a>
 
 ## Уроки сообщества
 
