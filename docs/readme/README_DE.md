@@ -421,7 +421,7 @@ Desktop- und Telefoninstallationsprogramme sind auf der [neuesten Version](https
 
 ## Erste Schritte
 
-Installieren Sie mit den oben genannten Optionen. Öffnen Sie dann **Voice Cloning**, wählen Sie eine Stimme aus oder fügen Sie eine saubere Referenzaufnahme hinzu, geben Sie Ihren Text ein und generieren Sie ihn. Die App fragt nach, bevor sie ein Modell herunterlädt.
+Installieren Sie mit den oben genannten Optionen. Öffnen Sie dann **Klonen von Stimmen**, wählen Sie eine Stimme aus oder fügen Sie eine saubere Referenzaufnahme hinzu, geben Sie Ihren Text ein und generieren Sie ihn. Die App fragt nach, bevor sie ein Modell herunterlädt.
 
 <details>
 <summary><strong>Weitere Installationsoptionen</strong>: eine bestimmte Version, aktuelle Hauptversion, deinstalliert, aus der Quelle, mit einem Codierungsagenten</summary>
