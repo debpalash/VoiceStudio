@@ -1861,6 +1861,13 @@ def _resolve_language(language: Optional[str]) -> Union[str, None]:
     if language in LANG_IDS:
         return language
     key = language.lower()
+    # #3723 follow-up: the vocabulary names the base Arabic entry
+    # "Standard Arabic" (arb) and has no bare "Arabic" row, so a bare
+    # "Arabic" label or "ar" code would otherwise fall back to
+    # language-agnostic mode even after the dub gate admits it. Map
+    # both to arb; dialects (arz, ary, ...) keep their own codes.
+    if key in ("arabic", "ar"):
+        return "arb"
     if key in LANG_NAME_TO_ID:
         return LANG_NAME_TO_ID[key]
     logger.warning(
