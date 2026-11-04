@@ -21,8 +21,14 @@ vi.mock('./runtime-project', async (original) => ({
   runtimeCompatible: vi.fn(async () => false),
   stageRuntimeSources: vi.fn(async () => undefined),
 }));
-import { runtimePython, runtimeReady, runtimeCompatible } from './runtime-project';
+import {
+  runtimePython,
+  runtimeReady,
+  runtimeCompatible,
+  type TorchChoice,
+} from './runtime-project';
 import { BackendSupervisor } from './backend';
+import { runtimeLaunchRefusal } from './runtime-launch-refusal';
 
 beforeEach(async () => {
   host.data = await mkdtemp(join(tmpdir(), 'vs-launch-refusal-'));
@@ -121,6 +127,24 @@ it('still repairs a genuine missing-module failure', async () => {
   expect(value.status.stage).toBe('setup_required');
 });
 
+it('keeps kill-related EPERM on the ordinary runtime repair path', async () => {
+  const failure = Object.assign(new Error('kill EPERM'), { code: 'EPERM', syscall: 'kill' });
+  expect(
+    runtimeLaunchRefusal(runtimePython(join(host.data, 'runtime', 'project')), failure),
+  ).toBeNull();
+  vi.mocked(execFile).mockImplementation(((
+    _command: unknown,
+    _args: unknown,
+    _options: unknown,
+    callback: (error: Error, stdout: string, stderr: string) => void,
+  ) => callback(failure, '', '')) as never);
+  const { value, repair } = supervisor();
+  await value.start();
+  expect(repair).toHaveBeenCalledOnce();
+  expect(value.status.stage).toBe('setup_required');
+  expect(spawn).not.toHaveBeenCalled();
+});
+
 it.each(['darwin', 'linux'] as const)(
   'reports a refused Python launch on %s without reinstalling',
   async (platform) => {
@@ -176,7 +200,11 @@ it('reuses a healthy legacy runtime after the default interpreter refuses to lau
   const launch = vi
     .spyOn(
       value as unknown as {
-        spawnChild: (plan: { argv: string[]; cwd: string }, gen: number) => void;
+        spawnChild: (
+          plan: { argv: string[]; cwd: string },
+          gen: number,
+          choice?: TorchChoice,
+        ) => void;
       },
       'spawnChild',
     )
@@ -186,8 +214,10 @@ it('reuses a healthy legacy runtime after the default interpreter refuses to lau
     expect.objectContaining({
       cwd: legacy,
       argv: expect.arrayContaining([runtimePython(legacy)]),
+      managedRuntime: false,
     }),
     expect.any(Number),
+    { variant: 'cpu', explicit: true },
   );
   expect(value.status.runtimePath).toBe(
     join(host.data, 'legacy', 'com.debpalash.omnivoice-studio'),

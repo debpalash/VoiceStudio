@@ -8,7 +8,14 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { dirname, extname, join, resolve } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { randomUUID } from 'node:crypto';
-import { app, BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  type IpcMainInvokeEvent,
+  type WebContents,
+} from 'electron';
 import type { BackendSupervisor } from './backend';
 import { startRepairApiBridge, type RepairApiBridge } from './repair-api-bridge';
 import { isTrustedRenderer } from './trusted-renderer';
@@ -699,12 +706,24 @@ ${task}
 ${request.context.slice(0, MAX_CONTEXT)}${context}`;
 }
 
+export type RepairAgentsRegistration = (() => void) & {
+  stop: () => void;
+  dispose: () => void;
+};
+
 export async function registerRepairAgents(
   supervisor: BackendSupervisor,
   initialRoot: string,
   getMainWindow: () => BrowserWindow | null,
   recentMainErrors: () => string = () => '',
-): Promise<() => void> {
+): Promise<RepairAgentsRegistration> {
+  let stopping = false;
+  let disposed = false;
+  let closingRenderer: WebContents | null = null;
+  let cachedAgents: RepairAgentInfo[] = [];
+  const assertActive = () => {
+    if (stopping) throw new DOMException('', 'AbortError');
+  };
   let child: ChildProcessWithoutNullStreams | null = null;
   let preparing = false;
   let translationChild: ChildProcessWithoutNullStreams | null = null;
@@ -731,6 +750,15 @@ export async function registerRepairAgents(
     Promise.all(
       DEFINITIONS.map(async (definition): Promise<RepairAgentInfo> => {
         const command = await locate(definition.command);
+        if (stopping)
+          return (
+            cachedAgents.find((agent) => agent.id === definition.id) ?? {
+              id: definition.id,
+              label: definition.label,
+              available: false,
+              version: '',
+            }
+          );
         if (command) commands.set(definition.id, command);
         else commands.delete(definition.id);
         return {
@@ -745,9 +773,16 @@ export async function registerRepairAgents(
   // caller opening at once costs one scan. Opening the panel refreshes, so a
   // CLI installed after launch appears without restarting the app.
   const list = (refresh = false): Promise<RepairAgentInfo[]> => {
+    if (stopping) return Promise.resolve(cachedAgents);
     const now = Date.now();
     if (scan && now - scan.startedAt < (refresh ? 1_000 : AGENT_SCAN_TTL_MS)) return scan.agents;
-    const current = { startedAt: now, agents: rescan() };
+    const current = {
+      startedAt: now,
+      agents: rescan().then((agents) => {
+        if (!stopping) cachedAgents = agents;
+        return agents;
+      }),
+    };
     scan = current;
     current.agents.catch(() => {
       if (scan === current) scan = null;
@@ -766,11 +801,13 @@ export async function registerRepairAgents(
   ipcMain.handle(REPAIR_CHANNELS.chooseWorkspace, async (event) => {
     const owner = getMainWindow();
     trusted(event, owner);
+    assertActive();
     if (!owner) throw new Error('window_unavailable');
     const picked = await dialog.showOpenDialog(owner, {
       defaultPath: workspaceRoot ?? app.getPath('documents'),
       properties: ['openDirectory'],
     });
+    assertActive();
     if (picked.canceled || !picked.filePaths[0]) return state;
     const checkout = inspectSourceCheckout(picked.filePaths[0]);
     // A rejected pick keeps any previously attached checkout and says why.
@@ -783,6 +820,7 @@ export async function registerRepairAgents(
   const busy = () => Boolean(child || translationChild || preparing || translationLaunch);
   ipcMain.handle(REPAIR_CHANNELS.start, async (event, request: RepairAgentRunRequest) => {
     trusted(event, getMainWindow());
+    assertActive();
     if (busy())
       throw Object.assign(new Error('An agent is already running'), {
         name: 'AgentRateLimitError',
@@ -807,7 +845,7 @@ export async function registerRepairAgents(
     // while the CLI is still being located must prevent the spawn.
     const sessionId = randomUUID();
     preparing = true;
-    const cancelled = () => state.sessionId !== sessionId || state.status === 'stopped';
+    const cancelled = () => stopping || state.sessionId !== sessionId || state.status === 'stopped';
     state = {
       ...state,
       sessionId,
@@ -914,6 +952,7 @@ export async function registerRepairAgents(
   });
   ipcMain.handle(REPAIR_CHANNELS.stop, (event) => {
     trusted(event, getMainWindow());
+    if (stopping) return state;
     if ((!child && !preparing) || !state.sessionId) return state;
     const sessionId = state.sessionId;
     if (child) terminateAgentProcess(child);
@@ -930,6 +969,7 @@ export async function registerRepairAgents(
     model = '',
     timeoutMs = 10 * 60 * 1_000,
   ): Promise<DubAgentTranslationResult> => {
+    assertActive();
     validateDubTranslationRequest(request);
     if (busy())
       throw Object.assign(new Error('An agent is already running'), {
@@ -1088,13 +1128,36 @@ export async function registerRepairAgents(
   );
   ipcMain.handle(REPAIR_CHANNELS.stopTranslation, (event) => {
     trusted(event, getMainWindow());
+    if (stopping) return;
     if (translationLaunch) translationLaunch.cancelled = true;
     if (!translationChild) return;
     terminateAgentProcess(translationChild);
   });
 
-  return () => {
-    if (preparing) state = { ...state, status: 'stopped' };
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    stop();
+    closingRenderer?.removeListener('destroyed', dispose);
+    closingRenderer = null;
+    Object.values(REPAIR_CHANNELS)
+      .filter(
+        (channel) =>
+          channel !== REPAIR_CHANNELS.event && channel !== REPAIR_CHANNELS.translationEvent,
+      )
+      .forEach((channel) => ipcMain.removeHandler(channel));
+  };
+  const stop = () => {
+    if (stopping) return;
+    stopping = true;
+    if (!disposed) {
+      const renderer = getMainWindow()?.webContents;
+      if (renderer && !renderer.isDestroyed()) {
+        closingRenderer = renderer;
+        renderer.once('destroyed', dispose);
+      }
+    }
+    if (child || preparing) state = { ...state, status: 'stopped' };
     if (translationLaunch) translationLaunch.cancelled = true;
     llmBridge.close();
     delete process.env.VOICESTUDIO_LLM_AGENT_URL;
@@ -1103,17 +1166,14 @@ export async function registerRepairAgents(
     if (child) terminateAgentProcess(child);
     if (translationChild) terminateAgentProcess(translationChild);
     if (promptFile) rmSync(promptFile, { force: true });
+    promptFile = null;
     if (translationTemp) rmSync(translationTemp, { recursive: true, force: true });
     closeRepairBridge(apiBridge);
     apiBridge = null;
     child = null;
     translationChild = null;
     translationTemp = null;
-    Object.values(REPAIR_CHANNELS)
-      .filter(
-        (channel) =>
-          channel !== REPAIR_CHANNELS.event && channel !== REPAIR_CHANNELS.translationEvent,
-      )
-      .forEach((channel) => ipcMain.removeHandler(channel));
+    if (!disposed && !closingRenderer) dispose();
   };
+  return Object.assign(dispose, { stop, dispose });
 }

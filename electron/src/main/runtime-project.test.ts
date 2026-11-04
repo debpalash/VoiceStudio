@@ -266,6 +266,8 @@ describe('packaged runtime setup', () => {
         runtimePython(project),
         ['-c', RUNTIME_IMPORT_PROBE],
         project,
+        expect.objectContaining({ OMNIVOICE_TORCH_VARIANT: 'cuda' }),
+        undefined,
       );
       expect(await readFile(join(project, '.runtime-ready'), 'utf8')).not.toBe('');
     },
@@ -1335,6 +1337,7 @@ describe('regional PyPI mirror for the frozen sync (#3444)', () => {
       new AbortController().signal,
       undefined,
       'china',
+      undefined,
       {
         log,
       },
@@ -1386,6 +1389,7 @@ describe('regional PyPI mirror for the frozen sync (#3444)', () => {
         new AbortController().signal,
         undefined,
         'auto',
+        undefined,
         {
           log,
         },
@@ -1426,6 +1430,7 @@ describe('regional PyPI mirror for the frozen sync (#3444)', () => {
       new AbortController().signal,
       undefined,
       'china',
+      undefined,
       {
         log,
         pypiHost,
@@ -1541,6 +1546,7 @@ describe('multi-connection download of large locked wheels (#3411)', () => {
       new AbortController().signal,
       undefined,
       'global',
+      undefined,
       { transfer, log },
     );
     return { bundle, project, seen, planning, transfer, log };

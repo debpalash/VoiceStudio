@@ -17,6 +17,18 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { getBridge } from '@/components/bridge';
+import { RuntimeTorchSelect } from '@/components/runtime-torch-select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { useBackendStatus } from '@/hooks/use-backend-status';
+import type { RuntimeTorchPreference } from '../../../../preload/index.d';
 import { apiJson, describeError } from '@/lib/api/client';
 import { useAppActivities } from '@/lib/app-activity';
 import { relaxWhenBackendBusy } from '@/lib/status-polling';
@@ -132,6 +144,7 @@ export function PerformanceSettings() {
         })}
       </SettingsSection>
       <ComputeDevice />
+      <RuntimePackages />
       <GpuAcceleration />
       <CompileSetting />
       <MemoryManagement />
@@ -462,6 +475,132 @@ function ErrorRow({ retry }: { retry: () => void }) {
     </p>
   );
 }
+function RuntimePackages() {
+  const { t } = useTranslation();
+  const status = useBackendStatus();
+  const preference = status.runtimeTorchPreference ?? 'auto';
+  const [choice, setChoice] = useState<RuntimeTorchPreference>(preference);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const requestPending = useRef(false);
+  const entry = useRef<HTMLButtonElement>(null);
+  const disabled = pending || Boolean(status.runtimeTorchPinned) || !status.runtimeTorchSwitchable;
+
+  useEffect(() => {
+    if (!confirmOpen) setChoice(preference);
+  }, [preference, confirmOpen]);
+
+  const closeConfirmation = (open: boolean) => {
+    if (requestPending.current) return;
+    setConfirmOpen(open);
+    setFailed(false);
+    if (!open) {
+      setChoice(preference);
+      entry.current?.focus();
+    }
+  };
+
+  const beginSetup = async () => {
+    if (requestPending.current || disabled || !status.runtimeTorchSwitchable) return;
+    requestPending.current = true;
+    setPending(true);
+    setFailed(false);
+    try {
+      const backend = getBridge()?.backend;
+      if (!backend) throw new Error('Backend bridge unavailable');
+      await backend.beginRuntimeTorchSetup(choice);
+      setConfirmOpen(false);
+    } catch {
+      setFailed(true);
+    } finally {
+      requestPending.current = false;
+      setPending(false);
+    }
+  };
+
+  if (
+    (!status.runtimeTorchSwitchable && !status.runtimeTorchSetupPending) ||
+    status.stage !== 'ready' ||
+    status.remote ||
+    !status.managed
+  ) {
+    return null;
+  }
+
+  return (
+    <SettingsSection icon={CpuIcon} title={t('runtimeTorch.title')}>
+      <div className="space-y-3 p-4">
+        <p className="text-sm text-muted-foreground">{t('runtimeTorch.packagesEffect')}</p>
+        {status.runtimeTorchSetupPending && (
+          <p
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            className="text-sm text-muted-foreground"
+          >
+            {t('runtimeTorch.pending', { choice: t(`runtimeTorch.${preference}`) })}
+          </p>
+        )}
+        {status.runtimeTorchPinned && (
+          <p className="text-sm text-muted-foreground">{t('runtimeTorch.pinned')}</p>
+        )}
+        <Button
+          ref={entry}
+          variant="outline"
+          disabled={disabled}
+          onClick={() => closeConfirmation(true)}
+        >
+          {t('runtimeTorch.change')}
+        </Button>
+        <Dialog open={confirmOpen} onOpenChange={closeConfirmation}>
+          <DialogContent
+            showCloseButton={false}
+            finalFocus={entry}
+            className="max-h-[calc(100dvh-2rem)] overflow-y-auto"
+          >
+            <DialogHeader>
+              <DialogTitle>{t('runtimeTorch.change')}</DialogTitle>
+              <DialogDescription>
+                {t('runtimeTorch.confirmDescription')} {t('runtimeTorch.packagesEffect')}
+              </DialogDescription>
+            </DialogHeader>
+            <RuntimeTorchSelect
+              value={choice}
+              onChange={(value) => {
+                setChoice(value);
+                setFailed(false);
+              }}
+              disabled={disabled}
+              pinned={status.runtimeTorchPinned}
+              pending={pending}
+              error={failed}
+              notice={
+                pending
+                  ? t('runtimeTorch.preparing')
+                  : failed
+                    ? t('runtimeTorch.beginError')
+                    : undefined
+              }
+            />
+            <DialogFooter>
+              <Button variant="outline" disabled={pending} onClick={() => closeConfirmation(false)}>
+                {t('common.cancel')}
+              </Button>
+              <Button
+                disabled={disabled || choice === preference}
+                onClick={() => void beginSetup()}
+              >
+                {t('runtimeTorch.confirm')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </SettingsSection>
+  );
+}
+
 function ComputeDevice() {
   const { t } = useTranslation();
   const client = useQueryClient();

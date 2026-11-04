@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sys
 import types
+from importlib import metadata
 
 import pytest
 
@@ -29,6 +30,23 @@ _FP16_ERR = (
     "Requested float16 compute type, but the target device or backend do not "
     "support efficient float16 computation"
 )
+
+
+@pytest.fixture(autouse=True)
+def _nvidia_cuda_runtime(monkeypatch):
+    """Model NVIDIA metadata and cuDNN independently of the test host."""
+    installed_version = metadata.version
+
+    def cuda_version(package):
+        if package == "torch":
+            return "2.8.0+cu128"
+        return installed_version(package)
+
+    monkeypatch.setattr(metadata, "version", cuda_version)
+    monkeypatch.setattr(
+        "core.cudnn8.ctranslate2_cudnn_status",
+        lambda: (True, "simulated NVIDIA cuDNN"),
+    )
 
 
 def test_cuda_oom_falls_back_to_cpu(monkeypatch):

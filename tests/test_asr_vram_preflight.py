@@ -74,6 +74,7 @@ def test_env_opt_out(monkeypatch):
 def test_ensure_asr_applies_preflight_before_load(monkeypatch):
     import sys, types
 
+    monkeypatch.setattr("core.windows_rocm.pipelines.windows_hip_installed", lambda: False)
     calls = {}
 
     fake_whisperx = types.ModuleType("whisperx")

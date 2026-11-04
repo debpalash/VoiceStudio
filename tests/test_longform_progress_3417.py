@@ -12,7 +12,7 @@ Engine layer stubbed throughout — no model loads, no GPU, no ffmpeg.
 import asyncio
 import json
 import os
-import time
+from types import SimpleNamespace
 
 os.environ.setdefault("OMNIVOICE_MODEL", "test")
 os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
@@ -85,6 +85,28 @@ def test_textless_book_falls_back_to_chapter_count():
     assert p.fraction() == 0.5
     snap = p.snapshot()
     assert snap["fraction"] == 0.5 and snap["eta_s"] is None
+
+
+def test_zero_elapsed_time_advances_progress_without_inventing_a_rate():
+    clock = _Clock()
+    p = RenderProgress([1000], clock=clock)
+    p.start_chapter(0)
+    p.chunk(0, 100, 1000, audio_s=0.1)
+    assert p.fraction() == pytest.approx(0.1)
+    snap = p.snapshot()
+    assert snap["eta_s"] is None and snap["rtf"] is None and snap["chunk_s"] is None
+
+
+def test_subsecond_chunk_time_keeps_its_rate_and_positive_display_floor():
+    clock = _Clock()
+    p = RenderProgress([1000], clock=clock)
+    p.start_chapter(0)
+    clock.t = 0.02
+    p.chunk(0, 100, 1000, audio_s=0.1)
+    assert p.chunk_seconds() == pytest.approx(0.02)
+    assert p.realtime_factor() == pytest.approx(5.0)
+    assert p.eta_seconds() == pytest.approx(0.18)
+    assert p.snapshot()["chunk_s"] == 0.1
 
 
 # ── synthesize_chapter reports every chunk ──────────────────────────────────
@@ -165,9 +187,14 @@ def env(tmp_path, monkeypatch):
         return 0, b"", b""  # the render checks the exit code (#3017)
     monkeypatch.setattr(ffmpeg_utils, "run_ffmpeg", mux)
 
+    clock = _Clock()
+    tracker = audiobook.RenderProgress
+    monkeypatch.setattr(audiobook, "RenderProgress", lambda weights: tracker(weights, clock=clock))
+    monkeypatch.setattr(audiobook, "time", SimpleNamespace(monotonic=clock))
+
     def build_synth(default_voice=None, language=None, opts=None, voice_map=None, lease=None):
         def synth(text, voice_id, speed=None):
-            time.sleep(0.02)  # measurable wall time per chunk
+            clock.t += 1.0
             return torch.zeros(1, 2400)
         return {"mode": "generic", "engine_id": "stub", "synth": synth,
                 "sample_rate": 24000,
@@ -199,6 +226,7 @@ def test_render_streams_progress_with_eta_before_each_chapter_finishes(env):
     assert live, "no progress until the chapter finished (the #3417 freeze)"
     assert all(e["index"] == 0 and 0 < e["fraction"] <= 0.5 for e in live)
     assert any(e["eta_s"] is not None and e["rtf"] > 0 and e["chunk_s"] > 0 for e in live)
+    assert any(e["chunk_s"] == 1.0 and e["rtf"] == pytest.approx(0.1) for e in live)
     fractions = [e["fraction"] for e in events if e["type"] == "progress"]
     assert fractions == sorted(fractions) and fractions[-1] == 1.0
     assert events[-1]["type"] == "done"

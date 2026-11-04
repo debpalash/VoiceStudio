@@ -17,12 +17,13 @@ import {
   DownloadIcon,
   FolderOpenIcon,
 } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AgentFixButton } from '@/components/agent-fix-button';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { SetupDownloadNotice } from './setup-download-notice';
+import { RuntimeTorchSelect } from './runtime-torch-select';
 import {
   Select,
   SelectContent,
@@ -44,7 +45,7 @@ import { scrubText } from '@shared/utils/scrub';
 import i18n, { APP_LANGUAGE_ITEMS, APP_LANGUAGES, setAppLanguage, type AppLocale } from '@/i18n';
 import { brandIcon } from '@/lib/brand';
 import { cn } from '@/lib/utils';
-import type { RuntimeRegion } from '../../../preload/index.d';
+import type { RuntimeRegion, RuntimeTorchPreference } from '../../../preload/index.d';
 import { getBridge, isMac } from './bridge';
 import { ExternalLink } from './external-link';
 
@@ -95,6 +96,9 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
   const [restarting, setRestarting] = useState(false);
   const [choosingLocation, setChoosingLocation] = useState(false);
   const [choosingRegion, setChoosingRegion] = useState(false);
+  const [choosingTorch, setChoosingTorch] = useState(false);
+  const torchWritePending = useRef(false);
+  const [torchSaveState, setTorchSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
   const [cleanConfirmOpen, setCleanConfirmOpen] = useState(false);
   const setup = status.stage === 'setup_required';
@@ -193,6 +197,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
   };
 
   const runSetup = async (clean = false) => {
+    if (torchWritePending.current) return;
     setRestarting(true);
     try {
       if (clean) await getBridge()?.backend.cleanSetupRuntime();
@@ -201,6 +206,33 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
       /* Main publishes setup failure and logs. */
     } finally {
       setRestarting(false);
+    }
+  };
+
+  const chooseTorch = async (preference: RuntimeTorchPreference) => {
+    if (
+      torchWritePending.current ||
+      restarting ||
+      choosingLocation ||
+      choosingRegion ||
+      status.runtimeTorchPinned ||
+      preference === (status.runtimeTorchPreference ?? 'auto')
+    ) {
+      return;
+    }
+    torchWritePending.current = true;
+    setChoosingTorch(true);
+    setTorchSaveState('idle');
+    try {
+      const backend = getBridge()?.backend;
+      if (!backend) throw new Error('Backend bridge unavailable');
+      await backend.setRuntimeTorchPreference(preference);
+      setTorchSaveState('saved');
+    } catch {
+      setTorchSaveState('error');
+    } finally {
+      torchWritePending.current = false;
+      setChoosingTorch(false);
     }
   };
 
@@ -349,7 +381,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                   <Select
                     items={regionItems}
                     value={status.runtimeRegion || 'auto'}
-                    disabled={choosingRegion || restarting}
+                    disabled={choosingRegion || restarting || choosingTorch}
                     onValueChange={async (value) => {
                       setChoosingRegion(true);
                       try {
@@ -375,6 +407,26 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                   </Select>
                 </label>
               </div>
+              {status.runtimeTorchSupported && !unsupportedPlatform && !wrongArchitecture && (
+                <RuntimeTorchSelect
+                  value={status.runtimeTorchPreference ?? 'auto'}
+                  onChange={(preference) => void chooseTorch(preference)}
+                  disabled={restarting || choosingLocation || choosingRegion}
+                  pinned={status.runtimeTorchPinned}
+                  pending={choosingTorch}
+                  autoFocus={reachedReady}
+                  error={torchSaveState === 'error'}
+                  notice={
+                    choosingTorch
+                      ? t('runtimeTorch.saving')
+                      : torchSaveState === 'error'
+                        ? t('runtimeTorch.saveError')
+                        : torchSaveState === 'saved'
+                          ? t('runtimeTorch.saved')
+                          : undefined
+                  }
+                />
+              )}
               {status.runtimePath && (
                 <div className="w-full rounded-xl border border-border/60 bg-muted/20 p-3 text-left">
                   <div className="flex items-start gap-3">
@@ -432,7 +484,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                       <Button
                         size="sm"
                         variant="ghost"
-                        disabled={choosingLocation || restarting}
+                        disabled={choosingLocation || restarting || choosingTorch}
                         onClick={() => {
                           void getBridge()
                             ?.backend.useDefaultRuntimeLocation()
@@ -447,7 +499,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={choosingLocation || restarting}
+                      disabled={choosingLocation || restarting || choosingTorch}
                       onClick={async () => {
                         setChoosingLocation(true);
                         try {
@@ -472,7 +524,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
               {!unsupportedPlatform && !wrongArchitecture && (
                 <Button
                   className="h-auto min-h-8 max-w-full whitespace-normal py-1.5 text-center"
-                  disabled={restarting || choosingLocation}
+                  disabled={restarting || choosingLocation || choosingTorch}
                   onClick={() => void runSetup()}
                 >
                   {status.runtimeInterrupted
@@ -486,7 +538,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                 <Button
                   variant="outline"
                   className="h-auto min-h-8 max-w-full whitespace-normal py-1.5 text-center"
-                  disabled={restarting || choosingLocation}
+                  disabled={restarting || choosingLocation || choosingTorch}
                   onClick={() => setCleanConfirmOpen(true)}
                 >
                   <RotateCcwIcon data-icon="inline-start" />

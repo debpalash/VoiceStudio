@@ -9,6 +9,7 @@ any encode, and classify a decode/ffmpeg failure as unreadable-audio (not OOM).
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 import torch
@@ -22,11 +23,11 @@ from api.routers.generation import (  # noqa: E402
 )
 
 
-def _missing_media_process_error() -> FileNotFoundError:
+def _missing_media_process_error(tmp_path: Path) -> FileNotFoundError:
     """Capture a real process-launch ENOENT so traceback origin is preserved."""
-    env = {**os.environ, "PATH": os.path.join(os.path.dirname(__file__), "missing-bin")}
+    executable = tmp_path / "missing-bin" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
     try:
-        subprocess.run(["ffmpeg"], check=False, env=env)
+        subprocess.run([str(executable)], check=False)
     except FileNotFoundError as exc:
         return exc
     raise AssertionError("missing ffmpeg unexpectedly launched")
@@ -120,9 +121,9 @@ def test_unknown_error_is_not_labelled_oom():
     assert "Try the Flush button" not in msg
 
 
-def test_bare_windows_missing_process_error_is_actionable():
+def test_bare_windows_missing_process_error_is_actionable(tmp_path):
     """CreateProcess omits the executable name from WinError 2 on Windows."""
-    err = _missing_media_process_error()
+    err = _missing_media_process_error(tmp_path)
     err.filename = None
     err.strerror = "[WinError 2] The system cannot find the file specified"
     with pytest.raises(RuntimeError) as ei:
@@ -133,9 +134,9 @@ def test_bare_windows_missing_process_error_is_actionable():
     assert "required media program" in msg
 
 
-def test_posix_missing_media_process_error_is_actionable():
+def test_posix_missing_media_process_error_is_actionable(tmp_path):
     """Equivalent missing-tool failures receive the same guidance on POSIX."""
-    err = _missing_media_process_error()
+    err = _missing_media_process_error(tmp_path)
     with pytest.raises(RuntimeError) as ei:
         _oom_friendly_reraise(err)
     msg = str(ei.value)

@@ -24,6 +24,7 @@ import importlib
 import importlib.util
 import os
 import sys
+from importlib import metadata
 
 import pytest
 
@@ -65,12 +66,23 @@ def cudnn8_missing(monkeypatch, cudnn8):
 
 
 @pytest.fixture
-def ctranslate2_importable(monkeypatch):
+def ctranslate2_importable(monkeypatch, ab):
     """Make ``import whisperx`` / ``import faster_whisper`` succeed regardless of
     what is installed, so these tests exercise the cuDNN gate rather than the
-    host's package set."""
+    host's package set. Its metadata models a non-HIP CUDA installation."""
+    installed_version = metadata.version
+
+    def cuda_version(package):
+        if package == "torch":
+            return "2.8.0+cu128"
+        return installed_version(package)
+
+    monkeypatch.setattr(metadata, "version", cuda_version)
+    monkeypatch.setattr(ab, "_rocm_torch", lambda: False)
     for name in ("whisperx", "faster_whisper"):
-        monkeypatch.setitem(sys.modules, name, type(sys)(name))
+        module = type(sys)(name)
+        module.__spec__ = importlib.util.spec_from_loader(name, loader=None)
+        monkeypatch.setitem(sys.modules, name, module)
 
 
 # ── the probe ──────────────────────────────────────────────────────────────

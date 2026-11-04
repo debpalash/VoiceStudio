@@ -96,8 +96,8 @@ def test_head_file_inventory_excludes_gitlinks_and_uncommitted_files(tmp_path, m
     git("init", "-q")
     git("config", "user.name", "Audit Test")
     git("config", "user.email", "audit@example.com")
-    unusual = "tab\tand\nnewline.py"
-    (tmp_path / unusual).write_text("retained source\n")
+    retained = "retained source.py"
+    (tmp_path / retained).write_text("retained source\n")
     (tmp_path / "sample.wav").write_bytes(b"audio")
     git("add", ".")
     git("commit", "-qm", "source")
@@ -106,7 +106,28 @@ def test_head_file_inventory_excludes_gitlinks_and_uncommitted_files(tmp_path, m
     git("commit", "-qm", "submodule")
     (tmp_path / "staged.py").write_text("not in HEAD\n")
     git("add", "staged.py")
-    git("rm", "--cached", "--", unusual)
+    (tmp_path / "untracked.py").write_text("not tracked\n")
+    git("rm", "--cached", "--", retained)
+    (tmp_path / retained).write_text("modified working tree\nextra line\n")
     monkeypatch.setattr(audit, "REPO", tmp_path)
+    assert audit.tracked_text_files() == [retained]
+    assert audit.blame(retained) == collections.Counter({
+        ("audit@example.com", "Audit Test", source, retained): 1,
+    })
+
+
+def test_head_file_inventory_preserves_nul_delimited_unusual_paths(monkeypatch):
+    unusual = "tab\tand\nnewline.py"
+    object_id = "a" * 40
+    tree = (
+        f"100644 blob {object_id}\t{unusual}\0"
+        f"160000 commit {object_id}\tsubmodule\0"
+        f"100644 blob {object_id}\tsample.wav\0"
+    )
+
+    def git(*args):
+        assert args == ("ls-tree", "-r", "-z", "HEAD")
+        return tree
+
+    monkeypatch.setattr(audit, "git", git)
     assert audit.tracked_text_files() == [unusual]
-    assert sum(audit.blame(unusual).values()) == 1

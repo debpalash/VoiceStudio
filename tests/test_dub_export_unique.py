@@ -91,7 +91,6 @@ def _fake_ffmpeg_factory(write_file: bool = True):
     """Return an async callable that mimics the ffmpeg invocation."""
     async def _runner(*cmd, **_):
         if write_file:
-            # Positional cmd ends with "<output>" "-y" — scan for an abs path arg.
             out = None
             for arg in reversed(cmd):
                 if isinstance(arg, str) and Path(arg).is_absolute() and "." in Path(arg).name:
@@ -105,6 +104,30 @@ def _fake_ffmpeg_factory(write_file: bool = True):
 
 
 _SUBPROC_ATTR = "create_subprocess_" + "exec"  # dodge overzealous code-scan hooks
+
+
+@pytest.mark.parametrize("trailing_overwrite_flag", [False, True])
+@pytest.mark.parametrize("write_file", [False, True])
+def test_fake_ffmpeg_writes_only_requested_output(tmp_path, trailing_overwrite_flag, write_file):
+    input_file = tmp_path / "source.wav"
+    input_file.write_bytes(b"unchanged input")
+    output = tmp_path / "export output" / "dubbed.mp4"
+    command = ["ffmpeg", "-i", str(input_file), str(output)]
+    if trailing_overwrite_flag:
+        command.append("-y")
+    else:
+        command.insert(1, "-y")
+
+    process = _asyncio.run(_fake_ffmpeg_factory(write_file)(*command))
+
+    assert process.returncode == 0
+    assert input_file.read_bytes() == b"unchanged input"
+    if write_file:
+        assert output.is_file()
+        assert output.stat().st_size > 0
+        assert list(output.parent.iterdir()) == [output]
+    else:
+        assert not output.exists()
 
 
 class TestDubExportUniqueness:
@@ -460,8 +483,8 @@ class TestAudioOnlyDubbing:
             files={"video": ("clip.mp4", b"\x00" * 16, "video/mp4")},
             data={"input_type": "audio"},
         )
-        assert r.status_code == 400
-        assert "audio file" in r.json()["detail"].lower()
+        assert r.status_code == 415
+        assert r.json()["detail"].startswith("Unsupported audio file type")
 
     def test_ingest_requests_reject_unregistered_source_languages(self, app_client):
         client, _dc, _dx, _tmp = app_client
