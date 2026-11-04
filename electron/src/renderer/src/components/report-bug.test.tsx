@@ -10,9 +10,10 @@ vi.mock('@/hooks/use-backend-status', () => ({
       'x'.repeat(2000),
       'RuntimeError: wrapper',
     ],
+    failure: mock.snapshotFailure,
   }),
 }));
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { addBreadcrumb, clearBreadcrumbs } from '@shared/utils/breadcrumbs';
 import {
@@ -20,6 +21,8 @@ import {
   recordBackendContact,
 } from '@shared/utils/backendContact';
 const mock = vi.hoisted(() => ({
+  saveData: vi.fn(),
+  snapshotFailure: undefined as { code: string; stage: string } | undefined,
   crashed: false,
   native: true,
   api: vi.fn(),
@@ -34,7 +37,7 @@ vi.mock('./bridge', () => ({
   getBridge: () =>
     mock.native
       ? {
-          files: { openExternal: mock.open },
+          files: { openExternal: mock.open, saveData: mock.saveData },
           updates: { getState: mock.updateState },
           backend: {
             getStatus: mock.backendStatus,
@@ -49,6 +52,8 @@ vi.mock('@/router', () => ({ router: { navigate: mock.navigate } }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 import { ReportBug } from './report-bug';
 beforeEach(() => {
+  mock.snapshotFailure = undefined;
+  mock.saveData.mockReset();
   clearBreadcrumbs();
   _resetBackendContactForTests();
   mock.updateState.mockResolvedValue({
@@ -467,4 +472,67 @@ it('survives a lone surrogate in the description', async () => {
   render(<ReportBug />);
   await submitReport('broken \ud83d text');
   await waitFor(() => expect(mock.open).toHaveBeenCalledTimes(1));
+});
+
+it('titles a coded failure by code and leads the report with its facts', async () => {
+  mock.api.mockRejectedValue(new Error('offline'));
+  mock.backendStatus.mockResolvedValue({
+    stage: 'failed',
+    managed: true,
+    message: 'Could not start python.exe: spawn UNKNOWN',
+    logTail: Array(40).fill('spawn UNKNOWN'),
+    failure: {
+      code: 'EXEC_REFUSED',
+      stage: 'failed',
+      program: 'python.exe',
+      programLocation: 'runtime',
+      smartAppControl: 'off',
+      signature: 'NotSigned',
+    },
+  });
+  render(<ReportBug />);
+  await submitReport('spawn UNKNOWN');
+  await waitFor(() => expect(mock.open).toHaveBeenCalledTimes(1));
+  const url = new URL(mock.open.mock.calls[0]![0]);
+  const body = url.searchParams.get('body')!;
+  expect(url.searchParams.get('title')).toBe('[Install] EXEC_REFUSED: spawn UNKNOWN');
+  expect(url.searchParams.get('labels')).toBe('bug,install');
+  expect(body).toContain('<!-- vs-failure:EXEC_REFUSED:1 -->');
+  expect(body).toContain('- Program: python.exe (runtime)');
+  expect(body).toContain('- Smart App Control: off');
+  expect(body.indexOf('## Install failure')).toBeLessThan(body.indexOf('## Environment'));
+  expect(body).toContain('spawn UNKNOWN (×40)');
+});
+
+it('shows a failed diagnostics save inside the report dialog', async () => {
+  mock.api.mockRejectedValue(new Error('offline'));
+  mock.snapshotFailure = { code: 'EXEC_REFUSED', stage: 'failed' };
+  render(<ReportBug />);
+  fireEvent.click(screen.getByRole('button', { name: 'reportBug.label' }));
+  mock.saveData.mockRejectedValue(new Error('disk full'));
+  fireEvent.click(await screen.findByRole('button', { name: 'reportBug.save_diagnostics' }));
+  expect((await within(screen.getByRole('dialog')).findByRole('alert')).textContent).toBe(
+    'reportBug.save_diagnostics_failed',
+  );
+});
+
+it('saves diagnostics once when the button is clicked twice', async () => {
+  mock.api.mockRejectedValue(new Error('offline'));
+  mock.snapshotFailure = { code: 'EXEC_REFUSED', stage: 'failed' };
+  let finish = () => {};
+  mock.saveData.mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render(<ReportBug />);
+  fireEvent.click(screen.getByRole('button', { name: 'reportBug.label' }));
+  const save = await screen.findByRole('button', { name: 'reportBug.save_diagnostics' });
+  fireEvent.click(save);
+  await waitFor(() => expect(mock.saveData).toHaveBeenCalledTimes(1));
+  fireEvent.click(save);
+  finish();
+  await waitFor(() => expect((save as HTMLButtonElement).disabled).toBe(false));
+  expect(mock.saveData).toHaveBeenCalledTimes(1);
 });

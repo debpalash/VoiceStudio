@@ -558,9 +558,9 @@ jobs:
       - name: Install Electron deps
         run: bun install --frozen-lockfile
 
-      - name: Development launcher tests
+      - name: Development launcher and install doctor tests
         working-directory: electron
-        run: bunx --no-install vp test --run src/main/dev-bundle.test.ts src/main/dev-instance.test.ts
+        run: bunx --no-install vp test --run src/main/dev-bundle.test.ts src/main/dev-instance.test.ts src/main/install-doctor.test.ts
 
       - name: Build Electron app
         run: bun run --cwd electron build

@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 const state = vi.hoisted(() => ({
   installed: true,
   packaged: false,
@@ -478,4 +479,39 @@ it('names Smart App Control when it refused a runtime DLL, and other blockers ot
   expect(loadBlockMessage('exit code 1', '', 'antivirus')).toBe(
     "Backend exited (exit code 1): Windows refused to load one of the engine's files. Your antivirus blocked it.",
   );
+});
+
+it('reports a failed launch as the managed runtime, with a failure record', async () => {
+  const { BackendSupervisor } = await import('./backend');
+  const supervisor = new BackendSupervisor();
+  const internals = supervisor as unknown as {
+    generation: number;
+    spawnChild(plan: { argv: string[]; cwd: string }, generation: number): void;
+  };
+  const program = join(tmpdir(), 'voicestudio-no-such-dir', 'python');
+
+  internals.spawnChild({ argv: [program], cwd: tmpdir() }, internals.generation);
+
+  await vi.waitFor(() => expect(supervisor.status.stage).toBe('failed'));
+  expect(supervisor.status.managed).toBe(true);
+  expect(supervisor.status.failure).toMatchObject({
+    stage: 'failed',
+    program: 'python',
+    errorCode: 'ENOENT',
+  });
+});
+
+it('codes a refusal at once and forgets the failure when the next attempt starts', async () => {
+  const { BackendSupervisor } = await import('./backend');
+  const supervisor = new BackendSupervisor();
+  const internals = supervisor as unknown as {
+    setStage(stage: string, patch: { message?: string; managed?: boolean }): void;
+  };
+
+  internals.setStage('failed', { message: 'Could not start C:\\rt\\python.exe: spawn UNKNOWN' });
+  expect(supervisor.status.failure?.program).toBe('python.exe');
+  expect(supervisor.status.failure?.code).toMatch(/EXEC_REFUSED|WINDOWS_APP_CONTROL_BLOCKED/);
+
+  internals.setStage('attaching', { message: undefined });
+  expect(supervisor.status.failure).toBeUndefined();
 });

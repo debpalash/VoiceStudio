@@ -18,6 +18,8 @@ function fitEncoded(text, maxEncoded) {
 
 export function composeBugReportUrl({
   title = '[Bug] ',
+  labels = 'bug',
+  factsSection = [],
   error,
   ctx = '',
   crashSection = [],
@@ -76,6 +78,8 @@ export function composeBugReportUrl({
     '',
     '<!-- e.g. "Synthesize failed in Design mode after picking Narrator personality" -->',
     '',
+    // Ahead of everything fitEncoded may cut; the logs are what get truncated.
+    ...factsSection,
     ...errorSection,
     '## Environment',
     '',
@@ -92,7 +96,7 @@ export function composeBugReportUrl({
   ].join('\n');
   body = fitEncoded(scrubText(body), MAX_ENCODED_BODY);
 
-  return `${ISSUES_URL}?title=${encodeURIComponent(title)}&labels=${encodeURIComponent('bug')}&body=${encodeURIComponent(body)}`;
+  return `${ISSUES_URL}?title=${encodeURIComponent(title)}&labels=${encodeURIComponent(labels)}&body=${encodeURIComponent(body)}`;
 }
 
 export function buildIssueSearchUrl(error) {

@@ -48,6 +48,104 @@ Before digging through the entries below, let the app diagnose itself:
   the engine. Subprocess engines report memory visibility as false because
   their accelerator allocations belong to the child process.
 
+## Install failure codes
+
+On Windows, the setup screen warns before the download if Smart App Control is on, and setup runs the pinned Python once before downloading packages, so a blocked machine finds out early. If you opt in to anonymous stats, which is off unless you say yes, setup sends the code and setup stage with the app version, platform and install channel. File names, antivirus names and logs are never part of it.
+
+Install and startup failures show a code on the failure screen and in the in-app report. Reports include the facts behind the code, and you review them on GitHub before submitting. Nothing is sent otherwise. A failure with no code means VoiceStudio has no evidence for a specific cause yet; the report still has the raw message.
+
+### `WINDOWS_APP_CONTROL_BLOCKED`
+
+Windows Smart App Control, WDAC or AppLocker refused to run the engine or load one of its files. Antivirus exclusions cannot help. With Smart App Control, either turn it off (Windows Security → App & browser control → Smart App Control settings), connect VoiceStudio to an engine on another computer, or run the engine in WSL or [Docker](docker.md). On a work PC, ask IT to allow the runtime folder.
+
+### `ANTIVIRUS_BLOCKED`
+
+Your antivirus quarantined or refused an engine file. Restore the file, add the runtime folder to its exclusions, then retry.
+
+### `EXEC_REFUSED`
+
+The OS refused to run the engine and left no evidence of what refused it. Add the runtime folder to your security software's exclusions, make sure it is not in a cloud-synced folder, then retry. If it persists, send the in-app report: it records the program, its signature and any blocks Windows logged.
+
+### `GATEKEEPER_QUARANTINE`
+
+macOS quarantined the engine. See [Gatekeeper quarantine](macos.md#gatekeeper-quarantine).
+
+### `EXEC_NOEXEC_MOUNT`
+
+The runtime folder is on a drive mounted with `noexec`. Choose a folder on another drive, or remount without `noexec`.
+
+### `RUNTIME_DOWNLOAD_STALLED`
+
+A runtime download received no data for a long time. Retry keeps finished packages and resumes large multi-connection downloads, but other partial downloads start again. Try another network, turn off your VPN or choose another download region.
+
+### `RUNTIME_DOWNLOAD_INTERRUPTED`
+
+The connection dropped during a runtime download, as in `peer closed connection without sending TLS close_notify`. Retry keeps finished packages and resumes large multi-connection downloads, but other partial downloads start again. The same advice as `RUNTIME_DOWNLOAD_STALLED` applies if it repeats.
+
+### `DISK_FULL`
+
+The drive holding the runtime is full. Free space or choose another folder, then retry.
+
+### `RUNTIME_FOLDER_DENIED`
+
+VoiceStudio cannot write to the runtime folder. Choose another folder, or fix the folder's permissions.
+
+### `RUNTIME_FILES_LOCKED`
+
+Another program has runtime files open, usually a second VoiceStudio or a security scan. Close it, wait for the scan to finish, then retry.
+
+### `RUNTIME_IN_SYNCED_FOLDER`
+
+The runtime is inside OneDrive, Dropbox, iCloud Drive, Google Drive or Nextcloud, whose placeholders and locks break it. Move it to a plain local folder.
+
+### `SYSTEM_LIBRARY_PROBLEM`
+
+A system library the engine needs is missing or too old. The setup screen names it; see the [Linux guide](linux.md).
+
+### `UNSUPPORTED_PLATFORM`
+
+This computer cannot run the local engine, or this is the wrong download for it. See the [macOS guide](macos.md), or connect to an engine on another computer.
+
+### `SOURCE_ENV_INCOMPLETE`
+
+This source checkout's `.venv` is missing or incomplete. Run `bun run setup:api` in the checkout, let it finish, then press Retry.
+
+### `BROKEN_VENV`
+
+The managed Python environment is damaged and automatic repair did not fix it. Use **Clean & Retry** on the setup screen.
+
+### `NATIVE_ACCESS_VIOLATION`
+
+The engine crashed below Python (`0xC0000005` or `SIGSEGV`). Update your GPU driver and try CPU mode. Send the in-app report if it persists.
+
+### `NATIVE_ILLEGAL_INSTRUCTION`
+
+The engine hit an instruction this computer could not run (`0xC000001D` or `SIGILL`). The processor may lack a feature its libraries need. Send the in-app report with your processor model.
+
+### `NATIVE_CRASH`
+
+The engine crashed below Python with another native fault. Send the in-app report: it carries the exit code.
+
+### `STARTUP_TIMEOUT_SILENT`
+
+The engine printed nothing before the startup budget ran out, usually a slow disk or a security scan of new files. Retry, exclude the runtime folder from real-time scanning, or raise `OMNIVOICE_STARTUP_BUDGET_S`.
+
+### `STARTUP_TIMEOUT_OUTPUT`
+
+The engine was still loading when the startup budget ran out. Close memory-heavy apps and retry. Later starts are much faster.
+
+### `BACKEND_STARTUP_FAILED`
+
+The engine stopped at a named startup step. The message says which; send the in-app report if it is not something you can change.
+
+### `PORT_IN_USE`
+
+Another program holds the engine's port. See [Backend cannot bind its local port](#backend-cannot-bind-its-local-port).
+
+### `ROCM_NOT_CONFIGURED`
+
+An AMD GPU needs ROCm, which is missing or incomplete. See [Windows ROCm](windows-rocm.md) or the [Linux guide](linux.md).
+
 ## Backend cannot bind its local port
 
 Windows can reserve port ranges even when no process is listening. If the OS
@@ -1427,9 +1525,9 @@ block one even when the app itself is trusted (#3209, #1779). Smart App Control
 has no per-app exceptions. Your options:
 
 - **Turn Smart App Control off** in Windows Security → App & browser control →
-  Smart App Control settings, then restart VoiceStudio. This is a one-way
-  switch: Windows cannot turn Smart App Control back on without a reset or
-  reinstall of Windows.
+  Smart App Control settings, then restart VoiceStudio. Current Windows
+  updates can turn it back on from the same page; older Windows versions may
+  need a reset to re-enable it.
 - **Keep it on and run the engine where it does not apply:** a WSL2 Linux distro
   or [Docker](docker.md) on the same PC (both run Linux binaries, which Smart App
   Control does not check), or another computer, then connect to it in
@@ -1575,7 +1673,7 @@ reconnecting automatically; the workspace stays usable.
   Microsoft → Windows → CodeIntegrity → Operational shows event 3077 for it.
   Unlike antivirus it has **no per-app exceptions**, so an exclusion cannot help.
   Either turn it off (Windows Security → App & browser control → Smart App
-  Control settings; Windows cannot turn it back on without a reset) or connect
+  Control settings) or connect
   VoiceStudio to an engine running on another computer. The app says this only
   when it reads Smart App Control as on or in evaluation
   (`VerifiedAndReputablePolicyState` 1 or 2 under

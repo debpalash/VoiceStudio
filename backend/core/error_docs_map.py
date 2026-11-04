@@ -48,6 +48,27 @@ ERROR_DOCS: dict[str, str] = {
     # token-missing-or-invalid case pointing at the token-setup doc).
     "PYANNOTE_LICENSE_REQUIRED":   f"{_BASE}/docs/features/diarization.md#license-acceptance-flow",
     "POCKETTTS_GATED_WEIGHTS":     f"{_BASE}/docs/install/troubleshooting.md#pockettts-gated-weights",
+    # Install failure codes, classified by Electron main before Python can run.
+    "ANTIVIRUS_BLOCKED": f"{_BASE}/docs/install/troubleshooting.md#antivirus_blocked",
+    "EXEC_REFUSED": f"{_BASE}/docs/install/troubleshooting.md#exec_refused",
+    "EXEC_NOEXEC_MOUNT": f"{_BASE}/docs/install/troubleshooting.md#exec_noexec_mount",
+    "RUNTIME_DOWNLOAD_STALLED": f"{_BASE}/docs/install/troubleshooting.md#runtime_download_stalled",
+    "RUNTIME_DOWNLOAD_INTERRUPTED": f"{_BASE}/docs/install/troubleshooting.md#runtime_download_interrupted",
+    "RUNTIME_FOLDER_DENIED": f"{_BASE}/docs/install/troubleshooting.md#runtime_folder_denied",
+    "RUNTIME_FILES_LOCKED": f"{_BASE}/docs/install/troubleshooting.md#runtime_files_locked",
+    "RUNTIME_IN_SYNCED_FOLDER": f"{_BASE}/docs/install/troubleshooting.md#runtime_in_synced_folder",
+    "SYSTEM_LIBRARY_PROBLEM": f"{_BASE}/docs/install/troubleshooting.md#system_library_problem",
+    "UNSUPPORTED_PLATFORM": f"{_BASE}/docs/install/troubleshooting.md#unsupported_platform",
+    "SOURCE_ENV_INCOMPLETE": f"{_BASE}/docs/install/troubleshooting.md#source_env_incomplete",
+    "BROKEN_VENV": f"{_BASE}/docs/install/troubleshooting.md#broken_venv",
+    "NATIVE_ACCESS_VIOLATION": f"{_BASE}/docs/install/troubleshooting.md#native_access_violation",
+    "NATIVE_ILLEGAL_INSTRUCTION": f"{_BASE}/docs/install/troubleshooting.md#native_illegal_instruction",
+    "NATIVE_CRASH": f"{_BASE}/docs/install/troubleshooting.md#native_crash",
+    "STARTUP_TIMEOUT_SILENT": f"{_BASE}/docs/install/troubleshooting.md#startup_timeout_silent",
+    "STARTUP_TIMEOUT_OUTPUT": f"{_BASE}/docs/install/troubleshooting.md#startup_timeout_output",
+    "BACKEND_STARTUP_FAILED": f"{_BASE}/docs/install/troubleshooting.md#backend_startup_failed",
+    "PORT_IN_USE": f"{_BASE}/docs/install/troubleshooting.md#port_in_use",
+    "ROCM_NOT_CONFIGURED": f"{_BASE}/docs/install/troubleshooting.md#rocm_not_configured",
 }
 
 DEFAULT_DOCS: str = f"{_BASE}/docs/install/troubleshooting.md"
