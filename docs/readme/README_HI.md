@@ -4,8 +4,7 @@
     <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="ट्रेंडशिफ्ट बैज दिखाता है कि वॉयसस्टूडियो ट्रेंडिंग रिपॉजिटरी में कहां रैंक करता है" width="220" height="48" /></a>
   </p>
   <p>
-    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">GitHub पर 100,000 स्टार — आपका धन्यवाद!</a></strong><br />
-    <sub>वॉयसस्टूडियो का उपयोग करने, इसे साझा करने, बग की रिपोर्ट करने, कोड का योगदान करने और प्रोजेक्ट का समर्थन करने के लिए धन्यवाद।</sub>
+    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">GitHub पर 100,000 स्टार — आपका धन्यवाद!</a></strong>
   </p>
   <p><strong>एआई वॉइस स्टूडियो। आपके डिवाइस पर।</strong><br />
   646 भाषाओं में आवाज़ क्लोन और डिज़ाइन करें, डबिंग करें, बोलकर लिखें, ऑडियो को टेक्स्ट में बदलें और कथावाचन करें।<br />

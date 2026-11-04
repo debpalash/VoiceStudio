@@ -4,8 +4,7 @@
     <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="VoiceStudio 在 Trendshift 上的熱度排名徽章" width="220" height="48" /></a>
   </p>
   <p>
-    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">GitHub Star 突破 10 萬，感謝大家！</a></strong><br />
-    <sub>感謝大家使用和分享 VoiceStudio、反饋問題、貢獻程式碼，以及一直以來對專案的支援。</sub>
+    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">GitHub Star 突破 10 萬，感謝大家！</a></strong>
   </p>
   <p><strong>AI 語音工作室，就在你的裝置上。</strong><br />
   支援 646 種語言的聲音克隆、聲音設計、配音、聽寫、轉錄與有聲朗讀。<br />

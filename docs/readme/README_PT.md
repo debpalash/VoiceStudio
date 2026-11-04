@@ -4,8 +4,7 @@
     <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="Selo Trendshift mostrando onde o VoiceStudio se classifica entre os repositórios de tendências" width="220" height="48" /></a>
   </p>
   <p>
-    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100 mil estrelas no GitHub — muito obrigado!</a></strong><br />
-    <sub>Obrigado por usar o VoiceStudio, compartilhá-lo, relatar bugs, contribuir com código e apoiar o projeto.</sub>
+    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100 mil estrelas no GitHub — muito obrigado!</a></strong>
   </p>
   <p><strong>Estúdio de voz com IA. No seu dispositivo.</strong><br />
   Clone e crie vozes, faça dublagens, dite, transcreva e narre em 646 idiomas.<br />
