@@ -15,6 +15,7 @@ the frozen-backend fallback mirror it for their toolchains.
 - The backend is only announced ready once it can actually serve, and crash-loop restarts now pace themselves
 
 ### Changed
+- Opt-in analytics now also reports to Supermetry. Nothing changes for anyone who has not said yes: it sends the same allowlisted, content-free events under the same consent, from the backend rather than a script in the app window.
 - The backend binds its port immediately and reports startup progress live — `/health` answers 503-with-step and a new `/startup/progress` endpoint lists every step while PyTorch, API routes, and database migrations load in the background, so "starting at step X" is never mistakable for "dead"; the desktop splash narrates each step (#1550)
 
 ### Added

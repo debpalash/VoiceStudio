@@ -391,6 +391,18 @@ def _no_real_endpoint_probes():
         pass
 
 
+# Any test that opts in and captures would otherwise post to the real Supermetry
+# site. Tests of the sender patch over this (their patch is applied later, so it
+# wins). An isolated MonkeyPatch for the reason given in the fixture above.
+@pytest.fixture(autouse=True)
+def _no_real_supermetry_events():
+    from core import analytics as _analytics
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(_analytics, "_send_supermetry", lambda payload: None)
+        yield
+
+
 @pytest.fixture(autouse=True)
 def _isolate_llm_provider_state():
     """Snapshot/restore the three global LLM-provider state surfaces per test."""

@@ -32,7 +32,11 @@ from __future__ import annotations
 
 import atexit
 import logging
+import json
 import os
+import threading
+import time
+import urllib.request
 import uuid
 from typing import Any, Optional
 
@@ -56,6 +60,17 @@ _OFF_VALUES = {"1", "true", "yes", "on"}
 #: `phc_` literal in exactly this file and frontend/src/utils/analytics.ts.
 _PUBLIC_PROJECT_TOKEN = "phc_v5wMjnYMPMaEcRNLRKQsTYCzPaYWh7wcHPhXNkNajVf9"  # gitleaks:allow — publishable write-only key (#1193)
 _DEFAULT_HOST = "https://eu.i.posthog.com"
+
+#: Supermetry receives the same consented, allowlisted events as PostHog, posted
+#: from this process. Its browser script is deliberately not used: a remote script
+#: in the app window could read the DOM (the user's text, voice and file names)
+#: and reach the Tauri IPC. The site ID is public, not a secret. An event URL's
+#: host must be an allowed host of the site; a desktop app has no address of its
+#: own, so every event carries this fixed one and never a real page or hostname.
+_SUPERMETRY_ENDPOINT = "https://app.supermetry.com/api/public/v1/events"
+_SUPERMETRY_SITE = "b6dmmlkehv7t"
+_SUPERMETRY_APP_URL = "https://app.voicestudio.sh/"
+_SUPERMETRY_TIMEOUT_SECONDS = 5
 
 #: The ONLY property keys that may leave this machine. Anything else is dropped.
 #: Deliberately conservative: no free text, no paths, no names, no ids of user
@@ -247,17 +262,59 @@ def sanitize_properties(properties: Optional[dict]) -> dict:
     return out
 
 
+def _supermetry_event(event: str, properties: dict) -> dict:
+    """One event body. `properties` must already be sanitized; Supermetry takes
+    only strings, numbers and booleans, so a None is left out."""
+    return {
+        "v": 1,
+        "id": uuid.uuid4().hex,
+        "ts": int(time.time() * 1000),
+        "site": _SUPERMETRY_SITE,
+        "name": event,
+        "url": _SUPERMETRY_APP_URL,
+        "profile_id": installation_id(),
+        "props": {k: v for k, v in properties.items() if v is not None},
+    }
+
+
+def _post_supermetry(payload: dict) -> None:
+    """POST one event. Blocking, so it runs off the caller's thread. Never raises."""
+    try:
+        request = urllib.request.Request(
+            _SUPERMETRY_ENDPOINT,
+            data=json.dumps(payload).encode("utf-8"),
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                # Generic HTTP-client agents are filtered out as bots.
+                "User-Agent": f"VoiceStudio/{_app_version()}",
+            },
+        )
+        with urllib.request.urlopen(request, timeout=_SUPERMETRY_TIMEOUT_SECONDS):
+            pass
+    except Exception as e:  # noqa: BLE001 — analytics may never break a feature
+        logger.debug("supermetry send failed (%s): %s", payload.get("name"), e)
+
+
+def _send_supermetry(payload: dict) -> None:
+    """Fire and forget: a slow or unreachable server never delays a feature."""
+    threading.Thread(target=_post_supermetry, args=(payload,), daemon=True).start()
+
+
 def capture(event: str, properties: Optional[dict] = None) -> None:
     """Record one product event. A no-op unless the user opted in. Never raises."""
     try:
         client = _get_client()
+        if not enabled():
+            return
+        clean = sanitize_properties(properties)
+        try:
+            _send_supermetry(_supermetry_event(event, clean))
+        except Exception as e:  # noqa: BLE001 — one destination never costs the other
+            logger.debug("supermetry capture failed (%s): %s", event, e)
         if client is None:
             return
-        client.capture(
-            event,
-            distinct_id=installation_id(),
-            properties=sanitize_properties(properties),
-        )
+        client.capture(event, distinct_id=installation_id(), properties=clean)
     except Exception as e:  # noqa: BLE001 — analytics may never break a feature
         logger.debug("analytics capture failed (%s): %s", event, e)
 

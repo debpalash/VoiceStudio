@@ -67,8 +67,9 @@ through alembic with a tested upgrade path.
 **Local-first.** Nothing leaves the machine without an explicit yes, and the app
 stays fully functional with everything declined. No third-party endpoints for
 bug reporting or crash dumps. No PAT/token-based GitHub posting from the app.
-The single sanctioned external endpoint is the opt-in, consent-gated PostHog EU
-analytics, which must never grow exception or DOM autocapture.
+The sanctioned external endpoints are the opt-in, consent-gated PostHog EU and
+Supermetry analytics (Supermetry from the backend only, never a browser script),
+which must never grow exception or DOM autocapture.
 
 **Keep main green.** A merge must never break CI. Dependency, lockfile, and
 config changes must be validated against *every* consumer — `frontend/` is a bun
