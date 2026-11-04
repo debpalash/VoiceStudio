@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from 'vitest';
 // This is a Node launcher shared with the package script, so it intentionally
 // remains plain ESM rather than being compiled into Electron's main process.
 import {
+  MAC_TOOLS,
   createMacDevBundlePlan,
   launchElectronVite,
   prepareMacDevElectron,
@@ -24,6 +25,7 @@ import {
   pruneOldBundles,
   // @ts-expect-error JavaScript launcher has no separate declaration file.
 } from '../../scripts/dev.mjs';
+import { macWatchPollingPlugin } from '../../scripts/mac-watch-polling.mjs';
 
 it('watches main and preload changes so renderer updates cannot leave stale browser IPC running', () => {
   const spawn = vi.fn(() => ({ on: vi.fn() }));
@@ -197,15 +199,17 @@ describe('macOS development bundle branding', () => {
   });
 });
 
+// cp/plutil/codesign are macOS tools; the fake copy materialises the bundle layout.
+function fakeBundleCopy(command: string, args: string[]) {
+  if (command !== MAC_TOOLS.cp) return;
+  const target = args[args.length - 1];
+  mkdirSync(join(target, 'Contents', 'MacOS'), { recursive: true });
+  mkdirSync(join(target, 'Contents', 'Resources'), { recursive: true });
+  writeFileSync(join(target, 'Contents', 'MacOS', 'Electron'), 'binary');
+}
+
 describe('macOS development bundle cache repair', () => {
-  // cp/plutil/codesign are macOS tools; the fake runner materialises the same layout.
-  const fakeRun = (command: string, args: string[]) => {
-    if (command !== 'cp') return;
-    const target = args[args.length - 1];
-    mkdirSync(join(target, 'Contents', 'MacOS'), { recursive: true });
-    mkdirSync(join(target, 'Contents', 'Resources'), { recursive: true });
-    writeFileSync(join(target, 'Contents', 'MacOS', 'Electron'), 'binary');
-  };
+  const fakeRun = fakeBundleCopy;
 
   it('replaces a cached bundle that lost its executable instead of failing with ENOTEMPTY', () => {
     const dir = mkdtempSync(join(tmpdir(), 'vs-dev-cache-'));
@@ -325,13 +329,7 @@ it('reports asynchronous Vite spawn failure and removes signal forwarding', () =
 });
 
 describe.skipIf(process.platform !== 'darwin')('macOS bundle lifetime coordination', () => {
-  const fakeRun = (command: string, args: string[]) => {
-    if (command !== 'cp') return;
-    const target = args[args.length - 1];
-    mkdirSync(join(target, 'Contents', 'MacOS'), { recursive: true });
-    mkdirSync(join(target, 'Contents', 'Resources'), { recursive: true });
-    writeFileSync(join(target, 'Contents', 'MacOS', 'Electron'), 'binary');
-  };
+  const fakeRun = fakeBundleCopy;
   const fixture = () => {
     const root = mkdtempSync(join(tmpdir(), 'vs-dev-leases-'));
     const iconPath = join(root, 'icon.icns');
@@ -376,7 +374,7 @@ describe.skipIf(process.platform !== 'darwin')('macOS bundle lifetime coordinati
         const session = prepareMacDevSession({
           ...${JSON.stringify({ ...options, appVersion })},
           runCommand(command, args) {
-            if(command !== 'cp') return;
+            if(command !== ${JSON.stringify(MAC_TOOLS.cp)}) return;
             process.send({phase:'preparing'});
             if(${paused}) {
               const deadline = Date.now() + 10000;
@@ -486,5 +484,56 @@ describe.skipIf(process.platform !== 'darwin')('macOS bundle lifetime coordinati
       chmodSync(options.cacheRoot, 0o755);
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe('macOS development bundle tools', () => {
+  // Homebrew's GNU coreutils often shadow /bin on PATH; GNU cp rejects `-c`.
+  it('runs the system macOS tools by absolute path, never a PATH lookup', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'vs-dev-tools-'));
+    try {
+      const icon = join(dir, 'icon.icns');
+      writeFileSync(icon, 'icon');
+      const commands = new Set<string>();
+      prepareMacDevElectron({
+        electronExecutable: join(dir, 'src', 'Electron.app', 'Contents', 'MacOS', 'Electron'),
+        electronVersion: '44.3.0',
+        appVersion: '0.5.6',
+        iconPath: icon,
+        cacheRoot: join(dir, 'cache'),
+        runCommand: (command: string, args: string[]) => {
+          commands.add(command);
+          fakeBundleCopy(command, args);
+        },
+      });
+      expect(commands).toEqual(new Set(['/bin/cp', '/usr/bin/plutil', '/usr/bin/codesign']));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('macOS watch builds', () => {
+  // rolldown's native macOS watcher can end the first watch build without
+  // writing it, so electron-vite never reaches closeBundle and never launches.
+  const configFor = (platform: string, config: object) =>
+    macWatchPollingPlugin(platform).config(config);
+
+  it('polls for main and preload changes on macOS when watching', () => {
+    expect(configFor('darwin', { build: { watch: {} } })).toEqual({
+      build: { watch: { chokidar: { usePolling: true } } },
+    });
+  });
+
+  it('leaves production builds and other platforms unchanged', () => {
+    expect(configFor('darwin', { build: {} })).toBeUndefined();
+    expect(configFor('darwin', { build: { watch: null } })).toBeUndefined();
+    expect(configFor('linux', { build: { watch: {} } })).toBeUndefined();
+    expect(configFor('win32', { build: { watch: {} } })).toBeUndefined();
+  });
+
+  it('is installed on both the main and preload builds', () => {
+    const config = readFileSync(resolve(__dirname, '../../electron.vite.config.ts'), 'utf8');
+    expect(config.match(/externalizeDepsPlugin\(\), macWatchPollingPlugin\(\)/g)).toHaveLength(2);
   });
 });
