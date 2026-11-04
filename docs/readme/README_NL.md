@@ -6,9 +6,9 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100.000 GitHub-sterren — bedankt!</a></strong>
   </p>
-  <p><big><strong>AI-stemstudio. Op je eigen apparaat.</strong></big><br />
-  <big>Kloon en ontwerp stemmen, maak nasynchronisaties, dicteer, transcribeer en lees voor in 646 talen.</big><br />
-  Draait op uw laptop, desktop, servers, telefoon, tablets en meer</p>
+  <h2>AI-stemstudio. Op je eigen apparaat.</h2>
+  <h3>Kloon en ontwerp stemmen, maak nasynchronisaties, dicteer, transcribeer en lees voor in 646 talen.</h3>
+  <p>Draait op uw laptop, desktop, servers, telefoon, tablets en meer</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Website</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Downloaden</a> ·

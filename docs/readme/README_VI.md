@@ -6,9 +6,9 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100.000 sao trên GitHub — cảm ơn bạn!</a></strong>
   </p>
-  <p><big><strong>Phòng thu giọng nói AI. Ngay trên thiết bị của bạn.</strong></big><br />
-  <big>Nhân bản và thiết kế giọng nói, lồng tiếng, đọc chính tả, chuyển giọng nói thành văn bản và tạo lời thuyết minh bằng 646 ngôn ngữ.</big><br />
-  Chạy trên máy tính xách tay, máy tính để bàn, máy chủ, điện thoại, máy tính bảng và nhiều thiết bị khác</p>
+  <h2>Phòng thu giọng nói AI. Ngay trên thiết bị của bạn.</h2>
+  <h3>Nhân bản và thiết kế giọng nói, lồng tiếng, đọc chính tả, chuyển giọng nói thành văn bản và tạo lời thuyết minh bằng 646 ngôn ngữ.</h3>
+  <p>Chạy trên máy tính xách tay, máy tính để bàn, máy chủ, điện thoại, máy tính bảng và nhiều thiết bị khác</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Trang web</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Tải xuống</a> ·

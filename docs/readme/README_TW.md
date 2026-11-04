@@ -6,9 +6,9 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">GitHub Star 突破 10 萬，感謝大家！</a></strong>
   </p>
-  <p><big><strong>AI 語音工作室，就在你的裝置上。</strong></big><br />
-  <big>支援 646 種語言的聲音克隆、聲音設計、配音、聽寫、轉錄與有聲朗讀。</big><br />
-  可在你的膝上型電腦、桌上型電腦、伺服器、手機、平板電腦等裝置上執行</p>
+  <h2>AI 語音工作室，就在你的裝置上。</h2>
+  <h3>支援 646 種語言的聲音克隆、聲音設計、配音、聽寫、轉錄與有聲朗讀。</h3>
+  <p>可在你的膝上型電腦、桌上型電腦、伺服器、手機、平板電腦等裝置上執行</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">官網</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">下載</a> ·

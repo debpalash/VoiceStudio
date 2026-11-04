@@ -6,9 +6,9 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">GitHub'da 100.000 yıldız — teşekkürler!</a></strong>
   </p>
-  <p><big><strong>Yapay zekâ ses stüdyosu. Kendi cihazınızda.</strong></big><br />
-  <big>646 dilde ses klonlayın ve tasarlayın, dublaj yapın, dikte edin, yazıya dökün ve seslendirin.</big><br />
-  Dizüstü bilgisayarınızda, masaüstü bilgisayarınızda, sunucularınızda, telefonunuzda, tabletlerinizde ve daha fazlasında çalışır</p>
+  <h2>Yapay zekâ ses stüdyosu. Kendi cihazınızda.</h2>
+  <h3>646 dilde ses klonlayın ve tasarlayın, dublaj yapın, dikte edin, yazıya dökün ve seslendirin.</h3>
+  <p>Dizüstü bilgisayarınızda, masaüstü bilgisayarınızda, sunucularınızda, telefonunuzda, tabletlerinizde ve daha fazlasında çalışır</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Web sitesi</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">İndir</a> ·

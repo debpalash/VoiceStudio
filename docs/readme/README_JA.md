@@ -6,9 +6,9 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">GitHub スター10万達成。ありがとうございます！</a></strong>
   </p>
-  <p><big><strong>AI ボイススタジオを、あなたの端末で。</strong></big><br />
-  <big>646 言語で、音声クローン、ボイスデザイン、吹き替え、音声入力、文字起こし、ナレーション。</big><br />
-  ノートパソコン、デスクトップ、サーバー、スマートフォン、タブレットなどで動作</p>
+  <h2>AI ボイススタジオを、あなたの端末で。</h2>
+  <h3>646 言語で、音声クローン、ボイスデザイン、吹き替え、音声入力、文字起こし、ナレーション。</h3>
+  <p>ノートパソコン、デスクトップ、サーバー、スマートフォン、タブレットなどで動作</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">公式サイト</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">ダウンロード</a> ·

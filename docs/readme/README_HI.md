@@ -6,9 +6,9 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">GitHub पर 100,000 स्टार — आपका धन्यवाद!</a></strong>
   </p>
-  <p><big><strong>एआई वॉइस स्टूडियो। आपके डिवाइस पर।</strong></big><br />
-  <big>646 भाषाओं में आवाज़ क्लोन और डिज़ाइन करें, डबिंग करें, बोलकर लिखें, ऑडियो को टेक्स्ट में बदलें और कथावाचन करें।</big><br />
-  आपके लैपटॉप, डेस्कटॉप, सर्वर, फोन, टैबलेट और अन्य पर चलता है</p>
+  <h2>एआई वॉइस स्टूडियो। आपके डिवाइस पर।</h2>
+  <h3>646 भाषाओं में आवाज़ क्लोन और डिज़ाइन करें, डबिंग करें, बोलकर लिखें, ऑडियो को टेक्स्ट में बदलें और कथावाचन करें।</h3>
+  <p>आपके लैपटॉप, डेस्कटॉप, सर्वर, फोन, टैबलेट और अन्य पर चलता है</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">वेबसाइट</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">डाउनलोड</a> ·

@@ -6,9 +6,9 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100.000 GitHub-Sterne — vielen Dank!</a></strong>
   </p>
-  <p><big><strong>KI-Stimmenstudio. Auf Ihrem Gerät.</strong></big><br />
-  <big>Stimmen klonen und gestalten, synchronisieren, diktieren, transkribieren und vorlesen – in 646 Sprachen.</big><br />
-  Läuft auf Ihrem Laptop, Desktop, Servern, Telefon, Tablets und mehr</p>
+  <h2>KI-Stimmenstudio. Auf Ihrem Gerät.</h2>
+  <h3>Stimmen klonen und gestalten, synchronisieren, diktieren, transkribieren und vorlesen – in 646 Sprachen.</h3>
+  <p>Läuft auf Ihrem Laptop, Desktop, Servern, Telefon, Tablets und mehr</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Website</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Herunterladen</a> ·

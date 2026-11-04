@@ -6,9 +6,9 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100,000 نجمة على GitHub — شكرًا لكم!</a></strong>
   </p>
-  <p><big><strong>استوديو أصوات بالذكاء الاصطناعي. على جهازك.</strong></big><br />
-  <big>استنساخ الأصوات وتصميمها، والدبلجة، والإملاء، والتفريغ الصوتي، والسرد بـ646 لغة.</big><br />
-  يعمل على الكمبيوتر المحمول وسطح المكتب والخوادم والهاتف والأجهزة اللوحية والمزيد</p>
+  <h2>استوديو أصوات بالذكاء الاصطناعي. على جهازك.</h2>
+  <h3>استنساخ الأصوات وتصميمها، والدبلجة، والإملاء، والتفريغ الصوتي، والسرد بـ646 لغة.</h3>
+  <p>يعمل على الكمبيوتر المحمول وسطح المكتب والخوادم والهاتف والأجهزة اللوحية والمزيد</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">الموقع</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">تنزيل</a> ·

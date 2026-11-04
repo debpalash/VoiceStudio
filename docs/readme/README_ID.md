@@ -6,9 +6,9 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100.000 bintang GitHub — terima kasih!</a></strong>
   </p>
-  <p><big><strong>Studio suara AI. Di perangkat Anda.</strong></big><br />
-  <big>Kloning, desain suara, sulih suara, dikte, transkripsi, dan narasi dalam 646 bahasa.</big><br />
-  Berjalan di laptop, desktop, server, ponsel, tablet, dan lainnya</p>
+  <h2>Studio suara AI. Di perangkat Anda.</h2>
+  <h3>Kloning, desain suara, sulih suara, dikte, transkripsi, dan narasi dalam 646 bahasa.</h3>
+  <p>Berjalan di laptop, desktop, server, ponsel, tablet, dan lainnya</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Situs web</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Unduh</a> ·

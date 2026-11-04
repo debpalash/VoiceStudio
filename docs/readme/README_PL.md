@@ -6,9 +6,9 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100 000 gwiazdek na GitHubie — dziękujemy!</a></strong>
   </p>
-  <p><big><strong>Studio głosowe AI. Na Twoim urządzeniu.</strong></big><br />
-  <big>Klonuj i projektuj głosy, twórz dubbing, dyktuj, transkrybuj i generuj narrację w 646 językach.</big><br />
-  Działa na Twoim laptopie, komputerze stacjonarnym, serwerach, telefonie, tablecie i nie tylko</p>
+  <h2>Studio głosowe AI. Na Twoim urządzeniu.</h2>
+  <h3>Klonuj i projektuj głosy, twórz dubbing, dyktuj, transkrybuj i generuj narrację w 646 językach.</h3>
+  <p>Działa na Twoim laptopie, komputerze stacjonarnym, serwerach, telefonie, tablecie i nie tylko</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Strona internetowa</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Pobierz</a> ·
