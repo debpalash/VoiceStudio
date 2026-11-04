@@ -13,7 +13,9 @@
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Site web</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Télécharger</a> ·
     <a href="#get-started">Bien démarrer</a> ·
-    <a href="#documentation">Documentation</a>
+    <a href="#documentation">Documentation</a> ·
+    <a href="https://voicestudio.sh/pro">VoiceStudio Pro</a> ·
+    <a href="https://app.voicestudio.sh">VoiceStudio Cloud</a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
