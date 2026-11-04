@@ -49,7 +49,7 @@ oraz kontrole gotowości i importów. Ustawienia Windows i zapisane preferencje
 pozostają bez zmian. Kopie źródłowe, własne komendy backendu i środowiska zarządzane
 zewnętrznie zachowują te zmienne; dotyczy to także CPU/CUDA i pozostałych systemów.
 Nadpisania architektury, widoczności GPU i MIOpen nadal podlegają ścisłej kontroli.
-Niezgodne ścieżki SDK/TEMP/cache nadal blokują WhisperX.
+Brakujące, przekierowane lub niezgodne ścieżki SDK/TEMP/cache nadal blokują WhisperX.
 
 ## WhisperX w katalogu modeli
 
@@ -61,7 +61,7 @@ modelu `large-v3` ani zwykłych ścieżek CPU, CUDA i innych systemów.
 Jedna wspólna kontrola dopuszcza wyłącznie ASR WhisperX i wyrównywanie wav2vec2,
 sprawdzając też zgodność przed użyciem już wczytanych modeli. Ta sama kontrola
 pozwala katalogowi zgłaszać rzeczywiste przyspieszenie ROCm zamiast CPU.
-Zarejestrowany profil wymaga:
+Zarejestrowany profil MIOpen wymaga:
 
 - Windows x64, Python 3.12 i dokładnej, niezmienionej receptury 7.2.1 opisanej
   wyżej, WhisperX 3.4.5 oraz pyannote.audio 3.4.0. Inne wersje nie są dopuszczane
@@ -81,6 +81,28 @@ Zarejestrowany profil wymaga:
 - Braku niezweryfikowanych nadpisań SDK, mapowania architektury, widoczności GPU
   i MIOpen. Dotychczasowy tryb aplikacji `FAST` jest dozwolony. Wyłączenie dyskowej
   pamięci MIOpen nie potwierdza zgodności SDK ani ścieżek tymczasowych Unicode.
+
+### Wariant Unicode wybierany przy starcie
+
+Przy tej samej recepturze, dokładnych wersjach pakietów, karcie gfx1201 i
+zweryfikowanej bibliotece HIP CT2 backend może wybrać skompilowane operacje
+ATen/HIP dla fizycznych zarządzanych ścieżek SDK/TEMP/cache zawierających Unicode.
+Nagłówki nadal muszą istnieć. Ścieżki względne, sieciowe i przekierowane, obce
+nadpisania oraz uszkodzone pakiety pozostają zablokowane. Dopuszczane jest tylko
+automatyczne obejście pamięci podręcznej dodane przez aplikację; ręczne ustawienie
+`MIOPEN_DISABLE_CACHE` nie wystarcza.
+
+Wybór następuje przed wczytaniem modeli i wyłącza MIOpen dla wszystkich modeli
+Torch w tym procesie backendu. Obliczenia pozostają na GPU przez HIP. Działająca
+konfiguracja ASCII zachowuje MIOpen, a osobne procesy silników mają własną politykę.
+Dostępność i ponowne użycie modeli sprawdzają wybrany tryb oraz kontekst ścieżek;
+późniejsza zmiana wymaga restartu backendu. Domyślne zachowanie CPU/CUDA/MPS/Linux
+pozostaje zachowane.
+
+Stan walidacji: testy regresyjne kodu przechodzą; wcześniejsza diagnostyka z małym
+modelem potwierdza mechanizm. Kwalifikacja domyślnego large-v3, równoległych modeli
+i aktualnej paczki dla tego wariantu pozostaje do wykonania. Sam kompilator HIPRTC
+nadal nie ma potwierdzonej obsługi ścieżek nagłówków Unicode.
 
 ## Zarządzany CosyVoice
 

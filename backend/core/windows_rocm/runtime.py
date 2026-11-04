@@ -10,6 +10,7 @@ from threading import RLock
 
 _DLL_HANDLES = {}
 _DLL_LOCK = RLock()
+_MIOPEN_CACHE_WORKAROUND = False
 
 #: Import package -> distribution that installs it.
 _DISTRIBUTIONS = {
@@ -71,6 +72,7 @@ def initialize_dll_search():
 
 def _prepare_miopen_cache():
     """Avoid the pinned MIOpen SQLite failure with Unicode custom cache paths."""
+    global _MIOPEN_CACHE_WORKAROUND
     cache_path = os.environ.get("MIOPEN_CUSTOM_CACHE_DIR", "")
     if cache_path.isascii() or "MIOPEN_DISABLE_CACHE" in os.environ:
         return
@@ -80,6 +82,7 @@ def _prepare_miopen_cache():
     except metadata.PackageNotFoundError:
         return
     os.environ.setdefault("MIOPEN_DISABLE_CACHE", "1")
+    _MIOPEN_CACHE_WORKAROUND = True
 
 
 def _pinned_development_sdk():
@@ -116,7 +119,12 @@ def initialize_development_sdk():
 
 def _ascii_physical_path(value, *, directory=False):
     """Check native compiler/cache paths without creating or expanding anything."""
-    if not value or not str(value).isascii():
+    return _physical_path(value, directory=directory, ascii_only=True)
+
+
+def _physical_path(value, *, directory=False, ascii_only=False):
+    """Reject redirected or nonlocal native paths without creating files."""
+    if not value or (ascii_only and not str(value).isascii()):
         return False
     path = Path(value)
     if not path.is_absolute() or str(path).startswith("\\\\"):
@@ -130,19 +138,23 @@ def _ascii_physical_path(value, *, directory=False):
             if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
                 return False
         resolved = path.resolve(strict=False)
-        return (resolved == path and str(resolved).isascii()
+        return (resolved == path and (not ascii_only or str(resolved).isascii())
                 and (not directory or path.is_dir()))
     except (OSError, ValueError):
         return False
 
 
-def miopen_profile_error():
+def miopen_profile_error(*, allow_unicode=False):
     """Read-only path qualification; a Unicode SQLite workaround is not HIPRTC proof."""
+    physical_path = _physical_path if allow_unicode else _ascii_physical_path
     for name in ("ROCM_HOME", "HIP_PATH", "HSA_OVERRIDE_GFX_VERSION", "HIP_VISIBLE_DEVICES",
                  "CUDA_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES"):
         if name in os.environ:
             return f"Unqualified native override: {name}"
     allowed_miopen = {"MIOPEN_CUSTOM_CACHE_DIR", "MIOPEN_FIND_MODE"}
+    if (allow_unicode and _MIOPEN_CACHE_WORKAROUND
+            and os.environ.get("MIOPEN_DISABLE_CACHE") == "1"):
+        allowed_miopen.add("MIOPEN_DISABLE_CACHE")
     if any(name.startswith("MIOPEN_") and name not in allowed_miopen for name in os.environ):
         return "Unqualified MIOpen override; disk-cache/ATen bypasses do not qualify this pipeline"
     if os.environ.get("MIOPEN_FIND_MODE", "FAST") != "FAST":
@@ -152,7 +164,7 @@ def miopen_profile_error():
     roots = {package: package_root(package) for package in ("_rocm_sdk_core", "_rocm_sdk_devel")}
     for package, root in roots.items():
         if (root is None or root.name != package or root.parent not in sites
-                or not _ascii_physical_path(root, directory=True)):
+                or not physical_path(root, directory=True)):
             return "MIOpen requires physical ASCII SDK roots managed by this interpreter"
     sdk = roots["_rocm_sdk_devel"]
     if "ROCM_PATH" in os.environ and os.environ["ROCM_PATH"] != str(sdk):
@@ -161,20 +173,35 @@ def miopen_profile_error():
                "rocrand/rocrand_xorwow.h", "miopen/miopen.h", "miopen/config.h", "rocprim/rocprim.hpp")
     for name in headers:
         header = sdk / "include" / name
-        if not _ascii_physical_path(header) or not header.is_file():
+        if not physical_path(header) or not header.is_file():
             return "Required expanded HIP/MIOpen/rocRAND/rocPRIM headers are missing or redirected; rerun ROCm setup"
     temporary = [os.environ[name] for name in ("TMPDIR", "TEMP", "TMP") if name in os.environ]
     if not all(os.environ.get(name) for name in ("TEMP", "TMP")):
         return "MIOpen requires explicit compatible TEMP and TMP directories"
     if tempfile.tempdir is not None:
         temporary.append(os.fsdecode(tempfile.tempdir))
-    if not temporary or not all(_ascii_physical_path(path, directory=True) for path in temporary):
+    if not temporary or not all(physical_path(path, directory=True) for path in temporary):
         return "MIOpen requires existing physical ASCII temporary directories"
     cache_roots = [os.environ[name] for name in ("MIOPEN_CUSTOM_CACHE_DIR", "XDG_CACHE_HOME") if name in os.environ]
     if "MIOPEN_CUSTOM_CACHE_DIR" not in os.environ:
         cache_roots.append(Path.home())
         cache_roots.extend(os.environ[name] for name in ("USERPROFILE", "HOME", "LOCALAPPDATA", "APPDATA")
                            if name in os.environ)
-    if not cache_roots or not all(_ascii_physical_path(path) for path in cache_roots):
+    if not cache_roots or not all(physical_path(path) for path in cache_roots):
         return "MIOpen requires physical ASCII cache roots; the Unicode SQLite workaround does not qualify HIPRTC"
     return None
+
+
+def execution_context(*, initialize=False):
+    """Identify the native context selected before any resident model is loaded."""
+    if initialize:
+        tempfile.gettempdir()
+    names = {"ROCM_PATH", "ROCM_HOME", "HIP_PATH", "HSA_OVERRIDE_GFX_VERSION",
+             "HIP_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES",
+             "TMPDIR", "TEMP", "TMP", "XDG_CACHE_HOME", "USERPROFILE", "HOME",
+             "LOCALAPPDATA", "APPDATA"}
+    names.update(name for name in os.environ if name.startswith("MIOPEN_"))
+    return (tuple((name, os.environ.get(name)) for name in sorted(names)),
+            os.fsdecode(tempfile.tempdir) if tempfile.tempdir is not None else None,
+            tuple(sorted(sysconfig.get_paths().items())), str(Path.home()),
+            tuple(str(package_root(name)) for name in ("_rocm_sdk_core", "_rocm_sdk_devel")))

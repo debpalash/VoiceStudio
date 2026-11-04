@@ -143,7 +143,7 @@ and readiness/import checks. Windows environment settings and saved preferences
 are unchanged. Source checkouts, custom backend commands and externally managed
 runtimes retain these variables, as do CPU/CUDA runtimes and other platforms.
 Architecture, device-visibility and MIOpen overrides still undergo the strict
-profile checks below; incompatible SDK/TEMP/cache paths still reject WhisperX.
+profile checks below; redirected, missing or otherwise incompatible native paths still reject WhisperX.
 
 ## Verify locally
 
@@ -192,7 +192,7 @@ Auto selection continues to prefer verified faster-whisper on Windows HIP.
 Both ASR and alignment use one current qualifier, also used by runtime compute
 reporting. A qualified host reports ROCm acceleration instead of CPU fallback.
 
-The registered profile requires all of the following:
+The registered MIOpen profile requires all of the following:
 
 - Windows x64 Python 3.12 and the unchanged checked-in 7.2.1 recipe: exact
   Torch/audio 2.9.1+rocm7.2.1, vision 0.24.1+rocm7.2.1, ROCm and SDK
@@ -212,6 +212,26 @@ The registered profile requires all of the following:
 - No SDK-home, architecture-remap or visible-device overrides, and no unqualified
   MIOpen overrides. The existing application `FAST` search mode is permitted.
   Disabling MIOpen's disk cache does not qualify an unsupported SDK or TEMP path.
+
+#### Startup-only Unicode compatibility
+
+For the same pinned packages, recipe, gfx1201 device and verified HIP CT2 binary,
+backend startup can select compiled ATen/HIP operations when physical managed
+SDK/TEMP/cache paths contain Unicode. Required headers must still exist; relative,
+network and redirected paths, unknown overrides and damaged packages stay blocked.
+Only the application's automatic Unicode cache workaround is accepted; a manual
+`MIOPEN_DISABLE_CACHE` override does not admit this variant.
+
+This choice disables MIOpen for all Torch models in that backend process before
+resident models load. It does not switch inference to CPU. Healthy ASCII runtimes
+retain MIOpen, and separate sidecar interpreters keep their own dispatch policy.
+Availability and warm reuse verify the selected flag and native context; a later
+change requires a backend restart. CPU, CUDA, MPS and Linux defaults are preserved.
+
+Validation status: source regression controls pass; the retained Unicode tiny-model
+diagnostic supports the mechanism. Default-large-v3, concurrent resident-model and
+current packaged qualification of this new variant remain pending. This is not a
+claim that HIPRTC's Unicode include handling itself has been repaired.
 
 Versions, paths, headers, device metadata and CT2 integrity/readiness are checked
 before every ASR/alignment cache reuse. Rejections remain retryable compatibility
@@ -369,8 +389,9 @@ complete SDK installation under a Polish Unicode path passed model-free GPU
 readiness but failed actual VAD kernel compilation: HIPRTC could not find the
 rocRAND header. The same interpreter completed GPU VAD when pointed at the
 existing ASCII SDK header root. Unicode SDK paths therefore remain a known
-limitation, distinct from the disk-cache workaround. These roots remain outside
-the registered WhisperX profile; speaker diarization remains gated:
+limitation of the MIOpen route, distinct from the disk-cache workaround. The
+startup-only compiled ATen/HIP candidate above avoids that compiler route;
+its separate real-model qualification is pending. Speaker diarization remains gated:
 direct cached wav2vec2 library alignment completed with 18 timed words and an
 observed GPU forward, but does not certify the gated application pipeline.
 Clean Windows, packaged GUI execution and upstream CI remain separate gates.

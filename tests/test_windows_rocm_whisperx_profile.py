@@ -31,6 +31,8 @@ def app_modules(monkeypatch):
 
 @pytest.fixture
 def qualified(monkeypatch, tmp_path):
+    monkeypatch.setattr(pipelines, "_EXECUTION_PROFILE", None, raising=False)
+    monkeypatch.setattr(runtime, "_MIOPEN_CACHE_WORKAROUND", False, raising=False)
     versions = expected_versions(load_recipe()) | {"whisperx": "3.4.5", "pyannote.audio": "3.4.0"}
     monkeypatch.setattr(pipelines, "windows_hip_installed", lambda: True)
     monkeypatch.setattr(pipelines, "validate_target", lambda: None, raising=False)
@@ -61,6 +63,7 @@ def qualified(monkeypatch, tmp_path):
     caps = HostCaps(family="rocm", available_families=("rocm", "cpu"), vram_gb=16)
     monkeypatch.setattr("core.device_caps.detect_host_caps", lambda: caps)
     torch = SimpleNamespace(__version__=versions["torch"], version=SimpleNamespace(hip="7.2.53211-158bd99533"),
+                            backends=SimpleNamespace(cudnn=SimpleNamespace(enabled=True)),
                             cuda=SimpleNamespace(is_available=lambda: True,
                                 get_device_properties=lambda index: SimpleNamespace(gcnArchName="gfx1201")))
     monkeypatch.setitem(sys.modules, "torch", torch)
@@ -266,3 +269,105 @@ def test_catalogue_admits_whisperx_without_changing_auto_preference(qualified, m
     monkeypatch.setattr(ab, "_rocm_torch", lambda: True)
     monkeypatch.setattr(ab, "_probe_available", lambda cls: True)
     assert ab._auto_detect() == "faster-whisper"
+
+
+@pytest.mark.parametrize("name", ["TEMP", "TMP", "TMPDIR", "MIOPEN_CUSTOM_CACHE_DIR", "XDG_CACHE_HOME"])
+def test_startup_selects_stable_aten_for_managed_unicode_paths(qualified, monkeypatch, name):
+    directory = qualified.scratch / "Za\u017c\u00f3\u0142\u0107"
+    directory.mkdir()
+    monkeypatch.setenv(name, str(directory))
+    runtime._prepare_miopen_cache()
+    assert pipelines.pipeline_error("cuda", capability="whisperx-asr")
+    assert qualified.torch.backends.cudnn.enabled
+    assert pipelines.initialize_torch_execution() == "aten"
+    assert not qualified.torch.backends.cudnn.enabled
+    assert pipelines.pipeline_error("cuda", capability="whisperx-asr") is None
+    assert pipelines.pipeline_error("cuda", capability="whisperx-alignment") is None
+    assert pipelines.initialize_torch_execution() == "aten"
+    assert not qualified.torch.backends.cudnn.enabled
+    assert pipelines.pipeline_error("cuda", capability="pyannote-diarization")
+
+
+def test_healthy_startup_preserves_miopen(qualified):
+    assert pipelines.initialize_torch_execution() == "miopen"
+    assert qualified.torch.backends.cudnn.enabled
+    assert pipelines.pipeline_error("cuda", capability="whisperx-asr") is None
+
+
+def test_startup_admits_physical_unicode_sdk_and_rejects_missing_warm_header(qualified, monkeypatch):
+    site = qualified.scratch / "SDK Za\u017c\u00f3\u0142\u0107" / "site-packages"
+    site.mkdir(parents=True)
+    for name, root in qualified.roots.items():
+        destination = site / name
+        root.rename(destination)
+        qualified.roots[name] = destination
+    monkeypatch.setattr(runtime.sysconfig, "get_paths", lambda: {"purelib": str(site), "platlib": str(site)})
+    runtime._prepare_miopen_headers()
+    assert pipelines.initialize_torch_execution() == "aten"
+    assert pipelines.pipeline_error("cuda", capability="whisperx-asr") is None
+    (qualified.roots["_rocm_sdk_devel"] / "include/rocrand/rocrand_xorwow.h").unlink()
+    assert pipelines.pipeline_error("cuda", capability="whisperx-asr")
+    assert not qualified.torch.backends.cudnn.enabled
+
+
+def test_startup_initializes_temp_cache_without_invalidating_warm_context(qualified, monkeypatch):
+    monkeypatch.setattr(runtime.tempfile, "tempdir", None)
+    directory = qualified.scratch / "\u017b"
+    directory.mkdir()
+    monkeypatch.setenv("TMPDIR", str(directory))
+    assert pipelines.initialize_torch_execution() == "aten"
+    assert runtime.tempfile.gettempdir() == str(directory)
+    assert pipelines.pipeline_error("cuda", capability="whisperx-asr") is None
+
+
+@pytest.mark.parametrize("damage", ["override", "missing-header", "wrong-version", "wrong-gpu", "failed-ct2", "missing-temp", "manual-cache", "disabled-backend"])
+def test_aten_does_not_admit_damaged_or_unregistered_context(qualified, monkeypatch, damage):
+    directory = qualified.scratch / "\u017b"
+    directory.mkdir()
+    monkeypatch.setenv("TEMP", str(directory))
+    if damage == "override":
+        monkeypatch.setenv("HSA_OVERRIDE_GFX_VERSION", "12.0.1")
+    elif damage == "missing-header":
+        (qualified.roots["_rocm_sdk_devel"] / "include/rocrand/rocrand_xorwow.h").unlink()
+    elif damage == "wrong-version":
+        qualified.versions["torch"] = "unregistered"
+    elif damage == "wrong-gpu":
+        qualified.torch.cuda.get_device_properties = lambda index: SimpleNamespace(gcnArchName="gfx1200")
+    elif damage == "failed-ct2":
+        monkeypatch.setattr(ct2, "hip_ct2_available", lambda: False)
+    elif damage == "missing-temp":
+        monkeypatch.delenv("TMP")
+    elif damage == "manual-cache":
+        monkeypatch.setenv("MIOPEN_DISABLE_CACHE", "1")
+    else:
+        qualified.torch.backends.cudnn.enabled = False
+    original = qualified.torch.backends.cudnn.enabled
+    assert pipelines.initialize_torch_execution() is None
+    assert qualified.torch.backends.cudnn.enabled is original
+    assert pipelines.pipeline_error("cuda", capability="whisperx-asr")
+
+
+@pytest.mark.parametrize("damage", ["flag", "path"])
+def test_selected_aten_rejects_context_changes_without_toggling(qualified, monkeypatch, damage):
+    directory = qualified.scratch / "\u017b"
+    directory.mkdir()
+    monkeypatch.setenv("TEMP", str(directory))
+    assert pipelines.initialize_torch_execution() == "aten"
+    if damage == "flag":
+        qualified.torch.backends.cudnn.enabled = True
+    else:
+        monkeypatch.setenv("TMP", str(directory))
+    original = qualified.torch.backends.cudnn.enabled
+    assert pipelines.pipeline_error("cuda", capability="whisperx-asr")
+    assert pipelines.initialize_torch_execution() is None
+    assert qualified.torch.backends.cudnn.enabled is original
+
+
+@pytest.mark.parametrize("family", ["cpu", "non-windows"])
+def test_startup_retains_other_compute_defaults(qualified, monkeypatch, family):
+    if family == "cpu":
+        monkeypatch.setenv("OMNIVOICE_DEVICE", "cpu")
+    else:
+        monkeypatch.setattr(pipelines, "windows_hip_installed", lambda: False)
+    assert pipelines.initialize_torch_execution() is None
+    assert qualified.torch.backends.cudnn.enabled
