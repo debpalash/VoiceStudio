@@ -2718,6 +2718,7 @@
     "sent_logs": "Baris log mesin terbaru, tanpa jalur folder home dan token",
     "sent_install_failure": "Detail kegagalan instalasi: nama program yang gagal, status keamanan, nama file yang diblokir, dan nama antivirus",
     "save_diagnostics": "Simpan diagnostik lengkap untuk dilampirkan",
+    "save_diagnostics_failed": "Diagnostik tidak dapat disimpan. Coba folder lain atau kirim laporan tanpanya.",
     "sent_pages": "Nama halaman yang baru dikunjungi",
     "not_sent": "Tidak pernah dikirim: audio, teks, atau suara Anda. Nama file bisa muncul di log atau deskripsi Anda, jadi periksa pratinjau GitHub sebelum mengirim.",
     "submit": "Buka issue GitHub"

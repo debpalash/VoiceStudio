@@ -83,10 +83,12 @@ export function ReportBug({ error, setup = false }: { error?: Error | string; se
   const [summary, setSummary] = useState('');
   const [showRequired, setShowRequired] = useState(false);
   const [hasInstallFailure, setHasInstallFailure] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const pending = useRef(false);
   const saveDiagnostics = async () => {
     const bridge = getBridge();
     if (!bridge) return;
+    setSaveFailed(false);
     try {
       const data = await bridge.backend.getSetupDiagnostics();
       await bridge.files.saveData({
@@ -94,7 +96,7 @@ export function ReportBug({ error, setup = false }: { error?: Error | string; se
         suggestedName: 'voicestudio-setup.log',
       });
     } catch {
-      setFailed(true);
+      setSaveFailed(true);
     }
   };
   const report = async (skipFreshness = false, staleBuild?: KnownUpdate) => {
@@ -389,6 +391,11 @@ export function ReportBug({ error, setup = false }: { error?: Error | string; se
               <Button type="button" variant="ghost" size="sm" onClick={() => void saveDiagnostics()}>
                 {t('reportBug.save_diagnostics')}
               </Button>
+            ) : null}
+            {saveFailed ? (
+              <p role="alert" className="text-xs text-destructive">
+                {t('reportBug.save_diagnostics_failed')}
+              </p>
             ) : null}
             <DialogFooter>
               <DialogClose render={<Button type="button" variant="outline" />}>

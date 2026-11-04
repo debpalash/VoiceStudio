@@ -2713,6 +2713,7 @@
     "sent_logs": "最近的引擎日志行（已移除主目录路径和令牌）",
     "sent_install_failure": "安装失败详情:失败的程序名称、安全状态、被阻止的文件名和杀毒软件名称",
     "save_diagnostics": "保存完整诊断信息以便附加",
+    "save_diagnostics_failed": "无法保存诊断信息。请换一个文件夹,或不附带诊断信息发送报告。",
     "sent_pages": "最近访问的页面名称",
     "not_sent": "绝不发送：你的音频、文本或声音。文件名可能出现在日志或你的描述中，请在提交前检查 GitHub 预览。",
     "submit": "打开 GitHub Issue",

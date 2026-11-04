@@ -2720,6 +2720,7 @@
     "sent_logs": "Dernières lignes du journal du moteur, sans le chemin de votre dossier personnel ni les jetons",
     "sent_install_failure": "Détails de l’échec d’installation : nom du programme en échec, état de sécurité, noms des fichiers bloqués et des antivirus",
     "save_diagnostics": "Enregistrer le diagnostic complet à joindre",
+    "save_diagnostics_failed": "Impossible d’enregistrer le diagnostic. Essayez un autre dossier ou envoyez le rapport sans lui.",
     "sent_pages": "Noms des pages visitées récemment",
     "not_sent": "Jamais envoyés : votre audio, vos textes ou vos voix. Des noms de fichiers peuvent figurer dans les journaux ou votre description : relisez l’aperçu GitHub avant d’envoyer.",
     "submit": "Ouvrir un ticket GitHub"

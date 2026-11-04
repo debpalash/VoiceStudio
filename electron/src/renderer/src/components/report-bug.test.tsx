@@ -12,7 +12,7 @@ vi.mock('@/hooks/use-backend-status', () => ({
     ],
   }),
 }));
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { addBreadcrumb, clearBreadcrumbs } from '@shared/utils/breadcrumbs';
 import {
@@ -497,4 +497,22 @@ it('titles a coded failure by code and leads the report with its facts', async (
   expect(body).toContain('- Smart App Control: off');
   expect(body.indexOf('## Install failure')).toBeLessThan(body.indexOf('## Environment'));
   expect(body).toContain('spawn UNKNOWN (×40)');
+});
+
+it('shows a failed diagnostics save inside the report dialog', async () => {
+  mock.api.mockRejectedValue(new Error('offline'));
+  mock.backendStatus.mockResolvedValue({
+    stage: 'failed',
+    managed: true,
+    message: 'Could not start python.exe: spawn UNKNOWN',
+    logTail: [],
+    failure: { code: 'EXEC_REFUSED', stage: 'failed' },
+  });
+  render(<ReportBug />);
+  fireEvent.click(screen.getByRole('button', { name: 'reportBug.label' }));
+  // The bridge mock has no saveData, so saving rejects.
+  fireEvent.click(await screen.findByRole('button', { name: 'reportBug.save_diagnostics' }));
+  expect((await within(screen.getByRole('dialog')).findByRole('alert')).textContent).toBe(
+    'reportBug.save_diagnostics_failed',
+  );
 });

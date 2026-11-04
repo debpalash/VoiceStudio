@@ -2718,6 +2718,7 @@
     "sent_logs": "Recente enginelogregels, zonder het pad van je thuismap en tokens",
     "sent_install_failure": "Details van de installatiefout: naam van het mislukte programma, beveiligingsstatus, namen van geblokkeerde bestanden en antivirusprogramma’s",
     "save_diagnostics": "Volledige diagnose opslaan om bij te voegen",
+    "save_diagnostics_failed": "De diagnose kon niet worden opgeslagen. Probeer een andere map of verstuur de melding zonder.",
     "sent_pages": "Namen van onlangs bezochte pagina’s",
     "not_sent": "Nooit verzonden: je audio, tekst of stemmen. Bestandsnamen kunnen in logs of je beschrijving staan, dus controleer de GitHub-voorbeeldweergave voordat je verzendt.",
     "submit": "GitHub-issue openen"

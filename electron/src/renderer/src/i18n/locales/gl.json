@@ -2799,6 +2799,7 @@
     "sent_logs": "Liñas de rexistro recentes do motor, coa ruta do cartafol de inicio e os tokens eliminados",
     "sent_install_failure": "Detalles do fallo de instalación: nome do programa que fallou, estado de seguridade, nomes de ficheiros bloqueados e de antivirus",
     "save_diagnostics": "Gardar o diagnóstico completo para anexalo",
+    "save_diagnostics_failed": "Non se puido gardar o diagnóstico. Proba outro cartafol ou envía o informe sen el.",
     "sent_pages": "Nomes das páxinas visitadas recentemente",
     "not_sent": "Nunca enviado: o teu audio, texto ou voces. Os nomes dos ficheiros poden aparecer nos rexistros ou na túa descrición, polo que revisa a vista previa de GitHub antes de enviar.",
     "submit": "Abre o problema de GitHub"

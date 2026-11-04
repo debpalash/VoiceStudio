@@ -2718,6 +2718,7 @@
     "sent_logs": "Ana klasör yolunuz ve belirteçler çıkarılmış son altyapı günlük satırları",
     "sent_install_failure": "Kurulum hatası ayrıntıları: başarısız programın adı, güvenlik durumu, engellenen dosya ve antivirüs adları",
     "save_diagnostics": "Eklemek için tüm tanılamayı kaydet",
+    "save_diagnostics_failed": "Tanılama kaydedilemedi. Başka bir klasör deneyin veya raporu onsuz gönderin.",
     "sent_pages": "Son ziyaret edilen sayfa adları",
     "not_sent": "Asla gönderilmez: sesiniz, metniniz veya seslendirmeleriniz. Dosya adları günlüklerde veya açıklamanızda yer alabilir; göndermeden önce GitHub önizlemesini kontrol edin.",
     "submit": "GitHub sorunu aç"

@@ -2718,6 +2718,7 @@
     "sent_logs": "Các dòng nhật ký công cụ gần đây, đã xóa đường dẫn thư mục chính và mã thông báo",
     "sent_install_failure": "Chi tiết lỗi cài đặt: tên chương trình lỗi, trạng thái bảo mật, tên tệp bị chặn và tên phần mềm diệt virus",
     "save_diagnostics": "Lưu toàn bộ chẩn đoán để đính kèm",
+    "save_diagnostics_failed": "Không thể lưu chẩn đoán. Hãy thử thư mục khác hoặc gửi báo cáo mà không kèm chẩn đoán.",
     "sent_pages": "Tên các trang đã xem gần đây",
     "not_sent": "Không bao giờ gửi: âm thanh, văn bản hoặc giọng nói của bạn. Tên tệp có thể xuất hiện trong nhật ký hoặc mô tả của bạn, vì vậy hãy xem lại bản xem trước trên GitHub trước khi gửi.",
     "submit": "Mở issue trên GitHub"

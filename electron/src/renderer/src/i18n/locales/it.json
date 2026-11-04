@@ -2720,6 +2720,7 @@
     "sent_logs": "Ultime righe del log del motore, senza il percorso della tua cartella home e senza token",
     "sent_install_failure": "Dettagli dell’errore di installazione: nome del programma non riuscito, stato di sicurezza, nomi dei file bloccati e degli antivirus",
     "save_diagnostics": "Salva la diagnostica completa da allegare",
+    "save_diagnostics_failed": "Impossibile salvare la diagnostica. Prova un’altra cartella o invia la segnalazione senza.",
     "sent_pages": "Nomi delle pagine visitate di recente",
     "not_sent": "Mai inviati: audio, testi o voci. I nomi dei file possono comparire nei log o nella descrizione, quindi controlla l’anteprima di GitHub prima di inviare.",
     "submit": "Apri una issue su GitHub"

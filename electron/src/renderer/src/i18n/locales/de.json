@@ -2718,6 +2718,7 @@
     "sent_logs": "Letzte Engine-Logzeilen, ohne Ihren Home-Ordner-Pfad und Tokens",
     "sent_install_failure": "Details zum Installationsfehler: Name des fehlgeschlagenen Programms, Sicherheitsstatus, Namen blockierter Dateien und Virenschutzprodukte",
     "save_diagnostics": "Vollständige Diagnose zum Anhängen speichern",
+    "save_diagnostics_failed": "Die Diagnose konnte nicht gespeichert werden. Wählen Sie einen anderen Ordner oder senden Sie den Bericht ohne sie.",
     "sent_pages": "Namen zuletzt besuchter Seiten",
     "not_sent": "Nie gesendet: Ihr Audio, Text oder Stimmen. Dateinamen können in Logs oder Ihrer Beschreibung vorkommen – prüfen Sie daher die GitHub-Vorschau vor dem Absenden.",
     "submit": "GitHub-Issue öffnen"

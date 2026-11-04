@@ -2718,6 +2718,7 @@
     "sent_logs": "Senaste raderna i motorloggen, utan sökvägen till din hemmapp och token",
     "sent_install_failure": "Information om installationsfelet: namn på programmet som misslyckades, säkerhetsstatus, namn på blockerade filer och antivirusprogram",
     "save_diagnostics": "Spara fullständig diagnostik att bifoga",
+    "save_diagnostics_failed": "Diagnostiken kunde inte sparas. Prova en annan mapp eller skicka rapporten utan den.",
     "sent_pages": "Namn på nyligen besökta sidor",
     "not_sent": "Skickas aldrig: ditt ljud, din text eller dina röster. Filnamn kan förekomma i loggar eller din beskrivning, så granska GitHub-förhandsvisningen innan du skickar.",
     "submit": "Öppna GitHub-ärende"

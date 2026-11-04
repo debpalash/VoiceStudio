@@ -2720,6 +2720,7 @@
     "sent_logs": "Últimas líneas del registro del motor, sin la ruta de tu carpeta personal ni tokens",
     "sent_install_failure": "Detalles del fallo de instalación: nombre del programa que falló, estado de seguridad, nombres de archivos bloqueados y de antivirus",
     "save_diagnostics": "Guardar el diagnóstico completo para adjuntarlo",
+    "save_diagnostics_failed": "No se pudo guardar el diagnóstico. Prueba otra carpeta o envía el informe sin él.",
     "sent_pages": "Nombres de las páginas visitadas recientemente",
     "not_sent": "Nunca se envía: tu audio, texto o voces. Los nombres de archivo pueden aparecer en los registros o en tu descripción, así que revisa la vista previa de GitHub antes de enviar.",
     "submit": "Abrir incidencia en GitHub"

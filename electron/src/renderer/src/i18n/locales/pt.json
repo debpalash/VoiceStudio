@@ -2720,6 +2720,7 @@
     "sent_logs": "Últimas linhas do registro do mecanismo, sem o caminho da sua pasta pessoal e tokens",
     "sent_install_failure": "Detalhes da falha de instalação: nome do programa que falhou, estado de segurança, nomes de arquivos bloqueados e de antivírus",
     "save_diagnostics": "Salvar o diagnóstico completo para anexar",
+    "save_diagnostics_failed": "Não foi possível salvar o diagnóstico. Tente outra pasta ou envie o relatório sem ele.",
     "sent_pages": "Nomes das páginas visitadas recentemente",
     "not_sent": "Nunca enviados: seu áudio, texto ou vozes. Nomes de arquivo podem aparecer nos registros ou na sua descrição, então revise a prévia do GitHub antes de enviar.",
     "submit": "Abrir issue no GitHub"

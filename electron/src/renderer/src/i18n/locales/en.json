@@ -2799,6 +2799,7 @@
     "sent_logs": "Recent engine log lines, with your home folder path and tokens removed",
     "sent_install_failure": "Install failure details: failed program name, security state, blocked file names and antivirus names",
     "save_diagnostics": "Save full diagnostics to attach",
+    "save_diagnostics_failed": "Could not save the diagnostics. Try another folder, or send the report without them.",
     "sent_pages": "Names of recently visited pages",
     "not_sent": "Never sent: your audio, text or voices. File names can appear in logs or your description, so review the GitHub preview before submitting.",
     "submit": "Open GitHub issue"

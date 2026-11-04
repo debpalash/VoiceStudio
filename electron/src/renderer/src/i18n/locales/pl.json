@@ -2744,6 +2744,7 @@
     "sent_logs": "Ostatnie wiersze dziennika silnika, bez ścieżki folderu domowego i tokenów",
     "sent_install_failure": "Szczegóły błędu instalacji: nazwa programu, stan zabezpieczeń, nazwy zablokowanych plików i programów antywirusowych",
     "save_diagnostics": "Zapisz pełną diagnostykę do załączenia",
+    "save_diagnostics_failed": "Nie udało się zapisać diagnostyki. Wybierz inny folder lub wyślij zgłoszenie bez niej.",
     "sent_pages": "Nazwy ostatnio odwiedzonych stron",
     "not_sent": "Nigdy nie wysyłamy: dźwięku, tekstu ani głosów. Nazwy plików mogą pojawić się w dziennikach lub opisie, więc przed wysłaniem sprawdź podgląd na GitHubie.",
     "submit": "Otwórz zgłoszenie na GitHubie"

@@ -2718,6 +2718,7 @@
     "sent_logs": "最近的引擎記錄行（已移除家目錄路徑與權杖）",
     "sent_install_failure": "安裝失敗詳情:失敗的程式名稱、安全狀態、被封鎖的檔案名稱和防毒軟體名稱",
     "save_diagnostics": "儲存完整診斷資訊以便附加",
+    "save_diagnostics_failed": "無法儲存診斷資訊。請換一個資料夾,或不附帶診斷資訊傳送回報。",
     "sent_pages": "最近造訪的頁面名稱",
     "not_sent": "絕不傳送：你的音訊、文字或聲音。檔案名稱可能出現在記錄或你的描述中，請在提交前檢查 GitHub 預覽。",
     "submit": "開啟 GitHub Issue"
