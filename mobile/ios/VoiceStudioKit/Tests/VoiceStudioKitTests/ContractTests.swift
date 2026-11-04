@@ -66,6 +66,7 @@ func catalogs() throws -> [String: Data] {
     let dynamic: [String: [String]] = [
         "mobile.simple.": ["tts", "asr", "asr-stream", "clone", "translate"],
         "mobile.local.": [],
+        "mobile.downloads.": ["waiting", "waiting_network", "connecting", "verifying", "paused"],
         "mobile.local.category.": ["commercial-ok", "conditional", "non-commercial", "unidentified"],
         "mobile.local.right_": ["commercial", "outputs", "redistribution", "voice", "unknown", "restricted"],
         "mobile.settings.mode_": ThemeMode.allCases.map(\.rawValue),

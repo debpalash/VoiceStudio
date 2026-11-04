@@ -118,6 +118,9 @@ vi.mock('node:fs/promises', async (importOriginal) => {
           return Object.assign(Object.create(info), {
             dev: typeof info.dev === 'bigint' ? prior.dev : Number(prior.dev),
             ino: typeof info.ino === 'bigint' ? prior.ino : Number(prior.ino),
+            // Model a new generation explicitly: both creations can share a
+            // filesystem clock tick even when their real inodes differ.
+            birthtimeNs: prior.birthtimeNs + 1n,
           });
         return Object.assign(Object.create(info), {
           dev: typeof info.dev === 'bigint' ? prior.dev : Number(prior.dev),

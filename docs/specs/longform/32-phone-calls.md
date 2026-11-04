@@ -1,5 +1,9 @@
 # Implementation Spec — TASK #32: Opt-in Phone Calls (Agentic Voice)
 
+> **Historical design reference.** Paths, status and instructions below describe
+> the original implementation snapshot. For current behavior see the
+> [calls guide](../../calls.md); follow current repository rules for new changes.
+
 ## TL;DR
 
 Ship the §R1 **v3 telephony** rung of the agentic-voice workflow: outbound phone calls placed by an embedded [pipecat](https://github.com/pipecat-ai/pipecat) (BSD-2) pipeline through a **user-supplied carrier** (Telnyx/Twilio), driven by the agent's own LLM, speaking through a **consent-locked** VoiceStudio clone. The whole feature is **deferred-by-design and opt-in by construction** (no carrier credentials → the surface does not exist), and lands with the §R1 guardrails from `docs/competitive-analysis.md:994-1002` in the **same PR series**: (1) non-removable disclosure preamble, (2) consent-locked profile requirement, (3) AudioSeal always-on with no toggle, (4) destination allowlist + daily call cap + no bulk-dial API, (5) local immutable call log with a two-party-consent recording warning, and (6) honest jurisdiction notice in docs. (Note: `competitive-analysis.md:994-1002` actually enumerates **six** guardrails — the spec's "five guardrails in code" + the docs notice as #6.) This is a major new surface; the bulk of the work is the guardrail scaffolding (DB, config, gating) which is testable without ever placing a real call, plus an honest jurisdiction-notice docs page. The actual carrier leg is a thin, lazily-imported adapter behind those gates.

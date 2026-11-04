@@ -38,6 +38,22 @@ run). Power users can inspect or override the binaries in
 Optional but recommended: **a Hugging Face account** for diarization and the
 larger TTS models. See [docs/setup/huggingface-token.md](../setup/huggingface-token.md).
 
+## Install with Homebrew
+
+The [official tap](https://github.com/debpalash/homebrew-tap) installs the released
+DMG for your Mac’s architecture:
+
+```sh
+brew tap debpalash/tap
+brew trust --cask debpalash/tap/voicestudio
+brew install --cask debpalash/tap/voicestudio
+```
+
+The trust step is required by recent Homebrew versions for third-party casks.
+Check the cask before trusting it with `brew cat --cask debpalash/tap/voicestudio`.
+Intel Macs still need a backend on another computer. If macOS blocks the first
+launch, follow the [Gatekeeper instructions](#gatekeeper-quarantine).
+
 ## Install (DMG)
 
 Download the DMG that matches your Mac (check **Apple menu → About This Mac →
@@ -89,11 +105,12 @@ Gatekeeper, and neither means the download is broken:
 - **"VoiceStudio cannot be opened because the developer cannot be verified"**:
   the milder form of the same check, which offers an Open path.
 
-Release builds are not notarized yet because that needs signing secrets the
-public release CI does not hold (tracked in #1779). Some builds are signed ad
-hoc (`identity: '-'`), which is not an Apple identity. Environments that forbid
-the workarounds below need a signed, notarized release; bypassing Gatekeeper is
-not a substitute.
+The release workflow requires Developer ID signing and notarization unless an
+unsigned release is explicitly approved. Older releases and local test builds
+may be signed ad hoc (`identity: '-'`), which is not an Apple identity. Check
+the signing status for the specific release you downloaded. Environments that
+require signed, notarized apps must use a qualifying release; bypassing
+Gatekeeper is not a substitute.
 
 **Check the download first.** Compute its SHA-256 and compare it with
 `SHA256SUMS.txt` from the same GitHub Release:
@@ -136,9 +153,8 @@ Anyway"**. You confirm once per install; later launches work by double-click.
 
 The maintained Electron release workflow uses a Developer ID Application
 certificate (`ELECTRON_MACOS_CSC_LINK` and `ELECTRON_MACOS_CSC_KEY_PASSWORD`)
-plus `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` for
-notarization. The Apple password is an **app-specific password**, not the
-account login password. See [the release guide](../RELEASING.md#credentials)
+plus `APPLE_API_KEY`, `APPLE_API_KEY_ID` and `APPLE_API_ISSUER` for
+notarization with an App Store Connect team API key. See [the release guide](../RELEASING.md#credentials)
 for all platform credentials and verification gates. An Apple Developer
 membership is required; the archived Tauri workflow's `APPLE_CERTIFICATE`
 secrets do not sign Electron installers.

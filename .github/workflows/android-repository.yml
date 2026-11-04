@@ -1,0 +1,135 @@
+name: Android repository
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/android-repository.yml'
+      - '.github/workflows/electron-release.yml'
+      - 'scripts/prepare_android_repository.py'
+      - 'tests/test_android_repository.py'
+      - 'store/fdroid/**'
+      - 'store/obtainium.json'
+      - 'fastlane/metadata/android/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/android-repository.yml'
+      - 'scripts/prepare_android_repository.py'
+      - 'store/fdroid/**'
+      - 'store/obtainium.json'
+      - 'fastlane/metadata/android/**'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-repository-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'publish' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  dispatch-release:
+    # Human-published releases run from a tag. Dispatch trusted main instead of
+    # making the persistent index key available to tag workflows.
+    if: >-
+      github.repository == 'debpalash/VoiceStudio' &&
+      github.event_name == 'release' && !github.event.release.prerelease && !github.event.release.draft
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+    steps:
+      - name: Refresh from main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run android-repository.yml --repo "$GITHUB_REPOSITORY" --ref main
+
+  prepare:
+    # Fork PRs receive only a fresh preview key; publishing secrets live in the
+    # github-pages environment and are available only to the deploy job.
+    if: github.event_name != 'release'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          python-version: '3.11'
+      - name: Install isolated publisher
+        run: |
+          uv venv "$RUNNER_TEMP/fdroid-tools" --python 3.11
+          uv pip sync --require-hashes --python "$RUNNER_TEMP/fdroid-tools/bin/python" store/fdroid/requirements.txt
+      - name: Validate publisher and build a signed preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          "$RUNNER_TEMP/fdroid-tools/bin/python" tests/test_android_repository.py
+          gh api repos/debpalash/VoiceStudio/releases/latest > "$RUNNER_TEMP/release.json"
+          export FDROID_KEYSTORE_PASSWORD="$(python -c 'import secrets; print(secrets.token_urlsafe(36))')"
+          echo "::add-mask::$FDROID_KEYSTORE_PASSWORD"
+          keytool -genkeypair -keystore "$RUNNER_TEMP/preview.p12" -storetype PKCS12 -alias voicestudio -keyalg RSA -keysize 4096 -validity 2 -dname 'CN=Repository Preview' -storepass:env FDROID_KEYSTORE_PASSWORD -keypass:env FDROID_KEYSTORE_PASSWORD
+          "$RUNNER_TEMP/fdroid-tools/bin/python" scripts/prepare_android_repository.py \
+            --release-json "$RUNNER_TEMP/release.json" --download-directory "$RUNNER_TEMP/incoming" \
+            --keystore "$RUNNER_TEMP/preview.p12" --apksigner "$ANDROID_HOME/build-tools/36.0.0/apksigner" \
+            --output "$RUNNER_TEMP/preview-site" --preview
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-repository-preview
+          path: ${{ runner.temp }}/preview-site
+          retention-days: 3
+
+  publish:
+    needs: prepare
+    if: >-
+      github.repository == 'debpalash/VoiceStudio' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          python-version: '3.11'
+      - name: Install isolated publisher
+        run: |
+          uv venv "$RUNNER_TEMP/fdroid-tools" --python 3.11
+          uv pip sync --require-hashes --python "$RUNNER_TEMP/fdroid-tools/bin/python" store/fdroid/requirements.txt
+      - name: Sign production indexes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FDROID_REPO_KEYSTORE_B64: ${{ secrets.FDROID_REPO_KEYSTORE_B64 }}
+          FDROID_KEYSTORE_PASSWORD: ${{ secrets.FDROID_REPO_PASSWORD }}
+        run: |
+          umask 077
+          printf '%s' "$FDROID_REPO_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/repository.p12"
+          trap 'rm -f "$RUNNER_TEMP/repository.p12"' EXIT
+          gh api repos/debpalash/VoiceStudio/releases/latest > "$RUNNER_TEMP/release.json"
+          "$RUNNER_TEMP/fdroid-tools/bin/python" scripts/prepare_android_repository.py \
+            --release-json "$RUNNER_TEMP/release.json" --download-directory "$RUNNER_TEMP/incoming" \
+            --keystore "$RUNNER_TEMP/repository.p12" --apksigner "$ANDROID_HOME/build-tools/36.0.0/apksigner" \
+            --output "$RUNNER_TEMP/site"
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: ${{ runner.temp }}/site
+      - id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

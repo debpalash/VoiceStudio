@@ -1,4 +1,6 @@
 import importlib.util
+import os
+import subprocess
 import plistlib
 import sys
 from pathlib import Path
@@ -79,7 +81,8 @@ def test_workflow_signs_verifies_and_cleans_up_the_key():
     assert cleanup["name"] == "Remove API key" and cleanup["if"] == "always()"
     source = WORKFLOW.read_text(encoding="utf-8")
     assert "CODE_SIGNING_ALLOWED=NO" not in source
-    assert "testFlightInternalTestingOnly bool true" in source
+    upload = next(step for step in steps if step.get("name") == "Upload to TestFlight")
+    assert upload["env"]["TESTFLIGHT_AUDIENCE"] == "${{ inputs.audience || 'internal' }}"
     # Secrets reach only the steps that need them, never the whole job.
     assert "secrets." not in yaml.dump(load_workflow()["jobs"]["testflight"].get("env", {}))
 
@@ -213,3 +216,42 @@ def test_host_inference_prepares_all_runtime_headers_before_compiling_swift():
     first_compile = next(i for i, step in enumerate(steps) if any(command in step.get("run", "") for command in ("real-inference.sh", "check-swift.sh")))
     assert prepare < first_compile, "Provision every runtime header before SwiftPM compiles VSNative.c"
     assert "if" not in steps[prepare], "Cache hits must restore generated headers too"
+
+
+def test_upload_audience_is_explicit_and_internal_by_default():
+    audience = load_workflow()["on"]["workflow_dispatch"]["inputs"]["audience"]
+    assert audience["type"] == "choice"
+    assert audience["default"] == "internal"
+    assert audience["options"] == ["internal", "external"]
+
+
+@pytest.mark.skipif(not Path("/usr/libexec/PlistBuddy").is_file(), reason="TestFlight uploader runs on macOS")
+@pytest.mark.parametrize("audience,internal_only", [("internal", True), ("external", False)])
+def test_real_upload_step_writes_selected_audience(tmp_path, audience, internal_only):
+    step = next(s for s in load_workflow()["jobs"]["testflight"]["steps"] if s.get("name") == "Upload to TestFlight")
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    uploader = tools / "xcodebuild"
+    uploader.write_text("#!/bin/sh\nexit 0\n")  # ExportOptions are real; never upload a fixture.
+    uploader.chmod(0o755)
+    env = {**os.environ, "PATH": str(tools) + os.pathsep + os.environ["PATH"],
+           "RUNNER_TEMP": str(tmp_path), "TESTFLIGHT_AUDIENCE": audience, "TEAM_ID": "fixture-team",
+           "ASC_KEY_ID": "fixture-key", "ASC_ISSUER_ID": "fixture-issuer"}
+    result = subprocess.run(["bash", "-e", "-c", step["run"]], env=env, cwd=tmp_path,
+                            capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stderr
+    options = plistlib.loads((tmp_path / "ExportOptions.plist").read_bytes())
+    assert options["testFlightInternalTestingOnly"] is internal_only
+    assert options["method"] == "app-store-connect" and options["destination"] == "upload"
+    assert options["manageAppVersionAndBuildNumber"] is False
+
+
+@pytest.mark.skipif(not Path("/usr/libexec/PlistBuddy").is_file(), reason="TestFlight uploader runs on macOS")
+def test_upload_rejects_unknown_audience_before_export(tmp_path):
+    step = next(s for s in load_workflow()["jobs"]["testflight"]["steps"] if s.get("name") == "Upload to TestFlight")
+    result = subprocess.run(["bash", "-e", "-c", step["run"]],
+                            env={**os.environ, "RUNNER_TEMP": str(tmp_path), "TESTFLIGHT_AUDIENCE": "unrecognized"},
+                            cwd=tmp_path, capture_output=True, text=True, timeout=20)
+    assert result.returncode != 0
+    assert "Unsupported TestFlight audience" in result.stdout
+    assert not (tmp_path / "ExportOptions.plist").exists()

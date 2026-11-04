@@ -185,7 +185,7 @@ struct ProductionView: View {
         }
     }
     private func productionModel(_ task: String, _ capability: ModelCapability) -> some View {
-        ChoicePicker(label: model.t(capability == .tts ? "mobile.speak.engine" : "nav.clone"),selection: Binding(get: { model.phone.selectedModel(task,capability)?.id ?? "" },set: { model.phone.chooseModel(task,$0) }),options: model.phone.candidates(capability).map { SelectionOption(id: $0.id,title: $0.name,enabled: $0.fits()) })
+        PhoneModelPicker(label: model.t(capability == .tts ? "mobile.speak.engine" : "nav.clone"),selection: Binding(get: { model.phone.selectedModel(task,capability)?.id ?? "" },set: { model.phone.chooseModel(task,$0) }), items: model.phone.candidates(capability))
     }
     private func switchProject(_ next: ProductionProject) {
         let previous = project

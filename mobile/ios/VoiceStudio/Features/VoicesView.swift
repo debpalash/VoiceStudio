@@ -164,9 +164,10 @@ struct CloneView: View {
             if route != .computer {
                 Section {
                     Text(model.t("mobile.calls.clone_hint")).font(.subheadline).foregroundStyle(theme.color("textMuted"))
+                    ModelRamWarning(items: [asr,cloneModel].compactMap { $0 })
                     DisclosureGroup(model.t("mobile.simple.more")) {
-                        ChoicePicker(label: model.t("mobile.simple.clone"), selection: Binding(get: { cloneModel?.id ?? "" }, set: { model.phone.chooseModel("clone",$0) }), options: model.phone.candidates(.clone).map { SelectionOption(id: $0.id,title: $0.name,enabled: $0.fits()) })
-                        ChoicePicker(label: model.t("mobile.simple.asr"), selection: Binding(get: { asr?.id ?? "" }, set: { model.phone.chooseModel("clone-asr",$0) }), options: model.phone.candidates(.asr).map { SelectionOption(id: $0.id, title: $0.name, enabled: $0.fits()) })
+                        PhoneModelPicker(label: model.t("mobile.simple.clone"), selection: Binding(get: { cloneModel?.id ?? "" }, set: { model.phone.chooseModel("clone",$0) }), items: model.phone.candidates(.clone), showRamWarning: false)
+                        PhoneModelPicker(label: model.t("mobile.simple.asr"), selection: Binding(get: { asr?.id ?? "" }, set: { model.phone.chooseModel("clone-asr",$0) }), items: model.phone.candidates(.asr), showRamWarning: false)
                     }
                 }.listRowBackground(theme.color("surface"))
             }

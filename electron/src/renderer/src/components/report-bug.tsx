@@ -6,6 +6,7 @@ import { contactAge, lastBackendContact } from '@shared/utils/backendContact';
 import { clampCrashTail } from '@shared/utils/crashReport';
 import { scrubText } from '@shared/utils/scrub';
 import { formatHostSnapshot, withDeadline } from '@shared/utils/hostSnapshot';
+import { collapseRepeatedLines, formatFailureFacts } from '@shared/utils/installFailure';
 import { describeExitCode, isNativeFaultExit } from '@shared/utils/nativeExit';
 import { _adaptLastRunCrash, type LastRunCrashRecord } from '@shared/utils/runCrashRecord';
 import { getBackendStatusSnapshot } from '@/hooks/use-backend-status';
@@ -73,7 +74,7 @@ function reachabilitySection(
   return lines;
 }
 
-export function ReportBug({ error }: { error?: Error | string }) {
+export function ReportBug({ error, setup = false }: { error?: Error | string; setup?: boolean }) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -81,7 +82,30 @@ export function ReportBug({ error }: { error?: Error | string }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [summary, setSummary] = useState('');
   const [showRequired, setShowRequired] = useState(false);
+  const [hasInstallFailure, setHasInstallFailure] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const savingNow = useRef(false);
   const pending = useRef(false);
+  const saveDiagnostics = async () => {
+    const bridge = getBridge();
+    if (!bridge || savingNow.current) return;
+    savingNow.current = true;
+    setSaving(true);
+    setSaveFailed(false);
+    try {
+      const data = await bridge.backend.getSetupDiagnostics();
+      await bridge.files.saveData({
+        data: new TextEncoder().encode(data),
+        suggestedName: 'voicestudio-setup.log',
+      });
+    } catch {
+      setSaveFailed(true);
+    } finally {
+      savingNow.current = false;
+      setSaving(false);
+    }
+  };
   const report = async (skipFreshness = false, staleBuild?: KnownUpdate) => {
     if (pending.current) return;
     pending.current = true;
@@ -141,6 +165,21 @@ export function ReportBug({ error }: { error?: Error | string }) {
         `**App:** VoiceStudio ${__APP_VERSION__} (build ${__BUILD_COMMIT__})`,
         '**Shell:** Electron',
       ];
+      if (setup) {
+        const diagnostics = await withDeadline(
+          bridge?.backend?.getSetupDiagnostics?.().catch(() => null) ?? Promise.resolve(null),
+          3000,
+        );
+        context.push(
+          '## Runtime setup',
+          `Stage: ${backend?.stage ?? 'unknown'}`,
+          `Progress: ${JSON.stringify(backend?.setupProgress ?? {})}`,
+          'Attach the downloaded voicestudio-setup.log for the full setup history.',
+          '```',
+          clampCrashTail(scrubText(diagnostics ?? backend?.logTail.join('\n') ?? '')),
+          '```',
+        );
+      }
       if (staleBuild) {
         context.push(
           `**Build status:** OUTDATED — v${staleBuild.latest} was already available when this was filed`,
@@ -195,7 +234,7 @@ export function ReportBug({ error }: { error?: Error | string }) {
             scrubText(backend.message),
             '',
             '```',
-            clampCrashTail(scrubText(backend.logTail.join('\n'))),
+            clampCrashTail(scrubText(collapseRepeatedLines(backend.logTail).join('\n'))),
             '```',
             '',
           ]
@@ -241,9 +280,17 @@ export function ReportBug({ error }: { error?: Error | string }) {
         const tail = clampCrashTail(scrubText(lines.join('\n')).trim(), 1000);
         if (tail) diagnosticSection.push('## Current backend log', '', '```', tail, '```', '');
       }
+      const installFailure = backend?.failure;
+      // By code point: a UTF-16 slice can split an emoji and make encodeURIComponent throw.
+      const shortSummary = Array.from(summaryText).slice(0, 100).join('');
       const url = composeBugReportUrl({
-        // By code point: a UTF-16 slice can split an emoji and make encodeURIComponent throw.
-        title: `[Bug] ${Array.from(summaryText).slice(0, 100).join('')}`,
+        title: installFailure
+          ? `[Install] ${installFailure.code}: ${shortSummary}`
+          : `[Bug] ${shortSummary}`,
+        labels: installFailure ? 'bug,install' : 'bug',
+        factsSection: installFailure
+          ? formatFailureFacts(installFailure).map((line) => scrubText(line))
+          : [],
         error,
         ctx: context.join('\n'),
         crashSection,
@@ -283,6 +330,7 @@ export function ReportBug({ error }: { error?: Error | string }) {
                   .join(''),
               );
             setShowRequired(false);
+            setHasInstallFailure(Boolean(getBridge() && getBackendStatusSnapshot()?.failure));
             setDialogOpen(true);
           }}
         >
@@ -342,9 +390,26 @@ export function ReportBug({ error }: { error?: Error | string }) {
                 {(['app', 'system', 'engines', 'logs', 'pages'] as const).map((item) => (
                   <li key={item}>{t(`reportBug.sent_${item}`)}</li>
                 ))}
+                {hasInstallFailure ? <li>{t('reportBug.sent_install_failure')}</li> : null}
               </ul>
               <p className="mt-2 text-muted-foreground">{t('reportBug.not_sent')}</p>
             </div>
+            {hasInstallFailure ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={saving}
+                onClick={() => void saveDiagnostics()}
+              >
+                {t('reportBug.save_diagnostics')}
+              </Button>
+            ) : null}
+            {saveFailed ? (
+              <p role="alert" className="text-xs text-destructive">
+                {t('reportBug.save_diagnostics_failed')}
+              </p>
+            ) : null}
             <DialogFooter>
               <DialogClose render={<Button type="button" variant="outline" />}>
                 {t('common.cancel')}

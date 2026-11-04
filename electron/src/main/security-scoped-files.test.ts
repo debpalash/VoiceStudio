@@ -1,7 +1,56 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { securityScopedDialogOptions, withSecurityScopedBookmark } from './security-scoped-files';
+import {
+  DirectoryBookmarks,
+  securityScopedDialogOptions,
+  withSecurityScopedBookmark,
+} from './security-scoped-files';
+
+it('persists private folder grants, restores them on restart and releases them on quit', () => {
+  const root = mkdtempSync(join(tmpdir(), 'folder-grants-'));
+  const stop = vi.fn();
+  const start = vi.fn(() => stop);
+  const file = join(root, 'grants.json');
+  const first = new DirectoryBookmarks(file, start);
+  const second = new DirectoryBookmarks(file, start);
+  try {
+    first.retain(join(root, 'selected'), 'scoped-bookmark');
+    if (process.platform !== 'win32') expect(statSync(file).mode & 0o077).toBe(0);
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toHaveLength(1);
+    expect(readFileSync(file, 'utf8')).not.toContain(root);
+    first.close();
+    expect(second.restore()).toEqual([]);
+    expect(start).toHaveBeenCalledWith('scoped-bookmark');
+    second.close();
+    second.close();
+    expect(stop).toHaveBeenCalledTimes(2);
+  } finally {
+    first.close();
+    second.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it('keeps stale selections distinct from a new empty default and tolerates a corrupt journal', () => {
+  const root = mkdtempSync(join(tmpdir(), 'folder-grants-'));
+  const file = join(root, 'grants.json');
+  try {
+    writeFileSync(file, JSON.stringify([{ id: 'a'.repeat(64), bookmark: 'stale' }]));
+    const stale = new DirectoryBookmarks(file, () => {
+      throw new Error('stale bookmark');
+    });
+    expect(stale.restore()).toEqual(['a'.repeat(64)]);
+    writeFileSync(file, '{corrupt');
+    const corrupt = new DirectoryBookmarks(file, vi.fn());
+    expect(corrupt.restore()).toEqual(['authorization_store_invalid']);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 it('leaves direct-download dialog options unchanged', () => {
   const options = { defaultPath: 'take.wav' };

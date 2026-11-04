@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { RuntimeLaunchRefusedError } from './runtime-launch-refusal';
 import { existsSync } from 'node:fs';
 import { cp, mkdtemp, mkdir, readFile, rm, writeFile, statfs, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -16,6 +17,7 @@ import { PYPI_SPEED_SAMPLE_BYTES } from './pypi-mirror';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import {
   installRuntime,
+  runtimeDownloadEnv,
   promoteLegacyRuntimeCaches,
   CUDNN8_COMPAT_PIN,
   MISSING_SYSTEM_LIBRARY_CODE,
@@ -110,6 +112,49 @@ afterEach(async () => {
 });
 
 describe('packaged runtime setup', () => {
+  it('gives large downloads 900 seconds while preserving explicit timeout overrides', () => {
+    vi.stubEnv('UV_HTTP_TIMEOUT', '');
+    vi.stubEnv('UV_HTTP_CONNECT_TIMEOUT', '');
+    vi.stubEnv('UV_HTTP_RETRIES', '');
+    for (const region of ['auto', 'global', 'china', 'russia', 'restricted'] as const) {
+      expect(runtimeDownloadEnv(region)).toMatchObject({
+        UV_HTTP_TIMEOUT: '900',
+        UV_HTTP_CONNECT_TIMEOUT: '30',
+        UV_HTTP_RETRIES: '5',
+      });
+    }
+    vi.stubEnv('UV_HTTP_TIMEOUT', '1800');
+    expect(runtimeDownloadEnv('global').UV_HTTP_TIMEOUT).toBe('1800');
+  });
+  it('passes the timeout to both the mirrored sync and its origin fallback', async () => {
+    vi.stubEnv('UV_HTTP_TIMEOUT', '');
+    const { bundle, project } = await fixture();
+    await writeFile(
+      join(bundle, 'uv.lock'),
+      'url = "https://files.pythonhosted.org/packages/test.whl"',
+    );
+    const environments: NodeJS.ProcessEnv[] = [];
+    const run = vi.fn(
+      async (_command: string, args: string[], _cwd: string, env?: NodeJS.ProcessEnv) => {
+        if (args[0] !== 'sync' || args.includes('--dry-run')) return undefined;
+        environments.push(env ?? {});
+        if (environments.length === 1) throw new Error('mirror connection reset');
+        await interpreter(project);
+        return undefined;
+      },
+    );
+    await installRuntime(
+      bundle,
+      project,
+      'uv',
+      run,
+      new AbortController().signal,
+      undefined,
+      'china',
+    );
+    expect(environments).toHaveLength(2);
+    for (const env of environments) expect(env.UV_HTTP_TIMEOUT).toBe('900');
+  });
   it.each(['win32', 'linux'] as const)(
     'does not import torch for the CUDA compatibility probe on a %s CPU runtime',
     async (platform) => {
@@ -332,10 +377,12 @@ describe('packaged runtime setup', () => {
       'installing_deps',
       'verifying',
     ]);
-    // The dry run that plans multi-connection downloads (#3411), the sync, the
-    // import check, and off macOS the CUDA compatibility probe.
-    expect(run.mock.calls).toHaveLength(process.platform === 'darwin' ? 3 : 4);
-    expect(run.mock.calls[0]![1]).toEqual(expect.arrayContaining(['-v', 'sync', '--dry-run']));
+    // Preparing and finding Python for the interpreter check, the dry run that
+    // plans multi-connection downloads (#3411), the sync, the import check, and
+    // off macOS the CUDA compatibility probe.
+    expect(run.mock.calls).toHaveLength(process.platform === 'darwin' ? 5 : 6);
+    expect(run.mock.calls[0]![1]).toEqual(expect.arrayContaining(['python', 'install']));
+    expect(run.mock.calls[2]![1]).toEqual(expect.arrayContaining(['-v', 'sync', '--dry-run']));
     expect(await runtimeReady(bundle, project)).toBe(true);
     await writeFile(join(bundle, 'uv.lock'), 'updated dependencies');
     expect(await runtimeReady(bundle, project)).toBe(false);
@@ -487,7 +534,13 @@ describe('packaged runtime setup', () => {
         return undefined;
       });
       await installRuntime(
-        bundle, project, 'uv', run, new AbortController().signal, undefined, 'global',
+        bundle,
+        project,
+        'uv',
+        run,
+        new AbortController().signal,
+        undefined,
+        'global',
       );
       expect(importFailures).toBe(existing ? 1 : 0);
       for (const [, args] of run.mock.calls) {
@@ -1178,6 +1231,34 @@ describe('packaged runtime setup', () => {
     await expect(installRuntime(bundle, project, 'uv', run, controller.signal)).rejects.toThrow();
     expect(run).toHaveBeenCalledTimes(1);
     expect(await runtimeReady(bundle, project)).toBe(false);
+  });
+  it('stops before any wheel downloads when the interpreter is refused', async () => {
+    const { bundle, project } = await fixture();
+    const run = vi.fn(async (command: string, args: string[]) => {
+      if (args[0] === 'python' && args[1] === 'find')
+        return 'warning: something minor\n/managed/python\nwarning: another\n';
+      if (command === '/managed/python')
+        throw Object.assign(new Error('Could not start /managed/python: spawn UNKNOWN'), {
+          code: 'UNKNOWN',
+        });
+    });
+    const refused = await installRuntime(bundle, project, 'uv', run, new AbortController().signal).catch(
+      (error: unknown) => error,
+    );
+    expect(refused).toBeInstanceOf(RuntimeLaunchRefusedError);
+    expect((refused as RuntimeLaunchRefusedError).program).toBe('/managed/python');
+    expect((refused as Error).message).toBe('spawn UNKNOWN');
+    expect(run.mock.calls.some(([, args]) => args.includes('sync'))).toBe(false);
+    expect(run.mock.calls[0]![1]).toEqual(expect.arrayContaining(['--no-bin', '--no-registry']));
+  });
+  it('leaves other interpreter check problems for the sync to report', async () => {
+    const { bundle, project } = await fixture();
+    const run = vi.fn(async (_command: string, args: string[]) => {
+      if (args[0] === 'python') throw new Error('download failed');
+      await interpreter(project);
+    });
+    await installRuntime(bundle, project, 'uv', run, new AbortController().signal);
+    expect(run.mock.calls.some(([, args]) => args.includes('sync'))).toBe(true);
   });
   it('pins the release workflow installer version', async () => {
     const release = await readFile(

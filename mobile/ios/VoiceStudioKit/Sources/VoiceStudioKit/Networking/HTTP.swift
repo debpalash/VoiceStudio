@@ -16,11 +16,19 @@ public struct DownloadReply: Sendable {
     public init(file: URL, status: Int, headers: [String: String]) { self.file = file; self.status = status; self.headers = headers }
 }
 public protocol HTTPTransport: Sendable {
+    var preferredRangeBytes: Int64 { get }
     func send(_ request: URLRequest) async throws -> HTTPReply
     func download(_ request: URLRequest) async throws -> DownloadReply
     func download(_ request: URLRequest, maxBytes: Int) async throws -> DownloadReply
+    func download(_ request: URLRequest, progress: @escaping @Sendable (Int64) async -> Void) async throws -> DownloadReply
 }
 public extension HTTPTransport {
+    var preferredRangeBytes: Int64 { 4_194_304 }
+    func download(_ request: URLRequest, progress: @escaping @Sendable (Int64) async -> Void) async throws -> DownloadReply {
+        let reply = try await download(request)
+        await progress(Int64((try? reply.file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0))
+        return reply
+    }
     // In-memory test transports still enforce the same boundary. Network transports
     // must override this method to enforce the limit while receiving the response.
     func download(_ request: URLRequest, maxBytes: Int) async throws -> DownloadReply {

@@ -44,8 +44,11 @@ Electron publication uses these GitHub Actions secrets:
   `ELECTRON_MAC_APP_STORE_PROVISIONING_PROFILE` for private MAS packaging.
   These are separate from Developer ID credentials and do not authorize upload
   or publication.
-- `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` (not the Apple ID login password)
-  and `APPLE_TEAM_ID` for macOS notarization and stapling.
+- `APPLE_API_KEY` (raw `.p8` PEM text), `APPLE_API_KEY_ID` and
+  `APPLE_API_ISSUER` for macOS notarization and stapling. Use an App Store
+  Connect team key with Developer access. The packaging step writes the key
+  into a private temporary file and removes it on success or failure. Apple
+  ID passwords are not used by this workflow.
 - `ELECTRON_WINDOWS_CSC_LINK` and `ELECTRON_WINDOWS_CSC_KEY_PASSWORD` for
   Windows Authenticode signing. The macOS certificate cannot sign Windows apps.
 - `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID` and
@@ -184,6 +187,15 @@ After publication, verify each maintained channel:
 | Docker Hub          | `docker.yml` (release published)   | Matching CUDA/ROCm/CUDA arm64 tags                                                                                                                           |
 | Docker Hub overview | `dockerhub-description.yml`                       | Read the `Update Docker Hub description` step log; the step may continue after a 403                                                                         |
 | Rolling containers  | `docker.yml` on `main` pushes only | `:latest`, `:main`, `:rocm` and `:cuda-arm64` timestamps move; a release never moves them                                                                    |
+
+For the Homebrew installation method, update
+[`Casks/voicestudio.rb` in the official tap](https://github.com/debpalash/homebrew-tap/blob/main/Casks/voicestudio.rb)
+after publishing a stable release: set its version and both architecture-specific
+DMG SHA-256 values from that release’s `SHA256SUMS.txt`. Validate with
+`brew style --cask debpalash/tap/voicestudio`,
+`brew audit --cask --online debpalash/tap/voicestudio` and
+`brew fetch --cask --all-platforms debpalash/tap/voicestudio` before merging the tap
+update. Keep prereleases out of this stable cask.
 
 A missing channel is a release bug. There are no RC tags; the one prerelease is
 the opt-in **Beta** channel (below). Previews between betas are builds from

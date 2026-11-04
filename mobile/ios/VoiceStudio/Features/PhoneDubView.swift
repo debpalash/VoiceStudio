@@ -53,6 +53,7 @@ struct PhoneDubView: View {
                     ChoicePicker(label: model.t("mobile.speak.voice"), selection: $voice, options: [SelectionOption(id: "", title: model.t("mobile.simple.reference"))] + model.phone.voices.map { SelectionOption(id: $0.id.uuidString, title: $0.name) }, icon: "person.wave.2", tile: true)
                 }
                 DubConsentRow(isOn: $consent)
+                ModelRamWarning(items: model.phone.dubModels)
                 DisclosureGroup {
                     Toggle(model.t("mobile.simple.audio_only"), isOn: $audioOnly).frame(minHeight: 44)
                     phoneModel("dub-asr", .asr)
@@ -128,7 +129,7 @@ struct PhoneDubView: View {
         .onDisappear { creating?.cancel() }
     }
     private func phoneModel(_ task: String,_ capability: ModelCapability) -> some View {
-        ChoicePicker(label: model.t("mobile.simple."+capability.rawValue),selection: Binding(get: { model.phone.selectedModel(task,capability)?.id ?? "" },set: { model.phone.chooseModel(task,$0) }),options: model.phone.candidates(capability).map { SelectionOption(id: $0.id,title: $0.name,subtitle: model.t("mobile.simple." + $0.capability.rawValue),enabled: $0.fits()) })
+        PhoneModelPicker(label: model.t("mobile.simple."+capability.rawValue),selection: Binding(get: { model.phone.selectedModel(task,capability)?.id ?? "" },set: { model.phone.chooseModel(task,$0) }), items: model.phone.candidates(capability), showCapability: true, showRamWarning: false)
     }
     private func start() {
         let sources = batchMode ? batchSources : source.map { [$0] } ?? []

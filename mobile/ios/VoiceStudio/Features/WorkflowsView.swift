@@ -205,7 +205,7 @@ struct WorkflowsView: View {
         }
     }
     private func modelPicker(_ task: String,_ capability: ModelCapability) -> some View {
-        ChoicePicker(label: model.t("mobile.simple."+capability.rawValue),selection: Binding(get: { model.phone.selectedModel(task,capability)?.id ?? "" },set: { model.phone.chooseModel(task,$0) }),options: model.phone.candidates(capability).map { SelectionOption(id: $0.id,title: $0.name,enabled: $0.fits()) })
+        PhoneModelPicker(label: model.t("mobile.simple."+capability.rawValue),selection: Binding(get: { model.phone.selectedModel(task,capability)?.id ?? "" },set: { model.phone.chooseModel(task,$0) }), items: model.phone.candidates(capability))
     }
     private func stepKey(_ kind: String) -> String {
         switch kind {

@@ -22,7 +22,7 @@ class PhoneProductionWorker(context: Context,params: WorkerParameters): Coroutin
             val request=withContext(Dispatchers.IO) {Json.decodeFromString<ProductionJob>(File(applicationContext.noBackupFilesDir,"production-jobs/$job.json").readText())}
             val runtime=PhoneRuntime.get(applicationContext)
             val selections=request.project.plan().segments.filter {it.text.isNotEmpty()}.map {request.project.voice(it.role)}
-            listOfNotNull(request.tts.takeIf {selections.any {it.startsWith("preset:")}},request.clone.takeIf {selections.any {it.startsWith("phone:")}}).forEach {model->runtime.licence.requireAccepted(model);if(!runtime.downloads.installed(model)||!model.fits(runtime.ramBytes)) throw ClientFailure("mobile.local.model_required")}
+            listOfNotNull(request.tts.takeIf {selections.any {it.startsWith("preset:")}},request.clone.takeIf {selections.any {it.startsWith("phone:")}}).forEach {model->runtime.licence.requireAccepted(model);if(!runtime.downloads.installed(model)) throw ClientFailure("mobile.local.model_required")}
             val voices=PhoneVoiceStore(File(applicationContext.noBackupFilesDir,"voices"))
             val renderer=ProductionVoiceRenderer(runtime.engine,voices,voices.list(),request.tts,request.clone)
             val store=ProductionStore(File(applicationContext.noBackupFilesDir,"production"))

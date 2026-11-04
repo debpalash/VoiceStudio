@@ -5,8 +5,8 @@ catalog: docs/feature-catalog.md
 #
 # When a PR adds or removes an engine or user-facing feature, update this
 # file in the same PR — otherwise the nightly job opens/updates the rolling
-# `docs-drift` issue. Spec: docs/competitive-analysis.md Spec 9a /
-# docs/specs/2026-06-12-elevenlabs-parity-program.md Wave 0.1.
+# `docs-drift` issue. See docs/competitive-analysis.md Spec 9a for the
+# rationale and docs/feature-catalog.md for the current reader-facing list.
 
 # Each name must appear verbatim in README.md (the Features grid).
 features:
