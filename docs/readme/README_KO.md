@@ -3,6 +3,10 @@
   <p>
     <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="Trendshift의 VoiceStudio 인기 순위 배지" width="220" height="48" /></a>
   </p>
+  <p>
+    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">GitHub 스타 10만 개 달성 — 감사합니다!</a></strong><br />
+    <sub>VoiceStudio를 사용하고 공유해 주시고, 버그 제보와 코드 기여로 프로젝트를 지원해 주신 모든 분께 감사드립니다.</sub>
+  </p>
   <h2>AI 보이스 스튜디오를, 내 기기에서.</h2>
   <h3>646개 언어로 음성 복제, 보이스 디자인, 더빙, 받아쓰기, 전사, 내레이션을 만드세요.</h3>
   <p>노트북, 데스크톱, 서버, 휴대폰, 태블릿 등에서 실행됩니다</p>
