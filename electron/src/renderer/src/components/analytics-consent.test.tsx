@@ -160,3 +160,50 @@ it('lets a choice the backend already holds win over the early answer', async ()
   await waitFor(() => expect(readSetupAnalytics()).toEqual({ enabled: false, settled: true }));
   expect(mock.api).toHaveBeenCalledTimes(1);
 });
+
+it('honors the kill switch for a user who opted in earlier', async () => {
+  mock.status = { stage: 'ready', analyticsDisabled: true };
+  mock.api.mockResolvedValue({ available: true, prompted: true, opted_in: true });
+  const { client } = runtime();
+  await waitFor(() => expect(client.getQueryData(['privacy', 'analytics'])).toBeTruthy());
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(enableAnalytics).not.toHaveBeenCalled();
+  expect(capture).not.toHaveBeenCalled();
+});
+
+it('answers the wizard before saving, so it cannot race the early answer', async () => {
+  rememberSetupAnalytics({ enabled: true, settled: false });
+  mock.status = { stage: 'ready' };
+  let finishSave = () => {};
+  mock.api.mockImplementation((_path: string, init?: { method?: string }) =>
+    init?.method === 'PUT'
+      ? new Promise((resolve) => {
+          finishSave = () => resolve({});
+        })
+      : Promise.resolve({ available: true, prompted: false, opted_in: false }),
+  );
+  const { client } = runtime();
+  await waitFor(() =>
+    expect(client.getQueryData(['privacy', 'analytics'])).toMatchObject({ prompted: true }),
+  );
+  finishSave();
+});
+
+it('asks again and stays off when saving the early answer fails', async () => {
+  rememberSetupAnalytics({ enabled: true, settled: false });
+  mock.status = { stage: 'ready' };
+  mock.api.mockImplementation((_path: string, init?: { method?: string }) =>
+    init?.method === 'PUT'
+      ? Promise.reject(new Error('offline'))
+      : Promise.resolve({ available: true, prompted: false, opted_in: false }),
+  );
+  const { client } = runtime();
+  await waitFor(() => expect(readSetupAnalytics()).toEqual({ enabled: true, settled: false }));
+  await waitFor(() =>
+    expect(client.getQueryData(['privacy', 'analytics'])).toMatchObject({
+      opted_in: false,
+      prompted: false,
+    }),
+  );
+  expect(vi.mocked(mock.api).mock.calls.filter(([, init]) => init?.method === 'PUT')).toHaveLength(1);
+});

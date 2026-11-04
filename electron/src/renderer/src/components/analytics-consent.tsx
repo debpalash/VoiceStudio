@@ -35,6 +35,7 @@ export function AnalyticsRuntime() {
   const backend = useBackendStatus();
   const client = useQueryClient();
   const funnel = useRef(new SetupFunnel());
+  const handedOver = useRef(false);
   const analytics = useQuery({
     queryKey: analyticsKey,
     queryFn: ({ signal }) => apiJson<AnalyticsState>('/api/settings/analytics', { signal }),
@@ -51,23 +52,31 @@ export function AnalyticsRuntime() {
       rememberSetupAnalytics({ enabled: analytics.data.opted_in, settled: true });
       return;
     }
+    if (handedOver.current) return;
+    handedOver.current = true;
     rememberSetupAnalytics({ ...early, settled: true });
+    // Answered in the cache first: the wizard must not ask, and race, while this saves.
+    client.setQueryData(analyticsKey, (state: AnalyticsState | undefined) => ({
+      ...(state as AnalyticsState),
+      opted_in: early.enabled,
+      prompted: true,
+    }));
     void apiJson('/api/settings/analytics', {
       method: 'PUT',
       body: JSON.stringify({ enabled: early.enabled }),
-    })
-      .then(() =>
-        client.setQueryData(analyticsKey, (state: AnalyticsState | undefined) => ({
-          ...(state as AnalyticsState),
-          opted_in: early.enabled,
-          prompted: true,
-        })),
-      )
-      .catch(() => rememberSetupAnalytics(early));
+    }).catch(() => {
+      // Off until the wizard asks again. The early answer stays for the next launch.
+      rememberSetupAnalytics(early);
+      client.setQueryData(analyticsKey, (state: AnalyticsState | undefined) => ({
+        ...(state as AnalyticsState),
+        opted_in: false,
+        prompted: false,
+      }));
+    });
   }, [analytics.data, client]);
   useEffect(() => {
     if (!analytics.data) return;
-    if (analytics.data.available && analytics.data.opted_in) {
+    if (analytics.data.available && analytics.data.opted_in && !backend.analyticsDisabled) {
       void enableAnalytics().then(() => {
         const screen = routeBreadcrumb(window.location.hash);
         capture('screen_viewed', { stage: screen });
@@ -76,14 +85,14 @@ export function AnalyticsRuntime() {
     } else {
       disableAnalytics();
     }
-  }, [analytics.data]);
+  }, [analytics.data, backend.analyticsDisabled]);
   // Setup and startup failures happen with no backend, so the funnel is sent
   // from here, on the early answer until the backend can give its own.
   const allowed = analytics.data
-    ? analytics.data.available && analytics.data.opted_in
+    ? analytics.data.available && analytics.data.opted_in && !backend.analyticsDisabled
     : analyticsAvailable() && setupAnalyticsAllowed(readSetupAnalytics(), backend.analyticsDisabled);
   useEffect(() => {
-    const events = funnel.current.observe(backend, setupWasCompleted());
+    const events = funnel.current.observe(backend, setupWasCompleted(), allowed);
     if (!allowed || !events.length) return;
     const common = {
       app_version: __APP_VERSION__,

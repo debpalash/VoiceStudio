@@ -64,14 +64,16 @@ export interface FunnelEvent {
 export class SetupFunnel {
   private previousStage: string | undefined;
   private reported = new Set<string>();
+  private installing = false;
 
-  observe(status: FunnelStatus, setupCompleted: boolean): FunnelEvent[] {
+  observe(status: FunnelStatus, setupCompleted: boolean, canSend: boolean): FunnelEvent[] {
     const events: FunnelEvent[] = [];
     const previous = this.previousStage;
     this.previousStage = status.stage;
     if (setupCompleted) return events;
     if (status.stage === 'installing' && previous !== 'installing') {
       this.reported.clear();
+      this.installing = true;
       events.push({ event: 'setup_started', props: { stage: status.setupPhase ?? 'checking' } });
     }
     const code = status.failure?.code;
@@ -79,9 +81,14 @@ export class SetupFunnel {
       this.reported.add(code);
       events.push({ event: 'setup_failed', props: { stage: status.stage, error_class: code } });
     }
-    if (previous === 'installing' && ['starting', 'attaching', 'ready'].includes(status.stage))
+    // Cancel also leaves `installing` for `attaching`, so only a working backend proves it.
+    if (status.stage === 'setup_required' || code) this.installing = false;
+    if (status.stage === 'ready' && this.installing) {
+      this.installing = false;
       events.push({ event: 'setup_completed', props: {} });
-    if (status.stage === 'ready' && !firstReadyRecorded()) {
+    }
+    // Held until it can be sent: consent may only arrive after the first start.
+    if (status.stage === 'ready' && canSend && !firstReadyRecorded()) {
       rememberFirstReady();
       events.push({ event: 'backend_first_ready', props: {} });
     }

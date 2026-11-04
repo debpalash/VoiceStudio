@@ -37,35 +37,56 @@ describe('SetupFunnel', () => {
 
   it('follows one successful first run', () => {
     const funnel = new SetupFunnel();
-    expect(funnel.observe({ stage: 'setup_required' }, false)).toEqual([]);
-    expect(names(funnel.observe({ stage: 'installing', setupPhase: 'checking' }, false))).toEqual([
+    expect(funnel.observe({ stage: 'setup_required' }, false, true)).toEqual([]);
+    expect(names(funnel.observe({ stage: 'installing', setupPhase: 'checking' }, false, true))).toEqual([
       'setup_started',
     ]);
-    expect(funnel.observe({ stage: 'installing', setupPhase: 'installing_deps' }, false)).toEqual([]);
-    expect(names(funnel.observe({ stage: 'starting' }, false))).toEqual(['setup_completed']);
-    expect(names(funnel.observe({ stage: 'ready' }, false))).toEqual(['backend_first_ready']);
-    expect(funnel.observe({ stage: 'ready' }, false)).toEqual([]);
-    expect(names(new SetupFunnel().observe({ stage: 'ready' }, false))).toEqual([]);
+    expect(funnel.observe({ stage: 'installing', setupPhase: 'installing_deps' }, false, true)).toEqual(
+      [],
+    );
+    expect(funnel.observe({ stage: 'starting' }, false, true)).toEqual([]);
+    expect(names(funnel.observe({ stage: 'ready' }, false, true))).toEqual([
+      'setup_completed',
+      'backend_first_ready',
+    ]);
+    expect(funnel.observe({ stage: 'ready' }, false, true)).toEqual([]);
+    expect(names(new SetupFunnel().observe({ stage: 'ready' }, false, true))).toEqual([]);
+  });
+
+  it('does not count a cancelled install as completed', () => {
+    const funnel = new SetupFunnel();
+    funnel.observe({ stage: 'installing' }, false, true);
+    expect(funnel.observe({ stage: 'attaching' }, false, true)).toEqual([]);
+    expect(funnel.observe({ stage: 'setup_required' }, false, true)).toEqual([]);
+    expect(names(funnel.observe({ stage: 'ready' }, false, false))).toEqual([]);
+  });
+
+  it('holds the first-ready event until consent arrives', () => {
+    const funnel = new SetupFunnel();
+    expect(funnel.observe({ stage: 'ready' }, false, false)).toEqual([]);
+    expect(names(funnel.observe({ stage: 'ready' }, false, true))).toEqual(['backend_first_ready']);
   });
 
   it('counts a failure once per attempt and code, and sends only stage and code', () => {
     const funnel = new SetupFunnel();
-    funnel.observe({ stage: 'installing' }, false);
+    funnel.observe({ stage: 'installing' }, false, true);
     const failed = { stage: 'setup_required', failure: { code: 'EXEC_REFUSED' } };
-    const [event] = funnel.observe(failed, false);
+    const [event] = funnel.observe(failed, false, true);
     expect(event).toEqual({
       event: 'setup_failed',
       props: { stage: 'setup_required', error_class: 'EXEC_REFUSED' },
     });
-    expect(funnel.observe(failed, false)).toEqual([]);
-    funnel.observe({ stage: 'installing' }, false);
-    expect(names(funnel.observe(failed, false))).toEqual(['setup_failed']);
+    expect(funnel.observe(failed, false, true)).toEqual([]);
+    funnel.observe({ stage: 'installing' }, false, true);
+    expect(names(funnel.observe(failed, false, true))).toEqual(['setup_failed']);
   });
 
   it('stays quiet once setup has been completed', () => {
     const funnel = new SetupFunnel();
-    expect(funnel.observe({ stage: 'installing' }, true)).toEqual([]);
-    expect(funnel.observe({ stage: 'crashed', failure: { code: 'NATIVE_CRASH' } }, true)).toEqual([]);
-    expect(funnel.observe({ stage: 'ready' }, true)).toEqual([]);
+    expect(funnel.observe({ stage: 'installing' }, true, true)).toEqual([]);
+    expect(funnel.observe({ stage: 'crashed', failure: { code: 'NATIVE_CRASH' } }, true, true)).toEqual(
+      [],
+    );
+    expect(funnel.observe({ stage: 'ready' }, true, true)).toEqual([]);
   });
 });
