@@ -192,12 +192,17 @@ it('answers the wizard before saving, so it cannot race the early answer', async
 it('asks again and stays off when saving the early answer fails', async () => {
   rememberSetupAnalytics({ enabled: true, settled: false });
   mock.status = { stage: 'ready' };
+  let failSave = () => {};
   mock.api.mockImplementation((_path: string, init?: { method?: string }) =>
     init?.method === 'PUT'
-      ? Promise.reject(new Error('offline'))
+      ? new Promise((_resolve, reject) => {
+          failSave = () => reject(new Error('offline'));
+        })
       : Promise.resolve({ available: true, prompted: false, opted_in: false }),
   );
   const { client } = runtime();
+  await waitFor(() => expect(readSetupAnalytics()).toEqual({ enabled: true, settled: true }));
+  failSave();
   await waitFor(() => expect(readSetupAnalytics()).toEqual({ enabled: true, settled: false }));
   await waitFor(() =>
     expect(client.getQueryData(['privacy', 'analytics'])).toMatchObject({
