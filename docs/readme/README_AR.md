@@ -13,8 +13,7 @@
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">الموقع</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">تنزيل</a> ·
     <a href="#get-started">ابدأ الآن</a> ·
-    <a href="#documentation">التوثيق</a> ·
-    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
+    <a href="#documentation">التوثيق</a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -29,6 +28,7 @@
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/github/v/release/debpalash/VoiceStudio?style=flat-square&amp;labelColor=27272a&amp;color=52525b" alt="أحدث إصدار" /></a>
     <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-52525b?style=flat-square&amp;labelColor=27272a" alt="AGPL-3.0" /></a>
     <a href="https://supermetry.com"><img src="https://app.supermetry.com/px/zfjiv7psp4ed.svg?c=VoiceStudio" alt="المشاهدات" /></a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <p>
     <sub>الرعاة الاستراتيجيين</sub>      <a href="https://github.com/debpalash/OpenGTM?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/opengtm-dark.svg" /><img src="../../docs/sponsors/opengtm.svg" alt="OpenGTM" height="32" align="middle" /></picture></a>
@@ -528,4 +528,4 @@ VoiceStudio مجاني ولا يعتمد على خدمة سحابية مدفوع
 
 - [إرشادات حول VoiceStudio بواسطة Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
 
-<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
+<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
