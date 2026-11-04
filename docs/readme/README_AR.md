@@ -104,7 +104,7 @@
 
 ابدأ باستخدام **VoiceStudio** (الافتراضي، المدعوم بواسطة k2-fsa/OmniVoice)، أو اختر من بين العشرات من المحركات الأخرى في Model Manager. راجع [كتالوج الميزات والمحركات](../../docs/feature-catalog.md).
 
-<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
 
 <a id="platforms"></a>
 
@@ -530,4 +530,4 @@ VoiceStudio مجاني ولا يعتمد على خدمة سحابية مدفوع
 
 - [إرشادات حول VoiceStudio بواسطة Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
 
-<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>

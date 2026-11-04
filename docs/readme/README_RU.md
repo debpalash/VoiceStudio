@@ -105,7 +105,7 @@
 
 Из коробки работает **VoiceStudio** — штатный движок, построенный на k2-fsa/OmniVoice; ещё несколько десятков альтернатив ставятся из менеджера моделей. Полный список — в [каталоге функций и движков](../../docs/feature-catalog.md).
 
-<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
 
 <a id="platforms"></a>
 
@@ -533,4 +533,4 @@ VoiceStudio бесплатен, и за ним нет платного обла�
 
 - [Видеоурок по VoiceStudio — Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
 
-<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>

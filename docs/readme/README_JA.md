@@ -105,7 +105,7 @@
 
 まずはデフォルトの **VoiceStudio**（k2-fsa/OmniVoice ベース）から。モデルマネージャーでは、ほかにも数十のエンジンから選べます。[機能とエンジンの一覧](../../docs/feature-catalog.md)を参照してください。
 
-<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
 
 <a id="platforms"></a>
 
@@ -533,4 +533,4 @@ VoiceStudio の開発者による、その他のオープンソースツール�
 
 - [VoiceStudio の使い方 — Nafay 3D（YouTube）](https://www.youtube.com/watch?v=I-u-A-oisIU)
 
-<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>

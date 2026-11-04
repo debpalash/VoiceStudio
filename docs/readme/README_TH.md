@@ -104,7 +104,7 @@
 
 เริ่มต้นด้วย **VoiceStudio** (ค่าเริ่มต้น ขับเคลื่อนโดย k2-fsa/OmniVoice) หรือเลือกจากเอ็นจิ้นอื่นๆ มากมายใน Model Manager ดู [คุณลักษณะและแค็ตตาล็อกเครื่องยนต์](../../docs/feature-catalog.md)
 
-<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
 
 <a id="platforms"></a>
 
@@ -530,4 +530,4 @@ VoiceStudio ใช้งานได้ฟรีและไม่ต้อง�
 
 - [VoiceStudio คำแนะนำโดย Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
 
-<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
