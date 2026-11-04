@@ -10,11 +10,13 @@ job the Model Catalogue UI can start and poll.
 
 Design notes (single source of truth for the choices):
 
-* **Fetch: git primary, tarball fallback.** ``git clone --depth 1`` is the
+* **Fetch: git primary, tarball fallback.** A depth-1 git fetch is the
   primary path (fast, matches the documented manual flow, and leaves a
-  repo the user can update). When git is absent — common on Windows — we
-  fall back to downloading the GitHub source tarball over HTTPS (httpx,
-  honours proxy env vars) and extracting it with :mod:`tarfile`. A
+  repo the user can update). A pinned ``source_revision`` is fetched by
+  its commit id, since a ``--depth 1`` clone holds only the branch tip; an
+  unpinned spec is cloned. When git is absent — common on Windows — or
+  fails, we fall back to downloading the GitHub source tarball over HTTPS
+  (httpx, honours proxy env vars) and extracting it with :mod:`tarfile`. A
   ``pip install git+https://…`` path was rejected because the engine
   *directory* must exist on disk anyway: the sidecar resolves its venv
   and model weights relative to it.
@@ -49,6 +51,7 @@ import logging
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -62,6 +65,7 @@ from typing import Callable, Iterable, NamedTuple, Optional
 
 from core.config import DATA_DIR, get_engines_dir
 from core.contained_subprocess import OwnedPopen, WindowsJobPopen, spawn_owned
+from core.fs_retry import retry_on_lock
 
 logger = logging.getLogger("omnivoice.sidecar_install")
 
@@ -115,7 +119,7 @@ class SidecarSpec:
     checkout_dirname: str              # directory name of the checkout under the managed root
     env_var: str                       # env var the engine's bootstrap reads (install dir)
     probe_module: str                  # python -c "import <probe_module>" proves the venv works
-    repo_ref: Optional[str] = None     # branch/tag selected by git clone
+    repo_ref: Optional[str] = None     # branch/tag cloned when no source_revision is pinned
     source_revision: Optional[str] = None  # reviewed upstream commit
     source_required_path: Optional[str] = None  # distinguishes incompatible source generations
     weights_repo_id: Optional[str] = None   # HF repo downloaded into <checkout>/<weights_subdir>
@@ -1337,7 +1341,17 @@ def uninstall(engine_id: str) -> dict:
         }
     root = managed_root(spec)
     removed = root.is_dir()
-    shutil.rmtree(root, ignore_errors=True)
+    try:
+        _rmtree(root)
+    except OSError as exc:
+        return {
+            "status": "remove_failed",
+            "engine": engine_id,
+            "detail": (
+                f"Could not remove all of {spec.display_name}'s files ({_redact(exc)}). "
+                "Stop anything still using the engine, then uninstall again."
+            ),
+        }
     if env_dir:  # only ever the managed checkout at this point
         os.environ.pop(spec.env_var, None)
     from core import prefs
@@ -1437,28 +1451,17 @@ def _fetch_main_source(spec: SidecarSpec, job: dict) -> None:
         # generations live at a different path and remain usable until this
         # replacement has completed successfully.
         _log(job, f"Removing incomplete or outdated checkout at {checkout} …")
-        shutil.rmtree(checkout, ignore_errors=True)
+        _rmtree(checkout)
 
     git = shutil.which("git")
     if git:
-        _log(job, f"Cloning {spec.repo_url} (git, depth 1) …")
-        clone_argv = [git, "clone", "--depth", "1"]
-        if spec.repo_ref:
-            clone_argv.extend(["--branch", spec.repo_ref])
-        clone_argv.extend([spec.repo_url, str(checkout)])
-        rc = _run_logged(job, clone_argv, timeout=_GIT_CLONE_TIMEOUT_S)
-        if rc == 0 and spec.source_revision:
-            rc = _run_logged(
-                job,
-                [git, "-C", str(checkout), "checkout", "--detach", spec.source_revision],
-                timeout=_GIT_CLONE_TIMEOUT_S,
-            )
+        rc = _git_fetch(spec, job, git, checkout)
         if rc == 0 and _source_layout_ok(spec, checkout):
             _write_source_marker(spec, checkout)
             step["detail"] = "git clone"
             return
-        _log(job, f"git clone failed (exit {rc}) — falling back to source tarball.")
-        shutil.rmtree(checkout, ignore_errors=True)
+        _log(job, f"git failed (exit {rc}) — falling back to source tarball.")
+        _rmtree(checkout)
     else:
         _log(job, "git not found — using the source-tarball fallback.")
 
@@ -1472,6 +1475,36 @@ def _fetch_main_source(spec: SidecarSpec, job: dict) -> None:
         )
     _write_source_marker(spec, checkout)
     step["detail"] = "source tarball"
+
+
+def _git_fetch(spec: SidecarSpec, job: dict, git: str, checkout: Path) -> int:
+    """Fetch *spec*'s source into *checkout* with git. Returns the exit code
+    of the first command that fails, else 0.
+
+    A pinned revision is fetched by its commit id. A ``--depth 1`` clone
+    holds only the branch tip, so checking out a pin that upstream had moved
+    past failed with "unable to read tree" and sent every pinned install to
+    the tarball fallback.
+    """
+    if not spec.source_revision:
+        _log(job, f"Cloning {spec.repo_url} (git, depth 1) …")
+        clone_argv = [git, "clone", "--depth", "1"]
+        if spec.repo_ref:
+            clone_argv.extend(["--branch", spec.repo_ref])
+        clone_argv.extend([spec.repo_url, str(checkout)])
+        return _run_logged(job, clone_argv, timeout=_GIT_CLONE_TIMEOUT_S)
+    _log(job, f"Fetching {spec.repo_url} at {spec.source_revision[:8]} (git, depth 1) …")
+    repo = [git, "-C", str(checkout)]
+    for argv in (
+        [git, "init", "--quiet", str(checkout)],
+        [*repo, "remote", "add", "origin", spec.repo_url],
+        [*repo, "fetch", "--depth", "1", "origin", spec.source_revision],
+        [*repo, "checkout", "--detach", spec.source_revision],
+    ):
+        rc = _run_logged(job, argv, timeout=_GIT_CLONE_TIMEOUT_S)
+        if rc != 0:
+            return rc
+    return 0
 
 
 _SOURCE_REVISION_MARKER = ".voicestudio_source_revision"
@@ -1508,9 +1541,35 @@ def _source_present(spec: SidecarSpec, checkout: Path) -> bool:
     return marker == spec.source_revision
 
 
+def _rmtree(path: Path) -> None:
+    """Delete *path* and everything in it, or raise. A missing *path* is fine.
+
+    git writes its object and pack files read-only, and Windows will not
+    delete a read-only file, so ``rmtree(ignore_errors=True)`` quietly kept a
+    failed fetch's ``.git/`` and the source tarball was then moved inside the
+    leftover. Read-only entries are made writable and removed again; anything
+    else that fails is raised, once a briefly held lock has had time to clear.
+    """
+    def clear_readonly(func: Callable, target: str, exc: "BaseException | tuple") -> None:
+        if isinstance(exc, tuple):  # onerror's sys.exc_info() (Python < 3.12)
+            exc = exc[1]
+        if isinstance(exc, FileNotFoundError):
+            return
+        if func in (os.unlink, os.remove, os.rmdir):
+            mode = os.lstat(target).st_mode
+            if not mode & stat.S_IWRITE:
+                os.chmod(target, stat.S_IMODE(mode) | stat.S_IWRITE)
+                func(target)
+                return
+        raise exc
+
+    handler = "onexc" if sys.version_info >= (3, 12) else "onerror"
+    retry_on_lock(lambda: shutil.rmtree(path, **{handler: clear_readonly}))
+
+
 def _download_and_extract(job: dict, url: str, dest: Path, work_root: Path, env_var: str) -> None:
-    """Download a GitHub source tarball and move its one top-level directory
-    to *dest* (no git required).
+    """Download a GitHub source tarball and replace *dest* with its one
+    top-level directory (no git required).
 
     Extraction is member-validated (no absolute paths / parent escapes) and
     never uses symlinks, so it behaves identically on Windows.
@@ -1544,7 +1603,11 @@ def _download_and_extract(job: dict, url: str, dest: Path, work_root: Path, env_
                     "Re-run the install; if it keeps failing, clone the repository "
                     f"manually and set {env_var} (see the engine docs).",
                 )
-            # os.replace-style move keeps this atomic-ish on the same volume.
+            # Replace, never nest: moved onto an existing directory, the tree
+            # lands inside it (<dest>/<repo>-<sha>/), where no layout check
+            # finds it. os.replace-style move keeps this atomic-ish on the
+            # same volume.
+            _rmtree(dest)
             shutil.move(str(entries[0]), str(dest))
     finally:
         try:
@@ -1573,7 +1636,7 @@ def _ensure_extra_sources(spec: SidecarSpec, job: dict, checkout: Path) -> None:
         dest = checkout / extra.path
         if _extra_source_present(extra, dest):
             continue
-        shutil.rmtree(dest, ignore_errors=True)
+        _rmtree(dest)
         dest.parent.mkdir(parents=True, exist_ok=True)
         _log(job, f"Fetching {extra.path} at {extra.revision[:8]} …")
         _download_and_extract(job, extra.tarball_url, dest, managed_root(spec), spec.env_var)
@@ -1672,7 +1735,7 @@ def _step_create_venv(spec: SidecarSpec, job: dict) -> None:
             )
         _log(job, "Rebuilding incompatible .venv Python environment …")
         (checkout / _INSTALL_COMPLETE_MARKER).unlink(missing_ok=True)
-        shutil.rmtree(venv_dir)
+        _rmtree(venv_dir)
         spec.invalidate()
     uv = _locate_uv()
     _log(job, "Creating managed .venv …")

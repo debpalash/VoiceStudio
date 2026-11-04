@@ -4,11 +4,16 @@ The provisioner replaces IndexTTS-2's four manual terminal steps (clone,
 venv, `uv pip install -e .`, set OMNIVOICE_INDEXTTS_DIR) with a resumable
 background job. These tests run the job with git/uv/httpx/HF mocked and
 cover: the happy path, the disk-space preflight, the git-absent tarball
-fallback, partial-install repair, already-installed detection, uninstall
-safety (never delete a user's own clone), and the router wiring.
+fallback, pinned-revision fetches, Windows read-only leftovers,
+partial-install repair, already-installed detection, uninstall safety
+(never delete a user's own clone), and the router wiring.
 """
+import errno
 import io
 import os
+import re
+import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -102,6 +107,16 @@ def _fake_run_logged(created: list):
         return 0
 
     return run
+
+
+def _git_worktree(argv: list) -> "Path | None":
+    """The checkout a faked git command fills: a clone's target, or the
+    repository a pinned revision is checked out in."""
+    if argv[1] == "clone":
+        return Path(argv[-1])
+    if "--detach" in argv:
+        return Path(argv[argv.index("-C") + 1])
+    return None
 
 
 def _stub_verify_ok(monkeypatch):
@@ -513,6 +528,168 @@ def test_tarball_without_pyproject_fails_with_remediation(monkeypatch):
     assert spec.env_var in ei.value.remediation
 
 
+# ── pinned revisions and Windows leftovers ────────────────────────────────
+
+
+def _git(cwd: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-c", "user.name=Upstream", "-c", "user.email=upstream@example.invalid",
+         "-c", "commit.gpgsign=false", *args],
+        cwd=cwd, check=True, capture_output=True, text=True,
+    ).stdout.strip()
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
+def test_pinned_revision_behind_the_branch_tip_is_fetched_with_git(monkeypatch, tmp_path):
+    """A depth-1 clone holds only the branch tip, so checking out a pinned
+    commit that upstream has moved past failed with "unable to read tree",
+    and every pinned install fell back to the tarball (Confucius4-TTS)."""
+    upstream = tmp_path / "upstream"
+    upstream.mkdir()
+    _git(upstream, "init", "-q")
+    # GitHub serves any reachable commit by id; mirror that for old protocols.
+    _git(upstream, "config", "uploadpack.allowReachableSHA1InWant", "true")
+    (upstream / "pyproject.toml").write_text("[project]\nname='fake'\n")
+    _git(upstream, "add", "-A")
+    _git(upstream, "commit", "-qm", "reviewed")
+    pinned = _git(upstream, "rev-parse", "HEAD")
+    (upstream / "pyproject.toml").unlink()
+    (upstream / "newer.txt").write_text("tip\n")
+    _git(upstream, "add", "-A")
+    _git(upstream, "commit", "-qm", "upstream moved on")
+    spec = _mk_spec(repo_url=upstream.as_uri(), source_revision=pinned)
+    monkeypatch.setattr(
+        si, "_fetch_tarball",
+        lambda *a: pytest.fail("the pinned revision fell back to the source tarball"),
+    )
+
+    job = si._new_job(spec.engine_id)
+    si._job_step(job, "fetch_source")["state"] = "running"
+    si._step_fetch_source(spec, job)
+
+    checkout = si.managed_checkout(spec)
+    assert _git(checkout, "rev-parse", "HEAD") == pinned
+    assert si._source_present(spec, checkout)
+
+
+@pytest.fixture
+def windows_readonly_semantics(monkeypatch):
+    """Windows will not delete a read-only file or directory; POSIX will.
+    Refuse the same way elsewhere, so these tests guard the Windows bug on
+    every host (the backend suite runs on Linux in CI)."""
+    if sys.platform == "win32":
+        return
+
+    def refusing(real):
+        def remove(path, *args, dir_fd=None, **kwargs):
+            if not os.lstat(path, dir_fd=dir_fd).st_mode & stat.S_IWRITE:
+                raise PermissionError(errno.EACCES, "Access is denied", path)
+            return real(path, *args, dir_fd=dir_fd, **kwargs)
+
+        return remove
+
+    for name in ("unlink", "remove", "rmdir"):
+        monkeypatch.setattr(os, name, refusing(getattr(os, name)))
+
+
+def _read_only_git_objects(checkout: Path) -> None:
+    """What git leaves in a checkout: object and pack files marked read-only."""
+    pack = checkout / ".git" / "objects" / "pack" / "pack-0.pack"
+    if not pack.exists():
+        pack.parent.mkdir(parents=True, exist_ok=True)
+        pack.write_bytes(b"PACK")
+        pack.chmod(stat.S_IREAD)
+
+
+@pytest.mark.parametrize("git", [None, "/usr/bin/git"], ids=["git-absent", "git-fails"])
+def test_read_only_git_leftovers_never_nest_the_tarball(
+    monkeypatch, windows_readonly_semantics, git,
+):
+    """rmtree(ignore_errors=True) kept a failed fetch's read-only .git/ on
+    Windows; the tarball then landed inside the leftover as
+    <checkout>/<repo>-<sha>/ and the install died with "Fetched source …
+    has no requirements.txt". Covers the leftover of an earlier run and one
+    this run's git leaves."""
+    revision = "4fb32c481302d8858c3aec6a1c2a8b4cea8894c0"
+    spec = _mk_spec(source_revision=revision)
+    checkout = si.managed_checkout(spec)
+
+    def git_fails_at_checkout(job, argv, *, timeout, env=None):
+        _read_only_git_objects(checkout)
+        return 128 if "checkout" in argv else 0
+
+    _read_only_git_objects(checkout)
+    monkeypatch.setattr(si.shutil, "which", lambda n: git if n == "git" else None)
+    monkeypatch.setattr(si, "_run_logged", git_fails_at_checkout)
+    import httpx
+    monkeypatch.setattr(
+        httpx, "stream",
+        lambda m, u, **k: _FakeStream(_tarball_bytes(f"fake-side-{revision}")),
+    )
+
+    job = si._new_job(spec.engine_id)
+    si._job_step(job, "fetch_source")["state"] = "running"
+    si._step_fetch_source(spec, job)
+
+    assert sorted(p.name for p in checkout.iterdir()) == [
+        si._SOURCE_REVISION_MARKER, "fake_side", "pyproject.toml",
+    ]
+    assert si._source_present(spec, checkout)
+
+
+def test_tarball_replaces_a_non_empty_destination_instead_of_nesting(monkeypatch, tmp_path):
+    """shutil.move onto an existing directory moves the tree inside it."""
+    root = tmp_path / "root"
+    dest = root / "fake-side"
+    (dest / "stale").mkdir(parents=True)
+    (dest / "stale" / "old.py").write_text("old\n")
+    import httpx
+    monkeypatch.setattr(
+        httpx, "stream", lambda m, u, **k: _FakeStream(_tarball_bytes("fake-side-0123abc")),
+    )
+
+    si._download_and_extract(
+        si._new_job("fake-side"), "https://example.invalid/src.tar.gz", dest, root,
+        "OMNIVOICE_FAKE_SIDE_DIR",
+    )
+
+    assert sorted(p.name for p in dest.iterdir()) == ["fake_side", "pyproject.toml"]
+
+
+def test_rmtree_raises_instead_of_leaving_files_behind(monkeypatch, tmp_path):
+    held = tmp_path / "checkout" / ".venv" / "Scripts" / "python.exe"
+    held.parent.mkdir(parents=True)
+    held.write_bytes(b"MZ")
+    real_unlink = os.unlink
+
+    def unlink(path, *args, **kwargs):
+        if os.path.basename(path) == "python.exe":  # held open by a running engine
+            raise PermissionError(errno.EACCES, "in use", path)
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "unlink", unlink)
+    monkeypatch.setattr(si, "retry_on_lock", lambda operation: operation())
+
+    with pytest.raises(PermissionError):
+        si._rmtree(tmp_path / "checkout")
+    assert held.is_file()
+    si._rmtree(tmp_path / "never-created")  # nothing to remove is not an error
+
+
+@pytest.mark.parametrize(
+    "engine_id", sorted(eid for eid, spec in si.SPECS.items() if spec.source_revision),
+)
+def test_pinned_sources_name_one_full_commit_for_git_and_tarball(engine_id):
+    """git fetches a pinned revision by its full commit id (an abbreviated one
+    is not fetchable), and the tarball fallback must deliver the same tree."""
+    spec = si.get_spec(engine_id)
+    pins = [(spec.source_revision, spec.tarball_url)]
+    pins += [(extra.revision, extra.tarball_url) for extra in spec.extra_sources]
+    for revision, tarball_url in pins:
+        assert re.fullmatch(r"[0-9a-f]{40}", revision), (engine_id, revision)
+        assert tarball_url.endswith(f"/archive/{revision}.tar.gz"), (engine_id, tarball_url)
+
+
 # ── partial-install repair ─────────────────────────────────────────────────
 
 
@@ -892,6 +1069,37 @@ def test_uninstall_refuses_while_job_running(monkeypatch):
     assert si.uninstall("fake-side")["status"] == "install_in_progress"
 
 
+def test_uninstall_removes_read_only_git_objects(monkeypatch, windows_readonly_semantics):
+    """ignore_errors=True left a git checkout's read-only objects on Windows
+    and still reported the engine uninstalled."""
+    spec = _mk_spec()
+    monkeypatch.setitem(si.SPECS, "fake-side", spec)
+    _read_only_git_objects(si.managed_checkout(spec))
+    monkeypatch.setattr("core.prefs.get", lambda k, d=None: None)
+
+    assert si.uninstall("fake-side")["status"] == "uninstalled"
+    assert not si.managed_root(spec).exists()
+
+
+def test_uninstall_reports_files_it_could_not_remove(monkeypatch):
+    spec = _mk_spec()
+    monkeypatch.setitem(si.SPECS, "fake-side", spec)
+    checkout = si.managed_checkout(spec)
+    checkout.mkdir(parents=True)
+    monkeypatch.setenv("OMNIVOICE_FAKE_SIDE_DIR", str(checkout))
+
+    def in_use(path):
+        raise PermissionError(errno.EACCES, "in use", str(path))
+
+    monkeypatch.setattr(si, "_rmtree", in_use)
+    res = si.uninstall("fake-side")
+
+    assert res["status"] == "remove_failed"
+    assert "Fake Sidecar" in res["detail"]
+    # Still configured, so a retry finds the same install.
+    assert os.environ["OMNIVOICE_FAKE_SIDE_DIR"] == str(checkout)
+
+
 # ── indextts2 spec wiring (the engine this ships for) ─────────────────────
 
 
@@ -962,7 +1170,7 @@ def test_managed_indextts2_source_is_preserved_during_25_install(monkeypatch):
 
     def fake_run(job, argv, *, timeout, env=None):
         argvs.append(argv)
-        if argv[1] == "clone":
+        if _git_worktree(argv) == checkout:
             checkout.mkdir(parents=True, exist_ok=True)
             (checkout / "pyproject.toml").write_text("[project]\nname='indextts'\n")
             required = checkout / spec.source_required_path
@@ -975,8 +1183,8 @@ def test_managed_indextts2_source_is_preserved_during_25_install(monkeypatch):
     job = si._new_job(spec.engine_id)
     si._job_step(job, "fetch_source")["state"] = "running"
     si._step_fetch_source(spec, job)
-    clone = next(argv for argv in argvs if argv[1] == "clone")
-    assert clone[clone.index("--branch") + 1] == "indextts-2.5"
+    fetch = next(argv for argv in argvs if "fetch" in argv)
+    assert fetch[-1] == spec.source_revision  # the reviewed 2.5 commit
     assert (legacy / "old-v2-only.txt").read_text() == "old"
     assert si._source_present(spec, checkout)
 
@@ -1043,6 +1251,13 @@ def test_router_uninstall_maps_refusals_to_http_errors(monkeypatch):
     with pytest.raises(HTTPException) as ei:
         engines_router.uninstall_sidecar_engine("fake-side")
     assert ei.value.status_code == 400
+    monkeypatch.setattr(
+        si, "uninstall",
+        lambda engine_id: {"status": "remove_failed", "engine": engine_id, "detail": "in use"},
+    )
+    with pytest.raises(HTTPException) as ei:
+        engines_router.uninstall_sidecar_engine("fake-side")
+    assert (ei.value.status_code, ei.value.detail) == (409, "in use")
 
 
 # ── isolation: switching engines can never corrupt another engine ─────────
@@ -1382,8 +1597,8 @@ def test_a_real_upstream_layout_passes_source_validation(monkeypatch, engine_id)
     spec = si.get_spec(engine_id)
 
     def fake_git(job, argv, *, timeout, env=None):
-        if argv[1] == "clone":
-            checkout = Path(argv[-1])
+        checkout = _git_worktree(argv)
+        if checkout:
             for rel in _UPSTREAM_ROOT_FILES[engine_id]:
                 (checkout / rel).parent.mkdir(parents=True, exist_ok=True)
                 (checkout / rel).write_text("x\n")
