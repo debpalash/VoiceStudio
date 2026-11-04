@@ -84,10 +84,14 @@ export function ReportBug({ error, setup = false }: { error?: Error | string; se
   const [showRequired, setShowRequired] = useState(false);
   const [hasInstallFailure, setHasInstallFailure] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const savingNow = useRef(false);
   const pending = useRef(false);
   const saveDiagnostics = async () => {
     const bridge = getBridge();
-    if (!bridge) return;
+    if (!bridge || savingNow.current) return;
+    savingNow.current = true;
+    setSaving(true);
     setSaveFailed(false);
     try {
       const data = await bridge.backend.getSetupDiagnostics();
@@ -97,6 +101,9 @@ export function ReportBug({ error, setup = false }: { error?: Error | string; se
       });
     } catch {
       setSaveFailed(true);
+    } finally {
+      savingNow.current = false;
+      setSaving(false);
     }
   };
   const report = async (skipFreshness = false, staleBuild?: KnownUpdate) => {
@@ -388,7 +395,13 @@ export function ReportBug({ error, setup = false }: { error?: Error | string; se
               <p className="mt-2 text-muted-foreground">{t('reportBug.not_sent')}</p>
             </div>
             {hasInstallFailure ? (
-              <Button type="button" variant="ghost" size="sm" onClick={() => void saveDiagnostics()}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={saving}
+                onClick={() => void saveDiagnostics()}
+              >
                 {t('reportBug.save_diagnostics')}
               </Button>
             ) : null}

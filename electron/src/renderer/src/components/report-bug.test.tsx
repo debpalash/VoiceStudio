@@ -21,6 +21,7 @@ import {
   recordBackendContact,
 } from '@shared/utils/backendContact';
 const mock = vi.hoisted(() => ({
+  saveData: vi.fn(),
   snapshotFailure: undefined as { code: string; stage: string } | undefined,
   crashed: false,
   native: true,
@@ -36,7 +37,7 @@ vi.mock('./bridge', () => ({
   getBridge: () =>
     mock.native
       ? {
-          files: { openExternal: mock.open },
+          files: { openExternal: mock.open, saveData: mock.saveData },
           updates: { getState: mock.updateState },
           backend: {
             getStatus: mock.backendStatus,
@@ -52,6 +53,7 @@ vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => k
 import { ReportBug } from './report-bug';
 beforeEach(() => {
   mock.snapshotFailure = undefined;
+  mock.saveData.mockReset();
   clearBreadcrumbs();
   _resetBackendContactForTests();
   mock.updateState.mockResolvedValue({
@@ -507,9 +509,30 @@ it('shows a failed diagnostics save inside the report dialog', async () => {
   mock.snapshotFailure = { code: 'EXEC_REFUSED', stage: 'failed' };
   render(<ReportBug />);
   fireEvent.click(screen.getByRole('button', { name: 'reportBug.label' }));
-  // The bridge mock has no saveData, so saving rejects.
+  mock.saveData.mockRejectedValue(new Error('disk full'));
   fireEvent.click(await screen.findByRole('button', { name: 'reportBug.save_diagnostics' }));
   expect((await within(screen.getByRole('dialog')).findByRole('alert')).textContent).toBe(
     'reportBug.save_diagnostics_failed',
   );
+});
+
+it('saves diagnostics once when the button is clicked twice', async () => {
+  mock.api.mockRejectedValue(new Error('offline'));
+  mock.snapshotFailure = { code: 'EXEC_REFUSED', stage: 'failed' };
+  let finish = () => {};
+  mock.saveData.mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render(<ReportBug />);
+  fireEvent.click(screen.getByRole('button', { name: 'reportBug.label' }));
+  const save = await screen.findByRole('button', { name: 'reportBug.save_diagnostics' });
+  fireEvent.click(save);
+  await waitFor(() => expect(mock.saveData).toHaveBeenCalledTimes(1));
+  fireEvent.click(save);
+  finish();
+  await waitFor(() => expect((save as HTMLButtonElement).disabled).toBe(false));
+  expect(mock.saveData).toHaveBeenCalledTimes(1);
 });
