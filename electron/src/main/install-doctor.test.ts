@@ -102,6 +102,8 @@ describe('parsers', () => {
 
   it('only counts recent block events', () => {
     expect(WINDOWS_TRUST_SCRIPT).toContain('AddMinutes(-10)');
+    // Unrelated blocks must not push this runtime's out before the match runs.
+    expect(WINDOWS_TRUST_SCRIPT).toContain('-MaxEvents 200');
   });
 });
 

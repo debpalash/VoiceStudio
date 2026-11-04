@@ -52,7 +52,7 @@ function Test-VsBlock($n,$runtime,$prog){$p=Get-VsPath $n;$base=(Get-VsPath $run
  */
 export const WINDOWS_TRUST_SCRIPT = String.raw`$ErrorActionPreference='SilentlyContinue'
 $r=@{blocked=@();antivirus=@();signature=$null}
-$events=Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-CodeIntegrity/Operational';Id=3077;StartTime=(Get-Date).AddMinutes(-10)} -MaxEvents 5
+$events=Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-CodeIntegrity/Operational';Id=3077;StartTime=(Get-Date).AddMinutes(-10)} -MaxEvents 200
 ${WINDOWS_BLOCK_MATCH}
 foreach($e in $events){$n=[string]$e.Properties[1].Value;if($n -and (Test-VsBlock $n $env:VS_PROBE_RUNTIME $env:VS_PROBE_PROGRAM)){$r.blocked+=[IO.Path]::GetFileName($n)}}
 $r.antivirus=@(Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct -OperationTimeoutSec 2|ForEach-Object{$_.displayName})
