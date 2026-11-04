@@ -6,15 +6,15 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100 000 звёзд на GitHub — спасибо!</a></strong>
   </p>
-  <p><strong>Голосовая студия с ИИ. На вашем устройстве.</strong><br />
-  Клонирование и дизайн голоса, дубляж, диктовка, расшифровка и озвучка на 646 языках.<br />
-  <sub>Работает на ноутбуках, настольных компьютерах, серверах, телефонах, планшетах и других устройствах</sub></p>
+  <p><big><strong>Голосовая студия с ИИ. На вашем устройстве.</strong></big><br />
+  <big>Клонирование и дизайн голоса, дубляж, диктовка, расшифровка и озвучка на 646 языках.</big><br />
+  Работает на ноутбуках, настольных компьютерах, серверах, телефонах, планшетах и других устройствах</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Сайт</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Скачать</a> ·
     <a href="#быстрый-старт">Начало работы</a> ·
     <a href="#справка">Документация</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -530,3 +530,5 @@ VoiceStudio бесплатен, и за ним нет платного обла�
 ## Уроки сообщества
 
 - [Видеоурок по VoiceStudio — Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>

@@ -6,15 +6,15 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">GitHub पर 100,000 स्टार — आपका धन्यवाद!</a></strong>
   </p>
-  <p><strong>एआई वॉइस स्टूडियो। आपके डिवाइस पर।</strong><br />
-  646 भाषाओं में आवाज़ क्लोन और डिज़ाइन करें, डबिंग करें, बोलकर लिखें, ऑडियो को टेक्स्ट में बदलें और कथावाचन करें।<br />
-  <sub>आपके लैपटॉप, डेस्कटॉप, सर्वर, फोन, टैबलेट और अन्य पर चलता है</sub></p>
+  <p><big><strong>एआई वॉइस स्टूडियो। आपके डिवाइस पर।</strong></big><br />
+  <big>646 भाषाओं में आवाज़ क्लोन और डिज़ाइन करें, डबिंग करें, बोलकर लिखें, ऑडियो को टेक्स्ट में बदलें और कथावाचन करें।</big><br />
+  आपके लैपटॉप, डेस्कटॉप, सर्वर, फोन, टैबलेट और अन्य पर चलता है</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">वेबसाइट</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">डाउनलोड</a> ·
     <a href="#get-started">शुरू करें</a> ·
     <a href="#documentation">दस्तावेज़</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -527,3 +527,5 @@ VoiceStudio बनाने वाले लोगों की ओर से �
 ## सामुदायिक ट्यूटोरियल
 
 - [नाफे 3डी (यूट्यूब) द्वारा वॉयसस्टूडियो वॉकथ्रू](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>

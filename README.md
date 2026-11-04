@@ -6,15 +6,15 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100,000 GitHub stars — thank you!</a></strong>
   </p>
-  <p><strong>AI voice studio. On your device.</strong><br />
-  Clone, design, dub, dictate, transcribe and narrate in 646 languages.<br />
-  <sub>Runs on your laptop, desktop, servers, phone, tablets and more</sub></p>
+  <p><big><strong>AI voice studio. On your device.</strong></big><br />
+  <big>Clone, design, dub, dictate, transcribe and narrate in 646 languages.</big><br />
+  Runs on your laptop, desktop, servers, phone, tablets and more</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Website</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Download</a> ·
     <a href="#get-started">Get started</a> ·
     <a href="#documentation">Docs</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -510,3 +510,5 @@ Thank you to everyone who sends code, reports, translations and ideas. [All cont
 ## Community tutorials
 
 - [VoiceStudio walkthrough by Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>

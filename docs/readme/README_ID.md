@@ -6,15 +6,15 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100.000 bintang GitHub — terima kasih!</a></strong>
   </p>
-  <p><strong>Studio suara AI. Di perangkat Anda.</strong><br />
-  Kloning, desain suara, sulih suara, dikte, transkripsi, dan narasi dalam 646 bahasa.<br />
-  <sub>Berjalan di laptop, desktop, server, ponsel, tablet, dan lainnya</sub></p>
+  <p><big><strong>Studio suara AI. Di perangkat Anda.</strong></big><br />
+  <big>Kloning, desain suara, sulih suara, dikte, transkripsi, dan narasi dalam 646 bahasa.</big><br />
+  Berjalan di laptop, desktop, server, ponsel, tablet, dan lainnya</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Situs web</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Unduh</a> ·
     <a href="#get-started">Mulai</a> ·
     <a href="#documentation">Dokumentasi</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -527,3 +527,5 @@ Terima kasih kepada semua orang yang mengirimkan kode, laporan, terjemahan, dan 
 ## Tutorial komunitas
 
 - [Panduan VoiceStudio oleh Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>

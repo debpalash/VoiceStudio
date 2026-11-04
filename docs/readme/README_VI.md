@@ -6,15 +6,15 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100.000 sao trên GitHub — cảm ơn bạn!</a></strong>
   </p>
-  <p><strong>Phòng thu giọng nói AI. Ngay trên thiết bị của bạn.</strong><br />
-  Nhân bản và thiết kế giọng nói, lồng tiếng, đọc chính tả, chuyển giọng nói thành văn bản và tạo lời thuyết minh bằng 646 ngôn ngữ.<br />
-  <sub>Chạy trên máy tính xách tay, máy tính để bàn, máy chủ, điện thoại, máy tính bảng và nhiều thiết bị khác</sub></p>
+  <p><big><strong>Phòng thu giọng nói AI. Ngay trên thiết bị của bạn.</strong></big><br />
+  <big>Nhân bản và thiết kế giọng nói, lồng tiếng, đọc chính tả, chuyển giọng nói thành văn bản và tạo lời thuyết minh bằng 646 ngôn ngữ.</big><br />
+  Chạy trên máy tính xách tay, máy tính để bàn, máy chủ, điện thoại, máy tính bảng và nhiều thiết bị khác</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Trang web</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Tải xuống</a> ·
     <a href="#get-started">Bắt đầu</a> ·
     <a href="#documentation">Tài liệu</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -527,3 +527,5 @@ Cảm ơn tất cả những người đã gửi mã, báo cáo, bản dịch v�
 ## Hướng dẫn từ cộng đồng
 
 - [Hướng dẫn VoiceStudio của Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>

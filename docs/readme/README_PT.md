@@ -6,15 +6,15 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100 mil estrelas no GitHub — muito obrigado!</a></strong>
   </p>
-  <p><strong>Estúdio de voz com IA. No seu dispositivo.</strong><br />
-  Clone e crie vozes, faça dublagens, dite, transcreva e narre em 646 idiomas.<br />
-  <sub>Funciona em seu laptop, desktop, servidores, telefone, tablets e muito mais</sub></p>
+  <p><big><strong>Estúdio de voz com IA. No seu dispositivo.</strong></big><br />
+  <big>Clone e crie vozes, faça dublagens, dite, transcreva e narre em 646 idiomas.</big><br />
+  Funciona em seu laptop, desktop, servidores, telefone, tablets e muito mais</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Site</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Baixar</a> ·
     <a href="#get-started">Primeiros passos</a> ·
     <a href="#documentation">Documentação</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -527,3 +527,5 @@ Obrigado a todos que enviam códigos, relatórios, traduções e ideias. [Todos 
 ## Tutoriais da comunidade
 
 - [Passo a passo do VoiceStudio por Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>

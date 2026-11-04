@@ -6,15 +6,15 @@
   <p>
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">GitHub 스타 10만 개 달성 — 감사합니다!</a></strong>
   </p>
-  <p><strong>AI 보이스 스튜디오를, 내 기기에서.</strong><br />
-  646개 언어로 음성 복제, 보이스 디자인, 더빙, 받아쓰기, 전사, 내레이션을 만드세요.<br />
-  <sub>노트북, 데스크톱, 서버, 휴대폰, 태블릿 등에서 실행됩니다</sub></p>
+  <p><big><strong>AI 보이스 스튜디오를, 내 기기에서.</strong></big><br />
+  <big>646개 언어로 음성 복제, 보이스 디자인, 더빙, 받아쓰기, 전사, 내레이션을 만드세요.</big><br />
+  노트북, 데스크톱, 서버, 휴대폰, 태블릿 등에서 실행됩니다</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">웹사이트</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">내려받기</a> ·
     <a href="#시작하기">시작 안내</a> ·
     <a href="#문서">문서</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -530,3 +530,5 @@ VoiceStudio 개발자들이 만드는 다른 오픈 소스 도구도 살펴보�
 ## 커뮤니티 튜토리얼
 
 - [VoiceStudio 사용 안내 — Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
