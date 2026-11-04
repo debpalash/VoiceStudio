@@ -1558,14 +1558,21 @@ class MLXWhisperBackend(ASRBackend):
 
 class PyTorchWhisperBackend(ASRBackend):
     id = "pytorch-whisper"
-    display_name = "PyTorch Whisper (CUDA / CPU via transformers pipeline)"
-    # Pure transformers pipeline → runs wherever torch does (CUDA, MPS, CPU).
-    # ROCm-via-HIP would also work but is left unclaimed pending verification.
-    gpu_compat = ("cuda", "mps", "cpu")
+    display_name = "PyTorch Whisper"
+    gpu_compat = ("cuda", "rocm", "mps", "cpu")
 
     def __init__(self, asr_pipe=None):
         # Reuses the `_asr_pipe` attached to the TTS model when available.
         self._pipe = asr_pipe
+
+    @property
+    def execution_device(self) -> str | None:
+        device = getattr(self._pipe, "device", None)
+        return str(device) if device is not None else None
+
+    @property
+    def execution_provider(self) -> str | None:
+        return "torch" if self.execution_device is not None else None
 
     # Free VRAM needed on CUDA, where _ensure_pipe loads fp16 weights: the
     # weights (parameters x 2 bytes), the batch-16 decode workspace, and
@@ -2870,7 +2877,7 @@ _INSTALL_HINTS: dict[str, str] = {
     "whisperx":        "pip install whisperx  (CTranslate2 + wav2vec2 alignment; CUDA or CPU)",
     "faster-whisper":  "pip install faster-whisper  (CTranslate2; cross-platform, CUDA or CPU)",
     "mlx-whisper":     "pip install mlx-whisper  (Apple Silicon only)",
-    "pytorch-whisper": "Bundled with transformers — no extra install (CUDA/MPS/CPU)",
+    "pytorch-whisper": "Bundled with transformers — no extra install (CUDA/ROCm/MPS/CPU)",
     "whisper-cpp":     "Place whisper-cli in backend/engines/whisper_cpp/bin/ (Vulkan/CUDA/CPU)",
     "nemo-parakeet":   (
         "No safe install path in this app yet — nemo_toolkit's ASR extras pin "

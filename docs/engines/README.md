@@ -29,16 +29,16 @@ approval), [Windows](../install/windows.md), [Linux](../install/linux.md),
 
 | Engine | Guide | Runs on | Cloning | Enabled by |
 |---|---|---|---|---|
-| VoiceStudio (OmniVoice) — **default** | [omnivoice](omnivoice.md) | CUDA · MPS · CPU | ✅ | installed by default |
-| VoxCPM2 | [voxcpm2](voxcpm2.md) | CUDA · MPS · CPU | ✅ + voice design | `pip install "voxcpm>=2.0.3"` |
+| VoiceStudio (OmniVoice) — **default** | [omnivoice](omnivoice.md) | CUDA · ROCm† · MPS · CPU | ✅ | installed by default |
+| VoxCPM2 | [voxcpm2](voxcpm2.md) | CUDA · ROCm† · MPS · CPU | ✅ + voice design | managed install or `pip install "voxcpm>=2.0.3"` |
 | MOSS-TTS-Nano | [moss-tts-nano](moss-tts-nano.md) | CUDA · CPU | ✅ (ref only) | clone + `uv pip install -e .` |
 | KittenTTS | [kittentts](kittentts.md) | CPU | — (8 preset voices) | `pip install kittentts` |
 | MLX-Audio (Kokoro, CSM, Dia, …) | [mlx-audio](mlx-audio.md) | Apple Silicon | model-dependent | `pip install mlx-audio` |
-| CosyVoice 3 | [cosyvoice](cosyvoice.md) | CUDA · CPU | ✅ | clone + requirements |
+| CosyVoice 3 | [cosyvoice](cosyvoice.md) | CUDA · ROCm† · CPU | ✅ | managed install or clone + requirements |
 | GPT-SoVITS | [gpt-sovits](gpt-sovits.md) | external server | ✅ | its own API server |
 | Sherpa-ONNX | [sherpa-onnx](sherpa-onnx.md) | CUDA · CPU | — | `pip install sherpa-onnx` + model dir |
 | IndexTTS 2.5 | [indextts](indextts.md) | CUDA · CPU | ✅ + emotion | one-click sidecar install |
-| OmniVoice GGUF | [omnivoice-gguf](omnivoice-gguf.md) | CUDA · MPS · CPU | ✅ | native binary bundled in the desktop installers (not Intel Mac) |
+| OmniVoice GGUF | [omnivoice-gguf](omnivoice-gguf.md) | CPU · Vulkan (Windows/Linux) · Metal (macOS) · CUDA where compiled | ✅ | native binary bundled in the desktop installers (not Intel Mac) |
 | Supertonic-3 | [supertonic3](supertonic3.md) | CPU | — (7 preset voices) | `uv sync --extra supertonic` + license |
 | MOSS-TTS-v1.5 (8B) | [moss-tts-v15](moss-tts-v15.md) | CUDA · CPU | ✅ | clone + env var |
 | dots.tts (2B) | [dots-tts](dots-tts.md) | CUDA · CPU (not Windows; use audio.cpp dots.tts) | ✅ | clone + env var |
@@ -48,6 +48,12 @@ approval), [Windows](../install/windows.md), [Linux](../install/linux.md),
 | audio.cpp (Breeze-TTS-2) | [audio-cpp](audio-cpp.md) | CPU + Vulkan/Metal/CUDA/HIP/ROCm where compiled | ✅ + voice design | prebuilt binary + env var (weights research/non-commercial) |
 | audio.cpp (dots.tts SOAR) | [audio-cpp](audio-cpp.md#dotstts) | CPU + Vulkan/Metal/CUDA/HIP/ROCm where compiled, incl. Windows | ✅ | runtime + weights from Model Catalogue (Apache-2.0) |
 | CosyVoice 3 GGUF | [cosyvoice-gguf](cosyvoice-gguf.md) | CPU + Vulkan (native runtime build) | ✅ reference cloning + instruct | user-built native runtime + model catalogue |
+
+† ROCm support depends on the installed stack and the engine's own environment.
+Native Windows uses the explicit [matched ROCm setup](../install/windows-rocm.md);
+VoxCPM2 and CosyVoice require their separate qualified managed environments.
+Installing AMD PyTorch alone does not enable a CUDA-only sidecar or CTranslate2
+wheel. Vulkan binaries have independent capabilities and are not Torch HIP builds.
 
 ### Reference clip length
 
@@ -73,11 +79,11 @@ an engine runs in its own environment.
 
 | Engine | Guide | Runs on | Best at | Enabled by |
 |---|---|---|---|---|
-| WhisperX | [whisperx](whisperx.md) | CUDA · CPU | dubbing (word timestamps + diarization) | installed by default |
-| Faster-Whisper | [faster-whisper](faster-whisper.md) | CUDA · CPU | general transcription | installed by default |
+| WhisperX | [whisperx](whisperx.md) | CUDA · qualified Windows ROCm ASR/alignment · CPU | dubbing (word timestamps; diarization has separate requirements) | installed by default |
+| Faster-Whisper | [faster-whisper](faster-whisper.md) | CUDA · matched Windows HIP CT2 · CPU | general transcription | installed by default |
 | Faster-Whisper (isolated) | [faster-whisper-isolated](faster-whisper-isolated.md) | CUDA · CPU | unattended batches | opt-in pick |
 | MLX Whisper | [mlx-whisper](mlx-whisper.md) | Apple Silicon | Mac default | `pip install mlx-whisper` |
-| PyTorch Whisper | [pytorch-whisper](pytorch-whisper.md) | CUDA · MPS · CPU | ROCm hosts | installed by default |
+| PyTorch Whisper | [pytorch-whisper](pytorch-whisper.md) | CUDA · ROCm† · MPS · CPU | PyTorch-native transcription | installed by default |
 | whisper.cpp | [whisper-cpp](whisper-cpp.md) | CPU · Vulkan · CUDA · Metal | AMD GPUs, native CLI | your own `whisper-cli` + GGML model |
 | Parakeet TDT (NeMo) | [nemo-parakeet](nemo-parakeet.md) | CUDA · CPU | 25 languages, fast CPU | separate venv (never the app's) |
 | Parakeet TDT (MLX) | [parakeet-mlx](parakeet-mlx.md) | Apple Silicon | dictation, 25 EU languages | default on mac-ARM source installs |
