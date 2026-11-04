@@ -14,8 +14,8 @@
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Scarica</a> ·
     <a href="#get-started">Per iniziare</a> ·
     <a href="#documentation">Documentazione</a> ·
-    <a href="https://voicestudio.sh/pro">VoiceStudio Pro</a> ·
-    <a href="https://app.voicestudio.sh">VoiceStudio Cloud</a>
+    <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project">VoiceStudio Pro</a> ·
+    <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project">VoiceStudio Cloud</a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -530,6 +530,11 @@ Grazie a tutti coloro che inviano codice, report, traduzioni e idee. [Tutti i co
 
 ## Tutorial della comunità
 
-- [Procedura dettagliata su VoiceStudio di Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=I-u-A-oisIU&amp;utm_source=github&amp;utm_medium=readme&amp;utm_campaign=community_tutorials"><img src="https://i.ytimg.com/vi/I-u-A-oisIU/hqdefault.jpg" alt="VoiceStudio tutorial by Nafay 3D on YouTube" width="30%" /></a>
+  <a href="https://www.youtube.com/watch?v=hsLRbXLBP4U&amp;utm_source=github&amp;utm_medium=readme&amp;utm_campaign=community_tutorials"><img src="https://i.ytimg.com/vi/hsLRbXLBP4U/hqdefault.jpg" alt="VoiceStudio tutorial by Samuel Gregory on YouTube" width="30%" /></a>
+  <a href="https://www.youtube.com/watch?v=2KemGhEI0Ck&amp;utm_source=github&amp;utm_medium=readme&amp;utm_campaign=community_tutorials"><img src="https://i.ytimg.com/vi/2KemGhEI0Ck/hqdefault.jpg" alt="VoiceStudio tutorial by kilObit on YouTube" width="30%" /></a><br />
+  <sub>Nafay 3D · Samuel Gregory · kilObit</sub>
+</p>
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
