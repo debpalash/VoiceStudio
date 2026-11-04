@@ -24,7 +24,7 @@ def test_sortformer_status_distinguishes_installed_model_from_missing_runtime(
     status = diarization_runtime.sortformer_status()
 
     assert status == {
-        "model": diarization_runtime.SORTFORMER_REPO,
+        "model": diarization_runtime.SORTFORMER_MODEL_ID,
         "model_installed": True,
         "runtime_installed": False,
         "installed": False,
@@ -66,7 +66,7 @@ def test_sortformer_status_reports_complete_runtime(monkeypatch, tmp_path):
     monkeypatch.setattr(bootstrap, "resolve_server_binary", lambda: server)
 
     assert diarization_runtime.sortformer_status() == {
-        "model": diarization_runtime.SORTFORMER_REPO,
+        "model": diarization_runtime.SORTFORMER_MODEL_ID,
         "model_installed": True,
         "runtime_installed": True,
         "installed": True,

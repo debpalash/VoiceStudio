@@ -13,6 +13,7 @@ from pathlib import Path
 from .artifacts import checked_wheel, download_archive
 from .failures import VerificationFailure, failure_report
 from .recipe import load_recipe, recipe_identity, validate_target
+from .runtime import initialize_development_sdk
 from .verify import PROJECT_ROOT, verify_environment
 
 #: Packages the overlay replaces; everything else stays at its installed version.
@@ -46,13 +47,13 @@ def constraints_text(distributions=None):
 
 
 def hashed_requirements(recipe):
-    """``url --hash`` lines for every AMD artifact (uv verifies them on install)."""
+    """URL SHA256 fragments for every AMD artifact (uv verifies them on install)."""
     base = recipe["torch"]["find_links"]
     lines = []
     for section in ("runtime", "torch"):
         hashes = recipe[section]["wheel_sha256"]
         for name in recipe[section]["wheel_files"]:
-            lines.append(f"{base}{name} --hash=sha256:{hashes[name]}\n")
+            lines.append(f"{base}{name}#sha256={hashes[name]}\n")
     return "".join(lines)
 
 
@@ -87,10 +88,13 @@ def provision(uv):
     """Reuse strictly verified installs; repair only confirmed package failures."""
     validate_target()
     try:
-        return verify_environment()
+        report = verify_environment()
     except VerificationFailure as exc:
         if not exc.repairable:
             raise
+    else:
+        initialize_development_sdk()
+        return report
     recipe = load_recipe()
     # Verify CT2 before changing any package, and discard downloads on any failure.
     with tempfile.TemporaryDirectory(prefix="voicestudio-windows-rocm-") as temporary:
@@ -111,6 +115,7 @@ def provision(uv):
         # The CT2 wheel was hash-checked by checked_wheel; its dependencies stay
         # at their installed versions through the same constraints.
         run_install(install_command(uv, [str(wheel)], ["ctranslate2"], constraints))
+    initialize_development_sdk()
     return verify_environment()
 
 

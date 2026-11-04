@@ -4,7 +4,7 @@ Whisper through the plain `transformers` pipeline, riding torch itself. No
 extra install — transformers ships with the app — and because it runs on
 torch's own stack (including torch's bundled cuDNN 9), it works on machines
 where the CTranslate2 engines can't load. It is also the engine that
-genuinely uses **AMD ROCm** GPUs, so auto-detect picks it on ROCm hosts
+uses **AMD ROCm** GPUs through PyTorch, so auto-detect prefers it on Linux ROCm
 ([#1529](https://github.com/debpalash/VoiceStudio/issues/1529)).
 
 ## Selecting it
@@ -13,12 +13,14 @@ genuinely uses **AMD ROCm** GPUs, so auto-detect picks it on ROCm hosts
   row, or `OMNIVOICE_ASR_BACKEND=pytorch-whisper`.
 - `OMNIVOICE_ASR_BACKEND=omnivoice` is accepted as a compatibility alias and
   selects this same PyTorch-native ASR path on ROCm hosts.
-- Auto-detect picks it on ROCm, and as the last resort everywhere else.
+- Auto-detect prefers it on Linux ROCm and uses it as a rescue engine on other
+  hosts. The matched Windows HIP route still prefers faster-whisper; select
+  PyTorch Whisper explicitly to use this alternative.
 
 ## Best at
 
-- **ROCm dubbing/transcription** — the only Whisper engine that uses the HIP
-  GPU (CTranslate2 has no HIP build, MLX is Apple-only).
+- **ROCm dubbing/transcription** through the installed PyTorch stack, with its
+  own model and device placement independent of CTranslate2.
 - **Rescue engine** when whisperx/faster-whisper can't load — e.g. the
   missing-cuDNN-8 case
   ([#255](https://github.com/debpalash/VoiceStudio/issues/255)) — since it
@@ -32,6 +34,14 @@ timestamps.
 
 CUDA, Apple Silicon (MPS), ROCm (HIP), and CPU — wherever torch runs, on
 macOS, Windows, and Linux.
+
+The native Windows route has been exercised on RX 9070 XT with Python 3.12,
+Torch 2.9.1/ROCm 7.2.1 and the default `openai/whisper-large-v3-turbo` model.
+Encoder and decoder weights, inputs and outputs used HIP. This qualification
+does not cover every card, model or long-form workload; use the matched
+[Windows ROCm requirements](../install/windows-rocm.md). Loaded execution
+metadata reports the pipeline's actual device and Torch provider, while the
+compatibility list describes eligible accelerator families.
 
 ## Model selection
 

@@ -2,14 +2,14 @@
 
 OmniVoice (k2-fsa/OmniVoice) is VoiceStudio's default TTS engine — the one a
 fresh install uses without any configuration. It does zero-shot voice cloning
-across 600+ languages and outputs 24 kHz mono audio. Voice cloning, dubbing,
-and dictation all run on it out of the box.
+across 600+ languages and outputs 24 kHz mono audio. Voice cloning and dubbing
+use this TTS engine; dictation uses the configured speech recognizer.
 
 ## When to pick it
 
 - You want cloning plus the broadest language coverage (see
   [languages.md](../languages.md)).
-- You have a GPU (CUDA, AMD ROCm on Linux, or Apple Silicon MPS) with
+- You have a GPU (CUDA, a supported AMD ROCm stack, or Apple Silicon MPS) with
   ~6 GB VRAM or more.
 - You just installed VoiceStudio — it's already selected.
 
@@ -19,7 +19,10 @@ quantized native binary with a much smaller memory footprint.
 
 ## Requirements
 
-- Runs on CUDA, AMD ROCm (Linux), MPS (Apple Silicon), or CPU — auto-detected.
+- Runs on CUDA, AMD ROCm, MPS (Apple Silicon), or CPU — auto-detected within
+  the installed runtime. Native Windows ROCm requires explicit selection of
+  the matched [Windows ROCm stack](../install/windows-rocm.md); the ordinary
+  Windows runtime uses CPU on Radeon until that installation is selected.
 - Recommended VRAM floor: **6 GB** on a dedicated GPU. This is the only
   engine with a measured floor: on 4 GB cards (GTX 1650 Ti, Quadro P2000 —
   issues [#1226](https://github.com/debpalash/VoiceStudio/issues/1226) /
@@ -48,10 +51,11 @@ The env var overrides the persisted UI choice.
 
 - Weights load lazily on first use and are shared with the rest of the app
   (dubbing, dictation) — the model is never double-loaded.
-- On CUDA and ROCm the model runs fp16 with `torch.compile`; PyTorch exposes
-  ROCm/HIP devices through its `cuda` API, while VoiceStudio's engine matrix
-  reports the hardware as ROCm. An installed speech recognizer can supply
-  missing reference transcripts for cloning.
+- PyTorch exposes ROCm/HIP devices through its `cuda` API, while VoiceStudio's
+  engine matrix reports the hardware as ROCm. The runtime can use `torch.compile`
+  where the host toolchain supports it, with eager execution as the fallback
+  when compilation fails. An installed speech recognizer can supply missing
+  reference transcripts for cloning.
 - Output is 24 kHz mono; the shared mastering chain (highpass + compressor)
   is tuned for this rate and applied automatically.
 - Cloning takes a short reference clip (`ref_audio`); 3–10 seconds is the

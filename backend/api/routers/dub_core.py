@@ -850,8 +850,8 @@ async def dub_upload(
     ext = ext.lower()
     if input_type == "audio" and ext not in _AUDIO_EXTS:
         raise HTTPException(
-            status_code=400,
-            detail=f"Audio-only dubbing needs an audio file ({', '.join(sorted(_AUDIO_EXTS))}); got '{ext or 'no extension'}'.",
+            status_code=415,
+            detail=unsupported_media_detail("audio", _AUDIO_EXTS, ext),
         )
 
     source_lang_override = _source_lang_override(source_lang)

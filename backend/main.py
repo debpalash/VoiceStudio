@@ -737,6 +737,14 @@ def _phase_a_build_inner() -> None:
         xpu_compat.install()
     except Exception:  # noqa: BLE001 — never block startup on a compat shim
         pass
+    try:
+        from core.windows_rocm.pipelines import initialize_torch_execution
+
+        initialize_torch_execution()
+    except Exception:
+        logging.getLogger("omnivoice.model").warning(
+            "Windows HIP execution profile selection failed; optional pipelines remain gated"
+        )
     from utils import hf_progress
     # HF tqdm patch before any library import that can trigger
     # hf_hub_download (transformers, mlx_whisper, …).

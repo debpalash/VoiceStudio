@@ -36,6 +36,8 @@ def test_auto_detect_falls_back_to_pytorch_when_ctranslate2_so_fails(monkeypatch
 def test_is_available_reports_not_raises_on_so_load_failure(monkeypatch):
     """whisperx + faster-whisper probes return (False, reason) — not raise — when
     the import dies loading the native .so (a non-ImportError)."""
+    monkeypatch.setattr("core.windows_rocm.pipelines.windows_hip_installed", lambda: False)
+    monkeypatch.setattr("core.windows_rocm.ct2.windows_hip_installed", lambda: False)
     real_import = builtins.__import__
 
     def fake_import(name, *args, **kwargs):

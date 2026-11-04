@@ -9,7 +9,7 @@ import type { ModelFamily } from '../model-family';
 const ENGINE_MODEL_ALIASES: Record<string, readonly string[]> = {
   nllb: ['facebook/nllb-200-distilled-600M'],
   pyannote: ['pyannote/speaker-diarization-3.1'],
-  'audiocpp-sortformer': ['audio-cpp/audio.cpp-gguf'],
+  'audiocpp-sortformer': ['audio-cpp/audio.cpp-gguf:sortformer-diar-4spk-v1-q8_0'],
 };
 
 /** Catalogue models shown on one family page (same rule the model store used). */

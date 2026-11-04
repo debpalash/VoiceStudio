@@ -70,8 +70,9 @@ installs the small CPU build of PyTorch instead of the multi-GB CUDA one, so
 the download is much smaller and needs about 5 GiB free instead of 9 GiB. For
 the best experience on a CPU, pick a light voice engine (KittenTTS,
 Supertonic-3, PocketTTS) and a small Whisper model in the Model Catalogue; the
-setup screen lists them as its CPU preset. Set `OMNIVOICE_TORCH_VARIANT=cuda`
-(or `cpu`) before launching to override the detection.
+setup screen lists them as its CPU preset. Choose **CPU only** or **NVIDIA CUDA**
+under **Runtime packages** during desktop setup to override automatic detection.
+An explicit `OMNIVOICE_TORCH_VARIANT=cuda` (or `cpu`) launch override also remains supported.
 Source setup (`bun run setup:api`) also selects locked CPU wheels when NVIDIA
 is absent. See [CPU setup and overrides](../../electron/README.md#running-without-a-gpu).
 
@@ -114,7 +115,10 @@ The drive must be connected when VoiceStudio starts.
 **NVIDIA GPUs** use CUDA automatically when a compatible driver is installed.
 **AMD GPUs** use CPU PyTorch by default; supported Radeon and Ryzen AI hardware
 can explicitly opt into the matched Windows 11 ROCm 7.2.1 installation for
-source and Electron with `OMNIVOICE_TORCH_VARIANT=rocm`.
+Electron by choosing **AMD ROCm (supported cards)** under **Runtime packages**.
+Existing managed installations can save a new target from Settings > Performance
+for the next app start, then explicitly install. Source setup uses
+`OMNIVOICE_TORCH_VARIANT=rocm`.
 
 Follow the [Windows ROCm guide](windows-rocm.md) for AMD's exact driver/hardware
 matrices, setup commands, offline verification, local speech smoke, repair and

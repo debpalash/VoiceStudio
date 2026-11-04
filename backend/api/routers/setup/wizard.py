@@ -174,12 +174,10 @@ def _amd_unusable_note(torch=None) -> str:
         return (
             f"AMD GPU detected, but this install's PyTorch is {build}, which "
             "cannot drive it, so PyTorch engines run on the CPU. On Windows 11 "
-            "x64 with a GPU in AMD's ROCm 7.2.1 support matrix (including the "
-            "RX 9000 and RX 7000 series), set OMNIVOICE_TORCH_VARIANT=rocm and "
-            "run setup again to install the native ROCm build "
-            "(docs/install/windows-rocm.md). audio.cpp (Vulkan) engines can "
-            "use the GPU either way - see Settings > Performance for the "
-            "per-engine list."
+            "x64 with a GPU in AMD's ROCm 7.2.1 support matrix, choose AMD ROCm "
+            "during desktop runtime setup or in Settings > Performance > Runtime packages. "
+            "Check the driver and optional-engine requirements in docs/install/windows-rocm.md. "
+            "audio.cpp (Vulkan) engines have a separate runtime and can use the GPU either way."
         )
     return (
         f"AMD GPU detected, but this install's PyTorch is {build}, which "

@@ -98,13 +98,13 @@ class NativeSortformer:
     """Stateless native invocation; the GGUF is never downloaded implicitly."""
 
     def __init__(self):
-        from services.diarization_runtime import SORTFORMER_REPO, sortformer_model_path
+        from services.diarization_runtime import SORTFORMER_MODEL_ID, sortformer_model_path
         from services.model_acceptance import ensure_accepted
 
         # Built per use, so this also applies a revoked acceptance (#2689).
         # A user-configured GGUF is a local asset with no registry identity.
         if not os.environ.get("OMNIVOICE_DIARIZATION_MODEL", "").strip():
-            ensure_accepted([SORTFORMER_REPO])
+            ensure_accepted([SORTFORMER_MODEL_ID])
         from engines.audiocpp.bootstrap import resolve_server_binary
 
         try:

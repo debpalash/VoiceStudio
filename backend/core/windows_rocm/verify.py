@@ -14,6 +14,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 def validate_report(report, recipe):
     """Do not infer readiness from exit zero, CPU fallback, or stale versions."""
+    compute_types = report.get("ct2_compute_types")
     requirements = (
         report.get("ready") is True,
         report.get("scope") == "model-free",
@@ -26,8 +27,10 @@ def validate_report(report, recipe):
         report.get("torch_gpu") is True,
         report.get("gpu_architecture") in recipe["gpu_architectures"],
         report.get("kernel_result") == 4.0,
-        isinstance(report.get("ct2_gpu_count"), int) and report["ct2_gpu_count"] > 0,
-        "float16" in report.get("ct2_compute_types", []),
+        type(report.get("ct2_gpu_count")) is int and report["ct2_gpu_count"] > 0,
+        isinstance(compute_types, list)
+        and all(isinstance(value, str) for value in compute_types)
+        and "float16" in compute_types,
         report.get("ct2_binary_sha256") == recipe["ctranslate2"]["binary_sha256"],
     )
     if not all(requirements):

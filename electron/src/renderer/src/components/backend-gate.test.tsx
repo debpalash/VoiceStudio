@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
 import { beforeEach, expect, it, vi } from 'vitest';
-import i18n from '@/i18n';
+import i18n, { SUPPORTED_LOCALES } from '@/i18n';
 import type { BackendStatus } from '../../../preload/index.d';
 import { BackendGate, delimitedDiagnostic } from './backend-gate';
 
@@ -43,7 +43,244 @@ beforeEach(() => {
   delete backendStatus.runtimeFreeGib;
   delete backendStatus.setupPhase;
   delete backendStatus.setupProgress;
+  delete backendStatus.runtimeTorchPreference;
+  delete backendStatus.runtimeTorchSupported;
+  delete backendStatus.runtimeTorchPinned;
+  delete backendStatus.runtimeTorchSwitchable;
+  backendStatus.runtimeInterrupted = true;
+  backendStatus.managed = false;
+  backendStatus.remote = false;
+  Element.prototype.scrollIntoView = vi.fn();
   platform.current = 'linux';
+});
+
+const runtimeCatalogs = import.meta.glob('../i18n/locales/*.json', {
+  eager: true,
+  import: 'default',
+}) as Record<string, { runtimeTorch: Record<string, string>; settings: Record<string, string> }>;
+
+it('keeps every runtime package string and GUI recommendation in all supported locales', () => {
+  const english = runtimeCatalogs['../i18n/locales/en.json']!;
+  expect(Object.keys(runtimeCatalogs).sort()).toEqual(
+    SUPPORTED_LOCALES.map((locale) => `../i18n/locales/${locale}.json`).sort(),
+  );
+  expect(Object.keys(english.runtimeTorch)).toHaveLength(20);
+  for (const [locale, catalog] of Object.entries(runtimeCatalogs)) {
+    expect(Object.keys(catalog.runtimeTorch).sort(), locale).toEqual(
+      Object.keys(english.runtimeTorch).sort(),
+    );
+    for (const [key, value] of Object.entries(catalog.runtimeTorch)) {
+      expect(value.trim(), `${locale}:${key}`).not.toBe('');
+      if (!locale.endsWith('/en.json') && !['cuda'].includes(key)) {
+        expect(value, `${locale}:${key}`).not.toBe(english.runtimeTorch[key]);
+      }
+    }
+    const guidance = catalog.settings.gpu_report_option_rocm_windows_manual;
+    expect(guidance, locale).toContain('AMD ROCm');
+    expect(guidance, locale).toContain('OMNIVOICE_TORCH_VARIANT=rocm');
+    expect(guidance, locale).toMatch(/[→←]/);
+    expect(guidance, locale).not.toContain('WhisperX');
+  }
+});
+
+const selectRuntimeWithKeyboard = async (search: string) => {
+  const trigger = screen.getByRole('button', { name: i18n.t('runtimeTorch.title') });
+  trigger.focus();
+  fireEvent.click(trigger);
+  const input = await screen.findByRole('textbox', { name: i18n.t('common.search') });
+  fireEvent.change(input, { target: { value: search } });
+  fireEvent.keyDown(input, { key: 'ArrowDown' });
+  fireEvent.keyDown(input, { key: 'Enter' });
+  return trigger;
+};
+
+it.each([undefined, false])(
+  'preserves the default setup without the runtime capability (%s)',
+  (supported) => {
+    backendStatus.runtimeTorchSupported = supported;
+    const setupRuntime = vi.fn();
+    bridgeStub.current = { backend: { setupRuntime } };
+    renderGate('setup_required');
+    expect(
+      screen.queryByRole('button', { name: i18n.t('runtimeTorch.title') }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: i18n.t('common.resume') })).toBeEnabled();
+    expect(setupRuntime).not.toHaveBeenCalled();
+  },
+);
+
+it('uses the supervisor selection and exposes localized effects and a portaled keyboard menu', async () => {
+  backendStatus.runtimeTorchSupported = true;
+  backendStatus.runtimeTorchPreference = 'cpu';
+  const save = vi.fn();
+  bridgeStub.current = { backend: { setRuntimeTorchPreference: save } };
+  renderGate('setup_required');
+  const trigger = screen.getByRole('button', { name: i18n.t('runtimeTorch.title') });
+  expect(trigger).toHaveTextContent(i18n.t('runtimeTorch.cpu'));
+  expect(trigger).toHaveAccessibleDescription(i18n.t('runtimeTorch.cpuDescription'));
+  fireEvent.click(trigger);
+  expect(screen.getByRole('listbox').parentElement).toBe(document.body);
+  expect(screen.getByRole('option', { name: i18n.t('runtimeTorch.cpu') })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  const input = screen.getByRole('textbox', { name: i18n.t('common.search') });
+  fireEvent.change(input, { target: { value: 'ROCm' } });
+  fireEvent.keyDown(input, { key: 'Escape' });
+  expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+  expect(trigger).toHaveFocus();
+  expect(save).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['auto', 'cpu'],
+  ['cpu', 'cuda'],
+  ['cuda', 'rocm'],
+] as const)('saves %s → %s without starting installation', async (previous, next) => {
+  backendStatus.runtimeTorchSupported = true;
+  backendStatus.runtimeTorchPreference = previous;
+  let completeSave!: (value: string) => void;
+  const save = vi.fn().mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        completeSave = resolve;
+      }),
+  );
+  const setupRuntime = vi.fn();
+  const cleanSetupRuntime = vi.fn();
+  bridgeStub.current = {
+    backend: { setRuntimeTorchPreference: save, setupRuntime, cleanSetupRuntime },
+  };
+  renderGate('setup_required');
+  const trigger = await selectRuntimeWithKeyboard(i18n.t(`runtimeTorch.${next}`));
+  expect(save).toHaveBeenCalledWith(next);
+  expect(trigger).toBeDisabled();
+  expect(trigger).toHaveTextContent(i18n.t(`runtimeTorch.${previous}`));
+  expect(screen.getByRole('status')).toHaveTextContent(i18n.t('runtimeTorch.saving'));
+  const resume = screen.getByRole('button', { name: i18n.t('common.resume') });
+  expect(resume).toBeDisabled();
+  fireEvent.click(resume);
+  expect(setupRuntime).not.toHaveBeenCalled();
+  backendStatus.runtimeTorchPreference = next;
+  completeSave(next);
+  await waitFor(() => expect(trigger).toBeEnabled());
+  expect(trigger).toHaveTextContent(i18n.t(`runtimeTorch.${next}`));
+  expect(screen.getByRole('status')).toHaveTextContent(i18n.t('runtimeTorch.saved'));
+  expect(setupRuntime).not.toHaveBeenCalled();
+  expect(cleanSetupRuntime).not.toHaveBeenCalled();
+  fireEvent.click(resume);
+  await waitFor(() => expect(setupRuntime).toHaveBeenCalledOnce());
+});
+
+it.each([false, true])(
+  'blocks Install/Retry and clean setup while saving (failed=%s)',
+  async (failed) => {
+    backendStatus.runtimeTorchSupported = true;
+    backendStatus.runtimeInterrupted = false;
+    if (failed) backendStatus.message = 'Setup failed';
+    let completeSave!: () => void;
+    bridgeStub.current = {
+      backend: {
+        setRuntimeTorchPreference: () =>
+          new Promise<void>((resolve) => {
+            completeSave = resolve;
+          }),
+      },
+    };
+    renderGate('setup_required');
+    await selectRuntimeWithKeyboard('ROCm');
+    expect(
+      screen.getByRole('button', {
+        name: i18n.t(failed ? 'backend.retry' : 'backend.setup_required'),
+      }),
+    ).toBeDisabled();
+    if (failed)
+      expect(screen.getByRole('button', { name: i18n.t('bootstrap.clean_retry') })).toBeDisabled();
+    completeSave();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: i18n.t('runtimeTorch.title') })).toBeEnabled(),
+    );
+  },
+);
+
+it('retains the previous preference and recovers focus after a rejected save', async () => {
+  backendStatus.runtimeTorchSupported = true;
+  backendStatus.runtimeTorchPreference = 'cpu';
+  const save = vi.fn().mockRejectedValue(new Error('untrusted backend detail'));
+  bridgeStub.current = { backend: { setRuntimeTorchPreference: save } };
+  renderGate('setup_required');
+  const trigger = await selectRuntimeWithKeyboard('ROCm');
+  await screen.findByRole('alert');
+  expect(screen.getByRole('alert')).toHaveTextContent(i18n.t('runtimeTorch.saveError'));
+  expect(screen.queryByText('untrusted backend detail')).not.toBeInTheDocument();
+  expect(trigger).toHaveTextContent(i18n.t('runtimeTorch.cpu'));
+  expect(trigger).toBeEnabled();
+  await waitFor(() => expect(trigger).toHaveFocus());
+  expect(screen.getByRole('button', { name: i18n.t('common.resume') })).toBeEnabled();
+  await selectRuntimeWithKeyboard('ROCm');
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+});
+
+it('shows an environment-pinned choice without allowing a save', () => {
+  backendStatus.runtimeTorchSupported = true;
+  backendStatus.runtimeTorchPinned = true;
+  backendStatus.runtimeTorchPreference = 'rocm';
+  const save = vi.fn();
+  bridgeStub.current = { backend: { setRuntimeTorchPreference: save } };
+  renderGate('setup_required');
+  const trigger = screen.getByRole('button', { name: i18n.t('runtimeTorch.title') });
+  expect(trigger).toBeDisabled();
+  expect(trigger).toHaveTextContent(i18n.t('runtimeTorch.rocm'));
+  expect(trigger).toHaveAccessibleDescription(
+    `${i18n.t('runtimeTorch.rocmDescription')} ${i18n.t('runtimeTorch.pinned')}`,
+  );
+  fireEvent.click(trigger);
+  expect(save).not.toHaveBeenCalled();
+});
+
+it('does not persist an unchanged default preference', async () => {
+  backendStatus.runtimeTorchSupported = true;
+  const save = vi.fn();
+  bridgeStub.current = { backend: { setRuntimeTorchPreference: save } };
+  renderGate('setup_required');
+  await selectRuntimeWithKeyboard(i18n.t('runtimeTorch.auto'));
+  expect(save).not.toHaveBeenCalled();
+});
+
+it('follows later supervisor choices instead of retaining a renderer default', () => {
+  backendStatus.runtimeTorchSupported = true;
+  const view = renderGate('setup_required');
+  const trigger = screen.getByRole('button', { name: i18n.t('runtimeTorch.title') });
+  expect(trigger).toHaveTextContent(i18n.t('runtimeTorch.auto'));
+  backendStatus.runtimeTorchPreference = 'cuda';
+  view.rerender(
+    <QueryClientProvider client={new QueryClient()}>
+      <BackendGate>
+        <div>workspace</div>
+      </BackendGate>
+    </QueryClientProvider>,
+  );
+  expect(trigger).toHaveTextContent(i18n.t('runtimeTorch.cuda'));
+});
+
+it('focuses the setup choice after a healthy backend explicitly enters setup', async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const renderContent = () => (
+    <QueryClientProvider client={client}>
+      <BackendGate>
+        <div>workspace</div>
+      </BackendGate>
+    </QueryClientProvider>
+  );
+  backendStatus.stage = 'ready';
+  const view = render(renderContent());
+  backendStatus.stage = 'setup_required';
+  backendStatus.runtimeTorchSupported = true;
+  backendStatus.runtimeTorchPreference = 'rocm';
+  view.rerender(renderContent());
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: i18n.t('runtimeTorch.title') })).toHaveFocus(),
+  );
 });
 
 it('presents an interrupted runtime as a resumable install', () => {

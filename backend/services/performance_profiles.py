@@ -397,7 +397,7 @@ def profile_state(choice: str | None = None) -> dict:
             if diarisation_choices
             else "inactive",
             "model": (
-                diarization_runtime.SORTFORMER_REPO
+                diarization_runtime.SORTFORMER_MODEL_ID
                 if diarization_runtime.selected_backend() == diarization_runtime.SORTFORMER
                 else "pyannote/speaker-diarization-3.1"
             )

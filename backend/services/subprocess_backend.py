@@ -479,7 +479,10 @@ class SubprocessBackend(TTSBackend):
 
     # ── lifecycle ──────────────────────────────────────────────────────────
 
-    def _spawn(self) -> None:
+    def _child_environment(self) -> dict[str, str]:
+        return os.environ.copy()
+
+    def _spawn(self, *, environment: dict[str, str] | None = None) -> None:
         """Launch the sidecar if not already running. Blocks on the ready
         handshake. Caller must hold self._lock."""
         if not self._retry_timeout_cleanup():
@@ -497,7 +500,7 @@ class SubprocessBackend(TTSBackend):
         #     HF_HUB_CACHE.
         #   - PYTHONUNBUFFERED=1 keeps the sidecar's stdout from buffering
         #     past our length-prefix reads.
-        env = os.environ.copy()
+        env = self._child_environment() if environment is None else environment
         env["PYTHONUNBUFFERED"] = "1"
         # Hub clients in sidecars read HF_ENDPOINT at import time. Forward the
         # current download choice only to this child; setting it in the parent
@@ -1095,12 +1098,12 @@ class SubprocessBackend(TTSBackend):
                     item for item in self._timeout_quarantine if item is not proc
                 ]
 
-    def _reap_unusable_process(self, proc: Optional[subprocess.Popen]) -> None:
-        """Synchronously retire a sidecar whose protocol pipe is unusable."""
+    def _reap_unusable_process(self, proc: Optional[subprocess.Popen], *, grace_period_s: float = 0.25) -> None:
+        """Retire the captured sidecar within a bounded grace period."""
         if proc is None:
             return
         try:
-            proc.wait(timeout=0.25)
+            proc.wait(timeout=grace_period_s)
         except Exception:
             try:
                 proc.kill()

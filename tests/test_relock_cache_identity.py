@@ -1,6 +1,7 @@
 """Re-locking a voice to another take re-keys its longform caches (#2535)."""
 import asyncio
 import os
+import time
 
 import pytest
 import torch
@@ -46,6 +47,11 @@ def locked_profile(tmp_path, monkeypatch):
     return voices
 
 
+def _age_retirement_markers(voices):
+    for marker in (voices / ".retired").iterdir():
+        os.utime(marker, (1, 1))
+
+
 def test_relock_with_same_text_and_seed_re_keys_the_longform_cache(locked_profile, tmp_path):
     from api.routers import audiobook, profiles
 
@@ -71,6 +77,7 @@ def test_relock_with_same_text_and_seed_re_keys_the_longform_cache(locked_profil
     assert calls == ["one", "two"], "segment cached for the NEW take only"
 
     # The superseded take is swept once retired; only the current one remains.
+    _age_retirement_markers(locked_profile)
     profiles.sweep_retired_voice_files(grace_s=0)
     assert len([p for p in os.listdir(locked_profile) if "locked" in p]) == 1
 
@@ -93,6 +100,7 @@ def test_relock_and_unlock_keep_the_take_a_running_render_still_reads(locked_pro
     # Inside the grace period nothing goes; after it, both unreferenced takes do.
     assert profiles.sweep_retired_voice_files() == 0
     assert os.path.exists(in_flight) and os.path.exists(second)
+    _age_retirement_markers(locked_profile)
     assert profiles.sweep_retired_voice_files(grace_s=0) == 2
     assert not os.path.exists(in_flight) and not os.path.exists(second)
     assert os.listdir(locked_profile / ".retired") == []
@@ -108,9 +116,26 @@ def test_sweep_keeps_a_retired_file_a_profile_references_again(locked_profile):
             "UPDATE voice_profiles SET locked_audio_path='voice_locked.wav', is_locked=1"
         )
     profiles._retire_voice_file("voice_locked.wav")
+    _age_retirement_markers(locked_profile)
     assert profiles.sweep_retired_voice_files(grace_s=0) == 0
     assert (locked_profile / "voice_locked.wav").read_bytes() == b"legacy"
     assert os.listdir(locked_profile / ".retired") == []
+
+
+@pytest.mark.parametrize(("marker_age_s", "grace_s"), [(0, 60), (-60, 0)])
+def test_sweep_keeps_a_retired_file_until_its_marker_expires(locked_profile, marker_age_s, grace_s):
+    from api.routers import profiles
+
+    audio = locked_profile / "unreferenced.wav"
+    audio.write_bytes(b"retired-take")
+    profiles._retire_voice_file(audio.name)
+    marker = locked_profile / ".retired" / audio.name
+    timestamp = time.time() - marker_age_s
+    os.utime(marker, (timestamp, timestamp))
+
+    assert profiles.sweep_retired_voice_files(grace_s=grace_s) == 0
+    assert audio.read_bytes() == b"retired-take"
+    assert marker.is_file()
 
 
 def test_sweep_keeps_a_retired_take_an_active_render_holds(locked_profile):
@@ -124,6 +149,7 @@ def test_sweep_keeps_a_retired_take_an_active_render_holds(locked_profile):
         in_flight = lease.hold(audiobook._resolve_voice("voice")["ref_audio"])
         asyncio.run(profiles.lock_profile("voice", history_id="take2", seed=7))
 
+        _age_retirement_markers(locked_profile)
         assert profiles.sweep_retired_voice_files(grace_s=0) == 0
         assert open(in_flight, "rb").read() == b"first-take"
         assert os.listdir(locked_profile / ".retired"), "marker kept for a later sweep"
@@ -171,6 +197,7 @@ def test_longform_render_holds_its_take_until_the_render_ends(locked_profile, tm
             with db.db_conn() as conn:
                 conn.execute("UPDATE voice_profiles SET locked_audio_path='other.wav'")
             profiles._retire_voice_file(os.path.basename(in_flight))
+            _age_retirement_markers(locked_profile)
             seen.append((profiles.sweep_retired_voice_files(grace_s=0), os.path.exists(in_flight)))
         return torch.zeros(2400)
 

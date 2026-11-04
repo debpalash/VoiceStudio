@@ -49,6 +49,20 @@ it('keeps dictation checkpoints off the ASR page and diarisation bundles on thei
   ]);
 });
 
+it('links Sortformer to its own package without offering Breeze weights for diarisation', () => {
+  const sortformer = 'audio-cpp/audio.cpp-gguf:sortformer-diar-4spk-v1-q8_0';
+  const models = [
+    model('audio-cpp/audio.cpp-gguf', { engines: ['audiocpp'] }),
+    model(sortformer, { role: 'Diarisation', engines: [] }),
+    model('audio-cpp/audio.cpp-gguf:dots-tts-soar-q8_0', { engines: ['audiocpp-dots'] }),
+  ];
+  const available = familyModels(models, 'diarisation');
+  expect(available.map((item) => item.repo_id)).toEqual([sortformer]);
+  expect(modelsForEngine('audiocpp-sortformer', available).map((item) => item.repo_id)).toEqual([
+    sortformer,
+  ]);
+});
+
 it('orders active, then ready, then recommended, keeping backend order for ties', () => {
   const rank = (active: boolean, ready: boolean, recommended: boolean) => ({
     active,
