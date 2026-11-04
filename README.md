@@ -7,9 +7,9 @@
     <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100,000 GitHub stars — thank you!</a></strong><br />
     <sub>Thank you for using VoiceStudio, sharing it, reporting bugs, contributing code and supporting the project.</sub>
   </p>
-  <h2>AI voice studio. On your device.</h2>
-  <h3>Clone, design, dub, dictate, transcribe and narrate in 646 languages.</h3>
-  <p>Runs on your laptop, desktop, servers, phone, tablets and more</p>
+  <p><strong>AI voice studio. On your device.</strong><br />
+  Clone, design, dub, dictate, transcribe and narrate in 646 languages.<br />
+  <sub>Runs on your laptop, desktop, servers, phone, tablets and more</sub></p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Website</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Download</a> ·
@@ -20,15 +20,10 @@
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
-  <details>
-    <summary><strong>🌐 Read in your language</strong></summary>
-    <p>
-    <strong lang="en">English</strong> · <a href="docs/readme/README_CN.md" lang="zh-CN">简体中文</a> · <a href="docs/readme/README_JA.md" lang="ja">日本語</a> · <a href="docs/readme/README_KO.md" lang="ko">한국어</a> · <a href="docs/readme/README_RU.md" lang="ru">Русский</a><br />
-    <a href="docs/readme/README_AR.md" lang="ar">العربية</a> · <a href="docs/readme/README_DE.md" lang="de">Deutsch</a> · <a href="docs/readme/README_ES.md" lang="es">Español</a> · <a href="docs/readme/README_FR.md" lang="fr">Français</a> · <a href="docs/readme/README_HI.md" lang="hi">हिन्दी</a><br />
-    <a href="docs/readme/README_ID.md" lang="id">Bahasa Indonesia</a> · <a href="docs/readme/README_IT.md" lang="it">Italiano</a> · <a href="docs/readme/README_NL.md" lang="nl">Nederlands</a> · <a href="docs/readme/README_PL.md" lang="pl">Polski</a> · <a href="docs/readme/README_PT.md" lang="pt">Português</a><br />
-    <a href="docs/readme/README_TH.md" lang="th">ไทย</a> · <a href="docs/readme/README_TR.md" lang="tr">Türkçe</a> · <a href="docs/readme/README_TW.md" lang="zh-TW">繁體中文</a> · <a href="docs/readme/README_UK.md" lang="uk">Українська</a> · <a href="docs/readme/README_VI.md" lang="vi">Tiếng Việt</a>
-    </p>
-  </details>
+  <p><sub>
+    <strong lang="en">🇬🇧 English</strong> · <a href="docs/readme/README_CN.md" lang="zh-CN">🇨🇳 简体中文</a> · <a href="docs/readme/README_JA.md" lang="ja">🇯🇵 日本語</a> · <a href="docs/readme/README_KO.md" lang="ko">🇰🇷 한국어</a> · <a href="docs/readme/README_RU.md" lang="ru">🇷🇺 Русский</a> · <a href="docs/readme/README_AR.md" lang="ar">🇸🇦 العربية</a> · <a href="docs/readme/README_DE.md" lang="de">🇩🇪 Deutsch</a> · <a href="docs/readme/README_ES.md" lang="es">🇪🇸 Español</a> · <a href="docs/readme/README_FR.md" lang="fr">🇫🇷 Français</a> · <a href="docs/readme/README_HI.md" lang="hi">🇮🇳 हिन्दी</a><br />
+    <a href="docs/readme/README_ID.md" lang="id">🇮🇩 Bahasa Indonesia</a> · <a href="docs/readme/README_IT.md" lang="it">🇮🇹 Italiano</a> · <a href="docs/readme/README_NL.md" lang="nl">🇳🇱 Nederlands</a> · <a href="docs/readme/README_PL.md" lang="pl">🇵🇱 Polski</a> · <a href="docs/readme/README_PT.md" lang="pt">🇵🇹 Português</a> · <a href="docs/readme/README_TH.md" lang="th">🇹🇭 ไทย</a> · <a href="docs/readme/README_TR.md" lang="tr">🇹🇷 Türkçe</a> · <a href="docs/readme/README_TW.md" lang="zh-TW">🇹🇼 繁體中文</a> · <a href="docs/readme/README_UK.md" lang="uk">🇺🇦 Українська</a> · <a href="docs/readme/README_VI.md" lang="vi">🇻🇳 Tiếng Việt</a>
+  </sub></p>
   <!-- README_LANGUAGES_END -->
 
 
@@ -39,13 +34,10 @@
     <a href="https://supermetry.com"><img src="https://app.supermetry.com/px/zfjiv7psp4ed.svg?c=VoiceStudio" alt="views" /></a>
   </p>
   <p>
-    <sub>Strategic sponsors</sub><br />
-    <a href="https://github.com/debpalash/OpenGTM?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/sponsors/opengtm-dark.svg" /><img src="docs/sponsors/opengtm.svg" alt="OpenGTM" height="32" align="middle" /></picture></a>
+    <sub>Strategic sponsors</sub>      <a href="https://github.com/debpalash/OpenGTM?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/sponsors/opengtm-dark.svg" /><img src="docs/sponsors/opengtm.svg" alt="OpenGTM" height="32" align="middle" /></picture></a>
     <a href="https://github.com/debpalash/Opal?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/sponsors/opal-dark.svg" /><img src="docs/sponsors/opal.svg" alt="Opal" height="32" align="middle" /></picture></a>
     <a href="https://github.com/velixio/supermetry?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/sponsors/supermetry-dark.svg" /><img src="docs/sponsors/supermetry.svg" alt="Supermetry" height="32" align="middle" /></picture></a>
-  </p>
-  <p>
-    <sub>Special sponsor</sub><br />
+      ·   <sub>Special sponsor</sub> 
     <a href="https://app.spicrawl.com/signup?utm_source=voicestudio&amp;utm_medium=github_readme&amp;utm_campaign=special_sponsor&amp;utm_content=logo"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/sponsors/spicrawl-dark.svg" /><img src="docs/sponsors/spicrawl.svg" alt="Spicrawl" height="32" align="middle" /></picture></a>
   </p>
 </div>
