@@ -4,8 +4,7 @@
     <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="Odznaka Trendshift pokazująca miejsce VoiceStudio wśród popularnych repozytoriów" width="220" height="48" /></a>
   </p>
   <p>
-    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100 000 gwiazdek na GitHubie — dziękujemy!</a></strong><br />
-    <sub>Dziękujemy za korzystanie z VoiceStudio, udostępnianie go, zgłaszanie błędów, wnoszenie kodu i wspieranie projektu.</sub>
+    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100 000 gwiazdek na GitHubie — dziękujemy!</a></strong>
   </p>
   <p><strong>Studio głosowe AI. Na Twoim urządzeniu.</strong><br />
   Klonuj i projektuj głosy, twórz dubbing, dyktuj, transkrybuj i generuj narrację w 646 językach.<br />
@@ -15,8 +14,7 @@
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Pobierz</a> ·
     <a href="#get-started">Pierwsze kroki</a> ·
     <a href="#documentation">Dokumentacja</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
-    <a href="#readme-languages">20 języków</a>
+    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>

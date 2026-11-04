@@ -4,8 +4,7 @@
     <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="Trendshift-badge die laat zien waar VoiceStudio tot de trending repository&#x27;s behoort" width="220" height="48" /></a>
   </p>
   <p>
-    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100.000 GitHub-sterren — bedankt!</a></strong><br />
-    <sub>Bedankt voor het gebruiken van VoiceStudio, het delen ervan, het melden van bugs, het bijdragen van code en het ondersteunen van het project.</sub>
+    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100.000 GitHub-sterren — bedankt!</a></strong>
   </p>
   <p><strong>AI-stemstudio. Op je eigen apparaat.</strong><br />
   Kloon en ontwerp stemmen, maak nasynchronisaties, dicteer, transcribeer en lees voor in 646 talen.<br />
@@ -15,8 +14,7 @@
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Downloaden</a> ·
     <a href="#get-started">Aan de slag</a> ·
     <a href="#documentation">Documentatie</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
-    <a href="#readme-languages">20 talen</a>
+    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>

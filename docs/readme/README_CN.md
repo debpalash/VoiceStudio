@@ -4,8 +4,7 @@
     <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="VoiceStudio 在 Trendshift 上的热度排名徽章" width="220" height="48" /></a>
   </p>
   <p>
-    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">GitHub Star 突破 10 万，感谢大家！</a></strong><br />
-    <sub>感谢大家使用和分享 VoiceStudio、反馈问题、贡献代码，以及一直以来对项目的支持。</sub>
+    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">GitHub Star 突破 10 万，感谢大家！</a></strong>
   </p>
   <p><strong>AI 语音工作室，就在你的设备上。</strong><br />
   支持 646 种语言的声音克隆、声音设计、配音、听写、转录与有声朗读。<br />
@@ -15,8 +14,7 @@
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">下载</a> ·
     <a href="#开始使用">快速上手</a> ·
     <a href="#文档">文档</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
-    <a href="#readme-languages">20 种语言</a>
+    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>

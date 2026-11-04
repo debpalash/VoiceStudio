@@ -4,8 +4,7 @@
     <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="Huy hiệu Trendshift cho biết thứ hạng của VoiceStudio trong các dự án đang thịnh hành." width="220" height="48" /></a>
   </p>
   <p>
-    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100.000 sao trên GitHub — cảm ơn bạn!</a></strong><br />
-    <sub>Cảm ơn bạn đã sử dụng VoiceStudio, chia sẻ dự án, báo lỗi, đóng góp mã nguồn và hỗ trợ dự án.</sub>
+    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100.000 sao trên GitHub — cảm ơn bạn!</a></strong>
   </p>
   <p><strong>Phòng thu giọng nói AI. Ngay trên thiết bị của bạn.</strong><br />
   Nhân bản và thiết kế giọng nói, lồng tiếng, đọc chính tả, chuyển giọng nói thành văn bản và tạo lời thuyết minh bằng 646 ngôn ngữ.<br />
@@ -15,8 +14,7 @@
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Tải xuống</a> ·
     <a href="#get-started">Bắt đầu</a> ·
     <a href="#documentation">Tài liệu</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
-    <a href="#readme-languages">20 ngôn ngữ</a>
+    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>

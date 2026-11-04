@@ -4,8 +4,7 @@
     <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="Trendshift-Abzeichen, das zeigt, wo VoiceStudio zu den Trend-Repositories zählt" width="220" height="48" /></a>
   </p>
   <p>
-    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100.000 GitHub-Sterne — vielen Dank!</a></strong><br />
-    <sub>Vielen Dank, dass Sie VoiceStudio nutzen, es teilen, Fehler melden, Code beisteuern und das Projekt unterstützen.</sub>
+    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100.000 GitHub-Sterne — vielen Dank!</a></strong>
   </p>
   <p><strong>KI-Stimmenstudio. Auf Ihrem Gerät.</strong><br />
   Stimmen klonen und gestalten, synchronisieren, diktieren, transkribieren und vorlesen – in 646 Sprachen.<br />
@@ -15,8 +14,7 @@
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Herunterladen</a> ·
     <a href="#get-started">Erste Schritte</a> ·
     <a href="#documentation">Dokumentation</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
-    <a href="#readme-languages">20 Sprachen</a>
+    <a href="https://discord.gg/bzQavDfVV9">Discord</a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
