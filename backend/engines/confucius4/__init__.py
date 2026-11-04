@@ -148,7 +148,7 @@ class Confucius4Backend(SubprocessBackend):
 
         Returns a tensor of shape (1, n_samples) at :attr:`sample_rate`.
         """
-        self._check_language(kw.get("language"))
+        validated = self._check_language(kw.get("language"))
         forwarded: dict = {}
         ref_audio = kw.get("ref_audio")
         if not ref_audio:
@@ -158,7 +158,7 @@ class Confucius4Backend(SubprocessBackend):
                 "reference clip."
             )
         forwarded["ref_audio"] = os.path.abspath(os.fspath(ref_audio))
-        language = kw.get("language")
+        language = validated or kw.get("language")
         if language:
             forwarded["language"] = str(language)
         return super().generate(text, **forwarded)

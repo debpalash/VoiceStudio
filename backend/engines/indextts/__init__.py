@@ -297,7 +297,7 @@ class IndexTTS2Backend(SubprocessBackend):
     # ``description`` means.
 
     def generate(self, text: str, **kw) -> "torch.Tensor":
-        self._check_language(kw.get("language"))
+        validated = self._check_language(kw.get("language"))
         ref_audio = kw.get("ref_audio")
         if not ref_audio:
             raise RuntimeError(
@@ -318,7 +318,9 @@ class IndexTTS2Backend(SubprocessBackend):
         if description and not emo_text and not emo_vector and not emo_audio:
             emo_text = description
 
-        language = _normalize_indextts25_language(kw.get("language"), text)
+        # The gate may have folded an Arabic variety to ``ar`` (#3816); the
+        # raw name would fall through to script detection and read as ``en``.
+        language = _normalize_indextts25_language(validated or kw.get("language"), text)
         forwarded: dict = {"ref_audio": ref_audio, "lang": language}
 
         # Duration control — codec frame rate ≈ 21 Hz.
