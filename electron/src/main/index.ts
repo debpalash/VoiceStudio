@@ -22,6 +22,7 @@ import {
   MainErrorJournal,
   observeMainProcessTask,
 } from './main-error-journal';
+import { recordDevInstance, waitForPreviousDevInstance } from './single-instance';
 import { activateLiveWindow, isLiveWindow } from './window-safety';
 import { startAccount } from './account';
 import { installAppIdentity, installMacApplicationMenu } from './app-identity';
@@ -241,9 +242,7 @@ async function openOutside(url: string): Promise<void> {
   }
 }
 
-if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSingleInstanceLock()) {
-  app.quit();
-} else {
+function runApp(): void {
   app.on('second-instance', () => {
     activateLiveWindow(mainWindow);
   });
@@ -371,4 +370,20 @@ if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSing
     event.preventDefault();
     observeMainProcessTask(beginOrderlyQuit(), mainErrors, 'Orderly quit');
   });
+}
+
+if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES === '1') {
+  runApp();
+} else if (is.dev) {
+  // A dev restart overlaps the previous instance's shutdown; see single-instance.ts.
+  const pidFile = join(app.getPath('userData'), 'dev-instance.pid');
+  void waitForPreviousDevInstance(pidFile).then(() => {
+    if (!app.requestSingleInstanceLock()) return app.quit();
+    recordDevInstance(pidFile);
+    runApp();
+  });
+} else if (app.requestSingleInstanceLock()) {
+  runApp();
+} else {
+  app.quit();
 }
