@@ -16,8 +16,22 @@
     <a href="#get-started">Get started</a> ·
     <a href="#documentation">Docs</a> ·
     <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
-    <a href="docs/readme/README_CN.md">简体中文</a> · <a href="docs/readme/README_JA.md">日本語</a> · <a href="docs/readme/README_KO.md">한국어</a> · <a href="docs/readme/README_RU.md">Русский</a>
+    <a href="#readme-languages">20 languages</a>
   </p>
+  <!-- README_LANGUAGES_START -->
+  <a id="readme-languages"></a>
+  <details>
+    <summary><strong>🌐 Read in your language</strong></summary>
+    <p>
+    <strong lang="en">English</strong> · <a href="docs/readme/README_CN.md" lang="zh-CN">简体中文</a> · <a href="docs/readme/README_JA.md" lang="ja">日本語</a> · <a href="docs/readme/README_KO.md" lang="ko">한국어</a> · <a href="docs/readme/README_RU.md" lang="ru">Русский</a><br />
+    <a href="docs/readme/README_AR.md" lang="ar">العربية</a> · <a href="docs/readme/README_DE.md" lang="de">Deutsch</a> · <a href="docs/readme/README_ES.md" lang="es">Español</a> · <a href="docs/readme/README_FR.md" lang="fr">Français</a> · <a href="docs/readme/README_HI.md" lang="hi">हिन्दी</a><br />
+    <a href="docs/readme/README_ID.md" lang="id">Bahasa Indonesia</a> · <a href="docs/readme/README_IT.md" lang="it">Italiano</a> · <a href="docs/readme/README_NL.md" lang="nl">Nederlands</a> · <a href="docs/readme/README_PL.md" lang="pl">Polski</a> · <a href="docs/readme/README_PT.md" lang="pt">Português</a><br />
+    <a href="docs/readme/README_TH.md" lang="th">ไทย</a> · <a href="docs/readme/README_TR.md" lang="tr">Türkçe</a> · <a href="docs/readme/README_TW.md" lang="zh-TW">繁體中文</a> · <a href="docs/readme/README_UK.md" lang="uk">Українська</a> · <a href="docs/readme/README_VI.md" lang="vi">Tiếng Việt</a>
+    </p>
+  </details>
+  <!-- README_LANGUAGES_END -->
+
+
   <p>
     <a href="https://github.com/debpalash/VoiceStudio/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/debpalash/VoiceStudio/ci.yml?branch=main&amp;style=flat-square&amp;label=build&amp;labelColor=27272a" alt="CI" /></a>
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/github/v/release/debpalash/VoiceStudio?style=flat-square&amp;labelColor=27272a&amp;color=52525b" alt="Latest release" /></a>

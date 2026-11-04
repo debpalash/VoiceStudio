@@ -16,8 +16,22 @@
     <a href="#시작하기">시작 안내</a> ·
     <a href="#문서">문서</a> ·
     <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
-    <a href="../../README.md">English</a> · <a href="README_CN.md">简体中文</a> · <a href="README_JA.md">日本語</a> · <a href="README_RU.md">Русский</a>
+    <a href="#readme-languages">20개 언어</a>
   </p>
+  <!-- README_LANGUAGES_START -->
+  <a id="readme-languages"></a>
+  <details>
+    <summary><strong>🌐 언어 선택</strong></summary>
+    <p>
+    <a href="../../README.md" lang="en">English</a> · <a href="README_CN.md" lang="zh-CN">简体中文</a> · <a href="README_JA.md" lang="ja">日本語</a> · <strong lang="ko">한국어</strong> · <a href="README_RU.md" lang="ru">Русский</a><br />
+    <a href="README_AR.md" lang="ar">العربية</a> · <a href="README_DE.md" lang="de">Deutsch</a> · <a href="README_ES.md" lang="es">Español</a> · <a href="README_FR.md" lang="fr">Français</a> · <a href="README_HI.md" lang="hi">हिन्दी</a><br />
+    <a href="README_ID.md" lang="id">Bahasa Indonesia</a> · <a href="README_IT.md" lang="it">Italiano</a> · <a href="README_NL.md" lang="nl">Nederlands</a> · <a href="README_PL.md" lang="pl">Polski</a> · <a href="README_PT.md" lang="pt">Português</a><br />
+    <a href="README_TH.md" lang="th">ไทย</a> · <a href="README_TR.md" lang="tr">Türkçe</a> · <a href="README_TW.md" lang="zh-TW">繁體中文</a> · <a href="README_UK.md" lang="uk">Українська</a> · <a href="README_VI.md" lang="vi">Tiếng Việt</a>
+    </p>
+  </details>
+  <!-- README_LANGUAGES_END -->
+
+
   <p>
     <a href="https://github.com/debpalash/VoiceStudio/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/debpalash/VoiceStudio/ci.yml?branch=main&amp;style=flat-square&amp;label=build&amp;labelColor=27272a" alt="CI 상태" /></a>
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/github/v/release/debpalash/VoiceStudio?style=flat-square&amp;labelColor=27272a&amp;color=52525b" alt="최신 릴리스" /></a>
@@ -51,6 +65,8 @@
   <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/badge/%EB%82%B4%EB%A0%A4%EB%B0%9B%EA%B8%B0-993f61?style=for-the-badge&amp;logo=github&amp;logoColor=ffffff" alt="내려받기" height="24" /></a>
   <a href="#시작하기"><img src="https://img.shields.io/badge/%EC%8B%9C%EC%9E%91%20%EC%95%88%EB%82%B4-27272a?style=for-the-badge" alt="시작 안내" height="24" /></a>
 </p>
+
+<a id="what-you-can-do"></a>
 
 ## 할 수 있는 일
 
@@ -98,6 +114,8 @@
 - **연결과 자동화** — 로컬 API, MCP, 재사용 가능한 레시피와 감시 폴더
 
 기본 엔진인 **VoiceStudio**(k2-fsa/OmniVoice 기반)로 시작하거나, 모델 관리자에서 수십 가지 다른 엔진 중 하나를 고르세요. [기능 및 엔진 카탈로그](../../docs/feature-catalog.md)를 참고하세요.
+
+<a id="platforms"></a>
 
 ## 지원 플랫폼
 
@@ -400,6 +418,8 @@ IPA를 내려받고 서명 및 사이드로드 안내를 따르세요.
 데스크톱과 휴대폰 설치 파일은 [최신 릴리스](https://github.com/debpalash/VoiceStudio/releases/latest)에 있고, Docker 이미지는 GHCR에서 받을 수 있습니다. GPU가 없나요? CPU만으로도 모든 기능을 쓸 수 있으며, 속도만 느립니다. 선택 기능인 네이티브 GGUF 엔진은 AMD GPU를 포함해 Vulkan도 사용할 수 있습니다([OmniVoice](../../docs/engines/omnivoice-gguf.md#vulkan-acceleration), [CosyVoice](../../docs/engines/cosyvoice-gguf.md)). 엔진과 하드웨어별 속도는 [성능](../../docs/performance.md) 문서를 참고하세요.
 
 
+<a id="get-started"></a>
+
 ## 시작하기
 
 위 방법으로 설치한 다음 **Voice cloning**을 열고, 음성을 선택하거나 깨끗한 참조 녹음을 추가하고, 텍스트를 입력해 생성하세요. 앱은 모델을 다운로드하기 전에 동의를 구합니다.
@@ -425,6 +445,8 @@ cd VoiceStudio
 bun run dev
 ```
 
+`bun run dev`는 JavaScript 의존성을 설치하고, 지원되는 로컬 백엔드를 사용하는 경우 Python 의존성도 설치한 뒤 Electron을 실행합니다. Python 환경만 다시 구성하려면 `bun run setup:api`를 직접 실행하세요.
+
 [Electron 설정](../../electron/README.md)을 참고하세요.
 
 **코딩 에이전트로 설치** (Claude Code, Codex, Cursor 등): 다음 내용을 붙여 넣으세요.
@@ -438,7 +460,11 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 
 </details>
 
+<a id="documentation"></a>
+
 ## 문서
+
+[모든 가이드](../../docs/README.md)
 
 | 필요한 것 | 여기서 시작 |
 |---|---|
@@ -450,6 +476,8 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 | 개발 | [기여하기](../../.github/CONTRIBUTING.md) (첫 PR 전에 [CLA 서명](../../.github/CONTRIBUTING.md#contribution-licensing) 필요) · [변경 기록](../../CHANGELOG.md) |
 
 에이전트 스킬: `npx skills add debpalash/VoiceStudio` (오디오 작업에는 **voicestudio**, 저장소 관리에는 **voicestudio-maintainer**).
+
+<a id="sponsors"></a>
 
 ## 후원사
 
@@ -466,6 +494,8 @@ VoiceStudio는 무료이며, 뒤에 유료 클라우드도 없습니다. 후원�
 <a href="https://github.com/sponsors/debpalash"><img src="https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=githubsponsors&logoColor=white" alt="GitHub Sponsors로 후원하기" /></a>
 [Ko-fi](https://ko-fi.com/debpalash) · [PayPal](https://paypal.me/palashCoder) · [등급과 혜택](../../SPONSORS.md) · [로고 게재 신청](https://github.com/debpalash/VoiceStudio/issues/new?template=sponsor.yml)
 
+<a id="other-projects"></a>
+
 ## 다른 프로젝트
 
 VoiceStudio 개발자들이 만드는 다른 오픈 소스 도구도 살펴보세요.
@@ -476,7 +506,11 @@ VoiceStudio 개발자들이 만드는 다른 오픈 소스 도구도 살펴보�
 
 더 많은 프로젝트: [debpalash](https://github.com/debpalash?tab=repositories) · [velixio](https://github.com/velixio?tab=repositories)
 
+<a id="team"></a>
+
 ## 팀
+
+<a id="core-team"></a>
 
 ### 핵심 팀
 
@@ -487,15 +521,21 @@ VoiceStudio 개발자들이 만드는 다른 오픈 소스 도구도 살펴보�
 </tr>
 </table>
 
+<a id="contributors"></a>
+
 ### 기여자
 
 <a href="https://github.com/kevin9327"><img src="https://github.com/kevin9327.png?size=96" width="44" height="44" alt="@kevin9327" title="@kevin9327"></a> <a href="https://github.com/jaketame"><img src="https://github.com/jaketame.png?size=96" width="44" height="44" alt="@jaketame" title="@jaketame"></a> <a href="https://github.com/psiberfunk"><img src="https://github.com/psiberfunk.png?size=96" width="44" height="44" alt="@psiberfunk" title="@psiberfunk"></a> <a href="https://github.com/rudycelekli"><img src="https://github.com/rudycelekli.png?size=96" width="44" height="44" alt="@rudycelekli" title="@rudycelekli"></a> <a href="https://github.com/paoloantinori"><img src="https://github.com/paoloantinori.png?size=96" width="44" height="44" alt="@paoloantinori" title="@paoloantinori"></a> <a href="https://github.com/Chang-Jin-Lee"><img src="https://github.com/Chang-Jin-Lee.png?size=96" width="44" height="44" alt="@Chang-Jin-Lee" title="@Chang-Jin-Lee"></a> <a href="https://github.com/swadhinbiswas"><img src="https://github.com/swadhinbiswas.png?size=96" width="44" height="44" alt="@swadhinbiswas" title="@swadhinbiswas"></a> <a href="https://github.com/BichengWang"><img src="https://github.com/BichengWang.png?size=96" width="44" height="44" alt="@BichengWang" title="@BichengWang"></a> <a href="https://github.com/nirmalchatur"><img src="https://github.com/nirmalchatur.png?size=96" width="44" height="44" alt="@nirmalchatur" title="@nirmalchatur"></a> <a href="https://github.com/Shivendra-Coherent"><img src="https://github.com/Shivendra-Coherent.png?size=96" width="44" height="44" alt="@Shivendra-Coherent" title="@Shivendra-Coherent"></a> <a href="https://github.com/marreiradigital"><img src="https://github.com/marreiradigital.png?size=96" width="44" height="44" alt="@marreiradigital" title="@marreiradigital"></a> <a href="https://github.com/nvtoan0201-swe"><img src="https://github.com/nvtoan0201-swe.png?size=96" width="44" height="44" alt="@nvtoan0201-swe" title="@nvtoan0201-swe"></a>
 
 코드, 버그 제보, 번역, 아이디어를 보내 주신 모든 분께 감사드립니다. [전체 기여자](https://github.com/debpalash/VoiceStudio/graphs/contributors) · [기여하기](../../.github/CONTRIBUTING.md)
 
+<a id="license--responsible-use"></a>
+
 ## 라이선스와 책임 있는 사용
 
 앱에는 [AGPL-3.0](../../LICENSE)이 적용되며, 그 조건에 따른 상업적 사용도 가능합니다. 모델 가중치, 음성, 생성 결과물에는 각각의 라이선스가 있으며, 모델 관리자에서 모델별로 확인할 수 있습니다([목록](../../docs/licensing/model-inventory.md)). 목소리는 반드시 그 주인의 허락을 받은 경우에만 복제하세요. 자세한 내용: [LICENSE-NOTICE.md](../../LICENSE-NOTICE.md).
+
+<a id="community-tutorials"></a>
 
 ## 커뮤니티 튜토리얼
 
