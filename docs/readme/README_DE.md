@@ -104,6 +104,8 @@ Wählen Sie Ihre Motoren und laden Sie nur die Modelle herunter, die Sie benöti
 
 Beginnen Sie mit **VoiceStudio** (Standard, unterstützt von k2-fsa/OmniVoice) oder wählen Sie im Model Manager aus Dutzenden anderer Engines aus. Siehe den [Features- und Engine-Katalog](../../docs/feature-catalog.md).
 
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
+
 <a id="platforms"></a>
 
 ## Plattformen
@@ -528,4 +530,4 @@ Vielen Dank an alle, die Code, Berichte, Übersetzungen und Ideen senden. [Alle 
 
 - [Komplettlösung für VoiceStudio von Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
 
-<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>

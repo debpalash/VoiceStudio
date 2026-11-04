@@ -104,6 +104,8 @@ Pilih mesin Anda dan unduh hanya model yang Anda perlukan.
 
 Mulailah dengan **VoiceStudio** (default, didukung oleh k2-fsa/OmniVoice), atau pilih dari lusinan mesin lain di Model Manager. Lihat [katalog fitur & mesin](../../docs/feature-catalog.md).
 
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
+
 <a id="platforms"></a>
 
 ## Platform
@@ -528,4 +530,4 @@ Terima kasih kepada semua orang yang mengirimkan kode, laporan, terjemahan, dan 
 
 - [Panduan VoiceStudio oleh Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
 
-<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>

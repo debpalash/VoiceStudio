@@ -104,6 +104,8 @@
 
 **VoiceStudio** से प्रारंभ करें (डिफ़ॉल्ट, k2-fsa/OmniVoice द्वारा संचालित), या मॉडल मैनेजर में दर्जनों अन्य इंजनों में से चुनें। [सुविधाएँ और इंजन कैटलॉग](../../docs/feature-catalog.md) देखें।
 
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
+
 <a id="platforms"></a>
 
 ## प्लेटफार्म
@@ -528,4 +530,4 @@ VoiceStudio बनाने वाले लोगों की ओर से �
 
 - [नाफे 3डी (यूट्यूब) द्वारा वॉयसस्टूडियो वॉकथ्रू](https://www.youtube.com/watch?v=I-u-A-oisIU)
 
-<a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
