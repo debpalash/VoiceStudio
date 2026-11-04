@@ -31,6 +31,10 @@ export interface NativeCrashRecord {
 }
 export interface BackendStatus {
   lastCrash?: NativeCrashRecord;
+  /** Set on the setup screen when Windows Smart App Control may block the engine. */
+  smartAppControlWarning?: boolean;
+  /** OMNIVOICE_ANALYTICS_DISABLED is set: nothing may be sent, whatever was chosen. */
+  analyticsDisabled?: boolean;
   /** Code and facts for the current install or startup failure. */
   failure?: InstallFailure;
   stage: BackendStage;

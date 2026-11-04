@@ -50,6 +50,8 @@ Before digging through the entries below, let the app diagnose itself:
 
 ## Install failure codes
 
+On Windows, the setup screen warns before the download if Smart App Control is on, and setup runs the pinned Python once before downloading packages, so a blocked machine finds out early. If you opt in to anonymous stats, which is off unless you say yes, the code and setup stage are all that is sent.
+
 Install and startup failures show a code on the failure screen and in the in-app report. Reports include the facts behind the code, and you review them on GitHub before submitting. Nothing is sent otherwise. A failure with no code means VoiceStudio has no evidence for a specific cause yet; the report still has the raw message.
 
 ### `WINDOWS_APP_CONTROL_BLOCKED`

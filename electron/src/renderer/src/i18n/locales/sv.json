@@ -2198,6 +2198,7 @@
   "backend": {
     "setup_required": "Installera lokal körmiljö",
     "setup_hint": "Hämta Python och appens beroenden (flera GB). Röstmodeller installeras separat när du väljer dem.",
+    "setup_smart_app_control": "Smart App Control i Windows är på och kan blockera den lokala motorn efter hämtningen. Det finns inga undantag per app. Du kan stänga av det i Windows-säkerhet → Appar och webbläsarkontroll (Windows kan inte slå på det igen utan återställning), ansluta till en motor på en annan dator, köra motorn i WSL eller Docker eller installera ändå.",
     "installing": "Installerar…",
     "setup_space": "Frigör minst {{gib}} GiB på appens disk och försök igen.",
     "repair_failed": "Den automatiska reparationen av Python-miljön blev inte klar. Kontrollera motorloggen och tryck på Försök igen.",
@@ -2475,6 +2476,7 @@
     "desc": "Anonym användningsstatistik utan innehåll som hjälper oss att fixa buggar snabbare — helt valfri, avstängd som standard.",
     "step_label": "Förbättra VoiceStudio",
     "body": "Anonym användningsstatistik utan innehåll: vilka motorer som används, hur lång tid genereringar tar och typen av fel. Aldrig din text, ditt ljud, dina filer eller något som identifierar dig. Inget skickas om du inte säger ja, och du kan ändra dig när som helst i Inställningar → Integritet.",
+    "setup_note": "Detta omfattar installationsförlopp och felkoder, som visar oss varför installationer misslyckas.",
     "learn_more": "Vad skickas egentligen?",
     "yes": "Ja, dela anonym statistik",
     "no": "Nej tack",

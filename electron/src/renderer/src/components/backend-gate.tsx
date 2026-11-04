@@ -1,6 +1,7 @@
 import { SetupGate } from './setup-gate';
 import { SetupProgressCard } from './setup-progress-card';
 import { ReportBug } from './report-bug';
+import { SetupAnalyticsConsent } from './analytics-consent';
 import { SetupSupport } from './setup-support';
 import { CrashDetails } from './crash-details';
 import {
@@ -335,6 +336,15 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
           {setup ? (
             <>
               <p className="max-w-sm text-sm text-muted-foreground">{t('backend.setup_hint')}</p>
+              {status.smartAppControlWarning && !status.failure ? (
+                <p
+                  className="max-w-sm text-sm text-warning"
+                  data-testid="setup-smart-app-control"
+                >
+                  {t('backend.setup_smart_app_control')}
+                </p>
+              ) : null}
+              <SetupAnalyticsConsent analyticsDisabled={status.analyticsDisabled} />
               {wrongArchitecture ? (
                 <p className="max-w-sm text-sm text-muted-foreground">
                   {t('backend.setup_wrong_architecture')}

@@ -512,6 +512,19 @@ it('leads with the fix for a coded failure and keeps Report available', () => {
   delete backendStatus.failure;
 });
 
+it('warns about Smart App Control before the download without blocking install', () => {
+  backendStatus.smartAppControlWarning = true;
+  backendStatus.message = undefined;
+
+  renderGate('setup_required');
+
+  expect(screen.getByTestId('setup-smart-app-control')).toHaveTextContent(
+    i18n.t('backend.setup_smart_app_control'),
+  );
+  expect(screen.getByRole('button', { name: i18n.t('common.resume') })).toBeEnabled();
+  delete backendStatus.smartAppControlWarning;
+});
+
 it('shows download guidance on a failed setup', () => {
   backendStatus.message = 'Runtime setup exited with code 1';
   backendStatus.failure = { code: 'RUNTIME_DOWNLOAD_INTERRUPTED', stage: 'setup_required' };

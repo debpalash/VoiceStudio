@@ -867,6 +867,7 @@ export class BackendSupervisor extends EventEmitter<{
   private stage: BackendStage = 'idle';
   private failure: InstallFailure | undefined;
   private failureDiagnosis = 0;
+  private setupSmartAppControl: SmartAppControl | undefined;
   private managed = false;
   private message: string | undefined;
   private exitCode: number | null | undefined;
@@ -1075,6 +1076,12 @@ export class BackendSupervisor extends EventEmitter<{
     }
     if (this.message !== undefined) status.message = this.message;
     if (this.failure) status.failure = this.failure;
+    if (this.stage === 'setup_required' && this.setupSmartAppControl) {
+      if (['on', 'evaluation'].includes(this.setupSmartAppControl))
+        status.smartAppControlWarning = true;
+    }
+    if (/^(1|true|yes|on)$/i.test((process.env.OMNIVOICE_ANALYTICS_DISABLED ?? '').trim()))
+      status.analyticsDisabled = true;
     if (this.diagnosis) status.diagnosis = this.diagnosis;
     if (this.exitCode !== undefined) status.exitCode = this.exitCode;
     if (this.exitSignal !== undefined) status.exitSignal = this.exitSignal;
@@ -1722,7 +1729,21 @@ export class BackendSupervisor extends EventEmitter<{
     if ('managed' in patch) this.managed = patch.managed ?? false;
     if ('message' in patch) this.message = patch.message;
     this.diagnoseFailure();
+    this.warnAboutSmartAppControl();
     this.emitStatus();
+  }
+
+  /** Read before the large download. It warns only; the user can still install. */
+  private warnAboutSmartAppControl(): void {
+    if (this.stage !== 'setup_required' || process.platform !== 'win32') return;
+    if (this.setupSmartAppControl) return;
+    this.setupSmartAppControl = 'unknown';
+    void readSmartAppControlAsync()
+      .then((state) => {
+        this.setupSmartAppControl = state;
+        this.emitStatus();
+      })
+      .catch(() => undefined);
   }
 
   /**

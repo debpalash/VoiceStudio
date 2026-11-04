@@ -2198,6 +2198,7 @@
   "backend": {
     "setup_required": "Lokale runtime installeren",
     "setup_hint": "Download Python en app-afhankelijkheden (meerdere GB). Spraakmodellen worden afzonderlijk geïnstalleerd wanneer je ze kiest.",
+    "setup_smart_app_control": "Slim app-beheer van Windows staat aan en kan de lokale engine na het downloaden blokkeren. Er zijn geen uitzonderingen per app. Je kunt het uitzetten via Windows-beveiliging → App- en browserbeheer (Windows kan het zonder reset niet weer aanzetten), verbinding maken met een engine op een andere computer, de engine in WSL of Docker uitvoeren, of toch installeren.",
     "installing": "Afhankelijkheden…",
     "setup_space": "Maak minstens {{gib}} GiB vrij op de schijf van de app en probeer het opnieuw.",
     "repair_failed": "Het automatisch herstellen van de Python-omgeving is niet voltooid. Bekijk het enginelogboek en kies Opnieuw proberen.",
@@ -2475,6 +2476,7 @@
     "desc": "Anonieme, inhoudsvrije gebruiksstatistieken die ons helpen bugs sneller op te lossen — volledig optioneel en standaard uitgeschakeld.",
     "step_label": "VoiceStudio verbeteren",
     "body": "Anonieme gebruiksstatistieken zonder inhoud: welke engines worden gebruikt, hoelang generaties duren en het type fouten. Nooit je tekst, je audio, je bestanden of iets dat jou identificeert. Er wordt niets verzonden tenzij je ja zegt, en je kunt je keuze altijd wijzigen in Instellingen → Privacy.",
+    "setup_note": "Dit omvat de voortgang van de installatie en foutcodes, die ons laten zien waarom installaties mislukken.",
     "learn_more": "Wat wordt er precies verzonden?",
     "yes": "Ja, deel anonieme statistieken",
     "no": "Nee, bedankt",

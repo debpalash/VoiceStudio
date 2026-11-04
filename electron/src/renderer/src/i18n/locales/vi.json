@@ -2198,6 +2198,7 @@
   "backend": {
     "setup_required": "Cài đặt môi trường cục bộ",
     "setup_hint": "Tải Python và các thành phần phụ thuộc của ứng dụng (vài GB). Mô hình giọng nói được cài riêng khi bạn chọn.",
+    "setup_smart_app_control": "Smart App Control của Windows đang bật và có thể chặn công cụ cục bộ sau khi tải xuống. Tính năng này không có ngoại lệ theo ứng dụng. Bạn có thể tắt trong Bảo mật Windows → Kiểm soát ứng dụng và trình duyệt (Windows không thể bật lại nếu không đặt lại máy), kết nối với công cụ trên máy khác, chạy công cụ trong WSL hoặc Docker, hoặc vẫn cài đặt.",
     "installing": "Đang…",
     "setup_space": "Giải phóng ít nhất {{gib}} GiB trên ổ đĩa của ứng dụng rồi thử lại.",
     "repair_failed": "Tự động sửa môi trường Python chưa hoàn tất. Hãy kiểm tra nhật ký công cụ rồi nhấn Thử lại.",
@@ -2475,6 +2476,7 @@
     "desc": "Số liệu thống kê sử dụng ẩn danh, không chứa nội dung, giúp chúng tôi sửa lỗi nhanh hơn — hoàn toàn tùy chọn, mặc định tắt.",
     "step_label": "Cải thiện VoiceStudio",
     "body": "Thống kê sử dụng ẩn danh, không chứa nội dung: engine nào được dùng, thời gian tạo mất bao lâu và loại lỗi. Không bao giờ gửi văn bản, âm thanh, tệp của bạn hay bất cứ thứ gì nhận dạng bạn. Không có gì được gửi trừ khi bạn đồng ý, và bạn có thể đổi ý bất cứ lúc nào trong Cài đặt → Quyền riêng tư.",
+    "setup_note": "Dữ liệu này gồm tiến trình thiết lập và mã lỗi, giúp chúng tôi biết vì sao cài đặt thất bại.",
     "learn_more": "Chính xác thì những gì được gửi?",
     "yes": "Có, chia sẻ thống kê ẩn danh",
     "no": "Không, cảm ơn",

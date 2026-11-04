@@ -2198,6 +2198,7 @@
   "backend": {
     "setup_required": "Lokale Laufzeit installieren",
     "setup_hint": "Python und App-Abhängigkeiten herunterladen (mehrere GB). Sprachmodelle werden separat installiert, wenn du sie auswählst.",
+    "setup_smart_app_control": "Windows Smart App Control ist aktiv und blockiert die lokale Engine möglicherweise nach dem Download. Es gibt keine Ausnahmen pro App. Sie können es unter Windows-Sicherheit → App- und Browsersteuerung ausschalten (Windows kann es ohne Zurücksetzen nicht wieder einschalten), eine Engine auf einem anderen Computer verbinden, die Engine in WSL oder Docker ausführen oder trotzdem installieren.",
     "installing": "Abhängigkeiten…",
     "setup_space": "Gib mindestens {{gib}} GiB auf dem Laufwerk der App frei und versuche es erneut.",
     "repair_failed": "Die automatische Reparatur der Python-Umgebung wurde nicht abgeschlossen. Prüfe das Engine-Protokoll und klicke dann auf Erneut versuchen.",
@@ -2475,6 +2476,7 @@
     "desc": "Anonyme, inhaltsfreie Nutzungsstatistiken, die uns helfen, Fehler schneller zu beheben — völlig optional und standardmäßig deaktiviert.",
     "step_label": "VoiceStudio verbessern",
     "body": "Anonyme, inhaltsfreie Nutzungsstatistiken: welche Engines verwendet werden, wie lange Generierungen dauern und die Art von Fehlern. Niemals Ihr Text, Ihr Audio, Ihre Dateien oder etwas, das Sie identifiziert. Es wird nichts gesendet, solange Sie nicht zustimmen — und Sie können Ihre Entscheidung jederzeit unter Einstellungen → Datenschutz ändern.",
+    "setup_note": "Dazu gehören Einrichtungsfortschritt und Fehlercodes, die uns zeigen, warum Installationen scheitern.",
     "learn_more": "Was genau wird gesendet?",
     "yes": "Ja, anonyme Statistiken teilen",
     "no": "Nein, danke",

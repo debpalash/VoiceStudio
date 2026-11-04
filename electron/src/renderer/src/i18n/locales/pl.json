@@ -2222,6 +2222,7 @@
   "backend": {
     "setup_required": "Zainstaluj lokalne środowisko",
     "setup_hint": "Pobierz Python i zależności aplikacji (kilka GB). Modele głosowe są instalowane oddzielnie po ich wybraniu.",
+    "setup_smart_app_control": "Inteligentne sterowanie aplikacjami systemu Windows jest włączone i może zablokować lokalny silnik po pobraniu. Nie ma wyjątków dla poszczególnych aplikacji. Możesz je wyłączyć w Zabezpieczenia Windows → Kontrola aplikacji i przeglądarki (Windows nie włączy go ponownie bez resetu), połączyć się z silnikiem na innym komputerze, uruchomić silnik w WSL lub Dockerze albo mimo to zainstalować.",
     "installing": "Instalowanie…",
     "setup_space": "Zwolnij co najmniej {{gib}} GiB na dysku aplikacji i spróbuj ponownie.",
     "repair_failed": "Automatyczna naprawa środowiska Python nie została ukończona. Sprawdź dziennik silnika i naciśnij Ponów.",
@@ -2499,6 +2500,7 @@
     "desc": "Anonimowe statystyki użytkowania bez treści, które pomagają nam szybciej naprawiać błędy — całkowicie opcjonalne, domyślnie wyłączone.",
     "step_label": "Ulepsz VoiceStudio",
     "body": "Anonimowe statystyki użycia bez treści: które silniki są używane, jak długo trwa generowanie i jaki jest typ błędów. Nigdy Twój tekst, dźwięk, pliki ani nic, co Cię identyfikuje. Nic nie jest wysyłane, dopóki nie wyrazisz zgody, a decyzję możesz zmienić w każdej chwili w Ustawienia → Prywatność.",
+    "setup_note": "Obejmuje to postęp konfiguracji i kody błędów, które pokazują nam, dlaczego instalacje się nie udają.",
     "learn_more": "Co dokładnie jest wysyłane?",
     "yes": "Tak, udostępniaj anonimowe statystyki",
     "no": "Nie, dziękuję",

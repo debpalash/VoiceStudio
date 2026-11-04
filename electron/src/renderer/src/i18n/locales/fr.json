@@ -2200,6 +2200,7 @@
   "backend": {
     "setup_required": "Installer l’environnement local",
     "setup_hint": "Téléchargez Python et les dépendances de l’application (plusieurs Go). Les modèles vocaux sont installés séparément lorsque vous les choisissez.",
+    "setup_smart_app_control": "Le contrôle intelligent des applications de Windows est activé et peut bloquer le moteur local après son téléchargement. Il n’accepte aucune exception par application. Vous pouvez le désactiver dans Sécurité Windows → Contrôle des applications et du navigateur (Windows ne peut pas le réactiver sans réinitialisation), vous connecter à un moteur sur un autre ordinateur, exécuter le moteur dans WSL ou Docker, ou installer quand même.",
     "installing": "Installation…",
     "setup_space": "Libérez au moins {{gib}} Gio sur le disque de l’application, puis réessayez.",
     "repair_failed": "La réparation automatique de l’environnement Python n’a pas abouti. Consultez le journal du moteur, puis cliquez sur Réessayer.",
@@ -2477,6 +2478,7 @@
     "desc": "Statistiques d'utilisation anonymes et sans contenu qui nous aident à corriger les bugs plus vite — entièrement facultatives, désactivées par défaut.",
     "step_label": "Améliorer VoiceStudio",
     "body": "Statistiques d'utilisation anonymes, sans contenu : quels moteurs sont utilisés, la durée des générations et le type d'erreurs. Jamais votre texte, votre audio, vos fichiers ni rien qui vous identifie. Rien n'est envoyé sans votre accord, et vous pouvez changer d'avis à tout moment dans Réglages → Confidentialité.",
+    "setup_note": "Cela inclut la progression de l’installation et les codes d’échec, qui nous montrent pourquoi les installations échouent.",
     "learn_more": "Qu'est-ce qui est envoyé exactement ?",
     "yes": "Oui, partager des statistiques anonymes",
     "no": "Non merci",

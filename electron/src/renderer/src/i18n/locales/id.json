@@ -2198,6 +2198,7 @@
   "backend": {
     "setup_required": "Instal runtime lokal",
     "setup_hint": "Unduh Python dan dependensi aplikasi (beberapa GB). Model suara diinstal secara terpisah saat Anda memilihnya.",
+    "setup_smart_app_control": "Smart App Control Windows aktif dan dapat memblokir mesin lokal setelah diunduh. Fitur ini tidak memiliki pengecualian per aplikasi. Anda dapat mematikannya di Keamanan Windows → Kontrol aplikasi & browser (Windows tidak dapat menyalakannya lagi tanpa reset), menghubungkan ke mesin di komputer lain, menjalankan mesin di WSL atau Docker, atau tetap menginstal.",
     "installing": "Memasang…",
     "setup_space": "Kosongkan setidaknya {{gib}} GiB di drive aplikasi, lalu coba lagi.",
     "repair_failed": "Perbaikan otomatis lingkungan Python tidak selesai. Periksa log mesin, lalu tekan Coba lagi.",
@@ -2475,6 +2476,7 @@
     "desc": "Statistik penggunaan anonim dan bebas konten yang membantu kami memperbaiki bug lebih cepat — sepenuhnya opsional, nonaktif secara default.",
     "step_label": "Tingkatkan VoiceStudio",
     "body": "Statistik penggunaan anonim tanpa konten: mesin mana yang digunakan, berapa lama proses pembuatan, dan jenis kesalahan. Tidak pernah teks Anda, audio Anda, file Anda, atau apa pun yang mengidentifikasi Anda. Tidak ada yang dikirim kecuali Anda setuju, dan Anda dapat berubah pikiran kapan saja di Pengaturan → Privasi.",
+    "setup_note": "Ini mencakup progres penyiapan dan kode kegagalan, yang menunjukkan alasan instalasi gagal.",
     "learn_more": "Apa saja yang sebenarnya dikirim?",
     "yes": "Ya, bagikan statistik anonim",
     "no": "Tidak, terima kasih",

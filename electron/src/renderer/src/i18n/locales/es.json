@@ -2200,6 +2200,7 @@
   "backend": {
     "setup_required": "Instalar entorno local",
     "setup_hint": "Descarga Python y las dependencias de la aplicación (varios GB). Los modelos de voz se instalan por separado cuando los eliges.",
+    "setup_smart_app_control": "Control inteligente de aplicaciones de Windows está activado y puede bloquear el motor local tras la descarga. No admite excepciones por app. Puedes desactivarlo en Seguridad de Windows → Control de aplicaciones y navegador (Windows no puede reactivarlo sin restablecer el sistema), conectarte a un motor en otro equipo, ejecutar el motor en WSL o Docker, o instalar de todos modos.",
     "installing": "Instalando…",
     "setup_space": "Libera al menos {{gib}} GiB en la unidad de la aplicación y vuelve a intentarlo.",
     "repair_failed": "La reparación automática del entorno de Python no terminó. Revisa el registro del motor y pulsa Reintentar.",
@@ -2477,6 +2478,7 @@
     "desc": "Estadísticas de uso anónimas y sin contenido que nos ayudan a corregir errores más rápido — totalmente opcionales y desactivadas de forma predeterminada.",
     "step_label": "Mejorar VoiceStudio",
     "body": "Estadísticas de uso anónimas y sin contenido: qué motores se usan, cuánto tardan las generaciones y el tipo de errores. Nunca tu texto, tu audio, tus archivos ni nada que te identifique. No se envía nada a menos que digas que sí, y puedes cambiar de opinión en cualquier momento en Ajustes → Privacidad.",
+    "setup_note": "Esto incluye el progreso de la instalación y los códigos de error, que nos muestran por qué fallan las instalaciones.",
     "learn_more": "¿Qué se envía exactamente?",
     "yes": "Sí, compartir estadísticas anónimas",
     "no": "No, gracias",

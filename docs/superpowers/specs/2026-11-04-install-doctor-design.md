@@ -204,14 +204,14 @@ The prompt wording in the locale catalogs says setup failure codes are included.
 
 **Where it lives.** The backend remains the authority once reachable.
 
-1. Main keeps a small consent file in `userData`, used only while no backend answers.
-2. When the backend becomes reachable, a pending early answer is sent with
-   `PUT /api/settings/analytics` if the backend has not recorded a choice. If it
-   has, the backend wins and the file is overwritten.
-3. `OMNIVOICE_ANALYTICS_DISABLED` is honored in main and renderer. Turning
-   analytics off in Settings takes effect immediately.
-4. `AnalyticsRuntime` currently runs only when the backend is reachable. It gains a
-   path that uses the main file before then.
+1. The renderer keeps the early answer in `localStorage`, used only until a backend
+   first answers, and never again after that.
+2. When the backend answers, a choice it has not recorded is sent with
+   `PUT /api/settings/analytics`. If it holds a choice, the backend wins.
+3. `OMNIVOICE_ANALYTICS_DISABLED` is honored by the early path through `BackendStatus`.
+   Turning analytics off in Settings takes effect immediately.
+4. `AnalyticsRuntime` runs only when the backend is reachable today. It gains a path
+   that uses the early answer before then.
 
 **Events**, from the existing hardened renderer client, consent-gated:
 `setup_started`, `setup_failed`, `setup_completed`, `backend_first_ready`.
@@ -220,9 +220,10 @@ Properties use only keys already on the allowlist: `stage` (setup phase),
 else from the failure record is sent, and no allowlist keys are added. Each attempt
 sends at most one `setup_failed` per code.
 
-**Identity.** One install must count once across the backend-less and backend
-periods. `installation_id` is minted by the backend today, so main mints the random
-UUID first and the backend adopts it on first start. An existing backend id always wins.
+**Identity.** All funnel events come from the renderer's PostHog client, whose
+anonymous id persists in `localStorage`, so one install counts once across the
+backend-less and backend periods. `installation_id` is unchanged. The funnel runs only
+until setup is completed.
 
 ## Regression guards
 
@@ -277,7 +278,8 @@ proposal, not owner-set):
 - Moving the consent prompt before setup, with the backend staying the authority.
 - Warning about Smart App Control but letting the user continue, since evaluation
   mode doesn't always block.
-- Main minting `installation_id` first.
+- Keeping the early answer in the renderer and leaving `installation_id` alone, instead
+  of a main-process file and id. Both turned out unnecessary.
 - Leaving the issue bot out of scope.
 
 ## Left to the builder

@@ -2198,6 +2198,7 @@
   "backend": {
     "setup_required": "Yerel çalışma ortamını yükle",
     "setup_hint": "Python ve uygulama bağımlılıklarını indirin (birkaç GB). Ses modelleri seçtiğinizde ayrı olarak yüklenir.",
+    "setup_smart_app_control": "Windows Akıllı Uygulama Denetimi açık ve yerel motoru indirildikten sonra engelleyebilir. Uygulama başına istisna yoktur. Windows Güvenliği → Uygulama ve tarayıcı denetimi bölümünden kapatabilir (Windows sıfırlama olmadan yeniden açamaz), başka bir bilgisayardaki motora bağlanabilir, motoru WSL veya Docker içinde çalıştırabilir ya da yine de yükleyebilirsiniz.",
     "installing": "Bağımlılıklar…",
     "setup_space": "Uygulamanın sürücüsünde en az {{gib}} GiB alan açıp yeniden deneyin.",
     "repair_failed": "Python ortamının otomatik onarımı tamamlanamadı. Motor günlüğünü kontrol edip Yeniden dene’ye basın.",
@@ -2475,6 +2476,7 @@
     "desc": "Hataları daha hızlı düzeltmemize yardımcı olan, anonim ve içerik barındırmayan kullanım istatistikleri — tamamen isteğe bağlı, varsayılan olarak kapalı.",
     "step_label": "VoiceStudio'u geliştir",
     "body": "Anonim, içerik barındırmayan kullanım istatistikleri: hangi motorların kullanıldığı, üretimlerin ne kadar sürdüğü ve hata türleri. Asla metniniz, sesiniz, dosyalarınız veya sizi tanımlayan hiçbir şey gönderilmez. Evet demedikçe hiçbir şey gönderilmez ve kararınızı istediğiniz zaman Ayarlar → Gizlilik'ten değiştirebilirsiniz.",
+    "setup_note": "Buna kurulum ilerlemesi ve hata kodları da dahildir; bunlar kurulumların neden başarısız olduğunu bize gösterir.",
     "learn_more": "Tam olarak ne gönderiliyor?",
     "yes": "Evet, anonim istatistikleri paylaş",
     "no": "Hayır, teşekkürler",

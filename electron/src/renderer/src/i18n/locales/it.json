@@ -2200,6 +2200,7 @@
   "backend": {
     "setup_required": "Installa ambiente locale",
     "setup_hint": "Scarica Python e le dipendenze dell’app (diversi GB). I modelli vocali vengono installati separatamente quando li scegli.",
+    "setup_smart_app_control": "Smart App Control di Windows è attivo e potrebbe bloccare il motore locale dopo il download. Non prevede eccezioni per singola app. Puoi disattivarlo in Sicurezza di Windows → Controllo app e browser (Windows non può riattivarlo senza un ripristino), connetterti a un motore su un altro computer, eseguire il motore in WSL o Docker, oppure installare comunque.",
     "installing": "Installazione…",
     "setup_space": "Libera almeno {{gib}} GiB sull’unità dell’app, poi riprova.",
     "repair_failed": "La riparazione automatica dell’ambiente Python non è terminata. Controlla il registro del motore, poi premi Riprova.",
@@ -2477,6 +2478,7 @@
     "desc": "Statistiche di utilizzo anonime e prive di contenuti che ci aiutano a correggere i bug più velocemente — del tutto facoltative, disattivate per impostazione predefinita.",
     "step_label": "Migliora VoiceStudio",
     "body": "Statistiche d'uso anonime e prive di contenuti: quali motori vengono usati, quanto durano le generazioni e il tipo di errori. Mai il tuo testo, il tuo audio, i tuoi file o qualcosa che ti identifichi. Non viene inviato nulla senza il tuo consenso, e puoi cambiare idea in qualsiasi momento in Impostazioni → Privacy.",
+    "setup_note": "Include l’avanzamento della configurazione e i codici di errore, che ci mostrano perché le installazioni non riescono.",
     "learn_more": "Cosa viene inviato esattamente?",
     "yes": "Sì, condividi statistiche anonime",
     "no": "No, grazie",
