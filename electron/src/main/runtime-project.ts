@@ -49,7 +49,7 @@ import {
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { cp, mkdir, readFile, readdir, rm, stat, statfs, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, win32 } from 'node:path';
 
 // The web UI is not staged: the backend serves it straight from the app's
 // resources via OMNIVOICE_FRONTEND_DIST, so it always matches this version.
@@ -1190,13 +1190,21 @@ async function interpreterCanary(
   const request = managedPythonRequest();
   let python = '';
   try {
-    await run(uv, ['python', 'install', request], project, env);
+    // Stays inside the runtime: no user-wide python on PATH, no Windows registry entry.
+    await run(uv, ['python', 'install', '--no-bin', '--no-registry', request], project, env);
     signal.throwIfAborted();
     const found = await run(uv, ['python', 'find', '--managed-python', request], project, env, {
       timeoutMs: CANARY_TIMEOUT_MS,
       quiet: true,
     });
-    python = typeof found === 'string' ? (found.trim().split('\n').at(-1) ?? '').trim() : '';
+    // The quiet runner mixes stderr in, so a warning may sit beside the path.
+    python =
+      typeof found === 'string'
+        ? (found
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .find((line) => isAbsolute(line) || win32.isAbsolute(line)) ?? '')
+        : '';
   } catch (error) {
     signal.throwIfAborted();
     const refusal = refused(uv, error);

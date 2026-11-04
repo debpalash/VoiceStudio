@@ -1235,7 +1235,8 @@ describe('packaged runtime setup', () => {
   it('stops before any wheel downloads when the interpreter is refused', async () => {
     const { bundle, project } = await fixture();
     const run = vi.fn(async (command: string, args: string[]) => {
-      if (args[0] === 'python' && args[1] === 'find') return '/managed/python\n';
+      if (args[0] === 'python' && args[1] === 'find')
+        return 'warning: something minor\n/managed/python\nwarning: another\n';
       if (command === '/managed/python')
         throw Object.assign(new Error('Could not start /managed/python: spawn UNKNOWN'), {
           code: 'UNKNOWN',
@@ -1248,6 +1249,7 @@ describe('packaged runtime setup', () => {
     expect((refused as RuntimeLaunchRefusedError).program).toBe('/managed/python');
     expect((refused as Error).message).toBe('spawn UNKNOWN');
     expect(run.mock.calls.some(([, args]) => args.includes('sync'))).toBe(false);
+    expect(run.mock.calls[0]![1]).toEqual(expect.arrayContaining(['--no-bin', '--no-registry']));
   });
   it('leaves other interpreter check problems for the sync to report', async () => {
     const { bundle, project } = await fixture();
