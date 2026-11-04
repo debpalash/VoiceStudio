@@ -4,19 +4,16 @@
     <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="Badge Trendshift che mostra la posizione di VoiceStudio tra i repository di tendenza" width="220" height="48" /></a>
   </p>
   <p>
-    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100.000 stelle su GitHub — grazie!</a></strong><br />
-    <sub>Grazie per aver utilizzato VoiceStudio, averlo condiviso, segnalato bug, contribuito al codice e supportato il progetto.</sub>
+    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100.000 stelle su GitHub — grazie!</a></strong>
   </p>
-  <p><strong>Studio vocale con IA. Sul tuo dispositivo.</strong><br />
-  Clona e crea voci, doppia, detta, trascrivi e narra in 646 lingue.<br />
-  <sub>Funziona su laptop, desktop, server, telefono, tablet e altro ancora</sub></p>
+  <h2>Studio vocale con IA. Sul tuo dispositivo.</h2>
+  <h3>Clona e crea voci, doppia, detta, trascrivi e narra in 646 lingue.</h3>
+  <p>Funziona su laptop, desktop, server, telefono, tablet e altro ancora</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Sito web</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Scarica</a> ·
     <a href="#get-started">Per iniziare</a> ·
-    <a href="#documentation">Documentazione</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
-    <a href="#readme-languages">20 lingue</a>
+    <a href="#documentation">Documentazione</a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -31,6 +28,7 @@
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/github/v/release/debpalash/VoiceStudio?style=flat-square&amp;labelColor=27272a&amp;color=52525b" alt="Ultima versione" /></a>
     <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-52525b?style=flat-square&amp;labelColor=27272a" alt="AGPL-3.0" /></a>
     <a href="https://supermetry.com"><img src="https://app.supermetry.com/px/zfjiv7psp4ed.svg?c=VoiceStudio" alt="visualizzazioni" /></a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <p>
     <sub>Sponsor strategici</sub>      <a href="https://github.com/debpalash/OpenGTM?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/opengtm-dark.svg" /><img src="../../docs/sponsors/opengtm.svg" alt="OpenGTM" height="32" align="middle" /></picture></a>
@@ -105,6 +103,8 @@ Scegli i tuoi motori e scarica solo i modelli che ti servono.
 - **Connetti e automatizza**: API locale, MCP, ricette riutilizzabili e cartelle esaminate
 
 Inizia con **VoiceStudio** (predefinito, basato su k2-fsa/OmniVoice) o scegli tra decine di altri motori nel Gestore modelli. Consulta il [catalogo delle funzionalità e del motore](../../docs/feature-catalog.md).
+
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
 
 <a id="platforms"></a>
 
@@ -529,3 +529,5 @@ Grazie a tutti coloro che inviano codice, report, traduzioni e idee. [Tutti i co
 ## Tutorial della comunità
 
 - [Procedura dettagliata su VoiceStudio di Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>

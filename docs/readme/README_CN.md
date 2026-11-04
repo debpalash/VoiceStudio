@@ -4,19 +4,16 @@
     <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="VoiceStudio 在 Trendshift 上的热度排名徽章" width="220" height="48" /></a>
   </p>
   <p>
-    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">GitHub Star 突破 10 万，感谢大家！</a></strong><br />
-    <sub>感谢大家使用和分享 VoiceStudio、反馈问题、贡献代码，以及一直以来对项目的支持。</sub>
+    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">GitHub Star 突破 10 万，感谢大家！</a></strong>
   </p>
-  <p><strong>AI 语音工作室，就在你的设备上。</strong><br />
-  支持 646 种语言的声音克隆、声音设计、配音、听写、转录与有声朗读。<br />
-  <sub>可在你的笔记本电脑、台式机、服务器、手机、平板电脑等设备上运行</sub></p>
+  <h2>AI 语音工作室，就在你的设备上。</h2>
+  <h3>支持 646 种语言的声音克隆、声音设计、配音、听写、转录与有声朗读。</h3>
+  <p>可在你的笔记本电脑、台式机、服务器、手机、平板电脑等设备上运行</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">官网</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">下载</a> ·
     <a href="#开始使用">快速上手</a> ·
-    <a href="#文档">文档</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
-    <a href="#readme-languages">20 种语言</a>
+    <a href="#文档">文档</a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -32,6 +29,7 @@
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/github/v/release/debpalash/VoiceStudio?style=flat-square&amp;labelColor=27272a&amp;color=52525b" alt="最新版本" /></a>
     <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-52525b?style=flat-square&amp;labelColor=27272a" alt="AGPL-3.0 许可证" /></a>
     <a href="https://supermetry.com"><img src="https://app.supermetry.com/px/zfjiv7psp4ed.svg?c=VoiceStudio" alt="访问量" /></a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <p>
     <sub>战略赞助商</sub>      <a href="https://github.com/debpalash/OpenGTM?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/opengtm-dark.svg" /><img src="../../docs/sponsors/opengtm.svg" alt="OpenGTM" height="32" align="middle" /></picture></a>
@@ -106,6 +104,8 @@
 - **连接与自动化** — 本地 API、MCP、可复用配方与监视文件夹
 
 从默认的 **VoiceStudio**（由 k2-fsa/OmniVoice 驱动）开始，或在模型管理器中从数十种其他引擎中挑选。参见[功能与引擎目录](../../docs/feature-catalog.md)。
+
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
 
 <a id="platforms"></a>
 
@@ -532,3 +532,5 @@ VoiceStudio 免费使用，背后没有付费云服务。赞助者让它持续�
 ## 社区教程
 
 - [VoiceStudio 使用教程 — Nafay 3D（YouTube）](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>

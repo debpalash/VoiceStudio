@@ -4,19 +4,16 @@
     <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="ป้าย Trendshift แสดงว่า VoiceStudio อยู่ในอันดับที่ได้รับความนิยม" width="220" height="48" /></a>
   </p>
   <p>
-    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100,000 ดาวบน GitHub — ขอบคุณทุกการสนับสนุน!</a></strong><br />
-    <sub>ขอขอบคุณที่ใช้ VoiceStudio แบ่งปัน รายงานจุดบกพร่อง การร่วมเขียนโค้ด และการสนับสนุนโครงการ</sub>
+    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100,000 ดาวบน GitHub — ขอบคุณทุกการสนับสนุน!</a></strong>
   </p>
-  <p><strong>สตูดิโอเสียง AI บนอุปกรณ์ของคุณ</strong><br />
-  โคลนและออกแบบเสียง พากย์เสียง เขียนตามคำบอก ถอดเสียง และสร้างเสียงบรรยายได้ใน 646 ภาษา<br />
-  <sub>ทำงานบนแล็ปท็อป เดสก์ท็อป เซิร์ฟเวอร์ โทรศัพท์ แท็บเล็ต และอื่นๆ อีกมากมาย</sub></p>
+  <h2>สตูดิโอเสียง AI บนอุปกรณ์ของคุณ</h2>
+  <h3>โคลนและออกแบบเสียง พากย์เสียง เขียนตามคำบอก ถอดเสียง และสร้างเสียงบรรยายได้ใน 646 ภาษา</h3>
+  <p>ทำงานบนแล็ปท็อป เดสก์ท็อป เซิร์ฟเวอร์ โทรศัพท์ แท็บเล็ต และอื่นๆ อีกมากมาย</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">เว็บไซต์</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">ดาวน์โหลด</a> ·
     <a href="#get-started">เริ่มต้นใช้งาน</a> ·
-    <a href="#documentation">เอกสาร</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
-    <a href="#readme-languages">20 ภาษา</a>
+    <a href="#documentation">เอกสาร</a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -31,6 +28,7 @@
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/github/v/release/debpalash/VoiceStudio?style=flat-square&amp;labelColor=27272a&amp;color=52525b" alt="รุ่นล่าสุด" /></a>
     <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-52525b?style=flat-square&amp;labelColor=27272a" alt="AGPL-3.0" /></a>
     <a href="https://supermetry.com"><img src="https://app.supermetry.com/px/zfjiv7psp4ed.svg?c=VoiceStudio" alt="ยอดเข้าชม" /></a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <p>
     <sub>ผู้สนับสนุนเชิงกลยุทธ์</sub>      <a href="https://github.com/debpalash/OpenGTM?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/opengtm-dark.svg" /><img src="../../docs/sponsors/opengtm.svg" alt="OpenGTM" height="32" align="middle" /></picture></a>
@@ -105,6 +103,8 @@
 - **เชื่อมต่อและทำให้เป็นอัตโนมัติ** — Local API, MCP, สูตรอาหารที่นำมาใช้ซ้ำได้ และโฟลเดอร์ดู
 
 เริ่มต้นด้วย **VoiceStudio** (ค่าเริ่มต้น ขับเคลื่อนโดย k2-fsa/OmniVoice) หรือเลือกจากเอ็นจิ้นอื่นๆ มากมายใน Model Manager ดู [คุณลักษณะและแค็ตตาล็อกเครื่องยนต์](../../docs/feature-catalog.md)
+
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
 
 <a id="platforms"></a>
 
@@ -529,3 +529,5 @@ VoiceStudio ใช้งานได้ฟรีและไม่ต้อง�
 ## บทเรียนจากชุมชน
 
 - [VoiceStudio คำแนะนำโดย Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>

@@ -4,19 +4,16 @@
     <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="Lencana pergeseran tren menunjukkan peringkat VoiceStudio di antara repositori yang sedang tren" width="220" height="48" /></a>
   </p>
   <p>
-    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100.000 bintang GitHub — terima kasih!</a></strong><br />
-    <sub>Terima kasih telah menggunakan VoiceStudio, membagikannya, melaporkan bug, menyumbangkan kode, dan mendukung proyek.</sub>
+    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100.000 bintang GitHub — terima kasih!</a></strong>
   </p>
-  <p><strong>Studio suara AI. Di perangkat Anda.</strong><br />
-  Kloning, desain suara, sulih suara, dikte, transkripsi, dan narasi dalam 646 bahasa.<br />
-  <sub>Berjalan di laptop, desktop, server, ponsel, tablet, dan lainnya</sub></p>
+  <h2>Studio suara AI. Di perangkat Anda.</h2>
+  <h3>Kloning, desain suara, sulih suara, dikte, transkripsi, dan narasi dalam 646 bahasa.</h3>
+  <p>Berjalan di laptop, desktop, server, ponsel, tablet, dan lainnya</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Situs web</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Unduh</a> ·
     <a href="#get-started">Mulai</a> ·
-    <a href="#documentation">Dokumentasi</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
-    <a href="#readme-languages">20 bahasa</a>
+    <a href="#documentation">Dokumentasi</a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -31,6 +28,7 @@
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/github/v/release/debpalash/VoiceStudio?style=flat-square&amp;labelColor=27272a&amp;color=52525b" alt="Rilis terbaru" /></a>
     <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-52525b?style=flat-square&amp;labelColor=27272a" alt="AGPL-3.0" /></a>
     <a href="https://supermetry.com"><img src="https://app.supermetry.com/px/zfjiv7psp4ed.svg?c=VoiceStudio" alt="tayangan" /></a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <p>
     <sub>Sponsor strategis</sub>      <a href="https://github.com/debpalash/OpenGTM?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/opengtm-dark.svg" /><img src="../../docs/sponsors/opengtm.svg" alt="OpenGTM" height="32" align="middle" /></picture></a>
@@ -105,6 +103,8 @@ Pilih mesin Anda dan unduh hanya model yang Anda perlukan.
 - **Hubungkan & otomatisasi** — API lokal, MCP, resep yang dapat digunakan kembali, dan folder tontonan
 
 Mulailah dengan **VoiceStudio** (default, didukung oleh k2-fsa/OmniVoice), atau pilih dari lusinan mesin lain di Model Manager. Lihat [katalog fitur & mesin](../../docs/feature-catalog.md).
+
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
 
 <a id="platforms"></a>
 
@@ -529,3 +529,5 @@ Terima kasih kepada semua orang yang mengirimkan kode, laporan, terjemahan, dan 
 ## Tutorial komunitas
 
 - [Panduan VoiceStudio oleh Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>

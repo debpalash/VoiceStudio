@@ -4,19 +4,16 @@
     <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="Huy hiệu Trendshift cho biết thứ hạng của VoiceStudio trong các dự án đang thịnh hành." width="220" height="48" /></a>
   </p>
   <p>
-    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100.000 sao trên GitHub — cảm ơn bạn!</a></strong><br />
-    <sub>Cảm ơn bạn đã sử dụng VoiceStudio, chia sẻ dự án, báo lỗi, đóng góp mã nguồn và hỗ trợ dự án.</sub>
+    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100.000 sao trên GitHub — cảm ơn bạn!</a></strong>
   </p>
-  <p><strong>Phòng thu giọng nói AI. Ngay trên thiết bị của bạn.</strong><br />
-  Nhân bản và thiết kế giọng nói, lồng tiếng, đọc chính tả, chuyển giọng nói thành văn bản và tạo lời thuyết minh bằng 646 ngôn ngữ.<br />
-  <sub>Chạy trên máy tính xách tay, máy tính để bàn, máy chủ, điện thoại, máy tính bảng và nhiều thiết bị khác</sub></p>
+  <h2>Phòng thu giọng nói AI. Ngay trên thiết bị của bạn.</h2>
+  <h3>Nhân bản và thiết kế giọng nói, lồng tiếng, đọc chính tả, chuyển giọng nói thành văn bản và tạo lời thuyết minh bằng 646 ngôn ngữ.</h3>
+  <p>Chạy trên máy tính xách tay, máy tính để bàn, máy chủ, điện thoại, máy tính bảng và nhiều thiết bị khác</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Trang web</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Tải xuống</a> ·
     <a href="#get-started">Bắt đầu</a> ·
-    <a href="#documentation">Tài liệu</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
-    <a href="#readme-languages">20 ngôn ngữ</a>
+    <a href="#documentation">Tài liệu</a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -31,6 +28,7 @@
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/github/v/release/debpalash/VoiceStudio?style=flat-square&amp;labelColor=27272a&amp;color=52525b" alt="Phiên bản mới nhất" /></a>
     <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-52525b?style=flat-square&amp;labelColor=27272a" alt="AGPL-3.0" /></a>
     <a href="https://supermetry.com"><img src="https://app.supermetry.com/px/zfjiv7psp4ed.svg?c=VoiceStudio" alt="lượt xem" /></a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <p>
     <sub>Nhà tài trợ chiến lược</sub>      <a href="https://github.com/debpalash/OpenGTM?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/opengtm-dark.svg" /><img src="../../docs/sponsors/opengtm.svg" alt="OpenGTM" height="32" align="middle" /></picture></a>
@@ -105,6 +103,8 @@ Chọn công cụ của bạn và chỉ tải xuống những mô hình bạn c�
 - **Kết nối và tự động hóa** — API cục bộ, MCP, các quy trình tái sử dụng và thư mục theo dõi
 
 Bắt đầu với **VoiceStudio** (mặc định, được cung cấp bởi k2-fsa/ OmniVoice) hoặc chọn từ hàng chục công cụ khác trong Trình quản lý mô hình. Xem [danh mục tính năng và động cơ](../../docs/feature-catalog.md).
+
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
 
 <a id="platforms"></a>
 
@@ -529,3 +529,5 @@ Cảm ơn tất cả những người đã gửi mã, báo cáo, bản dịch v�
 ## Hướng dẫn từ cộng đồng
 
 - [Hướng dẫn VoiceStudio của Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>

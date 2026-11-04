@@ -4,19 +4,16 @@
     <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="Odznaka Trendshift pokazująca miejsce VoiceStudio wśród popularnych repozytoriów" width="220" height="48" /></a>
   </p>
   <p>
-    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100 000 gwiazdek na GitHubie — dziękujemy!</a></strong><br />
-    <sub>Dziękujemy za korzystanie z VoiceStudio, udostępnianie go, zgłaszanie błędów, wnoszenie kodu i wspieranie projektu.</sub>
+    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100 000 gwiazdek na GitHubie — dziękujemy!</a></strong>
   </p>
-  <p><strong>Studio głosowe AI. Na Twoim urządzeniu.</strong><br />
-  Klonuj i projektuj głosy, twórz dubbing, dyktuj, transkrybuj i generuj narrację w 646 językach.<br />
-  <sub>Działa na Twoim laptopie, komputerze stacjonarnym, serwerach, telefonie, tablecie i nie tylko</sub></p>
+  <h2>Studio głosowe AI. Na Twoim urządzeniu.</h2>
+  <h3>Klonuj i projektuj głosy, twórz dubbing, dyktuj, transkrybuj i generuj narrację w 646 językach.</h3>
+  <p>Działa na Twoim laptopie, komputerze stacjonarnym, serwerach, telefonie, tablecie i nie tylko</p>
   <p>
     <a href="https://voicestudio.sh/?utm_source=github&utm_medium=readme&utm_campaign=project">Strona internetowa</a> ·
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Pobierz</a> ·
     <a href="#get-started">Pierwsze kroki</a> ·
-    <a href="#documentation">Dokumentacja</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
-    <a href="#readme-languages">20 języków</a>
+    <a href="#documentation">Dokumentacja</a>
   </p>
   <!-- README_LANGUAGES_START -->
   <a id="readme-languages"></a>
@@ -31,6 +28,7 @@
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/github/v/release/debpalash/VoiceStudio?style=flat-square&amp;labelColor=27272a&amp;color=52525b" alt="Najnowsze wydanie" /></a>
     <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-52525b?style=flat-square&amp;labelColor=27272a" alt="AGPL-3.0" /></a>
     <a href="https://supermetry.com"><img src="https://app.supermetry.com/px/zfjiv7psp4ed.svg?c=VoiceStudio" alt="wyświetlenia" /></a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <p>
     <sub>Sponsorzy strategiczni</sub>      <a href="https://github.com/debpalash/OpenGTM?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/opengtm-dark.svg" /><img src="../../docs/sponsors/opengtm.svg" alt="OpenGTM" height="32" align="middle" /></picture></a>
@@ -105,6 +103,8 @@ Wybierz silniki i pobierz tylko te modele, których potrzebujesz.
 - **Połącz i automatyzuj** — lokalne API, MCP, przepisy wielokrotnego użytku i foldery do oglądania
 
 Zacznij od **VoiceStudio** (domyślnie, obsługiwanego przez k2-fsa/OmniVoice) lub wybierz spośród kilkudziesięciu innych silników w Menedżerze modeli. Zobacz [katalog funkcji i silników](../../docs/feature-catalog.md).
+
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
 
 <a id="platforms"></a>
 
@@ -529,3 +529,5 @@ Dziękujemy wszystkim, którzy przesyłają kody, raporty, tłumaczenia i pomys�
 ## Samouczki społeczności
 
 - [Instrukcja VoiceStudio autorstwa Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
+
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Join%20our%20Discord-5865F2?style=for-the-badge&amp;logo=discord&amp;logoColor=white" alt="Join Discord" height="40" /></a></p>
