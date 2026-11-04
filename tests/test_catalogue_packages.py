@@ -23,6 +23,7 @@ import pytest
 REPO = "audio-cpp/audio.cpp-gguf"
 DOTS = "audio-cpp/audio.cpp-gguf:dots-tts-soar-q8_0"
 DOTS_FILE = "DotTTS-SOAR-GGUF/dots-tts-soar-q8_0.gguf"
+SORTFORMER = "audio-cpp/audio.cpp-gguf:sortformer-diar-4spk-v1-q8_0"
 BREEZE_FILE = "Breeze-TTS-2-GGUF/breeze-tts-2-q8_0.gguf"
 SORTFORMER_FILE = "Sortformer-Diar-4spk-v1-GGUF/sortformer-diar-4spk-v1-q8_0.gguf"
 
@@ -74,8 +75,8 @@ def test_whole_repo_entries_keep_their_repo_id_identity(models):
     for model in models.KNOWN_MODELS:
         if "id" not in model:
             assert catalog.get(model["repo_id"]) is model
-    # The existing audio.cpp bundle is still addressed by its repo id.
-    assert catalog.get(REPO)["allow_patterns"] == [BREEZE_FILE, SORTFORMER_FILE]
+    # The existing Breeze entry is still addressed by its repo id.
+    assert catalog.get(REPO)["allow_patterns"] == [BREEZE_FILE]
     assert catalog.get(DOTS)["repo_id"] == REPO
     assert catalog.get(DOTS)["engines"] == ["audiocpp-dots"]
 
@@ -118,11 +119,33 @@ def test_a_sibling_package_never_makes_an_entry_look_installed(models, cache):
     _snapshot(cache, {BREEZE_FILE: b"breeze", SORTFORMER_FILE: b"sortformer"})
     catalog = models.get_model_catalog()
     assert models.package_cache_usage(catalog.get(REPO)) == {
-        "size_on_disk": len(b"breeze") + len(b"sortformer"),
+        "size_on_disk": len(b"breeze"),
         "last_accessed": None,
-        "nb_files": 2,
+        "nb_files": 1,
     }
     assert models.package_cache_usage(catalog.get(DOTS)) is None
+
+
+def test_sortformer_cache_is_complete_without_breeze(models, cache):
+    _snapshot(cache, {SORTFORMER_FILE: b"sortformer"})
+    catalog = models.get_model_catalog()
+    selected = catalog.get(SORTFORMER)
+    assert selected is not None
+    assert models.cache_is_complete(selected)
+    assert not models.cache_is_complete(catalog.get(REPO))
+    assert models.package_cache_usage(selected)["size_on_disk"] == len(b"sortformer")
+
+
+def test_uninstalling_sortformer_preserves_breeze_and_dots(models, download, cache, monkeypatch):
+    snap = _snapshot(cache, {
+        BREEZE_FILE: b"breeze", SORTFORMER_FILE: b"sortformer", DOTS_FILE: b"dots",
+    })
+    monkeypatch.setattr(download, "invalidate_cache", lambda: None)
+    result = download.delete_model(SORTFORMER)
+    assert result["deleted"] and result["freed_bytes"] == len(b"sortformer")
+    assert not (snap / SORTFORMER_FILE).exists()
+    assert (snap / BREEZE_FILE).read_bytes() == b"breeze"
+    assert (snap / DOTS_FILE).read_bytes() == b"dots"
 
 
 def test_list_models_reports_each_package_by_its_identity(models, cache, monkeypatch):
@@ -172,17 +195,23 @@ def test_uninstalling_one_package_keeps_the_other(models, download, cache, monke
     assert getattr(exc.value, "status_code", None) == 404
 
 
-def test_uninstalling_the_bundle_keeps_dots(models, download, cache, monkeypatch):
+def test_uninstalling_breeze_keeps_dots_and_sortformer(models, download, cache, monkeypatch):
     snap = _snapshot(cache, {
         BREEZE_FILE: b"breeze", SORTFORMER_FILE: b"sortformer", DOTS_FILE: b"dots-weights",
     })
     monkeypatch.setattr(download, "invalidate_cache", lambda: None)
     download.delete_model(REPO)
     assert (snap / DOTS_FILE).read_bytes() == b"dots-weights"
+    assert (snap / SORTFORMER_FILE).read_bytes() == b"sortformer"
     assert not (snap / BREEZE_FILE).exists()
 
 
-def test_install_downloads_the_package_from_its_hub_repo(download, monkeypatch, tmp_path):
+@pytest.mark.parametrize("package, filename", [
+    (DOTS, DOTS_FILE), (SORTFORMER, SORTFORMER_FILE), (REPO, BREEZE_FILE),
+])
+def test_install_downloads_the_package_from_its_hub_repo(
+    download, monkeypatch, tmp_path, package, filename,
+):
     import huggingface_hub
     from services import hf_revisions
 
@@ -204,15 +233,15 @@ def test_install_downloads_the_package_from_its_hub_repo(download, monkeypatch, 
     monkeypatch.setattr(performance_profiles, "reconcile_active_profile", lambda: {})
 
     async def run():
-        result = await download.install_model(download.InstallModelRequest(repo_id=DOTS))
+        result = await download.install_model(download.InstallModelRequest(repo_id=package))
         pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
         if pending:
             await asyncio.gather(*pending)
         return result
 
-    assert asyncio.run(run()) == {"status": "install_started", "repo_id": DOTS}
+    assert asyncio.run(run()) == {"status": "install_started", "repo_id": package}
     assert {call["repo_id"] for call in calls} == {REPO}
-    assert all(call["allow_patterns"] == [DOTS_FILE] for call in calls)
+    assert all(call["allow_patterns"] == [filename] for call in calls)
     assert all(call["revision"] == hf_revisions.revision_for(REPO) for call in calls)
     assert remembered and remembered[0][0] == REPO
 
@@ -233,9 +262,7 @@ def test_engine_disk_usage_counts_only_its_package(models, cache):
 
     _snapshot(cache, {BREEZE_FILE: b"breeze", SORTFORMER_FILE: b"sortformer", DOTS_FILE: b"dots"})
     assert engine_disk_usage._measure_model_cache("audiocpp-dots")["model_bytes"] == len(b"dots")
-    assert engine_disk_usage._measure_model_cache("audiocpp")["model_bytes"] == len(
-        b"breezesortformer"
-    )
+    assert engine_disk_usage._measure_model_cache("audiocpp")["model_bytes"] == len(b"breeze")
 
 
 def test_services_read_the_catalogue_without_importing_a_router():

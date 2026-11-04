@@ -32,6 +32,11 @@ export function EngineInstall({ id }: { id: string }) {
     if (status.data?.installed) void client.invalidateQueries({ queryKey: queryKeys.engines });
   }, [status.data?.installed, client]);
   const running = starting || status.data?.job?.state === 'running';
+  const jobError = status.data?.job?.error;
+  const jobErrorMessage =
+    id === 'voxcpm2' && jobError === 'windows_rocm_voxcpm2_layout'
+      ? t('engines.voxcpm2LayoutError')
+      : jobError;
   return (
     <div className="flex flex-col items-end gap-1">
       <Button
@@ -74,7 +79,7 @@ export function EngineInstall({ id }: { id: string }) {
           detail={
             failed ||
             (status.isError ? describeError(status.error) : '') ||
-            [status.data?.job?.error, status.data?.job?.remediation].filter(Boolean).join('\n\n')
+            [jobErrorMessage, status.data?.job?.remediation].filter(Boolean).join('\n\n')
           }
           onDismiss={() => setDismissedFailure(true)}
         />

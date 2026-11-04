@@ -216,6 +216,7 @@ def _get_generator(mark_prefetched: bool = False):
                 )
             from audioseal import AudioSeal
             try:
+                _require_audioseal_checkpoint_if_offline("audioseal_wm_16bits")
                 _generator = AudioSeal.load_generator("audioseal_wm_16bits")
             except Exception:
                 _generator_failed_at = time.monotonic()
@@ -236,24 +237,63 @@ def _get_detector():
         _last_used = time.monotonic()
         if _detector is None:
             from audioseal import AudioSeal
+            _require_audioseal_checkpoint_if_offline("audioseal_detector_16bits")
             _detector = AudioSeal.load_detector("audioseal_detector_16bits")
             _detector.eval()
             logger.info("AudioSeal detector loaded (16-bit message mode)")
         return _detector
 
 
-def _generator_checkpoint_cached() -> bool:
-    """Return whether AudioSeal can warm without contacting Hugging Face.
+def _audioseal_checkpoint_path(model_card: str) -> Path:
+    """Resolve the installed AudioSeal card's cache path without creating it.
 
-    AudioSeal 0.2 stores the checkpoint in ``<cache>/audioseal`` even though
-    it uses huggingface_hub to fetch it. Keep startup local-first: an ordinary
-    boot may consume that file, but must never turn prefetch into a download.
+    AudioSeal 0.2 uses its own cache directory, not HF_HUB_CACHE or TORCH_HOME.
+    HTTPS cards use a truncated SHA1 of the URL path as the cached filename.
     """
+    from hashlib import sha1
+    from urllib.parse import urlparse
+
+    from audioseal.loader import load_local_model_config
+
+    config = load_local_model_config(model_card)
+    if config is None:
+        raise ValueError(f"AudioSeal model card is unavailable: {model_card}")
+    checkpoint = str(config["checkpoint"])
+    if Path(checkpoint).is_file():
+        return Path(checkpoint)
+
     cache_root = os.environ.get("AUDIOSEAL_CACHE_DIR") or os.environ.get(
         "XDG_CACHE_HOME"
     )
-    root = Path(cache_root).expanduser() if cache_root else Path.home() / ".cache"
-    return (root / "audioseal" / "generator_base.pth").is_file()
+    # Match audioseal.loader._get_cache_dir: only the default expands '~'.
+    root = Path(cache_root) if cache_root else Path.home() / ".cache"
+    cache_dir = root / "audioseal"
+    for repo in ("facebook/audioseal", "meta-adtp/audioseal"):
+        if checkpoint.startswith(repo + "/"):
+            return cache_dir / checkpoint[len(repo) + 1:]
+    parts = urlparse(checkpoint)
+    if parts.scheme == "https":
+        return cache_dir / sha1(parts.path.encode()).hexdigest()[:24]
+    return Path(checkpoint)
+
+
+def _require_audioseal_checkpoint_if_offline(model_card: str) -> None:
+    """Do not let AudioSeal's URL loader turn an offline cache miss into I/O."""
+    offline = any(
+        os.environ.get(name, "").upper() in {"1", "ON", "YES", "TRUE"}
+        for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")
+    )
+    if offline:
+        checkpoint = _audioseal_checkpoint_path(model_card)
+        if not checkpoint.is_file():
+            raise FileNotFoundError(
+                f"AudioSeal checkpoint is not cached while offline: {checkpoint}"
+            )
+
+
+def _generator_checkpoint_cached() -> bool:
+    """Use the installed model card and the loader's actual cache filename."""
+    return _audioseal_checkpoint_path("audioseal_wm_16bits").is_file()
 
 
 def prefetch_generator(*, allow_download: bool = False) -> None:

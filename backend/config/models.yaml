@@ -52,20 +52,29 @@ models:
     curated_on: [all]
 
   - repo_id: "audio-cpp/audio.cpp-gguf"
-    label: "audio.cpp native bundle (Breeze-TTS-2 + Sortformer diarisation)"
+    label: "audio.cpp Breeze-TTS-2 (Q8_0, voice cloning)"
     role: TTS
     engines: [audiocpp]
-    families: [tts, diarisation]
-    size_gb: 4.98
+    size_gb: 4.80
     required_files:
       - "Breeze-TTS-2-GGUF/breeze-tts-2-q8_0.gguf"
-      - "Sortformer-Diar-4spk-v1-GGUF/sortformer-diar-4spk-v1-q8_0.gguf"
     allow_patterns:
       - "Breeze-TTS-2-GGUF/breeze-tts-2-q8_0.gguf"
-      - "Sortformer-Diar-4spk-v1-GGUF/sortformer-diar-4spk-v1-q8_0.gguf"
-    note: "Optional audio.cpp bundle for native voice cloning and up-to-four-speaker diarisation. Research/non-commercial weights and self-hosted outputs; install only after reviewing the licenses."
+    note: "Breeze-TTS-2 voice cloning only. Research/non-commercial weights and self-hosted outputs; install only after reviewing the licenses. Sortformer is a separate package."
 
-  # A second package from the same repository: its own catalogue `id`
+  - id: "audio-cpp/audio.cpp-gguf:sortformer-diar-4spk-v1-q8_0"
+    repo_id: "audio-cpp/audio.cpp-gguf"
+    label: "audio.cpp Sortformer (Q8_0, up to four speakers)"
+    role: Diarisation
+    engines: [audiocpp-sortformer]
+    size_gb: 0.18
+    required_files:
+      - "Sortformer-Diar-4spk-v1-GGUF/sortformer-diar-4spk-v1-q8_0.gguf"
+    allow_patterns:
+      - "Sortformer-Diar-4spk-v1-GGUF/sortformer-diar-4spk-v1-q8_0.gguf"
+    note: "Sortformer diarisation only, without Breeze TTS. Upstream CC-BY-NC-4.0 signal; quantization provenance and complete terms remain unverified. Maximum 120 seconds and four speakers; exact speaker count cannot be enforced."
+
+  # Another package from the same repository: its own catalogue `id`
   # (`<repo_id>:<package>`) so it installs, reports and uninstalls on its own.
   - id: "audio-cpp/audio.cpp-gguf:dots-tts-soar-q8_0"
     repo_id: "audio-cpp/audio.cpp-gguf"

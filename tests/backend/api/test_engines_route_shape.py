@@ -155,7 +155,7 @@ def test_diarisation_status_distinguishes_model_from_native_runtime(
         diarization_runtime,
         "sortformer_status",
         lambda: {
-            "model": diarization_runtime.SORTFORMER_REPO,
+            "model": diarization_runtime.SORTFORMER_MODEL_ID,
             "model_installed": True,
             "runtime_installed": False,
             "installed": False,
@@ -169,7 +169,7 @@ def test_diarisation_status_distinguishes_model_from_native_runtime(
 
     assert response.status_code == 200
     body = response.json()
-    assert body["model"] == diarization_runtime.SORTFORMER_REPO
+    assert body["model"] == diarization_runtime.SORTFORMER_MODEL_ID
     assert body["model_installed"] is True
     assert body["runtime_installed"] is False
     assert body["installed"] is False

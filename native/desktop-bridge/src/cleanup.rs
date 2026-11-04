@@ -40,16 +40,9 @@ fn home_dir() -> Option<PathBuf> {
 }
 
 fn has_signature(path: &Path, allow_model_cache: bool) -> bool {
-    [
-        "omnivoice.db",
-        "prefs.json",
-        "voices",
-        "outputs",
-        "engines",
-        "runtime",
-    ]
-    .iter()
-    .any(|name| path.join(name).exists())
+    ["omnivoice.db", "prefs.json", "voices", "outputs", "engines"]
+        .iter()
+        .any(|name| path.join(name).exists())
         || (allow_model_cache
             && (path.join("hub").is_dir()
                 || fs::read_dir(path).is_ok_and(|entries| {
@@ -57,6 +50,57 @@ fn has_signature(path: &Path, allow_model_cache: bool) -> bool {
                         .filter_map(Result::ok)
                         .any(|entry| entry.file_name().to_string_lossy().starts_with("models--"))
                 })))
+        || has_runtime_project_signature(path)
+        || has_runtime_project_signature(&path.join("project"))
+        || has_runtime_project_signature(&path.join("runtime/project"))
+}
+
+fn has_runtime_project_signature(project: &Path) -> bool {
+    let is_dir = |path: &Path| fs::symlink_metadata(path).is_ok_and(|info| info.is_dir());
+    let is_file = |path: &Path| fs::symlink_metadata(path).is_ok_and(|info| info.is_file());
+    if !is_dir(project)
+        || !is_dir(&project.join("backend"))
+        || !is_file(&project.join("backend/main.py"))
+        || !is_file(&project.join("uv.lock"))
+    {
+        return false;
+    }
+    let read_bounded = |name: &str, limit: u64| {
+        let path = project.join(name);
+        let info = fs::symlink_metadata(&path).ok()?;
+        (info.is_file() && info.len() <= limit)
+            .then(|| fs::read_to_string(path).ok())
+            .flatten()
+    };
+    let Some(ready) = read_bounded(".runtime-ready", 128) else {
+        return false;
+    };
+    let ready = ready.trim();
+    if ready.len() != 64
+        || !ready
+            .bytes()
+            .all(|value| value.is_ascii_hexdigit() && !value.is_ascii_uppercase())
+    {
+        return false;
+    }
+    let Some(metadata) = read_bounded("pyproject.toml", 65536) else {
+        return false;
+    };
+    let mut in_project = false;
+    for raw in metadata.lines() {
+        let line = raw.split('#').next().unwrap_or_default().trim();
+        if line.starts_with('[') {
+            in_project = line == "[project]";
+        } else if in_project {
+            if let Some((key, value)) = line.split_once('=') {
+                if key.trim() == "name" && ["\"omnivoice\"", "'omnivoice'"].contains(&value.trim())
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 // Folders the OS (or the app's installer) puts per-app directories in. A bare app-named
@@ -118,6 +162,13 @@ fn exact_managed_layout(path: &Path, home: Option<&Path>) -> bool {
     let Some(leaf) = parts.last().and_then(|part| part.to_str()) else {
         return false;
     };
+    if CHILDREN.iter().any(|name| leaf.eq_ignore_ascii_case(name))
+        && path
+            .parent()
+            .is_some_and(|parent| has_runtime_project_signature(&parent.join("project")))
+    {
+        return true;
+    }
     if APP_NAMES.iter().any(|name| leaf.eq_ignore_ascii_case(name)) {
         return app_parent(path, home);
     }
@@ -158,12 +209,56 @@ fn exact_model_layout(path: &Path) -> bool {
             || (leaf.eq_ignore_ascii_case("hub") && parent.eq_ignore_ascii_case("huggingface")))
 }
 
+fn private_model_layout(path: &Path) -> bool {
+    let root = if path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("hub"))
+    {
+        let Some(parent) = path.parent() else {
+            return false;
+        };
+        parent
+    } else {
+        path
+    };
+    let Some(name) = root.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    let Some(parent) = root.parent() else {
+        return false;
+    };
+    ["models", "hf_cache"]
+        .iter()
+        .any(|item| name.eq_ignore_ascii_case(item))
+        && (parent
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| {
+                [
+                    "OmniVoice",
+                    ".omnivoice",
+                    "VoiceStudio",
+                    "com.debpalash.omnivoice-studio",
+                ]
+                .iter()
+                .any(|item| name.eq_ignore_ascii_case(item))
+            })
+            || exact_managed_layout(parent, None)
+            || has_runtime_project_signature(&parent.join("project")))
+}
+
 fn recognizably_owned(path: &Path, home: Option<&Path>, kind: &CleanupKind) -> bool {
-    if !path.is_absolute() || path.parent().is_none() || home == Some(path) {
+    if !path.is_absolute()
+        || path.parent().is_none()
+        || home == Some(path)
+        || !fs::symlink_metadata(path).is_ok_and(|info| info.is_dir())
+    {
         return false;
     }
     exact_managed_layout(path, home)
-        || (*kind == CleanupKind::Models && exact_model_layout(path))
+        || (*kind == CleanupKind::Models
+            && (exact_model_layout(path) || private_model_layout(path)))
         || has_signature(path, *kind == CleanupKind::Models)
 }
 
@@ -272,6 +367,168 @@ pub fn run(owner_pid: u32, plan_path: &Path) -> io::Result<()> {
 mod tests {
     use super::*;
 
+    struct Fixture(PathBuf);
+
+    impl Fixture {
+        fn new(name: &str) -> Self {
+            let root = std::env::temp_dir().join(format!("cleanup-{name}-{}", std::process::id()));
+            fs::create_dir_all(&root).unwrap();
+            Self(root)
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn ownership_does_not_extend_to_arbitrary_descendants() {
+        let fixture = Fixture::new("ancestry");
+        let app = fixture.0.join("VoiceStudio");
+        fs::create_dir_all(&app).unwrap();
+        fs::write(app.join("omnivoice.db"), b"db").unwrap();
+        for suffix in [
+            "Documents",
+            "personal/Documents",
+            "personal/project",
+            "models/other",
+        ] {
+            assert!(
+                !recognizably_owned(&app.join(suffix), None, &CleanupKind::App),
+                "{suffix}"
+            );
+        }
+        assert!(!recognizably_owned(
+            &fixture.0.join("VoiceStudio-copy/project"),
+            None,
+            &CleanupKind::App
+        ));
+    }
+
+    #[test]
+    fn ownership_accepts_exact_managed_layouts() {
+        let fixture = Fixture::new("layouts");
+        for suffix in [
+            "VoiceStudio",
+            ".omnivoice",
+            "com.debpalash.omnivoice-studio",
+            "OmniVoiceStudio-Data",
+            "OmniVoice/data",
+            "OmniVoice/logs",
+            "OmniVoice/hf_cache",
+            "OmniVoice/hf_cache/hub",
+            "VoiceStudio/data",
+            "VoiceStudio/models",
+            "VoiceStudio/models/hub",
+            "VoiceStudio/runtime",
+            "VoiceStudio/runtime/project",
+            "VoiceStudio/project",
+            "VoiceStudio/.uv-cache",
+            "VoiceStudio/.python",
+            "VoiceStudio/.tmp",
+            "VoiceStudio/tmp",
+            ".cache/huggingface",
+            ".cache/huggingface/hub",
+        ] {
+            let path = fixture.0.join(suffix);
+            fs::create_dir_all(&path).unwrap();
+            if !suffix.contains('/') {
+                fs::write(path.join("omnivoice.db"), b"synthetic app identity").unwrap();
+            }
+            let kind = if suffix
+                .split('/')
+                .any(|part| ["models", "hf_cache", "huggingface", "hub"].contains(&part))
+            {
+                CleanupKind::Models
+            } else {
+                CleanupKind::App
+            };
+            assert!(recognizably_owned(&path, None, &kind), "{suffix}");
+            assert!(
+                !recognizably_owned(&path, Some(&path), &kind),
+                "home: {suffix}"
+            );
+        }
+    }
+
+    #[test]
+    fn cleanup_refuses_unrelated_tree_before_removing_any_target() {
+        let fixture = Fixture::new("refusal");
+        let target = fixture.0.join("VoiceStudio/personal/Documents");
+        let owned = fixture.0.join("custom-data");
+        fs::create_dir_all(&target).unwrap();
+        fs::create_dir_all(&owned).unwrap();
+        fs::write(target.join("unrelated.txt"), b"keep").unwrap();
+        fs::write(owned.join("omnivoice.db"), b"db").unwrap();
+        let plan = fixture.0.join("plan.json");
+        fs::write(
+            &plan,
+            serde_json::to_vec(&serde_json::json!({"paths": [
+                {"path": &owned, "kind": "app"},
+                {"path": &target, "kind": "app"}
+            ]}))
+            .unwrap(),
+        )
+        .unwrap();
+        let result = run(u32::MAX, &plan);
+        assert!(target.join("unrelated.txt").exists());
+        assert!(owned.join("omnivoice.db").exists());
+        assert_eq!(result.unwrap_err().kind(), io::ErrorKind::PermissionDenied);
+    }
+
+    #[test]
+    fn cleanup_accepts_custom_runtime_entries_only_with_staged_app_identity() {
+        let fixture = Fixture::new("custom-runtime");
+        let runtime = fixture.0.join("Votest/VoiceStudio-AMD-20261025/runtime");
+        let project = runtime.join("project");
+        fs::create_dir_all(project.join("backend")).unwrap();
+        fs::write(project.join(".runtime-ready"), "a".repeat(64)).unwrap();
+        fs::write(
+            project.join("pyproject.toml"),
+            "[project]\nname = \"unrelated\"\n",
+        )
+        .unwrap();
+        fs::write(project.join("uv.lock"), b"version = 1").unwrap();
+        fs::write(project.join("backend/main.py"), b"app = None").unwrap();
+        assert!(!recognizably_owned(&runtime, None, &CleanupKind::App));
+        assert!(!recognizably_owned(
+            &runtime.join(".uv-cache"),
+            None,
+            &CleanupKind::App
+        ));
+        fs::write(
+            project.join("pyproject.toml"),
+            "[project]\nname = \"omnivoice\"\n",
+        )
+        .unwrap();
+        let entries: Vec<_> = ["project", ".uv-cache", ".python", ".tmp", "tmp"]
+            .iter()
+            .map(|name| runtime.join(name))
+            .collect();
+        for entry in &entries {
+            fs::create_dir_all(entry).unwrap();
+            assert!(recognizably_owned(entry, None, &CleanupKind::App));
+        }
+        assert!(recognizably_owned(&runtime, None, &CleanupKind::App));
+        let sentinel = runtime.join("Documents/unrelated.txt");
+        fs::create_dir_all(sentinel.parent().unwrap()).unwrap();
+        fs::write(&sentinel, b"keep").unwrap();
+        let plan = fixture.0.join("plan.json");
+        fs::write(
+            &plan,
+            serde_json::to_vec(&serde_json::json!({"paths": entries.iter().map(|path|
+                serde_json::json!({"path": path, "kind": "app"})
+            ).collect::<Vec<_>>()}))
+            .unwrap(),
+        )
+        .unwrap();
+        run(u32::MAX, &plan).unwrap();
+        assert!(entries.iter().all(|entry| !entry.exists()));
+        assert!(sentinel.exists());
+    }
+
     #[test]
     fn ownership_guard_rejects_roots_and_accepts_app_signatures() {
         let root = std::env::temp_dir().join(format!("desktop-cleanup-{}", std::process::id()));
@@ -292,6 +549,48 @@ mod tests {
             assert!(!recognizably_owned(&home, Some(&home), &CleanupKind::App));
         }
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn ownership_requires_local_cache_markers_and_rejects_a_bare_runtime_folder() {
+        let fixture = Fixture::new("markers");
+        let bare = fixture.0.join("custom-profile");
+        fs::create_dir_all(bare.join("runtime")).unwrap();
+        assert!(!recognizably_owned(&bare, None, &CleanupKind::App));
+        for marker in ["hub", "models--fixture"] {
+            let cache = fixture.0.join(marker).join("custom-cache");
+            fs::create_dir_all(cache.join(marker)).unwrap();
+            assert!(recognizably_owned(&cache, None, &CleanupKind::Models));
+            assert!(!recognizably_owned(&cache, None, &CleanupKind::App));
+            assert!(!recognizably_owned(
+                &cache.join("Documents"),
+                None,
+                &CleanupKind::App
+            ));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cleanup_canonicalization_rejects_an_app_named_link_to_an_unrelated_tree() {
+        let fixture = Fixture::new("canonical");
+        let target = fixture.0.join("Documents");
+        let alias = fixture.0.join("VoiceStudio");
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("unrelated.txt"), b"keep").unwrap();
+        std::os::unix::fs::symlink(&target, &alias).unwrap();
+        let plan = fixture.0.join("plan.json");
+        fs::write(
+            &plan,
+            serde_json::to_vec(&serde_json::json!({"paths": [{"path": &alias, "kind": "app"}]}))
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            run(u32::MAX, &plan).unwrap_err().kind(),
+            io::ErrorKind::PermissionDenied
+        );
+        assert!(target.join("unrelated.txt").exists());
     }
 
     #[test]

@@ -150,7 +150,7 @@ def profile_plan(choice: str, overrides: dict, selections: dict) -> dict:
         inventory["diarisation"] = [
             Candidate(engine, repo, rank, ram, vram if dedicated else 0)
             for engine, repo, rank, ram, vram in [
-                (diarization_runtime.SORTFORMER, diarization_runtime.SORTFORMER_REPO, 1, 1.5, 1.5),
+                (diarization_runtime.SORTFORMER, diarization_runtime.SORTFORMER_MODEL_ID, 1, 1.5, 1.5),
                 (diarization_runtime.PYANNOTE, "pyannote/speaker-diarization-3.1", 4, 2, 2),
             ] if engine in installed
         ]

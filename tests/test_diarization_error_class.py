@@ -32,6 +32,8 @@ def model_manager(fresh_model_manager, monkeypatch):
     manager = fresh_model_manager(force=True)
     monkeypatch.setattr(manager, "_diar_pipeline", None)
     monkeypatch.setattr(manager, "_torch", None)
+    monkeypatch.setattr("core.device_caps.detect_host_caps", lambda: SimpleNamespace(family="cpu"))
+    monkeypatch.setattr("services.diarization_runtime.selected_backend", lambda: "pyannote")
     return manager
 
 

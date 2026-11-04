@@ -358,7 +358,7 @@ class ProductionTests(unittest.TestCase):
 
     def test_production_rows_never_use_synthetic_positive_fixtures(self):
         registry = ml.load_registry()
-        self.assertEqual(len(registry["models"]), 70)
+        self.assertEqual(len(registry["models"]), 71)
         self.assertEqual(len(registry["dynamic_assets"]), 7)
         for row in registry["models"]:
             self.assertEqual(row["component_closure"], "incomplete")
@@ -381,7 +381,9 @@ class ProductionTests(unittest.TestCase):
         expected = {r["id"]: r["runtime_revision"] for r in data["models"]
                     if r["runtime_pin_scope"] == "central"}
         self.assertEqual(CURATED_REVISIONS, expected)
-        self.assertEqual(len(expected), 46)
+        self.assertEqual(len(expected), 47)
+        self.assertEqual(expected.pop("audio-cpp/audio.cpp-gguf:sortformer-diar-4spk-v1-q8_0"),
+                         expected["audio-cpp/audio.cpp-gguf"])
         self.assertEqual(expected.pop("OpenMOSS-Team/MOSS-Audio-Tokenizer"),
                          "3cd226ba2947efa357ef453bcad111b6eafba782")
         self.assertEqual(expected.pop("Lourdle/Fun-CosyVoice3-0.5B-2512-GGUF"),

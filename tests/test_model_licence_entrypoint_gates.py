@@ -420,5 +420,5 @@ def test_dub_diarisation_returns_typed_detail_without_loading_the_pipeline(store
     monkeypatch.setattr(dc, "get_diarization_pipeline", lambda **kw: loads.append(kw) or ("pipe", None))
     pipe, detail = dc._diarization_pipeline_checked()
     assert pipe is None and detail["code"] == "model_licence_required" and loads == []
-    _accept(ma, "audio-cpp/audio.cpp-gguf")
+    _accept(ma, dr.SORTFORMER_MODEL_ID)
     assert dc._diarization_pipeline_checked() == ("pipe", None) and loads

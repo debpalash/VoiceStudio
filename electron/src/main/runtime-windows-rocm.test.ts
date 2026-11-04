@@ -1,15 +1,18 @@
 // @vitest-environment node
 import { fixture, interpreter, runner, recipe, report } from './runtime-windows-rocm.fixture';
+import { execFile } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import {
   installRuntime,
   RUNTIME_NATIVE_IMPORT_PROBE,
   resolveTorchVariant,
+  runtimeDependenciesReady,
   runtimePython,
   runtimeReady,
 } from './runtime-project';
+import { RUNTIME_TORCH_MARKER, windowsRocmInstalled } from './runtime-windows-rocm';
 
 it('selects only the explicit Windows x64 recipe', () => {
   expect(resolveTorchVariant({ OMNIVOICE_TORCH_VARIANT: ' ROCm ' }, 'win32', 'x64').variant).toBe(
@@ -20,6 +23,60 @@ it('selects only the explicit Windows x64 recipe', () => {
   );
   expect(resolveTorchVariant({}, 'win32', 'x64', () => false).variant).toBe('cpu');
 });
+it.each([false, true])(
+  'checks the selected ROCm interpreter before downloading wheels (incompatible existing Python: %s)',
+  async (incompatible) => {
+    const { bundle, project } = await fixture();
+    if (incompatible) await interpreter(project);
+    vi.stubEnv('OMNIVOICE_TORCH_VARIANT', 'cpu');
+    const preparedPython = join(project, 'managed', 'python.exe');
+    const base = runner(project, incompatible);
+    const run = vi.fn(
+      async (command: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv) => {
+        if (args[0] === 'python' && args[1] === 'find') return preparedPython;
+        return base(command, args, cwd, env);
+      },
+    );
+    await installRuntime(
+      bundle,
+      project,
+      'uv',
+      run,
+      new AbortController().signal,
+      undefined,
+      'global',
+      { variant: 'rocm', explicit: true },
+    );
+    const calls = run.mock.calls;
+    const prepare = calls.findIndex(([, args]) => args[0] === 'python' && args[1] === 'install');
+    const find = calls.findIndex(([, args]) => args[0] === 'python' && args[1] === 'find');
+    const probe = calls.findIndex(
+      ([command, args]) =>
+        command === preparedPython && args[0] === '-c' && args[1] === 'import _ctypes',
+    );
+    const sync = calls.findIndex(([, args]) => args[0] === 'sync');
+    expect(prepare).toBeGreaterThanOrEqual(0);
+    expect(calls[prepare]![1]).toEqual([
+      'python',
+      'install',
+      '--no-bin',
+      '--no-registry',
+      'cpython-3.12-windows-x86_64',
+    ]);
+    expect(calls[find]![1]).toEqual([
+      'python',
+      'find',
+      '--managed-python',
+      'cpython-3.12-windows-x86_64',
+    ]);
+    expect(find).toBeGreaterThan(prepare);
+    expect(probe).toBeGreaterThan(find);
+    expect(sync).toBeGreaterThan(probe);
+    expect(calls[sync]![1][calls[sync]![1].indexOf('--python') + 1]).toBe(
+      'cpython-3.12-windows-x86_64',
+    );
+  },
+);
 it.each(['fresh', 'healthy', 'broken'] as const)(
   'protects the overlay before %s frozen sync',
   async (state) => {
@@ -29,8 +86,6 @@ it.each(['fresh', 'healthy', 'broken'] as const)(
     if (state === 'broken') {
       run.mockImplementation(async (_command, args) => {
         if (args[0] === 'sync') await interpreter(project);
-        // Only the native-wheel probe is broken; the import probe now names each
-        // module on its own line, so a substring match would hit verification too.
         if (args[0] === '-c' && args[1] === RUNTIME_NATIVE_IMPORT_PROBE)
           throw Error('broken native wheel');
         return report;
@@ -88,6 +143,8 @@ it.each(['fresh', 'healthy', 'broken'] as const)(
         ),
     ).toBe(true);
     expect(await readFile(join(project, 'scripts/windows-rocm-recipe.json'), 'utf8')).toBe(recipe);
+    expect(await readFile(join(project, RUNTIME_TORCH_MARKER), 'utf8')).toBe('windows-rocm');
+    expect(await windowsRocmInstalled(project)).toBe(true);
     expect(await runtimeReady(bundle, project)).toBe(true);
   },
 );
@@ -128,6 +185,42 @@ it('does not stamp a failed overlay and preserves models for retry', async () =>
     installRuntime(bundle, project, 'uv', run, new AbortController().signal, undefined, 'global'),
   ).rejects.toThrow('verification failed');
   expect(await runtimeReady(bundle, project)).toBe(false);
+  expect(await windowsRocmInstalled(project)).toBe(false);
+  await expect(readFile(join(project, RUNTIME_TORCH_MARKER))).rejects.toThrow();
   expect(await readFile(join(project, 'models/keep'), 'utf8')).toBe('model');
   await expect(readFile(join(project, '.runtime-installing'))).resolves.toBeDefined();
+});
+
+it.each(['cpu', 'default'] as const)(
+  'records the installed %s choice despite ambient ROCm',
+  async (variant) => {
+    const { bundle, project } = await fixture();
+    const choice = { variant, explicit: true };
+    await installRuntime(
+      bundle,
+      project,
+      'uv',
+      runner(project),
+      new AbortController().signal,
+      undefined,
+      'global',
+      choice,
+    );
+    expect(await readFile(join(project, RUNTIME_TORCH_MARKER), 'utf8')).toBe(variant);
+    expect(await windowsRocmInstalled(project)).toBe(false);
+    expect(await runtimeReady(bundle, project, choice)).toBe(true);
+    expect(process.env.OMNIVOICE_TORCH_VARIANT).toBe('rocm');
+  },
+);
+
+it('fails closed for an explicit Windows ARM64 ROCm choice despite ambient CPU', async () => {
+  vi.spyOn(process, 'arch', 'get').mockReturnValue('arm64');
+  vi.stubEnv('OMNIVOICE_TORCH_VARIANT', 'cpu');
+  const onFailure = vi.fn();
+  await expect(
+    runtimeDependenciesReady('unused', onFailure, { variant: 'rocm', explicit: true }),
+  ).resolves.toBe(false);
+  expect(onFailure).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('x64'));
+  expect(execFile).not.toHaveBeenCalled();
+  expect(process.env.OMNIVOICE_TORCH_VARIANT).toBe('cpu');
 });

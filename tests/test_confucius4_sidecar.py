@@ -344,10 +344,13 @@ def test_home_relative_cache_survives_chdir(monkeypatch, tmp_path):
     clone.mkdir()
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv('OMNIVOICE_CONFUCIUS4_TTS_DIR', str(clone))
+    monkeypatch.setenv('HOME', str(tmp_path))
+    monkeypatch.setenv('USERPROFILE', str(tmp_path))
     monkeypatch.setenv('XDG_CACHE_HOME', '~/xdg')
     expected = os.path.expanduser('~/xdg')
     sc._chdir_to_clone_if_available()
-    assert os.environ['XDG_CACHE_HOME'] == expected
+    assert Path(os.environ['XDG_CACHE_HOME']).is_absolute()
+    assert Path(os.environ['XDG_CACHE_HOME']) == Path(expected)
 
 
 @pytest.mark.parametrize("ref_audio", [None, "", 42])

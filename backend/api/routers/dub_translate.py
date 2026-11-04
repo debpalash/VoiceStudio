@@ -4,6 +4,7 @@ import re
 import time
 import asyncio
 import logging
+import threading
 from typing import Optional
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
@@ -242,6 +243,7 @@ def _translation_output_error(text: object) -> str | None:
 _nllb_model = None
 _nllb_tokenizer = None
 _nllb_device = None
+_nllb_job_lock = threading.RLock()
 _NLLB_BATCH_SIZE_ENV = "OMNIVOICE_NLLB_BATCH_SIZE"
 _NLLB_MAX_BATCH_SIZE = 32
 
@@ -426,17 +428,19 @@ def _resolve_translation_context(req, client, model_name: str, timeout: float,
     return ctx
 
 
-def _unload_nllb():
+def _unload_nllb(*, devices: tuple[str | None, ...] | None = None):
     """Release NLLB VRAM so TTS model can reload."""
     global _nllb_device, _nllb_model, _nllb_tokenizer
     import gc
     from services.model_manager import release_device_cache
-    device = _nllb_device
-    _nllb_model = None
-    _nllb_tokenizer = None
-    _nllb_device = None
-    gc.collect()
-    release_device_cache(device=device)
+    with _nllb_job_lock:
+        devices = (_nllb_device,) if devices is None else devices
+        _nllb_model = None
+        _nllb_tokenizer = None
+        _nllb_device = None
+        gc.collect()
+        for device in dict.fromkeys(devices):
+            release_device_cache(device=device)
 
 
 def _should_unload_nllb() -> bool:
@@ -494,36 +498,44 @@ async def dub_translate(req: TranslateRequest):
             from services.model_acceptance import ensure_accepted
             ensure_accepted([_NLLB_REPO_ID])
 
-            def _translate_nllb():
+            def _translate_nllb(pending_release_devices: set[str]):
                 global _nllb_model, _nllb_tokenizer, _nllb_device
-                import torch
-                from services.model_manager import release_device_cache
+                from services.model_manager import get_best_device, release_device_cache
                 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
-                if torch.cuda.is_available():
-                    target_device = "cuda"
-                elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-                    target_device = "mps"
-                else:
-                    target_device = "cpu"
-
+                placement_devices = None
+                load_error = None
                 try:
+                    target_device = get_best_device()
                     if _nllb_tokenizer is None:
                         _nllb_tokenizer = _load_nllb_component(AutoTokenizer)
                     if _nllb_model is None:
                         _nllb_model = _load_nllb_component(AutoModelForSeq2SeqLM)
-                        if target_device != "cpu":
-                            try:
-                                _nllb_model = _nllb_model.to(target_device)
-                                _nllb_device = target_device
-                            except Exception as e:
-                                logger.warning("NLLB %s placement failed, falling back to CPU: %s", target_device, e)
-                                _nllb_device = "cpu"
-                        else:
+                        _nllb_device = "cpu"
+                    if _nllb_device != target_device:
+                        placement_devices = tuple(dict.fromkeys(
+                            device for device in (_nllb_device, target_device)
+                            if device not in (None, "cpu")
+                        ))
+                        _nllb_device = None
+                        try:
+                            _nllb_model = _nllb_model.to(target_device)
+                            _nllb_device = target_device
+                        except Exception as placement_error:
+                            if target_device == "cpu":
+                                raise
+                            logger.warning("NLLB %s placement failed, falling back to CPU: %s", target_device, placement_error)
+                            _nllb_model = _nllb_model.to("cpu")
                             _nllb_device = "cpu"
-                except Exception as e:
+                        for device in placement_devices:
+                            if device != _nllb_device:
+                                release_device_cache(device=device)
+                except Exception as error:
                     logger.exception("NLLB model load failed")
-                    return [{"id": seg.id, "text": seg.text, "error": f"Model load error: {str(e)}"} for seg in req.segments]
+                    load_error = str(error)
+                if load_error is not None:
+                    _unload_nllb(devices=placement_devices)
+                    return [{"id": seg.id, "text": seg.text, "error": f"Model load error: {load_error}"} for seg in req.segments]
 
                 from services.performance_profiles import translation_decode_defaults
 
@@ -553,7 +565,12 @@ async def dub_translate(req: TranslateRequest):
                         if _nllb_device != "mps":
                             raise
                         logger.warning("MPS generate failed, retrying on CPU: %s", error)
-                        _nllb_model.to("cpu")
+                        try:
+                            _nllb_model.to("cpu")
+                        except Exception:
+                            pending_release_devices.add("mps")
+                            _unload_nllb(devices=())
+                            raise
                         _nllb_device = "cpu"
                         inputs = {key: value.to("cpu") for key, value in inputs.items()}
                         release_device_cache(device="mps")
@@ -610,7 +627,8 @@ async def dub_translate(req: TranslateRequest):
                             # on whichever accelerator the translator is on
                             # (the ladder above picks CUDA or MPS, and a
                             # CUDA-only flush missed the MPS case).
-                            release_device_cache(device=_nllb_device)
+                            if _nllb_device is not None:
+                                release_device_cache(device=_nllb_device)
                             logger.warning(
                                 "NLLB batch of %d failed; retrying rows individually: %s",
                                 len(batch),
@@ -632,9 +650,18 @@ async def dub_translate(req: TranslateRequest):
 
                 return [results_by_index[index] for index in range(len(req.segments))]
 
-            translated = await loop.run_in_executor(_gpu_pool, _translate_nllb)
-            if _should_unload_nllb():
-                _unload_nllb()
+            def _translate_nllb_job():
+                with _nllb_job_lock:
+                    pending_release_devices: set[str] = set()
+                    try:
+                        return _translate_nllb(pending_release_devices)
+                    finally:
+                        if _nllb_model is not None and _should_unload_nllb():
+                            _unload_nllb()
+                        if pending_release_devices:
+                            _unload_nllb(devices=tuple(pending_release_devices))
+
+            translated = await loop.run_in_executor(_gpu_pool, _translate_nllb_job)
             # Cinematic/Autofit refine + rate-ratio badges must run for NLLB too
             # (previously this returned before _maybe_cinematic, so a Cinematic
             # pick on NLLB silently produced plain Fast output). Unloading NLLB

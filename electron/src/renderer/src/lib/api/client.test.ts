@@ -17,6 +17,11 @@ import {
   joinApiPath,
 } from "./client";
 import { rewriteDevApiProxyPath } from "../../../../shared/web-api-routing";
+import { encodeDownloadFailure } from "@shared/download-failure";
+import { nativeSaveError } from "@/lib/native-save";
+import { FAILURE_CATALOG, failureTopicOf } from "@shared/utils/failureCatalog";
+import en from "@/i18n/locales/en.json";
+import pl from "@/i18n/locales/pl.json";
 
 beforeEach(() => {
   _resetBackendContactForTests();
@@ -179,6 +184,103 @@ describe("apiFetch", () => {
     await expect(apiFetch("/generate")).rejects.toMatchObject({
       name: "AbortError",
     });
+  });
+});
+
+describe.each([
+  { language: "en", catalog: en },
+  { language: "pl", catalog: pl },
+])("Smart Fit frame-rate failures in $language", ({ language, catalog }) => {
+  beforeEach(async () => {
+    const translator = i18next.createInstance();
+    await translator.init({
+      lng: language,
+      fallbackLng: false,
+      resources: { [language]: { translation: catalog } },
+    });
+    vi.spyOn(i18next, "t").mockImplementation(translator.t);
+  });
+
+  it.each(["response", "fetch", "native"])(
+    "localizes the 503 %s pipeline and retains API diagnostics",
+    async (transport) => {
+      const detail = {
+        stage: "video-retime",
+        code: "video_retime_fps_unavailable",
+        message:
+          "Smart Fit cannot determine the source video frame rate. Check the source file and media tools, then retry.",
+      };
+      const body = JSON.stringify({ detail });
+      let error: unknown;
+      if (transport === "response") {
+        error = await errorFromResponse(new Response(body, { status: 503 }));
+      } else if (transport === "native") {
+        error = await nativeSaveError(
+          new Error(
+            "Error invoking remote method 'files:saveAudio': Error: " +
+              encodeDownloadFailure({ status: 503, statusText: "", body }),
+          ),
+        );
+      } else {
+        vi.stubGlobal("fetch", async () => new Response(body, { status: 503 }));
+        error = await apiFetch("/dub/download/test-job").catch(
+          (failure: unknown) => failure,
+        );
+        expect(lastBackendContact()).not.toBeNull();
+      }
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({
+        status: 503,
+        detail: catalog.tts_errors.video_retime_fps_unavailable,
+        message: catalog.tts_errors.video_retime_fps_unavailable,
+        payload: { detail },
+      });
+      expect(describeError(error)).toBe(
+        catalog.tts_errors.video_retime_fps_unavailable,
+      );
+      expect(i18next.t).toHaveBeenCalledWith(
+        "tts_errors.video_retime_fps_unavailable",
+      );
+    },
+  );
+
+  it("uses the stable code rather than matching the English message", async () => {
+    const detail = {
+      stage: "video-retime",
+      code: "video_retime_fps_unavailable",
+      message: "Different diagnostic text",
+    };
+    const error = await errorFromResponse(
+      new Response(JSON.stringify({ detail }), { status: 503 }),
+    );
+    expect(describeError(error)).toBe(
+      catalog.tts_errors.video_retime_fps_unavailable,
+    );
+    expect(error.payload?.detail).toEqual(detail);
+  });
+
+  it("localizes missing-media-tool guidance and retains recovery hints", async () => {
+    const detail = {
+      stage: "video-retime",
+      code: "media_tool_missing",
+      docs_topic: "MEDIA_TOOL_MISSING",
+      message: "ffprobe is not installed or cannot be run.",
+      hint: "Open Settings → Audio tools and use Download/Repair.",
+    };
+    const error = await errorFromResponse(
+      new Response(JSON.stringify({ detail }), { status: 503 }),
+    );
+    expect(error.status).toBe(503);
+    expect(describeError(error)).toBe(catalog.failureClass.media_tool_missing);
+    expect(error.payload?.detail).toEqual(detail);
+    expect(failureTopicOf(error)).toBe("MEDIA_TOOL_MISSING");
+    expect(FAILURE_CATALOG.MEDIA_TOOL_MISSING.action).toEqual({
+      kind: "open",
+      target: "media",
+    });
+    expect(i18next.t).not.toHaveBeenCalledWith(
+      "tts_errors.video_retime_fps_unavailable",
+    );
   });
 });
 
