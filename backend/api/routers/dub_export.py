@@ -2322,6 +2322,17 @@ async def dub_export_stems(job_id: str, lang: str = Query(None)):
         raise HTTPException(status_code=400, detail="No dubbed audio track")
 
     bg_path = _optional_dub_artifact(job.get("no_vocals_path"), job_id)
+    # Job-level timing follows the last generated language. Resolve this
+    # export against the selected track without changing the stored job.
+    # Older tracks without their own strategy retain the legacy fallback.
+    selected_job = {
+        **job,
+        "timing_strategy": ((tracks.get(lang_label) or {}).get("timing_strategy")
+                            or job.get("timing_strategy")),
+    }
+    if bg_path and _video_retime_plan_for(selected_job, lang_label):
+        # Use the same selected-track view for admission and preparation.
+        bg_path = await _preserved_background(selected_job, job_id, lang_label)
 
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
