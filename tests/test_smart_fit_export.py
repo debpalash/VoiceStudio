@@ -225,13 +225,13 @@ class TestChunkFilterGraph:
         graph, label = build_chunk_filter_graph(chunks, "[0:v]", tail_pad_s=0.5)
         assert label == "[vstretched]"
         assert graph.endswith(
-            "concat=n=5:v=1:a=0[vcat];[vcat]tpad=stop_mode=clone:stop_duration=0.5000[vstretched]"
+            "concat=n=5:v=1:a=0[vcat];[vcat]pad=ceil(iw/2)*2:ceil(ih/2)*2,tpad=stop_mode=clone:stop_duration=0.5000[vstretched]"
         )
 
-    def test_no_tail_pad_keeps_legacy_concat_terminal(self):
+    def test_no_tail_pad_keeps_frame_padding_only(self):
         chunks = expand_retime_chunks(_PLAN, _ORIG_DUR)
         graph, _ = build_chunk_filter_graph(chunks, "[0:v]")
-        assert graph.endswith("concat=n=5:v=1:a=0[vstretched]")
+        assert graph.endswith("concat=n=5:v=1:a=0[vcat];[vcat]pad=ceil(iw/2)*2:ceil(ih/2)*2[vstretched]")
         assert "tpad" not in graph and "fps=" not in graph
 
 

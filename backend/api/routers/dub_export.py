@@ -29,6 +29,7 @@ from services.karaoke_ass import build_ass, scale_words
 from services.prosody_mirror import AnalysisBudgetExceeded, SegmentSpan, mirror_file
 from services.video_retime import (
     DRIFT_TOLERANCE_S,
+    H264_SIZE_FILTER,
     RetimeError,
     build_chunk_filter_graph,
     expand_retime_chunks,
@@ -984,7 +985,7 @@ async def dub_download(
         else:
             sub_src = "[0:v]"
         _sub_filter = "ass" if sub_is_ass else "subtitles"
-        filter_parts.append(f"{sub_src}{_sub_filter}='{esc}'[vsub]")
+        filter_parts.append(f"{sub_src}{H264_SIZE_FILTER},{_sub_filter}='{esc}'[vsub]")
         video_map = "[vsub]"
     if stretch_entry:
         orig_dur = float(stretch_entry.get("orig_duration") or job.get("duration") or 0.0)
