@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
+import { installRandomUUID } from '../../lib/random-uuid';
 import {
   addWorkflowStep,
   connectWorkflowSteps,
@@ -22,6 +23,7 @@ it('creates unique workflow ids when randomUUID is unavailable on a LAN origin',
       return bytes;
     },
   });
+  installRandomUUID();
 
   const document = makeWorkflow('Reception');
   const ids = [
@@ -30,7 +32,9 @@ it('creates unique workflow ids when randomUUID is unavailable on a LAN origin',
     ...document.connections.map((connection) => connection.id),
   ];
   expect(new Set(ids).size).toBe(ids.length);
-  expect(document.id).toMatch(/^[0-9a-f-]{36}$/);
+  expect(document.id).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
 });
 
 it('creates a connected, editable call template without a destination number', () => {
