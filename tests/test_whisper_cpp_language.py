@@ -187,6 +187,45 @@ def test_known_source_language_codes_are_retained(value, expected):
     assert _detected_source_lang(value) == expected
 
 
+@pytest.mark.parametrize('value, expected', [
+    ('fil', 'tl'), ('fil-orig', 'tl'), ('iw', 'he'), ('jv', 'jw'),
+    ('yue-HK', 'yue'), ('zh-Hans', 'zh'), ('pt-BR', 'pt'), ('en-orig', 'en'),
+])
+def test_caption_track_tags_keep_their_language(value, expected):
+    from api.routers.dub_core import _detected_source_lang
+    assert _detected_source_lang(value) == expected
+
+
+@pytest.mark.parametrize('value', ['new', 'pam', 'ast', 'kab', 'ceb-orig'])
+def test_unlisted_codes_are_not_shortened_into_another_language(value):
+    from api.routers.dub_core import _detected_source_lang
+    assert _detected_source_lang(value) is None
+
+
+@pytest.mark.parametrize('value, expected', [
+    ('english', 'en'), ('spanish', 'es'), ('estonian', 'et'), ('swedish', 'sv'),
+    ('kannada', 'kn'), ('armenian', 'hy'), ('bengali', 'bn'), ('Haitian Creole', 'ht'),
+])
+def test_whisper_language_names_map_to_their_code(value, expected):
+    from api.routers.dub_core import _detected_source_lang
+    assert _detected_source_lang(value) == expected
+
+
+def test_filipino_caption_track_is_translated_as_tagalog(monkeypatch):
+    from api.routers import dub_core as dc
+    from api.routers import dub_translate as dt
+    job = {
+        'duration': 2, 'source_lang': None, 'transcription_complete': True, 'segments': [],
+        'youtube_subs': {'fil-orig': [{'start': 0, 'end': 2, 'text': 'Magandang umaga'}]},
+    }
+    monkeypatch.setattr(dc, '_get_job', lambda _: job)
+    monkeypatch.setattr(dt, '_get_job', lambda _: job)
+    monkeypatch.setattr(dc, '_save_job', lambda *args: None)
+    dc.dub_use_downloaded_captions('job')
+    request = SimpleNamespace(source_lang=None, job_id='job', segments=[])
+    assert dt._resolve_source_lang(request) == 'tl'
+
+
 @pytest.mark.parametrize('kind, expected', [('srt', 'en'), ('captions', 'nl')])
 def test_imported_subtitles_clear_stale_asr_unknown_marker(monkeypatch, kind, expected):
     import io
