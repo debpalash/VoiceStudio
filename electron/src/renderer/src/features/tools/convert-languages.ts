@@ -1,6 +1,6 @@
 /**
  * Language-picker names whose speech `/convert` can pin for Whisper-family ASR
- * (`_whisper_language` in backend/api/routers/voice_convert.py). Every other
+ * (`whisper_language` in backend/services/dub_language.py). Every other
  * language would silently fall back to auto-detection, so the picker disables
  * it. `tests/test_voice_convert.py` keeps this list in sync with the backend.
  */
