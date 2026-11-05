@@ -180,3 +180,14 @@ test('setup never edits profiles for a command owned by another installation', (
   expect(existsSync(join(f.home, '.zshrc'))).toBe(false);
   expect(existsSync(state)).toBe(false);
 });
+
+test('a setup that failed halfway is finished on the next launch, not marked done', () => {
+  const f = fixture();
+  const state = join(f.home, 'terminal-command.json');
+  // The first launch wrote .profile, then failed before .zshrc.
+  writeFileSync(join(f.home, '.profile'), '\n# VoiceStudio terminal command\nexport PATH\n');
+  expect(terminalCommandStatus(f).onPath).toBe(false); // Settings offers the repair
+  expect(setUpTerminalCommand(f, state)).toMatchObject({ onPath: true });
+  expect(readFileSync(join(f.home, '.zshrc'), 'utf8')).toContain('.local/bin');
+  expect(readFileSync(join(f.home, '.profile'), 'utf8').match(/# VoiceStudio/g)).toHaveLength(1);
+});

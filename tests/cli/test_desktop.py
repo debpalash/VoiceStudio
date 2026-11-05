@@ -62,8 +62,9 @@ class DesktopTests(unittest.TestCase):
                          ([], ['--ozone-platform', 'wayland']))
         self.assertEqual(desktop.split_arguments(['voices', '--no-sandbox']),
                          (['voices', '--no-sandbox'], []))
-        with self.assertRaises(CLIError):
-            desktop.split_arguments(['--user-data-dir'])
+        for missing in (['--user-data-dir'], ['--user-data-dir=', 'voices', 'list']):
+            with self.assertRaises(CLIError):
+                desktop.split_arguments(missing)
 
     def test_explicit_missing_app_does_not_fall_back_to_real_app(self):
         with patch.object(desktop, 'desktop_candidates', side_effect=AssertionError('must not discover')):

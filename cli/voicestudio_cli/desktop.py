@@ -52,6 +52,8 @@ def split_arguments(argv):
         if not commands and name in DESKTOP_SWITCHES:
             desktop.append(item)
         elif not commands and name in DESKTOP_VALUES:
+            if item.endswith('='):
+                raise CLIError('usage_error', f'{name} requires a value.', exit_code=2)
             desktop.append(item)
             if '=' not in item:
                 index += 1

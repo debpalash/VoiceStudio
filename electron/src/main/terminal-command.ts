@@ -54,6 +54,25 @@ function commandTarget(options: TerminalCommandOptions): string | null {
   return target && existsSync(target) ? target : null;
 }
 
+/** The profile files "Add to terminal" writes, so each must carry the block. */
+function profilesToConfigure(options: TerminalCommandOptions): string[] {
+  const files = PROFILES.filter(
+    (file) =>
+      // Do not create a profile for a shell the user does not use, except the
+      // POSIX login profile and, on macOS, zsh's (its default shell skips .profile).
+      file === '.profile' ||
+      (options.platform === 'darwin' && file === '.zshrc') ||
+      existsSync(join(options.home, file)),
+  ).map((file) => join(options.home, file));
+  if (existsSync(join(options.home, '.config/fish')))
+    files.push(join(options.home, '.config/fish/conf.d/voicestudio.fish'));
+  return files;
+}
+
+function onSearchPath(options: TerminalCommandOptions): boolean {
+  return (options.path ?? '').split(':').includes(join(options.home, '.local/bin'));
+}
+
 function commandPath(home: string): string {
   return join(home, '.local/bin', 'voicestudio');
 }
@@ -103,41 +122,29 @@ export function terminalCommandStatus(options: TerminalCommandOptions): Terminal
   } catch {
     linked = false;
   }
-  const directory = join(options.home, '.local/bin');
-  const configured = PROFILES.some((file) => {
+  // Every profile must carry the block: a setup that stopped halfway is not done.
+  const configured = profilesToConfigure(options).every((file) => {
     try {
-      return readFileSync(join(options.home, file), 'utf8').includes(PROFILE_MARKER);
+      const text = readFileSync(file, 'utf8');
+      return file.endsWith('.fish') || text.includes(PROFILE_MARKER);
     } catch {
       return false;
     }
   });
-  return {
-    supported: Boolean(target),
-    linked,
-    onPath: configured || (options.path ?? '').split(':').includes(directory),
-    command,
-  };
+  return { supported: Boolean(target), linked, onPath: configured || onSearchPath(options), command };
 }
 
 /** The user's explicit "add to my terminal" action: idempotent profile lines. */
 export function addTerminalCommandToPath(options: TerminalCommandOptions): TerminalCommandStatus {
   if (linkTerminalCommand(options) !== 'linked') return terminalCommandStatus(options);
-  for (const file of PROFILES) {
-    const profile = join(options.home, file);
-    const exists = existsSync(profile);
-    // Do not create a profile for a shell the user does not use, except the
-    // POSIX login profile and, on macOS, zsh's (its default shell skips .profile).
-    if (!exists && file !== '.profile' && !(options.platform === 'darwin' && file === '.zshrc'))
-      continue;
-    if (!exists || !readFileSync(profile, 'utf8').includes(PROFILE_MARKER))
+  // Idempotent: a run that failed halfway is completed by the next one.
+  for (const profile of profilesToConfigure(options)) {
+    if (profile.endsWith('.fish')) {
+      mkdirSync(dirname(profile), { recursive: true });
+      if (!existsSync(profile)) writeFileSync(profile, 'fish_add_path --path "$HOME/.local/bin"\n');
+    } else if (!existsSync(profile) || !readFileSync(profile, 'utf8').includes(PROFILE_MARKER)) {
       appendFileSync(profile, PROFILE_LINES);
-  }
-  const fishDirectory = join(options.home, '.config/fish');
-  if (existsSync(fishDirectory)) {
-    mkdirSync(join(fishDirectory, 'conf.d'), { recursive: true });
-    const fishProfile = join(fishDirectory, 'conf.d/voicestudio.fish');
-    if (!existsSync(fishProfile))
-      writeFileSync(fishProfile, 'fish_add_path --path "$HOME/.local/bin"\n');
+    }
   }
   return terminalCommandStatus(options);
 }
@@ -155,8 +162,11 @@ export function setUpTerminalCommand(
 ): TerminalCommandStatus {
   if (linkTerminalCommand(options) !== 'linked' || existsSync(stateFile))
     return terminalCommandStatus(options);
-  const status = terminalCommandStatus(options);
-  const next = status.onPath ? status : addTerminalCommandToPath(options);
+  // Profiles are (re)written unless new shells already search ~/.local/bin; the
+  // state file is written only after every profile write succeeded.
+  const next = onSearchPath(options)
+    ? terminalCommandStatus(options)
+    : addTerminalCommandToPath(options);
   writeFileSync(stateFile, `${JSON.stringify({ schema: 1, configured: true })}\n`);
   return next;
 }

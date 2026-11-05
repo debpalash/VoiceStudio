@@ -73,7 +73,10 @@ def running_backend(default_url):
         raise CLIError('remote_backend',
                        f'VoiceStudio is connected to the remote backend {record["url"]}. Use it with '
                        f'"voicestudio connection set {record["url"]}" and "voicestudio connection auth set --stdin".')
-    for url in ([record['url']] if record else []) + [default_url]:
+    # The default port may belong to another profile; a chosen profile is only
+    # reached through its own published record.
+    fallback = [] if os.environ.get('VOICESTUDIO_USER_DATA') else [default_url]
+    for url in ([record['url']] if record else []) + fallback:
         if healthy(url):
             return url, record if record and record['url'] == url else None
     return None, record
@@ -134,7 +137,7 @@ def stop_backend(default_url):
     record = discovery()
     url = record['url'] if record and not record.get('remote') else None
     if not url or not healthy(url):
-        if healthy(default_url):
+        if not os.environ.get('VOICESTUDIO_USER_DATA') and healthy(default_url):
             raise CLIError('not_app_owned', f'VoiceStudio at {default_url} cannot be stopped from the terminal: it '
                            'was started by an older VoiceStudio app, a source checkout or Docker. Quit it where it '
                            'was started (update VoiceStudio to stop it from the terminal next time).')

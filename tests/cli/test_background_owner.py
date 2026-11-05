@@ -108,6 +108,28 @@ def test_uses_the_published_fallback_port_without_launching(home, monkeypatch):
     assert launch.launches == []
 
 
+def test_an_unpublished_backend_on_the_default_port_is_used(home, monkeypatch):
+    # An older app, a source checkout or Docker publishes no backend.json.
+    tmp_path, backends = home
+    monkeypatch.delenv('VOICESTUDIO_USER_DATA')
+    monkeypatch.setattr(runtime, 'user_data', lambda: tmp_path / 'user-data')
+    backend = Backend(); backends.append(backend)
+    launch = Desktop(); monkeypatch.setattr(runtime, 'desktop_process', launch)
+    assert runtime.LocalClient(backend.url, '', 5, 'voices list').json('GET', '/profiles')[0]['id'] == 'p1'
+    assert launch.launches == []
+
+
+def test_a_chosen_profile_never_borrows_the_default_ports_backend(home, monkeypatch):
+    # VOICESTUDIO_USER_DATA (set by the fixture) selects a profile with nothing running;
+    # the backend on the default port belongs to some other profile.
+    _, backends = home
+    backend = Backend(); backends.append(backend)
+    launch = Desktop(); monkeypatch.setattr(runtime, 'desktop_process', launch)
+    with pytest.raises(CLIError) as error:
+        runtime.LocalClient(backend.url, '', 5, 'status').health()
+    assert error.value.code == 'backend_stopped'
+
+
 def test_starts_the_desktop_app_in_the_background_and_waits_for_it(home, monkeypatch):
     tmp_path, backends = home
 
@@ -184,8 +206,13 @@ def test_stop_leaves_an_open_window_and_external_backends_alone(home, monkeypatc
     launch = Desktop(); monkeypatch.setattr(runtime, 'desktop_process', launch)
     assert runtime.stop_backend(unused_url())['stopped'] is False
     backend = Backend(); backends.append(backend)
-    with pytest.raises(CLIError) as error:
-        runtime.stop_backend(backend.url)
+    # A chosen profile with nothing running: the default port is someone else's.
+    assert runtime.stop_backend(backend.url)['stopped'] is False
+    with monkeypatch.context() as default_profile:
+        default_profile.delenv('VOICESTUDIO_USER_DATA')
+        default_profile.setattr(runtime, 'user_data', lambda: tmp_path / 'user-data')
+        with pytest.raises(CLIError) as error:
+            runtime.stop_backend(backend.url)
     assert error.value.code == 'not_app_owned'
     publish(tmp_path, backend.url, window=True)
     with pytest.raises(CLIError) as error:
