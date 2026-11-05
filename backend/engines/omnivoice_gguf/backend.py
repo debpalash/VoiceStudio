@@ -1077,6 +1077,14 @@ def _iso_to_omnivoice_lang(code: Optional[str]) -> Optional[str]:
     c = code.strip().lower()
     if c in ("auto", "multi", ""):
         return None
+    # App picker labels/tags ("Arabic", "ar", "Chinese (Simplified)") are not
+    # in the pinned resolver's table; send the canonical ID it does accept
+    # instead of an unknown label that silently drops to language-agnostic.
+    from omnivoice.utils.lang_map import APP_LANGUAGE_IDS, APP_LANGUAGE_NAMES
+
+    alias = APP_LANGUAGE_NAMES.get(c) or APP_LANGUAGE_IDS.get(c)
+    if alias:
+        return alias
     return _ISO_TO_OV.get(c, c.capitalize())
 
 

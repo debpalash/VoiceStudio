@@ -116,3 +116,22 @@ def test_auto_preserves_native_selection(monkeypatch, gguf):
 def test_native_compatibility_retains_gpu_capability(gguf):
     """Conservative metadata does not remove native GPU support."""
     assert gguf.OmniVoiceGGUFBackend.gpu_compat == ("cuda", "vulkan", "mps", "cpu")
+
+
+@pytest.mark.parametrize("label,expected", [
+    ("Arabic", "arb"), ("ar", "arb"), ("Kurdish", "kmr"), ("ku", "kmr"),
+    ("Chinese (Simplified)", "zh"), ("Chinese (Traditional)", "zh"),
+    ("Uyghur", "ug"), ("Haitian Creole", "ht"),
+])
+def test_gguf_lang_arg_resolves_app_picker_aliases(monkeypatch, tmp_path, gguf, label, expected):
+    """Picker labels the binary cannot resolve must reach ``--lang`` as IDs (#3692)."""
+    with patch.object(gguf, "_binary_path", return_value=tmp_path / "tts"):
+        argv = gguf.OmniVoiceGGUFBackend()._build_argv(
+            base=Path("model.gguf"), tokenizer=Path("codec.gguf"),
+            out_path=Path("out.wav"), ref_audio=None, ref_text=None, language=label)
+    assert argv[argv.index("--lang") + 1] == expected
+
+
+def test_gguf_lang_arg_keeps_plain_iso_mapping(gguf):
+    assert gguf._iso_to_omnivoice_lang("fr") == "French"
+    assert gguf._iso_to_omnivoice_lang("auto") is None
