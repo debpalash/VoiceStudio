@@ -40,6 +40,8 @@
     "src/shared/api/donation.ts",
     "src/shared/api/authSession.ts",
     "src/shared/utils/runCrashRecord.ts",
+    "src/shared/utils/backendOutput.ts",
+    "src/shared/utils/installFailure.ts",
     "src/shared/utils/nativeExit.ts",
     "src/shared/utils/backendContact.ts",
     "src/shared/utils/backendStage.ts",

@@ -48,6 +48,104 @@ Before digging through the entries below, let the app diagnose itself:
   the engine. Subprocess engines report memory visibility as false because
   their accelerator allocations belong to the child process.
 
+## Install failure codes
+
+On Windows, the setup screen warns before the download if Smart App Control is on, and setup runs the pinned Python once before downloading packages, so a blocked machine finds out early. If you opt in to anonymous stats, which is off unless you say yes, setup sends the code and setup stage with the app version, platform and install channel. File names, antivirus names and logs are never part of it.
+
+Install and startup failures show a code on the failure screen and in the in-app report. Reports include the facts behind the code, and you review them on GitHub before submitting. Nothing is sent otherwise. A failure with no code means VoiceStudio has no evidence for a specific cause yet; the report still has the raw message.
+
+### `WINDOWS_APP_CONTROL_BLOCKED`
+
+Windows Smart App Control, WDAC or AppLocker refused to run the engine or load one of its files. Antivirus exclusions cannot help. With Smart App Control, either turn it off (Windows Security → App & browser control → Smart App Control settings), connect VoiceStudio to an engine on another computer, or run the engine in WSL or [Docker](docker.md). On a work PC, ask IT to allow the runtime folder.
+
+### `ANTIVIRUS_BLOCKED`
+
+Your antivirus quarantined or refused an engine file. Restore the file, add the runtime folder to its exclusions, then retry.
+
+### `EXEC_REFUSED`
+
+The OS refused to run the engine and left no evidence of what refused it. Add the runtime folder to your security software's exclusions, make sure it is not in a cloud-synced folder, then retry. If it persists, send the in-app report: it records the program, its signature and any blocks Windows logged.
+
+### `GATEKEEPER_QUARANTINE`
+
+macOS quarantined the engine. See [Gatekeeper quarantine](macos.md#gatekeeper-quarantine).
+
+### `EXEC_NOEXEC_MOUNT`
+
+The runtime folder is on a drive mounted with `noexec`. Choose a folder on another drive, or remount without `noexec`.
+
+### `RUNTIME_DOWNLOAD_STALLED`
+
+A runtime download received no data for a long time. Retry keeps finished packages and resumes large multi-connection downloads, but other partial downloads start again. Try another network, turn off your VPN or choose another download region.
+
+### `RUNTIME_DOWNLOAD_INTERRUPTED`
+
+The connection dropped during a runtime download, as in `peer closed connection without sending TLS close_notify`. Retry keeps finished packages and resumes large multi-connection downloads, but other partial downloads start again. The same advice as `RUNTIME_DOWNLOAD_STALLED` applies if it repeats.
+
+### `DISK_FULL`
+
+The drive holding the runtime is full. Free space or choose another folder, then retry.
+
+### `RUNTIME_FOLDER_DENIED`
+
+VoiceStudio cannot write to the runtime folder. Choose another folder, or fix the folder's permissions.
+
+### `RUNTIME_FILES_LOCKED`
+
+Another program has runtime files open, usually a second VoiceStudio or a security scan. Close it, wait for the scan to finish, then retry.
+
+### `RUNTIME_IN_SYNCED_FOLDER`
+
+The runtime is inside OneDrive, Dropbox, iCloud Drive, Google Drive or Nextcloud, whose placeholders and locks break it. Move it to a plain local folder.
+
+### `SYSTEM_LIBRARY_PROBLEM`
+
+A system library the engine needs is missing or too old. The setup screen names it; see the [Linux guide](linux.md).
+
+### `UNSUPPORTED_PLATFORM`
+
+This computer cannot run the local engine, or this is the wrong download for it. See the [macOS guide](macos.md), or connect to an engine on another computer.
+
+### `SOURCE_ENV_INCOMPLETE`
+
+This source checkout's `.venv` is missing or incomplete. Run `bun run setup:api` in the checkout, let it finish, then press Retry.
+
+### `BROKEN_VENV`
+
+The managed Python environment is damaged and automatic repair did not fix it. Use **Clean & Retry** on the setup screen.
+
+### `NATIVE_ACCESS_VIOLATION`
+
+The engine crashed below Python (`0xC0000005` or `SIGSEGV`). Update your GPU driver and try CPU mode. Send the in-app report if it persists.
+
+### `NATIVE_ILLEGAL_INSTRUCTION`
+
+The engine hit an instruction this computer could not run (`0xC000001D` or `SIGILL`). The processor may lack a feature its libraries need. Send the in-app report with your processor model.
+
+### `NATIVE_CRASH`
+
+The engine crashed below Python with another native fault. Send the in-app report: it carries the exit code.
+
+### `STARTUP_TIMEOUT_SILENT`
+
+The engine printed nothing before the startup budget ran out, usually a slow disk or a security scan of new files. Retry, exclude the runtime folder from real-time scanning, or raise `OMNIVOICE_STARTUP_BUDGET_S`.
+
+### `STARTUP_TIMEOUT_OUTPUT`
+
+The engine was still loading when the startup budget ran out. Close memory-heavy apps and retry. Later starts are much faster.
+
+### `BACKEND_STARTUP_FAILED`
+
+The engine stopped at a named startup step. The message says which; send the in-app report if it is not something you can change.
+
+### `PORT_IN_USE`
+
+Another program holds the engine's port. See [Backend cannot bind its local port](#backend-cannot-bind-its-local-port).
+
+### `ROCM_NOT_CONFIGURED`
+
+An AMD GPU needs ROCm, which is missing or incomplete. See [Windows ROCm](windows-rocm.md) or the [Linux guide](linux.md).
+
 ## Backend cannot bind its local port
 
 Windows can reserve port ranges even when no process is listening. If the OS
@@ -465,7 +563,7 @@ Russia, sometimes on corporate proxies.
 
 **Fix:** see [linux.md#restricted-networks-china--russia](linux.md#restricted-networks-china--russia)
 (same env vars work on macOS and Windows — `UV_PYTHON_INSTALL_MIRROR`,
-`UV_HTTP_TIMEOUT=120`, `UV_HTTP_RETRIES=5`, `UV_PYTHON_PREFERENCE=only-system`).
+`UV_HTTP_TIMEOUT=900`, `UV_HTTP_RETRIES=5`, `UV_PYTHON_PREFERENCE=only-system`).
 
 **Linked issues:**
 [#57](https://github.com/debpalash/VoiceStudio/issues/57),
@@ -1217,7 +1315,7 @@ VoiceStudio now tries, in order: the default GitHub host → a gh-proxy mirror �
    setup uses your system proxy, or `HTTPS_PROXY` when it is set. See
    [First-run setup is slow or stalls on a download](#first-run-setup-is-slow-or-stalls-on-a-download).
 5. The bootstrap already raises the network budget for you
-   (`UV_HTTP_TIMEOUT=120`, `UV_HTTP_CONNECT_TIMEOUT=30`, `UV_HTTP_RETRIES=5`);
+   (`UV_HTTP_TIMEOUT=900`, `UV_HTTP_CONNECT_TIMEOUT=30`, `UV_HTTP_RETRIES=5`);
    you can raise them further in the environment if a mirror is very slow.
 
 **Linked issues:** [#130](https://github.com/debpalash/VoiceStudio/issues/130), [#60](https://github.com/debpalash/VoiceStudio/issues/60), [#57](https://github.com/debpalash/VoiceStudio/issues/57)
@@ -1231,7 +1329,7 @@ low speed (about 1 MB/s) on a fast connection, or shows **No data from
 **What the screen shows:** while dependencies download, the setup screen names
 the host the current download comes from. When no data has arrived for 45
 seconds, it says the download has stalled and names that host. The setup log
-(**Details**, and `bootstrap.log` afterwards; see
+(**Details** or **Download setup log**; see
 [Reading the first-run install log](#reading-the-first-run-install-log-after-setup-finishes))
 records each source host, a progress line every 30 seconds, and when the
 download stalled or resumed. Attach those lines to a bug report.
@@ -1324,20 +1422,55 @@ The Activity panel on the first-run screen shows the install as it happens, and
 that screen closes the moment setup succeeds — so it is not where you go
 afterwards to check what was installed, or to attach the log to a bug report.
 
-The same lines are written to **`bootstrap.log`**, beside the backend logs:
+Electron retains a redacted, timestamped **`setup.log`** across retries and app
+restarts. **Download setup log** works during installation, after failure, and
+when resuming an interrupted installation, before the backend is available.
+It saves `voicestudio-setup.log` to a location you choose. Nothing is uploaded.
+Normal app shutdown waits for pending setup log writes before exiting.
+
+Default locations of the retained log (portable/profile configurations may differ):
 
 | Platform | Location |
 |---|---|
-| macOS | `~/Library/Logs/OmniVoice/bootstrap.log` |
-| Windows | `%LOCALAPPDATA%\OmniVoice\Logs\bootstrap.log` |
-| Linux | `~/.local/state/OmniVoice/bootstrap.log` |
+| macOS | `~/Library/Application Support/VoiceStudio/setup.log` |
+| Windows | `%APPDATA%\VoiceStudio\setup.log` |
+| Linux | `~/.config/VoiceStudio/setup.log` |
 
-`OMNIVOICE_LOG_DIR` moves it, along with the other logs.
+The log includes attempt times, phases, download hosts, effective uv timeouts,
+proxy presence (not proxy credentials), progress, connection-check results, and
+error chains. Export adds the app version, OS, architecture and current status.
+Credentials, signed URL query strings and home-directory usernames are redacted.
+The retained history is bounded: when full, it keeps the initial context and
+latest lines, marking omitted content. Review the file before attaching it.
 
-It covers the current run only — it is truncated when a bootstrap starts, so a
-retry replaces the previous attempt rather than appending to it. If you need
-the log from an attempt that has already been superseded, copy it before
-retrying.
+After **five minutes without download progress**, setup offers **Report a bug**,
+**Get help on Discord**, and **Check download connection**. These also appear
+immediately after an installation failure. The warning clears when progress
+resumes; it does not cancel the installation. GitHub opens a prefilled report
+for you to review and submit; attach the downloaded log manually. Discord opens
+the official server. No report or log is submitted automatically.
+
+**Check download connection** makes a user-requested, bounded sample download
+from the affected package's pinned URL, using setup's proxy settings. It requests
+only artifacts from the lockfile compiled into the app, so changing a local
+runtime lockfile cannot redirect the diagnostic request. The check requests
+256 KiB and stops after at most 15 seconds, including connection setup. It can
+identify a blocked or failing package host; a successful sample does not prove
+that a multi-gigabyte download will finish. If no matching artifact is known,
+the check reports that it is unavailable instead of testing an unrelated host.
+The existing Auto region speed check only compares PyPI and its regional mirror;
+it does not choose a mirror for PyTorch's own servers.
+
+Setup defaults to `UV_HTTP_TIMEOUT=900` (15 minutes),
+`UV_HTTP_CONNECT_TIMEOUT=30`, and `UV_HTTP_RETRIES=5` for uv commands, including
+sync retries and fallbacks. Explicit environment overrides are preserved.
+The five-minute support prompt is independent of these timeouts. A large file
+may take longer than 15 minutes in total while continuing to make progress.
+
+If the error chain ends with `cannot decrypt peer's message`, the package
+connection failed while reading encrypted data. The preceding cache-write error
+does not by itself mean the disk is full. Resume to try again, and share the
+setup log if it repeats; completed downloads are retained.
 
 ## RTX 50-series (Blackwell, `sm_120`): backend never starts
 
@@ -1392,9 +1525,9 @@ block one even when the app itself is trusted (#3209, #1779). Smart App Control
 has no per-app exceptions. Your options:
 
 - **Turn Smart App Control off** in Windows Security → App & browser control →
-  Smart App Control settings, then restart VoiceStudio. This is a one-way
-  switch: Windows cannot turn Smart App Control back on without a reset or
-  reinstall of Windows.
+  Smart App Control settings, then restart VoiceStudio. Current Windows
+  updates can turn it back on from the same page; older Windows versions may
+  need a reset to re-enable it.
 - **Keep it on and run the engine where it does not apply:** a WSL2 Linux distro
   or [Docker](docker.md) on the same PC (both run Linux binaries, which Smart App
   Control does not check), or another computer, then connect to it in
@@ -1540,7 +1673,7 @@ reconnecting automatically; the workspace stays usable.
   Microsoft → Windows → CodeIntegrity → Operational shows event 3077 for it.
   Unlike antivirus it has **no per-app exceptions**, so an exclusion cannot help.
   Either turn it off (Windows Security → App & browser control → Smart App
-  Control settings; Windows cannot turn it back on without a reset) or connect
+  Control settings) or connect
   VoiceStudio to an engine running on another computer. The app says this only
   when it reads Smart App Control as on or in evaluation
   (`VerifiedAndReputablePolicyState` 1 or 2 under

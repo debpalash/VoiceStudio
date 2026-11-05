@@ -1,5 +1,9 @@
 # Implementation Spec — TASK #21: GPU compatibility matrix + preflight (no silent CPU fallback)
 
+> **Historical design reference.** Paths, status and instructions below describe
+> the original implementation snapshot. For current behavior see the
+> [engine guides](../../engines/README.md); follow current repository rules for new changes.
+
 ## TL;DR
 
 `gpu_compat` exists today as **static class metadata** on each `TTSBackend` subclass (`backend/services/tts_backend.py:103` ABC default + per-engine overrides), surfaced through `tts_backend.list_backends()` (`:1151`) → `/engines` (`backend/api/routers/engines.py:38`) → `EngineCompatibilityMatrix.jsx` (chips at `:313-317`) as decorative chips. Nothing cross-references those declared targets against the host's **actual** compute device. The result: MLX-Audio advertises `mps` on Linux/Windows where it can never run (issue #390 — `is_available()` at `tts_backend.py:579` is import-guard-only, no MPS check); CUDA-only engines silently fall to CPU via `get_best_device()` (`model_manager.py:195`); the ASR and LLM registries emit no `gpu_compat` at all (`asr_backend.list_backends():991`, `llm_backend.list_backends():169` emit only `{id, display_name, available, reason}`); and there is no warning at engine-select (`engines.py:270`) or any synth time (REST `generation.py:286`, OpenAI-compat `openai_compat.py:252`, WS `tts_stream.py:87`) when the active engine cannot use the user's GPU.
