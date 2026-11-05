@@ -63,6 +63,10 @@ const bridge: VoiceStudioBridge = {
     enqueue: (request) => ipcRenderer.invoke('watch:enqueue', request),
     stop: (token) => ipcRenderer.invoke('watch:stop', token),
   },
+  terminal: {
+    status: () => ipcRenderer.invoke('terminal:status'),
+    addToPath: () => ipcRenderer.invoke('terminal:add-to-path'),
+  },
   app: {
     version: __APP_VERSION__,
     platform: process.platform,

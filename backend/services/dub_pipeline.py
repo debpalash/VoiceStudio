@@ -134,6 +134,10 @@ _dub_jobs_lock = threading.RLock()
 #: that has no row yet — it would appear in no id list otherwise.
 _inflight_jobs: set[str] = set()
 
+from core import activity as _activity  # noqa: E402
+
+_activity.register_probe("dub-ingest", lambda: bool(_inflight_jobs))
+
 #: Recently-deleted job ids, most-recent last. Guarded by ``_dub_jobs_lock``.
 #:
 #: Dict membership alone cannot express "the user withdrew this job" (#1252

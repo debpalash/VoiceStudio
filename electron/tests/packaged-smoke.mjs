@@ -31,10 +31,10 @@ const defaultExecutableCandidates =
           ]
       : targetArch === 'arm64'
         ? [
-            'electron/release/linux-arm64-unpacked/voicestudio-electron',
-            'electron/release/linux-unpacked/voicestudio-electron',
+            'electron/release/linux-arm64-unpacked/voicestudio-desktop',
+            'electron/release/linux-unpacked/voicestudio-desktop',
           ]
-        : ['electron/release/linux-unpacked/voicestudio-electron'];
+        : ['electron/release/linux-unpacked/voicestudio-desktop'];
 const defaultExecutable =
   defaultExecutableCandidates.find((candidate) => existsSync(resolve(repoRoot, candidate))) ??
   defaultExecutableCandidates[0];

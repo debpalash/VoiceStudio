@@ -40,7 +40,7 @@ AGPL-3.0 text in [`LICENSE`](LICENSE).)
 
 These terms cover the VoiceStudio application — the Electron desktop and web
 app (`electron/`), its native desktop helper (`native/`), the FastAPI backend
-(`backend/`), and supporting build / packaging files (`scripts/`, `deploy/`,
+(`backend/`), the unified command package (`cli/`), and supporting build / packaging files (`scripts/`, `deploy/`,
 `.github/`). Electron components adapted from T3 Code keep their MIT notice in
 `electron/T3CODE-LICENSE.txt`.
 
@@ -81,6 +81,10 @@ model currently has the complete evidence needed for this reviewed workflow.
 
 Third-party dependencies retain their own licenses. See `bun.lock`, `uv.lock`,
 and `native/desktop-bridge/Cargo.lock` for the resolved set.
+
+The desktop's terminal command bundles a Python interpreter using PyInstaller
+(build pin in `electron/cli-bundle.mjs`). Interpreter and bootloader notices ship
+under `resources/cli/_internal/licenses` (`Contents/Resources` on macOS).
 
 The locked PyAV 15.1.0 wheels bundle FFmpeg and x264/x265 libraries. PyAV's source
 licence alone does not describe those binaries' terms. The

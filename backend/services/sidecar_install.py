@@ -1033,6 +1033,11 @@ STEP_IDS = (
 _jobs: dict[str, dict] = {}
 _jobs_lock = threading.Lock()
 
+from core import activity as _activity  # noqa: E402
+
+_activity.register_probe("engine-installs", lambda: any(
+    job.get("state") == "running" for job in list(_jobs.values())))
+
 # Guards each job's log deque: the worker thread appends while the status
 # poll copies it, and list() over a deque raises RuntimeError if it mutates
 # mid-iteration. One module-level lock is plenty — appends are tiny and at

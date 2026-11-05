@@ -28,6 +28,10 @@ MAX_RETAINED_EXPORT_BYTES = 2 * bundles.MAX_TOTAL
 _transfer_lock = threading.RLock()
 _active_transfers: dict[Path, int] = {}
 
+from core import activity as _activity  # noqa: E402
+
+_activity.register_probe("project-transfers", lambda: any(count > 0 for count in list(_active_transfers.values())))
+
 
 class _BundleResponse(FileResponse):
     """Keep a retained export alive until its last in-flight download finishes."""
