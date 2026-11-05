@@ -111,11 +111,9 @@
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
 
-<a id="platforms"></a>
-
 ## Pro и Cloud
 
-Всё, что описано выше, бесплатно, работает на вашем оборудовании и не требует аккаунта. Добавьте Pro или Cloud, когда этого потребует работа.
+Всё, что описано выше, бесплатно, работает на вашем оборудовании и не требует аккаунта. Pro и Cloud необязательны.
 
 <table>
   <tr>
@@ -133,18 +131,20 @@
     </td>
     <td width="50%" valign="top">
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
-      Облачный API для речи и дубляжа. GPU не нужен.
+      Облачный API для речи и дубляжа, скоро. GPU не нужен.
       <ul>
         <li>Речь, создание голосов и клонирование голоса с согласия владельца</li>
         <li>Дубляж, транскрипция и аудиокниги</li>
         <li>Расход и кредиты по дням или проектам</li>
         <li>Долгие задачи, которые выполняются сами</li>
       </ul>
-      <sub>В раннем доступе: присоединяйтесь и получите бесплатные кредиты. Настольное приложение остаётся бесплатным и локальным.</sub><br /><br />
+      <sub>Пока недоступно: присоединяйтесь к раннему доступу и получите бесплатные кредиты. Настольное приложение остаётся бесплатным и локальным.</sub><br /><br />
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Вступить в ранний доступ к Cloud →</a></strong>
     </td>
   </tr>
 </table>
+
+<a id="platforms"></a>
 
 ## Платформы
 

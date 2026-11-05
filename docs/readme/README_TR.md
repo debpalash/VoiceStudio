@@ -110,11 +110,9 @@ Motorlarınızı seçin ve yalnızca ihtiyacınız olan modelleri indirin.
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
 
-<a id="platforms"></a>
-
 ## Pro ve Cloud
 
-Yukarıdakilerin tümü ücretsizdir, kendi donanımınızda çalışır ve hesap gerektirmez. İşiniz gerektirdiğinde Pro veya Cloud ekleyin.
+Yukarıdakilerin tümü ücretsizdir, kendi donanımınızda çalışır ve hesap gerektirmez. Pro ve Cloud isteğe bağlıdır.
 
 <table>
   <tr>
@@ -132,18 +130,20 @@ Yukarıdakilerin tümü ücretsizdir, kendi donanımınızda çalışır ve hesa
     </td>
     <td width="50%" valign="top">
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
-      Barındırılan ses ve dublaj API'si. GPU gerekmez.
+      Barındırılan ses ve dublaj API'si çok yakında. GPU gerekmez.
       <ul>
         <li>Konuşma, ses tasarımı ve izinli ses klonlama</li>
         <li>Dublaj, transkripsiyon ve sesli kitaplar</li>
         <li>Güne veya projeye göre kullanım ve kredi</li>
         <li>Kendi kendine çalışan uzun işler</li>
       </ul>
-      <sub>Erken erişimde: katılın, ücretsiz kullanım kredisi kazanın. Masaüstü uygulaması ücretsiz ve yerel kalır.</sub><br /><br />
+      <sub>Henüz kullanılamıyor: erken erişime katılın, ücretsiz kullanım kredisi kazanın. Masaüstü uygulaması ücretsiz ve yerel kalır.</sub><br /><br />
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Cloud erken erişimine katılın →</a></strong>
     </td>
   </tr>
 </table>
+
+<a id="platforms"></a>
 
 ## Platformlar
 

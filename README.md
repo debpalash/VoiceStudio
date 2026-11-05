@@ -111,7 +111,7 @@ Start with **VoiceStudio** (default, powered by k2-fsa/OmniVoice), or pick from 
 
 ## Pro and Cloud
 
-Everything above is free, runs on your own hardware and needs no account. Add Pro or Cloud when the work calls for it.
+Everything above is free, runs on your own hardware and needs no account. Pro and Cloud are optional.
 
 <table>
   <tr>
@@ -129,14 +129,14 @@ Everything above is free, runs on your own hardware and needs no account. Add Pr
     </td>
     <td width="50%" valign="top">
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
-      A hosted voice and dubbing API. No GPU needed.
+      A hosted voice and dubbing API, coming soon. No GPU needed.
       <ul>
         <li>Speech, voice design and voice cloning with consent</li>
         <li>Dubbing, transcription and audiobooks</li>
         <li>Usage and credits by day or project</li>
         <li>Long jobs that run on their own</li>
       </ul>
-      <sub>In early access: join for free usage credits. The desktop app stays free and local.</sub><br /><br />
+      <sub>Not available yet: join early access for free usage credits. The desktop app stays free and local.</sub><br /><br />
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Join Cloud early access →</a></strong>
     </td>
   </tr>

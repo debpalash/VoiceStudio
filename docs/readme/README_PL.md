@@ -110,11 +110,9 @@ Zacznij od **VoiceStudio** (domyślnie, obsługiwanego przez k2-fsa/OmniVoice) l
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
 
-<a id="platforms"></a>
-
 ## Pro i Cloud
 
-Wszystko powyżej jest bezpłatne, działa na Twoim sprzęcie i nie wymaga konta. Dodaj Pro lub Cloud, gdy praca tego wymaga.
+Wszystko powyżej jest bezpłatne, działa na Twoim sprzęcie i nie wymaga konta. Pro i Cloud są opcjonalne.
 
 <table>
   <tr>
@@ -132,18 +130,20 @@ Wszystko powyżej jest bezpłatne, działa na Twoim sprzęcie i nie wymaga konta
     </td>
     <td width="50%" valign="top">
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
-      Hostowane API do mowy i dubbingu. GPU nie jest potrzebne.
+      Hostowane API do mowy i dubbingu, już wkrótce. GPU nie jest potrzebne.
       <ul>
         <li>Mowa, projektowanie głosów i klonowanie głosu za zgodą</li>
         <li>Dubbing, transkrypcja i audiobooki</li>
         <li>Użycie i kredyty według dnia lub projektu</li>
         <li>Długie zadania, które działają samodzielnie</li>
       </ul>
-      <sub>We wczesnym dostępie: dołącz i odbierz darmowe kredyty. Aplikacja na komputer pozostaje bezpłatna i lokalna.</sub><br /><br />
+      <sub>Jeszcze niedostępne: dołącz do wczesnego dostępu i odbierz darmowe kredyty. Aplikacja na komputer pozostaje bezpłatna i lokalna.</sub><br /><br />
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Dołącz do wczesnego dostępu do Cloud →</a></strong>
     </td>
   </tr>
 </table>
+
+<a id="platforms"></a>
 
 ## Platformy
 

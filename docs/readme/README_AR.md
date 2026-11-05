@@ -110,11 +110,9 @@
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
 
-<a id="platforms"></a>
-
 ## Pro وCloud
 
-كل ما سبق مجاني، ويعمل على جهازك، ولا يحتاج إلى حساب. أضف Pro أو Cloud عندما يتطلب عملك ذلك.
+كل ما سبق مجاني، ويعمل على جهازك، ولا يحتاج إلى حساب. Pro وCloud اختياريان.
 
 <table>
   <tr>
@@ -132,18 +130,20 @@
     </td>
     <td width="50%" valign="top">
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
-      واجهة API مستضافة للصوت والدبلجة. لا حاجة إلى GPU.
+      واجهة API مستضافة للصوت والدبلجة، قريبًا. لا حاجة إلى GPU.
       <ul>
         <li>النطق وتصميم الأصوات واستنساخ الصوت بموافقة صاحبه</li>
         <li>الدبلجة والتفريغ النصي والكتب الصوتية</li>
         <li>الاستخدام والأرصدة حسب اليوم أو المشروع</li>
         <li>مهام طويلة تعمل من تلقاء نفسها</li>
       </ul>
-      <sub>في مرحلة الوصول المبكر: انضم واحصل على أرصدة استخدام مجانية. يبقى تطبيق سطح المكتب مجانيًا ومحليًا.</sub><br /><br />
+      <sub>غير متاحة بعد: انضم إلى الوصول المبكر واحصل على أرصدة استخدام مجانية. يبقى تطبيق سطح المكتب مجانيًا ومحليًا.</sub><br /><br />
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">← انضم إلى الوصول المبكر إلى Cloud</a></strong>
     </td>
   </tr>
 </table>
+
+<a id="platforms"></a>
 
 ## المنصات
 

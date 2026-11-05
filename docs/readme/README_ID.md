@@ -110,11 +110,9 @@ Mulailah dengan **VoiceStudio** (default, didukung oleh k2-fsa/OmniVoice), atau 
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
 
-<a id="platforms"></a>
-
 ## Pro dan Cloud
 
-Semua yang di atas gratis, berjalan di perangkat keras Anda sendiri, dan tidak memerlukan akun. Tambahkan Pro atau Cloud saat pekerjaan Anda membutuhkannya.
+Semua yang di atas gratis, berjalan di perangkat keras Anda sendiri, dan tidak memerlukan akun. Pro dan Cloud bersifat opsional.
 
 <table>
   <tr>
@@ -132,18 +130,20 @@ Semua yang di atas gratis, berjalan di perangkat keras Anda sendiri, dan tidak m
     </td>
     <td width="50%" valign="top">
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
-      API suara dan sulih suara yang di-hosting. Tanpa perlu GPU.
+      API suara dan sulih suara yang di-hosting, segera hadir. Tanpa perlu GPU.
       <ul>
         <li>Ucapan, desain suara, dan kloning suara dengan persetujuan</li>
         <li>Sulih suara, transkripsi, dan buku audio</li>
         <li>Penggunaan dan kredit per hari atau proyek</li>
         <li>Pekerjaan panjang yang berjalan sendiri</li>
       </ul>
-      <sub>Dalam akses awal: bergabunglah untuk kredit penggunaan gratis. Aplikasi desktop tetap gratis dan lokal.</sub><br /><br />
+      <sub>Belum tersedia: gabung akses awal untuk kredit penggunaan gratis. Aplikasi desktop tetap gratis dan lokal.</sub><br /><br />
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Gabung akses awal Cloud →</a></strong>
     </td>
   </tr>
 </table>
+
+<a id="platforms"></a>
 
 ## Platform
 

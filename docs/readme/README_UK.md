@@ -110,11 +110,9 @@
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
 
-<a id="platforms"></a>
-
 ## Pro і Cloud
 
-Усе, що описано вище, безкоштовне, працює на вашому обладнанні й не потребує облікового запису. Додайте Pro або Cloud, коли цього потребує робота.
+Усе, що описано вище, безкоштовне, працює на вашому обладнанні й не потребує облікового запису. Pro і Cloud необов’язкові.
 
 <table>
   <tr>
@@ -132,18 +130,20 @@
     </td>
     <td width="50%" valign="top">
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
-      Хмарний API для мовлення й дубляжу. GPU не потрібен.
+      Хмарний API для мовлення й дубляжу, незабаром. GPU не потрібен.
       <ul>
         <li>Мовлення, створення голосів і клонування голосу за згодою</li>
         <li>Дубляж, транскрипція та аудіокниги</li>
         <li>Використання й кредити за днями або проєктами</li>
         <li>Довгі завдання, які виконуються самі</li>
       </ul>
-      <sub>У ранньому доступі: приєднуйтеся й отримайте безкоштовні кредити. Настільний застосунок залишається безкоштовним і локальним.</sub><br /><br />
+      <sub>Поки недоступно: приєднуйтеся до раннього доступу й отримайте безкоштовні кредити. Настільний застосунок залишається безкоштовним і локальним.</sub><br /><br />
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Приєднатися до раннього доступу Cloud →</a></strong>
     </td>
   </tr>
 </table>
+
+<a id="platforms"></a>
 
 ## Платформи
 

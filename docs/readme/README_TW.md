@@ -110,11 +110,9 @@
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
 
-<a id="platforms"></a>
-
 ## Pro 和 Cloud
 
-以上功能全部免費，在你自己的硬體上執行，不需要帳號。工作需要時再加入 Pro 或 Cloud。
+以上功能全部免費，在你自己的硬體上執行，不需要帳號。Pro 和 Cloud 皆為選用。
 
 <table>
   <tr>
@@ -132,18 +130,20 @@
     </td>
     <td width="50%" valign="top">
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
-      託管的語音和配音 API，不需要 GPU。
+      託管的語音和配音 API，即將推出，不需要 GPU。
       <ul>
         <li>語音合成、聲音設計和經同意的聲音複製</li>
         <li>配音、轉錄和有聲書</li>
         <li>依日期或專案查看用量和點數</li>
         <li>長時間工作自動執行</li>
       </ul>
-      <sub>搶先體驗中：加入即可獲得免費使用點數。桌面應用程式依然免費且在本機執行。</sub><br /><br />
+      <sub>尚未開放：加入搶先體驗即可獲得免費使用點數。桌面應用程式依然免費且在本機執行。</sub><br /><br />
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">加入 Cloud 搶先體驗 →</a></strong>
     </td>
   </tr>
 </table>
+
+<a id="platforms"></a>
 
 ## 支援平臺
 

@@ -110,11 +110,9 @@ Beginnen Sie mit **VoiceStudio** (Standard, unterstützt von k2-fsa/OmniVoice) o
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
 
-<a id="platforms"></a>
-
 ## Pro und Cloud
 
-Alles oben ist kostenlos, läuft auf Ihrer eigenen Hardware und braucht kein Konto. Nehmen Sie Pro oder Cloud dazu, wenn Ihre Arbeit es verlangt.
+Alles oben ist kostenlos, läuft auf Ihrer eigenen Hardware und braucht kein Konto. Pro und Cloud sind optional.
 
 <table>
   <tr>
@@ -132,18 +130,20 @@ Alles oben ist kostenlos, läuft auf Ihrer eigenen Hardware und braucht kein Kon
     </td>
     <td width="50%" valign="top">
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
-      Eine gehostete Sprach- und Synchronisations-API. Keine GPU nötig.
+      Eine gehostete Sprach- und Synchronisations-API, kommt bald. Keine GPU nötig.
       <ul>
         <li>Sprachausgabe, Stimmengestaltung und Stimmenklonen mit Einwilligung</li>
         <li>Synchronisation, Transkription und Hörbücher</li>
         <li>Nutzung und Guthaben nach Tag oder Projekt</li>
         <li>Lange Aufträge, die selbstständig laufen</li>
       </ul>
-      <sub>Im Early Access: Jetzt beitreten und kostenloses Nutzungsguthaben erhalten. Die Desktop-App bleibt kostenlos und lokal.</sub><br /><br />
+      <sub>Noch nicht verfügbar: Treten Sie dem Early Access bei und erhalten Sie kostenloses Nutzungsguthaben. Die Desktop-App bleibt kostenlos und lokal.</sub><br /><br />
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Cloud Early Access beitreten →</a></strong>
     </td>
   </tr>
 </table>
+
+<a id="platforms"></a>
 
 ## Plattformen
 

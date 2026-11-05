@@ -111,11 +111,9 @@
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
 
-<a id="platforms"></a>
-
 ## Pro와 Cloud
 
-위의 모든 기능은 무료이며, 내 하드웨어에서 실행되고 계정이 필요 없습니다. 작업에 필요할 때 Pro나 Cloud를 추가하세요.
+위의 모든 기능은 무료이며, 내 하드웨어에서 실행되고 계정이 필요 없습니다. Pro와 Cloud는 선택 사항입니다.
 
 <table>
   <tr>
@@ -133,18 +131,20 @@
     </td>
     <td width="50%" valign="top">
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
-      호스팅형 음성 및 더빙 API. GPU가 필요 없습니다.
+      호스팅형 음성 및 더빙 API, 곧 출시됩니다. GPU가 필요 없습니다.
       <ul>
         <li>음성 합성, 음성 디자인, 동의 기반 음성 복제</li>
         <li>더빙, 전사, 오디오북</li>
         <li>일별 또는 프로젝트별 사용량과 크레딧</li>
         <li>알아서 실행되는 긴 작업</li>
       </ul>
-      <sub>얼리 액세스 중: 참여하면 무료 사용 크레딧을 받습니다. 데스크톱 앱은 계속 무료이며 로컬에서 실행됩니다.</sub><br /><br />
+      <sub>아직 이용할 수 없습니다. 얼리 액세스에 참여하면 무료 사용 크레딧을 받습니다. 데스크톱 앱은 계속 무료이며 로컬에서 실행됩니다.</sub><br /><br />
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Cloud 얼리 액세스 참여 →</a></strong>
     </td>
   </tr>
 </table>
+
+<a id="platforms"></a>
 
 ## 지원 플랫폼
 

@@ -110,11 +110,9 @@
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
 
-<a id="platforms"></a>
-
 ## Pro और Cloud
 
-ऊपर दिया सब कुछ मुफ़्त है, आपके अपने हार्डवेयर पर चलता है और इसके लिए खाते की ज़रूरत नहीं है। जब काम को ज़रूरत हो, तब Pro या Cloud जोड़ें।
+ऊपर दिया सब कुछ मुफ़्त है, आपके अपने हार्डवेयर पर चलता है और इसके लिए खाते की ज़रूरत नहीं है। Pro और Cloud वैकल्पिक हैं।
 
 <table>
   <tr>
@@ -132,18 +130,20 @@
     </td>
     <td width="50%" valign="top">
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
-      आवाज़ और डबिंग के लिए होस्टेड API। GPU की ज़रूरत नहीं।
+      आवाज़ और डबिंग के लिए होस्टेड API, जल्द आ रहा है। GPU की ज़रूरत नहीं।
       <ul>
         <li>स्पीच, वॉइस डिज़ाइन और सहमति से वॉइस क्लोनिंग</li>
         <li>डबिंग, ट्रांसक्रिप्शन और ऑडियोबुक</li>
         <li>दिन या प्रोजेक्ट के अनुसार उपयोग और क्रेडिट</li>
         <li>लंबे काम जो अपने आप चलते हैं</li>
       </ul>
-      <sub>अर्ली एक्सेस में: जुड़ें और मुफ़्त उपयोग क्रेडिट पाएँ। डेस्कटॉप ऐप मुफ़्त और लोकल रहता है।</sub><br /><br />
+      <sub>अभी उपलब्ध नहीं: अर्ली एक्सेस से जुड़ें और मुफ़्त उपयोग क्रेडिट पाएँ। डेस्कटॉप ऐप मुफ़्त और लोकल रहता है।</sub><br /><br />
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Cloud अर्ली एक्सेस से जुड़ें →</a></strong>
     </td>
   </tr>
 </table>
+
+<a id="platforms"></a>
 
 ## प्लेटफार्म
 

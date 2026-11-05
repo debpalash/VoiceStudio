@@ -110,11 +110,9 @@ Begin met **VoiceStudio** (standaard, mogelijk gemaakt door k2-fsa/OmniVoice), o
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
 
-<a id="platforms"></a>
-
 ## Pro en Cloud
 
-Alles hierboven is gratis, draait op je eigen hardware en heeft geen account nodig. Voeg Pro of Cloud toe als je werk daarom vraagt.
+Alles hierboven is gratis, draait op je eigen hardware en heeft geen account nodig. Pro en Cloud zijn optioneel.
 
 <table>
   <tr>
@@ -132,18 +130,20 @@ Alles hierboven is gratis, draait op je eigen hardware en heeft geen account nod
     </td>
     <td width="50%" valign="top">
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
-      Een gehoste API voor spraak en nasynchronisatie. Geen GPU nodig.
+      Een gehoste API voor spraak en nasynchronisatie, binnenkort beschikbaar. Geen GPU nodig.
       <ul>
         <li>Spraak, stemontwerp en stemklonen met toestemming</li>
         <li>Nasynchronisatie, transcriptie en audioboeken</li>
         <li>Gebruik en tegoed per dag of project</li>
         <li>Lange taken die vanzelf doorlopen</li>
       </ul>
-      <sub>In early access: doe mee en krijg gratis gebruikstegoed. De desktop-app blijft gratis en lokaal.</sub><br /><br />
+      <sub>Nog niet beschikbaar: doe mee met early access en krijg gratis gebruikstegoed. De desktop-app blijft gratis en lokaal.</sub><br /><br />
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Doe mee met Cloud early access →</a></strong>
     </td>
   </tr>
 </table>
+
+<a id="platforms"></a>
 
 ## Platformen
 

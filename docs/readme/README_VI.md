@@ -110,11 +110,9 @@ Bắt đầu với **VoiceStudio** (mặc định, được cung cấp bởi k2-
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
 
-<a id="platforms"></a>
-
 ## Pro và Cloud
 
-Mọi thứ ở trên đều miễn phí, chạy trên phần cứng của bạn và không cần tài khoản. Hãy thêm Pro hoặc Cloud khi công việc cần đến.
+Mọi thứ ở trên đều miễn phí, chạy trên phần cứng của bạn và không cần tài khoản. Pro và Cloud là tùy chọn.
 
 <table>
   <tr>
@@ -132,18 +130,20 @@ Mọi thứ ở trên đều miễn phí, chạy trên phần cứng của bạn
     </td>
     <td width="50%" valign="top">
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
-      API giọng nói và lồng tiếng được lưu trữ sẵn. Không cần GPU.
+      API giọng nói và lồng tiếng được lưu trữ sẵn, sắp ra mắt. Không cần GPU.
       <ul>
         <li>Giọng nói, thiết kế giọng và nhân bản giọng khi có sự đồng ý</li>
         <li>Lồng tiếng, phiên âm và sách nói</li>
         <li>Mức dùng và tín dụng theo ngày hoặc dự án</li>
         <li>Tác vụ dài tự chạy</li>
       </ul>
-      <sub>Đang truy cập sớm: tham gia để nhận tín dụng sử dụng miễn phí. Ứng dụng máy tính vẫn miễn phí và chạy cục bộ.</sub><br /><br />
+      <sub>Chưa có sẵn: tham gia truy cập sớm để nhận tín dụng sử dụng miễn phí. Ứng dụng máy tính vẫn miễn phí và chạy cục bộ.</sub><br /><br />
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Tham gia truy cập sớm Cloud →</a></strong>
     </td>
   </tr>
 </table>
+
+<a id="platforms"></a>
 
 ## Nền tảng
 

@@ -111,11 +111,9 @@
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
 
-<a id="platforms"></a>
-
 ## Pro と Cloud
 
-ここまでの機能はすべて無料で、ご自身のハードウェアで動作し、アカウントも不要です。必要になったら Pro や Cloud を追加できます。
+ここまでの機能はすべて無料で、ご自身のハードウェアで動作し、アカウントも不要です。Pro と Cloud は任意です。
 
 <table>
   <tr>
@@ -133,18 +131,20 @@
     </td>
     <td width="50%" valign="top">
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
-      ホスト型の音声・吹き替え API。GPU は不要です。
+      ホスト型の音声・吹き替え API を近日公開。GPU は不要です。
       <ul>
         <li>音声合成、ボイスデザイン、同意に基づくボイスクローン</li>
         <li>吹き替え、文字起こし、オーディオブック</li>
         <li>日別・プロジェクト別の使用量とクレジット</li>
         <li>自動で進む長時間ジョブ</li>
       </ul>
-      <sub>早期アクセス中：参加すると無料の利用クレジットを受け取れます。デスクトップアプリは引き続き無料で、ローカルで動作します。</sub><br /><br />
+      <sub>まだ利用できません。早期アクセスに参加すると無料の利用クレジットを受け取れます。デスクトップアプリは引き続き無料で、ローカルで動作します。</sub><br /><br />
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Cloud の早期アクセスに参加 →</a></strong>
     </td>
   </tr>
 </table>
+
+<a id="platforms"></a>
 
 ## 対応プラットフォーム
 

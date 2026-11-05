@@ -110,11 +110,9 @@
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
 
-<a id="platforms"></a>
-
 ## Pro และ Cloud
 
-ทุกอย่างข้างต้นใช้ได้ฟรี ทำงานบนฮาร์ดแวร์ของคุณเอง และไม่ต้องมีบัญชี เพิ่ม Pro หรือ Cloud เมื่องานของคุณต้องการ
+ทุกอย่างข้างต้นใช้ได้ฟรี ทำงานบนฮาร์ดแวร์ของคุณเอง และไม่ต้องมีบัญชี Pro และ Cloud เป็นตัวเลือกเสริม
 
 <table>
   <tr>
@@ -132,18 +130,20 @@
     </td>
     <td width="50%" valign="top">
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
-      API เสียงและการพากย์แบบโฮสต์ ไม่ต้องใช้ GPU
+      API เสียงและการพากย์แบบโฮสต์ เร็วๆ นี้ ไม่ต้องใช้ GPU
       <ul>
         <li>เสียงพูด การออกแบบเสียง และการโคลนเสียงโดยได้รับความยินยอม</li>
         <li>การพากย์ การถอดเสียง และหนังสือเสียง</li>
         <li>การใช้งานและเครดิตตามวันหรือโปรเจกต์</li>
         <li>งานยาวที่ทำงานได้เอง</li>
       </ul>
-      <sub>อยู่ในช่วงเข้าถึงก่อนใคร: เข้าร่วมเพื่อรับเครดิตใช้งานฟรี แอปเดสก์ท็อปยังคงฟรีและทำงานในเครื่อง</sub><br /><br />
+      <sub>ยังไม่เปิดให้ใช้งาน: เข้าร่วมการเข้าถึงก่อนใครเพื่อรับเครดิตใช้งานฟรี แอปเดสก์ท็อปยังคงฟรีและทำงานในเครื่อง</sub><br /><br />
       <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">เข้าร่วมการเข้าถึงก่อนใครของ Cloud →</a></strong>
     </td>
   </tr>
 </table>
+
+<a id="platforms"></a>
 
 ## แพลตฟอร์ม
 
