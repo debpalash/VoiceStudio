@@ -133,7 +133,9 @@ class TestVideoRetimePlanFor:
     def test_legacy_wins_when_job_strategy_is_stretch_video(self):
         from api.routers.dub_export import _video_retime_plan_for
         job = _smart_fit_job()
+        # Re-rendered with Stretch Video: the Smart Fit plan is stale.
         job["timing_strategy"] = "stretch_video"
+        job["dubbed_tracks"]["de"]["timing_strategy"] = "stretch_video"
         legacy_entry = {"plan": [dict(_PLAN[0])]}
         job["video_stretch_plans"] = {"de": legacy_entry}
         kind, entry = _video_retime_plan_for(job, "de")

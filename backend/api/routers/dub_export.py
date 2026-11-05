@@ -558,9 +558,17 @@ def _build_video_stretch_filter_graph(
 
 def _video_stretch_plan_for(job: dict, lang_code: str) -> dict | None:
     """Return the persisted stretch plan + total durations for `lang_code`,
-    or None if this job didn't use stretch_video mode (or no plan exists).
+    or None if this track wasn't generated in stretch_video mode (or no plan
+    exists).
+
+    The track records its own strategy; ``job["timing_strategy"]`` is only
+    the most recent generate's, so a later language rendered another way
+    must not drop this track's retime. Tracks from before the per-track
+    record fall back to the job-level value.
     """
-    if (job.get("timing_strategy") or "").lower() != "stretch_video":
+    track = (job.get("dubbed_tracks") or {}).get(lang_code) or {}
+    strategy = track.get("timing_strategy") or job.get("timing_strategy")
+    if (strategy or "").lower() != "stretch_video":
         return None
     plans = job.get("video_stretch_plans") or {}
     entry = plans.get(lang_code)
