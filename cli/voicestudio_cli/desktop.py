@@ -29,7 +29,18 @@ launcher_arguments = []
 
 
 def remember_launcher_arguments(arguments):
-    launcher_arguments[:] = [item for item in arguments if item.split('=', 1)[0] not in INTENT_FLAGS]
+    kept, items = [], iter(arguments)
+    for item in items:
+        name, _, value = item.partition('=')
+        if name in INTENT_FLAGS:
+            continue
+        if name == '--user-data-dir':
+            # The CLI must find backend.json where the app it starts will write it;
+            # desktop_process passes the folder on to the app from here.
+            os.environ['VOICESTUDIO_USER_DATA'] = value or next(items)
+            continue
+        kept.append(item)
+    launcher_arguments[:] = kept
 
 
 def split_arguments(argv):

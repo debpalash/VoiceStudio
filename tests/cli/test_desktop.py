@@ -94,6 +94,21 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(popen.call_args.args[0],
                          [str(path), '--no-sandbox', '--ozone-platform', 'x11', desktop.BACKGROUND_FLAG])
 
+    def test_a_chosen_profile_is_used_for_discovery_and_launch(self):
+        from voicestudio_cli import runtime
+        self.addCleanup(desktop.launcher_arguments.clear)
+        profile = self.root / 'custom profile'
+        path = self.executable()
+        for arguments in (['--user-data-dir', str(profile)], ['--user-data-dir=' + str(profile)]):
+            with self.subTest(arguments=arguments), patch.dict(os.environ, {'VOICESTUDIO_DESKTOP_APP': str(path)}), \
+                 patch('voicestudio_cli.__main__.app_version', return_value='9.8.7'), \
+                 patch.object(desktop.subprocess, 'Popen') as popen:
+                self.assertEqual(main([*arguments, 'version']), 0)
+                self.assertEqual(runtime.user_data(), profile)  # where backend.json is read
+                desktop.desktop_process([desktop.BACKGROUND_FLAG])
+                self.assertEqual(popen.call_args.args[0],
+                                 [str(path), desktop.BACKGROUND_FLAG, '--user-data-dir=' + str(profile)])
+
     def test_launch_preserves_environment_and_uses_argument_array(self):
         path = self.executable('app with spaces')
         with patch.dict(os.environ, {'VOICESTUDIO_DESKTOP_APP': str(path), 'CLI_TEST_SETTING': 'value with spaces'}):
