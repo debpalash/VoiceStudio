@@ -9,6 +9,8 @@ const native = vi.hoisted(() => ({
   handlers: new Map<string, (event: unknown, raw: unknown) => Promise<unknown>>(),
   savePath: '',
   failWrites: false,
+  setupLog: vi.fn(async () => 'sanitized setup log'),
+  setupCheck: vi.fn(async () => ({ status: 'unavailable' })),
 }));
 
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -78,6 +80,8 @@ beforeEach(async () => {
       subscribe: () => () => {},
       baseUrl: 'http://127.0.0.1:3900',
       requestHeaders: () => ({}),
+      getSetupDiagnostics: native.setupLog,
+      checkSetupConnection: native.setupCheck,
     } as unknown as BackendSupervisor,
     () => owner as never,
   );
@@ -146,3 +150,19 @@ it('carries the backend error body when a backend download fails (#2616)', async
   });
   expect(await readFile(native.savePath, 'utf8')).toBe('complete previous export');
 });
+
+it.each([CHANNELS.backendSetupDiagnostics, CHANNELS.backendCheckSetupConnection])(
+  'restricts setup diagnostics to the trusted main frame (%s)',
+  async (channel) => {
+    const handler = native.handlers.get(channel)!;
+    expect(() =>
+      handler({ ...event, senderFrame: { url: 'https://example.com' } }, undefined),
+    ).toThrow();
+    const result = await handler(event, undefined);
+    expect(result).toEqual(
+      channel === CHANNELS.backendSetupDiagnostics
+        ? 'sanitized setup log'
+        : { status: 'unavailable' },
+    );
+  },
+);

@@ -98,6 +98,9 @@ Screens use short labels and icons; hints live behind one info action. Settings
 uses distinct row icons without explanatory paragraphs. Pickers mark the current
 selection, use normal text colors, and show palette color swatches. Errors show a short title, the localized cause and recovery step, and a recovery action.
 Workers retain structured error keys and parameters across resumes.
+Voice creation keeps its Create, progress and Cancel controls above the dock.
+Decoding, transcription and clone-preview inference report progress there;
+recording and file replacement stay disabled until the operation ends.
 
 Connect supports CameraX/ZXing QR scanning, manual URL/PIN/API-key entry, saved
 hosts and editable labels; a successful scan reveals the address, PIN and Connect action.

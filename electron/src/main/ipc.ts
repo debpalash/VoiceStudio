@@ -65,6 +65,8 @@ export const CHANNELS = {
   backendUseDefaultRuntimeLocation: 'backend:useDefaultRuntimeLocation',
   backendGetConnection: 'backend:getConnection',
   backendHostSnapshot: 'backend:hostSnapshot',
+  backendSetupDiagnostics: 'backend:setupDiagnostics',
+  backendCheckSetupConnection: 'backend:checkSetupConnection',
   backendTestRemote: 'backend:testRemote',
   backendUseRemote: 'backend:useRemote',
   backendUseLocal: 'backend:useLocal',
@@ -363,6 +365,14 @@ export function registerIpc(
     const owner = getMainWindow();
     assertTrustedMainFrame(event, owner);
     return supervisor.hostSnapshot();
+  });
+  ipcMain.handle(CHANNELS.backendSetupDiagnostics, (event) => {
+    assertTrustedMainFrame(event, getMainWindow());
+    return supervisor.getSetupDiagnostics();
+  });
+  ipcMain.handle(CHANNELS.backendCheckSetupConnection, (event) => {
+    assertTrustedMainFrame(event, getMainWindow());
+    return supervisor.checkSetupConnection();
   });
   ipcMain.handle(CHANNELS.backendTestRemote, async (event, raw: unknown) => {
     const owner = getMainWindow();

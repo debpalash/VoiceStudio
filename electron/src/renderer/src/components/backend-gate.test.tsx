@@ -491,6 +491,51 @@ it('names no cause for an unrecognised failure', () => {
   expect(screen.queryByTestId('backend-cause')).not.toBeInTheDocument();
 });
 
+it('leads with the fix for a coded failure and keeps Report available', () => {
+  backendStatus.message = 'Could not start C:\\rt\\python.exe: spawn UNKNOWN';
+  backendStatus.failure = {
+    code: 'WINDOWS_APP_CONTROL_BLOCKED',
+    stage: 'failed',
+    smartAppControl: 'on',
+  };
+
+  renderGate('failed');
+
+  expect(screen.getByTestId('backend-cause')).toHaveTextContent(i18n.t('backend.cause_smart_app_control'));
+  expect(
+    screen.getAllByTestId('backend-hint').map((hint) => hint.textContent),
+  ).not.toContain(i18n.t('backend.hint_spawn_blocked'));
+  expect(screen.getByTestId('backend-failure-code')).toHaveTextContent(
+    'WINDOWS_APP_CONTROL_BLOCKED',
+  );
+  expect(screen.getByRole('button', { name: i18n.t('reportBug.label') })).toBeInTheDocument();
+  delete backendStatus.failure;
+});
+
+it('warns about Smart App Control before the download without blocking install', () => {
+  backendStatus.smartAppControlWarning = true;
+  backendStatus.message = undefined;
+
+  renderGate('setup_required');
+
+  expect(screen.getByTestId('setup-smart-app-control')).toHaveTextContent(
+    i18n.t('backend.setup_smart_app_control'),
+  );
+  expect(screen.getByRole('button', { name: i18n.t('common.resume') })).toBeEnabled();
+  delete backendStatus.smartAppControlWarning;
+});
+
+it('shows download guidance on a failed setup', () => {
+  backendStatus.message = 'Runtime setup exited with code 1';
+  backendStatus.failure = { code: 'RUNTIME_DOWNLOAD_INTERRUPTED', stage: 'setup_required' };
+
+  renderGate('setup_required');
+
+  expect(screen.getByTestId('backend-cause')).toHaveTextContent(i18n.t('backend.cause_download'));
+  expect(screen.getByTestId('backend-hint')).toHaveTextContent(i18n.t('backend.hint_download'));
+  delete backendStatus.failure;
+});
+
 it('shows one status pill with the stage and elapsed time while starting', () => {
   backendStatus.elapsedMs = 12_000;
 

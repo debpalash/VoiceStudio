@@ -1,4 +1,5 @@
 import type { HostSnapshotLike } from '../shared/utils/hostSnapshot';
+import type { InstallFailure } from '../shared/utils/installFailure';
 /**
  * The contextBridge surface exposed to the renderer as `window.voicestudio`.
  *
@@ -30,6 +31,12 @@ export interface NativeCrashRecord {
 }
 export interface BackendStatus {
   lastCrash?: NativeCrashRecord;
+  /** Set on the setup screen when Windows Smart App Control may block the engine. */
+  smartAppControlWarning?: boolean;
+  /** OMNIVOICE_ANALYTICS_DISABLED is set: nothing may be sent, whatever was chosen. */
+  analyticsDisabled?: boolean;
+  /** Code and facts for the current install or startup failure. */
+  failure?: InstallFailure;
   stage: BackendStage;
   setupIssue?:
     | 'space'
@@ -350,6 +357,16 @@ export interface AccountPublicState {
   links: { profile: string; plan: string } | null;
 }
 
+export interface SetupConnectionCheck {
+  status: 'ok' | 'failed' | 'unavailable';
+  host?: string;
+  bytes?: number;
+  elapsedMs?: number;
+  bytesPerSecond?: number;
+  error?: string;
+  checkedAt: number;
+}
+
 export interface VoiceStudioBridge {
   /** VoiceStudio Cloud account; never carries a token. */
   account: {
@@ -431,6 +448,8 @@ export interface VoiceStudioBridge {
     useDefaultRuntimeLocation(): Promise<RuntimeLocation>;
     getConnection(): Promise<BackendConnection>;
     getHostSnapshot(): Promise<HostSnapshotLike>;
+    getSetupDiagnostics(): Promise<string>;
+    checkSetupConnection(): Promise<SetupConnectionCheck>;
     testRemote(input: { url: string; apiKey: string }): Promise<RemoteBackendProbe>;
     useRemote(input: { url: string; apiKey: string }): Promise<RemoteBackendProbe>;
     useLocal(): Promise<BackendConnection>;

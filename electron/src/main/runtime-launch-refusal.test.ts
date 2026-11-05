@@ -93,7 +93,8 @@ it.each([
     await value.start();
 
     expect(value.status.stage).toBe('failed');
-    expect(value.status.managed).toBe(false);
+    // The refused interpreter is the managed runtime's, not an attached backend.
+    expect(value.status.managed).toBe(true);
     expect(value.status.message).toContain(runtimePython(join(host.data, 'runtime', 'project')));
     expect(value.status.message?.includes('Windows Smart App Control blocked it.')).toBe(namesSac);
     expect(value.status.message).not.toContain('repair the local runtime');

@@ -44,8 +44,11 @@ Electron publication uses these GitHub Actions secrets:
   `ELECTRON_MAC_APP_STORE_PROVISIONING_PROFILE` for private MAS packaging.
   These are separate from Developer ID credentials and do not authorize upload
   or publication.
-- `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` (not the Apple ID login password)
-  and `APPLE_TEAM_ID` for macOS notarization and stapling.
+- `APPLE_API_KEY` (raw `.p8` PEM text), `APPLE_API_KEY_ID` and
+  `APPLE_API_ISSUER` for macOS notarization and stapling. Use an App Store
+  Connect team key with Developer access. The packaging step writes the key
+  into a private temporary file and removes it on success or failure. Apple
+  ID passwords are not used by this workflow.
 - `ELECTRON_WINDOWS_CSC_LINK` and `ELECTRON_WINDOWS_CSC_KEY_PASSWORD` for
   Windows Authenticode signing. The macOS certificate cannot sign Windows apps.
 - `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID` and
@@ -347,3 +350,14 @@ To turn it on (Settings → Rules → Rulesets → `main`):
 3. Merge PRs with **Merge when ready** (the queue button) instead of **Merge**. `gh pr merge N --merge` joins the queue once it is on.
 
 Try it on one PR first. If a queued PR stalls, a required check name in the ruleset no longer matches a job or status the queue commit reports: compare the ruleset with `tests/test_merge_queue.py`.
+
+### Fork container publishing
+
+The Docker workflow publishes canonical `voicestudio`, compatibility
+`omnivoice-studio`, and `voicestudio-buildcache` packages under the lowercase
+repository owner on GHCR. Forks publish only into their own GHCR namespace;
+upstream remains under `ghcr.io/debpalash`. CUDA, ROCm and CUDA arm64 share this
+namespace rule, including registry layer caches and manual release backfills.
+Docker Hub publishing still requires its existing explicit credentials and
+retains its configured image coordinate. Publishing a preview from a fork does
+not publish an upstream application release.

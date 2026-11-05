@@ -4,6 +4,9 @@ import { runtimeProjectReady } from './runtime-readiness';
 import { runRuntimeProbe } from './runtime-probe';
 import { RuntimeLaunchRefusedError } from './runtime-launch-refusal';
 import { pypiFilesHost } from './pypi-mirror';
+import { SetupLog, scrubSetupText } from './setup-log';
+import { checkSetupConnection, setupProbeUrl } from './setup-connection-check';
+import { downloadProxyEnv } from './proxy-env';
 import {
   installRuntime,
   MISSING_SYSTEM_LIBRARY_CODE,
@@ -12,6 +15,8 @@ import {
   promoteLegacyRuntimeCaches,
   runtimeDependenciesReady,
   runtimeDownloadHosts,
+  resolveTorchVariant,
+  managedPythonRequest,
   runtimeInstallInterrupted,
   runtimePython,
   runtimeUvCache,
@@ -19,6 +24,13 @@ import {
   type RuntimeRegion,
 } from './runtime-project';
 import { collectHostSnapshot, freeGb, type HostSnapshot } from './host-snapshot';
+import { collectTrustFacts, programBasename, runProbe, type TrustFacts } from './install-doctor';
+import {
+  classifyInstallFailure,
+  launchRefused,
+  refusedProgram,
+  type InstallFailure,
+} from '../shared/utils/installFailure';
 import { runtimeSetupSupported } from './distribution';
 import { bundledPython, bundledRuntimeEnv } from './bundled-runtime';
 import { asciiSafePthFiles } from './pth-ascii';
@@ -48,7 +60,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { access, rm, stat } from 'node:fs/promises';
-import { cpus, homedir, totalmem } from 'node:os';
+import setupLock from '../../../uv.lock?raw';
+import { cpus, homedir, release, totalmem } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { app } from 'electron';
 import { APP_ORIGIN } from './protocol';
@@ -58,6 +71,7 @@ import type {
   BackendStatus,
   NativeCrashRecord,
   RemoteBackendProbe,
+  SetupConnectionCheck,
 } from '../preload/index.d';
 import {
   loadRemoteBackend,
@@ -710,6 +724,21 @@ export function smartAppControlFromRegistry(output: string): SmartAppControl {
   );
 }
 
+/** The diagnosis runs beside the failure screen, so it must not block the main process. */
+async function readSmartAppControlAsync(): Promise<SmartAppControl> {
+  const output = await runProbe(
+    'reg.exe',
+    [
+      'query',
+      String.raw`HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy`,
+      '/v',
+      'VerifiedAndReputablePolicyState',
+    ],
+    { timeoutMs: 3000 },
+  );
+  return smartAppControlFromRegistry(output);
+}
+
 /** Read only after a launch was already refused, so the 3 s cap never delays a healthy start. */
 function readSmartAppControl(platform = process.platform): SmartAppControl {
   if (platform !== 'win32') return 'unknown';
@@ -836,6 +865,9 @@ export class BackendSupervisor extends EventEmitter<{
   private testedRemote: { url: string; session: RemoteSession | null } | null = null;
 
   private stage: BackendStage = 'idle';
+  private failure: InstallFailure | undefined;
+  private failureDiagnosis = 0;
+  private setupSmartAppControl: SmartAppControl | undefined;
   private managed = false;
   private message: string | undefined;
   private exitCode: number | null | undefined;
@@ -880,6 +912,8 @@ export class BackendSupervisor extends EventEmitter<{
   private runtimeRepairFailed = false;
   private setupPhase: BackendStatus['setupPhase'] = 'checking';
   private readonly setupProgress = new SetupProgressTracker();
+  private readonly setupLog = new SetupLog(join(app.getPath('userData'), 'setup.log'));
+  private setupCheck: Promise<SetupConnectionCheck> | null = null;
   private installation: AbortController | null = null;
   private cleaningRuntime = false;
   private runtimeProject: string | null = null;
@@ -895,6 +929,57 @@ export class BackendSupervisor extends EventEmitter<{
       url: this.baseUrl,
       authenticated: Boolean(this.activeSession()),
     };
+  }
+
+  async getSetupDiagnostics(): Promise<string> {
+    return scrubSetupText(
+      [
+        `VoiceStudio ${__APP_VERSION__} (build ${__BUILD_COMMIT__}) setup diagnostics`,
+        `Exported: ${new Date().toISOString()}`,
+        `OS: ${process.platform} ${release()} (${process.arch})`,
+        `Stage: ${this.stage}; phase: ${this.setupPhase}; region: ${this.runtimeRegion}`,
+        `Free space (GiB, last checked): ${this.runtimeFreeGib ?? 'unknown'}`,
+        `Progress: ${JSON.stringify(this.setupProgress.snapshot())}`,
+        this.message ?? '',
+        ...(this.failure ? [`Failure: ${JSON.stringify(this.failure)}`] : []),
+        '',
+        await this.setupLog.read(),
+      ].join('\n'),
+    );
+  }
+
+  /** No URL argument: the sample is chosen from this app's pinned package artifacts. */
+  checkSetupConnection(): Promise<SetupConnectionCheck> {
+    if (this.setupCheck) return this.setupCheck;
+    this.setupCheck = (async (): Promise<SetupConnectionCheck> => {
+      if (!['installing', 'setup_required'].includes(this.stage) || this.remoteUrl)
+        return { status: 'unavailable', checkedAt: Date.now() };
+      // Compile the approved artifact catalog into the app; mutable local files
+      // must not supply destinations or data for this diagnostic request.
+      const url = setupProbeUrl(setupLock, this.setupProgress.snapshot(), {
+        platform: process.platform,
+        arch: process.arch,
+        pythonMinor: Number(/3\.(\d+)/.exec(managedPythonRequest())?.[1] ?? 11),
+        torchVariant: resolveTorchVariant().variant,
+      });
+      if (!url) return { status: 'unavailable', checkedAt: Date.now() };
+      const result = await checkSetupConnection(url, downloadProxyEnv());
+      this.setupLog.append(`Connection check: ${JSON.stringify(result)}`);
+      return result;
+    })()
+      .catch((error): SetupConnectionCheck => {
+        const result: SetupConnectionCheck = {
+          status: 'failed',
+          error: scrubSetupText(String(error)),
+          checkedAt: Date.now(),
+        };
+        this.setupLog.append(`Connection check: ${JSON.stringify(result)}`);
+        return result;
+      })
+      .finally(() => {
+        this.setupCheck = null;
+      });
+    return this.setupCheck;
   }
 
   /** Machine and runtime facts for bug reports; works while the backend is down. */
@@ -990,6 +1075,13 @@ export class BackendSupervisor extends EventEmitter<{
       status.setupProgress = this.setupProgress.snapshot();
     }
     if (this.message !== undefined) status.message = this.message;
+    if (this.failure) status.failure = this.failure;
+    if (this.stage === 'setup_required' && this.setupSmartAppControl) {
+      if (['on', 'evaluation'].includes(this.setupSmartAppControl))
+        status.smartAppControlWarning = true;
+    }
+    if (/^(1|true|yes|on)$/i.test((process.env.OMNIVOICE_ANALYTICS_DISABLED ?? '').trim()))
+      status.analyticsDisabled = true;
     if (this.diagnosis) status.diagnosis = this.diagnosis;
     if (this.exitCode !== undefined) status.exitCode = this.exitCode;
     if (this.exitSignal !== undefined) status.exitSignal = this.exitSignal;
@@ -1158,7 +1250,10 @@ export class BackendSupervisor extends EventEmitter<{
       if (gen !== this.generation) return;
       const message = runtimeFailureMessage(error);
       this.pushLog('err', message);
-      this.setStage('failed', { message });
+      this.setStage('failed', {
+        ...(error instanceof RuntimeLaunchRefusedError ? { managed: true } : {}),
+        message,
+      });
     }
   }
 
@@ -1189,6 +1284,9 @@ export class BackendSupervisor extends EventEmitter<{
     this.runtimeInterrupted = false;
     this.setupPhase = 'checking';
     this.setupProgress.reset();
+    this.setupLog.append(
+      `Setup attempt: VoiceStudio ${__APP_VERSION__}; ${process.platform}/${process.arch}; region: ${this.runtimeRegion}`,
+    );
     this.setStage('installing', { message: undefined });
     const stopWatching = this.watchSetupDownloads(gen, controller.signal);
     try {
@@ -1316,6 +1414,7 @@ export class BackendSupervisor extends EventEmitter<{
         (phase) => {
           if (gen !== this.generation) return;
           this.setupPhase = phase;
+          this.setupLog.append(`Phase: ${phase}`);
           this.emitStatus();
         },
         this.runtimeRegion,
@@ -1336,7 +1435,10 @@ export class BackendSupervisor extends EventEmitter<{
           },
         },
       );
-      if (gen === this.generation) await this.start();
+      if (gen === this.generation) {
+        this.setupLog.append('Runtime installation completed');
+        await this.start();
+      }
     } catch (error) {
       if (gen === this.generation) {
         const code = (error as NodeJS.ErrnoException)?.code;
@@ -1462,6 +1564,8 @@ export class BackendSupervisor extends EventEmitter<{
 
   /** Kill the managed child (if any) and run the attach-or-spawn sequence again. */
   async restart(): Promise<void> {
+    if (this.installation)
+      this.setupLog.append('Setup cancelled by restart; completed downloads retained');
     this.installation?.abort();
     this.generation++;
     await this.killChild(true);
@@ -1470,6 +1574,8 @@ export class BackendSupervisor extends EventEmitter<{
 
   /** Tear the backend down: process tree first, then the stdin liveness pipe. */
   async shutdown(): Promise<void> {
+    if (this.installation)
+      this.setupLog.append('Application closing during setup; completed downloads retained');
     this.generation++;
     this.shuttingDown = true;
     this.installation?.abort();
@@ -1477,6 +1583,7 @@ export class BackendSupervisor extends EventEmitter<{
     this.exitCode = undefined;
     this.exitSignal = undefined;
     this.setStage('idle', { managed: false, message: undefined });
+    await this.setupLog.flush();
   }
 
   async testRemote(url: string, apiKey: string): Promise<RemoteBackendProbe> {
@@ -1621,7 +1728,94 @@ export class BackendSupervisor extends EventEmitter<{
     this.diagnosis = patch.diagnosis;
     if ('managed' in patch) this.managed = patch.managed ?? false;
     if ('message' in patch) this.message = patch.message;
+    this.diagnoseFailure();
+    this.warnAboutSmartAppControl();
     this.emitStatus();
+  }
+
+  /** Read before the large download. It warns only; the user can still install. */
+  private warnAboutSmartAppControl(): void {
+    if (this.stage !== 'setup_required' || process.platform !== 'win32') return;
+    if (this.setupSmartAppControl) return;
+    this.setupSmartAppControl = 'unknown';
+    void readSmartAppControlAsync()
+      .then((state) => {
+        this.setupSmartAppControl = state;
+        this.emitStatus();
+      })
+      .catch(() => undefined);
+  }
+
+  /**
+   * Names the current failure straight away, then adds what the OS can say about
+   * a refusal. The probes run after the failure is on screen and only after a
+   * refusal, so they can neither delay the error nor slow a healthy start.
+   */
+  private diagnoseFailure(): void {
+    const diagnosis = ++this.failureDiagnosis;
+    const failing =
+      ['failed', 'crashed', 'port_in_use', 'unresponsive'].includes(this.stage) ||
+      (this.stage === 'setup_required' && (Boolean(this.message) || Boolean(this.setupIssue)));
+    if (!failing || this.remoteUrl) {
+      this.failure = undefined;
+      return;
+    }
+    const progress = this.setupProgress.snapshot();
+    const program = refusedProgram(this.message);
+    const refused =
+      launchRefused(this.message) ||
+      /Windows refused to load/.test(this.message ?? '') ||
+      windowsLoadBlock(this.childErrorLog) !== null;
+    const custom = Boolean(parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD));
+    const build = (trust: TrustFacts = {}): InstallFailure => ({
+      code: classifyInstallFailure({
+        stage: this.stage,
+        message: this.message,
+        setupIssue: this.setupIssue,
+        exitCode: this.exitCode,
+        signal: this.exitSignal,
+        logLines: [...this.childLog, ...this.childErrorLog],
+        stalled: progress.stalled,
+        ...trust,
+      }),
+      stage: this.stage,
+      elapsedSeconds: Math.round((Date.now() - this.startedAt) / 1000),
+      setupPhase: this.stage === 'setup_required' ? this.setupPhase : undefined,
+      ...(program
+        ? {
+            program: programBasename(program),
+            programLocation: custom
+              ? ('custom' as const)
+              : this.runtimeProject && program.startsWith(dirname(this.runtimeProject))
+                ? ('runtime' as const)
+                : ('other' as const),
+          }
+        : {}),
+      errorCode: /\b(UNKNOWN|EPERM|EACCES|ENOENT|ENOSPC)\b/.exec(this.message ?? '')?.[1],
+      ...(typeof this.exitCode === 'number' ? { exitCode: this.exitCode } : {}),
+      ...(this.exitSignal ? { signal: String(this.exitSignal) } : {}),
+      ...(progress.downloadHost ? { downloadHost: progress.downloadHost } : {}),
+      ...(progress.downloadedBytes ? { downloadedBytes: progress.downloadedBytes } : {}),
+      ...(progress.stalledSeconds ? { stalledSeconds: progress.stalledSeconds } : {}),
+      proxyConfigured: Boolean(
+        process.env.HTTPS_PROXY || process.env.https_proxy || process.env.ALL_PROXY,
+      ),
+      region: this.runtimeRegion,
+      ...(this.runtimeFreeGib !== undefined ? { diskFreeGb: this.runtimeFreeGib } : {}),
+      ...trust,
+    });
+    this.failure = build();
+    if (!refused) return;
+    void collectTrustFacts({
+      program,
+      runtimeRoot: this.runtimeProject ? dirname(this.runtimeProject) : undefined,
+      run: runProbe,
+      readSmartAppControl: readSmartAppControlAsync,
+    }).then((trust) => {
+      if (diagnosis !== this.failureDiagnosis) return;
+      this.failure = build(trust);
+      this.emitStatus();
+    });
   }
 
   private async resolveRuntimeProject(): Promise<{ project: string; ready: boolean }> {
@@ -1703,6 +1897,7 @@ export class BackendSupervisor extends EventEmitter<{
     }
     (stream === 'err' ? console.error : console.log)(`[backend] ${line}`);
     if (this.stage === 'installing') {
+      this.setupLog.append(`[${stream}] ${line}`);
       this.setupProgress.ingest(line);
       this.emitStatus();
     }
@@ -1756,7 +1951,9 @@ export class BackendSupervisor extends EventEmitter<{
         detached: process.platform !== 'win32',
       });
     } catch (err) {
+      // The launch was ours: reports must not call this an attached backend.
       this.setStage('failed', {
+        managed: runtimeOwned,
         message: spawnFailureMessage(command, err, { runtimeOwned }),
       });
       return;
@@ -1785,6 +1982,7 @@ export class BackendSupervisor extends EventEmitter<{
       if (gen !== this.generation) return;
       this.child = null;
       this.setStage('failed', {
+        managed: runtimeOwned,
         message: spawnFailureMessage(command, err, { runtimeOwned }),
       });
     });
