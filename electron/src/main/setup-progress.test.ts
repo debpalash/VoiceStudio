@@ -145,6 +145,23 @@ describe('SetupProgressTracker', () => {
   });
 
   // #3411: uv prints nothing while a large wheel downloads.
+  it('does not let repeated byte reports or announcements hide five minutes without progress', () => {
+    const tracker = new SetupProgressTracker();
+    tracker.ingest('Downloading torch (3 GiB)', 0);
+    tracker.ingest('torch 12 MiB/3 GiB', 1_000);
+    tracker.ingest('torch 13 MiB/3 GiB', 2_000);
+    expect(tracker.snapshot(2_000).bytesPerSecond).toBeGreaterThan(0);
+    for (let at = 32_000; at <= 302_000; at += 30_000) {
+      tracker.ingest('Downloading torch (3 GiB)', at);
+      tracker.ingest('torch 13 MiB/3 GiB', at);
+    }
+    expect(tracker.snapshot(302_000)).toMatchObject({ stalled: true, stalledSeconds: 300 });
+    expect(tracker.snapshot(302_000).bytesPerSecond).toBeUndefined();
+    expect(tracker.snapshot(302_000).etaSeconds).toBeUndefined();
+    tracker.ingest('torch 14 MiB/3 GiB', 303_000);
+    expect(tracker.snapshot(303_000).stalled).toBeUndefined();
+  });
+
   it('names the source host and flags a stall only when no bytes arrive', () => {
     const tracker = new SetupProgressTracker();
     tracker.setDownloadHosts(new Map([['nvidia_cudnn_cu12', 'files.pythonhosted.org']]));

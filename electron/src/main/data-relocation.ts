@@ -232,15 +232,32 @@ class TargetChangedError extends Error {
   }
 }
 
+// Inode timestamps come from a coarse clock (one kernel tick on Linux, up to
+// 1 s on HFS+), so a probe in the same tick as mkdir leaves ctime unchanged.
+// That proves nothing either way: wait and probe again before giving up.
+const IDENTITY_PROBE_RETRY_MS = [10, 100, 1000];
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 // A nonzero creation timestamp may be a mutable ctime fallback. Only probe
-// ambiguous roots; keep the exclusive marker open so inode reuse cannot make
-// cleanup adopt a replacement. No model files are open during this check.
+// ambiguous roots; a fallback moves with ctime, a real creation time stays.
 async function stableDirectoryIdentity(
   target: string,
   selected: BigIntStats,
 ): Promise<BigIntStats> {
   if (selected.birthtimeNs === 0n) throw new Error('identity_unavailable');
   if (selected.birthtimeNs !== selected.ctimeNs) return selected;
+  for (const delay of [0, ...IDENTITY_PROBE_RETRY_MS]) {
+    if (delay) await wait(delay);
+    const after = await probeDirectoryChange(target, selected);
+    if (after.birthtimeNs !== selected.birthtimeNs) throw new Error('identity_unavailable');
+    if (after.birthtimeNs !== after.ctimeNs) return after;
+  }
+  throw new Error('identity_unavailable');
+}
+
+// Keep the exclusive marker open so inode reuse cannot make cleanup adopt a
+// replacement. No model files are open during this check.
+async function probeDirectoryChange(target: string, selected: BigIntStats): Promise<BigIntStats> {
   const marker = join(target, `.voicestudio-identity-${randomUUID()}`);
   const handle = await open(marker, 'wx');
   try {
@@ -266,8 +283,6 @@ async function stableDirectoryIdentity(
     after.ino !== selected.ino
   )
     throw new TargetChangedError();
-  if (after.birthtimeNs !== selected.birthtimeNs || after.birthtimeNs === after.ctimeNs)
-    throw new Error('identity_unavailable');
   return after;
 }
 

@@ -26,7 +26,7 @@ describe('backendFailureHints', () => {
       backendFailureHints(
         'Could not start C:\\runtime\\python.exe: spawn UNKNOWN. Windows Smart App Control blocked it.',
       ),
-    ).toEqual(['backend.hint_smart_app_control']);
+    ).toEqual(['backend.hint_smart_app_control', 'backend.hint_smart_app_control_local']);
   });
 
   it('explains a startup budget that ran out on a slow host (#2445)', () => {
@@ -65,7 +65,7 @@ describe('backendFailureCause', () => {
     ],
     [
       "Backend exited (exit code 1): Windows refused to load one of the engine's files. Your antivirus blocked it.",
-      'spawn_blocked',
+      'antivirus',
     ],
     ['Backend exited unexpectedly (exit code 3221225477).', 'native_crash'],
     ['Backend exited unexpectedly (exit code -1073741819).', 'native_crash'],

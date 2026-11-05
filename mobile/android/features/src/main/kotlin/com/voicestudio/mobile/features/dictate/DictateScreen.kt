@@ -80,7 +80,7 @@ import kotlinx.coroutines.CancellationException
         if(location==com.voicestudio.mobile.local.RunLocation.COMPUTER) ComputerDictateScreen(vm)
         else {
             val phone by vm.phone.state.collectAsState()
-            PhoneDictateScreen(vm,model,location==com.voicestudio.mobile.local.RunLocation.PHONE&&model?.let {phone.canRun(it,vm.phone.ramBytes)}==true)
+            PhoneDictateScreen(vm,model,location==com.voicestudio.mobile.local.RunLocation.PHONE&&model?.let {phone.canRun(it)}==true)
         }
     }
 }

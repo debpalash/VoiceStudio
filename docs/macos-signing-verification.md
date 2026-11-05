@@ -10,7 +10,7 @@ acceptance. Credentials and the release procedure live in
 `electron-release.yml` packages macOS with electron-builder. When the
 Developer ID certificate (`ELECTRON_MACOS_CSC_LINK`,
 `ELECTRON_MACOS_CSC_KEY_PASSWORD`) and Apple notarization credentials
-(`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`) are all present,
+(`APPLE_API_KEY`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`) are all present,
 the build enables Hardened Runtime and notarization together
 (`electron/electron-builder.config.mjs`). A publishing run refuses missing
 credentials unless the owner explicitly sets `allow_unsigned=true`, and before
@@ -67,8 +67,18 @@ scripts/verify-macos-signing.sh "VoiceStudio.app" --require-signed
 ```
 
 `xcrun notarytool history` runs when credentials are present in the environment
-(`NOTARYTOOL_KEYCHAIN_PROFILE`, or `APPLE_ID` + `APPLE_PASSWORD` +
-`APPLE_TEAM_ID`); otherwise it is skipped with a note.
+(`NOTARYTOOL_KEYCHAIN_PROFILE`, or `APPLE_API_KEY` + `APPLE_API_KEY_ID` +
+`APPLE_API_ISSUER`); otherwise it is skipped with a note.
+
+For local packaging and verification, `APPLE_API_KEY` is the path to the `.p8`
+file. In GitHub Secrets, it is the PEM file content; the workflow prepares the
+path before invoking electron-builder. The API key authenticates notarization;
+the Developer ID certificate and its password still sign the application.
+
+The packaging workflow loads key preparation from its own commit, even when
+checking out an older release tag. With complete certificate/API credentials,
+it explicitly enables notarization and Hardened Runtime in electron-builder,
+so older password-based configuration cannot silently skip notarization.
 
 ## Local development
 

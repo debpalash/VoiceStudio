@@ -98,7 +98,7 @@ def test_image_builds_keep_their_layer_cache_in_ghcr_not_the_actions_cache():
     rebuilt for 17 minutes. The cache lives in a registry package instead; a failed export
     must never fail the image publish, and only the CUDA job writes it."""
     workflow = _load(_DOCKER)
-    assert workflow["env"]["BUILDCACHE_IMAGE"] == "ghcr.io/debpalash/voicestudio-buildcache"
+    assert workflow["env"]["REGISTRY"] == "ghcr.io"
     builds = [
         step["with"]
         for job in _JOBS
@@ -161,3 +161,20 @@ def test_arm64_base_stage_installs_the_pinned_cu129_torch_trio():
     assert f"torchaudio=={pins['torchaudio']}" in stage
     assert f"torchvision=={pins['torchvision']}" in stage
     assert "libopus-dev" in stage, "sphn builds from source on aarch64 and links Opus"
+
+
+def test_dockerhub_documentation_publishes_without_building_images():
+    workflow = _load(_ROOT / ".github/workflows/dockerhub-description.yml")
+    assert workflow["on"]["push"]["branches"] == ["main"]
+    assert "deploy/dockerhub-overview.md" in workflow["on"]["push"]["paths"]
+    assert "workflow_dispatch" in workflow["on"]
+    job = workflow["jobs"]["description"]
+    assert "github.ref == 'refs/heads/main'" in job["if"]
+    assert "needs" not in job
+    assert not any("docker/build-push-action" in step.get("uses", "") for step in job["steps"])
+    publish = next(step for step in job["steps"] if step.get("name") == "Update Docker Hub description")
+    assert "steps.credentials.outputs.enabled == 'true'" in publish["if"]
+    assert publish["continue-on-error"] is True
+    assert publish["with"]["readme-filepath"] == "./deploy/dockerhub-overview.md"
+    assert workflow["env"]["DOCKERHUB_IMAGE"] == _load(_DOCKER)["env"]["DOCKERHUB_IMAGE"]
+    assert not any(step.get("name") == "Update Docker Hub description" for step in _load(_DOCKER)["jobs"]["build-and-push"]["steps"])

@@ -258,7 +258,7 @@ struct ConsentView: View {
 private struct StudioTabBehavior: ViewModifier {
     @ViewBuilder func body(content: Content) -> some View {
         #if compiler(>=6.2)
-        if #available(iOS 26.0, *) { content.tabBarMinimizeBehavior(.onScrollDown) }
+        if #available(iOS 26.0, *) { content.tabBarMinimizeBehavior(.never) }
         else { content }
         #else
         content
@@ -266,11 +266,11 @@ private struct StudioTabBehavior: ViewModifier {
     }
 }
 
-/// Icon-only tab: a compact dock. The title stays as the accessibility label.
+/// Keep destination names visible so the dock is understandable before learning its icons.
 private struct StudioTabIcon: View {
     let title: String
     let systemImage: String
     var body: some View {
-        Image(systemName: systemImage).accessibilityLabel(title)
+        Label(title, systemImage: systemImage)
     }
 }

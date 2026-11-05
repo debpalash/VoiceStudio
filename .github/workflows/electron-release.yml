@@ -197,21 +197,33 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Validate and build Electron
         run: bun run check:electron
+      - name: Load notarization helper from workflow
+        if: matrix.platform == 'darwin'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -H 'Accept: application/vnd.github.raw+json' \
+            "repos/$GITHUB_REPOSITORY/contents/scripts/prepare-apple-notarization.sh?ref=$GITHUB_SHA" \
+            > "$RUNNER_TEMP/prepare-apple-notarization.sh"
       - name: Package without publishing
         env:
           CSC_LINK: ${{ matrix.platform == 'darwin' && secrets.ELECTRON_MACOS_CSC_LINK || matrix.platform == 'win32' && secrets.ELECTRON_WINDOWS_CSC_LINK || '' }}
           CSC_KEY_PASSWORD: ${{ matrix.platform == 'darwin' && secrets.ELECTRON_MACOS_CSC_KEY_PASSWORD || matrix.platform == 'win32' && secrets.ELECTRON_WINDOWS_CSC_KEY_PASSWORD || '' }}
-          APPLE_ID: ${{ matrix.platform == 'darwin' && secrets.APPLE_ID || '' }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.platform == 'darwin' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ matrix.platform == 'darwin' && secrets.APPLE_TEAM_ID || '' }}
+          APPLE_API_KEY: ${{ matrix.platform == 'darwin' && secrets.APPLE_API_KEY || '' }}
+          APPLE_API_KEY_ID: ${{ matrix.platform == 'darwin' && secrets.APPLE_API_KEY_ID || '' }}
+          APPLE_API_ISSUER: ${{ matrix.platform == 'darwin' && secrets.APPLE_API_ISSUER || '' }}
           PUBLISH: ${{ inputs.publish }}
           ALLOW_UNSIGNED: ${{ inputs.allow_unsigned }}
         working-directory: electron
         run: |
           if [ "${{ matrix.platform }}" = darwin ] && [ "$PUBLISH" = true ] && [ "$ALLOW_UNSIGNED" != true ]; then
-            if [ -z "${CSC_LINK:-}" ] || [ -z "${CSC_KEY_PASSWORD:-}" ] || [ -z "${APPLE_ID:-}" ] || [ -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ] || [ -z "${APPLE_TEAM_ID:-}" ]; then
+            if [ -z "${CSC_LINK:-}" ] || [ -z "${CSC_KEY_PASSWORD:-}" ] || [ -z "${APPLE_API_KEY:-}" ] || [ -z "${APPLE_API_KEY_ID:-}" ] || [ -z "${APPLE_API_ISSUER:-}" ]; then
               echo "Signed macOS publication requires Developer ID and Apple notarization credentials"; exit 1
             fi
+          fi
+          mac_notarization_args=()
+          if [ "${{ matrix.platform }}" = darwin ]; then
+            source "$RUNNER_TEMP/prepare-apple-notarization.sh"
           fi
           # An empty CSC_LINK is interpreted as the working directory by the
           # signer. Omit absent credentials rather than passing empty strings.
@@ -227,7 +239,7 @@ jobs:
           # succeeded (error 68, v0.5.7-beta.2); only that failure builds again.
           set -o pipefail
           attempt=1
-          until bun x electron-builder --config electron-builder.config.mjs ${{ matrix.flags }} --publish never 2>&1 | tee "$RUNNER_TEMP/electron-builder.log"; do
+          until bun x electron-builder --config electron-builder.config.mjs ${{ matrix.flags }} "${mac_notarization_args[@]}" --publish never 2>&1 | tee "$RUNNER_TEMP/electron-builder.log"; do
             if [ "$attempt" -ge 2 ] || ! grep -q "Failed to staple" "$RUNNER_TEMP/electron-builder.log"; then exit 1; fi
             attempt=$((attempt + 1))
             echo "::warning::Stapling the notarization ticket failed; building again"
@@ -425,6 +437,7 @@ jobs:
           gh release edit "$TAG" --prerelease="$PRERELEASE" --notes-file release-assets/RELEASE_NOTES.md
           find release-assets -maxdepth 1 -type f ! -name RELEASE_NOTES.md -print0 | xargs -0 gh release upload "$TAG" --clobber
       - name: Publish only when explicitly requested
+        id: publish_release
         if: github.event_name == 'workflow_dispatch' && inputs.publish == true
         run: |
           if [ "$CHANNEL" = beta ]; then
@@ -432,11 +445,18 @@ jobs:
           else
             gh release edit "$TAG" --draft=false --prerelease=false --latest
           fi
+      # GITHUB_TOKEN publication does not emit another workflow's release event.
+      - name: Update the Android repository after stable publication
+        if: github.event_name == 'workflow_dispatch' && inputs.publish == true
+        run: |
+          if [ "$CHANNEL" = stable ]; then
+            gh workflow run android-repository.yml --ref main
+          fi
       # docker.yml publishes release images on `release: published`, which a
       # GITHUB_TOKEN publish cannot trigger; dispatch its release backfill path.
       # Only Stable moves `:stable`; a beta gets `:beta` and its exact tag.
       - name: Publish release container images
-        if: github.event_name == 'workflow_dispatch' && inputs.publish == true
+        if: ${{ !cancelled() && steps.publish_release.outcome == 'success' && github.event_name == 'workflow_dispatch' && inputs.publish == true }}
         run: |
           PROMOTE=false
           if [ "$CHANNEL" = stable ]; then PROMOTE=true; fi

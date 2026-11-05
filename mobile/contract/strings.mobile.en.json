@@ -1,7 +1,7 @@
 {
   "mobile": {
     "tabs": {
-      "speak": "Speak",
+      "speak": "Speech",
       "voices": "Voices",
       "dub": "Dub",
       "dictate": "Dictate",
@@ -49,7 +49,8 @@
       "unstar": "Unstar",
       "engine_unavailable": "This engine is unavailable. Check its installation on your computer.",
       "voice_default": "Default voice (engine preset)",
-      "engine_no_cloning": "This engine cannot use reference audio. Choose an engine that supports voice cloning, or use the default voice."
+      "engine_no_cloning": "This engine cannot use reference audio. Choose an engine that supports voice cloning, or use the default voice.",
+      "reference_required": "Choose a saved voice to use this model. You can import one from Gallery."
     },
     "voices": {
       "search": "Search voices",
@@ -264,7 +265,7 @@
       "terms_fingerprint": "Terms fingerprint: {{fingerprint}}",
       "licence_storage": "Model licence records could not be read or saved. Free storage and try again; models remain blocked.",
       "licence_required": "Accept the licence in Models first.",
-      "ram_required": "Needs {{ram}} GB of RAM. Pick a smaller model or use your computer.",
+      "ram_required": "{{ram}} GB RAM recommended. This model may run slowly or close the app on this device. You can try it anyway.",
       "wifi_required": "Connect to Wi-Fi, or allow mobile data in Models.",
       "storage_required": "Not enough storage. Free some space and try again.",
       "download_failed": "The model download failed. Check your connection and resume in Models.",
@@ -278,7 +279,7 @@
       "preset_voice": "Voice {{number}}",
       "transfer": "{{received}} of {{total}}",
       "privacy": "On-device tasks stay on this phone. Only model downloads, reports you choose to send and your paired computer use the network.",
-      "computer_feature": "This feature currently runs on your computer. You can use Speak and Dictate on this phone without pairing.",
+      "computer_feature": "This feature currently runs on your computer. You can use Speech and Dictate on this phone without pairing.",
       "accepted": "Licence accepted",
       "not_accepted": "Licence not accepted",
       "receipt": "{{action}} · {{time}} · App {{version}} · Terms {{fingerprint}}",
@@ -296,7 +297,8 @@
       "right_restricted": "Restricted",
       "licence_view": "View licence",
       "licence_source": "Model source",
-      "exact_terms": "Exact terms"
+      "exact_terms": "Exact terms",
+      "try_anyway": "Try anyway"
     },
     "simple": {
       "phone": "Phone",
@@ -344,7 +346,7 @@
       "remove_job": "Delete dub",
       "reconnect": "Reconnect",
       "cancel": "Cancel",
-      "ram": "Needs {{ram}} GB RAM",
+      "ram": "{{ram}} GB RAM recommended",
       "analytics": "Analytics",
       "language": "Language",
       "default_voice": "Default voice",
@@ -384,6 +386,30 @@
       "script_hint": "Use # Chapter title for chapters and [voice:Name] at the start of a line to switch character. Plain text only; other markup is read aloud.",
       "conversion_hint": "Choose an audio clip up to 30 seconds. Conversion transcribes it and speaks it in the selected voice; it does not preserve the original performance.",
       "normalize_text": "Clean up text"
+    },
+    "support": {
+      "donate": "Donate",
+      "other_apps": "Other Apps",
+      "other_apps_intro": "Projects from our team and the sponsors supporting VoiceStudio.",
+      "gift_note": "Giving is optional. Donations support development and do not unlock features, content or services.",
+      "pro_scope": "Pro adds production tools to VoiceStudio on your computer. The phone app’s creative tools remain free.",
+      "opengtm": "Find and research leads with open-source sales automation.",
+      "opal": "An open-source media player and browser for your own library.",
+      "supermetry": "Self-hosted, privacy-friendly web analytics.",
+      "spicrawl": "Turn web pages into Markdown or structured data for AI agents.",
+      "special_sponsor": "Special sponsor"
+    },
+    "downloads": {
+      "pause": "Pause",
+      "paused": "Paused",
+      "connecting": "Connecting…",
+      "waiting": "Waiting for Wi-Fi…",
+      "retrying": "Retrying in {{seconds}}s…",
+      "verifying": "Verifying model…",
+      "speed": "{{speed}}/s",
+      "eta": "About {{time}} left",
+      "estimating": "Estimating time left…",
+      "waiting_network": "Waiting for a connection…"
     }
   }
 }

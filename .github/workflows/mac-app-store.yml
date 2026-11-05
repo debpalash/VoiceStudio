@@ -66,16 +66,28 @@ jobs:
         with:
           version: '0.12.13'
           enable-cache: false
-      - name: Bundle the approved runtime inputs
-        run: |
-          # The compliance gate prevents this step until the locked runtime and
-          # executable ledger is approved. Keep the exact uv build reproducible.
-          UV=$(command -v uv)
-          mkdir -p electron/build/uv
-          cp "$UV" "electron/build/uv/uv-${{ matrix.target }}"
-          chmod 755 "electron/build/uv/uv-${{ matrix.target }}"
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
+      - name: Stage frozen Python and media tools
+        if: matrix.arch == 'arm64'
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/mas-python-environment
+          UV_PYTHON_PREFERENCE: only-managed
+          UV_NO_CACHE: '1'
+        run: |
+          uv python install 3.11
+          uv sync --frozen --no-dev --no-editable --no-install-project --python 3.11
+          "$UV_PROJECT_ENVIRONMENT/bin/python" scripts/stage_mas_python.py --python "$UV_PROJECT_ENVIRONMENT/bin/python" --lock uv.lock --output electron/build/python-runtime
+          "$UV_PROJECT_ENVIRONMENT/bin/python" scripts/stage_mas_media.py --download --output electron/build/media-tools
+          python3 -c 'import os, shutil; shutil.rmtree(os.environ["UV_PROJECT_ENVIRONMENT"])'
+      - name: Build pinned Apple silicon GGUF runtime
+        if: matrix.arch == 'arm64'
+        run: |
+          PIN=$(python3 -c "import json; print(json.load(open('backend/engines/omnivoice_gguf/quant_map.json'))['_meta']['runtime_commit_sha'])")
+          bash scripts/build-omnivoice-tts.sh --platform darwin-arm64 --commit-sha "$PIN"
+          mkdir -p electron/build/omnivoice-tts
+          cp -R bin/. electron/build/omnivoice-tts/
+          echo 'VOICESTUDIO_OMNIVOICE_TTS_PLATFORM=darwin-arm64' >> "$GITHUB_ENV"
       - name: Validate Electron
         run: bun run check:electron
       - name: Prepare App Store signing inputs

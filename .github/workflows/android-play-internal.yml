@@ -1,4 +1,4 @@
-# Android Play internal testing — signs the companion app with the Play upload
+# Android Play internal testing — signs the native phone app with the Play upload
 # key and uploads it to the Play Console internal testing track, the Android
 # counterpart of ios-testflight.yml. Owner-dispatched from `main` only; nothing
 # is sent for production review (see docs/mobile.md → Play internal testing).
@@ -61,6 +61,15 @@ jobs:
       - name: SDK location
         run: printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
 
+      - name: NDK and CMake
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.1.12297006" "cmake;3.22.1" > /dev/null
+
+      - name: Cache native runtimes
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mobile/native/android/build
+          key: android-native-${{ hashFiles('mobile/native/pins.json', 'mobile/native/android/**', '!mobile/native/android/build/**', 'mobile/native/mp3/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Lame/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Mp3Encoder.c', 'mobile/ios/VoiceStudioKit/Sources/VSNative/include/Mp3Encoder.h') }}
+
       - name: Write upload keystore
         env:
           KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE }}
@@ -81,11 +90,21 @@ jobs:
           ./gradlew --no-daemon :app:bundleRelease
 
       - name: Verify bundle signature
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
         run: |
           AAB=app/build/outputs/bundle/release/app-release.aab
-          jarsigner -verify -strict "$AAB" | grep -q 'jar verified'
-          keytool -printcert -jarfile "$AAB" | grep -q 'Owner:'
-          if keytool -printcert -jarfile "$AAB" | grep -q 'CN=Android Debug'; then
+          # Upload certificates are self-signed. Trust only this upload keystore,
+          # while retaining strict checks for unsigned entries and other signers.
+          jarsigner -verify -strict -keystore "$RUNNER_TEMP/upload.jks" \
+            -storepass:env KEYSTORE_PASSWORD "$AAB" "$KEY_ALIAS" > "$RUNNER_TEMP/bundle-signature.txt"
+          grep -q 'jar verified' "$RUNNER_TEMP/bundle-signature.txt"
+          keytool -printcert -jarfile "$AAB" > "$RUNNER_TEMP/bundle-certificate.txt"
+          grep -q 'Owner:' "$RUNNER_TEMP/bundle-certificate.txt"
+          # An alias match alone also accepts co-signers trusted by this keystore.
+          test "$(grep -c '^Signer #' "$RUNNER_TEMP/bundle-certificate.txt")" -eq 1
+          if grep -q 'CN=Android Debug' "$RUNNER_TEMP/bundle-certificate.txt"; then
             echo "Bundle is debug-signed"; exit 1
           fi
 

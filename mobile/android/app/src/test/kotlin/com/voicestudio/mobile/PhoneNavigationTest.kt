@@ -37,7 +37,7 @@ class PhoneNavigationTest {
             compose.waitForIdle()
             assertFalse(vm.state.value.connected);assertNull(vm.api)
             fun tab(label: String) = compose.onAllNodesWithText(label).filter(hasClickAction()).onFirst()
-            for(label in listOf("Speak","Voices","Dub","Dictate","Settings")) tab(label).assertExists()
+            for(label in listOf("Speech","Voices","Dub","Dictate","Settings")) tab(label).assertExists()
             compose.onNodeWithText("Run on").assertDoesNotExist()
             tab("Voices").performClick();compose.onNodeWithText("Clone a voice").assertExists()
             tab("Dub").performClick();compose.onNodeWithText("Choose video or audio").assertExists()
@@ -51,12 +51,12 @@ class PhoneNavigationTest {
             assertFalse(vm.phone.downloads.progress.value.values.any {it.running})
         } finally {vm.viewModelScope.cancel()}
     }
-    @Test fun downloadedModelAboveDeviceRamShowsItsReasonInsteadOfGeneration()=runBlocking {
+    @Test fun downloadedModelAboveRecommendedRamStillOffersGenerationWithWarning()=runBlocking {
         val app=ApplicationProvider.getApplicationContext<Application>()
         val model=app.assets.open("models.json").bufferedReader().use {ModelCatalog.decode(it.readText()).models.first {it.capability=="tts"}}
         val directory=java.io.File(app.noBackupFilesDir,"models/${model.id}").apply {mkdirs()}
         // Sparse structural fixture: never passed to a native runtime. Installation
-        // metadata can survive an update that raises the catalogue RAM requirement.
+        // metadata can survive an update that raises the catalogue RAM recommendation.
         model.files.forEach {file ->java.io.File(directory,file.path).apply {parentFile!!.mkdirs()}.let {java.io.RandomAccessFile(it,"rw").use {out ->out.setLength(file.size)}}}
         java.io.File(directory,".verified").writeText(model.revision+model.files.joinToString {it.path+it.sha256+it.size})
         val runtime=com.voicestudio.mobile.local.PhoneRuntime.get(app)
@@ -70,9 +70,15 @@ class PhoneNavigationTest {
             compose.setContent {StudioApp(vm)}
             compose.waitUntil(15000) {shadowOf(Looper.getMainLooper()).idle();model.id in vm.phone.state.value.installed&&!vm.state.value.loading}
             compose.onNodeWithTag("home.speak").performScrollTo().performClick()
-            compose.onNodeWithText("Generate").assertIsNotEnabled()
             val l=com.voicestudio.mobile.l10n.L10n.load(app,"en")
-            compose.onNodeWithText(l.t("mobile.simple.ram",mapOf("ram" to model.minRamGb))).assertExists()
+            compose.onNodeWithContentDescription(l.t("mobile.android.selection",mapOf("label" to l.t("mobile.local.model"),"value" to model.name)))
+                .performScrollTo().performClick()
+            compose.onNode(hasText(model.name) and hasClickAction() and hasAnyAncestor(isDialog())).assertIsEnabled().performClick()
+            compose.onNodeWithText("Generate").assertExists()
+            compose.onNode(hasSetTextAction()).performScrollTo().performTextInput("A short test.")
+            compose.onNodeWithText("Generate").assertIsEnabled()
+            compose.onNodeWithText("Try anyway").assertDoesNotExist()
+            compose.onNodeWithText(l.t("mobile.local.ram_required",mapOf("ram" to model.minRamGb))).assertExists()
             assertNull(vm.phone.state.value.progress)
         } finally {vm.viewModelScope.cancel();directory.deleteRecursively()}
     }

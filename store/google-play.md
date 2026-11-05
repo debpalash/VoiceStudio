@@ -22,11 +22,16 @@ every permission in the Android manifest has a declaration here.
    2–8 phone screenshots.
 4. **App content:** privacy policy URL, ads (none), app access (no login), target
    audience, content rating questionnaire and the data safety form from
-   `dataSafety` (no data collected or shared).
+   `dataSafety` (optional content reports are collected; no data is shared).
 5. **Permissions and foreground services:** use the reasons in `permissions`.
    Play asks for a short video of each foreground service type in use.
-6. Upload the first bundle by hand, then use the `Android Play internal testing`
-   workflow ([`docs/mobile.md`](../docs/mobile.md#play-internal-testing-maintainers)).
+6. Prepare a signed APK/AAB without a store upload using **mobile-release**
+   from `main`: leave `release_ref` empty, enable `android`, and disable `ios`
+   and `signed_ios`. Its `mobile-release` environment needs the four Android
+   upload-key secrets. Download `VoiceStudio-android-release` and upload
+   `VoiceStudio.aab` to internal testing by hand, then use **Android Play internal
+   testing** with the same upload key in the `google-play` environment
+   ([`docs/mobile.md`](../docs/mobile.md#play-internal-testing-maintainers)).
 
 ## Before production
 

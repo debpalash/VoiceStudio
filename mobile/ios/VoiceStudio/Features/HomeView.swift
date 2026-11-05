@@ -7,6 +7,7 @@ struct HomeView: View {
     @Environment(\.vsTheme) private var theme
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var player = AudioPlayer()
+    @State private var creatingClone = false
     var body: some View {
         Page {
             VStack(alignment: .leading, spacing: VSTokens.spacingGap * 2) {
@@ -40,7 +41,9 @@ struct HomeView: View {
                 .clipShape(RoundedRectangle(cornerRadius: VSTokens.iosCardRadius, style: .continuous))
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: typeSize.isAccessibilitySize ? 300 : 155), spacing: VSTokens.spacingGap)], spacing: VSTokens.spacingGap) {
                     destination("speak", title: "mobile.tabs.speak", detail: "mobile.speak.placeholder", icon: "waveform", primary: true) { SpeakView() }
-                    destination("voices", title: "nav.clone", detail: "clone.reference_hint", icon: "person.wave.2", primary: true) { VoicesView() }
+                    Button { creatingClone = true } label: {
+                        destinationLabel(title: "nav.clone", detail: "clone.reference_hint", icon: "person.wave.2", primary: true)
+                    }.buttonStyle(.plain).accessibilityIdentifier("home.voices")
                     destination("dub", title: "nav.dub", detail: "homeUi.dub", icon: "film", primary: true) { DubView() }
                     destination("dictate", title: "nav.dictation", detail: "mobile.dictate.tap_to_start", icon: "mic") { DictateView() }
                     destination("models", title: "mobile.local.models", detail: "mobile.local.installed", icon: "arrow.down.circle") { ModelsView() }
@@ -98,6 +101,7 @@ struct HomeView: View {
         }
         .studioNavigationTitle(model.t("nav.home"))
         .toolbar { NavigationLink { PhoneDubView(libraryOnly: true) } label: { Label(model.t("projects.title"), systemImage: "folder") } }
+        .fullScreenCover(isPresented: $creatingClone) { NavigationStack { CloneView() }.environment(model) }
         .task { await model.phone.refresh() }
         .refreshable { await model.phone.refresh(); if model.connection.client != nil { await model.perform { try await model.refresh() } } }
         .onDisappear { player.pause() }
@@ -116,6 +120,10 @@ struct HomeView: View {
     }
     private func destination<Content: View>(_ id: String, title: String, detail: String, icon: String, primary: Bool = false, @ViewBuilder content: () -> Content) -> some View {
         NavigationLink(destination: content()) {
+            destinationLabel(title: title, detail: detail, icon: icon, primary: primary)
+        }.buttonStyle(.plain).accessibilityIdentifier("home.\(id)")
+    }
+    private func destinationLabel(title: String, detail: String, icon: String, primary: Bool) -> some View {
             VStack(alignment: .leading, spacing: VSTokens.spacingGap) {
                 HStack {
                     Image(systemName: icon).font(.title2.weight(.medium)).foregroundStyle(theme.color("messageAction"))
@@ -131,7 +139,6 @@ struct HomeView: View {
                 Spacer(minLength: 0)
             }.padding(Theme.compactInset).frame(maxWidth: .infinity, minHeight: primary ? 164 : 148, alignment: .topLeading)
                 .background(theme.color(primary ? "surfaceRaised" : "surface"), in: RoundedRectangle(cornerRadius: VSTokens.iosCardRadius, style: .continuous))
-        }.buttonStyle(.plain).accessibilityIdentifier("home.\(id)")
     }
     private func section<Content: View>(_ key: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: VSTokens.spacingGap) {

@@ -22,6 +22,12 @@ consent question; declining or skipping keeps analytics disabled, and
 server image runs FastAPI with the pre-built React interface over HTTP, making
 it suitable for an AMD64 homelab or GPU server that you control from a browser.
 
+**Upgrading an existing container?** Use the
+[backup and path-preserving migration procedure](https://github.com/debpalash/VoiceStudio/blob/main/docs/install/docker-data-recovery.md)
+before recreating or removing it. Older commands could keep the database,
+voices and projects inside the container, outside the mounted model-cache
+volume. The quick starts below are for fresh installations.
+
 Images are built per architecture. The main image and its `:rocm` variant
 exist for `linux/amd64` only. For NVIDIA hardware built on ARM, such as a DGX
 Spark (GB10) or a GH200 / GB200 server, pull `:stable-cuda-arm64`, which is a
@@ -60,6 +66,7 @@ export OMNIVOICE_API_KEY="$(python3 -c 'import secrets; print(secrets.token_urls
 docker run -d --name omnivoice \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   palashdeb/omnivoice-studio:stable
 ```
@@ -78,6 +85,7 @@ export OMNIVOICE_API_KEY="$(python3 -c 'import secrets; print(secrets.token_urls
 docker run -d --name omnivoice --gpus all \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   palashdeb/omnivoice-studio:stable
 ```
@@ -99,6 +107,7 @@ docker run -d --name omnivoice \
   --device /dev/kfd --device /dev/dri \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   palashdeb/omnivoice-studio:stable-rocm
 ```

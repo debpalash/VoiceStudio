@@ -5,23 +5,35 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.voicestudio.mobile.local.*
+import com.voicestudio.mobile.data.ModelDownloadJobs
 import com.voicestudio.mobile.network.ClientFailure
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.io.File
 
+/** RAM guides model choice; explicit choices stay available on smaller devices. */
+@androidx.compose.runtime.Composable
+fun phoneModelChoice(model: PhoneModel, ramBytes: Long, supporting: String? = null) = Choice(
+    model.id,model.name,supporting=if(model.fits(ramBytes)) supporting
+    else tr("mobile.simple.ram",mapOf("ram" to model.minRamGb))
+)
+
 data class PhoneState(val models: List<PhoneModel> = emptyList(), val installed: Set<String> = emptySet(), val used: Long = 0,
     val storage: Map<String,Long> = emptyMap(), val receipts: Map<String,List<LicenceReceipt>> = emptyMap(), val loading: Boolean = true, val progress: Float? = null, val audio: File? = null, val voices: List<PhoneVoice> = emptyList(), val recent: List<PhoneGeneration> = emptyList(), val dubs: List<PhoneDubRecord> = emptyList()) {
-    fun canRun(model: PhoneModel, ramBytes: Long): Boolean = model.id in installed&&model.fits(ramBytes)&&accepted(model)
+    fun canRun(model: PhoneModel): Boolean = model.id in installed&&accepted(model)
+    fun preferredModel(candidates: List<PhoneModel>, ramBytes: Long, preference: String? = null): PhoneModel? =
+        candidates.firstOrNull {it.id==preference} ?: candidates.firstOrNull {canRun(it)&&it.fits(ramBytes)}
+            ?: candidates.firstOrNull {canRun(it)} ?: candidates.firstOrNull {it.fits(ramBytes)} ?: candidates.firstOrNull()
     fun accepted(model: PhoneModel): Boolean = !model.gated || receipts[model.id]?.lastOrNull()?.let {it.accepted&&it.fingerprint==model.licence.termsFingerprint}==true
 }
-class PhoneStudio(context: Context, private val scope: CoroutineScope, private val failure: (Throwable)->Unit, private val retryFailure: (Throwable,()->Unit)->Unit = {error,_ ->failure(error)}) {
+class PhoneStudio(context: Context, private val scope: CoroutineScope, private val failure: (Throwable)->Unit, private val retryFailure: (Throwable,()->Unit)->Unit = {error,_ ->failure(error)},
+    engine: LocalEngine? = null, private val decoder: AudioDecoder = AndroidAudioDecoder()) {
     private val application=context.applicationContext
     private val runtime=PhoneRuntime.get(application)
     val ramBytes=runtime.ramBytes
     val licence=runtime.licence
     val downloads=runtime.downloads
-    val engine=runtime.engine
+    val engine=engine ?: runtime.engine
     val voices=PhoneVoiceStore(File(application.noBackupFilesDir,"voices"))
     val production=ProductionStore(File(application.noBackupFilesDir,"production"))
     val workflows=PhoneWorkflowStore(File(application.noBackupFilesDir,"workflows"))
@@ -29,12 +41,16 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
     val dubs=PhoneDubStore(File(application.noBackupFilesDir,"dubs"))
     private val mutable=MutableStateFlow(PhoneState())
     val state=mutable.asStateFlow()
-    private val jobs=mutableMapOf<String,Job>()
     private var inference: Job?=null
     init {scope.launch {
         try {
             val models=withContext(Dispatchers.IO) {application.assets.open("models.json").bufferedReader().use {ModelCatalog.decode(it.readText()).models}}
-            mutable.update {it.copy(models=models,loading=false)};refresh()
+            mutable.update {it.copy(models=models,loading=false)}
+            try {ModelDownloadJobs.restore(application,models,failure)}
+            catch(e:CancellationException) {throw e}
+            catch(e:Exception) {failure(e as? ClientFailure ?: ClientFailure("mobile.local.download_failed"))}
+            refresh()
+            scope.launch {downloads.progress.map {it.mapValues {entry->entry.value.running to entry.value.stage}}.distinctUntilChanged().collect {refresh()}}
         } catch(e:CancellationException) {throw e} catch(e:Exception) {mutable.update {it.copy(loading=false)};failure(ClientFailure("mobile.local.catalogue_failed"))}
     }}
     suspend fun refresh() = withContext(Dispatchers.IO) {
@@ -49,22 +65,18 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
         mutable.update {it.copy(voices=phoneVoices,recent=recent,dubs=phoneDubs)}
     }
     fun download(model: PhoneModel, allowMobile: Boolean) {
-        if(jobs[model.id]?.isActive==true) return
-        jobs[model.id]=scope.launch {
-            try {downloads.download(model,allowMobile)}
-            catch(e:CancellationException) {throw e}
-            catch(e:Exception) {retryFailure(e) {download(model,allowMobile)}}
-            finally {withContext(NonCancellable) {refresh()}}
-        }
+        if(downloads.progress.value[model.id]?.running==true) return
+        try {ModelDownloadJobs.enqueue(application,model,allowMobile)} catch(e:Exception) {retryFailure(e) {download(model,allowMobile)}}
     }
-    fun cancelDownload(model: PhoneModel) {jobs[model.id]?.cancel()}
+    fun pauseDownload(model: PhoneModel) {try {ModelDownloadJobs.pause(application,model.id)} catch(e:Exception) {failure(e)}}
+    fun cancelDownload(model: PhoneModel) {try {ModelDownloadJobs.cancel(application,model.id)} catch(e:Exception) {failure(e)}}
     fun delete(model: PhoneModel) {scope.launch {
-        try {jobs[model.id]?.cancelAndJoin();cancelInference();downloads.delete(model);refresh()}
+        try {ModelDownloadJobs.stop(application,model.id);cancelInference();downloads.delete(model);refresh()}
         catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}
     }}
     fun accept(model: PhoneModel, accepted: Boolean, fingerprint: String, completed: (Boolean)->Unit = {}) {scope.launch {
         try {
-            if(!accepted) {jobs[model.id]?.cancelAndJoin();cancelInference()}
+            if(!accepted) {ModelDownloadJobs.stop(application,model.id);cancelInference()}
             withContext(Dispatchers.IO) {licence.record(model,accepted,fingerprint)};refresh();completed(true)
         } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e);completed(false)}
     }}
@@ -107,7 +119,7 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
         if(inference?.isActive==true) return
         inference=scope.launch {
             mutable.update {it.copy(progress=0f)}
-            try {voices.create(name,file,consent,model,cloneModel,engine,progress={p -> mutable.update {it.copy(progress=p)}});refresh();withContext(Dispatchers.IO) {file.delete()};created()}
+            try {voices.create(name,file,consent,model,cloneModel,engine,decoder,progress={p -> mutable.update {it.copy(progress=p)}});refresh();withContext(Dispatchers.IO) {file.delete()};created()}
             catch(e:CancellationException) {throw e} catch(e:Exception) {retryFailure(e) {clone(name,file,model,cloneModel,consent,created)}}
             finally {mutable.update {it.copy(progress=null)}}
         }
