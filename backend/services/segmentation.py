@@ -857,7 +857,10 @@ def _resplit_core(
     out: List[dict] = []
     for seg in segments:
         s0, s1 = seg["start"], seg["end"]
-        seg_words = [w for w in ordered if min(w.end, s1) - max(w.start, s0) > 1e-6]
+        # Segment bounds are rounded to 0.01s (Segment.to_dict) while word
+        # times are not, so a neighbouring segment's boundary word can overlap
+        # this span by up to 5ms. It is not this segment's word.
+        seg_words = [w for w in ordered if min(w.end, s1) - max(w.start, s0) > 0.005 + 1e-6]
         if len(seg_words) < 2:
             out.append(seg)
             continue
