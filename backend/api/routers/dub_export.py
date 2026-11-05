@@ -1685,6 +1685,19 @@ async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: flo
     # holds whichever language was generated last, so QC of an earlier track
     # compared its speech with another language and flagged every line (#2574).
     scored_segments = _segments_for_lang(job, track_lang)
+    # Smart Fit and Stretch Video place each line at its fitted position, so
+    # the recognized speech is timed on that track. Score each line in the
+    # window it plays in (the cue timing the subtitle exports use); source
+    # times paired lines with their neighbours' speech once the video slowed.
+    fitted = _fitted_segments_for(job, track_lang)
+    if fitted:
+        scored_segments = _apply_fitted_times(scored_segments, fitted)
+    else:
+        cues = _fitted_cue_times(job, track_lang)
+        if cues:
+            scored_segments = [
+                dict(seg, start=s, end=e) for seg, (s, e) in zip(scored_segments, cues)
+            ]
 
     # TTS-only install: no ASR model on disk → typed 409 with a download CTA,
     # BEFORE any backend load could silently auto-download whisper weights.
