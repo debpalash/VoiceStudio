@@ -1496,6 +1496,7 @@
     "terminal_command_add": "Додати до терміналу",
     "terminal_command_ready": "Доступна в нових терміналах",
     "terminal_command_added": "Додано. Відкрийте нове вікно терміналу, щоб використовувати voicestudio.",
+    "terminal_command_failed": "Не вдалося додати voicestudio до терміналу. Переконайтеся, що домашня тека не лише для читання, і спробуйте ще раз.",
     "terminal_command_conflict": "{{path}} належить іншому встановленню, тому VoiceStudio його не змінив.",
     "review_mode_on": "огляд",
     "review_mode_off": "Скорострільна",

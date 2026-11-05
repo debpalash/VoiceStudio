@@ -1484,6 +1484,7 @@
     "terminal_command_add": "Adicionar ao terminal",
     "terminal_command_ready": "Disponível em novos terminais",
     "terminal_command_added": "Adicionado. Abra uma nova janela de terminal para usar voicestudio.",
+    "terminal_command_failed": "Não foi possível adicionar voicestudio ao terminal. Verifique se a sua pasta pessoal não é só de leitura e tente novamente.",
     "terminal_command_conflict": "{{path}} pertence a outra instalação, então o VoiceStudio não o alterou.",
     "review_mode_on": "Revisão",
     "review_mode_off": "Fogo rápido",

@@ -1510,6 +1510,7 @@
     "terminal_command_add": "إضافة إلى الطرفية",
     "terminal_command_ready": "متاح في نوافذ الطرفية الجديدة",
     "terminal_command_added": "تمت الإضافة. افتح نافذة طرفية جديدة لاستخدام voicestudio.",
+    "terminal_command_failed": "تعذّرت إضافة voicestudio إلى الطرفية. تأكّد من أن مجلد المنزل ليس للقراءة فقط، ثم حاول مرة أخرى.",
     "terminal_command_conflict": "{{path}} يخص تثبيتًا آخر، لذا تركه VoiceStudio دون تغيير.",
     "review_mode_on": "مراجعة",
     "review_mode_off": "سريع النيران",

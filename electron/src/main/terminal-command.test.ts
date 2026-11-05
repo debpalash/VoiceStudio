@@ -117,3 +117,27 @@ test('AppImage links the persistent image, rather than its temporary mount', () 
   expect(linkTerminalCommand({ ...f, platform: 'linux' })).toBe('unavailable');
   expect(terminalCommandStatus({ ...f, platform: 'win32' }).supported).toBe(false);
 });
+
+test('a live relative link is kept, whatever the working directory', () => {
+  const f = fixture();
+  const appImage = join(f.home, 'Apps/VoiceStudio-new.AppImage');
+  mkdirSync(join(f.home, 'Apps'));
+  writeFileSync(appImage, 'fixture');
+  writeFileSync(join(f.home, 'Apps/VoiceStudio-mine.AppImage'), 'user-managed');
+  mkdirSync(join(f.home, '.local/bin'), { recursive: true });
+  const command = join(f.home, '.local/bin/voicestudio');
+  symlinkSync('../../Apps/VoiceStudio-mine.AppImage', command);
+  expect(linkTerminalCommand({ ...f, platform: 'linux', appImage })).toBe('existing');
+  expect(readlinkSync(command)).toBe('../../Apps/VoiceStudio-mine.AppImage');
+});
+
+test('bash login shells that read .bash_profile get the PATH entry there', () => {
+  const f = fixture();
+  const appImage = join(f.home, 'VoiceStudio.AppImage');
+  writeFileSync(appImage, 'fixture');
+  writeFileSync(join(f.home, '.bash_profile'), '# login settings\n');
+  addTerminalCommandToPath({ ...f, platform: 'linux', appImage });
+  const profile = readFileSync(join(f.home, '.bash_profile'), 'utf8');
+  expect(profile).toContain('# login settings\n');
+  expect(profile).toContain('.local/bin');
+});

@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { getBridge } from '@/components/bridge';
-import { describeError } from '@/lib/api/client';
 import type { TerminalCommandStatus } from '../../../../preload/index.d';
 import { SettingsRow } from './settings-layout';
 
@@ -41,8 +40,9 @@ export function TerminalCommandSettings() {
       setStatus(next);
       if (next.onPath) toast.success(t('settings.terminal_command_added'));
       else toast.error(t('settings.terminal_command_conflict', { path: next.command }));
-    } catch (error) {
-      toast.error(describeError(error));
+    } catch {
+      // A filesystem error ("EACCES: ...") tells the user nothing they can act on.
+      toast.error(t('settings.terminal_command_failed'));
     } finally {
       setBusy(false);
     }

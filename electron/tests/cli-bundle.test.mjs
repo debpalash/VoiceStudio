@@ -51,7 +51,7 @@ for (const platform of ['linux', 'darwin', 'win32']) {
     assert(existsSync(join(resources, 'cli/_internal/contracts.json')));
     const manifest = JSON.parse(readFileSync(join(resources, 'cli/desktop.json')));
     if (platform === 'linux') {
-      assert.equal(manifest.executable, '../../voicestudio-desktop');
+      assert.equal(manifest.executable.replaceAll('\\', '/'), '../../voicestudio-desktop');
       assert.equal(
         readFileSync(join(appOutDir, 'voicestudio-desktop'), 'utf8'),
         'original desktop',

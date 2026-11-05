@@ -1482,6 +1482,7 @@
     "terminal_command_add": "加入終端機",
     "terminal_command_ready": "可在新的終端機中使用",
     "terminal_command_added": "已加入。開啟新的終端機視窗即可使用 voicestudio。",
+    "terminal_command_failed": "無法將 voicestudio 加入終端機。請確認你的主資料夾不是唯讀的，然後再試一次。",
     "terminal_command_conflict": "{{path}} 屬於另一個安裝，因此 VoiceStudio 未作變更。",
     "review_mode_on": "評論",
     "review_mode_off": "速射",

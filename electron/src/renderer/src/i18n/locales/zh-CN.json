@@ -1471,6 +1471,7 @@
     "terminal_command_add": "添加到终端",
     "terminal_command_ready": "可在新终端中使用",
     "terminal_command_added": "已添加。打开新的终端窗口即可使用 voicestudio。",
+    "terminal_command_failed": "无法将 voicestudio 添加到终端。请确认你的主文件夹不是只读的，然后重试。",
     "terminal_command_conflict": "{{path}} 属于另一个安装，因此 VoiceStudio 未作更改。",
     "review_mode_on": "审阅",
     "translate_agent": "智能体适配",

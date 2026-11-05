@@ -130,7 +130,8 @@ def test_state_queries_never_start_the_app(home, monkeypatch, command):
 
 
 @pytest.mark.parametrize('stage, code', [('setup_required', 'runtime_not_ready'),
-                                         ('failed', 'backend_failed'), ('port_in_use', 'backend_failed')])
+                                         ('failed', 'backend_failed'), ('crashed', 'backend_failed'),
+                                         ('port_in_use', 'backend_failed')])
 def test_setup_and_startup_failures_are_reported_without_waiting(home, monkeypatch, stage, code):
     tmp_path, _ = home
     url = unused_url()

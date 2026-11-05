@@ -9,7 +9,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 
 export type TerminalCommandOptions = {
   platform: NodeJS.Platform;
@@ -36,7 +36,8 @@ const PROFILE_LINES =
   PROFILE_MARKER +
   'case ":$PATH:" in\n    *":$HOME/.local/bin:"*) ;;\n' +
   '    *) export PATH="$HOME/.local/bin:$PATH" ;;\nesac\n';
-const PROFILES = ['.profile', '.bashrc', '.zshrc'];
+// Bash login shells read .bash_profile instead of .profile when it exists.
+const PROFILES = ['.profile', '.bash_profile', '.bashrc', '.zshrc'];
 
 function commandTarget(options: TerminalCommandOptions): string | null {
   // Windows installers own PATH; Snap exposes its own command; a translocated
@@ -59,7 +60,8 @@ function commandPath(home: string): string {
 
 /** A dangling link left by a moved or replaced VoiceStudio, never someone else's command. */
 function isStaleOwnLink(command: string): boolean {
-  const target = readlinkSync(command);
+  // A relative target is relative to the link's folder, not the working directory.
+  const target = resolve(dirname(command), readlinkSync(command));
   if (existsSync(target)) return false;
   return (
     target.endsWith('/Contents/Resources/cli/voicestudio') ||

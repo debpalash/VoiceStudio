@@ -1482,6 +1482,7 @@
     "terminal_command_add": "Aan terminal toevoegen",
     "terminal_command_ready": "Beschikbaar in nieuwe terminals",
     "terminal_command_added": "Toegevoegd. Open een nieuw terminalvenster om voicestudio te gebruiken.",
+    "terminal_command_failed": "voicestudio kon niet aan de terminal worden toegevoegd. Controleer of je thuismap niet alleen-lezen is en probeer het opnieuw.",
     "terminal_command_conflict": "{{path}} hoort bij een andere installatie, dus VoiceStudio heeft het niet gewijzigd.",
     "review_mode_on": "Beoordeling",
     "review_mode_off": "Snelvuur",

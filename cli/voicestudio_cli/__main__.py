@@ -18,7 +18,7 @@ from .errors import CLIError, scrub
 from .registry import COMMANDS
 from .transport import Client, download
 from . import updates
-from .desktop import launch_desktop, split_arguments
+from .desktop import launch_desktop, remember_launcher_arguments, split_arguments
 from .render import render
 
 
@@ -889,6 +889,7 @@ def main(argv=None):
         argv, desktop_arguments = split_arguments(argv)
         if not argv:
             return launch_desktop(desktop_arguments)
+        remember_launcher_arguments(desktop_arguments)
         root, nodes = build_parser()
         args = root.parse_args(argv)
         if not hasattr(args, 'handler'):

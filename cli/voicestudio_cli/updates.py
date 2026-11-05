@@ -1,4 +1,6 @@
 """VoiceStudio application releases; installing an update belongs to the app's own updater."""
+import os
+
 from .application import installed_application
 from .errors import CLIError
 
@@ -11,8 +13,11 @@ def install_info(app=None):
                   'Update VoiceStudio through the Mac App Store.'),
         'directory': 'Install an application package to enable managed updates.',
     }
-    automatic = app.method in {'appimage', 'dmg', 'nsis', 'deb'}
+    # Package managers (the AUR package, for one) turn the app's updater off.
+    managed = os.environ.get('VOICESTUDIO_DISABLE_UPDATER') == '1'
+    automatic = app.method in {'appimage', 'dmg', 'nsis', 'deb'} and not managed
     fallback = ('Run voicestudio update, or use Settings → Updates in the app.' if automatic
+                else 'Update VoiceStudio with the package manager that installed it.' if managed
                 else 'Update VoiceStudio using its application installer.')
     return app.info() | {'automatic': automatic, 'instructions': instructions.get(app.method, fallback)}
 

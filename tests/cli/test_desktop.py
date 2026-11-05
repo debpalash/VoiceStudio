@@ -81,6 +81,19 @@ class DesktopTests(unittest.TestCase):
             with patch.object(desktop.shutil, 'which', return_value=None):
                 self.assertEqual(desktop.resolve_desktop(), [str(path)])
 
+    def test_background_launches_keep_the_launchers_switches(self):
+        # Snap runs "voicestudio --no-sandbox voices list"; Chromium cannot start
+        # under strict confinement without that switch, window or not.
+        self.addCleanup(desktop.launcher_arguments.clear)
+        path = self.executable()
+        with patch('voicestudio_cli.__main__.app_version', return_value='9.8.7'):
+            self.assertEqual(main(['--no-sandbox', '--ozone-platform', 'x11', desktop.STOP_FLAG, 'version']), 0)
+        with patch.dict(os.environ, {'VOICESTUDIO_DESKTOP_APP': str(path)}), \
+             patch.object(desktop.subprocess, 'Popen') as popen:
+            desktop.desktop_process([desktop.BACKGROUND_FLAG], detached=True)
+        self.assertEqual(popen.call_args.args[0],
+                         [str(path), '--no-sandbox', '--ozone-platform', 'x11', desktop.BACKGROUND_FLAG])
+
     def test_launch_preserves_environment_and_uses_argument_array(self):
         path = self.executable('app with spaces')
         with patch.dict(os.environ, {'VOICESTUDIO_DESKTOP_APP': str(path), 'CLI_TEST_SETTING': 'value with spaces'}):

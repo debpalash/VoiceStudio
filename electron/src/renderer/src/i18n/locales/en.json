@@ -1665,6 +1665,7 @@
     "terminal_command_add": "Add to terminal",
     "terminal_command_ready": "Available in new terminals",
     "terminal_command_added": "Added. Open a new terminal window to use voicestudio.",
+    "terminal_command_failed": "Couldn't add voicestudio to your terminal. Check that your home folder isn't read-only, then try again.",
     "terminal_command_conflict": "{{path}} belongs to another installation, so VoiceStudio left it unchanged.",
     "review_mode_on": "Pause for review",
     "review_mode_off": "Run straight through",

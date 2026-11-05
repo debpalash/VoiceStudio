@@ -22,6 +22,14 @@ CHECK_UPDATES_FLAG = '--voicestudio-check-updates'
 DESKTOP_SWITCHES = {'--no-sandbox', '--disable-gpu', '--disable-gpu-compositing',
                     BACKGROUND_FLAG, STOP_FLAG, CHECK_UPDATES_FLAG}
 DESKTOP_VALUES = {'--user-data-dir', '--ozone-platform', '--force-device-scale-factor'}
+INTENT_FLAGS = {BACKGROUND_FLAG, STOP_FLAG, CHECK_UPDATES_FLAG}
+# Switches the launcher passed with this command (Snap's --no-sandbox, a chosen
+# --ozone-platform, ...). Background launches need them as much as a window does.
+launcher_arguments = []
+
+
+def remember_launcher_arguments(arguments):
+    launcher_arguments[:] = [item for item in arguments if item.split('=', 1)[0] not in INTENT_FLAGS]
 
 
 def split_arguments(argv):
@@ -184,7 +192,7 @@ def desktop_process(arguments, *, detached=False):
         options.update({'creationflags': subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
                         'close_fds': True} if os.name == 'nt' else {'start_new_session': True})
     try:
-        return subprocess.Popen([*command, *arguments], env=desktop_environment(), **options)
+        return subprocess.Popen([*command, *launcher_arguments, *arguments], env=desktop_environment(), **options)
     except OSError as exc:
         raise CLIError('desktop_launch_failed', f'Could not launch VoiceStudio: {exc}') from None
 

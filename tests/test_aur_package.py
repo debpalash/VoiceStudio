@@ -26,3 +26,11 @@ def test_ci_validates_the_installed_desktop_entry():
     filename, _ = _desktop_entry()
     workflow = (ROOT / ".github/workflows/aur-package.yml").read_text(encoding="utf-8")
     assert f"desktop-file-validate pkg/voicestudio-git/usr/share/applications/{filename}" in workflow
+
+
+def test_launcher_runs_the_executable_electron_builder_produces():
+    recipe = (ROOT / "packaging/aur/voicestudio-git/PKGBUILD").read_text(encoding="utf-8")
+    config = (ROOT / "electron/electron-builder.config.mjs").read_text(encoding="utf-8")
+    executable = re.search(r"linuxExecutableName: '([^']+)'", config)
+    assert executable, "electron-builder no longer names the Linux executable"
+    assert re.search(rf"^exec /opt/VoiceStudio/{re.escape(executable[1])} \"\$@\"$", recipe, re.M)

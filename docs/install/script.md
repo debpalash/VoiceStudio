@@ -189,9 +189,11 @@ replaced. `--no-modify-path` disables shell configuration changes.
 `version --verbose` reports how the app is installed and how it updates, offline.
 `update` opens VoiceStudio at **Settings → Updates**, where the app's own updater
 checks GitHub Releases on its saved channel and downloads, verifies and installs
-an update, the same as from the app. The terminal command itself never contacts
-the internet; choose the update channel in **Settings →
-Updates**. Store-managed installations remain owned by their store and
+an update, the same as from the app. The terminal command makes no update
+request of its own, and otherwise contacts only the backend it is connected to;
+choose the update channel in **Settings → Updates**. Installations managed by
+a package manager (`VOICESTUDIO_DISABLE_UPDATER=1`) are updated by that package
+manager. Store-managed installations remain owned by their store and
 source installations require rebuilding. Installing the terminal command with uv
 or pip does not make either tool responsible for updating the application.
 

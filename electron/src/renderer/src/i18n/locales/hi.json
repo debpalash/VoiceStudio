@@ -1482,6 +1482,7 @@
     "terminal_command_add": "टर्मिनल में जोड़ें",
     "terminal_command_ready": "नए टर्मिनल में उपलब्ध",
     "terminal_command_added": "जोड़ दिया गया। voicestudio इस्तेमाल करने के लिए नई टर्मिनल विंडो खोलें।",
+    "terminal_command_failed": "voicestudio को टर्मिनल में नहीं जोड़ा जा सका। जाँचें कि आपका होम फ़ोल्डर केवल-पढ़ने योग्य नहीं है, फिर दोबारा कोशिश करें।",
     "terminal_command_conflict": "{{path}} किसी दूसरे इंस्टॉलेशन का है, इसलिए VoiceStudio ने इसे नहीं बदला।",
     "review_mode_on": "समीक्षा",
     "review_mode_off": "तेजी से आग",

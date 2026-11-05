@@ -84,7 +84,7 @@ def _check_stage(record):
     if stage == 'setup_required':
         raise CLIError('runtime_not_ready', 'VoiceStudio has not finished setup. Open VoiceStudio, complete '
                        'setup, then run this command again.')
-    if stage in {'failed', 'port_in_use'}:
+    if stage in {'failed', 'crashed', 'port_in_use'}:  # the app does not restart these on its own
         raise CLIError('backend_failed', 'VoiceStudio could not start its backend. Open VoiceStudio to see '
                        'why and repair it, then run this command again.')
 

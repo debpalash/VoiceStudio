@@ -51,6 +51,14 @@ class UpdateTests(unittest.TestCase):
             self.assertIn(fragment, json.loads(errors)['error']['message'])
             launch.assert_not_called()
 
+    def test_package_managed_installs_never_open_a_disabled_updater(self):
+        with patch.dict('os.environ', {'VOICESTUDIO_DISABLE_UPDATER': '1'}), \
+             patch.object(desktop, 'desktop_process') as launch:
+            code, _, errors = self.run_main('update', '--json')
+        self.assertEqual(code, 1)
+        self.assertIn('package manager', json.loads(errors)['error']['message'])
+        launch.assert_not_called()
+
     def test_removed_release_and_channel_options_are_rejected(self):
         for flag in [('--release', '1.0.1'), ('--channel', 'beta')]:
             with self.subTest(flag=flag), patch.object(desktop, 'desktop_process') as launch:
@@ -58,7 +66,7 @@ class UpdateTests(unittest.TestCase):
             self.assertEqual(code, 2)
             launch.assert_not_called()
 
-    def test_the_cli_never_contacts_the_internet(self):
+    def test_the_cli_has_no_internet_endpoints_of_its_own(self):
         # The app's updater is the sanctioned update check (CONTRIBUTING.md →
         # Local-first); a CLI that fetched releases itself would be a second one.
         for source in PACKAGE.glob('*.py'):

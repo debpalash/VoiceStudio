@@ -64,3 +64,13 @@ it('is hidden where installers or stores own the command', async () => {
   cleanup();
   expect(render(<TerminalCommandSettings />).container).toBeEmptyDOMElement();
 });
+
+it('turns a filesystem failure into a message the user can act on', async () => {
+  withBridge();
+  mock.status.mockResolvedValue(status({}));
+  mock.addToPath.mockRejectedValue(new Error("EACCES: permission denied, open '/home/user/.profile'"));
+  render(<TerminalCommandSettings />);
+  fireEvent.click(await screen.findByRole('button', { name: 'settings.terminal_command' }));
+  await waitFor(() => expect(mock.error).toHaveBeenCalledWith('settings.terminal_command_failed'));
+  expect(screen.getByRole('button', { name: 'settings.terminal_command' })).toBeEnabled();
+});
