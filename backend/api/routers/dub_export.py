@@ -1455,7 +1455,7 @@ def _compute_timeline_sync(src_path: str) -> tuple[list[float], list[float]]:
     onsets = detect_speech_onsets(audio, sr)
     mono = np.asarray(audio, dtype=np.float32)
     if mono.ndim > 1:
-        mono = mono.mean(axis=1)
+        mono = np.max(np.abs(mono), axis=1)
     mono = mono.reshape(-1)
     if mono.size == 0:
         return onsets, []
@@ -1508,6 +1508,7 @@ async def dub_get_onsets(job_id: str):
                 isinstance(cached, dict)
                 and isinstance(cached.get("onsets"), list)
                 and isinstance(cached.get("peaks"), list)
+                and cached.get("channel_analysis") == "max_abs_v1"
             ):
                 return cached
     except (OSError, ValueError):
@@ -1521,7 +1522,7 @@ async def dub_get_onsets(job_id: str):
             detail=f"Onset analysis failed: {str(e)[:200]}",
         )
 
-    payload = {"onsets": onsets, "peaks": peaks, "source": source}
+    payload = {"onsets": onsets, "peaks": peaks, "source": source, "channel_analysis": "max_abs_v1"}
     try:
         os.makedirs(os.path.dirname(cache_path), exist_ok=True)
         tmp_path = cache_path + ".tmp"
