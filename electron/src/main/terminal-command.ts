@@ -141,3 +141,22 @@ export function addTerminalCommandToPath(options: TerminalCommandOptions): Termi
   }
   return terminalCommandStatus(options);
 }
+
+/**
+ * First-launch setup for direct downloads (DMG, AppImage), matching what the
+ * Windows installer and Linux packages do: `voicestudio` works in a new
+ * terminal without visiting Settings. Profiles are edited once, only when new
+ * shells would not already find `~/.local/bin`; `stateFile` records that the
+ * setup ran, so a user who later removes the lines is not overridden.
+ */
+export function setUpTerminalCommand(
+  options: TerminalCommandOptions,
+  stateFile: string,
+): TerminalCommandStatus {
+  if (linkTerminalCommand(options) !== 'linked' || existsSync(stateFile))
+    return terminalCommandStatus(options);
+  const status = terminalCommandStatus(options);
+  const next = status.onPath ? status : addTerminalCommandToPath(options);
+  writeFileSync(stateFile, `${JSON.stringify({ schema: 1, configured: true })}\n`);
+  return next;
+}

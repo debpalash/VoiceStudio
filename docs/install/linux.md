@@ -64,9 +64,9 @@ downloads the latest AppImage, verifies it against the release's
 
 Current builds include the unified terminal command. Debian packages expose
 `voicestudio` through `/usr/bin` and the shell installer through `~/.local/bin`.
-A downloaded AppImage links `~/.local/bin/voicestudio` on first launch; choose
-**Settings → General → Terminal command → Add to terminal** if your shell does not
-already search `~/.local/bin`. Open a new terminal afterwards. `voicestudio` opens
+A downloaded AppImage links `~/.local/bin/voicestudio` on first launch and, if
+your shell does not already search `~/.local/bin`, adds it to your shell profile
+once. Open a new terminal afterwards. `voicestudio` opens
 the app, and commands start it in the background when it is not running; no
 separate Python installation is needed. Existing custom launchers are not
 replaced; see [Terminal command](script.md#terminal-command).

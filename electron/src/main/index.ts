@@ -30,7 +30,7 @@ import { restoreSecurityScopedDirectories } from './security-scoped-files';
 import { homedir } from 'node:os';
 import {
   addTerminalCommandToPath,
-  linkTerminalCommand,
+  setUpTerminalCommand,
   terminalCommandStatus,
   type TerminalCommandOptions,
 } from './terminal-command';
@@ -91,6 +91,8 @@ let relaunchIntent: LaunchIntent | null = null;
 let checkForUpdates: (() => void) | null = null;
 let publishedDiscovery = '';
 const DISCOVERY_DIR = app.getPath('userData');
+// Records that first-launch terminal setup ran (see setUpTerminalCommand).
+const TERMINAL_COMMAND_STATE = 'terminal-command.json';
 
 const PERSISTENCE_FLUSH_REQUEST = 'app:flush-persistence';
 const PERSISTENCE_FLUSHED = 'app:persistence-flushed';
@@ -412,9 +414,12 @@ if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSing
       electronApp.setAppUserModelId(APP_ID);
       if (app.isPackaged) {
         try {
-          linkTerminalCommand(terminalCommandOptions());
+          setUpTerminalCommand(
+            terminalCommandOptions(),
+            join(app.getPath('userData'), TERMINAL_COMMAND_STATE),
+          );
         } catch (error) {
-          console.warn('[terminal-command] Could not link the terminal command:', error);
+          console.warn('[terminal-command] Could not set up the terminal command:', error);
         }
       }
       if (headlessOwner && process.platform === 'darwin') app.dock?.hide();

@@ -15,6 +15,7 @@ import { afterEach, expect, test } from 'vitest';
 import {
   addTerminalCommandToPath,
   linkTerminalCommand,
+  setUpTerminalCommand,
   terminalCommandStatus,
 } from './terminal-command';
 
@@ -140,4 +141,42 @@ test('bash login shells that read .bash_profile get the PATH entry there', () =>
   const profile = readFileSync(join(f.home, '.bash_profile'), 'utf8');
   expect(profile).toContain('# login settings\n');
   expect(profile).toContain('.local/bin');
+});
+
+test('first launch makes the command work in new terminals, like the installers do', () => {
+  const f = fixture();
+  const state = join(f.home, 'terminal-command.json');
+  expect(setUpTerminalCommand(f, state)).toMatchObject({ linked: true, onPath: true });
+  expect(readFileSync(join(f.home, '.zshrc'), 'utf8')).toContain('.local/bin');
+  expect(existsSync(state)).toBe(true);
+});
+
+test('first launch leaves profiles alone when new shells already find the command', () => {
+  const f = { ...fixture(), path: '' };
+  f.path = `/usr/bin:${join(f.home, '.local/bin')}`;
+  const state = join(f.home, 'terminal-command.json');
+  expect(setUpTerminalCommand(f, state)).toMatchObject({ linked: true, onPath: true });
+  expect(existsSync(join(f.home, '.zshrc'))).toBe(false);
+  expect(existsSync(join(f.home, '.profile'))).toBe(false);
+});
+
+test('setup runs once: lines the user removed are not added back', () => {
+  const f = fixture();
+  const state = join(f.home, 'terminal-command.json');
+  setUpTerminalCommand(f, state);
+  writeFileSync(join(f.home, '.zshrc'), '# my own setup\n');
+  rmSync(join(f.home, '.profile'));
+  expect(setUpTerminalCommand(f, state).onPath).toBe(false);
+  expect(readFileSync(join(f.home, '.zshrc'), 'utf8')).toBe('# my own setup\n');
+  expect(existsSync(join(f.home, '.profile'))).toBe(false);
+});
+
+test('setup never edits profiles for a command owned by another installation', () => {
+  const f = fixture();
+  mkdirSync(join(f.home, '.local/bin'), { recursive: true });
+  writeFileSync(join(f.home, '.local/bin/voicestudio'), 'uv tool');
+  const state = join(f.home, 'terminal-command.json');
+  expect(setUpTerminalCommand(f, state)).toMatchObject({ linked: false });
+  expect(existsSync(join(f.home, '.zshrc'))).toBe(false);
+  expect(existsSync(state)).toBe(false);
 });

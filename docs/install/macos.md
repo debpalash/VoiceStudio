@@ -62,9 +62,9 @@ Chip/Processor**) from the
 double-click to mount it, and drag **VoiceStudio.app** into `/Applications`.
 
 Current builds link the bundled `voicestudio` command into `~/.local/bin` on
-the first launch of the installed app (or during shell-script installation). To
-add that folder to your shell, choose **Settings → General → Terminal command →
-Add to terminal**, then open a new terminal: `voicestudio` opens the app,
+the first launch of the installed app (or during shell-script installation), and
+add that folder to your shell profiles (`~/.zshrc`, `~/.profile`) once if your shell does not
+already search it. Open a new terminal afterwards: `voicestudio` opens the app,
 `voicestudio --help` shows the CLI, and commands start the app in the background
 when it is not running. Python and uv are not required. Existing custom launchers
 are preserved; see the [CLI migration instructions](script.md#terminal-command).

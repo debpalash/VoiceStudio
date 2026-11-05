@@ -159,9 +159,11 @@ starting the app in the background needs a graphical session; over SSH or on a
 server, run a backend yourself and pass `--url`.
 
 On macOS and Linux direct downloads, the app links `~/.local/bin/voicestudio` when
-it starts. It changes your shell profiles only when you choose
-**Settings → General → Terminal command → Add to terminal**, or when you use the
-shell installer. Windows installers add the command to PATH themselves.
+it starts. On the first launch, if new terminals would not find `~/.local/bin`,
+it also adds a marked block (`# VoiceStudio terminal command`) to your shell
+profiles, as Windows installers and Linux packages put the command on PATH
+themselves. It does this once: if you remove the block, it stays removed, and
+**Settings → General → Terminal command → Add to terminal** adds it back.
 
 For older AppImages, the first metadata read extracts the application's manifest.
 Subsequent reads use a local cache tied to the image's file identity, size and

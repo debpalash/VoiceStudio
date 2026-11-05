@@ -8,9 +8,10 @@ import type { TerminalCommandStatus } from '../../../../preload/index.d';
 import { SettingsRow } from './settings-layout';
 
 /**
- * Offers the `voicestudio` terminal command to DMG/AppImage users. The app
- * links the command at startup but edits shell profiles only on this explicit
- * request; Windows installers, packages and Snap own their own PATH setup.
+ * Shows whether the `voicestudio` terminal command works in new terminals for
+ * DMG/AppImage users. The first launch sets it up (setUpTerminalCommand); this
+ * row repairs it if the user later removed it. Windows installers, packages
+ * and Snap own their own PATH setup.
  */
 export function TerminalCommandSettings() {
   const { t } = useTranslation();
