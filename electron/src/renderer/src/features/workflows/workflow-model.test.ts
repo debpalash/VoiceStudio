@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import {
   addWorkflowStep,
   connectWorkflowSteps,
@@ -10,6 +10,28 @@ import {
   removeWorkflowStep,
   removedWorkflowData,
 } from './workflow-model';
+
+afterEach(() => vi.unstubAllGlobals());
+
+it('creates unique workflow ids when randomUUID is unavailable on a LAN origin', () => {
+  let counter = 0;
+  vi.stubGlobal('crypto', {
+    getRandomValues: (bytes: Uint8Array) => {
+      bytes.fill(0);
+      bytes[0] = ++counter;
+      return bytes;
+    },
+  });
+
+  const document = makeWorkflow('Reception');
+  const ids = [
+    document.id,
+    ...document.steps.map((step) => step.id),
+    ...document.connections.map((connection) => connection.id),
+  ];
+  expect(new Set(ids).size).toBe(ids.length);
+  expect(document.id).toMatch(/^[0-9a-f-]{36}$/);
+});
 
 it('creates a connected, editable call template without a destination number', () => {
   const document = makeCallWorkflow('Book a restaurant', 'Book a table for two');
