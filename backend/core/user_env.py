@@ -17,6 +17,9 @@ import re
 from typing import Optional
 
 USER_ENV_PATH = os.path.expanduser("~/.config/omnivoice/env")
+# Not a Settings choice: Electron saves it here, and a launch that sets another build
+# must still get that build (#3804).
+_LAUNCH_WINS = frozenset({"OMNIVOICE_TORCH_VARIANT"})
 
 # Where a desktop user sets a backend variable by hand, for refusal messages
 # that name one (core.browser_guard, core.url_safety). Stdlib-only module, so
@@ -151,6 +154,8 @@ def load_into_environ(path: Optional[str] = None) -> bool:
     single_quoted = _single_quoted_keys(path)
     for key, value in literal.items():
         if value is None:
+            continue
+        if key in _LAUNCH_WINS and os.environ.get(key, "").strip():
             continue
         if key not in single_quoted and expanded.get(key) is not None:
             value = expanded[key]

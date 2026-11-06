@@ -575,5 +575,43 @@ def test_startup_applies_the_override_before_torchaudio_loads():
         for node in nodes
         if isinstance(node, ast.Import) and any(a.name == "torchaudio" for a in node.names)
     ]
-    assert calls and imports
+    # prepare_audio_imports can import torchaudio itself on newer versions.
+    prepares = [
+        node.lineno
+        for node in nodes
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "prepare_audio_imports"
+    ]
+    assert calls and imports and prepares
     assert min(calls) < min(imports)
+    assert min(calls) < min(prepares)
+
+
+def test_a_launch_choice_beats_the_saved_rocm_choice(monkeypatch, tmp_path):
+    """Electron saves ROCm in the env file; otherwise `=cpu` is lost in the backend."""
+    from core.user_env import load_into_environ
+
+    env_file = tmp_path / "env"
+    env_file.write_text("OMNIVOICE_TORCH_VARIANT=rocm\nHF_HOME=/models\n", encoding="utf-8")
+    monkeypatch.setenv("OMNIVOICE_TORCH_VARIANT", "cpu")
+    monkeypatch.setenv("HF_HOME", "/launcher-default")
+
+    assert load_into_environ(str(env_file))
+
+    assert __import__("os").environ["OMNIVOICE_TORCH_VARIANT"] == "cpu"
+    # Everything else keeps the file's documented precedence over the launcher.
+    assert __import__("os").environ["HF_HOME"] == "/models"
+
+
+def test_a_saved_rocm_choice_applies_when_the_launch_sets_none(monkeypatch, tmp_path):
+    from core.user_env import load_into_environ
+
+    env_file = tmp_path / "env"
+    env_file.write_text("OMNIVOICE_TORCH_VARIANT=rocm\n", encoding="utf-8")
+    monkeypatch.setenv("OMNIVOICE_TORCH_VARIANT", "rocm")
+    monkeypatch.delenv("OMNIVOICE_TORCH_VARIANT")
+
+    assert load_into_environ(str(env_file))
+
+    assert __import__("os").environ["OMNIVOICE_TORCH_VARIANT"] == "rocm"
