@@ -4578,6 +4578,8 @@
     "discord": "Obter ajuda no Discord",
     "check_connection": "Verificar conexão de download",
     "checking": "Verificando conexão…",
+    "use_cpu": "Instalar a versão para CPU",
+    "use_cpu_hint": "Download muito menor. Tudo continua funcionando, mas as vozes são geradas mais devagar.",
     "check_hint": "Baixa uma pequena amostra do servidor do pacote afetado (até 15 segundos). Nada é enviado. Um teste bem-sucedido não garante a conclusão do download completo.",
     "check_ok": "{{host}} respondeu: {{rate}} KB/s nesta amostra.",
     "check_failed": "Não foi possível concluir a verificação de {{host}}. Os detalhes estão no registro da instalação.",

@@ -1,10 +1,11 @@
 // @vitest-environment node
-import { beforeEach, afterEach, expect, it, onTestFinished, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { chmodSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const mocks = vi.hoisted(() => ({
+  saveTorchVariant: vi.fn(),
   runtimeConfig: null as { root: string; owned: boolean } | null,
   existingProject: false,
   existingRoot: false,
@@ -74,6 +75,16 @@ vi.mock('./runtime-project', () => ({
   runtimePython: (root: string) => root + '/.venv/bin/python',
   runtimeDownloadHosts: mocks.hosts,
   runtimeUvCache: (project: string) => project + '/../.uv-cache',
+  resolveTorchVariant: () => {
+    const raw = process.env.OMNIVOICE_TORCH_VARIANT;
+    return { variant: raw === 'cpu' ? 'cpu' : 'default', explicit: Boolean(raw) };
+  },
+  cpuTorchApplies: () => true,
+}));
+vi.mock('./torch-choice', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./torch-choice')>()),
+  rememberTorchVariant: vi.fn(),
+  saveTorchVariant: mocks.saveTorchVariant,
 }));
 vi.mock('./setup-downloads', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./setup-downloads')>()),
@@ -978,4 +989,99 @@ it('lets a failed start move the runtime to another folder', async () => {
   (supervisor as unknown as { stage: string }).stage = 'ready';
   expect(() => supervisor.setRuntimeLocation(null)).toThrow('runtime_location_unavailable');
   await supervisor.shutdown();
+});
+
+describe('falling back to the CPU build', () => {
+  const clearVariant = () => {
+    delete process.env.OMNIVOICE_TORCH_VARIANT;
+    mocks.saveTorchVariant.mockClear();
+  };
+
+  it('offers it after a dropped download, then installs the CPU build', async () => {
+    clearVariant();
+    onTestFinished(clearVariant);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('down');
+      }),
+    );
+    const variants: (string | undefined)[] = [];
+    mocks.install.mockImplementation(async () => {
+      variants.push(process.env.OMNIVOICE_TORCH_VARIANT);
+      throw new Error('peer closed connection without sending TLS close_notify');
+    });
+    const supervisor = new BackendSupervisor();
+    onTestFinished(() => supervisor.shutdown());
+    await supervisor.start();
+    expect(supervisor.status.cpuSetupAvailable).toBeUndefined();
+    await supervisor.setupRuntime();
+    expect(supervisor.status.failure?.code).toBe('RUNTIME_DOWNLOAD_INTERRUPTED');
+    expect(supervisor.status.cpuSetupAvailable).toBe(true);
+
+    await supervisor.setupRuntimeOnCpu();
+
+    expect(variants.at(-1)).toBe('cpu');
+    expect(mocks.saveTorchVariant).toHaveBeenCalledWith('cpu');
+    expect(supervisor.status.cpuSetupAvailable).toBeUndefined();
+  });
+
+  it('stops a stuck download first, so the CPU install can start', async () => {
+    clearVariant();
+    onTestFinished(clearVariant);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('down');
+      }),
+    );
+    let started = 0;
+    mocks.install.mockImplementation(
+      async (_bundle: string, _project: string, _uv: string, _run: unknown, signal: AbortSignal) => {
+        started++;
+        if (started > 1) throw new Error('second attempt ran');
+        await new Promise<void>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(new Error('aborted')));
+        });
+      },
+    );
+    const supervisor = new BackendSupervisor();
+    onTestFinished(() => supervisor.shutdown());
+    await supervisor.start();
+    const stuck = supervisor.setupRuntime();
+    await vi.waitFor(() => expect(mocks.install).toHaveBeenCalled());
+    const progress = (
+      supervisor as unknown as { setupProgress: { snapshot(): Record<string, unknown> } }
+    ).setupProgress;
+    const snapshot = vi.spyOn(progress, 'snapshot').mockReturnValue({
+      completedDownloads: 0,
+      downloadsComplete: false,
+      stalled: true,
+      stalledSeconds: 300,
+    });
+    expect(supervisor.status.cpuSetupAvailable).toBe(true);
+    snapshot.mockRestore();
+    vi.spyOn(progress, 'snapshot').mockReturnValueOnce({
+      completedDownloads: 0,
+      downloadsComplete: false,
+      stalled: true,
+      stalledSeconds: 300,
+    });
+
+    await supervisor.setupRuntimeOnCpu();
+    await stuck;
+
+    expect(started).toBe(2);
+  });
+
+  it('does nothing when it is not on offer', async () => {
+    clearVariant();
+    onTestFinished(clearVariant);
+    const supervisor = new BackendSupervisor();
+    onTestFinished(() => supervisor.shutdown());
+    await supervisor.start();
+    await supervisor.setupRuntimeOnCpu();
+    expect(process.env.OMNIVOICE_TORCH_VARIANT).toBeUndefined();
+    expect(mocks.saveTorchVariant).not.toHaveBeenCalled();
+  });
 });

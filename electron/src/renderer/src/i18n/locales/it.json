@@ -4578,6 +4578,8 @@
     "discord": "Ricevi assistenza su Discord",
     "check_connection": "Verifica la connessione di download",
     "checking": "Verifica della connessione…",
+    "use_cpu": "Installa invece la versione CPU",
+    "use_cpu_hint": "Download molto più piccolo. Funziona tutto, ma le voci vengono generate più lentamente.",
     "check_hint": "Scarica un piccolo campione dal server del pacchetto interessato (fino a 15 secondi). Non viene caricato nulla. Un test riuscito non garantisce il completamento del download.",
     "check_ok": "{{host}} ha risposto: {{rate}} KB/s per questo campione.",
     "check_failed": "Impossibile completare la verifica di {{host}}. I dettagli sono nel registro di configurazione.",

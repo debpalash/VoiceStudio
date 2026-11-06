@@ -4576,6 +4576,8 @@
     "discord": "Få hjälp på Discord",
     "check_connection": "Kontrollera nedladdningsanslutning",
     "checking": "Kontrollerar anslutning…",
+    "use_cpu": "Installera CPU-versionen i stället",
+    "use_cpu_hint": "Mycket mindre nedladdning. Allt fungerar, men röster skapas långsammare.",
     "check_hint": "Laddar ned ett litet prov från den berörda paketservern (högst 15 sekunder). Inget laddas upp. En lyckad kontroll garanterar inte att hela nedladdningen slutförs.",
     "check_ok": "{{host}} svarade: {{rate}} kB/s för detta prov.",
     "check_failed": "Kontrollen av {{host}} kunde inte slutföras. Detaljer finns i installationsloggen.",

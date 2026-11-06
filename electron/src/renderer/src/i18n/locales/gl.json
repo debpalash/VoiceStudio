@@ -4576,6 +4576,8 @@
     "discord": "Obter axuda en Discord",
     "check_connection": "Comprobar a conexión de descarga",
     "checking": "Comprobando a conexión…",
+    "use_cpu": "Instalar a versión para CPU",
+    "use_cpu_hint": "Descarga moito máis pequena. Todo segue funcionando, pero as voces xéranse máis amodo.",
     "check_hint": "Descarga unha pequena mostra do servidor do paquete afectado (ata 15 segundos). Non se envía nada. Un resultado correcto non garante que remate a descarga completa.",
     "check_ok": "{{host}} respondeu: {{rate}} KB/s nesta mostra.",
     "check_failed": "Non se puido completar a comprobación de {{host}}. Os detalles están no rexistro de instalación.",

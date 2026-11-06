@@ -4576,6 +4576,8 @@
     "discord": "在 Discord 上取得協助",
     "check_connection": "檢查下載連線",
     "checking": "正在檢查連線…",
+    "use_cpu": "改為安裝 CPU 版本",
+    "use_cpu_hint": "下載量小得多。所有功能都能使用,但產生語音會較慢。",
     "check_hint": "從相關套件伺服器下載少量樣本資料（最多 15 秒）。不會上傳任何內容。檢查成功不代表整個下載一定能完成。",
     "check_ok": "{{host}} 已回應：本次樣本速度為 {{rate}} KB/秒。",
     "check_failed": "無法完成對 {{host}} 的檢查。詳情請查看安裝記錄。",

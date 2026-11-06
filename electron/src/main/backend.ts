@@ -1,7 +1,7 @@
 import { decideMissingRuntime, runtimeWasInstalled } from './runtime-repair';
 import { windowsRocmInstalled, windowsRocmRequested } from './runtime-windows-rocm';
 import { runtimeProjectReady } from './runtime-readiness';
-import { rememberTorchVariant } from './torch-choice';
+import { cpuSetupOffered, rememberTorchVariant, saveTorchVariant } from './torch-choice';
 import { runRuntimeProbe } from './runtime-probe';
 import { RuntimeLaunchRefusedError } from './runtime-launch-refusal';
 import { pypiFilesHost } from './pypi-mirror';
@@ -16,6 +16,7 @@ import {
   promoteLegacyRuntimeCaches,
   runtimeDependenciesReady,
   runtimeDownloadHosts,
+  cpuTorchApplies,
   resolveTorchVariant,
   managedPythonRequest,
   runtimeInstallInterrupted,
@@ -916,6 +917,7 @@ export class BackendSupervisor extends EventEmitter<{
   private readonly setupLog = new SetupLog(join(app.getPath('userData'), 'setup.log'));
   private setupCheck: Promise<SetupConnectionCheck> | null = null;
   private installation: AbortController | null = null;
+  private installationSettled: Promise<void> = Promise.resolve();
   private cleaningRuntime = false;
   private runtimeProject: string | null = null;
   private runtimeRegion: RuntimeRegion = loadRuntimeRegion();
@@ -1081,6 +1083,7 @@ export class BackendSupervisor extends EventEmitter<{
       if (['on', 'evaluation'].includes(this.setupSmartAppControl))
         status.smartAppControlWarning = true;
     }
+    if (this.cpuSetupAvailable()) status.cpuSetupAvailable = true;
     if (/^(1|true|yes|on)$/i.test((process.env.OMNIVOICE_ANALYTICS_DISABLED ?? '').trim()))
       status.analyticsDisabled = true;
     if (this.diagnosis) status.diagnosis = this.diagnosis;
@@ -1274,6 +1277,10 @@ export class BackendSupervisor extends EventEmitter<{
     this.runtimeProject = project;
     const controller = new AbortController();
     this.installation = controller;
+    let settled = () => {};
+    this.installationSettled = new Promise<void>((resolve) => {
+      settled = resolve;
+    });
     const gen = ++this.generation;
     this.startedAt = Date.now();
     this.log.length = 0;
@@ -1468,6 +1475,7 @@ export class BackendSupervisor extends EventEmitter<{
     } finally {
       stopWatching();
       if (this.installation === controller) this.installation = null;
+      settled();
     }
   }
 
@@ -1510,6 +1518,31 @@ export class BackendSupervisor extends EventEmitter<{
     }, 3_000);
     timer.unref?.();
     return () => clearInterval(timer);
+  }
+
+  private cpuSetupAvailable(): boolean {
+    if (!['setup_required', 'installing'].includes(this.stage)) return false;
+    if (!app.isPackaged || !runtimeSetupSupported()) return false;
+    return cpuSetupOffered({
+      stage: this.stage,
+      ...(this.failure ? { failureCode: this.failure.code } : {}),
+      progress: this.setupProgress.snapshot(),
+      choice: resolveTorchVariant(),
+      cpuApplies: cpuTorchApplies(process.platform, process.arch),
+    });
+  }
+
+  /** Give up on the CUDA download, even a stuck one, and install the smaller CPU build. */
+  async setupRuntimeOnCpu(): Promise<void> {
+    if (!this.cpuSetupAvailable()) return;
+    process.env.OMNIVOICE_TORCH_VARIANT = 'cpu';
+    saveTorchVariant('cpu');
+    if (this.installation) {
+      this.installation.abort();
+      await this.installationSettled;
+    }
+    await this.restart();
+    await this.setupRuntime();
   }
 
   /** Remove only an Electron-owned Python project, then perform a fresh install. */

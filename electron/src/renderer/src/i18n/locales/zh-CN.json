@@ -4576,6 +4576,8 @@
     "discord": "在 Discord 上获取帮助",
     "check_connection": "检查下载连接",
     "checking": "正在检查连接…",
+    "use_cpu": "改为安装 CPU 版本",
+    "use_cpu_hint": "下载量小得多。所有功能都可用,但生成语音会更慢。",
     "check_hint": "从相关软件包服务器下载少量样本数据（最多 15 秒）。不会上传任何内容。检查成功不代表整个下载一定能完成。",
     "check_ok": "{{host}} 已响应：本次样本速度为 {{rate}} KB/秒。",
     "check_failed": "无法完成对 {{host}} 的检查。详情请查看安装日志。",

@@ -4576,6 +4576,8 @@
     "discord": "Get help on Discord",
     "check_connection": "Check download connection",
     "checking": "Checking connection…",
+    "use_cpu": "Install the CPU version instead",
+    "use_cpu_hint": "Much smaller download. Everything still works, but voices generate more slowly.",
     "check_hint": "Downloads a small sample from the affected package server (up to 15 seconds). Nothing is uploaded. Success does not guarantee the full download will finish.",
     "check_ok": "{{host}} responded: {{rate}} KB/s in this sample.",
     "check_failed": "Could not complete the check for {{host}}. Details are in the setup log.",

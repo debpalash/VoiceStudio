@@ -4576,6 +4576,8 @@
     "discord": "Dapatkan bantuan di Discord",
     "check_connection": "Periksa koneksi unduhan",
     "checking": "Memeriksa koneksi…",
+    "use_cpu": "Pasang versi CPU saja",
+    "use_cpu_hint": "Unduhan jauh lebih kecil. Semua tetap berfungsi, tetapi suara dibuat lebih lambat.",
     "check_hint": "Mengunduh sampel kecil dari server paket terkait (hingga 15 detik). Tidak ada yang diunggah. Pemeriksaan yang berhasil tidak menjamin seluruh unduhan selesai.",
     "check_ok": "{{host}} merespons: {{rate}} KB/dtk pada sampel ini.",
     "check_failed": "Pemeriksaan {{host}} tidak dapat diselesaikan. Detail ada di log penyiapan.",

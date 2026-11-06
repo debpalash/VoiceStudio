@@ -9,10 +9,15 @@ const mock = vi.hoisted(() => ({
   save: vi.fn(),
   check: vi.fn(),
   external: vi.fn(),
+  useCpu: vi.fn(),
 }));
 vi.mock('./bridge', () => ({
   getBridge: () => ({
-    backend: { getSetupDiagnostics: mock.diagnostics, checkSetupConnection: mock.check },
+    backend: {
+      getSetupDiagnostics: mock.diagnostics,
+      checkSetupConnection: mock.check,
+      setupRuntimeOnCpu: mock.useCpu,
+    },
     files: { saveData: mock.save, openExternal: mock.external },
   }),
 }));
@@ -107,4 +112,15 @@ it('keeps log export retryable if saving fails', async () => {
   fireEvent.click(button);
   expect(await screen.findByRole('alert')).toHaveTextContent(i18n.t('common.error'));
   expect(button).toBeEnabled();
+});
+
+it('offers the CPU install only when main says it would help, and starts it', async () => {
+  mock.useCpu.mockResolvedValue(undefined);
+  const { rerender } = render(<SetupSupport status={status(300)} />);
+  expect(screen.queryByRole('button', { name: i18n.t('setupHelp.use_cpu') })).toBeNull();
+
+  rerender(<SetupSupport status={{ ...status(300), cpuSetupAvailable: true }} />);
+  expect(screen.getByText(i18n.t('setupHelp.use_cpu_hint'))).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: i18n.t('setupHelp.use_cpu') }));
+  await waitFor(() => expect(mock.useCpu).toHaveBeenCalledOnce());
 });

@@ -4578,6 +4578,8 @@
     "discord": "Obtenir de l’aide sur Discord",
     "check_connection": "Tester la connexion de téléchargement",
     "checking": "Test de la connexion…",
+    "use_cpu": "Installer plutôt la version CPU",
+    "use_cpu_hint": "Téléchargement bien plus léger. Tout fonctionne, mais la génération des voix est plus lente.",
     "check_hint": "Télécharge un petit échantillon depuis le serveur du paquet concerné (15 secondes maximum). Rien n’est envoyé. Un test réussi ne garantit pas la fin du téléchargement complet.",
     "check_ok": "{{host}} a répondu : {{rate}} Ko/s pour cet échantillon.",
     "check_failed": "Impossible de terminer le test de {{host}}. Les détails figurent dans le journal d’installation.",

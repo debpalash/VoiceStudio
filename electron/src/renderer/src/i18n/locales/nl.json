@@ -4576,6 +4576,8 @@
     "discord": "Hulp krijgen op Discord",
     "check_connection": "Downloadverbinding controleren",
     "checking": "Verbinding controleren…",
+    "use_cpu": "In plaats daarvan de CPU-versie installeren",
+    "use_cpu_hint": "Veel kleinere download. Alles blijft werken, maar stemmen worden langzamer gemaakt.",
     "check_hint": "Downloadt een klein voorbeeld van de betreffende pakketserver (maximaal 15 seconden). Er wordt niets geüpload. Een geslaagde controle garandeert niet dat de volledige download lukt.",
     "check_ok": "{{host}} antwoordde: {{rate}} KB/s bij dit voorbeeld.",
     "check_failed": "De controle van {{host}} kon niet worden voltooid. Details staan in het installatielogboek.",

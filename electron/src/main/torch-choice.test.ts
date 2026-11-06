@@ -3,7 +3,13 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { applySavedTorchVariant, rememberTorchVariant, userEnvPath } from './torch-choice';
+import {
+  applySavedTorchVariant,
+  cpuSetupOffered,
+  rememberTorchVariant,
+  saveTorchVariant,
+  userEnvPath,
+} from './torch-choice';
 
 let dir: string;
 let file: string;
@@ -125,5 +131,67 @@ describe('wiring (#3804)', () => {
     expect(await source('backend.ts')).toMatch(
       /await runtimeProjectReady\(bundle, project\)\) \{\s+this\.runtimeProject = project;\s+rememberTorchVariant\(\);/,
     );
+  });
+});
+
+describe('saveTorchVariant', () => {
+  it('keeps a CPU choice for later launches', () => {
+    saveTorchVariant('cpu', file);
+    const env: NodeJS.ProcessEnv = {};
+    applySavedTorchVariant(env, file);
+    expect(env[line]).toBe('cpu');
+  });
+
+  it('a launch that asks for CUDA forgets a saved CPU choice', async () => {
+    const path = join(dir, 'env');
+    await writeFile(path, `HF_TOKEN=abc\n${line}=cpu\n`);
+    rememberTorchVariant({ [line]: 'cuda' }, 'linux', path);
+    expect(await readFile(path, 'utf8')).toBe('HF_TOKEN=abc\n');
+  });
+});
+
+describe('cpuSetupOffered', () => {
+  const inferred = { variant: 'default', explicit: false } as const;
+  const base = { stage: 'setup_required', choice: inferred, cpuApplies: true };
+
+  it.each(['RUNTIME_DOWNLOAD_STALLED', 'RUNTIME_DOWNLOAD_INTERRUPTED'])(
+    'offers it after %s',
+    (failureCode) => {
+      expect(cpuSetupOffered({ ...base, failureCode })).toBe(true);
+    },
+  );
+
+  it('offers it during a download stuck for five minutes', () => {
+    expect(
+      cpuSetupOffered({
+        ...base,
+        stage: 'installing',
+        progress: { downloadsComplete: false, stalled: true, stalledSeconds: 300 },
+      }),
+    ).toBe(true);
+    expect(
+      cpuSetupOffered({
+        ...base,
+        stage: 'installing',
+        progress: { downloadsComplete: false, stalled: true, stalledSeconds: 299 },
+      }),
+    ).toBe(false);
+  });
+
+  it('stays away when the CPU build would not help or was not the question', () => {
+    const failureCode = 'RUNTIME_DOWNLOAD_STALLED';
+    expect(cpuSetupOffered({ ...base, failureCode: 'DISK_FULL' })).toBe(false);
+    expect(cpuSetupOffered({ ...base })).toBe(false);
+    // Already the small build.
+    expect(
+      cpuSetupOffered({ ...base, failureCode, choice: { variant: 'cpu', explicit: false } }),
+    ).toBe(false);
+    // The user asked for this build by name.
+    expect(
+      cpuSetupOffered({ ...base, failureCode, choice: { variant: 'default', explicit: true } }),
+    ).toBe(false);
+    // macOS and Linux arm64 have no separate CPU build.
+    expect(cpuSetupOffered({ ...base, failureCode, cpuApplies: false })).toBe(false);
+    expect(cpuSetupOffered({ ...base, failureCode, stage: 'ready' })).toBe(false);
   });
 });

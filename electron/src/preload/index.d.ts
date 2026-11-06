@@ -31,6 +31,8 @@ export interface NativeCrashRecord {
 }
 export interface BackendStatus {
   lastCrash?: NativeCrashRecord;
+  /** The CUDA download failed or stuck, and the smaller CPU build could get past it. */
+  cpuSetupAvailable?: boolean;
   /** Set on the setup screen when Windows Smart App Control may block the engine. */
   smartAppControlWarning?: boolean;
   /** OMNIVOICE_ANALYTICS_DISABLED is set: nothing may be sent, whatever was chosen. */
@@ -443,6 +445,7 @@ export interface VoiceStudioBridge {
     restart(): Promise<void>;
     setupRuntime(): Promise<void>;
     cleanSetupRuntime(): Promise<void>;
+    setupRuntimeOnCpu(): Promise<void>;
     setRuntimeRegion(region: RuntimeRegion): Promise<RuntimeRegion>;
     chooseRuntimeLocation(title: string): Promise<RuntimeLocation | null>;
     useDefaultRuntimeLocation(): Promise<RuntimeLocation>;

@@ -4576,6 +4576,8 @@
     "discord": "Nhận trợ giúp trên Discord",
     "check_connection": "Kiểm tra kết nối tải xuống",
     "checking": "Đang kiểm tra kết nối…",
+    "use_cpu": "Cài phiên bản CPU thay thế",
+    "use_cpu_hint": "Dung lượng tải nhỏ hơn nhiều. Mọi thứ vẫn hoạt động nhưng tạo giọng nói chậm hơn.",
     "check_hint": "Tải một mẫu nhỏ từ máy chủ của gói bị ảnh hưởng (tối đa 15 giây). Không tải lên bất cứ gì. Kiểm tra thành công không đảm bảo toàn bộ quá trình tải xuống sẽ hoàn tất.",
     "check_ok": "{{host}} đã phản hồi: {{rate}} KB/giây trong mẫu này.",
     "check_failed": "Không thể hoàn tất kiểm tra {{host}}. Chi tiết có trong nhật ký thiết lập.",

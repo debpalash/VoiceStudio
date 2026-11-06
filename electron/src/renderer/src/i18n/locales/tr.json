@@ -4576,6 +4576,8 @@
     "discord": "Discord üzerinden yardım al",
     "check_connection": "İndirme bağlantısını kontrol et",
     "checking": "Bağlantı kontrol ediliyor…",
+    "use_cpu": "Bunun yerine CPU sürümünü kur",
+    "use_cpu_hint": "Çok daha küçük bir indirme. Her şey çalışır, ancak sesler daha yavaş üretilir.",
     "check_hint": "İlgili paket sunucusundan küçük bir örnek indirir (en fazla 15 saniye). Hiçbir şey yüklenmez. Başarılı kontrol, tüm indirmenin tamamlanacağını garanti etmez.",
     "check_ok": "{{host}} yanıt verdi: bu örnekte {{rate}} KB/sn.",
     "check_failed": "{{host}} kontrolü tamamlanamadı. Ayrıntılar kurulum günlüğünde.",

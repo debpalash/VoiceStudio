@@ -4576,6 +4576,8 @@
     "discord": "Hilfe auf Discord",
     "check_connection": "Downloadverbindung prüfen",
     "checking": "Verbindung wird geprüft…",
+    "use_cpu": "Stattdessen die CPU-Version installieren",
+    "use_cpu_hint": "Viel kleinerer Download. Alles funktioniert weiterhin, aber Stimmen werden langsamer erzeugt.",
     "check_hint": "Lädt eine kleine Datenprobe vom betroffenen Paketserver herunter (bis zu 15 Sekunden). Es wird nichts hochgeladen. Ein erfolgreicher Test garantiert keinen vollständigen Download.",
     "check_ok": "{{host}} antwortete: {{rate}} KB/s bei dieser Probe.",
     "check_failed": "Die Prüfung für {{host}} konnte nicht abgeschlossen werden. Details stehen im Einrichtungsprotokoll.",
