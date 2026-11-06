@@ -76,6 +76,7 @@ TOOL_EMAILS = re.compile(
 SUPERSEDES = re.compile(r"supersed", re.I)
 PR_REF = re.compile(r"#(\d+)")
 NOREPLY = re.compile(r"^(?:(\d+)\+)?([A-Za-z0-9-]+)@users\.noreply\.github\.com$", re.I)
+RECORDED_LOGIN = re.compile(r"@([A-Za-z0-9-]+)")
 CO_AUTHOR = re.compile(r"^co-authored-by:\s*(.*?)\s*<([^>]*)>\s*$", re.I | re.M)
 
 
@@ -233,13 +234,15 @@ def _safe(text: str) -> str:
     return "`" + re.sub(r"[`\r\n]", "'", text)[:200] + "`"
 
 
-def signature_url(server_url: str, repo: str, record: dict | None) -> str | None:
-    """Permanent link to the comment that signed, or None if the record has none."""
-    record = record or {}
-    kind, number = ("pull", record["pull_request"]) if record.get("pull_request") else ("issues", record.get("issue"))
-    if not number or not record.get("comment_id"):
-        return None
-    return f"{server_url}/{repo}/{kind}/{number}#issuecomment-{record['comment_id']}"
+def record_lines(text: str, account_id: int) -> tuple[int, int] | None:
+    """First and last line (1-based) of an account's entry in the signature file."""
+    lines = text.splitlines()
+    for at, line in enumerate(lines):
+        if line.strip().rstrip(",") == f'"id": {account_id}':
+            start = next((i for i in range(at, -1, -1) if lines[i].strip() == "{"), None)
+            end = next((i for i in range(at, len(lines)) if lines[i].strip() in ("}", "},")), None)
+            return None if start is None or end is None else (start + 1, end + 1)
+    return None
 
 
 def render_comment(evaluation: Evaluation, doc_url: str, signatures: dict[str, str | None] | None = None) -> str:
@@ -249,7 +252,7 @@ def render_comment(evaluation: Evaluation, doc_url: str, signatures: dict[str, s
         if not signatures:
             return passed
         # Plain logins: this comment reports a result, so it should not notify anyone.
-        lines = [f"- {_safe(login)}: [signature]({url})" if url else f"- {_safe(login)}: signature on record"
+        lines = [f"- {_safe(login)}: [signature record]({url})" if url else f"- {_safe(login)}: signature on record"
                  for login, url in signatures.items()]
         return "\n".join([passed, "", f"Agreement: [VoiceStudio CLA {CLA_VERSION}]({doc_url})", "", *lines])
     intro = (
@@ -289,7 +292,9 @@ def render_near_miss(login: str, comment_id: int, reason: str) -> str:
 
 class GitHub:
     def __init__(self, token: str, repo: str, api: str = "https://api.github.com"):
+        """Keep the API details and the signature commits already looked up."""
         self.token, self.repo, self.api = token, repo, api.rstrip("/")
+        self.signature_commits: dict[str, str] = {}  # login -> commit that first recorded it
 
     def request(self, method: str, path: str, body: dict | None = None) -> tuple[int, object, dict]:
         url = path if path.startswith("http") else f"{self.api}{path}"
@@ -498,6 +503,34 @@ def set_status(gh: GitHub, sha: str, state: str, description: str, doc_url: str 
         raise RuntimeError(f"Could not write {context} status ({status})")
 
 
+def signature_permalink(gh: GitHub, server_url: str, record: dict | None) -> str | None:
+    """Link to a signature's entry in the commit that recorded it, which never changes.
+
+    The signing comment can be edited or deleted, and the entry holds its ID and
+    hash. None when it cannot be found: a missing link must not affect the gate.
+    """
+    login = ((record or {}).get("login") or "").lower()
+    try:
+        if login not in gh.signature_commits:
+            # Newest first, so the oldest commit naming a login wins; a retried
+            # save can name someone an earlier run already stored.
+            for commit in gh.paginate(f"/repos/{gh.repo}/commits?sha={SIGNATURE_BRANCH}&path={SIGNATURE_PATH}"):
+                first_line = commit["commit"]["message"].split("\n", 1)[0]
+                for name in RECORDED_LOGIN.findall(first_line):
+                    gh.signature_commits[name.lower()] = commit["sha"]
+        sha = gh.signature_commits.get(login)
+        if not sha:
+            return None
+        status, payload, _ = gh.request("GET", f"/repos/{gh.repo}/contents/{SIGNATURE_PATH}?ref={sha}")
+        if status != 200:
+            return None
+        lines = record_lines(base64.b64decode(payload["content"]).decode(), int(record["id"]))
+    except (RuntimeError, OSError, KeyError, TypeError, ValueError) as err:
+        print(f"CLA: could not link the signature of {login}: {err}")
+        return None
+    return f"{server_url}/{gh.repo}/blob/{sha}/{SIGNATURE_PATH}#L{lines[0]}-L{lines[1]}" if lines else None
+
+
 def document_permalink(gh: GitHub, fallback: str, server_url: str) -> str:
     """Link to the agreement at the commit that last changed it, which stays put across runs."""
     try:
@@ -567,6 +600,7 @@ def head_blockers(gh: GitHub, pr: dict) -> list[str]:
 
 
 def run(gh: GitHub, event_name: str, event: dict, server_url: str = "https://github.com") -> Evaluation:
+    """Check one pull request, record new signatures, and set its status, comment and label."""
     event_pr = event.get("pull_request") or {}
     number = (event_pr or event.get("issue") or {}).get("number")
     # On PR events the payload supplies the head even if the first API read
@@ -643,7 +677,7 @@ def run(gh: GitHub, event_name: str, event: dict, server_url: str = "https://git
     cleared = evaluation.passed and bool(evaluation.signed)
     if cleared:
         records = {int(s["id"]): s for s in [*store["signatures"], *new]}
-        signatures = {p.login: signature_url(server_url, gh.repo, records.get(p.id)) for p in evaluation.signed}
+        signatures = {p.login: signature_permalink(gh, server_url, records.get(p.id)) for p in evaluation.signed}
         body = render_comment(evaluation, document_permalink(gh, doc_url, server_url), signatures)
     else:
         body = render_comment(evaluation, doc_url)
