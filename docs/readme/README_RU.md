@@ -150,6 +150,8 @@
 
 Выберите систему и раскройте нужный способ установки.
 
+Нативные движки GGUF также поддерживают собственное ускорение Vulkan на GPU AMD, Intel и NVIDIA ([OmniVoice](../../docs/engines/omnivoice-gguf.md#vulkan-acceleration), [CosyVoice](../../docs/engines/cosyvoice-gguf.md)). OmniVoice GGUF автоматически выбирает GPU и размер модели в Windows и Linux. Если скрытая проверка зависает, обнаружение Vulkan повторяет попытку с нативной сводкой; сборки настольного приложения для Windows и Linux завершаются ошибкой, а не выпускаются незаметно без модуля Vulkan.
+
 <a id="install-macos"></a>
 
 <details>

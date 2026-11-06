@@ -150,6 +150,8 @@
 
 选择你的系统，再展开相应的安装方式。
 
+原生 GGUF 引擎还支持在 AMD、Intel 和 NVIDIA GPU 上使用引擎专属的 Vulkan 加速（[OmniVoice](../../docs/engines/omnivoice-gguf.md#vulkan-acceleration), [CosyVoice](../../docs/engines/cosyvoice-gguf.md)）。OmniVoice GGUF 会在 Windows 和 Linux 上自动选择 GPU 和模型大小。如果隐藏探测卡住，Vulkan 检测会改用原生摘要重试；Windows 和 Linux 桌面构建在缺少 Vulkan 模块时会失败，避免悄悄发布不含该模块的版本。
+
 <a id="install-macos"></a>
 
 <details>
