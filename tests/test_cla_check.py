@@ -153,6 +153,8 @@ class FakeGitHub:
         self.open_prs = None
         self.statuses, self.posted, self.patched = [], [], []
         self.label_writes = []
+        self.signature_commits = {}
+        self.commits = [{"sha": "rec1", "commit": {"message": "chore(cla): record signature for @alice (#2586)"}}]
 
     def get(self, path):
         assert path.endswith(f"/pulls/{self.pr.get('number', 7)}")
@@ -162,6 +164,8 @@ class FakeGitHub:
     def paginate(self, path, limit=None):
         if path.endswith('/pulls?state=open'):
             return self.open_prs if self.open_prs is not None else [self.get(f"/pulls/{self.pr.get('number', 7)}")]
+        if "/commits?sha=" in path:
+            return self.commits
         return self.comments
 
     def graphql(self, query, variables):
@@ -180,6 +184,9 @@ class FakeGitHub:
         if method == "GET" and "/pulls/" in path:
             number = int(path.rsplit("/", 1)[1])
             return (200, {"user": self.others[number]}, {}) if number in self.others else (404, None, {})
+        if "/contents/" in path and method == "GET" and "?ref=cla-signatures" not in path:
+            raw = (json.dumps(self.files.get(cla.SIGNATURE_PATH, {}), indent=2) + "\n").encode()
+            return 200, {"content": base64.b64encode(raw).decode()}, {}
         if "/contents/" in path and method == "GET":
             if cla.SIGNATURE_PATH not in self.files:
                 return 404, None, {}
@@ -224,7 +231,8 @@ def test_first_signature_creates_the_store_and_turns_the_status_green():
     assert saved == [{"login": "alice", "id": 1001, "pull_request": 7, "comment_id": 5,
                       "signed_at": "2026-10-02T00:00:00Z", "version": cla.CLA_VERSION, "repo_id": 99}]
     assert gh.statuses[-1]["state"] == "success" and gh.statuses[-1]["context"] == "CLA"
-    assert len(gh.posted) == 1 and "pull/7#issuecomment-5" in gh.posted[0]
+    assert len(gh.posted) == 1 and "/blob/rec1/signatures/v1.0/cla.json#L" in gh.posted[0]
+    assert "issuecomment" not in gh.posted[0]
 
 
 def test_unsigned_pr_fails_and_asks_once():
@@ -710,7 +718,8 @@ def test_signed_pr_gets_a_comment_with_permalinks_and_no_ping():
     assert len(gh.posted) == 1 and writes(gh) == [ADD]
     body = gh.posted[0]
     assert DOC_PERMALINK in body
-    assert "https://github.com/debpalash/VoiceStudio/issues/2586#issuecomment-55" in body
+    assert "https://github.com/debpalash/VoiceStudio/blob/rec1/signatures/v1.0/cla.json#L" in body
+    assert "issuecomment" not in body and "/issues/2586" not in body
     assert "`alice`" in body and "@alice" not in body
 
 
@@ -726,7 +735,7 @@ def test_old_passing_comment_gains_the_permalinks():
     old = {"id": 1, "user": {"id": 9, "type": "Bot"}, "body": f"{cla.COMMENT_MARKER}\nsigned"}
     gh = FakeGitHub([old], [actor("alice", 1001)], store=RECORDED)
     cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}})
-    assert not gh.posted and "issuecomment-55" in gh.patched[0]
+    assert not gh.posted and "/blob/rec1/" in gh.patched[0]
 
 
 def test_exempt_only_pr_gets_no_comment():
@@ -751,3 +760,59 @@ def test_document_lookup_failure_falls_back_to_the_branch_link(monkeypatch, fail
     monkeypatch.setattr(gh, "request", request)
     assert cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}}).passed
     assert f"/blob/main/{cla.DOCUMENT_PATH}" in gh.posted[0]
+
+
+# ── The signature link ──────────────────────────────────────────────────
+
+
+def test_record_lines_cover_exactly_one_signature():
+    store = {"signatures": [{"login": "bob", "id": 2, "comment_id": 1001}, {"login": "alice", "id": 1001}]}
+    text = json.dumps(store, indent=2)
+    lines = text.splitlines()
+    start, end = cla.record_lines(text, 1001)
+    assert lines[start - 1].strip() == "{" and lines[end - 1].strip() in ("}", "},")
+    assert '"login": "alice"' in lines[start]
+    assert cla.record_lines(text, 3) is None  # bob's comment_id is not an account ID
+
+
+def test_link_uses_the_commit_that_first_recorded_the_signature():
+    # Newest first. A retried save can name someone an earlier run already stored.
+    gh = FakeGitHub([], [actor("alice", 1001)], store=RECORDED)
+    gh.commits = [{"sha": "retry", "commit": {"message": "chore(cla): record signature for @alice, @bob (#9)"}},
+                  {"sha": "first", "commit": {"message": "chore(cla): record signature for @alice (#2586)"}},
+                  {"sha": "other", "commit": {"message": "chore(cla): record signature for @alice2 (#1)"}}]
+    cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}})
+    assert "/blob/first/" in gh.posted[0]
+
+
+@pytest.mark.parametrize("break_it", ["no-commit", "listing", "not-at-commit"])
+def test_link_failure_never_changes_the_gate_or_falls_back_to_a_pr(monkeypatch, break_it):
+    gh = FakeGitHub([], [actor("alice", 1001)], store=RECORDED)
+    if break_it == "no-commit":
+        gh.commits = []
+    elif break_it == "listing":
+        def paginate(path, limit=None):
+            if "/commits?sha=" in path:
+                raise RuntimeError("listing failed")
+            return gh.comments if "/comments" in path else [gh.get("/pulls/7")]
+        monkeypatch.setattr(gh, "paginate", paginate)
+    else:
+        original = gh.request
+        def request(method, path, body=None):
+            if "?ref=rec1" in path:
+                return 200, {"content": base64.b64encode(b"{}").decode()}, {}
+            return original(method, path, body)
+        monkeypatch.setattr(gh, "request", request)
+    assert cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}}).passed
+    assert gh.statuses[-1]["state"] == "success" and writes(gh) == [ADD]
+    assert "signature on record" in gh.posted[0] and "/pull/" not in gh.posted[0]
+
+
+def test_commit_list_is_read_once_across_a_backfill(monkeypatch):
+    gh = FakeGitHub([], [actor("alice", 1001)], store=RECORDED)
+    reads, original = [], gh.paginate
+    monkeypatch.setattr(gh, "paginate", lambda path, limit=None: (
+        reads.append(path) if "/commits?sha=" in path else None, original(path, limit))[1])
+    for _ in range(2):
+        cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}})
+    assert len(reads) == 1
