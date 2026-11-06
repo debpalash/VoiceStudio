@@ -395,8 +395,27 @@ Notes:
   work, so RDNA4 (gfx12xx) cards need a ROCm build that lists them instead.
   When the build lacks your card, VoiceStudio's GPU architecture notification
   names the exact value to try, or says that no remap exists.
-- ZLUDA (CUDA-on-ROCm translation) can work but is unsupported here — prefer a
-  native ROCm wheel.
+- Engines on the GPU: every PyTorch engine that runs on an NVIDIA GPU also
+  claims ROCm (OmniVoice, IndexTTS, VoxCPM2, MOSS-TTS-Nano, CosyVoice,
+  dots.tts, Confucius4, PyTorch Whisper, FunASR, NeMo Parakeet). On a ROCm
+  host the one-click installs of VoxCPM2, MOSS-TTS-Nano, CosyVoice,
+  Confucius4, dots.tts and IndexTTS put the ROCm build of the engine's own
+  pinned torch in its venv, from the PyTorch ROCm index that publishes that
+  version (2.7 → `rocm6.3`, 2.8 → `rocm6.4`, 2.11 → `rocm7.2`). An install
+  made before this may still have a CUDA or CPU wheel. A user-selected
+  sidecar repair builds and verifies a separate environment, keeping the existing
+  installation available until the replacement succeeds. The previous environment
+  remains on disk until the engine is uninstalled. A custom `OMNIVOICE_TORCH_INDEX`
+  is used exactly as provided; it must carry
+  the sidecar’s pinned Torch and torchaudio versions. Allow extra disk space
+  for the ROCm wheels and their unpacked contents. Vulkan
+  engines (OmniVoice GGUF, CosyVoice GGUF, whisper.cpp) need no ROCm at all.
+  Faster-Whisper and WhisperX use CTranslate2, whose stock build is
+  NVIDIA-only, so on Linux ROCm they stay on the CPU; use PyTorch Whisper,
+  which auto-detection already prefers on ROCm.
+- ZLUDA (CUDA-on-ROCm translation) is not used or supported: its PyTorch
+  support is incomplete and its cuDNN path can be slower than the CPU. Use
+  the native ROCm builds above.
 
 Tracking issue: [#124](https://github.com/debpalash/VoiceStudio/issues/124).
 

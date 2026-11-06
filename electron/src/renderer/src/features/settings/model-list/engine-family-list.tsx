@@ -94,7 +94,11 @@ function engineItem(ctx: Context, engine: EngineBackend): FamilyItem {
       onSelect={() => void select.select(engine.id)}
     />
   ) : null;
-  const setup: ReactNode = engine.available ? null : licenseId ? (
+  const setup: ReactNode = engine.available ? (
+    engine.one_click_install ? (
+      <EngineInstall id={engine.id} repairOnly />
+    ) : null
+  ) : licenseId ? (
     <EngineLicense id={licenseId} name={engine.display_name} />
   ) : engine.one_click_install ? (
     <EngineInstall id={engine.id} />
@@ -187,7 +191,11 @@ function engineItem(ctx: Context, engine: EngineBackend): FamilyItem {
         )}
         <DeviceChip
           device={engine.effective_device}
-          title={engine.routing_reason || engine.routing_status}
+          title={
+            engine.routing_status === 'unknown'
+              ? t('common.unknown')
+              : engine.routing_reason || engine.routing_status
+          }
         />
       </>
     ),

@@ -7,8 +7,8 @@
 #   third-party Azure DevOps feed for onnxruntime-gpu. The installer chooses
 #   the PyTorch build itself and uses no third-party index.
 # - torch and torchaudio are not listed here. The installer pins the 2.7.0
-#   pair per host: +cu128 on NVIDIA GPUs, +cpu on other Windows and Linux
-#   machines, the regular build on macOS. Upstream's 2.3.1 exists only for
+#   pair per host: +cu128 on NVIDIA GPUs, matching ROCm on Linux AMD,
+#   +cpu on other Windows/Linux machines, the regular build on macOS. Upstream's 2.3.1 exists only for
 #   CUDA 12.1 and cannot run on RTX 50-series GPUs.
 # - Raised past published security advisories, where upstream pins an
 #   affected release: diffusers, hydra-core, lightning, modelscope, onnx,

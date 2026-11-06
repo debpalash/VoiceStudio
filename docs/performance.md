@@ -39,7 +39,8 @@ Before touching any knob, check these — they account for most slowness reports
      warns explicitly: *"cpu (no GPU acceleration detected)"* with a hint
      about drivers.
    - **Model Catalogue** shows a routing badge per engine — "GPU active",
-     "CPU fallback", or "CPU" — with the *reason* shown as small text under
+     "CPU fallback", "CPU", or "unknown" when a sidecar GPU runtime has not
+     been verified — with the *reason* shown as small text under
      the badge (full text on hover).
    Note: **PyTorch GPU acceleration on Windows is NVIDIA/CUDA-only** — AMD and
    Intel GPUs run PyTorch engines on the CPU there (audio.cpp can still use a

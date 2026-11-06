@@ -29,8 +29,9 @@ so its dependency stack never touches the default VoiceStudio interpreter.
 
 **Model Catalogue → Confucius4-TTS → Install** does the steps below
 for you, on Windows, Linux and macOS. It installs into its own folder under VoiceStudio's data directory, with its own Python environment. Nothing it installs touches VoiceStudio itself or any other engine, so you can switch to it and back without breaking what already worked. **Uninstall** in the same row removes only that folder. On an NVIDIA machine it installs
-the CUDA build of PyTorch; elsewhere it installs the CPU build. The ~5 GB of
-weights still download on first synthesis.
+the CUDA build of PyTorch. On a Linux ROCm host it installs the matching HIP
+build; otherwise it uses the CPU build. The ~5 GB of weights still download on
+first synthesis.
 
 The first synthesis downloads the weights, which takes a while on a slow
 connection. The generation stays alive while the download makes progress;
@@ -102,7 +103,8 @@ sr = model.sample_rate  # 22050
   the editable install unless upstream ships packaging, and both the import
   probe and the sidecar resolve `confuciustts` via the clone on `sys.path`.
 - ✅ **MPS probed and rejected**: runs, but ~4× slower than CPU (Metal op
-  fallbacks) — the sidecar selects CUDA when available, else CPU, never MPS.
+  fallbacks) — the sidecar does not select MPS. Other accelerator selection is
+  described below.
 - ✅ **Sidecar logic unit-tested** (`tests/test_confucius4_sidecar.py`):
   language normalization, tensor→PCM (mono/stereo/clip), config-path
   resolution, clone sys.path injection, wire framing, synthesize dispatch.

@@ -59,10 +59,12 @@ def test_sidecar_script_ships():
 # ── hardware + platform honesty ────────────────────────────────────────────
 
 
-def test_gpu_compat_cuda_cpu_no_mps():
+def test_gpu_compat_cuda_rocm_cpu_no_mps():
     from engines.dots_tts import DotsTTSBackend
 
-    assert DotsTTSBackend.gpu_compat == ("cuda", "cpu")
+    # ROCm through a HIP torch in the sidecar venv; routing drops the claim
+    # when the venv carries a CUDA/CPU wheel (SubprocessBackend).
+    assert DotsTTSBackend.gpu_compat == ("cuda", "rocm", "cpu")
 
 
 def test_sample_rate_is_48k():
