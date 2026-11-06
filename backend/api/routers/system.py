@@ -973,6 +973,11 @@ def _gpu_arch_warning_cached() -> "str | None":
     too heavy for the 30s notifications poll)."""
     if not _GPU_ARCH_WARNING:
         try:
+            from core.gpu_self_test import pending
+
+            # Not cached: an answer given now would hide a failure found later.
+            if pending():
+                return None
             from services.model_manager import check_device_compatibility
             compatible, warning = check_device_compatibility()
             _GPU_ARCH_WARNING.append(None if compatible else warning)

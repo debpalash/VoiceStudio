@@ -12,6 +12,7 @@ updating the driver and restarting is enough to clear it.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -80,8 +81,35 @@ def _nothing_to_test(torch) -> bool:
     return bool(hip) and sys.platform == "win32"
 
 
+def _gpu_identity() -> str:
+    """Which GPUs and driver, without touching the GPU in this process. Windows has no
+    such cheap read, so a pass there lasts until the app or torch changes."""
+    parts: list[str] = []
+    try:
+        from core.device_caps import _kfd_gpu_architectures
+
+        parts.extend(sorted(_kfd_gpu_architectures()))
+    except Exception:  # noqa: BLE001 - identity only narrows how long a pass counts
+        logger.debug("could not list AMD GPUs", exc_info=True)
+    try:
+        with open("/proc/driver/nvidia/version", encoding="ascii", errors="replace") as f:
+            parts.append(f.readline().strip())
+    except OSError:
+        pass
+    return ",".join(parts)
+
+
 def _build_key(torch) -> str:
-    return f"{APP_VERSION}|{torch.__version__}"
+    """Everything that decides which kernels run on which card."""
+    return "|".join(
+        (
+            APP_VERSION,
+            torch.__version__,
+            os.environ.get("CUDA_VISIBLE_DEVICES", ""),
+            os.environ.get("HSA_OVERRIDE_GFX_VERSION", ""),
+            _gpu_identity(),
+        )
+    )
 
 
 def _remembered_pass(key: str) -> bool:
@@ -163,10 +191,24 @@ def start(torch) -> None:
     _thread.start()
 
 
+def pending() -> bool:
+    """A test is still running, so `failure_warning` has no answer yet."""
+    return _thread is not None and _thread.is_alive()
+
+
+def _on_event_loop() -> bool:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return False
+    return True
+
+
 def failure_warning() -> str | None:
-    """Why the GPU can't be used, or None. Waits for a test still running, because
-    this decides where a model loads and a wrong answer can crash the app."""
-    if _thread is not None:
+    """Why the GPU can't be used, or None. Waits for a test still running, because this
+    decides where a model loads and a wrong answer can crash the app. Not on the event
+    loop, where waiting would stop every request, health checks included."""
+    if _thread is not None and not _on_event_loop():
         _thread.join(TIMEOUT_S + 5)
     if _verdict is None or _verdict.status != "failed":
         return None

@@ -182,6 +182,65 @@ def test_the_answer_waits_for_a_test_still_running(monkeypatch):
     assert "boom" in gpu_self_test.failure_warning()
 
 
+def _running_test(monkeypatch):
+    """A test that stays running until the returned event is set."""
+    import threading
+
+    release = threading.Event()
+    thread = threading.Thread(target=release.wait, args=(10,), daemon=True)
+    thread.start()
+    monkeypatch.setattr(gpu_self_test, "_thread", thread)
+    return release
+
+
+def test_a_request_on_the_event_loop_does_not_wait_for_the_test(monkeypatch):
+    import asyncio
+    import time
+
+    release = _running_test(monkeypatch)
+    try:
+        async def ask():
+            started = time.monotonic()
+            answer = gpu_self_test.failure_warning()
+            return answer, time.monotonic() - started
+
+        answer, waited = asyncio.run(ask())
+    finally:
+        release.set()
+    assert answer is None
+    assert waited < 1
+
+
+def test_the_notice_does_not_wait_or_hide_a_later_failure(monkeypatch):
+    from api.routers import system
+
+    monkeypatch.setattr(system, "_GPU_ARCH_WARNING", [])
+    release = _running_test(monkeypatch)
+    try:
+        assert system._gpu_arch_warning_cached() is None
+        assert system._GPU_ARCH_WARNING == []
+    finally:
+        release.set()
+
+
+@pytest.mark.parametrize(
+    "name, value",
+    [("CUDA_VISIBLE_DEVICES", "1"), ("HSA_OVERRIDE_GFX_VERSION", "10.3.0")],
+)
+def test_a_pass_does_not_outlive_a_change_of_gpu_settings(monkeypatch, name, value):
+    monkeypatch.delenv(name, raising=False)
+    before = gpu_self_test._build_key(_torch())
+    monkeypatch.setenv(name, value)
+    assert gpu_self_test._build_key(_torch()) != before
+
+
+def test_a_pass_does_not_outlive_a_change_of_card(monkeypatch):
+    monkeypatch.setattr(gpu_self_test, "_gpu_identity", lambda: "gfx1030")
+    before = gpu_self_test._build_key(_torch())
+    monkeypatch.setattr(gpu_self_test, "_gpu_identity", lambda: "gfx1100")
+    assert gpu_self_test._build_key(_torch()) != before
+
+
 def test_a_failed_self_test_routes_the_loader_to_cpu(monkeypatch):
     import services.model_manager as mm
 
@@ -200,6 +259,16 @@ def test_a_failed_self_test_routes_the_loader_to_cpu(monkeypatch):
 
     assert compatible is False
     assert "invalid device function" in warning
+
+
+def test_a_failed_self_test_keeps_whisperx_off_the_gpu(monkeypatch):
+    from services import asr_backend
+
+    monkeypatch.setattr(asr_backend, "_ctranslate2_cuda_ok", lambda: True)
+    assert asr_backend.WhisperXBackend._pick_device() == ("cuda", "float16")
+
+    monkeypatch.setattr(gpu_self_test, "_verdict", gpu_self_test.Verdict("failed", "boom"))
+    assert asr_backend.WhisperXBackend._pick_device() == ("cpu", "int8")
 
 
 def test_startup_starts_the_test_before_the_gpu_is_used():
