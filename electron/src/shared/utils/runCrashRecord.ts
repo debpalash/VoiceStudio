@@ -41,8 +41,6 @@ export function _adaptLastRunCrash(
   const activityLine = activity?.kind
     ? [
         `last activity before the death: ${activity.kind}${activity.detail ? ` (${activity.detail})` : ''}`,
-        // The first line repeats the activity just named.
-        ...formatCrashContext({ ...activity, detail: undefined }).slice(1),
         '',
       ]
     : [];
@@ -58,4 +56,22 @@ export function _adaptLastRunCrash(
       .trim(),
     acknowledged,
   };
+}
+
+/** Report lines kept outside the log, whose excerpt can drop the top of `last_stderr`. */
+export function lastRunCrashFacts(record: LastRunCrashRecord): string[] {
+  const activity = record.last_activity;
+  if (!activity?.kind) return [];
+  const { kind, detail, engine, device } = activity;
+  const { ram_free_gb, ram_total_gb, swap_free_gb, swap_total_gb } = activity;
+  return formatCrashContext({
+    kind,
+    ...(detail ? { detail } : {}),
+    ...(engine ? { engine } : {}),
+    ...(device ? { device } : {}),
+    ...(ram_free_gb != null ? { ram_free_gb } : {}),
+    ...(ram_total_gb != null ? { ram_total_gb } : {}),
+    ...(swap_free_gb != null ? { swap_free_gb } : {}),
+    ...(swap_total_gb != null ? { swap_total_gb } : {}),
+  });
 }

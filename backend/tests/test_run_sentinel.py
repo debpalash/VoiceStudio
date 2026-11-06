@@ -523,3 +523,39 @@ def test_the_next_run_keeps_the_memory_in_its_crash_record(sentinel_env):
     assert activity["ram_free_gb"] == 3.1
     assert activity["engine"] == "omnivoice"
     assert "note" not in activity
+
+
+def test_context_includes_the_device_once_the_probe_has_run(sentinel_env, monkeypatch, capsys):
+    from types import SimpleNamespace
+
+    from core import device_caps
+
+    device_caps.detect_host_caps.cache_clear()
+    monkeypatch.setattr(device_caps, "_probe", lambda: SimpleNamespace(family="rocm"))
+    device_caps.detect_host_caps()
+    run_sentinel._reset_for_tests()
+    try:
+        run_sentinel.touch_activity("task", "generate")
+    finally:
+        device_caps.detect_host_caps.cache_clear()
+
+    assert _emitted_context(capsys)[-1]["device"] == "rocm"
+
+
+def test_a_blocked_stderr_does_not_hold_the_lock(sentinel_env, monkeypatch):
+    """A full pipe would otherwise stop every thread that records activity."""
+    import io
+
+    held = []
+
+    class Recording(io.StringIO):
+        def write(self, text):
+            held.append(run_sentinel._lock.locked())
+            return super().write(text)
+
+    monkeypatch.setattr(sys, "stderr", Recording())
+    run_sentinel._reset_for_tests()
+
+    run_sentinel.touch_activity("task", "generate")
+
+    assert held and not any(held)

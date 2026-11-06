@@ -21,6 +21,11 @@ export class CrashJournal {
     this.captureOpen = false;
     this.streaming = streaming;
   }
+  /** A new backend process: what the previous one was doing says nothing about it. */
+  startProcess(): void {
+    this.context = undefined;
+    this.resetCapture();
+  }
   /**
    * Buffer the whole all-thread dump before the supervisor ring evicts its
    * start. It is condensed only at record time (#2382): keeping the first 40
@@ -98,6 +103,8 @@ export class CrashJournal {
     signal: string | null,
     uptimeMs: number,
     logTail: string[],
+    /** The supervisor waits for a replacement backend before recording. */
+    exitedAt: number = Date.now(),
   ): NativeCrashRecord | undefined {
     logTail = logTail.map(scrubText);
     const native = nativeCrashExcerpt(
@@ -106,7 +113,7 @@ export class CrashJournal {
     this.resetCapture(false);
     const context = this.context && {
       ...this.context.value,
-      seconds_before_exit: Math.max(0, Math.round((Date.now() - this.context.receivedAt) / 1000)),
+      seconds_before_exit: Math.max(0, Math.round((exitedAt - this.context.receivedAt) / 1000)),
     };
     this.context = undefined;
     // EX_CONFIG is a port collision; Windows debugger termination is not a backend fault.

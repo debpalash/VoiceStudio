@@ -1930,7 +1930,7 @@ export class BackendSupervisor extends EventEmitter<{
 
   /** Launch the resolved backend command and wire its lifecycle events. */
   private spawnChild(plan: SpawnPlan, gen: number): void {
-    this.crashes.resetCapture();
+    this.crashes.startProcess();
     const [command, ...args] = plan.argv;
     // A custom command bypasses the managed runtime; its own executable is the
     // only thing that can be repaired.
@@ -2001,6 +2001,7 @@ export class BackendSupervisor extends EventEmitter<{
     code: number | null,
     signal: NodeJS.Signals | null,
   ): Promise<void> {
+    const exitedAt = Date.now();
     // A second VoiceStudio shell can deliberately replace this child between
     // process exit and its own listener becoming ready. Treat that handoff as
     // attachment, not a crash, and keep renderer requests paused meanwhile.
@@ -2023,7 +2024,13 @@ export class BackendSupervisor extends EventEmitter<{
     // End every readiness/supervisor loop for the dead ownership generation
     // before publishing the terminal result.
     this.generation++;
-    const recorded = this.crashes.record(code, signal, Date.now() - this.startedAt, this.log);
+    const recorded = this.crashes.record(
+      code,
+      signal,
+      exitedAt - this.startedAt,
+      this.log,
+      exitedAt,
+    );
     this.exitCode = code;
     this.exitSignal = signal;
     const bindFailure =

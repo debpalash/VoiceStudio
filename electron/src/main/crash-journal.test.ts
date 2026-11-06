@@ -169,6 +169,21 @@ describe('crash context', () => {
     expect(crashes.record(1, null, 1000, [])?.context).toBeUndefined();
   });
 
+  it('does not blame a new process for what the previous one was doing', () => {
+    const crashes = journal();
+    crashes.captureLine(contextLine({ kind: 'model_load' }));
+    crashes.startProcess();
+    expect(crashes.record(1, null, 1000, [])?.context).toBeUndefined();
+  });
+
+  it('measures the age of the activity at the exit, not at the later recording', () => {
+    const crashes = journal();
+    crashes.captureLine(contextLine({ kind: 'model_load' }));
+    const record = crashes.record(1, null, 1000, [], Date.now() + 60_000);
+    expect(record?.context?.seconds_before_exit).toBeGreaterThanOrEqual(59);
+    expect(record?.context?.seconds_before_exit).toBeLessThanOrEqual(61);
+  });
+
   it('keeps only known fields of safe shape', () => {
     const crashes = journal();
     crashes.captureLine(

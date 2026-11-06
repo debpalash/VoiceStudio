@@ -9,7 +9,11 @@ import { formatHostSnapshot, withDeadline } from '@shared/utils/hostSnapshot';
 import { collapseRepeatedLines, formatFailureFacts } from '@shared/utils/installFailure';
 import { describeExitCode, isNativeFaultExit } from '@shared/utils/nativeExit';
 import { formatCrashContext } from '@shared/utils/crashContext';
-import { _adaptLastRunCrash, type LastRunCrashRecord } from '@shared/utils/runCrashRecord';
+import {
+  _adaptLastRunCrash,
+  lastRunCrashFacts,
+  type LastRunCrashRecord,
+} from '@shared/utils/runCrashRecord';
 import { getBackendStatusSnapshot } from '@/hooks/use-backend-status';
 import { apiJson } from '@/lib/api/client';
 import { router } from '@/router';
@@ -268,6 +272,7 @@ export function ReportBug({ error, setup = false }: { error?: Error | string; se
           'Detected: ' + new Date(marker.ts * 1000).toISOString(),
           'Version: ' + marker.backend_version,
           'Uptime (seconds): ' + marker.uptime_s,
+          ...lastRunCrashFacts(previous.value.record),
           '```',
           clampCrashTail(scrubText(marker.last_stderr)),
           '```',

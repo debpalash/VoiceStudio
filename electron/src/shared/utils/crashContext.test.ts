@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatCrashContext } from './crashContext';
-import { _adaptLastRunCrash } from './runCrashRecord';
+import { lastRunCrashFacts } from './runCrashRecord';
 
 describe('formatCrashContext', () => {
   it('states what was running and the memory left, for a report', () => {
@@ -40,9 +40,9 @@ describe('formatCrashContext', () => {
 });
 
 describe('a crash found by the next run', () => {
-  it('reports the memory recorded at the last activity', () => {
-    const marker = _adaptLastRunCrash(
-      {
+  it('states the memory as facts, outside the log that can be cut', () => {
+    expect(
+      lastRunCrashFacts({
         detected_at: 1,
         started_at: 0,
         ended_between: [0, 1],
@@ -57,11 +57,11 @@ describe('a crash found by the next run', () => {
           ram_total_gb: 8,
         },
         log_tail: [],
-      },
-      false,
-    );
-    expect(marker.last_stderr).toContain('(omnivoice-tts)');
-    expect(marker.last_stderr).toContain('Device: cpu');
-    expect(marker.last_stderr).toContain('Free memory then: 3 of 8 GB RAM');
+      }),
+    ).toEqual([
+      'Last activity: model_load omnivoice-tts',
+      'Device: cpu',
+      'Free memory then: 3 of 8 GB RAM',
+    ]);
   });
 });

@@ -269,16 +269,24 @@ def _engine_and_device() -> dict:
     return facts
 
 
-def _emit_context(activity: dict, now: float) -> None:
-    """Tell the desktop shell, which outlives a native crash this process cannot
-    report. Same privacy rule as `touch_activity`: identifiers and numbers only."""
+def _context_line(activity: dict, now: float) -> str | None:
+    """The line for the desktop shell, which outlives a native crash this process
+    cannot report, or None when it would repeat. Same privacy rule as
+    `touch_activity`: identifiers and numbers only. Call holding `_lock`."""
     key = (activity["kind"], activity["detail"])
     if _state["emitted"] == key and now - _state["emitted_at"] < CONTEXT_REPEAT_S:
-        return
+        return None
     _state["emitted"], _state["emitted_at"] = key, now
     fields = {name: value for name, value in activity.items() if name != "ts" and value is not None}
+    return CONTEXT_PREFIX + json.dumps(fields)
+
+
+def _send_context(line: str | None) -> None:
+    """A full pipe can block this write, so never call it holding `_lock`."""
+    if line is None:
+        return
     try:
-        print(CONTEXT_PREFIX + json.dumps(fields), file=sys.stderr, flush=True)
+        print(line, file=sys.stderr, flush=True)
     except Exception:
         logger.debug("crash context not sent (non-fatal)", exc_info=True)
 
@@ -303,13 +311,11 @@ def touch_activity(kind: str, detail: str | None = None) -> None:
         }
         with _lock:
             _state["last_activity"] = activity
-            _emit_context(activity, now)
-            if not _state["owns"]:
-                return
-            if now - float(_state["last_write"] or 0) < ACTIVITY_THROTTLE_S:
-                return
-            _write_json_atomic(SENTINEL_PATH, _sentinel_payload())
-            _state["last_write"] = now
+            context = _context_line(activity, now)
+            if _state["owns"] and now - float(_state["last_write"] or 0) >= ACTIVITY_THROTTLE_S:
+                _write_json_atomic(SENTINEL_PATH, _sentinel_payload())
+                _state["last_write"] = now
+        _send_context(context)
     except Exception:
         logger.debug("run-sentinel activity touch failed (non-fatal)", exc_info=True)
 
