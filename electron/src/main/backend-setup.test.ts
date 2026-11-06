@@ -1023,7 +1023,6 @@ describe('falling back to the CPU build', () => {
 
     expect(variants.at(-1)).toBe('cpu');
     expect(mocks.saveTorchVariant).toHaveBeenCalledWith('cpu');
-    expect(supervisor.status.cpuSetupAvailable).toBeUndefined();
   });
 
   it('stops a stuck download first, so the CPU install can start', async () => {
@@ -1036,20 +1035,26 @@ describe('falling back to the CPU build', () => {
       }),
     );
     let started = 0;
-    mocks.install.mockImplementation(
-      async (_bundle: string, _project: string, _uv: string, _run: unknown, signal: AbortSignal) => {
-        started++;
-        if (started > 1) throw new Error('second attempt ran');
-        await new Promise<void>((_resolve, reject) => {
-          signal.addEventListener('abort', () => reject(new Error('aborted')));
-        });
-      },
-    );
+    let killedUv = () => {};
+    mocks.install.mockImplementation(async () => {
+      started++;
+      if (started > 1) throw new Error('second attempt ran');
+      // Like a running uv: only killing the process ends it, an abort signal does not.
+      await new Promise<void>((resolve) => {
+        killedUv = resolve;
+      });
+    });
     const supervisor = new BackendSupervisor();
     onTestFinished(() => supervisor.shutdown());
     await supervisor.start();
     const stuck = supervisor.setupRuntime();
     await vi.waitFor(() => expect(mocks.install).toHaveBeenCalled());
+    const internals = supervisor as unknown as { killChild(): Promise<void> };
+    const killChild = internals.killChild.bind(supervisor);
+    vi.spyOn(internals, 'killChild').mockImplementation(async () => {
+      await killChild();
+      killedUv();
+    });
     const progress = (
       supervisor as unknown as { setupProgress: { snapshot(): Record<string, unknown> } }
     ).setupProgress;

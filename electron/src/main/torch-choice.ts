@@ -100,13 +100,18 @@ export function rememberTorchVariant(
   }
 }
 
-/** Save the setup screen's CPU choice now: the install it starts can still fail. */
-export function saveTorchVariant(variant: 'cpu', path: string = userEnvPath()): void {
+/**
+ * Save the setup screen's CPU choice now: the install it starts can still fail. Returns
+ * false when it could not be saved, so the caller can say so; the install still runs.
+ */
+export function saveTorchVariant(variant: 'cpu', path: string = userEnvPath()): boolean {
   try {
     const lines = readLines(path).filter((line) => !ASSIGNMENT.test(line));
     writeLines(path, [...lines, `${KEY}=${variant}`]);
+    return true;
   } catch (error) {
     console.warn(`[setup] could not save the torch choice: ${(error as Error).name}`);
+    return false;
   }
 }
 

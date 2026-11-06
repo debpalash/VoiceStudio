@@ -1536,12 +1536,15 @@ export class BackendSupervisor extends EventEmitter<{
   async setupRuntimeOnCpu(): Promise<void> {
     if (!this.cpuSetupAvailable()) return;
     process.env.OMNIVOICE_TORCH_VARIANT = 'cpu';
-    saveTorchVariant('cpu');
-    if (this.installation) {
-      this.installation.abort();
-      await this.installationSettled;
-    }
-    await this.restart();
+    if (!saveTorchVariant('cpu'))
+      this.setupLog.append('Could not save the CPU choice; the next launch may ask again');
+    const installing = this.installation;
+    // Abort alone doesn't stop a running uv: its runner only checks before spawning.
+    installing?.abort();
+    this.generation++;
+    await this.killChild(true);
+    if (installing) await this.installationSettled;
+    await this.start();
     await this.setupRuntime();
   }
 
