@@ -42,6 +42,8 @@ import math
 import os
 from typing import TYPE_CHECKING
 
+from pathlib import Path
+
 from services.subprocess_backend import SubprocessBackend
 
 if TYPE_CHECKING:
@@ -123,6 +125,14 @@ class MossTTSV15Backend(SubprocessBackend):
     def venv_python(cls):
         from engines.moss_tts_v15.bootstrap import resolve_moss_tts_v15_venv
         return resolve_moss_tts_v15_venv()
+
+    @classmethod
+    def sidecar_python_hint(cls) -> "Path | None":
+        """Expose only the bootstrap-selected interpreter for routing metadata."""
+        from services.subprocess_backend import bootstrap_python_hint
+
+        from engines.moss_tts_v15 import bootstrap
+        return bootstrap_python_hint(bootstrap)
 
     @classmethod
     def sidecar_script(cls):
