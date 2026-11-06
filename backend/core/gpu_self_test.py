@@ -95,7 +95,7 @@ def _gpu_identity() -> str:
         with open("/proc/driver/nvidia/version", encoding="ascii", errors="replace") as f:
             parts.append(f.readline().strip())
     except OSError:
-        pass
+        logger.debug("no NVIDIA driver version to read")
     return ",".join(parts)
 
 
