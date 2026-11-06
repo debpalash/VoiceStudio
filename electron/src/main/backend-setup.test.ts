@@ -5,7 +5,7 @@ import { chmodSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const mocks = vi.hoisted(() => ({
-  runtimeConfig: null as { root: string; owned: boolean } | null,
+  runtimeConfig: null as { root: string; owned: boolean; scoped?: boolean } | null,
   existingProject: false,
   existingRoot: false,
   rootEntries: ['.python'] as string[],
@@ -688,6 +688,37 @@ it.each(['.DS_Store', 'desktop.ini'])(
     await supervisor.shutdown();
   },
 );
+
+it.each([
+  ['a moved runtime', ['project', '.uv-cache', '.python']],
+  ['an earlier attempt', ['tmp', '.uv-cache']],
+  ['unrelated files', ['Music']],
+])('keeps a location chosen in setup when it already holds %s', async (_label, entries) => {
+  // The user picked this drive because the system drive is full: sending setup
+  // back to the default folder fills the drive they were trying to avoid.
+  const { resolve, join } = await import('node:path');
+  const selected = resolve('/selected/VoiceStudio');
+  mocks.runtimeConfig = { root: selected, owned: false, scoped: true };
+  mocks.existingRoot = true;
+  mocks.rootEntries = entries;
+  mocks.rootEntryIsFile = false;
+  mocks.install.mockRejectedValue(new Error('offline'));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      throw new Error('no backend');
+    }),
+  );
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  vi.stubEnv('VOICESTUDIO_SKIP_BACKEND', '');
+  const supervisor = new BackendSupervisor();
+  await supervisor.start();
+  await supervisor.setupRuntime();
+  expect(mocks.install.mock.calls[0][1]).toBe(join(selected, 'project'));
+  expect(mocks.runtimeConfig).toEqual({ root: selected, owned: true, scoped: true });
+  expect(mocks.rm).not.toHaveBeenCalled();
+  await supervisor.shutdown();
+});
 
 it('installs into a newly selected custom destination that does not yet exist', async () => {
   const { resolve, join } = await import('node:path');

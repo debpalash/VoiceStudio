@@ -1302,12 +1302,15 @@ export class BackendSupervisor extends EventEmitter<{
       if (
         configured &&
         !configured.owned &&
+        // A folder picked on the setup screen is the user's decision, often because
+        // the system drive is full: setup installs there and never returns to it.
+        !configured.scoped &&
         samePath(configured.root, runtimeRoot) &&
         !samePath(runtimeRoot, defaultRuntimeRoot()) &&
         holdsUnownedFiles(runtimeRoot)
       ) {
         // An explicit setup action may create a new runtime, but must never
-        // take ownership of (or repair in place) another installation's files.
+        // take ownership of (or repair in place) a location recorded by an older build.
         runtimeRoot = defaultRuntimeRoot();
         project = join(runtimeRoot, 'project');
         this.runtimeProject = project;
