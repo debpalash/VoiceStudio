@@ -205,6 +205,8 @@ curl -fsSL https://voicestudio.sh/install | sh
 <details>
 <summary><img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" /> <strong>Windows</strong> · PowerShell · EXE</summary>
 
+يدعم [إعداد Windows ROCm](../../docs/install/windows-rocm.md) التجريبي بطاقات مختارة من RDNA 2 RX 6000 ذات الأهداف `gfx1030` أو `gfx1031` أو `gfx1032`؛ ولا يشمل RX 6500 XT (`gfx1034`). يتضمن إصدار CTranslate2 المثبّت بشكل مستقل نوى `gfx1031` أصلية لنسخ الصوت على RX 6700 XT، ويتحقق الإعداد من تنفيذ نوى GPU فعليًا. تشمل اختبارات RX 6700 XT أيضًا توليد الكلام باستخدام Torch وPyTorch Whisper. يستخدم faster-whisper على ROCm 10 عملية استدلال منفصلة للحفاظ على اختيار CPU والرجوع إليه بأمان. تظل البطاقات وأحمال العمل الأخرى خاضعة لحدود التحقق المذكورة في الدليل. تتحقق إعدادات الأداء المسبقة من جاهزية المحركات التي تغير اختيارها في عملية فرعية دون اتصال قبل حفظها، مع الإبقاء على البديل إذا تعذر تشغيل بيئة مثبتة.
+
 <blockquote>
 
 **مستقر · x64**<br />Windows 10/11 x64 · NVIDIA CUDA · AMD ROCm (اختياري) · وحدة المعالجة المركزية.

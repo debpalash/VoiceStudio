@@ -7,6 +7,12 @@ import subprocess
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def native_failure_test_without_host_selection(monkeypatch):
+    module = importlib.import_module("core.windows_rocm.install")
+    monkeypatch.setattr(module, "validate_repair_selection", lambda recipe: None)
+
+
 def module(name):
     return importlib.import_module(f"core.windows_rocm.{name}")
 

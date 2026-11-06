@@ -205,6 +205,8 @@ Uygulama kullanıcı arayüzü Intel'de çalışır; başka bir bilgisayardaki V
 <details>
 <summary><img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" /> <strong>Windows</strong> · PowerShell · EXE</summary>
 
+Deneysel [Windows ROCm kurulumu](../../docs/install/windows-rocm.md), `gfx1030`, `gfx1031` veya `gfx1032` hedefli belirli RDNA 2 RX 6000 GPU’ları destekler; RX 6500 XT (`gfx1034`) kapsam dışındadır. Sürümü ayrıca sabitlenen CTranslate2 derlemesi, RX 6700 XT üzerinde transkripsiyon için yerel `gfx1031` çekirdekleri içerir; kurulum GPU çekirdeklerinin gerçekten çalıştığını doğrular. RX 6700 XT testleri, yerel Torch konuşma üretimini ve PyTorch Whisper’ı da kapsar. ROCm 10 üzerinde faster-whisper, güvenli CPU seçimi ve CPU’ya geri dönüş için ayrı bir çıkarım süreci kullanır. Diğer kartlar ve iş yükleri kılavuzdaki doğrulama sınırlarına tabidir. Performans ön ayarları, değiştirilen motor seçimlerinin çalışma zamanı hazırlığını kaydetmeden önce çevrimdışı bir alt süreçte doğrular ve kurulu bir çalışma zamanı başarısız olursa geri dönüş seçeneğini korur.
+
 <blockquote>
 
 **Kararlı · x64**<br />Windows 10/11 x64 · NVIDIA CUDA · AMD ROCm (isteğe bağlı) · CPU.

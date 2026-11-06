@@ -205,6 +205,8 @@ Giao diện ứng dụng chạy được trên máy Mac Intel; hãy kết nối 
 <details>
 <summary><img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" /> <strong>Windows</strong> · PowerShell · EXE</summary>
 
+[Thiết lập Windows ROCm](../../docs/install/windows-rocm.md) thử nghiệm hỗ trợ một số GPU RDNA 2 RX 6000 có đích `gfx1030`, `gfx1031` hoặc `gfx1032`; không bao gồm RX 6500 XT (`gfx1034`). Bản dựng CTranslate2 được ghim phiên bản riêng bao gồm nhân `gfx1031` gốc để chép lời trên RX 6700 XT; quá trình thiết lập kiểm tra việc thực thi nhân GPU thực tế. Các thử nghiệm RX 6700 XT cũng bao gồm tạo giọng nói Torch gốc và PyTorch Whisper. Trên ROCm 10, faster-whisper dùng tiến trình suy luận riêng để chọn CPU và chuyển về CPU an toàn. Các thẻ và khối lượng công việc khác vẫn tuân theo giới hạn kiểm chứng trong hướng dẫn. Cấu hình hiệu năng đặt sẵn xác minh trạng thái sẵn sàng của các bộ máy được thay đổi trong tiến trình con ngoại tuyến trước khi lưu, đồng thời giữ phương án dự phòng nếu môi trường thực thi đã cài đặt bị lỗi.
+
 <blockquote>
 
 **Ổn định · x64**<br />Windows 10/11 x64 · NVIDIA CUDA · AMD ROCm (tùy chọn) · CPU.

@@ -1,6 +1,7 @@
 """Native model-free probe. Execute ONLY as a bounded subprocess."""
 
 import json
+import os
 import sys
 import sysconfig
 from importlib import metadata
@@ -8,14 +9,19 @@ from importlib import metadata
 from .artifacts import sha256
 from .failures import VerificationFailure, failure_report
 from .native import import_native
+from .ct2_kernel import verify_ct2_kernel
 from .recipe import expected_versions, load_recipe, validate_target
 from .runtime import initialize_dll_search, package_root
 from .verify import validate_report
 
 
 def probe():
+    """Verify the pinned ROCm installation and execute its native GPU probes."""
     validate_target()
     recipe = load_recipe()
+    if (any(arch in recipe["rdna2"]["devices"] for arch in recipe["gpu_architectures"])
+            and os.environ.get("HSA_OVERRIDE_GFX_VERSION")):
+        raise VerificationFailure("device_runtime", "Remove HSA_OVERRIDE_GFX_VERSION; RDNA 2 uses native kernels")
     try:
         packages = {name: metadata.version(name) for name in expected_versions(recipe)}
     except metadata.PackageNotFoundError as exc:
@@ -73,6 +79,7 @@ def probe():
             "ct2_gpu_count": ctranslate2.get_cuda_device_count(),
             "ct2_compute_types": sorted(ctranslate2.get_supported_compute_types("cuda")),
             "ct2_binary_sha256": binary_hash,
+            "ct2_kernel_result": verify_ct2_kernel(ctranslate2),
         }
     except VerificationFailure:
         raise

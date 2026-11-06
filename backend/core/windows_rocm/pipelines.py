@@ -6,6 +6,21 @@ class PipelineCompatibilityError(ImportError):
     """Retryable device incompatibility, never a broken Python dependency."""
 
 
+def whisperx_error(device=None):
+    """WhisperX shares Torch's process; ROCm 10 CT2 CPU fallback is unsafe."""
+    from .isolation_policy import isolation_required
+
+    if isolation_required():
+        return (
+            "WhisperX transcription is unavailable in the Windows ROCm 10 environment: "
+            "Torch and CTranslate2 use incompatible OpenMP runtimes. Use faster-whisper "
+            "(isolated automatically) or PyTorch Whisper for transcription. CPU-only "
+            "wav2vec2 alignment and pyannote are separate pipelines. "
+            "See docs/install/windows-rocm.md."
+        )
+    return pipeline_error(device)
+
+
 def pipeline_error(device=None):
     """Return an actionable gate before imports/cache use, without caching failure."""
     if not windows_hip_installed():
