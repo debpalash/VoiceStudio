@@ -154,6 +154,8 @@ interface RuntimeLocationConfig {
   owned: boolean;
   /** Chosen during first-run setup: data, models and temp live beside the runtime. */
   scoped: boolean;
+  /** Runtime folders the location already held when picked; cleanup never removes them. */
+  existing?: string[];
 }
 
 function runtimePreferencesPath(): string {
@@ -424,9 +426,16 @@ function storedRuntimeLocation(): RuntimeLocationConfig | null {
   try {
     const parsed = JSON.parse(
       readFileSync(join(app.getPath('userData'), RUNTIME_LOCATION_FILE), 'utf8'),
-    ) as { root?: unknown; owned?: unknown; scoped?: unknown };
+    ) as { root?: unknown; owned?: unknown; scoped?: unknown; existing?: unknown };
     return typeof parsed.root === 'string' && isAbsolute(parsed.root)
-      ? { root: resolve(parsed.root), owned: parsed.owned === true, scoped: parsed.scoped === true }
+      ? {
+          root: resolve(parsed.root),
+          owned: parsed.owned === true,
+          scoped: parsed.scoped === true,
+          ...(Array.isArray(parsed.existing)
+            ? { existing: parsed.existing.filter((name) => typeof name === 'string') }
+            : {}),
+        }
       : null;
   } catch {
     return null;
@@ -441,10 +450,37 @@ function writeRuntimeLocation(
   root: string,
   owned: boolean,
   scoped: boolean = storedRuntimeLocation()?.scoped === true,
+  existing: string[] | undefined = sameStoredRoot(root)?.existing,
 ): void {
   const locationFile = join(app.getPath('userData'), RUNTIME_LOCATION_FILE);
   mkdirSync(dirname(locationFile), { recursive: true });
-  writeFileSync(locationFile, JSON.stringify({ root: resolve(root), owned, scoped }), 'utf8');
+  writeFileSync(
+    locationFile,
+    JSON.stringify({ root: resolve(root), owned, scoped, existing }),
+    'utf8',
+  );
+}
+
+function sameStoredRoot(root: string): RuntimeLocationConfig | null {
+  const stored = storedRuntimeLocation();
+  return stored && samePath(stored.root, root) ? stored : null;
+}
+
+/** What setup and uninstall treat as the runtime's own folders inside a chosen location. */
+const RUNTIME_ENTRIES = ['project', '.uv-cache', '.python', '.tmp', 'tmp', '.wheel-prefetch'];
+
+/**
+ * Runtime folder names already present in a location when the user picks it.
+ * Their contents are not ours, so cleanup never removes them. An unreadable
+ * folder counts as holding all of them, because that errs towards keeping files.
+ */
+function existingRuntimeEntries(root: string): string[] {
+  try {
+    const present = new Set(readdirSync(root).map((name) => name.toLowerCase()));
+    return RUNTIME_ENTRIES.filter((name) => present.has(name));
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ENOENT' ? [] : [...RUNTIME_ENTRIES];
+  }
 }
 
 /** The recorded first-run location whose data/models/temp follow the runtime, if any. */
@@ -1302,12 +1338,16 @@ export class BackendSupervisor extends EventEmitter<{
       if (
         configured &&
         !configured.owned &&
+        // A folder picked on the setup screen is the user's decision, often because
+        // the system drive is full: setup installs there, and the record of what it
+        // already held keeps those files out of cleanup. Older records have no such list.
+        !configured.existing &&
         samePath(configured.root, runtimeRoot) &&
         !samePath(runtimeRoot, defaultRuntimeRoot()) &&
         holdsUnownedFiles(runtimeRoot)
       ) {
         // An explicit setup action may create a new runtime, but must never
-        // take ownership of (or repair in place) another installation's files.
+        // take ownership of (or repair in place) a location recorded by an older build.
         runtimeRoot = defaultRuntimeRoot();
         project = join(runtimeRoot, 'project');
         this.runtimeProject = project;
@@ -1537,8 +1577,14 @@ export class BackendSupervisor extends EventEmitter<{
     const gen = this.generation;
     this.cleaningRuntime = true;
     try {
-      await promoteLegacyRuntimeCaches(project);
-      await rm(project, { recursive: true, force: true });
+      if (configured?.existing?.includes('project') && samePath(configured.root, runtimeRoot)) {
+        // The folder was there before the user picked this location. Setup repairs
+        // it in place; deleting it could remove files that are not ours.
+        this.pushLog('out', 'Keeping the existing project folder; repairing it in place.');
+      } else {
+        await promoteLegacyRuntimeCaches(project);
+        await rm(project, { recursive: true, force: true });
+      }
     } catch (error) {
       if (gen === this.generation) {
         this.setupIssue = ['EACCES', 'EPERM', 'EROFS'].includes(
@@ -1670,7 +1716,10 @@ export class BackendSupervisor extends EventEmitter<{
     if (samePath(root, defaultRoot)) {
       rmSync(locationFile, { force: true });
     } else {
-      writeRuntimeLocation(root, false, true);
+      // Picking the same folder again must not treat setup's own files as the user's.
+      const stored = sameStoredRoot(root);
+      if (stored?.existing) writeRuntimeLocation(root, stored.owned, true);
+      else writeRuntimeLocation(root, false, true, existingRuntimeEntries(root));
     }
     this.runtimeProject = join(root, 'project');
     this.message = undefined;
@@ -1703,12 +1752,14 @@ export class BackendSupervisor extends EventEmitter<{
   /**
    * What an uninstall may remove from the runtime location. A location chosen in
    * setup also holds the user's data and models, which the uninstall prompt
-   * handles as separate choices, so only the runtime's own folders are listed.
+   * handles as separate choices, so only the runtime's own folders are listed,
+   * without any that were already there when the location was picked.
    */
   get ownedRuntimeEntries(): string | string[] | null {
     const root = this.ownedRuntimeRoot;
-    if (!root || storedRuntimeLocation()?.scoped !== true) return root;
-    return ['project', '.uv-cache', '.python', '.tmp', 'tmp', '.wheel-prefetch'].map((name) =>
+    const stored = storedRuntimeLocation();
+    if (!root || stored?.scoped !== true) return root;
+    return RUNTIME_ENTRIES.filter((name) => !stored.existing?.includes(name)).map((name) =>
       join(root, name),
     );
   }
