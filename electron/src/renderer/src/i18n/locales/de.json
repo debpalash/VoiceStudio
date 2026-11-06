@@ -2203,6 +2203,7 @@
     "setup_space": "Gib mindestens {{gib}} GiB auf dem Laufwerk der App frei und versuche es erneut.",
     "repair_failed": "Die automatische Reparatur der Python-Umgebung wurde nicht abgeschlossen. Prüfe das Engine-Protokoll und klicke dann auf Erneut versuchen.",
     "setup_access": "Erlaube Schreibzugriff auf den Datenordner der App und versuche es erneut.",
+    "setup_install_stuck": "Der vorherige Download ließ sich nicht stoppen. Starte VoiceStudio neu und versuche es dann erneut.",
     "setup_unsupported_platform": "Verbinde die App unten mit einem Remote-Backend. PyTorch erscheint nicht für Intel-macOS; deshalb ist auf diesem Mac keine lokale Backend-Installation vorgesehen.",
     "setup_wrong_architecture": "Beende VoiceStudio, ersetze es durch das Apple-Silicon-DMG (arm64) und starte es neu. Derzeit läuft die Intel-Ausgabe über Rosetta; der Wechsel aktiviert lokale KI und lässt Stimmen sowie Projekte unangetastet.",
     "setup_missing_system_library": "Auf diesem Windows-System fehlt das Microsoft Visual C++ 2015-2022 Redistributable (x64), das die PyTorch-Audioerweiterung benötigt. Installiere es von Microsoft und drücke dann auf „Erneut versuchen“.",

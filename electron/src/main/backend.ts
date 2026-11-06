@@ -1557,7 +1557,14 @@ export class BackendSupervisor extends EventEmitter<{
       // Two installs must not share one folder, so don't start the CPU one.
       const message = 'Could not stop the running download. Restart VoiceStudio and try again.';
       this.pushLog('err', message);
+      this.setupIssue = 'install_stuck';
       this.setStage('setup_required', { message });
+      // It may still stop late; setup can run again from then on.
+      void this.installationSettled.then(() => {
+        if (this.setupIssue !== 'install_stuck') return;
+        this.setupIssue = undefined;
+        this.setStage('setup_required', { message: undefined });
+      });
       return;
     }
     process.env.OMNIVOICE_TORCH_VARIANT = 'cpu';

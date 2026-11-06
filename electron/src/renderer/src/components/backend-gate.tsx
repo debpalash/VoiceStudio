@@ -109,6 +109,8 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
   );
   const installing = status.stage === 'installing';
   const setupFailed = setup && Boolean(status.message);
+  // Main ignores setup requests until the old install stops, so don't offer them.
+  const installStuck = setup && status.setupIssue === 'install_stuck';
   const unsupportedPlatform = setup && status.setupIssue === 'unsupported_platform';
   // The Intel build under Rosetta on Apple Silicon (#2598): the same Mac runs
   // the local backend once the Apple Silicon build is installed.
@@ -511,7 +513,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
               {!unsupportedPlatform && !wrongArchitecture && (
                 <Button
                   className="h-auto min-h-8 max-w-full whitespace-normal py-1.5 text-center"
-                  disabled={restarting || choosingLocation}
+                  disabled={restarting || choosingLocation || installStuck}
                   onClick={() => void runSetup()}
                 >
                   {status.runtimeInterrupted
@@ -525,7 +527,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                 <Button
                   variant="outline"
                   className="h-auto min-h-8 max-w-full whitespace-normal py-1.5 text-center"
-                  disabled={restarting || choosingLocation}
+                  disabled={restarting || choosingLocation || installStuck}
                   onClick={() => setCleanConfirmOpen(true)}
                 >
                   <RotateCcwIcon data-icon="inline-start" />
@@ -539,7 +541,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
               {causeAction === 'choose_folder' ? (
                 <Button
                   onClick={() => void chooseFolder()}
-                  disabled={restarting || choosingLocation}
+                  disabled={restarting || choosingLocation || installStuck}
                 >
                   <FolderOpenIcon data-icon="inline-start" />
                   {t('backend.choose_folder')}

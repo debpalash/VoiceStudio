@@ -2203,6 +2203,7 @@
     "setup_space": "เพิ่มพื้นที่ว่างอย่างน้อย {{gib}} GiB บนไดรฟ์ของแอป แล้วลองอีกครั้ง",
     "repair_failed": "การซ่อมแซมสภาพแวดล้อม Python อัตโนมัติไม่เสร็จสมบูรณ์ ตรวจสอบบันทึกของเอนจิน แล้วกดลองใหม่",
     "setup_access": "อนุญาตให้เขียนลงในโฟลเดอร์ข้อมูลของแอป แล้วลองอีกครั้ง",
+    "setup_install_stuck": "ไม่สามารถหยุดการดาวน์โหลดก่อนหน้าได้ รีสตาร์ต VoiceStudio แล้วลองอีกครั้ง",
     "setup_unsupported_platform": "เชื่อมต่อแอปกับแบ็กเอนด์ระยะไกลจากแผงด้านล่าง PyTorch ไม่มีรุ่นสำหรับ macOS บน Intel จึงไม่ต้องติดตั้งแบ็กเอนด์ในเครื่อง Mac นี้",
     "setup_wrong_architecture": "ปิด VoiceStudio เปลี่ยนเป็น DMG รุ่น Apple Silicon (arm64) แล้วเปิดใหม่ ขณะนี้รุ่น Intel ทำงานผ่าน Rosetta; การเปลี่ยนรุ่นจะเปิดใช้ AI ในเครื่องโดยไม่ลบเสียงหรือโปรเจกต์",
     "setup_missing_system_library": "ระบบ Windows นี้ไม่มี Microsoft Visual C++ 2015-2022 Redistributable (x64) ซึ่งส่วนขยายเสียงของ PyTorch ต้องใช้ ติดตั้งจาก Microsoft แล้วกดลองใหม่",

@@ -1114,6 +1114,46 @@ describe('falling back to the CPU build', () => {
     expect(mocks.saveTorchVariant).not.toHaveBeenCalled();
     expect(supervisor.status.stage).toBe('setup_required');
     expect(supervisor.status.message).toContain('Could not stop');
+    expect(supervisor.status.setupIssue).toBe('install_stuck');
+  });
+
+  it('allows setup again once a stuck install finally stops', async () => {
+    clearVariant();
+    onTestFinished(clearVariant);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('down');
+      }),
+    );
+    let finish = () => {};
+    mocks.install.mockImplementation(
+      () => new Promise<void>((resolve) => (finish = resolve)),
+    );
+    const supervisor = new BackendSupervisor();
+    onTestFinished(() => supervisor.shutdown());
+    await supervisor.start();
+    void supervisor.setupRuntime();
+    await vi.waitFor(() => expect(mocks.install).toHaveBeenCalled());
+    const internals = supervisor as unknown as {
+      installStopTimeoutMs: number;
+      setupProgress: { snapshot(): Record<string, unknown> };
+    };
+    internals.installStopTimeoutMs = 10;
+    vi.spyOn(internals.setupProgress, 'snapshot').mockReturnValue({
+      completedDownloads: 0,
+      downloadsComplete: false,
+      stalled: true,
+      stalledSeconds: 300,
+    });
+    await supervisor.setupRuntimeOnCpu();
+    expect(supervisor.status.setupIssue).toBe('install_stuck');
+
+    finish();
+
+    await vi.waitFor(() => expect(supervisor.status.setupIssue).toBeUndefined());
+    expect(supervisor.status.stage).toBe('setup_required');
+    expect(supervisor.status.message).toBeUndefined();
   });
 
   it('does nothing when it is not on offer', async () => {

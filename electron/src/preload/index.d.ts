@@ -47,7 +47,8 @@ export interface BackendStatus {
     | 'wrong_architecture'
     | 'missing_system_library'
     | 'outdated_system_library'
-    | 'files_locked';
+    | 'files_locked'
+    | 'install_stuck';
   /** Free disk (GiB) the failed install needed; the CPU-only install needs less than the CUDA one. */
   setupRequiredGib?: number;
   /** A prior explicit install stopped after creating its resumable project/cache. */

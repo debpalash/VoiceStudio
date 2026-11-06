@@ -2203,6 +2203,7 @@
     "setup_space": "Giải phóng ít nhất {{gib}} GiB trên ổ đĩa của ứng dụng rồi thử lại.",
     "repair_failed": "Tự động sửa môi trường Python chưa hoàn tất. Hãy kiểm tra nhật ký công cụ rồi nhấn Thử lại.",
     "setup_access": "Cho phép ghi vào thư mục dữ liệu của ứng dụng rồi thử lại.",
+    "setup_install_stuck": "Không thể dừng lượt tải trước. Hãy khởi động lại VoiceStudio rồi thử lại.",
     "setup_unsupported_platform": "Hãy kết nối ứng dụng với backend từ xa bằng bảng bên dưới. PyTorch không phát hành cho macOS Intel, vì vậy máy Mac này không cần cài backend cục bộ.",
     "setup_wrong_architecture": "Hãy đóng VoiceStudio, thay bằng DMG Apple Silicon (arm64), rồi mở lại. Hiện bản Intel đang chạy qua Rosetta; đổi bản sẽ bật AI cục bộ mà không xóa giọng nói hay dự án.",
     "setup_missing_system_library": "Hệ thống Windows này thiếu Microsoft Visual C++ 2015-2022 Redistributable (x64), thành phần mà tiện ích âm thanh của PyTorch cần đến. Hãy cài từ Microsoft rồi nhấn Thử lại.",
