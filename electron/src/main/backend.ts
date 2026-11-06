@@ -1,7 +1,7 @@
 import { decideMissingRuntime, runtimeWasInstalled } from './runtime-repair';
 import { windowsRocmInstalled, windowsRocmRequested } from './runtime-windows-rocm';
 import { runtimeProjectReady } from './runtime-readiness';
-import { rememberTorchVariant } from './torch-choice';
+import { cpuSetupOffered, rememberTorchVariant, saveTorchVariant } from './torch-choice';
 import { runRuntimeProbe } from './runtime-probe';
 import { RuntimeLaunchRefusedError } from './runtime-launch-refusal';
 import { pypiFilesHost } from './pypi-mirror';
@@ -16,6 +16,7 @@ import {
   promoteLegacyRuntimeCaches,
   runtimeDependenciesReady,
   runtimeDownloadHosts,
+  cpuTorchApplies,
   resolveTorchVariant,
   managedPythonRequest,
   runtimeInstallInterrupted,
@@ -884,6 +885,18 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+async function settledWithin(work: Promise<void>, timeoutMs: number): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined;
+  const timedOut = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
+  });
+  try {
+    return await Promise.race([work.then(() => true), timedOut]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class BackendSupervisor extends EventEmitter<{
   status: [BackendStatus];
 }> {
@@ -952,6 +965,8 @@ export class BackendSupervisor extends EventEmitter<{
   private readonly setupLog = new SetupLog(join(app.getPath('userData'), 'setup.log'));
   private setupCheck: Promise<SetupConnectionCheck> | null = null;
   private installation: AbortController | null = null;
+  private installationSettled: Promise<void> = Promise.resolve();
+  private installStopTimeoutMs = 30_000;
   private cleaningRuntime = false;
   private runtimeProject: string | null = null;
   private runtimeRegion: RuntimeRegion = loadRuntimeRegion();
@@ -1117,6 +1132,7 @@ export class BackendSupervisor extends EventEmitter<{
       if (['on', 'evaluation'].includes(this.setupSmartAppControl))
         status.smartAppControlWarning = true;
     }
+    if (this.cpuSetupAvailable()) status.cpuSetupAvailable = true;
     if (/^(1|true|yes|on)$/i.test((process.env.OMNIVOICE_ANALYTICS_DISABLED ?? '').trim()))
       status.analyticsDisabled = true;
     if (this.diagnosis) status.diagnosis = this.diagnosis;
@@ -1310,6 +1326,10 @@ export class BackendSupervisor extends EventEmitter<{
     this.runtimeProject = project;
     const controller = new AbortController();
     this.installation = controller;
+    let settled = () => {};
+    this.installationSettled = new Promise<void>((resolve) => {
+      settled = resolve;
+    });
     const gen = ++this.generation;
     this.startedAt = Date.now();
     this.log.length = 0;
@@ -1508,6 +1528,7 @@ export class BackendSupervisor extends EventEmitter<{
     } finally {
       stopWatching();
       if (this.installation === controller) this.installation = null;
+      settled();
     }
   }
 
@@ -1550,6 +1571,52 @@ export class BackendSupervisor extends EventEmitter<{
     }, 3_000);
     timer.unref?.();
     return () => clearInterval(timer);
+  }
+
+  private cpuSetupAvailable(): boolean {
+    if (!['setup_required', 'installing'].includes(this.stage)) return false;
+    if (!app.isPackaged || !runtimeSetupSupported()) return false;
+    return cpuSetupOffered({
+      stage: this.stage,
+      ...(this.failure ? { failureCode: this.failure.code } : {}),
+      progress: this.setupProgress.snapshot(),
+      choice: resolveTorchVariant(),
+      cpuApplies: cpuTorchApplies(process.platform, process.arch),
+    });
+  }
+
+  /** Give up on the CUDA download, even a stuck one, and install the smaller CPU build. */
+  async setupRuntimeOnCpu(): Promise<void> {
+    if (!this.cpuSetupAvailable()) return;
+    const installing = this.installation;
+    // Abort alone doesn't stop a running uv: its runner only checks before spawning.
+    installing?.abort();
+    const gen = ++this.generation;
+    await this.killChild(true);
+    const stopped =
+      !installing || (await settledWithin(this.installationSettled, this.installStopTimeoutMs));
+    // Cancel or quit during those waits wins: nothing here may undo it.
+    if (gen !== this.generation) return;
+    if (!stopped) {
+      // Two installs must not share one folder, so don't start the CPU one.
+      const message = 'Could not stop the running download. Restart VoiceStudio and try again.';
+      this.pushLog('err', message);
+      this.setupIssue = 'install_stuck';
+      this.setStage('setup_required', { message });
+      // It may still stop late; setup can run again from then on.
+      void this.installationSettled.then(() => {
+        if (this.setupIssue !== 'install_stuck') return;
+        this.setupIssue = undefined;
+        // A restart or shutdown since then owns the stage now.
+        if (gen === this.generation) this.setStage('setup_required', { message: undefined });
+      });
+      return;
+    }
+    process.env.OMNIVOICE_TORCH_VARIANT = 'cpu';
+    if (!saveTorchVariant('cpu'))
+      this.setupLog.append('Could not save the CPU choice; the next launch may ask again');
+    await this.start();
+    await this.setupRuntime();
   }
 
   /** Remove only an Electron-owned Python project, then perform a fresh install. */

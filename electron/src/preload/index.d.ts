@@ -34,6 +34,8 @@ export interface NativeCrashRecord {
 }
 export interface BackendStatus {
   lastCrash?: NativeCrashRecord;
+  /** The CUDA download failed or stuck, and the smaller CPU build could get past it. */
+  cpuSetupAvailable?: boolean;
   /** Set on the setup screen when Windows Smart App Control may block the engine. */
   smartAppControlWarning?: boolean;
   /** OMNIVOICE_ANALYTICS_DISABLED is set: nothing may be sent, whatever was chosen. */
@@ -48,7 +50,8 @@ export interface BackendStatus {
     | 'wrong_architecture'
     | 'missing_system_library'
     | 'outdated_system_library'
-    | 'files_locked';
+    | 'files_locked'
+    | 'install_stuck';
   /** Free disk (GiB) the failed install needed; the CPU-only install needs less than the CUDA one. */
   setupRequiredGib?: number;
   /** A prior explicit install stopped after creating its resumable project/cache. */
@@ -446,6 +449,7 @@ export interface VoiceStudioBridge {
     restart(): Promise<void>;
     setupRuntime(): Promise<void>;
     cleanSetupRuntime(): Promise<void>;
+    setupRuntimeOnCpu(): Promise<void>;
     setRuntimeRegion(region: RuntimeRegion): Promise<RuntimeRegion>;
     chooseRuntimeLocation(title: string): Promise<RuntimeLocation | null>;
     useDefaultRuntimeLocation(): Promise<RuntimeLocation>;

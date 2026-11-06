@@ -769,6 +769,12 @@ nor the **China** download region redirects it: PyTorch's index has no mirror.
 3. See [First-run setup is slow or stalls on a download](#first-run-setup-is-slow-or-stalls-on-a-download)
    for what the setup screen shows and what a retry keeps.
 
+If it keeps failing, or a download stays stuck for five minutes, click **Install the
+CPU version instead** on the setup screen. It's a much smaller download, and everything
+works, but voices generate more slowly. The choice is saved in
+`~/.config/omnivoice/env` (`%USERPROFILE%\.config\omnivoice\env` on Windows). To try
+the GPU build again, launch once with `OMNIVOICE_TORCH_VARIANT=cuda`.
+
 If you don't have an NVIDIA GPU, you don't need the CUDA build at all — a CPU /
 Apple-Silicon install skips this index entirely. Electron source and packaged
 setup select CPU wheels when no NVIDIA driver is detected. Set
