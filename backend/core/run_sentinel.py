@@ -312,10 +312,12 @@ def touch_activity(kind: str, detail: str | None = None) -> None:
         with _lock:
             _state["last_activity"] = activity
             context = _context_line(activity, now)
+        # First: a full disk breaks the write below, and is when these facts matter most.
+        _send_context(context)
+        with _lock:
             if _state["owns"] and now - float(_state["last_write"] or 0) >= ACTIVITY_THROTTLE_S:
                 _write_json_atomic(SENTINEL_PATH, _sentinel_payload())
                 _state["last_write"] = now
-        _send_context(context)
     except Exception:
         logger.debug("run-sentinel activity touch failed (non-fatal)", exc_info=True)
 

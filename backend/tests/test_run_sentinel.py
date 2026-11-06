@@ -559,3 +559,17 @@ def test_a_blocked_stderr_does_not_hold_the_lock(sentinel_env, monkeypatch):
     run_sentinel.touch_activity("task", "generate")
 
     assert held and not any(held)
+
+
+def test_a_full_disk_does_not_hide_the_context(sentinel_env, monkeypatch, capsys):
+    def full(*_args):
+        raise OSError(28, "No space left on device")
+
+    run_sentinel._reset_for_tests()
+    run_sentinel.write_sentinel()
+    monkeypatch.setattr(run_sentinel, "_write_json_atomic", full)
+    monkeypatch.setitem(run_sentinel._state, "last_write", 0.0)
+
+    run_sentinel.touch_activity("model_load", "omnivoice-tts")
+
+    assert _emitted_context(capsys)[-1]["kind"] == "model_load"

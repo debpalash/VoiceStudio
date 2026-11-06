@@ -1873,13 +1873,19 @@ export class BackendSupervisor extends EventEmitter<{
       .catch(() => undefined);
   }
 
-  private pushLog(stream: 'out' | 'err', line: string, fromChild = false): void {
+  private pushLog(
+    stream: 'out' | 'err',
+    line: string,
+    fromChild = false,
+    /** From a child replaced since: logged, but says nothing about the current one. */
+    staleChild = false,
+  ): void {
     // Backend output can carry a token or a home directory (and with it the
     // user's name). It is quoted in failure messages, shown in the log tail and
     // forwarded to repair agents, so it is scrubbed once, here, at the source.
     line = scrubText(cleanProcessLine(line));
     if (!line) return;
-    if (stream === 'err') this.crashes.captureLine(line);
+    if (stream === 'err' && !staleChild) this.crashes.captureLine(line);
     this.log.push(line);
     if (this.log.length > LOG_RING_LINES) this.log.splice(0, this.log.length - LOG_RING_LINES);
     // Failure messages quote the backend, not this shell. `log` also carries
@@ -1905,11 +1911,16 @@ export class BackendSupervisor extends EventEmitter<{
     }
   }
 
-  private attachLineReader(readable: NodeJS.ReadableStream | null, stream: 'out' | 'err'): void {
+  private attachLineReader(
+    readable: NodeJS.ReadableStream | null,
+    stream: 'out' | 'err',
+    gen?: number,
+  ): void {
     if (!readable) return;
     let pending = '';
+    const stale = () => gen !== undefined && gen !== this.generation;
     const flushPending = () => {
-      if (pending.length > 0) this.pushLog(stream, pending, true);
+      if (pending.length > 0) this.pushLog(stream, pending, true, stale());
       pending = '';
     };
     readable.setEncoding('utf8');
@@ -1917,7 +1928,7 @@ export class BackendSupervisor extends EventEmitter<{
       pending += chunk;
       const lines = pending.split(/[\r\n]+/);
       pending = lines.pop() ?? '';
-      for (const line of lines) if (line.length > 0) this.pushLog(stream, line, true);
+      for (const line of lines) if (line.length > 0) this.pushLog(stream, line, true, stale());
     });
     readable.on('end', flushPending);
     readable.on('error', (error: unknown) => {
@@ -1978,8 +1989,8 @@ export class BackendSupervisor extends EventEmitter<{
     }
     // EPIPE on a dying child must never take main down with it.
     child.stdin?.on('error', () => {});
-    this.attachLineReader(child.stdout, 'out');
-    this.attachLineReader(child.stderr, 'err');
+    this.attachLineReader(child.stdout, 'out', gen);
+    this.attachLineReader(child.stderr, 'err', gen);
     child.on('error', (err) => {
       if (gen !== this.generation) return;
       this.child = null;
