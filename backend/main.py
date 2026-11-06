@@ -686,6 +686,14 @@ def _phase_a_build_inner() -> None:
 
     _startup_progress.begin_step("ml_imports")
     try:
+        # Only starts a separate process; the verdict is read when a model loads.
+        import torch as _torch_for_gpu_test
+        from core.gpu_self_test import start as start_gpu_self_test
+
+        start_gpu_self_test(_torch_for_gpu_test)
+    except Exception:  # noqa: BLE001 - the torchaudio import below reports a broken torch
+        pass
+    try:
         # The opt-in Windows ROCm runtime must pin its DLL search path before
         # torchaudio loads; a no-op on every other runtime.
         from core.windows_rocm.pipelines import prepare_audio_imports
