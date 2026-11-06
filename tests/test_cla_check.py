@@ -152,6 +152,7 @@ class FakeGitHub:
         self.branch = store is not None
         self.open_prs = None
         self.statuses, self.posted, self.patched = [], [], []
+        self.label_writes = []
 
     def get(self, path):
         assert path.endswith(f"/pulls/{self.pr.get('number', 7)}")
@@ -174,6 +175,8 @@ class FakeGitHub:
             "pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": nodes}}}}
 
     def request(self, method, path, body=None):
+        if "/commits?path=" in path:
+            return 200, [{"sha": "d0c"}], {}
         if method == "GET" and "/pulls/" in path:
             number = int(path.rsplit("/", 1)[1])
             return (200, {"user": self.others[number]}, {}) if number in self.others else (404, None, {})
@@ -195,6 +198,9 @@ class FakeGitHub:
         if path.endswith("/git/refs"):
             self.branch = True
             return 201, {}, {}
+        if "/labels" in path and method in ("POST", "DELETE"):
+            self.label_writes.append((method, path.rsplit("/issues/", 1)[1], body, len(self.statuses)))
+            return 200, [], {}
         if "/statuses/" in path:
             self.statuses.append(body)
             return 201, {}, {}
@@ -218,7 +224,7 @@ def test_first_signature_creates_the_store_and_turns_the_status_green():
     assert saved == [{"login": "alice", "id": 1001, "pull_request": 7, "comment_id": 5,
                       "signed_at": "2026-10-02T00:00:00Z", "version": cla.CLA_VERSION, "repo_id": 99}]
     assert gh.statuses[-1]["state"] == "success" and gh.statuses[-1]["context"] == "CLA"
-    assert not gh.posted  # nothing to ask for, so no new comment
+    assert len(gh.posted) == 1 and "pull/7#issuecomment-5" in gh.posted[0]
 
 
 def test_unsigned_pr_fails_and_asks_once():
@@ -573,3 +579,175 @@ def test_signed_people_get_no_reply_for_a_later_near_miss():
                                     store={**cla.empty_store(), "signatures": [{"id": 1001}]}))
     cla.sign_on_issue(gh, _issue_event(["cla"]))
     assert gh.posted == []
+
+
+# ── The cla-signed label ────────────────────────────────────────────────
+
+SIGNED = {"signatures": [{"id": 1001}]}
+HAS_LABEL = {"labels": [{"name": "cla-signed"}]}
+ADD = ("POST", "7/labels", {"labels": ["cla-signed"]})
+REMOVE = ("DELETE", "7/labels/cla-signed", None)
+
+
+def writes(gh):
+    return [entry[:3] for entry in gh.label_writes]
+
+
+def test_signed_pr_gets_the_label_after_its_status():
+    gh = FakeGitHub([], [actor("alice", 1001)], store=SIGNED)
+    assert cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}}).passed
+    assert writes(gh) == [ADD]
+    assert gh.label_writes[0][3] == len(gh.statuses) and gh.statuses[-1]["state"] == "success"
+
+
+def test_signing_by_comment_earns_the_label_in_the_same_run():
+    comments = [{"id": 5, "user": {"id": 1001, "login": "alice", "type": "User"},
+                 "body": cla.SIGN_PHRASE, "created_at": "2026-10-02T00:00:00Z"}]
+    gh = FakeGitHub(comments, [actor("alice", 1001)], store=cla.empty_store())
+    assert cla.run(gh, "issue_comment", {"issue": {"number": 7}}).passed
+    assert writes(gh) == [ADD]
+
+
+def test_labelled_signed_pr_writes_nothing():
+    gh = FakeGitHub([], [actor("alice", 1001)], store=SIGNED, pr=HAS_LABEL)
+    cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}})
+    assert writes(gh) == []
+
+
+def test_label_is_removed_when_a_new_contributor_has_not_signed():
+    gh = FakeGitHub([], [actor("bob", 1002)], store=SIGNED, pr=HAS_LABEL)
+    assert not cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}}).passed
+    assert writes(gh) == [REMOVE]
+
+
+def test_unsigned_pr_without_the_label_writes_nothing():
+    gh = FakeGitHub([], [actor("alice", 1001)], store=cla.empty_store())
+    cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}})
+    assert writes(gh) == []
+
+
+def test_exempt_only_pr_is_not_labelled_as_signed():
+    # Maintainer and bot pull requests pass without anyone having signed.
+    maintainer = {"user": {"login": "debpalash", "id": 4178343, "type": "User"}}
+    gh = FakeGitHub([], [actor("debpalash", 4178343), actor("dependabot[bot]", 49699333)],
+                    store=cla.empty_store(), pr=maintainer)
+    assert cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}}).passed
+    assert writes(gh) == []
+
+
+def test_exempt_opener_with_signed_contributor_is_labelled():
+    maintainer = {"user": {"login": "debpalash", "id": 4178343, "type": "User"}}
+    gh = FakeGitHub([], [actor("alice", 1001)], store=SIGNED, pr=maintainer)
+    assert cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}}).passed
+    assert writes(gh) == [ADD]
+
+
+@pytest.mark.parametrize("labels,expected", [
+    ([{"name": "cla-override"}], []),
+    ([{"name": "cla-override"}, {"name": "cla-signed"}], [REMOVE]),
+])
+def test_override_is_a_review_not_a_signature(labels, expected):
+    gh = FakeGitHub([], [actor("bob", 1002)], store=cla.empty_store(), pr={"labels": labels})
+    assert cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}}).passed
+    assert gh.statuses[-1]["description"] == "CLA reviewed by a maintainer"
+    assert writes(gh) == expected
+
+
+def test_duplicate_head_clears_the_label():
+    prs = [{"number": 7, "state": "open", "head": {"sha": "abc"}, **HAS_LABEL},
+           {"number": 8, "state": "open", "head": {"sha": "abc"}}]
+    gh = FakeGitHub([], [actor("alice", 1001)], store=SIGNED, pr=prs[0])
+    gh.open_prs = prs
+    assert not cla.run(gh, "pull_request_target", {"pull_request": prs[0]}).passed
+    assert writes(gh) == [REMOVE]
+
+
+def test_merged_pr_keeps_its_label():
+    merged = {"state": "closed", **HAS_LABEL}
+    gh = FakeGitHub([], [actor("alice", 1001)], store=SIGNED, pr=merged)
+    gh.open_prs = []
+    cla.run(gh, "pull_request_target", {"pull_request": {"number": 7, "head": {"sha": "abc"}}})
+    assert writes(gh) == []
+
+
+@pytest.mark.parametrize("failure", [(403, {"message": "denied"}, {}), OSError("network")])
+def test_label_failure_never_changes_the_gate(monkeypatch, capsys, failure):
+    gh = FakeGitHub([], [actor("alice", 1001)], store=SIGNED)
+    original = gh.request
+
+    def request(method, path, body=None):
+        if "/labels" in path:
+            if isinstance(failure, Exception):
+                raise failure
+            return failure
+        return original(method, path, body)
+
+    monkeypatch.setattr(gh, "request", request)
+    assert cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}}).passed
+    assert gh.statuses[-1]["state"] == "success"
+    assert "cla-signed" in capsys.readouterr().out
+
+
+def test_label_changing_mid_run_does_not_invalidate_the_evaluation():
+    # The label is an output of this check, not an input to it.
+    pr = {"state": "open", "head": {"sha": "abc"}, "base": {"sha": "b"},
+          "user": {"id": 1, "type": "User"}, "body": "", "labels": []}
+    labelled = {**pr, **HAS_LABEL}
+    assert cla._evaluation_snapshot(pr) == cla._evaluation_snapshot(labelled)
+    overridden = {**pr, "labels": [{"name": "cla-override"}]}
+    assert cla._evaluation_snapshot(pr) != cla._evaluation_snapshot(overridden)
+
+
+# ── The passing comment ─────────────────────────────────────────────────
+
+RECORDED = {"signatures": [{"id": 1001, "login": "alice", "comment_id": 55, "issue": 2586}]}
+DOC_PERMALINK = f"https://github.com/debpalash/VoiceStudio/blob/d0c/{cla.DOCUMENT_PATH}"
+
+
+def test_signed_pr_gets_a_comment_with_permalinks_and_no_ping():
+    gh = FakeGitHub([], [actor("alice", 1001)], store=RECORDED)
+    cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}})
+    assert len(gh.posted) == 1 and writes(gh) == [ADD]
+    body = gh.posted[0]
+    assert DOC_PERMALINK in body
+    assert "https://github.com/debpalash/VoiceStudio/issues/2586#issuecomment-55" in body
+    assert "`alice`" in body and "@alice" not in body
+
+
+def test_rerun_leaves_the_comment_unchanged():
+    gh = FakeGitHub([], [actor("alice", 1001)], store=RECORDED)
+    cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}})
+    gh.comments = [{"id": 1, "user": {"id": 9, "type": "Bot"}, "body": gh.posted[0]}]
+    cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}})
+    assert len(gh.posted) == 1 and not gh.patched
+
+
+def test_old_passing_comment_gains_the_permalinks():
+    old = {"id": 1, "user": {"id": 9, "type": "Bot"}, "body": f"{cla.COMMENT_MARKER}\nsigned"}
+    gh = FakeGitHub([old], [actor("alice", 1001)], store=RECORDED)
+    cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}})
+    assert not gh.posted and "issuecomment-55" in gh.patched[0]
+
+
+def test_exempt_only_pr_gets_no_comment():
+    maintainer = {"user": {"login": "debpalash", "id": 4178343, "type": "User"}}
+    gh = FakeGitHub([], [actor("debpalash", 4178343)], store=cla.empty_store(), pr=maintainer)
+    cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}})
+    assert not gh.posted
+
+
+@pytest.mark.parametrize("failure", [(500, None, {}), OSError("network")])
+def test_document_lookup_failure_falls_back_to_the_branch_link(monkeypatch, failure):
+    gh = FakeGitHub([], [actor("alice", 1001)], store=RECORDED)
+    original = gh.request
+
+    def request(method, path, body=None):
+        if "/commits?path=" in path:
+            if isinstance(failure, Exception):
+                raise failure
+            return failure
+        return original(method, path, body)
+
+    monkeypatch.setattr(gh, "request", request)
+    assert cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}}).passed
+    assert f"/blob/main/{cla.DOCUMENT_PATH}" in gh.posted[0]

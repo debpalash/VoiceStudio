@@ -55,6 +55,8 @@
 <p align="center">
   <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/badge/%E4%B8%8B%E8%BC%89-993f61?style=for-the-badge&amp;logo=github&amp;logoColor=ffffff" alt="下載" height="24" /></a>
   <a href="#開始使用"><img src="https://img.shields.io/badge/%E5%BF%AB%E9%80%9F%E9%96%8B%E5%A7%8B-27272a?style=for-the-badge" alt="快速上手" height="24" /></a>
+  <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Pro-27272a?style=for-the-badge" alt="VoiceStudio Pro" height="24" /></a>
+  <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Cloud-27272a?style=for-the-badge" alt="VoiceStudio Cloud" height="24" /></a>
 </p>
 
 <a id="what-you-can-do"></a>
@@ -107,6 +109,39 @@
 從預設的 **VoiceStudio**（由 k2-fsa/OmniVoice 驅動）開始，或在模型管理器中從數十種其他引擎中挑選。參見[功能與引擎目錄](../../docs/feature-catalog.md)。
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
+
+## Pro 和 Cloud
+
+以上功能全部免費，在你自己的硬體上執行，不需要帳號。Pro 和 Cloud 皆為選用。
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
+      適合在多台機器上承接付費客戶專案。
+      <ul>
+        <li>用於客戶專案的商業授權，透過電子郵件寄給你</li>
+        <li>一位使用者，最多同時使用 3 台裝置</li>
+        <li>把工作傳送到你的其他 GPU，專案仍留在本機</li>
+        <li>搶先取得新功能和修正</li>
+      </ul>
+      <sub>閉源版本，需要帳號，7 天內可全額退款。AGPL-3.0 應用程式依然免費，也可依其條款用於商業用途。</sub><br /><br />
+      <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">查看 Pro 方案 →</a></strong>
+    </td>
+    <td width="50%" valign="top">
+      <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br /><br />
+      託管的語音和配音 API，即將推出，不需要 GPU。
+      <ul>
+        <li>語音合成、聲音設計和經同意的聲音複製</li>
+        <li>配音、轉錄和有聲書</li>
+        <li>依日期或專案查看用量和點數</li>
+        <li>長時間工作自動執行</li>
+      </ul>
+      <sub>尚未開放：加入搶先體驗即可獲得免費使用點數。桌面應用程式依然免費且在本機執行。</sub><br /><br />
+      <strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">加入 Cloud 搶先體驗 →</a></strong>
+    </td>
+  </tr>
+</table>
 
 <a id="platforms"></a>
 
@@ -474,7 +509,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 
 ## 贊助者
 
-VoiceStudio 免費使用，背後沒有付費雲服務。贊助者讓它持續釋出新版本：贊助資金用於維護者時間、測試硬體、程式碼簽名和釋出基礎設施。
+VoiceStudio 應用程式免費使用，不需要付費雲服務。贊助者讓它持續釋出新版本：贊助資金用於維護者時間、測試硬體、程式碼簽名和釋出基礎設施。
 
 <p>
     <a href="https://github.com/debpalash/OpenGTM?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/opengtm-dark.svg" /><img src="../../docs/sponsors/opengtm.svg" alt="OpenGTM" height="48" align="middle" /></picture></a>

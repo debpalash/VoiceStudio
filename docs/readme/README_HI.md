@@ -55,6 +55,8 @@
 <p align="center">
   <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/badge/%E0%A4%A1%E0%A4%BE%E0%A4%89%E0%A4%A8%E0%A4%B2%E0%A5%8B%E0%A4%A1-993f61?style=for-the-badge&amp;logo=github&amp;logoColor=ffffff" alt="डाउनलोड" height="24" /></a>
   <a href="#get-started"><img src="https://img.shields.io/badge/%E0%A4%B6%E0%A5%81%E0%A4%B0%E0%A5%82%20%E0%A4%95%E0%A4%B0%E0%A5%87%E0%A4%82-27272a?style=for-the-badge" alt="शुरू करें" height="24" /></a>
+  <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Pro-27272a?style=for-the-badge" alt="VoiceStudio Pro" height="24" /></a>
+  <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Cloud-27272a?style=for-the-badge" alt="VoiceStudio Cloud" height="24" /></a>
 </p>
 
 <a id="what-you-can-do"></a>
@@ -107,6 +109,39 @@
 **VoiceStudio** से प्रारंभ करें (डिफ़ॉल्ट, k2-fsa/OmniVoice द्वारा संचालित), या मॉडल मैनेजर में दर्जनों अन्य इंजनों में से चुनें। [सुविधाएँ और इंजन कैटलॉग](../../docs/feature-catalog.md) देखें।
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
+
+## Pro और Cloud
+
+ऊपर दिया सब कुछ मुफ़्त है, आपके अपने हार्डवेयर पर चलता है और इसके लिए खाते की ज़रूरत नहीं है। Pro और Cloud वैकल्पिक हैं।
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
+      एक से ज़्यादा मशीनों पर सशुल्क क्लाइंट काम के लिए।
+      <ul>
+        <li>आपके क्लाइंट काम के लिए व्यावसायिक लाइसेंस, ईमेल से भेजा जाता है</li>
+        <li>एक उपयोगकर्ता, एक साथ अधिकतम 3 डिवाइस</li>
+        <li>अपने दूसरे GPU पर काम भेजें, जबकि आपके प्रोजेक्ट लोकल रहते हैं</li>
+        <li>नई सुविधाएँ और सुधार सबसे पहले</li>
+      </ul>
+      <sub>बंद-स्रोत बिल्ड, खाता ज़रूरी, 7 दिनों में पूरा रिफ़ंड। AGPL-3.0 ऐप मुफ़्त रहता है, उसकी शर्तों के तहत व्यावसायिक उपयोग सहित।</sub><br /><br />
+      <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Pro प्लान देखें →</a></strong>
+    </td>
+    <td width="50%" valign="top">
+      <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br /><br />
+      आवाज़ और डबिंग के लिए होस्टेड API, जल्द आ रहा है। GPU की ज़रूरत नहीं।
+      <ul>
+        <li>स्पीच, वॉइस डिज़ाइन और सहमति से वॉइस क्लोनिंग</li>
+        <li>डबिंग, ट्रांसक्रिप्शन और ऑडियोबुक</li>
+        <li>दिन या प्रोजेक्ट के अनुसार उपयोग और क्रेडिट</li>
+        <li>लंबे काम जो अपने आप चलते हैं</li>
+      </ul>
+      <sub>अभी उपलब्ध नहीं: अर्ली एक्सेस से जुड़ें और मुफ़्त उपयोग क्रेडिट पाएँ। डेस्कटॉप ऐप मुफ़्त और लोकल रहता है।</sub><br /><br />
+      <strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Cloud अर्ली एक्सेस से जुड़ें →</a></strong>
+    </td>
+  </tr>
+</table>
 
 <a id="platforms"></a>
 

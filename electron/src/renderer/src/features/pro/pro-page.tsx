@@ -23,7 +23,7 @@ const plans = [
   },
   {
     id: 'lifetime',
-    unitPrice: 299,
+    unitPrice: 199,
     period: 'per_user_once',
     detail: 'lifetime_detail',
   },

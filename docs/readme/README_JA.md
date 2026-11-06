@@ -56,6 +56,8 @@
 <p align="center">
   <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/badge/%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89-993f61?style=for-the-badge&amp;logo=github&amp;logoColor=ffffff" alt="ダウンロード" height="24" /></a>
   <a href="#はじめに"><img src="https://img.shields.io/badge/%E5%B0%8E%E5%85%A5%E3%82%AC%E3%82%A4%E3%83%89-27272a?style=for-the-badge" alt="導入ガイド" height="24" /></a>
+  <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Pro-27272a?style=for-the-badge" alt="VoiceStudio Pro" height="24" /></a>
+  <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Cloud-27272a?style=for-the-badge" alt="VoiceStudio Cloud" height="24" /></a>
 </p>
 
 <a id="what-you-can-do"></a>
@@ -108,6 +110,39 @@
 まずはデフォルトの **VoiceStudio**（k2-fsa/OmniVoice ベース）から。モデルマネージャーでは、ほかにも数十のエンジンから選べます。[機能とエンジンの一覧](../../docs/feature-catalog.md)を参照してください。
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
+
+## Pro と Cloud
+
+ここまでの機能はすべて無料で、ご自身のハードウェアで動作し、アカウントも不要です。Pro と Cloud は任意です。
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
+      複数のマシンで有償のクライアント業務を行う方に。
+      <ul>
+        <li>クライアント業務向けの商用ライセンスをメールでお届け</li>
+        <li>1 ユーザーにつき同時に最大 3 台のデバイス</li>
+        <li>プロジェクトはローカルのまま、ジョブを他の GPU に送信</li>
+        <li>新機能と修正をいち早く利用</li>
+      </ul>
+      <sub>クローズドソース版、アカウント必須、7 日間の全額返金。AGPL-3.0 版アプリは、その条件に基づく商用利用を含めて引き続き無料です。</sub><br /><br />
+      <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Pro のプランを見る →</a></strong>
+    </td>
+    <td width="50%" valign="top">
+      <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br /><br />
+      ホスト型の音声・吹き替え API を近日公開。GPU は不要です。
+      <ul>
+        <li>音声合成、ボイスデザイン、同意に基づくボイスクローン</li>
+        <li>吹き替え、文字起こし、オーディオブック</li>
+        <li>日別・プロジェクト別の使用量とクレジット</li>
+        <li>自動で進む長時間ジョブ</li>
+      </ul>
+      <sub>まだ利用できません。早期アクセスに参加すると無料の利用クレジットを受け取れます。デスクトップアプリは引き続き無料で、ローカルで動作します。</sub><br /><br />
+      <strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Cloud の早期アクセスに参加 →</a></strong>
+    </td>
+  </tr>
+</table>
 
 <a id="platforms"></a>
 
@@ -475,7 +510,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 
 ## スポンサー
 
-VoiceStudio は無料で、背後に有料クラウドはありません。開発を続けられるのはスポンサーのおかげです。スポンサー資金はメンテナーの作業時間、テスト用ハードウェア、コード署名、リリース基盤に充てられます。
+VoiceStudio アプリは無料で、有料クラウドは必要ありません。開発を続けられるのはスポンサーのおかげです。スポンサー資金はメンテナーの作業時間、テスト用ハードウェア、コード署名、リリース基盤に充てられます。
 
 <p>
     <a href="https://github.com/debpalash/OpenGTM?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/opengtm-dark.svg" /><img src="../../docs/sponsors/opengtm.svg" alt="OpenGTM" height="48" align="middle" /></picture></a>

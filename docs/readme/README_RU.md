@@ -56,6 +56,8 @@
 <p align="center">
   <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/badge/%D0%A1%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C-993f61?style=for-the-badge&amp;logo=github&amp;logoColor=ffffff" alt="Скачать" height="24" /></a>
   <a href="#быстрый-старт"><img src="https://img.shields.io/badge/%D0%9D%D0%B0%D1%87%D0%B0%D0%BB%D0%BE%20%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D1%8B-27272a?style=for-the-badge" alt="Начало работы" height="24" /></a>
+  <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Pro-27272a?style=for-the-badge" alt="VoiceStudio Pro" height="24" /></a>
+  <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Cloud-27272a?style=for-the-badge" alt="VoiceStudio Cloud" height="24" /></a>
 </p>
 
 <a id="what-you-can-do"></a>
@@ -108,6 +110,39 @@
 Из коробки работает **VoiceStudio** — штатный движок, построенный на k2-fsa/OmniVoice; ещё несколько десятков альтернатив ставятся из менеджера моделей. Полный список — в [каталоге функций и движков](../../docs/feature-catalog.md).
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
+
+## Pro и Cloud
+
+Всё, что описано выше, бесплатно, работает на вашем оборудовании и не требует аккаунта. Pro и Cloud необязательны.
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
+      Для оплачиваемой работы с клиентами на нескольких компьютерах.
+      <ul>
+        <li>Коммерческая лицензия на работу с клиентами, приходит на почту</li>
+        <li>Один пользователь и до 3 устройств одновременно</li>
+        <li>Отправляйте задачи на другие свои GPU, а проекты остаются на вашем компьютере</li>
+        <li>Новые функции и исправления раньше всех</li>
+      </ul>
+      <sub>Сборка с закрытым кодом, нужен аккаунт, полный возврат в течение 7 дней. Приложение под AGPL-3.0 остаётся бесплатным, в том числе для коммерческого использования на её условиях.</sub><br /><br />
+      <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Посмотреть тарифы Pro →</a></strong>
+    </td>
+    <td width="50%" valign="top">
+      <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br /><br />
+      Облачный API для речи и дубляжа, скоро. GPU не нужен.
+      <ul>
+        <li>Речь, создание голосов и клонирование голоса с согласия владельца</li>
+        <li>Дубляж, транскрипция и аудиокниги</li>
+        <li>Расход и кредиты по дням или проектам</li>
+        <li>Долгие задачи, которые выполняются сами</li>
+      </ul>
+      <sub>Пока недоступно: присоединяйтесь к раннему доступу и получите бесплатные кредиты. Настольное приложение остаётся бесплатным и локальным.</sub><br /><br />
+      <strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Вступить в ранний доступ к Cloud →</a></strong>
+    </td>
+  </tr>
+</table>
 
 <a id="platforms"></a>
 
@@ -475,7 +510,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 
 ## Поддержка проекта
 
-VoiceStudio бесплатен, и за ним нет платного облака. Новые версии выходят благодаря спонсорам: они оплачивают время мейнтейнера, оборудование для тестов, подпись кода и инфраструктуру релизов.
+Приложение VoiceStudio бесплатно и не требует платного облака. Новые версии выходят благодаря спонсорам: они оплачивают время мейнтейнера, оборудование для тестов, подпись кода и инфраструктуру релизов.
 
 <p>
     <a href="https://github.com/debpalash/OpenGTM?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/opengtm-dark.svg" /><img src="../../docs/sponsors/opengtm.svg" alt="OpenGTM" height="48" align="middle" /></picture></a>

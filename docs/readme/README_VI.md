@@ -55,6 +55,8 @@
 <p align="center">
   <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/badge/T%E1%BA%A3i%20xu%E1%BB%91ng-993f61?style=for-the-badge&amp;logo=github&amp;logoColor=ffffff" alt="Tải xuống" height="24" /></a>
   <a href="#get-started"><img src="https://img.shields.io/badge/B%E1%BA%AFt%20%C4%91%E1%BA%A7u-27272a?style=for-the-badge" alt="Bắt đầu" height="24" /></a>
+  <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Pro-27272a?style=for-the-badge" alt="VoiceStudio Pro" height="24" /></a>
+  <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Cloud-27272a?style=for-the-badge" alt="VoiceStudio Cloud" height="24" /></a>
 </p>
 
 <a id="what-you-can-do"></a>
@@ -107,6 +109,39 @@ Chọn công cụ của bạn và chỉ tải xuống những mô hình bạn c�
 Bắt đầu với **VoiceStudio** (mặc định, được cung cấp bởi k2-fsa/ OmniVoice) hoặc chọn từ hàng chục công cụ khác trong Trình quản lý mô hình. Xem [danh mục tính năng và động cơ](../../docs/feature-catalog.md).
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
+
+## Pro và Cloud
+
+Mọi thứ ở trên đều miễn phí, chạy trên phần cứng của bạn và không cần tài khoản. Pro và Cloud là tùy chọn.
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
+      Dành cho công việc khách hàng có trả phí trên nhiều máy.
+      <ul>
+        <li>Giấy phép thương mại cho công việc khách hàng, gửi qua email</li>
+        <li>Một người dùng trên tối đa 3 thiết bị cùng lúc</li>
+        <li>Gửi tác vụ đến các GPU khác của bạn trong khi dự án vẫn ở máy cục bộ</li>
+        <li>Nhận tính năng và bản sửa lỗi mới trước</li>
+      </ul>
+      <sub>Bản mã nguồn đóng, cần tài khoản, hoàn tiền đầy đủ trong 7 ngày. Ứng dụng AGPL-3.0 vẫn miễn phí, kể cả dùng thương mại theo các điều khoản của giấy phép này.</sub><br /><br />
+      <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Xem các gói Pro →</a></strong>
+    </td>
+    <td width="50%" valign="top">
+      <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br /><br />
+      API giọng nói và lồng tiếng được lưu trữ sẵn, sắp ra mắt. Không cần GPU.
+      <ul>
+        <li>Giọng nói, thiết kế giọng và nhân bản giọng khi có sự đồng ý</li>
+        <li>Lồng tiếng, phiên âm và sách nói</li>
+        <li>Mức dùng và tín dụng theo ngày hoặc dự án</li>
+        <li>Tác vụ dài tự chạy</li>
+      </ul>
+      <sub>Chưa có sẵn: tham gia truy cập sớm để nhận tín dụng sử dụng miễn phí. Ứng dụng máy tính vẫn miễn phí và chạy cục bộ.</sub><br /><br />
+      <strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Tham gia truy cập sớm Cloud →</a></strong>
+    </td>
+  </tr>
+</table>
 
 <a id="platforms"></a>
 
