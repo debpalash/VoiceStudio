@@ -1156,6 +1156,43 @@ describe('falling back to the CPU build', () => {
     expect(supervisor.status.message).toBeUndefined();
   });
 
+  it('leaves a backend that started meanwhile alone when a stuck install stops', async () => {
+    clearVariant();
+    onTestFinished(clearVariant);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('down');
+      }),
+    );
+    let finish = () => {};
+    mocks.install.mockImplementation(() => new Promise<void>((resolve) => (finish = resolve)));
+    const supervisor = new BackendSupervisor();
+    onTestFinished(() => supervisor.shutdown());
+    await supervisor.start();
+    void supervisor.setupRuntime();
+    await vi.waitFor(() => expect(mocks.install).toHaveBeenCalled());
+    const internals = supervisor as unknown as {
+      installStopTimeoutMs: number;
+      setupProgress: { snapshot(): Record<string, unknown> };
+    };
+    internals.installStopTimeoutMs = 10;
+    vi.spyOn(internals.setupProgress, 'snapshot').mockReturnValue({
+      completedDownloads: 0,
+      downloadsComplete: false,
+      stalled: true,
+      stalledSeconds: 300,
+    });
+    await supervisor.setupRuntimeOnCpu();
+    await supervisor.shutdown();
+    expect(supervisor.status.stage).toBe('idle');
+
+    finish();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(supervisor.status.stage).toBe('idle');
+  });
+
   it('does nothing when it is not on offer', async () => {
     clearVariant();
     onTestFinished(clearVariant);
@@ -1166,4 +1203,26 @@ describe('falling back to the CPU build', () => {
     expect(process.env.OMNIVOICE_TORCH_VARIANT).toBeUndefined();
     expect(mocks.saveTorchVariant).not.toHaveBeenCalled();
   });
+});
+
+it('does not take crash context from a backend process that was replaced', async () => {
+  const { PassThrough } = await import('node:stream');
+  const supervisor = new BackendSupervisor();
+  onTestFinished(() => supervisor.shutdown());
+  const internals = supervisor as unknown as {
+    generation: number;
+    crashes: { captureLine(line: string): void };
+    attachLineReader(readable: NodeJS.ReadableStream, stream: 'err', gen: number): void;
+  };
+  const capture = vi.spyOn(internals.crashes, 'captureLine');
+  const stderr = new PassThrough();
+  internals.attachLineReader(stderr, 'err', internals.generation);
+  stderr.write('from the current process\n');
+  await vi.waitFor(() => expect(capture).toHaveBeenCalledOnce());
+
+  internals.generation++;
+  stderr.write('VOICESTUDIO_CRASH_CONTEXT={"kind":"late"}\n');
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  expect(capture).toHaveBeenCalledOnce();
 });

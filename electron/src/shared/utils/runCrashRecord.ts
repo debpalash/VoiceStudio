@@ -1,3 +1,5 @@
+import { type CrashContext, formatCrashContext } from './crashContext';
+
 export interface BackendCrashMarker {
   /** Unix seconds when the death was detected. */
   ts: number;
@@ -20,7 +22,9 @@ export interface LastRunCrashRecord {
   ended_between: [number, number];
   uptime_hint_s: number | null;
   version: string;
-  last_activity: { ts: number | null; kind: string; detail: string | null } | null;
+  last_activity:
+    | ({ ts: number | null; kind: string; detail: string | null } & Omit<CrashContext, 'kind' | 'detail'>)
+    | null;
   log_tail: string[];
 }
 
@@ -52,4 +56,22 @@ export function _adaptLastRunCrash(
       .trim(),
     acknowledged,
   };
+}
+
+/** Report lines kept outside the log, whose excerpt can drop the top of `last_stderr`. */
+export function lastRunCrashFacts(record: LastRunCrashRecord): string[] {
+  const activity = record.last_activity;
+  if (!activity?.kind) return [];
+  const { kind, detail, engine, device } = activity;
+  const { ram_free_gb, ram_total_gb, swap_free_gb, swap_total_gb } = activity;
+  return formatCrashContext({
+    kind,
+    ...(detail ? { detail } : {}),
+    ...(engine ? { engine } : {}),
+    ...(device ? { device } : {}),
+    ...(ram_free_gb != null ? { ram_free_gb } : {}),
+    ...(ram_total_gb != null ? { ram_total_gb } : {}),
+    ...(swap_free_gb != null ? { swap_free_gb } : {}),
+    ...(swap_total_gb != null ? { swap_total_gb } : {}),
+  });
 }

@@ -1,3 +1,4 @@
+import type { CrashContext } from '../shared/utils/crashContext';
 import type { HostSnapshotLike } from '../shared/utils/hostSnapshot';
 import type { InstallFailure } from '../shared/utils/installFailure';
 /**
@@ -26,6 +27,8 @@ export interface NativeCrashRecord {
   signal: string | null;
   uptimeMs: number;
   logTail: string[];
+  /** The backend's last reported activity and free memory. */
+  context?: CrashContext;
   /** Viewing or dismissing a crash marks it seen while retaining evidence for reports. */
   acknowledged: boolean;
 }
