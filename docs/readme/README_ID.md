@@ -56,7 +56,7 @@
   <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/badge/Unduh-993f61?style=for-the-badge&amp;logo=github&amp;logoColor=ffffff" alt="Unduh" height="24" /></a>
   <a href="#get-started"><img src="https://img.shields.io/badge/Mulai-27272a?style=for-the-badge" alt="Mulai" height="24" /></a>
   <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Pro-27272a?style=for-the-badge" alt="VoiceStudio Pro" height="24" /></a>
-  <a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Cloud-27272a?style=for-the-badge" alt="VoiceStudio Cloud" height="24" /></a>
+  <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Cloud-27272a?style=for-the-badge" alt="VoiceStudio Cloud" height="24" /></a>
 </p>
 
 <a id="what-you-can-do"></a>
@@ -129,7 +129,7 @@ Semua yang di atas gratis, berjalan di perangkat keras Anda sendiri, dan tidak m
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Lihat paket Pro →</a></strong>
     </td>
     <td width="50%" valign="top">
-      <a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="VoiceStudio Cloud" width="100%" /></a><br /><br />
+      <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="VoiceStudio Cloud" width="100%" /></a><br /><br />
       API suara dan sulih suara yang di-hosting, segera hadir. Tanpa perlu GPU.
       <ul>
         <li>Ucapan, desain suara, dan kloning suara dengan persetujuan</li>
@@ -138,7 +138,7 @@ Semua yang di atas gratis, berjalan di perangkat keras Anda sendiri, dan tidak m
         <li>Pekerjaan panjang yang berjalan sendiri</li>
       </ul>
       <sub>Belum tersedia: gabung akses awal untuk kredit penggunaan gratis. Aplikasi desktop tetap gratis dan lokal.</sub><br /><br />
-      <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Gabung akses awal Cloud →</a></strong>
+      <strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Gabung akses awal Cloud →</a></strong>
     </td>
   </tr>
 </table>

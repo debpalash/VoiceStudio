@@ -56,7 +56,7 @@
   <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/badge/%C4%B0ndir-993f61?style=for-the-badge&amp;logo=github&amp;logoColor=ffffff" alt="İndir" height="24" /></a>
   <a href="#get-started"><img src="https://img.shields.io/badge/Ba%C5%9Flarken-27272a?style=for-the-badge" alt="Başlarken" height="24" /></a>
   <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Pro-27272a?style=for-the-badge" alt="VoiceStudio Pro" height="24" /></a>
-  <a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Cloud-27272a?style=for-the-badge" alt="VoiceStudio Cloud" height="24" /></a>
+  <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Cloud-27272a?style=for-the-badge" alt="VoiceStudio Cloud" height="24" /></a>
 </p>
 
 <a id="what-you-can-do"></a>
@@ -129,7 +129,7 @@ Yukarıdakilerin tümü ücretsizdir, kendi donanımınızda çalışır ve hesa
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Pro planlarını görün →</a></strong>
     </td>
     <td width="50%" valign="top">
-      <a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="VoiceStudio Cloud" width="100%" /></a><br /><br />
+      <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="VoiceStudio Cloud" width="100%" /></a><br /><br />
       Barındırılan ses ve dublaj API'si çok yakında. GPU gerekmez.
       <ul>
         <li>Konuşma, ses tasarımı ve izinli ses klonlama</li>
@@ -138,7 +138,7 @@ Yukarıdakilerin tümü ücretsizdir, kendi donanımınızda çalışır ve hesa
         <li>Kendi kendine çalışan uzun işler</li>
       </ul>
       <sub>Henüz kullanılamıyor: erken erişime katılın, ücretsiz kullanım kredisi kazanın. Masaüstü uygulaması ücretsiz ve yerel kalır.</sub><br /><br />
-      <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Cloud erken erişimine katılın →</a></strong>
+      <strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Cloud erken erişimine katılın →</a></strong>
     </td>
   </tr>
 </table>

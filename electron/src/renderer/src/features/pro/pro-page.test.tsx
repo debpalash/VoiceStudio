@@ -35,7 +35,7 @@ it('shows pricing followed by Pro features without licence activation', () => {
   render(<ProPage />);
   expect(screen.queryByText('$9')).not.toBeInTheDocument();
   expect(screen.getAllByText('$99')).toHaveLength(2);
-  expect(screen.getAllByText('$299')).toHaveLength(2);
+  expect(screen.getAllByText('$199')).toHaveLength(2);
   expect(screen.getByRole('link', { name: /proPage.choose_yearly/ })).toHaveAttribute(
     'href',
     'https://voicestudio.sh/pro?plan=yearly&quantity=1',
@@ -81,7 +81,7 @@ it('passes the selected user count and total to each website plan', () => {
     'https://voicestudio.sh/pro?plan=yearly&quantity=2',
   );
   fireEvent.click(increase[1]);
-  expect(screen.getByText('$598')).toBeVisible();
+  expect(screen.getByText('$398')).toBeVisible();
   expect(screen.getByRole('link', { name: /proPage.choose_lifetime/ })).toHaveAttribute(
     'href',
     'https://voicestudio.sh/pro?plan=lifetime&quantity=2',

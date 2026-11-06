@@ -56,7 +56,7 @@
   <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/badge/T%C3%A9l%C3%A9charger-993f61?style=for-the-badge&amp;logo=github&amp;logoColor=ffffff" alt="Télécharger" height="24" /></a>
   <a href="#get-started"><img src="https://img.shields.io/badge/Bien%20d%C3%A9marrer-27272a?style=for-the-badge" alt="Bien démarrer" height="24" /></a>
   <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Pro-27272a?style=for-the-badge" alt="VoiceStudio Pro" height="24" /></a>
-  <a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Cloud-27272a?style=for-the-badge" alt="VoiceStudio Cloud" height="24" /></a>
+  <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Cloud-27272a?style=for-the-badge" alt="VoiceStudio Cloud" height="24" /></a>
 </p>
 
 <a id="what-you-can-do"></a>
@@ -129,7 +129,7 @@ Tout ce qui précède est gratuit, tourne sur ton propre matériel et ne demande
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Voir les offres Pro →</a></strong>
     </td>
     <td width="50%" valign="top">
-      <a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="VoiceStudio Cloud" width="100%" /></a><br /><br />
+      <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="VoiceStudio Cloud" width="100%" /></a><br /><br />
       Une API hébergée de voix et de doublage, bientôt disponible. Aucun GPU nécessaire.
       <ul>
         <li>Synthèse vocale, création de voix et clonage de voix avec consentement</li>
@@ -138,7 +138,7 @@ Tout ce qui précède est gratuit, tourne sur ton propre matériel et ne demande
         <li>Des tâches longues qui tournent toutes seules</li>
       </ul>
       <sub>Pas encore disponible : rejoins l’accès anticipé pour obtenir des crédits d’utilisation gratuits. L’app de bureau reste gratuite et locale.</sub><br /><br />
-      <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Rejoindre l’accès anticipé à Cloud →</a></strong>
+      <strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Rejoindre l’accès anticipé à Cloud →</a></strong>
     </td>
   </tr>
 </table>
