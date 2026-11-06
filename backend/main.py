@@ -692,6 +692,11 @@ def _phase_a_build_inner() -> None:
         from core.device_caps import apply_rocm_override_before_init
 
         apply_rocm_override_before_init(_torch_for_rocm)
+        # After the override, which its process inherits. Only starts that process;
+        # the verdict is read when a model loads.
+        from core.gpu_self_test import start as start_gpu_self_test
+
+        start_gpu_self_test(_torch_for_rocm)
     except Exception:  # noqa: BLE001 - the torchaudio import below reports a broken torch
         pass
     try:
