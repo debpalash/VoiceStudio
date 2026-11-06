@@ -463,6 +463,20 @@ peak memory footprint that exceeds free VRAM. Windows-only quirk.
 
 **Linked issue:** [#65](https://github.com/debpalash/VoiceStudio/issues/65)
 
+## GPU self-test failed
+
+On startup, VoiceStudio runs a small task on your GPU in a separate process. If that
+task fails or crashes, models load on the CPU so the app keeps working, more slowly,
+and a notice shows the error.
+
+1. Update your GPU driver and restart the app. The test runs again on every start
+   until it passes.
+2. On Linux with an AMD card, see [AMD GPU (ROCm)](linux.md#amd-gpu-rocm).
+3. To try the GPU anyway, set `OMNIVOICE_FORCE_CUDA=1` or choose a device in
+   **Settings**. Either one skips the test.
+
+Sidecar engines, which run in their own environments, don't use this result.
+
 ## 5a. Backend exits on the first `/generate` on an older NVIDIA GPU
 
 **Symptom:** the backend starts, `/health` identifies the GPU, and model preload succeeds, but the first generation ends with `RemoteDisconnected` or “remote end closed.” Later requests get `ConnectionRefused`, often without a Python traceback. Tesla T4 machines, including common Colab hosts, are a typical example.
