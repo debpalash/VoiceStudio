@@ -103,7 +103,7 @@ def test_help_links_resolve():
     for heading in re.findall(r"^#{2,4} (.+)$", guide, re.MULTILINE):
         slug = re.sub(r"[^\w\- ]", "", heading.replace("`", "").strip().lower())
         anchors.add(slug.replace(" ", "-"))
-    for path, anchor in re.findall(r"\]\(([\w-]+\.md)(?:#([\w-]+))?\)", text):
+    for path, anchor in re.findall(r"\]\(((?:\.\./)?[\w-]+\.md)(?:#([\w-]+))?\)", text):
         assert (TRACKER.parent / path).is_file(), path
         if anchor:
             assert path == "troubleshooting.md" and anchor in anchors, anchor
