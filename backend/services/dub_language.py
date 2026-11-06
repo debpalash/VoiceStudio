@@ -116,6 +116,10 @@ _NAME_ALIASES = {
     "bosnian": "bs",
     "bulgarian": "bg",
     "burmese": "my",
+    # "myanmar" is the country name some OpenAI-compatible ASR servers
+    # report for Burmese; the old two-letter cut also resolved it to "my",
+    # so dropping it would strand Burmese batch jobs (Greptile P1, #3834).
+    "myanmar": "my",
     "catalan": "ca",
     "chinese": "zh",
     "mandarin": "zh",

@@ -44,6 +44,10 @@ from services.dub_language import detected_source_language
         ("portuguese", "pt"),
         ("cantonese", "yue"),
         ("hebrew", "he"),
+        # Country name some OpenAI-compatible ASR servers report for
+        # Burmese; the old two-letter cut also resolved it to "my", so
+        # losing it would strand Burmese batch jobs (Greptile P1, #3834).
+        ("myanmar", "my"),
         ("standard arabic", "ar"),
         ("egyptian arabic", "ar"),
         # ISO 639-2/3 codes map to their own language, not a two-letter cut.
