@@ -553,7 +553,27 @@ def test_a_cuda_build_never_takes_the_early_remap(monkeypatch, tmp_path):
 
 def test_startup_applies_the_override_before_torchaudio_loads():
     """`main.py` imports torchaudio in `ml_imports`; many modules probe the GPU after."""
+    import ast
     from pathlib import Path
 
     source = (Path(__file__).parent.parent / "backend" / "main.py").read_text(encoding="utf-8")
-    assert source.index("apply_rocm_override_before_init") < source.index("import torchaudio  # noqa")
+    startup = next(
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.FunctionDef) and node.name == "_phase_a_build_inner"
+    )
+    nodes = list(ast.walk(startup))
+    calls = [
+        node.lineno
+        for node in nodes
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "apply_rocm_override_before_init"
+    ]
+    imports = [
+        node.lineno
+        for node in nodes
+        if isinstance(node, ast.Import) and any(a.name == "torchaudio" for a in node.names)
+    ]
+    assert calls and imports
+    assert min(calls) < min(imports)
