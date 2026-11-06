@@ -23,6 +23,12 @@ from services.dub_language import detected_source_language
         ("pt-BR", "pt"),
         ("zh-Hans", "zh"),
         ("es-MX", "es"),
+        # Tags with extra subtags resolve to the longest supported prefix:
+        # "cmn-Hans-CN" and "cmn-hans_CN" both mean "cmn-hans", never
+        # the bare "cmn" dubbing does not know (CodeRabbit, #3834).
+        ("cmn-Hans-CN", "cmn-hans"),
+        ("cmn-hans_CN", "cmn-hans"),
+        ("cmn-Hant-TW", "cmn-hant"),
         # YouTube caption codes and legacy codes map to their own language.
         ("fil", "tl"),
         ("fil-orig", "tl"),

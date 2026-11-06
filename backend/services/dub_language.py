@@ -250,12 +250,17 @@ def detected_source_language(value: str | None) -> str | None:
         return None
     if code in DUB_SOURCE_LANG_CODES:
         return code
-    primary = code.split("-", 1)[0]
-    if primary in _UNKNOWN_VALUES:
-        return None
-    if primary in DUB_SOURCE_LANG_CODES:
-        return primary
-    alias = _CODE_ALIASES.get(primary) or _CODE_ALIASES.get(code)
-    if alias is not None:
-        return alias
-    return _NAME_ALIASES.get(primary)
+    # A tag with extra subtags resolves to its longest supported prefix:
+    # "cmn-Hans-CN" and "cmn-hans_CN" both mean "cmn-hans" (the old
+    # underscore split resolved the latter the same way). Taking only the
+    # primary subtag would give "cmn", which dubbing does not know, and
+    # strand the job (CodeRabbit, #3834).
+    parts = code.split("-")
+    for end in range(len(parts), 0, -1):
+        prefix = "-".join(parts[:end])
+        if prefix in DUB_SOURCE_LANG_CODES:
+            return prefix
+        alias = _CODE_ALIASES.get(prefix)
+        if alias is not None:
+            return alias
+    return _NAME_ALIASES.get(parts[0])
