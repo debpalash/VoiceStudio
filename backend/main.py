@@ -686,11 +686,17 @@ def _phase_a_build_inner() -> None:
 
     _startup_progress.begin_step("ml_imports")
     try:
-        # Only starts a separate process; the verdict is read when a model loads.
-        import torch as _torch_for_gpu_test
+        # HSA reads this once, when HIP initialises; the imports below and many
+        # modules after them probe the GPU (#3804).
+        import torch as _torch_for_rocm
+        from core.device_caps import apply_rocm_override_before_init
+
+        apply_rocm_override_before_init(_torch_for_rocm)
+        # After the override, which its process inherits. Only starts that process;
+        # the verdict is read when a model loads.
         from core.gpu_self_test import start as start_gpu_self_test
 
-        start_gpu_self_test(_torch_for_gpu_test)
+        start_gpu_self_test(_torch_for_rocm)
     except Exception:  # noqa: BLE001 - the torchaudio import below reports a broken torch
         pass
     try:

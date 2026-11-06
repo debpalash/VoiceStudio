@@ -122,7 +122,7 @@ Four kinds of data, in up to four locations:
 ~/Library/Application Support/VoiceStudio/    ← app folder + the managed Python env (runtime/project/.venv)
 ~/Library/Logs/VoiceStudio/                   ← desktop-shell logs
 ~/Library/Caches/voicestudio-electron-updater/ ← downloaded updates
-~/.config/omnivoice/                          ← saved env file (cache location, HF token)
+~/.config/omnivoice/                          ← saved env file (cache location, HF token, ROCm choice)
 ~/.cache/huggingface/                         ← model weights (shared HF cache — see caveat)
 ```
 
@@ -132,7 +132,7 @@ Four kinds of data, in up to four locations:
 ~/.omnivoice/                                 ← app data (voices, projects, omnivoice.db, outputs, omnivoice.log)
 ~/.config/VoiceStudio/                        ← app folder, desktop logs, AND the managed Python env (runtime/project/.venv)
 ~/.cache/voicestudio-electron-updater/        ← downloaded updates
-~/.config/omnivoice/                          ← saved env file (cache location, HF token)
+~/.config/omnivoice/                          ← saved env file (cache location, HF token, ROCm choice)
 ~/.cache/huggingface/                         ← model weights (shared HF cache — see caveat)
 ```
 
@@ -144,7 +144,7 @@ Four kinds of data, in up to four locations:
 %APPDATA%\OmniVoice\                           ← app data (voices, projects, omnivoice.db, outputs, omnivoice.log)
 %APPDATA%\VoiceStudio\                         ← app folder, desktop logs, AND the managed Python env (runtime\project\.venv)
 %LOCALAPPDATA%\voicestudio-electron-updater\   ← downloaded updates
-%USERPROFILE%\.config\omnivoice\               ← saved env file (cache location, HF token)
+%USERPROFILE%\.config\omnivoice\               ← saved env file (cache location, HF token, ROCm choice)
 %LOCALAPPDATA%\OmniVoice\hf_cache\             ← model weights (VoiceStudio uses a short path here to dodge MAX_PATH)
 ```
 

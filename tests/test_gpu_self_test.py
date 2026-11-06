@@ -226,3 +226,12 @@ def test_startup_starts_the_test_before_the_gpu_is_used():
         if isinstance(node, ast.Import) and any(a.name == "torchaudio" for a in node.names)
     ]
     assert calls and imports and min(calls) < min(imports)
+    # The child must inherit the HSA override, or it tests the wrong kernels.
+    overrides = [
+        node.lineno
+        for node in nodes
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "apply_rocm_override_before_init"
+    ]
+    assert overrides and min(overrides) < min(calls)
