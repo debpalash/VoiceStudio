@@ -292,6 +292,7 @@ def render_near_miss(login: str, comment_id: int, reason: str) -> str:
 
 class GitHub:
     def __init__(self, token: str, repo: str, api: str = "https://api.github.com"):
+        """Keep the API details and the signature commits already looked up."""
         self.token, self.repo, self.api = token, repo, api.rstrip("/")
         self.signature_commits: dict[str, str] = {}  # login -> commit that first recorded it
 
@@ -599,6 +600,7 @@ def head_blockers(gh: GitHub, pr: dict) -> list[str]:
 
 
 def run(gh: GitHub, event_name: str, event: dict, server_url: str = "https://github.com") -> Evaluation:
+    """Check one pull request, record new signatures, and set its status, comment and label."""
     event_pr = event.get("pull_request") or {}
     number = (event_pr or event.get("issue") or {}).get("number")
     # On PR events the payload supplies the head even if the first API read

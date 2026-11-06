@@ -145,6 +145,7 @@ class FakeGitHub:
     repo = "debpalash/VoiceStudio"
 
     def __init__(self, comments, actors, store=None, pr=None, others=None, other_commits=None):
+        """Hold the comments, commit authors, store and writes one test uses."""
         self.comments, self.actors = comments, actors
         self.other_commits = other_commits or {}  # PR number -> one actor per commit
         self.pr, self.others = pr or {}, others or {}
@@ -162,6 +163,7 @@ class FakeGitHub:
                 "head": {"sha": "abc"}, "base": {"repo": {"id": 99, "default_branch": "main"}}, **self.pr}
 
     def paginate(self, path, limit=None):
+        """Return the open pull requests, signature commits or comments the path asks for."""
         if path.endswith('/pulls?state=open'):
             return self.open_prs if self.open_prs is not None else [self.get(f"/pulls/{self.pr.get('number', 7)}")]
         if "/commits?sha=" in path:
@@ -179,6 +181,7 @@ class FakeGitHub:
             "pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": nodes}}}}
 
     def request(self, method, path, body=None):
+        """Answer the REST calls the check makes and record its writes."""
         if "/commits?path=" in path:
             return 200, [{"sha": "d0c"}], {}
         if method == "GET" and "/pulls/" in path:
@@ -221,6 +224,7 @@ class FakeGitHub:
 
 
 def test_first_signature_creates_the_store_and_turns_the_status_green():
+    """The first signing comment creates the store, passes the check and links the record."""
     comments = [{"id": 5, "user": {"id": 1001, "login": "alice", "type": "User"},
                  "body": cla.SIGN_PHRASE, "created_at": "2026-10-02T00:00:00Z"}]
     gh = FakeGitHub(comments, [actor("alice", 1001)])
@@ -713,6 +717,7 @@ DOC_PERMALINK = f"https://github.com/debpalash/VoiceStudio/blob/d0c/{cla.DOCUMEN
 
 
 def test_signed_pr_gets_a_comment_with_permalinks_and_no_ping():
+    """The passing comment links the agreement and record without notifying the signer."""
     gh = FakeGitHub([], [actor("alice", 1001)], store=RECORDED)
     cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}})
     assert len(gh.posted) == 1 and writes(gh) == [ADD]
@@ -732,6 +737,7 @@ def test_rerun_leaves_the_comment_unchanged():
 
 
 def test_old_passing_comment_gains_the_permalinks():
+    """A comment from before the links existed is updated, not duplicated."""
     old = {"id": 1, "user": {"id": 9, "type": "Bot"}, "body": f"{cla.COMMENT_MARKER}\nsigned"}
     gh = FakeGitHub([old], [actor("alice", 1001)], store=RECORDED)
     cla.run(gh, "pull_request_target", {"pull_request": {"number": 7}})
@@ -766,6 +772,7 @@ def test_document_lookup_failure_falls_back_to_the_branch_link(monkeypatch, fail
 
 
 def test_record_lines_cover_exactly_one_signature():
+    """The line range covers one entry and matches account IDs only."""
     store = {"signatures": [{"login": "bob", "id": 2, "comment_id": 1001}, {"login": "alice", "id": 1001}]}
     text = json.dumps(store, indent=2)
     lines = text.splitlines()
@@ -776,6 +783,7 @@ def test_record_lines_cover_exactly_one_signature():
 
 
 def test_link_uses_the_commit_that_first_recorded_the_signature():
+    """Later commits naming the same login do not move the link."""
     # Newest first. A retried save can name someone an earlier run already stored.
     gh = FakeGitHub([], [actor("alice", 1001)], store=RECORDED)
     gh.commits = [{"sha": "retry", "commit": {"message": "chore(cla): record signature for @alice, @bob (#9)"}},
@@ -787,11 +795,13 @@ def test_link_uses_the_commit_that_first_recorded_the_signature():
 
 @pytest.mark.parametrize("break_it", ["no-commit", "listing", "not-at-commit"])
 def test_link_failure_never_changes_the_gate_or_falls_back_to_a_pr(monkeypatch, break_it):
+    """A failed lookup drops the link, keeps the result and never links an old pull request."""
     gh = FakeGitHub([], [actor("alice", 1001)], store=RECORDED)
     if break_it == "no-commit":
         gh.commits = []
     elif break_it == "listing":
         def paginate(path, limit=None):
+            """Fail the signature commit listing and answer everything else."""
             if "/commits?sha=" in path:
                 raise RuntimeError("listing failed")
             return gh.comments if "/comments" in path else [gh.get("/pulls/7")]
@@ -799,6 +809,7 @@ def test_link_failure_never_changes_the_gate_or_falls_back_to_a_pr(monkeypatch, 
     else:
         original = gh.request
         def request(method, path, body=None):
+            """Return a signature file that lacks the signer at the recording commit."""
             if "?ref=rec1" in path:
                 return 200, {"content": base64.b64encode(b"{}").decode()}, {}
             return original(method, path, body)
@@ -809,6 +820,7 @@ def test_link_failure_never_changes_the_gate_or_falls_back_to_a_pr(monkeypatch, 
 
 
 def test_commit_list_is_read_once_across_a_backfill(monkeypatch):
+    """Repeated checks in one process reuse the signature commit listing."""
     gh = FakeGitHub([], [actor("alice", 1001)], store=RECORDED)
     reads, original = [], gh.paginate
     monkeypatch.setattr(gh, "paginate", lambda path, limit=None: (
