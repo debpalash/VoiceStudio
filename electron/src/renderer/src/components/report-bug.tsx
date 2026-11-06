@@ -8,6 +8,7 @@ import { scrubText } from '@shared/utils/scrub';
 import { formatHostSnapshot, withDeadline } from '@shared/utils/hostSnapshot';
 import { collapseRepeatedLines, formatFailureFacts } from '@shared/utils/installFailure';
 import { describeExitCode, isNativeFaultExit } from '@shared/utils/nativeExit';
+import { formatCrashContext } from '@shared/utils/crashContext';
 import { _adaptLastRunCrash, type LastRunCrashRecord } from '@shared/utils/runCrashRecord';
 import { getBackendStatusSnapshot } from '@/hooks/use-backend-status';
 import { apiJson } from '@/lib/api/client';
@@ -252,6 +253,7 @@ export function ReportBug({ error, setup = false }: { error?: Error | string; se
             ? [t('reportBug.native_fault_cause')]
             : []),
           'Uptime (seconds): ' + Math.round(crash.uptimeMs / 1000),
+          ...formatCrashContext(crash.context),
           '```',
           clampCrashTail(scrubText(crash.logTail.join('\n'))),
           '```',

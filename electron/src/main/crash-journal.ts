@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import type { NativeCrashRecord } from '../preload/index.d';
+import { type CrashContext, parseCrashContext } from '../shared/utils/crashContext';
 import { nativeCrashExcerpt } from '../shared/utils/crashReport';
 import { scrubText } from '../shared/utils/scrub';
 
@@ -13,6 +14,8 @@ export class CrashJournal {
   private nativeLines: string[] = [];
   private captureOpen = false;
   private streaming = false;
+  /** Outlives resetCapture: the fault dump that follows must not erase it. */
+  private context?: { value: CrashContext; receivedAt: number };
   resetCapture(streaming = true): void {
     this.nativeLines = [];
     this.captureOpen = false;
@@ -26,6 +29,11 @@ export class CrashJournal {
    * was loading and every other thread.
    */
   captureLine(line: string): void {
+    const context = parseCrashContext(line);
+    if (context) {
+      this.context = { value: context, receivedAt: Date.now() };
+      return;
+    }
     line = scrubText(line);
     this.streaming = true;
     const trimmed = line.trim();
@@ -96,6 +104,11 @@ export class CrashJournal {
       this.streaming ? this.nativeLines.join('\n') : logTail.join('\n'),
     );
     this.resetCapture(false);
+    const context = this.context && {
+      ...this.context.value,
+      seconds_before_exit: Math.max(0, Math.round((Date.now() - this.context.receivedAt) / 1000)),
+    };
+    this.context = undefined;
     // EX_CONFIG is a port collision; Windows debugger termination is not a backend fault.
     if (exitCode === 78 || exitCode === 0x40010004) return undefined;
     this.records.unshift({
@@ -110,6 +123,7 @@ export class CrashJournal {
             .slice(0, 40)
             .map((line) => line.slice(0, 4096))
         : logTail.slice(-40).map((line) => line.slice(-4096)),
+      ...(context ? { context } : {}),
       acknowledged: false,
     });
     this.records = this.records.slice(0, 3);

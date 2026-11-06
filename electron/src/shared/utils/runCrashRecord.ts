@@ -1,3 +1,5 @@
+import { type CrashContext, formatCrashContext } from './crashContext';
+
 export interface BackendCrashMarker {
   /** Unix seconds when the death was detected. */
   ts: number;
@@ -20,7 +22,9 @@ export interface LastRunCrashRecord {
   ended_between: [number, number];
   uptime_hint_s: number | null;
   version: string;
-  last_activity: { ts: number | null; kind: string; detail: string | null } | null;
+  last_activity:
+    | ({ ts: number | null; kind: string; detail: string | null } & Omit<CrashContext, 'kind' | 'detail'>)
+    | null;
   log_tail: string[];
 }
 
@@ -37,6 +41,8 @@ export function _adaptLastRunCrash(
   const activityLine = activity?.kind
     ? [
         `last activity before the death: ${activity.kind}${activity.detail ? ` (${activity.detail})` : ''}`,
+        // The first line repeats the activity just named.
+        ...formatCrashContext({ ...activity, detail: undefined }).slice(1),
         '',
       ]
     : [];
