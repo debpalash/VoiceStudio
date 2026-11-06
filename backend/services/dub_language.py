@@ -20,13 +20,238 @@ DUB_SOURCE_LANG_CODES = frozenset({
     "tk", "tl", "tt", "yue", "zh",
 })
 
+_UNKNOWN_VALUES = frozenset({"", "auto", "unknown", "none", "und"})
+
+# Codes that are valid languages but are not in DUB_SOURCE_LANG_CODES, and
+# the dub code they mean. YouTube caption tracks and older ISO 639
+# assignments use several of these: ``fil`` is Filipino (``tl`` here),
+# ``iw`` is the retired Hebrew code (``he``), ``jv`` is Javanese
+# (Whisper writes ``jw``). Arabic varieties (``arb``/``aec``/``arz``)
+# collapse to the macrolanguage ``ar``, the only Arabic code dubbing knows.
+# ISO 639-2/3 codes for a dub language map to that language, never to the
+# first two letters of the code.
+_CODE_ALIASES = {
+    "fil": "tl",
+    "iw": "he",
+    "jv": "jw",
+    "in": "id",
+    "ara": "ar",
+    "arb": "ar",
+    "aec": "ar",
+    "arz": "ar",
+    "arq": "ar",
+    "est": "et",
+    "swe": "sv",
+    "kan": "kn",
+    "kaz": "kk",
+    "hye": "hy",
+    "arm": "hy",
+    "ben": "bn",
+    "tgl": "tl",
+    "lav": "lv",
+    "slo": "sk",
+    "slk": "sk",
+    "alb": "sq",
+    "sqi": "sq",
+    "baq": "eu",
+    "eus": "eu",
+    "bur": "my",
+    "mya": "my",
+    "chi": "zh",
+    "zho": "zh",
+    "cze": "cs",
+    "ces": "cs",
+    "dut": "nl",
+    "nld": "nl",
+    "fre": "fr",
+    "fra": "fr",
+    "geo": "ka",
+    "kat": "ka",
+    "ger": "de",
+    "deu": "de",
+    "gre": "el",
+    "ell": "el",
+    "ice": "is",
+    "isl": "is",
+    "mac": "mk",
+    "mkd": "mk",
+    "mao": "mi",
+    "mri": "mi",
+    "may": "ms",
+    "msa": "ms",
+    "per": "fa",
+    "fas": "fa",
+    "rum": "ro",
+    "ron": "ro",
+    "tib": "bo",
+    "bod": "bo",
+    "wel": "cy",
+    "cym": "cy",
+    "spa": "es",
+    "por": "pt",
+    "ita": "it",
+    "rus": "ru",
+    "jpn": "ja",
+    "kor": "ko",
+    "hin": "hi",
+}
+
+# English language names (lowercase, as OpenAI-compatible ASR servers
+# report them in ``verbose_json``) -> dub code. Only names that resolve to
+# a code in DUB_SOURCE_LANG_CODES are listed; anything else is unknown.
+_NAME_ALIASES = {
+    "afrikaans": "af",
+    "albanian": "sq",
+    "amharic": "am",
+    "arabic": "ar",
+    "standard arabic": "ar",
+    "egyptian arabic": "ar",
+    "saidi arabic": "ar",
+    "algerian arabic": "ar",
+    "armenian": "hy",
+    "azerbaijani": "az",
+    "basque": "eu",
+    "belarusian": "be",
+    "bengali": "bn",
+    "bosnian": "bs",
+    "bulgarian": "bg",
+    "burmese": "my",
+    "catalan": "ca",
+    "chinese": "zh",
+    "mandarin": "zh",
+    "mandarin chinese": "zh",
+    "cantonese": "yue",
+    "croatian": "hr",
+    "czech": "cs",
+    "danish": "da",
+    "dutch": "nl",
+    "english": "en",
+    "estonian": "et",
+    "finnish": "fi",
+    "french": "fr",
+    "galician": "gl",
+    "georgian": "ka",
+    "german": "de",
+    "greek": "el",
+    "gujarati": "gu",
+    "haitian creole": "ht",
+    "haitian": "ht",
+    "hausa": "ha",
+    "hawaiian": "haw",
+    "hebrew": "he",
+    "hindi": "hi",
+    "hungarian": "hu",
+    "icelandic": "is",
+    "indonesian": "id",
+    "italian": "it",
+    "japanese": "ja",
+    "javanese": "jw",
+    "kannada": "kn",
+    "kazakh": "kk",
+    "khmer": "km",
+    "korean": "ko",
+    "kurdish": "ku",
+    "kyrgyz": "ky",
+    "lao": "lo",
+    "latin": "la",
+    "latvian": "lv",
+    "lithuanian": "lt",
+    "macedonian": "mk",
+    "malay": "ms",
+    "malayalam": "ml",
+    "maltese": "mt",
+    "maori": "mi",
+    "marathi": "mr",
+    "mongolian": "mn",
+    "nepali": "ne",
+    "norwegian": "no",
+    "pashto": "ps",
+    "persian": "fa",
+    "farsi": "fa",
+    "polish": "pl",
+    "portuguese": "pt",
+    "punjabi": "pa",
+    "romanian": "ro",
+    "russian": "ru",
+    "samoan": "sm",
+    "scottish gaelic": "gd",
+    "serbian": "sr",
+    "shona": "sn",
+    "sindhi": "sd",
+    "sinhala": "si",
+    "sinhalese": "si",
+    "slovak": "sk",
+    "slovenian": "sl",
+    "somali": "so",
+    "spanish": "es",
+    "sundanese": "su",
+    "swahili": "sw",
+    "swedish": "sv",
+    "tajik": "tg",
+    "tamil": "ta",
+    "telugu": "te",
+    "thai": "th",
+    "turkish": "tr",
+    "ukrainian": "uk",
+    "urdu": "ur",
+    "uzbek": "uz",
+    "vietnamese": "vi",
+    "welsh": "cy",
+    "xhosa": "xh",
+    "yiddish": "yi",
+    "yoruba": "yo",
+    "zulu": "zu",
+    "assamese": "as",
+    "bashkir": "ba",
+    "tibetan": "bo",
+    "breton": "br",
+    "faroese": "fo",
+    "luxembourgish": "lb",
+    "lingala": "ln",
+    "malagasy": "mg",
+    "occitan": "oc",
+    "sanskrit": "sa",
+    "turkmen": "tk",
+    "tagalog": "tl",
+    "filipino": "tl",
+    "tatar": "tt",
+}
+
 
 def detected_source_language(value: str | None) -> str | None:
-    """Normalize an ASR language without truncating valid three-letter codes."""
-    code = (value or "").strip().lower().split("_", 1)[0]
-    if code in ("", "auto", "unknown", "none", "und"):
+    """Normalize an ASR / caption language to a dub source code.
+
+    Accepts a dub code (``en``, ``yue``, ``cmn-hans``), a BCP-47 tag
+    (``yue-HK``, ``nl_NL``, ``pt-BR``), a legacy / ISO 639-2/3 code
+    (``fil``, ``iw``, ``jv``, ``est``) or an English language name
+    (``estonian``, ``spanish``). Returns the dub code, or ``None`` when
+    the language is unknown.
+
+    A value must never become a *different* language: truncating to two
+    letters turned ``estonian`` into Spanish (``es``), ``swedish`` into
+    Swahili (``sw``) and ``fil`` into Finnish (``fi``) (#3821), so
+    unrecognized values now return ``None`` instead of a two-letter cut.
+    """
+    if not isinstance(value, str):
+        return None
+    text = " ".join(value.strip().lower().split())
+    if not text:
+        return None
+    # A name with spaces ("standard arabic", "haitian creole") is a name,
+    # never a code: resolve it whole, or admit it is unknown.
+    if " " in text:
+        return _NAME_ALIASES.get(text)
+    code = text.replace("_", "-")
+    if code in _UNKNOWN_VALUES:
         return None
     if code in DUB_SOURCE_LANG_CODES:
         return code
-    short = code[:2]
-    return short if short in DUB_SOURCE_LANG_CODES else None
+    primary = code.split("-", 1)[0]
+    if primary in _UNKNOWN_VALUES:
+        return None
+    if primary in DUB_SOURCE_LANG_CODES:
+        return primary
+    alias = _CODE_ALIASES.get(primary) or _CODE_ALIASES.get(code)
+    if alias is not None:
+        return alias
+    return _NAME_ALIASES.get(primary)
