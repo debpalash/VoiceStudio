@@ -161,6 +161,38 @@ it('reports a resumable runtime when startup finds an interrupted install marker
   await supervisor.shutdown();
 });
 
+it('waits for a terminal-owned backend during startup without spawning or staging', async () => {
+  vi.useFakeTimers();
+  vi.stubEnv('VOICESTUDIO_SKIP_BACKEND', '');
+  let ready = false;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ status: ready ? 'ok' : 'starting', version: 'test' }), {
+          status: ready ? 200 : 503,
+          headers: { 'x-omnivoice-backend': 'test' },
+        }),
+    ),
+  );
+  const supervisor = new BackendSupervisor();
+  try {
+    await supervisor.start();
+    expect(supervisor.status.stage).toBe('attaching');
+    expect(mocks.spawn).not.toHaveBeenCalled();
+    expect(mocks.stage).not.toHaveBeenCalled();
+    ready = true;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(supervisor.status.stage).toBe('ready');
+    expect(supervisor.status.managed).toBe(false);
+    await supervisor.shutdown();
+    expect(mocks.spawn).not.toHaveBeenCalled();
+  } finally {
+    await supervisor.shutdown();
+    vi.useRealTimers();
+  }
+});
+
 it('publishes packaged startup preflight failures instead of rejecting startup', async () => {
   vi.stubGlobal(
     'fetch',

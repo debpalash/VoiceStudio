@@ -44,6 +44,13 @@ The setup wizard installs for the current user by default (no administrator
 rights needed) and lets you choose the installation folder. Compare the download with the
 release's `SHA256SUMS.txt` before running it.
 
+Current installers add the bundled CLI's directory to PATH for their installation
+scope and remove that entry on uninstall. Open a new terminal afterwards:
+`voicestudio` opens the desktop app; `voicestudio --help` shows terminal commands.
+The CLI includes its own Python runtime and works before backend setup. Commands
+that need the backend start VoiceStudio in the background when it is not running.
+See [Terminal command](script.md#terminal-command).
+
 During an update, the installer closes processes running inside the selected
 installation folder. Processes in similarly named sibling folders and the
 installer itself are excluded. If an older installer leaves a running copy

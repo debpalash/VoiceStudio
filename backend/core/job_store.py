@@ -186,3 +186,16 @@ def sweep_orphans_on_startup() -> int:
     if n:
         logger.info("Job sweep: marked %d orphaned job(s) as failed after restart.", n)
     return n
+
+
+def has_active() -> bool:
+    """Whether any persisted job is still queued or running in this process."""
+    with db_conn() as conn:
+        return conn.execute(
+            "SELECT 1 FROM jobs WHERE status IN ('pending', 'running') LIMIT 1"
+        ).fetchone() is not None
+
+
+from core import activity as _activity  # noqa: E402
+
+_activity.register_probe("jobs", has_active)

@@ -62,6 +62,15 @@ The [shell installer](script.md) (`curl -fsSL https://voicestudio.sh/install | s
 downloads the latest AppImage, verifies it against the release's
 `SHA256SUMS.txt`, and installs it as `~/.local/bin/VoiceStudio`.
 
+Current builds include the unified terminal command. Debian packages expose
+`voicestudio` through `/usr/bin` and the shell installer through `~/.local/bin`.
+A downloaded AppImage links `~/.local/bin/voicestudio` on first launch and, if
+your shell does not already search `~/.local/bin`, adds it to your shell profile
+once. Open a new terminal afterwards. `voicestudio` opens
+the app, and commands start it in the background when it is not running; no
+separate Python installation is needed. Existing custom launchers are not
+replaced; see [Terminal command](script.md#terminal-command).
+
 **.deb:**
 
 ```bash

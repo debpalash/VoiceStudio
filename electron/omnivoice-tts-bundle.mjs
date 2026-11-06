@@ -170,6 +170,15 @@ export function codesignArgs(opts, file) {
  * manifest the bundle seal now covers).
  */
 export async function signMac(opts, packager) {
+  const cliDir = join(opts.app, 'Contents', 'Resources', 'cli');
+  const cliFiles = (dir) => !existsSync(dir) ? [] : readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    return entry.isDirectory() ? cliFiles(path) : entry.isFile() && isMachO(path) ? [path] : [];
+  });
+  // PyInstaller's interpreter and extension modules need the app's signing identity too.
+  if (opts.identity) {
+    for (const file of cliFiles(cliDir)) execFileSync('codesign', codesignArgs(opts, file), { stdio: 'inherit' });
+  }
   const binDir = join(opts.app, 'Contents', 'Resources', OMNIVOICE_TTS_RESOURCE_DIR);
   let ignore = opts.ignore;
   if (opts.identity && existsSync(join(binDir, OMNIVOICE_TTS_MANIFEST))) {

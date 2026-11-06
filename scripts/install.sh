@@ -19,7 +19,7 @@ VoiceStudio Electron installer (macOS / Linux)
   --help            Show this help
 
 Release installs require curl and a SHA-256 tool. Main builds also require
-Git, Node.js 22+, Bun, Rust/Cargo, and native build dependencies (see README).
+Git, Node.js 22+, Bun, Rust/Cargo, uv, and native build dependencies (see README).
 The installer preserves settings, models, and projects. Quit VoiceStudio first.
 Versions without Electron artifacts are not supported; Tauri is archived.
 HELP
@@ -63,7 +63,7 @@ if [ -n "${VOICESTUDIO_INSTALL_DIR:-}" ]; then
     [ -d "$VOICESTUDIO_INSTALL_DIR" ] && [ -w "$VOICESTUDIO_INSTALL_DIR" ] || die 'Custom install directory must exist and be writable.'
 fi
 require_closed() {
-    if have pgrep && { pgrep -f '/VoiceStudio[.]app/Contents/MacOS/VoiceStudio([[:space:]]|$)' >/dev/null 2>&1 || pgrep -x VoiceStudio >/dev/null 2>&1 || pgrep -f '(^|/)voicestudio-electron([[:space:]]|$)' >/dev/null 2>&1; }; then
+    if have pgrep && { pgrep -f '/VoiceStudio[.]app/Contents/MacOS/VoiceStudio([[:space:]]|$)' >/dev/null 2>&1 || pgrep -x VoiceStudio >/dev/null 2>&1 || pgrep -f '(^|/)voicestudio-(electron|desktop)([[:space:]]|$)' >/dev/null 2>&1; }; then
         die 'Quit VoiceStudio completely (macOS: Command-Q), then run this command again. No app files were changed.'
     fi
 }
@@ -92,6 +92,13 @@ if [ "$UNINSTALL" = 1 ]; then
             recovery=$(mktemp -d "$(dirname "$target")/.voicestudio-uninstalled.XXXXXXXX")
         fi
         mv "$target" "$recovery/" || die "Could not remove $target; check permissions."
+        command_path="$HOME/.local/bin/voicestudio"
+        if [ -L "$command_path" ]; then
+            command_target=$(readlink "$command_path")
+            if [ "$command_target" = "$target" ] || [ "$command_target" = "$target/Contents/Resources/cli/voicestudio" ]; then
+                rm "$command_path"
+            fi
+        fi
         printf 'Uninstalled: %s\nRecoverable copy: %s\n' "$target" "$recovery"
     }
     printf 'Quit VoiceStudio before uninstalling.\n'
@@ -136,6 +143,42 @@ trap 'exit 130' INT
 trap 'exit 143' TERM HUP
 download() { curl --proto '=https' --proto-redir '=https' --connect-timeout 30 --max-time 1800 -fLsS --retry 3 "$1" -o "$2"; }
 
+check_command_target() {
+    KEEP_COMMAND=0
+    command_path="$HOME/.local/bin/voicestudio"
+    if [ -e "$command_path" ] || [ -L "$command_path" ]; then
+        if [ -f "$command_path" ] && grep -q 'from voicestudio_cli.__main__ import main' "$command_path"; then
+            KEEP_COMMAND=1
+            return
+        fi
+        [ -L "$command_path" ] && [ "$(readlink "$command_path")" = "$1" ] ||
+            die "Existing command $command_path belongs to another installation. Preserve/migrate it with the CLI installer before installing here. No app files were changed."
+    fi
+}
+
+install_command() {
+    [ "${KEEP_COMMAND:-0}" != 1 ] || return 0
+    command_path="$HOME/.local/bin/voicestudio"
+    mkdir -p "$HOME/.local/bin"
+    # The installer owns only this symlink; the command implementation lives in the package.
+    ln -sf "$1" "$command_path"
+    for profile in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc"; do
+        if ! grep -q '^# VoiceStudio terminal command$' "$profile" 2>/dev/null; then
+            cat >> "$profile" <<'COMMAND_PATH'
+
+# VoiceStudio terminal command
+case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) export PATH="$HOME/.local/bin:$PATH" ;;
+esac
+COMMAND_PATH
+        fi
+    done
+    mkdir -p "$HOME/.config/fish/conf.d"
+    printf '%s\n' 'fish_add_path --path "$HOME/.local/bin"' > "$HOME/.config/fish/conf.d/voicestudio.fish"
+    printf 'Installed command: %s\n' "$command_path"
+}
+
 install_app() {
     require_closed
     if [ "$OS" = mac ]; then
@@ -146,6 +189,9 @@ install_app() {
         # Copy and validate first, retaining the prior app until the copy succeeds.
         ditto "$1" "$STAGED/VoiceStudio.app"
         [ -f "$STAGED/VoiceStudio.app/Contents/Info.plist" ] || die 'Invalid application bundle.'
+        if [ -x "$STAGED/VoiceStudio.app/Contents/Resources/cli/voicestudio" ]; then
+            check_command_target "$DEST/Contents/Resources/cli/voicestudio"
+        fi
         if [ -e "$DEST" ]; then
             BACKUP="$STAGED/previous.app"
             mv "$DEST" "$BACKUP"
@@ -163,14 +209,19 @@ install_app() {
                 || printf 'Warning: could not repair the app signature; see docs/install/macos.md#gatekeeper-quarantine.\n' >&2
         fi
         lsregister -f "$DEST" || printf 'Warning: macOS registration failed; open the installed app directly.\n' >&2
+        if [ -x "$DEST/Contents/Resources/cli/voicestudio" ]; then
+            install_command "$DEST/Contents/Resources/cli/voicestudio"
+        fi
     else
         DEST_DIR=${VOICESTUDIO_INSTALL_DIR:-"$HOME/.local/bin"}
         mkdir -p "$DEST_DIR"
         DEST="$DEST_DIR/VoiceStudio"
+        check_command_target "$DEST"
         STAGED=$(mktemp -d "$DEST_DIR/.voicestudio-install.XXXXXXXX")
         cp "$1" "$STAGED/VoiceStudio"
         chmod +x "$STAGED/VoiceStudio"
         mv -f "$STAGED/VoiceStudio" "$DEST"
+        install_command "$DEST"
     fi
     printf 'Installed Electron: %s\n' "$DEST"
     printf 'Open VoiceStudio to configure its local backend and choose models. Existing data is preserved.\n'
@@ -181,7 +232,7 @@ install_app() {
 }
 
 if [ "$MODE" = main ]; then
-    for tool in git node bun cargo; do have "$tool" || die "Main builds require $tool; see the source-build prerequisites in README."; done
+    for tool in git node bun cargo uv; do have "$tool" || die "Main builds require $tool; see the source-build prerequisites in README."; done
     if [ "$OS" = linux ]; then
         for tool in readelf zsyncmake; do have "$tool" || die "Linux main builds require $tool; install binutils and zsync (see docs/install/script.md)."; done
     fi

@@ -396,6 +396,10 @@ def delete_record(call_id: str) -> bool:
 _sessions: dict[str, CallSession] = {}
 _registry_lock = threading.Lock()
 
+from core import activity as _activity  # noqa: E402
+
+_activity.register_probe("calls", lambda: bool(_sessions))
+
 
 def get_live(call_id: str) -> CallSession | None:
     with _registry_lock:

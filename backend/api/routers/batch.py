@@ -67,6 +67,11 @@ _job_reservations: set[str] = set()
 _reservation_lock = threading.Lock()
 _jobs: dict = {}                   # job_id → status dict
 
+from core import activity as _activity  # noqa: E402
+
+_activity.register_probe("batch", lambda: any(
+    job.get("status") not in {"done", "failed", "cancelled"} for job in list(_jobs.values())))
+
 
 class BatchJobStatus(BaseModel):
     id: str

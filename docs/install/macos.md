@@ -61,6 +61,14 @@ Chip/Processor**) from the
 [Releases page](https://github.com/debpalash/VoiceStudio/releases/latest),
 double-click to mount it, and drag **VoiceStudio.app** into `/Applications`.
 
+Current builds link the bundled `voicestudio` command into `~/.local/bin` on
+the first launch of the installed app (or during shell-script installation), and
+add that folder to your shell profiles (`~/.zshrc`, `~/.profile`) once if your shell does not
+already search it. Open a new terminal afterwards: `voicestudio` opens the app,
+`voicestudio --help` shows the CLI, and commands start the app in the background
+when it is not running. Python and uv are not required. Existing custom launchers
+are preserved; see the [CLI migration instructions](script.md#terminal-command).
+
 | Mac | DMG to download |
 |-----|-----------------|
 | Apple Silicon (any M-series chip) | `VoiceStudio-<version>-mac-arm64.dmg` |

@@ -1144,6 +1144,15 @@ export class BackendSupervisor extends EventEmitter<{
         return;
       }
 
+      // A terminal or another shell can own a backend whose early-bind
+      // health endpoint is still starting. Wait for that owner instead of
+      // staging its sources or launching a competing process.
+      if (await this.probe(this.baseUrl, true)) {
+        if (gen !== this.generation) return;
+        void this.waitUntilReady(gen, startupBudgetMs());
+        return;
+      }
+
       // A previous fallback is only useful while its backend still answers.
       // Once it is gone, retry the configured endpoint before spawning anew.
       if (this.localPort !== this.configuredPort) {

@@ -313,7 +313,7 @@ jobs:
         run: bun run check:electron
 
       - name: Snap artifact repair regression
-        run: node --test electron/tests/snap-artifact-verification.test.mjs electron/tests/snap-launcher.test.mjs electron/tests/snap-store-packaging.test.mjs electron/tests/omnivoice-tts-bundle.test.mjs
+        run: node --test electron/tests/snap-artifact-verification.test.mjs electron/tests/snap-launcher.test.mjs electron/tests/snap-store-packaging.test.mjs electron/tests/omnivoice-tts-bundle.test.mjs electron/tests/cli-bundle.test.mjs
 
   # Split from Tests (Electron) so the two ~7 minute halves run side by side.
   # The browser workflow smokes need only the checked-out sources.
@@ -752,6 +752,19 @@ jobs:
         env:
           HF_HUB_OFFLINE: "1"  # same no-silent-downloads guard as the main pytest job
           HF_HUB_CACHE: ${{ runner.temp }}/pockettts-empty-hf-cache
+
+      - name: Run terminal command tests
+        # Desktop discovery, background launch and the data-directory lock
+        # (flock vs msvcrt) differ per OS; the Linux `test` job alone misses that.
+        if: matrix.backend_supported
+        run: uv run --no-sync pytest tests/cli/ tests/test_runtime_owner.py tests/test_backend_activity.py -q --tb=short
+        env:
+          HF_HUB_OFFLINE: "1"
+
+      - name: Run terminal command tests on the newest supported Python
+        # The CLI supports Python 3.11+ (uv/pip installs); argparse wording and
+        # stdlib behaviour change between versions, which 3.11 alone misses.
+        run: uvx --python 3.13 --with pytest pytest tests/cli -q --tb=short -p no:cacheprovider --rootdir tests/cli --confcutdir tests/cli
 
       # The isolated backend session, on Windows. The `test` job runs it on
       # Linux only, which is how four tests that CANNOT pass on Windows shipped

@@ -166,6 +166,7 @@ GET /setup/status
 GET /startup/progress
 GET /stats/usage
 GET /sysinfo
+GET /system/activity
 GET /system/asr-backends
 GET /system/diagnose
 GET /system/errors/recent
