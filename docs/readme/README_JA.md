@@ -206,6 +206,8 @@ Intel Mac ではアプリの UI を利用できます。別のコンピュータ
 <details>
 <summary><img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" /> <strong>Windows</strong> · PowerShell · EXE</summary>
 
+実験的な [Windows ROCm セットアップ](../../docs/install/windows-rocm.md)は、ターゲットが `gfx1030`、`gfx1031`、`gfx1032` の一部の RDNA 2 RX 6000 GPU に対応しています。RX 6500 XT（`gfx1034`）は対象外です。個別にバージョンを固定した CTranslate2 ビルドには、RX 6700 XT での文字起こし用のネイティブ `gfx1031` カーネルが含まれ、セットアップ時に GPU カーネルの実際の実行を確認します。RX 6700 XT のテストには、ネイティブ Torch 音声生成と PyTorch Whisper も含まれます。ROCm 10 の faster-whisper は推論を別プロセスで行い、安全な CPU 選択と CPU へのフォールバックを維持します。他のカードや処理には、ガイドに記載された検証範囲の制限が適用されます。パフォーマンスプリセットは、変更されたエンジン選択を保存する前にオフラインの子プロセスで実行環境の準備状況を検証し、インストール済み環境で障害が起きた場合もフォールバックを維持します。
+
 <blockquote>
 
 **安定版 · x64**<br />Windows 10/11 x64 · NVIDIA CUDA · AMD ROCm（任意で有効化）· CPU。

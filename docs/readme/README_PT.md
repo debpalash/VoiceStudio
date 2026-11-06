@@ -205,6 +205,8 @@ A IU do aplicativo é executada em Intel; conecte-o a um back-end do VoiceStudio
 <details>
 <summary><img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" /> <strong>Windows</strong> · PowerShell · EXE</summary>
 
+A [configuração experimental do Windows ROCm](../../docs/install/windows-rocm.md) oferece suporte a determinadas GPUs RDNA 2 RX 6000 com alvos `gfx1030`, `gfx1031` ou `gfx1032`; a RX 6500 XT (`gfx1034`) está excluída. A compilação do CTranslate2 com versão fixada separadamente inclui kernels nativos `gfx1031` para transcrição na RX 6700 XT; a configuração verifica sua execução real na GPU. Os testes da RX 6700 XT também abrangem geração de fala nativa com Torch e PyTorch Whisper. No ROCm 10, o faster-whisper usa um processo de inferência separado para selecionar a CPU ou recorrer a ela com segurança. Outras placas e cargas de trabalho mantêm os limites de validação do guia. Os perfis de desempenho validam alterações na seleção de mecanismos em um processo filho offline antes de salvá-las, preservando a alternativa se um ambiente instalado falhar.
+
 <blockquote>
 
 **Estável · x64**<br />Windows 10/11 x64 · NVIDIA CUDA · AMD ROCm (opcional) · CPU.

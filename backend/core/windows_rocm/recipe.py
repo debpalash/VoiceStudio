@@ -1,31 +1,94 @@
 """The same checked-in Windows recipe is consumed by every bootstrap path."""
 
+from __future__ import annotations
+
 import hashlib
 import json
 import re
 import sys
 import sysconfig
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from urllib.parse import unquote
+from collections.abc import Iterable
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..gpu_inventory import HostGPU
 
 from .failures import VerificationFailure
+from .ct2_recipe import validate_ct2_recipe
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+_ALLOWED_SOURCES = frozenset({
+    "https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/",
+    "https://stable.repo.amd.com/rocm/whl-next/",
+})
+
+# AMD's rocminfo PCI-to-gfx mapping: https://github.com/ROCm/rocminfo/blob/amd-staging_deprecated/rocm_agent_enumerator
+_RDNA2_PCI_IDS = {
+    "gfx1030": frozenset("73a0 73a1 73a2 73a3 73a5 73a8 73a9 73ab 73ac 73ad 73ae 73af 73bf".split()),
+    "gfx1031": frozenset("73c0 73c1 73c3 73da 73db 73dc 73dd 73de 73df".split()),
+    "gfx1032": frozenset("73e0 73e1 73e2 73e3 73e8 73e9 73ea 73eb 73ec 73ed 73ef 73ff".split()),
+}
 
 RECIPE_PATH = Path(__file__).resolve().parents[3] / "scripts" / "windows-rocm-recipe.json"
 
 
-def load_recipe(path=None):
-    """Load packaged/source recipe bytes; no network or native imports."""
+def detected_rdna2_arch(*, inventory: Iterable[HostGPU] | None = None) -> str | None:
+    """Select the native overlay from PCI metadata, before Torch is installed."""
+    if sys.platform != "win32":
+        return None
+    from ..gpu_inventory import detect_host_gpus
+
+    gpus = detect_host_gpus() if inventory is None else inventory
+    amd = [gpu for gpu in gpus if gpu.vendor == "amd"]
+    arches = [next((arch for arch, ids in _RDNA2_PCI_IDS.items()
+                    if gpu.pci_device_id.lower().removeprefix("0x") in ids), None) for gpu in amd]
+    found = {arch for arch in arches if arch}
+    if found and (len(found) != 1 or any(arch is None for arch in arches)):
+        raise VerificationFailure("unsupported_gpu", "Multiple AMD architectures cannot be selected safely for Windows ROCm")
+    return next(iter(found), None)
+
+
+def _validate_artifacts(section):
+    """Reject unsafe artifact paths and incomplete or malformed SHA-256 pins."""
+    hashes = section.get("wheel_sha256") or {}
+    files = section["wheel_files"]
+    if set(files) != set(hashes):
+        raise RuntimeError("Windows ROCm recipe has missing or extra sha256 pins")
+    for name in files:
+        decoded = unquote(name)
+        path = PurePosixPath(decoded)
+        if (path.is_absolute() or ".." in path.parts
+                or not re.fullmatch(r"[A-Za-z0-9_./+%-]+", name)
+                or not re.fullmatch(r"[A-Za-z0-9_./+-]+", decoded)):
+            raise RuntimeError("Windows ROCm recipe has an unsafe artifact path")
+        if not _SHA256.fullmatch(str(hashes.get(name, ""))):
+            raise RuntimeError(f"Windows ROCm recipe has no valid sha256 for {name}")
+
+
+def load_recipe(path: str | Path | None = None, *, architecture: str | None = None) -> dict[str, Any]:
+    """Load, validate, and select an overlay without network or native imports."""
     recipe = json.loads(Path(path or RECIPE_PATH).read_text(encoding="utf-8"))
     if recipe["schema_version"] != 1:
         raise RuntimeError("Unsupported Windows ROCm recipe schema")
-    # Every AMD artifact is pinned by content, not just by name: a version pin
-    # alone would install whatever bytes the host serves under that filename.
-    for section in ("torch", "runtime"):
-        hashes = recipe[section].get("wheel_sha256") or {}
-        for name in recipe[section]["wheel_files"]:
-            if not _SHA256.fullmatch(str(hashes.get(name, ""))):
-                raise RuntimeError(f"Windows ROCm recipe has no valid sha256 for {name}")
+    variant = recipe["rdna2"]
+    for config in (recipe["ctranslate2"], variant["ctranslate2"]):
+        validate_ct2_recipe(config)
+    for torch in (recipe["torch"], variant["torch"]):
+        if torch["find_links"] not in _ALLOWED_SOURCES:
+            raise RuntimeError("Windows ROCm recipe has an unapproved source")
+    for section in (recipe["torch"], recipe["runtime"], variant["torch"], variant["runtime"],
+                    *variant["devices"].values()):
+        _validate_artifacts(section)
+    arch = architecture if architecture is not None else detected_rdna2_arch()
+    if arch in variant["devices"]:
+        device = variant["devices"][arch]
+        common = variant["runtime"]
+        selected_runtime = {key: common[key] + device[key] for key in ("packages", "wheel_files")}
+        selected_runtime["wheel_sha256"] = common["wheel_sha256"] | device["wheel_sha256"]
+        return {**recipe, "gpu_architectures": [arch], "torch": variant["torch"],
+                "runtime": selected_runtime, "ctranslate2": variant["ctranslate2"]}
     return recipe
 
 

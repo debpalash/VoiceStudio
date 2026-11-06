@@ -3,13 +3,12 @@ import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { runtimeLaunchRefusal } from './runtime-launch-refusal';
+export { WINDOWS_ROCM_ABI_PROBE } from './runtime-windows-rocm-abi';
 
 export const WINDOWS_ROCM_PYTHON_REQUEST = 'cpython-3.12-windows-x86_64';
 export const WINDOWS_ROCM_MODULE = 'backend.core.windows_rocm.install';
 export const WINDOWS_ROCM_IMPORT_PREFIX =
   'from backend.core.windows_rocm.runtime import initialize_dll_search; initialize_dll_search(); ';
-export const WINDOWS_ROCM_ABI_PROBE =
-  'from backend.core.windows_rocm.recipe import validate_target; validate_target()';
 
 export function windowsRocmSelected(
   variant = process.env.OMNIVOICE_TORCH_VARIANT?.trim().toLowerCase(),

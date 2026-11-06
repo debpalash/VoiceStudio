@@ -29,6 +29,7 @@ def validate_report(report, recipe):
         isinstance(report.get("ct2_gpu_count"), int) and report["ct2_gpu_count"] > 0,
         "float16" in report.get("ct2_compute_types", []),
         report.get("ct2_binary_sha256") == recipe["ctranslate2"]["binary_sha256"],
+        report.get("ct2_kernel_result") == [1.25, -2.5, 0.0, 8.0],
     )
     if not all(requirements):
         raise VerificationFailure(
