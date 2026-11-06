@@ -1193,6 +1193,88 @@ describe('falling back to the CPU build', () => {
     expect(supervisor.status.stage).toBe('idle');
   });
 
+  it.each(['shutdown', 'restart'] as const)(
+    'gives up the switch when %s arrives while the old install stops',
+    async (action) => {
+      clearVariant();
+      onTestFinished(clearVariant);
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => {
+          throw new Error('down');
+        }),
+      );
+      let finish = () => {};
+      mocks.install.mockImplementation(() => new Promise<void>((resolve) => (finish = resolve)));
+      const supervisor = new BackendSupervisor();
+      onTestFinished(() => supervisor.shutdown());
+      await supervisor.start();
+      void supervisor.setupRuntime();
+      await vi.waitFor(() => expect(mocks.install).toHaveBeenCalled());
+      mocks.install.mockClear();
+      const internals = supervisor as unknown as {
+        generation: number;
+        setupProgress: { snapshot(): Record<string, unknown> };
+      };
+      vi.spyOn(internals.setupProgress, 'snapshot').mockReturnValue({
+        completedDownloads: 0,
+        downloadsComplete: false,
+        stalled: true,
+        stalledSeconds: 300,
+      });
+      const before = internals.generation;
+
+      const switching = supervisor.setupRuntimeOnCpu();
+      await vi.waitFor(() => expect(internals.generation).toBeGreaterThan(before));
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const other = supervisor[action]();
+      finish();
+      await Promise.all([switching, other]);
+
+      expect(process.env.OMNIVOICE_TORCH_VARIANT).toBeUndefined();
+      expect(mocks.saveTorchVariant).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not report a stuck install when shutdown came first', async () => {
+    clearVariant();
+    onTestFinished(clearVariant);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('down');
+      }),
+    );
+    mocks.install.mockImplementation(() => new Promise<void>(() => {}));
+    const supervisor = new BackendSupervisor();
+    onTestFinished(() => supervisor.shutdown());
+    await supervisor.start();
+    void supervisor.setupRuntime();
+    await vi.waitFor(() => expect(mocks.install).toHaveBeenCalled());
+    const internals = supervisor as unknown as {
+      generation: number;
+      installStopTimeoutMs: number;
+      setupProgress: { snapshot(): Record<string, unknown> };
+    };
+    internals.installStopTimeoutMs = 30;
+    vi.spyOn(internals.setupProgress, 'snapshot').mockReturnValue({
+      completedDownloads: 0,
+      downloadsComplete: false,
+      stalled: true,
+      stalledSeconds: 300,
+    });
+    const before = internals.generation;
+
+    const switching = supervisor.setupRuntimeOnCpu();
+    await vi.waitFor(() => expect(internals.generation).toBeGreaterThan(before));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    void supervisor.shutdown();
+    await switching;
+
+    expect(supervisor.status.stage).toBe('idle');
+    expect(supervisor.status.setupIssue).toBeUndefined();
+  });
+
   it('does nothing when it is not on offer', async () => {
     clearVariant();
     onTestFinished(clearVariant);

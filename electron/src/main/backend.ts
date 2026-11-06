@@ -1551,16 +1551,19 @@ export class BackendSupervisor extends EventEmitter<{
     const installing = this.installation;
     // Abort alone doesn't stop a running uv: its runner only checks before spawning.
     installing?.abort();
-    this.generation++;
+    const gen = ++this.generation;
     await this.killChild(true);
-    if (installing && !(await settledWithin(this.installationSettled, this.installStopTimeoutMs))) {
+    const stopped =
+      !installing || (await settledWithin(this.installationSettled, this.installStopTimeoutMs));
+    // Cancel or quit during those waits wins: nothing here may undo it.
+    if (gen !== this.generation) return;
+    if (!stopped) {
       // Two installs must not share one folder, so don't start the CPU one.
       const message = 'Could not stop the running download. Restart VoiceStudio and try again.';
       this.pushLog('err', message);
       this.setupIssue = 'install_stuck';
       this.setStage('setup_required', { message });
       // It may still stop late; setup can run again from then on.
-      const gen = this.generation;
       void this.installationSettled.then(() => {
         if (this.setupIssue !== 'install_stuck') return;
         this.setupIssue = undefined;
