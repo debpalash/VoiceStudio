@@ -117,7 +117,7 @@ Semua yang di atas gratis, berjalan di perangkat keras Anda sendiri, dan tidak m
 <table>
   <tr>
     <td width="50%" valign="top">
-      <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br />
+      <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="VoiceStudio Pro" width="100%" /></a><br /><br />
       Untuk pekerjaan klien berbayar di lebih dari satu mesin.
       <ul>
         <li>Lisensi Komersial untuk pekerjaan klien Anda, dikirim lewat email</li>
@@ -129,7 +129,7 @@ Semua yang di atas gratis, berjalan di perangkat keras Anda sendiri, dan tidak m
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Lihat paket Pro →</a></strong>
     </td>
     <td width="50%" valign="top">
-      <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
+      <a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="VoiceStudio Cloud" width="100%" /></a><br /><br />
       API suara dan sulih suara yang di-hosting, segera hadir. Tanpa perlu GPU.
       <ul>
         <li>Ucapan, desain suara, dan kloning suara dengan persetujuan</li>

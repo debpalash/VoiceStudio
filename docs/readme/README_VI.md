@@ -117,7 +117,7 @@ Mọi thứ ở trên đều miễn phí, chạy trên phần cứng của bạn
 <table>
   <tr>
     <td width="50%" valign="top">
-      <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br />
+      <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="VoiceStudio Pro" width="100%" /></a><br /><br />
       Dành cho công việc khách hàng có trả phí trên nhiều máy.
       <ul>
         <li>Giấy phép thương mại cho công việc khách hàng, gửi qua email</li>
@@ -129,7 +129,7 @@ Mọi thứ ở trên đều miễn phí, chạy trên phần cứng của bạn
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Xem các gói Pro →</a></strong>
     </td>
     <td width="50%" valign="top">
-      <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
+      <a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="VoiceStudio Cloud" width="100%" /></a><br /><br />
       API giọng nói và lồng tiếng được lưu trữ sẵn, sắp ra mắt. Không cần GPU.
       <ul>
         <li>Giọng nói, thiết kế giọng và nhân bản giọng khi có sự đồng ý</li>

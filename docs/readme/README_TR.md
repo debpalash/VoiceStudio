@@ -117,7 +117,7 @@ Yukarıdakilerin tümü ücretsizdir, kendi donanımınızda çalışır ve hesa
 <table>
   <tr>
     <td width="50%" valign="top">
-      <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br />
+      <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="VoiceStudio Pro" width="100%" /></a><br /><br />
       Birden fazla makinede ücretli müşteri işleri için.
       <ul>
         <li>Müşteri işleriniz için e-postayla gönderilen Ticari Lisans</li>
@@ -129,7 +129,7 @@ Yukarıdakilerin tümü ücretsizdir, kendi donanımınızda çalışır ve hesa
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Pro planlarını görün →</a></strong>
     </td>
     <td width="50%" valign="top">
-      <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
+      <a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="VoiceStudio Cloud" width="100%" /></a><br /><br />
       Barındırılan ses ve dublaj API'si çok yakında. GPU gerekmez.
       <ul>
         <li>Konuşma, ses tasarımı ve izinli ses klonlama</li>

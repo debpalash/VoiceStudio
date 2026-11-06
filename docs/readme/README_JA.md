@@ -118,7 +118,7 @@
 <table>
   <tr>
     <td width="50%" valign="top">
-      <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br />
+      <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="VoiceStudio Pro" width="100%" /></a><br /><br />
       複数のマシンで有償のクライアント業務を行う方に。
       <ul>
         <li>クライアント業務向けの商用ライセンスをメールでお届け</li>
@@ -130,7 +130,7 @@
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Pro のプランを見る →</a></strong>
     </td>
     <td width="50%" valign="top">
-      <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
+      <a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="VoiceStudio Cloud" width="100%" /></a><br /><br />
       ホスト型の音声・吹き替え API を近日公開。GPU は不要です。
       <ul>
         <li>音声合成、ボイスデザイン、同意に基づくボイスクローン</li>

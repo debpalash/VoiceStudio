@@ -117,7 +117,7 @@ Tout ce qui précède est gratuit, tourne sur ton propre matériel et ne demande
 <table>
   <tr>
     <td width="50%" valign="top">
-      <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br />
+      <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="VoiceStudio Pro" width="100%" /></a><br /><br />
       Pour le travail client rémunéré sur plusieurs machines.
       <ul>
         <li>Une licence commerciale pour ton travail client, envoyée par e-mail</li>
@@ -129,7 +129,7 @@ Tout ce qui précède est gratuit, tourne sur ton propre matériel et ne demande
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Voir les offres Pro →</a></strong>
     </td>
     <td width="50%" valign="top">
-      <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
+      <a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="VoiceStudio Cloud" width="100%" /></a><br /><br />
       Une API hébergée de voix et de doublage, bientôt disponible. Aucun GPU nécessaire.
       <ul>
         <li>Synthèse vocale, création de voix et clonage de voix avec consentement</li>

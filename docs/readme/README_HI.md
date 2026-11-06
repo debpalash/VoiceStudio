@@ -117,7 +117,7 @@
 <table>
   <tr>
     <td width="50%" valign="top">
-      <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br />
+      <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="VoiceStudio Pro" width="100%" /></a><br /><br />
       एक से ज़्यादा मशीनों पर सशुल्क क्लाइंट काम के लिए।
       <ul>
         <li>आपके क्लाइंट काम के लिए व्यावसायिक लाइसेंस, ईमेल से भेजा जाता है</li>
@@ -129,7 +129,7 @@
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Pro प्लान देखें →</a></strong>
     </td>
     <td width="50%" valign="top">
-      <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
+      <a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="VoiceStudio Cloud" width="100%" /></a><br /><br />
       आवाज़ और डबिंग के लिए होस्टेड API, जल्द आ रहा है। GPU की ज़रूरत नहीं।
       <ul>
         <li>स्पीच, वॉइस डिज़ाइन और सहमति से वॉइस क्लोनिंग</li>
