@@ -2,9 +2,9 @@
 
 ## Current release contracts
 
-The [Desktop Pro checkout contract](desktop-pro-page.md) defines the active
-release gates. Paid checkout and feature unlocks remain unavailable until
-those gates pass. [Model licensing review](../licensing/model-review-workflow.md)
+The [Desktop Pro checkout contract](desktop-pro-page.md) defines the release
+gates. New paid capabilities and checkout changes stay unavailable until those
+gates pass. [Model licensing review](../licensing/model-review-workflow.md)
 covers model rights separately.
 
 ## Design proposals

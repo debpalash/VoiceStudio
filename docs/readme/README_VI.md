@@ -56,7 +56,7 @@
   <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/badge/T%E1%BA%A3i%20xu%E1%BB%91ng-993f61?style=for-the-badge&amp;logo=github&amp;logoColor=ffffff" alt="Tải xuống" height="24" /></a>
   <a href="#get-started"><img src="https://img.shields.io/badge/B%E1%BA%AFt%20%C4%91%E1%BA%A7u-27272a?style=for-the-badge" alt="Bắt đầu" height="24" /></a>
   <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Pro-27272a?style=for-the-badge" alt="VoiceStudio Pro" height="24" /></a>
-  <a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Cloud-27272a?style=for-the-badge" alt="VoiceStudio Cloud" height="24" /></a>
+  <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Cloud-27272a?style=for-the-badge" alt="VoiceStudio Cloud" height="24" /></a>
 </p>
 
 <a id="what-you-can-do"></a>
@@ -117,7 +117,7 @@ Mọi thứ ở trên đều miễn phí, chạy trên phần cứng của bạn
 <table>
   <tr>
     <td width="50%" valign="top">
-      <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br />
+      <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
       Dành cho công việc khách hàng có trả phí trên nhiều máy.
       <ul>
         <li>Giấy phép thương mại cho công việc khách hàng, gửi qua email</li>
@@ -129,7 +129,7 @@ Mọi thứ ở trên đều miễn phí, chạy trên phần cứng của bạn
       <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Xem các gói Pro →</a></strong>
     </td>
     <td width="50%" valign="top">
-      <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br />
+      <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br /><br />
       API giọng nói và lồng tiếng được lưu trữ sẵn, sắp ra mắt. Không cần GPU.
       <ul>
         <li>Giọng nói, thiết kế giọng và nhân bản giọng khi có sự đồng ý</li>
@@ -138,7 +138,7 @@ Mọi thứ ở trên đều miễn phí, chạy trên phần cứng của bạn
         <li>Tác vụ dài tự chạy</li>
       </ul>
       <sub>Chưa có sẵn: tham gia truy cập sớm để nhận tín dụng sử dụng miễn phí. Ứng dụng máy tính vẫn miễn phí và chạy cục bộ.</sub><br /><br />
-      <strong><a href="https://voicestudio.sh/cloud?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Tham gia truy cập sớm Cloud →</a></strong>
+      <strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Tham gia truy cập sớm Cloud →</a></strong>
     </td>
   </tr>
 </table>
