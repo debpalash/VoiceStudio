@@ -1049,3 +1049,25 @@ it('lets a failed start move the runtime to another folder', async () => {
   expect(() => supervisor.setRuntimeLocation(null)).toThrow('runtime_location_unavailable');
   await supervisor.shutdown();
 });
+
+it('does not take crash context from a backend process that was replaced', async () => {
+  const { PassThrough } = await import('node:stream');
+  const supervisor = new BackendSupervisor();
+  onTestFinished(() => supervisor.shutdown());
+  const internals = supervisor as unknown as {
+    generation: number;
+    crashes: { captureLine(line: string): void };
+    attachLineReader(readable: NodeJS.ReadableStream, stream: 'err', gen: number): void;
+  };
+  const capture = vi.spyOn(internals.crashes, 'captureLine');
+  const stderr = new PassThrough();
+  internals.attachLineReader(stderr, 'err', internals.generation);
+  stderr.write('from the current process\n');
+  await vi.waitFor(() => expect(capture).toHaveBeenCalledOnce());
+
+  internals.generation++;
+  stderr.write('VOICESTUDIO_CRASH_CONTEXT={"kind":"late"}\n');
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  expect(capture).toHaveBeenCalledOnce();
+});
