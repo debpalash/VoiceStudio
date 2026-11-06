@@ -2973,6 +2973,46 @@ class MLXAudioBackend(TTSBackend):
         ),
     }
 
+    # Kokoro preset voices (#3802). These are the 54 voice packs shipped by
+    # hexgrad/Kokoro-82M (``voices/*.pt``), the default curated model above;
+    # each id is "<lang><gender>_<name>" where the first letter is Kokoro's
+    # own lang_code (a=American English, b=British, e=Spanish, f=French,
+    # h=Hindi, i=Italian, j=Japanese, p=Portuguese, z=Chinese).
+    # Declaring them is what makes /engines list them and /generate keep a
+    # chosen preset_voice instead of dropping it ("engine has no presets:
+    # ignore"). Without them Kokoro always fell back to af_heart, so
+    # Portuguese text was spoken with an American-English voice. Other
+    # curated models have no preset voices; a pick is only meaningful
+    # while Kokoro is the active model, and the other pipelines ignore a
+    # `voice` kwarg they do not use.
+    PRESET_VOICES = [
+        "af_alloy", "af_aoede", "af_bella", "af_heart", "af_jessica",
+        "af_kore", "af_nicole", "af_nova", "af_river", "af_sarah", "af_sky",
+        "am_adam", "am_echo", "am_eric", "am_fenrir", "am_liam", "am_michael",
+        "am_onyx", "am_puck", "am_santa",
+        "bf_alice", "bf_emma", "bf_isabella", "bf_lily",
+        "bm_daniel", "bm_fable", "bm_george", "bm_lewis",
+        "ef_dora", "em_alex", "em_santa",
+        "ff_siwis",
+        "hf_alpha", "hf_beta", "hm_omega", "hm_psi",
+        "if_sara", "im_nicola",
+        "jf_alpha", "jf_gongitsune", "jf_nezumi", "jf_tebukuro", "jm_kumo",
+        "pf_dora", "pm_alex", "pm_santa",
+        "zf_xiaobei", "zf_xiaoni", "zf_xiaoxiao", "zf_xiaoyi",
+        "zm_yunjian", "zm_yunxi", "zm_yunxia", "zm_yunyang",
+    ]
+    DEFAULT_VOICE = "af_heart"
+
+    # One Kokoro voice per language, used when the caller picks no preset
+    # (#3802): Portuguese text defaults to pf_dora instead of af_heart.
+    # Keyed by the single-letter lang_code resolve_kokoro_lang_code()
+    # returns, so a voice id always starts with its language's letter.
+    KOKORO_DEFAULT_VOICE_BY_LANG_CODE = {
+        "a": "af_heart", "b": "bf_alice", "e": "ef_dora", "f": "ff_siwis",
+        "h": "hf_alpha", "i": "if_sara", "j": "jf_alpha", "p": "pf_dora",
+        "z": "zf_xiaobei",
+    }
+
     def __init__(self):
         self._model = None
         self._sr = 24000  # most mlx-audio engines emit 24 kHz mono
@@ -3149,6 +3189,13 @@ class MLXAudioBackend(TTSBackend):
                 # (#977). Resolve against the authoritative installed table
                 # instead of guessing via `language[:2]`.
                 kwargs["lang_code"] = resolve_kokoro_lang_code(language)
+                if not voice:
+                    # No preset picked: speak with a voice of the requested
+                    # language instead of Kokoro's American-English default
+                    # (#3802). An explicit preset_voice always wins.
+                    kwargs["voice"] = self.KOKORO_DEFAULT_VOICE_BY_LANG_CODE.get(
+                        kwargs["lang_code"], self.DEFAULT_VOICE
+                    )
             else:
                 # `lang_code`-as-2-letter-truncation is Kokoro's own
                 # convention, not mlx-audio's in general — other curated
