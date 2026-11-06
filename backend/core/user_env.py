@@ -5,6 +5,7 @@ values written here take effect on the next backend launch. Used by the
 configurable models directory (#64): the Settings endpoint upserts
 ``OMNIVOICE_CACHE_DIR`` here, which main.py then maps to
 ``HF_HOME`` / ``HF_HUB_CACHE`` / ``TORCH_HOME``.
+Electron's `torch-choice.ts` also reads this file and keeps a ROCm choice in it.
 
 Format is dotenv-style ``KEY=value`` lines. Upsert preserves other keys (e.g. a
 persisted ``HF_TOKEN``) and writes the file ``0600`` (it can hold secrets).

@@ -1,6 +1,7 @@
 import { decideMissingRuntime, runtimeWasInstalled } from './runtime-repair';
 import { windowsRocmInstalled, windowsRocmRequested } from './runtime-windows-rocm';
 import { runtimeProjectReady } from './runtime-readiness';
+import { rememberTorchVariant } from './torch-choice';
 import { runRuntimeProbe } from './runtime-probe';
 import { RuntimeLaunchRefusedError } from './runtime-launch-refusal';
 import { pypiFilesHost } from './pypi-mirror';
@@ -1833,6 +1834,7 @@ export class BackendSupervisor extends EventEmitter<{
       try {
         if (await runtimeProjectReady(bundle, project)) {
           this.runtimeProject = project;
+          rememberTorchVariant();
           if (project !== own && project !== configured)
             this.pushLog('out', `Reusing compatible Tauri runtime: ${project}`);
           return { project, ready: true };
