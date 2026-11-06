@@ -849,6 +849,18 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+async function settledWithin(work: Promise<void>, timeoutMs: number): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined;
+  const timedOut = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
+  });
+  try {
+    return await Promise.race([work.then(() => true), timedOut]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class BackendSupervisor extends EventEmitter<{
   status: [BackendStatus];
 }> {
@@ -918,6 +930,7 @@ export class BackendSupervisor extends EventEmitter<{
   private setupCheck: Promise<SetupConnectionCheck> | null = null;
   private installation: AbortController | null = null;
   private installationSettled: Promise<void> = Promise.resolve();
+  private installStopTimeoutMs = 30_000;
   private cleaningRuntime = false;
   private runtimeProject: string | null = null;
   private runtimeRegion: RuntimeRegion = loadRuntimeRegion();
@@ -1535,15 +1548,21 @@ export class BackendSupervisor extends EventEmitter<{
   /** Give up on the CUDA download, even a stuck one, and install the smaller CPU build. */
   async setupRuntimeOnCpu(): Promise<void> {
     if (!this.cpuSetupAvailable()) return;
-    process.env.OMNIVOICE_TORCH_VARIANT = 'cpu';
-    if (!saveTorchVariant('cpu'))
-      this.setupLog.append('Could not save the CPU choice; the next launch may ask again');
     const installing = this.installation;
     // Abort alone doesn't stop a running uv: its runner only checks before spawning.
     installing?.abort();
     this.generation++;
     await this.killChild(true);
-    if (installing) await this.installationSettled;
+    if (installing && !(await settledWithin(this.installationSettled, this.installStopTimeoutMs))) {
+      // Two installs must not share one folder, so don't start the CPU one.
+      const message = 'Could not stop the running download. Restart VoiceStudio and try again.';
+      this.pushLog('err', message);
+      this.setStage('setup_required', { message });
+      return;
+    }
+    process.env.OMNIVOICE_TORCH_VARIANT = 'cpu';
+    if (!saveTorchVariant('cpu'))
+      this.setupLog.append('Could not save the CPU choice; the next launch may ask again');
     await this.start();
     await this.setupRuntime();
   }

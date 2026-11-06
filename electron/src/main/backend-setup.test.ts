@@ -1079,6 +1079,43 @@ describe('falling back to the CPU build', () => {
     expect(started).toBe(2);
   });
 
+  it('does not start a second install when the first will not stop', async () => {
+    clearVariant();
+    onTestFinished(clearVariant);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('down');
+      }),
+    );
+    mocks.install.mockImplementation(() => new Promise<void>(() => {}));
+    const supervisor = new BackendSupervisor();
+    onTestFinished(() => supervisor.shutdown());
+    await supervisor.start();
+    void supervisor.setupRuntime();
+    await vi.waitFor(() => expect(mocks.install).toHaveBeenCalled());
+    mocks.install.mockClear();
+    const internals = supervisor as unknown as {
+      installStopTimeoutMs: number;
+      setupProgress: { snapshot(): Record<string, unknown> };
+    };
+    internals.installStopTimeoutMs = 10;
+    vi.spyOn(internals.setupProgress, 'snapshot').mockReturnValue({
+      completedDownloads: 0,
+      downloadsComplete: false,
+      stalled: true,
+      stalledSeconds: 300,
+    });
+
+    await supervisor.setupRuntimeOnCpu();
+
+    expect(mocks.install).not.toHaveBeenCalled();
+    expect(process.env.OMNIVOICE_TORCH_VARIANT).toBeUndefined();
+    expect(mocks.saveTorchVariant).not.toHaveBeenCalled();
+    expect(supervisor.status.stage).toBe('setup_required');
+    expect(supervisor.status.message).toContain('Could not stop');
+  });
+
   it('does nothing when it is not on offer', async () => {
     clearVariant();
     onTestFinished(clearVariant);
