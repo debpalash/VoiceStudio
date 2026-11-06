@@ -24,6 +24,7 @@ from omnivoice.utils.voice_design import heal_design_instruct, sanitize_instruct
 from core.media_types import media_upload_suffix
 from core.path_security import UnsafePath, resolve_within
 from services.reference_transcript import take_reference_transcript
+from services.reference_wav import prune_reference_copies
 from core.profile_images import MAX_IMAGE_BYTES, normalize_portrait
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from core.path_security import upload_suffix
@@ -593,6 +594,8 @@ def sweep_retired_voice_files(grace_s: float = _RETIRED_GRACE_S) -> int:
                     continue
             with contextlib.suppress(OSError):
                 os.remove(marker.path)
+    if removed:
+        prune_reference_copies()
     return removed
 
 
@@ -618,6 +621,8 @@ def _remove_voice_file(filename: Optional[str], *, keep: str) -> None:
             os.remove(path)
         except OSError as exc:
             logger.warning("could not remove superseded voice file: %s", exc)
+        else:
+            prune_reference_copies()
 
 
 def _replacement_fields(
@@ -1401,6 +1406,8 @@ def delete_profile(profile_id: str):
             except (UnsafePath, OSError, ValueError):
                 failed_assets.append("asset location unavailable (consult local backend log)")
             logger.warning("Deleted profile asset cleanup failed: %s", scrub_text(path))
+    # Converted copies sent to engine sidecars are this voice too (#3688).
+    prune_reference_copies()
     event_bus.emit("profiles", {"action": "deleted", "id": profile_id})
     if failed_assets:
         raise HTTPException(status_code=500, detail=(
