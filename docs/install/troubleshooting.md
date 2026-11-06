@@ -4,6 +4,8 @@ The top 10 errors users have actually hit on `v0.2.x`, with their causes and
 fixes. Most have a deeplink anchor that the in-app error UI's "Open docs for
 this error" button targets directly.
 
+To see whether a problem is already known or fixed, check the [install issue tracker](issue-tracker.md).
+
 ## Start here: self-diagnosis
 
 Electron native-crash reports preserve the fatal-error header and the current
