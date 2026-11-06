@@ -5,7 +5,12 @@ import { chmodSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const mocks = vi.hoisted(() => ({
-  runtimeConfig: null as { root: string; owned: boolean; scoped?: boolean } | null,
+  runtimeConfig: null as {
+    root: string;
+    owned: boolean;
+    scoped?: boolean;
+    existing?: string[];
+  } | null,
   existingProject: false,
   existingRoot: false,
   rootEntries: ['.python'] as string[],
@@ -689,16 +694,9 @@ it.each(['.DS_Store', 'desktop.ini'])(
   },
 );
 
-it.each([
-  ['a moved runtime', ['project', '.uv-cache', '.python']],
-  ['an earlier attempt', ['tmp', '.uv-cache']],
-  ['unrelated files', ['Music']],
-])('keeps a location chosen in setup when it already holds %s', async (_label, entries) => {
-  // The user picked this drive because the system drive is full: sending setup
-  // back to the default folder fills the drive they were trying to avoid.
-  const { resolve, join } = await import('node:path');
+async function pickLocationAndSetUp(entries: string[]) {
+  const { resolve } = await import('node:path');
   const selected = resolve('/selected/VoiceStudio');
-  mocks.runtimeConfig = { root: selected, owned: false, scoped: true };
   mocks.existingRoot = true;
   mocks.rootEntries = entries;
   mocks.rootEntryIsFile = false;
@@ -713,10 +711,51 @@ it.each([
   vi.stubEnv('VOICESTUDIO_SKIP_BACKEND', '');
   const supervisor = new BackendSupervisor();
   await supervisor.start();
+  supervisor.setRuntimeLocation(selected);
   await supervisor.setupRuntime();
+  return { supervisor, selected };
+}
+
+it.each([
+  ['a moved runtime', ['project', '.uv-cache', '.python']],
+  ['unrelated files', ['Music']],
+])('keeps a location chosen in setup when it already holds %s', async (_label, entries) => {
+  // The user picked this drive because the system drive is full: sending setup
+  // back to the default folder fills the drive they were trying to avoid.
+  const { join } = await import('node:path');
+  const { supervisor, selected } = await pickLocationAndSetUp(entries);
   expect(mocks.install.mock.calls[0][1]).toBe(join(selected, 'project'));
-  expect(mocks.runtimeConfig).toEqual({ root: selected, owned: true, scoped: true });
+  expect(mocks.runtimeConfig).toMatchObject({ root: selected, owned: true, scoped: true });
   expect(mocks.rm).not.toHaveBeenCalled();
+  await supervisor.shutdown();
+});
+
+it('never removes folders a chosen location already held', async () => {
+  const { join } = await import('node:path');
+  const { supervisor, selected } = await pickLocationAndSetUp(['project', 'tmp', '.python']);
+  expect(supervisor.ownedRuntimeEntries).toEqual(
+    ['.uv-cache', '.tmp', '.wheel-prefetch'].map((name) => join(selected, name)),
+  );
+  mocks.install.mockClear();
+  await supervisor.cleanSetupRuntime();
+  expect(mocks.rm).not.toHaveBeenCalled();
+  expect(mocks.install).toHaveBeenCalledOnce();
+  await supervisor.shutdown();
+});
+
+it('still cleans up the folders setup created in a chosen location', async () => {
+  const { join } = await import('node:path');
+  const { supervisor, selected } = await pickLocationAndSetUp(['Music']);
+  expect(supervisor.ownedRuntimeEntries).toContain(join(selected, 'project'));
+  // Picking the same folder after a failed attempt must not disown setup's own files.
+  mocks.rootEntries = ['Music', 'project'];
+  supervisor.setRuntimeLocation(selected);
+  await supervisor.setupRuntime();
+  await supervisor.cleanSetupRuntime();
+  expect(mocks.rm).toHaveBeenCalledWith(
+    join(selected, 'project'),
+    expect.objectContaining({ recursive: true }),
+  );
   await supervisor.shutdown();
 });
 
