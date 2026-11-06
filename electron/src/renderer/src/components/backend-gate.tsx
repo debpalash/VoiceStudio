@@ -390,7 +390,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                   <Select
                     items={regionItems}
                     value={status.runtimeRegion || 'auto'}
-                    disabled={choosingRegion || restarting}
+                    disabled={choosingRegion || restarting || installStuck}
                     onValueChange={async (value) => {
                       setChoosingRegion(true);
                       try {
@@ -473,7 +473,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                       <Button
                         size="sm"
                         variant="ghost"
-                        disabled={choosingLocation || restarting}
+                        disabled={choosingLocation || restarting || installStuck}
                         onClick={() => {
                           void getBridge()
                             ?.backend.useDefaultRuntimeLocation()
@@ -488,7 +488,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={choosingLocation || restarting}
+                      disabled={choosingLocation || restarting || installStuck}
                       onClick={async () => {
                         setChoosingLocation(true);
                         try {

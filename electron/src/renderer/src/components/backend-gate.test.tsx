@@ -629,6 +629,7 @@ it('explains a stuck install and holds back setup actions until it stops', () =>
   );
 
   expect(screen.getByText(i18n.t('backend.setup_install_stuck'))).toBeVisible();
-  expect(screen.getByRole('button', { name: i18n.t('backend.retry') })).toBeDisabled();
+  expect(screen.getByRole('button', { name: i18n.t('common.resume') })).toBeDisabled();
   expect(screen.getByRole('button', { name: i18n.t('bootstrap.clean_retry') })).toBeDisabled();
+  expect(screen.getByRole('button', { name: /^Change/ })).toBeDisabled();
 });
