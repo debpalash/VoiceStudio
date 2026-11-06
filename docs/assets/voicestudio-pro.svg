@@ -1,30 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="360" height="96" viewBox="0 0 360 96" role="img" aria-labelledby="title">
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64" role="img" aria-labelledby="title description">
   <title id="title">VoiceStudio Pro</title>
+  <desc id="description">A gold speech waveform with a small spark on a dark rounded tile with a gold rim.</desc>
   <defs>
-    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#241C2F"/>
-      <stop offset="1" stop-color="#120F18"/>
+    <linearGradient id="tile" x1="7" y1="4" x2="58" y2="62" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#241E14"/>
+      <stop offset="1" stop-color="#14110B"/>
     </linearGradient>
-    <radialGradient id="warmth" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(330 8) rotate(150) scale(230 120)">
-      <stop stop-color="#6A2D4C" stop-opacity="0.55"/>
-      <stop offset="1" stop-color="#6A2D4C" stop-opacity="0"/>
+    <radialGradient id="warmth" cx="0" cy="0" r="1" gradientTransform="translate(49 13) rotate(132) scale(42)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6B4A16" stop-opacity="0.44"/>
+      <stop offset="1" stop-color="#6B4A16" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="voice" x1="7" y1="18" x2="59" y2="46" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFD0DB"/>
-      <stop offset="0.5" stop-color="#F47FA3"/>
-      <stop offset="1" stop-color="#F7AE73"/>
-    </linearGradient>
-    <linearGradient id="word" x1="0" y1="0" x2="1" y2="0">
-      <stop stop-color="#F47FA3"/>
-      <stop offset="1" stop-color="#F7AE73"/>
+      <stop stop-color="#FFF1C9"/>
+      <stop offset="0.5" stop-color="#F5C26B"/>
+      <stop offset="1" stop-color="#E58F45"/>
     </linearGradient>
   </defs>
-  <rect x="1" y="1" width="358" height="94" rx="18" fill="url(#card)"/>
-  <rect x="1.5" y="1.5" width="357" height="93" rx="17.5" fill="url(#warmth)" stroke="#FFFFFF" stroke-opacity="0.12"/>
-  <g transform="translate(16 16)">
-    <rect x="0" y="0" width="64" height="64" rx="16" fill="#FFFFFF" fill-opacity="0.06"/>
-    <path d="M6 34c4 0 5-7 9-7 5 0 4 14 9 14 5 0 4-23 9-23s4 28 9 28 4-21 9-21c4 0 5 9 8 9" fill="none" stroke="url(#voice)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M42 20 39.5 9l6 4L50 6l4.500 7 6-4L58 20Z" fill="#FFE5B5" stroke="#FFE5B5" stroke-width="1.2" stroke-linejoin="round"/>
-  </g>
-  <text x="94" y="58" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif" font-size="27" font-weight="600" fill="#FFFFFF">VoiceStudio <tspan font-weight="800" fill="url(#word)">Pro</tspan></text>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#tile)"/>
+  <rect x="2.5" y="2.5" width="59" height="59" rx="14.5" fill="url(#warmth)" stroke="#F5C26B" stroke-opacity="0.45"/>
+  <path d="M6 34c4 0 5-7 9-7 5 0 4 14 9 14 5 0 4-23 9-23s4 28 9 28 4-21 9-21c4 0 5 9 8 9" fill="none" stroke="url(#voice)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M50 9c.7 4.3 3.7 7.3 8 8-4.3.7-7.3 3.7-8 8-.7-4.3-3.7-7.3-8-8 4.3-.7 7.3-3.7 8-8Z" fill="#FFE9B0"/>
 </svg>
