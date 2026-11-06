@@ -694,6 +694,15 @@ def _phase_a_build_inner() -> None:
     except Exception:  # noqa: BLE001 — the torchaudio import below reports
         pass
     try:
+        # HSA reads this once, when HIP initialises; the imports below and many
+        # modules after them probe the GPU (#3804).
+        import torch as _torch_for_rocm
+        from core.device_caps import apply_rocm_override_before_init
+
+        apply_rocm_override_before_init(_torch_for_rocm)
+    except Exception:  # noqa: BLE001 - the torchaudio import below reports a broken torch
+        pass
+    try:
         import torchaudio  # noqa: F401
     except Exception as exc:  # noqa: BLE001
         # Sanitized summary only, never a traceback-bearing log call: an
