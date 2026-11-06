@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, session, shell, Tray } from 'electron';
 import { electronApp, is, optimizer } from '@electron-toolkit/utils';
 import { BackendSupervisor, backendRoot } from './backend';
+import { applySavedTorchVariant } from './torch-choice';
 import { registerIpc, wireWindowMaximizeEvents } from './ipc';
 import { APP_ORIGIN, installAppProtocol, registerAppScheme } from './protocol';
 import { electronProxyPort, startDevBackendProxy } from './dev-backend-proxy';
@@ -257,6 +258,7 @@ if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSing
       app.on('browser-window-created', (_event, window) => optimizer.watchWindowShortcuts(window));
       closeDirectoryScopes = restoreSecurityScopedDirectories();
 
+      applySavedTorchVariant();
       const backend = new BackendSupervisor();
       supervisor = backend;
       console.log(`[supervisor] backend root: ${backendRoot()} (packaged=${app.isPackaged})`);

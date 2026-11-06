@@ -320,6 +320,9 @@ Ways to opt in, in order of preference:
 (`/opt/rocm` or `rocminfo` on PATH), then launch VoiceStudio once with
 `OMNIVOICE_TORCH_VARIANT=rocm` set, for example
 `OMNIVOICE_TORCH_VARIANT=rocm ./VoiceStudio-*-linux-x64.AppImage`.
+Once setup finishes, the choice is saved in `~/.config/omnivoice/env`, so later
+launches and app updates keep ROCm without the variable. To leave ROCm, launch
+once with `OMNIVOICE_TORCH_VARIANT=cpu`.
 Runtime setup then reinstalls `torch`/`torchaudio`/`torchvision` from the ROCm
 wheel index (`https://download.pytorch.org/whl/rocm6.4` by default) right after
 the dependency sync, leaving every other package on the regular index, matched to the app's pinned `torch==2.8.0` (the rocm6.2 index

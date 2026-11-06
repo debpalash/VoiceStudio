@@ -686,6 +686,15 @@ def _phase_a_build_inner() -> None:
 
     _startup_progress.begin_step("ml_imports")
     try:
+        # HSA reads this once, when HIP initialises; the imports below and many
+        # modules after them probe the GPU (#3804).
+        import torch as _torch_for_rocm
+        from core.device_caps import apply_rocm_override_before_init
+
+        apply_rocm_override_before_init(_torch_for_rocm)
+    except Exception:  # noqa: BLE001 - the torchaudio import below reports a broken torch
+        pass
+    try:
         # The opt-in Windows ROCm runtime must pin its DLL search path before
         # torchaudio loads; a no-op on every other runtime.
         from core.windows_rocm.pipelines import prepare_audio_imports
