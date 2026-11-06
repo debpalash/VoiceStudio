@@ -802,7 +802,12 @@ def _numbers_to_words(text: str, lang: str, locale: Optional[str] = None) -> str
         def _pt_time(m: re.Match) -> str:
             h = int(m.group(1))
             mm_str = m.group(2) or m.group(3)
-            hw = "uma" if h == 1 else ("duas" if h == 2 else num2words(h, lang="pt"))
+            hw = {
+                1: "uma",
+                2: "duas",
+                21: "vinte e uma",
+                22: "vinte e duas",
+            }.get(h) or num2words(h, lang="pt")
             if mm_str is None or int(mm_str) == 0:
                 unit = "hora" if h == 1 else "horas"
                 return f"{hw} {unit}"
@@ -817,7 +822,12 @@ def _numbers_to_words(text: str, lang: str, locale: Optional[str] = None) -> str
             if _leading_zero(raw_whole):
                 return m.group(0)
             reais = int(raw_whole)
-            unit = "real" if reais == 1 else "reais"
+            if reais == 1:
+                unit = "real"
+            elif reais >= 1_000_000 and reais % 1_000_000 == 0:
+                unit = "de reais"
+            else:
+                unit = "reais"
             spoken = f"{num2words(reais, lang='pt')} {unit}"
             if m.group(2) is None:
                 return spoken
