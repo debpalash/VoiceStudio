@@ -1090,7 +1090,14 @@ def _iso_to_omnivoice_lang(code: Optional[str]) -> Optional[str]:
     alias = APP_LANGUAGE_NAMES.get(c) or APP_LANGUAGE_IDS.get(c)
     if alias:
         return alias
-    return _ISO_TO_OV.get(c, c.capitalize())
+    if c in _ISO_TO_OV:
+        return _ISO_TO_OV[c]
+    # Already a valid OmniVoice id ("ht", "ug"): pass through, never title-case.
+    from omnivoice.utils.lang_map import LANG_IDS
+
+    if c in LANG_IDS:
+        return c
+    return c.capitalize()
 
 
 _ISO_TO_OV = {

@@ -135,3 +135,8 @@ def test_gguf_lang_arg_resolves_app_picker_aliases(monkeypatch, tmp_path, gguf, 
 def test_gguf_lang_arg_keeps_plain_iso_mapping(gguf):
     assert gguf._iso_to_omnivoice_lang("fr") == "French"
     assert gguf._iso_to_omnivoice_lang("auto") is None
+
+
+def test_gguf_lang_arg_keeps_ids_already_valid(gguf):
+    assert gguf._iso_to_omnivoice_lang("ht") == "ht"
+    assert gguf._iso_to_omnivoice_lang("ug") == "ug"
