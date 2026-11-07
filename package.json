@@ -1,6 +1,6 @@
 {
   "name": "omnivoice-studio-monorepo",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "license": "AGPL-3.0-only",
   "private": true,
   "packageManager": "bun@1.4.2",
