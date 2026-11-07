@@ -1,6 +1,7 @@
 // Vite+ (`vp test` / `vp check`) config for the RENDERER unit tests only.
 // The Electron dev/build pipeline lives in electron.vite.config.ts.
-import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -32,6 +33,8 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/renderer/src/test/setup.ts'],
+    // Code under test saves choices to this file; the real one steers the installed app.
+    env: { OMNIVOICE_ENV_FILE: join(tmpdir(), `voicestudio-vitest-${process.pid}`, 'env') },
     // Node 25+ ships a global localStorage that is undefined without --localstorage-file
     // and shadows jsdom's Storage; CI runs Node 22, where this flag is a no-op.
     execArgv: ['--no-experimental-webstorage'],
