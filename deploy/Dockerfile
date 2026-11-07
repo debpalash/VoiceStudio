@@ -109,6 +109,7 @@ RUN python3 -m pip install --no-cache-dir uv
 COPY pyproject.toml uv.lock README.md ./
 COPY deploy/torch-constraints.txt ./deploy/torch-constraints.txt
 COPY deploy/uv-overrides.txt ./deploy/uv-overrides.txt
+COPY deploy/security-constraints.txt deploy/security_floors.py ./deploy/
 
 # Install the project (non-editable — no need for -e in containers).
 # Uses `uv` for exponentially faster resolution than plain pip.
@@ -131,11 +132,16 @@ COPY deploy/uv-overrides.txt ./deploy/uv-overrides.txt
 # segment, so they match the base image's +cu128 / +rocm6.4 builds rather than
 # replacing them.
 #
+# The second --constraint carries the rest of `constraint-dependencies` (the
+# security floors), for the same reason: a base image's older compatible
+# package would otherwise survive below the floor.
+#
 # --override: `[tool.uv] override-dependencies` lifts caps that block security
 # releases (gradio's `pillow<13`), but `uv pip install` applies it only when run
 # from the project directory with a recent uv; pass it explicitly (#3275).
 RUN uv pip install --python "$(command -v python3)" --no-cache \
     --constraint deploy/torch-constraints.txt \
+    --constraint deploy/security-constraints.txt \
     --override deploy/uv-overrides.txt .
 
 # Guard: every security override must be what the image actually installed.
@@ -144,6 +150,20 @@ RUN python3 -c "from importlib.metadata import version; from packaging.requireme
     bad = [f'{r.name} {version(r.name)} does not satisfy {r}' for r in reqs if not r.specifier.contains(version(r.name), prereleases=True)]; \
     assert not bad, bad; \
     print('uv overrides applied:', ', '.join(f'{r.name} {version(r.name)}' for r in reqs))"
+
+# Security floors for packages the base image already ships but nothing here
+# requires: the install above leaves them alone (msgpack 1.1.1 in
+# pytorch/pytorch), so upgrade what is below its floor, then fail the build if
+# anything still is. Packages the image does not install are skipped.
+RUN floors="$(python3 deploy/security_floors.py requirements)" \
+    && if [ -n "$floors" ]; then \
+        echo "Raising to security floors: $floors" \
+        && uv pip install --python "$(command -v python3)" --no-cache \
+            --constraint deploy/torch-constraints.txt \
+            --constraint deploy/security-constraints.txt \
+            --override deploy/uv-overrides.txt $floors; \
+    fi \
+    && python3 deploy/security_floors.py check
 
 # Guard (fails the build, not the user at runtime): assert the dependency
 # install did NOT replace the base image's GPU torch. A future dep bump that
