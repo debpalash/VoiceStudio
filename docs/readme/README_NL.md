@@ -55,6 +55,8 @@
 <p align="center">
   <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/badge/Downloaden-993f61?style=for-the-badge&amp;logo=github&amp;logoColor=ffffff" alt="Downloaden" height="24" /></a>
   <a href="#get-started"><img src="https://img.shields.io/badge/Aan%20de%20slag-27272a?style=for-the-badge" alt="Aan de slag" height="24" /></a>
+  <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Pro-27272a?style=for-the-badge" alt="VoiceStudio Pro" height="24" /></a>
+  <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Cloud-27272a?style=for-the-badge" alt="VoiceStudio Cloud" height="24" /></a>
 </p>
 
 <a id="what-you-can-do"></a>
@@ -107,6 +109,39 @@ Kies uw motoren en download alleen de modellen die u nodig heeft.
 Begin met **VoiceStudio** (standaard, mogelijk gemaakt door k2-fsa/OmniVoice), of kies uit tientallen andere zoekmachines in Model Manager. Zie de [features & engine catalogue](../../docs/feature-catalog.md).
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
+
+## Pro en Cloud
+
+Alles hierboven is gratis, draait op je eigen hardware en heeft geen account nodig. Pro en Cloud zijn optioneel.
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
+      Voor betaald klantwerk op meer dan één machine.
+      <ul>
+        <li>Een commerciële licentie voor je klantwerk, per e-mail bezorgd</li>
+        <li>Eén gebruiker op maximaal 3 apparaten tegelijk</li>
+        <li>Stuur taken naar je andere GPU’s terwijl je projecten lokaal blijven</li>
+        <li>Nieuwe functies en oplossingen als eerste</li>
+      </ul>
+      <sub>Closed-source build, account vereist, 7 dagen volledige terugbetaling. De AGPL-3.0-app blijft gratis, ook voor commercieel gebruik onder de voorwaarden daarvan.</sub><br /><br />
+      <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Bekijk de Pro-abonnementen →</a></strong>
+    </td>
+    <td width="50%" valign="top">
+      <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br /><br />
+      Een gehoste API voor spraak en nasynchronisatie, binnenkort beschikbaar. Geen GPU nodig.
+      <ul>
+        <li>Spraak, stemontwerp en stemklonen met toestemming</li>
+        <li>Nasynchronisatie, transcriptie en audioboeken</li>
+        <li>Gebruik en tegoed per dag of project</li>
+        <li>Lange taken die vanzelf doorlopen</li>
+      </ul>
+      <sub>Nog niet beschikbaar: doe mee met early access en krijg gratis gebruikstegoed. De desktop-app blijft gratis en lokaal.</sub><br /><br />
+      <strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Doe mee met Cloud early access →</a></strong>
+    </td>
+  </tr>
+</table>
 
 <a id="platforms"></a>
 

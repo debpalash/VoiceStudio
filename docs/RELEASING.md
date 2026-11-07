@@ -115,6 +115,7 @@ version only after validation.
    and it skips the block when the changelog section already has a
    `### Contributors` heading, so write one by hand when you want roles or
    reporters credited.
+   In `docs/install/issue-tracker.md`, change `Fixed on main` rows to `Fixed in release` and update the release named at the top.
 5. Run `uv run pytest tests/test_app_version.py tests/test_changelog_style.py -q`.
 6. Audit contributor agreements: `git fetch origin cla-signatures`, then
    `GH_TOKEN=... python scripts/cla_audit.py`. Follow up with each unsigned

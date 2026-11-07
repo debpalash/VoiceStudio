@@ -12,6 +12,7 @@ export function SetupSupport({ status }: { status: BackendStatus }) {
   const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const [failed, setFailed] = useState(false);
   const [result, setResult] = useState<SetupConnectionCheck | null>(null);
   const setupFailed = status.stage === 'setup_required' && Boolean(status.message);
@@ -69,6 +70,28 @@ export function SetupSupport({ status }: { status: BackendStatus }) {
           </>
         )}
       </div>
+      {status.cpuSetupAvailable && (
+        <div className="space-y-1">
+          <Button
+            size="sm"
+            disabled={switching || !bridge}
+            onClick={async () => {
+              setSwitching(true);
+              setFailed(false);
+              try {
+                await bridge!.backend.setupRuntimeOnCpu();
+              } catch {
+                setFailed(true);
+              } finally {
+                setSwitching(false);
+              }
+            }}
+          >
+            {t('setupHelp.use_cpu')}
+          </Button>
+          <p className="text-xs text-muted-foreground">{t('setupHelp.use_cpu_hint')}</p>
+        </div>
+      )}
       {help && (
         <div className="space-y-2">
           <Button
