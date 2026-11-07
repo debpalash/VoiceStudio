@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
-import { AccountSession, backoffDelay } from './account-session';
+import { AccountSession, SIGN_OUT_DEADLINE_MS, backoffDelay } from './account-session';
 import { CloudActivity } from './cloud-activity';
 import { CloudSwitchStore } from './cloud-switches';
 import { InvalidGrantError, TransientAuthError } from './oidc';
@@ -164,6 +164,25 @@ it('offline sign-out still forgets the session on this device', async () => {
   expect(h.oidc.revoke).toHaveBeenCalledWith('r1');
   expect(h.store.load()).toBeNull();
   expect(h.session.state().signedIn).toBe(false);
+});
+
+it('sign-out forgets the session within the deadline even if revocation never answers', async () => {
+  vi.useFakeTimers();
+  try {
+    const h = harness();
+    h.store.save('r1');
+    h.oidc.revoke.mockImplementationOnce(() => new Promise<void>(() => {}));
+    let done = false;
+    const out = h.session.signOut().then(() => (done = true));
+    await vi.advanceTimersByTimeAsync(SIGN_OUT_DEADLINE_MS - 1);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await out;
+    expect(h.store.load()).toBeNull();
+    expect(h.session.state().signedIn).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it('backoff doubles from 1 s and caps at 5 min', () => {

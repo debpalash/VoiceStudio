@@ -98,19 +98,16 @@ it('setSwitches validates input and always marks the prompt as answered', async 
   expect(s.prompted).toBe(true);
 });
 
-it('does not switch off an account when online logout fails', async () => {
+it('switches off at once without waiting on the network to sign out', async () => {
   const set = vi.fn();
+  const signOut = vi.fn(() => new Promise<void>(() => {}));
   const c = ctl({
     switches: { get: () => ({ accountEnabled: true }), set } as never,
-    session: {
-      state: () => ({ signedIn: true }),
-      signOut: async () => {
-        throw new Error('offline');
-      },
-    } as never,
+    session: { state: () => ({ signedIn: true }), signOut } as never,
   });
-  await expect(c.setSwitches({ accountEnabled: false })).rejects.toThrow('offline');
-  expect(set).not.toHaveBeenCalled();
+  await c.setSwitches({ accountEnabled: false });
+  expect(set).toHaveBeenCalledWith({ accountEnabled: false, prompted: true });
+  expect(signOut).not.toHaveBeenCalled();
 });
 
 it('the renderer gets the photo as a data URL, never the signed download link', async () => {

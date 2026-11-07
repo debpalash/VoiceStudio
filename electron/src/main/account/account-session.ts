@@ -45,6 +45,21 @@ export const backoffDelay = (attempt: number): number => Math.min(300_000, 1000 
 
 const REFRESH_MARGIN_MS = 60_000;
 
+/** Longest a sign-out waits for a token refresh and revocation before forgetting locally. */
+export const SIGN_OUT_DEADLINE_MS = 5_000;
+
+function withinDeadline(work: Promise<unknown>, ms: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<void>((resolve) => (timer = setTimeout(resolve, ms)));
+  return Promise.race([
+    work.then(
+      () => undefined,
+      () => undefined,
+    ),
+    deadline,
+  ]).finally(() => clearTimeout(timer));
+}
+
 export class AccountSession {
   private access: AccessToken | null = null;
   /** Bumped whenever a session ends, so a token request already in flight is discarded. */
@@ -163,14 +178,19 @@ export class AccountSession {
     this.cancelSignIn();
     const generation = this.generation;
     this.logout = (async () => {
-      // Let an in-flight refresh settle so the newest refresh token is the one revoked.
-      if (this.inflight) await this.inflight.catch(() => undefined);
+      // Network work is capped so sign-out always finishes promptly, even on a dead network.
+      await withinDeadline(
+        (async () => {
+          // Let an in-flight refresh settle so the newest refresh token is the one revoked.
+          if (this.inflight) await this.inflight.catch(() => undefined);
+          if (this.generation !== generation) return;
+          const refresh = this.deps.store.load();
+          // Best effort: signing out always forgets the session on this device, even offline.
+          if (refresh) await this.deps.oidc.revoke(refresh).catch(() => undefined);
+        })(),
+        SIGN_OUT_DEADLINE_MS,
+      );
       // Another sign-out, switch-off or sign-in already replaced this session.
-      if (this.generation !== generation) return;
-      const refresh = this.deps.store.load();
-      // Revocation is best effort: signing out always forgets the session on this device,
-      // even offline, so every cloud call stops at once.
-      if (refresh) await this.deps.oidc.revoke(refresh).catch(() => undefined);
       if (this.generation === generation) this.endSession(null);
     })().finally(() => {
       this.logout = null;

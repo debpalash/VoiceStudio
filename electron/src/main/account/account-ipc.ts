@@ -123,8 +123,8 @@ export class AccountController {
     for (const key of ['accountEnabled', 'syncEnabled'] as const)
       if (p?.[key] !== undefined && typeof p[key] !== 'boolean')
         throw new Error('Invalid switches');
-    if (p.accountEnabled === false && this.parts.session.state().signedIn)
-      await this.parts.session.signOut();
+    // Switching off is never held up by the network: the switch closes every cloud gate at
+    // once, and the session ends itself and sends one best-effort revocation (turnedOff).
     if (this.parts.available)
       this.parts.switches.set({
         ...(p.accountEnabled !== undefined ? { accountEnabled: p.accountEnabled } : {}),
