@@ -216,7 +216,8 @@ def polish_dictation(
         # "hello comma" keeps the comma the speaker asked for; polish_text
         # would swap a dangling separator for a stop.
         body = polish_text(out[:-1])
-        if body.endswith(".") and not body.endswith(".."):
+        # The stop polish_text added is "." or, after CJK, the fullwidth "\u3002".
+        if body.endswith((".", "\u3002")) and not body.endswith(("..", "\u3002\u3002")):
             body = body[:-1]
         return body + out[-1]
     return polish_text(out)
