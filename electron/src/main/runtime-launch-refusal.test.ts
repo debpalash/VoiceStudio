@@ -50,7 +50,9 @@ afterEach(async () => {
   vi.mocked(installRuntime).mockReset();
   if (originalResources) Object.defineProperty(process, 'resourcesPath', originalResources);
   else delete (process as { resourcesPath?: string }).resourcesPath;
-  await rm(host.data, { recursive: true, force: true });
+  // Setup's failure log can still be flushing into the data dir when the test
+  // ends; rm retries ENOTEMPTY instead of failing the run (#3865 CI).
+  await rm(host.data, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
 function supervisor() {
