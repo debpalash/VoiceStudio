@@ -291,44 +291,61 @@ def test_the_security_constraints_match_pyproject():
     assert _requirement_lines(_SECURITY) == declared
 
 
-def test_the_dockerfile_passes_copies_and_checks_the_security_constraints():
+def _security_floors_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("security_floors", _ROOT / "deploy" / "security_floors.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_dockerfile_raises_and_checks_the_security_floors():
     text = _DOCKERFILE.read_text(encoding="utf-8")
     install_start = text.index("RUN uv pip install")
     install = text[install_start:text.index("\n\n", install_start)]
     assert "--constraint deploy/security-constraints.txt" in install, install
-    assert re.search(r"^COPY .*security-constraints\.txt", text, re.MULTILINE)
-    guard = text[text.index("# Guard: every installed package must meet its security floor"):]
-    assert "open('deploy/security-constraints.txt')" in guard and "specifier.contains" in guard
+    assert re.search(r"^COPY .*security-constraints\.txt.*security_floors\.py", text, re.MULTILINE)
+    floors = text[text.index('RUN floors="$(python3 deploy/security_floors.py requirements)"'):]
+    floors = floors[:floors.index("\n\n")]
+    # Upgrades what the main install left below its floor, then fails the build on any.
+    assert "uv pip install" in floors and "$floors" in floors
+    assert floors.rstrip().endswith("python3 deploy/security_floors.py check")
+    assert floors.index("security_floors.py requirements") < floors.index("security_floors.py check")
 
 
-@pytest.mark.parametrize("installed", ["0.6.5", "0.6.4", None])
-def test_docker_security_guard_enforces_installed_floors(tmp_path, monkeypatch, capsys, installed):
-    """Execute the shipped guard: a below-floor install fails the build, and a
-    package the image does not install (an optional extra) is skipped."""
-    import importlib.metadata
-    import shlex
+@pytest.mark.parametrize("installed, below", [
+    ({"pyasn1": "0.6.5"}, []),
+    ({"pyasn1": "0.6.4"}, ["pyasn1>=0.6.5"]),
+    ({"msgpack": "1.1.1", "pyasn1": "0.6.5"}, ["msgpack>=1.2.3"]),
+    ({}, []),
+])
+def test_security_floors_report_only_installed_packages_below_floor(tmp_path, installed, below):
+    """A base image's below-floor package is reported for upgrade; a package
+    the image does not install (an optional extra) is skipped."""
+    mod = _security_floors_module()
+    path = tmp_path / "floors.txt"
+    path.write_text("# floors\r\n\r\n  pyasn1>=0.6.5  \nmsgpack>=1.2.3\nhydra-core>=1.3.8\n", encoding="utf-8")
+    low = mod.below_floor(mod.floors(path), installed)
+    assert [f"{r.name}{r.specifier}" for r, _ in low] == below
+
+
+def test_security_floors_cli_check_and_requirements(monkeypatch, capsys):
     from types import SimpleNamespace
 
-    text = _DOCKERFILE.read_text(encoding="utf-8")
-    start = text.index('RUN python3 -c "import importlib.metadata as md;')
-    args = shlex.split(text[start:text.index("\n\n", start)].replace("\\\n", " "))
-    assert args[:3] == ["RUN", "python3", "-c"]
-    (tmp_path / "deploy").mkdir()
-    (tmp_path / "deploy/security-constraints.txt").write_text(
-        "# floors\n\npyasn1>=0.6.5\nhydra-core>=1.3.8\n", encoding="utf-8"
-    )
-    dists = [] if installed is None else [SimpleNamespace(metadata={"Name": "pyasn1"}, version=installed)]
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(importlib.metadata, "distributions", lambda: dists)
-    if installed == "0.6.4":
-        with pytest.raises(AssertionError, match="pyasn1 0.6.4 does not satisfy pyasn1>=0.6.5"):
-            exec(args[3], {})
-    else:
-        exec(args[3], {})
-        out = capsys.readouterr().out
-        assert "security floors hold:" in out
-        assert ("pyasn1 0.6.5" in out) == (installed == "0.6.5")
-        assert "hydra-core" not in out
+    mod = _security_floors_module()
+    monkeypatch.setattr(mod.md, "distributions", lambda: [
+        SimpleNamespace(metadata={"Name": "MsgPack"}, version="1.1.1"),
+        SimpleNamespace(metadata={"Name": None}, version="0"),
+    ])
+    assert mod.main(["x", "requirements"]) == 0
+    assert capsys.readouterr().out.split() == ["msgpack>=1.2.3"]
+    assert mod.main(["x", "check"]) == 1
+    assert "msgpack 1.1.1 does not satisfy msgpack>=1.2.3" in capsys.readouterr().err
+    monkeypatch.setattr(mod.md, "distributions", lambda: [SimpleNamespace(metadata={"Name": "msgpack"}, version="1.2.3")])
+    assert mod.main(["x", "requirements"]) == 0 and capsys.readouterr().out == ""
+    assert mod.main(["x", "check"]) == 0
+    assert "security floors hold: msgpack 1.2.3" in capsys.readouterr().out
 
 
 def test_the_colab_notebook_passes_the_security_constraints():
@@ -342,3 +359,7 @@ def test_the_colab_notebook_passes_the_security_constraints():
         args = _install_argv(src)
         pairs = [args[i + 1] for i, a in enumerate(args[:-1]) if a == "--constraint"]
         assert "deploy/security-constraints.txt" in pairs, args
+        # Packages Colab already ships are raised to their floors, then checked.
+        tree_src = src[src.index('"deploy/security_floors.py", "requirements"'):]
+        assert "security floor upgrades" in tree_src
+        assert '"deploy/security_floors.py", "check"' in tree_src

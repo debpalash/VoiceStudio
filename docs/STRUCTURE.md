@@ -102,6 +102,7 @@ VoiceStudio/
 │   ├── docker-compose.yml       local one-command stack
 │   ├── torch-constraints.txt    image-specific torch-family lock
 │   ├── security-constraints.txt security floors for the Docker and Colab installs
+│   ├── security_floors.py       raises and checks installed packages against those floors
 │   ├── dockerhub-overview.md    release-synchronised Docker Hub description
 │   └── install-worker/          Cloudflare worker serving voicestudio.sh/install; embeds both installers
 │                                from scripts/ (see docs/install/script.md)
