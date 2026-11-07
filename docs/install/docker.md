@@ -159,6 +159,8 @@ All image variants verify installed dependency versions against
 `deploy/uv-overrides.txt` after installation. The check strips surrounding
 whitespace and line endings before parsing requirements, including with
 `packaging` 26.3; an installed version below the required floor still fails the build.
+They also check every installed package against `deploy/security-constraints.txt`,
+the security floors from `pyproject.toml`; a package below its floor fails the build.
 
 ## Pull and run (AMD GPU / ROCm)
 

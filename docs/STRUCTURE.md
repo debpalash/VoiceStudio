@@ -101,6 +101,7 @@ VoiceStudio/
 │   ├── Dockerfile               CUDA baseline; BASE_IMAGE and GPU_FLAVOR let CI build ROCm too
 │   ├── docker-compose.yml       local one-command stack
 │   ├── torch-constraints.txt    image-specific torch-family lock
+│   ├── security-constraints.txt security floors for the Docker and Colab installs
 │   ├── dockerhub-overview.md    release-synchronised Docker Hub description
 │   └── install-worker/          Cloudflare worker serving voicestudio.sh/install; embeds both installers
 │                                from scripts/ (see docs/install/script.md)

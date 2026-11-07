@@ -273,3 +273,72 @@ def test_the_colab_notebook_updates_a_reused_clone():
     reuse = src[src.index("# 2a."):src.index("else:", src.index("# 2a."))]
     assert '"pull", "--ff-only"' in reuse
     assert 'shutil.rmtree(os.path.join(REPO_DIR, "frontend", "dist")' in reuse
+
+
+# --- the remaining `[tool.uv] constraint-dependencies` (security floors) ---
+# `uv pip install` ignores them too, so a base image's older compatible
+# package would survive below the floor that `uv sync` enforces (#3857).
+_SECURITY = _ROOT / "deploy" / "security-constraints.txt"
+
+
+def test_the_security_constraints_match_pyproject():
+    pyproject = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    declared = sorted(
+        c for c in pyproject["tool"]["uv"]["constraint-dependencies"]
+        if re.split(r"[<>=!~;\s\[]", c, maxsplit=1)[0].lower() not in _PACKAGES
+    )
+    assert declared, "pyproject declares no security floors; drop deploy/security-constraints.txt too"
+    assert _requirement_lines(_SECURITY) == declared
+
+
+def test_the_dockerfile_passes_copies_and_checks_the_security_constraints():
+    text = _DOCKERFILE.read_text(encoding="utf-8")
+    install_start = text.index("RUN uv pip install")
+    install = text[install_start:text.index("\n\n", install_start)]
+    assert "--constraint deploy/security-constraints.txt" in install, install
+    assert re.search(r"^COPY .*security-constraints\.txt", text, re.MULTILINE)
+    guard = text[text.index("# Guard: every installed package must meet its security floor"):]
+    assert "open('deploy/security-constraints.txt')" in guard and "specifier.contains" in guard
+
+
+@pytest.mark.parametrize("installed", ["0.6.5", "0.6.4", None])
+def test_docker_security_guard_enforces_installed_floors(tmp_path, monkeypatch, capsys, installed):
+    """Execute the shipped guard: a below-floor install fails the build, and a
+    package the image does not install (an optional extra) is skipped."""
+    import importlib.metadata
+    import shlex
+    from types import SimpleNamespace
+
+    text = _DOCKERFILE.read_text(encoding="utf-8")
+    start = text.index('RUN python3 -c "import importlib.metadata as md;')
+    args = shlex.split(text[start:text.index("\n\n", start)].replace("\\\n", " "))
+    assert args[:3] == ["RUN", "python3", "-c"]
+    (tmp_path / "deploy").mkdir()
+    (tmp_path / "deploy/security-constraints.txt").write_text(
+        "# floors\n\npyasn1>=0.6.5\nhydra-core>=1.3.8\n", encoding="utf-8"
+    )
+    dists = [] if installed is None else [SimpleNamespace(metadata={"Name": "pyasn1"}, version=installed)]
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(importlib.metadata, "distributions", lambda: dists)
+    if installed == "0.6.4":
+        with pytest.raises(AssertionError, match="pyasn1 0.6.4 does not satisfy pyasn1>=0.6.5"):
+            exec(args[3], {})
+    else:
+        exec(args[3], {})
+        out = capsys.readouterr().out
+        assert "security floors hold:" in out
+        assert ("pyasn1 0.6.5" in out) == (installed == "0.6.5")
+        assert "hydra-core" not in out
+
+
+def test_the_colab_notebook_passes_the_security_constraints():
+    nb = json.loads(_NOTEBOOK.read_text(encoding="utf-8"))
+    installs = [
+        "".join(c["source"]) for c in nb["cells"]
+        if c["cell_type"] == "code" and '"uv", "pip", "install"' in "".join(c["source"])
+    ]
+    assert installs
+    for src in installs:
+        args = _install_argv(src)
+        pairs = [args[i + 1] for i, a in enumerate(args[:-1]) if a == "--constraint"]
+        assert "deploy/security-constraints.txt" in pairs, args

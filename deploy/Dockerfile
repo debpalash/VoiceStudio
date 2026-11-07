@@ -109,6 +109,7 @@ RUN python3 -m pip install --no-cache-dir uv
 COPY pyproject.toml uv.lock README.md ./
 COPY deploy/torch-constraints.txt ./deploy/torch-constraints.txt
 COPY deploy/uv-overrides.txt ./deploy/uv-overrides.txt
+COPY deploy/security-constraints.txt ./deploy/security-constraints.txt
 
 # Install the project (non-editable — no need for -e in containers).
 # Uses `uv` for exponentially faster resolution than plain pip.
@@ -131,11 +132,16 @@ COPY deploy/uv-overrides.txt ./deploy/uv-overrides.txt
 # segment, so they match the base image's +cu128 / +rocm6.4 builds rather than
 # replacing them.
 #
+# The second --constraint carries the rest of `constraint-dependencies` (the
+# security floors), for the same reason: a base image's older compatible
+# package would otherwise survive below the floor.
+#
 # --override: `[tool.uv] override-dependencies` lifts caps that block security
 # releases (gradio's `pillow<13`), but `uv pip install` applies it only when run
 # from the project directory with a recent uv; pass it explicitly (#3275).
 RUN uv pip install --python "$(command -v python3)" --no-cache \
     --constraint deploy/torch-constraints.txt \
+    --constraint deploy/security-constraints.txt \
     --override deploy/uv-overrides.txt .
 
 # Guard: every security override must be what the image actually installed.
@@ -144,6 +150,16 @@ RUN python3 -c "from importlib.metadata import version; from packaging.requireme
     bad = [f'{r.name} {version(r.name)} does not satisfy {r}' for r in reqs if not r.specifier.contains(version(r.name), prereleases=True)]; \
     assert not bad, bad; \
     print('uv overrides applied:', ', '.join(f'{r.name} {version(r.name)}' for r in reqs))"
+
+# Guard: every installed package must meet its security floor. Packages the
+# image does not install (optional extras) are skipped.
+RUN python3 -c "import importlib.metadata as md; from packaging.requirements import Requirement; from packaging.utils import canonicalize_name as cn; \
+    inst = {cn(d.metadata['Name']): d.version for d in md.distributions() if d.metadata['Name']}; \
+    reqs = [Requirement(l.strip()) for l in open('deploy/security-constraints.txt') if l.strip() and not l.lstrip().startswith('#')]; \
+    have = [r for r in reqs if cn(r.name) in inst]; \
+    bad = [f'{r.name} {inst[cn(r.name)]} does not satisfy {r}' for r in have if not r.specifier.contains(inst[cn(r.name)], prereleases=True)]; \
+    assert not bad, bad; \
+    print('security floors hold:', ', '.join(f'{r.name} {inst[cn(r.name)]}' for r in have))"
 
 # Guard (fails the build, not the user at runtime): assert the dependency
 # install did NOT replace the base image's GPU torch. A future dep bump that
