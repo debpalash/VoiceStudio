@@ -19,10 +19,54 @@ def test_finite_language_options_without_loading_models(engine, allowed, rejecte
 
 
 def test_open_ended_engine_keeps_all_language_options(tts):
-    from omnivoice.utils.lang_map import LANG_NAME_TO_ID
-    # Plus the regional Portuguese choices, which resolve to its "pt" (#3143).
-    expected = sorted({*LANG_NAME_TO_ID, 'portuguese (brazil)', 'portuguese (portugal)'})
+    from omnivoice.utils.lang_map import APP_LANGUAGE_NAMES, LANG_NAME_TO_ID
+    # Plus the regional Portuguese choices, which resolve to its "pt" (#3143),
+    # and the app picker names it resolves (#3651).
+    expected = sorted({*LANG_NAME_TO_ID, *APP_LANGUAGE_NAMES,
+                       'portuguese (brazil)', 'portuguese (portugal)'})
     assert tts.language_options('omnivoice') == expected
+
+
+# Translation targets this model has no voice for; the dub pre-flight must keep
+# blocking them. Anything else the app offers must resolve to a model language.
+_OMNIVOICE_UNSUPPORTED_TARGETS = {'Latin', 'Samoan', 'Scots Gaelic', 'Sundanese'}
+
+
+def _app_translation_targets():
+    import re
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / 'electron' / 'src'
+    source = ((root / 'shared' / 'utils' / 'languages.js').read_text(encoding='utf-8')
+              + (root / 'renderer' / 'src' / 'lib' / 'translation-targets.ts').read_text(encoding='utf-8'))
+    targets = re.findall(r"\{ code: '([^']+)', label: '([^']+)' \}", source)
+    assert len(targets) > 90, 'translation target lists moved; update this parser'
+    return targets
+
+
+def test_every_app_translation_target_resolves_for_omnivoice(tts):
+    """#3651: dub targets such as "Arabic" were rejected before Generate Dub and,
+    past the gate, synthesized with no language conditioning."""
+    from omnivoice.models.omnivoice import _resolve_language
+    options = set(tts.language_options('omnivoice'))
+    unresolved = []
+    for code, label in _app_translation_targets():
+        if label in _OMNIVOICE_UNSUPPORTED_TARGETS:
+            assert _resolve_language(label) is None
+            assert label.lower() not in options
+            continue
+        if not (_resolve_language(label) and _resolve_language(code) and label.lower() in options):
+            unresolved.append(f'{label} ({code})')
+    assert unresolved == []
+
+
+@pytest.mark.parametrize('language,expected', [
+    ('Arabic', 'arb'), ('ar', 'arb'), ('Kurdish', 'kmr'), ('ku', 'kmr'),
+    ('Chinese (Simplified)', 'zh'), ('cmn-Hant', 'zh'), ('Pashto', 'ps'),
+    ('Standard Arabic', 'arb'), ('Egyptian Arabic', 'arz'), ('en', 'en'), ('Klingon', None),
+])
+def test_omnivoice_resolves_app_picker_names_and_tags(language, expected):
+    from omnivoice.models.omnivoice import _resolve_language
+    assert _resolve_language(language) == expected
 
 
 def test_installed_kokoro_tables_are_read_without_importing_model(tmp_path, monkeypatch, tts):
