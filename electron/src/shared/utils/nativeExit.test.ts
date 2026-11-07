@@ -68,6 +68,12 @@ describe('external termination (0xFFFFFFFF / -1)', () => {
     expect(describeExitCode(-1)).toBe('-1 (0xFFFFFFFF EXTERNAL_TERMINATION)');
     expect(describeExitCode(4294967295)).toBe('4294967295 (0xFFFFFFFF EXTERNAL_TERMINATION)');
   });
+  test('a Python traceback in the output keeps the exit code unlabelled', () => {
+    const tb = ['Traceback (most recent call last):', '  File "a.py"', 'ValueError: x'];
+    expect(describeExitCode(-1, 'unknown', tb)).toBe('-1');
+    expect(describeExitCode(-1, 'unknown', tb.join('\n'))).toBe('-1');
+    expect(describeExitCode(-1, 'unknown', ['plain output'])).toBe('-1 (0xFFFFFFFF EXTERNAL_TERMINATION)');
+  });
 });
 
 describe('unusable input', () => {

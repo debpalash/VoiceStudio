@@ -207,7 +207,7 @@ describe('BackendCrashNotice — sentinel evidence gate (#1375)', () => {
 
     const dialog = await screen.findByRole('dialog');
     expect(dialog.textContent).toMatch(/ended from outside the app/i);
-    expect(dialog.textContent).toMatch(/no job was lost/i);
+    expect(dialog.textContent).not.toMatch(/no job was lost/i);
     expect(dialog.textContent).not.toMatch(/GPU driver|compute stack|VRAM/i);
     // An exit code IS evidence, so the one-click report stays.
     expect(screen.getByText('Report this bug')).toBeInTheDocument();

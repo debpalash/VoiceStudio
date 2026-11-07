@@ -59,15 +59,29 @@ export function isExternalKillExit(code: number | null | undefined): boolean {
   return normalizeExitCode(code) === EXTERNAL_TERMINATION;
 }
 
+/** True when captured output already carries a fault dump or a Python
+ * traceback: evidence that explains the death better than "ended from outside". */
+export function hasFaultEvidence(output: string | readonly string[] | null | undefined): boolean {
+  const text = Array.isArray(output) ? output.join('\n') : (output ?? '');
+  return (
+    /(?:Fatal Python error:|Windows fatal exception:)/.test(text) ||
+    /Traceback \(most recent call last\)/.test(text)
+  );
+}
+
+/** `output` is the captured stderr/log tail; with fault evidence in it a -1
+ * exit is not labelled an external termination. */
 export function describeExitCode(
   code: number | null | undefined,
   unknownLabel = 'unknown',
+  output?: string | readonly string[] | null,
 ): string {
   const raw = finiteOrNull(code);
   if (raw === null) return unknownLabel;
   const name = ntStatusName(raw);
   const unsigned = normalizeExitCode(raw);
-  if (name === null && unsigned !== EXTERNAL_TERMINATION) return String(raw);
+  const external = unsigned === EXTERNAL_TERMINATION && !hasFaultEvidence(output);
+  if (name === null && !external) return String(raw);
   const hex = (unsigned ?? 0).toString(16).toUpperCase().padStart(8, '0');
   const label = name ?? EXTERNAL_TERMINATION_LABEL;
   return `${raw} (0x${hex} ${label})`;

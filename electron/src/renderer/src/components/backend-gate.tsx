@@ -164,6 +164,8 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
     ? failureGuidance(failureCode, {
         message: status.message,
         smartAppControl: status.failure?.smartAppControl,
+        exitCode: status.exitCode,
+        logLines: status.logTail,
       })
     : null;
   const cause = guidance?.cause ?? null;

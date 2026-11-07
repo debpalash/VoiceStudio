@@ -2291,6 +2291,8 @@
     "cause_permission": "エンジンのフォルダーへの書き込み権限がありません",
     "cause_synced_folder": "エンジンのフォルダーがクラウド同期フォルダー内にあります",
     "cause_slow_start": "動作の遅いパソコンでエンジンがまだ起動中です",
+    "cause_external_kill": "エンジンがアプリの外部から終了されました",
+    "hint_external_kill": "セキュリティソフト、OS のポリシー、または別のプログラムがエンジンを停止しました。VoiceStudio の不具合ではありません。ウイルス対策ソフトとアプリ制御ポリシーを確認してから、再試行してください。",
     "choose_folder": "別のフォルダーを選択",
     "copy_diagnostics": "診断情報をコピー",
     "diagnostics_copied": "診断情報をコピーしました",

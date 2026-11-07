@@ -2291,6 +2291,8 @@
     "cause_permission": "Không có quyền ghi vào thư mục của công cụ",
     "cause_synced_folder": "Thư mục của công cụ nằm trong thư mục đồng bộ đám mây",
     "cause_slow_start": "Công cụ vẫn đang khởi động trên máy chậm",
+    "cause_external_kill": "Bộ máy bị chấm dứt từ bên ngoài ứng dụng",
+    "hint_external_kill": "Phần mềm bảo mật, chính sách hệ điều hành hoặc một chương trình khác đã dừng bộ máy; đây không phải lỗi của VoiceStudio. Hãy kiểm tra phần mềm diệt virus và chính sách kiểm soát ứng dụng, rồi thử lại.",
     "choose_folder": "Chọn thư mục khác",
     "copy_diagnostics": "Sao chép chẩn đoán",
     "diagnostics_copied": "Đã sao chép chẩn đoán",

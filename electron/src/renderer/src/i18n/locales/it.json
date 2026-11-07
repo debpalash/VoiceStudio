@@ -2293,6 +2293,8 @@
     "cause_permission": "Nessun permesso di scrittura nella cartella del motore",
     "cause_synced_folder": "La cartella del motore si trova in una cartella sincronizzata nel cloud",
     "cause_slow_start": "Il motore è ancora in avvio su un computer lento",
+    "cause_external_kill": "Il motore è stato terminato dall’esterno dell’app",
+    "hint_external_kill": "Un software di sicurezza, un criterio del sistema o un altro programma ha fermato il motore; non è un difetto di VoiceStudio. Controlla l’antivirus e ogni criterio di controllo delle app, poi riprova.",
     "choose_folder": "Scegli un’altra cartella",
     "copy_diagnostics": "Copia diagnostica",
     "diagnostics_copied": "Diagnostica copiata",

@@ -2315,6 +2315,8 @@
     "cause_permission": "Brak uprawnień do zapisu w folderze silnika",
     "cause_synced_folder": "Folder silnika znajduje się w folderze synchronizowanym z chmurą",
     "cause_slow_start": "Silnik nadal się uruchamia na wolnym komputerze",
+    "cause_external_kill": "Silnik został zakończony spoza aplikacji",
+    "hint_external_kill": "Oprogramowanie zabezpieczające, zasady systemu lub inny program zatrzymał silnik; to nie jest błąd VoiceStudio. Sprawdź antywirus i zasady kontroli aplikacji, a potem spróbuj ponownie.",
     "choose_folder": "Wybierz inny folder",
     "copy_diagnostics": "Kopiuj diagnostykę",
     "diagnostics_copied": "Skopiowano diagnostykę",

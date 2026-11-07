@@ -2290,6 +2290,8 @@
     "cause_permission": "엔진 폴더에 쓸 권한이 없습니다",
     "cause_synced_folder": "엔진 폴더가 클라우드 동기화 폴더 안에 있습니다",
     "cause_slow_start": "느린 컴퓨터에서 엔진이 아직 시작 중입니다",
+    "cause_external_kill": "엔진이 앱 외부에서 종료되었습니다",
+    "hint_external_kill": "보안 소프트웨어, OS 정책 또는 다른 프로그램이 엔진을 중지했습니다. VoiceStudio의 결함이 아닙니다. 백신과 앱 제어 정책을 확인한 뒤 다시 시도하세요.",
     "choose_folder": "다른 폴더 선택",
     "copy_diagnostics": "진단 정보 복사",
     "diagnostics_copied": "진단 정보를 복사했습니다",

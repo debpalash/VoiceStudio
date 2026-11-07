@@ -446,6 +446,29 @@ it('names a native crash and makes Copy diagnostics the primary action', () => {
   expect(screen.getByRole('button', { name: i18n.t('backend.retry') })).toBeEnabled();
 });
 
+it('explains an externally killed backend (exit code 4294967295) on the live screen', () => {
+  backendStatus.message = 'Backend exited unexpectedly (exit code 4294967295).';
+
+  renderGate('crashed');
+
+  expect(screen.getByTestId('backend-cause')).toHaveTextContent(
+    i18n.t('backend.cause_external_kill'),
+  );
+  expect(screen.getByTestId('backend-hint')).toHaveTextContent(
+    i18n.t('backend.hint_external_kill'),
+  );
+  expect(screen.getByRole('button', { name: i18n.t('backend.retry') })).toBeEnabled();
+});
+
+it('does not call a traceback exit an external kill', () => {
+  backendStatus.message =
+    'Backend exited unexpectedly (exit code -1).\nTraceback (most recent call last):\n  File "a.py"\nValueError: x';
+
+  renderGate('crashed');
+
+  expect(screen.queryByTestId('backend-cause')).not.toBeInTheDocument();
+});
+
 it('offers Choose another folder for a missing Python environment', async () => {
   const chooseRuntimeLocation = vi.fn().mockResolvedValue({ path: 'D:\\vs' });
   const restart = vi.fn().mockResolvedValue(undefined);

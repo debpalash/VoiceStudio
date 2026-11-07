@@ -2293,6 +2293,8 @@
     "cause_permission": "Pas d’autorisation d’écriture dans le dossier du moteur",
     "cause_synced_folder": "Le dossier du moteur se trouve dans un dossier synchronisé dans le cloud",
     "cause_slow_start": "Le moteur démarre encore sur un ordinateur lent",
+    "cause_external_kill": "Le moteur a été arrêté depuis l’extérieur de l’application",
+    "hint_external_kill": "Un logiciel de sécurité, une stratégie du système ou un autre programme a arrêté le moteur ; ce n’est pas un défaut de VoiceStudio. Vérifiez votre antivirus et toute stratégie de contrôle des applications, puis réessayez.",
     "choose_folder": "Choisir un autre dossier",
     "copy_diagnostics": "Copier le diagnostic",
     "diagnostics_copied": "Diagnostic copié",

@@ -2291,6 +2291,8 @@
     "cause_permission": "Ingen behörighet att skriva till motormappen",
     "cause_synced_folder": "Motormappen ligger i en molnsynkad mapp",
     "cause_slow_start": "Motorn startar fortfarande på en långsam dator",
+    "cause_external_kill": "Motorn avslutades utanför appen",
+    "hint_external_kill": "Säkerhetsprogram, en OS-policy eller ett annat program stoppade motorn; det är inget fel i VoiceStudio. Kontrollera antivirus och eventuell appkontrollpolicy och försök igen.",
     "choose_folder": "Välj en annan mapp",
     "copy_diagnostics": "Kopiera diagnostik",
     "diagnostics_copied": "Diagnostik kopierad",

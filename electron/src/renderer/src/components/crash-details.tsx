@@ -24,7 +24,7 @@ export function CrashDetails() {
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
           <dt className="text-muted-foreground">{t('crash.field_exit')}</dt>
           <dd>
-            {crash.signal ?? (crash.exitCode != null ? describeExitCode(crash.exitCode) : '—')}
+            {crash.signal ?? (crash.exitCode != null ? describeExitCode(crash.exitCode, undefined, crash.logTail) : '—')}
           </dd>
           <dt className="text-muted-foreground">{t('crash.field_when')}</dt>
           <dd>{new Date(crash.timestamp).toLocaleString()}</dd>

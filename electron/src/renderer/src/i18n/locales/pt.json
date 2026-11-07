@@ -2293,6 +2293,8 @@
     "cause_permission": "Sem permissão para gravar na pasta do mecanismo",
     "cause_synced_folder": "A pasta do mecanismo está dentro de uma pasta sincronizada na nuvem",
     "cause_slow_start": "O mecanismo ainda está iniciando em um computador lento",
+    "cause_external_kill": "O motor foi encerrado de fora do app",
+    "hint_external_kill": "Um software de segurança, uma política do sistema ou outro programa parou o motor; não é uma falha do VoiceStudio. Verifique seu antivírus e qualquer política de controle de aplicativos e tente novamente.",
     "choose_folder": "Escolher outra pasta",
     "copy_diagnostics": "Copiar diagnóstico",
     "diagnostics_copied": "Diagnóstico copiado",

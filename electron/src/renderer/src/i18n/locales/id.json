@@ -2291,6 +2291,8 @@
     "cause_permission": "Tidak ada izin menulis ke folder mesin",
     "cause_synced_folder": "Folder mesin berada di dalam folder yang disinkronkan ke cloud",
     "cause_slow_start": "Mesin masih dimulai di komputer yang lambat",
+    "cause_external_kill": "Mesin dihentikan dari luar aplikasi",
+    "hint_external_kill": "Perangkat lunak keamanan, kebijakan OS, atau program lain menghentikan mesin; ini bukan kesalahan VoiceStudio. Periksa antivirus dan kebijakan kontrol aplikasi, lalu coba lagi.",
     "choose_folder": "Pilih folder lain",
     "copy_diagnostics": "Salin diagnostik",
     "diagnostics_copied": "Diagnostik disalin",

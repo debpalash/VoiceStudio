@@ -2291,6 +2291,8 @@
     "cause_permission": "Keine Schreibberechtigung für den Engine-Ordner",
     "cause_synced_folder": "Der Engine-Ordner liegt in einem Cloud-synchronisierten Ordner",
     "cause_slow_start": "Die Engine startet auf einem langsamen Computer noch",
+    "cause_external_kill": "Die Engine wurde von außerhalb der App beendet",
+    "hint_external_kill": "Sicherheitssoftware, eine Betriebssystem-Richtlinie oder ein anderes Programm hat die Engine gestoppt; das ist kein Fehler von VoiceStudio. Prüfe dein Antivirenprogramm und jede App-Kontrollrichtlinie und versuche es dann erneut.",
     "choose_folder": "Anderen Ordner wählen",
     "copy_diagnostics": "Diagnose kopieren",
     "diagnostics_copied": "Diagnose kopiert",

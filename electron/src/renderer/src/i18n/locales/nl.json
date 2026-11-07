@@ -2291,6 +2291,8 @@
     "cause_permission": "Geen schrijfrechten voor de enginemap",
     "cause_synced_folder": "De enginemap staat in een met de cloud gesynchroniseerde map",
     "cause_slow_start": "De engine is nog bezig met starten op een trage computer",
+    "cause_external_kill": "De engine is van buiten de app beëindigd",
+    "hint_external_kill": "Beveiligingssoftware, een OS-beleid of een ander programma heeft de engine gestopt; dit is geen fout van VoiceStudio. Controleer je antivirus en eventueel app-beheerbeleid en probeer het opnieuw.",
     "choose_folder": "Andere map kiezen",
     "copy_diagnostics": "Diagnose kopiëren",
     "diagnostics_copied": "Diagnose gekopieerd",
