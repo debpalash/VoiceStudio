@@ -26,6 +26,7 @@ from core.auth import (
     PrincipalKind,
     is_local_host,
     is_loopback,
+    presents_valid_credential,
     principal_for,
     remote_api_key,
 )
@@ -218,6 +219,19 @@ async def require_admin(request: Request) -> None:
     check_admin(request)
 
 
+async def require_consumer_reads_admin_writes(request: Request) -> None:
+    """Keep shared content readable while requiring admin for mutations.
+
+    PIN-paired phones need metadata and saved audio on desktop too. A router's
+    write operations remain administrative; lazy GET synthesis has its own
+    media-action gate because it also writes state.
+    """
+    if request.method.upper() in SAFE_HTTP_METHODS:
+        require_consumer(request)
+    else:
+        check_admin(request)
+
+
 def check_admin(request: Request) -> None:
     """Gate RCE/filesystem-capable admin routers.
 
@@ -260,6 +274,25 @@ def require_admin_action(request: Request) -> None:
         request,
         side_effectful_get=True,
     ):
+        return
+    _admin_gate_403()
+
+
+def require_admin_media_action(request: Request) -> None:
+    """Admin gate for a side-effectful GET that a browser media element triggers.
+
+    ``<audio>``/``<video>`` requests cannot carry the CSRF marker header, so
+    :func:`require_admin_action` would refuse even a same-origin
+    cookie-authenticated admin. This variant keeps the cross-site GET
+    rejection and still requires a real admin credential from remote callers —
+    a bare-server anonymous GET is refused exactly as before — while letting
+    header API keys and same-origin admin sessions through.
+    """
+    reject_cross_site_get(request)
+    host = request.client.host if request.client else None
+    if is_loopback(host):
+        return
+    if _server_mode() and presents_valid_credential(request):
         return
     _admin_gate_403()
 

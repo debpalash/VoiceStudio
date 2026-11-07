@@ -38,7 +38,9 @@ init_db()
 def client():
     app = FastAPI()
     app.include_router(personas_router.router)
-    return TestClient(app)
+    # Loopback peer so the router's require_admin gate lets these handler tests
+    # through; remote denial is covered by the policy tests.
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 # ── bundle builders (no torch) ───────────────────────────────────────────────

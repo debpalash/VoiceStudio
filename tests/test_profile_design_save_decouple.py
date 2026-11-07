@@ -24,9 +24,25 @@ import os
 from pathlib import Path
 
 import pytest
+from starlette.requests import Request as StarletteRequest
 
 os.environ.setdefault("OMNIVOICE_MODEL", "test")
 os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
+
+
+def _media_request(host: str = "127.0.0.1") -> StarletteRequest:
+    """The request a media-element GET would carry: no Origin, no CSRF marker."""
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/profiles/x/audio",
+        "headers": [],
+        "query_string": b"",
+        "client": (host, 50000),
+        "server": ("testserver", 80),
+        "scheme": "http",
+    }
+    return StarletteRequest(scope)
 
 _VD = {"Gender": "female", "Age": "young adult", "Pitch": "high pitch"}
 _VD_AUTO = {"Gender": "Auto", "Age": "Auto", "Pitch": "Auto"}
@@ -252,7 +268,7 @@ def test_lazy_sample_renders_on_first_audio_request(iso, monkeypatch):
     from api.routers import archetypes as arch
     monkeypatch.setattr(arch, "_render_archetype_wav", _ok)
 
-    resp = asyncio.run(prof.get_profile_audio(pid))
+    resp = asyncio.run(prof.get_profile_audio(pid, _media_request()))
     assert getattr(resp, "status_code", 200) == 200
 
     with db.db_conn() as conn:
@@ -262,6 +278,73 @@ def test_lazy_sample_renders_on_first_audio_request(iso, monkeypatch):
     assert ref, "the lazily-rendered sample should be persisted on the row"
 
 
+@pytest.mark.parametrize("credential", ["bearer", "session_cookie"])
+def test_remote_pending_render_requires_an_admin_credential(iso, monkeypatch, credential):
+    """A non-loopback media GET without a real admin credential cannot
+    materialize a pending sample; server mode with a valid API key can."""
+    _, db, prof = iso
+    _model_unavailable(monkeypatch)
+
+    result = asyncio.run(
+        prof.create_profile(
+            name="Remote pending",
+            ref_audio=None,
+            ref_text="",
+            instruct="female, calm",
+            language="English",
+            seed=None,
+            personality="",
+            kind="design",
+            vd_states=json.dumps(_VD), design_recipe=None, engine=None,
+        )
+    )
+    pid = result["id"]
+
+    from api.routers import archetypes as arch
+    renders = []
+
+    async def _ok(a, out_path):
+        import wave
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(out_path), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(24_000)
+            wav.writeframes(b"\x00\x01" * 64)
+        renders.append(a)
+
+    monkeypatch.setattr(arch, "_render_archetype_wav", _ok)
+
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as denied:
+        asyncio.run(prof.get_profile_audio(pid, _media_request("10.0.0.5")))
+    assert denied.value.status_code == 403
+    assert renders == []
+
+    monkeypatch.setenv("OMNIVOICE_SERVER_MODE", "1")
+    monkeypatch.setenv("OMNIVOICE_API_KEY", "s3cret-key")
+    scope = _media_request("10.0.0.5").scope
+    from services.admin_sessions import admin_session_store
+    if credential == "session_cookie":
+        session = admin_session_store.issue("s3cret-key")
+        scope["headers"] = [
+            (b"cookie", f"ov_session={session.token}".encode()),
+            (b"sec-fetch-site", b"same-origin"),
+            (b"referer", b"http://testserver/profiles"),
+        ]
+    else:
+        scope["headers"] = [(b"authorization", b"Bearer s3cret-key")]
+    try:
+        resp = asyncio.run(prof.get_profile_audio(pid, StarletteRequest(scope)))
+    finally:
+        if credential == "session_cookie":
+            admin_session_store.revoke(session.token)
+    assert getattr(resp, "status_code", 200) == 200
+    assert len(renders) == 1
+
+
 def test_traversal_profile_id_is_rejected(iso):
     """#476 hardening / CWE-22 (CodeQL path-injection): a profile_id carrying
     path separators / `..` / NUL must 404 at the entry guard, never reaching a
@@ -269,5 +352,28 @@ def test_traversal_profile_id_is_rejected(iso):
     VOICES_DIR."""
     _, _, prof = iso
     for evil in ("../../etc/passwd", "..", "a/b", "foo/../bar", "x\x00y", "/abs", ""):
-        resp = asyncio.run(prof.get_profile_audio(evil))
+        resp = asyncio.run(prof.get_profile_audio(evil, _media_request()))
         assert getattr(resp, "status_code", None) == 404, (evil, resp)
+
+
+def test_pin_pairing_can_list_profiles_but_cannot_modify_them(iso, monkeypatch):
+    from types import SimpleNamespace
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    _, _, prof = iso
+    monkeypatch.delenv("OMNIVOICE_SERVER_MODE", raising=False)
+    monkeypatch.delenv("OMNIVOICE_API_KEY", raising=False)
+    monkeypatch.delenv("OMNIVOICE_TRUSTED_NETWORKS", raising=False)
+    app = FastAPI()
+    app.state.network_share = SimpleNamespace(pin="654321")
+    app.include_router(prof.router)
+    with TestClient(app, client=("10.0.0.5", 50000)) as client:
+        anonymous = client.get("/profiles")
+        listing = client.get("/profiles", headers={"X-Omnivoice-Pin": "654321"})
+        creation = client.post("/profiles", headers={"X-Omnivoice-Pin": "654321"}, data={"name": "unauthorized"})
+        deletion = client.delete("/profiles/missing", headers={"X-Omnivoice-Pin": "654321"})
+    assert anonymous.status_code == 403
+    assert listing.status_code == 200
+    assert creation.status_code == 403
+    assert deletion.status_code == 403

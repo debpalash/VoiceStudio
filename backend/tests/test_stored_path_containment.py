@@ -197,7 +197,7 @@ def gallery_client():
     gallery._init_gallery_db()
     app = FastAPI()
     app.include_router(gallery.router)
-    return TestClient(app)
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 def _gallery_row(audio_path: str) -> str:
@@ -267,7 +267,7 @@ def profiles_client(tmp_path, monkeypatch):
     db.init_db()
     app = FastAPI()
     app.include_router(profiles.router)
-    with TestClient(app) as client:
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
         yield client, tmp_path
 
 

@@ -27,7 +27,7 @@ def attrs_of(description: str) -> dict:
 def client():
     app = FastAPI()
     app.include_router(describe_router.router)
-    return TestClient(app)
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 # ── Varied descriptions ───────────────────────────────────────────────────────

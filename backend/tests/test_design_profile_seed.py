@@ -47,7 +47,7 @@ def design_client(tmp_path, monkeypatch):
     monkeypatch.setattr(arch_router, "_render_archetype_wav", render)
     app = FastAPI()
     app.include_router(profiles.router)
-    with TestClient(app) as client:
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
         yield client, seeds
 
 
