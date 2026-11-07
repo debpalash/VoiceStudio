@@ -35,7 +35,7 @@ sf = pytest.importorskip("soundfile")
 
 def _source_tree():
     from pathlib import Path
-    return ast.parse((Path(__file__).parent.parent / "backend/api/routers/dub_core.py").read_text())
+    return ast.parse((Path(__file__).parent.parent / "backend/api/routers/dub_core.py").read_text(encoding="utf-8"))
 
 
 def _assert_job_owned_outputs(tree):

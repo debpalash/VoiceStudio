@@ -51,10 +51,10 @@ def test_known_broken_pins_are_repaired_without_editing_upstream(tmp_path):
     original = 'gradio==6.17.0\ntransformers==4.57.0 # yanked\ntorch==2.8.0\n-r extras.txt\n'
     source.write_text(original)
     repaired = repair(source)
-    assert source.read_text() == original
+    assert source.read_text(encoding="utf-8") == original
     assert repaired.parent == source.parent  # relative includes still resolve
-    assert repaired.read_text() == original.replace('6.17.0', '6.17.3').replace('4.57.0', '4.57.1')
-    assert repair(source).read_text() == repaired.read_text()  # retry is stable
+    assert repaired.read_text(encoding="utf-8") == original.replace('6.17.0', '6.17.3').replace('4.57.0', '4.57.1')
+    assert repair(source).read_text(encoding="utf-8") == repaired.read_text(encoding="utf-8")  # retry is stable
 
 
 def test_custom_or_newer_pins_are_not_overridden(tmp_path):
@@ -84,4 +84,4 @@ def test_managed_install_uses_repaired_pins_and_reports_native_prerequisites(mon
     argument = calls[0][calls[0].index('-c') + 1]
     assert argument == source.with_name('.voicestudio-compatible.txt').as_uri()
     assert 'OpenFst' in error.value.remediation
-    assert source.read_text() == 'gradio==6.17.0\ntransformers==4.57.0\n'
+    assert source.read_text(encoding="utf-8") == 'gradio==6.17.0\ntransformers==4.57.0\n'

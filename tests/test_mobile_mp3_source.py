@@ -11,20 +11,20 @@ def test_mobile_mp3_upstream_sources_and_packaged_licence_are_pinned():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     module.verify()
-    original = (module.SOURCE / "COPYING").read_text()
+    original = (module.SOURCE / "COPYING").read_text(encoding="utf-8")
     for path in (
         ROOT / "mobile/android/app/src/main/assets/licenses/lame.txt",
         ROOT / "mobile/ios/VoiceStudio/Resources/NativeLicences/lame.txt",
     ):
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         assert original in text
         assert module.ARCHIVE_SHA256 in text
         assert "mobile/native/mp3/README.md" in text
 
 
 def test_both_mobile_builds_compile_the_same_encoder_sources():
-    package = (ROOT / "mobile/ios/VoiceStudioKit/Package.swift").read_text()
-    cmake = (ROOT / "mobile/native/android/CMakeLists.txt").read_text()
+    package = (ROOT / "mobile/ios/VoiceStudioKit/Package.swift").read_text(encoding="utf-8")
+    cmake = (ROOT / "mobile/native/android/CMakeLists.txt").read_text(encoding="utf-8")
     assert 'name: "VSLame"' in package and 'dependencies: ["VSLame"]' in package
     assert 'Sources/VSNative/Lame' in package
     assert 'ios/VoiceStudioKit/Sources/VSNative' in cmake

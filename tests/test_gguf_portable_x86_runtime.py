@@ -61,9 +61,9 @@ def test_x86_cpu_build_is_portable(tmp_path, platform):
         env=env, cwd=tmp_path, capture_output=True, text=True, timeout=60, check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    configure = [line for line in log.read_text().splitlines() if line.startswith("-B build")]
-    assert configure, log.read_text()
-    assert "native" not in log.read_text()
+    configure = [line for line in log.read_text(encoding="utf-8").splitlines() if line.startswith("-B build")]
+    assert configure, log.read_text(encoding="utf-8")
+    assert "native" not in log.read_text(encoding="utf-8")
     for line in configure:
         for flag in PORTABLE:
             assert flag in line, line

@@ -70,7 +70,7 @@ def test_tiny_values_are_floored_not_instant_kill(gguf, monkeypatch):
 def test_timeout_error_names_the_env_knob():
     # The user in #1348 had to read the source to find the constant; the
     # error itself must carry the escape hatch now.
-    src = (REPO / "backend/engines/omnivoice_gguf/backend.py").read_text()
+    src = (REPO / "backend/engines/omnivoice_gguf/backend.py").read_text(encoding="utf-8")
     timed_out = src[src.index("timed out after") :]
     assert "OMNIVOICE_GGUF_GENERATE_TIMEOUT_S" in timed_out[:300]
 
@@ -93,7 +93,7 @@ def test_every_spawn_of_the_engine_binary_passes_the_loader_env():
     # env=_spawn_env(), or a dynamically-linked build fails exit 127 from
     # that call site. (The /usr/bin/xattr quarantine probe is the one
     # legitimate literal-argv exception.)
-    src = (REPO / "backend/engines/omnivoice_gguf/backend.py").read_text()
+    src = (REPO / "backend/engines/omnivoice_gguf/backend.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
     spawns = 0
     for node in ast.walk(tree):
@@ -224,7 +224,7 @@ fi
         capture_output=True,
         text=True,
     )
-    log = cmake_log.read_text().splitlines() if cmake_log.exists() else []
+    log = cmake_log.read_text(encoding="utf-8").splitlines() if cmake_log.exists() else []
     return result, log
 
 
@@ -269,7 +269,7 @@ def test_linux_arm_build_falls_back_to_cpu(
 
 
 def test_cuda_sources_exclude_both_linux_arm64_spellings():
-    sources = tomllib.loads((REPO / "pyproject.toml").read_text())["tool"]["uv"]["sources"]
+    sources = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["uv"]["sources"]
     for package in ("torch", "torchaudio", "torchvision"):
         # Native PyPI and CPU sources can precede CUDA. Validate the named
         # index rather than depending on incidental source-array ordering.
@@ -294,7 +294,7 @@ def test_cuda_sources_exclude_both_linux_arm64_spellings():
 
 
 def test_build_script_copies_shared_libs_on_every_platform_branch():
-    script = (REPO / "scripts/build-omnivoice-tts.sh").read_text()
+    script = (REPO / "scripts/build-omnivoice-tts.sh").read_text(encoding="utf-8")
     assert "copy_shared_libs()" in script
     # Every copy of the executable is followed by the shared-lib copy —
     # the bug lived in ALL platform branches, not just Linux.
@@ -339,7 +339,7 @@ def test_ci_artifact_upload_includes_the_shared_libs():
     # Greptile P1 on the fix itself: copy_shared_libs is useless if the
     # workflow's upload glob then drops the libs from the artifact — the
     # downloaded binary would be exactly as broken as before.
-    wf = (REPO / ".github/workflows/build-omnivoice-tts.yml").read_text()
+    wf = (REPO / ".github/workflows/build-omnivoice-tts.yml").read_text(encoding="utf-8")
     assert "bin/libggml*" in wf
     assert "bin/ggml*.dll" in wf
 

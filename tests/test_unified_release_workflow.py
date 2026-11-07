@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def workflow(name):
-    data = yaml.safe_load((ROOT / '.github/workflows' / name).read_text())
+    data = yaml.safe_load((ROOT / '.github/workflows' / name).read_text(encoding="utf-8"))
     data['on'] = data.pop(True, data.get('on'))
     return data
 

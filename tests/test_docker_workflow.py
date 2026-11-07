@@ -154,7 +154,7 @@ def test_arm64_base_stage_installs_the_pinned_cu129_torch_trio():
     assert "--extra-index-url" not in stage
     pins = dict(
         line.split("==", 1)
-        for line in (_ROOT / "deploy" / "torch-constraints.txt").read_text().splitlines()
+        for line in (_ROOT / "deploy" / "torch-constraints.txt").read_text(encoding="utf-8").splitlines()
         if line and not line.startswith("#")
     )
     assert f"torch=={pins['torch']}+cu129" in stage

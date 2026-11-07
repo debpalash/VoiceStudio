@@ -100,7 +100,7 @@ def test_caches_onsets_json_and_reuses_it(job_env):
     res1 = _call(job_env["module"], job_env["job_id"])
     cache = job_env["job_dir"] / "onsets.json"
     assert cache.exists()
-    assert json.loads(cache.read_text()) == res1
+    assert json.loads(cache.read_text(encoding="utf-8")) == res1
 
     # Poison the cache with a sentinel — the route must serve it verbatim
     # (i.e. no recompute) while the audio mtime is older than the cache.
@@ -122,7 +122,7 @@ def test_recomputes_when_audio_newer_than_cache(job_env):
     res = _call(job_env["module"], job_env["job_id"])
     assert res["onsets"][0] == pytest.approx(1.0, abs=0.06)
     # Fresh cache written back.
-    assert json.loads(cache.read_text()) == res
+    assert json.loads(cache.read_text(encoding="utf-8")) == res
 
 
 def test_corrupt_cache_recomputes(job_env):
