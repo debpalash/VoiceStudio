@@ -99,6 +99,8 @@ def test_detected_source_language_resolves_to_its_own_language(value, expected):
         # Names / codes with no dub equivalent stay unknown.
         "esperanto",
         "unknown-language",
+        # A name with a suffix is not that name: Myanmar English is English.
+        "myanmar-english",
         # "zh-<variety>" tags are distinct spoken languages, not Mandarin:
         # Hakka, Min Nan, Wu, Gan, Xiang, Jinyu (CodeRabbit, #3834).
         "zh-hakka",

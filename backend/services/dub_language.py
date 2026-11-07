@@ -299,4 +299,5 @@ def detected_source_language(value: str | None) -> str | None:
         alias = _CODE_ALIASES.get(prefix)
         if alias is not None:
             return alias
-    return _NAME_ALIASES.get(parts[0])
+    # Names match whole: "myanmar-english" is English, not Burmese.
+    return _NAME_ALIASES.get(code)
