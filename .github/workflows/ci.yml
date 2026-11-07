@@ -304,7 +304,9 @@ jobs:
       # node:test suites for shared renderer modules (tests/frontend/*.test.mjs).
       # Node 22 strips TypeScript types natively; imports need explicit `.ts`.
       - name: Frontend unit tests
-        run: bun run test:frontend
+        run: |
+          node --test electron/tests/node-version.test.mjs
+          bun run test:frontend
 
       # Electron used to be built only after a release started, so renderer,
       # preload and packaging regressions could pass the required PR gate.
