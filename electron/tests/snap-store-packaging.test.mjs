@@ -18,6 +18,8 @@ test('keeps direct Linux packaging and its updater unchanged', () => {
     provider: 'generic',
     url: 'https://github.com/debpalash/VoiceStudio/releases/latest/download',
     channel: `electron-stable-${process.platform}-${process.arch}`,
+    // GitHub release downloads reject multi-range requests; patch updates need single ranges.
+    useMultipleRangeRequest: false,
   });
 });
 
