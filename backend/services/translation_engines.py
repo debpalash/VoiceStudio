@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import importlib.util
+import json
 import logging
 import functools
 import re
@@ -72,6 +73,10 @@ REGISTRY: dict[str, dict] = {
         "category": "offline",
         "needs_key": False,
         "builtin": True,
+        # A gated model: /dub/translate refuses it with a typed 403 until the
+        # user accepts its terms (#2689). Declared here so readiness answers
+        # the same question the translate path does.
+        "licence_repo_id": _NLLB_REPO_ID,
         "notes": "Meta's 200-language NMT model. Large download (~2.4GB), best offline quality.",
     },
     "google": {
@@ -246,6 +251,36 @@ def _llm_configured() -> tuple[bool, "str | None"]:
     return False, None
 
 
+def _licence_ready(entry: dict) -> tuple[bool, str | None]:
+    """Whether an engine's gated model has been accepted in Model Catalogue.
+
+    The registry declares ``licence_repo_id`` for engines whose model carries
+    non-commercial terms. ``/dub/translate`` refuses such a model with a typed
+    403 (#2689), but nothing else consulted the gate: the Engine selector
+    listed NLLB as ready and the performance presets auto-selected it, so the
+    first translate could only fail. Availability must answer the same
+    question the translate path does — the whole point of this registry is
+    that the UI knows before the user clicks Translate. Fails closed: an
+    unreadable licence record is not evidence of acceptance.
+    """
+    repo_id = entry.get("licence_repo_id")
+    if not repo_id:
+        return True, None
+    try:
+        from services.model_acceptance import status
+
+        state = status(repo_id)
+    except Exception:  # noqa: BLE001 — a probe must never break list_engines()
+        logger.debug("licence probe failed for %s", repo_id, exc_info=True)
+        return False, "Model licence records are unreadable — review the model in Model Catalogue."
+    if not state.get("required") or state.get("accepted"):
+        return True, None
+    return False, (
+        f"{state.get('license') or 'This model'} licence is not accepted — "
+        "review and accept it in Model Catalogue before translating."
+    )
+
+
 def _configured(entry: dict) -> tuple[bool, str | None]:
     """Whether an installed engine has the configuration needed to run."""
     engine_id = entry.get("id")
@@ -269,14 +304,15 @@ def list_engines() -> list[dict]:
     for e in REGISTRY.values():
         installed, reason = _probe(e)
         configured, via = _configured(e)
-        ready = installed and configured
+        licence_ok, licence_reason = _licence_ready(e)
+        ready = installed and configured and licence_ok
         entry = {
             **e,
             "installed": installed,
             "configured": configured,
             "configured_via": via,
             "ready": ready,
-            "availability_reason": reason or (
+            "availability_reason": reason or licence_reason or (
                 None if configured else "Translation provider is not configured"
             ),
             "install_command": install_command(e),
@@ -369,7 +405,8 @@ def is_ready(engine_id: str, *, import_check: bool = True) -> bool:
         return False
     installed, _ = _probe(entry, import_check=import_check)
     configured, _ = _configured(entry)
-    return installed and configured
+    licence_ok, _ = _licence_ready(entry)
+    return installed and configured and licence_ok
 
 
 def argos_lang_code(value: str) -> str:
@@ -433,6 +470,26 @@ def argos_pack_status(source_lang: str, target_langs: list[str]) -> dict:
     }
 
 
+def _argos_index_usable(index_path: str) -> bool:
+    """True when the Argos package index exists on disk and parses as JSON.
+
+    Upstream argostranslate.get_available_packages() retries a missing index
+    by calling update_package_index() and then itself — with NO recursion
+    bound. When the index host is unreachable (this machine: argosopentech.com
+    drops the TLS handshake), update_package_index() merely logs the failure
+    and returns, so the retry never terminates: the request dies with
+    RecursionError (~975 frames) instead of a network error, and the error's
+    own log emission crashes into the same exhausted recursion budget, which
+    is what produced the giant nested traceback behind the packs-install 500.
+    """
+    try:
+        with open(index_path, encoding="utf-8") as index_file:
+            data = json.load(index_file)
+    except (OSError, ValueError):
+        return False
+    return isinstance(data, list)
+
+
 def install_argos_packs(source_lang: str, target_langs: list[str]) -> dict:
     """Explicitly download and install the requested Argos language pairs."""
     _configure_argos_cache()
@@ -449,6 +506,19 @@ def install_argos_packs(source_lang: str, target_langs: list[str]) -> dict:
         }
         if missing:
             argostranslate.package.update_package_index()
+            # Guard the upstream unbounded self-retry (see _argos_index_usable):
+            # if the update could not materialise a readable index, calling
+            # get_available_packages() now would recurse until RecursionError.
+            import argostranslate.settings as _argos_settings
+
+            if not _argos_index_usable(_argos_settings.local_package_index):
+                raise ValueError(
+                    "Could not download the Argos package index from "
+                    "argosopentech.com — the index host is unreachable from "
+                    "this machine. Check the network connection (a proxy may "
+                    "be required), or switch the translation engine in "
+                    "Settings → Dub."
+                )
             available = argostranslate.package.get_available_packages()
             for target in targets:
                 if target not in missing:

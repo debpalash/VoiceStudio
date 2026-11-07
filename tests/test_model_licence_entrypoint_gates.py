@@ -389,6 +389,41 @@ def test_nllb_accepted_reaches_the_weights_load(store, nllb, ma):
     assert loads == []
 
 
+def test_nllb_is_not_advertised_ready_until_its_licence_is_accepted(store, ma, monkeypatch):
+    """The Engine selector and the performance presets must not offer a
+    translator the translate path will refuse.
+
+    Fail-before: ``list_engines()``/``is_ready()`` looked at the runtime and
+    the weights only, so NLLB read as ready while every ``/dub/translate``
+    answered 403 ``model_licence_required``.
+    """
+    te = _mod("services.translation_engines")
+    # Isolate the licence dimension: the hermetic test env has no NLLB weights.
+    monkeypatch.setattr(te, "_nllb_weights_probe", lambda: (True, None))
+
+    assert te.is_ready("nllb") is False
+    entry = {e["id"]: e for e in te.list_engines()}["nllb"]
+    assert entry["ready"] is False
+    assert entry["licence_repo_id"] == NLLB_REPO
+    assert "licence" in (entry["availability_reason"] or "").lower()
+
+    _accept(ma, NLLB_REPO)
+    assert te.is_ready("nllb") is True
+    assert {e["id"]: e for e in te.list_engines()}["nllb"]["ready"] is True
+
+    ma.revoke(NLLB_REPO)  # revocation applies to readiness too
+    assert te.is_ready("nllb") is False
+
+
+def test_engines_without_a_gated_model_are_unaffected_by_the_licence_probe(store, ma, monkeypatch):
+    """The gate is opt-in per engine: an ungated engine must never read as
+    unavailable because a licence record is missing."""
+    te = _mod("services.translation_engines")
+    monkeypatch.setattr(te, "_nllb_weights_probe", lambda: (True, None))
+    assert te.get_engine("argos").get("licence_repo_id") is None
+    assert te._licence_ready(te.get_engine("argos")) == (True, None)
+
+
 # ── OpenAI-compatible speech and dub diarisation (typed error propagation) ───
 
 def test_openai_speech_returns_403_with_the_typed_licence_code(store, engine, tb, ma, monkeypatch):

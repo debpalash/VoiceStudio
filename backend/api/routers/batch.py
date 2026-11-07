@@ -711,9 +711,11 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
         # throughout. Never raises (degrades to unmarked on failure, same as
         # every producer).
         # Dispatched to the dedicated watermark pool, not the GPU pool (#1190):
-        # AudioSeal embedding is CPU work that holds no VRAM, and a whole-track
-        # embed is long enough that occupying a GPU worker with it stalled the
-        # next language's segments on 1-worker hosts.
+        # the ~58 MB generator must not occupy a GPU worker — a whole-track
+        # embed is long enough that occupying one stalled the next language's
+        # segments on 1-worker hosts. It does run on CUDA when the host has it
+        # (watermark.py _watermark_device, ~4.6x faster than CPU on a 12 s
+        # clip), with audio/result moved between devices in embed_watermark.
         from services.watermark import mark_synthetic_async
         full_audio = await mark_synthetic_async(
             full_audio, sr, context="batch.dub_track",
