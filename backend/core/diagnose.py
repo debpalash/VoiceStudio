@@ -500,4 +500,4 @@ def format_text(report: dict) -> str:
         f"{s['passed']} ok, {s['warnings']} warning(s), {s['failures']} failure(s) - "
         + ("looks healthy" if s["ok"] else "needs attention")
     )
-    return "\n".join(lines)
+    return "\n".join(lines).encode("ascii", errors="backslashreplace").decode("ascii")

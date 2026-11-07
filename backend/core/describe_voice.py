@@ -247,10 +247,12 @@ def _compiled_rules():
 
 _COMPILED = _compiled_rules()
 
-# "<N> year(s) old / <N>-year-old / <N> yo" → an age bracket. Runs before the
-# keyword rules so the trailing "old" never misfires as elderly.
+# "<N> year(s) old / <N>-year-old / <N> yo / aged <N> / age: <N>" → an age
+# bracket. Runs before the keyword rules so the trailing "old" never misfires
+# as elderly, and "aged 22" never reaches elderly's bare "aged" synonym.
 _AGE_NUM = re.compile(
     r"\b(\d{1,3})(?:[\s\-]*(?:years?|yrs?|yr)[\s\-]*old|[\s\-]*(?:yo|y/o))\b"
+    r"|\baged?\s*:?\s*(\d{1,3})\b"
 )
 
 
@@ -282,7 +284,7 @@ def _match_category(category: str, text: str):
     if category == "Age":
         m = _AGE_NUM.search(text)
         if m:
-            return _age_token_for(int(m.group(1))), m
+            return _age_token_for(int(m.group(1) or m.group(2))), m
     for token, patterns in _COMPILED[category]:
         best = None
         for pat in patterns:
