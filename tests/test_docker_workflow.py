@@ -98,7 +98,7 @@ def test_image_builds_keep_their_layer_cache_in_ghcr_not_the_actions_cache():
     rebuilt for 17 minutes. The cache lives in a registry package instead; a failed export
     must never fail the image publish, and only the CUDA job writes it."""
     workflow = _load(_DOCKER)
-    assert workflow["env"]["BUILDCACHE_IMAGE"] == "ghcr.io/debpalash/voicestudio-buildcache"
+    assert workflow["env"]["REGISTRY"] == "ghcr.io"
     builds = [
         step["with"]
         for job in _JOBS

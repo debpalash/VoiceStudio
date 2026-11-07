@@ -60,11 +60,14 @@ export const CHANNELS = {
   backendRestart: 'backend:restart',
   backendSetupRuntime: 'backend:setupRuntime',
   backendCleanSetupRuntime: 'backend:cleanSetupRuntime',
+  backendSetupRuntimeOnCpu: 'backend:setupRuntimeOnCpu',
   backendSetRuntimeRegion: 'backend:setRuntimeRegion',
   backendChooseRuntimeLocation: 'backend:chooseRuntimeLocation',
   backendUseDefaultRuntimeLocation: 'backend:useDefaultRuntimeLocation',
   backendGetConnection: 'backend:getConnection',
   backendHostSnapshot: 'backend:hostSnapshot',
+  backendSetupDiagnostics: 'backend:setupDiagnostics',
+  backendCheckSetupConnection: 'backend:checkSetupConnection',
   backendTestRemote: 'backend:testRemote',
   backendUseRemote: 'backend:useRemote',
   backendUseLocal: 'backend:useLocal',
@@ -364,6 +367,14 @@ export function registerIpc(
     assertTrustedMainFrame(event, owner);
     return supervisor.hostSnapshot();
   });
+  ipcMain.handle(CHANNELS.backendSetupDiagnostics, (event) => {
+    assertTrustedMainFrame(event, getMainWindow());
+    return supervisor.getSetupDiagnostics();
+  });
+  ipcMain.handle(CHANNELS.backendCheckSetupConnection, (event) => {
+    assertTrustedMainFrame(event, getMainWindow());
+    return supervisor.checkSetupConnection();
+  });
   ipcMain.handle(CHANNELS.backendTestRemote, async (event, raw: unknown) => {
     const owner = getMainWindow();
     assertTrustedMainFrame(event, owner);
@@ -524,6 +535,11 @@ export function registerIpc(
     const owner = getMainWindow();
     assertTrustedMainFrame(event, owner);
     return supervisor.cleanSetupRuntime();
+  });
+  ipcMain.handle(CHANNELS.backendSetupRuntimeOnCpu, (event) => {
+    const owner = getMainWindow();
+    assertTrustedMainFrame(event, owner);
+    return supervisor.setupRuntimeOnCpu();
   });
   ipcMain.handle(CHANNELS.backendSetRuntimeRegion, (event, raw: unknown) => {
     const owner = getMainWindow();

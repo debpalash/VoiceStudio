@@ -696,7 +696,9 @@ class WhisperXBackend(ASRBackend):
         # negligible WER regression vs fp32 for whisper-large-v3).
         # The shared selector admits only CUDA or verified Windows HIP CT2.
         # WhisperX's additional MIOpen gate runs before loading/cached use.
-        if _ctranslate2_cuda_ok():
+        from core.gpu_self_test import failure_warning
+
+        if _ctranslate2_cuda_ok() and not failure_warning():
             return "cuda", "float16"
         return "cpu", "int8"
 

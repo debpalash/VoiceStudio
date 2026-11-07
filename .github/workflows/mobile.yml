@@ -90,7 +90,7 @@ jobs:
       # On-device runtimes (mobile/native/pins.json) build with the pinned NDK and
       # CMake; Gradle's preBuild runs mobile/native/android/build.sh.
       - name: NDK and CMake
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.1.12297006" "cmake;3.22.1" > /dev/null
+        run: bash "$GITHUB_WORKSPACE/mobile/android/install-sdk-packages.sh"
 
       - name: Cache native runtimes
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -327,7 +327,7 @@ jobs:
       - name: SDK, NDK and CMake
         run: |
           printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.1.12297006" "cmake;3.22.1" > /dev/null
+          bash "$GITHUB_WORKSPACE/mobile/android/install-sdk-packages.sh"
 
       - name: Cache native runtimes
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -378,7 +378,7 @@ jobs:
       - name: SDK, NDK and CMake
         run: |
           printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.1.12297006" "cmake;3.22.1" > /dev/null
+          bash "$GITHUB_WORKSPACE/mobile/android/install-sdk-packages.sh"
 
       - name: Cache native runtimes
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

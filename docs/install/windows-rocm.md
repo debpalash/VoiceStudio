@@ -141,6 +141,10 @@ verification distinguishes an interrupted or incompatible install from a
 working one; repair does not overlay the project's locked CUDA packages onto a
 healthy HIP environment. Failed installs remain retryable and preserve user data.
 
+Once setup finishes in the installed app, the choice is saved in
+`%USERPROFILE%\.config\omnivoice\env`, so later launches keep ROCm without the
+variable. Finishing setup with another choice removes it.
+
 To return to the supported CPU path, fully quit and choose CPU explicitly:
 
 ```powershell

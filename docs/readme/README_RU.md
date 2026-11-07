@@ -3,6 +3,9 @@
   <p>
     <a href="https://trendshift.io/repositories/28176?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-28176" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/28176" alt="Значок рейтинга популярности VoiceStudio на Trendshift" width="220" height="48" /></a>
   </p>
+  <p>
+    <strong>🎉 <a href="https://github.com/debpalash/VoiceStudio/stargazers">100 000 звёзд на GitHub — спасибо!</a></strong>
+  </p>
   <h2>Голосовая студия с ИИ. На вашем устройстве.</h2>
   <h3>Клонирование и дизайн голоса, дубляж, диктовка, расшифровка и озвучка на 646 языках.</h3>
   <p>Работает на ноутбуках, настольных компьютерах, серверах, телефонах, планшетах и других устройствах</p>
@@ -11,23 +14,30 @@
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest">Скачать</a> ·
     <a href="#быстрый-старт">Начало работы</a> ·
     <a href="#справка">Документация</a> ·
-    <a href="https://discord.gg/bzQavDfVV9">Discord</a> ·
-    <a href="../../README.md">English</a> · <a href="README_CN.md">简体中文</a> · <a href="README_JA.md">日本語</a> · <a href="README_KO.md">한국어</a>
+    <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project">VoiceStudio Pro</a> ·
+    <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project">VoiceStudio Cloud</a>
   </p>
+  <!-- README_LANGUAGES_START -->
+  <a id="readme-languages"></a>
+  <p><sub>
+    <a href="../../README.md" lang="en">🇬🇧 English</a> · <a href="README_CN.md" lang="zh-CN">🇨🇳 简体中文</a> · <a href="README_JA.md" lang="ja">🇯🇵 日本語</a> · <a href="README_KO.md" lang="ko">🇰🇷 한국어</a> · <strong lang="ru">🇷🇺 Русский</strong> · <a href="README_AR.md" lang="ar">🇸🇦 العربية</a> · <a href="README_DE.md" lang="de">🇩🇪 Deutsch</a> · <a href="README_ES.md" lang="es">🇪🇸 Español</a> · <a href="README_FR.md" lang="fr">🇫🇷 Français</a> · <a href="README_HI.md" lang="hi">🇮🇳 हिन्दी</a><br />
+    <a href="README_ID.md" lang="id">🇮🇩 Bahasa Indonesia</a> · <a href="README_IT.md" lang="it">🇮🇹 Italiano</a> · <a href="README_NL.md" lang="nl">🇳🇱 Nederlands</a> · <a href="README_PL.md" lang="pl">🇵🇱 Polski</a> · <a href="README_PT.md" lang="pt">🇵🇹 Português</a> · <a href="README_TH.md" lang="th">🇹🇭 ไทย</a> · <a href="README_TR.md" lang="tr">🇹🇷 Türkçe</a> · <a href="README_TW.md" lang="zh-TW">🇹🇼 繁體中文</a> · <a href="README_UK.md" lang="uk">🇺🇦 Українська</a> · <a href="README_VI.md" lang="vi">🇻🇳 Tiếng Việt</a>
+  </sub></p>
+  <!-- README_LANGUAGES_END -->
+
+
   <p>
     <a href="https://github.com/debpalash/VoiceStudio/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/debpalash/VoiceStudio/ci.yml?branch=main&amp;style=flat-square&amp;label=build&amp;labelColor=27272a" alt="Статус CI" /></a>
     <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/github/v/release/debpalash/VoiceStudio?style=flat-square&amp;labelColor=27272a&amp;color=52525b" alt="Последний релиз" /></a>
     <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-52525b?style=flat-square&amp;labelColor=27272a" alt="Лицензия AGPL-3.0" /></a>
     <a href="https://supermetry.com"><img src="https://app.supermetry.com/px/zfjiv7psp4ed.svg?c=VoiceStudio" alt="Число просмотров" /></a>
+    <a href="https://discord.gg/bzQavDfVV9"><img src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Join Discord" /></a>
   </p>
   <p>
-    <sub>Стратегические спонсоры</sub><br />
-    <a href="https://github.com/debpalash/OpenGTM?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/opengtm-dark.svg" /><img src="../../docs/sponsors/opengtm.svg" alt="OpenGTM" height="32" align="middle" /></picture></a>
+    <sub>Стратегические спонсоры</sub>      <a href="https://github.com/debpalash/OpenGTM?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/opengtm-dark.svg" /><img src="../../docs/sponsors/opengtm.svg" alt="OpenGTM" height="32" align="middle" /></picture></a>
     <a href="https://github.com/debpalash/Opal?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/opal-dark.svg" /><img src="../../docs/sponsors/opal.svg" alt="Opal" height="32" align="middle" /></picture></a>
     <a href="https://github.com/velixio/supermetry?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/supermetry-dark.svg" /><img src="../../docs/sponsors/supermetry.svg" alt="Supermetry" height="32" align="middle" /></picture></a>
-  </p>
-  <p>
-    <sub>Специальный спонсор</sub><br />
+      ·   <sub>Специальный спонсор</sub> 
     <a href="https://app.spicrawl.com/signup?utm_source=voicestudio&amp;utm_medium=github_readme&amp;utm_campaign=special_sponsor&amp;utm_content=logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/spicrawl-dark.svg" /><img src="../../docs/sponsors/spicrawl.svg" alt="Spicrawl" height="32" align="middle" /></picture></a>
   </p>
 </div>
@@ -46,7 +56,11 @@
 <p align="center">
   <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/badge/%D0%A1%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C-993f61?style=for-the-badge&amp;logo=github&amp;logoColor=ffffff" alt="Скачать" height="24" /></a>
   <a href="#быстрый-старт"><img src="https://img.shields.io/badge/%D0%9D%D0%B0%D1%87%D0%B0%D0%BB%D0%BE%20%D1%80%D0%B0%D0%B1%D0%BE%D1%82%D1%8B-27272a?style=for-the-badge" alt="Начало работы" height="24" /></a>
+  <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Pro-27272a?style=for-the-badge" alt="VoiceStudio Pro" height="24" /></a>
+  <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Cloud-27272a?style=for-the-badge" alt="VoiceStudio Cloud" height="24" /></a>
 </p>
+
+<a id="what-you-can-do"></a>
 
 ## Возможности
 
@@ -94,6 +108,43 @@
 - **Интеграция и автоматизация** — Локальный API, MCP, сохранённые сценарии и отслеживание папок
 
 Из коробки работает **VoiceStudio** — штатный движок, построенный на k2-fsa/OmniVoice; ещё несколько десятков альтернатив ставятся из менеджера моделей. Полный список — в [каталоге функций и движков](../../docs/feature-catalog.md).
+
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
+
+## Pro и Cloud
+
+Всё, что описано выше, бесплатно, работает на вашем оборудовании и не требует аккаунта. Pro и Cloud необязательны.
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
+      Для оплачиваемой работы с клиентами на нескольких компьютерах.
+      <ul>
+        <li>Коммерческая лицензия на работу с клиентами, приходит на почту</li>
+        <li>Один пользователь и до 3 устройств одновременно</li>
+        <li>Отправляйте задачи на другие свои GPU, а проекты остаются на вашем компьютере</li>
+        <li>Новые функции и исправления раньше всех</li>
+      </ul>
+      <sub>Сборка с закрытым кодом, нужен аккаунт, полный возврат в течение 7 дней. Приложение под AGPL-3.0 остаётся бесплатным, в том числе для коммерческого использования на её условиях.</sub><br /><br />
+      <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Посмотреть тарифы Pro →</a></strong>
+    </td>
+    <td width="50%" valign="top">
+      <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br /><br />
+      Облачный API для речи и дубляжа, скоро. GPU не нужен.
+      <ul>
+        <li>Речь, создание голосов и клонирование голоса с согласия владельца</li>
+        <li>Дубляж, транскрипция и аудиокниги</li>
+        <li>Расход и кредиты по дням или проектам</li>
+        <li>Долгие задачи, которые выполняются сами</li>
+      </ul>
+      <sub>Пока недоступно: присоединяйтесь к раннему доступу и получите бесплатные кредиты. Настольное приложение остаётся бесплатным и локальным.</sub><br /><br />
+      <strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Вступить в ранний доступ к Cloud →</a></strong>
+    </td>
+  </tr>
+</table>
+
+<a id="platforms"></a>
 
 ## Платформы
 
@@ -396,9 +447,11 @@ iOS / iPadOS 17+ · Предварительная версия · После з
 Установщики для компьютера и телефона лежат в [последнем релизе](https://github.com/debpalash/VoiceStudio/releases/latest), а образы Docker публикуются в GHCR. Нет видеокарты? Приложение полностью работает на процессоре, просто медленнее. Необязательные нативные GGUF-движки могут использовать Vulkan, в том числе на видеокартах AMD ([OmniVoice](../../docs/engines/omnivoice-gguf.md#vulkan-acceleration), [CosyVoice](../../docs/engines/cosyvoice-gguf.md)). Сколько занимает генерация на разных движках и железе, показано в [обзоре быстродействия](../../docs/performance.md).
 
 
+<a id="get-started"></a>
+
 ## Быстрый старт
 
-Установите приложение одним из способов выше. Затем откройте **Voice cloning**, выберите голос или добавьте чистую эталонную запись, введите текст и запустите генерацию. Приложение запросит согласие перед загрузкой моделей.
+Установите приложение одним из способов выше. Затем откройте **Клонирование голоса**, выберите голос или добавьте чистую эталонную запись, введите текст и запустите генерацию. Приложение запросит согласие перед загрузкой моделей.
 
 <details>
 <summary><strong>Другие способы установки</strong>: конкретная версия, текущий main, удаление, из исходного кода, с помощью агента</summary>
@@ -421,6 +474,8 @@ cd VoiceStudio
 bun run dev
 ```
 
+`bun run dev` устанавливает зависимости JavaScript, а при использовании поддерживаемого локального бэкенда — также зависимости Python, после чего запускает Electron. Если нужно только пересоздать окружение Python, выполните `bun run setup:api` напрямую.
+
 Зависимости и настройка бэкенда описаны в [инструкции к Electron](../../electron/README.md).
 
 **Через ИИ-агента** (например, Claude Code, Codex или Cursor) — передайте ему такой запрос:
@@ -434,7 +489,11 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 
 </details>
 
+<a id="documentation"></a>
+
 ## Справка
+
+[Все руководства](../../docs/README.md)
 
 | Задача | Куда смотреть |
 |---|---|
@@ -447,9 +506,11 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 
 Скиллы для ИИ-агентов ставятся командой `npx skills add debpalash/VoiceStudio`: **voicestudio** — для аудиозадач, **voicestudio-maintainer** — для поддержки самого репозитория.
 
+<a id="sponsors"></a>
+
 ## Поддержка проекта
 
-VoiceStudio бесплатен, и за ним нет платного облака. Новые версии выходят благодаря спонсорам: они оплачивают время мейнтейнера, оборудование для тестов, подпись кода и инфраструктуру релизов.
+Приложение VoiceStudio бесплатно и не требует платного облака. Новые версии выходят благодаря спонсорам: они оплачивают время мейнтейнера, оборудование для тестов, подпись кода и инфраструктуру релизов.
 
 <p>
     <a href="https://github.com/debpalash/OpenGTM?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=readme-logo"><picture><source media="(prefers-color-scheme: dark)" srcset="../../docs/sponsors/opengtm-dark.svg" /><img src="../../docs/sponsors/opengtm.svg" alt="OpenGTM" height="48" align="middle" /></picture></a>
@@ -462,6 +523,8 @@ VoiceStudio бесплатен, и за ним нет платного обла�
 <a href="https://github.com/sponsors/debpalash"><img src="https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=githubsponsors&logoColor=white" alt="Поддержать через GitHub Sponsors" /></a>
 [Ko-fi](https://ko-fi.com/debpalash) · [PayPal](https://paypal.me/palashCoder) · [Уровни и привилегии](../../SPONSORS.md) · [Разместить логотип](https://github.com/debpalash/VoiceStudio/issues/new?template=sponsor.yml)
 
+<a id="other-projects"></a>
+
 ## Другие проекты
 
 Другие инструменты с открытым исходным кодом от создателей VoiceStudio.
@@ -472,7 +535,11 @@ VoiceStudio бесплатен, и за ним нет платного обла�
 
 Другие проекты: [debpalash](https://github.com/debpalash?tab=repositories) · [velixio](https://github.com/velixio?tab=repositories)
 
+<a id="team"></a>
+
 ## Команда проекта
+
+<a id="core-team"></a>
 
 ### Основная команда
 
@@ -483,16 +550,29 @@ VoiceStudio бесплатен, и за ним нет платного обла�
 </tr>
 </table>
 
+<a id="contributors"></a>
+
 ### Участники
 
 <a href="https://github.com/kevin9327"><img src="https://github.com/kevin9327.png?size=96" width="44" height="44" alt="@kevin9327" title="@kevin9327"></a> <a href="https://github.com/jaketame"><img src="https://github.com/jaketame.png?size=96" width="44" height="44" alt="@jaketame" title="@jaketame"></a> <a href="https://github.com/psiberfunk"><img src="https://github.com/psiberfunk.png?size=96" width="44" height="44" alt="@psiberfunk" title="@psiberfunk"></a> <a href="https://github.com/rudycelekli"><img src="https://github.com/rudycelekli.png?size=96" width="44" height="44" alt="@rudycelekli" title="@rudycelekli"></a> <a href="https://github.com/paoloantinori"><img src="https://github.com/paoloantinori.png?size=96" width="44" height="44" alt="@paoloantinori" title="@paoloantinori"></a> <a href="https://github.com/Chang-Jin-Lee"><img src="https://github.com/Chang-Jin-Lee.png?size=96" width="44" height="44" alt="@Chang-Jin-Lee" title="@Chang-Jin-Lee"></a> <a href="https://github.com/swadhinbiswas"><img src="https://github.com/swadhinbiswas.png?size=96" width="44" height="44" alt="@swadhinbiswas" title="@swadhinbiswas"></a> <a href="https://github.com/BichengWang"><img src="https://github.com/BichengWang.png?size=96" width="44" height="44" alt="@BichengWang" title="@BichengWang"></a> <a href="https://github.com/nirmalchatur"><img src="https://github.com/nirmalchatur.png?size=96" width="44" height="44" alt="@nirmalchatur" title="@nirmalchatur"></a> <a href="https://github.com/Shivendra-Coherent"><img src="https://github.com/Shivendra-Coherent.png?size=96" width="44" height="44" alt="@Shivendra-Coherent" title="@Shivendra-Coherent"></a> <a href="https://github.com/marreiradigital"><img src="https://github.com/marreiradigital.png?size=96" width="44" height="44" alt="@marreiradigital" title="@marreiradigital"></a> <a href="https://github.com/nvtoan0201-swe"><img src="https://github.com/nvtoan0201-swe.png?size=96" width="44" height="44" alt="@nvtoan0201-swe" title="@nvtoan0201-swe"></a>
 
 Спасибо всем, кто присылает код, сообщения об ошибках, переводы и идеи. [Все участники](https://github.com/debpalash/VoiceStudio/graphs/contributors) · [Как помочь проекту](../../.github/CONTRIBUTING.md)
 
+<a id="license--responsible-use"></a>
+
 ## Лицензия и этичное использование
 
 На приложение распространяется лицензия [AGPL-3.0](../../LICENSE), в том числе на коммерческое использование на её условиях. У весов моделей, голосов и сгенерированного результата свои лицензии; менеджер моделей показывает их для каждой модели ([полный перечень](../../docs/licensing/model-inventory.md)). Клонируйте голос только с разрешения его владельца. Подробности: [LICENSE-NOTICE.md](../../LICENSE-NOTICE.md).
 
+<a id="community-tutorials"></a>
+
 ## Уроки сообщества
 
-- [Видеоурок по VoiceStudio — Nafay 3D (YouTube)](https://www.youtube.com/watch?v=I-u-A-oisIU)
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=I-u-A-oisIU&amp;utm_source=github&amp;utm_medium=readme&amp;utm_campaign=community_tutorials"><img src="https://i.ytimg.com/vi/I-u-A-oisIU/hqdefault.jpg" alt="VoiceStudio tutorial by Nafay 3D on YouTube" width="30%" /></a>
+  <a href="https://www.youtube.com/watch?v=hsLRbXLBP4U&amp;utm_source=github&amp;utm_medium=readme&amp;utm_campaign=community_tutorials"><img src="https://i.ytimg.com/vi/hsLRbXLBP4U/hqdefault.jpg" alt="VoiceStudio tutorial by Samuel Gregory on YouTube" width="30%" /></a>
+  <a href="https://www.youtube.com/watch?v=2KemGhEI0Ck&amp;utm_source=github&amp;utm_medium=readme&amp;utm_campaign=community_tutorials"><img src="https://i.ytimg.com/vi/2KemGhEI0Ck/hqdefault.jpg" alt="VoiceStudio tutorial by kilObit on YouTube" width="30%" /></a><br />
+  <sub>Nafay 3D · Samuel Gregory · kilObit</sub>
+</p>
+
+<p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>

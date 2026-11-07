@@ -522,7 +522,11 @@ def dub_use_downloaded_captions(job_id: str):
     source_lang = job.get("source_lang_override") or _detected_source_lang(caption_lang)
     with dub_pipeline._dub_jobs_lock:
         replace_source_segments(job, segments)
-        job.pop("source_lang_detection_missing", None)
+        # An unrecognised caption tag must ask for the language, not fall back to English.
+        if source_lang is None:
+            job["source_lang_detection_missing"] = True
+        else:
+            job.pop("source_lang_detection_missing", None)
         job["source_lang"] = source_lang
         job["full_transcript"] = " ".join(segment["text"] for segment in segments)
         # Caption files contain timing and text, but no trustworthy speaker or
