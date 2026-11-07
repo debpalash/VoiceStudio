@@ -2745,6 +2745,7 @@
     "stderr_title": "Ostatnie wyjście błędu (stderr)",
     "no_stderr": "Nie przechwycono żadnych danych wyjściowych błędu.",
     "details_intro": "Proces backendu nieoczekiwanie zakończył działanie ({{exit}}) {{ago}}temu. Poniżej znajduje się wynik błędu, jaki pozostawił po sobie — zgłoszenie go pomoże nam naprawić awarię.",
+    "exit_unattributed": "Backend zakończył działanie bez użytecznego kodu wyjścia, a VoiceStudio nie może przypisać tego zakończenia żadnej konkretnej przyczynie na podstawie zarejestrowanych danych.",
     "field_uptime": "Czas pracy przed awarią"
   },
   "errors": {

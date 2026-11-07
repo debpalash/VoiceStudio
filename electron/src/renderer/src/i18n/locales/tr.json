@@ -2713,6 +2713,7 @@
     "notice": "Ses arka ucu {{exit}}) {{ago}} önce kilitlendi ve otomatik olarak yeniden başlatılıyor.",
     "details_title": "Arka uç kilitlenme ayrıntıları",
     "details_intro": "Arka uç işlemi beklenmedik bir şekilde ({{exit}}) {{ago}} önce sona erdi. Geride bıraktığı hata çıktısı aşağıdadır; bunun raporlanması, çökmeyi düzeltmemize yardımcı olur.",
+    "exit_unattributed": "Arka uç kullanılabilir bir çıkış durumu olmadan sonlandı ve VoiceStudio kaydedilen kanıtlara dayanarak bu çıkışı belirli bir nedene bağlayamıyor.",
     "field_exit": "Çıkış",
     "field_when": "Ne zaman",
     "field_uptime": "Çökmeden önce çalışma süresi",

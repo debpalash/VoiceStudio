@@ -2791,6 +2791,7 @@
     "dismiss": "Dismiss",
     "details_title": "Backend crash details",
     "details_intro": "The backend process died unexpectedly ({{exit}}) {{ago}} ago. The error output it left behind is below — reporting it helps us fix the crash.",
+    "exit_unattributed": "The backend ended without a usable exit status, and VoiceStudio cannot attribute this exit to any specific cause from the recorded evidence.",
     "field_exit": "Exit",
     "field_when": "When",
     "field_uptime": "Uptime before crash",

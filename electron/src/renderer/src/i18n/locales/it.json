@@ -2716,6 +2716,7 @@
     "view": "Visualizza i dettagli dell'incidente",
     "details_title": "Dettagli sull'arresto anomalo del backend",
     "details_intro": "Il processo di backend è terminato in modo imprevisto ({{exit}}) {{ago}} fa. L'output dell'errore lasciato è riportato di seguito: segnalarlo ci aiuta a correggere l'arresto anomalo.",
+    "exit_unattributed": "Il backend si è arrestato senza uno stato di uscita utilizzabile e VoiceStudio non può attribuire questa uscita ad alcuna causa specifica in base alle prove registrate.",
     "field_exit": "Uscita",
     "field_when": "Quando",
     "field_uptime": "Tempo di attività prima dell'arresto anomalo",

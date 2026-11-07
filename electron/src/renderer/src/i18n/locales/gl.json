@@ -2791,6 +2791,7 @@
     "dismiss": "Descartar",
     "details_title": "Detalles do fallo do backend",
     "details_intro": "O proceso de backend morreu inesperadamente ({{exit}}) hai {{ago}}. A saída de erro que deixou atrás está a continuación: informar que axúdanos a solucionar o fallo.",
+    "exit_unattributed": "O backend rematou sen un estado de saída utilizable, e VoiceStudio non pode atribuír esta saída a ningunha causa concreta a partir das evidencias rexistradas.",
     "field_exit": "Saír",
     "field_when": "Cando",
     "field_uptime": "Tempo de actividade antes do accidente",

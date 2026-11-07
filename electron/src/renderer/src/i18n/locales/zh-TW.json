@@ -2714,6 +2714,7 @@
     "view": "查看崩潰詳細信息",
     "details_title": "後端崩潰詳細信息",
     "details_intro": "後端程序在 {{ago}} 前意外終止 ({{exit}})。它留下的錯誤輸出如下——報告它可以幫助我們修復崩潰。",
+    "exit_unattributed": "後端在沒有可用結束狀態的情況下終止，VoiceStudio 無法根據記錄到的證據將此次結束歸因於任何特定原因。",
     "field_exit": "出口",
     "field_when": "什麼時候",
     "field_uptime": "崩潰前的正常運作時間",

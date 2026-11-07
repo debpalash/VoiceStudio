@@ -2706,6 +2706,7 @@
     "dismiss": "关闭",
     "details_title": "后端崩溃详情",
     "details_intro": "后端进程于 {{ago}}前意外退出（{{exit}}）。它留下的错误输出如下——报告它有助于我们修复此崩溃。",
+    "exit_unattributed": "后端在没有可用退出状态的情况下结束，VoiceStudio 无法根据记录到的证据将此次退出归因于任何特定原因。",
     "field_exit": "退出码",
     "field_when": "发生时间",
     "field_uptime": "崩溃前运行时长",

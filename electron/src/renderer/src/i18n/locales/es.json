@@ -2716,6 +2716,7 @@
     "view": "Ver detalles del accidente",
     "details_title": "Detalles del fallo del backend",
     "details_intro": "El proceso de backend finalizó inesperadamente ({{exit}}) hace {{ago}}. El resultado de error que dejó se encuentra a continuación: informarlo nos ayuda a solucionar el problema.",
+    "exit_unattributed": "El backend terminó sin un estado de salida utilizable, y VoiceStudio no puede atribuir esta salida a ninguna causa concreta a partir de las pruebas registradas.",
     "field_exit": "Salida",
     "field_when": "Cuando",
     "field_uptime": "Tiempo de actividad antes del accidente",

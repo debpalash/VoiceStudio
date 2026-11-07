@@ -2712,6 +2712,7 @@
     "uptime_value": "{{count}} s",
     "details_title": "Backend-kraschdetaljer",
     "details_intro": "Backend-processen dog oväntat ({{exit}}) för {{ago}} sedan. Felutmatningen den lämnade efter sig är nedan - rapportering hjälper oss att fixa kraschen.",
+    "exit_unattributed": "Backend-processen avslutades utan en användbar slutstatus, och VoiceStudio kan inte koppla detta avslut till någon specifik orsak utifrån den information som registrerats.",
     "field_exit": "Utgång",
     "field_when": "När",
     "field_uptime": "Drifttid före krasch",

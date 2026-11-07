@@ -2714,6 +2714,7 @@
     "view": "Bekijk crashdetails",
     "details_title": "Details over crashes in de backend",
     "details_intro": "Het backend-proces is onverwacht beëindigd ({{exit}}) {{ago}} geleden. De foutuitvoer die het achterliet, staat hieronder. Door dit te melden, kunnen we de crash oplossen.",
+    "exit_unattributed": "De backend is beëindigd zonder bruikbare exitstatus, en VoiceStudio kan deze beëindiging op basis van de vastgelegde gegevens niet aan een specifieke oorzaak toeschrijven.",
     "field_exit": "Uitgang",
     "field_when": "Wanneer",
     "field_uptime": "Uptime vóór crash",

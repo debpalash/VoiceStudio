@@ -2716,6 +2716,7 @@
     "view": "Afficher les détails de l'accident",
     "details_title": "Détails du crash back-end",
     "details_intro": "Le processus backend s'est arrêté de manière inattendue ({{exit}}) il y a {{ago}}. Le résultat d’erreur qu’il a laissé est ci-dessous – le signaler nous aide à corriger le crash.",
+    "exit_unattributed": "Le backend s'est arrêté sans code de sortie exploitable, et VoiceStudio ne peut pas attribuer cet arrêt à une cause précise à partir des éléments enregistrés.",
     "field_exit": "Sortie",
     "field_when": "Quand",
     "field_uptime": "Disponibilité avant le crash",

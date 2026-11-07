@@ -2714,6 +2714,7 @@
     "view": "Xem chi tiết sự cố",
     "details_title": "Chi tiết sự cố phụ trợ",
     "details_intro": "Quá trình phụ trợ đã ngừng hoạt động đột ngột ({{exit}}) {{ago}} trước. Lỗi đầu ra mà nó để lại nằm ở bên dưới — việc báo cáo lỗi này sẽ giúp chúng tôi khắc phục sự cố.",
+    "exit_unattributed": "Backend đã kết thúc mà không có trạng thái thoát khả dụng, và VoiceStudio không thể quy kết lần thoát này cho bất kỳ nguyên nhân cụ thể nào từ các bằng chứng đã ghi lại.",
     "field_exit": "Ra",
     "field_when": "Khi",
     "field_version": "Phiên bản phụ trợ",

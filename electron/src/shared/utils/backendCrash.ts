@@ -2,7 +2,7 @@ import { abortableDelay } from './abortableDelay.ts';
 import { DEFAULT_BACKEND_PORT } from '../app-config.ts';
 import { deploymentMode, type DeploymentMode } from './deploymentMode.ts';
 import { isBrokenEnvironmentOutput } from './backendOutput.ts';
-import { isExternalKillExit, isNativeFaultExit } from './nativeExit.ts';
+import { isNativeFaultExit, normalizeExitCode } from './nativeExit.ts';
 /**
  * backendCrash — frontend bridge to the desktop shell's crash forensics
  * (#941, src-tauri/src/crash.rs).
@@ -323,7 +323,7 @@ export function isBrokenEnvironmentCrash(
 }
 
 /** True when the captured tail already carries a fault dump or a Python
- * traceback — evidence the existing branches explain. The external-termination
+ * traceback — evidence the existing branches explain. The unattributed-exit
  * hint must not overwrite those. */
 function tailHasFaultEvidence(tail: string): boolean {
   if (!tail) return false;
@@ -401,16 +401,19 @@ export function crashCauseHint(
         'instead of the whole backend.',
     });
   }
-  // 0xFFFFFFFF / -1: the process was ended from outside the app — security
-  // software, an OS policy, or another program — rather than by a fault in the
-  // backend itself. Only claim that when the captured tail does not already
-  // carry a fault dump or traceback (those keep their existing explanation).
-  if (isExternalKillExit(marker.exit_code) && !tailHasFaultEvidence(marker.last_stderr || '')) {
-    return i18next.t('errors.crash_external_kill', {
+  // 0xFFFFFFFF / -1: the OS reported that the process never produced a real
+  // exit code. That alone says nothing about what ended it, so do not name a
+  // cause — only say the recorded evidence cannot attribute it, and only when
+  // the captured tail does not already carry a fault dump or traceback (those
+  // keep their existing explanation).
+  if (
+    normalizeExitCode(marker.exit_code) === 0xffff_ffff &&
+    !tailHasFaultEvidence(marker.last_stderr || '')
+  ) {
+    return i18next.t('crash.exit_unattributed', {
       defaultValue:
-        'The backend process was ended from outside the app — most often security software, an OS ' +
-        'policy, or another program — not by a fault in VoiceStudio, so no job was lost. Check your ' +
-        'antivirus and any app-control or system policy that may have stopped it, then relaunch.',
+        'The backend ended without a usable exit status, and VoiceStudio cannot attribute this ' +
+        'exit to any specific cause from the recorded evidence.',
     });
   }
   return i18next.t('errors.crash_vram_default', {

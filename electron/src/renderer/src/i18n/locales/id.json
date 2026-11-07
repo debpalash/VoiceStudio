@@ -2712,6 +2712,7 @@
     "uptime_value": "{{count}} s",
     "notice": "Backend suara mogok ({{exit}}) {{ago}} yang lalu dan dimulai ulang secara otomatis.",
     "details_intro": "Proses backend mati secara tidak terduga ({{exit}}) {{ago}} yang lalu. Output kesalahan yang ditinggalkannya ada di bawah — melaporkannya membantu kami memperbaiki kerusakan tersebut.",
+    "exit_unattributed": "Backend berakhir tanpa status keluar yang dapat digunakan, dan VoiceStudio tidak dapat mengaitkan penghentian ini dengan penyebab tertentu dari bukti yang tercatat.",
     "field_exit": "KELUAR",
     "field_when": "Kapan",
     "field_uptime": "Waktu aktif sebelum crash",

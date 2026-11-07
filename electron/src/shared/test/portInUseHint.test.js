@@ -120,3 +120,26 @@ describe('the Rust failure messages reach the localised hint (#1223, #1933)', ()
     expect(detectHints(message)).toContain('bootstrap.hint_port');
   });
 });
+
+describe('crashCauseHint — unattributed 0xFFFFFFFF / -1 (#1793441979)', () => {
+  it('says the evidence cannot attribute the exit, without naming a cause', () => {
+    const hint = crashCauseHint({
+      exit_code: 4294967295, // unsigned 0xFFFFFFFF
+      signal: null,
+      last_stderr: 'INFO generating audio',
+    });
+    expect(hint).toMatch(/cannot attribute/i);
+    expect(hint).not.toMatch(/external|kill|security|policy|program|VRAM|RAM|GPU/i);
+  });
+
+  it('keeps the old explanation when the tail carries a Python traceback', () => {
+    const hint = crashCauseHint({
+      exit_code: -1, // signed 0xFFFFFFFF
+      signal: null,
+      last_stderr:
+        'Traceback (most recent call last):\n  File "app.py", line 10, in run\nRuntimeError: boom',
+    });
+    expect(hint).not.toMatch(/cannot attribute/i);
+    expect(hint).toMatch(/VRAM|flush the TTS model/i);
+  });
+});

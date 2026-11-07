@@ -2719,7 +2719,8 @@
     "field_version": "Backend-Version",
     "stderr_title": "Letzte Fehlerausgabe (stderr)",
     "no_stderr": "Es wurde keine Fehlerausgabe erfasst.",
-    "details_intro": "Der Backend-Prozess ist unerwartet abgebrochen ({{exit}}) {{ago}}vor. Die Fehlerausgabe, die es hinterlassen hat, ist unten aufgeführt. Durch die Meldung können wir den Absturz beheben."
+    "details_intro": "Der Backend-Prozess ist unerwartet abgebrochen ({{exit}}) {{ago}}vor. Die Fehlerausgabe, die es hinterlassen hat, ist unten aufgeführt. Durch die Meldung können wir den Absturz beheben.",
+    "exit_unattributed": "Der Backend-Prozess endete ohne einen verwertbaren Exit-Status, und VoiceStudio kann diese Beendigung anhand der aufgezeichneten Hinweise keiner bestimmten Ursache zuordnen."
   },
   "errors": {
     "title": "Dieser Tab ist ins Stocken geraten.",

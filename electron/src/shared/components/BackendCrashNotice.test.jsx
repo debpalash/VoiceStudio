@@ -191,11 +191,11 @@ describe('BackendCrashNotice — sentinel evidence gate (#1375)', () => {
     expect(dialog.textContent).not.toMatch(/GPU driver/i);
   });
 
-  // #1793441979: exit code 0xFFFFFFFF / -1 is not a crash — the process was
-  // ended from outside the app (security software, an OS policy, another
-  // program). The raw number used to read like a GPU/Python fault that never
-  // happened; name the external termination instead.
-  it('explains an external termination instead of blaming the GPU', async () => {
+  // #1793441979: exit code 0xFFFFFFFF / -1 means the process never produced a
+  // real exit code. That is not evidence of an outside killer, so the app must
+  // not blame security software or the GPU — say only that the recorded
+  // evidence cannot attribute the exit.
+  it('explains an unattributed exit instead of naming a cause', async () => {
     getUnacknowledgedBackendCrash.mockResolvedValue({
       ...MARKER,
       exit_code: 4294967295, // unsigned 0xFFFFFFFF
@@ -206,9 +206,10 @@ describe('BackendCrashNotice — sentinel evidence gate (#1375)', () => {
     fireEvent.click(await screen.findByRole('button', { name: /view crash details/i }));
 
     const dialog = await screen.findByRole('dialog');
-    expect(dialog.textContent).toMatch(/ended from outside the app/i);
-    expect(dialog.textContent).toMatch(/no job was lost/i);
-    expect(dialog.textContent).not.toMatch(/GPU driver|compute stack|VRAM/i);
+    expect(dialog.textContent).toMatch(/cannot attribute/i);
+    expect(dialog.textContent).not.toMatch(
+      /GPU driver|compute stack|VRAM|ended from outside|security software|antivirus/i,
+    );
     // An exit code IS evidence, so the one-click report stays.
     expect(screen.getByText('Report this bug')).toBeInTheDocument();
   });
@@ -225,7 +226,7 @@ describe('BackendCrashNotice — sentinel evidence gate (#1375)', () => {
     fireEvent.click(await screen.findByRole('button', { name: /view crash details/i }));
 
     const dialog = await screen.findByRole('dialog');
-    expect(dialog.textContent).not.toMatch(/ended from outside the app/i);
+    expect(dialog.textContent).not.toMatch(/cannot attribute/i);
     expect(dialog.textContent).toMatch(/VRAM|flush the TTS model/i);
   });
 
