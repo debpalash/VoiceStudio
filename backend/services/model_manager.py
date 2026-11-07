@@ -2442,7 +2442,15 @@ def resolve_omnivoice_checkpoint() -> str:
     and is not a valid model identifier listed on huggingface.co/models"* (#693).
     Fall back to the default rather than 500 on every launch.
     """
-    checkpoint = os.environ.get("OMNIVOICE_MODEL", _DEFAULT_OMNIVOICE_CHECKPOINT).strip()
+    checkpoint = os.environ.get("OMNIVOICE_MODEL", "").strip()
+    if not checkpoint:
+        from services.local_model_paths import get
+        local = get("tts", "omnivoice")
+        if local:
+            # Inventory must remain accessible to repair missing local folders.
+            # The actual load path validates before opening weights.
+            return local
+        checkpoint = _DEFAULT_OMNIVOICE_CHECKPOINT
     if not checkpoint:
         return _DEFAULT_OMNIVOICE_CHECKPOINT
     if checkpoint == "test":
@@ -2652,6 +2660,10 @@ def _load_model_sync():
         from omnivoice.utils.dtype import tts_dtype_name
 
         checkpoint = resolve_omnivoice_checkpoint()
+        if not os.environ.get("OMNIVOICE_MODEL", "").strip():
+            from services.local_model_paths import get, validate
+            if checkpoint == get("tts", "omnivoice"):
+                validate("tts", "omnivoice", checkpoint)
         _set_loading("loading_weights", f"Loading TTS weights on {device}…")
         logger.info("Loading VoiceStudio model on device: %s", device)
         preload_asr = should_preload_tts_asr()
