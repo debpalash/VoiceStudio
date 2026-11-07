@@ -20,6 +20,7 @@ import {
   DEFAULT_ELECTRON_PROXY_PORT,
 } from '../../config/app-config.mjs';
 import { clearDevPorts } from '../../scripts/clear-dev-ports.mjs';
+import { assertSupportedNode } from './node-version.mjs';
 import {
   activeMacDevBundles,
   holdMacDevBundle,
@@ -436,6 +437,12 @@ export function launchElectronVite(
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  try {
+    assertSupportedNode();
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
   try {
     await replacePreviousDevInstance();
   } catch (error) {

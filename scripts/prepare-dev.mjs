@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { assertSupportedNode } from "../electron/scripts/node-version.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -15,12 +16,14 @@ export function needsLocalBackendSetup({
 }
 
 export function prepareDev({
+  nodeVersion = process.versions.node,
   env = process.env,
   platform = process.platform,
   arch = process.arch,
   run = spawnSync,
   log = console.log,
 } = {}) {
+  assertSupportedNode(nodeVersion);
   const commands = [["install"]];
   if (needsLocalBackendSetup({ env, platform, arch })) {
     commands.push(["run", "setup:api"]);

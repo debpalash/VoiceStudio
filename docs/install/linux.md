@@ -100,7 +100,7 @@ Prerequisites:
 - **Bun** — `curl -fsSL https://bun.sh/install | bash`
 - **uv** — `curl -LsSf https://astral.sh/uv/install.sh | sh` (it provides the
   managed Python 3.11 the backend uses)
-- **Node.js 22+**, **Rust / Cargo**
+- **Node.js 22.12.0 or newer**, **Rust / Cargo**
   (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`), and the
   native development libraries used by the Electron native helper. If you use
   rustup, reopen the shell or run `source "$HOME/.cargo/env"` first.

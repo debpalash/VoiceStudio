@@ -168,7 +168,9 @@ Prerequisites:
 - **Bun** — `powershell -c "irm bun.sh/install.ps1 | iex"`.
 - **uv** — `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"` (it
   provides the managed Python 3.11 the backend uses).
-- **Node.js 22+**.
+- **Node.js 22.12.0 or newer** (a current LTS release is recommended). Source
+  startup checks this before setup or Electron downloads; if your Node is too
+  old, install a supported release from https://nodejs.org and reopen the terminal.
 - **Rust / Cargo** — `winget install Rustlang.Rustup`; close and reopen
   PowerShell afterwards.
 - **Microsoft C++ Build Tools** — the
