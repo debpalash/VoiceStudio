@@ -2236,7 +2236,7 @@
   },
   "backend": {
     "setup_required": "Installer l’environnement local",
-    "setup_hint": "Téléchargez Python et les dépendances de l’application (plusieurs Go). Les modèles vocaux sont installés séparément lorsque vous les choisissez.",
+    "setup_hint": "L’application est installée. Configurez ensuite l’environnement d’exécution local : téléchargez Python et les bibliothèques d’IA (plusieurs Go). Les modèles vocaux sont téléchargés séparément lorsque vous les choisissez.",
     "setup_smart_app_control": "Le contrôle intelligent des applications de Windows est activé et peut bloquer le moteur local après son téléchargement. Il n’accepte aucune exception par application. Vous pouvez le désactiver dans Sécurité Windows → Contrôle des applications et du navigateur, vous connecter à un moteur sur un autre ordinateur, exécuter le moteur dans WSL ou Docker, ou installer quand même.",
     "installing": "Installation…",
     "setup_space": "Libérez au moins {{gib}} Gio sur le disque de l’application, puis réessayez.",
@@ -2605,7 +2605,7 @@
     "change": "Modifier…",
     "reset_default": "Réinitialiser aux valeurs par défaut",
     "region_label": "Région de téléchargement",
-    "free_space": "{{free}} Go libres sur ce lecteur, environ {{needed}} Go nécessaires"
+    "free_space": "{{free}} Gio libres sur ce disque ; au moins {{needed}} Gio nécessaires pour l’environnement d’exécution"
   },
   "asr_missing": {
     "message": "Aucun modèle de reconnaissance vocale n'est installé — cette fonction en a besoin pour transcrire l'audio.",

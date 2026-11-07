@@ -2234,7 +2234,7 @@
   },
   "backend": {
     "setup_required": "Lokale Laufzeit installieren",
-    "setup_hint": "Python und App-Abhängigkeiten herunterladen (mehrere GB). Sprachmodelle werden separat installiert, wenn du sie auswählst.",
+    "setup_hint": "Die App ist installiert. Richten Sie nun die lokale Laufzeitumgebung ein: Python und KI-Bibliotheken werden heruntergeladen (mehrere GB). Sprachmodelle werden separat heruntergeladen, wenn Sie sie auswählen.",
     "setup_smart_app_control": "Windows Smart App Control ist aktiv und blockiert die lokale Engine möglicherweise nach dem Download. Es gibt keine Ausnahmen pro App. Sie können es unter Windows-Sicherheit → App- und Browsersteuerung ausschalten, eine Engine auf einem anderen Computer verbinden, die Engine in WSL oder Docker ausführen oder trotzdem installieren.",
     "installing": "Abhängigkeiten…",
     "setup_space": "Gib mindestens {{gib}} GiB auf dem Laufwerk der App frei und versuche es erneut.",
@@ -2603,7 +2603,7 @@
     "change": "Ändern…",
     "reset_default": "Auf Standard zurücksetzen",
     "region_label": "Download-Region",
-    "free_space": "{{free}} GB frei auf diesem Laufwerk, etwa {{needed}} GB nötig"
+    "free_space": "{{free}} GiB auf diesem Laufwerk frei; mindestens {{needed}} GiB für die Laufzeitumgebung erforderlich"
   },
   "asr_missing": {
     "message": "Es ist kein Sprache-zu-Text-Modell installiert — diese Funktion benötigt eines zum Transkribieren.",

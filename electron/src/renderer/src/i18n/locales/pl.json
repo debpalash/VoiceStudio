@@ -2258,7 +2258,7 @@
   },
   "backend": {
     "setup_required": "Zainstaluj lokalne środowisko",
-    "setup_hint": "Pobierz Python i zależności aplikacji (kilka GB). Modele głosowe są instalowane oddzielnie po ich wybraniu.",
+    "setup_hint": "Aplikacja jest zainstalowana. Teraz skonfiguruj lokalne środowisko uruchomieniowe: pobierz Python i biblioteki AI (kilka GB). Modele głosowe są pobierane osobno, gdy je wybierzesz.",
     "setup_smart_app_control": "Inteligentne sterowanie aplikacjami systemu Windows jest włączone i może zablokować lokalny silnik po pobraniu. Nie ma wyjątków dla poszczególnych aplikacji. Możesz je wyłączyć w Zabezpieczenia Windows → Kontrola aplikacji i przeglądarki, połączyć się z silnikiem na innym komputerze, uruchomić silnik w WSL lub Dockerze albo mimo to zainstalować.",
     "installing": "Instalowanie…",
     "setup_space": "Zwolnij co najmniej {{gib}} GiB na dysku aplikacji i spróbuj ponownie.",
@@ -2627,7 +2627,7 @@
     "change": "Zmień…",
     "reset_default": "Przywróć ustawienia domyślne",
     "region_label": "Region pobierania",
-    "free_space": "Wolne miejsce na tym dysku: {{free}} GB, potrzeba około {{needed}} GB"
+    "free_space": "{{free}} GiB wolnego miejsca na tym dysku; środowisko uruchomieniowe wymaga co najmniej {{needed}} GiB"
   },
   "asr_missing": {
     "message": "Nie zainstalowano modelu zamiany mowy na tekst — ta funkcja wymaga go do transkrypcji dźwięku.",

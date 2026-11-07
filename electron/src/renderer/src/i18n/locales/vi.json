@@ -2234,7 +2234,7 @@
   },
   "backend": {
     "setup_required": "Cài đặt môi trường cục bộ",
-    "setup_hint": "Tải Python và các thành phần phụ thuộc của ứng dụng (vài GB). Mô hình giọng nói được cài riêng khi bạn chọn.",
+    "setup_hint": "Ứng dụng đã được cài đặt. Tiếp theo, hãy thiết lập môi trường chạy cục bộ: tải Python và các thư viện AI (vài GB). Các mô hình giọng nói được tải riêng khi bạn chọn chúng.",
     "setup_smart_app_control": "Smart App Control của Windows đang bật và có thể chặn công cụ cục bộ sau khi tải xuống. Tính năng này không có ngoại lệ theo ứng dụng. Bạn có thể tắt trong Bảo mật Windows → Kiểm soát ứng dụng và trình duyệt, kết nối với công cụ trên máy khác, chạy công cụ trong WSL hoặc Docker, hoặc vẫn cài đặt.",
     "installing": "Đang…",
     "setup_space": "Giải phóng ít nhất {{gib}} GiB trên ổ đĩa của ứng dụng rồi thử lại.",
@@ -2603,7 +2603,7 @@
     "change": "Thay đổi…",
     "reset_default": "Đặt lại về mặc định",
     "region_label": "Khu vực tải xuống",
-    "free_space": "Ổ đĩa này còn trống {{free}} GB, cần khoảng {{needed}} GB"
+    "free_space": "Ổ đĩa này còn trống {{free}} GiB; môi trường chạy cần ít nhất {{needed}} GiB"
   },
   "asr_missing": {
     "message": "Chưa cài đặt mô hình chuyển giọng nói thành văn bản — tính năng này cần một mô hình để phiên âm.",

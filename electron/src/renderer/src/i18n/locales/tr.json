@@ -2234,7 +2234,7 @@
   },
   "backend": {
     "setup_required": "Yerel çalışma ortamını yükle",
-    "setup_hint": "Python ve uygulama bağımlılıklarını indirin (birkaç GB). Ses modelleri seçtiğinizde ayrı olarak yüklenir.",
+    "setup_hint": "Uygulama yüklendi. Şimdi yerel çalışma ortamını kurun: Python ve yapay zekâ kitaplıklarını indirin (birkaç GB). Ses modelleri, siz seçtiğinizde ayrı olarak indirilir.",
     "setup_smart_app_control": "Windows Akıllı Uygulama Denetimi açık ve yerel motoru indirildikten sonra engelleyebilir. Uygulama başına istisna yoktur. Windows Güvenliği → Uygulama ve tarayıcı denetimi bölümünden kapatabilir, başka bir bilgisayardaki motora bağlanabilir, motoru WSL veya Docker içinde çalıştırabilir ya da yine de yükleyebilirsiniz.",
     "installing": "Bağımlılıklar…",
     "setup_space": "Uygulamanın sürücüsünde en az {{gib}} GiB alan açıp yeniden deneyin.",
@@ -2603,7 +2603,7 @@
     "change": "Değiştir…",
     "reset_default": "Varsayılana sıfırla",
     "region_label": "İndirme bölgesi",
-    "free_space": "Bu sürücüde {{free}} GB boş alan var, yaklaşık {{needed}} GB gerekli"
+    "free_space": "Bu sürücüde {{free}} GiB boş alan var; çalışma ortamı için en az {{needed}} GiB gerekli"
   },
   "asr_missing": {
     "message": "Yüklü bir konuşmadan metne modeli yok — bu özellik sesi yazıya dökmek için bir model gerektirir.",

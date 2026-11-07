@@ -24,6 +24,7 @@ import {
   runtimeUvCache,
   stageRuntimeSources,
   type RuntimeRegion,
+  runtimeRequiredGib,
 } from './runtime-project';
 import { collectHostSnapshot, freeGb, type HostSnapshot } from './host-snapshot';
 import { collectTrustFacts, programBasename, runProbe, type TrustFacts } from './install-doctor';
@@ -1266,8 +1267,8 @@ export class BackendSupervisor extends EventEmitter<{
         : {}),
     };
     if (this.stage === 'setup_required' && this.setupIssue) status.setupIssue = this.setupIssue;
-    if (this.stage === 'setup_required' && this.setupIssue === 'space' && this.setupRequiredGib)
-      status.setupRequiredGib = this.setupRequiredGib;
+    if (this.stage === 'setup_required' && app.isPackaged)
+      status.setupRequiredGib = this.setupRequiredGib ?? runtimeRequiredGib();
     if (this.stage === 'setup_required' && app.isPackaged && this.runtimeFreeGib !== undefined)
       status.runtimeFreeGib = this.runtimeFreeGib;
     if (this.stage === 'setup_required' && this.runtimeInterrupted)

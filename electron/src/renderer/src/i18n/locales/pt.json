@@ -2236,7 +2236,7 @@
   },
   "backend": {
     "setup_required": "Instalar ambiente local",
-    "setup_hint": "Transfira Python e as dependências da aplicação (vários GB). Os modelos de voz são instalados separadamente quando os escolher.",
+    "setup_hint": "O aplicativo está instalado. Configure agora o ambiente de execução local: baixe o Python e as bibliotecas de IA (vários GB). Os modelos de voz são baixados separadamente quando você os escolhe.",
     "setup_smart_app_control": "O Controle Inteligente de Aplicativos do Windows está ativado e pode bloquear o mecanismo local após o download. Ele não tem exceções por aplicativo. Você pode desativá-lo em Segurança do Windows → Controle de aplicativos e do navegador, conectar-se a um mecanismo em outro computador, executar o mecanismo no WSL ou Docker, ou instalar mesmo assim.",
     "installing": "Instalando…",
     "setup_space": "Liberte pelo menos {{gib}} GiB na unidade da aplicação e tente novamente.",
@@ -2605,7 +2605,7 @@
     "change": "Alterar…",
     "reset_default": "Redefinir para o padrão",
     "region_label": "Região de download",
-    "free_space": "{{free}} GB livres nesta unidade, são necessários cerca de {{needed}} GB"
+    "free_space": "{{free}} GiB livres nesta unidade; o ambiente de execução precisa de pelo menos {{needed}} GiB"
   },
   "asr_missing": {
     "message": "Nenhum modelo de fala para texto está instalado — este recurso precisa de um para transcrever áudio.",
