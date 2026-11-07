@@ -80,7 +80,7 @@ def test_python_docs_and_mobile_edits_skip_the_electron_jobs(tmp_path, files):
     ["electron/src/renderer/src/app.tsx"],
     ["backend/x.py", "electron/src/main/updater.ts"],            # one Electron file is enough
     ["native/desktop-bridge/src/lib.rs"],
-    ["package.json"], ["bun.lock"], ["config/app.json"],
+    ["package.json"], ["bun.lock"], ["config/app.json"], ["config/account.json"],
     ["pyproject.toml"],                                         # the contract parses its `readme =` key
     ["tests/fixtures/longform_parser_cases.json"],              # shared with the JS suite
     ["tests/frontend/ssml.test.mjs"],

@@ -2,15 +2,20 @@ import { scrubText } from './scrub';
 import { REPO_URL } from './contactLinks';
 const ISSUES_URL = `${REPO_URL}/issues/new`;
 const MAX_STACK_CHARS = 1800;
-const MAX_MSG_CHARS = 1200;
+/** A report quotes this many characters of an error message. */
+export const MAX_MSG_CHARS = 1200;
 const MAX_ENCODED_BODY = 7000;
+// A cut at a fixed length can split an emoji, and encodeURIComponent throws on
+// the lone half: replace any lone surrogate so a report always opens.
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+const encode = (text) => encodeURIComponent(String(text).replace(LONE_SURROGATE, '\uFFFD'));
 function fitEncoded(text, maxEncoded) {
-  if (encodeURIComponent(text).length <= maxEncoded) return text;
+  if (encode(text).length <= maxEncoded) return text;
   let lo = 0;
   let hi = text.length;
   while (lo < hi) {
     const mid = Math.ceil((lo + hi) / 2);
-    if (encodeURIComponent(text.slice(0, mid)).length <= maxEncoded) lo = mid;
+    if (encode(text.slice(0, mid)).length <= maxEncoded) lo = mid;
     else hi = mid - 1;
   }
   return `${text.slice(0, lo)}\n… (truncated)`;
@@ -96,7 +101,7 @@ export function composeBugReportUrl({
   ].join('\n');
   body = fitEncoded(scrubText(body), MAX_ENCODED_BODY);
 
-  return `${ISSUES_URL}?title=${encodeURIComponent(title)}&labels=${encodeURIComponent(labels)}&body=${encodeURIComponent(body)}`;
+  return `${ISSUES_URL}?title=${encode(title)}&labels=${encode(labels)}&body=${encode(body)}`;
 }
 
 export function buildIssueSearchUrl(error) {

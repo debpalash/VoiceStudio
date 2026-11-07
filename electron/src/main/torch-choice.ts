@@ -72,8 +72,8 @@ export function applySavedTorchVariant(
 
 /**
  * Call once the runtime is ready: a failed install must not make ROCm stick. Choosing
- * another build forgets ROCm; other hand-written values stay the user's. Never throws,
- * because saving this must not stop the engine from starting.
+ * another build forgets a saved ROCm or CPU choice. Never throws, because saving this
+ * must not stop the engine from starting.
  */
 export function rememberTorchVariant(
   env: NodeJS.ProcessEnv = process.env,
@@ -89,7 +89,7 @@ export function rememberTorchVariant(
       if (saved !== 'rocm' && rocmTorchApplies(platform)) {
         writeLines(path, [...lines.filter((line) => !ASSIGNMENT.test(line)), `${KEY}=rocm`]);
       }
-    } else if (saved === 'rocm') {
+    } else if ((saved === 'rocm' || saved === 'cpu') && saved !== choice) {
       writeLines(
         path,
         lines.filter((line) => !ASSIGNMENT.test(line)),
@@ -98,4 +98,45 @@ export function rememberTorchVariant(
   } catch (error) {
     console.warn(`[setup] could not save the torch choice: ${(error as Error).name}`);
   }
+}
+
+/**
+ * Save the setup screen's CPU choice now: the install it starts can still fail. Returns
+ * false when it could not be saved, so the caller can say so; the install still runs.
+ */
+export function saveTorchVariant(variant: 'cpu', path: string = userEnvPath()): boolean {
+  try {
+    const lines = readLines(path).filter((line) => !ASSIGNMENT.test(line));
+    writeLines(path, [...lines, `${KEY}=${variant}`]);
+    return true;
+  } catch (error) {
+    console.warn(`[setup] could not save the torch choice: ${(error as Error).name}`);
+    return false;
+  }
+}
+
+/** Failures the smaller CPU download can get past: not a full disk or a blocked program. */
+const DOWNLOAD_FAILURES = new Set(['RUNTIME_DOWNLOAD_STALLED', 'RUNTIME_DOWNLOAD_INTERRUPTED']);
+const STALL_BEFORE_OFFER_S = 300;
+
+/**
+ * Whether the setup screen offers the CPU build. The multi-GB CUDA wheel has no mirror
+ * (#3748, #3720), so without this a bad connection means no working app at all.
+ */
+export function cpuSetupOffered(input: {
+  stage: string;
+  failureCode?: string;
+  progress?: { downloadsComplete?: boolean; stalled?: boolean; stalledSeconds?: number };
+  choice: { variant: string; explicit: boolean };
+  cpuApplies: boolean;
+}): boolean {
+  const { stage, failureCode, progress, choice, cpuApplies } = input;
+  if (!cpuApplies || choice.explicit || choice.variant !== 'default') return false;
+  if (stage === 'setup_required') return DOWNLOAD_FAILURES.has(failureCode ?? '');
+  return (
+    stage === 'installing' &&
+    progress?.downloadsComplete === false &&
+    progress.stalled === true &&
+    (progress.stalledSeconds ?? 0) >= STALL_BEFORE_OFFER_S
+  );
 }

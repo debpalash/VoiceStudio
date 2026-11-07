@@ -37,6 +37,14 @@ describe('backendFailureHints', () => {
     ).toEqual(['backend.hint_slow_start']);
   });
 
+  it('still classifies a silent timeout that quotes the backend log tail', () => {
+    expect(
+      backendFailureHints(
+        "Backend did not answer on port 3900 within 300 s (OMNIVOICE_STARTUP_BUDGET_S). It printed no output. The backend's own log (~/.omnivoice/omnivoice.log) ends with:\nINFO: loading torch\nSlow disks and antivirus scanning are the usual cause.",
+      ),
+    ).toEqual(['backend.hint_slow_start']);
+  });
+
   it('flags a path inside a cloud-synced folder (#2465)', () => {
     expect(
       backendFailureHints(
@@ -90,6 +98,25 @@ describe('backendFailureCause', () => {
   it('yields null for an unrecognised failure', () => {
     expect(backendFailureCause(undefined)).toBeNull();
     expect(backendFailureCause('Backend exited unexpectedly (exit code 1).')).toBeNull();
+  });
+});
+
+describe('a silent startup timeout that quotes the backend log (#3724)', () => {
+  const quoting = (path: string, lines: string[]) =>
+    'Backend did not answer on port 3900 within 300 s (OMNIVOICE_STARTUP_BUDGET_S). ' +
+    `It printed no output. The backend's own log (${path}) ends with:\n${lines.join('\n')}\n` +
+    'Slow disks and antivirus scanning of the runtime folder are the usual cause: click Retry, ' +
+    'exclude the VoiceStudio runtime folder from real-time scanning, or raise ' +
+    'OMNIVOICE_STARTUP_BUDGET_S (for example 900).';
+
+  it.each([
+    ['a data dir in a synced folder', '~/Dropbox/OmniVoice/omnivoice.log', ['INFO: loading torch']],
+    ['a permission error in the log', '~/.omnivoice/omnivoice.log', ['OSError: [Errno 13] EACCES']],
+    ['a refused launch in the log', '~/.omnivoice/omnivoice.log', ['spawn UNKNOWN']],
+  ])('stays a slow start with %s', (_label, path, lines) => {
+    const message = quoting(path, lines);
+    expect(backendFailureCause(message)).toBe('slow_start');
+    expect(backendFailureHints(message)).toEqual(['backend.hint_slow_start']);
   });
 });
 

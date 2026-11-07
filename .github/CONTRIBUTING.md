@@ -524,14 +524,19 @@ test-only PR. Docker Hub overview edits still publish through the small
     (`backend/services/media_tools.py`).
   - **VoiceStudio Cloud account features, only after the user turns them on**
     (first-run setup or Settings → Account; off by default, skipping = off):
-    browser sign-in against `voicestudio.sh/identity` and the account API at
-    `appapi.voicestudio.sh` from Electron main (`electron/src/main/account/`),
+    browser sign-in that starts on `app.voicestudio.sh/auth/app` (the dashboard
+    handles login and approval), the one-time code exchange at
+    `app.voicestudio.sh/auth/app/token`, token refresh and revocation at
+    `id.voicestudio.sh`, and the account API at `appapi.voicestudio.sh`, all
+    from Electron main (`electron/src/main/account/`, endpoints and client ID in
+    `config/account.json`),
     and, only after the user also turns cloud sync on, settings sync with
     `appapi.voicestudio.sh/v1/sync` from the backend
     (`backend/services/cloud_sync/`), which can call only with a token main
-    hands out. Turning either off stops every request at once; switching
-    account features off sends one best-effort token revocation. Hidden in
-    packaged builds until VoiceStudio Cloud launches.
+    hands out. Turning either off stops every request at once; signing out or
+    switching account features off sends one best-effort token revocation and
+    always forgets the session on this device, even offline (sign-out waits at
+    most 5 seconds for the network).
   - Bug reports as prefilled GitHub Issue URLs opened in the user's browser.
   - **Phone content reports, only when the user taps Send** in a generated
     result's Report sheet: `appapi.voicestudio.sh/v1/content-reports` with the
