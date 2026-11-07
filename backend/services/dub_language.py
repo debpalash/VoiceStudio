@@ -99,7 +99,22 @@ _CODE_ALIASES = {
     "jpn": "ja",
     "kor": "ko",
     "hin": "hi",
+    # "nb" is Norwegian Bokmål, the written standard Whisper and YouTube
+    # report for Norwegian; "no" is the macrolanguage dubbing knows.
+    "nb": "no",
 }
+
+# Second subtags of a "zh-..." tag that name a distinct spoken Sinitic
+# language instead of Mandarin: Hakka, Min (Min Nan), Wu, Gan, Xiang,
+# Jinyu. "yue" is not listed: Cantonese is supported via the "zh-yue"
+# alias above, and "cmn" is Mandarin itself, so neither falls through
+# wrongly. A "zh-<variety>" tag that cannot resolve to a supported code
+# must stay unknown instead of falling through to "zh" (CodeRabbit,
+# #3834): dubbing Hakka or Min Nan audio as Mandarin would be the same
+# wrong-language bug #3821 fixed.
+_ZH_VARIETY_SUBTAGS = frozenset({
+    "hakka", "min", "nan", "wuu", "gan", "xiang", "hsn", "cjy",
+})
 
 # English language names (lowercase, as OpenAI-compatible ASR servers
 # report them in ``verbose_json``) -> dub code. Only names that resolve to
@@ -264,6 +279,13 @@ def detected_source_language(value: str | None) -> str | None:
     for end in range(len(parts), 0, -1):
         prefix = "-".join(parts[:end])
         if prefix in DUB_SOURCE_LANG_CODES:
+            # A "zh-<variety>" tag must not fall through to "zh": the
+            # varieties in _ZH_VARIETY_SUBTAGS are distinct spoken
+            # languages the dub service does not support, so the tag is
+            # unknown rather than Mandarin. Longer prefixes win first, so
+            # "zh-yue" still resolves to "yue" via _CODE_ALIASES above.
+            if prefix == "zh" and len(parts) > 1 and parts[1] in _ZH_VARIETY_SUBTAGS:
+                return None
             return prefix
         alias = _CODE_ALIASES.get(prefix)
         if alias is not None:

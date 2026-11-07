@@ -75,6 +75,9 @@ from services.dub_language import (
         ("lav", "lv"),
         ("slk", "sk"),
         ("arb", "ar"),
+        # Norwegian Bokmål ("nb", as Whisper/YouTube report it) is the
+        # macrolanguage Norwegian ("no") dubbing knows.
+        ("nb", "no"),
     ],
 )
 def test_detected_source_language_resolves_to_its_own_language(value, expected):
@@ -93,6 +96,18 @@ def test_detected_source_language_resolves_to_its_own_language(value, expected):
         # Names / codes with no dub equivalent stay unknown.
         "esperanto",
         "unknown-language",
+        # "zh-<variety>" tags are distinct spoken languages, not Mandarin:
+        # Hakka, Min Nan, Wu, Gan, Xiang, Jinyu (CodeRabbit, #3834).
+        "zh-hakka",
+        "zh-min-nan",
+        "zh-min",
+        "zh-nan",
+        "zh-wuu",
+        "zh-gan",
+        "zh-xiang",
+        "zh-cjy",
+        "zh-hsn",
+        "zh-hakka-TW",
     ],
 )
 def test_unlisted_language_never_becomes_another_language(value):
