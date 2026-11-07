@@ -1,8 +1,8 @@
-import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
-import { authorizeModelsDirectory } from './media-authorization';
+import { authorizeModelsDirectory, authorizeModelsDirectoryReadOnly } from './media-authorization';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -25,6 +25,21 @@ it('mints one-shot models-directory capabilities only after a writable directory
     kind: 'models_dir',
     path: await realpath(selected),
   });
+});
+
+it('authorizes a parent folder without creating or probing files', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'voicestudio-model-parent-'));
+  roots.push(root);
+  const selected = join(root, 'existing-parent');
+  await mkdir(selected);
+  await chmod(selected, 0o555);
+  try {
+    const result = await authorizeModelsDirectoryReadOnly(join(root, 'data'), selected);
+    expect(result.path).toBe(await realpath(selected));
+    await expect(readdir(selected)).resolves.toEqual([]);
+  } finally {
+    await chmod(selected, 0o755);
+  }
 });
 
 it('represents restoring the platform default with an authorized empty path', async () => {

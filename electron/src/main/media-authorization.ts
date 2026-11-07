@@ -39,14 +39,21 @@ export async function authorizeMediaTool(dataDir: string, selected: string, kind
   return writeAuthorization(dataDir, kind, path);
 }
 
+async function resolveModelsDirectory(selected: string) {
+  if (!isAbsolute(selected)) throw new Error('Expected an absolute models directory');
+  const path = await realpath(selected);
+  if (!(await stat(path)).isDirectory()) throw new Error('Expected a directory');
+  return path;
+}
+
+/** Authorize a directory for operations that may write model files. */
 export async function authorizeModelsDirectory(dataDir: string, selected: string) {
   if (!isAbsolute(dataDir)) throw new Error('Expected an absolute data directory');
   if (selected === '') return writeAuthorization(dataDir, 'models_dir', '');
-  if (!isAbsolute(selected)) throw new Error('Expected an absolute models directory');
 
+  if (!isAbsolute(selected)) throw new Error('Expected an absolute models directory');
   await mkdir(selected, { recursive: true });
-  const path = await realpath(selected);
-  if (!(await stat(path)).isDirectory()) throw new Error('Expected a directory');
+  const path = await resolveModelsDirectory(selected);
   const probe = join(path, `.voicestudio-write-test-${randomBytes(8).toString('hex')}`);
   try {
     await writeFile(probe, 'ok', { flag: 'wx', mode: 0o600 });
@@ -56,4 +63,10 @@ export async function authorizeModelsDirectory(dataDir: string, selected: string
     await rm(probe, { force: true }).catch(() => undefined);
   }
   return writeAuthorization(dataDir, 'models_dir', path);
+}
+
+/** Authorize a model source without creating or modifying anything in it. */
+export async function authorizeModelsDirectoryReadOnly(dataDir: string, selected: string) {
+  if (!isAbsolute(dataDir)) throw new Error('Expected an absolute data directory');
+  return writeAuthorization(dataDir, 'models_dir', await resolveModelsDirectory(selected));
 }
