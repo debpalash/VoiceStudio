@@ -330,6 +330,15 @@ def test_security_floors_report_only_installed_packages_below_floor(tmp_path, in
     assert [f"{r.name}{r.specifier}" for r, _ in low] == below
 
 
+def test_security_floors_skip_floors_whose_marker_does_not_apply(tmp_path):
+    """A platform-specific floor must not be enforced on other platforms."""
+    mod = _security_floors_module()
+    path = tmp_path / "floors.txt"
+    path.write_text("foo>=2; sys_platform == 'no-such-platform'\nbar>=2; python_version >= '3'\n", encoding="utf-8")
+    assert [r.name for r in mod.floors(path)] == ["bar"]
+    assert [r.name for r, _ in mod.below_floor(mod.floors(path), {"foo": "1", "bar": "1"})] == ["bar"]
+
+
 def test_security_floors_cli_check_and_requirements(monkeypatch, capsys):
     from types import SimpleNamespace
 

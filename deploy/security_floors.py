@@ -23,14 +23,17 @@ CONSTRAINTS = Path(__file__).with_name("security-constraints.txt")
 
 
 def floors(path: Path = CONSTRAINTS) -> list[Requirement]:
-    return [
+    """Floors from the constraints file that apply to this interpreter (markers evaluated)."""
+    reqs = [
         Requirement(line.strip())
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip() and not line.lstrip().startswith("#")
     ]
+    return [req for req in reqs if req.marker is None or req.marker.evaluate()]
 
 
 def installed() -> dict[str, str]:
+    """Installed distributions by normalized name."""
     return {
         canonicalize_name(dist.metadata["Name"]): dist.version
         for dist in md.distributions()
@@ -39,6 +42,7 @@ def installed() -> dict[str, str]:
 
 
 def below_floor(reqs: list[Requirement], versions: dict[str, str]) -> list[tuple[Requirement, str]]:
+    """Installed packages whose version is below their floor; absent packages are skipped."""
     return [
         (req, versions[canonicalize_name(req.name)])
         for req in reqs
@@ -48,6 +52,7 @@ def below_floor(reqs: list[Requirement], versions: dict[str, str]) -> list[tuple
 
 
 def main(argv: list[str]) -> int:
+    """Print upgrade requirements, or check that every floor holds."""
     if argv[1:] not in (["requirements"], ["check"]):
         print(__doc__, file=sys.stderr)
         return 2
