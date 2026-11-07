@@ -89,6 +89,13 @@ _HF_REPO_ID = "Serveurperso/OmniVoice-GGUF"
 _HF_TOKEN_RE = re.compile(r"hf_[A-Za-z0-9]{30,}")
 _HF_TOKEN_MASK = "hf_***REDACTED***"
 
+#: Decoded budget for one reference clip. The profile upload path caps a
+#: reference at 128 MB on disk (``api.routers.profiles``), but a lossy
+#: container decodes to far more than that, and converting a reference
+#: decodes it in the backend process. A clip that does not fit is refused
+#: with an actionable message instead of exhausting the backend.
+_MAX_REFERENCE_DECODED_BYTES = 128 * 1024 * 1024
+
 
 def _mask_token(s: str) -> str:
     """Belt-and-suspenders token redaction. Used on captured stderr
@@ -373,6 +380,213 @@ def _sha256_of_file(p: Path, *, chunk: int = 1 << 20) -> str:
         for buf in iter(lambda: f.read(chunk), b""):
             h.update(buf)
     return h.hexdigest()
+
+
+def _is_cli_readable_wav(path: Path) -> bool:
+    """True when the runtime can read ``path`` as it stands.
+
+    The bundled runtime reads WAV containers only (``omnivoice.cpp``
+    ``src/wav.h``: ``read_wav_buf``), and it decodes PCM16, PCM24 and
+    float32 — classic or WAVE_FORMAT_EXTENSIBLE. A RIFF/WAVE container
+    is therefore not enough: a PCM8, PCM32 or mu-law clip is a RIFF/WAVE
+    file the runtime rejects with "[WAV] Unsupported", so it has to be
+    converted like any other reference the CLI cannot read.
+
+    The header is parsed the way ``read_wav_buf`` parses it: the sample
+    format comes from the ``fmt `` chunk, an extensible header collapses
+    to its sub-format, and the ``data`` chunk is only read once a ``fmt ``
+    chunk has been seen.
+    """
+    try:
+        with path.open("rb") as handle:
+            header = handle.read(12)
+            if len(header) != 12 or header[:4] != b"RIFF" or header[8:12] != b"WAVE":
+                return False
+            audio_format = 0
+            bits = 0
+            channels = 0
+            chunk = handle.read(8)
+            while len(chunk) == 8:
+                chunk_id = chunk[:4]
+                size = int.from_bytes(chunk[4:8], "little")
+                if chunk_id == b"fmt ":
+                    body = handle.read(min(size, 40))
+                    if len(body) >= 16:
+                        audio_format = int.from_bytes(body[0:2], "little")
+                        channels = int.from_bytes(body[2:4], "little")
+                        bits = int.from_bytes(body[14:16], "little")
+                        if audio_format == 0xFFFE and len(body) >= 40:
+                            # WAVE_FORMAT_EXTENSIBLE collapses to its
+                            # effective sample format (1 -> PCM, 3 -> float).
+                            sub_format = int.from_bytes(body[24:26], "little")
+                            if sub_format in (1, 3):
+                                audio_format = sub_format
+                    handle.seek(size - len(body), 1)
+                elif chunk_id == b"data" and channels > 0:
+                    return (audio_format == 1 and bits in (16, 24)) or (
+                        audio_format == 3 and bits == 32
+                    )
+                else:
+                    handle.seek(size, 1)
+                if size & 1 and len(handle.read(1)) != 1:
+                    # A chunk with an odd size is padded to an even one.
+                    return False
+                chunk = handle.read(8)
+    except OSError:
+        return False
+    # The header ended without a data chunk the runtime can decode.
+    return False
+
+
+def _ffprobe_decoded_bytes(prompt: Path) -> Optional[int]:
+    """Decoded size of a reference clip, measured with ffprobe, or None.
+
+    ffprobe reads the container's metadata and decodes nothing, so a
+    container ``libsndfile`` cannot size can still be measured before it
+    is decoded. The *audio stream's* duration is used, not the
+    container's: a video whose audio track is short is a short reference.
+    """
+    try:
+        from services.ffmpeg_utils import find_ffprobe, local_inputs_only
+
+        ffprobe = find_ffprobe()
+        if not ffprobe:
+            return None
+        proc = subprocess.run(
+            local_inputs_only(
+                [ffprobe, "-v", "error", "-select_streams", "a:0",
+                 "-show_entries", "stream=duration,channels,sample_rate",
+                 "-of", "json", str(prompt)],
+                tool="ffprobe",
+            ),
+            capture_output=True, timeout=60, check=False,
+            # Every spawn in this module carries the loader env
+            # (tests/test_gguf_source_build_runtime_1348.py).
+            env=_spawn_env(),
+        )
+        if proc.returncode != 0:
+            return None
+        payload = json.loads(proc.stdout.decode("utf-8", errors="replace"))
+        stream = (payload.get("streams") or [{}])[0]
+        duration = float(stream.get("duration") or 0.0)
+        channels = int(stream.get("channels") or 0)
+        sample_rate = int(stream.get("sample_rate") or 0)
+    except Exception:  # noqa: BLE001 — an unsized clip is a refusal
+        return None
+    if duration <= 0 or channels <= 0 or sample_rate <= 0:
+        return None
+    return int(duration * sample_rate * channels * 4)  # float32 samples
+
+
+def _reference_decoded_bytes(prompt: Path) -> int:
+    """Decoded size of a reference clip in bytes.
+
+    Read from the container metadata — the audio is never decoded, so an
+    oversized clip is refused before anything is allocated. ``libsndfile``
+    sizes every container it can read; the ones it cannot (M4A, AAC,
+    WebM) are measured with ffprobe.
+
+    Raises :class:`ValueError` when the clip cannot be sized at all: a
+    clip of unknown size is exactly what this budget exists to keep out.
+    """
+    try:
+        import soundfile as sf
+
+        info = sf.info(str(prompt))
+        return int(info.frames) * int(info.channels) * 4  # float32 samples
+    except Exception:  # noqa: BLE001 — libsndfile cannot read every container
+        pass
+    decoded = _ffprobe_decoded_bytes(prompt)
+    if decoded is None:
+        raise ValueError(
+            "The voice profile's reference clip could not be read as audio. "
+            "Re-upload the clip as a WAV, MP3, FLAC or OGG file."
+        )
+    return decoded
+
+
+def _remove_quietly(path: Path) -> None:
+    """Delete ``path`` without ever raising.
+
+    A leftover temporary file is not worth failing the call over, so a
+    removal failure is logged and the caller keeps its own error.
+    """
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        logger.debug("Could not remove the temporary file %s", path, exc_info=True)
+
+
+def _convert_reference_to_wav(prompt: Path) -> Path:
+    """Decode ``prompt`` into a temporary WAV the GGUF CLI can read.
+
+    A voice profile keeps the reference clip in whatever container the user
+    uploaded (the profile editor accepts MP3, FLAC, Ogg, ...), but the CLI's
+    WAV reader only understands RIFF/WAVE — an MP3 reference killed the
+    spawn with "[WAV] Not a valid WAV buffer" (#3655). Decode through the
+    app's own loader (torchaudio → soundfile → ffmpeg) and write a WAV next
+    to the other per-call temp files. The CLI resamples and downmixes the
+    prompt itself, so the clip keeps its own rate and channel layout.
+    """
+    from services.audio_io import atomic_save_wav, load_audio
+
+    decoded = _reference_decoded_bytes(prompt)
+    if decoded > _MAX_REFERENCE_DECODED_BYTES:
+        # The upload path caps a reference at 128 MB on disk, but a lossy
+        # container decodes to far more than that — and the conversion
+        # decodes it in the backend process, while the CLI would do it in
+        # its own. Refuse instead of exhausting the backend.
+        raise ValueError(
+            "The voice profile's reference clip is too long to convert. "
+            "Trim it to a shorter clip and upload it again."
+        )
+    try:
+        wav, rate = load_audio(prompt)
+    except ValueError:
+        # The loader's own size-limit errors ("use a shorter clip") are
+        # actionable as they are — do not turn them into a re-upload hint.
+        raise
+    except Exception as exc:  # noqa: BLE001 — any decode failure is "unreadable"
+        raise ValueError(
+            "The voice profile's reference clip could not be read as audio. "
+            "Re-upload the clip as a WAV, MP3, FLAC or OGG file."
+        ) from exc
+    fd, name = tempfile.mkstemp(prefix="omnivoice-gguf-ref-", suffix=".wav")
+    os.close(fd)
+    target = Path(name)
+    try:
+        atomic_save_wav(str(target), wav, rate)
+    except BaseException:
+        # BaseException so an interrupted write does not leave the temp file
+        # behind either. A write failure keeps its own cause — the user
+        # cannot fix it by re-uploading the clip.
+        _remove_quietly(target)
+        raise
+    return target
+
+
+def _validated_reference(ref_audio: str) -> Path:
+    """Resolve a reference clip and check it against the engine's read policy.
+
+    The prompt clip must live under a directory this app owns (voices,
+    dubbing workspace or the temp dir) so a request cannot point the
+    binary at arbitrary files on disk.
+    """
+    from core.config import DUB_DIR, VOICES_DIR
+
+    prompt = Path(ref_audio).resolve()
+    roots = [
+        Path(VOICES_DIR).resolve(),
+        Path(DUB_DIR).resolve(),
+        Path(tempfile.gettempdir()).resolve(),
+    ]
+    if not any(prompt == root or prompt.is_relative_to(root) for root in roots):
+        raise FileNotFoundError(
+            f"Reference audio is outside the directories this engine may read: {prompt}"
+        )
+    if not prompt.is_file():
+        raise FileNotFoundError(f"Reference audio file does not exist: {prompt}")
+    return prompt
 
 
 def _automatic_entry(quant_map: dict) -> dict:
@@ -901,6 +1115,7 @@ def _make_backend_class():
             os.close(fd)
             out_path = Path(out_name)
             transcript_path: Optional[Path] = None
+            converted_prompt: Optional[Path] = None
             try:
                 if ref_audio and ref_text:
                     # A file keeps arbitrary transcript text out of argv.
@@ -908,6 +1123,16 @@ def _make_backend_class():
                     transcript_path = Path(t_name)
                     with os.fdopen(t_fd, "w", encoding="utf-8") as handle:
                         handle.write(str(ref_text))
+                # The CLI reads WAV containers of a few sample formats only,
+                # so a profile reference stored as MP3/M4A/... — or as a WAV
+                # the runtime cannot decode — has to be converted before it
+                # is handed over (#3655). The original path is validated
+                # first — the conversion reads the file.
+                if ref_audio:
+                    prompt = _validated_reference(ref_audio)
+                    if not _is_cli_readable_wav(prompt):
+                        converted_prompt = _convert_reference_to_wav(prompt)
+                        ref_audio = str(converted_prompt)
                 argv = self._build_argv(
                     base=base,
                     tokenizer=tokenizer,
@@ -926,13 +1151,10 @@ def _make_backend_class():
                 self._run_subprocess(argv, stdin_text=text)
                 samples, _rate = sf.read(str(out_path), dtype="float32")
             finally:
-                for leftover in (out_path, transcript_path):
+                for leftover in (out_path, transcript_path, converted_prompt):
                     if leftover is None:
                         continue
-                    try:
-                        leftover.unlink(missing_ok=True)
-                    except OSError:
-                        pass
+                    _remove_quietly(leftover)
 
             if samples.ndim > 1:
                 samples = samples.mean(axis=1)
@@ -986,20 +1208,9 @@ def _make_backend_class():
                 argv.append("--no-preprocess-prompt")
 
             if ref_audio:
-                from core.config import DUB_DIR, VOICES_DIR
-
-                prompt = Path(ref_audio).resolve()
-                roots = [
-                    Path(VOICES_DIR).resolve(),
-                    Path(DUB_DIR).resolve(),
-                    Path(tempfile.gettempdir()).resolve(),
-                ]
-                if not any(prompt == root or prompt.is_relative_to(root) for root in roots):
-                    raise FileNotFoundError(
-                        f"Reference audio is outside the directories this engine may read: {prompt}"
-                    )
-                if not prompt.is_file():
-                    raise FileNotFoundError(f"Reference audio file does not exist: {prompt}")
+                # Two-stage validation (defense in depth) — see
+                # :func:`_validated_reference`.
+                prompt = _validated_reference(ref_audio)
                 argv += ["--ref-wav", str(prompt)]
                 if ref_text:
                     argv += ["--ref-text", str(ref_text)]
