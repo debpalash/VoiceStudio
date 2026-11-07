@@ -50,6 +50,7 @@ function ModelBadges({ model, active }: { model: CatalogueModel; active: boolean
         label={model.label}
         info={model.license_info}
         acceptance={model.license_acceptance}
+        dependencies={model.license_dependencies}
       />
     </>
   );

@@ -467,6 +467,33 @@ def _model_licence_acceptance(repo_id: str) -> dict:
     return model_acceptance.status(repo_id)
 
 
+def _model_licence_dependencies(model: dict, own_key: str) -> list[dict]:
+    """Acceptance states of the other gated repos this row's engines need.
+
+    Generation gates on every registry row whose ``engines`` include the
+    engine (``model_acceptance.repos_for_engine``), so a row whose licence
+    dialog only offers its own licence leaves the engine blocked after
+    accepting (#3855: OmniVoice also needs the Higgs tokenizer's licence,
+    which has no catalogue row of its own). The row carries those dependent
+    states so its dialog can list and clear all of them at once.
+    """
+    try:
+        from services import model_acceptance
+        hf_repo = model["repo_id"]
+        seen: dict[str, dict] = {}
+        for engine in model.get("engines") or []:
+            for repo_id in model_acceptance.repos_for_engine(engine):
+                if repo_id in (own_key, hf_repo) or repo_id in seen:
+                    continue
+                state = model_acceptance.status(repo_id)
+                if state["required"]:
+                    seen[repo_id] = state
+        return list(seen.values())
+    except Exception:  # noqa: BLE001 — the row's own licence flow must survive a registry read failure
+        logger.warning("model licence dependency lookup failed", exc_info=True)
+        return []
+
+
 @router.get("/models")
 def list_models():
     """Catalogue every known model + its on-disk install state.
@@ -531,6 +558,7 @@ def list_models():
             "curated": _model_curated(m, host_tags),
             "license_info": _model_license_info(key),
             "license_acceptance": _model_licence_acceptance(key),
+            "license_dependencies": _model_licence_dependencies(m, key),
         })
     response = {
         "target": "local",
