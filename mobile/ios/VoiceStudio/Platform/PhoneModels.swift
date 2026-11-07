@@ -112,6 +112,8 @@ final class WifiState: @unchecked Sendable {
         }
         Task {
             await ModelDownloadSessions.reconcile(authorized: Set(intents.map(\.id)))
+            // A paused intent still owns running system transfers from the previous run.
+            for item in intents where item.paused { await ModelDownloadSessions.suspend(modelID: item.id) }
             for item in intents where !item.paused {
                 if let model = models.first(where: { $0.id == item.id }) {
                     if await store?.installed(model) == true {
@@ -172,7 +174,8 @@ final class WifiState: @unchecked Sendable {
         startDownload(model,mobile: allowMobileData)
     }
     private func startDownload(_ model: PhoneModel,mobile: Bool) {
-        guard downloads[model.id] == nil,let store else { return }
+        // The restored-intent loop can race an explicit pause between its snapshot and this call.
+        guard downloads[model.id] == nil,let store,!paused.contains(model.id) else { return }
         progress[model.id] = 0
         let token = UUID(); downloadTokens[model.id] = token
         let policy = DownloadPolicy(allowMobileData: mobile); let wifi = wifi
@@ -226,6 +229,9 @@ final class WifiState: @unchecked Sendable {
     func pause(_ model: PhoneModel) {
         for index in intents.indices where intents[index].id == model.id { intents[index].paused = true }
         paused.insert(model.id); saveIntents(); downloadTokens.removeValue(forKey: model.id); downloads[model.id]?.cancel()
+        // Cancelling the app task only suspends a system transfer that already reattached;
+        // a restored one keeps running until it is suspended here as well.
+        Task { await ModelDownloadSessions.suspend(modelID: model.id) }
     }
     func cancel(_ model: PhoneModel) {
         intents.removeAll { $0.id == model.id }; paused.remove(model.id); saveIntents()

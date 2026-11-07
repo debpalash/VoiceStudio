@@ -91,6 +91,16 @@ final class BackgroundModelDownloads: NSObject, HTTPTransport, URLSessionDownloa
             if !keys.contains(String(key.split(separator: ".").first ?? "")) { task.cancel() }
         }
     }
+    func suspend(modelID: String) async {
+        let prefix = ownerKey(modelID)+"."
+        for task in await session.allTasks where task.taskDescription?.hasPrefix(prefix) == true {
+            // Suspension keeps the system-owned partial range available for Resume, but a
+            // task awaited by a live download must keep running or that wait would stall.
+            lock.withLock {
+                if pending[task.taskIdentifier] == nil,task.state == .running { task.suspend() }
+            }
+        }
+    }
     func remove(modelID: String) async {
         let prefix = ownerKey(modelID)+"."
         for task in await session.allTasks where task.taskDescription?.hasPrefix(prefix) == true { task.cancel() }
@@ -183,6 +193,9 @@ final class BackgroundModelDownloads: NSObject, HTTPTransport, URLSessionDownloa
     }
     static func reconcile(authorized: Set<String>) async {
         for mobile in [false,true] { try? await transport(allowMobile: mobile).reconcile(authorized: authorized) }
+    }
+    static func suspend(modelID: String) async {
+        for mobile in [false,true] { try? await transport(allowMobile: mobile).suspend(modelID: modelID) }
     }
     static func remove(modelID: String) async {
         for mobile in [false,true] { try? await transport(allowMobile: mobile).remove(modelID: modelID) }
