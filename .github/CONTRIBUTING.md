@@ -515,14 +515,18 @@ test-only PR. Docker Hub overview edits still publish through the small
     source setup checks it locally and stops when it is missing.
   - **Optional engine installs the user starts** (owner-approved 2026-11-07):
     clicking Install or Repair on an optional engine fetches its upstream
-    source from GitHub at a reviewed commit, its Python packages from PyPI or
-    the user's chosen mirror, the PyTorch build matching the host and the
-    engine's Torch pin from `download.pytorch.org` (`cu128`, `cpu`, or on Linux
-    AMD hosts the ROCm index that publishes that Torch version; a user-set
-    `OMNIVOICE_TORCH_INDEX` replaces it), and the engine's Hugging Face weights
-    at a reviewed revision (`backend/services/sidecar_install.py`). Packages are
-    pinned by version, not by hash. Checking whether an engine is installed
-    downloads nothing.
+    source from GitHub at a reviewed commit; a uv-managed Python from
+    `astral-sh/python-build-standalone` GitHub Releases (or the regional mirror)
+    when the engine needs a version that is not installed; its Python packages
+    from PyPI or the user's chosen mirror; the host's PyTorch build from
+    `download.pytorch.org` (`cu128` or `cpu`; on Linux AMD hosts, engines with
+    ROCm support use the ROCm index that publishes their Torch version, which a
+    user-set `OMNIVOICE_TORCH_INDEX` replaces), where uv may also resolve other
+    packages that index carries; and the engine's Hugging Face weights at a
+    reviewed revision (`backend/services/sidecar_install.py`). Torch is pinned
+    to an exact version; other packages follow the engine's own requirements
+    (exact, ranged or unpinned). Nothing is hash-pinned. Checking whether an
+    engine is installed downloads nothing.
   - **Galleries the user opens or enables:** the community gallery manifest
     from jsDelivr plus its GitHub-hosted previews
     (`backend/api/routers/community.py`); the voice-preview gallery's signed
