@@ -669,3 +669,16 @@ it('scrubs credentials and home directories from the quoted backend output', asy
     await supervisor.shutdown();
   }
 });
+
+it('keeps the end of one log line too long to quote whole', () => {
+  const line = `INFO: start ${'x'.repeat(3_000)} RuntimeError: CUDA driver too old`;
+  const message = startupTimeoutMessage(3900, 300_000, {
+    owned: true,
+    logPath: '~/.omnivoice/omnivoice.log',
+    logTail: [line],
+  });
+  expect(message.length).toBeLessThanOrEqual(MAX_MSG_CHARS);
+  expect(message).toContain('RuntimeError: CUDA driver too old');
+  expect(message).not.toContain('is missing, empty, or unreadable');
+  expect(message).toMatch(/raise OMNIVOICE_STARTUP_BUDGET_S \(for example 900\)\.$/);
+});

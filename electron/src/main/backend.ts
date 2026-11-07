@@ -1005,8 +1005,16 @@ export function startupTimeoutMessage(
     const lines = [...(logTail ?? [])];
     const compose = () => `${base} ${backendLogEvidence(logPath, lines, logStale)}\n${advice}`;
     let message = compose();
-    while (message.length > MAX_MSG_CHARS && lines.length > 0) {
+    while (message.length > MAX_MSG_CHARS && lines.length > 1) {
       lines.shift();
+      message = compose();
+    }
+    if (message.length > MAX_MSG_CHARS && lines.length === 1) {
+      // One line longer than the room left: keep its end, where the error is,
+      // rather than dropping the only evidence.
+      const room = MAX_MSG_CHARS - (message.length - lines[0].length) - 1;
+      if (room > 0) lines[0] = `…${lines[0].slice(-room)}`;
+      else lines.length = 0;
       message = compose();
     }
     return message;
