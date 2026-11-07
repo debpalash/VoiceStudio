@@ -168,6 +168,7 @@ function engineItem(ctx: Context, engine: EngineBackend): FamilyItem {
             label={single.label}
             info={single.license_info}
             acceptance={single.license_acceptance}
+            dependencies={single.license_dependencies}
           />
         )}
         {!engine.available && (
