@@ -145,7 +145,7 @@ import {
 
 const DEFAULT_TRANSLATION_AGENT_KEY = 'voicestudio.defaultTranslationAgent';
 const LIVE_PREVIEW_KEY = 'voicestudio.dubLivePreview';
-// Targets include translate-and-speak-only languages (Uyghur, #2810).
+// Targets include translate-and-speak-only languages (Kabyle, Uyghur).
 const targetOptions = TRANSLATION_TARGET_LABELS;
 const sentenceEnd = /[.!?\u3002\uff01\uff1f]/;
 
