@@ -19,11 +19,15 @@ logger = logging.getLogger("omnivoice.cosyvoice_gguf")
 
 
 class CosyVoiceGGUFBackend(TTSBackend):
-    id = bootstrap.ENGINE_ID
+    id = "cosyvoice-gguf"
     display_name = "CosyVoice 3 GGUF (native Vulkan/CPU, 9 langs, reference clone)"
     gpu_compat = ("cpu", "vulkan")
     supports_cloning = True
     supports_voice_design = False
+    # The speak payload carries model/voice/text/instruct/seed/speed only —
+    # no quality knobs (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
     supports_generation_seed = True
     runs_out_of_process = True
     _is_subprocess_isolated = True
