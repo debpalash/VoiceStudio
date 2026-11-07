@@ -1,5 +1,6 @@
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { renameSyncWithRetry } from '../rename-retry';
 
 /**
  * The profile picture, cached on disk by `avatar_artifact_id` (vssaas
@@ -26,7 +27,7 @@ export class AvatarCache {
         encoding: 'utf8',
         mode: 0o600,
       });
-      renameSync(temporary, this.path);
+      renameSyncWithRetry(temporary, this.path);
     } catch {
       /* the in-memory copy still serves this run */
     }

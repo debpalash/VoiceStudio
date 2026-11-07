@@ -1,5 +1,6 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { renameSyncWithRetry } from './rename-retry';
 
 const MAX_RESPONSE_BYTES = 16 * 1024;
 const MAX_SESSION_SECONDS = 9 * 60 * 60;
@@ -293,5 +294,5 @@ export function saveRemoteBackend(path: string, url: string | null): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const temporary = `${path}.${process.pid}.tmp`;
   writeFileSync(temporary, JSON.stringify({ url }, null, 2), { encoding: 'utf8', mode: 0o600 });
-  renameSync(temporary, path);
+  renameSyncWithRetry(temporary, path);
 }
