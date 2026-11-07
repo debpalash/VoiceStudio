@@ -93,3 +93,11 @@ bash scripts/build-omnivoice-tts.sh --platform "$PLATFORM" --commit-sha aaaaaaaa
     else:
         assert "GGML_VULKAN=ON" in log
         assert log.count("-DCMAKE_BUILD_TYPE=Release") == 2
+
+
+def test_header_probe_cannot_lose_a_race_with_the_compiler():
+    """`printf | c++` under pipefail failed when c++ exited before reading (#3787 CI)."""
+    probe = (REPO / "scripts/lib/omnivoice-vulkan.sh").read_text(encoding="utf-8")
+    code = "\n".join(line for line in probe.splitlines() if not line.lstrip().startswith("#"))
+    assert "| c++" not in code and "|\n            c++" not in code
+    assert "c++ -fsyntax-only -x c++ -" in code and "<<<" in code
