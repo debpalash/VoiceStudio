@@ -30,7 +30,6 @@ export default defineConfig({
   },
   optimizeDeps: { exclude: ['@scalar/api-reference-react'] },
   test: {
-    environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/renderer/src/test/setup.ts'],
     // Code under test saves choices to this file; the real one steers the installed app.
@@ -41,12 +40,36 @@ export default defineConfig({
     // Shared release runners (Intel macOS, Windows ARM) run the suite many times slower
     // than a laptop; a real hang still fails, a busy runner no longer does.
     testTimeout: process.env.CI ? 30_000 : 5_000,
-    include: [
-      'src/main/**/*.test.{ts,tsx}',
-      'src/renderer/**/*.test.{ts,tsx}',
-      'src/shared/repair-request.test.ts',
-      'src/shared/download-failure.test.ts',
-    ],
     css: false,
+    projects: [
+      {
+        extends: true,
+        test: {
+          // Main-process code runs in Node, so its tests do too (no DOM to set up per file).
+          name: 'main',
+          environment: 'node',
+          pool: 'forks',
+          include: ['src/main/**/*.test.{ts,tsx}'],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'renderer',
+          environment: 'jsdom',
+          // Each file still gets its own VM context and module graph, but the worker keeps
+          // jsdom loaded instead of rebuilding a process per file: that setup was about half
+          // of this suite's CI time. Workers are recycled past the memory limit.
+          pool: 'vmForks',
+          vmMemoryLimit: '2GB',
+          setupFiles: ['./tests/vitest-web-streams.mjs'],
+          include: [
+            'src/renderer/**/*.test.{ts,tsx}',
+            'src/shared/repair-request.test.ts',
+            'src/shared/download-failure.test.ts',
+          ],
+        },
+      },
+    ],
   },
 });
