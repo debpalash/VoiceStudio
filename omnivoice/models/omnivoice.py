@@ -1854,7 +1854,12 @@ def _mask_mod_packed(document_ids, b, h, q_idx, kv_idx):
 
 
 def _resolve_language(language: Optional[str]) -> Union[str, None]:
-    from omnivoice.utils.lang_map import LANG_IDS, LANG_NAME_TO_ID
+    from omnivoice.utils.lang_map import (
+        APP_LANGUAGE_IDS,
+        APP_LANGUAGE_NAMES,
+        LANG_IDS,
+        LANG_NAME_TO_ID,
+    )
 
     if language is None or language.lower() == "none":
         return None
@@ -1863,6 +1868,9 @@ def _resolve_language(language: Optional[str]) -> Union[str, None]:
     key = language.lower()
     if key in LANG_NAME_TO_ID:
         return LANG_NAME_TO_ID[key]
+    alias = APP_LANGUAGE_NAMES.get(key) or APP_LANGUAGE_IDS.get(key)
+    if alias:
+        return alias
     logger.warning(
         f"Language '{language}' is not recognized. "
         f"Please use a valid language ID (e.g., 'en', 'zh', 'ja', 'de') "
