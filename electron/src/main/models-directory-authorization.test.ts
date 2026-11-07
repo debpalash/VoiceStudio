@@ -34,8 +34,16 @@ it('authorizes a parent folder without creating or probing files', async () => {
   await mkdir(selected);
   await chmod(selected, 0o555);
   try {
-    const result = await authorizeModelsDirectoryReadOnly(join(root, 'data'), selected);
+    const result = await authorizeModelsDirectoryReadOnly(join(root, 'data'), selected, 'omnivoice');
     expect(result.path).toBe(await realpath(selected));
+    // Scoped to discovery for this engine, so the global models-dir endpoint rejects it.
+    const payload = JSON.parse(
+      await readFile(
+        join(root, 'data', '.path-authorizations', `${result.authorization}.json`),
+        'utf8',
+      ),
+    );
+    expect(payload.scope).toBe('local-model-discover:omnivoice');
     await expect(readdir(selected)).resolves.toEqual([]);
   } finally {
     await chmod(selected, 0o755);

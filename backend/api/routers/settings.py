@@ -1201,7 +1201,7 @@ def discover_local_models(family: str, engine_id: str, body: _LocalModelBody):
     if not local_model_paths.supported(family, engine_id):
         raise HTTPException(404, "This engine does not support local model folders")
     try:
-        parent = consume(body.authorization, "models_dir")
+        parent = consume(body.authorization, "models_dir", expected_scope=f"local-model-discover:{engine_id}")
         result = local_model_paths.discover(family, engine_id, parent)
         from core.path_authorization import issue_local_model_selection
         for candidate in result["candidates"]:

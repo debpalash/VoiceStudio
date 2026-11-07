@@ -176,7 +176,10 @@ def consume(token: str, expected_kind: str, *, expected_scope: str | None = None
     if payload.get("kind") != expected_kind or not isinstance(payload.get("path"), str):
         raise PathAuthorizationError("Desktop authorization does not match this setting")
     scope = payload.get("scope")
-    if scope is not None and scope != expected_scope:
+    # Scope must match exactly: a scoped grant is only redeemable where its
+    # scope is expected, and an unscoped grant (the global models-dir picker)
+    # cannot be redeemed by an endpoint that demands a scope.
+    if scope != expected_scope:
         raise PathAuthorizationError("Desktop authorization does not match this engine; discover its models again")
     if os.environ.get("VOICESTUDIO_BUNDLED_CODE_ONLY") == "1" and payload["path"]:
         # Electron's newly selected folder extends its own sandbox only. Pick

@@ -613,7 +613,7 @@ export function registerIpc(
     retainSecurityScopedDirectory(picked);
     const dataDirectory = await backendDataDirectory(supervisor);
     if (supervisor.connection.remote) throw new Error('Local model selection requires a local backend');
-    return authorizeModelsDirectoryReadOnly(dataDirectory, picked.filePaths[0]);
+    return authorizeModelsDirectoryReadOnly(dataDirectory, picked.filePaths[0], raw);
   });
 
   ipcMain.handle(CHANNELS.filesSaveAudio, async (event, raw: unknown): Promise<SaveAudioResult> => {

@@ -2998,8 +2998,11 @@ class MLXAudioBackend(TTSBackend):
         if not os.environ.get("OMNIVOICE_MLX_AUDIO_MODEL"):
             local = local_model_path("tts", "mlx-audio")
             if local:
-                from services.local_model_paths import validate
-                return validate("tts", "mlx-audio", local)
+                # Return the saved identity unvalidated: /engines builds the
+                # backend to read capabilities, and a folder that vanished must
+                # not turn that listing into an error that hides the controls
+                # to clear it. _ensure_loaded validates before loading.
+                return local
         return cls.CURATED_MODELS.get(key, key)
 
     def built_identity(self) -> Optional[str]:
