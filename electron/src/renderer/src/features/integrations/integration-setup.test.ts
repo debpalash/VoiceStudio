@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import {
   INTEGRATION_CATALOG,
   integrationSlug,
@@ -10,6 +10,9 @@ import {
   isIntegrationCategory,
 } from './integration-categories';
 import genericLogo from '@shared/assets/integrations/integration-generic.svg';
+import { installRandomUUID } from '../../lib/random-uuid';
+
+afterEach(() => vi.unstubAllGlobals());
 
 it('gives every catalog category its own label key, never one borrowed from another feature', () => {
   const labels = en.integrationCatalog.category as Record<string, string>;
@@ -66,6 +69,18 @@ it('never exports credentials, unsafe URLs, or unsupported client configurations
 });
 
 import { n8nSetup } from './n8n-setup';
+it('exports an n8n workflow when randomUUID is unavailable on a LAN origin', () => {
+  vi.stubGlobal('crypto', {
+    getRandomValues: (bytes: Uint8Array) => {
+      bytes.fill(7);
+      return bytes;
+    },
+  });
+  installRandomUUID();
+
+  const setup = n8nSetup('n8n', 'http://192.168.0.110:3900');
+  expect(JSON.parse(setup!.text).id).toMatch(/^[a-f0-9]{20}$/);
+});
 it('exports a manual n8n workflow to the current backend without credentials', () => {
   const setup = n8nSetup('n8n', 'https://voice.example/backend/');
   const workflow = JSON.parse(setup!.text);
