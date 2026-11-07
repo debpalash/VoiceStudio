@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events';
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as realDelay } from 'node:timers/promises';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 /**
@@ -153,12 +154,12 @@ function stubDataDir(): void {
 
 /**
  * The silent-timeout report reads the backend log asynchronously; real file
- * I/O finishes outside the fake clock, so let it land before asserting.
+ * I/O finishes outside the fake clock, so let it land before asserting. Do not
+ * advance the fake log-read deadline while waiting for the real filesystem.
  */
 async function untilFailed(supervisor: { status: { stage: string } }): Promise<void> {
   for (let i = 0; i < 200 && supervisor.status.stage !== 'failed'; i++) {
-    await new Promise((done) => setImmediate(done));
-    await vi.advanceTimersByTimeAsync(50);
+    await realDelay(5);
   }
 }
 
