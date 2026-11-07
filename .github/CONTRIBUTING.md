@@ -513,6 +513,25 @@ test-only PR. Docker Hub overview edits still publish through the small
     and the optional local-model smoke test never acquire models or use the network.
     The VC++ Redistributable is a manual prerequisite; opted-in Windows ROCm
     source setup checks it locally and stops when it is missing.
+  - **Optional engine installs the user starts** (owner-approved 2026-11-07):
+    clicking Install or Repair on an optional engine fetches its upstream
+    source from GitHub (a shallow clone of the branch tip, then the reviewed
+    commit, or that commit's source archive when the clone or checkout fails),
+    plus any helper sources the engine needs as GitHub archives at pinned
+    commits (CosyVoice: Matcha-TTS, PyWorld and World); a uv-managed Python from
+    `astral-sh/python-build-standalone` GitHub Releases (or the regional mirror)
+    when the engine needs a version that is not installed; its Python packages
+    from PyPI or the user's chosen mirror; the host's PyTorch build from
+    `download.pytorch.org` (`cu128` or `cpu`; on Linux AMD hosts, engines with
+    ROCm support use the ROCm index that publishes their Torch version, which a
+    user-set `OMNIVOICE_TORCH_INDEX` replaces), where uv may also resolve other
+    packages that index carries; and, for engines that fetch them during
+    install, their Hugging Face weights at a reviewed revision
+    (`backend/services/sidecar_install.py`). Engines that skip that step
+    download weights on first use, under the Hugging Face model downloads above. Torch is pinned
+    to an exact version; other packages follow the engine's own requirements
+    (exact, ranged or unpinned). Nothing is hash-pinned. Checking whether an
+    engine is installed downloads nothing.
   - **Galleries the user opens or enables:** the community gallery manifest
     from jsDelivr plus its GitHub-hosted previews
     (`backend/api/routers/community.py`); the voice-preview gallery's signed
