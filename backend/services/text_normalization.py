@@ -651,9 +651,9 @@ _PT_TIME_RE = re.compile(
     r"(?<![\w:.,/$%+-])([01]?\d|2[0-3])(?:[hH]([0-5]\d)?|:([0-5]\d))(?![\w:/%+-])(?![.,]\d)"
 )
 
-# Brazilian Real: R$ 1.250,00, R$ 50,00, R$ 5. Standard '.' thousands grouping and ',' cents.
+# Brazilian Real: R$ 1.250,00, R$ 50,00, R$ 5. '.' (or space/NBSP) thousands grouping and ',' cents.
 _BRL_CURRENCY_RE = re.compile(
-    r"(?<![\w.,:/$%+-])R\$\s*(\d{1,3}(?:\.\d{3})+|\d{1,6})(?:,(\d{2}))?(?![\w:/%+-])(?![.,]\d)"
+    r"(?<![\w.,:/$%+-])R\$\s*(\d{1,3}(?:[.\u00a0\u202f ]\d{3})+|\d{1,6})(?:,(\d{2}))?(?![\w:/%+-])(?![.,]\d)"
 )
 
 _PERCENT_RE = re.compile(r"(?<![\w.,:/$%+-])(\d{1,6}(?:\.\d{1,4})?)\s?%(?![\w:/%+-])(?![.,]\d)")
@@ -820,7 +820,7 @@ def _numbers_to_words(text: str, lang: str, locale: Optional[str] = None) -> str
         text = _PT_TIME_RE.sub(lambda m: _safe(m, _pt_time, clock=True), text)
 
         def _brl_currency(m: re.Match) -> str:
-            raw_whole = m.group(1).replace(".", "")
+            raw_whole = re.sub(r"[.\s\u00a0\u202f]", "", m.group(1))
             if _leading_zero(raw_whole):
                 return m.group(0)
             reais = int(raw_whole)

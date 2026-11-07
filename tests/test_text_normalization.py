@@ -107,6 +107,8 @@ _CHANGE_CASES = [
     ("Spanish", "el Sr. García", "el Señor García"),
     # Portuguese currency and clock times (#3803)
     ("Portuguese", "O orçamento ficou em R$ 1.250,00", "O orçamento ficou em mil, duzentos e cinquenta reais"),
+    ("Portuguese", "custa R$ 1 250", "custa mil, duzentos e cinquenta reais"),
+    ("Portuguese", "custa R$ 1\u00a0250,00", "custa mil, duzentos e cinquenta reais"),
     ("Portuguese", "custa R$ 1", "custa um real"),
     ("Portuguese", "custa R$ 1,00", "custa um real"),
     ("Portuguese", "apenas R$ 0,50", "apenas cinquenta centavos"),
