@@ -2,7 +2,7 @@
 import pytest
 
 from core import diagnose
-from core.diagnose import OK, WARN, FAIL, run_diagnostics, format_text
+from core.diagnose import OK, WARN, FAIL, run_diagnostics, format_text, format_console_text
 
 
 @pytest.fixture()
@@ -66,8 +66,8 @@ def test_details_are_scrubbed(monkeypatch, tmp_path):
 
 def test_format_text_ascii_and_exit_signal(report):
     text = format_text(report)
-    # ASCII-only: Windows consoles on legacy code pages must not choke.
-    text.encode("ascii")
+    # Real Unicode is kept; main.py --diagnose escapes it at the console.
+    text.encode("utf-8")
     assert "VoiceStudio self-check" in text
     assert ("looks healthy" in text) == report["summary"]["ok"]
 
@@ -158,7 +158,7 @@ def test_unicode_diagnostics_write_to_ascii_console_without_mutating_report():
         "summary": {"passed": 0, "warnings": 1, "failures": 0, "ok": False},
     }
     original = copy.deepcopy(report)
-    text = format_text(report)
+    text = format_console_text(report)
     output = io.BytesIO()
     console = io.TextIOWrapper(output, encoding="ascii", errors="strict")
     console.write(text)
@@ -167,3 +167,8 @@ def test_unicode_diagnostics_write_to_ascii_console_without_mutating_report():
     assert b"\\xe9" in output.getvalue()
     assert "needs attention" in text
     assert report == original
+
+
+def test_format_text_keeps_unicode_for_bundle_files(report):
+    custom = dict(report, checks=[dict(report["checks"][0], detail="caf\u00e9 \u4e2d\u6587")])
+    assert "caf\u00e9 \u4e2d\u6587" in format_text(custom)

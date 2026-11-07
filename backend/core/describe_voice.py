@@ -252,7 +252,7 @@ _COMPILED = _compiled_rules()
 # as elderly, and "aged 22" never reaches elderly's bare "aged" synonym.
 _AGE_NUM = re.compile(
     r"\b(\d{1,3})(?:[\s\-]*(?:years?|yrs?|yr)[\s\-]*old|[\s\-]*(?:yo|y/o))\b"
-    r"|\baged?\s*:?\s*(\d{1,3})\b"
+    r"|\baged?\s*(?::\s*)?(\d{1,3})\b"
 )
 
 

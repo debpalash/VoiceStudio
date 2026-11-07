@@ -2185,10 +2185,12 @@ if __name__ == "__main__":
         # the ML stack — both now live in Phase A, which a server run defers
         # but a one-shot CLI must run up front.
         _phase_a_build()
-        from core.diagnose import run_diagnostics, format_text
+        from core.diagnose import run_diagnostics, format_console_text
 
         _report = run_diagnostics(deep=args.deep)
-        print(format_text(_report), flush=True)
+        # Console code pages (Windows cp1252) cannot print every character;
+        # escape here, not in format_text, so bundle files keep real UTF-8.
+        print(format_console_text(_report), flush=True)
         sys.exit(0 if _report["summary"]["ok"] else 1)
 
     # Single-sourced from OMNIVOICE_PORT so the bare `python main.py` path and

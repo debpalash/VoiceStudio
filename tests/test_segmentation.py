@@ -472,3 +472,11 @@ def test_merging_short_chinese_segments_adds_no_space():
             Segment(start=0.35, end=2.5, text="我们走吧。")]
     merged = _merge_short(segs)
     assert merged[0].text == "好。我们走吧。"
+
+
+def test_fullwidth_letters_and_digits_are_not_unspaced_punctuation():
+    from services.segmentation import _UNSPACED
+    for ch in ("\uff21", "\uff41", "\uff10", "\uff19"):
+        assert not _UNSPACED.match(ch)
+    for ch in ("\uff0c", "\uff01", "\uff1f", "\u3002", "\uff71"):
+        assert _UNSPACED.match(ch)

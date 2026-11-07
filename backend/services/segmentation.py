@@ -172,7 +172,7 @@ def _clean(text: str) -> str:
 # Scripts written without spaces between words (CJK, kana, Thai, ...), plus
 # CJK and full-width punctuation. ASR returns their words unspaced, so joining
 # them with " " would print "word word word" into the transcript and the TTS.
-_UNSPACED = re.compile(f"[{_NO_SPACE_SCRIPT}\u3000-\u303f\uff00-\uffef]")
+_UNSPACED = re.compile(f"[{_NO_SPACE_SCRIPT}\u3000-\u303f\uff01-\uff0f\uff1a-\uff20\uff3b-\uff40\uff5b-\uff65\uffe0-\uffe6]")
 
 
 def _join_text(parts: Iterable[object]) -> str:
@@ -859,8 +859,9 @@ def _resplit_core(
         s0, s1 = seg["start"], seg["end"]
         # Segment bounds are rounded to 0.01s (Segment.to_dict) while word
         # times are not, so a neighbouring segment's boundary word can overlap
-        # this span by up to 5ms. It is not this segment's word.
-        seg_words = [w for w in ordered if min(w.end, s1) - max(w.start, s0) > 0.005 + 1e-6]
+        # this span by up to 5ms. Such a word's midpoint lies outside this
+        # span; a tiny word fully inside it is still this segment's word.
+        seg_words = [w for w in ordered if s0 < (w.start + w.end) / 2 < s1]
         if len(seg_words) < 2:
             out.append(seg)
             continue

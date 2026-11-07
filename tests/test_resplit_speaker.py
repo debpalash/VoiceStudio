@@ -178,3 +178,15 @@ def test_diarization_wrapper_formats_labels_and_splits():
     out = resplit_segments_by_diarization([seg], words, diar)
     assert [s["speaker_id"] for s in out] == ["Speaker 1", "Speaker 2"]
     assert [s["text"] for s in out] == ["left side", "right side"]
+
+
+def test_tiny_word_fully_inside_segment_is_kept():
+    # A word shorter than 5ms lying fully inside the segment belongs to it.
+    seg = _seg(0.0, 4.0, "one two three four")
+    words = [_w(0.0, 1.0, "one"), _w(1.0, 1.003, "two"),
+             _w(1.003, 2.5, "three"), _w(2.5, 4.0, "four")]
+    turns = [{"start": 0.0, "end": 2.5, "speaker": "Speaker 1"},
+             {"start": 2.5, "end": 4.0, "speaker": "Speaker 2"}]
+    out = resplit_segments_by_turns([seg], words, turns)
+    assert len(out) == 2
+    assert out[0]["text"].split() == ["one", "two", "three"]

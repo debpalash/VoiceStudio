@@ -207,3 +207,15 @@ def test_endpoint_empty_description(client):
 def test_endpoint_rejects_oversized_description(client):
     r = client.post("/design/describe", json={"description": "x" * 2001})
     assert r.status_code == 422
+
+
+def test_age_number_shapes_still_parse_and_do_not_backtrack():
+    """The age regex must keep matching its ambiguous shapes (#3819 ReDoS fix)."""
+    assert attrs_of("a young man, aged 22")["Age"] == "young adult"
+    assert attrs_of("a man aged: 22")["Age"] == "young adult"
+    assert attrs_of("a woman age:   70")["Age"] == "elderly"
+    assert attrs_of("a boy age 8")["Age"] == "child"
+    import time
+    start = time.perf_counter()
+    parse_description("age" + " " * 5000 + "x")
+    assert time.perf_counter() - start < 1.0
