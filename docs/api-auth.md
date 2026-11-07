@@ -458,3 +458,11 @@ call the API directly need their origin in `OMNIVOICE_ALLOWED_ORIGINS`.
 - [docs/agentic-voice.md](agentic-voice.md) — pointing OpenAI-compatible agent
   frameworks at VoiceStudio.
 - [docs/mcp.md](mcp.md) — the MCP server for AI agents.
+
+
+## Gallery permissions
+
+Gallery browsing and preview requests use the consumption gate. Importing,
+uploading, editing, deleting or copying a gallery voice into a profile requires
+administrator authorization. A share PIN alone does not authorize those
+mutations; server deployments must configure an API key for remote management.
