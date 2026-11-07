@@ -67,11 +67,13 @@ it('hands the bridge to the backend spawn only, never to process.env', async () 
   });
 });
 
-it('starts no bridge when the build does not offer accounts', async () => {
-  h.packaged = true;
+it('starts no bridge when the environment has no client to sign in with', async () => {
+  vi.stubEnv('VOICESTUDIO_CLOUD_ENV', 'local');
+  vi.stubEnv('VOICESTUDIO_CLOUD_CLIENT_ID', '');
   h.dir = mkdtempSync(join(tmpdir(), 'vs-account-'));
   (await startAccount(opts))();
   expect(h.setBackendOnlyEnv).not.toHaveBeenCalled();
+  vi.unstubAllEnvs();
 });
 
 it('a startup failure degrades to no account features instead of blocking app start', async () => {
@@ -87,7 +89,12 @@ function signedInDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'vs-account-'));
   writeFileSync(
     join(dir, 'account.json'),
-    JSON.stringify({ v: 1, token: Buffer.from('rt').toString('base64') }),
+    JSON.stringify({
+      v: 2,
+      token: Buffer.from(
+        JSON.stringify({ refreshToken: 'rt', accountId: 'Account000000001' }),
+      ).toString('base64'),
+    }),
   );
   // Account features already on (a token with them off is cleared at start-up).
   writeFileSync(
@@ -97,7 +104,22 @@ function signedInDir(): string {
   h.keyring = true;
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => Promise.reject(new Error('offline'))),
+    vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/.well-known/openid-configuration')) {
+        const issuer = url.replace('/.well-known/openid-configuration', '');
+        return new Response(
+          JSON.stringify({
+            issuer,
+            authorization_endpoint: issuer + '/authorize',
+            token_endpoint: issuer + '/token',
+            revocation_endpoint: issuer + '/revoke',
+          }),
+        );
+      }
+      if (url.endsWith('/revoke')) return new Response(null, { status: 200 });
+      throw new Error('offline');
+    }),
   );
   return dir;
 }
@@ -121,7 +143,7 @@ it('tells the local backend to stop when sync goes off and to start when it come
 });
 
 it('never calls a remote backend about sync', async () => {
-  h.dir = mkdtempSync(join(tmpdir(), 'vs-account-'));
+  h.dir = signedInDir();
   const notifyBackend = vi.fn(async () => {});
   const close = await startAccount({ ...opts, isRemoteBackend: () => true, notifyBackend });
   await h.handlers.get('account:set-switches')!({}, { accountEnabled: true, syncEnabled: true });

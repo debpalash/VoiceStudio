@@ -2513,6 +2513,7 @@
     "plan_ends": "till {{date}}",
     "details_failed": "Det gick inte att läsa in dina kontouppgifter ({{reason}}).",
     "retry": "Försök igen",
+    "refresh": "Uppdatera",
     "manage_profile": "Hantera profil",
     "manage_plan": "Hantera abonnemang"
   },

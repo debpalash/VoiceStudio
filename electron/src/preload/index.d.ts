@@ -322,7 +322,14 @@ export interface UninstallTarget {
   shared: boolean;
 }
 
+export interface AccountSignInOptions {
+  /** `signup` opens the dashboard on account creation; `login` (default) on sign-in. */
+  intent: 'login' | 'signup';
+}
+
 export interface AccountPublicState {
+  /** The signed-in account's ID; token presence alone does not count as signed in. */
+  accountId?: string | null;
   available: boolean;
   accountEnabled: boolean;
   syncEnabled: boolean;
@@ -351,6 +358,8 @@ export interface AccountPublicState {
   plan: {
     planCode: string;
     planName: string;
+    /** Where the plan comes from (for example `default`, a purchase or a grant). */
+    planOrigin: string;
     /** When the plan ends (a yearly plan or a grant); null for no end. */
     planEndsAt: string | null;
     storageUsedBytes: number;
@@ -359,8 +368,8 @@ export interface AccountPublicState {
     settingsSync: boolean | null;
     proDesktop: boolean | null;
   } | null;
-  /** Dashboard pages for managing the profile and the plan; null when signed out. */
-  links: { profile: string; plan: string } | null;
+  /** Dashboard pages for the profile, the plan and account deletion; null when signed out. */
+  links: { profile: string; plan: string; deletion: string } | null;
 }
 
 export interface SetupConnectionCheck {
@@ -377,7 +386,9 @@ export interface VoiceStudioBridge {
   /** VoiceStudio Cloud account; never carries a token. */
   account: {
     get(): Promise<AccountPublicState>;
-    signIn(): Promise<void>;
+    /** Reload profile, plan and photo, then notify every open window. */
+    refresh(): Promise<AccountPublicState>;
+    signIn(options?: AccountSignInOptions): Promise<void>;
     cancelSignIn(): Promise<void>;
     signOut(): Promise<void>;
     setSwitches(patch: {

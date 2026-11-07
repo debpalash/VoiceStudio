@@ -2513,6 +2513,7 @@
     "plan_ends": "tot {{date}}",
     "details_failed": "Je accountgegevens konden niet worden geladen ({{reason}}).",
     "retry": "Opnieuw proberen",
+    "refresh": "Vernieuwen",
     "manage_profile": "Profiel beheren",
     "manage_plan": "Abonnement beheren"
   },

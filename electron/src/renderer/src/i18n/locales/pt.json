@@ -2515,6 +2515,7 @@
     "plan_ends": "até {{date}}",
     "details_failed": "Não foi possível carregar os detalhes da sua conta ({{reason}}).",
     "retry": "Tentar novamente",
+    "refresh": "Atualizar",
     "manage_profile": "Gerenciar perfil",
     "manage_plan": "Gerenciar plano"
   },

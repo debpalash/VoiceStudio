@@ -63,3 +63,47 @@ it('clear removes the file and the memory copy', () => {
   expect(existsSync(p)).toBe(false);
   expect(store.load()).toBeNull();
 });
+
+it('keeps the authenticated account identity encrypted with the session across refresh and restart', () => {
+  const p = path();
+  const store = new RefreshTokenStore(p, fakeSafe(), 'darwin');
+  expect(store.bindAccount('Us3nM8qWe2RtY6uI')).toBe(false);
+  store.save('refresh-one');
+  expect(store.bindAccount('Us3nM8qWe2RtY6uI')).toBe(true);
+  store.save('refresh-two');
+  expect(readFileSync(p, 'utf8')).not.toContain('Us3nM8qWe2RtY6uI');
+  const restarted = new RefreshTokenStore(p, fakeSafe(), 'darwin');
+  expect(restarted.accountId()).toBe('Us3nM8qWe2RtY6uI');
+  expect(restarted.load()).toBe('refresh-two');
+  restarted.save('new-login', { newSession: true });
+  expect(restarted.accountId()).toBeNull();
+  restarted.bindAccount('Us3nM8qWe2RtY6uI');
+  restarted.clear();
+  expect(restarted.accountId()).toBeNull();
+});
+
+it('migrates legacy encrypted tokens without inventing an account identity', () => {
+  const p = path();
+  writeFileSync(
+    p,
+    JSON.stringify({ v: 1, token: fakeSafe().encryptString('old-refresh').toString('base64') }),
+  );
+  const store = new RefreshTokenStore(p, fakeSafe(), 'darwin');
+  expect(store.accountId()).toBeNull();
+  expect(store.load()).toBe('old-refresh');
+  expect(store.bindAccount('email@example.com')).toBe(false);
+  expect(store.bindAccount('Us3nM8qWe2RtY6uI')).toBe(true);
+  expect(new RefreshTokenStore(p, fakeSafe(), 'darwin').accountId()).toBe('Us3nM8qWe2RtY6uI');
+});
+
+it('does not resurrect a signed-out session by rereading stale disk state', () => {
+  const p = path();
+  const store = new RefreshTokenStore(p, fakeSafe(), 'darwin');
+  store.save('refresh');
+  store.bindAccount('Us3nM8qWe2RtY6uI');
+  const stale = readFileSync(p, 'utf8');
+  store.clear();
+  writeFileSync(p, stale);
+  expect(store.load()).toBeNull();
+  expect(store.accountId()).toBeNull();
+});

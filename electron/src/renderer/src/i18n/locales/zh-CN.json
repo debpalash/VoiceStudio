@@ -2509,6 +2509,7 @@
     "plan_ends": "至 {{date}}",
     "details_failed": "无法加载你的账户详情（{{reason}}）。",
     "retry": "重试",
+    "refresh": "刷新",
     "manage_profile": "管理个人资料",
     "manage_plan": "管理方案"
   },

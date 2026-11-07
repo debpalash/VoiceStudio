@@ -2561,6 +2561,7 @@
     "plan_ends": "حتى {{date}}",
     "details_failed": "تعذّر تحميل تفاصيل حسابك ({{reason}}).",
     "retry": "إعادة المحاولة",
+    "refresh": "تحديث",
     "manage_profile": "إدارة الملف الشخصي",
     "manage_plan": "إدارة الخطة"
   },

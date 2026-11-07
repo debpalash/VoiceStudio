@@ -2513,6 +2513,7 @@
     "plan_ends": "hingga {{date}}",
     "details_failed": "Detail akun Anda tidak dapat dimuat ({{reason}}).",
     "retry": "Coba lagi",
+    "refresh": "Muat ulang",
     "manage_profile": "Kelola profil",
     "manage_plan": "Kelola paket"
   },
