@@ -682,3 +682,14 @@ it('keeps the end of one log line too long to quote whole', () => {
   expect(message).not.toContain('is missing, empty, or unreadable');
   expect(message).toMatch(/raise OMNIVOICE_STARTUP_BUDGET_S \(for example 900\)\.$/);
 });
+
+it('never splits an emoji when it shortens a log line', () => {
+  const line = `INFO: ${'\u{1F600}'.repeat(2_000)}`;
+  const message = startupTimeoutMessage(3900, 300_000, {
+    owned: true,
+    logPath: '~/.omnivoice/omnivoice.log',
+    logTail: [line],
+  });
+  expect(message.length).toBeLessThanOrEqual(MAX_MSG_CHARS);
+  expect(message).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/);
+});

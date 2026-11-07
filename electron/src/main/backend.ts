@@ -976,6 +976,9 @@ export async function readBackendLogTail(
  *  backend's last line, the tail of the backend's own log for a managed
  *  process that never printed, or "nothing spawned" for an attach-only wait
  *  that owns no process. */
+/** The shortest end of an overlong log line a timeout message still quotes. */
+const MIN_QUOTED_LINE_CHARS = 160;
+
 export function startupTimeoutMessage(
   port: number,
   budgetMs: number,
@@ -1011,10 +1014,16 @@ export function startupTimeoutMessage(
     }
     if (message.length > MAX_MSG_CHARS && lines.length === 1) {
       // One line longer than the room left: keep its end, where the error is,
-      // rather than dropping the only evidence.
-      const room = MAX_MSG_CHARS - (message.length - lines[0].length) - 1;
-      if (room > 0) lines[0] = `…${lines[0].slice(-room)}`;
-      else lines.length = 0;
+      // rather than dropping the only evidence. Even a path that leaves no
+      // room keeps a short end: the report cuts the message, not the advice
+      // shown on screen. Whole characters only, so no emoji is split.
+      const room = Math.max(MIN_QUOTED_LINE_CHARS, MAX_MSG_CHARS - (message.length - lines[0].length) - 1);
+      const chars = Array.from(lines[0]);
+      let kept = '';
+      for (let i = chars.length - 1; i >= 0 && kept.length + chars[i].length <= room; i--) {
+        kept = chars[i] + kept;
+      }
+      lines[0] = `…${kept}`;
       message = compose();
     }
     return message;
