@@ -79,7 +79,9 @@ FLORES_CODES = {
     "tg": "tgk_Cyrl", "tk": "tuk_Latn", "tl": "tgl_Latn", "fil": "tgl_Latn",
     "tt": "tat_Cyrl", "uz": "uzn_Latn", "xh": "xho_Latn", "yi": "ydd_Hebr",
     "yo": "yor_Latn", "zu": "zul_Latn",
-    # Translation target only: Whisper cannot transcribe Uyghur (#2810).
+    # Translation target only: Whisper cannot transcribe Kabyle or Uyghur, but
+    # NLLB-200 and OmniVoice handle both.
+    "kab": "kab_Latn",
     "ug": "uig_Arab",
 }
 
@@ -113,7 +115,7 @@ LANG_NAMES = {
     "zh-CN": "Chinese (Simplified)", "cmn-Hans": "Chinese (Simplified)",
     "ar": "Arabic", "hi": "Hindi", "tr": "Turkish", "pl": "Polish",
     "nl": "Dutch", "sv": "Swedish", "th": "Thai", "vi": "Vietnamese",
-    "id": "Indonesian", "uk": "Ukrainian", "ug": "Uyghur",
+    "id": "Indonesian", "uk": "Ukrainian", "ug": "Uyghur", "kab": "Kabyle",
 }
 
 # Regional dialect hints (#280 item 2). Maps a BCP-47 dialect code to the
