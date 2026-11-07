@@ -30,6 +30,9 @@ from services.dub_language import (
         ("zh-yue", "yue"),
         ("pt-BR", "pt"),
         ("zh-Hans", "zh"),
+        # A variety after the private-use singleton is not a language
+        # subtag: "zh-Hant-x-hakka" is still Traditional-script Chinese.
+        ("zh-Hant-x-hakka", "zh"),
         ("es-MX", "es"),
         # Tags with extra subtags resolve to the longest supported prefix:
         # "cmn-Hans-CN" and "cmn-hans_CN" both mean "cmn-hans", never
@@ -108,6 +111,9 @@ def test_detected_source_language_resolves_to_its_own_language(value, expected):
         "zh-cjy",
         "zh-hsn",
         "zh-hakka-TW",
+        # The variety can sit after script/region subtags too.
+        "zh-hant-hakka",
+        "zh-tw-hakka",
     ],
 )
 def test_unlisted_language_never_becomes_another_language(value):

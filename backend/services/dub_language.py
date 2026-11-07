@@ -284,8 +284,17 @@ def detected_source_language(value: str | None) -> str | None:
             # languages the dub service does not support, so the tag is
             # unknown rather than Mandarin. Longer prefixes win first, so
             # "zh-yue" still resolves to "yue" via _CODE_ALIASES above.
-            if prefix == "zh" and len(parts) > 1 and parts[1] in _ZH_VARIETY_SUBTAGS:
-                return None
+            # The variety need not be the second subtag: script and region
+            # subtags come first ("zh-hant-hakka", "zh-tw-hakka"), so scan
+            # every subtag until the first extension or private-use
+            # singleton ("x", "u", ...), after which subtags are not
+            # language varieties (CodeRabbit, #3834).
+            if prefix == "zh":
+                for part in parts[1:]:
+                    if len(part) == 1:  # Extension or private-use singleton.
+                        break
+                    if part in _ZH_VARIETY_SUBTAGS:
+                        return None
             return prefix
         alias = _CODE_ALIASES.get(prefix)
         if alias is not None:
