@@ -5,6 +5,7 @@ values written here take effect on the next backend launch. Used by the
 configurable models directory (#64): the Settings endpoint upserts
 ``OMNIVOICE_CACHE_DIR`` here, which main.py then maps to
 ``HF_HOME`` / ``HF_HUB_CACHE`` / ``TORCH_HOME``.
+Electron's `torch-choice.ts` also reads this file and keeps a ROCm choice in it.
 
 Format is dotenv-style ``KEY=value`` lines. Upsert preserves other keys (e.g. a
 persisted ``HF_TOKEN``) and writes the file ``0600`` (it can hold secrets).
@@ -16,6 +17,9 @@ import re
 from typing import Optional
 
 USER_ENV_PATH = os.path.expanduser("~/.config/omnivoice/env")
+# Not a Settings choice: Electron saves it here, and a launch that sets another build
+# must still get that build (#3804).
+_LAUNCH_WINS = frozenset({"OMNIVOICE_TORCH_VARIANT"})
 
 # Where a desktop user sets a backend variable by hand, for refusal messages
 # that name one (core.browser_guard, core.url_safety). Stdlib-only module, so
@@ -150,6 +154,8 @@ def load_into_environ(path: Optional[str] = None) -> bool:
     single_quoted = _single_quoted_keys(path)
     for key, value in literal.items():
         if value is None:
+            continue
+        if key in _LAUNCH_WINS and os.environ.get(key, "").strip():
             continue
         if key not in single_quoted and expanded.get(key) is not None:
             value = expanded[key]

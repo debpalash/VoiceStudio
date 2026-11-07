@@ -1,6 +1,7 @@
 import { decideMissingRuntime, runtimeWasInstalled } from './runtime-repair';
 import { windowsRocmInstalled, windowsRocmRequested } from './runtime-windows-rocm';
 import { runtimeProjectReady } from './runtime-readiness';
+import { cpuSetupOffered, rememberTorchVariant, saveTorchVariant } from './torch-choice';
 import { runRuntimeProbe } from './runtime-probe';
 import { RuntimeLaunchRefusedError } from './runtime-launch-refusal';
 import { pypiFilesHost } from './pypi-mirror';
@@ -15,6 +16,7 @@ import {
   promoteLegacyRuntimeCaches,
   runtimeDependenciesReady,
   runtimeDownloadHosts,
+  cpuTorchApplies,
   resolveTorchVariant,
   managedPythonRequest,
   runtimeInstallInterrupted,
@@ -153,6 +155,8 @@ interface RuntimeLocationConfig {
   owned: boolean;
   /** Chosen during first-run setup: data, models and temp live beside the runtime. */
   scoped: boolean;
+  /** Runtime folders the location already held when picked; cleanup never removes them. */
+  existing?: string[];
 }
 
 function runtimePreferencesPath(): string {
@@ -423,9 +427,16 @@ function storedRuntimeLocation(): RuntimeLocationConfig | null {
   try {
     const parsed = JSON.parse(
       readFileSync(join(app.getPath('userData'), RUNTIME_LOCATION_FILE), 'utf8'),
-    ) as { root?: unknown; owned?: unknown; scoped?: unknown };
+    ) as { root?: unknown; owned?: unknown; scoped?: unknown; existing?: unknown };
     return typeof parsed.root === 'string' && isAbsolute(parsed.root)
-      ? { root: resolve(parsed.root), owned: parsed.owned === true, scoped: parsed.scoped === true }
+      ? {
+          root: resolve(parsed.root),
+          owned: parsed.owned === true,
+          scoped: parsed.scoped === true,
+          ...(Array.isArray(parsed.existing)
+            ? { existing: parsed.existing.filter((name) => typeof name === 'string') }
+            : {}),
+        }
       : null;
   } catch {
     return null;
@@ -440,10 +451,37 @@ function writeRuntimeLocation(
   root: string,
   owned: boolean,
   scoped: boolean = storedRuntimeLocation()?.scoped === true,
+  existing: string[] | undefined = sameStoredRoot(root)?.existing,
 ): void {
   const locationFile = join(app.getPath('userData'), RUNTIME_LOCATION_FILE);
   mkdirSync(dirname(locationFile), { recursive: true });
-  writeFileSync(locationFile, JSON.stringify({ root: resolve(root), owned, scoped }), 'utf8');
+  writeFileSync(
+    locationFile,
+    JSON.stringify({ root: resolve(root), owned, scoped, existing }),
+    'utf8',
+  );
+}
+
+function sameStoredRoot(root: string): RuntimeLocationConfig | null {
+  const stored = storedRuntimeLocation();
+  return stored && samePath(stored.root, root) ? stored : null;
+}
+
+/** What setup and uninstall treat as the runtime's own folders inside a chosen location. */
+const RUNTIME_ENTRIES = ['project', '.uv-cache', '.python', '.tmp', 'tmp', '.wheel-prefetch'];
+
+/**
+ * Runtime folder names already present in a location when the user picks it.
+ * Their contents are not ours, so cleanup never removes them. An unreadable
+ * folder counts as holding all of them, because that errs towards keeping files.
+ */
+function existingRuntimeEntries(root: string): string[] {
+  try {
+    const present = new Set(readdirSync(root).map((name) => name.toLowerCase()));
+    return RUNTIME_ENTRIES.filter((name) => present.has(name));
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ENOENT' ? [] : [...RUNTIME_ENTRIES];
+  }
 }
 
 /** The recorded first-run location whose data/models/temp follow the runtime, if any. */
@@ -847,6 +885,18 @@ function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+async function settledWithin(work: Promise<void>, timeoutMs: number): Promise<boolean> {
+  let timer: NodeJS.Timeout | undefined;
+  const timedOut = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
+  });
+  try {
+    return await Promise.race([work.then(() => true), timedOut]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class BackendSupervisor extends EventEmitter<{
   status: [BackendStatus];
 }> {
@@ -915,6 +965,8 @@ export class BackendSupervisor extends EventEmitter<{
   private readonly setupLog = new SetupLog(join(app.getPath('userData'), 'setup.log'));
   private setupCheck: Promise<SetupConnectionCheck> | null = null;
   private installation: AbortController | null = null;
+  private installationSettled: Promise<void> = Promise.resolve();
+  private installStopTimeoutMs = 30_000;
   private cleaningRuntime = false;
   private runtimeProject: string | null = null;
   private runtimeRegion: RuntimeRegion = loadRuntimeRegion();
@@ -1080,6 +1132,7 @@ export class BackendSupervisor extends EventEmitter<{
       if (['on', 'evaluation'].includes(this.setupSmartAppControl))
         status.smartAppControlWarning = true;
     }
+    if (this.cpuSetupAvailable()) status.cpuSetupAvailable = true;
     if (/^(1|true|yes|on)$/i.test((process.env.OMNIVOICE_ANALYTICS_DISABLED ?? '').trim()))
       status.analyticsDisabled = true;
     if (this.diagnosis) status.diagnosis = this.diagnosis;
@@ -1273,6 +1326,10 @@ export class BackendSupervisor extends EventEmitter<{
     this.runtimeProject = project;
     const controller = new AbortController();
     this.installation = controller;
+    let settled = () => {};
+    this.installationSettled = new Promise<void>((resolve) => {
+      settled = resolve;
+    });
     const gen = ++this.generation;
     this.startedAt = Date.now();
     this.log.length = 0;
@@ -1301,12 +1358,16 @@ export class BackendSupervisor extends EventEmitter<{
       if (
         configured &&
         !configured.owned &&
+        // A folder picked on the setup screen is the user's decision, often because
+        // the system drive is full: setup installs there, and the record of what it
+        // already held keeps those files out of cleanup. Older records have no such list.
+        !configured.existing &&
         samePath(configured.root, runtimeRoot) &&
         !samePath(runtimeRoot, defaultRuntimeRoot()) &&
         holdsUnownedFiles(runtimeRoot)
       ) {
         // An explicit setup action may create a new runtime, but must never
-        // take ownership of (or repair in place) another installation's files.
+        // take ownership of (or repair in place) a location recorded by an older build.
         runtimeRoot = defaultRuntimeRoot();
         project = join(runtimeRoot, 'project');
         this.runtimeProject = project;
@@ -1467,6 +1528,7 @@ export class BackendSupervisor extends EventEmitter<{
     } finally {
       stopWatching();
       if (this.installation === controller) this.installation = null;
+      settled();
     }
   }
 
@@ -1511,6 +1573,52 @@ export class BackendSupervisor extends EventEmitter<{
     return () => clearInterval(timer);
   }
 
+  private cpuSetupAvailable(): boolean {
+    if (!['setup_required', 'installing'].includes(this.stage)) return false;
+    if (!app.isPackaged || !runtimeSetupSupported()) return false;
+    return cpuSetupOffered({
+      stage: this.stage,
+      ...(this.failure ? { failureCode: this.failure.code } : {}),
+      progress: this.setupProgress.snapshot(),
+      choice: resolveTorchVariant(),
+      cpuApplies: cpuTorchApplies(process.platform, process.arch),
+    });
+  }
+
+  /** Give up on the CUDA download, even a stuck one, and install the smaller CPU build. */
+  async setupRuntimeOnCpu(): Promise<void> {
+    if (!this.cpuSetupAvailable()) return;
+    const installing = this.installation;
+    // Abort alone doesn't stop a running uv: its runner only checks before spawning.
+    installing?.abort();
+    const gen = ++this.generation;
+    await this.killChild(true);
+    const stopped =
+      !installing || (await settledWithin(this.installationSettled, this.installStopTimeoutMs));
+    // Cancel or quit during those waits wins: nothing here may undo it.
+    if (gen !== this.generation) return;
+    if (!stopped) {
+      // Two installs must not share one folder, so don't start the CPU one.
+      const message = 'Could not stop the running download. Restart VoiceStudio and try again.';
+      this.pushLog('err', message);
+      this.setupIssue = 'install_stuck';
+      this.setStage('setup_required', { message });
+      // It may still stop late; setup can run again from then on.
+      void this.installationSettled.then(() => {
+        if (this.setupIssue !== 'install_stuck') return;
+        this.setupIssue = undefined;
+        // A restart or shutdown since then owns the stage now.
+        if (gen === this.generation) this.setStage('setup_required', { message: undefined });
+      });
+      return;
+    }
+    process.env.OMNIVOICE_TORCH_VARIANT = 'cpu';
+    if (!saveTorchVariant('cpu'))
+      this.setupLog.append('Could not save the CPU choice; the next launch may ask again');
+    await this.start();
+    await this.setupRuntime();
+  }
+
   /** Remove only an Electron-owned Python project, then perform a fresh install. */
   async cleanSetupRuntime(): Promise<void> {
     if (
@@ -1536,8 +1644,14 @@ export class BackendSupervisor extends EventEmitter<{
     const gen = this.generation;
     this.cleaningRuntime = true;
     try {
-      await promoteLegacyRuntimeCaches(project);
-      await rm(project, { recursive: true, force: true });
+      if (configured?.existing?.includes('project') && samePath(configured.root, runtimeRoot)) {
+        // The folder was there before the user picked this location. Setup repairs
+        // it in place; deleting it could remove files that are not ours.
+        this.pushLog('out', 'Keeping the existing project folder; repairing it in place.');
+      } else {
+        await promoteLegacyRuntimeCaches(project);
+        await rm(project, { recursive: true, force: true });
+      }
     } catch (error) {
       if (gen === this.generation) {
         this.setupIssue = ['EACCES', 'EPERM', 'EROFS'].includes(
@@ -1669,7 +1783,10 @@ export class BackendSupervisor extends EventEmitter<{
     if (samePath(root, defaultRoot)) {
       rmSync(locationFile, { force: true });
     } else {
-      writeRuntimeLocation(root, false, true);
+      // Picking the same folder again must not treat setup's own files as the user's.
+      const stored = sameStoredRoot(root);
+      if (stored?.existing) writeRuntimeLocation(root, stored.owned, true);
+      else writeRuntimeLocation(root, false, true, existingRuntimeEntries(root));
     }
     this.runtimeProject = join(root, 'project');
     this.message = undefined;
@@ -1702,12 +1819,14 @@ export class BackendSupervisor extends EventEmitter<{
   /**
    * What an uninstall may remove from the runtime location. A location chosen in
    * setup also holds the user's data and models, which the uninstall prompt
-   * handles as separate choices, so only the runtime's own folders are listed.
+   * handles as separate choices, so only the runtime's own folders are listed,
+   * without any that were already there when the location was picked.
    */
   get ownedRuntimeEntries(): string | string[] | null {
     const root = this.ownedRuntimeRoot;
-    if (!root || storedRuntimeLocation()?.scoped !== true) return root;
-    return ['project', '.uv-cache', '.python', '.tmp', 'tmp', '.wheel-prefetch'].map((name) =>
+    const stored = storedRuntimeLocation();
+    if (!root || stored?.scoped !== true) return root;
+    return RUNTIME_ENTRIES.filter((name) => !stored.existing?.includes(name)).map((name) =>
       join(root, name),
     );
   }
@@ -1833,6 +1952,7 @@ export class BackendSupervisor extends EventEmitter<{
       try {
         if (await runtimeProjectReady(bundle, project)) {
           this.runtimeProject = project;
+          rememberTorchVariant();
           if (project !== own && project !== configured)
             this.pushLog('out', `Reusing compatible Tauri runtime: ${project}`);
           return { project, ready: true };
@@ -1871,13 +1991,19 @@ export class BackendSupervisor extends EventEmitter<{
       .catch(() => undefined);
   }
 
-  private pushLog(stream: 'out' | 'err', line: string, fromChild = false): void {
+  private pushLog(
+    stream: 'out' | 'err',
+    line: string,
+    fromChild = false,
+    /** From a child replaced since: logged, but says nothing about the current one. */
+    staleChild = false,
+  ): void {
     // Backend output can carry a token or a home directory (and with it the
     // user's name). It is quoted in failure messages, shown in the log tail and
     // forwarded to repair agents, so it is scrubbed once, here, at the source.
     line = scrubText(cleanProcessLine(line));
     if (!line) return;
-    if (stream === 'err') this.crashes.captureLine(line);
+    if (stream === 'err' && !staleChild) this.crashes.captureLine(line);
     this.log.push(line);
     if (this.log.length > LOG_RING_LINES) this.log.splice(0, this.log.length - LOG_RING_LINES);
     // Failure messages quote the backend, not this shell. `log` also carries
@@ -1903,11 +2029,16 @@ export class BackendSupervisor extends EventEmitter<{
     }
   }
 
-  private attachLineReader(readable: NodeJS.ReadableStream | null, stream: 'out' | 'err'): void {
+  private attachLineReader(
+    readable: NodeJS.ReadableStream | null,
+    stream: 'out' | 'err',
+    gen?: number,
+  ): void {
     if (!readable) return;
     let pending = '';
+    const stale = () => gen !== undefined && gen !== this.generation;
     const flushPending = () => {
-      if (pending.length > 0) this.pushLog(stream, pending, true);
+      if (pending.length > 0) this.pushLog(stream, pending, true, stale());
       pending = '';
     };
     readable.setEncoding('utf8');
@@ -1915,7 +2046,7 @@ export class BackendSupervisor extends EventEmitter<{
       pending += chunk;
       const lines = pending.split(/[\r\n]+/);
       pending = lines.pop() ?? '';
-      for (const line of lines) if (line.length > 0) this.pushLog(stream, line, true);
+      for (const line of lines) if (line.length > 0) this.pushLog(stream, line, true, stale());
     });
     readable.on('end', flushPending);
     readable.on('error', (error: unknown) => {
@@ -1928,7 +2059,7 @@ export class BackendSupervisor extends EventEmitter<{
 
   /** Launch the resolved backend command and wire its lifecycle events. */
   private spawnChild(plan: SpawnPlan, gen: number): void {
-    this.crashes.resetCapture();
+    this.crashes.startProcess();
     const [command, ...args] = plan.argv;
     // A custom command bypasses the managed runtime; its own executable is the
     // only thing that can be repaired.
@@ -1976,8 +2107,8 @@ export class BackendSupervisor extends EventEmitter<{
     }
     // EPIPE on a dying child must never take main down with it.
     child.stdin?.on('error', () => {});
-    this.attachLineReader(child.stdout, 'out');
-    this.attachLineReader(child.stderr, 'err');
+    this.attachLineReader(child.stdout, 'out', gen);
+    this.attachLineReader(child.stderr, 'err', gen);
     child.on('error', (err) => {
       if (gen !== this.generation) return;
       this.child = null;
@@ -1999,6 +2130,7 @@ export class BackendSupervisor extends EventEmitter<{
     code: number | null,
     signal: NodeJS.Signals | null,
   ): Promise<void> {
+    const exitedAt = Date.now();
     // A second VoiceStudio shell can deliberately replace this child between
     // process exit and its own listener becoming ready. Treat that handoff as
     // attachment, not a crash, and keep renderer requests paused meanwhile.
@@ -2021,7 +2153,13 @@ export class BackendSupervisor extends EventEmitter<{
     // End every readiness/supervisor loop for the dead ownership generation
     // before publishing the terminal result.
     this.generation++;
-    const recorded = this.crashes.record(code, signal, Date.now() - this.startedAt, this.log);
+    const recorded = this.crashes.record(
+      code,
+      signal,
+      exitedAt - this.startedAt,
+      this.log,
+      exitedAt,
+    );
     this.exitCode = code;
     this.exitSignal = signal;
     const bindFailure =

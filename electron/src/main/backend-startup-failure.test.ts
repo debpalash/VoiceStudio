@@ -18,6 +18,8 @@ vi.mock('electron', () => ({ app: { isPackaged: true, getPath: () => '/private/v
 vi.mock('node:child_process', () => ({ spawn: mocks.spawn, spawnSync: vi.fn() }));
 vi.mock('node:fs/promises', () => ({ rm: vi.fn() }));
 vi.mock('./runtime-project', () => ({
+  resolveTorchVariant: () => ({ variant: 'cpu', explicit: false }),
+  cpuTorchApplies: () => false,
   runtimeDependenciesReady: mocks.dependencies,
   runtimeReady: mocks.ready,
   runtimeCompatible: mocks.compatible,

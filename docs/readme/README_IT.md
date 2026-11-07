@@ -55,6 +55,8 @@
 <p align="center">
   <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/badge/Scarica-993f61?style=for-the-badge&amp;logo=github&amp;logoColor=ffffff" alt="Scarica" height="24" /></a>
   <a href="#get-started"><img src="https://img.shields.io/badge/Per%20iniziare-27272a?style=for-the-badge" alt="Per iniziare" height="24" /></a>
+  <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Pro-27272a?style=for-the-badge" alt="VoiceStudio Pro" height="24" /></a>
+  <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Cloud-27272a?style=for-the-badge" alt="VoiceStudio Cloud" height="24" /></a>
 </p>
 
 <a id="what-you-can-do"></a>
@@ -107,6 +109,39 @@ Scegli i tuoi motori e scarica solo i modelli che ti servono.
 Inizia con **VoiceStudio** (predefinito, basato su k2-fsa/OmniVoice) o scegli tra decine di altri motori nel Gestore modelli. Consulta il [catalogo delle funzionalità e del motore](../../docs/feature-catalog.md).
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
+
+## Pro e Cloud
+
+Tutto quanto sopra è gratuito, funziona sul tuo hardware e non richiede un account. Pro e Cloud sono facoltativi.
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
+      Per lavori retribuiti per i clienti su più di un computer.
+      <ul>
+        <li>Una licenza commerciale per il lavoro con i clienti, inviata via e-mail</li>
+        <li>Un utente su un massimo di 3 dispositivi contemporaneamente</li>
+        <li>Invia i lavori alle altre GPU mentre i progetti restano in locale</li>
+        <li>Nuove funzioni e correzioni in anteprima</li>
+      </ul>
+      <sub>Build a codice chiuso, account richiesto, rimborso completo entro 7 giorni. L’app AGPL-3.0 resta gratuita, anche per l’uso commerciale secondo i suoi termini.</sub><br /><br />
+      <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Vedi i piani Pro →</a></strong>
+    </td>
+    <td width="50%" valign="top">
+      <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br /><br />
+      Un’API ospitata per voce e doppiaggio, in arrivo. Nessuna GPU necessaria.
+      <ul>
+        <li>Sintesi vocale, design della voce e clonazione vocale con consenso</li>
+        <li>Doppiaggio, trascrizione e audiolibri</li>
+        <li>Utilizzo e crediti per giorno o progetto</li>
+        <li>Lavori lunghi che procedono da soli</li>
+      </ul>
+      <sub>Non ancora disponibile: iscriviti all’accesso anticipato per ricevere crediti di utilizzo gratuiti. L’app desktop resta gratuita e locale.</sub><br /><br />
+      <strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Partecipa all’accesso anticipato a Cloud →</a></strong>
+    </td>
+  </tr>
+</table>
 
 <a id="platforms"></a>
 

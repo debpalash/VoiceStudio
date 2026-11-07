@@ -101,6 +101,7 @@ const bridge: VoiceStudioBridge = {
     onStatus: (cb) => subscribe<BackendStatus>('backend:status', cb),
     setupRuntime: () => ipcRenderer.invoke('backend:setupRuntime') as Promise<void>,
     cleanSetupRuntime: () => ipcRenderer.invoke('backend:cleanSetupRuntime') as Promise<void>,
+    setupRuntimeOnCpu: () => ipcRenderer.invoke('backend:setupRuntimeOnCpu') as Promise<void>,
     setRuntimeRegion: (region) => ipcRenderer.invoke('backend:setRuntimeRegion', region),
     chooseRuntimeLocation: (title) => ipcRenderer.invoke('backend:chooseRuntimeLocation', title),
     useDefaultRuntimeLocation: () => ipcRenderer.invoke('backend:useDefaultRuntimeLocation'),

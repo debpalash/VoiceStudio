@@ -55,6 +55,8 @@
 <p align="center">
   <a href="https://github.com/debpalash/VoiceStudio/releases/latest"><img src="https://img.shields.io/badge/Herunterladen-993f61?style=for-the-badge&amp;logo=github&amp;logoColor=ffffff" alt="Herunterladen" height="24" /></a>
   <a href="#get-started"><img src="https://img.shields.io/badge/Erste%20Schritte-27272a?style=for-the-badge" alt="Erste Schritte" height="24" /></a>
+  <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Pro-27272a?style=for-the-badge" alt="VoiceStudio Pro" height="24" /></a>
+  <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=hero-badge"><img src="https://img.shields.io/badge/VoiceStudio%20Cloud-27272a?style=for-the-badge" alt="VoiceStudio Cloud" height="24" /></a>
 </p>
 
 <a id="what-you-can-do"></a>
@@ -107,6 +109,39 @@ Wählen Sie Ihre Motoren und laden Sie nur die Modelle herunter, die Sie benöti
 Beginnen Sie mit **VoiceStudio** (Standard, unterstützt von k2-fsa/OmniVoice) oder wählen Sie im Model Manager aus Dutzenden anderer Engines aus. Siehe den [Features- und Engine-Katalog](../../docs/feature-catalog.md).
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="../../docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
+
+## Pro und Cloud
+
+Alles oben ist kostenlos, läuft auf Ihrer eigenen Hardware und braucht kein Konto. Pro und Cloud sind optional.
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-pro.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Pro</a></strong><br /><br />
+      Für bezahlte Kundenprojekte auf mehr als einem Rechner.
+      <ul>
+        <li>Eine kommerzielle Lizenz für Ihre Kundenarbeit, per E-Mail zugestellt</li>
+        <li>Ein Nutzer auf bis zu 3 Geräten gleichzeitig</li>
+        <li>Aufträge an Ihre anderen GPUs senden, während Ihre Projekte lokal bleiben</li>
+        <li>Neue Funktionen und Korrekturen zuerst</li>
+      </ul>
+      <sub>Closed-Source-Build, Konto erforderlich, 7 Tage volle Rückerstattung. Die AGPL-3.0-App bleibt kostenlos, auch für die kommerzielle Nutzung gemäß ihren Bedingungen.</sub><br /><br />
+      <strong><a href="https://voicestudio.sh/pro?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Pro-Tarife ansehen →</a></strong>
+    </td>
+    <td width="50%" valign="top">
+      <a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section"><img src="../assets/voicestudio-cloud.svg" alt="" width="56" height="56" align="middle" /></a>&nbsp;&nbsp;<strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">VoiceStudio Cloud</a></strong><br /><br />
+      Eine gehostete Sprach- und Synchronisations-API, kommt bald. Keine GPU nötig.
+      <ul>
+        <li>Sprachausgabe, Stimmengestaltung und Stimmenklonen mit Einwilligung</li>
+        <li>Synchronisation, Transkription und Hörbücher</li>
+        <li>Nutzung und Guthaben nach Tag oder Projekt</li>
+        <li>Lange Aufträge, die selbstständig laufen</li>
+      </ul>
+      <sub>Noch nicht verfügbar: Treten Sie dem Early Access bei und erhalten Sie kostenloses Nutzungsguthaben. Die Desktop-App bleibt kostenlos und lokal.</sub><br /><br />
+      <strong><a href="https://app.voicestudio.sh/?utm_source=github&amp;utm_medium=readme&amp;utm_campaign=project&amp;utm_content=readme-section">Cloud Early Access beitreten →</a></strong>
+    </td>
+  </tr>
+</table>
 
 <a id="platforms"></a>
 

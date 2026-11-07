@@ -19,6 +19,9 @@ saying why. The result is a
 commit status named "CLA" on the head commit, which branch protection can
 require. A maintainer can apply the `cla-override` label after reviewing a pull
 request by hand, for example one that folds in commits from agent identities.
+The `cla-signed` label follows the result so people can filter on it: present
+only while signatures clear a pull request, when the check's comment also links
+the agreement and each signature. Neither affects the gate.
 """
 from __future__ import annotations
 
@@ -49,6 +52,7 @@ NEAR_MISS_ID = re.compile(r"<!-- voicestudio-cla-near-miss:(\d+) -->")
 # signatures from anyone, so past contributors can sign without a pull request.
 SIGNING_LABEL = "cla"
 OVERRIDE_LABEL = "cla-override"
+SIGNED_LABEL = "cla-signed"  # written by this check, never read as an input
 COMMENT_MARKER = "<!-- voicestudio-cla -->"
 MAX_OPEN_PRS = 1000  # reaching the cap is incomplete evidence, so fail closed
 MAX_COMMITS = 250
@@ -72,6 +76,7 @@ TOOL_EMAILS = re.compile(
 SUPERSEDES = re.compile(r"supersed", re.I)
 PR_REF = re.compile(r"#(\d+)")
 NOREPLY = re.compile(r"^(?:(\d+)\+)?([A-Za-z0-9-]+)@users\.noreply\.github\.com$", re.I)
+RECORDED_LOGIN = re.compile(r"@([A-Za-z0-9-]+)")
 CO_AUTHOR = re.compile(r"^co-authored-by:\s*(.*?)\s*<([^>]*)>\s*$", re.I | re.M)
 
 
@@ -87,6 +92,7 @@ class Person:
 @dataclass
 class Evaluation:
     unsigned: list[Person] = field(default_factory=list)
+    signed: list[Person] = field(default_factory=list)
     unknown: list[str] = field(default_factory=list)  # git identities with no GitHub account
 
     blockers: list[str] = field(default_factory=list)
@@ -171,8 +177,7 @@ def evaluate(opener: Person, opener_is_bot: bool, actors: list[dict], signed_ids
         if person.id in seen or exempt(person):
             return
         seen.add(person.id)
-        if person.id not in signed_ids:
-            result.unsigned.append(person)
+        (result.signed if person.id in signed_ids else result.unsigned).append(person)
 
     if not opener_is_bot:
         require(opener)
@@ -229,9 +234,27 @@ def _safe(text: str) -> str:
     return "`" + re.sub(r"[`\r\n]", "'", text)[:200] + "`"
 
 
-def render_comment(evaluation: Evaluation, doc_url: str) -> str:
+def record_lines(text: str, account_id: int) -> tuple[int, int] | None:
+    """First and last line (1-based) of an account's entry in the signature file."""
+    lines = text.splitlines()
+    for at, line in enumerate(lines):
+        if line.strip().rstrip(",") == f'"id": {account_id}':
+            start = next((i for i in range(at, -1, -1) if lines[i].strip() == "{"), None)
+            end = next((i for i in range(at, len(lines)) if lines[i].strip() in ("}", "},")), None)
+            return None if start is None or end is None else (start + 1, end + 1)
+    return None
+
+
+def render_comment(evaluation: Evaluation, doc_url: str, signatures: dict[str, str | None] | None = None) -> str:
+    """`signatures` maps each signer's login to the link to their signature."""
     if evaluation.passed:
-        return f"{COMMENT_MARKER}\nAll contributors on this pull request have signed the VoiceStudio CLA. Thank you!"
+        passed = f"{COMMENT_MARKER}\nAll contributors on this pull request have signed the VoiceStudio CLA. Thank you!"
+        if not signatures:
+            return passed
+        # Plain logins: this comment reports a result, so it should not notify anyone.
+        lines = [f"- {_safe(login)}: [signature record]({url})" if url else f"- {_safe(login)}: signature on record"
+                 for login, url in signatures.items()]
+        return "\n".join([passed, "", f"Agreement: [VoiceStudio CLA {CLA_VERSION}]({doc_url})", "", *lines])
     intro = (
         "Thank you for contributing to VoiceStudio. Before this pull request can merge, everyone who "
         f"contributed to it must sign the [Contributor License Agreement {CLA_VERSION}]({doc_url}) once. "
@@ -269,7 +292,9 @@ def render_near_miss(login: str, comment_id: int, reason: str) -> str:
 
 class GitHub:
     def __init__(self, token: str, repo: str, api: str = "https://api.github.com"):
+        """Keep the API details and the signature commits already looked up."""
         self.token, self.repo, self.api = token, repo, api.rstrip("/")
+        self.signature_commits: dict[str, str] = {}  # login -> commit that first recorded it
 
     def request(self, method: str, path: str, body: dict | None = None) -> tuple[int, object, dict]:
         url = path if path.startswith("http") else f"{self.api}{path}"
@@ -478,6 +503,65 @@ def set_status(gh: GitHub, sha: str, state: str, description: str, doc_url: str 
         raise RuntimeError(f"Could not write {context} status ({status})")
 
 
+def signature_permalink(gh: GitHub, server_url: str, record: dict | None) -> str | None:
+    """Link to a signature's entry in the commit that recorded it, which never changes.
+
+    The signing comment can be edited or deleted, and the entry holds its ID and
+    hash. None when it cannot be found: a missing link must not affect the gate.
+    """
+    login = ((record or {}).get("login") or "").lower()
+    try:
+        if login not in gh.signature_commits:
+            # Newest first, so the oldest commit naming a login wins; a retried
+            # save can name someone an earlier run already stored.
+            for commit in gh.paginate(f"/repos/{gh.repo}/commits?sha={SIGNATURE_BRANCH}&path={SIGNATURE_PATH}"):
+                first_line = commit["commit"]["message"].split("\n", 1)[0]
+                for name in RECORDED_LOGIN.findall(first_line):
+                    gh.signature_commits[name.lower()] = commit["sha"]
+        sha = gh.signature_commits.get(login)
+        if not sha:
+            return None
+        status, payload, _ = gh.request("GET", f"/repos/{gh.repo}/contents/{SIGNATURE_PATH}?ref={sha}")
+        if status != 200:
+            return None
+        lines = record_lines(base64.b64decode(payload["content"]).decode(), int(record["id"]))
+    except (RuntimeError, OSError, KeyError, TypeError, ValueError) as err:
+        print(f"CLA: could not link the signature of {login}: {err}")
+        return None
+    return f"{server_url}/{gh.repo}/blob/{sha}/{SIGNATURE_PATH}#L{lines[0]}-L{lines[1]}" if lines else None
+
+
+def document_permalink(gh: GitHub, fallback: str, server_url: str) -> str:
+    """Link to the agreement at the commit that last changed it, which stays put across runs."""
+    try:
+        status, commits, _ = gh.request("GET", f"/repos/{gh.repo}/commits?path={DOCUMENT_PATH}&per_page=1")
+    except OSError:
+        return fallback
+    if status != 200 or not commits:
+        return fallback
+    return f"{server_url}/{gh.repo}/blob/{commits[0]['sha']}/{DOCUMENT_PATH}"
+
+
+def sync_signed_label(gh: GitHub, pr: dict, earned: bool) -> None:
+    """Make `cla-signed` match the result. The status is the gate, so a failed write only warns.
+
+    GITHUB_TOKEN label writes start no workflow run, so this cannot re-trigger the check.
+    """
+    if earned == (SIGNED_LABEL in {label.get("name") for label in pr.get("labels") or []}):
+        return
+    issue = f"/repos/{gh.repo}/issues/{pr['number']}/labels"
+    try:
+        if earned:
+            status, _, _ = gh.request("POST", issue, {"labels": [SIGNED_LABEL]})
+        else:
+            status, _, _ = gh.request("DELETE", f"{issue}/{SIGNED_LABEL}")
+    except OSError as err:
+        print(f"CLA: could not update {SIGNED_LABEL}: {err}")
+        return
+    if status >= 400 and not (status == 404 and not earned):
+        print(f"CLA: could not update {SIGNED_LABEL} ({status})")
+
+
 def open_prs_at_head(gh: GitHub, sha: str) -> list[dict]:
     """A commit status is shared by every PR at a SHA; require a unique owner."""
     pulls = gh.paginate(f"/repos/{gh.repo}/pulls?state=open", limit=MAX_OPEN_PRS)
@@ -492,7 +576,8 @@ def open_prs_at_head(gh: GitHub, sha: str) -> list[dict]:
 def _evaluation_snapshot(pr: dict) -> tuple:
     return (pr.get("state"), pr["head"]["sha"], pr["base"].get("sha"),
             pr["user"]["id"], pr["user"].get("type"), pr.get("body") or "",
-            sorted(label.get("name", "") for label in pr.get("labels") or []))
+            sorted(label.get("name", "") for label in pr.get("labels") or []
+                   if label.get("name") != SIGNED_LABEL))
 
 
 def confirm_current_pr(gh: GitHub, pr: dict) -> None:
@@ -515,6 +600,7 @@ def head_blockers(gh: GitHub, pr: dict) -> list[str]:
 
 
 def run(gh: GitHub, event_name: str, event: dict, server_url: str = "https://github.com") -> Evaluation:
+    """Check one pull request, record new signatures, and set its status, comment and label."""
     event_pr = event.get("pull_request") or {}
     number = (event_pr or event.get("issue") or {}).get("number")
     # On PR events the payload supplies the head even if the first API read
@@ -543,10 +629,12 @@ def run(gh: GitHub, event_name: str, event: dict, server_url: str = "https://git
         evaluation = Evaluation(blockers=blockers)
         upsert_comment(gh, number, render_comment(evaluation, doc_url), create=True)
         set_status(gh, pr["head"]["sha"], "failure", "Close duplicate pull requests sharing this head", doc_url)
+        sync_signed_label(gh, pr, False)
         return evaluation
     if OVERRIDE_LABEL in {label.get("name") for label in pr.get("labels") or []}:
         confirm_current_pr(gh, pr)
         set_status(gh, pr["head"]["sha"], "success", "CLA reviewed by a maintainer", doc_url)
+        sync_signed_label(gh, pr, False)  # a maintainer's review is not a signature
         return Evaluation()
 
     actors, count = pr_actors(gh, number)
@@ -586,8 +674,17 @@ def run(gh: GitHub, event_name: str, event: dict, server_url: str = "https://git
                    else f"{len(evaluation.unsigned) + len(evaluation.unknown)} contributor(s) still need to sign")
     if evaluation.blockers:
         description = "Close duplicate pull requests sharing this head"
-    upsert_comment(gh, number, render_comment(evaluation, doc_url), create=not evaluation.passed)
+    cleared = evaluation.passed and bool(evaluation.signed)
+    if cleared:
+        records = {int(s["id"]): s for s in [*store["signatures"], *new]}
+        signatures = {p.login: signature_permalink(gh, server_url, records.get(p.id)) for p in evaluation.signed}
+        body = render_comment(evaluation, document_permalink(gh, doc_url, server_url), signatures)
+    else:
+        body = render_comment(evaluation, doc_url)
+    # Exempt-only pull requests pass with no signature to report.
+    upsert_comment(gh, number, body, create=cleared or not evaluation.passed)
     set_status(gh, pr["head"]["sha"], "success" if evaluation.passed else "failure", description, doc_url)
+    sync_signed_label(gh, pr, cleared)
     return evaluation
 
 

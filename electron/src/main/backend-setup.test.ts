@@ -1,11 +1,17 @@
 // @vitest-environment node
-import { beforeEach, afterEach, expect, it, onTestFinished, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { chmodSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const mocks = vi.hoisted(() => ({
-  runtimeConfig: null as { root: string; owned: boolean } | null,
+  saveTorchVariant: vi.fn(),
+  runtimeConfig: null as {
+    root: string;
+    owned: boolean;
+    scoped?: boolean;
+    existing?: string[];
+  } | null,
   existingProject: false,
   existingRoot: false,
   rootEntries: ['.python'] as string[],
@@ -74,6 +80,16 @@ vi.mock('./runtime-project', () => ({
   runtimePython: (root: string) => root + '/.venv/bin/python',
   runtimeDownloadHosts: mocks.hosts,
   runtimeUvCache: (project: string) => project + '/../.uv-cache',
+  resolveTorchVariant: () => {
+    const raw = process.env.OMNIVOICE_TORCH_VARIANT;
+    return { variant: raw === 'cpu' ? 'cpu' : 'default', explicit: Boolean(raw) };
+  },
+  cpuTorchApplies: () => true,
+}));
+vi.mock('./torch-choice', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./torch-choice')>()),
+  rememberTorchVariant: vi.fn(),
+  saveTorchVariant: mocks.saveTorchVariant,
 }));
 vi.mock('./setup-downloads', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./setup-downloads')>()),
@@ -689,6 +705,71 @@ it.each(['.DS_Store', 'desktop.ini'])(
   },
 );
 
+async function pickLocationAndSetUp(entries: string[]) {
+  const { resolve } = await import('node:path');
+  const selected = resolve('/selected/VoiceStudio');
+  mocks.existingRoot = true;
+  mocks.rootEntries = entries;
+  mocks.rootEntryIsFile = false;
+  mocks.install.mockRejectedValue(new Error('offline'));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      throw new Error('no backend');
+    }),
+  );
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  vi.stubEnv('VOICESTUDIO_SKIP_BACKEND', '');
+  const supervisor = new BackendSupervisor();
+  await supervisor.start();
+  supervisor.setRuntimeLocation(selected);
+  await supervisor.setupRuntime();
+  return { supervisor, selected };
+}
+
+it.each([
+  ['a moved runtime', ['project', '.uv-cache', '.python']],
+  ['unrelated files', ['Music']],
+])('keeps a location chosen in setup when it already holds %s', async (_label, entries) => {
+  // The user picked this drive because the system drive is full: sending setup
+  // back to the default folder fills the drive they were trying to avoid.
+  const { join } = await import('node:path');
+  const { supervisor, selected } = await pickLocationAndSetUp(entries);
+  expect(mocks.install.mock.calls[0][1]).toBe(join(selected, 'project'));
+  expect(mocks.runtimeConfig).toMatchObject({ root: selected, owned: true, scoped: true });
+  expect(mocks.rm).not.toHaveBeenCalled();
+  await supervisor.shutdown();
+});
+
+it('never removes folders a chosen location already held', async () => {
+  const { join } = await import('node:path');
+  const { supervisor, selected } = await pickLocationAndSetUp(['project', 'tmp', '.python']);
+  expect(supervisor.ownedRuntimeEntries).toEqual(
+    ['.uv-cache', '.tmp', '.wheel-prefetch'].map((name) => join(selected, name)),
+  );
+  mocks.install.mockClear();
+  await supervisor.cleanSetupRuntime();
+  expect(mocks.rm).not.toHaveBeenCalled();
+  expect(mocks.install).toHaveBeenCalledOnce();
+  await supervisor.shutdown();
+});
+
+it('still cleans up the folders setup created in a chosen location', async () => {
+  const { join } = await import('node:path');
+  const { supervisor, selected } = await pickLocationAndSetUp(['Music']);
+  expect(supervisor.ownedRuntimeEntries).toContain(join(selected, 'project'));
+  // Picking the same folder after a failed attempt must not disown setup's own files.
+  mocks.rootEntries = ['Music', 'project'];
+  supervisor.setRuntimeLocation(selected);
+  await supervisor.setupRuntime();
+  await supervisor.cleanSetupRuntime();
+  expect(mocks.rm).toHaveBeenCalledWith(
+    join(selected, 'project'),
+    expect.objectContaining({ recursive: true }),
+  );
+  await supervisor.shutdown();
+});
+
 it('installs into a newly selected custom destination that does not yet exist', async () => {
   const { resolve, join } = await import('node:path');
   const selected = resolve('/selected/VoiceStudio');
@@ -978,4 +1059,322 @@ it('lets a failed start move the runtime to another folder', async () => {
   (supervisor as unknown as { stage: string }).stage = 'ready';
   expect(() => supervisor.setRuntimeLocation(null)).toThrow('runtime_location_unavailable');
   await supervisor.shutdown();
+});
+
+describe('falling back to the CPU build', () => {
+  const clearVariant = () => {
+    delete process.env.OMNIVOICE_TORCH_VARIANT;
+    mocks.saveTorchVariant.mockClear();
+  };
+
+  it('offers it after a dropped download, then installs the CPU build', async () => {
+    clearVariant();
+    onTestFinished(clearVariant);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('down');
+      }),
+    );
+    const variants: (string | undefined)[] = [];
+    mocks.install.mockImplementation(async () => {
+      variants.push(process.env.OMNIVOICE_TORCH_VARIANT);
+      throw new Error('peer closed connection without sending TLS close_notify');
+    });
+    const supervisor = new BackendSupervisor();
+    onTestFinished(() => supervisor.shutdown());
+    await supervisor.start();
+    expect(supervisor.status.cpuSetupAvailable).toBeUndefined();
+    await supervisor.setupRuntime();
+    expect(supervisor.status.failure?.code).toBe('RUNTIME_DOWNLOAD_INTERRUPTED');
+    expect(supervisor.status.cpuSetupAvailable).toBe(true);
+
+    await supervisor.setupRuntimeOnCpu();
+
+    expect(variants.at(-1)).toBe('cpu');
+    expect(mocks.saveTorchVariant).toHaveBeenCalledWith('cpu');
+  });
+
+  it('stops a stuck download first, so the CPU install can start', async () => {
+    clearVariant();
+    onTestFinished(clearVariant);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('down');
+      }),
+    );
+    let started = 0;
+    let killedUv = () => {};
+    mocks.install.mockImplementation(async () => {
+      started++;
+      if (started > 1) throw new Error('second attempt ran');
+      // Like a running uv: only killing the process ends it, an abort signal does not.
+      await new Promise<void>((resolve) => {
+        killedUv = resolve;
+      });
+    });
+    const supervisor = new BackendSupervisor();
+    onTestFinished(() => supervisor.shutdown());
+    await supervisor.start();
+    const stuck = supervisor.setupRuntime();
+    await vi.waitFor(() => expect(mocks.install).toHaveBeenCalled());
+    const internals = supervisor as unknown as { killChild(): Promise<void> };
+    const killChild = internals.killChild.bind(supervisor);
+    vi.spyOn(internals, 'killChild').mockImplementation(async () => {
+      await killChild();
+      killedUv();
+    });
+    const progress = (
+      supervisor as unknown as { setupProgress: { snapshot(): Record<string, unknown> } }
+    ).setupProgress;
+    const snapshot = vi.spyOn(progress, 'snapshot').mockReturnValue({
+      completedDownloads: 0,
+      downloadsComplete: false,
+      stalled: true,
+      stalledSeconds: 300,
+    });
+    expect(supervisor.status.cpuSetupAvailable).toBe(true);
+    snapshot.mockRestore();
+    vi.spyOn(progress, 'snapshot').mockReturnValueOnce({
+      completedDownloads: 0,
+      downloadsComplete: false,
+      stalled: true,
+      stalledSeconds: 300,
+    });
+
+    await supervisor.setupRuntimeOnCpu();
+    await stuck;
+
+    expect(started).toBe(2);
+  });
+
+  it('does not start a second install when the first will not stop', async () => {
+    clearVariant();
+    onTestFinished(clearVariant);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('down');
+      }),
+    );
+    mocks.install.mockImplementation(() => new Promise<void>(() => {}));
+    const supervisor = new BackendSupervisor();
+    onTestFinished(() => supervisor.shutdown());
+    await supervisor.start();
+    void supervisor.setupRuntime();
+    await vi.waitFor(() => expect(mocks.install).toHaveBeenCalled());
+    mocks.install.mockClear();
+    const internals = supervisor as unknown as {
+      installStopTimeoutMs: number;
+      setupProgress: { snapshot(): Record<string, unknown> };
+    };
+    internals.installStopTimeoutMs = 10;
+    vi.spyOn(internals.setupProgress, 'snapshot').mockReturnValue({
+      completedDownloads: 0,
+      downloadsComplete: false,
+      stalled: true,
+      stalledSeconds: 300,
+    });
+
+    await supervisor.setupRuntimeOnCpu();
+
+    expect(mocks.install).not.toHaveBeenCalled();
+    expect(process.env.OMNIVOICE_TORCH_VARIANT).toBeUndefined();
+    expect(mocks.saveTorchVariant).not.toHaveBeenCalled();
+    expect(supervisor.status.stage).toBe('setup_required');
+    expect(supervisor.status.message).toContain('Could not stop');
+    expect(supervisor.status.setupIssue).toBe('install_stuck');
+  });
+
+  it('allows setup again once a stuck install finally stops', async () => {
+    clearVariant();
+    onTestFinished(clearVariant);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('down');
+      }),
+    );
+    let finish = () => {};
+    mocks.install.mockImplementation(
+      () => new Promise<void>((resolve) => (finish = resolve)),
+    );
+    const supervisor = new BackendSupervisor();
+    onTestFinished(() => supervisor.shutdown());
+    await supervisor.start();
+    void supervisor.setupRuntime();
+    await vi.waitFor(() => expect(mocks.install).toHaveBeenCalled());
+    const internals = supervisor as unknown as {
+      installStopTimeoutMs: number;
+      setupProgress: { snapshot(): Record<string, unknown> };
+    };
+    internals.installStopTimeoutMs = 10;
+    vi.spyOn(internals.setupProgress, 'snapshot').mockReturnValue({
+      completedDownloads: 0,
+      downloadsComplete: false,
+      stalled: true,
+      stalledSeconds: 300,
+    });
+    await supervisor.setupRuntimeOnCpu();
+    expect(supervisor.status.setupIssue).toBe('install_stuck');
+
+    finish();
+
+    await vi.waitFor(() => expect(supervisor.status.setupIssue).toBeUndefined());
+    expect(supervisor.status.stage).toBe('setup_required');
+    expect(supervisor.status.message).toBeUndefined();
+  });
+
+  it('leaves a backend that started meanwhile alone when a stuck install stops', async () => {
+    clearVariant();
+    onTestFinished(clearVariant);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('down');
+      }),
+    );
+    let finish = () => {};
+    mocks.install.mockImplementation(() => new Promise<void>((resolve) => (finish = resolve)));
+    const supervisor = new BackendSupervisor();
+    onTestFinished(() => supervisor.shutdown());
+    await supervisor.start();
+    void supervisor.setupRuntime();
+    await vi.waitFor(() => expect(mocks.install).toHaveBeenCalled());
+    const internals = supervisor as unknown as {
+      installStopTimeoutMs: number;
+      setupProgress: { snapshot(): Record<string, unknown> };
+    };
+    internals.installStopTimeoutMs = 10;
+    vi.spyOn(internals.setupProgress, 'snapshot').mockReturnValue({
+      completedDownloads: 0,
+      downloadsComplete: false,
+      stalled: true,
+      stalledSeconds: 300,
+    });
+    await supervisor.setupRuntimeOnCpu();
+    await supervisor.shutdown();
+    expect(supervisor.status.stage).toBe('idle');
+
+    finish();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(supervisor.status.stage).toBe('idle');
+  });
+
+  it.each(['shutdown', 'restart'] as const)(
+    'gives up the switch when %s arrives while the old install stops',
+    async (action) => {
+      clearVariant();
+      onTestFinished(clearVariant);
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => {
+          throw new Error('down');
+        }),
+      );
+      let finish = () => {};
+      mocks.install.mockImplementation(() => new Promise<void>((resolve) => (finish = resolve)));
+      const supervisor = new BackendSupervisor();
+      onTestFinished(() => supervisor.shutdown());
+      await supervisor.start();
+      void supervisor.setupRuntime();
+      await vi.waitFor(() => expect(mocks.install).toHaveBeenCalled());
+      mocks.install.mockClear();
+      const internals = supervisor as unknown as {
+        generation: number;
+        setupProgress: { snapshot(): Record<string, unknown> };
+      };
+      vi.spyOn(internals.setupProgress, 'snapshot').mockReturnValue({
+        completedDownloads: 0,
+        downloadsComplete: false,
+        stalled: true,
+        stalledSeconds: 300,
+      });
+      const before = internals.generation;
+
+      const switching = supervisor.setupRuntimeOnCpu();
+      await vi.waitFor(() => expect(internals.generation).toBeGreaterThan(before));
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const other = supervisor[action]();
+      finish();
+      await Promise.all([switching, other]);
+
+      expect(process.env.OMNIVOICE_TORCH_VARIANT).toBeUndefined();
+      expect(mocks.saveTorchVariant).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not report a stuck install when shutdown came first', async () => {
+    clearVariant();
+    onTestFinished(clearVariant);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('down');
+      }),
+    );
+    mocks.install.mockImplementation(() => new Promise<void>(() => {}));
+    const supervisor = new BackendSupervisor();
+    onTestFinished(() => supervisor.shutdown());
+    await supervisor.start();
+    void supervisor.setupRuntime();
+    await vi.waitFor(() => expect(mocks.install).toHaveBeenCalled());
+    const internals = supervisor as unknown as {
+      generation: number;
+      installStopTimeoutMs: number;
+      setupProgress: { snapshot(): Record<string, unknown> };
+    };
+    internals.installStopTimeoutMs = 30;
+    vi.spyOn(internals.setupProgress, 'snapshot').mockReturnValue({
+      completedDownloads: 0,
+      downloadsComplete: false,
+      stalled: true,
+      stalledSeconds: 300,
+    });
+    const before = internals.generation;
+
+    const switching = supervisor.setupRuntimeOnCpu();
+    await vi.waitFor(() => expect(internals.generation).toBeGreaterThan(before));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    void supervisor.shutdown();
+    await switching;
+
+    expect(supervisor.status.stage).toBe('idle');
+    expect(supervisor.status.setupIssue).toBeUndefined();
+  });
+
+  it('does nothing when it is not on offer', async () => {
+    clearVariant();
+    onTestFinished(clearVariant);
+    const supervisor = new BackendSupervisor();
+    onTestFinished(() => supervisor.shutdown());
+    await supervisor.start();
+    await supervisor.setupRuntimeOnCpu();
+    expect(process.env.OMNIVOICE_TORCH_VARIANT).toBeUndefined();
+    expect(mocks.saveTorchVariant).not.toHaveBeenCalled();
+  });
+});
+
+it('does not take crash context from a backend process that was replaced', async () => {
+  const { PassThrough } = await import('node:stream');
+  const supervisor = new BackendSupervisor();
+  onTestFinished(() => supervisor.shutdown());
+  const internals = supervisor as unknown as {
+    generation: number;
+    crashes: { captureLine(line: string): void };
+    attachLineReader(readable: NodeJS.ReadableStream, stream: 'err', gen: number): void;
+  };
+  const capture = vi.spyOn(internals.crashes, 'captureLine');
+  const stderr = new PassThrough();
+  internals.attachLineReader(stderr, 'err', internals.generation);
+  stderr.write('from the current process\n');
+  await vi.waitFor(() => expect(capture).toHaveBeenCalledOnce());
+
+  internals.generation++;
+  stderr.write('VOICESTUDIO_CRASH_CONTEXT={"kind":"late"}\n');
+  await new Promise((resolve) => setTimeout(resolve, 20));
+
+  expect(capture).toHaveBeenCalledOnce();
 });

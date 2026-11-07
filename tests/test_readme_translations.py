@@ -108,3 +108,17 @@ def test_translation_navigation_anchors_resolve(path):
         anchors.add(re.sub(r"[^\w\s-]", "", heading).strip().replace(" ", "-"))
     missing = [target for target in _TARGET.findall(text) if target.startswith("#") and target[1:] not in anchors]
     assert not missing, f"{path.name} has broken navigation anchors: {missing}"
+
+
+@pytest.mark.parametrize("path", _TRANSLATIONS, ids=lambda p: p.name)
+@pytest.mark.parametrize("anchor, english", [("what-you-can-do", "What you can do"), ("platforms", "Platforms")])
+def test_translated_section_anchors_stay_on_their_sections(path, anchor, english):
+    """Adding a section must not leave a saved link pointing at the wrong heading."""
+    source = _FENCE.sub("", (_ROOT / "README.md").read_text(encoding="utf-8"))
+    translated = _FENCE.sub("", path.read_text(encoding="utf-8"))
+    marker = f'<a id="{anchor}"></a>'
+    match = re.search(re.escape(marker) + r"\s*\n(?=## )", translated)
+    assert match, f"{path.name}: #{anchor} must sit directly above a section heading"
+    preceding = len(re.findall(r"^## ", translated[:match.start()], re.MULTILINE))
+    expected = len(re.findall(r"^## ", source[:source.index(f"## {english}\n")], re.MULTILINE))
+    assert preceding == expected, f"{path.name}: #{anchor} is on the wrong section"
