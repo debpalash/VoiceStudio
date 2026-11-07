@@ -51,6 +51,8 @@ vi.mock('./runtime-project', async (importOriginal) => ({
     return state.ready;
   }),
 }));
+const healPth = vi.hoisted(() => vi.fn(async (_venv: string) => [] as string[]));
+vi.mock('./pth-ascii', () => ({ asciiSafePthFiles: healPth }));
 vi.mock('./legacy-storage', () => ({
   legacyStorageEnv: () => ({
     OMNIVOICE_DATA_DIR: '/legacy/data',
@@ -68,6 +70,7 @@ import {
   spawnFailureMessage,
   startupTimeoutMessage,
 } from './backend';
+import { runtimeDependenciesReady } from './runtime-project';
 // These launch/setup cases model a supported local-runtime host. Intel and
 // Rosetta behavior is exercised below with explicit hostIssue values.
 beforeEach(() => vi.stubGlobal('process', { ...process, arch: 'arm64' }));
@@ -160,6 +163,17 @@ it('launches the prepared source interpreter without syncing or downloading depe
   );
   expect(plan.argv.slice(1, 3)).toEqual(['-m', 'uvicorn']);
   expect(plan.argv.slice(-2)).toEqual(['--port', '3912']);
+});
+it('heals a source checkout venv .pth before probing it, like the installed runtime (#1783)', async () => {
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  const probe = vi.mocked(runtimeDependenciesReady);
+  healPth.mockClear();
+  probe.mockClear();
+  healPth.mockRejectedValueOnce(new Error('file locked'));
+  expect(await resolveSpawnPlan(3912)).toHaveProperty('argv');
+  expect(healPth).toHaveBeenCalledWith(join(resolve('/repo'), '.venv'));
+  expect(probe).toHaveBeenCalledTimes(1);
+  expect(healPth.mock.invocationCallOrder[0]).toBeLessThan(probe.mock.invocationCallOrder[0]!);
 });
 it('requires explicit source setup when no environment exists, even with uv installed', async () => {
   vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');

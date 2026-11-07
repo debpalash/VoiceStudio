@@ -1,9 +1,18 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { asciiSafePthFiles, asciiSafePthText, pythonLiteral } from './pth-ascii';
+import { asciiSafePthFilesSync } from '../../scripts/pth-ascii.mjs';
 
 const CJK_USER = '\u5f20\u4e09'; // a typical non-English Windows username
 
@@ -62,8 +71,60 @@ describe('asciiSafePthFiles (#1783)', () => {
       expect(bytes.toString('utf8')).toContain('\\u5f20\\u4e09');
     }
     expect(readFileSync(join(posix, '_virtualenv.pth'), 'utf8')).toBe(ascii);
+    expect(readdirSync(windows).filter((name) => name.endsWith('.tmp'))).toEqual([]);
     expect(await asciiSafePthFiles(venv)).toEqual([]);
   });
+
+  it('heals synchronously exactly like the async variant', () => {
+    const venv = mkdtempSync(join(tmpdir(), 'vs-pth-sync-'));
+    const windows = join(venv, 'Lib', 'site-packages');
+    mkdirSync(windows, { recursive: true });
+    const project = join(venv, 'โปรเจ็ค', 'VoiceStudio');
+    const pth = join(windows, '_editable_impl_omnivoice.pth');
+    writeFileSync(pth, project, 'utf8');
+
+    expect(asciiSafePthFilesSync(venv)).toEqual([pth]);
+    expect(readFileSync(pth, 'utf8')).toBe(asciiSafePthText(project));
+    // Replaced through a sibling temp file that must not be left behind.
+    expect(readdirSync(windows)).toEqual(['_editable_impl_omnivoice.pth']);
+    expect(asciiSafePthFilesSync(venv)).toEqual([]);
+    expect(asciiSafePthFilesSync(join(venv, 'missing'))).toEqual([]);
+  });
+
+  it('lets overlapping heals all finish with one complete file', async () => {
+    // Several rounds: the collision (a shared temp file, or Windows refusing a
+    // rename while another heal holds the target open) does not hit every time.
+    for (let round = 0; round < 5; round++) {
+      const venv = mkdtempSync(join(tmpdir(), 'vs-pth-race-'));
+      const windows = join(venv, 'Lib', 'site-packages');
+      mkdirSync(windows, { recursive: true });
+      const pth = join(windows, '_editable_impl_omnivoice.pth');
+      const project = join(venv, CJK_USER, 'project');
+      writeFileSync(pth, project, 'utf8');
+
+      const healed = await Promise.all(Array.from({ length: 4 }, () => asciiSafePthFiles(venv)));
+
+      expect(healed.flat().length).toBeGreaterThanOrEqual(1);
+      expect(readFileSync(pth, 'utf8')).toBe(asciiSafePthText(project));
+      expect(readdirSync(windows)).toEqual(['_editable_impl_omnivoice.pth']);
+    }
+  });
+
+  it.skipIf(process.platform === 'win32')(
+    'keeps the original permission bits on the replaced file',
+    async () => {
+      const venv = mkdtempSync(join(tmpdir(), 'vs-pth-mode-'));
+      const windows = join(venv, 'Lib', 'site-packages');
+      mkdirSync(windows, { recursive: true });
+      const pth = join(windows, '_editable_impl_omnivoice.pth');
+      for (const heal of [() => asciiSafePthFiles(venv), async () => asciiSafePthFilesSync(venv)]) {
+        writeFileSync(pth, join(venv, CJK_USER), 'utf8');
+        chmodSync(pth, 0o600);
+        expect(await heal()).toEqual([pth]);
+        expect(statSync(pth).mode & 0o777).toBe(0o600);
+      }
+    },
+  );
 
   it('drops non-ASCII comments and escapes code lines', () => {
     expect(asciiSafePthText(`# ${CJK_USER}\n./lib`)).toBe('./lib');

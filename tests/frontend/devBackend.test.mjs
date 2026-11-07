@@ -79,6 +79,7 @@ function supervisorHarness(overrides = {}) {
     exit: (code) => exits.push(code),
     report: (message) => reports.push(message),
     dataDir: () => '/missing-test-data',
+    healPthFiles: () => [],
     ...overrides,
   });
 
@@ -201,6 +202,28 @@ test('an unexpected backend death is restarted instead of tearing down dev', () 
 
   harness.runNextTimer();
   assert.equal(harness.children.length, 2);
+});
+
+test('every launch, reload and crash restart heals the venv .pth first (#1783)', () => {
+  const healedBefore = [];
+  const harness = supervisorHarness({
+    healPthFiles: () => {
+      healedBefore.push(harness.children.length);
+      if (healedBefore.length === 1) throw Error('file locked');
+      return [];
+    },
+  });
+  harness.supervisor.start();
+  assert.equal(harness.children.length, 1, 'a failed heal must not block the launch');
+
+  harness.watchers[0].onChange('api/router.py');
+  harness.runNextTimer();
+  harness.children[0].emit('exit', null, 'SIGTERM');
+  harness.children[1].emit('exit', 1, null);
+  harness.runNextTimer();
+
+  assert.equal(harness.children.length, 3);
+  assert.deepEqual(healedBefore, [0, 1, 2]);
 });
 
 test('Python edits reload the direct worker without counting as crashes', () => {
