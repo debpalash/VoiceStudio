@@ -136,7 +136,16 @@ def verify_release(
             raise ReleaseContractError(f"published size does not match {artifact}")
         if not str(artifact_asset.get("digest") or "").startswith("sha256:"):
             raise ReleaseContractError(f"published payload has no GitHub digest: {artifact}")
-        if target.startswith("win32-") and f"{artifact}.blockmap" not in assets:
+        # Patch updates: electron-updater fetches `<payload>.blockmap` for the
+        # NSIS installer and the macOS zip, and reads the AppImage's embedded
+        # blockmap through `blockMapSize`. Without them every update is a full
+        # download, silently.
+        if extension == ".AppImage":
+            if not re.search(r"^\s{4}blockMapSize:\s*[1-9]\d*$", manifest, re.MULTILINE):
+                raise ReleaseContractError(
+                    f"{manifest_name} has no blockMapSize, so AppImage patch updates are off"
+                )
+        elif f"{artifact}.blockmap" not in assets:
             raise ReleaseContractError(f"release is missing differential blockmap: {artifact}.blockmap")
         verified.append(f"{manifest_name} -> {artifact}")
     return verified

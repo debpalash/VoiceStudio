@@ -234,9 +234,27 @@ function releaseNotes(info: UpdateInfo): string | null {
   );
 }
 
-function releaseSize(info: UpdateInfo): number | undefined {
-  const total = info.files?.reduce((sum, file) => sum + (file.size || 0), 0) || 0;
-  return total > 0 ? total : undefined;
+// The feed lists every installer for a platform (macOS: zip and dmg; Linux:
+// AppImage and deb), but electron-updater downloads only one of them. Summing
+// them doubled the offered size; report the file this install will fetch.
+const UPDATE_PAYLOAD_EXTENSION: Partial<Record<NodeJS.Platform, string>> = {
+  darwin: '.zip',
+  win32: '.exe',
+};
+
+export function releaseSize(
+  info: Pick<UpdateInfo, 'files' | 'path'>,
+  platform: NodeJS.Platform = process.platform,
+  appImage: string | undefined = process.env.APPIMAGE,
+): number | undefined {
+  const files = info.files ?? [];
+  const extension =
+    platform === 'linux' ? (appImage ? '.AppImage' : '.deb') : UPDATE_PAYLOAD_EXTENSION[platform];
+  const payload =
+    (extension && files.find((file) => file.url.endsWith(extension))) ||
+    files.find((file) => file.url === info.path) ||
+    files[0];
+  return payload?.size && payload.size > 0 ? payload.size : undefined;
 }
 
 export class DesktopUpdater {
@@ -267,6 +285,9 @@ export class DesktopUpdater {
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = false;
     autoUpdater.allowDowngrade = false;
+    // The NSIS installer is not a web installer; this also silences the
+    // per-download warning electron-updater logs otherwise.
+    autoUpdater.disableWebInstaller = true;
     autoUpdater.on('checking-for-update', () =>
       this.patch({
         status: 'checking',
@@ -497,6 +518,11 @@ export class DesktopUpdater {
       provider: 'generic',
       url,
       channel: feedChannel,
+      // GitHub release downloads answer multi-range requests with HTTP 501, so
+      // every differential (patch) download failed and fell back to the full
+      // installer. Single ranges are served (206); electron-updater's own
+      // GitHub provider disables multi-range for the same reason.
+      useMultipleRangeRequest: false,
     });
   }
 
