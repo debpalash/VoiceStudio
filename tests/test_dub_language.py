@@ -6,7 +6,12 @@ Truncating an unlisted value to two letters used to do exactly that:
 """
 import pytest
 
-from services.dub_language import detected_source_language
+from services.dub_language import (
+    DUB_SOURCE_LANG_CODES,
+    _CODE_ALIASES,
+    _NAME_ALIASES,
+    detected_source_language,
+)
 
 
 @pytest.mark.parametrize(
@@ -99,3 +104,15 @@ def test_unknown_detection_stays_unknown(value):
 def test_non_string_detection_stays_unknown():
     assert detected_source_language(123) is None
     assert detected_source_language(["en"]) is None
+
+
+def test_alias_tables_only_map_to_supported_dub_codes():
+    """Every alias must resolve to a code dubbing accepts (velixio, #3834).
+
+    A new entry whose value is not in DUB_SOURCE_LANG_CODES would make
+    detected_source_language return a code dubbing rejects, so the tables
+    are guarded here instead of at each call site.
+    """
+    for table in (_CODE_ALIASES, _NAME_ALIASES):
+        for alias, code in table.items():
+            assert code in DUB_SOURCE_LANG_CODES, f"{alias!r} -> {code!r}"
