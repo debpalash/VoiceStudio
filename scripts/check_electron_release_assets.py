@@ -141,7 +141,13 @@ def verify_release(
         # blockmap through `blockMapSize`. Without them every update is a full
         # download, silently.
         if extension == ".AppImage":
-            if not re.search(r"^\s{4}blockMapSize:\s*[1-9]\d*$", manifest, re.MULTILINE):
+            # Only the AppImage's own entry counts (the deb entry has none).
+            entry = re.search(
+                rf"^\s+- url:\s*['\"]?{re.escape(artifact)}['\"]?\s*$(.*?)(?=^\s+- url:|^\S|\Z)",
+                manifest,
+                re.MULTILINE | re.DOTALL,
+            )
+            if not entry or not re.search(r"^\s{4}blockMapSize:\s*[1-9]\d*$", entry.group(1), re.MULTILINE):
                 raise ReleaseContractError(
                     f"{manifest_name} has no blockMapSize, so AppImage patch updates are off"
                 )
