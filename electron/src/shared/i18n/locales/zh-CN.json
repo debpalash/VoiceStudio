@@ -2065,6 +2065,7 @@
     "searchIssues": "搜索类似问题",
     "unexpected": "意外错误：{{message}}",
     "backend_shutting_down": "VoiceStudio 正在关闭。请重新打开应用后再试。",
+    "crash_external_kill": "The backend process was ended from outside the app — most often security software, an OS policy, or another program — not by a fault in VoiceStudio, so no job was lost. Check your antivirus and any app-control or system policy that may have stopped it, then relaunch.",
     "crash_vram_default": "在较小的 GPU 上，常见原因是在 TTS 模型仍占用显存时加载 ASR 模型，导致显存（VRAM）不足：请先卸载 TTS 模型，或在 模型库 → 模型 中选择更小的 ASR 模型。",
     "stream_cut_backend_alive": "请先检查应用前面的反向代理或负载均衡器：为该路由关闭响应缓冲（proxy_buffering off; X-Accel-Buffering: no），并调大读取超时。连接中断时后端仍在运行，所以并没有崩溃；服务器或容器部署中通常是代理造成的，直接运行桌面应用或通过 localhost 访问即可确认或排除。",
     "stream_cut_backend_alive_local": "请等待几分钟，然后从历史记录中重新打开该任务；若找不到，请在 设置 → 日志 → 后端 中查看后端日志。一个耗时且无输出的步骤之后，连接在任务中途断开，但后端仍在运行，通常会把工作完成，所以这不是崩溃。",

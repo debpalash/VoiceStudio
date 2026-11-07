@@ -2063,6 +2063,7 @@
     "unexpected": "예기치 않은 오류: {{message}}",
     "backend_shutting_down": "VoiceStudio를 종료하는 중입니다. 앱을 다시 열고 시도하세요.",
     "crash_broken_env": "자체 Python 의존성을 불러오는 도중에 종료됐습니다. 메모리나 GPU 문제가 아니라 환경이 불완전하거나 업데이트가 중간에 멈춘 상태입니다. 설정 → 로그 → 백엔드 의 \"정리 후 재시도\"를 사용하세요. 환경을 처음부터 다시 만들어 그 자리에서 복구하며, 음성이나 프로젝트는 건드리지 않습니다. 그래도 실패하면 크래시 세부 정보에 가져오지 못한 패키지 이름이 나옵니다.",
+    "crash_external_kill": "The backend process was ended from outside the app — most often security software, an OS policy, or another program — not by a fault in VoiceStudio, so no job was lost. Check your antivirus and any app-control or system policy that may have stopped it, then relaunch.",
     "crash_vram_default": "작은 GPU에서는 TTS 모델이 로드된 상태에서 ASR 모델을 불러오는 동안 VRAM이 부족한 것이 흔한 원인입니다. 먼저 TTS 모델을 언로드하거나, 모델 카탈로그 → 모델에서 더 작은 ASR 모델을 선택하세요.",
     "stream_cut_backend_alive": "먼저 앱 앞단의 리버스 프록시나 로드 밸런서를 확인하세요. 이 경로의 응답 버퍼링을 끄고(proxy_buffering off; X-Accel-Buffering: no) 읽기 타임아웃을 늘립니다. 백엔드가 계속 실행되는 동안 연결만 끊어졌으므로 충돌은 아닙니다. 서버형이나 컨테이너 설치에서는 프록시가 흔한 원인이며, 데스크톱 앱을 직접 또는 localhost로 실행해 보면 원인 여부를 가릴 수 있습니다.",
     "stream_cut_backend_alive_local": "몇 분 기다린 뒤 기록에서 작업을 다시 여세요. 보이지 않으면 설정 → 로그 → 백엔드 에서 백엔드 로그를 확인하세요. 오래 조용한 단계 뒤에 작업 도중 연결이 끊겼지만 백엔드는 계속 실행 중이며 보통 작업을 끝까지 마치므로, 충돌이 아닙니다."
