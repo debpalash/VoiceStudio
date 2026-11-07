@@ -29,7 +29,7 @@ describe('userEnvPath', () => {
 });
 
 it('keeps the test suite away from the real env file', () => {
-  expect(userEnvPath()).not.toBe(userEnvPath({}));
+  expect(userEnvPath()).toContain(join(tmpdir(), 'voicestudio-vitest-'));
 });
 
 describe('applySavedTorchVariant (#3804)', () => {

@@ -53,7 +53,7 @@ if (quitDuringStartup && !existing)
   throw new Error('--quit-during-startup requires VOICESTUDIO_TEST_PROFILE with a managed runtime');
 const activate = (locator) =>
   extractAndRun || wayland ? locator.dispatchEvent('click') : locator.click();
-let env = { ...process.env };
+let env = { ...process.env, OMNIVOICE_ENV_FILE: resolve(profile, 'user-env') };
 let verifyManagedShutdown = false;
 if (setup || install || existing) {
   const server = createServer();
@@ -71,7 +71,6 @@ if (setup || install || existing) {
     TRANSFORMERS_OFFLINE: firstSound ? '0' : '1',
     UV_CACHE_DIR: join(profile, 'uv-cache'),
     OMNIVOICE_DATA_DIR: join(profile, 'data'),
-    OMNIVOICE_ENV_FILE: join(profile, 'user-env'),
     OMNIVOICE_PRELOAD_TTS_ASR: '0',
     OMNIVOICE_PRELOAD_CAPTURE_ASR: '0',
     OMNIVOICE_PRELOAD_WATERMARK: '0',
