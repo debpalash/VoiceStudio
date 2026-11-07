@@ -338,6 +338,18 @@ def test_adapter_absolutizes_reference_before_sidecar_chdir(monkeypatch, tmp_pat
     assert calls[0]["ref_audio"] == str(tmp_path / "speaker.wav")
 
 
+def test_adapter_forwards_validated_language_code(monkeypatch, tmp_path):
+    # #3816: the gate's validated code reaches the sidecar, not the raw display name.
+    from engines.confucius4 import Confucius4Backend
+
+    base = Confucius4Backend.__bases__[0]
+    calls = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(base, "generate", lambda self, text, **kw: calls.append(kw))
+    Confucius4Backend().generate("hello", ref_audio="speaker.wav", language="English")
+    assert calls[0]["language"] == "en"
+
+
 def test_home_relative_cache_survives_chdir(monkeypatch, tmp_path):
     sc = _load_sidecar()
     clone = tmp_path / 'engine'

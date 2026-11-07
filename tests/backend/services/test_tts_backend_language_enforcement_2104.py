@@ -384,3 +384,37 @@ def test_cosyvoice3_in_process_prompts_carry_the_system_prompt(monkeypatch):
     assert calls[0] == ('inference_instruct2', ('hi', f'{prefix} Speak sadly<|endofprompt|>', 'v.wav'))
     assert calls[1] == ('inference_zero_shot', ('hi', f'{prefix}<|endofprompt|>hello there', 'v.wav'))
     assert calls[2] == ('inference_cross_lingual', (f'{prefix}<|endofprompt|>hi', 'v.wav'))
+
+
+# ── #3816: Arabic varieties on an engine with one Arabic model ───────────
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["Standard Arabic", "standard arabic", "Egyptian Arabic", "Saidi Arabic", "arb", "arz", "aec"],
+)
+def test_check_language_folds_arabic_varieties_to_ar(_StubBackend, raw):
+    """The picker resolves "Standard Arabic" to ISO 639-3 ``arb``; VoxCPM2
+    declares ``ar``. The variety must render as Arabic, not be refused with
+    a supported list that already says ``'ar'``."""
+    be = _StubBackend(["ar", "en"])
+    assert be._check_language(raw) == "ar"
+
+
+def test_check_language_keeps_a_variety_the_engine_declares(_StubBackend):
+    be = _StubBackend(["arz", "en"])
+    assert be._check_language("Egyptian Arabic") == "arz"
+
+
+def test_check_language_still_rejects_arabic_on_an_engine_without_it(_StubBackend):
+    be = _StubBackend(["en", "pl"], display_name="KittenTTS (English, 8 preset voices)")
+    with pytest.raises(ValueError) as excinfo:
+        be._check_language("Standard Arabic")
+    assert "KittenTTS" in excinfo.value.args[0]
+
+
+def test_macrolanguage_of_is_arabic_only(_StubBackend):
+    be = _StubBackend(["ar"])
+    assert be._macrolanguage_of("arb") == "ar"
+    assert be._macrolanguage_of("cmn") is None
+    assert be._macrolanguage_of("eng") is None

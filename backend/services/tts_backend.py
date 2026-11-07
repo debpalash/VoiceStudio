@@ -378,6 +378,24 @@ class TTSBackend(ABC):
         # engine rejects it instead of silently using its default language.
         return value
 
+    @staticmethod
+    def _macrolanguage_of(code: str) -> Optional[str]:
+        """The ISO 639-1 macrolanguage an engine with one model per language
+        can render for a 639-3 variety code, or ``None``.
+
+        The bundled vocabulary resolves "Standard Arabic" to ``arb``,
+        "Egyptian Arabic" to ``arz`` and twenty other Arabic varieties to
+        their own 639-3 codes, while an engine such as VoxCPM2 declares one
+        ``ar``. Only Arabic is folded today: it is the family the picker
+        exposes as many separate names, and every variety is Arabic to an
+        engine that has a single Arabic model (#3816).
+        """
+        from omnivoice.utils.lang_map import LANG_NAME_TO_ID
+
+        if any(c == code and "arabic" in n for n, c in LANG_NAME_TO_ID.items()):
+            return "ar"
+        return None
+
     def _check_language(self, language: object) -> Optional[str]:
         """Reject caller-supplied languages outside this engine's declared
         ``supported_languages`` set (#2104).
@@ -415,6 +433,13 @@ class TTSBackend(ABC):
         # remain exact rather than guessing from their first two letters.
         if code in supported:
             return code
+        # A variety of a macrolanguage the engine does speak ("Standard
+        # Arabic" -> arb, "Saidi Arabic" -> aec) renders as that language
+        # instead of being refused with a list that already contains it.
+        # Engines that declare the variety itself matched above and keep it.
+        macro = self._macrolanguage_of(code)
+        if macro is not None and macro in supported:
+            return macro
         # Build the user-facing list. ``multi`` is not in here because
         # ``supported`` already short-circuited above; entries are rendered
         # in declared order so the message matches ``list_backends()``.

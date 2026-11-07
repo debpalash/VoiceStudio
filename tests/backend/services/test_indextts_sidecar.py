@@ -335,6 +335,32 @@ def test_indextts25_rejects_unsupported_language_without_synthesizing(
     assert sent == []
 
 
+def test_indextts25_sends_the_validated_arabic_variety_as_ar(
+    monkeypatch, patched_indextts_backend, tmp_path,
+):
+    """#3816: "Standard Arabic" passes the gate as ``ar``. The sidecar must
+    receive that code; the raw name would fall through to script detection
+    and Latin text would be sent as ``en``."""
+    backend = patched_indextts_backend
+    checkout = tmp_path / "index-tts"
+    module = checkout / "indextts" / "infer_v2_5.py"
+    module.parent.mkdir(parents=True)
+    module.write_text("class IndexTTS2: pass\n")
+    monkeypatch.setenv("OMNIVOICE_INDEXTTS_DIR", str(checkout))
+    sent = []
+    original_send = SubprocessBackend._send
+
+    def spy_send(self, msg):
+        if msg.get("op") == "synthesize":
+            sent.append(dict(msg))
+        return original_send(self, msg)
+
+    monkeypatch.setattr(SubprocessBackend, "_send", spy_send)
+    backend.generate("hello", ref_audio="/tmp/ref.wav", language="Standard Arabic")
+    assert len(sent) == 1
+    assert sent[0]["lang"] == "ar"
+
+
 def test_user_managed_indextts2_keeps_legacy_language_metadata(
     monkeypatch, patched_indextts_backend, tmp_path,
 ):
