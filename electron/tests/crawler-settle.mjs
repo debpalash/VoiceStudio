@@ -1,11 +1,24 @@
-/** Wait for a continuous API-quiet window, including traffic between samples. */
+/**
+ * Wait for a continuous API-quiet window, including traffic between samples.
+ *
+ * `quietFrom` is when the page last saw activity. Omitted, the window starts now, so it measures
+ * time after a click. Given, quiet time the page already had counts toward the window.
+ */
 export async function waitForQuietRequests(
   traffic,
-  { wait, graceMs, budgetMs, now = () => performance.now(), snapshot = async () => undefined },
+  {
+    wait,
+    graceMs,
+    budgetMs,
+    now = () => performance.now(),
+    snapshot = async () => undefined,
+    quietFrom,
+  },
 ) {
-  const deadline = now() + budgetMs;
+  const start = now();
+  const deadline = start + budgetMs;
   let revision = traffic.activity;
-  let quietSince = traffic.inflight.size ? null : now();
+  let quietSince = traffic.inflight.size ? null : Math.min(start, quietFrom ?? start);
   while (true) {
     const time = now();
     if (revision !== traffic.activity || traffic.inflight.size) {
