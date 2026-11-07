@@ -230,6 +230,9 @@ _UNCHANGED_CASES = [
     # (language, input) — ambiguous constructs keep their digits/shape
     ("English", "version v2 shipped"),          # digit glued to a letter
     ("English", "order 1,000 units"),           # thousands separator: ambiguous
+    ("English", "The crowd was 10 000 strong."),  # space-grouped: zeros never start a number
+    ("English", "up 12 000% on the year"),
+    ("English", "worth 1 000 000 dollars"),
     ("English", "It costs $1,000."),            # a dollar amount with a separator
     ("English", "It costs $5.5."),              # one decimal digit: not cents
     ("English", "pages 3-5 tonight"),           # range
