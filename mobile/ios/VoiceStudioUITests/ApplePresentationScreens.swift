@@ -8,11 +8,11 @@ final class ApplePresentationScreens: XCTestCase {
         app.launch()
         app.declineConsent()
         app.openSpeak()
-        let generate = app.buttons["speak.generate"]
-        XCTAssertTrue(generate.waitForExistence(timeout: 5))
-        XCTAssertTrue(generate.isHittable)
-        XCTAssertGreaterThanOrEqual(generate.frame.height, 44)
-        XCTAssertFalse(generate.isEnabled)
+        let download = app.buttons["models.get"]
+        XCTAssertTrue(download.waitForExistence(timeout: 5))
+        XCTAssertTrue(download.isHittable)
+        XCTAssertGreaterThanOrEqual(download.frame.height, 44)
+        XCTAssertTrue(download.isEnabled)
         app.tabButton("Settings").tap()
         let models = app.buttons["Models"]
         for _ in 0..<8 { if models.isHittable { break }; app.swipeUp() }

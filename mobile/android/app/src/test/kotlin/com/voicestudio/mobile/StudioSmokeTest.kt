@@ -95,7 +95,7 @@ class StudioSmokeTest {
             compose.onNodeWithText("Cancel").performClick()
             compose.onNodeWithText("Clone a voice").performScrollTo().performClick()
             compose.onNodeWithText("Voice name").performScrollTo().assertIsDisplayed()
-            compose.onNodeWithText("Cancel").performScrollTo().performClick()
+            compose.onNodeWithText("Cancel").assertIsDisplayed().performClick()
         } finally {releaseEngines.countDown();server.shutdown()}
     }
 }

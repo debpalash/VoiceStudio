@@ -9,6 +9,41 @@ struct SelectionOption: Identifiable {
     var swatch: Theme? = nil
 }
 
+/// RAM recommendations guide a choice without preventing an explicit attempt.
+@MainActor func phoneModelOption(_ item: PhoneModel, model: AppModel, subtitle: String? = nil) -> SelectionOption {
+    SelectionOption(id: item.id, title: item.name,
+                    subtitle: item.fits() ? subtitle : model.t("mobile.simple.ram", ["ram": String(item.min_ram_gb)]))
+}
+
+struct ModelRamWarning: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.vsTheme) private var theme
+    let items: [PhoneModel]
+    var body: some View {
+        if let item = items.filter({ model.phone.ready($0) && !$0.fits() }).max(by: { $0.min_ram_gb < $1.min_ram_gb }) {
+            Text(model.t("mobile.local.ram_required", ["ram": String(item.min_ram_gb)]))
+                .font(.callout).foregroundStyle(theme.color("textMuted"))
+        }
+    }
+}
+
+struct PhoneModelPicker: View {
+    @Environment(AppModel.self) private var model
+    let label: String
+    @Binding var selection: String
+    let items: [PhoneModel]
+    var showCapability = false
+    var showRamWarning = true
+    var body: some View {
+        VStack(alignment: .leading, spacing: VSTokens.spacingGap) {
+            ChoicePicker(label: label, selection: $selection, options: items.map {
+                phoneModelOption($0, model: model, subtitle: showCapability ? model.t("mobile.simple." + $0.capability.rawValue) : nil)
+            })
+            if showRamWarning { ModelRamWarning(items: items.filter { $0.id == selection }) }
+        }
+    }
+}
+
 struct SelectionRow: View {
     @Environment(\.vsTheme) private var theme
     @Environment(\.dynamicTypeSize) private var typeSize

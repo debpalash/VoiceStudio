@@ -28,7 +28,7 @@ export async function startAccountTokenBridge(deps: {
     if (
       supplied.length !== expected.length ||
       !timingSafeEqual(supplied, expected) ||
-      req.headers.origin
+      req.headers.origin !== undefined
     )
       return send(403, { error: 'Forbidden' });
     const fresh = req.url === '/token?fresh=1';

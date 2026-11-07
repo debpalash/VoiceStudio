@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 64 64" role="img" aria-labelledby="title description">
+  <title id="title">VoiceStudio Pro</title>
+  <desc id="description">A gold speech waveform with a small spark on a dark rounded tile with a gold rim.</desc>
+  <defs>
+    <linearGradient id="tile" x1="7" y1="4" x2="58" y2="62" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#241E14"/>
+      <stop offset="1" stop-color="#14110B"/>
+    </linearGradient>
+    <radialGradient id="warmth" cx="0" cy="0" r="1" gradientTransform="translate(49 13) rotate(132) scale(42)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6B4A16" stop-opacity="0.44"/>
+      <stop offset="1" stop-color="#6B4A16" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="voice" x1="7" y1="18" x2="59" y2="46" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF1C9"/>
+      <stop offset="0.5" stop-color="#F5C26B"/>
+      <stop offset="1" stop-color="#E58F45"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#tile)"/>
+  <rect x="2.5" y="2.5" width="59" height="59" rx="14.5" fill="url(#warmth)" stroke="#F5C26B" stroke-opacity="0.45"/>
+  <path d="M6 34c4 0 5-7 9-7 5 0 4 14 9 14 5 0 4-23 9-23s4 28 9 28 4-21 9-21c4 0 5 9 8 9" fill="none" stroke="url(#voice)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M50 9c.7 4.3 3.7 7.3 8 8-4.3.7-7.3 3.7-8 8-.7-4.3-3.7-7.3-8-8 4.3-.7 7.3-3.7 8-8Z" fill="#FFE9B0"/>
+</svg>

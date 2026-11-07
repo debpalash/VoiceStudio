@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, session, shell, Tray } from 'electron';
 import { electronApp, is, optimizer } from '@electron-toolkit/utils';
 import { BackendSupervisor, backendRoot } from './backend';
+import { applySavedTorchVariant } from './torch-choice';
 import { registerIpc, wireWindowMaximizeEvents } from './ipc';
 import { APP_ORIGIN, installAppProtocol, registerAppScheme } from './protocol';
 import { electronProxyPort, startDevBackendProxy } from './dev-backend-proxy';
@@ -26,6 +27,7 @@ import { activateLiveWindow, isLiveWindow } from './window-safety';
 import { startAccount } from './account';
 import { installAppIdentity, installMacApplicationMenu } from './app-identity';
 import { APP_ID, PRODUCT_NAME } from '../../../config/app-config.mjs';
+import { restoreSecurityScopedDirectories } from './security-scoped-files';
 
 // Packaged GUI launches can inherit a short-lived terminal pipe. When that
 // launcher exits, diagnostic console writes emit EPIPE asynchronously and can
@@ -61,6 +63,7 @@ let closeDevProxy: (() => Promise<void>) | null = null;
 let closeUpdates: (() => void) | null = null;
 let closeRepairAgents: (() => void) | null = null;
 let closeAccount: (() => void) | null = null;
+let closeDirectoryScopes: (() => void) | null = null;
 let quitPreparation: Promise<void> | null = null;
 
 const PERSISTENCE_FLUSH_REQUEST = 'app:flush-persistence';
@@ -108,6 +111,8 @@ async function tearDownNativeResources(): Promise<void> {
   const proxyTeardown = closeDevProxy?.() ?? Promise.resolve();
   closeDevProxy = null;
   await Promise.allSettled([supervisor?.shutdown() ?? Promise.resolve(), proxyTeardown]);
+  closeDirectoryScopes?.();
+  closeDirectoryScopes = null;
 }
 
 function beginOrderlyQuit(flushPersistence = true): Promise<void> {
@@ -251,7 +256,9 @@ if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSing
       if (process.platform === 'darwin') installMacApplicationMenu(app, Menu, __APP_VERSION__);
       installRendererPermissions(session.defaultSession, process.env.ELECTRON_RENDERER_URL);
       app.on('browser-window-created', (_event, window) => optimizer.watchWindowShortcuts(window));
+      closeDirectoryScopes = restoreSecurityScopedDirectories();
 
+      applySavedTorchVariant();
       const backend = new BackendSupervisor();
       supervisor = backend;
       console.log(`[supervisor] backend root: ${backendRoot()} (packaged=${app.isPackaged})`);

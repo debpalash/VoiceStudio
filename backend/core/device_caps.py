@@ -82,7 +82,8 @@ def cuda_forced() -> bool:
 # AMD GPUs on ROCm present through ``torch.cuda`` but some consumer parts have
 # GFX IDs the installed ROCm build wasn't compiled for. Setting
 # ``HSA_OVERRIDE_GFX_VERSION`` runs them on the closest supported architecture.
-# Applied (with side effects) by ``model_manager._configure_rocm_if_needed``;
+# Applied (with side effects) by ``apply_rocm_override_before_init`` and
+# ``model_manager._configure_rocm_if_needed``;
 # read here so ``arch_unsupported()`` doesn't flag a GPU we know how to remap.
 #
 # The target is DERIVED from the installed wheel's own arch list
@@ -215,6 +216,75 @@ def build_arch_list(torch) -> list[str]:
             except Exception:
                 return []
     return []
+
+
+# KFD's view of the GPUs. Unlike torch.cuda, reading it does not initialise HIP.
+_KFD_NODES = "/sys/class/kfd/kfd/topology/nodes"
+
+
+def _gfx_from_target_version(version: int) -> str | None:
+    """KFD's ``100304`` → ``"gfx1034"``: major*10000 + minor*100 + step, and LLVM
+    spells the step in hex (``90010`` → ``"gfx90a"``). ``None`` for a CPU node."""
+    major, rest = divmod(version, 10000)
+    minor, step = divmod(rest, 100)
+    if not major or minor > 9 or step > 15:
+        return None
+    return f"gfx{major}{minor}{step:x}"
+
+
+def _kfd_gpu_architectures() -> set[str]:
+    """Every GPU architecture the kernel lists; empty when KFD is absent."""
+    found: set[str] = set()
+    try:
+        nodes = os.listdir(_KFD_NODES)
+    except OSError:
+        return found
+    for node in nodes:
+        try:
+            with open(os.path.join(_KFD_NODES, node, "properties"), encoding="ascii") as f:
+                for line in f:
+                    name, _, value = line.partition(" ")
+                    if name == "gfx_target_version":
+                        gfx = _gfx_from_target_version(int(value))
+                        if gfx:
+                            found.add(gfx)
+        except (OSError, ValueError):
+            continue
+    return found
+
+
+def apply_rocm_override_before_init(torch) -> str | None:
+    """Set ``HSA_OVERRIDE_GFX_VERSION`` while it can still take effect (#3804).
+
+    HSA reads the variable once, when HIP initialises, and any
+    ``torch.cuda.is_available()`` initialises it; ``torch.cuda.get_arch_list()``
+    calls that too. So this reads the card from KFD and the wheel's targets from
+    the compiled flags, and must run before the first ``torch.cuda`` call. Returns
+    the value it set. Never raises, and changes nothing unless a remap is certain:
+    ``model_manager._configure_rocm_if_needed`` still covers anything left, for the
+    sidecars this process starts.
+    """
+    if not sys.platform.startswith("linux") or os.environ.get("HSA_OVERRIDE_GFX_VERSION"):
+        return None
+    try:
+        if not getattr(getattr(torch, "version", None), "hip", None):
+            return None
+        architectures = _kfd_gpu_architectures()
+        if len(architectures) != 1:
+            return None  # One process-wide override cannot describe two different cards.
+        flags = torch._C._cuda_getArchFlags()
+        arch_list = {_normalize_arch(a) for a in (flags or "").split()}
+        gfx = architectures.pop()
+        if not arch_list or gfx in arch_list:
+            return None
+        target = rocm_override_target(gfx, arch_list)
+        if not target:
+            return None
+        override = hsa_override_for(target)
+    except Exception:  # noqa: BLE001 - a private torch API; the late path still runs
+        return None
+    os.environ["HSA_OVERRIDE_GFX_VERSION"] = override
+    return override
 
 
 _CUDA_ARCH_TAG = re.compile(r"^(sm|compute)_(\d+)([a-z]?)$")
@@ -631,6 +701,8 @@ def _probe() -> HostCaps:
             probe_ok=False,
             requested_family=requested_device_override(),
         )
+
+    apply_rocm_override_before_init(torch)
 
     notes: list[str] = []
     # Probe EVERY accelerator independently into this list (don't short-circuit

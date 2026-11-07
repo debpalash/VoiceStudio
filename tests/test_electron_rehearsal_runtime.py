@@ -46,6 +46,7 @@ def test_install_smoke_uses_an_offline_fresh_model_cache():
     smoke = (Path(__file__).parents[1] / 'electron/tests/packaged-smoke.mjs').read_text()
     assert "mkdtempSync(join(tmpdir(), 'voicestudio-packaged-check-'))" in smoke
     assert "if (setup || install || existing)" in smoke
+    assert "let env = { ...process.env, OMNIVOICE_ENV_FILE: resolve(profile, 'user-env') };" in smoke
     assert "HF_HUB_CACHE: join(profile, 'hf-home', 'hub')" in smoke
     assert "HF_HUB_OFFLINE: firstSound ? '0' : '1'" in smoke
     assert "TRANSFORMERS_OFFLINE: firstSound ? '0' : '1'" in smoke

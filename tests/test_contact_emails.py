@@ -1,8 +1,10 @@
-"""VoiceStudio publishes exactly three contact addresses (owner-set 2026-10-02).
+"""VoiceStudio publishes exactly four contact addresses (owner-set 2026-10-02;
+sponsor@ added by the owner in #3674, 2026-10-29).
 
     hi@voicestudio.sh        general, business, licensing, collaboration
-    partner@voicestudio.sh   brand and company partnerships
+    partner@voicestudio.sh   brand and company partnerships, sponsor receipts
     security@voicestudio.sh  vulnerability reports
+    sponsor@voicestudio.sh   sponsorship inquiries
 
 Any other real address in a shipped file (docs, UI, locales, package metadata,
 legal text) is a stale or personal contact. Tests and fixtures may use
@@ -16,7 +18,12 @@ import subprocess
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parents[1]
-_CONTACTS = {"hi@voicestudio.sh", "partner@voicestudio.sh", "security@voicestudio.sh"}
+_CONTACTS = {
+    "hi@voicestudio.sh",
+    "partner@voicestudio.sh",
+    "security@voicestudio.sh",
+    "sponsor@voicestudio.sh",
+}
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
 _RESERVED_DOMAIN = re.compile(r"(^|\.)(example\.(com|net|org)|example|test|invalid|localhost|local)$", re.I)
 # GitHub no-reply commit addresses are identities, not contact addresses.
@@ -31,14 +38,28 @@ _NATIVE_LICENCE_PATH = re.compile(
 )
 
 
+def _email_addresses(text: str):
+    for match in _EMAIL.finditer(text):
+        # The user@host authority in an SSH URL is a login, not an email.
+        # Keep checking addresses in prose and URI paths normally.
+        if text[max(0, match.start() - 6):match.start()].lower() == "ssh://":
+            continue
+        yield match.group()
+
+
 def _tracked_text_files():
     names = subprocess.run(
         ["git", "-C", str(_REPO), "ls-files", "-z"], capture_output=True, text=True, check=True
     ).stdout.split("\0")
     for name in filter(None, names):
+        path = _REPO / name
+        # Submodule gitlinks are directories; Windows raises PermissionError, not
+        # IsADirectoryError, when one is opened.
+        if not path.is_file():
+            continue
         try:
-            yield name, (_REPO / name).read_text(encoding="utf-8")
-        except (UnicodeDecodeError, FileNotFoundError, IsADirectoryError):
+            yield name, path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
             continue
 
 
@@ -47,10 +68,18 @@ def test_only_project_contact_addresses_are_published():
     for name, text in _tracked_text_files():
         if _NATIVE_LICENCE_PATH.fullmatch(name):
             continue
-        for address in _EMAIL.findall(text):
+        for address in _email_addresses(text):
             domain = address.rsplit("@", 1)[1]
             if (address.lower() in _CONTACTS or _RESERVED_DOMAIN.search(domain) or domain.lower() == _NOREPLY_DOMAIN
                     or _TEST_PATH.search(name)):
                 continue
             stray.append(f"{name}: {address}")
-    assert not stray, "Use hi@, partner@ or security@voicestudio.sh:\n" + "\n".join(stray)
+    assert not stray, "Use hi@, partner@, security@ or sponsor@voicestudio.sh:\n" + "\n".join(stray)
+
+
+def test_ssh_usernames_are_not_contact_addresses():
+    assert list(_email_addresses('`ssh://aur@aur.archlinux.org/voicestudio-git.git`')) == []
+    assert list(_email_addresses('ssh://git@github.com/owner/repo.git')) == []
+    assert list(_email_addresses('Contact aur@aur.archlinux.org')) == ['aur@aur.archlinux.org']
+    assert list(_email_addresses('ssh://git@example.org/repo.git; owner@example.net')) == ['owner@example.net']
+    assert list(_email_addresses('https://example.org/contact/owner@example.net')) == ['owner@example.net']

@@ -29,6 +29,7 @@ function setup(state: Partial<typeof base>) {
   let push: (s: unknown) => void = () => {};
   const account = {
     get: vi.fn(async () => ({ ...base, ...state })),
+    refresh: vi.fn(async () => ({ ...base, ...state })),
     onState: vi.fn((cb: (s: unknown) => void) => ((push = cb), () => {})),
     setSwitches: vi.fn(async (p: object) => ({ ...base, ...state, ...p })),
     signIn: vi.fn(async () => {}),
@@ -196,7 +197,44 @@ it('says when the account details could not be loaded, with the reason and a ret
   const alert = await screen.findByRole('alert');
   expect(alert).toHaveTextContent('account.details_failed');
   expect(alert).toHaveTextContent('403');
-  const calls = account.get.mock.calls.length;
   fireEvent.click(screen.getByText('account.retry'));
-  await waitFor(() => expect(account.get.mock.calls.length).toBe(calls + 1));
+  await waitFor(() => expect(account.refresh).toHaveBeenCalledTimes(1));
+});
+
+it('Refresh reloads the signed-in account and shows the new details', async () => {
+  const signedIn = {
+    signedIn: true,
+    profile: {
+      email: 'ana@example.com',
+      displayName: 'Ana Lima',
+      avatarUrl: null,
+      organizations: [],
+    },
+    plan: null,
+  };
+  const { account } = setup(signedIn as never);
+  let finish!: (s: unknown) => void;
+  account.refresh.mockImplementationOnce(
+    () => new Promise((resolve) => (finish = resolve)) as never,
+  );
+  const button = await screen.findByRole('button', { name: 'account.refresh' });
+  fireEvent.click(button);
+  fireEvent.click(button);
+  expect(account.refresh).toHaveBeenCalledTimes(1);
+  expect(button).toBeDisabled();
+  await act(async () =>
+    finish({
+      ...base,
+      ...signedIn,
+      profile: { ...signedIn.profile, displayName: 'Ana Souza' },
+    }),
+  );
+  expect(await screen.findByText('Ana Souza')).toBeInTheDocument();
+  expect(button).not.toBeDisabled();
+});
+
+it('shows no Refresh button when signed out', async () => {
+  setup({});
+  await screen.findByText('account.sign_in');
+  expect(screen.queryByRole('button', { name: 'account.refresh' })).toBeNull();
 });

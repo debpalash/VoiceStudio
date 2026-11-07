@@ -57,7 +57,10 @@ function escapeRegExp(value: string): string {
  * land on the same planned entry.
  */
 export function normalizePackageName(name: string): string {
-  return name.trim().toLowerCase().replace(/[-_.]+/g, '-');
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[-_.]+/g, '-');
 }
 
 /** Converts uv's human output into stable, renderer-safe progress data. */
@@ -122,10 +125,10 @@ export class SetupProgressTracker {
     const starting = line.match(new RegExp(`^Downloading\\s+(.+?)\\s+\\(${SIZE}\\)`, 'i'));
     if (starting) {
       const name = normalizePackageName(starting[1]);
+      if (!this.planned.has(name) || this.completed.has(name)) this.advancedAt = now;
       if (!this.labels.has(name)) this.labels.set(name, starting[1].trim());
       this.planned.set(name, parseByteSize(starting[2], starting[3]));
       this.completed.delete(name);
-      this.advancedAt = now;
       this.progress.downloadsComplete = false;
       this.refreshDownloadState();
       changed = true;
@@ -134,8 +137,8 @@ export class SetupProgressTracker {
     const finished = line.match(/^Downloaded\s+(.+?)\s*$/i);
     if (finished) {
       const name = normalizePackageName(finished[1]);
+      if (!this.completed.has(name)) this.advancedAt = now;
       this.completed.add(name);
-      this.advancedAt = now;
       const size = this.planned.get(name);
       if (size !== undefined) this.received.set(name, size);
       this.refreshDownloadState();
@@ -149,10 +152,10 @@ export class SetupProgressTracker {
       const total = parseByteSize(bytePair[3], bytePair[4]);
       const name = this.packageOnLine(line);
       if (name) {
+        if (received > (this.received.get(name) ?? 0)) this.advancedAt = now;
         this.planned.set(name, total);
         this.received.set(name, Math.min(received, total));
         this.progress.activePackage = this.labels.get(name) ?? name;
-        this.advancedAt = now;
         changed = true;
       }
     }
@@ -227,6 +230,10 @@ export class SetupProgressTracker {
 
   snapshot(now = Date.now()): SetupProgress {
     const snapshot: SetupProgress = { ...this.progress };
+    if (snapshot.transferUpdatedAt === undefined || now - snapshot.transferUpdatedAt >= 15_000) {
+      delete snapshot.bytesPerSecond;
+      delete snapshot.etaSeconds;
+    }
     const host = snapshot.activePackage
       ? this.hosts.get(normalizePackageName(snapshot.activePackage))
       : undefined;

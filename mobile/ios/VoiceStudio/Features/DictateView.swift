@@ -32,15 +32,19 @@ struct DictateView: View {
             if route == .connect { NavigationLink(model.t("mobile.settings.connection")) { ConnectView() } }
             if checking { ProgressView(model.t("common.loading")) }
             else if !ready && route == .computer {
-                Text(model.t("mobile.simple.connection_error"))
+                Text(reason).fixedSize(horizontal: false, vertical: true)
                 Button(model.t("mobile.simple.retry")) { Task { await readiness() } }
             }
+            if route == .phone { ModelRamWarning(items: [phoneModel].compactMap { $0 }) }
             if text.isEmpty {
                 Spacer(minLength: 0)
                 ContentUnavailableView {
                     Label(model.t("mobile.ios.transcript"), systemImage: "waveform")
                 } description: {
-                    Text(model.t("mobile.dictate.tap_to_start"))
+                    if route == .download, let phoneModel {
+                        Text(model.t("mobile.local.inline_download", ["size": ByteCountFormatter.string(fromByteCount: phoneModel.total_bytes, countStyle: .file)]))
+                    } else if listening { Text(model.t("mobile.dictate.listening")) }
+                    else if ready { Text(model.t("mobile.dictate.tap_to_start")) }
                 }
                 Spacer(minLength: 0)
             } else {

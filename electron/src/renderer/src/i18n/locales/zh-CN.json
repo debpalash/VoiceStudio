@@ -2198,10 +2198,12 @@
   "backend": {
     "setup_required": "安装本地运行环境",
     "setup_hint": "下载 Python 和应用依赖项（数 GB）。语音模型将在您选择时单独安装。",
+    "setup_smart_app_control": "Windows 智能应用控制已开启,可能会在下载后阻止本地引擎。它不支持按应用设置例外。你可以在 Windows 安全中心 → 应用和浏览器控制中关闭它,连接到另一台电脑上的引擎,在 WSL 或 Docker 中运行引擎,或者继续安装。",
     "installing": "正在安装依赖项…",
     "setup_space": "请在应用所在磁盘上释放至少 {{gib}} GiB 空间，然后重试。",
     "repair_failed": "Python 环境的自动修复未完成。请查看引擎日志，然后点击重试。",
     "setup_access": "请允许写入应用数据文件夹，然后重试。",
+    "setup_install_stuck": "无法停止之前的下载。请重启 VoiceStudio 后重试。",
     "setup_unsupported_platform": "这台 Intel Mac 无法运行本地 AI 后端，因为 PyTorch 不提供 macOS Intel 版本。请在下方连接远程后端；无需本地安装。",
     "setup_wrong_architecture": "这是通过 Rosetta 在 Apple Silicon Mac 上运行的 VoiceStudio Intel (x64) 版本，因此无法安装本地 AI 后端。请退出应用，覆盖安装 Apple Silicon (arm64) 版 DMG 后重新打开——你的声音和项目都会保留。",
     "setup_missing_system_library": "此 Windows 系统缺少 PyTorch 音频扩展所需的 Microsoft Visual C++ 2015-2022 可再分发组件 (x64)。请从 Microsoft 安装后点击重试。",
@@ -2228,9 +2230,23 @@
     "port_in_use_short": "端口 {{port}} 已被占用",
     "proxy_bypass_help": "完全退出 VoiceStudio，在终端中将 HTTP_PROXY/HTTPS_PROXY 设为代理 URL，将 NO_PROXY 设为排除的主机，然后从该终端启动 VoiceStudio。在当前应用中重试不会加载新的环境变量。",
     "hint_spawn_blocked": "操作系统或安全软件拒绝启动本地引擎。请将 VoiceStudio 的运行时文件夹添加到杀毒软件的排除项（Windows：Windows 安全中心 → 病毒和威胁防护 → 管理设置 → 排除项），并确认它不在 OneDrive 等云同步文件夹内，然后重试。",
-    "hint_smart_app_control": "Windows 智能应用控制阻止了本地引擎。它不支持按应用设置例外，因此添加杀毒软件排除项无效。请在 Windows 安全中心 → 应用和浏览器控制 → 智能应用控制设置 中将其关闭（不重置系统就无法再次开启），或将 VoiceStudio 连接到另一台电脑上运行的引擎，然后重试。",
+    "hint_smart_app_control": "Windows 智能应用控制阻止了本地引擎。它不支持按应用设置例外，因此添加杀毒软件排除项无效。请在 Windows 安全中心 → 应用和浏览器控制 → 智能应用控制设置 中将其关闭，或将 VoiceStudio 连接到另一台电脑上运行的引擎，然后重试。",
     "hint_slow_start": "等待超时时，引擎仍在启动。电脑较慢（尤其是没有独立显卡）以及安装后的首次启动（杀毒软件会扫描每个新文件）可能需要几分钟。请关闭占用大量内存的应用后重试；之后的启动会快得多。",
     "hint_synced_folder": "此位置位于云同步文件夹（OneDrive、Dropbox、iCloud Drive、Google Drive）内。仅在线的占位文件和文件锁定会破坏 Python 环境。请将 VoiceStudio 移到普通本地文件夹（例如 Windows 上的 C:\\VoiceStudio，或 macOS 和 Linux 上的 ~/VoiceStudio），然后重新设置。",
+    "cause_app_control_policy": "Windows 应用控制策略阻止了引擎",
+    "hint_app_control_policy": "在工作电脑上,请让 IT 团队允许 VoiceStudio 的运行环境文件夹。杀毒软件排除项不会改变此策略。",
+    "hint_smart_app_control_local": "你也可以在这台电脑的 WSL 或 Docker 中运行引擎。",
+    "cause_antivirus": "杀毒软件阻止了引擎的一个文件",
+    "hint_antivirus": "从杀毒软件隔离区恢复该文件,将 VoiceStudio 的运行环境文件夹加入排除项,然后重试。",
+    "cause_gatekeeper": "macOS 隔离了引擎",
+    "hint_gatekeeper": "用 xattr -cr 清除 VoiceStudio 应用及其运行环境文件夹的隔离标记,然后重新打开应用。",
+    "cause_noexec": "引擎文件夹不允许运行程序",
+    "hint_noexec": "此驱动器以 noexec 方式挂载。请选择其他驱动器上的文件夹,或不带 noexec 重新挂载后重试。",
+    "cause_download": "下载在设置完成前中断了",
+    "hint_download": "重试即可继续。如果仍然中断,请换一个网络、关闭 VPN 或选择其他下载区域。",
+    "cause_illegal_instruction": "引擎停在了这台电脑无法执行的指令上",
+    "hint_illegal_instruction": "处理器可能缺少引擎库所需的功能。请复制诊断信息,并连同处理器型号一起附在报告中。",
+    "fix_docs": "如何解决",
     "cause_smart_app_control": "Windows 智能应用控制拦截了引擎",
     "cause_spawn_blocked": "安全软件阻止了引擎启动",
     "cause_native_crash": "引擎在启动时崩溃（原生故障）",
@@ -2457,6 +2473,7 @@
     "desc": "匿名且不含内容的使用统计,可帮助我们更快修复问题——完全可选,默认关闭。",
     "step_label": "改进 VoiceStudio",
     "body": "匿名且不含内容的使用统计：使用了哪些引擎、生成耗时多久，以及错误的类型。绝不会发送你的文本、音频、文件或任何可识别你身份的信息。除非你同意，否则不会发送任何数据；你可以随时在 设置 → 隐私 中更改选择。",
+    "setup_note": "其中包括设置进度和失败代码,可以帮助我们了解安装失败的原因。",
     "learn_more": "究竟会发送什么？",
     "yes": "是，分享匿名统计",
     "no": "不用了，谢谢",
@@ -2492,6 +2509,7 @@
     "plan_ends": "至 {{date}}",
     "details_failed": "无法加载你的账户详情（{{reason}}）。",
     "retry": "重试",
+    "refresh": "刷新",
     "manage_profile": "管理个人资料",
     "manage_plan": "管理方案"
   },
@@ -2695,6 +2713,9 @@
     "sent_system": "操作系统、GPU、内存和可用磁盘空间",
     "sent_engines": "当前启用的引擎",
     "sent_logs": "最近的引擎日志行（已移除主目录路径和令牌）",
+    "sent_install_failure": "安装失败详情:失败的程序名称、安全状态、被阻止的文件名和杀毒软件名称",
+    "save_diagnostics": "保存完整诊断信息以便附加",
+    "save_diagnostics_failed": "无法保存诊断信息。请换一个文件夹,或不附带诊断信息发送报告。",
     "sent_pages": "最近访问的页面名称",
     "not_sent": "绝不发送：你的音频、文本或声音。文件名可能出现在日志或你的描述中，请在提交前检查 GitHub 预览。",
     "submit": "打开 GitHub Issue",
@@ -3424,7 +3445,7 @@
     "add_details": "添加详情",
     "step_start": "开始",
     "step_agent": "智能体",
-    "step_speak": "说话",
+    "step_speak": "语音合成",
     "step_condition": "条件",
     "step_call": "通话",
     "step_end": "结束",
@@ -3792,7 +3813,7 @@
       "brought_by": "由以下开发者为你呈现"
     },
     "tabs": {
-      "speak": "朗读",
+      "speak": "语音合成",
       "voices": "声音",
       "dub": "配音",
       "dictate": "听写",
@@ -3840,7 +3861,8 @@
       "unstar": "取消加星",
       "engine_unavailable": "此引擎不可用。请在电脑上检查其安装情况。",
       "voice_default": "默认声音（引擎预设）",
-      "engine_no_cloning": "此引擎无法使用参考音频。请选择支持语音克隆的引擎，或使用默认声音。"
+      "engine_no_cloning": "此引擎无法使用参考音频。请选择支持语音克隆的引擎，或使用默认声音。",
+      "reference_required": "选择已保存的声音以使用此模型。您可以从声音库导入。"
     },
     "voices": {
       "search": "搜索声音",
@@ -4055,7 +4077,7 @@
       "terms_fingerprint": "条款指纹：{{fingerprint}}",
       "licence_storage": "无法读取或保存模型许可记录。请释放存储空间后重试；模型仍将被阻止。",
       "licence_required": "请先在“模型”中接受许可。",
-      "ram_required": "需要 {{ram}} GB 内存。请选择更小的模型，或使用电脑。",
+      "ram_required": "建议配备 {{ram}} GB 内存. 此模型在本设备上可能运行缓慢或导致应用关闭。您仍可尝试运行。",
       "wifi_required": "请连接 Wi-Fi，或在“模型”中允许使用移动数据。",
       "storage_required": "存储空间不足。请释放空间后重试。",
       "download_failed": "模型下载失败。请检查网络，并在“模型”中继续下载。",
@@ -4069,10 +4091,11 @@
       "preset_voice": "声音 {{number}}",
       "transfer": "{{received}}，共 {{total}}",
       "privacy": "设备端任务只在这部手机上运行。只有模型下载、你选择发送的举报和已配对的电脑会使用网络。",
-      "computer_feature": "此功能目前在电脑上运行。无需配对，即可在这部手机上使用朗读和听写。",
+      "computer_feature": "此功能目前在电脑上运行。无需配对，即可在这部手机上使用语音合成和听写。",
       "accepted": "已接受许可",
       "not_accepted": "未接受许可",
-      "receipt": "{{action}} · {{time}} · 应用 {{version}} · 条款 {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · 应用 {{version}} · 条款 {{fingerprint}}",
+      "try_anyway": "仍要尝试"
     },
     "simple": {
       "phone": "手机",
@@ -4119,7 +4142,7 @@
       "remove_job": "删除配音",
       "reconnect": "重新连接",
       "cancel": "取消",
-      "ram": "需要 {{ram}} GB 内存",
+      "ram": "建议配备 {{ram}} GB 内存",
       "analytics": "分析",
       "language": "语言",
       "default_voice": "默认声音",
@@ -4370,6 +4393,30 @@
       "import": "导入",
       "export": "导出",
       "send": "发送"
+    },
+    "support": {
+      "donate": "捐赠",
+      "other_apps": "其他应用",
+      "other_apps_intro": "来自我们团队以及支持 VoiceStudio 的赞助商的项目。",
+      "gift_note": "捐赠完全自愿，用于支持开发，不会解锁任何功能、内容或服务。",
+      "pro_scope": "Pro 为电脑版 VoiceStudio 增添生产工具。手机应用的创作工具仍然免费。",
+      "opengtm": "通过开源销售自动化工具寻找并研究潜在客户。",
+      "opal": "为个人媒体库打造的开源媒体播放器与浏览器。",
+      "supermetry": "自行托管、注重隐私的网站分析工具。",
+      "spicrawl": "将网页转换为适用于 AI 智能体的 Markdown 或结构化数据。",
+      "special_sponsor": "特别赞助商"
+    },
+    "downloads": {
+      "pause": "暂停",
+      "paused": "已暂停",
+      "connecting": "正在连接…",
+      "waiting": "正在等待 Wi-Fi…",
+      "retrying": "{{seconds}} 秒后重试…",
+      "verifying": "正在验证模型…",
+      "speed": "{{speed}}/秒",
+      "eta": "大约还需 {{time}}",
+      "estimating": "正在估算剩余时间…",
+      "waiting_network": "正在等待网络连接…"
     }
   },
   "failureCause": {
@@ -4523,5 +4570,20 @@
     "room_tone": "用房间底噪填充停顿",
     "room_tone_note": "[pause] 标记和有声书间隔会使用该录音自身的安静背景音，而不是数字静音，句子之间的声音不会突然中断。",
     "env_pinned": "由 {{env}} 设置。修改或清除它后才能使用此开关。"
+  },
+  "setupHelp": {
+    "title": "安装似乎卡住了",
+    "stalled_hint": "下载已五分钟没有进展。您可以继续等待、取消后重试或寻求帮助。下载并分享安装日志以便排查。",
+    "download_log": "下载安装日志",
+    "discord": "在 Discord 上获取帮助",
+    "check_connection": "检查下载连接",
+    "checking": "正在检查连接…",
+    "use_cpu": "改为安装 CPU 版本",
+    "use_cpu_hint": "下载量小得多。所有功能都可用,但生成语音会更慢。",
+    "check_hint": "从相关软件包服务器下载少量样本数据（最多 15 秒）。不会上传任何内容。检查成功不代表整个下载一定能完成。",
+    "check_ok": "{{host}} 已响应：本次样本速度为 {{rate}} KB/秒。",
+    "check_failed": "无法完成对 {{host}} 的检查。详情请查看安装日志。",
+    "check_unavailable": "目前还没有可供检查的软件包下载。",
+    "connection_error": "软件包下载连接失败。请继续安装以重试；已完成的下载会保留。"
   }
 }

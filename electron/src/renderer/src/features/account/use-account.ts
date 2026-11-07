@@ -30,10 +30,11 @@ export function useAccount() {
         setState(await account.get().catch(() => undefined));
       }
     },
-    /** Ask main again (e.g. Retry after the account details failed to load). */
+    /** Reload profile, plan and photo from VoiceStudio Cloud (Refresh, or Retry after a failure). */
     refresh: async () => {
       if (!account) return;
-      setState(await account.get().catch(() => undefined));
+      const next = await account.refresh().catch(() => undefined);
+      if (next) setState(next);
     },
     signIn: () => account?.signIn(),
     cancelSignIn: () => account?.cancelSignIn(),

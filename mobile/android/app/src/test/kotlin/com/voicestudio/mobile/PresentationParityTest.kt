@@ -41,7 +41,7 @@ class PresentationParityTest {
         val dockTop=compose.onNode(hasText("Settings") and hasClickAction()).getUnclippedBoundsInRoot().top
         for(task in listOf("speak","voices","dub","dictate","models","connect")) {
             val bounds=compose.onNodeWithTag("home.$task").getUnclippedBoundsInRoot()
-            assertTrue("Home task $task must be fully above the dock without scrolling",bounds.bottom<=dockTop)
+            assertTrue("Home task $task must be fully above the dock without scrolling: ${bounds.bottom} > $dockTop",bounds.bottom<=dockTop)
         }
     }
 

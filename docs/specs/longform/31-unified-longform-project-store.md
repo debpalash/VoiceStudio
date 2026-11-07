@@ -1,5 +1,9 @@
 # Implementation Spec — TASK #31: Unified `LongformProject` store
 
+> **Historical design reference.** Paths, status and instructions below describe
+> the original implementation snapshot. For current behavior see the
+> [projects guide](../../electron-projects.md); follow current repository rules for new changes.
+
 ## TL;DR
 
 > **Persistence amendment (2026-08-24, #1636):** the unified in-memory model and

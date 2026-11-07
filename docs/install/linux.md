@@ -150,12 +150,21 @@ a model.
 
 ```bash
 yay -S voicestudio-bin   # or paru -S voicestudio-bin
+# Development build from the current main branch:
+yay -S voicestudio-git
 ```
 
-`voicestudio-bin` is a community-maintained AUR package that installs the
-release `.deb`; report packaging problems on its AUR page. Package-managed
-installs should set `VOICESTUDIO_DISABLE_UPDATER=1` so `pacman` handles
-updates instead of the in-app updater.
+The upstream maintainer maintains `voicestudio-bin`, which repackages the
+stable release `.deb`, and `voicestudio-git`, which builds current development
+sources. Install one variant at a time. The Git package builds the Electron
+app, native desktop bridge and pinned OmniVoice GGUF runtime; it needs a
+native toolchain, network access and sufficient disk space for the build.
+Its recipe and build instructions live in
+[`packaging/aur`](../../packaging/aur/README.md).
+
+The Git-package launcher sets `VOICESTUDIO_DISABLE_UPDATER=1` so `pacman`
+handles application updates. Set the same variable for other package-managed
+installs. Model and Python runtime setup remain explicit in the app.
 
 ### Nix / NixOS
 
@@ -271,7 +280,7 @@ export UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
 export UV_PYTHON_PREFERENCE=only-system
 
 # Be tolerant of slow links
-export UV_HTTP_TIMEOUT=120
+export UV_HTTP_TIMEOUT=900
 export UV_HTTP_RETRIES=5
 ```
 
@@ -311,6 +320,9 @@ Ways to opt in, in order of preference:
 (`/opt/rocm` or `rocminfo` on PATH), then launch VoiceStudio once with
 `OMNIVOICE_TORCH_VARIANT=rocm` set, for example
 `OMNIVOICE_TORCH_VARIANT=rocm ./VoiceStudio-*-linux-x64.AppImage`.
+Once setup finishes, the choice is saved in `~/.config/omnivoice/env`, so later
+launches and app updates keep ROCm without the variable. To leave ROCm, launch
+once with `OMNIVOICE_TORCH_VARIANT=cpu`.
 Runtime setup then reinstalls `torch`/`torchaudio`/`torchvision` from the ROCm
 wheel index (`https://download.pytorch.org/whl/rocm6.4` by default) right after
 the dependency sync, leaving every other package on the regular index, matched to the app's pinned `torch==2.8.0` (the rocm6.2 index

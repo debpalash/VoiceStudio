@@ -20,7 +20,7 @@ struct TranscriptsView: View {
     var body: some View {
         Page {
             Text(model.t("mobile.transcripts.hint")).font(.subheadline)
-            ChoicePicker(label: model.t("mobile.simple.asr"),selection: Binding(get: { asr?.id ?? "" },set: { model.phone.chooseModel("file-transcribe",$0) }),options: model.phone.candidates(.asr).map { SelectionOption(id: $0.id,title: $0.name,enabled: $0.fits()) }).disabled(preparing)
+            PhoneModelPicker(label: model.t("mobile.simple.asr"),selection: Binding(get: { asr?.id ?? "" },set: { model.phone.chooseModel("file-transcribe",$0) }), items: model.phone.candidates(.asr)).disabled(preparing)
             if !ready { LocalDownloadPrompt(items: asr.map { [$0] } ?? [],feature: "transcriptions.title") }
             Button(model.t("mobile.dub.pick_media"),systemImage: "doc.badge.plus") { importing = true }.studioButton(.primary).disabled(!ready || preparing)
             if preparing { ProgressView(value: prepareProgress); Button(model.t("common.cancel")) { preparation?.cancel() }.studioButton(.tertiary) }

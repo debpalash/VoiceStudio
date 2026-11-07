@@ -109,8 +109,8 @@ class DubPresentationRegressionTest {
             compose.setContent {
                 CompositionLocalProvider(LocalLanguageCatalogLoader provides {awaitCancellation()}) {StudioApp(vm)}
             }
-            for(tab in listOf("Speak","Voices","Dub","Dictate","Settings","Speak")) {
-                if(tab=="Speak") {
+            for(tab in listOf("Speech","Voices","Dub","Dictate","Settings","Speech")) {
+                if(tab=="Speech") {
                     compose.onNode(hasText("Home") and hasClickAction()).performClick()
                     compose.onNodeWithTag("home.speak").performScrollTo().performClick()
                 } else compose.onNode(hasText(tab) and hasClickAction()).performClick()

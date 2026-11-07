@@ -1,7 +1,31 @@
 // @vitest-environment node
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { join, resolve } from 'node:path';
-const state = vi.hoisted(() => ({ installed: true, packaged: false, ready: true, checkout: true }));
+import { tmpdir } from 'node:os';
+const state = vi.hoisted(() => ({
+  installed: true,
+  packaged: false,
+  ready: true,
+  checkout: true,
+  bundledOnly: false,
+  bundledManifestMissing: false,
+}));
+vi.mock('./distribution', () => ({
+  runtimeSetupSupported: () => !state.bundledOnly,
+  currentDistributionProfile: () => ({
+    fileAccess: state.bundledOnly ? 'sandbox-scoped' : 'user-selected',
+  }),
+}));
+vi.mock('./bundled-runtime', () => ({
+  bundledPython: (root: string) => {
+    if (state.bundledManifestMissing) throw new Error('Bundled manifest is missing');
+    return join(root, 'python-runtime', 'bin', 'python3.11');
+  },
+  bundledRuntimeEnv: (_root: string, data: string) => ({
+    VOICESTUDIO_BUNDLED_CODE_ONLY: '1',
+    OMNIVOICE_DATA_DIR: join(data, 'data'),
+  }),
+}));
 vi.mock('electron', () => ({
   app: {
     get isPackaged() {
@@ -34,6 +58,7 @@ vi.mock('./legacy-storage', () => ({
   }),
 }));
 import {
+  BackendSupervisor,
   devRendererPort,
   loadBlockMessage,
   resolveSpawnPlan,
@@ -43,12 +68,71 @@ import {
   spawnFailureMessage,
   startupTimeoutMessage,
 } from './backend';
+// These launch/setup cases model a supported local-runtime host. Intel and
+// Rosetta behavior is exercised below with explicit hostIssue values.
+beforeEach(() => vi.stubGlobal('process', { ...process, arch: 'arm64' }));
 afterEach(() => {
   state.installed = true;
   state.ready = true;
   state.packaged = false;
   state.checkout = true;
+  state.bundledOnly = false;
+  state.bundledManifestMissing = false;
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
+it('store builds launch only bundled Python, ignoring external command overrides', async () => {
+  state.packaged = true;
+  state.bundledOnly = true;
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '["external-python"]');
+  vi.stubEnv('OMNIVOICE_DATA_DIR', undefined);
+  const original = process.resourcesPath;
+  Object.defineProperty(process, 'resourcesPath', {
+    value: '/signed/resources',
+    configurable: true,
+  });
+  try {
+    expect(await resolveSpawnPlan(3912, '/legacy/project', undefined)).toEqual({
+      argv: [
+        join('/signed/resources', 'python-runtime', 'bin', 'python3.11'),
+        '-s',
+        '-B',
+        '-m',
+        'uvicorn',
+        'main:app',
+        '--app-dir',
+        'backend',
+        '--host',
+        '127.0.0.1',
+        '--port',
+        '3912',
+      ],
+      cwd: '/signed/resources',
+    });
+    expect(managedBackendSpawnOptions(3912).env).toMatchObject({
+      VOICESTUDIO_BUNDLED_CODE_ONLY: '1',
+      OMNIVOICE_DATA_DIR: join('/user-data', 'data'),
+    });
+  } finally {
+    Object.defineProperty(process, 'resourcesPath', { value: original, configurable: true });
+  }
+});
+it('store builds preserve an explicit data pointer instead of silently starting with empty data', () => {
+  state.packaged = true;
+  state.bundledOnly = true;
+  vi.stubEnv('OMNIVOICE_DATA_DIR', '/selected/inaccessible-data');
+  expect(managedBackendSpawnOptions(3912).env?.OMNIVOICE_DATA_DIR).toBe(
+    '/selected/inaccessible-data',
+  );
+});
+it('keeps host diagnostics available when a store package has no local interpreter', async () => {
+  state.packaged = true;
+  state.bundledOnly = true;
+  state.bundledManifestMissing = true;
+  const facts = await new BackendSupervisor().hostSnapshot();
+  expect(facts.os).toEqual(expect.any(String));
+  expect(facts.ramGb).toBeGreaterThan(0);
+  expect(facts.runtime.pythonPresent).toBeNull();
 });
 it.each(['darwin', 'win32', 'linux'] as const)(
   'leaves China downloads eligible for automatic failover on %s',
@@ -395,4 +479,39 @@ it('names Smart App Control when it refused a runtime DLL, and other blockers ot
   expect(loadBlockMessage('exit code 1', '', 'antivirus')).toBe(
     "Backend exited (exit code 1): Windows refused to load one of the engine's files. Your antivirus blocked it.",
   );
+});
+
+it('reports a failed launch as the managed runtime, with a failure record', async () => {
+  const { BackendSupervisor } = await import('./backend');
+  const supervisor = new BackendSupervisor();
+  const internals = supervisor as unknown as {
+    generation: number;
+    spawnChild(plan: { argv: string[]; cwd: string }, generation: number): void;
+  };
+  const program = join(tmpdir(), 'voicestudio-no-such-dir', 'python');
+
+  internals.spawnChild({ argv: [program], cwd: tmpdir() }, internals.generation);
+
+  await vi.waitFor(() => expect(supervisor.status.stage).toBe('failed'));
+  expect(supervisor.status.managed).toBe(true);
+  expect(supervisor.status.failure).toMatchObject({
+    stage: 'failed',
+    program: 'python',
+    errorCode: 'ENOENT',
+  });
+});
+
+it('codes a refusal at once and forgets the failure when the next attempt starts', async () => {
+  const { BackendSupervisor } = await import('./backend');
+  const supervisor = new BackendSupervisor();
+  const internals = supervisor as unknown as {
+    setStage(stage: string, patch: { message?: string; managed?: boolean }): void;
+  };
+
+  internals.setStage('failed', { message: 'Could not start C:\\rt\\python.exe: spawn UNKNOWN' });
+  expect(supervisor.status.failure?.program).toBe('python.exe');
+  expect(supervisor.status.failure?.code).toMatch(/EXEC_REFUSED|WINDOWS_APP_CONTROL_BLOCKED/);
+
+  internals.setStage('attaching', { message: undefined });
+  expect(supervisor.status.failure).toBeUndefined();
 });

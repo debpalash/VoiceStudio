@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
-import { AccountSession, backoffDelay } from './account-session';
+import { AccountSession, SIGN_OUT_DEADLINE_MS, backoffDelay } from './account-session';
 import { CloudActivity } from './cloud-activity';
 import { CloudSwitchStore } from './cloud-switches';
 import { InvalidGrantError, TransientAuthError } from './oidc';
@@ -156,13 +156,33 @@ it('turning account features off revokes once, deletes the token and hands out n
   expect(h.oidc.refresh).not.toHaveBeenCalled();
 });
 
-it('sign-out deletes the token even when revocation fails', async () => {
+it('offline sign-out still forgets the session on this device', async () => {
   const h = harness();
   h.store.save('r1');
   h.oidc.revoke.mockRejectedValueOnce(new Error('offline'));
   await h.session.signOut();
+  expect(h.oidc.revoke).toHaveBeenCalledWith('r1');
   expect(h.store.load()).toBeNull();
   expect(h.session.state().signedIn).toBe(false);
+});
+
+it('sign-out forgets the session within the deadline even if revocation never answers', async () => {
+  vi.useFakeTimers();
+  try {
+    const h = harness();
+    h.store.save('r1');
+    h.oidc.revoke.mockImplementationOnce(() => new Promise<void>(() => {}));
+    let done = false;
+    const out = h.session.signOut().then(() => (done = true));
+    await vi.advanceTimersByTimeAsync(SIGN_OUT_DEADLINE_MS - 1);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await out;
+    expect(h.store.load()).toBeNull();
+    expect(h.session.state().signedIn).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it('backoff doubles from 1 s and caps at 5 min', () => {
@@ -175,6 +195,47 @@ function deferred<T>() {
   const promise = new Promise<T>((r) => (resolve = r));
   return { promise, resolve };
 }
+
+it('binds identity locally, retains it on offline refresh, and discards late profile replies after sign-out', async () => {
+  const h = harness();
+  h.store.save('r1');
+  const generation = h.session.identityGeneration();
+  expect(h.session.bindIdentity('Us3nM8qWe2RtY6uI', generation)).toBe(true);
+  expect(h.session.accountId()).toBe('Us3nM8qWe2RtY6uI');
+  expect(h.oidc.refresh).not.toHaveBeenCalled();
+  h.oidc.refresh.mockRejectedValueOnce(new TransientAuthError(503));
+  await expect(h.session.getAccessToken()).rejects.toBeInstanceOf(TransientAuthError);
+  expect(h.session.accountId()).toBe('Us3nM8qWe2RtY6uI');
+  await h.session.signOut();
+  h.store.save('other-login', { newSession: true });
+  expect(h.session.bindIdentity('Us3nM8qWe2RtY6uI', generation)).toBe(false);
+  expect(h.session.accountId()).toBeNull();
+});
+
+it('a replaced login clears identity and ignores an old refresh rejection', async () => {
+  const h = harness();
+  h.store.save('old-login');
+  h.session.bindIdentity('Us3nM8qWe2RtY6uI', h.session.identityGeneration());
+  let reject!: (e: Error) => void;
+  h.oidc.refresh.mockImplementationOnce(
+    () =>
+      new Promise((_, r) => {
+        reject = r;
+      }),
+  );
+  const oldRefresh = h.session.getAccessToken();
+  const oldGeneration = h.session.identityGeneration();
+  const login = h.session.signIn();
+  await vi.waitFor(() => expect(h.openExternal).toHaveBeenCalled());
+  h.resolveCode('new-code');
+  await login;
+  expect(h.session.accountId()).toBeNull();
+  expect(h.session.bindIdentity('Us3nM8qWe2RtY6uI', oldGeneration)).toBe(false);
+  reject(new InvalidGrantError());
+  expect(await oldRefresh).toBeNull();
+  expect(h.session.state().signedIn).toBe(true);
+  expect(h.store.load()).toBe('r1');
+});
 const late = (refresh: string) => ({
   access_token: `a-${refresh}`,
   refresh_token: refresh,
@@ -182,15 +243,17 @@ const late = (refresh: string) => ({
   scope: 'openid offline_access',
 });
 
-it('sign-out during an in-flight refresh stays signed out', async () => {
+it('sign-out waits for token rotation and revokes the resulting refresh token', async () => {
   const h = harness();
   h.store.save('r1');
   const pending = deferred<ReturnType<typeof late>>();
   h.oidc.refresh.mockReturnValueOnce(pending.promise);
   const token = h.session.getAccessToken();
-  await h.session.signOut();
+  const logout = h.session.signOut();
   pending.resolve(late('r2'));
-  expect(await token).toBeNull();
+  await token;
+  await logout;
+  expect(h.oidc.revoke).toHaveBeenCalledWith('r2');
   expect(h.store.load()).toBeNull();
   expect(h.session.state().signedIn).toBe(false);
 });
@@ -272,4 +335,15 @@ it('Cancel during the code exchange stores nothing', async () => {
   await done;
   expect(h.store.load()).toBeNull();
   expect(h.session.state()).toMatchObject({ signedIn: false, notice: null });
+});
+
+it('passes signup intent through the existing cancellable browser flow', async () => {
+  const h = harness();
+  const pending = h.session.signIn({ intent: 'signup' });
+  await vi.waitFor(() => expect(h.oidc.authorizeUrl).toHaveBeenCalled());
+  expect(h.oidc.authorizeUrl.mock.calls[0]).toHaveLength(4);
+  expect((h.oidc.authorizeUrl.mock.calls[0] as unknown[])[3]).toBe('signup');
+  h.resolveCode('signup-code');
+  await pending;
+  expect(h.store.load()).toBe('r1');
 });

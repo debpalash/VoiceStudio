@@ -364,10 +364,12 @@
     "log_label": "Engine log",
     "setup_required": "Install local runtime",
     "setup_hint": "Download Python and app dependencies (several GB). Voice models are installed separately when you choose them.",
+    "setup_smart_app_control": "Windows Smart App Control is on and may block the local engine after it downloads. It has no per-app exceptions. You can turn it off in Windows Security → App & browser control, connect to an engine on another computer, run the engine in WSL or Docker, or install anyway.",
     "installing": "Installing…",
     "setup_space": "Free at least {{gib}} GiB on the app’s drive, then retry.",
     "repair_failed": "Automatic repair of the Python environment did not finish. Check the engine log, then press Retry.",
     "setup_access": "Allow write access to the app’s data folder, then retry.",
+    "setup_install_stuck": "The old download wouldn’t stop. Restart VoiceStudio, then try again.",
     "setup_unsupported_platform": "Connect this app to a remote backend below. PyTorch is not released for Intel macOS, so this Mac needs no local backend installation.",
     "setup_wrong_architecture": "Quit VoiceStudio, replace it with the Apple Silicon (arm64) DMG, then open it again. You are running the Intel build through Rosetta; switching builds enables local AI without removing voices or projects.",
     "setup_missing_system_library": "This Windows system is missing the Microsoft Visual C++ 2015-2022 Redistributable (x64), which the PyTorch audio extension needs. Install it from Microsoft, then press Retry.",
@@ -376,9 +378,23 @@
     "download_apple_silicon": "Download the Apple Silicon build",
     "proxy_bypass_help": "Fully quit VoiceStudio, set HTTP_PROXY/HTTPS_PROXY to your proxy URL and NO_PROXY to excluded hosts in a terminal, then launch VoiceStudio from that terminal. Retrying in the current app cannot load new environment variables.",
     "hint_spawn_blocked": "Your operating system or security software refused to launch the local engine. Add VoiceStudio’s runtime folder to your antivirus exclusions (Windows: Windows Security → Virus & threat protection → Manage settings → Exclusions), make sure it is not inside a cloud-synced folder such as OneDrive, then retry.",
-    "hint_smart_app_control": "Windows Smart App Control blocked the local engine. It has no per-app exceptions, so an antivirus exclusion will not help. Turn it off in Windows Security → App & browser control → Smart App Control settings (Windows cannot turn it back on without a reset), or connect VoiceStudio to an engine running on another computer, then retry.",
+    "hint_smart_app_control": "Windows Smart App Control blocked the local engine. It has no per-app exceptions, so an antivirus exclusion will not help. Turn it off in Windows Security → App & browser control → Smart App Control settings, or connect VoiceStudio to an engine running on another computer, then retry.",
     "hint_slow_start": "The engine was still starting when the wait ran out. Slow computers — especially ones without a dedicated GPU — and the first launch after an install (antivirus scans every new file) can need several minutes. Close memory-heavy apps and retry; later starts are much faster.",
     "hint_synced_folder": "This location is inside a cloud-synced folder (OneDrive, Dropbox, iCloud Drive, Google Drive). Online-only placeholders and file locking break the Python environment. Move VoiceStudio to a plain local folder (for example C:\\VoiceStudio on Windows or ~/VoiceStudio on macOS and Linux) and set it up again.",
+    "cause_app_control_policy": "A Windows application control policy blocked the engine",
+    "hint_app_control_policy": "On a work computer, ask your IT team to allow VoiceStudio’s runtime folder. Antivirus exclusions do not change this policy.",
+    "hint_smart_app_control_local": "You can also run the engine in WSL or Docker on this PC.",
+    "cause_antivirus": "Your antivirus blocked one of the engine’s files",
+    "hint_antivirus": "Restore the file from your antivirus quarantine, add VoiceStudio’s runtime folder to its exclusions, then retry.",
+    "cause_gatekeeper": "macOS quarantined the engine",
+    "hint_gatekeeper": "Clear the quarantine flag with xattr -cr on the VoiceStudio app and its runtime folder, then reopen the app.",
+    "cause_noexec": "The engine folder does not allow running programs",
+    "hint_noexec": "This drive is mounted with noexec. Choose a folder on another drive, or remount this one without noexec, then retry.",
+    "cause_download": "The download stopped before setup finished",
+    "hint_download": "Retry to continue. If it keeps stopping, try another network, turn off your VPN or choose a different download region.",
+    "cause_illegal_instruction": "The engine stopped on an instruction this computer could not run",
+    "hint_illegal_instruction": "The processor may lack a feature the engine’s libraries need. Copy the diagnostics and include them, with your processor model, in a report.",
+    "fix_docs": "How to fix this",
     "cause_smart_app_control": "Windows Smart App Control blocked the engine",
     "cause_spawn_blocked": "Security software blocked the engine from starting",
     "cause_native_crash": "The engine crashed while starting (native fault)",
@@ -2542,6 +2558,7 @@
     "desc": "Anonymous, content-free usage stats that help us fix bugs faster — entirely optional, off by default.",
     "step_label": "Improve VoiceStudio",
     "body": "Anonymous, content-free usage stats: which engines are used, how long generations take, and the type of errors. Never your text, your audio, your files, or anything identifying you. Nothing is sent unless you say yes, and you can change your mind anytime in Settings → Privacy.",
+    "setup_note": "This includes setup progress and failure codes, which show us why installs fail.",
     "learn_more": "What exactly is sent?",
     "yes": "Yes, share anonymous stats",
     "no": "No thanks",
@@ -2577,6 +2594,7 @@
     "plan_ends": "until {{date}}",
     "details_failed": "Couldn’t load your account details ({{reason}}).",
     "retry": "Retry",
+    "refresh": "Refresh",
     "manage_profile": "Manage profile",
     "manage_plan": "Manage plan"
   },
@@ -2781,6 +2799,9 @@
     "sent_system": "Operating system, GPU, memory and free disk space",
     "sent_engines": "Which engines are active",
     "sent_logs": "Recent engine log lines, with your home folder path and tokens removed",
+    "sent_install_failure": "Install failure details: failed program name, security state, blocked file names and antivirus names",
+    "save_diagnostics": "Save full diagnostics to attach",
+    "save_diagnostics_failed": "Could not save the diagnostics. Try another folder, or send the report without them.",
     "sent_pages": "Names of recently visited pages",
     "not_sent": "Never sent: your audio, text or voices. File names can appear in logs or your description, so review the GitHub preview before submitting.",
     "submit": "Open GitHub issue"
@@ -3429,7 +3450,7 @@
     "add_details": "Add details",
     "step_start": "Start",
     "step_agent": "Agent",
-    "step_speak": "Speak",
+    "step_speak": "Speech",
     "step_condition": "Condition",
     "step_call": "Call",
     "step_end": "End",
@@ -3796,7 +3817,7 @@
       "brought_by": "Brought to you by"
     },
     "tabs": {
-      "speak": "Speak",
+      "speak": "Speech",
       "voices": "Voices",
       "dub": "Dub",
       "dictate": "Dictate",
@@ -3844,7 +3865,8 @@
       "unstar": "Unstar",
       "engine_unavailable": "This engine is unavailable. Check its installation on your computer.",
       "voice_default": "Default voice (engine preset)",
-      "engine_no_cloning": "This engine cannot use reference audio. Choose an engine that supports voice cloning, or use the default voice."
+      "engine_no_cloning": "This engine cannot use reference audio. Choose an engine that supports voice cloning, or use the default voice.",
+      "reference_required": "Choose a saved voice to use this model. You can import one from Gallery."
     },
     "voices": {
       "search": "Search voices",
@@ -4059,7 +4081,7 @@
       "terms_fingerprint": "Terms fingerprint: {{fingerprint}}",
       "licence_storage": "Model licence records could not be read or saved. Free storage and try again; models remain blocked.",
       "licence_required": "Accept the licence in Models first.",
-      "ram_required": "Needs {{ram}} GB of RAM. Pick a smaller model or use your computer.",
+      "ram_required": "{{ram}} GB RAM recommended. This model may run slowly or close the app on this device. You can try it anyway.",
       "wifi_required": "Connect to Wi-Fi, or allow mobile data in Models.",
       "storage_required": "Not enough storage. Free some space and try again.",
       "download_failed": "The model download failed. Check your connection and resume in Models.",
@@ -4073,10 +4095,11 @@
       "preset_voice": "Voice {{number}}",
       "transfer": "{{received}} of {{total}}",
       "privacy": "On-device tasks stay on this phone. Only model downloads, reports you choose to send and your paired computer use the network.",
-      "computer_feature": "This feature currently runs on your computer. You can use Speak and Dictate on this phone without pairing.",
+      "computer_feature": "This feature currently runs on your computer. You can use Speech and Dictate on this phone without pairing.",
       "accepted": "Licence accepted",
       "not_accepted": "Licence not accepted",
-      "receipt": "{{action}} · {{time}} · App {{version}} · Terms {{fingerprint}}"
+      "receipt": "{{action}} · {{time}} · App {{version}} · Terms {{fingerprint}}",
+      "try_anyway": "Try anyway"
     },
     "simple": {
       "phone": "Phone",
@@ -4124,7 +4147,7 @@
       "remove_job": "Delete dub",
       "reconnect": "Reconnect",
       "cancel": "Cancel",
-      "ram": "Needs {{ram}} GB RAM",
+      "ram": "{{ram}} GB RAM recommended",
       "analytics": "Analytics",
       "language": "Language",
       "default_voice": "Default voice",
@@ -4374,7 +4397,31 @@
     "dub_advanced.dual": "Translation + original",
     "dub_advanced.exports": "Export settings",
     "editing.generated": "Generated audio",
-    "editing.merge": "Merge with next"
+    "editing.merge": "Merge with next",
+    "support": {
+      "donate": "Donate",
+      "other_apps": "Other Apps",
+      "other_apps_intro": "Projects from our team and the sponsors supporting VoiceStudio.",
+      "gift_note": "Giving is optional. Donations support development and do not unlock features, content or services.",
+      "pro_scope": "Pro adds production tools to VoiceStudio on your computer. The phone app’s creative tools remain free.",
+      "opengtm": "Find and research leads with open-source sales automation.",
+      "opal": "An open-source media player and browser for your own library.",
+      "supermetry": "Self-hosted, privacy-friendly web analytics.",
+      "spicrawl": "Turn web pages into Markdown or structured data for AI agents.",
+      "special_sponsor": "Special sponsor"
+    },
+    "downloads": {
+      "pause": "Pause",
+      "paused": "Paused",
+      "connecting": "Connecting…",
+      "waiting": "Waiting for Wi-Fi…",
+      "retrying": "Retrying in {{seconds}}s…",
+      "verifying": "Verifying model…",
+      "speed": "{{speed}}/s",
+      "eta": "About {{time}} left",
+      "estimating": "Estimating time left…",
+      "waiting_network": "Waiting for a connection…"
+    }
   },
   "failureCause": {
     "details": "Details",
@@ -4523,5 +4570,20 @@
     "room_tone": "Fill pauses with room tone",
     "room_tone_note": "[pause] markers and audiobook gaps get the take's own quiet background instead of digital silence, so the sound doesn't cut out between lines.",
     "env_pinned": "Set by {{env}}. Change or clear it to use this switch."
+  },
+  "setupHelp": {
+    "title": "Setup appears stuck",
+    "stalled_hint": "No download progress for five minutes. Keep waiting, cancel and retry, or ask for help. Download the setup log to share.",
+    "download_log": "Download setup log",
+    "discord": "Get help on Discord",
+    "check_connection": "Check download connection",
+    "checking": "Checking connection…",
+    "use_cpu": "Install the CPU version instead",
+    "use_cpu_hint": "Much smaller download. Everything still works, but voices generate more slowly.",
+    "check_hint": "Downloads a small sample from the affected package server (up to 15 seconds). Nothing is uploaded. Success does not guarantee the full download will finish.",
+    "check_ok": "{{host}} responded: {{rate}} KB/s in this sample.",
+    "check_failed": "Could not complete the check for {{host}}. Details are in the setup log.",
+    "check_unavailable": "No package download is available to check yet.",
+    "connection_error": "The package download connection failed. Resume to try again; completed downloads are kept."
   }
 }

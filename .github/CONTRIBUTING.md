@@ -37,6 +37,7 @@ Read it before opening a proposal; the licence check in particular ends most of 
 
 - [Git](https://git-scm.com/)
 - `curl` (used by the Bun / uv / rustup install one-liners on macOS and Linux)
+- [Node.js 22](https://nodejs.org/) (Electron development and validation scripts)
 - [Bun](https://bun.sh/) (frontend package manager)
 - [uv](https://docs.astral.sh/uv/) (Python environment manager)
 - [ffmpeg](https://ffmpeg.org/) (audio/video processing)
@@ -174,6 +175,9 @@ Open an [issue](https://github.com/debpalash/VoiceStudio/issues/new) with:
 2. **Keep PRs focused** — one feature or fix per PR
 3. **Run tests** before pushing:
    ```bash
+   # Packaging tests use Electron dependencies, including electron-builder.
+   bun install --frozen-lockfile
+
    # Backend tests (the same two runs as CI; -n auto runs tests/ in parallel,
    # optional locally, it is about 4x faster on 4 cores)
    uv run pytest tests/ -q -n auto
@@ -313,6 +317,9 @@ disposing JSDOM. Keep deferred focus restoration in that same realm; advance
 only the current fake-timer tick rather than flushing unrelated future timers.
 
 ```bash
+# Packaging tests in tests/ load the installed Electron tooling.
+bun install --frozen-lockfile
+
 # Run the backend suites CI runs (kept separate: backend/tests is isolated)
 uv run pytest tests/ -q
 uv run pytest backend/tests/ -q
@@ -422,6 +429,16 @@ hard rules from the first prompt.
 
 ## Quality gates your PR must pass
 
+Documentation-only and test-only changes skip runtime tests, desktop/mobile builds
+and Docker image rebuilds on pull requests and pushes to `main`. The required
+`Tests (backend + frontend)` check reports the explicit skip so branch protection
+still works. Mixed changes, workflow/build configuration, dependencies and bundled
+app icons still run their normal checks; unknown or truncated change lists run
+all checks. Manual runs and scheduled audits remain full runs. CLA, commit identity
+and secret scanning still run. Run changed tests locally before submitting a
+test-only PR. Docker Hub overview edits still publish through the small
+`dockerhub-description.yml` workflow without rebuilding images.
+
 - **Gallery pin:** a PR that changes the `omnivoice-gallery` submodule must
   move it forward along the gallery's `main` (`.github/workflows/gallery-pin.yml`).
   If it fails on a PR that never meant to touch the gallery, the checkout had a
@@ -482,7 +499,9 @@ hard rules from the first prompt.
     Auto region's speed check, which reads the start of one locked wheel from
     files.pythonhosted.org and mirrors.aliyun.com (one ranged request each,
     timed out, no retries) and keeps PyPI on any doubt
-    (`electron/src/main/pypi-mirror.ts`); and Hugging Face model downloads
+    (`electron/src/main/pypi-mirror.ts`); a user-clicked setup connection check
+    requesting 256 KiB from the affected package's pinned URL through the setup
+    proxy, bounded to 15 seconds, with no upload; and Hugging Face model downloads
     (gated on install state or an explicit user action).
   - **Windows ROCm setup the user explicitly selects** (owner-approved
     2026-10-26): the matched AMD SDK and PyTorch wheels from `repo.radeon.com`,
@@ -505,21 +524,27 @@ hard rules from the first prompt.
     (`backend/services/media_tools.py`).
   - **VoiceStudio Cloud account features, only after the user turns them on**
     (first-run setup or Settings → Account; off by default, skipping = off):
-    browser sign-in against `voicestudio.sh/identity` and the account API at
-    `appapi.voicestudio.sh` from Electron main (`electron/src/main/account/`),
+    browser sign-in that starts on `app.voicestudio.sh/auth/app` (the dashboard
+    handles login and approval), the one-time code exchange at
+    `app.voicestudio.sh/auth/app/token`, token refresh and revocation at
+    `id.voicestudio.sh`, and the account API at `appapi.voicestudio.sh`, all
+    from Electron main (`electron/src/main/account/`, endpoints and client ID in
+    `config/account.json`),
     and, only after the user also turns cloud sync on, settings sync with
     `appapi.voicestudio.sh/v1/sync` from the backend
     (`backend/services/cloud_sync/`), which can call only with a token main
-    hands out. Turning either off stops every request at once; switching
-    account features off sends one best-effort token revocation. Hidden in
-    packaged builds until VoiceStudio Cloud launches.
+    hands out. Turning either off stops every request at once; signing out or
+    switching account features off sends one best-effort token revocation and
+    always forgets the session on this device, even offline (sign-out waits at
+    most 5 seconds for the network).
   - Bug reports as prefilled GitHub Issue URLs opened in the user's browser.
   - **Phone content reports, only when the user taps Send** in a generated
     result's Report sheet: `appapi.voicestudio.sh/v1/content-reports` with the
     reason, optional note and typed text, app version and model; no audio,
     account or device identifier (`mobile/contract/SPEC.md` → Reporting
     generated content; required by Google Play's AI-generated content policy).
-  - PostHog analytics only after a yes at the first-run consent prompt
+  - PostHog analytics only after a yes at the first-run consent prompt, asked before
+    runtime setup on a fresh install so setup stage and failure code can be counted
     (`backend/core/analytics.py`, allowlisted content-free metadata).
   - The GitHub star count (no credentials or referrer, refreshed every 20
     minutes while shown).

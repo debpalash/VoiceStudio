@@ -28,12 +28,26 @@ public enum JSONValue: Codable, Sendable, Equatable {
     public var string: String? { if case .string(let v) = self { v } else { nil } }
     public var number: Double? { if case .number(let v) = self { v } else { nil } }
 }
+public enum ModelAssetSource {
+    public static func validURL(_ text: String) -> Bool {
+        guard let url = URLComponents(string: text),url.scheme == "https",url.user == nil,url.password == nil,url.port == nil,url.query == nil,url.fragment == nil else { return false }
+        let parts = url.path.split(separator: "/").map(String.init)
+        guard parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." && $0.range(of: "^[A-Za-z0-9_.-]+$",options: .regularExpression) != nil }) else { return false }
+        if url.host == "github.com" { return parts.count == 6 && Array(parts.prefix(4)) == ["k2-fsa","sherpa-onnx","releases","download"] && parts.last?.hasSuffix(".onnx") == true }
+        return url.host == "huggingface.co" && parts.count >= 5 && parts[2] == "resolve" && parts[3].range(of: "^[a-f0-9]{40}$",options: .regularExpression) != nil
+    }
+    public static func validBundled(_ path: String) -> Bool {
+        !path.hasPrefix("/") && path.split(separator: "/",omittingEmptySubsequences: false).allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." && $0.range(of: "^[A-Za-z0-9_.-]+$",options: .regularExpression) != nil }
+    }
+}
 public struct PhoneModel: Codable, Identifiable, Sendable {
     public struct File: Codable, Sendable {
         public let path: String
         public let size: Int64
         public let sha256: String
         public let role: String
+        public var url: String? = nil
+        public var bundled: String? = nil
     }
     public struct Licence: Codable, Sendable {
         public let id: String
@@ -66,9 +80,16 @@ public struct PhoneModel: Codable, Identifiable, Sendable {
     public let config: [String: JSONValue]
     public func fits(ram: UInt64 = ProcessInfo.processInfo.physicalMemory) -> Bool { Double(ram) >= min_ram_gb * 1_000_000_000 }
     public func selectingLanguage(_ language: String) throws -> PhoneModel {
-        guard capability == .tts, languages.contains(language) else { throw ClientError("mobile.local.model_incompatible") }
+        guard supportsSpeech, languages.contains(language) else { throw ClientError("mobile.local.model_incompatible") }
         var options = config; options["lang"] = .string(language)
         return PhoneModel(id: id,name: name,capability: capability,runtime: runtime,repo: repo,revision: revision,files: files,total_bytes: total_bytes,languages: languages,min_ram_gb: min_ram_gb,licence: licence,config: options)
+    }
+    public var supportsSpeech: Bool { capability == .tts || capability == .clone }
+    public var supportsCloning: Bool { capability == .clone }
+    public var requiresReference: Bool { capability == .clone }
+    public var supportsDesign: Bool { runtime == .omni }
+    public func supports(_ value: ModelCapability) -> Bool {
+        value == .tts ? supportsSpeech : value == .clone ? supportsCloning : capability == value
     }
     public func path(role: String, root: URL) -> String { files.first { $0.role == role }.map { root.appendingPathComponent($0.path).path } ?? "" }
     public func option(_ key: String, fallback: String = "") -> String { config[key]?.string ?? fallback }
@@ -85,9 +106,9 @@ public struct ModelCatalogue: Codable, Sendable {
                   hex(m.revision, count: 40), !m.files.isEmpty, m.min_ram_gb.isFinite, m.min_ram_gb > 0,
                   hex(m.licence.terms_fingerprint, count: 64), ["commercial-ok", "non-commercial", "conditional", "unidentified"].contains(m.licence.category),
                   Set(m.files.map(\.path)).count == m.files.count,
-                  m.files.allSatisfy({ $0.size > 0 && hex($0.sha256, count: 64) && !$0.path.hasPrefix("/") && $0.path.split(separator: "/", omittingEmptySubsequences: false).allSatisfy({ safe(String($0)) }) }),
+                  m.files.allSatisfy({ ($0.url == nil || ModelAssetSource.validURL($0.url!)) && ($0.bundled == nil || ($0.url == nil && ModelAssetSource.validBundled($0.bundled!))) && $0.size > 0 && hex($0.sha256, count: 64) && !$0.path.hasPrefix("/") && $0.path.split(separator: "/", omittingEmptySubsequences: false).allSatisfy({ safe(String($0)) }) }),
                   m.files.reduce(0.0, { $0 + Double($1.size) }) == Double(m.total_bytes),
-                  m.runtime == (m.capability == .clone ? .omni : m.capability == .translate ? .llama : .sherpa)
+                  (m.capability == .clone ? (m.runtime == .omni || (m.runtime == .sherpa && ["pocket","zipvoice"].contains(m.option("model_type")))) : m.runtime == (m.capability == .translate ? .llama : .sherpa))
             else { throw ClientError("mobile.local.catalogue_failed") }
         }
         return value

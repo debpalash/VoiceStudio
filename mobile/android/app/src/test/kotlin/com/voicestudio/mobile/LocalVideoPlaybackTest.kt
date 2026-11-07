@@ -26,6 +26,21 @@ import java.io.File
 class LocalVideoPlaybackTest {
     @get:Rule val compose=createComposeRule()
 
+    @Test fun repeatedPreviewPlayRequestsRestartTheExistingPlayer() {
+        val player=mock(Player::class.java)
+        var request by mutableLongStateOf(1)
+        val app=ApplicationProvider.getApplicationContext<Application>()
+        compose.setContent {
+            CompositionLocalProvider(LocalAudioPlayerFactory provides {player},LocalL10n provides L10n.load(app,"en")) {
+                VoiceStudioTheme {LocalAudioPlayer(File("preview.wav"),autoPlay=true,playRequest=request) {throw AssertionError(it)}}
+            }
+        }
+        compose.waitForIdle();verify(player).play();verify(player).seekTo(0)
+        compose.runOnIdle {request++}
+        compose.waitForIdle();verify(player,times(2)).play();verify(player,times(2)).seekTo(0)
+        verify(player,never()).release()
+    }
+
     @Test fun switchingVideosAttachesTheRetainedSurfaceToTheNewPlayer() {
         val first=mock(Player::class.java)
         val second=mock(Player::class.java)
