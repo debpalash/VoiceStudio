@@ -11,6 +11,7 @@ import {
 } from '../config/app-config.mjs';
 import { DISTRIBUTION_TARGET } from '../config/distributions.mjs';
 import { buildCommit } from '../config/build-commit.mjs';
+import { macWatchPollingPlugin } from './scripts/mac-watch-polling.mjs';
 
 // The app version is single-sourced from the root package.json (CLAUDE.md,
 // Versioning). Nothing in electron/ mirrors it: the renderer reads it through
@@ -43,7 +44,7 @@ const rendererPort =
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin(), macWatchPollingPlugin()],
     define,
     build: {
       rollupOptions: {
@@ -55,7 +56,7 @@ export default defineConfig({
     },
   },
   preload: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin(), macWatchPollingPlugin()],
     define,
     build: {
       rollupOptions: { input: resolve(__dirname, 'src/preload/index.ts') },

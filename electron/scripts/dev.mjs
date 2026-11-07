@@ -34,6 +34,15 @@ const repoRoot = resolve(electronRoot, '..');
 const require = createRequire(import.meta.url);
 const defaultCacheRoot = join(electronRoot, 'node_modules', '.cache', 'voicestudio-electron-dev');
 
+// The bundle prep relies on macOS tool flags (`cp -c` clones on APFS). Call the
+// system binaries by path: Homebrew's GNU coreutils often sit ahead of /bin on
+// PATH, and GNU `cp` rejects `-c`, which stopped `bun run dev` before launch.
+export const MAC_TOOLS = Object.freeze({
+  cp: '/bin/cp',
+  plutil: '/usr/bin/plutil',
+  codesign: '/usr/bin/codesign',
+});
+
 export function createMacDevBundlePlan({
   electronExecutable,
   electronVersion,
@@ -76,7 +85,7 @@ function run(command, args) {
 }
 
 function replacePlistValue(infoPlist, key, value, runCommand = run) {
-  runCommand('plutil', ['-replace', key, '-string', value, infoPlist]);
+  runCommand(MAC_TOOLS.plutil, ['-replace', key, '-string', value, infoPlist]);
 }
 
 export function prepareMacDevElectron({
@@ -122,7 +131,7 @@ export function prepareMacDevElectron({
   try {
     // APFS clone-copy keeps this fast and avoids duplicating Electron's full
     // framework bundle. The copied bundle is then re-signed after branding.
-    runCommand('cp', ['-cR', plan.sourceBundle, stagingBundle]);
+    runCommand(MAC_TOOLS.cp, ['-cR', plan.sourceBundle, stagingBundle]);
     const infoPlist = join(stagingBundle, 'Contents', 'Info.plist');
     replacePlistValue(infoPlist, 'CFBundleDisplayName', APP_NAME, runCommand);
     replacePlistValue(infoPlist, 'CFBundleName', APP_NAME, runCommand);
@@ -131,7 +140,7 @@ export function prepareMacDevElectron({
     replacePlistValue(infoPlist, 'CFBundleShortVersionString', appVersion, runCommand);
     replacePlistValue(infoPlist, 'CFBundleVersion', appVersion, runCommand);
     copyFileSync(iconPath, join(stagingBundle, 'Contents', 'Resources', `${APP_NAME}.icns`));
-    runCommand('codesign', ['--force', '--deep', '--sign', '-', stagingBundle]);
+    runCommand(MAC_TOOLS.codesign, ['--force', '--deep', '--sign', '-', stagingBundle]);
     writeFileSync(join(stagingRoot, 'brand-manifest.json'), expectedManifest);
 
     // Reaching here means the cache failed validation (e.g. its executable was

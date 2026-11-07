@@ -8,25 +8,42 @@ export interface SafeStorageLike {
   decryptString(encrypted: Buffer): string;
 }
 
-/** The refresh token lives only in Electron main; never as plain text on disk. */
+/**
+ * The refresh token lives only in Electron main; never as plain text on disk.
+ *
+ * safeStorage is only consulted once there is a token to read or write. On macOS
+ * it opens the login Keychain, which can raise a blocking access prompt (always
+ * for a re-signed development bundle); with account features off, startup must
+ * never wait on it.
+ */
 export class RefreshTokenStore {
-  readonly persistent: boolean;
   private memory: string | null = null;
+  private persistentCache: boolean | undefined;
 
   constructor(
     private readonly path: string,
     private readonly safe: SafeStorageLike,
-    platform: NodeJS.Platform = process.platform,
-  ) {
-    this.persistent =
-      safe.isEncryptionAvailable() &&
-      !(platform === 'linux' && safe.getSelectedStorageBackend?.() === 'basic_text');
+    private readonly platform: NodeJS.Platform = process.platform,
+  ) {}
+
+  get persistent(): boolean {
+    this.persistentCache ??=
+      this.safe.isEncryptionAvailable() &&
+      !(this.platform === 'linux' && this.safe.getSelectedStorageBackend?.() === 'basic_text');
+    return this.persistentCache;
   }
 
   load(): string | null {
-    if (this.memory || !this.persistent) return this.memory;
+    if (this.memory) return this.memory;
+    let raw: string;
     try {
-      const { v, token } = JSON.parse(readFileSync(this.path, 'utf8'));
+      raw = readFileSync(this.path, 'utf8');
+    } catch {
+      return null; // Nothing saved: no reason to touch the Keychain.
+    }
+    if (!this.persistent) return null;
+    try {
+      const { v, token } = JSON.parse(raw);
       if (v !== 1 || typeof token !== 'string') return null;
       this.memory = this.safe.decryptString(Buffer.from(token, 'base64'));
     } catch {

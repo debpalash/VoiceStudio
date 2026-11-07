@@ -35,7 +35,8 @@ export class AccountController {
       switches: CloudSwitchStore;
       session: AccountSession;
       api: AccountApi;
-      remembered: boolean;
+      /** Read lazily: it asks safeStorage, which can prompt for the Keychain on macOS. */
+      remembered: () => boolean;
       /** The dashboard pages for managing the profile and the plan (opened in the browser). */
       links: { profile: string; plan: string };
     },
@@ -91,7 +92,8 @@ export class AccountController {
     return {
       available,
       ...sw,
-      remembered,
+      // Only shown with account features on; reporting `true` otherwise means no warning.
+      remembered: available && sw.accountEnabled ? remembered() : true,
       ...s,
       profile,
       plan: s.signedIn ? this.plan : null,

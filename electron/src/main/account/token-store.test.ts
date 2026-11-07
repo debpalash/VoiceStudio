@@ -63,3 +63,23 @@ it('clear removes the file and the memory copy', () => {
   expect(existsSync(p)).toBe(false);
   expect(store.load()).toBeNull();
 });
+
+it('never touches safeStorage until there is a token to read or write', () => {
+  // On macOS safeStorage opens the Keychain, which can block startup on a prompt.
+  const calls: string[] = [];
+  const spy = fakeSafe({
+    isEncryptionAvailable: () => (calls.push('isEncryptionAvailable'), true),
+    getSelectedStorageBackend: () => (calls.push('getSelectedStorageBackend'), 'gnome_libsecret'),
+    decryptString: (b) => (calls.push('decryptString'), b.toString().replace(/^enc:/, '')),
+  });
+  const p = path();
+  const store = new RefreshTokenStore(p, spy, 'darwin');
+  expect(store.load()).toBeNull();
+  store.clear();
+  expect(calls).toEqual([]);
+
+  store.save('t');
+  expect(calls).toEqual(['isEncryptionAvailable']);
+  expect(new RefreshTokenStore(p, spy, 'darwin').load()).toBe('t');
+  expect(calls).toEqual(['isEncryptionAvailable', 'isEncryptionAvailable', 'decryptString']);
+});
