@@ -44,6 +44,8 @@ class VoxCPM2SubprocessBackend(SubprocessBackend):
     id = "voxcpm2"
     display_name = "VoxCPM2 (30 langs, studio 48 kHz, voice design)"
     supports_voice_design = True
+    # Same [1, 64] inference_timesteps clamp as the in-process backend (#3654).
+    num_step_range: tuple[int, int] = (1, 64)
     # Controllable cloning: instruct becomes the "(control)text" prefix.
     instruct_directs_delivery = True
     applies_own_mastering = True  # Its finished 48 kHz output bypasses apply_mastering().
