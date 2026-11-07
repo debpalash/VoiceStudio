@@ -25,6 +25,9 @@ from services.dub_language import (
         ("cmn-hant", "cmn-hant"),
         # BCP-47 tags resolve to their primary subtag.
         ("yue-HK", "yue"),
+        # Grandfathered tag for Cantonese: "zh-yue" means Yue, never
+        # Mandarin (CodeRabbit, #3834).
+        ("zh-yue", "yue"),
         ("pt-BR", "pt"),
         ("zh-Hans", "zh"),
         ("es-MX", "es"),

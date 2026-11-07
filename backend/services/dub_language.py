@@ -59,6 +59,11 @@ _CODE_ALIASES = {
     "mya": "my",
     "chi": "zh",
     "zho": "zh",
+    # "zh-yue" is the grandfathered BCP-47 tag for Cantonese; the IANA
+    # registry's preferred value is "yue". Without this the longest-prefix
+    # walk falls through to "zh" and a Cantonese tag becomes Mandarin
+    # (CodeRabbit, #3834).
+    "zh-yue": "yue",
     "cze": "cs",
     "ces": "cs",
     "dut": "nl",
