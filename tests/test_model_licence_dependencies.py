@@ -9,6 +9,13 @@ the catalogue therefore still left ``POST /generate`` returning 403
 The row now also carries ``license_dependencies``: the acceptance states of
 the other gated repos its engines need, so the dialog can list and clear all
 of them and the "Accept licence to use" badge stays until none are pending.
+
+Only engines whose runtime gate covers every registry row recorded for them
+contribute dependencies (OmniVoice ships both of its rows, so both are
+gated). Engines that gate per selected model — mlx-audio via its
+``configured_identity()``, every ASR engine via ``ensure_backend_licence`` —
+contribute none: running a row then checks only the row itself, so e.g. the
+Kokoro row must not demand OuteTTS's non-commercial terms.
 """
 from __future__ import annotations
 
@@ -29,6 +36,8 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 OMNI = "k2-fsa/OmniVoice"
 TOKENIZER = "eustlb/higgs-audio-v2-tokenizer"
+KOKORO = "mlx-community/Kokoro-82M-bf16"
+OUTETTS = "mlx-community/Llama-OuteTTS-1.0-1B-4bit"
 
 
 @pytest.fixture
@@ -69,6 +78,32 @@ def test_rows_without_extra_gated_repos_list_no_dependencies(models):
         assert model["repo_id"] not in [d["repo_id"] for d in deps]
 
 
+def test_gate_coverage_mirrors_the_runtime_paths(models):
+    covers = models._engine_gate_covers_all_rows
+    # Engines that ship a fixed model set gate every recorded row.
+    assert covers("omnivoice") is True
+    assert covers("omnivoice-subprocess") is True
+    assert covers("confucius4-tts") is True
+    # Preference-dependent TTS and per-model ASR gates check only what runs.
+    assert covers("mlx-audio") is False
+    assert covers("faster-whisper") is False
+    assert covers("whisperx") is False
+    assert covers("sherpa-onnx-asr") is False
+    # Unknown engine ids must not over-demand either; the runtime gate stays
+    # the enforcement point at generation time.
+    assert covers("no-such-engine") is False
+
+
+def test_selectable_checkpoint_rows_list_no_alternative_models(models):
+    kokoro = models.get_model_catalog().get(KOKORO)
+    deps = models._model_licence_dependencies(kokoro, models.model_key(kokoro))
+    ids = [d["repo_id"] for d in deps]
+    # mlx-audio gates only the configured checkpoint: accepting Kokoro never
+    # requires OuteTTS's non-commercial terms (or any other mlx-audio model).
+    assert ids == []
+    assert OUTETTS not in ids
+
+
 def test_list_models_payload_carries_license_dependencies(models, monkeypatch):
     monkeypatch.setattr(models, "_scan_cache_on_disk", lambda: {})
     monkeypatch.setattr(models, "invalidate_cache", lambda: None)
@@ -76,6 +111,7 @@ def test_list_models_payload_carries_license_dependencies(models, monkeypatch):
     assert all("license_dependencies" in row for row in rows.values())
     omni = rows[OMNI]
     assert TOKENIZER in [d["repo_id"] for d in omni["license_dependencies"]]
+    assert rows[KOKORO]["license_dependencies"] == []
 
 
 def test_accepting_only_the_rows_own_licence_still_blocks_the_engine(ma, store):
