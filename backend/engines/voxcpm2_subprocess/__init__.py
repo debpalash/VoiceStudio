@@ -47,7 +47,7 @@ class VoxCPM2SubprocessBackend(SubprocessBackend):
     # Controllable cloning: instruct becomes the "(control)text" prefix.
     instruct_directs_delivery = True
     applies_own_mastering = True  # Its finished 48 kHz output bypasses apply_mastering().
-    gpu_compat = ("cuda", "mps", "cpu")
+    gpu_compat = ("cuda", "rocm", "mps", "cpu")
     _DEFAULT_SAMPLE_RATE = 48_000
     # Same reference handling as VoxCPM2Backend (prepare_voxcpm_reference caps
     # the clip to its first 30 s), so the same advertised truth (#2281). A
@@ -76,6 +76,11 @@ class VoxCPM2SubprocessBackend(SubprocessBackend):
     @classmethod
     def sidecar_script(cls) -> Path:
         return Path(__file__).resolve().parent / "main.py"
+
+    @classmethod
+    def sidecar_python_hint(cls) -> "Path | None":
+        """Expose only the bootstrap-selected interpreter for routing metadata."""
+        return own_venv_python()
 
     @property
     def recv_timeout_s(self) -> float:

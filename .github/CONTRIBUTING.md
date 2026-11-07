@@ -610,3 +610,14 @@ replace the CLA.
 - **Want to discuss a big change?** Open a [discussion](https://github.com/debpalash/VoiceStudio/discussions) or Discord thread before coding
 
 Thank you for contributing! 🎙️
+
+### Proposed Linux ROCm sidecar provisioning exception (#3787)
+
+This PR proposes user-started Linux sidecar dependency installation from
+`https://download.pytorch.org/whl/rocm6.3`, `rocm6.4`, `rocm7.1` and `rocm7.2`,
+using the engine-specific Torch/torchaudio pins in the installer. A user-selected
+`OMNIVOICE_TORCH_INDEX` mirror retains the existing override contract. Inventory
+and readiness add no downloads; only the explicit install/repair action can
+provision packages. These sidecar pins are separate from the app's `uv.lock`.
+Explicit upstream maintainer acceptance of this exception is required before
+merge; local integration tests do not establish approval.

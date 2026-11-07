@@ -362,6 +362,16 @@ def _heartbeat_while_resolving(engine_id: str):
         t.join()
 
 
+def bootstrap_python_hint(bootstrap) -> Optional[Path]:
+    """Return only an interpreter chosen by the bootstrap's import checks.
+
+    Candidate paths can exist but fail imports. Inventory must not select a
+    candidate itself or execute a potentially expensive bootstrap probe.
+    """
+    resolved = getattr(bootstrap, "_resolved_python", None)
+    return Path(resolved) if resolved is not None else None
+
+
 class SubprocessBackend(TTSBackend):
     """Long-lived sidecar-process TTS backend. Subclasses provide
     ``venv_python()`` and ``sidecar_script()``; the base class owns
@@ -471,6 +481,40 @@ class SubprocessBackend(TTSBackend):
         whose ``venv_python()`` can return ``sys.executable`` override it.
         """
         return False
+
+    @classmethod
+    def sidecar_python_hint(cls) -> Optional[Path]:
+        """The interpreter the sidecar would run, if it can be told cheaply.
+
+        Used only for routing metadata, so it must never spawn, probe or
+        bootstrap a venv (unlike some ``venv_python()`` implementations).
+        ``None`` means unknown. Subclasses with a cheap lookup override it.
+        """
+        return None
+
+    @classmethod
+    def _sidecar_torch_lacks_hip(cls) -> Optional[bool]:
+        """Return True for non-HIP Torch, or None when GPU execution is unverified."""
+        from services.sidecar_rocm_metadata import sidecar_torch_lacks_hip
+        return sidecar_torch_lacks_hip(cls)
+
+    @classmethod
+    def runtime_compute_profile(cls, caps) -> dict:
+        """Report unknown until separate sidecar GPU execution is verified."""
+        profile = super().runtime_compute_profile(caps)
+        compat = tuple(profile["gpu_compat"])
+        if caps.family == "rocm" and "rocm" in compat:
+            lacks_hip = cls._sidecar_torch_lacks_hip()
+            if lacks_hip is None:
+                profile.update(effective_device="unknown", routing_status="unknown",
+                               routing_reason=None, runtime_device_verified=False)
+            elif lacks_hip:
+                from services.engine_routing import resolve_routing
+                compat = tuple(c for c in compat if c != "rocm")
+                profile.update(gpu_compat=compat, **resolve_routing(
+                    compat, caps, profile["min_vram_gb"], parent_torch=False,
+                ))
+        return profile
 
     @classmethod
     def sidecar_script(cls) -> Path:

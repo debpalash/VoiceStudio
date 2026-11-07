@@ -36,7 +36,8 @@ gives CosyVoice its own folder under the data directory and its own Python
 It differs from upstream's own setup:
 
 - **PyTorch 2.7.0.** The CUDA 12.8 build on an NVIDIA GPU, the CPU build on
-  other Windows and Linux machines, the regular build on Apple Silicon.
+  Linux ROCm build on a ROCm host, the CPU build on other Windows and Linux
+  machines, and the regular build on Apple Silicon.
   Upstream's 2.3.1 exists only for CUDA 12.1 and cannot run on RTX 50-series
   GPUs. On Linux ARM64 (for example DGX Spark) only torch takes that build
   and torchaudio installs the plain 2.7.0 wheel, because PyTorch publishes

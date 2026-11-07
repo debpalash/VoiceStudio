@@ -19,7 +19,7 @@ zero-shot voice cloning, and — uniquely among VoiceStudio's engines —
 
 - Python ≥ 3.10, PyTorch ≥ 2.5.
 - CUDA ≥ 12 recommended for full speed; MPS (Apple Silicon) and CPU also
-  work.
+  work; Linux ROCm uses a matching HIP PyTorch build.
 
 ## Setup
 
@@ -80,8 +80,8 @@ now retried once with a fresh client. See
 Click **Install** in **Model Catalogue → VoxCPM2**. VoiceStudio
 puts VoxCPM2 in its own Python environment under its data directory and runs
 it there, in a separate process. It installs the CUDA build of PyTorch on an
-NVIDIA GPU, the CPU build on other Windows and Linux machines, and the
-regular build on Apple Silicon.
+NVIDIA GPU, a matching ROCm build on Linux ROCm hosts, the CPU build on other
+Windows and Linux machines, and the regular build on Apple Silicon.
 
 Nothing it installs touches VoiceStudio itself or any other engine, and
 **Uninstall** in the same row removes only that folder. An existing
