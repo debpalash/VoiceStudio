@@ -378,9 +378,9 @@ final class SmokeTests: XCTestCase {
 
     @MainActor private func dismissUsingDone(_ app: XCUIApplication) {
         // A visible keyboard is the negative control for the dismissal assertion.
-        XCTAssertTrue(app.keyboards.firstMatch.wait(for: \.isHittable, toEqual: true, timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.wait(for: \.isHittable, toEqual: true, timeout: keyboardWait))
         let done = app.buttons["keyboard.done"]
-        XCTAssertTrue(done.wait(for: \.isHittable, toEqual: true, timeout: 5))
+        XCTAssertTrue(done.wait(for: \.isHittable, toEqual: true, timeout: keyboardWait))
         done.tap()
         assertKeyboardDismissed(app)
     }
@@ -388,6 +388,11 @@ final class SmokeTests: XCTestCase {
     @MainActor private func assertKeyboardDismissed(_ app: XCUIApplication) {
         // iOS may retain an accessibility keyboard container after it is visually hidden.
         let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false OR hittable == false"), object: app.keyboards.firstMatch)
-        XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: 5), .completed)
+        XCTAssertEqual(XCTWaiter.wait(for: [gone], timeout: keyboardWait), .completed)
     }
+
+    /// One keyboard query on a loaded CI simulator can take over 4 s, so a 5 s budget
+    /// timed out after a single check while the keyboard was already gone. The waits
+    /// return as soon as the condition holds, so a longer budget costs nothing.
+    private let keyboardWait: TimeInterval = 20
 }
