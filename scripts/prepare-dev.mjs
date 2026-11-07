@@ -15,6 +15,7 @@ export function needsLocalBackendSetup({
   return platform !== "darwin" || arch !== "x64";
 }
 
+/** Validate Node before installing dependencies and preparing a local backend. */
 export function prepareDev({
   nodeVersion = process.versions.node,
   env = process.env,
