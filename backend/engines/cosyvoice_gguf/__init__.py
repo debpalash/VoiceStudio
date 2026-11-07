@@ -19,7 +19,7 @@ logger = logging.getLogger("omnivoice.cosyvoice_gguf")
 
 
 class CosyVoiceGGUFBackend(TTSBackend):
-    id = "cosyvoice-gguf"
+    id = bootstrap.ENGINE_ID
     display_name = "CosyVoice 3 GGUF (native Vulkan/CPU, 9 langs, reference clone)"
     gpu_compat = ("cpu", "vulkan")
     supports_cloning = True
