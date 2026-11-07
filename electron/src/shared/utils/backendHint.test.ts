@@ -101,6 +101,25 @@ describe('backendFailureCause', () => {
   });
 });
 
+describe('a silent startup timeout that quotes the backend log (#3724)', () => {
+  const quoting = (path: string, lines: string[]) =>
+    'Backend did not answer on port 3900 within 300 s (OMNIVOICE_STARTUP_BUDGET_S). ' +
+    `It printed no output. The backend's own log (${path}) ends with:\n${lines.join('\n')}\n` +
+    'Slow disks and antivirus scanning of the runtime folder are the usual cause: click Retry, ' +
+    'exclude the VoiceStudio runtime folder from real-time scanning, or raise ' +
+    'OMNIVOICE_STARTUP_BUDGET_S (for example 900).';
+
+  it.each([
+    ['a data dir in a synced folder', '~/Dropbox/OmniVoice/omnivoice.log', ['INFO: loading torch']],
+    ['a permission error in the log', '~/.omnivoice/omnivoice.log', ['OSError: [Errno 13] EACCES']],
+    ['a refused launch in the log', '~/.omnivoice/omnivoice.log', ['spawn UNKNOWN']],
+  ])('stays a slow start with %s', (_label, path, lines) => {
+    const message = quoting(path, lines);
+    expect(backendFailureCause(message)).toBe('slow_start');
+    expect(backendFailureHints(message)).toEqual(['backend.hint_slow_start']);
+  });
+});
+
 describe('inSyncedFolder', () => {
   it.each([
     'C:\\Users\\a\\OneDrive\\Desktop\\VoiceStudio',

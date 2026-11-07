@@ -12,7 +12,7 @@
  * to installFailure.corpus.test.ts. installFailure.test.ts fails on any gap.
  */
 
-import { windowsLoadBlock } from './backendOutput';
+import { windowsLoadBlock, withoutBackendLogEvidence } from './backendOutput';
 import { isNativeFaultExit, normalizeExitCode, normalizeSignal } from './nativeExit';
 
 export const INSTALL_FAILURE_CODES = [
@@ -142,7 +142,8 @@ function nativeCode(evidence: FailureEvidence, message: string): InstallFailureC
 
 /** The most specific code the evidence supports, or `UNCLASSIFIED`. */
 export function classifyInstallFailure(evidence: FailureEvidence): InstallFailureCode {
-  const message = evidence.message ?? '';
+  // Quoted log lines are evidence, not the cause (#3724).
+  const message = withoutBackendLogEvidence(evidence.message ?? '');
   const lines = evidence.logLines ?? [];
   if (evidence.stage === 'port_in_use') return 'PORT_IN_USE';
   const issue = evidence.setupIssue ? SETUP_ISSUE_CODES[evidence.setupIssue] : undefined;
@@ -187,7 +188,10 @@ export function classifyInstallFailure(evidence: FailureEvidence): InstallFailur
   // Setup only: a dropped connection in a running engine's log is not an install failure.
   if (evidence.stage === 'setup_required' || evidence.stage === 'installing') {
     if (evidence.stalled) return 'RUNTIME_DOWNLOAD_STALLED';
-    if (DOWNLOAD_INTERRUPTED.test(message) || DOWNLOAD_INTERRUPTED.test(lines.slice(-20).join('\n')))
+    if (
+      DOWNLOAD_INTERRUPTED.test(message) ||
+      DOWNLOAD_INTERRUPTED.test(lines.slice(-20).join('\n'))
+    )
       return 'RUNTIME_DOWNLOAD_INTERRUPTED';
   }
   return 'UNCLASSIFIED';
@@ -278,6 +282,7 @@ export function failureGuidance(
 ): FailureGuidance {
   const base = FAILURE_GUIDANCE[code];
   let guidance = base;
+  if (message) message = withoutBackendLogEvidence(message);
   if (
     code === 'WINDOWS_APP_CONTROL_BLOCKED' &&
     (smartAppControl === 'on' ||
@@ -318,7 +323,9 @@ export function formatFailureFacts(failure: InstallFailure): string[] {
     failure.downloadedBytes === undefined
       ? undefined
       : `${Math.round(failure.downloadedBytes / 1024 ** 2)} MB received`,
-    failure.stalledSeconds === undefined ? undefined : `no progress for ${failure.stalledSeconds} s`,
+    failure.stalledSeconds === undefined
+      ? undefined
+      : `no progress for ${failure.stalledSeconds} s`,
   ]
     .filter(Boolean)
     .join(', ');

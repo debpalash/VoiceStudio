@@ -43,9 +43,12 @@ import {
   backendLogEvidence,
   backendStartupFailure,
   isBrokenEnvironmentOutput,
+  STARTUP_TIMEOUT_ADVICE,
   windowsLoadBlock,
+  withoutBackendLogEvidence,
   type WindowsLoadBlock,
 } from '../shared/utils/backendOutput';
+import { MAX_MSG_CHARS } from '../shared/utils/bugReportDocument';
 import { availableBackendPort } from './backend-port';
 import { scopedStorage, scopedStorageEnv, type ScopedStorage } from './storage-scope';
 import { legacyStorageEnv } from './legacy-storage';
@@ -53,20 +56,16 @@ import { spawn, spawnSync, type ChildProcess, type StdioOptions } from 'node:chi
 import { EventEmitter } from 'node:events';
 import {
   accessSync,
-  closeSync,
   constants,
   existsSync,
-  fstatSync,
   mkdirSync,
-  openSync,
   readdirSync,
   readFileSync,
-  readSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { access, rm, stat } from 'node:fs/promises';
+import { access, open, rm, stat } from 'node:fs/promises';
 import setupLock from '../../../uv.lock?raw';
 import { cpus, homedir, release, totalmem } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
@@ -867,7 +866,16 @@ export function loadBlockMessage(
 /** What one managed launch used: its own data dir decides where its log is. */
 export interface BackendLaunchLog {
   env: NodeJS.ProcessEnv;
+  /** The child's working directory: a relative data dir is relative to it. */
+  cwd: string;
   startedAt: number;
+}
+
+/** The quoted log evidence, scrubbed and bounded. */
+export interface BackendLogTail {
+  path: string;
+  tail: string[];
+  stale: boolean;
 }
 
 /**
@@ -876,11 +884,13 @@ export interface BackendLaunchLog {
  * and scoped installs set `OMNIVOICE_DATA_DIR` only there): an explicit
  * `OMNIVOICE_DATA_DIR` wins, then the platform default
  * (`~/Library/Application Support/OmniVoice` on macOS, `%APPDATA%/OmniVoice`
- * on Windows, `~/.omnivoice` on Linux). The backend writes this log
+ * on Windows, `~/.omnivoice` on Linux). A relative directory is relative to
+ * the child's cwd, as the backend sees it. The backend writes this log
  * independently of the output the shell captured, so it is the evidence that
  * survives a silent readiness timeout.
  */
-function backendLogPath(env: NodeJS.ProcessEnv): string {
+function backendLogPath(launch: Pick<BackendLaunchLog, 'env' | 'cwd'>): string {
+  const { env } = launch;
   const custom = env.OMNIVOICE_DATA_DIR?.trim();
   const dataDir = custom
     ? custom
@@ -889,44 +899,29 @@ function backendLogPath(env: NodeJS.ProcessEnv): string {
       : process.platform === 'win32'
         ? join(env.APPDATA ?? '', 'OmniVoice')
         : join(homedir(), '.omnivoice');
-  return join(dataDir, 'omnivoice.log');
+  return join(resolve(launch.cwd || '.', dataDir), 'omnivoice.log');
 }
 
 /** Enough for LOG_TAIL_LINES lines without reading a whole rotated log. */
 const LOG_TAIL_BYTES = 64 * 1024;
 /** Coarse filesystem clocks (FAT: 2 s) must not make this launch's log look old. */
 const LOG_MTIME_SLACK_MS = 2_000;
+/** A stalled network or mounted data dir must not hold up the failure report. */
+export const LOG_READ_TIMEOUT_MS = 3_000;
 
-/**
- * The tail of the backend's own log, for quoting in a silent startup timeout.
- *
- * Best-effort and exception-free: a missing log, a directory in its place or a
- * permission error all return an empty tail (and the same path), so failure
- * reporting can never be broken by trying to read it. The log is appended
- * across launches, so one not written since this launch started is reported
- * as stale rather than quoted. Only the end of the file is read. Lines are
- * scrubbed like captured process output and bounded by the same tail limit as
- * the status view; the returned path is scrubbed too, so a home directory
- * never leaks.
- */
-export function readBackendLogTail(launch: BackendLaunchLog): {
-  path: string;
-  tail: string[];
-  stale: boolean;
-} {
-  const path = backendLogPath(launch.env);
+async function readLogTail(path: string, startedAt: number): Promise<BackendLogTail> {
   const scrubbed = scrubText(path);
-  let fd: number | undefined;
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
-    fd = openSync(path, 'r');
-    const info = fstatSync(fd);
-    if (info.mtimeMs + LOG_MTIME_SLACK_MS < launch.startedAt) {
+    handle = await open(path, 'r');
+    const info = await handle.stat();
+    if (info.mtimeMs + LOG_MTIME_SLACK_MS < startedAt) {
       return { path: scrubbed, tail: [], stale: true };
     }
     const length = Math.min(info.size, LOG_TAIL_BYTES);
     const buffer = Buffer.alloc(length);
-    const read = readSync(fd, buffer, 0, length, info.size - length);
-    const lines = buffer.subarray(0, read).toString('utf8').split(/\r?\n/);
+    const { bytesRead } = await handle.read(buffer, 0, length, info.size - length);
+    const lines = buffer.subarray(0, bytesRead).toString('utf8').split(/\r?\n/);
     // A read that starts mid-file starts mid-line.
     if (info.size > length) lines.shift();
     const tail = lines
@@ -934,16 +929,45 @@ export function readBackendLogTail(launch: BackendLaunchLog): {
       .filter((line) => line.length > 0)
       .slice(-LOG_TAIL_LINES);
     return { path: scrubbed, tail, stale: false };
-  } catch {
-    return { path: scrubbed, tail: [], stale: false };
   } finally {
-    if (fd !== undefined) {
-      try {
-        closeSync(fd);
-      } catch {
-        /* Nothing to report: the tail was already read or abandoned. */
-      }
-    }
+    // Also after a timeout gave up on this read: the handle never leaks.
+    await handle?.close().catch(() => undefined);
+  }
+}
+
+/**
+ * The tail of the backend's own log, for quoting in a silent startup timeout.
+ *
+ * Best-effort and exception-free: a missing log, a directory in its place, a
+ * permission error or a read that takes longer than `timeoutMs` all return an
+ * empty tail (and the same path), so failure reporting can never be broken or
+ * held up by trying to read it. The log is appended across launches, so one
+ * not written since this launch started is reported as stale rather than
+ * quoted. Only the end of the file is read, asynchronously. Lines are
+ * scrubbed like captured process output and bounded by the same tail limit as
+ * the status view; the returned path is scrubbed too, so a home directory
+ * never leaks.
+ */
+export async function readBackendLogTail(
+  launch: BackendLaunchLog,
+  {
+    timeoutMs = LOG_READ_TIMEOUT_MS,
+    read = readLogTail,
+  }: {
+    timeoutMs?: number;
+    read?: (path: string, startedAt: number) => Promise<BackendLogTail>;
+  } = {},
+): Promise<BackendLogTail> {
+  const path = backendLogPath(launch);
+  const unreadable: BackendLogTail = { path: scrubText(path), tail: [], stale: false };
+  let timer: NodeJS.Timeout | undefined;
+  const timedOut = new Promise<BackendLogTail>((done) => {
+    timer = setTimeout(() => done(unreadable), timeoutMs);
+  });
+  try {
+    return await Promise.race([read(path, launch.startedAt).catch(() => unreadable), timedOut]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -973,13 +997,19 @@ export function startupTimeoutMessage(
     `Backend did not answer on port ${port} within ${Math.round(budgetMs / 1000)} s ` +
     '(OMNIVOICE_STARTUP_BUDGET_S).';
   if (!owned) return `${base} Nothing was spawned for this attempt.`;
-  const advice =
-    'Slow disks and antivirus scanning of the runtime folder are the usual cause: click Retry, ' +
-    'exclude the VoiceStudio runtime folder from real-time scanning, or raise OMNIVOICE_STARTUP_BUDGET_S ' +
-    '(for example 900).';
+  const advice = STARTUP_TIMEOUT_ADVICE;
   if (lastOutput) return `${base} Last output: ${lastOutput} ${advice}`;
   if (logPath !== undefined) {
-    return `${base} ${backendLogEvidence(logPath, logTail ?? [], logStale)}\n${advice}`;
+    // A bug report keeps the first MAX_MSG_CHARS characters of this message:
+    // drop the oldest quoted lines so the newest ones and the advice survive.
+    const lines = [...(logTail ?? [])];
+    const compose = () => `${base} ${backendLogEvidence(logPath, lines, logStale)}\n${advice}`;
+    let message = compose();
+    while (message.length > MAX_MSG_CHARS && lines.length > 0) {
+      lines.shift();
+      message = compose();
+    }
+    return message;
   }
   return `${base} It printed no output. ${advice}`;
 }
@@ -1985,10 +2015,12 @@ export class BackendSupervisor extends EventEmitter<{
       return;
     }
     const progress = this.setupProgress.snapshot();
-    const program = refusedProgram(this.message);
+    // Quoted log lines are evidence, not the cause (#3724).
+    const causeText = withoutBackendLogEvidence(this.message ?? '');
+    const program = refusedProgram(causeText);
     const refused =
-      launchRefused(this.message) ||
-      /Windows refused to load/.test(this.message ?? '') ||
+      launchRefused(causeText) ||
+      /Windows refused to load/.test(causeText) ||
       windowsLoadBlock(this.childErrorLog) !== null;
     const custom = Boolean(parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD));
     const build = (trust: TrustFacts = {}): InstallFailure => ({
@@ -2197,7 +2229,7 @@ export class BackendSupervisor extends EventEmitter<{
       return;
     }
     this.child = child;
-    this.launchLog = { env: processOptions.env, startedAt: Date.now() };
+    this.launchLog = { env: processOptions.env, cwd: plan.cwd, startedAt: Date.now() };
     if (processOptions.drainFd !== null) {
       // Python passes this child-side descriptor to every nested operation.
       // Reading the parent side keeps the ownership channel live and lets
@@ -2541,8 +2573,14 @@ export class BackendSupervisor extends EventEmitter<{
         const lastOutput = owned ? this.childLog.at(-1) : undefined;
         // A managed backend that never printed still wrote its own log, so
         // quote that instead of reporting a bare "It printed no output.".
-        const log =
-          owned && !lastOutput && this.launchLog ? readBackendLogTail(this.launchLog) : undefined;
+        const launch = owned && !lastOutput ? this.launchLog : null;
+        const timedOutGeneration = this.generation;
+        const log = launch ? await readBackendLogTail(launch) : undefined;
+        // A restart or shutdown during the read advances the generation and
+        // owns the backend now: never apply this launch's result over it. (The
+        // child exiting meanwhile is still this timeout: its exit handler
+        // already stands down for the advanced generation.)
+        if (this.generation !== timedOutGeneration || this.shuttingDown) return;
         await this.killChild();
         this.setStage('failed', {
           message: startupTimeoutMessage(this.port, budgetMs, {

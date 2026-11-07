@@ -92,7 +92,15 @@ vi.mock('./runtime-project', () => {
   };
 });
 
-import { BackendSupervisor, setBackendOnlyEnv } from './backend';
+import {
+  BackendSupervisor,
+  LOG_READ_TIMEOUT_MS,
+  readBackendLogTail,
+  setBackendOnlyEnv,
+  startupTimeoutMessage,
+} from './backend';
+import { scrubText } from '../shared/utils/scrub';
+import { MAX_MSG_CHARS } from '../shared/utils/bugReportDocument';
 
 const BUDGET_S = '10';
 
@@ -141,6 +149,17 @@ function stubDataDir(): void {
   dataDir = mkdtempSync(join(tmpdir(), 'omnivoice-budget-'));
   tempDirs.push(dataDir);
   vi.stubEnv('OMNIVOICE_DATA_DIR', dataDir);
+}
+
+/**
+ * The silent-timeout report reads the backend log asynchronously; real file
+ * I/O finishes outside the fake clock, so let it land before asserting.
+ */
+async function untilFailed(supervisor: { status: { stage: string } }): Promise<void> {
+  for (let i = 0; i < 200 && supervisor.status.stage !== 'failed'; i++) {
+    await new Promise((done) => setImmediate(done));
+    await vi.advanceTimersByTimeAsync(50);
+  }
 }
 
 beforeEach(() => {
@@ -205,6 +224,7 @@ it('still fails the backend once it has had its full budget', async () => {
     await vi.advanceTimersByTimeAsync(9_000);
     expect(supervisor.status.stage).toBe('starting');
     await vi.advanceTimersByTimeAsync(2_000);
+    await untilFailed(supervisor);
     expect(supervisor.status.stage).toBe('failed');
     expect(supervisor.status.message).toContain('did not answer on port 3900');
   } finally {
@@ -231,6 +251,7 @@ it.each([
     await supervisor.start();
     if (line) stdout.emit('data', line);
     await vi.advanceTimersByTimeAsync(11_000);
+    await untilFailed(supervisor);
     expect(supervisor.status.stage).toBe('failed');
     expect(supervisor.status.message).toContain(expected);
   } finally {
@@ -253,6 +274,7 @@ it('quotes the backend log tail when a silent backend wrote one', async () => {
   try {
     await supervisor.start();
     await vi.advanceTimersByTimeAsync(11_000);
+    await untilFailed(supervisor);
     expect(supervisor.status.stage).toBe('failed');
     expect(supervisor.status.message).toContain('did not answer on port 3900');
     expect(supervisor.status.message).toContain('INFO: loading torch');
@@ -274,8 +296,9 @@ it('names the backend log path when a silent backend has no log file', async () 
   try {
     await supervisor.start();
     await vi.advanceTimersByTimeAsync(11_000);
+    await untilFailed(supervisor);
     expect(supervisor.status.stage).toBe('failed');
-    expect(supervisor.status.message).toContain(join(dataDir, 'omnivoice.log'));
+    expect(supervisor.status.message).toContain(scrubText(join(dataDir, 'omnivoice.log')));
     expect(supervisor.status.message).toContain('is missing, empty, or unreadable');
   } finally {
     (supervisor as unknown as { child: null }).child = null;
@@ -297,6 +320,7 @@ it('scrubs a home directory out of the quoted backend log tail', async () => {
   try {
     await supervisor.start();
     await vi.advanceTimersByTimeAsync(11_000);
+    await untilFailed(supervisor);
     expect(supervisor.status.stage).toBe('failed');
     expect(supervisor.status.message).toContain('loaded');
     expect(supervisor.status.message).not.toContain('alice');
@@ -317,6 +341,7 @@ async function silentTimeoutMessage(): Promise<string> {
   try {
     await supervisor.start();
     await vi.advanceTimersByTimeAsync(11_000);
+    await untilFailed(supervisor);
     expect(supervisor.status.stage).toBe('failed');
     return supervisor.status.message ?? '';
   } finally {
@@ -358,7 +383,47 @@ it('reads only the end of a long log', async () => {
   const message = await silentTimeoutMessage();
   expect(message).toContain('INFO: line 1999 ');
   expect(message).not.toContain('INFO: line 0 ');
-  expect(message.split('\n').filter((line) => line.startsWith('INFO: line')).length).toBe(40);
+});
+
+it('keeps the newest log lines and the advice within what a bug report quotes', () => {
+  const tail = Array.from({ length: 40 }, (_, i) => `INFO: line ${i} ${'x'.repeat(80)}`);
+  const message = startupTimeoutMessage(3900, 300_000, {
+    owned: true,
+    logPath: '~/.omnivoice/omnivoice.log',
+    logTail: tail,
+  });
+  expect(message.length).toBeLessThanOrEqual(MAX_MSG_CHARS);
+  expect(message).toContain('INFO: line 39 ');
+  expect(message).not.toContain('INFO: line 0 ');
+  expect(message).toMatch(/did not answer on port 3900/);
+  expect(message).toMatch(/raise OMNIVOICE_STARTUP_BUDGET_S \(for example 900\)\.$/);
+});
+
+it('resolves a relative data dir against the backend working directory', async () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'omnivoice-cwd-'));
+  tempDirs.push(cwd);
+  mkdirSync(join(cwd, 'rel-data'));
+  writeFileSync(join(cwd, 'rel-data', 'omnivoice.log'), 'INFO: relative data dir\n');
+  const log = await readBackendLogTail({
+    env: { OMNIVOICE_DATA_DIR: 'rel-data' },
+    cwd,
+    startedAt: 0,
+  });
+  expect(log.tail).toEqual(['INFO: relative data dir']);
+});
+
+it('gives up on a log read that stalls, without holding up the report', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  const pending = readBackendLogTail(
+    { env: { OMNIVOICE_DATA_DIR: dataDir }, cwd: dataDir, startedAt: 0 },
+    { read: () => new Promise(() => undefined) },
+  );
+  await vi.advanceTimersByTimeAsync(LOG_READ_TIMEOUT_MS);
+  await expect(pending).resolves.toEqual({
+    path: scrubText(join(dataDir, 'omnivoice.log')),
+    tail: [],
+    stale: false,
+  });
 });
 
 it('reports the log path when a directory sits where the log should be', async () => {
@@ -372,8 +437,9 @@ it('reports the log path when a directory sits where the log should be', async (
   try {
     await supervisor.start();
     await vi.advanceTimersByTimeAsync(11_000);
+    await untilFailed(supervisor);
     expect(supervisor.status.stage).toBe('failed');
-    expect(supervisor.status.message).toContain(join(dataDir, 'omnivoice.log'));
+    expect(supervisor.status.message).toContain(scrubText(join(dataDir, 'omnivoice.log')));
     expect(supervisor.status.message).toContain('is missing, empty, or unreadable');
   } finally {
     (supervisor as unknown as { child: null }).child = null;
@@ -398,6 +464,7 @@ it('does not quote the previous backend after a restart', async () => {
     await supervisor.start();
     first.stdout.emit('data', 'previous run: CUDA out of memory\r\n');
     await vi.advanceTimersByTimeAsync(11_000);
+    await untilFailed(supervisor);
     expect(supervisor.status.stage).toBe('failed');
     expect(supervisor.status.message).toContain('previous run: CUDA out of memory');
 
@@ -405,6 +472,7 @@ it('does not quote the previous backend after a restart', async () => {
     mocks.spawn.mockReturnValue(fakeChild().child);
     await supervisor.restart();
     await vi.advanceTimersByTimeAsync(11_000);
+    await untilFailed(supervisor);
     expect(supervisor.status.stage).toBe('failed');
     expect(supervisor.status.message).toContain('It printed no output.');
     expect(supervisor.status.message).not.toContain('previous run: CUDA out of memory');
@@ -425,6 +493,7 @@ it('blames no backend for an attach-only wait that times out', async () => {
     await supervisor.start();
     first.stdout.emit('data', 'previous run: CUDA out of memory\r\n');
     await vi.advanceTimersByTimeAsync(11_000);
+    await untilFailed(supervisor);
     expect(supervisor.status.stage).toBe('failed');
 
     // Deny the default port so port selection falls through to 4900, which
@@ -447,6 +516,7 @@ it('blames no backend for an attach-only wait that times out', async () => {
     expect(mocks.spawn).toHaveBeenCalledTimes(1);
     expect(supervisor.port).toBe(4900);
     await vi.advanceTimersByTimeAsync(11_000);
+    await untilFailed(supervisor);
     expect(supervisor.status.stage).toBe('failed');
     expect(supervisor.status.message).toContain('Nothing was spawned for this attempt.');
     expect(supervisor.status.message).not.toContain('previous run: CUDA out of memory');
@@ -482,6 +552,7 @@ it('does not quote the installer after a completed runtime setup', async () => {
     expect(mocks.spawn).toHaveBeenCalledTimes(2);
     expect(supervisor.status.stage).toBe('starting');
     await vi.advanceTimersByTimeAsync(11_000);
+    await untilFailed(supervisor);
     expect(supervisor.status.stage).toBe('failed');
     expect(supervisor.status.message).toContain('It printed no output.');
     expect(supervisor.status.message).not.toContain('uv: installed 412 packages');
@@ -533,6 +604,7 @@ it('fails a backend that printed once and then went quiet, at the plain budget',
     await supervisor.start();
     stdout.emit('data', 'INFO: loading\r\n');
     await vi.advanceTimersByTimeAsync(11_000);
+    await untilFailed(supervisor);
     expect(supervisor.status.stage).toBe('failed');
   } finally {
     (supervisor as unknown as { child: null }).child = null;
@@ -553,6 +625,7 @@ it('never extends a chatty backend past three budgets', async () => {
       stdout.emit('data', 'INFO: chatter\r\n');
       await vi.advanceTimersByTimeAsync(1_000);
     }
+    await untilFailed(supervisor);
     expect(supervisor.status.stage).toBe('failed');
   } finally {
     (supervisor as unknown as { child: null }).child = null;
@@ -585,6 +658,7 @@ it('scrubs credentials and home directories from the quoted backend output', asy
       `auth failed with hf_${'A'.repeat(34)} reading C:\\Users\\alice\\AppData\\model.bin\r\n`,
     );
     await vi.advanceTimersByTimeAsync(11_000);
+    await untilFailed(supervisor);
     expect(supervisor.status.stage).toBe('failed');
     expect(supervisor.status.message).toContain('Last output: auth failed');
     expect(supervisor.status.message).not.toContain('hf_AAAA');
