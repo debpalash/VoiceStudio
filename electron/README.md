@@ -98,7 +98,10 @@ app-relative `/api/...`:
 
 - dev — the renderer dev server proxies `/api` to the backend;
 - prod — the renderer is served from the privileged `app://voicestudio/`
-  scheme and the main process proxies `/api/*` with `net.fetch`.
+  scheme and the main process proxies `/api/*` with `net.fetch`. Dubbing uploads
+  to a local HTTP backend stream from the main process so large media starts
+  reaching the backend before the entire upload has been read. Remote backends
+  use the normal proxy path.
 
 ## Quality gates
 
