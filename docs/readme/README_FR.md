@@ -149,6 +149,8 @@ Tout ce qui précède est gratuit, tourne sur ton propre matériel et ne demande
 
 Choisissez votre système, puis développez une méthode d'installation.
 
+Les moteurs GGUF natifs prennent aussi en charge une accélération Vulkan propre à chaque moteur sur les GPU AMD, Intel et NVIDIA ([OmniVoice](../../docs/engines/omnivoice-gguf.md#vulkan-acceleration), [CosyVoice](../../docs/engines/cosyvoice-gguf.md)). OmniVoice GGUF choisit automatiquement le GPU et la taille du modèle sous Windows et Linux. Si une vérification masquée se bloque, la détection Vulkan réessaie avec un résumé natif ; les compilations de bureau Windows et Linux échouent plutôt que de livrer silencieusement une version sans module Vulkan.
+
 <a id="install-macos"></a>
 
 <details>
