@@ -1,3 +1,5 @@
+import { parseSignInOptions } from './sign-in-options';
+import type { AccountSignInOptions } from '../../preload/index.d';
 import { CloudDisabledError, type CloudActivity } from './cloud-activity';
 import type { CloudSwitchStore } from './cloud-switches';
 import type { startLoopback as StartLoopback } from './loopback';
@@ -48,6 +50,7 @@ export class AccountSession {
   /** Bumped whenever a session ends, so a token request already in flight is discarded. */
   private generation = 0;
   private inflight: Promise<AccessToken | null> | null = null;
+  private logout: Promise<void> | null = null;
   private closeLoopback: (() => void) | null = null;
   private signingIn = false;
   private attempt = 0;
@@ -66,6 +69,29 @@ export class AccountSession {
     });
   }
 
+  /** Invalidates asynchronous profile reads after sign-out or account switch-off. */
+  identityGeneration(): number {
+    return this.generation;
+  }
+
+  /** Only authenticated profile responses may supply this platform User ID. */
+  bindIdentity(accountId: unknown, generation: number): boolean {
+    if (
+      generation !== this.generation ||
+      !this.deps.switches.get().accountEnabled ||
+      typeof accountId !== 'string'
+    )
+      return false;
+    const previous = this.accountId();
+    const bound = this.deps.store.bindAccount(accountId);
+    if (bound && previous !== accountId) this.emit();
+    return bound;
+  }
+
+  accountId(): string | null {
+    return this.deps.switches.get().accountEnabled ? this.deps.store.accountId() : null;
+  }
+
   state(): SessionState {
     return {
       signedIn: this.deps.store.load() !== null,
@@ -79,7 +105,9 @@ export class AccountSession {
     return () => this.listeners.delete(cb);
   }
 
-  async signIn(): Promise<void> {
+  async signIn(options?: AccountSignInOptions): Promise<void> {
+    if (this.logout) throw new TransientAuthError();
+    const { intent } = parseSignInOptions(options);
     if (!this.deps.switches.get().accountEnabled) throw new CloudDisabledError();
     if (this.signingIn) return;
     const pkce = createPkce();
@@ -102,12 +130,14 @@ export class AccountSession {
       });
       this.closeLoopback = lb.close;
       stillWanted();
-      await this.deps.openExternal(this.deps.oidc.authorizeUrl(endpoints, lb.redirectUri, pkce));
+      await this.deps.openExternal(
+        this.deps.oidc.authorizeUrl(endpoints, lb.redirectUri, pkce, intent),
+      );
       const code = await lb.code;
       stillWanted();
       const tokens = await this.deps.oidc.exchangeCode(code, lb.redirectUri, pkce.verifier);
       stillWanted();
-      if (!this.accept(tokens, generation)) throw new CloudDisabledError();
+      if (!this.accept(tokens, generation, true)) throw new CloudDisabledError();
     } catch (error) {
       const cancelled =
         error instanceof CloudDisabledError ||
@@ -128,18 +158,38 @@ export class AccountSession {
     this.closeLoopback?.();
   }
 
-  async signOut(): Promise<void> {
-    const refresh = this.deps.store.load();
-    this.endSession(null);
-    if (refresh) await this.deps.oidc.revoke(refresh).catch(() => {});
+  signOut(): Promise<void> {
+    if (this.logout) return this.logout;
+    this.cancelSignIn();
+    const generation = this.generation;
+    this.logout = (async () => {
+      // Let an in-flight refresh settle so the newest refresh token is the one revoked.
+      if (this.inflight) await this.inflight.catch(() => undefined);
+      // Another sign-out, switch-off or sign-in already replaced this session.
+      if (this.generation !== generation) return;
+      const refresh = this.deps.store.load();
+      // Revocation is best effort: signing out always forgets the session on this device,
+      // even offline, so every cloud call stops at once.
+      if (refresh) await this.deps.oidc.revoke(refresh).catch(() => undefined);
+      if (this.generation === generation) this.endSession(null);
+    })().finally(() => {
+      this.logout = null;
+    });
+    return this.logout;
   }
 
   /** Single-flight; null means signed out or switched off. */
   getAccessToken(): Promise<AccessToken | null> {
+    if (this.logout) return Promise.reject(new TransientAuthError());
     if (!this.deps.switches.get().accountEnabled) return Promise.resolve(null);
     if (this.access && this.access.expires_at - this.now() >= REFRESH_MARGIN_MS)
       return Promise.resolve(this.access);
-    this.inflight ??= this.refresh().finally(() => (this.inflight = null));
+    if (!this.inflight) {
+      const request = this.refresh().finally(() => {
+        if (this.inflight === request) this.inflight = null;
+      });
+      this.inflight = request;
+    }
     return this.inflight;
   }
 
@@ -150,9 +200,13 @@ export class AccountSession {
   endSession(notice: SessionNotice): void {
     this.generation += 1;
     this.access = null;
-    this.deps.store.clear();
-    this.notice = notice;
-    this.emit();
+    this.inflight = null;
+    try {
+      this.deps.store.clear();
+    } finally {
+      this.notice = notice;
+      this.emit();
+    }
   }
 
   private async refresh(): Promise<AccessToken | null> {
@@ -167,6 +221,7 @@ export class AccountSession {
       }
       return this.access;
     } catch (error) {
+      if (generation !== this.generation) return null;
       if (error instanceof InvalidGrantError) {
         this.endSession('signed_out_expired');
         return null;
@@ -181,9 +236,13 @@ export class AccountSession {
   }
 
   /** Stores the tokens unless the session ended (sign-out or switch-off) since `generation`. */
-  private accept(tokens: TokenResponse, generation: number): boolean {
+  private accept(tokens: TokenResponse, generation: number, newSession = false): boolean {
     if (generation !== this.generation || !this.deps.switches.get().accountEnabled) return false;
-    this.deps.store.save(tokens.refresh_token);
+    if (newSession) {
+      this.generation += 1;
+      this.inflight = null;
+    }
+    this.deps.store.save(tokens.refresh_token, { newSession });
     this.access = {
       access_token: tokens.access_token,
       expires_at: this.now() + tokens.expires_in * 1000,

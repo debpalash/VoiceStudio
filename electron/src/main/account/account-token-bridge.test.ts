@@ -81,3 +81,28 @@ it('fresh=1 drops the rejected token before handing out a new one', async () => 
   ).toBe(404);
   b.close();
 });
+
+it('refuses any Origin header, even an empty one, so no web page can reach the token', async () => {
+  const { request } = await import('node:http');
+  const getToken = vi.fn(async () => token);
+  const b = await bridge({ getToken });
+  const status = (origin: string) =>
+    new Promise<number>((resolve, reject) => {
+      const req = request(`${b.url}/token`, {
+        headers: { authorization: `Bearer ${b.token}`, origin },
+      });
+      req.on('response', (res) => {
+        res.resume();
+        resolve(res.statusCode ?? 0);
+      });
+      req.on('error', reject);
+      req.end();
+    });
+  try {
+    expect(await status('')).toBe(403);
+    expect(await status('https://example.com')).toBe(403);
+    expect(getToken).not.toHaveBeenCalled();
+  } finally {
+    b.close();
+  }
+});

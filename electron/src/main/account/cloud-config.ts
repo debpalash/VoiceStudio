@@ -1,8 +1,9 @@
 /**
- * VoiceStudio Cloud endpoints (vssaas docs/specs/desktop-account-client.md). One block per
- * environment. Sign-in is Zitadel on its own host (vssaas ADR 0093); the app discovers the
- * endpoints from `${issuer}/.well-known/openid-configuration`.
+ * VoiceStudio Cloud endpoints, one block per environment in `config/account.json`.
+ * Interactive sign-in starts on the dashboard, which owns session freshness and approval.
+ * Zitadel remains the issuer for app token refresh and revocation.
  */
+import { ACCOUNT_CONFIG } from '../../../../config/account-config.mjs';
 export type CloudEnvName = 'prod' | 'dev' | 'local';
 
 export interface CloudEnvironment {
@@ -16,36 +17,7 @@ export interface CloudEnvironment {
   clientId: string;
 }
 
-const ENVIRONMENTS: Record<
-  CloudEnvName,
-  Omit<CloudEnvironment, 'name' | 'clientId' | 'signedInPage'> & { clientId: () => string }
-> = {
-  prod: {
-    issuer: 'https://id.voicestudio.sh',
-    accountApi: 'https://appapi.voicestudio.sh/v1/account',
-    syncApi: 'https://appapi.voicestudio.sh/v1/sync',
-    dashboard: 'https://app.voicestudio.sh',
-    // Assigned by Zitadel when the production app is registered; injected at build time.
-    clientId: () => (typeof __CLOUD_CLIENT_ID__ === 'string' ? __CLOUD_CLIENT_ID__ : ''),
-  },
-  dev: {
-    issuer: 'https://dev-id.voicestudio.sh',
-    accountApi: 'https://dev-appapi.voicestudio.sh/v1/account',
-    syncApi: 'https://dev-appapi.voicestudio.sh/v1/sync',
-    dashboard: 'https://dev-app.voicestudio.sh',
-    // The desktop (native, public) client registered on the dev Zitadel.
-    clientId: () => '396555644615786670',
-  },
-  local: {
-    issuer: 'http://localhost:8092',
-    accountApi: 'http://127.0.0.1:8080/v1/account',
-    syncApi: 'http://127.0.0.1:8090/v1/sync',
-    dashboard: 'http://127.0.0.1:3000',
-    // Every local stack registers its own client (vssaas `idctl app -public`): set
-    // VOICESTUDIO_CLOUD_CLIENT_ID to it.
-    clientId: () => '',
-  },
-};
+const ENVIRONMENTS = ACCOUNT_CONFIG.environments;
 
 export function resolveCloudEnvironment(opts: {
   packaged: boolean;
@@ -58,41 +30,44 @@ export function resolveCloudEnvironment(opts: {
     ? 'prod'
     : requested && Object.hasOwn(ENVIRONMENTS, requested)
       ? requested
-      : 'dev';
+      : 'prod';
   const { clientId, ...endpoints } = ENVIRONMENTS[name];
   const override = opts.packaged ? '' : (opts.clientId?.trim() ?? '');
   return {
     name,
     ...endpoints,
     signedInPage: `${endpoints.dashboard}/desktop-signed-in`,
-    clientId: override || clientId(),
+    clientId: override || clientId,
   };
 }
 
-/** Sync origins join in S1; S0 talks only to the issuer and the account API. */
+/** Only the configured first-party identity, account and dashboard origins are allowed. */
 export function cloudOrigins(env: CloudEnvironment): Set<string> {
-  return new Set([new URL(env.issuer).origin, new URL(env.accountApi).origin]);
+  return new Set([
+    new URL(env.issuer).origin,
+    new URL(env.accountApi).origin,
+    new URL(env.dashboard).origin,
+  ]);
 }
 
 /** The dashboard pages the account screen opens in the browser. */
-export function dashboardLinks(env: CloudEnvironment): { profile: string; plan: string } {
+export function dashboardLinks(env: CloudEnvironment): {
+  profile: string;
+  plan: string;
+  deletion: string;
+} {
   return {
     profile: `${env.dashboard}/settings/profile`,
     plan: `${env.dashboard}/settings/plan`,
+    deletion: `${env.dashboard}/settings/deletion-review`,
   };
 }
 
 /**
- * On in developer builds; packaged builds need VOICESTUDIO_CLOUD_ACCOUNTS=1 and the production
- * client ID (VOICESTUDIO_CLOUD_CLIENT_ID) at build time, so releases ship it dark until the
- * vssaas production API launches.
+ * Sign-in is offered wherever the environment has a client to sign in with: production and
+ * dev always do; a local stack needs VOICESTUDIO_CLOUD_CLIENT_ID. Each user still turns
+ * accounts on themselves (off by default), and nothing contacts VoiceStudio Cloud until then.
  */
-export function cloudAccountsAvailable(packaged: boolean): boolean {
-  if (!packaged) return true;
-  return (
-    typeof __CLOUD_ACCOUNTS__ === 'boolean' &&
-    __CLOUD_ACCOUNTS__ &&
-    typeof __CLOUD_CLIENT_ID__ === 'string' &&
-    __CLOUD_CLIENT_ID__ !== ''
-  );
+export function cloudAccountsAvailable(env: CloudEnvironment): boolean {
+  return env.clientId !== '';
 }

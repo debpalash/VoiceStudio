@@ -86,7 +86,8 @@ const bridge: VoiceStudioBridge = {
   },
   account: {
     get: () => ipcRenderer.invoke('account:get') as Promise<AccountPublicState>,
-    signIn: () => ipcRenderer.invoke('account:sign-in') as Promise<void>,
+    refresh: () => ipcRenderer.invoke('account:refresh') as Promise<AccountPublicState>,
+    signIn: (options) => ipcRenderer.invoke('account:sign-in', options) as Promise<void>,
     cancelSignIn: () => ipcRenderer.invoke('account:cancel-sign-in') as Promise<void>,
     signOut: () => ipcRenderer.invoke('account:sign-out') as Promise<void>,
     setSwitches: (patch) =>
