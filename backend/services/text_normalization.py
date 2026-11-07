@@ -498,9 +498,11 @@ def _safety_filters(text: str) -> str:
 #
 # Language passes must never rewrite `[…]` spans: `[pause 300ms]` /
 # `[rate 0.9]` / `[voice:NAME]` are grammar, and `[[term|replacement]]`
-# belongs to the pronunciation layer. Bounded repetition keeps it linear.
+# belongs to the pronunciation layer. Its accepted 256-character grammar
+# includes newlines. Single-bracket content excludes both delimiters, so an
+# unbounded run cannot rescan nested opens and remains linear.
 
-_BRACKET_SPAN_RE = re.compile(r"\[[^\][\n]{0,128}\]")
+_BRACKET_SPAN_RE = re.compile(r"\[\[[^\]]{0,256}\]\]|\[[^\][\n]*\]")
 
 
 def _outside_brackets(text: str, fn: Callable[[str], str]) -> str:
