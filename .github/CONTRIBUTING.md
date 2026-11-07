@@ -513,6 +513,16 @@ test-only PR. Docker Hub overview edits still publish through the small
     and the optional local-model smoke test never acquire models or use the network.
     The VC++ Redistributable is a manual prerequisite; opted-in Windows ROCm
     source setup checks it locally and stops when it is missing.
+  - **Optional engine installs the user starts** (owner-approved 2026-11-07):
+    clicking Install or Repair on an optional engine fetches its upstream
+    source from GitHub at a reviewed commit, its Python packages from PyPI or
+    the user's chosen mirror, the PyTorch build matching the host and the
+    engine's Torch pin from `download.pytorch.org` (`cu128`, `cpu`, or on Linux
+    AMD hosts the ROCm index that publishes that Torch version; a user-set
+    `OMNIVOICE_TORCH_INDEX` replaces it), and the engine's Hugging Face weights
+    at a reviewed revision (`backend/services/sidecar_install.py`). Packages are
+    pinned by version, not by hash. Checking whether an engine is installed
+    downloads nothing.
   - **Galleries the user opens or enables:** the community gallery manifest
     from jsDelivr plus its GitHub-hosted previews
     (`backend/api/routers/community.py`); the voice-preview gallery's signed
