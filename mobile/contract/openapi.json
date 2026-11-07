@@ -14883,6 +14883,7 @@
   },
   "/health": {
    "get": {
+    "description": "Liveness: 503 with the startup step until ready, then the cached label.",
     "operationId": "health_health_get",
     "responses": {
      "200": {
