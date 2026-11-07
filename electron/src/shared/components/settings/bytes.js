@@ -13,9 +13,12 @@ export function fmtBytes(bytes) {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   let n = bytes;
   let i = 0;
-  while (n >= 1024 && i < units.length - 1) {
+  // Compare the rounded value so 1023.6 KB moves up to "1.0 MB"
+  // instead of rendering as "1024 KB".
+  while (Math.round(n) >= 1024 && i < units.length - 1) {
     n /= 1024;
     i += 1;
   }
-  return `${n < 10 && i > 0 ? n.toFixed(1) : Math.round(n)} ${units[i]}`;
+  const oneDecimal = n.toFixed(1);
+  return `${Number(oneDecimal) < 10 && i > 0 ? oneDecimal : Math.round(n)} ${units[i]}`;
 }
