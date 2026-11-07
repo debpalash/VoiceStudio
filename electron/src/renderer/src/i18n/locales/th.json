@@ -2513,6 +2513,7 @@
     "plan_ends": "ถึง {{date}}",
     "details_failed": "โหลดรายละเอียดบัญชีของคุณไม่ได้ ({{reason}})",
     "retry": "ลองอีกครั้ง",
+    "refresh": "รีเฟรช",
     "manage_profile": "จัดการโปรไฟล์",
     "manage_plan": "จัดการแพ็กเกจ"
   },

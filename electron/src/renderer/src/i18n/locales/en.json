@@ -2594,6 +2594,7 @@
     "plan_ends": "until {{date}}",
     "details_failed": "Couldn’t load your account details ({{reason}}).",
     "retry": "Retry",
+    "refresh": "Refresh",
     "manage_profile": "Manage profile",
     "manage_plan": "Manage plan"
   },

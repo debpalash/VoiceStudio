@@ -2537,6 +2537,7 @@
     "plan_ends": "do {{date}}",
     "details_failed": "Nie udało się wczytać danych konta ({{reason}}).",
     "retry": "Spróbuj ponownie",
+    "refresh": "Odśwież",
     "manage_profile": "Zarządzaj profilem",
     "manage_plan": "Zarządzaj planem"
   },

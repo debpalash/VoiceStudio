@@ -2513,6 +2513,7 @@
     "plan_ends": "{{date}} tarihine kadar",
     "details_failed": "Hesap ayrıntıların yüklenemedi ({{reason}}).",
     "retry": "Tekrar dene",
+    "refresh": "Yenile",
     "manage_profile": "Profili yönet",
     "manage_plan": "Planı yönet"
   },

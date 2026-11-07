@@ -2513,6 +2513,7 @@
     "plan_ends": "đến {{date}}",
     "details_failed": "Không thể tải thông tin tài khoản của bạn ({{reason}}).",
     "retry": "Thử lại",
+    "refresh": "Làm mới",
     "manage_profile": "Quản lý hồ sơ",
     "manage_plan": "Quản lý gói"
   },

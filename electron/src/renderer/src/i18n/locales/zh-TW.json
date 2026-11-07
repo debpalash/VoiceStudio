@@ -2513,6 +2513,7 @@
     "plan_ends": "至 {{date}}",
     "details_failed": "無法載入你的帳戶詳細資料（{{reason}}）。",
     "retry": "重試",
+    "refresh": "重新整理",
     "manage_profile": "管理個人資料",
     "manage_plan": "管理方案"
   },

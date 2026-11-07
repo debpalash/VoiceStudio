@@ -2513,6 +2513,7 @@
     "plan_ends": "{{date}} まで",
     "details_failed": "アカウントの詳細を読み込めませんでした（{{reason}}）。",
     "retry": "再試行",
+    "refresh": "更新",
     "manage_profile": "プロフィールを管理",
     "manage_plan": "プランを管理"
   },
