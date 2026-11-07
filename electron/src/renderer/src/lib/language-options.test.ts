@@ -26,6 +26,23 @@ it('searches native names, translated names, accents and codes locally', () => {
   expect(rankOptions(options, 'Germany', [])[0]?.value).toBe('German');
   expect(rankOptions(options, String.fromCodePoint(0x1f1e9, 0x1f1ea), [])[0]?.value).toBe('German');
 });
+it("matches a bare language against the engine's standard-form entry (#3723)", () => {
+  // The OmniVoice vocabulary names its base Arabic entry "Standard Arabic"
+  // ("arb") while the pickers call it "Arabic" ("ar"); the dub gate
+  // compares codes, so every Arabic target failed before any request was
+  // sent. The fold covers the bare request in both spellings.
+  expect(languageSupported('Arabic', ['standard arabic'])).toBe(true);
+  expect(languageSupported('ar', ['standard arabic'])).toBe(true);
+  // Still strict: a dialect entry is not the base language, and vice versa.
+  expect(languageSupported('Arabic', ['egyptian arabic'])).toBe(false);
+  expect(languageSupported('Egyptian Arabic', ['standard arabic'])).toBe(false);
+  // And deliberately one-directional (Greptile review on #3781): enabling
+  // "Standard Arabic" on an engine that advertises bare "arabic" (e.g.
+  // VoxCPM2, which declares "ar") would green-light a generation the
+  // backend then rejects, since it resolves the request to "arb".
+  expect(languageSupported('Standard Arabic', ['arabic'])).toBe(false);
+});
+
 it('does not infer support for regional variants, missing lists or a different model', () => {
   expect(languageSupported('German', ['german'])).toBe(true);
   expect(languageSupported('German', ['de'])).toBe(true);

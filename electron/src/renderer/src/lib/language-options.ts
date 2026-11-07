@@ -25,13 +25,32 @@ export function languageCode(name: string) {
   return codes[name.toLowerCase()] || '';
 }
 
+// #3723: the OmniVoice vocabulary names its base Arabic entry
+// "Standard Arabic", which resolves to ISO 639-3 "arb", while the pickers
+// call the language "Arabic" (ISO 639-1 "ar"). The support check below
+// compares codes, so every Arabic dub target failed against an engine that
+// speaks it — the "Choose a supported language" gate fired before any
+// request was sent, for plain Arabic and for every Arabic dialect choice
+// (the dialect is only a translation hint; the gate sees the base
+// language). The comparison therefore folds the qualified form's code on
+// the engine side only ("arb" → "ar"). The fold is deliberately
+// one-directional: folding the request side too would newly enable
+// "Standard Arabic" on engines that advertise bare "arabic" (e.g.
+// VoxCPM2, which declares "ar"), but the backend resolves that request
+// to "arb" and `_check_language` rejects it — the gate would green-light
+// a generation that cannot run. This is a base-name equivalence, not a
+// variant inference: a dialect entry such as "Egyptian Arabic" ("arz")
+// still does not satisfy a bare "Arabic" request, and vice versa.
+const STANDARD_FORM_CODES: Record<string, string> = { arb: 'ar' };
+const foldCode = (code: string) => STANDARD_FORM_CODES[code] ?? code;
+
 export function languageSupported(name: string, supported?: readonly string[] | null) {
   if (name.toLowerCase() === 'auto' || supported == null) return true;
   const code = languageCode(name) || (codeValues.has(name.toLowerCase()) ? name.toLowerCase() : '');
   return supported.some(
     (candidate) =>
       candidate.toLowerCase() === name.toLowerCase() ||
-      Boolean(code && (languageCode(candidate) || candidate.toLowerCase()) === code),
+      Boolean(code && foldCode(languageCode(candidate) || candidate.toLowerCase()) === code),
   );
 }
 
