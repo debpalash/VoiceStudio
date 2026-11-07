@@ -773,7 +773,8 @@ class WhisperXBackend(ASRBackend):
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:
-        from core.windows_rocm.pipelines import pipeline_error, prepare_audio_imports
+        """Report WhisperX import and native-library readiness without raising."""
+        from core.windows_rocm.pipelines import whisperx_error as pipeline_error, prepare_audio_imports
 
         if reason := pipeline_error():
             return False, reason
@@ -802,7 +803,8 @@ class WhisperXBackend(ASRBackend):
         self._ensure_asr()
 
     def _ensure_asr(self):
-        from core.windows_rocm.pipelines import PipelineCompatibilityError, pipeline_error, prepare_audio_imports
+        """Lazily load WhisperX after compatibility checks and available-VRAM selection."""
+        from core.windows_rocm.pipelines import PipelineCompatibilityError, whisperx_error as pipeline_error, prepare_audio_imports
 
         if reason := pipeline_error(self._device):
             raise PipelineCompatibilityError(reason)
@@ -1148,6 +1150,13 @@ class FasterWhisperBackend(ASRBackend):
     gpu_compat = ("cuda", "cpu")
 
     @classmethod
+    def runtime_runs_out_of_process(cls):
+        """Report automatic Windows ROCm 10 inference containment."""
+        from core.windows_rocm.asr_isolation import isolation_required
+
+        return isolation_required()
+
+    @classmethod
     def runtime_gpu_compat(cls):
         from core.windows_rocm.ct2 import gpu_compatible
 
@@ -1168,6 +1177,11 @@ class FasterWhisperBackend(ASRBackend):
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:
+        """Report isolated or in-process faster-whisper readiness without raising."""
+        from core.windows_rocm.asr_isolation import availability_status as isolated_status
+
+        if (status := isolated_status()) is not None:
+            return status
         from core.windows_rocm.ct2 import availability_status
 
         if (status := availability_status()) is not None:
@@ -1190,6 +1204,11 @@ class FasterWhisperBackend(ASRBackend):
         return _ctranslate2_cudnn_ok()
 
     def _ensure_model(self):
+        """Lazily initialize isolated or local faster-whisper with device fallback."""
+        from core.windows_rocm.asr_isolation import ensure_isolated
+
+        if ensure_isolated(self):
+            return
         if self._model is not None:
             return
         ok, detail = _ctranslate2_execstack_ok()
@@ -1274,7 +1293,14 @@ class FasterWhisperBackend(ASRBackend):
                    language: str | None = None, initial_prompt: str | None = None,
                    temperature: float | None = None,
                    task: str = "transcribe") -> dict:
+        """Transcribe through the active worker or local model and normalize segments."""
         self._ensure_model()
+        if getattr(self, "_rocm_asr_proxy", None) is not None:
+            from core.windows_rocm.asr_isolation import transcribe_isolated
+
+            return transcribe_isolated(
+                self, audio_path, word_timestamps=word_timestamps, language=language,
+                initial_prompt=initial_prompt, temperature=temperature, task=task)
         logger.info(
             "faster-whisper transcribing %s (word_timestamps=%s)",
             audio_path, word_timestamps,
@@ -1334,6 +1360,11 @@ class FasterWhisperBackend(ASRBackend):
         # never assigns — so the actual model in self._model was never freed and
         # a warm faster-whisper stayed resident for the life of the process.
         # Clear the real handle so the model is released.
+        """Release the isolated worker or local model and reclaim cached GPU memory."""
+        from core.windows_rocm.asr_isolation import unload_isolated
+
+        if unload_isolated(self):
+            return
         self._model = None
         self._asr = None  # harmless if a subclass ever used it; keeps idempotence
         import gc
@@ -1344,6 +1375,14 @@ class FasterWhisperBackend(ASRBackend):
                 torch.cuda.empty_cache()
         except Exception:
             pass
+
+    def execution_evidence_loaded(self) -> bool:
+        """Check the live delegate when this instance uses isolated inference."""
+        from core.windows_rocm.asr_isolation import isolation_required, evidence_loaded
+
+        if isolation_required() or getattr(self, "_rocm_asr_proxy", None) is not None:
+            return evidence_loaded(self)
+        return super().execution_evidence_loaded()
 
 
 # ── MLX Whisper (Apple Silicon optional) ────────────────────────────────────
@@ -1475,9 +1514,28 @@ class PyTorchWhisperBackend(ASRBackend):
     # ROCm-via-HIP would also work but is left unclaimed pending verification.
     gpu_compat = ("cuda", "mps", "cpu")
 
+    @classmethod
+    def runtime_gpu_compat(cls):
+        """Include only the qualified opt-in Windows HIP runtime in GPU claims."""
+        from core.windows_rocm.torch_asr import gpu_compatible
+
+        return gpu_compatible(cls.gpu_compat)
+
     def __init__(self, asr_pipe=None):
         # Reuses the `_asr_pipe` attached to the TTS model when available.
         self._pipe = asr_pipe
+
+    @property
+    def execution_device(self):
+        """Read the loaded pipeline's execution device rather than its intent."""
+        device = getattr(self._pipe, "device", None)
+        return str(device) if device is not None else None
+
+    @property
+    def dtype(self):
+        """Read actual model parameter precision for execution diagnostics."""
+        dtype = getattr(getattr(self._pipe, "model", None), "dtype", None)
+        return str(dtype) if dtype is not None else None
 
     # Free VRAM needed on CUDA, where _ensure_pipe loads fp16 weights: the
     # weights (parameters x 2 bytes), the batch-16 decode workspace, and
@@ -1530,11 +1588,9 @@ class PyTorchWhisperBackend(ASRBackend):
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:
-        try:
-            import transformers  # noqa: F401
-            return True, "ready"
-        except ImportError as e:
-            return False, f"transformers not installed: {e}"
+        from services.pytorch_whisper_options import dependency_status
+
+        return dependency_status()
 
     @classmethod
     def _pick_device(cls, model_name: str | None = None) -> str:
@@ -1575,6 +1631,7 @@ class PyTorchWhisperBackend(ASRBackend):
         self._ensure_pipe()
 
     def _ensure_pipe(self):
+        """Lazily create the standalone PyTorch Whisper pipeline on the chosen device."""
         if self._pipe is not None:
             return
         # Build a standalone transformers Whisper pipeline on demand. This runs
@@ -1585,7 +1642,12 @@ class PyTorchWhisperBackend(ASRBackend):
         # When the TTS model already has an ASR head, dub_core passes it via the
         # constructor and this path is skipped.
         import torch
-        from transformers import pipeline as hf_pipeline
+        try:
+            from transformers import pipeline as hf_pipeline
+        except ImportError as exc:
+            # Keep ImportError for deep-load fallback, but do not relabel an
+            # installed package's broken transitive import as an absent package.
+            raise ImportError(f"PyTorch Whisper could not load Transformers pipeline: {exc}") from exc
         model_name = self._model_name()
         device = self._pick_device(model_name)
         asr_dtype = torch.float16 if str(device).startswith("cuda") else torch.float32
@@ -1706,16 +1768,25 @@ class PyTorchWhisperBackend(ASRBackend):
     def supports_translation(self) -> bool:
         # A reused TTS-model ASR head may differ from the env default: ask the
         # loaded pipeline first.
+        """Check the loaded or configured checkpoint for multilingual translation support."""
+        from services.pytorch_whisper_options import english_only
+
+        if english_only(self._pipe):
+            return False
         loaded = getattr(getattr(self._pipe, "model", None), "name_or_path", None)
         return whisper_checkpoint_translates(loaded or self._model_name())
 
     def transcribe(self, audio_path: str, *, word_timestamps: bool = True,
                    language: str | None = None, task: str = "transcribe") -> dict:
+        """Decode audio and normalize PyTorch Whisper output with safe generation options."""
         import soundfile as sf
         self._ensure_pipe()
         # transformers' Whisper generate() takes language/task; a prompt needs
         # tokenizer-specific prompt_ids, so it is not advertised here.
         generate_kwargs = whisper_request_options(language, None, None, task)
+        from services.pytorch_whisper_options import generation_options
+
+        generate_kwargs = generation_options(self._pipe, generate_kwargs)
         # #2039: libsndfile cannot open MP4/M4A (AAC), which /transcribe and
         # the MCP tool both accept. Those decode through the validated ffmpeg
         # path, which resamples to 16 kHz properly. Anything soundfile can
@@ -2889,7 +2960,8 @@ def list_backends() -> list[dict]:
             _LAST_ERRORS.pop(bid, None)
         else:
             _LAST_ERRORS[bid] = scrub_text(msg)
-        isolation = "subprocess" if getattr(cls, "_is_subprocess_isolated", False) else "in-process"
+        implicit_isolation = bool(getattr(cls, "runtime_runs_out_of_process", lambda: False)())
+        isolation = "subprocess" if getattr(cls, "_is_subprocess_isolated", False) or implicit_isolation else "in-process"
         routing = runtime_compute_profile(cls, caps)
         gpu_compat = routing["gpu_compat"]
         routing["routing_reason"] = scrub_text(routing["routing_reason"]) if routing["routing_reason"] else None
@@ -2898,7 +2970,7 @@ def list_backends() -> list[dict]:
         # cannot leave ghost GPU/provider evidence in diagnostics.
         instance = (
             _ISOLATED_INSTANCES.get(bid)
-            if isolation == "subprocess"
+            if isolation == "subprocess" and not implicit_isolation
             else _RUNTIME_INSTANCES.get(bid)
         )
         execution_evidence = execution_snapshot(
@@ -2938,6 +3010,10 @@ def _probe_available(cls) -> bool:
     lib that refuses to load — CTranslate2's exec-stack rejection, #692) means the
     engine is unusable on this host, so treat it as unavailable and fall through
     to the next candidate rather than crash engine selection."""
+    from services.performance_readiness import inventory_active, asr_installed
+
+    if inventory_active():
+        return asr_installed(cls, _DEEP_IMPORT_BROKEN)
     if getattr(cls, "id", None) in _DEEP_IMPORT_BROKEN:
         # A previous load proved this backend's deep import chain is broken
         # (#1185) — the shallow probe would succeed, so consult the record

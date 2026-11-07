@@ -503,10 +503,16 @@ test-only PR. Docker Hub overview edits still publish through the small
     requesting 256 KiB from the affected package's pinned URL through the setup
     proxy, bounded to 15 seconds, with no upload; and Hugging Face model downloads
     (gated on install state or an explicit user action).
-  - **Windows ROCm setup the user explicitly selects** (owner-approved
-    2026-10-26): the matched AMD SDK and PyTorch wheels from `repo.radeon.com`,
-    and the pinned HIP CTranslate2 archive from OpenNMT/CTranslate2 GitHub
-    Releases. Every artifact is SHA-256 pinned in
+  - **Windows ROCm setup the user explicitly selects:** the initial sources
+    approved on 2026-10-26 are `repo.radeon.com` SDK/PyTorch wheels and the HIP
+    CTranslate2 archive from OpenNMT/CTranslate2 GitHub Releases. PR #3712
+    implements a proposed RDNA 2 source-policy exception: `stable.repo.amd.com`
+    wheels and the unmodified expanded-target dependency mirror under
+    `dutch2005/VoiceStudio`. The exception is part of PR #3712's review and
+    requires explicit upstream maintainer acceptance before merge; development
+    integration/testing does not establish upstream approval. These hosts are
+    used only by user-selected RDNA 2 provisioning, never by readiness checks
+    or normal inference. Every artifact is SHA-256 pinned in
     `scripts/windows-rocm-recipe.json` and verified before use. This opt-in
     installer keeps every other package at its installed (locked) version and
     uses the usual package indexes only for anything new; verification

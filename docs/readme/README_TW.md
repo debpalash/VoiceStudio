@@ -205,6 +205,8 @@ Intel Mac 可執行應用介面；請連線另一臺電腦上的 VoiceStudio 後
 <details>
 <summary><img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" /> <strong>Windows</strong> · PowerShell · EXE</summary>
 
+實驗性的 [Windows ROCm 設定](../../docs/install/windows-rocm.md)支援目標為 `gfx1030`、`gfx1031` 或 `gfx1032` 的部分 RDNA 2 RX 6000 顯示卡，不包括 RX 6500 XT（`gfx1034`）。個別固定版本的 CTranslate2 組建包含用於 RX 6700 XT 轉錄的原生 `gfx1031` 核心；設定程序會檢查 GPU 核心的實際執行。RX 6700 XT 測試也涵蓋原生 Torch 語音生成與 PyTorch Whisper。ROCm 10 的 faster-whisper 使用獨立的推論程序，以安全地選擇 CPU 或回退至 CPU。其他顯示卡與工作負載仍受指南中驗證範圍的限制。效能預設會在儲存已變更的引擎選擇前，透過離線子程序驗證執行環境的就緒狀態，並在已安裝的執行環境失敗時保留備援方案。
+
 <blockquote>
 
 **穩定版 · x64**<br />Windows 10/11 x64 · NVIDIA CUDA · AMD ROCm（需主動啟用）· CPU。

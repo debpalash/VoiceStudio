@@ -19,7 +19,9 @@ def validate_inputs(model, wav):
     if any("://" in str(value) for value in (model, wav)):
         raise ValueError("Remote model/audio URLs are not supported")
     model, wav = Path(model).resolve(), Path(wav).resolve()
-    for name in ("model.bin", "config.json", "tokenizer.json", "preprocessor_config.json"):
+    # faster-whisper derives feature dimensions from the model when the
+    # optional preprocessor file is absent (for example Systran small.en).
+    for name in ("model.bin", "config.json", "tokenizer.json"):
         if not (model / name).is_file():
             raise FileNotFoundError(f"Local CT2 model requires {name}")
     if not wav.is_file():

@@ -14,9 +14,11 @@ from .artifacts import checked_wheel, download_archive
 from .failures import VerificationFailure, failure_report
 from .recipe import load_recipe, recipe_identity, validate_target
 from .verify import PROJECT_ROOT, verify_environment
+from .repair_selection import validate_repair_selection
 
 #: Packages the overlay replaces; everything else stays at its installed version.
-_OVERLAID = ("torch", "torchaudio", "torchvision", "ctranslate2", "rocm", "triton")
+_OVERLAID = ("torch", "torchaudio", "torchvision", "ctranslate2", "rocm", "triton",
+             "amd-torch", "amd-torchvision")
 
 
 def _normalized(name):
@@ -92,6 +94,7 @@ def provision(uv):
         if not exc.repairable:
             raise
     recipe = load_recipe()
+    validate_repair_selection(recipe)
     # Verify CT2 before changing any package, and discard downloads on any failure.
     with tempfile.TemporaryDirectory(prefix="voicestudio-windows-rocm-") as temporary:
         folder = Path(temporary)
