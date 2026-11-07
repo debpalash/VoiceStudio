@@ -522,8 +522,10 @@ test-only PR. Docker Hub overview edits still publish through the small
     `download.pytorch.org` (`cu128` or `cpu`; on Linux AMD hosts, engines with
     ROCm support use the ROCm index that publishes their Torch version, which a
     user-set `OMNIVOICE_TORCH_INDEX` replaces), where uv may also resolve other
-    packages that index carries; and the engine's Hugging Face weights at a
-    reviewed revision (`backend/services/sidecar_install.py`). Torch is pinned
+    packages that index carries; and, for engines that fetch them during
+    install, their Hugging Face weights at a reviewed revision
+    (`backend/services/sidecar_install.py`). Engines that skip that step
+    download weights on first use, under the Hugging Face model downloads above. Torch is pinned
     to an exact version; other packages follow the engine's own requirements
     (exact, ranged or unpinned). Nothing is hash-pinned. Checking whether an
     engine is installed downloads nothing.
