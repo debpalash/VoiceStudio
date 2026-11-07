@@ -516,7 +516,9 @@ test-only PR. Docker Hub overview edits still publish through the small
   - **Optional engine installs the user starts** (owner-approved 2026-11-07):
     clicking Install or Repair on an optional engine fetches its upstream
     source from GitHub (a shallow clone of the branch tip, then the reviewed
-    commit, or that commit's source archive when the clone or checkout fails); a uv-managed Python from
+    commit, or that commit's source archive when the clone or checkout fails),
+    plus any helper sources the engine needs as GitHub archives at pinned
+    commits (CosyVoice: Matcha-TTS, PyWorld and World); a uv-managed Python from
     `astral-sh/python-build-standalone` GitHub Releases (or the regional mirror)
     when the engine needs a version that is not installed; its Python packages
     from PyPI or the user's chosen mirror; the host's PyTorch build from
