@@ -2,7 +2,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { CrashJournal } from './crash-journal';
 it('retains three bounded records across restart and ignores other versions without rewriting', () => {
   const path = join(mkdtempSync(join(tmpdir(), 'voice-crash-')), 'crashes.json');
@@ -122,4 +122,82 @@ it('records the loading frame below deep recursion and the other threads (#2382)
   expect(kept).toContain('[Previous line repeated 299 more times]');
   expect(kept).toContain('backend/services/model_manager.py", line 2901 in _load_model_sync');
   expect(kept).toContain('backend/services/asr_backend.py", line 812 in _transcribe_chunk');
+});
+
+describe('crash context', () => {
+  const contextLine = (fields: Record<string, unknown>) =>
+    `VOICESTUDIO_CRASH_CONTEXT=${JSON.stringify(fields)}`;
+  const journal = () => new CrashJournal(join(mkdtempSync(join(tmpdir(), 'crash-')), 'j.json'), '1');
+
+  it('attaches the last activity and memory to the crash record', () => {
+    const crashes = journal();
+    crashes.captureLine(contextLine({ kind: 'task', detail: 'generate' }));
+    crashes.captureLine(
+      contextLine({
+        kind: 'model_load',
+        detail: 'omnivoice-tts',
+        engine: 'omnivoice',
+        device: 'cpu',
+        ram_free_gb: 3.1,
+        ram_total_gb: 7.7,
+        swap_free_gb: 1,
+        swap_total_gb: 2,
+      }),
+    );
+    const record = crashes.record(3221225477, null, 1000, []);
+    expect(record?.context).toMatchObject({
+      kind: 'model_load',
+      detail: 'omnivoice-tts',
+      engine: 'omnivoice',
+      device: 'cpu',
+      ram_free_gb: 3.1,
+    });
+    expect(record?.context?.seconds_before_exit).toBeGreaterThanOrEqual(0);
+  });
+
+  it('keeps context when the fault dump starts after it', () => {
+    const crashes = journal();
+    crashes.captureLine(contextLine({ kind: 'model_load' }));
+    crashes.captureLine('Windows fatal exception: access violation');
+    expect(crashes.record(3221225477, null, 1000, [])?.context?.kind).toBe('model_load');
+  });
+
+  it('does not carry context into the next process crash', () => {
+    const crashes = journal();
+    crashes.captureLine(contextLine({ kind: 'model_load' }));
+    crashes.record(1, null, 1000, []);
+    expect(crashes.record(1, null, 1000, [])?.context).toBeUndefined();
+  });
+
+  it('does not blame a new process for what the previous one was doing', () => {
+    const crashes = journal();
+    crashes.captureLine(contextLine({ kind: 'model_load' }));
+    crashes.startProcess();
+    expect(crashes.record(1, null, 1000, [])?.context).toBeUndefined();
+  });
+
+  it('measures the age of the activity at the exit, not at the later recording', () => {
+    const crashes = journal();
+    crashes.captureLine(contextLine({ kind: 'model_load' }));
+    const record = crashes.record(1, null, 1000, [], Date.now() + 60_000);
+    expect(record?.context?.seconds_before_exit).toBeGreaterThanOrEqual(59);
+    expect(record?.context?.seconds_before_exit).toBeLessThanOrEqual(61);
+  });
+
+  it('keeps only known fields of safe shape', () => {
+    const crashes = journal();
+    crashes.captureLine(
+      contextLine({ kind: 'task', detail: 'C:/Users/me/secret.wav', ram_free_gb: 'lots', x: 1 }),
+    );
+    expect(crashes.record(1, null, 1000, [])?.context).toEqual({
+      kind: 'task',
+      seconds_before_exit: expect.any(Number),
+    });
+  });
+
+  it('ignores a malformed line', () => {
+    const crashes = journal();
+    crashes.captureLine('VOICESTUDIO_CRASH_CONTEXT={nope');
+    expect(crashes.record(1, null, 1000, [])?.context).toBeUndefined();
+  });
 });

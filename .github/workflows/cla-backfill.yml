@@ -1,0 +1,33 @@
+# Run the CLA check on every open pull request: updates each CLA status, the
+# `cla-signed` label and the check's comment. Start it by hand from main; it runs
+# only the base branch's checker and never checks out pull-request code.
+
+name: CLA backfill
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    concurrency:
+      group: cla-backfill
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      statuses: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - run: python3 .github/scripts/cla_backfill.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

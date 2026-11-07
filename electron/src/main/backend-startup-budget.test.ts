@@ -59,6 +59,8 @@ vi.mock('./runtime-project', () => {
     if (mocks.prespawnMs > 0) await vi.advanceTimersByTimeAsync(mocks.prespawnMs);
   };
   return {
+    resolveTorchVariant: () => ({ variant: 'cpu', explicit: false }),
+    cpuTorchApplies: () => false,
     runtimeReady: async () => mocks.runtimeReadyNow,
     runtimeCompatible: async () => false,
     runtimeDependenciesReady: async () => {
