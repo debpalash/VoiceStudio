@@ -18,7 +18,7 @@ _README_REPOSITORIES = {
     "Supermetry": "/velixio/supermetry",
 }
 
-_SPECIAL_SPONSORS = {"Spicrawl": "app.spicrawl.com"}
+_SPECIAL_SPONSORS = {"Spicrawl": "spicrawl.com"}
 
 _ENTRY = re.compile(
     r"\{\s*name:\s*'(?P<name>[^']+)',\s*logoUrl:\s*(?P<logo>[^,]+),\s*"
@@ -94,6 +94,13 @@ def test_sponsors_md_and_the_app_list_the_same_sponsors():
     in_app = {(s["name"], _host(s["url"])) for s in _in_app_sponsors()}
     assert {(s["name"], _host(s["url"])) for s in links} == in_app | set(_SPECIAL_SPONSORS.items())
     for link in links:
+        if link["name"] in _SPECIAL_SPONSORS:
+            target = urlsplit(link["url"])
+            assert (target.scheme, target.path) == ("https", "")
+            assert parse_qs(target.query.replace("&amp;", "&")) == {
+                "utm_source": ["voicestudio"], "utm_medium": ["github_readme"],
+                "utm_campaign": ["special_sponsor"], "utm_content": ["sponsor-list-logo"],
+            }
         for asset in link["assets"]:
             assert (_ROOT / asset).is_file(), f"SPONSORS.md: {asset} does not exist"
 
@@ -106,7 +113,7 @@ def test_readme_logo_row_matches_the_app_and_resolves(path):
     for link in links:
         target = urlsplit(link["url"])
         if link["name"] in _SPECIAL_SPONSORS:
-            assert (target.scheme, target.netloc, target.path) == ("https", _SPECIAL_SPONSORS[link["name"]], "/signup")
+            assert (target.scheme, target.netloc, target.path) == ("https", _SPECIAL_SPONSORS[link["name"]], "")
             assert parse_qs(target.query.replace("&amp;", "&")) == {
                 "utm_source": ["voicestudio"], "utm_medium": ["github_readme"],
                 "utm_campaign": ["special_sponsor"], "utm_content": ["logo"],
