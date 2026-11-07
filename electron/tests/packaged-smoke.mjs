@@ -71,6 +71,7 @@ if (setup || install || existing) {
     TRANSFORMERS_OFFLINE: firstSound ? '0' : '1',
     UV_CACHE_DIR: join(profile, 'uv-cache'),
     OMNIVOICE_DATA_DIR: join(profile, 'data'),
+    OMNIVOICE_ENV_FILE: join(profile, 'user-env'),
     OMNIVOICE_PRELOAD_TTS_ASR: '0',
     OMNIVOICE_PRELOAD_CAPTURE_ASR: '0',
     OMNIVOICE_PRELOAD_WATERMARK: '0',

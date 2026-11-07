@@ -28,6 +28,10 @@ describe('userEnvPath', () => {
   });
 });
 
+it('keeps the test suite away from the real env file', () => {
+  expect(userEnvPath()).not.toBe(userEnvPath({}));
+});
+
 describe('applySavedTorchVariant (#3804)', () => {
   it.each([
     [`${line}=rocm\n`, 'rocm'],
