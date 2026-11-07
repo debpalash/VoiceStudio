@@ -1,0 +1,121 @@
+# Temporary: pytest durations on the CI runner. Delete the branch after.
+name: pytest durations
+
+on:
+  push:
+    branches: [ci/pytest-durations]
+
+permissions:
+  contents: read
+
+jobs:
+  test-python:
+    name: Tests (Python)
+    runs-on: ubuntu-22.04
+    env:
+      # Same restricted-network resilience the smoke matrix already sets. This
+      # job resolves the same direct-URL dependency and had none of it, which
+      # is why it was the one that kept dying (see scripts/uv-sync-retry.sh).
+      UV_HTTP_TIMEOUT: "120"
+      UV_HTTP_RETRIES: "5"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      # enable-cache persists ~/.cache/uv across runs, keyed on uv.lock —
+      # turns `uv sync` from ~45 s cold to ~5 s warm.
+      - name: Install uv
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      # Node 22 is needed for --experimental-strip-types so node:test can
+      # import .ts files directly from electron/src/shared/api/*.
+      - name: Setup Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: '1.4.2'
+
+      # Cache the resolved .debs for media and Snap artifact tests.
+      - name: System deps (ffmpeg and squashfs-tools)
+        uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
+        with:
+          packages: ffmpeg squashfs-tools
+          version: 1.0
+
+      - name: Install Python deps
+        # `--all-extras` installs optional engine deps (e.g. `supertonic`)
+        # so their tests can exercise the real import path, not the
+        # "package not installed" fallback. Smoke job below stays on bare
+        # `uv sync` because smoke only hits /health + fixture profiles.
+        #
+        # Retried because one dependency — en-core-web-sm — resolves to a
+        # direct GitHub release URL, and github.com intermittently answers
+        # `http2 error: refused stream before processing any application
+        # logic`. uv's own 3 retries all land inside the same few seconds and
+        # fail together, which has cost otherwise-green runs (#1517, #1518).
+        # Backing off between whole attempts is what actually clears it.
+        run: bash scripts/uv-sync-retry.sh --all-extras
+
+      # Cache ~/.bun/install/cache keyed on bun.lock — `bun install` drops
+      # from ~15 s cold to near-instant on warm cache.
+      - name: Cache bun deps
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install Electron deps
+        # --frozen-lockfile so an Electron workspace change that forgets to
+        # regenerate the root bun.lock fails HERE (fast) instead of only in the
+        # Docker build (deploy/Dockerfile), which is what reddened main on #485.
+        run: bun install --frozen-lockfile
+
+      # HF_HUB_OFFLINE=1 is a recurrence guard, not an optimization: a test
+      # that reaches huggingface.co fails fast and loud instead of silently
+      # downloading model weights mid-suite (the preload_model() Hub-probe
+      # bug pulled the full 2.3 GB k2-fsa/OmniVoice checkpoint into every
+      # networked empty-cache run before it was caught). All legitimate HF
+      # interactions in tests are stubbed; anything that trips this is a
+      # test-isolation bug.
+      # `-n auto` runs tests/ in parallel (one worker per CPU; 10 min serial ->
+      # ~3 min on a 4-core runner, with identical results). backend/tests/ below
+      # stays serial: one test there depends on another's leftover state and
+      # fails when run in isolation, which parallel scheduling exposes.
+      - name: Run pytest
+        run: uv run --no-sync pytest tests/ -q --tb=short -n auto --durations=80
+        env:
+          HF_HUB_OFFLINE: "1"
+
+      # `backend/tests/` mounts routers on bare FastAPI apps (no heavy main
+      # import chain) with a hermetic data dir from its conftest.py. It no
+      # longer stubs sys.modules, so mixed sessions with tests/ are safe;
+      # the separate session is kept for cheaper, clearer CI output.
+      - name: Run pytest (backend/tests, isolated)
+        run: uv run --no-sync pytest backend/tests/ -q --tb=short
+        env:
+          HF_HUB_OFFLINE: "1"  # same no-silent-downloads guard as tests/
+
+      # Check the generated mobile files explicitly as well as through pytest.
+      - name: Mobile theme tokens match Electron
+        run: bun --no-install scripts/export-mobile-tokens.ts --check
+
+      - name: Mobile maintainer cards match Electron
+        run: bun --no-install scripts/export-mobile-contributors.ts --check
+
+
+  # Electron checks run beside the Python job instead of after it (~16 min serial
+  # -> the longer of the two). They need no Python: every backend they touch is a
+  # JavaScript fake. `test` below keeps the required check name and gates on both.
