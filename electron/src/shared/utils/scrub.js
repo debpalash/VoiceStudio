@@ -35,15 +35,42 @@ const TOKEN_PATTERNS = [
 const URL_SECRET_RE =
   /((?:access[_-]?token|api[_-]?key|apikey|auth[_-]?token|token|secret|password|passwd|pwd)=)([^&\s"'#]{6,})/gi;
 
-const HOME_PATTERNS = [
+// A home folder name can contain spaces ("Alice Smith"). Where the path goes on
+// past the name, the name is everything up to that separator; the spaced form
+// runs first and only matches when a separator follows, so "/home/bob and more"
+// still loses just "bob". Names never span a quote, line break or second root.
+const SPACED_NAME = (sep) => `[^${sep}\\s"'\\0]+(?: [^${sep}\\s"'\\0]+)+(?=${sep})`;
+const NAME = (sep) => `[^${sep}\\s"']+`;
+const homePatterns = (name) => [
   // Windows-with-forward-slashes must run BEFORE the bare macOS shape, or
   // `/Users/<name>` inside `C:/Users/<name>` gets eaten first, leaving `C:~`.
   // `i` flag: Windows is case-insensitive and tools emit lowercase `c:\users\`.
-  /(?:file:\/\/\/)?[A-Za-z]:\/Users\/[^/\s"']+/gi, // Windows, forward slashes (webview stacks, file:/// URLs)
-  /\/Users\/[^/\s"']+/gi, // macOS
-  /\/home\/[^/\s"']+/gi, // Linux
-  /[A-Za-z]:\\Users\\[^\\\s"']+/gi, // Windows, backslashes
+  new RegExp(`(?:file:///)?[A-Za-z]:/Users/${name('/')}`, 'gi'), // Windows, forward slashes (webview stacks, file:/// URLs)
+  new RegExp(`/Users/${name('/')}`, 'gi'), // macOS
+  new RegExp(`/home/${name('/')}`, 'gi'), // Linux
+  new RegExp(`[A-Za-z]:\\\\Users\\\\${name('\\\\')}`, 'gi'), // Windows, backslashes
 ];
+const HOME_PATTERNS = [...homePatterns(SPACED_NAME), ...homePatterns(NAME)];
+
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * The running user's real home directory, where this context can see it (the
+ * main process; the sandboxed renderer has no `process`). It is removed first
+ * and whole, whatever characters its folder name holds, in both slash styles.
+ */
+function realHomePatterns() {
+  const env = globalThis.process?.env;
+  if (!env) return [];
+  const homes = [env.HOME, env.USERPROFILE].filter(
+    (home) => typeof home === 'string' && home.replace(/[\\/]+$/, '').length > 3,
+  );
+  return homes.flatMap((home) => {
+    const trimmed = home.replace(/[\\/]+$/, '');
+    const forms = new Set([trimmed, trimmed.replace(/\\/g, '/')]);
+    return [...forms].map((form) => new RegExp(`${escapeRegExp(form)}(?=$|[\\\\/\\s"'])`, 'gi'));
+  });
+}
 
 /** Redact credential-shaped substrings and home directories. */
 export function scrubText(text) {
@@ -51,6 +78,6 @@ export function scrubText(text) {
   let s = String(text);
   for (const pat of TOKEN_PATTERNS) s = s.replace(pat, REDACTED);
   s = s.replace(URL_SECRET_RE, (_m, name) => `${name}${REDACTED}`);
-  for (const pat of HOME_PATTERNS) s = s.replace(pat, '~');
+  for (const pat of [...realHomePatterns(), ...HOME_PATTERNS]) s = s.replace(pat, '~');
   return s;
 }
