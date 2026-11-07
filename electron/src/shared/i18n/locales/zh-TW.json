@@ -1757,6 +1757,7 @@
     "unexpected": "未預期的錯誤：{{message}}",
     "backend_shutting_down": "VoiceStudio 正在關閉。請重新開啟應用程式後再試。",
     "crash_broken_env": "它在載入自身的 Python 相依套件時結束，因此與記憶體或顯示卡無關——執行環境不完整，或更新到一半就停住了。請在 設定 → 系統日誌 → 後端 中使用「清理並重試」，它會從頭重建環境並就地修復，不會動到你的聲音或專案。若之後仍然失敗，當機詳情會指出無法匯入的確切套件。",
+    "crash_external_kill": "The backend process was ended from outside the app — most often security software, an OS policy, or another program — not by a fault in VoiceStudio, so no job was lost. Check your antivirus and any app-control or system policy that may have stopped it, then relaunch.",
     "crash_vram_default": "在較小的 GPU 上，常見原因是在 TTS 模型仍載入時再載入 ASR 模型，導致顯示記憶體（VRAM）不足：請先卸載 TTS 模型，或在 模型庫 → 模型 中選擇較小的 ASR 模型。",
     "stream_cut_backend_alive": "請先檢查應用程式前方的反向代理或負載平衡器：為此路由關閉回應緩衝（proxy_buffering off; X-Accel-Buffering: no），並調高讀取逾時。連線中斷時後端仍在執行，所以並未當機；伺服器或容器部署中通常是代理所致，直接執行桌面應用程式或透過 localhost 存取即可確認或排除。",
     "stream_cut_backend_alive_local": "請等待幾分鐘，再從歷史記錄重新開啟該工作；若找不到，請在 設定 → 系統日誌 → 後端 中查看後端日誌。一個耗時且無輸出的步驟之後，連線在工作途中中斷，但後端仍在執行，通常會把工作完成，所以這不是當機。"

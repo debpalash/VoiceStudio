@@ -2,7 +2,7 @@ import { abortableDelay } from './abortableDelay.ts';
 import { DEFAULT_BACKEND_PORT } from '../app-config.ts';
 import { deploymentMode, type DeploymentMode } from './deploymentMode.ts';
 import { isBrokenEnvironmentOutput } from './backendOutput.ts';
-import { isNativeFaultExit } from './nativeExit.ts';
+import { isExternalKillExit, isNativeFaultExit } from './nativeExit.ts';
 /**
  * backendCrash — frontend bridge to the desktop shell's crash forensics
  * (#941, src-tauri/src/crash.rs).
@@ -322,6 +322,17 @@ export function isBrokenEnvironmentCrash(
   return isBrokenEnvironmentOutput(raw.split('\n'));
 }
 
+/** True when the captured tail already carries a fault dump or a Python
+ * traceback — evidence the existing branches explain. The external-termination
+ * hint must not overwrite those. */
+function tailHasFaultEvidence(tail: string): boolean {
+  if (!tail) return false;
+  return (
+    /(?:Fatal Python error:|Windows fatal exception:)/.test(tail) ||
+    /Traceback \(most recent call last\)/.test(tail)
+  );
+}
+
 export function crashCauseHint(
   marker: Pick<BackendCrashMarker, 'exit_code' | 'signal'> &
     Partial<Pick<BackendCrashMarker, 'last_stderr'>>,
@@ -388,6 +399,18 @@ export function crashCauseHint(
         'for synthesis, "Faster-Whisper (crash-isolated subprocess)" for transcription. Those ' +
         'run the model in a separate process, so a crash like this takes down that process ' +
         'instead of the whole backend.',
+    });
+  }
+  // 0xFFFFFFFF / -1: the process was ended from outside the app — security
+  // software, an OS policy, or another program — rather than by a fault in the
+  // backend itself. Only claim that when the captured tail does not already
+  // carry a fault dump or traceback (those keep their existing explanation).
+  if (isExternalKillExit(marker.exit_code) && !tailHasFaultEvidence(marker.last_stderr || '')) {
+    return i18next.t('errors.crash_external_kill', {
+      defaultValue:
+        'The backend process was ended from outside the app — most often security software, an OS ' +
+        'policy, or another program — not by a fault in VoiceStudio, so no job was lost. Check your ' +
+        'antivirus and any app-control or system policy that may have stopped it, then relaunch.',
     });
   }
   return i18next.t('errors.crash_vram_default', {
