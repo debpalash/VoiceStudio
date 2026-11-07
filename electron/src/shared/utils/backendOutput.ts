@@ -99,11 +99,7 @@ export function isBrokenEnvironmentOutput(lines: readonly string[]): boolean {
   // A file Windows refused to load is intact on disk: reinstalling the
   // runtime downloads gigabytes and is blocked again (#3209).
   if (windowsLoadBlock(lines)) return false;
-  const tail = text
-    .split('\n')
-    .slice(-RECENT_OUTPUT_LINES)
-    .join('\n')
-    .toLowerCase();
+  const tail = text.split('\n').slice(-RECENT_OUTPUT_LINES).join('\n').toLowerCase();
   if (!IMPORT_FAILURE_MARKERS.some((marker) => tail.includes(marker))) return false;
   return CORE_DEPENDENCIES.some((dependency) => tail.includes(dependency));
 }
@@ -123,7 +119,8 @@ export type WindowsLoadBlock = 'application_control' | 'group_policy' | 'antivir
  */
 export function windowsLoadBlock(lines: readonly string[]): WindowsLoadBlock | null {
   const tail = lines.slice(-RECENT_OUTPUT_LINES).join('\n');
-  if (/an application control policy has blocked this file/i.test(tail)) return 'application_control';
+  if (/an application control policy has blocked this file/i.test(tail))
+    return 'application_control';
   // ERROR 1260 is AppLocker / Software Restriction Policies, never Smart App Control.
   if (/this program is blocked by group policy/i.test(tail)) return 'group_policy';
   if (/contains a virus or potentially unwanted software/i.test(tail)) return 'antivirus';
@@ -133,13 +130,14 @@ export function windowsLoadBlock(lines: readonly string[]): WindowsLoadBlock | n
 /**
  * The evidence quoted when a managed backend stayed silent until the startup
  * budget ran out: the tail of the backend's own log file, or an explicit note
- * that the log could not be read. `path` and the `tail` lines are expected to
+ * that the log could not be read or holds nothing from this launch. `path` and the `tail` lines are expected to
  * be scrubbed and bounded already (backend.ts does that when it reads the log);
  * this only formats them, so the module keeps importing nothing and stays safe
  * for the renderer bundle.
  */
-export function backendLogEvidence(path: string, tail: readonly string[]): string {
+export function backendLogEvidence(path: string, tail: readonly string[], stale = false): string {
   const log = `The backend's own log (${path})`;
+  if (stale) return `It printed no output. ${log} has nothing new since this launch started.`;
   return tail.length > 0
     ? `It printed no output. ${log} ends with:\n${tail.join('\n')}`
     : `It printed no output. ${log} is missing, empty, or unreadable.`;

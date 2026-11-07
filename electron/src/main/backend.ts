@@ -53,11 +53,15 @@ import { spawn, spawnSync, type ChildProcess, type StdioOptions } from 'node:chi
 import { EventEmitter } from 'node:events';
 import {
   accessSync,
+  closeSync,
   constants,
   existsSync,
+  fstatSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -860,46 +864,86 @@ export function loadBlockMessage(
   );
 }
 
+/** What one managed launch used: its own data dir decides where its log is. */
+export interface BackendLaunchLog {
+  env: NodeJS.ProcessEnv;
+  startedAt: number;
+}
+
 /**
  * The backend's own log file, resolved the way backend/core/config.py's
- * `get_app_data_dir` does: an explicit `OMNIVOICE_DATA_DIR` wins, then the
- * platform default (`~/Library/Application Support/OmniVoice` on macOS,
- * `%APPDATA%/OmniVoice` on Windows, `~/.omnivoice` on Linux). The backend
- * writes this log independently of the output the shell captured, so it is
- * the evidence that survives a silent readiness timeout.
+ * `get_app_data_dir` does, from the env the child was spawned with (packaged
+ * and scoped installs set `OMNIVOICE_DATA_DIR` only there): an explicit
+ * `OMNIVOICE_DATA_DIR` wins, then the platform default
+ * (`~/Library/Application Support/OmniVoice` on macOS, `%APPDATA%/OmniVoice`
+ * on Windows, `~/.omnivoice` on Linux). The backend writes this log
+ * independently of the output the shell captured, so it is the evidence that
+ * survives a silent readiness timeout.
  */
-function backendLogPath(): string {
-  const custom = process.env.OMNIVOICE_DATA_DIR?.trim();
+function backendLogPath(env: NodeJS.ProcessEnv): string {
+  const custom = env.OMNIVOICE_DATA_DIR?.trim();
   const dataDir = custom
     ? custom
     : process.platform === 'darwin'
       ? join(homedir(), 'Library', 'Application Support', 'OmniVoice')
       : process.platform === 'win32'
-        ? join(process.env.APPDATA ?? '', 'OmniVoice')
+        ? join(env.APPDATA ?? '', 'OmniVoice')
         : join(homedir(), '.omnivoice');
   return join(dataDir, 'omnivoice.log');
 }
+
+/** Enough for LOG_TAIL_LINES lines without reading a whole rotated log. */
+const LOG_TAIL_BYTES = 64 * 1024;
+/** Coarse filesystem clocks (FAT: 2 s) must not make this launch's log look old. */
+const LOG_MTIME_SLACK_MS = 2_000;
 
 /**
  * The tail of the backend's own log, for quoting in a silent startup timeout.
  *
  * Best-effort and exception-free: a missing log, a directory in its place or a
  * permission error all return an empty tail (and the same path), so failure
- * reporting can never be broken by trying to read it. Lines are scrubbed like
- * captured process output and bounded by the same tail limit as the status
- * view; the returned path is scrubbed too, so a home directory never leaks.
+ * reporting can never be broken by trying to read it. The log is appended
+ * across launches, so one not written since this launch started is reported
+ * as stale rather than quoted. Only the end of the file is read. Lines are
+ * scrubbed like captured process output and bounded by the same tail limit as
+ * the status view; the returned path is scrubbed too, so a home directory
+ * never leaks.
  */
-function readBackendLogTail(): { path: string; tail: string[] } {
-  const path = backendLogPath();
+export function readBackendLogTail(launch: BackendLaunchLog): {
+  path: string;
+  tail: string[];
+  stale: boolean;
+} {
+  const path = backendLogPath(launch.env);
+  const scrubbed = scrubText(path);
+  let fd: number | undefined;
   try {
-    const tail = readFileSync(path, 'utf8')
-      .split(/\r?\n/)
+    fd = openSync(path, 'r');
+    const info = fstatSync(fd);
+    if (info.mtimeMs + LOG_MTIME_SLACK_MS < launch.startedAt) {
+      return { path: scrubbed, tail: [], stale: true };
+    }
+    const length = Math.min(info.size, LOG_TAIL_BYTES);
+    const buffer = Buffer.alloc(length);
+    const read = readSync(fd, buffer, 0, length, info.size - length);
+    const lines = buffer.subarray(0, read).toString('utf8').split(/\r?\n/);
+    // A read that starts mid-file starts mid-line.
+    if (info.size > length) lines.shift();
+    const tail = lines
       .map((line) => scrubText(cleanProcessLine(line)))
       .filter((line) => line.length > 0)
       .slice(-LOG_TAIL_LINES);
-    return { path: scrubText(path), tail };
+    return { path: scrubbed, tail, stale: false };
   } catch {
-    return { path: scrubText(path), tail: [] };
+    return { path: scrubbed, tail: [], stale: false };
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {
+        /* Nothing to report: the tail was already read or abandoned. */
+      }
+    }
   }
 }
 
@@ -916,7 +960,14 @@ export function startupTimeoutMessage(
     lastOutput,
     logPath,
     logTail,
-  }: { owned: boolean; lastOutput?: string; logPath?: string; logTail?: readonly string[] },
+    logStale,
+  }: {
+    owned: boolean;
+    lastOutput?: string;
+    logPath?: string;
+    logTail?: readonly string[];
+    logStale?: boolean;
+  },
 ): string {
   const base =
     `Backend did not answer on port ${port} within ${Math.round(budgetMs / 1000)} s ` +
@@ -928,7 +979,7 @@ export function startupTimeoutMessage(
     '(for example 900).';
   if (lastOutput) return `${base} Last output: ${lastOutput} ${advice}`;
   if (logPath !== undefined) {
-    return `${base} ${backendLogEvidence(logPath, logTail ?? [])}\n${advice}`;
+    return `${base} ${backendLogEvidence(logPath, logTail ?? [], logStale)}\n${advice}`;
   }
   return `${base} It printed no output. ${advice}`;
 }
@@ -991,6 +1042,8 @@ export class BackendSupervisor extends EventEmitter<{
   private readonly childErrorLog: string[] = [];
   /** When the spawned process last printed a line (0 = nothing yet this launch). */
   private lastChildOutputAt = 0;
+  /** The current managed launch's env and spawn time, for its own log. */
+  private launchLog: BackendLaunchLog | null = null;
   /** Bumped on every start/shutdown so stale poll loops and exit handlers no-op. */
   private generation = 0;
   /** A generation owns at most one health loop, even if readiness is observed twice. */
@@ -2123,6 +2176,8 @@ export class BackendSupervisor extends EventEmitter<{
     console.log(`[backend] spawning in ${plan.cwd}: ${plan.argv.join(' ')}`);
     let child: ChildProcess;
     const processOptions = managedBackendSpawnOptions(this.port, this.runtimeRegion);
+    // Per launch: a failed spawn must not leave an older launch's log in place.
+    this.launchLog = null;
     try {
       child = spawn(command, args, {
         cwd: plan.cwd,
@@ -2142,6 +2197,7 @@ export class BackendSupervisor extends EventEmitter<{
       return;
     }
     this.child = child;
+    this.launchLog = { env: processOptions.env, startedAt: Date.now() };
     if (processOptions.drainFd !== null) {
       // Python passes this child-side descriptor to every nested operation.
       // Reading the parent side keeps the ownership channel live and lets
@@ -2485,7 +2541,8 @@ export class BackendSupervisor extends EventEmitter<{
         const lastOutput = owned ? this.childLog.at(-1) : undefined;
         // A managed backend that never printed still wrote its own log, so
         // quote that instead of reporting a bare "It printed no output.".
-        const log = owned && !lastOutput ? readBackendLogTail() : undefined;
+        const log =
+          owned && !lastOutput && this.launchLog ? readBackendLogTail(this.launchLog) : undefined;
         await this.killChild();
         this.setStage('failed', {
           message: startupTimeoutMessage(this.port, budgetMs, {
@@ -2493,6 +2550,7 @@ export class BackendSupervisor extends EventEmitter<{
             lastOutput,
             logPath: log?.path,
             logTail: log?.tail,
+            logStale: log?.stale,
           }),
         });
         return;

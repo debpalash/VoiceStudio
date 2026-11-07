@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { EventEmitter } from 'node:events';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -92,7 +92,7 @@ vi.mock('./runtime-project', () => {
   };
 });
 
-import { BackendSupervisor } from './backend';
+import { BackendSupervisor, setBackendOnlyEnv } from './backend';
 
 const BUDGET_S = '10';
 
@@ -305,6 +305,60 @@ it('scrubs a home directory out of the quoted backend log tail', async () => {
     (supervisor as unknown as { child: null }).child = null;
     await supervisor.shutdown();
   }
+});
+
+async function silentTimeoutMessage(): Promise<string> {
+  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+  stubEnv();
+  stubBackend(() => false);
+  const { child } = fakeChild();
+  mocks.spawn.mockReturnValue(child);
+  const supervisor = new BackendSupervisor();
+  try {
+    await supervisor.start();
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(supervisor.status.stage).toBe('failed');
+    return supervisor.status.message ?? '';
+  } finally {
+    (supervisor as unknown as { child: null }).child = null;
+    await supervisor.shutdown();
+  }
+}
+
+it('quotes the log of the data dir the backend was spawned with, not the shell env', async () => {
+  // Packaged and scoped installs set OMNIVOICE_DATA_DIR only in the child's env.
+  const spawnData = mkdtempSync(join(tmpdir(), 'omnivoice-spawn-data-'));
+  tempDirs.push(spawnData);
+  writeFileSync(join(spawnData, 'omnivoice.log'), 'INFO: from the spawned data dir\n');
+  writeFileSync(join(dataDir, 'omnivoice.log'), 'INFO: from the shell data dir\n');
+  setBackendOnlyEnv({ OMNIVOICE_DATA_DIR: spawnData });
+  try {
+    const message = await silentTimeoutMessage();
+    expect(message).toContain('INFO: from the spawned data dir');
+    expect(message).not.toContain('INFO: from the shell data dir');
+  } finally {
+    setBackendOnlyEnv({ OMNIVOICE_DATA_DIR: undefined });
+  }
+});
+
+it('does not quote a log last written before this launch started', async () => {
+  const log = join(dataDir, 'omnivoice.log');
+  writeFileSync(log, 'INFO: a previous launch\n');
+  const anHourAgo = new Date(Date.now() - 3_600_000);
+  utimesSync(log, anHourAgo, anHourAgo);
+  const message = await silentTimeoutMessage();
+  expect(message).not.toContain('INFO: a previous launch');
+  expect(message).toContain('has nothing new since this launch started');
+});
+
+it('reads only the end of a long log', async () => {
+  const filler = 'x'.repeat(200);
+  const lines = Array.from({ length: 2_000 }, (_, i) => `INFO: line ${i} ${filler}`);
+  writeFileSync(join(dataDir, 'omnivoice.log'), lines.join('\n'));
+  const message = await silentTimeoutMessage();
+  expect(message).toContain('INFO: line 1999 ');
+  expect(message).not.toContain('INFO: line 0 ');
+  expect(message.split('\n').filter((line) => line.startsWith('INFO: line')).length).toBe(40);
 });
 
 it('reports the log path when a directory sits where the log should be', async () => {
