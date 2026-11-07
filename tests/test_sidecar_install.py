@@ -492,7 +492,7 @@ def test_safe_extract_members_blocks_tar_slip(tmp_path):
     dest.mkdir(parents=True)
     with tarfile.open(fileobj=buf, mode="r:gz") as tf:
         si._safe_extract_members(tf, str(dest))
-    assert (dest / "pkg" / "ok.txt").read_text() == "ok"
+    assert (dest / "pkg" / "ok.txt").read_text(encoding="utf-8") == "ok"
     assert not (tmp_path / "sandbox" / "evil.txt").exists()
     assert not (dest / "pkg" / "link").exists()
 
@@ -977,7 +977,7 @@ def test_managed_indextts2_source_is_preserved_during_25_install(monkeypatch):
     si._step_fetch_source(spec, job)
     clone = next(argv for argv in argvs if argv[1] == "clone")
     assert clone[clone.index("--branch") + 1] == "indextts-2.5"
-    assert (legacy / "old-v2-only.txt").read_text() == "old"
+    assert (legacy / "old-v2-only.txt").read_text(encoding="utf-8") == "old"
     assert si._source_present(spec, checkout)
 
 
@@ -1882,7 +1882,7 @@ def test_moss_existing_install_offers_dependency_repair(monkeypatch):
     assert 'soundfile' in commands[0]
     assert si._healthy(spec)
     assert weights.read_bytes() == b'existing weights'
-    assert py.read_text() == 'existing interpreter'
+    assert py.read_text(encoding="utf-8") == 'existing interpreter'
 
 
 @pytest.mark.parametrize('version', ['3.14', '3.11', '3.10'])
@@ -1908,13 +1908,13 @@ def test_indextts_repairs_only_incompatible_python(monkeypatch, version):
     if version == '3.14':
         assert calls and calls[0][-2:] == ['--python', '3.11']
         assert not marker.exists()
-        assert py.read_text() != 'old interpreter'
+        assert py.read_text(encoding="utf-8") != 'old interpreter'
     else:
         assert calls == []
         assert marker.exists()
-        assert py.read_text() == 'old interpreter'
+        assert py.read_text(encoding="utf-8") == 'old interpreter'
     assert weights.read_bytes() == b'existing weights'
-    assert source.read_text() == 'existing source'
+    assert source.read_text(encoding="utf-8") == 'existing source'
 
 
 def test_all_sidecar_recipes_pin_python():
@@ -1938,7 +1938,7 @@ def test_incompatible_linked_venv_is_not_deleted(monkeypatch, tmp_path):
         returncode=0, stdout='3.14\n', stderr=''))
     with pytest.raises(si._StepError, match='linked outside'):
         si._step_create_venv(spec, si._new_job(spec.engine_id))
-    assert py.read_text() == 'user interpreter'
+    assert py.read_text(encoding="utf-8") == 'user interpreter'
     assert (checkout / '.venv').is_symlink()
 
 
@@ -1959,7 +1959,7 @@ def test_unproven_venv_is_not_destroyed(monkeypatch, failure):
     with pytest.raises(si._StepError, match='Could not check') as error:
         si._step_create_venv(spec, si._new_job(spec.engine_id))
     assert str(py) not in str(error.value)
-    assert py.read_text() == 'user interpreter'
+    assert py.read_text(encoding="utf-8") == 'user interpreter'
 
 
 @pytest.mark.parametrize("version", ["3.10", "3.12"])
@@ -2024,7 +2024,7 @@ def test_moss_decoder_recipe_upgrade_preserves_venv_and_cached_weights(monkeypat
     assert commands[0][1:3] == ['pip', 'install']
     assert commands[0][3:5] == ['--python', str(py)]
     assert 'torchcodec===0.8.1' in commands[0]
-    assert py.read_text() == '#!existing-python\n'
+    assert py.read_text(encoding="utf-8") == '#!existing-python\n'
     assert weights.read_bytes() == b'existing weights'
     assert si._healthy(spec)
     assert si._install_marker_valid(spec, checkout)

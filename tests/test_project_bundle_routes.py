@@ -170,7 +170,7 @@ def test_phone_archive_survives_desktop_edit_and_reexport_with_foreign_assets(ha
     manifest, files = bundles.read_bundle(exported,tmp_path/'returned')
     assert manifest['document']['script'] == 'Edited on desktop'
     assert manifest['document']['native'] == native
-    assert files['native/production/checkpoint.json'].read_text() == '{"completed":true}'
+    assert files['native/production/checkpoint.json'].read_text(encoding="utf-8") == '{"completed":true}'
     assert 'handoff' not in manifest['document']['desktop']['draft']
 
 

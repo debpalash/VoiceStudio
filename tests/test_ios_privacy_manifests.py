@@ -75,7 +75,7 @@ def test_archive_gate_rejects_missing_dynamic_framework_manifest(tmp_path, monke
 def test_share_inbox_uses_one_configured_group_for_signing_and_runtime(tmp_path):
     import yaml
 
-    project = yaml.safe_load((ROOT / "mobile/ios/VoiceStudio/project.yml").read_text())
+    project = yaml.safe_load((ROOT / "mobile/ios/VoiceStudio/project.yml").read_text(encoding="utf-8"))
     group = project["settings"]["base"]["VS_APP_GROUP_IDENTIFIER"]
     assert group.startswith("group.")
     app_id = project["targets"]["VoiceStudio"]["settings"]["base"]["PRODUCT_BUNDLE_IDENTIFIER"]

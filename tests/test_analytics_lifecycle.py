@@ -329,7 +329,7 @@ def test_uninstall_ping_info_written_when_enabled_and_removed_when_not(
 
     analytics.set_opted_in(True)
     assert info.exists()
-    payload = json.loads(info.read_text())
+    payload = json.loads(info.read_text(encoding="utf-8"))
     assert payload["token"] == "phc_test"
     assert payload["host"] == "https://us.i.posthog.com"
     assert payload["distinct_id"] == analytics.installation_id()
@@ -347,7 +347,7 @@ def test_uninstall_ping_info_written_for_a_source_build_with_the_default_token(
     analytics.set_opted_in(True)  # no env token → in-repo default
     info = tmp_path / analytics.UNINSTALL_PING_INFO_BASENAME
     assert info.exists()
-    payload = json.loads(info.read_text())
+    payload = json.loads(info.read_text(encoding="utf-8"))
     assert payload["token"] == analytics._PUBLIC_PROJECT_TOKEN
     assert payload["host"] == "https://us.i.posthog.com"
 

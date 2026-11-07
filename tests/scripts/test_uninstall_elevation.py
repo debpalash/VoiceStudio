@@ -111,8 +111,8 @@ def test_elevated_app_removal_preserves_resources_even_with_protected_leaf(tmp_p
     result, data, userdata, executable = run_uninstaller(tmp_path, elevated=True, apply=True)
     assert result.returncode != 0
     assert "without administrator rights" in result.stdout + result.stderr
-    assert (data / "project.txt").read_text() == "user project"
-    assert (userdata / "settings.json").read_text() == "{}"
+    assert (data / "project.txt").read_text(encoding="utf-8") == "user project"
+    assert (userdata / "settings.json").read_text(encoding="utf-8") == "{}"
     assert executable.exists()
     assert not (tmp_path / "launched.txt").exists()
     assert not (tmp_path / "acl-reads.txt").exists(), "refuse rather than trusting a path ACL scan"
@@ -123,7 +123,7 @@ def test_unelevated_app_removal_keeps_existing_cleanup_and_launcher_flow(tmp_pat
     assert result.returncode == 0, result.stdout + result.stderr
     assert not data.exists()
     assert not userdata.exists()
-    assert (tmp_path / "launched.txt").read_text().strip() == str(executable)
+    assert (tmp_path / "launched.txt").read_text(encoding="utf-8").strip() == str(executable)
 
 
 def test_elevated_dry_run_lists_app_without_deleting_or_launching(tmp_path):
