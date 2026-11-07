@@ -1847,6 +1847,9 @@ async def generate_speech(
     emo_text: Optional[str] = Form(None, max_length=500),
     emo_alpha: Optional[float] = Form(None, ge=0.0, le=1.0),
     emo_vector: Optional[str] = Form(None),
+    # #3422: a Stories line's [emotion:] direction (previews and stems), applied
+    # exactly as the full render applies it; ignored by engines without emotion.
+    emotion: Optional[str] = Form(None, max_length=200),
     profile_id: Optional[str] = Form(None),
     seed: Optional[int] = Form(None),
     effect_preset: str = Form("broadcast"),
@@ -1929,7 +1932,8 @@ async def generate_speech(
         raise HTTPException(
             status_code=422, detail="Choose an emotion description OR an emotion vector."
         )
-    if emo_alpha is not None and not emotion_text:
+    # A line's emotion (#3422) takes the strength just as a description does.
+    if emo_alpha is not None and not emotion_text and not (emotion or "").strip():
         raise HTTPException(
             status_code=422, detail="Emotion strength requires an emotion description."
         )
@@ -2164,6 +2168,12 @@ async def generate_speech(
             raise HTTPException(status_code=500, detail=str(e))
     # Script markup is never spoken, so it is never part of a transcript (#3062).
     ref_text = strip_script_markup(ref_text) or None
+    # After the profile settles the voice's instruct, so a direction engine adds
+    # the emotion to it, as the render does.
+    if emotion and emotion.strip():
+        from services.expression import apply_span_emotion
+        instruct = apply_span_emotion(backend_cls, emotion_kwargs, instruct,
+                                      emotion.strip(), emo_alpha)
 
     # #2281: an engine that picks the best passage of a long clip itself
     # (OmniVoice) cannot align a whole-clip transcript. A transcript typed on

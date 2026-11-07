@@ -16,6 +16,7 @@ ignores.
 | An audible breath **on demand** | ⊕ Insert → `[breath]` | CosyVoice 3 only (opt-in) — see [Breaths](#breaths-specifically) |
 | Whispering | Style → `whisper` (the voice-design/style field) | Default engine |
 | Emotion ("scared, then excited", graded intensity) | **Voice Cloning → Emotion**: sliders or a description on IndexTTS2, a written delivery direction on CosyVoice 3 and VoxCPM2. Also Audiobook Production Overrides (IndexTTS2) and the `/generate` / `/ws/tts` APIs | Opt-in engines only |
+| A different emotion per line in a book | `[emotion:quietly terrified]` in an Audiobook or Stories script (toolbar → **Emotion**); `[emotion:]` resets. See [Per-line emotion](#per-line-emotion-audiobook-and-stories) | IndexTTS2, CosyVoice 3, VoxCPM2 |
 | The same take again | Pin the seed / lock the profile | Default engine |
 
 The **Emotion** button sits beside Synthesize on every engine. On an engine
@@ -153,9 +154,52 @@ choices: the defaults are 0.
 
 **Longform-only tags.** Audiobook and Stories additionally parse SSML-lite —
 `[slow]…[/slow]`, `[fast]…[/fast]`, `[emphasis]…[/emphasis]`, `[spell]` —
-plus `[voice:NAME]` for multi-voice scripts
-(`backend/services/longform_parser.py`). These are not parsed on the Voice
-page.
+plus `[voice:NAME]` for multi-voice scripts and `[emotion:TEXT]` for per-line
+emotion (`backend/services/longform_parser.py`). These are not parsed on the
+Voice page.
+
+### Per-line emotion (Audiobook and Stories)
+
+`[emotion:TEXT]` gives the text after it a delivery direction, written in your
+own words, so one line can be scared and the next excited:
+
+```
+[voice:Mara] [emotion:quietly terrified] Did you hear that?
+[emotion:] It was only the wind.
+[voice:Cole] [emotion:amused] You always say that.
+```
+
+- It lasts until the next `[emotion:]`, and an empty `[emotion:]` goes back
+  to the book's default. Every `[voice:]` switch and every chapter start
+  neutral, so one character's mood never carries into the next character's
+  line. In Stories, each line starts neutral, and line previews and stem
+  exports apply the tag the same way as the full render.
+- The tag is never read aloud, on any engine or on the phone apps. It is
+  case-insensitive, at most 200 characters, and cannot contain brackets.
+- A change of emotion inside a line splits it into separate renders that join
+  with no gap, like `[slow]`. Each render is spoken on its own, so a sentence
+  split mid-way loses its natural intonation: put one tag at the start of a
+  line or sentence.
+- How it is applied depends on the engine: IndexTTS2 takes it as its emotion
+  description (at the book's emotion strength, or 0.6), replacing the book-level
+  emotion for that line; CosyVoice 3 and VoxCPM2 add it to the voice's written
+  direction. Other engines skip it, and the script checks say so.
+- IndexTTS2 reduces the description to its eight emotions (happy, angry, sad,
+  afraid, disgusted, melancholic, surprised, calm), so only the emotional part
+  is applied: `[emotion:terrified, whispering]` sounds afraid at normal volume.
+- Speaking styles such as whispering come from the **voice**, not the tag. For
+  a frightened whisper: design a voice on the default engine with the Style
+  `whisper`, save it and click **Lock voice identity** (IndexTTS2 clones from
+  the locked take's audio), cast it to a character in **Cast**, then render with
+  IndexTTS2, which keeps the reference's whispered delivery and adds the
+  emotion: `[voice:Whisperer] [emotion:terrified] Did you hear that?`
+- CosyVoice 3 applies a tag through its instruction mode, which takes delivery
+  from the words alone and ignores the reference clip's delivery. A tagged
+  line can therefore sound less like the cloned voice than an untagged one, and
+  a whispered reference voice speaks normally. Style words such as
+  "whispering" were not followed in testing; emotion words fare better.
+- Lines without the tag keep their cached audio; a tagged line renders once
+  and is cached like any other.
 
 ### CosyVoice 3 (opt-in)
 
@@ -291,10 +335,11 @@ dropdown + intensity + emotion-reference clip) everywhere in the UI. The
 pronunciation phases have shipped (dictionary + `[[…]]` overrides), and so
 has the capability disclosure: Voice Cloning's **Emotion** button and the
 Audiobook emotion fields appear on every engine and say what the active one
-can do, and the Insert menus offer only the tags it renders. Still spec'd, not
-shipped: the engine-agnostic inline emotion/reaction tag grammar (per-span
-emotion inside one take), the emotion-reference clip picker, and a written
-direction for Audiobook renders. No
+can do, and the Insert menus offer only the tags it renders. Per-line emotion
+in Audiobook and Stories has shipped as `[emotion:TEXT]` (see
+[Per-line emotion](#per-line-emotion-audiobook-and-stories)). Still spec'd,
+not shipped: emotion inside a single Voice Cloning take, named emotion tags
+such as `[excited]`, and the emotion-reference clip picker. No
 promised date — when each lands, this page gets updated in the same PR.
 
 Omitted API join options keep legacy hard joins (zero gaps, no edge trim).

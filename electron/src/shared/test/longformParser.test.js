@@ -47,6 +47,8 @@ describe('parseScriptToSpans — guards & rounding', () => {
       '[voice:'.repeat(5000),
       '# \n'.repeat(5000),
       '[a]'.repeat(5000),
+      '[emotion:'.repeat(5000),
+      '[emotion:x]'.repeat(5000),
     ]) {
       const t0 = Date.now();
       parseScriptToSpans(blob, { defaultVoice: 'v' });

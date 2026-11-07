@@ -42,7 +42,8 @@ def test_pathological_inputs_are_linear():
     # ReDoS guard: adversarial repeats must finish fast (mirrors the JS suite).
     import time
     for blob in ("[slow]" * 5000, "[pause" * 5000, "[voice:" * 5000,
-                 "# \n" * 5000, "[a]" * 5000):
+                 "# \n" * 5000, "[a]" * 5000, "[emotion:" * 5000,
+                 "[emotion:x]" * 5000):
         t0 = time.perf_counter()
         parse_script_to_spans(blob, default_voice="v")
         assert time.perf_counter() - t0 < 1.0
