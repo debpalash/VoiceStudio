@@ -467,6 +467,10 @@ def _model_licence_acceptance(repo_id: str) -> dict:
     return model_acceptance.status(repo_id)
 
 
+class _EngineLookupFailed(Exception):
+    """The engine's gate could not be inspected (not the same as "no gate")."""
+
+
 def _engine_gate_covers_all_rows(engine_id: str) -> bool:
     """True when the engine's runtime licence gate checks every registry row
     recorded for it; False when it checks only the model actually loaded.
@@ -482,16 +486,18 @@ def _engine_gate_covers_all_rows(engine_id: str) -> bool:
     """
     try:
         from services import tts_backend
+        if engine_id not in tts_backend._REGISTRY:
+            return False  # not a TTS engine: per-model gate
         cls = tts_backend.get_backend_class(engine_id)
-    except Exception:  # noqa: BLE001 — not a TTS engine: per-model gate
-        return False
+    except Exception as exc:  # noqa: BLE001 — registered but not inspectable (e.g. sidecar import error)
+        raise _EngineLookupFailed(engine_id) from exc
     try:
         return cls.configured_identity() is None
     except Exception:  # noqa: BLE001 — the gate itself fails closed (identity=None) here
         return True
 
 
-def _model_licence_dependencies(model: dict, own_key: str) -> list[dict]:
+def _model_licence_dependencies(model: dict, own_key: str) -> tuple[list[dict], bool]:
     """Acceptance states of the other gated repos this row's engines need.
 
     Only engines whose runtime gate covers every registry row recorded for
@@ -503,6 +509,9 @@ def _model_licence_dependencies(model: dict, own_key: str) -> list[dict]:
     selected model contribute nothing: running this row checks only the row
     itself. The row carries those dependent states so its dialog can list
     and clear all of them at once.
+
+    Returns ``(dependencies, complete)``. ``complete`` is False when a lookup
+    failed, so callers never present a partial list as the whole licence set.
     """
     try:
         from services import model_acceptance
@@ -517,10 +526,10 @@ def _model_licence_dependencies(model: dict, own_key: str) -> list[dict]:
                 state = model_acceptance.status(repo_id)
                 if state["required"]:
                     seen[repo_id] = state
-        return list(seen.values())
+        return list(seen.values()), True
     except Exception:  # noqa: BLE001 — the row's own licence flow must survive a registry read failure
         logger.warning("model licence dependency lookup failed", exc_info=True)
-        return []
+        return [], False
 
 
 @router.get("/models")
@@ -572,6 +581,7 @@ def list_models():
             # incomplete so the wizard re-offers the download (#622).
             incomplete = on_disk and not cache_is_complete(m)
         key = model_key(m)
+        _deps, _deps_complete = _model_licence_dependencies(m, key)
         out.append({
             **m,
             # Rows are addressed by catalogue identity; hf_repo is the Hub repo.
@@ -587,7 +597,8 @@ def list_models():
             "curated": _model_curated(m, host_tags),
             "license_info": _model_license_info(key),
             "license_acceptance": _model_licence_acceptance(key),
-            "license_dependencies": _model_licence_dependencies(m, key),
+            "license_dependencies": _deps,
+            "license_dependencies_complete": _deps_complete,
         })
     response = {
         "target": "local",
