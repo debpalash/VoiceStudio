@@ -2119,7 +2119,9 @@
     "backup_none": "Criado automaticamente antes da próxima atualização do banco de dados.",
     "backup_latest": "Último backup: {{when}}",
     "notes_for": "Notas da versão — v{{version}}",
-    "whats_new_in": "O que há de novo em v{{version}}"
+    "whats_new_in": "O que há de novo em v{{version}}",
+    "backup_needs_runtime": "Disponível quando o ambiente de execução do VoiceStudio estiver em execução.",
+    "backup_load_error": "Não foi possível carregar o estado do backup."
   },
   "exportModal": {
     "export": "Exportar",
@@ -3008,7 +3010,15 @@
     "channel": "Canal de atualização",
     "channel_stable": "Estável",
     "channel_beta": "Beta",
-    "channel_beta_hint": "O Beta recebe versões antecipadas e pode ter erros. Você passa automaticamente para a próxima versão estável."
+    "channel_beta_hint": "O Beta recebe versões antecipadas e pode ter erros. Você passa automaticamente para a próxima versão estável.",
+    "prompt_available": "A versão {{version}} está disponível",
+    "prompt_ready": "Pronto para instalar",
+    "prompt_details": "Detalhes",
+    "prompt_hide": "Ocultar",
+    "prompt_more": "Mais",
+    "error_network": "O GitHub não respondeu. Verifique sua conexão e tente novamente.",
+    "error_generic": "A atualização não foi concluída. Tente novamente.",
+    "channel_current": "Você está no {{channel}}"
   },
   "openapi": {
     "title": "API do VoiceStudio",

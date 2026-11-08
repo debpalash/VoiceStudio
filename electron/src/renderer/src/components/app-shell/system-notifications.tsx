@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { apiFetch, apiJson } from '@/lib/api/client';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
+import { runUpdateAction, type UpdateAction } from '@/lib/update-actions';
 import type { UpdateState } from '../../../../preload/index.d';
 import { DownloadActivityList, useDownloadActivity } from './download-activity';
 import { LongformActivityCard, longformActivityStatus } from '@/components/longform-activity-card';
@@ -133,7 +134,11 @@ export function SystemNotifications({
         version: update.availableVersion,
       }),
       message: t('update.safety'),
-      action: { type: 'navigate', target: '/settings/updates', label: t('common.open') },
+      action: {
+        type: 'desktop-update',
+        target: update.status === 'downloaded' ? 'install' : 'download',
+        label: t(update.status === 'downloaded' ? 'update.restart' : 'update.download'),
+      },
       persistent: true,
     };
   }, [t, update]);
@@ -160,6 +165,10 @@ export function SystemNotifications({
       void apiFetch('/system/crash/ack', { method: 'POST' }).catch(() => {});
     } else if (note.id.startsWith('last-run-crash-')) {
       void apiFetch('/system/last-run-crash/ack', { method: 'POST' }).catch(() => {});
+    }
+    if (note.action.type === 'desktop-update' && update) {
+      await runUpdateAction(note.action.target as UpdateAction, update, t);
+      return;
     }
     const route = notificationRoute(note);
     if (route) {

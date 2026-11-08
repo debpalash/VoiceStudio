@@ -2117,7 +2117,9 @@
     "backup_none": "Dibuat otomatis sebelum pembaruan basis data berikutnya.",
     "backup_latest": "Cadangan terakhir: {{when}}",
     "notes_for": "Catatan rilis — v{{version}}",
-    "whats_new_in": "Apa yang baru di v{{version}}"
+    "whats_new_in": "Apa yang baru di v{{version}}",
+    "backup_needs_runtime": "Tersedia setelah runtime VoiceStudio berjalan.",
+    "backup_load_error": "Tidak dapat memuat status pencadangan."
   },
   "exportModal": {
     "export": "Ekspor",
@@ -3006,7 +3008,15 @@
     "channel": "Kanal pembaruan",
     "channel_stable": "Stabil",
     "channel_beta": "Beta",
-    "channel_beta_hint": "Beta menerima versi awal dan mungkin berisi bug. Anda otomatis pindah ke rilis stabil berikutnya."
+    "channel_beta_hint": "Beta menerima versi awal dan mungkin berisi bug. Anda otomatis pindah ke rilis stabil berikutnya.",
+    "prompt_available": "Versi {{version}} tersedia",
+    "prompt_ready": "Siap dipasang",
+    "prompt_details": "Detail",
+    "prompt_hide": "Sembunyikan",
+    "prompt_more": "Lainnya",
+    "error_network": "GitHub tidak merespons. Periksa koneksi Anda dan coba lagi.",
+    "error_generic": "Pembaruan tidak selesai. Coba lagi.",
+    "channel_current": "Anda di {{channel}}"
   },
   "openapi": {
     "title": "API VoiceStudio",

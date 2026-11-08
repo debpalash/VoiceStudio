@@ -1,9 +1,10 @@
 import { splitRoundedMinutes } from '@shared/utils/timeFormat';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AlertTriangleIcon,
   CheckCircle2Icon,
+  CheckIcon,
   DownloadIcon,
   RefreshCwIcon,
   RotateCwIcon,
@@ -16,23 +17,52 @@ import {
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { InlineMarkdown, MarkdownLite } from '@/components/markdown-lite';
 import { appVersion, getBridge } from '@/components/bridge';
-import { dubSession, flushDubDraft, useDubSession } from '@/features/dub/dub-session';
-import { hasActiveAppWork, useAppActivityCount } from '@/lib/app-activity';
+import { flushDubDraft, useDubSession } from '@/features/dub/dub-session';
+import { useAppActivityCount } from '@/lib/app-activity';
+import { useBackendStatus, isBackendReachable } from '@/hooks/use-backend-status';
 import { apiJson, describeError } from '@/lib/api/client';
+import { formatBytes, updateErrorKey } from '@/lib/update-format';
+import {
+  ACTIVE_BATCH_JOBS_PATH,
+  MODEL_INSTALL_STATUS_PATH,
+  dubBusy,
+  serverWorkActive,
+  updateRestartBlocked,
+  type ModelInstallJobs,
+} from '@/lib/update-actions';
 import { SettingsSection } from './settings-layout';
 import type { UpdateChannel, UpdateReleaseInfo, UpdateState } from '../../../../preload/index.d';
+
+// Sections must settle (data, empty or error) rather than load forever when
+// the backend or GitHub is slow or down.
+const LOAD_TIMEOUT_MS = 12_000;
+
+function withTimeout<T>(promise: Promise<T>, ms = LOAD_TIMEOUT_MS): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+const UPDATE_CHANNELS = ['stable', 'beta'] as const;
 
 const initial: UpdateState = {
   status: 'unsupported',
   currentVersion: appVersion(),
   progress: 0,
 };
-
-interface ModelInstallJobs {
-  jobs: { state: string }[];
-}
 
 interface ChangelogRelease {
   version: string;
@@ -51,13 +81,6 @@ interface BackupState {
   latest?: { path: string; created_at: number; size_bytes: number } | null;
 }
 
-const serverWorkActive = (models?: ModelInstallJobs, batches?: unknown[]) =>
-  Boolean(
-    models?.jobs.some((job) =>
-      ['queued', 'downloading', 'running', 'installing'].includes(job.state),
-    ) || batches?.length,
-  );
-
 // No reason means no desktop bridge: the browser UI, which never self-updates.
 const unsupportedMessageKey = (reason: UpdateState['unsupportedReason']) =>
   reason === 'development'
@@ -67,13 +90,6 @@ const unsupportedMessageKey = (reason: UpdateState['unsupportedReason']) =>
       : reason === 'store'
         ? 'settings.updater_store'
         : 'settings.updater_desktop';
-
-function formatBytes(bytes: number): string {
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${Math.max(0, Math.round(bytes))} B`;
-}
 
 function formatEta(seconds: number): string {
   const { minutes, seconds: remainder } = splitRoundedMinutes(seconds);
@@ -88,17 +104,19 @@ export function UpdateSettings() {
   const activityCount = useAppActivityCount();
   const [state, setState] = useState(initial);
   const [action, setAction] = useState(false);
+  const channelGroup = useRef<HTMLDivElement>(null);
+  const refocusChannel = useRef(false);
   const [expandedRelease, setExpandedRelease] = useState<string | null | undefined>(undefined);
   const watchServerWork = state.status === 'available' || state.status === 'downloaded';
   const modelInstalls = useQuery({
     queryKey: ['model-install-jobs'],
-    queryFn: () => apiJson<ModelInstallJobs>('/models/install/status'),
+    queryFn: () => apiJson<ModelInstallJobs>(MODEL_INSTALL_STATUS_PATH),
     enabled: watchServerWork,
     refetchInterval: 2_000,
   });
   const batchJobs = useQuery({
     queryKey: ['batch-jobs', 'active'],
-    queryFn: () => apiJson<unknown[]>('/batch/jobs?status=active&limit=1'),
+    queryFn: () => apiJson<unknown[]>(ACTIVE_BATCH_JOBS_PATH),
     enabled: watchServerWork,
     refetchInterval: 3_000,
   });
@@ -110,15 +128,21 @@ export function UpdateSettings() {
       }),
     staleTime: 300_000,
   });
+  const backendUp = isBackendReachable(useBackendStatus().stage);
   const backup = useQuery({
     queryKey: ['db-backup'],
-    queryFn: ({ signal }) => apiJson<BackupState>('/api/settings/db-backup', { signal }),
+    queryFn: () => withTimeout(apiJson<BackupState>('/api/settings/db-backup')),
+    enabled: backendUp,
+    retry: 1,
+    retryDelay: 1_000,
     staleTime: 300_000,
   });
   const releaseHistory = useQuery({
     queryKey: ['desktop-release-history'],
-    queryFn: () => updates!.listReleases(),
+    queryFn: () => withTimeout(updates!.listReleases()),
     enabled: canListReleases,
+    retry: 1,
+    retryDelay: 1_000,
     staleTime: 15 * 60_000,
   });
   const releaseRows = (releaseHistory.data || [])
@@ -130,9 +154,6 @@ export function UpdateSettings() {
       ...release,
       current: release.version === state.currentVersion,
     }));
-  const dubBusy = (value: typeof dub) =>
-    Boolean(value.recovery || value.batchProgress) ||
-    !['idle', 'editing', 'done'].includes(value.phase);
   const busy =
     activityCount > 0 || dubBusy(dub) || serverWorkActive(modelInstalls.data, batchJobs.data);
 
@@ -151,6 +172,13 @@ export function UpdateSettings() {
       unsubscribe();
     };
   }, [updates]);
+
+  // Controls are disabled while a switch runs, which drops keyboard focus.
+  useEffect(() => {
+    if (action || !refocusChannel.current) return;
+    refocusChannel.current = false;
+    channelGroup.current?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+  }, [action, state.channel]);
 
   const run = async (operation: () => Promise<UpdateState>) => {
     setAction(true);
@@ -171,12 +199,7 @@ export function UpdateSettings() {
   const restart = async () => {
     setAction(true);
     try {
-      const [models, batches] = await Promise.all([modelInstalls.refetch(), batchJobs.refetch()]);
-      if (
-        hasActiveAppWork() ||
-        dubBusy(dubSession.state) ||
-        serverWorkActive(models.data, batches.data)
-      ) {
+      if (await updateRestartBlocked()) {
         toast.info(t('update.busy'));
         return;
       }
@@ -237,7 +260,7 @@ export function UpdateSettings() {
                             pct: Math.round(state.progress),
                           })
                         : state.status === 'error'
-                          ? t('update.failed')
+                          ? t(updateErrorKey(state.error))
                           : t('updates.up_to_date', {
                               version: state.currentVersion,
                             })}
@@ -332,27 +355,63 @@ export function UpdateSettings() {
               <p id="update-channel-label" className="text-sm font-medium">
                 {t('update.channel')}
               </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {t('update.channel_current', { channel: t(`update.channel_${state.channel}`) })}
+              </p>
               {state.channel === 'beta' && (
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {t('update.channel_beta_hint')}
                 </p>
               )}
             </div>
-            <div role="group" aria-labelledby="update-channel-label" className="flex gap-1">
-              {(['stable', 'beta'] as const).map((channel) => (
-                <Button
-                  key={channel}
-                  size="sm"
-                  variant={state.channel === channel ? 'secondary' : 'outline'}
-                  aria-pressed={state.channel === channel}
-                  disabled={
-                    action || ['checking', 'downloading', 'downloaded'].includes(state.status)
-                  }
-                  onClick={() => switchChannel(channel)}
-                >
-                  {t(`update.channel_${channel}`)}
-                </Button>
-              ))}
+            <div
+              ref={channelGroup}
+              role="radiogroup"
+              aria-labelledby="update-channel-label"
+              className="inline-flex shrink-0 rounded-lg border border-border bg-muted/40 p-0.5"
+            >
+              {UPDATE_CHANNELS.map((channel, index) => {
+                const selected = state.channel === channel;
+                const locked =
+                  action || ['checking', 'downloading', 'downloaded'].includes(state.status);
+                return (
+                  <button
+                    key={channel}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    tabIndex={selected ? 0 : -1}
+                    disabled={locked}
+                    className={cn(
+                      'inline-flex min-w-20 items-center justify-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60',
+                      selected
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                    onClick={() => !selected && switchChannel(channel)}
+                    onKeyDown={(event) => {
+                      const step =
+                        event.key === 'ArrowRight' || event.key === 'ArrowDown'
+                          ? 1
+                          : event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+                            ? -1
+                            : 0;
+                      if (!step || locked) return;
+                      event.preventDefault();
+                      const next =
+                        UPDATE_CHANNELS[
+                          (index + step + UPDATE_CHANNELS.length) % UPDATE_CHANNELS.length
+                        ];
+                      refocusChannel.current = true;
+                      switchChannel(next);
+                    }}
+                    data-channel={channel}
+                  >
+                    {selected && <CheckIcon className="size-3.5" aria-hidden="true" />}
+                    {t(`update.channel_${channel}`)}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -377,15 +436,27 @@ export function UpdateSettings() {
       )}
 
       <SettingsSection icon={ShieldCheckIcon} title={t('updates.backup_line')}>
-        <div className="px-4 py-3 text-sm text-muted-foreground">
-          {backup.isPending
-            ? t('common.loading')
-            : backup.data?.available && backup.data.latest
-              ? t('updates.backup_latest', {
-                  when: new Date(backup.data.latest.created_at * 1000).toLocaleString(),
-                })
-              : t('updates.backup_none')}
-        </div>
+        {backup.isError && backendUp ? (
+          <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm text-muted-foreground">
+            <span>{t('updates.backup_load_error')}</span>
+            <Button size="sm" variant="ghost" onClick={() => void backup.refetch()}>
+              <RefreshCwIcon />
+              {t('updates.retry_load')}
+            </Button>
+          </div>
+        ) : (
+          <div className="px-4 py-3 text-sm text-muted-foreground">
+            {!backendUp
+              ? t('updates.backup_needs_runtime')
+              : backup.isPending
+                ? t('common.loading')
+                : backup.data?.available && backup.data.latest
+                  ? t('updates.backup_latest', {
+                      when: new Date(backup.data.latest.created_at * 1000).toLocaleString(),
+                    })
+                  : t('updates.backup_none')}
+          </div>
+        )}
       </SettingsSection>
 
       {changelog.data?.available && changelog.data.releases.length > 0 && (

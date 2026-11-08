@@ -2117,7 +2117,9 @@
     "backup_none": "Sonraki veritabanı güncellemesinden önce otomatik oluşturulur.",
     "backup_latest": "Son yedek: {{when}}",
     "notes_for": "Sürüm notları — v{{version}}",
-    "whats_new_in": "v{{version}}'deki yenilikler"
+    "whats_new_in": "v{{version}}'deki yenilikler",
+    "backup_needs_runtime": "VoiceStudio çalışma ortamı çalışmaya başlayınca kullanılabilir.",
+    "backup_load_error": "Yedekleme durumu yüklenemedi."
   },
   "exportModal": {
     "export": "İhracat",
@@ -3006,7 +3008,15 @@
     "channel": "Güncelleme kanalı",
     "channel_stable": "Kararlı",
     "channel_beta": "Beta",
-    "channel_beta_hint": "Beta erken sürümleri alır ve hatalar içerebilir. Bir sonraki kararlı sürüme otomatik olarak geçersiniz."
+    "channel_beta_hint": "Beta erken sürümleri alır ve hatalar içerebilir. Bir sonraki kararlı sürüme otomatik olarak geçersiniz.",
+    "prompt_available": "{{version}} sürümü kullanılabilir",
+    "prompt_ready": "Yüklemeye hazır",
+    "prompt_details": "Ayrıntılar",
+    "prompt_hide": "Gizle",
+    "prompt_more": "Daha fazla",
+    "error_network": "GitHub yanıt vermedi. Bağlantınızı kontrol edip tekrar deneyin.",
+    "error_generic": "Güncelleme tamamlanmadı. Tekrar deneyin.",
+    "channel_current": "{{channel}} kanalındasınız"
   },
   "openapi": {
     "title": "VoiceStudio API",

@@ -2117,7 +2117,9 @@
     "backup_none": "สร้างอัตโนมัติก่อนอัปเดตฐานข้อมูลครั้งถัดไป",
     "backup_latest": "สำรองล่าสุด: {{when}}",
     "notes_for": "บันทึกประจำรุ่น — v{{version}}",
-    "whats_new_in": "มีอะไรใหม่ใน v{{version}}"
+    "whats_new_in": "มีอะไรใหม่ใน v{{version}}",
+    "backup_needs_runtime": "ใช้งานได้เมื่อรันไทม์ของ VoiceStudio ทำงานอยู่",
+    "backup_load_error": "โหลดสถานะการสำรองข้อมูลไม่ได้"
   },
   "exportModal": {
     "export": "ส่งออก",
@@ -3006,7 +3008,15 @@
     "channel": "ช่องทางอัปเดต",
     "channel_stable": "เสถียร",
     "channel_beta": "เบต้า",
-    "channel_beta_hint": "เบต้าได้รับบิลด์รุ่นแรก ๆ และอาจมีข้อบกพร่อง คุณจะย้ายไปยังรุ่นเสถียรถัดไปโดยอัตโนมัติ"
+    "channel_beta_hint": "เบต้าได้รับบิลด์รุ่นแรก ๆ และอาจมีข้อบกพร่อง คุณจะย้ายไปยังรุ่นเสถียรถัดไปโดยอัตโนมัติ",
+    "prompt_available": "มีเวอร์ชัน {{version}} พร้อมให้ใช้งาน",
+    "prompt_ready": "พร้อมติดตั้ง",
+    "prompt_details": "รายละเอียด",
+    "prompt_hide": "ซ่อน",
+    "prompt_more": "เพิ่มเติม",
+    "error_network": "GitHub ไม่ตอบสนอง ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง",
+    "error_generic": "การอัปเดตไม่เสร็จสมบูรณ์ ลองอีกครั้ง",
+    "channel_current": "คุณอยู่ในช่อง {{channel}}"
   },
   "openapi": {
     "title": "API ของ VoiceStudio",

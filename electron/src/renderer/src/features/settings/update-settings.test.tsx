@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
   activeWork: false,
   noBridge: false,
+  stage: 'ready',
 }));
 
 vi.mock('@/components/bridge', () => {
@@ -68,6 +69,10 @@ vi.mock('@/lib/app-activity', () => ({
 }));
 
 vi.mock('@/lib/api/client', () => ({ apiJson: mocks.api, describeError: String }));
+vi.mock('@/hooks/use-backend-status', async () => ({
+  ...(await vi.importActual<object>('@shared/utils/backendStage')),
+  useBackendStatus: () => ({ stage: mocks.stage }),
+}));
 vi.mock('sonner', () => ({ toast: { error: mocks.toastError, info: vi.fn() } }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 
@@ -96,6 +101,7 @@ describe('UpdateSettings', () => {
     mocks.listener = undefined;
     mocks.activeWork = false;
     mocks.noBridge = false;
+    mocks.stage = 'ready';
     mocks.getStateError = undefined;
     vi.clearAllMocks();
     mocks.getState.mockImplementation(async () => {
@@ -190,9 +196,15 @@ describe('UpdateSettings', () => {
     });
     renderSettings();
 
-    const stable = await screen.findByRole('button', { name: 'update.channel_stable' });
-    expect(stable).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(screen.getByRole('button', { name: 'update.channel_beta' }));
+    const stable = await screen.findByRole('radio', { name: 'update.channel_stable' });
+    expect(stable).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: 'update.channel_beta' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    expect(screen.getByRole('radiogroup', { name: 'update.channel' })).toBeInTheDocument();
+    expect(screen.getByText('update.channel_current')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: 'update.channel_beta' }));
 
     await waitFor(() => expect(mocks.setChannel).toHaveBeenCalledWith('beta'));
     await waitFor(() => expect(mocks.check).toHaveBeenCalledOnce());
@@ -200,12 +212,32 @@ describe('UpdateSettings', () => {
     expect(mocks.getState).toHaveBeenCalledOnce();
   });
 
+  test('switches channel with the arrow keys', async () => {
+    mocks.state = { ...mocks.state, channel: 'stable' };
+    const beta = { ...mocks.state, channel: 'beta' as const };
+    mocks.setChannel.mockResolvedValue(beta);
+    mocks.check.mockResolvedValue(beta);
+    renderSettings();
+
+    const stable = await screen.findByRole('radio', { name: 'update.channel_stable' });
+    expect(stable).toHaveAttribute('tabindex', '0');
+    expect(screen.getByRole('radio', { name: 'update.channel_beta' })).toHaveAttribute(
+      'tabindex',
+      '-1',
+    );
+    fireEvent.keyDown(stable, { key: 'ArrowRight' });
+    await waitFor(() => expect(mocks.setChannel).toHaveBeenCalledWith('beta'));
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: 'update.channel_beta' })).toHaveFocus(),
+    );
+  });
+
   test('does not check when the channel switch is refused', async () => {
     mocks.state = { ...mocks.state, channel: 'stable' };
     mocks.setChannel.mockResolvedValue(mocks.state);
     renderSettings();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'update.channel_beta' }));
+    fireEvent.click(await screen.findByRole('radio', { name: 'update.channel_beta' }));
     await waitFor(() => expect(mocks.setChannel).toHaveBeenCalledWith('beta'));
     expect(mocks.check).not.toHaveBeenCalled();
   });
@@ -213,7 +245,7 @@ describe('UpdateSettings', () => {
   test('locks the channel while an update is downloading', async () => {
     mocks.state = { ...mocks.state, channel: 'stable', status: 'downloading', progress: 5 };
     renderSettings();
-    expect(await screen.findByRole('button', { name: 'update.channel_beta' })).toBeDisabled();
+    expect(await screen.findByRole('radio', { name: 'update.channel_beta' })).toBeDisabled();
   });
 
   test('lists betas only for Beta users', async () => {
@@ -365,5 +397,54 @@ describe('UpdateSettings', () => {
     expect(screen.getByText('native updates', { selector: 'code' })).toBeInTheDocument();
     expect(screen.queryByRole('script')).not.toBeInTheDocument();
     expect(screen.getByText('<script>alert(1)</script>')).toBeInTheDocument();
+  });
+
+  test('says Database backup needs the runtime instead of loading forever', async () => {
+    mocks.stage = 'stopped';
+    renderSettings();
+    expect(await screen.findByText('updates.backup_needs_runtime')).toBeInTheDocument();
+    expect(screen.queryByText('common.loading')).not.toBeInTheDocument();
+    expect(mocks.api).not.toHaveBeenCalledWith(
+      expect.stringContaining('/db-backup'),
+      expect.anything(),
+    );
+  });
+
+  test('shows a retry when the backup status cannot load', async () => {
+    mocks.api.mockImplementation(async (path: string) => {
+      if (path.includes('/db-backup')) throw new Error('down');
+      return path.includes('/changelog') ? { available: false, releases: [] } : {};
+    });
+    renderSettings();
+    const retry = await screen.findByRole('button', { name: 'updates.retry_load' });
+    mocks.api.mockImplementation(async (path: string) =>
+      path.includes('/db-backup') ? { available: false, latest: null } : {},
+    );
+    fireEvent.click(retry);
+    expect(await screen.findByText('updates.backup_none')).toBeInTheDocument();
+  });
+
+  test('shows a retry when the release list fails', async () => {
+    mocks.listReleases.mockRejectedValue(new Error('504'));
+    renderSettings();
+    const retry = await screen.findByRole('button', { name: 'updates.retry_load' });
+    expect(screen.getByText('updates.load_error')).toBeInTheDocument();
+    mocks.listReleases.mockResolvedValue([]);
+    fireEvent.click(retry);
+    expect(await screen.findByText('updates.none')).toBeInTheDocument();
+  });
+
+  test('stops loading releases when GitHub never answers', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mocks.listReleases.mockReturnValue(new Promise(() => undefined));
+      renderSettings();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(40_000);
+      });
+      expect(await screen.findByText('updates.load_error')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

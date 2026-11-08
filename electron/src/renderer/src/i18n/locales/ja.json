@@ -2117,7 +2117,9 @@
     "backup_none": "次回のデータベース更新前に自動作成されます。",
     "backup_latest": "最新のバックアップ：{{when}}",
     "notes_for": "リリースノート — v{{version}}",
-    "whats_new_in": "v{{version}} の新機能"
+    "whats_new_in": "v{{version}} の新機能",
+    "backup_needs_runtime": "VoiceStudio のランタイムが起動すると利用できます。",
+    "backup_load_error": "バックアップの状態を読み込めませんでした。"
   },
   "exportModal": {
     "export": "エクスポート",
@@ -3006,7 +3008,15 @@
     "channel": "アップデートチャンネル",
     "channel_stable": "安定版",
     "channel_beta": "ベータ版",
-    "channel_beta_hint": "ベータ版は先行ビルドを受け取るため、不具合がある場合があります。次の安定版が出ると自動的に切り替わります。"
+    "channel_beta_hint": "ベータ版は先行ビルドを受け取るため、不具合がある場合があります。次の安定版が出ると自動的に切り替わります。",
+    "prompt_available": "バージョン {{version}} が利用可能です",
+    "prompt_ready": "インストールの準備ができました",
+    "prompt_details": "詳細",
+    "prompt_hide": "非表示",
+    "prompt_more": "詳細を見る",
+    "error_network": "GitHub から応答がありません。接続を確認して、もう一度お試しください。",
+    "error_generic": "アップデートが完了しませんでした。もう一度お試しください。",
+    "channel_current": "現在のチャンネル: {{channel}}"
   },
   "openapi": {
     "title": "VoiceStudio API",

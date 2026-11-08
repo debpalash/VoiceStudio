@@ -2288,7 +2288,9 @@
     "backup_line": "Copia de seguridade da base de datos",
     "backup_latest": "Última copia de seguranza: {{when}}",
     "backup_none": "A primeira copia de seguridade créase automaticamente antes da seguinte actualización da base de datos.",
-    "whats_new_in": "Novidades en v{{version}}"
+    "whats_new_in": "Novidades en v{{version}}",
+    "backup_needs_runtime": "Dispoñible cando o contorno de execución de VoiceStudio estea en marcha.",
+    "backup_load_error": "Non se puido cargar o estado da copia de seguranza."
   },
   "exportModal": {
     "export": "Exportar",
@@ -3087,7 +3089,15 @@
     "channel": "Actualizar a canle",
     "channel_stable": "Estable",
     "channel_beta": "Beta",
-    "channel_beta_hint": "A beta recibe compilacións temperás e pode ter erros. Pasas á seguinte versión estable automaticamente."
+    "channel_beta_hint": "A beta recibe compilacións temperás e pode ter erros. Pasas á seguinte versión estable automaticamente.",
+    "prompt_available": "A versión {{version}} está dispoñible",
+    "prompt_ready": "Listo para instalar",
+    "prompt_details": "Detalles",
+    "prompt_hide": "Ocultar",
+    "prompt_more": "Máis",
+    "error_network": "GitHub non respondeu. Comproba a túa conexión e téntao de novo.",
+    "error_generic": "A actualización non se completou. Téntao de novo.",
+    "channel_current": "Estás en {{channel}}"
   },
   "openapi": {
     "title": "Referencia da API OpenAPI de VoiceStudio",
