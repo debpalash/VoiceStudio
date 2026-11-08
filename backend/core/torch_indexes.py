@@ -55,6 +55,19 @@ UV_PIP_CPU_ARGS: tuple[str, ...] = (
 PYTORCH_ROCM_INDEX_URL = "https://download.pytorch.org/whl/rocm6.4"
 ROCM_TORCH_PINS: tuple[str, ...] = ("torch==2.8.0", "torchaudio==2.8.0")
 
+# PyTorch's ROCm index carrying each torch minor's Linux wheels, for sidecars
+# whose upstream pins a torch other than the shared ROCM_TORCH_PINS (VoxCPM2
+# 2.11, MOSS-TTS-Nano/CosyVoice/Confucius4 2.7). The newest ROCm index that
+# publishes both torch and torchaudio for that minor (cp310/cp311), checked
+# against download.pytorch.org on 2026-10-31.
+ROCM_INDEX_TAIL_FOR_TORCH: dict[str, str] = {
+    "2.7": "rocm6.3",
+    "2.8": "rocm6.4",
+    "2.9": "rocm6.4",
+    "2.10": "rocm7.1",
+    "2.11": "rocm7.2",
+}
+
 UV_PIP_ROCM_ARGS: tuple[str, ...] = (
     "--extra-index-url",
     PYTORCH_ROCM_INDEX_URL,

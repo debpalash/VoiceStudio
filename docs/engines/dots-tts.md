@@ -167,7 +167,9 @@ which conflicts with the parent's `transformers>=5.3`). For why that adds
 disk and how uv keeps the cost down, see
 [Engine venvs & disk usage](disk-usage.md).
 
-The upstream runtime selects CUDA or CPU internally. Automatic precision follows
+The upstream runtime selects CUDA or CPU internally; a ROCm (HIP) torch in the
+sidecar venv counts as CUDA, so on Linux ROCm the one-click install takes the
+ROCm build of the torch version upstream's constraints pin. Automatic precision follows
 that selection: bfloat16 on CUDA, float32 otherwise, including XPU/NPU/MPS hosts
 where this runtime executes on CPU. `OMNIVOICE_DOTS_TTS_PRECISION` remains an
 explicit override. If the CUDA availability probe raises, the automatic precision

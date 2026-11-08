@@ -25,7 +25,7 @@ from core.device_caps import (
     cuda_forced,
 )
 
-RoutingStatus = Literal["accelerated", "cpu_fallback", "cpu_only", "unavailable", "n/a"]
+RoutingStatus = Literal["accelerated", "cpu_fallback", "cpu_only", "unavailable", "n/a", "unknown"]
 
 
 class RoutingResult(TypedDict):

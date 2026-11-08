@@ -9,6 +9,8 @@ holding stale class objects depending on collection/run order.
 """
 from __future__ import annotations
 
+import os
+
 import pytest
 
 # id → declared gpu_compat. nemo-parakeet was CUDA-gated until 2026-07-02,
@@ -18,13 +20,14 @@ _EXPECTED = {
     "whisperx": ("cuda", "cpu"),
     "faster-whisper": ("cuda", "cpu"),
     "mlx-whisper": ("mps", "cpu"),
-    "pytorch-whisper": ("cuda", "mps", "cpu"),
-    "nemo-parakeet": ("cuda", "cpu"),
+    # PyTorch engines: a ROCm (HIP) torch answers torch.cuda with the AMD GPU.
+    "pytorch-whisper": ("cuda", "rocm", "mps", "cpu"),
+    "nemo-parakeet": ("cuda", "cpu") if os.name == "nt" else ("cuda", "rocm", "cpu"),
     # MLX runs on Apple Silicon's unified-memory GPU only; is_available
     # hard-gates on mlx_supported(), so claiming cpu would be false.
     "parakeet-mlx": ("mps",),
     "moonshine": ("cpu",),
-    "funasr": ("cuda", "cpu"),
+    "funasr": ("cuda", "cpu") if os.name == "nt" else ("cuda", "rocm", "cpu"),
     # Crash-isolated sidecar wraps the same CTranslate2 engine as
     # faster-whisper — same device support (#730 residual B).
     "faster-whisper-isolated": ("cuda", "cpu"),
@@ -65,10 +68,17 @@ def test_compat_values_are_valid(engine_id):
         assert "cpu" not in compat  # would be a false claim — is_available gates on CUDA
 
 
-def test_no_asr_engine_falsely_claims_rocm():
-    # ROCm is intentionally unclaimed until verified per engine (see ABC note).
+# Engines that ride the app's own torch and so use an AMD GPU through a ROCm
+# (HIP) build. CTranslate2 engines stay unclaimed statically: stock CT2 is
+# NVIDIA-only (#1529) and ROCm is admitted at runtime only for the verified
+# Windows HIP binary (runtime_gpu_compat).
+_ROCM_TORCH_ENGINES = {"pytorch-whisper"} | (set() if os.name == "nt" else {"nemo-parakeet", "funasr"})
+
+
+def test_only_torch_asr_engines_claim_rocm_statically():
     for engine_id in _EXPECTED:
-        assert "rocm" not in _cls(engine_id).gpu_compat
+        claims = "rocm" in _cls(engine_id).gpu_compat
+        assert claims == (engine_id in _ROCM_TORCH_ENGINES), engine_id
 
 
 def test_nemo_parakeet_has_no_cuda_gate(monkeypatch):

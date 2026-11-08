@@ -2214,7 +2214,7 @@ class VoxCPM2Backend(TTSBackend):
     # generation_kwargs() clamps inference_timesteps to [1, 64] — an explicit
     # value outside that range would silently render as the edge (#3654).
     num_step_range: tuple[int, int] = (1, 64)
-    gpu_compat = ("cuda", "mps", "cpu")
+    gpu_compat = ("cuda", "rocm", "mps", "cpu")
 
     def __init__(self):
         self._model = None
@@ -2360,7 +2360,7 @@ class MossTTSNanoBackend(TTSBackend):
     # generate() forwards text + prompt_audio_path only (#3654).
     supports_num_step = False
     supports_guidance_scale = False
-    gpu_compat = ("cuda", "cpu")
+    gpu_compat = ("cuda", "rocm", "cpu")
 
     def __init__(self):
         self._model = None
@@ -3375,7 +3375,7 @@ class CosyVoiceBackend(TTSBackend):
     inline_tags = COSYVOICE_INLINE_TAGS
     # CosyVoice's official inference path expects CUDA; CPU works but slow.
     # MPS support not verified upstream — flagged for Phase 6 confirmation.
-    gpu_compat = ("cuda", "cpu")
+    gpu_compat = ("cuda", "rocm", "cpu")
 
     # CosyVoice language tags used for cross-lingual synthesis.
     LANG_TAGS = {

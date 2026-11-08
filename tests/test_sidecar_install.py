@@ -830,6 +830,7 @@ def test_get_status_synthesizes_state_without_job(monkeypatch):
     assert st == {
         "engine_id": "fake-side",
         "installed": False,
+        "repair_available": False,
         "managed": False,
         "install_dir": None,
         "job": None,
@@ -1445,7 +1446,10 @@ def test_a_failed_dependency_install_is_repaired_not_reported_installed(monkeypa
         ("cuda", "win32", "+cu128", "https://download.pytorch.org/whl/cu128"),
         ("cuda", "linux", "+cu128", "https://download.pytorch.org/whl/cu128"),
         ("cpu", "win32", "+cpu", "https://download.pytorch.org/whl/cpu"),
-        ("rocm", "linux", "+cpu", "https://download.pytorch.org/whl/cpu"),
+        # A ROCm host takes the same version's ROCm build (AMD GPU parity).
+        ("rocm", "linux", "+rocm7.2", "https://download.pytorch.org/whl/rocm7.2"),
+        # PyTorch publishes no Windows ROCm wheels; Windows keeps +cpu.
+        ("rocm", "win32", "+cpu", "https://download.pytorch.org/whl/cpu"),
         ("mps", "darwin", "", None),
     ],
 )
@@ -1565,26 +1569,84 @@ def test_rocm_torch_never_leaks_to_other_hosts(monkeypatch):
         assert not any(a.startswith("torch==2.8.0+") for a in pip)
 
 
-def test_rocm_args_never_reach_engines_that_did_not_opt_in(monkeypatch):
-    """voxcpm2 pins its own torch pair and follows the host (+cpu on ROCm,
-    per test_torch_pins_follow_the_host); opting indextts2 in must not
-    change any other spec's install."""
-    from core.torch_indexes import PYTORCH_ROCM_INDEX_URL
-
+def test_rocm_args_never_reach_engines_without_a_known_torch(monkeypatch):
+    """Only an engine whose torch version is known (spec pins, a declared
+    upstream pin, or IndexTTS's shared stack) is given a ROCm torch: guessing
+    a version for any other engine could break its resolution."""
     monkeypatch.delenv("OMNIVOICE_TORCH_VARIANT", raising=False)
     monkeypatch.setattr(si.sys, "platform", "linux")
     argvs = _capture_install_argvs(monkeypatch, family="rocm")
     for engine_id in _ALL_SPEC_IDS:
-        if engine_id == "indextts2":
-            continue
         spec = si.get_spec(engine_id)
-        if spec.uses_rocm_index:
+        if spec.uses_rocm_index or si._spec_torch_versions(spec) is not None:
             continue
         argvs.clear()
         si._step_install_deps(spec, si._new_job(engine_id))
         pip = next(a for a in argvs if a[1:3] == ["pip", "install"])
         assert "--no-sources" not in pip, engine_id
-        assert PYTORCH_ROCM_INDEX_URL not in pip, engine_id
+        assert not any("download.pytorch.org/whl/rocm" in a for a in pip), engine_id
+
+
+@pytest.mark.parametrize(
+    ("engine_id", "torch_pin", "audio_pin", "index"),
+    [
+        ("voxcpm2", "torch==2.11.0+rocm7.2", "torchaudio==2.11.0+rocm7.2",
+         "https://download.pytorch.org/whl/rocm7.2"),
+        ("moss-tts-nano", "torch==2.7.0+rocm6.3", "torchaudio==2.7.0+rocm6.3",
+         "https://download.pytorch.org/whl/rocm6.3"),
+        ("cosyvoice", "torch==2.7.0+rocm6.3", "torchaudio==2.7.0+rocm6.3",
+         "https://download.pytorch.org/whl/rocm6.3"),
+        ("confucius4-tts", "torch==2.7.0+rocm6.3", "torchaudio==2.7.0+rocm6.3",
+         "https://download.pytorch.org/whl/rocm6.3"),
+        ("indextts2", "torch==2.8.0+rocm6.4", "torchaudio==2.8.0+rocm6.4",
+         "https://download.pytorch.org/whl/rocm6.4"),
+    ],
+)
+def test_rocm_host_gives_each_engine_its_own_torch_version(
+    monkeypatch, engine_id, torch_pin, audio_pin, index
+):
+    """Fail-before/pass-after (AMD parity): only IndexTTS got a ROCm torch;
+    every other PyTorch sidecar installed the CPU or CUDA wheel and ran on the
+    CPU on an AMD GPU host. Each now takes its own pinned version from the
+    ROCm index that publishes it, so upstream's tested version is kept."""
+    monkeypatch.delenv("OMNIVOICE_TORCH_VARIANT", raising=False)
+    monkeypatch.delenv("OMNIVOICE_TORCH_INDEX", raising=False)
+    monkeypatch.setattr(si.sys, "platform", "linux")
+    monkeypatch.setattr(si, "_host_machine", lambda: "x86_64")
+    argvs = _capture_install_argvs(monkeypatch, family="rocm")
+    si._step_install_deps(si.get_spec(engine_id), si._new_job(engine_id))
+    pip = next(a for a in argvs if a[1:3] == ["pip", "install"])
+    assert "--no-sources" in pip
+    assert torch_pin in pip and audio_pin in pip
+    assert pip.count("--extra-index-url") == 1
+    assert pip[pip.index("--extra-index-url") + 1] == index
+    assert not any(a.endswith(("+cpu", "+cu128")) for a in pip)
+
+
+def test_dots_tts_takes_rocm_torch_from_its_constraints(monkeypatch):
+    """dots.tts pins torch in upstream's constraints file, not in the spec."""
+    monkeypatch.delenv("OMNIVOICE_TORCH_VARIANT", raising=False)
+    monkeypatch.delenv("OMNIVOICE_TORCH_INDEX", raising=False)
+    monkeypatch.setattr(si.sys, "platform", "linux")
+    argvs = _capture_install_argvs(monkeypatch, family="rocm")
+    spec = si.get_spec("dots-tts")
+    constraints = si.managed_checkout(spec) / "constraints" / "recommended.txt"
+    constraints.write_text("six==1.17.0\ntorch==2.8.0  # tested\ntorchaudio==2.8.0\n")
+    si._step_install_deps(spec, si._new_job("dots-tts"))
+    pip = next(a for a in argvs if a[1:3] == ["pip", "install"])
+    assert "torch==2.8.0+rocm6.4" in pip and "torchaudio==2.8.0+rocm6.4" in pip
+
+
+def test_unknown_torch_minor_keeps_the_existing_install(monkeypatch):
+    """A torch minor with no known ROCm index is never guessed."""
+    import dataclasses
+
+    monkeypatch.setattr(si.sys, "platform", "linux")
+    monkeypatch.setattr(si, "_host_family", lambda: "rocm")
+    spec = dataclasses.replace(
+        si.get_spec("voxcpm2"), torch_pins=("torch==2.6.0", "torchaudio==2.6.0"),
+    )
+    assert si._spec_rocm_torch_args(spec) is None
 
 
 def test_rocm_index_env_is_the_index_uv_resolves_against(monkeypatch):

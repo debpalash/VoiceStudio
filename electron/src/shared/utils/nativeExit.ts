@@ -62,7 +62,8 @@ export function isExternalKillExit(code: number | null | undefined): boolean {
 /** True when captured output already carries a fault dump or a Python
  * traceback: evidence that explains the death better than "ended from outside". */
 export function hasFaultEvidence(output: string | readonly string[] | null | undefined): boolean {
-  const text = Array.isArray(output) ? output.join('\n') : (output ?? '');
+  // Array.isArray does not narrow a readonly array, so branch on the string case.
+  const text = typeof output === 'string' ? output : (output ?? []).join('\n');
   return (
     /(?:Fatal Python error:|Windows fatal exception:)/.test(text) ||
     /Traceback \(most recent call last\)/.test(text)
