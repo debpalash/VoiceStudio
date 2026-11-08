@@ -40,6 +40,18 @@ only enables **Restart to update** after the package has downloaded and passed
 the updater's checksum verification, and blocks that restart until active work
 has finished and current drafts are flushed.
 
+Updates download only the parts of the installer that changed when they can,
+and the full installer otherwise; the app picks automatically and checks the
+result the same way either way. The size shown is the full installer for your
+platform; a patch download finishes early.
+
+| Install | Patch updates |
+|---|---|
+| Windows | Yes, from the first update |
+| macOS | From the second update: the first one after installing from the DMG downloads in full |
+| Linux AppImage | Yes |
+| Linux `.deb` | No: install the newer `.deb` |
+
 There are **no accounts or updater telemetry**. A check fetches one small
 platform/architecture-specific manifest from
 `github.com/debpalash/VoiceStudio/releases/latest/download/` (Stable), or, on

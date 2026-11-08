@@ -69,6 +69,7 @@ import {
   listDesktopReleases,
   readSavedUpdateChannel,
   registerUpdateIpc,
+  releaseSize,
   resolveBetaFeed,
   resolveUpdateFeedUrl,
   UPDATE_CHANNELS,
@@ -104,11 +105,13 @@ describe('DesktopUpdater', () => {
     expect(mocks.autoUpdater.autoInstallOnAppQuit).toBe(false);
     expect(mocks.autoUpdater.allowDowngrade).toBe(false);
     expect(mocks.autoUpdater.allowPrerelease).toBe(false);
+    expect(mocks.autoUpdater).toHaveProperty('disableWebInstaller', true);
     expect(mocks.autoUpdater.channel).toBe(`electron-stable-${process.platform}-${process.arch}`);
     expect(mocks.autoUpdater.setFeedURL).toHaveBeenLastCalledWith({
       provider: 'generic',
       url: 'https://github.com/debpalash/VoiceStudio/releases/latest/download',
       channel: `electron-stable-${process.platform}-${process.arch}`,
+      useMultipleRangeRequest: false,
     });
 
     emit('checking-for-update');
@@ -152,6 +155,7 @@ describe('DesktopUpdater', () => {
       provider: 'generic',
       url: 'https://github.com/debpalash/VoiceStudio/releases/download/v0.5.7',
       channel,
+      useMultipleRangeRequest: false,
     });
   });
 
@@ -266,6 +270,7 @@ describe('DesktopUpdater', () => {
       provider: 'generic',
       url: 'https://github.com/debpalash/VoiceStudio/releases/download/v0.5.9-beta.10',
       channel: `electron-beta-${platform}-${arch}`,
+      useMultipleRangeRequest: false,
     });
   });
 
@@ -570,5 +575,30 @@ describe('update IPC', () => {
 
     dispose();
     expect(mocks.ipcMain.removeHandler).toHaveBeenCalledTimes(7);
+  });
+});
+
+describe('offered update size', () => {
+  const files = [
+    { url: 'VoiceStudio-0.5.8-mac-arm64.zip', sha512: 'a', size: 280 },
+    { url: 'VoiceStudio-0.5.8-mac-arm64.dmg', sha512: 'b', size: 281 },
+  ];
+  const linux = [
+    { url: 'VoiceStudio-0.5.8-linux-x64.AppImage', sha512: 'a', size: 268 },
+    { url: 'VoiceStudio-0.5.8-linux-x64.deb', sha512: 'b', size: 213 },
+  ];
+
+  test('counts only the installer this platform downloads, not every file in the feed', () => {
+    expect(releaseSize({ files, path: files[0].url }, 'darwin')).toBe(280);
+    expect(releaseSize({ files: linux, path: linux[0].url }, 'linux', '/opt/VoiceStudio.AppImage')).toBe(268);
+    expect(releaseSize({ files: linux, path: linux[0].url }, 'linux', undefined)).toBe(213);
+    const win = [{ url: 'VoiceStudio-0.5.8-win-x64.exe', sha512: 'a', size: 222 }];
+    expect(releaseSize({ files: win, path: win[0].url }, 'win32')).toBe(222);
+  });
+
+  test('falls back to the feed path, then the first file, and never reports zero', () => {
+    expect(releaseSize({ files: [{ url: 'x.bin', sha512: 'a', size: 5 }], path: 'x.bin' }, 'win32')).toBe(5);
+    expect(releaseSize({ files: [], path: '' }, 'darwin')).toBeUndefined();
+    expect(releaseSize({ files: [{ url: 'a.zip', sha512: 'a', size: 0 }], path: 'a.zip' }, 'darwin')).toBeUndefined();
   });
 });
