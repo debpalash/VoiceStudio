@@ -2117,7 +2117,9 @@
     "backup_latest": "최근 백업: {{when}}",
     "backup_none": "다음 데이터베이스 업데이트 전에 자동 생성됩니다.",
     "whats_new_in": "v{{version}} 새 기능",
-    "tab": "업데이트"
+    "tab": "업데이트",
+    "backup_needs_runtime": "VoiceStudio 런타임이 실행되면 사용할 수 있습니다.",
+    "backup_load_error": "백업 상태를 불러오지 못했습니다."
   },
   "exportModal": {
     "export_options": "내보내기 옵션",
@@ -3006,7 +3008,15 @@
     "channel": "업데이트 채널",
     "channel_stable": "안정",
     "channel_beta": "베타",
-    "channel_beta_hint": "베타는 초기 빌드를 받으며 버그가 있을 수 있습니다. 다음 안정 버전이 나오면 자동으로 전환됩니다."
+    "channel_beta_hint": "베타는 초기 빌드를 받으며 버그가 있을 수 있습니다. 다음 안정 버전이 나오면 자동으로 전환됩니다.",
+    "prompt_available": "버전 {{version}}을(를) 사용할 수 있습니다",
+    "prompt_ready": "설치 준비 완료",
+    "prompt_details": "자세히",
+    "prompt_hide": "숨기기",
+    "prompt_more": "더 보기",
+    "error_network": "GitHub가 응답하지 않습니다. 연결을 확인하고 다시 시도하세요.",
+    "error_generic": "업데이트가 완료되지 않았습니다. 다시 시도하세요.",
+    "channel_current": "현재 {{channel}} 채널입니다"
   },
   "openapi": {
     "title": "VoiceStudio API",

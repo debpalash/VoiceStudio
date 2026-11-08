@@ -2165,7 +2165,9 @@
     "backup_none": "تُنشأ تلقائيًا قبل تحديث قاعدة البيانات التالي.",
     "backup_latest": "آخر نسخة احتياطية: {{when}}",
     "notes_for": "ملاحظات الإصدار — v{{version}}",
-    "whats_new_in": "ما هو الجديد في v{{version}}"
+    "whats_new_in": "ما هو الجديد في v{{version}}",
+    "backup_needs_runtime": "يتوفر بمجرد تشغيل بيئة تشغيل VoiceStudio.",
+    "backup_load_error": "تعذّر تحميل حالة النسخ الاحتياطي."
   },
   "exportModal": {
     "export": "تصدير",
@@ -3058,7 +3060,15 @@
     "channel": "قناة التحديث",
     "channel_stable": "مستقرة",
     "channel_beta": "تجريبية",
-    "channel_beta_hint": "تحصل القناة التجريبية على إصدارات مبكرة وقد تحتوي على أخطاء. تنتقل تلقائيًا إلى الإصدار المستقر التالي."
+    "channel_beta_hint": "تحصل القناة التجريبية على إصدارات مبكرة وقد تحتوي على أخطاء. تنتقل تلقائيًا إلى الإصدار المستقر التالي.",
+    "prompt_available": "الإصدار {{version}} متاح",
+    "prompt_ready": "جاهز للتثبيت",
+    "prompt_details": "التفاصيل",
+    "prompt_hide": "إخفاء",
+    "prompt_more": "المزيد",
+    "error_network": "لم يستجب GitHub. تحقق من اتصالك وحاول مرة أخرى.",
+    "error_generic": "لم يكتمل التحديث. حاول مرة أخرى.",
+    "channel_current": "أنت على قناة {{channel}}"
   },
   "openapi": {
     "title": "واجهة VoiceStudio البرمجية",
