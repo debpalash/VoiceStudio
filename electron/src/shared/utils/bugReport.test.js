@@ -18,6 +18,35 @@ vi.mock('./backendCrash', async (importOriginal) => {
   return { ...actual, getLastBackendCrash: vi.fn().mockResolvedValue(null) };
 });
 
+describe('scrubText removes a home folder name with spaces (#3724)', () => {
+  it.each([
+    ['C:\\Users\\Alice Smith\\model.bin', '~\\model.bin'],
+    ['c:/Users/Alice Smith/AppData/x.log', '~/AppData/x.log'],
+    ['file:///C:/Users/Ann Lee/app.js', '~/app.js'],
+    ['/Users/Alice Smith/Library/Logs/app.log', '~/Library/Logs/app.log'],
+    ['/home/alice smith/.omnivoice/omnivoice.log', '~/.omnivoice/omnivoice.log'],
+    ['loaded "C:\\Users\\Jo Ann Lee\\a b\\m.bin"', 'loaded "~\\a b\\m.bin"'],
+  ])('%s', (raw, expected) => {
+    expect(scrubText(raw)).toBe(expected);
+    expect(scrubText(raw)).not.toMatch(/Smith|Ann|Lee|alice/i);
+  });
+
+  it('keeps the words after a home path that ends the text', () => {
+    expect(scrubText('/home/bob and more')).toBe('~ and more');
+    expect(scrubText('at C:\\Users\\bob said hi')).toBe('at ~ said hi');
+  });
+
+  it("removes the running user's real home whole, even where nothing follows it", () => {
+    vi.stubEnv('USERPROFILE', 'C:\\Users\\Alice Smith');
+    try {
+      expect(scrubText('profile at C:\\Users\\Alice Smith')).toBe('profile at ~');
+      expect(scrubText('profile at c:/users/alice smith')).toBe('profile at ~');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
 describe('scrubText — frontend twin of backend/core/scrub.py', () => {
   it.each([
     ['/Users/alice/Library/Logs/app.log', '~/Library/Logs/app.log'],

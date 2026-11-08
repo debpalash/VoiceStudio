@@ -9,6 +9,19 @@ import {
   initAnalyticsFromConsent,
 } from '../utils/analytics';
 
+// Hoisted by Vitest above every import either way; kept at top level so
+// the file reads in execution order.
+vi.mock('posthog-js/dist/module.slim.no-external', () => ({
+  default: {
+    init: vi.fn(),
+    opt_in_capturing: vi.fn(),
+    opt_out_capturing: vi.fn(),
+    reset: vi.fn(),
+    has_opted_out_capturing: () => false,
+    capture: vi.fn(),
+  },
+}));
+
 // The usual posthog-js integration is `posthog.init(...)` at module load with
 // autocapture on. Both halves would be a disaster here:
 //
@@ -162,16 +175,6 @@ describe('initAnalyticsFromConsent — silence is not consent', () => {
   });
 
   it('starts ONLY when the user opted in and a destination exists', async () => {
-    vi.mock('posthog-js/dist/module.slim.no-external', () => ({
-      default: {
-        init: vi.fn(),
-        opt_in_capturing: vi.fn(),
-        opt_out_capturing: vi.fn(),
-        reset: vi.fn(),
-        has_opted_out_capturing: () => false,
-        capture: vi.fn(),
-      },
-    }));
     const started = await initAnalyticsFromConsent(async () => ({
       available: true,
       opted_in: true,

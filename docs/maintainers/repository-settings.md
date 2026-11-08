@@ -10,8 +10,13 @@ authenticated `gh` with admin access to `debpalash/VoiceStudio`.
 Do these in order, after the pull request that adds `.github/workflows/cla.yml`
 is merged:
 
-1. Create the labels `cla` (signing issues) and `cla-override` (maintainer
-   review): `gh label create cla` and `gh label create cla-override`.
+1. Create the labels `cla` (signing issues), `cla-override` (maintainer review)
+   and `cla-signed`: `gh label create cla`, `gh label create cla-override` and
+   `gh label create cla-signed`. The check adds and removes `cla-signed` itself,
+   so it is on a pull request only while signatures clear it, not on one cleared
+   by `cla-override` or by exemptions alone. Do not apply it by hand or require
+   it: the `CLA` status is the merge gate. Pull requests it clears also get a
+   comment linking the agreement and each signature.
 2. Open the public signing issue, label it `cla`, and pin it.
 3. Comment `recheck` on each open pull request, so it gets a `CLA` status.
    Pull requests opened before these workflows existed also need native
@@ -23,6 +28,11 @@ is merged:
    blocks the merge with "Expected — waiting for status".
 5. Apply the `cla-signatures` ruleset once the first signature creates the
    branch, or before; the ruleset can exist first.
+
+To re-run the check on every open pull request, for example after changing its
+label or comment, run the **CLA backfill** workflow from `main`:
+`gh workflow run cla-backfill.yml --ref main`. It is safe to run again. Any pull
+request it lists as failed stays pending until you comment `recheck` on it.
 
 When you fold other people's pull requests into one, write `Supersedes #N` in
 the description: the check then asks their authors to sign too.

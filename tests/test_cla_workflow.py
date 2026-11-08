@@ -176,3 +176,13 @@ def test_cla_api_errors_block_merging_independently_of_the_commit_status():
     assert {"context": job.get("name", "cla"), "integration_id": 15368} in checks
     assert not job.get("continue-on-error", False)
     assert all(not step.get("continue-on-error", False) for step in job["steps"])
+
+
+def test_backfill_is_manual_main_only_and_never_checks_out_pr_code():
+    workflow = _load(_WORKFLOWS / "cla-backfill.yml")
+    assert _triggers(workflow) == {"workflow_dispatch"}
+    job = workflow["jobs"]["backfill"]
+    assert job["if"] == "github.ref == 'refs/heads/main'"
+    checkout = next(step for step in job["steps"] if "checkout" in step.get("uses", ""))
+    assert checkout["with"]["persist-credentials"] is False
+    assert "ref" not in checkout["with"]

@@ -15,17 +15,28 @@ import {
 } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import {
-  DEFAULT_ELECTRON_DEV_PORT,
-  DEFAULT_ELECTRON_PROXY_PORT,
-} from '../../config/app-config.mjs';
-import { clearDevPorts } from '../../scripts/clear-dev-ports.mjs';
+import { assertSupportedNode } from './node-version.mjs';
 import {
   activeMacDevBundles,
   holdMacDevBundle,
   macDevLeaseDirectory,
   withMacDevCacheLock,
 } from './mac-dev-cache.mjs';
+
+// Check before importing configuration with syntax that older Node cannot parse.
+const isEntryPoint = process.argv[1] &&
+  import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
+if (isEntryPoint) {
+  try {
+    assertSupportedNode();
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
+}
+const { DEFAULT_ELECTRON_DEV_PORT, DEFAULT_ELECTRON_PROXY_PORT } =
+  await import('../../config/app-config.mjs');
+const { clearDevPorts } = await import('../../scripts/clear-dev-ports.mjs');
 
 const APP_NAME = 'VoiceStudio';
 const here = dirname(fileURLToPath(import.meta.url));
@@ -435,7 +446,7 @@ export function launchElectronVite(
   });
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (isEntryPoint) {
   try {
     await replacePreviousDevInstance();
   } catch (error) {

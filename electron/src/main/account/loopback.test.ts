@@ -34,12 +34,19 @@ it('answers 404 off the callback path', async () => {
 
 it('reports a denied sign-in', async () => {
   const lb = await startLoopback({ expectedState: 's', signedInPage: page });
-  await hit(lb.redirectUri, '?error=access_denied&state=s');
+  expect(await hit(lb.redirectUri, '?error=access_denied&state=s')).toEqual({
+    status: 302,
+    location: `${page}?error=access_denied`,
+  });
   await expect(lb.code).rejects.toMatchObject({ reason: 'denied' });
 });
 
 it('times out', async () => {
-  const lb = await startLoopback({ expectedState: 's', signedInPage: page, timeoutMs: 50 });
+  const lb = await startLoopback({
+    expectedState: 's',
+    signedInPage: page,
+    timeoutMs: 50,
+  });
   await expect(lb.code).rejects.toMatchObject({ reason: 'timeout' });
 });
 
@@ -51,7 +58,10 @@ it('refuses connections once closed', async () => {
 });
 
 it('a state with the same length but different bytes is refused, not a crash', async () => {
-  const lb = await startLoopback({ expectedState: 'a'.repeat(43), signedInPage: page });
+  const lb = await startLoopback({
+    expectedState: 'a'.repeat(43),
+    signedInPage: page,
+  });
   const multibyte = encodeURIComponent('é'.repeat(43));
   expect((await hit(lb.redirectUri, `?code=x&state=${multibyte}`)).status).toBe(400);
   expect((await hit(lb.redirectUri, `?code=real&state=${'a'.repeat(43)}`)).status).toBe(302);

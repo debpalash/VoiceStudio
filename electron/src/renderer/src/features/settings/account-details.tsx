@@ -1,4 +1,5 @@
-import { CheckIcon, MinusIcon } from 'lucide-react';
+import { CheckIcon, MinusIcon, RefreshCwIcon } from 'lucide-react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -26,9 +27,20 @@ export function AccountDetails({
   onRetry,
 }: {
   state: AccountPublicState;
-  onRetry?: () => void;
+  /** Reloads the account details; drives Retry and the Refresh button. */
+  onRetry?: () => void | Promise<void>;
 }) {
   const { t } = useTranslation();
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = async () => {
+    if (!onRetry || refreshing) return;
+    setRefreshing(true);
+    try {
+      await onRetry();
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const profile = state.profile;
   if (state.signedIn && !profile && state.profileError)
     return (
@@ -77,6 +89,20 @@ export function AccountDetails({
         </div>
         {state.links && (
           <ExternalLink href={state.links.profile}>{t('account.manage_profile')}</ExternalLink>
+        )}
+        {onRetry && (
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            aria-label={t('account.refresh')}
+            title={t('account.refresh')}
+            aria-busy={refreshing}
+            disabled={refreshing}
+            onClick={() => void refresh()}
+          >
+            <RefreshCwIcon className={refreshing ? 'animate-spin' : undefined} aria-hidden="true" />
+          </Button>
         )}
       </div>
       {plan && (

@@ -348,6 +348,12 @@ jobs:
   # remain separate; GitHub users sideload the unsigned IPA with their Apple ID.
   mobile:
     needs: validate
+    # A called job may not ask for more than this grant, even one its `if`
+    # skips: mobile-release.yml's mobile-v* release job needs contents: write,
+    # and without it GitHub rejects the whole run at startup. Its other jobs
+    # still get only the contents: read it sets at the top.
+    permissions:
+      contents: write
     uses: ./.github/workflows/mobile-release.yml
     with:
       release_ref: ${{ inputs.release_tag || github.ref_name }}

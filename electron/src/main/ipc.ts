@@ -60,6 +60,7 @@ export const CHANNELS = {
   backendRestart: 'backend:restart',
   backendSetupRuntime: 'backend:setupRuntime',
   backendCleanSetupRuntime: 'backend:cleanSetupRuntime',
+  backendSetupRuntimeOnCpu: 'backend:setupRuntimeOnCpu',
   backendSetRuntimeRegion: 'backend:setRuntimeRegion',
   backendChooseRuntimeLocation: 'backend:chooseRuntimeLocation',
   backendUseDefaultRuntimeLocation: 'backend:useDefaultRuntimeLocation',
@@ -534,6 +535,11 @@ export function registerIpc(
     const owner = getMainWindow();
     assertTrustedMainFrame(event, owner);
     return supervisor.cleanSetupRuntime();
+  });
+  ipcMain.handle(CHANNELS.backendSetupRuntimeOnCpu, (event) => {
+    const owner = getMainWindow();
+    assertTrustedMainFrame(event, owner);
+    return supervisor.setupRuntimeOnCpu();
   });
   ipcMain.handle(CHANNELS.backendSetRuntimeRegion, (event, raw: unknown) => {
     const owner = getMainWindow();

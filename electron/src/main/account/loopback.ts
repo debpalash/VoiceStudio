@@ -41,7 +41,9 @@ export async function startLoopback(opts: {
     // Claim the one callback now; tear the listener down only once the 302 is out.
     done = true;
     res.on('finish', () => finish(result, true));
-    res.writeHead(302, { location: opts.signedInPage, connection: 'close' }).end();
+    const landing = new URL(opts.signedInPage);
+    if (result.error) landing.searchParams.set('error', 'access_denied');
+    res.writeHead(302, { location: landing.toString(), connection: 'close' }).end();
   });
   const timer = setTimeout(
     () => finish({ error: new LoopbackError('timeout') }),
