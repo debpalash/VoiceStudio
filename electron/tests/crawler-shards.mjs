@@ -1,25 +1,41 @@
 /**
  * Splits the crawler's routes across CI shards by cost, not by position.
  *
- * Crawl time is dominated by a few routes: measured locally in fixture mode, /pro took 28s,
- * /settings/account and /settings/appearance about 20s each and /settings/performance 15s, while
- * most routes take under 6s. Dealing every n-th route in sorted order left one shard at 11
- * minutes and another at 5. Heaviest routes go first, each to the currently lightest shard
- * (ties to the lowest number), so every shard computes the same split without coordinating.
+ * Crawl time is dominated by a few routes. Heaviest routes go first, each to the currently
+ * lightest shard (ties to the lowest number), so every shard computes the same split without
+ * coordinating.
+ *
+ * One weight is about 3 s of crawling. Measured 2026-11-08 on an Apple Silicon Mac in fixture
+ * mode, one shard at a time (`VOICESTUDIO_CRAWL_MODES=fixture VOICESTUDIO_CRAWL_SHARD=i/3`);
+ * the crawler prints the per-route seconds at the end of every run ("Route seconds: ..."), so
+ * re-measure from a CI log or a local run when a shard drifts. Weights under 2 are left out.
  *
  * A route missing from ROUTE_WEIGHTS counts as 1, so a new route is still crawled by exactly one
  * shard; add it here when a crawl shows it is slow.
  */
 export const ROUTE_WEIGHTS = {
-  '/pro': 14,
-  '/settings/account': 10,
-  '/settings/appearance': 10,
+  '/dub': 32,
+  '/batch': 31,
+  '/design': 28,
+  '/audiobook': 27,
+  '/stories': 24,
+  '/workflows': 18,
+  '/integrations': 15,
+  '/calls': 12,
+  '/projects': 12,
+  '/tools': 12,
+  '/clone': 11,
+  '/gallery': 11,
+  '/pro': 10,
+  '/transcriptions': 10,
+  '/personas': 9,
   '/settings/performance': 7,
-  '/settings/storage': 5,
-  '/settings/credentials': 3,
-  '/settings/sharing': 3,
-  '/settings/pronunciation': 3,
+  '/settings/appearance': 6,
+  '/settings/credentials': 2,
   '/settings/media': 2,
+  '/settings/pronunciation': 2,
+  '/settings/sharing': 2,
+  '/settings/storage': 2,
   '/settings/support': 2,
 };
 
