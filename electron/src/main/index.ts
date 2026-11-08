@@ -14,6 +14,7 @@ import { registerIpc, wireWindowMaximizeEvents } from './ipc';
 import { APP_ORIGIN, installAppProtocol, registerAppScheme } from './protocol';
 import { electronProxyPort, startDevBackendProxy } from './dev-backend-proxy';
 import { DesktopUpdater, registerUpdateIpc } from './updater';
+import { scheduleUpdateChecks } from './update-schedule';
 import { registerRepairAgents } from './repair-agents';
 import { installRendererPermissions } from './media-permissions';
 import { installBlankWindowGuard } from './blank-window-guard';
@@ -320,17 +321,15 @@ if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSing
           quitting = true;
         },
       );
-      const startupUpdateCheck = setTimeout(
-        () => observeMainProcessTask(updater.check(true), mainErrors, 'Startup update check'),
-        10_000,
-      );
-      const periodicUpdateCheck = setInterval(
-        () => observeMainProcessTask(updater.check(true), mainErrors, 'Periodic update check'),
-        6 * 60 * 60 * 1_000,
-      );
+      // 10 s after launch, then every 6 h; a failed check retries after 1 h,
+      // doubling back to 6 h.
+      const stopUpdateChecks = scheduleUpdateChecks(() => {
+        const check = updater.checkInBackground();
+        observeMainProcessTask(check, mainErrors, 'Background update check');
+        return check;
+      });
       closeUpdates = () => {
-        clearTimeout(startupUpdateCheck);
-        clearInterval(periodicUpdateCheck);
+        stopUpdateChecks();
         closeUpdateIpc();
       };
       mainWindow = createWindow();
