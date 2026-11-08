@@ -123,6 +123,41 @@ cause doesn't scroll away with the terminal. The same death is also reported
 as a crash notice in the UI the next time the backend starts (see
 [docs/install/troubleshooting.md §14c](../docs/install/troubleshooting.md)).
 
+### Clean local development and app data
+
+Close VoiceStudio and its backend/dev servers before cleaning. From the checkout:
+
+```bash
+bun clean --dry-run       # list exact paths without deleting
+bun clean                # permanently delete the listed state
+bun run clean:all        # equivalent command
+make clean:all DRY_RUN=1 # Make preview; omit DRY_RUN=1 to delete
+```
+
+Plain `make` still starts the release flow; cleanup must be selected explicitly.
+For Make, any non-empty `DRY_RUN` value enables preview mode unless it is
+exactly one of `0`, `false` or `no`; `true`, `yes`, unfamiliar values and
+several words (such as `false 0`) all preview.
+
+The script needs Git and Node, but no installed project dependencies. It removes
+project `node_modules`, Python virtual environments (including custom names
+identified by `pyvenv.cfg`), tool caches, Electron/native/mobile build outputs,
+test reports, logs and checkout-local runtime data. It also removes the default
+VoiceStudio Electron profile, OmniVoice backend data and persisted settings.
+**This deletes saved voices, projects, generated audio, account sessions and
+managed engines in those locations.**
+These default profiles are shared with installed VoiceStudio and other source checkouts.
+
+Tracked files, root `.env` files, Git metadata, agent configuration, research
+clones and nested Git repositories are preserved. Symlink targets are never
+followed. Shared Hugging Face caches (including Windows' `%LOCALAPPDATA%/OmniVoice/hf_cache`),
+global package-manager caches, other apps' profiles, installed applications,
+phone/simulator data and OS keychain entries are excluded. Custom external
+data/runtime/model locations are also excluded; inspect and remove those
+separately if needed. The preview lists exactly what will be removed.
+Failed deletions return a nonzero exit code. Run `bun run dev` to reinstall
+project dependencies afterwards.
+
 ### Retired desktop (Tauri)
 
 Tauri is sunset after v0.5.3 and receives no further development or backports.
