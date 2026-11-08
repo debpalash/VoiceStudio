@@ -356,7 +356,7 @@ def test_traversal_profile_id_is_rejected(iso):
         assert getattr(resp, "status_code", None) == 404, (evil, resp)
 
 
-def test_pin_pairing_can_list_profiles_but_cannot_modify_them(iso, monkeypatch):
+def test_pin_pairing_can_list_and_create_profiles_but_cannot_edit_or_delete_them(iso, monkeypatch):
     from types import SimpleNamespace
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
@@ -373,7 +373,11 @@ def test_pin_pairing_can_list_profiles_but_cannot_modify_them(iso, monkeypatch):
         listing = client.get("/profiles", headers={"X-Omnivoice-Pin": "654321"})
         creation = client.post("/profiles", headers={"X-Omnivoice-Pin": "654321"}, data={"name": "unauthorized"})
         deletion = client.delete("/profiles/missing", headers={"X-Omnivoice-Pin": "654321"})
+        rename = client.put("/profiles/missing", headers={"X-Omnivoice-Pin": "654321"}, json={"name": "x"})
     assert anonymous.status_code == 403
     assert listing.status_code == 200
-    assert creation.status_code == 403
+    # Clone creation is a generation-type action the phone Voices tab runs: it
+    # passes the guard and fails only on the missing audio (422), not on auth.
+    assert creation.status_code == 422
+    assert rename.status_code == 403
     assert deletion.status_code == 403

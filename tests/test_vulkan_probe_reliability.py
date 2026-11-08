@@ -126,7 +126,7 @@ def test_duplicate_inventory_names_do_not_guess_memory(monkeypatch):
 def test_windows_native_build_requires_vulkan_payload(tmp_path, present):
     """Reject missing modules with the intended diagnostic and accept a DLL."""
     root = Path(__file__).resolve().parents[1]
-    workflow = yaml.safe_load((root / ".github/workflows/build-omnivoice-tts.yml").read_text())
+    workflow = yaml.safe_load((root / ".github/workflows/build-omnivoice-tts.yml").read_text(encoding="utf-8"))
     steps = workflow["jobs"]["build-omnivoice-tts"]["steps"]
     gate = next(step for step in steps if step.get("name") == "Check the Vulkan GPU module was built")
     git_bash = Path(os.environ.get("ProgramFiles", "")) / "Git/bin/bash.exe"
