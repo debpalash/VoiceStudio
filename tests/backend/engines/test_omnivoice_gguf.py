@@ -1091,6 +1091,7 @@ def test_unsized_reference_is_converted_and_capped_on_output(monkeypatch, tmp_pa
     _fake_ffprobe(monkeypatch, {"streams": [{"channels": 1, "sample_rate": 24000}], "format": {}})
     assert gguf_backend._reference_decoded_bytes(reference) == 0
 
+    monkeypatch.setattr(gguf_backend, "_decode_unsized_capped", lambda p: p)
     monkeypatch.setattr(gguf_backend, "_MAX_REFERENCE_DECODED_BYTES", 1000)
     monkeypatch.setattr("services.audio_io.load_audio", lambda p: (np.zeros(2000, dtype=np.float32), 24000))
     with pytest.raises(ValueError, match="too long"):
@@ -1102,6 +1103,34 @@ def test_unsized_reference_is_converted_and_capped_on_output(monkeypatch, tmp_pa
     out = gguf_backend._convert_reference_to_wav(reference)
     assert saved["path"] == str(out)
     out.unlink(missing_ok=True)
+
+
+def test_unsized_over_limit_decode_is_capped_by_ffmpeg_and_refused(monkeypatch, tmp_path):
+    """The cap is enforced during decoding (ffmpeg -fs), before load_audio."""
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.webm"
+    reference.write_bytes(b"x")
+    monkeypatch.setattr(gguf_backend, "_MAX_REFERENCE_DECODED_BYTES", 1000)
+    monkeypatch.setattr(gguf_backend, "_reference_decoded_bytes", lambda p: gguf_backend._UNSIZED)
+    monkeypatch.setattr("services.ffmpeg_utils.find_ffmpeg", lambda: "ffmpeg")
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"] = cmd
+        Path(cmd[-1]).write_bytes(b"\0" * 1000)  # hit the -fs cap
+        return subprocess.CompletedProcess(cmd, 0, b"", b"")
+
+    monkeypatch.setattr(gguf_backend.subprocess, "run", fake_run)
+
+    def no_load(_p):
+        raise AssertionError("an over-limit decode must not be loaded")
+
+    monkeypatch.setattr("services.audio_io.load_audio", no_load)
+    with pytest.raises(ValueError, match="too long"):
+        gguf_backend._convert_reference_to_wav(reference)
+    assert seen["cmd"][seen["cmd"].index("-fs") + 1] == "1000"
+    assert not Path(seen["cmd"][-1]).exists()
 
 
 def test_ffprobe_probe_carries_the_loader_env(monkeypatch, tmp_path):

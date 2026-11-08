@@ -529,6 +529,55 @@ def _remove_quietly(path: Path) -> None:
         logger.debug("Could not remove the temporary file %s", path, exc_info=True)
 
 
+_TOO_LONG = (
+    "The voice profile's reference clip is too long to convert. "
+    "Trim it to a shorter clip and upload it again."
+)
+
+
+def _decode_unsized_capped(prompt: Path) -> Path:
+    """Decode a durationless clip to a temp WAV, stopping at the size cap.
+
+    ffmpeg's ``-fs`` ends the output at the cap, so a huge stream is never
+    decoded in full. Output that reaches the cap is refused rather than
+    returned truncated. The caller deletes the returned file.
+    """
+    from services.ffmpeg_utils import find_ffmpeg, local_inputs_only
+
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        raise ValueError(
+            "The voice profile's reference clip could not be read as audio. "
+            "Install ffmpeg or re-upload the clip as a WAV, MP3, FLAC or OGG file."
+        )
+    limit = _MAX_REFERENCE_DECODED_BYTES
+    fd, name = tempfile.mkstemp(prefix="omnivoice-gguf-dec-", suffix=".wav")
+    os.close(fd)
+    out = Path(name)
+    try:
+        proc = subprocess.run(
+            local_inputs_only(
+                [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+                 "-i", str(prompt), "-map", "0:a:0", "-f", "wav",
+                 "-c:a", "pcm_f32le", "-fs", str(limit), str(out)],
+                tool="ffmpeg",
+            ),
+            capture_output=True, timeout=120, check=False, env=_spawn_env(),
+        )
+        if proc.returncode != 0:
+            raise ValueError(
+                "The voice profile's reference clip could not be read as audio. "
+                "Re-upload the clip as a WAV, MP3, FLAC or OGG file."
+            )
+        # ffmpeg exits successfully at -fs; never accept truncated audio.
+        if out.stat().st_size >= limit:
+            raise ValueError(_TOO_LONG)
+    except BaseException:
+        _remove_quietly(out)
+        raise
+    return out
+
+
 def _convert_reference_to_wav(prompt: Path) -> Path:
     """Decode ``prompt`` into a temporary WAV the GGUF CLI can read.
 
@@ -552,8 +601,14 @@ def _convert_reference_to_wav(prompt: Path) -> Path:
             "The voice profile's reference clip is too long to convert. "
             "Trim it to a shorter clip and upload it again."
         )
+    source = prompt
+    capped: Optional[Path] = None
+    if decoded == _UNSIZED:
+        # No size is knowable up front: bound the decode itself, so a big
+        # durationless clip cannot exhaust memory before it is checked.
+        capped = source = _decode_unsized_capped(prompt)
     try:
-        wav, rate = load_audio(prompt)
+        wav, rate = load_audio(source)
     except ValueError:
         # The loader's own size-limit errors ("use a shorter clip") are
         # actionable as they are — do not turn them into a re-upload hint.
@@ -563,6 +618,9 @@ def _convert_reference_to_wav(prompt: Path) -> Path:
             "The voice profile's reference clip could not be read as audio. "
             "Re-upload the clip as a WAV, MP3, FLAC or OGG file."
         ) from exc
+    finally:
+        if capped is not None:
+            _remove_quietly(capped)
     if decoded == _UNSIZED:
         # No size was knowable up front, so the cap applies to what came out.
         size = getattr(wav, "nbytes", None)
