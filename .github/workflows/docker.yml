@@ -378,13 +378,34 @@ jobs:
       # cache-from only: reading the CUDA job's exported cache reuses the
       # identical frontend-builder stage. Deliberately NO cache-to — the ROCm
       # runtime layers would overwrite the CUDA job's cache image.
+      # The ROCm base ships its own HIP torch, which must equal the checked-out
+      # pin: a backfill of an older release builds that release's constraints,
+      # so the base follows deploy/torch-constraints.txt, not this workflow.
+      - name: Select the ROCm base for the checked-out torch pin
+        id: rocm_base
+        shell: bash
+        run: |
+          if [ -f deploy/torch-constraints.txt ]; then
+            torch="$(sed -n 's/^torch==\([0-9][0-9.]*\)$/\1/p' deploy/torch-constraints.txt | head -n1)"
+            if [ -z "$torch" ]; then
+              echo "::error::deploy/torch-constraints.txt has no exact torch==X.Y.Z pin"
+              exit 1
+            fi
+          else
+            # Releases older than the constraints file always built on the
+            # torch 2.8.0 ROCm base this workflow used before it followed the pin.
+            torch=2.8.0
+            echo "::notice::No deploy/torch-constraints.txt in this checkout; using the torch ${torch} ROCm base"
+          fi
+          echo "image=rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_${torch}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push (ROCm)
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: deploy/Dockerfile
           build-args: |
-            BASE_IMAGE=rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.8.0
+            BASE_IMAGE=${{ steps.rocm_base.outputs.image }}
             GPU_FLAVOR=rocm
             BUILD_COMMIT=${{ steps.source.outputs.commit }}
           push: true
@@ -429,7 +450,7 @@ jobs:
   # ── arm64 NVIDIA CUDA image variant (#2831) ─────────────────────────────
   # DGX Spark / GB10, GH200 and GB200 (linux/arm64 SBSA). pytorch/pytorch has no
   # arm64 image, so BASE_IMAGE names the Dockerfile's cuda-arm64-base stage
-  # (Ubuntu 24.04 + torch 2.8.0+cu129, whose aarch64 wheel bundles CUDA). Built
+  # (Ubuntu 24.04 + torch 2.10.0+cu129, whose aarch64 wheel bundles CUDA). Built
   # natively on GitHub's arm64 runner, never under QEMU. A SEPARATE job with
   # its own `-cuda-arm64` tags, so the amd64 CUDA tags stay single-arch and an
   # arm64 failure can never block or alter them.

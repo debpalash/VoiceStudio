@@ -52,8 +52,8 @@ UV_PIP_CPU_ARGS: tuple[str, ...] = (
 # enforces it against `pyproject.toml`'s constraint pins.
 # torchvision is deliberately absent: no sidecar declares it, and shipping it
 # would add ~200 MB of wheels an engine never imports.
-PYTORCH_ROCM_INDEX_URL = "https://download.pytorch.org/whl/rocm6.4"
-ROCM_TORCH_PINS: tuple[str, ...] = ("torch==2.8.0", "torchaudio==2.8.0")
+PYTORCH_ROCM_INDEX_URL = "https://download.pytorch.org/whl/rocm7.1"
+ROCM_TORCH_PINS: tuple[str, ...] = ("torch==2.10.0", "torchaudio==2.10.0")
 
 # PyTorch's ROCm index carrying each torch minor's Linux wheels, for sidecars
 # whose upstream pins a torch other than the shared ROCM_TORCH_PINS (VoxCPM2

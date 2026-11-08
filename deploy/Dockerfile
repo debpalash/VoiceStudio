@@ -1,13 +1,13 @@
 # Base image for the Python/PyTorch runtime stage. The default builds the
 # CUDA variant; CI also builds a ROCm/AMD variant (issue #1165) by overriding:
-#   BASE_IMAGE=rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.8.0
+#   BASE_IMAGE=rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.10.0
 #   GPU_FLAVOR=rocm
 # and an arm64 NVIDIA variant (DGX Spark / Grace, #2831) on a native arm64
 # runner, from the cuda-arm64-base stage below:
 #   BASE_IMAGE=cuda-arm64-base   (GPU_FLAVOR stays cuda)
 # Every base ships torch/torchaudio 2.8.0 preinstalled; the dependency install
 # below deliberately preserves them (see the GPU_FLAVOR guard).
-ARG BASE_IMAGE=pytorch/pytorch:2.8.0-cuda12.8-cudnn9-runtime
+ARG BASE_IMAGE=pytorch/pytorch:2.10.0-cuda12.8-cudnn9-runtime
 
 # ==========================================
 # Builder Stage: Compile React Frontend
@@ -63,7 +63,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # PyPI fallback, so no other index can supply a torch build).
 RUN python3 -m pip install --no-cache-dir \
     --index-url https://download.pytorch.org/whl/cu129 \
-    torch==2.8.0+cu129 torchaudio==2.8.0 torchvision==0.23.0
+    torch==2.10.0+cu129 torchaudio==2.10.0 torchvision==0.25.0
 
 # ==========================================
 # Runtime Stage: Python & PyTorch Backend
@@ -129,7 +129,7 @@ COPY deploy/security-constraints.txt deploy/security_floors.py ./deploy/
 # constraint-dependencies` (that is a project-API setting), so without it the
 # trio resolves on its bare lower bounds and torch may move while torchvision
 # stays put — an ABI mismatch at import (#1357). The pins carry no local
-# segment, so they match the base image's +cu128 / +rocm6.4 builds rather than
+# segment, so they match the base image's +cu128 / +rocm7.1 builds rather than
 # replacing them.
 #
 # The second --constraint carries the rest of `constraint-dependencies` (the
