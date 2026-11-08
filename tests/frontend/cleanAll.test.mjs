@@ -22,6 +22,25 @@ test('plain make preserves the release default and never selects cleanup', (t) =
   assert.doesNotMatch(result.stdout, /clean-all\.mjs/);
 });
 
+test('Make previews truthy and unfamiliar DRY_RUN values without deleting', (t) => {
+  const ctx = fixture(t);
+  const makefile = fileURLToPath(new URL('../../Makefile', import.meta.url));
+  for (const [value, preview] of [
+    ['1', true], ['true', true], ['yes', true], ['TRUE', true], ['typo', true],
+    ['', false], ['0', false], ['false', false], ['no', false],
+  ]) {
+    const result = spawnSync('make', ['--dry-run', '--file', makefile, 'clean:all', `DRY_RUN=${value}`], {
+      cwd: ctx.root, encoding: 'utf8', env: { ...process.env, MAKEFLAGS: '' },
+    });
+    if (result.error?.code === 'ENOENT') {
+      t.skip('Make is optional; Windows users can run the Bun cleanup command directly.');
+      return;
+    }
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.includes('--dry-run'), preview, `DRY_RUN=${value}`);
+  }
+});
+
 function fixture(t) {
   const base = mkdtempSync(join(tmpdir(), 'voicestudio-clean-test-'));
   t.after(() => rmSync(base, { recursive: true, force: true }));

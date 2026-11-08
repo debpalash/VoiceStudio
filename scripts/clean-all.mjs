@@ -18,6 +18,7 @@ const ROOT_DATA = new Set([
 ]);
 const SKIP = new Set(['.git', '.agents', '.codex', '.claude', '.aws', 'research']);
 
+/** Return default app-owned profiles; shared model caches and custom locations are excluded. */
 export function appDataPaths({ home = homedir(), platform = process.platform, env = process.env } = {}) {
   const paths = [join(home, '.config', 'omnivoice')];
   if (platform === 'darwin') {
@@ -66,6 +67,7 @@ function checkParents(path) {
   }
 }
 
+/** Inventory removable paths without mutations, preserving tracked files and repository boundaries. */
 export function planCleanup({ root = ROOT, home = homedir(), platform = process.platform, env = process.env } = {}) {
   root = realpathSync(root);
   home = realpathSync(home);
@@ -131,6 +133,7 @@ export function planCleanup({ root = ROOT, home = homedir(), platform = process.
   return [...new Set(targets)].sort();
 }
 
+/** Preview or execute a validated cleanup plan; report partial failures with a nonzero CLI exit. */
 export function cleanAll({ dryRun = false, log = console.log, ...options } = {}) {
   const targets = planCleanup(options);
   log(dryRun ? 'Cleanup preview (no files deleted):' : 'Deleting VoiceStudio environments, builds and app data:');

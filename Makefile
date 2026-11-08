@@ -8,7 +8,7 @@ NODE ?= node
 
 .PHONY: clean\:all
 clean\:all: ## Delete project dependencies, builds/caches and app data; DRY_RUN=1 previews
-	$(NODE) scripts/clean-all.mjs $(if $(filter 1,$(DRY_RUN)),--dry-run)
+	$(NODE) scripts/clean-all.mjs $(if $(filter-out 0 false no,$(strip $(DRY_RUN))),--dry-run)
 
 release: ## Cut a release: asks stable/beta, draft/publish, then confirms
 	uv run python scripts/release.py
