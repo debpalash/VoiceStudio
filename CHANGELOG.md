@@ -8,21 +8,19 @@ metadata and the backend fallback mirror it.
 
 ## [Unreleased]
 
-## [0.5.8-beta.1] — 2026-11-08
-
 **AMD and Intel GPUs now speed up OmniVoice, and setup gets far more forgiving.** OmniVoice GGUF runs on AMD, Intel and NVIDIA GPUs through Vulkan on Windows and Linux, dots.tts arrives on Windows with no Python setup, and a failing PyTorch download or a broken GPU no longer leaves you without a working app.
 
 **Download**
 
 | Platform | Installer |
 | --- | --- |
-| Windows x64 | [Installer](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8-beta.1/VoiceStudio-0.5.8-beta.1-win-x64.exe) |
-| Windows ARM64 (experimental) | [Installer](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8-beta.1/VoiceStudio-0.5.8-beta.1-win-arm64.exe) |
-| macOS Apple Silicon | [DMG](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8-beta.1/VoiceStudio-0.5.8-beta.1-mac-arm64.dmg) |
-| macOS Intel | [DMG](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8-beta.1/VoiceStudio-0.5.8-beta.1-mac-x64.dmg) |
-| Linux x64 | [AppImage](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8-beta.1/VoiceStudio-0.5.8-beta.1-linux-x64.AppImage) · [deb](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8-beta.1/VoiceStudio-0.5.8-beta.1-linux-x64.deb) |
-| Android | [APK](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8-beta.1/VoiceStudio-0.5.8-beta.1-android.apk) · [AAB](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8-beta.1/VoiceStudio-0.5.8-beta.1-android.aab) |
-| iPhone | [Unsigned IPA](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8-beta.1/VoiceStudio-0.5.8-beta.1-ios-unsigned.ipa) (sideload with your own Apple ID) |
+| Windows x64 | [Installer](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-win-x64.exe) |
+| Windows ARM64 (experimental) | [Installer](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-win-arm64.exe) |
+| macOS Apple Silicon | [DMG](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-mac-arm64.dmg) |
+| macOS Intel | [DMG](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-mac-x64.dmg) |
+| Linux x64 | [AppImage](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-linux-x64.AppImage) · [deb](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-linux-x64.deb) |
+| Android | [APK](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-android.apk) · [AAB](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-android.aab) |
+| iPhone | [Unsigned IPA](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-ios-unsigned.ipa) (sideload with your own Apple ID) |
 
 **Upgrading:** Install over your existing app; voices, projects and settings are kept.
 
@@ -339,7 +337,7 @@ metadata and the backend fallback mirror it.
 - The Electron unit tests run on Node 25+ and Homebrew Node without extra flags (#3469) — thanks @BichengWang!
 - The backend registry test expects the OmniVoice sidecar on Apple Silicon, so it passes on every host (#2697) — thanks @rollroyces!
 
-## [0.5.8] — 2026-11-08
+## [0.5.8-beta.1] — 2026-11-08
 
 **AMD and Intel GPUs now speed up OmniVoice, and setup gets far more forgiving.** OmniVoice GGUF runs on AMD, Intel and NVIDIA GPUs through Vulkan on Windows and Linux, dots.tts arrives on Windows with no Python setup, and a failing PyTorch download or a broken GPU no longer leaves you without a working app.
 
@@ -347,13 +345,13 @@ metadata and the backend fallback mirror it.
 
 | Platform | Installer |
 | --- | --- |
-| Windows x64 | [Installer](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-win-x64.exe) |
-| Windows ARM64 (experimental) | [Installer](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-win-arm64.exe) |
-| macOS Apple Silicon | [DMG](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-mac-arm64.dmg) |
-| macOS Intel | [DMG](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-mac-x64.dmg) |
-| Linux x64 | [AppImage](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-linux-x64.AppImage) · [deb](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-linux-x64.deb) |
-| Android | [APK](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-android.apk) · [AAB](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-android.aab) |
-| iPhone | [Unsigned IPA](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-ios-unsigned.ipa) (sideload with your own Apple ID) |
+| Windows x64 | [Installer](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8-beta.1/VoiceStudio-0.5.8-beta.1-win-x64.exe) |
+| Windows ARM64 (experimental) | [Installer](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8-beta.1/VoiceStudio-0.5.8-beta.1-win-arm64.exe) |
+| macOS Apple Silicon | [DMG](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8-beta.1/VoiceStudio-0.5.8-beta.1-mac-arm64.dmg) |
+| macOS Intel | [DMG](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8-beta.1/VoiceStudio-0.5.8-beta.1-mac-x64.dmg) |
+| Linux x64 | [AppImage](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8-beta.1/VoiceStudio-0.5.8-beta.1-linux-x64.AppImage) · [deb](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8-beta.1/VoiceStudio-0.5.8-beta.1-linux-x64.deb) |
+| Android | [APK](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8-beta.1/VoiceStudio-0.5.8-beta.1-android.apk) · [AAB](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8-beta.1/VoiceStudio-0.5.8-beta.1-android.aab) |
+| iPhone | [Unsigned IPA](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8-beta.1/VoiceStudio-0.5.8-beta.1-ios-unsigned.ipa) (sideload with your own Apple ID) |
 
 **Upgrading:** Install over your existing app; voices, projects and settings are kept.
 
