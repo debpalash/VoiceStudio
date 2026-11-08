@@ -211,6 +211,7 @@ for (const resource of [
   'backend',
   'omnivoice',
   'config/app.json',
+  'config/analytics.json',
 ]) {
   const entry = config.extraResources.find((item) => item.to === resource);
   assert(entry && existsSync(resolve(root, entry.from)), 'Required resource: ' + resource);

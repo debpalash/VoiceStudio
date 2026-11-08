@@ -50,9 +50,9 @@ export default function AnalyticsOptIn() {
         body: JSON.stringify({ enabled: next }),
       }).then((r) => r.json());
       setState(d);
-      // Consent gates the FRONTEND SDK too: posthog-js is only initialised once
-      // the user says yes, and torn down the moment they say no. It is never
-      // started at app load — that would track people before they consented.
+      // Consent gates the interface's reporting too: it starts only once the
+      // user says yes and stops the moment they say no. It is never started at
+      // app load — that would track people before they consented.
       if (next) await enableAnalytics();
       else disableAnalytics();
       toast.success(

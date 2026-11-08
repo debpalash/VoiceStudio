@@ -6,7 +6,7 @@ it in a normal browser. It is built from the same maintained renderer as the
 Electron desktop app; controls that require native desktop access are hidden.
 
 Inference runs inside the container. Nothing is sent off the machine without
-your explicit yes: product analytics are opt-in (PostHog, content-free usage
+your explicit yes: product analytics are opt-in (Supermetry, content-free usage
 metadata only) behind the same first-run consent prompt as the desktop app,
 and declining or skipping it keeps them off. Set
 `-e OMNIVOICE_ANALYTICS_DISABLED=1` to switch analytics off entirely. Model

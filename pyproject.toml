@@ -128,10 +128,6 @@ dependencies = [
     # false — `cryptography` is not on the install path today).
     "cryptography>=41",
     "mcp>=1.28.1,<2",
-    # Opt-in product analytics (core/analytics.py). Inert unless the build ships a
-    # POSTHOG_PROJECT_TOKEN *and* the user opts in — default OFF. No exception
-    # autocapture (it would ship raw tracebacks past core.failure.sanitize()).
-    "posthog>=3.7",
     # Fast model downloads (FDL plan). huggingface_hub arrives transitively via
     # transformers, but we pin it directly so the Xet fast-download path can't
     # silently disappear on a resolve, and we pull `hf-xet` explicitly: it is

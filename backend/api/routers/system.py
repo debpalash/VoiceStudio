@@ -1658,7 +1658,7 @@ async def tailscale_disable():
 # stores nothing new, and transmits nothing anywhere: the only consumer is the
 # user's own UI over loopback. Read-only, content-free (counts and totals,
 # never the text of a take). Product analytics for the PROJECT is a separate,
-# consent-gated path (core/analytics.py: opt-in PostHog behind the first-run
+# consent-gated path (core/analytics.py: opt-in Supermetry behind the first-run
 # prompt, allowlisted content-free metadata only) — this endpoint stays local
 # regardless of that consent.
 @router.get("/stats/usage")

@@ -196,10 +196,9 @@ gh api --method PATCH repos/debpalash/VoiceStudio --input - <<'JSON'
 JSON
 ```
 
-The PostHog project token committed in `backend/core/analytics.py` and
-`electron/src/shared/utils/analytics.ts` is a publishable write-only token by
-design (see `tests/test_no_committed_analytics_token.py`). If an alert flags it,
-close the alert as "used in tests" or "false positive". Do not remove the token.
+The Supermetry site id in `config/analytics.json` is public by design and is not
+a credential (see `tests/test_no_committed_analytics_token.py`, which bans any
+dashboard or API key). If an alert flags it, close it as "false positive".
 
 ## Private vulnerability reporting
 

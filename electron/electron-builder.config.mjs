@@ -202,6 +202,7 @@ export default {
     { from: '../LICENSE', to: 'LICENSE' },
     { from: '../LICENSE-NOTICE.md', to: 'LICENSE-NOTICE.md' },
     { from: '../config/app.json', to: 'config/app.json' },
+    { from: '../config/analytics.json', to: 'config/analytics.json' },
     { from: 'T3CODE-LICENSE.txt', to: 'electron/T3CODE-LICENSE.txt' },
     ...(!isMacAppStore ? bundledUvResources : []),
     ...bundledOmnivoiceTtsResources,
