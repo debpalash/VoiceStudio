@@ -36,6 +36,7 @@ from services.asr_backend import (
     ASRTimeoutError,
     reset_pool_after_wedge,
     run_transcribe_guarded,
+    transcribe_request_kwargs,
 )
 from services.audio_io import _safe_soundfile_write
 from services.diarization_runtime import ensure_selected_accepted as _ensure_diarisation_accepted
@@ -1860,7 +1861,10 @@ async def dub_transcribe_stream(
                     tmp.close()
                     try:
                         _safe_soundfile_write(tmp.name, arr, local_sr)
-                        r = _asr_backend.transcribe(tmp.name, word_timestamps=True)
+                        kwargs = transcribe_request_kwargs(
+                            _asr_backend, {"language": job.get("source_lang_override") or None}
+                        )
+                        r = _asr_backend.transcribe(tmp.name, word_timestamps=True, **kwargs)
                     finally:
                         try: os.remove(tmp.name)
                         except OSError: pass
