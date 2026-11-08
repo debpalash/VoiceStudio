@@ -20,11 +20,19 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { InlineMarkdown, MarkdownLite } from '@/components/markdown-lite';
 import { appVersion, getBridge } from '@/components/bridge';
-import { dubSession, flushDubDraft, useDubSession } from '@/features/dub/dub-session';
-import { hasActiveAppWork, useAppActivityCount } from '@/lib/app-activity';
+import { flushDubDraft, useDubSession } from '@/features/dub/dub-session';
+import { useAppActivityCount } from '@/lib/app-activity';
 import { useBackendStatus, isBackendReachable } from '@/hooks/use-backend-status';
 import { apiJson, describeError } from '@/lib/api/client';
 import { formatBytes, updateErrorKey } from '@/lib/update-format';
+import {
+  ACTIVE_BATCH_JOBS_PATH,
+  MODEL_INSTALL_STATUS_PATH,
+  dubBusy,
+  serverWorkActive,
+  updateRestartBlocked,
+  type ModelInstallJobs,
+} from '@/lib/update-actions';
 import { SettingsSection } from './settings-layout';
 import type { UpdateChannel, UpdateReleaseInfo, UpdateState } from '../../../../preload/index.d';
 
@@ -56,10 +64,6 @@ const initial: UpdateState = {
   progress: 0,
 };
 
-interface ModelInstallJobs {
-  jobs: { state: string }[];
-}
-
 interface ChangelogRelease {
   version: string;
   date?: string;
@@ -76,13 +80,6 @@ interface BackupState {
   available: boolean;
   latest?: { path: string; created_at: number; size_bytes: number } | null;
 }
-
-const serverWorkActive = (models?: ModelInstallJobs, batches?: unknown[]) =>
-  Boolean(
-    models?.jobs.some((job) =>
-      ['queued', 'downloading', 'running', 'installing'].includes(job.state),
-    ) || batches?.length,
-  );
 
 // No reason means no desktop bridge: the browser UI, which never self-updates.
 const unsupportedMessageKey = (reason: UpdateState['unsupportedReason']) =>
@@ -113,13 +110,13 @@ export function UpdateSettings() {
   const watchServerWork = state.status === 'available' || state.status === 'downloaded';
   const modelInstalls = useQuery({
     queryKey: ['model-install-jobs'],
-    queryFn: () => apiJson<ModelInstallJobs>('/models/install/status'),
+    queryFn: () => apiJson<ModelInstallJobs>(MODEL_INSTALL_STATUS_PATH),
     enabled: watchServerWork,
     refetchInterval: 2_000,
   });
   const batchJobs = useQuery({
     queryKey: ['batch-jobs', 'active'],
-    queryFn: () => apiJson<unknown[]>('/batch/jobs?status=active&limit=1'),
+    queryFn: () => apiJson<unknown[]>(ACTIVE_BATCH_JOBS_PATH),
     enabled: watchServerWork,
     refetchInterval: 3_000,
   });
@@ -157,9 +154,6 @@ export function UpdateSettings() {
       ...release,
       current: release.version === state.currentVersion,
     }));
-  const dubBusy = (value: typeof dub) =>
-    Boolean(value.recovery || value.batchProgress) ||
-    !['idle', 'editing', 'done'].includes(value.phase);
   const busy =
     activityCount > 0 || dubBusy(dub) || serverWorkActive(modelInstalls.data, batchJobs.data);
 
@@ -205,12 +199,7 @@ export function UpdateSettings() {
   const restart = async () => {
     setAction(true);
     try {
-      const [models, batches] = await Promise.all([modelInstalls.refetch(), batchJobs.refetch()]);
-      if (
-        hasActiveAppWork() ||
-        dubBusy(dubSession.state) ||
-        serverWorkActive(models.data, batches.data)
-      ) {
+      if (await updateRestartBlocked()) {
         toast.info(t('update.busy'));
         return;
       }

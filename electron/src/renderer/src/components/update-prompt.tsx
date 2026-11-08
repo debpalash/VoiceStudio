@@ -11,6 +11,10 @@ import type { UpdateState } from "../../../preload/index.d";
 
 // Versions the user chose "Later" for stay hidden until the next launch.
 const laterVersions = new Set<string>();
+// Notices the user hid, by toast id, mapped to the status they were hidden in.
+// A hidden download stays hidden through its progress events and returns once
+// the status changes (downloaded or failed).
+const hiddenNotices = new Map<string, UpdateState["status"]>();
 
 export const updateToastId = (state: UpdateState) =>
   `desktop-update-${state.availableVersion ?? "check"}`;
@@ -19,7 +23,10 @@ function UpdateToast({ state, id }: { state: UpdateState; id: string }) {
   const { t } = useTranslation();
   const version = state.availableVersion ?? "";
   const action = primaryUpdateAction(state);
-  const hide = () => toast.dismiss(id);
+  const hide = () => {
+    hiddenNotices.set(id, state.status);
+    toast.dismiss(id);
+  };
   const later = () => {
     if (state.availableVersion) laterVersions.add(state.availableVersion);
     void getBridge()
@@ -140,6 +147,10 @@ export function UpdatePrompt() {
       const id = updateToastId(state);
       if (shown && shown !== id) toast.dismiss(shown);
       shown = id;
+      if (hiddenNotices.has(id)) {
+        if (hiddenNotices.get(id) === state.status) return;
+        hiddenNotices.delete(id);
+      }
       toast.custom(() => <UpdateToast state={state} id={id} />, {
         id,
         duration: Infinity,

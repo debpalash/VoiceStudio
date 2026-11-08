@@ -293,10 +293,14 @@ export function isTransientUpdateError(error: unknown): boolean {
   for (let current = error; current && seen.length < 4;) {
     seen.push(current);
     const item = current as {
+      name?: unknown;
       message?: unknown;
       code?: unknown;
       statusCode?: unknown;
     };
+    // AbortSignal.timeout() rejects with a DOMException named TimeoutError; a
+    // user abort (AbortError) is deliberate and is not retried.
+    if (item.name === 'TimeoutError') return true;
     const status = Number(item.statusCode);
     if (status === 429 || (status >= 500 && status <= 599)) return true;
     if (typeof item.code === 'string' && TRANSIENT_NETWORK_CODES.includes(item.code)) return true;

@@ -386,6 +386,12 @@ describe('DesktopUpdater', () => {
       isTransientUpdateError(new TypeError('fetch failed', { cause: { code: 'ETIMEDOUT' } })),
     ).toBe(true);
     expect(isTransientUpdateError({ statusCode: 429 })).toBe(true);
+    expect(
+      isTransientUpdateError(new DOMException('The operation timed out.', 'TimeoutError')),
+    ).toBe(true);
+    expect(
+      isTransientUpdateError(new DOMException('This operation was aborted', 'AbortError')),
+    ).toBe(false);
     for (const message of [
       '404 Not Found',
       'sha512 checksum mismatch',

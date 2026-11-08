@@ -26,17 +26,20 @@ const mocks = vi.hoisted(() => ({
   },
   custom: vi.fn(),
   dismissToast: vi.fn(),
+  info: vi.fn(),
   navigate: vi.fn(),
+  api: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
   toast: Object.assign(vi.fn(), {
     custom: mocks.custom,
     dismiss: mocks.dismissToast,
-    info: vi.fn(),
+    info: mocks.info,
     error: vi.fn(),
   }),
 }));
+vi.mock("@/lib/api/client", () => ({ apiJson: mocks.api }));
 vi.mock("@/router", () => ({ router: { navigate: mocks.navigate } }));
 vi.mock("@/components/bridge", () => ({
   getBridge: () => ({
@@ -91,6 +94,9 @@ describe("UpdatePrompt", () => {
     ])
       fn.mockResolvedValue({});
     mocks.bridge.install.mockResolvedValue(undefined);
+    mocks.api.mockImplementation(async (path: string) =>
+      path.startsWith("/batch") ? [] : { jobs: [] },
+    );
   });
   afterEach(cleanup);
 
@@ -163,7 +169,7 @@ describe("UpdatePrompt", () => {
     expect(mocks.navigate).toHaveBeenCalledWith({ to: "/settings/updates" });
   });
 
-  test("error shows friendly text, raw error behind Details, and Retry downloads", async () => {
+  test("error shows friendly text, raw error behind Details, and Retry re-checks then downloads", async () => {
     await mount();
     push({
       status: "error",
@@ -173,8 +179,62 @@ describe("UpdatePrompt", () => {
     show();
     expect(screen.getByText("update.error_network")).toBeTruthy();
     expect(screen.getByText("HTTP 503 <html>").closest("details")).toBeTruthy();
+    // The main-process updater downloads only from `available`, never `error`.
+    mocks.bridge.check.mockResolvedValue({ ...base, status: "available" });
     fireEvent.click(screen.getByText("update.retry"));
     await waitFor(() => expect(mocks.bridge.download).toHaveBeenCalledOnce());
+    expect(mocks.bridge.check.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.bridge.download.mock.invocationCallOrder[0],
+    );
+  });
+
+  test("Retry does not download when the re-check finds no update", async () => {
+    await mount();
+    push({ status: "error", availableVersion: "0.6.3", error: "HTTP 503" });
+    show();
+    mocks.bridge.check.mockResolvedValue({ ...base, status: "error" });
+    fireEvent.click(screen.getByText("update.retry"));
+    await waitFor(() => expect(mocks.bridge.check).toHaveBeenCalledOnce());
+    expect(mocks.bridge.download).not.toHaveBeenCalled();
+  });
+
+  test("a hidden download stays hidden through progress and returns when ready", async () => {
+    await mount();
+    const downloading = { status: "downloading" as const, availableVersion: "0.6.5" };
+    push({ ...downloading, progress: 10 });
+    show();
+    fireEvent.click(screen.getByText("update.prompt_hide"));
+    expect(mocks.dismissToast).toHaveBeenCalledWith("desktop-update-0.6.5");
+    mocks.custom.mockClear();
+    push({ ...downloading, progress: 50 });
+    push({ ...downloading, progress: 90 });
+    expect(mocks.custom).not.toHaveBeenCalled();
+    push({ status: "downloaded", availableVersion: "0.6.5", progress: 100 });
+    expect(mocks.custom).toHaveBeenCalledOnce();
+  });
+
+  test("Restart waits while the backend is still installing a model", async () => {
+    mocks.api.mockImplementation(async (path: string) =>
+      path.startsWith("/batch") ? [] : { jobs: [{ state: "downloading" }] },
+    );
+    await mount();
+    push({ status: "downloaded", availableVersion: "0.6.6" });
+    show();
+    fireEvent.click(screen.getByText("update.restart"));
+    await waitFor(() => expect(mocks.info).toHaveBeenCalledWith("update.busy"));
+    expect(mocks.bridge.install).not.toHaveBeenCalled();
+  });
+
+  test("Restart waits while a server batch job is active", async () => {
+    mocks.api.mockImplementation(async (path: string) =>
+      path.startsWith("/batch") ? [{ id: "b1" }] : { jobs: [] },
+    );
+    await mount();
+    push({ status: "downloaded", availableVersion: "0.6.7" });
+    show();
+    fireEvent.click(screen.getByText("update.restart"));
+    await waitFor(() => expect(mocks.info).toHaveBeenCalledWith("update.busy"));
+    expect(mocks.bridge.install).not.toHaveBeenCalled();
   });
 
   test("error without a version retries the check", async () => {
