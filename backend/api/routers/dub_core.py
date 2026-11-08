@@ -1573,6 +1573,7 @@ async def dub_transcribe_stream(
                 logger.warning("restore_tts_after_asr failed: %s", e)
 
     async def _gen_body():
+        """Yield preflight, chunk progress and final diarized results as SSE events."""
         # ── Preflight — run INSIDE the stream, never before it (#1196) ──
         # This whole block used to run in the endpoint body, before the
         # StreamingResponse existed — i.e. OUTSIDE the stream's terminal-event
@@ -1854,6 +1855,7 @@ async def dub_transcribe_stream(
                 continue
 
             def _transcribe_chunk(arr=chunk_arr, offset=t0, local_sr=sr):
+                """Transcribe with a supported language hint and shift times to the full audio."""
                 # Route through the active backend (WhisperX by default).
                 # Backends all take a file path, so write the chunk first.
                 try:
