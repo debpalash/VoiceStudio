@@ -17,7 +17,7 @@ preinstalled `/usr/local/lib/python3.12/dist-packages/`.
 
 Verified directly rather than assumed: with the pin present only in
 `constraint-dependencies`, `uv pip install --dry-run .` into a clean
-environment resolves torchvision **0.28.0**, not the pinned 0.23.0.
+environment resolves torchvision **0.28.0**, not the pinned 0.25.0.
 
 So the pin is passed explicitly via `--constraint`, and these tests fail if the
 file drifts from pyproject, if either call site stops passing it, or if the
@@ -85,8 +85,8 @@ def test_the_file_matches_pyproject(project_constraints, file_constraints):
 
 
 def test_the_pins_carry_no_local_version(file_constraints):
-    """`==2.8.0+cu128` would match only the CUDA build and force a reinstall on
-    the ROCm image and on Colab. Bare `==2.8.0` matches every local segment
+    """`==2.10.0+cu128` would match only the CUDA build and force a reinstall on
+    the ROCm image and on Colab. Bare `==2.10.0` matches every local segment
     (PEP 440), which is what lets one file serve all three."""
     for pkg in _PACKAGES:
         assert "+" not in file_constraints[pkg], (

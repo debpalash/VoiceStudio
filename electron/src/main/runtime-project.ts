@@ -66,11 +66,11 @@ const SOURCES = [
 ];
 export const UV_VERSION = '0.12.13';
 export const CUDNN8_COMPAT_PIN = 'nvidia-cudnn-cu12==8.9.7.29';
-export const ROCM_TORCH_INDEX = 'https://download.pytorch.org/whl/rocm6.4';
+export const ROCM_TORCH_INDEX = 'https://download.pytorch.org/whl/rocm7.1';
 export const ROCM_TORCH_PINS = [
-  'torch==2.8.0',
-  'torchaudio==2.8.0',
-  'torchvision==0.23.0',
+  'torch==2.10.0',
+  'torchaudio==2.10.0',
+  'torchvision==0.25.0',
 ] as const;
 /**
  * `uv pip install` arguments that swap the main venv's torch stack for the
@@ -81,7 +81,7 @@ export const ROCM_TORCH_PINS = [
  * PyTorch's index, which carries no Pillow 13, so the project's
  * `pillow>=13.0.0` override made the swap unsatisfiable and a ROCm install
  * never finished (#3158, #3418). The local tag comes from the index name
- * (`…/rocm6.4` → `+rocm6.4`), mirroring `sidecar_install._rocm_pin_args`; a
+ * (`…/rocm7.1` → `+rocm7.1`), mirroring `sidecar_install._rocm_pin_args`; a
  * mirror without such a name keeps the bare pins, and the tagged build still
  * wins by PEP 440 ordering. Kept equal to `scripts/setup.py`.
  */
@@ -126,9 +126,9 @@ export function rocmTorchOptIn(platform: NodeJS.Platform = process.platform): bo
  */
 export const CPU_TORCH_INDEX = 'https://download.pytorch.org/whl/cpu';
 export const CPU_TORCH_PINS = [
-  'torch==2.8.0+cpu',
-  'torchaudio==2.8.0+cpu',
-  'torchvision==0.23.0+cpu',
+  'torch==2.10.0+cpu',
+  'torchaudio==2.10.0+cpu',
+  'torchvision==0.25.0+cpu',
 ] as const;
 export const CPU_TORCH_ARGS = [
   '--extra-index-url',

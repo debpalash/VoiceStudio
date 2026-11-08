@@ -66,6 +66,7 @@ from itertools import islice
 from pathlib import Path
 
 import torchaudio
+from omnivoice.utils.audio import read_audio, save_audio
 import webdataset as wds
 from tqdm import tqdm
 
@@ -164,7 +165,7 @@ def process_audio_item(meta, target_sr):
         if not os.path.exists(audio_path):
             raise FileNotFoundError(f"{audio_path} not found")
 
-        waveform, sr = torchaudio.load(audio_path)
+        waveform, sr = read_audio(audio_path)
         audio_duration = waveform.shape[1] / sr
         meta["audio_duration"] = audio_duration
 
@@ -173,7 +174,7 @@ def process_audio_item(meta, target_sr):
             sr = target_sr
 
         audio_buffer = io.BytesIO()
-        torchaudio.save(audio_buffer, waveform, sr, format="flac", bits_per_sample=16)
+        save_audio(audio_buffer, waveform, sr, format="flac", bits_per_sample=16)
         audio_bytes = audio_buffer.getvalue()
 
         sample = {
