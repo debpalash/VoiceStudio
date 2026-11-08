@@ -2117,7 +2117,9 @@
     "backup_none": "在下次資料庫更新前自動建立。",
     "backup_latest": "最新備份：{{when}}",
     "notes_for": "版本資訊 — v{{version}}",
-    "whats_new_in": "v{{version}} 的新功能"
+    "whats_new_in": "v{{version}} 的新功能",
+    "backup_needs_runtime": "VoiceStudio 執行環境啟動後即可使用。",
+    "backup_load_error": "無法載入備份狀態。"
   },
   "exportModal": {
     "export": "出口",
@@ -3006,7 +3008,15 @@
     "channel": "更新頻道",
     "channel_stable": "穩定版",
     "channel_beta": "測試版",
-    "channel_beta_hint": "測試版會收到早期組建，可能有錯誤。下一個穩定版發布後會自動切換。"
+    "channel_beta_hint": "測試版會收到早期組建，可能有錯誤。下一個穩定版發布後會自動切換。",
+    "prompt_available": "版本 {{version}} 現已可用",
+    "prompt_ready": "可以安裝了",
+    "prompt_details": "詳細資料",
+    "prompt_hide": "隱藏",
+    "prompt_more": "更多",
+    "error_network": "GitHub 沒有回應。請檢查網路連線後重試。",
+    "error_generic": "更新未完成，請重試。",
+    "channel_current": "目前通道：{{channel}}"
   },
   "openapi": {
     "title": "VoiceStudio API",

@@ -2117,7 +2117,9 @@
     "backup_none": "Tự động tạo trước lần cập nhật cơ sở dữ liệu tiếp theo.",
     "backup_latest": "Bản sao lưu gần nhất: {{when}}",
     "notes_for": "Ghi chú phát hành — v{{version}}",
-    "whats_new_in": "Có gì mới trong v{{version}}"
+    "whats_new_in": "Có gì mới trong v{{version}}",
+    "backup_needs_runtime": "Có sẵn khi môi trường chạy của VoiceStudio đang hoạt động.",
+    "backup_load_error": "Không thể tải trạng thái sao lưu."
   },
   "exportModal": {
     "export": "Xuất khẩu",
@@ -3006,7 +3008,15 @@
     "channel": "Kênh cập nhật",
     "channel_stable": "Ổn định",
     "channel_beta": "Beta",
-    "channel_beta_hint": "Beta nhận các bản dựng sớm và có thể có lỗi. Bạn sẽ tự động chuyển sang bản ổn định tiếp theo."
+    "channel_beta_hint": "Beta nhận các bản dựng sớm và có thể có lỗi. Bạn sẽ tự động chuyển sang bản ổn định tiếp theo.",
+    "prompt_available": "Đã có phiên bản {{version}}",
+    "prompt_ready": "Sẵn sàng cài đặt",
+    "prompt_details": "Chi tiết",
+    "prompt_hide": "Ẩn",
+    "prompt_more": "Thêm",
+    "error_network": "GitHub không phản hồi. Hãy kiểm tra kết nối và thử lại.",
+    "error_generic": "Bản cập nhật chưa hoàn tất. Hãy thử lại.",
+    "channel_current": "Bạn đang dùng bản {{channel}}"
   },
   "openapi": {
     "title": "API VoiceStudio",
