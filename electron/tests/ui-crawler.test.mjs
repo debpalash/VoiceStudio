@@ -75,32 +75,6 @@ test('quiet traffic gets the React grace without extending the budget', async ()
   assert.equal(run.time(), 400);
 });
 
-test('quiet time the page already had counts toward an arm grace', async () => {
-  const run = clock([], { quietFrom: -300 });
-  assert.equal((await run.run()).settled, true);
-  assert.equal(run.time(), 100);
-});
-
-test('an already quiet page settles without waiting, a click still gets the full grace', async () => {
-  const anchored = clock([], { quietFrom: -1000 });
-  assert.equal((await anchored.run()).settled, true);
-  assert.equal(anchored.time(), 0);
-  const click = clock();
-  await click.run();
-  assert.equal(click.time(), 400, 'no anchor means the window starts at the click');
-});
-
-test('traffic after the anchor still restarts the quiet window', async () => {
-  const run = clock([[275, 'start'], [280, 'finish']], { quietFrom: -100 });
-  assert.equal((await run.run()).settled, true);
-  assert.equal(run.time(), 700, 'the window restarts after the late request, as without an anchor');
-  const pending = clock([[50, 'finish']], { quietFrom: -1000 });
-  pending.traffic.inflight.add('request');
-  pending.traffic.activity = 1;
-  assert.equal((await pending.run()).settled, true);
-  assert.equal(pending.time(), 450, 'an in-flight request ignores the anchor');
-});
-
 test('a late response gets a full grace window after it completes', async () => {
   const run = clock([[300, 'start'], [350, 'finish']]);
   assert.equal((await run.run()).settled, true);

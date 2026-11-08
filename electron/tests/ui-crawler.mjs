@@ -91,17 +91,12 @@ async function openSession(browser, mode) {
       localStorage.setItem('voicestudio.setup.complete.v1', '1');
     } catch {}
   });
-  // lastActivityAt: the last API request start or finish, navigation or crawler interaction.
   const state = {
     faulting: false,
     failedWrites: 0,
     inflight: new Set(),
     activity: 0,
-    lastActivityAt: performance.now(),
     events: [],
-  };
-  const touch = () => {
-    state.lastActivityAt = performance.now();
   };
   await context.route('**/*', (route) => {
     const request = route.request();
@@ -126,7 +121,6 @@ async function openSession(browser, mode) {
     if (isApi(request) && request.resourceType() !== 'eventsource') {
       state.inflight.add(request);
       state.activity += 1;
-      touch();
       recent.push(request);
       if (recent.length > 6) recent.shift();
     }
@@ -140,7 +134,6 @@ async function openSession(browser, mode) {
   const finished = (request) => {
     if (!state.inflight.delete(request)) return;
     state.activity += 1;
-    touch();
   };
   page.on('requestfinished', finished);
   page.on('requestfailed', finished);
@@ -154,31 +147,25 @@ async function openSession(browser, mode) {
   page.on('dialog', (dialog) => dialog.accept().catch(() => {}));
   context.on('page', (popup) => popup !== page && popup.close().catch(() => {}));
 
-  const settle = (grace = SETTLE_MS, snapshot, quietFrom) => waitForQuietRequests(state, {
+  const settle = (grace = SETTLE_MS, snapshot) => waitForQuietRequests(state, {
     wait: (duration) => page.waitForTimeout(duration),
     graceMs: grace,
     budgetMs: REQUEST_BUDGET_MS,
     snapshot,
-    quietFrom,
   });
-  /** Let a fresh screen finish its mount traffic; quiet time it already had counts. */
-  const settleScreen = () => settle(100, undefined, state.lastActivityAt);
   const navigate = (to) =>
     page.evaluate(async (target) => {
       // Import once per page load: re-importing after a Vite hot update can catch the
       // router/routes cycle mid-evaluation ("Cannot access 'routeTree' before initialization").
       window.__crawlRouter ??= (await import('/src/router.tsx')).router;
       await window.__crawlRouter.navigate({ to: target });
-    }, to).finally(touch);
+    }, to);
   const buttons = () =>
     page.locator(`main ${CLICKABLE}, [role="dialog"] ${CLICKABLE}`).filter({ visible: true });
 
-  /**
-   * Clear per-click evidence once the screen has had 100 ms without a request, navigation or
-   * crawler interaction; feedback already on screen is marked so only new feedback counts.
-   */
+  /** Clear per-click evidence; feedback already on screen is marked so only new feedback counts. */
   const arm = async () => {
-    await settleScreen();
+    await settle(100);
     state.events.length = 0;
     state.failedWrites = 0;
     recent.length = 0;
@@ -268,7 +255,7 @@ async function openSession(browser, mode) {
   await page.goto(`${BASE}/#/settings/usage`);
   await page.locator('main').first().waitFor();
   await settle();
-  return { context, page, navigate, touch, settleScreen, buttons, arm, clickAndCheck };
+  return { context, page, navigate, buttons, arm, clickAndCheck };
 }
 
 const label = (locator) =>
@@ -434,7 +421,7 @@ async function fillForm(page) {
 
 async function crawlMode(browser, mode, routes) {
   const session = await openSession(browser, mode);
-  const { context, navigate, touch, settleScreen, buttons, arm, clickAndCheck, page } = session;
+  const { context, navigate, buttons, arm, clickAndCheck, page } = session;
   /** A click or upload that reloads the whole page (e.g. "Reload app") is legitimate. */
   const RELOADED = /Execution context was destroyed|navigat|Target .*closed|detached/i;
   const recover = async (route, error) => {
@@ -459,8 +446,7 @@ async function crawlMode(browser, mode, routes) {
       if (!RELOADED.test(error.message)) throw error;
       await recover(route, error);
     }
-    // Only settle: visitOnce arms after its own preparation.
-    await settleScreen();
+    await arm();
   };
   const dialogs = () => page.locator('[role="dialog"]').filter({ visible: true });
   const gated = () =>
@@ -520,7 +506,6 @@ async function crawlMode(browser, mode, routes) {
     for (let index = 0, total = await gated().count(); index < total; index += 1)
       await visit(route, '(filled) ', async () => {
         await fillForm(page);
-        touch();
         return gated().nth(index);
       });
     // Pass 3: one level into each dialog a button opened.
@@ -539,7 +524,6 @@ async function crawlMode(browser, mode, routes) {
             .first()
             .waitFor({ timeout: 2_000 })
             .catch(() => {});
-          touch();
           return dialogButtons().nth(index);
         });
     }
