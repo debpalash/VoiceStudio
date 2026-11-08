@@ -251,3 +251,20 @@ def test_stable_keeps_the_tauri_sunset_feeds(tmp_path: Path):
         {"name": "latest-user.json", "size": 10, "digest": "sha256:x"},
     ]
     assert len(verify_release(release, tmp_path, channel="stable", version="0.5.9")) == 4
+
+
+@pytest.mark.parametrize(
+    "channel,names,code",
+    [("beta", "VoiceStudio-0.5.9-beta.1-win-x64.exe\nelectron-beta-win32-x64.yml\n", 0),
+     ("beta", "electron-beta-win32-x64.yml\nelectron-stable-win32-x64.yml\n", 1),
+     ("stable", "electron-stable-win32-x64.yml\nlatest.json\n", 0)],
+)
+def test_the_published_draft_asset_list_is_checked_too(channel, names, code):
+    """A reused draft keeps old assets that --clobber never removes (greptile, #3898)."""
+    import subprocess
+    import sys
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "check_electron_release_assets.py"
+    result = subprocess.run([sys.executable, str(script), "--foreign-feeds", channel],
+                            input=names, capture_output=True, text=True)
+    assert result.returncode == code, result.stdout + result.stderr

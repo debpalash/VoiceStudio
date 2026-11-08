@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -177,7 +178,18 @@ def verify_release(
     return verified
 
 
+def foreign_feeds_main(channel: str, names: list[str]) -> int:
+    """Exit non-zero when asset names (one per line on stdin) include another channel's feed."""
+    forbidden = sorted(name for name in names if name and _foreign_feed(name, channel))
+    if forbidden:
+        print(f"{channel} release carries another channel's update feed: {', '.join(forbidden)}")
+        return 1
+    return 0
+
+
 def main() -> int:
+    if len(sys.argv) == 3 and sys.argv[1] == "--foreign-feeds":
+        return foreign_feeds_main(sys.argv[2], sys.stdin.read().split("\n"))
     parser = argparse.ArgumentParser()
     parser.add_argument("--release-json", type=Path, required=True)
     parser.add_argument("--manifest-dir", type=Path, required=True)

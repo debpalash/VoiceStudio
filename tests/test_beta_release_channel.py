@@ -152,6 +152,7 @@ def test_appimage_update_info_contract_matches_the_embed_script():
 @pytest.mark.parametrize(
     "channel,latest,ok",
     [("beta", "v0.5.7", True), ("beta", "v0.5.8-beta.2", False),
+     ("beta", "v0.5.8-beta.1", False),  # any beta served as latest reaches stable users
      ("stable", "v0.5.8", True), ("stable", "v0.5.7", False)],
 )
 def test_publish_proves_where_latest_points(tmp_path, channel, latest, ok):
