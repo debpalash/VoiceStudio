@@ -254,14 +254,6 @@ it('passes a live nested-operation drain descriptor to POSIX managed backends', 
   expect(windows.env.OMNIVOICE_DESKTOP_DRAIN_FD).toBeUndefined();
 });
 
-it('passes the packaged analytics destination to its managed backend', () => {
-  vi.stubGlobal('__POSTHOG_PROJECT_TOKEN__', 'publishable-test-key');
-  vi.stubGlobal('__POSTHOG_HOST__', 'https://us.i.posthog.com');
-  const { env } = managedBackendSpawnOptions(3900);
-  expect(env.POSTHOG_PROJECT_TOKEN).toBe('publishable-test-key');
-  expect(env.POSTHOG_HOST).toBe('https://us.i.posthog.com');
-});
-
 it('recognizes only expected child-pipe close errors', () => {
   expect(isExpectedPipeClose(Object.assign(new Error('closed'), { code: 'EPIPE' }))).toBe(true);
   expect(isExpectedPipeClose(Object.assign(new Error('reset'), { code: 'ECONNRESET' }))).toBe(true);

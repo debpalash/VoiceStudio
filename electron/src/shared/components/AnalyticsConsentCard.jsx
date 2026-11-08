@@ -35,8 +35,8 @@ export async function chooseAnalyticsConsent(enabled) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled }),
     });
-    // Consent gates the FRONTEND SDK too: posthog-js is only initialised once
-    // the user says yes, and torn down the moment they say no.
+    // Consent gates the interface's reporting too: it starts only once the
+    // user says yes and stops the moment they say no.
     if (enabled) await enableAnalytics();
     else disableAnalytics();
     return true;

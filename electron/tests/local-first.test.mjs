@@ -16,7 +16,7 @@ const allowed = [
 ];
 const rejected = [
   STAR_COUNT_URL,
-  'https://us.i.posthog.com/e',
+  'https://app.supermetry.com/api/public/v1/events',
   'https://huggingface.co/',
   'http://127.0.0.1.evil.com/',
   'http://localhost.evil.com/',

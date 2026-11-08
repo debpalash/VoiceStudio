@@ -6,13 +6,17 @@ const mock = vi.hoisted(() => ({
   status: { stage: 'setup_required' } as Record<string, unknown>,
 }));
 vi.mock('@/lib/api/client', () => ({ apiJson: mock.api }));
-vi.mock('@/hooks/use-backend-status', () => ({ useBackendStatus: () => mock.status }));
+vi.mock('@/hooks/use-backend-status', () => ({
+  useBackendStatus: () => mock.status,
+  getBackendStatusSnapshot: () => mock.status,
+}));
 vi.mock('@shared/utils/analytics', () => ({
   analyticsAvailable: () => true,
   capture: vi.fn(),
   capturePageview: vi.fn(),
   disableAnalytics: vi.fn(),
   enableAnalytics: vi.fn(async () => {}),
+  setAnalyticsSender: vi.fn(),
 }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 import { AnalyticsConsent, AnalyticsRuntime, SetupAnalyticsConsent } from './analytics-consent';
@@ -211,4 +215,20 @@ it('asks again and stays off when saving the early answer fails', async () => {
     }),
   );
   expect(vi.mocked(mock.api).mock.calls.filter(([, init]) => init?.method === 'PUT')).toHaveLength(1);
+});
+
+
+it('holds first-run events while setup runs and sends them once the backend answers', async () => {
+  const { sendAnalytics: sender } = await import('./analytics-consent');
+  const { apiJson } = await import('@/lib/api/client');
+  vi.mocked(apiJson).mockClear();
+  const before = mock.status;
+  mock.status = { ...before, stage: 'installing' } as typeof before;
+  await sender({ event: 'setup_started', props: {} });
+  expect(apiJson).not.toHaveBeenCalled();
+  mock.status = { ...before, stage: 'ready' } as typeof before;
+  await sender({ event: 'setup_completed', props: {} });
+  const sent = vi.mocked(apiJson).mock.calls.map((call) => JSON.parse(String(call[1]?.body)).event);
+  expect(sent).toEqual(['setup_started', 'setup_completed']);
+  mock.status = before;
 });

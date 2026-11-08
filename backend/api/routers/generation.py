@@ -1654,6 +1654,7 @@ async def _finalize_generation(
     audio_tensor, sample_rate, *, text, history_mode, ref_audio_path,
     language, instruct, resolved_profile_id, used_seed, start_time,
     already_marked=False, design_recipe=None, wav_bits=16, include_wav_bytes=False,
+    engine_id=None,
 ):
     """Shared tail of a successful generation: watermark → save WAV →
     history row (self-healing) → retention prune → event emit.
@@ -1781,6 +1782,10 @@ async def _finalize_generation(
 
         _ph("speech_generated", {
             "mode": history_mode,
+            "feature": "convert" if history_mode == "convert" else ("clone" if ref_audio_path else "design"),
+            "action": "generate",
+            "outcome": "complete",
+            **({"engine_id": engine_id} if engine_id else {}),
             "language": language or "auto",
             "duration_seconds": audio_dur,
             "gen_time_seconds": gen_time,
@@ -2623,7 +2628,7 @@ async def generate_speech(
                     ref_audio_path=ref_audio_path, language=language,
                     instruct=instruct, resolved_profile_id=resolved_profile_id,
                     used_seed=used_seed, start_time=start_time, wav_bits=int(wav_bits),
-                    design_recipe=stored_design_recipe,
+                    design_recipe=stored_design_recipe, engine_id=engine_id,
                 )
                 # #1330: before `done`, say what the take is missing. Its own
                 # frame rather than a `done` field so a consumer that only
@@ -2780,7 +2785,7 @@ async def generate_speech(
             ref_audio_path=ref_audio_path, language=language, instruct=instruct,
             resolved_profile_id=resolved_profile_id, used_seed=used_seed,
             start_time=start_time, already_marked=False, wav_bits=int(wav_bits), include_wav_bytes=True,
-            design_recipe=stored_design_recipe,
+            design_recipe=stored_design_recipe, engine_id=engine_id,
         )
         audio_id = _meta["id"]
         audio_filename = _meta["filename"]

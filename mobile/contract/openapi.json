@@ -5957,6 +5957,37 @@
     "title": "_TorchCompileBody",
     "type": "object"
    },
+   "_UiEventBody": {
+    "properties": {
+     "event": {
+      "maxLength": 64,
+      "title": "Event",
+      "type": "string"
+     },
+     "props": {
+      "additionalProperties": true,
+      "title": "Props",
+      "type": "object"
+     },
+     "screen": {
+      "anyOf": [
+       {
+        "maxLength": 96,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Screen"
+     }
+    },
+    "required": [
+     "event"
+    ],
+    "title": "_UiEventBody",
+    "type": "object"
+   },
    "api__routers__sonitranslate__DubRequest": {
     "properties": {
      "max_speakers": {
@@ -6979,6 +7010,46 @@
      }
     },
     "summary": "Set Analytics",
+    "tags": [
+     "settings"
+    ]
+   }
+  },
+  "/api/settings/analytics/event": {
+   "post": {
+    "description": "An event the interface reports. A no-op unless the user opted in; only\nallowlisted, content-free properties are forwarded.",
+    "operationId": "post_analytics_event_api_settings_analytics_event_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/_UiEventBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Post Analytics Event",
     "tags": [
      "settings"
     ]

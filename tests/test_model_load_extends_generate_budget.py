@@ -140,7 +140,9 @@ async def test_the_extension_is_capped(mm, pool):
         with pytest.raises(mm.GpuJobTimeoutError):
             await _run(mm, pool, heartbeats_forever, timeout=0.4)
         elapsed = time.monotonic() - t0
-        assert elapsed < 4.0, (
+        # The cap fires at ~2.4s; the slack absorbs a loaded shared CI runner
+        # (4.08s was seen) while still failing if the extension were unbounded.
+        assert elapsed < 6.0, (
             f"cap is 0.4+2.0s but the job survived {elapsed:.1f}s"
         )
         assert elapsed > 2.0, "the cap fired before the extension it bounds"
