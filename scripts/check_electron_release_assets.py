@@ -69,6 +69,17 @@ def _asset_map(release: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return mapped
 
 
+def _foreign_feed(name: str, channel: str) -> bool:
+    """True for an updater feed that belongs to a channel other than `channel`."""
+    if name.startswith("electron-") and name.endswith(".yml"):
+        return not name.startswith(f"electron-{channel}-")
+    # electron-builder's default feeds: this project publishes only channel feeds.
+    if re.fullmatch(r"(latest|beta|alpha)(-[a-z0-9]+)*\.yml", name):
+        return True
+    # The archived Tauri sunset feeds ride on Stable only.
+    return channel != "stable" and name in {"latest.json", "latest-user.json"}
+
+
 def verify_release(
     release: dict[str, Any], manifest_dir: Path, *, channel: str, version: str
 ) -> list[str]:
@@ -84,6 +95,15 @@ def verify_release(
         raise ReleaseContractError(f"{channel} release tag does not match {expected_tag}")
 
     assets = _asset_map(release)
+    # A feed of the other channel on this release would move its users: a
+    # stable feed on a beta pulls stable users onto the beta's payloads (and
+    # Tauri's latest*.json is served only through `latest/download`, which a
+    # prerelease never answers), a beta feed on stable is unreachable noise.
+    forbidden = [name for name in assets if _foreign_feed(name, channel)]
+    if forbidden:
+        raise ReleaseContractError(
+            f"{channel} release carries another channel's update feed: {', '.join(sorted(forbidden))}"
+        )
     verified: list[str] = []
     for target, (manifest_target, os_token, arch, extension) in {
         **TARGETS,

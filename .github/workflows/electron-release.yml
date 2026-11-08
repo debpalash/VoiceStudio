@@ -459,6 +459,17 @@ jobs:
           else
             gh release edit "$TAG" --draft=false --prerelease=false --latest
           fi
+          # Prove where `latest` points now: stable users follow `latest/download`,
+          # so a beta there would update every stable install onto it.
+          latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+          if [ "$CHANNEL" = beta ] && [ "$latest" = "$TAG" ]; then
+            echo "::error::Beta $TAG became the latest release; stable users would update onto it"
+            exit 1
+          fi
+          if [ "$CHANNEL" = stable ] && [ "$latest" != "$TAG" ]; then
+            echo "::error::Stable $TAG is not the latest release (latest is $latest)"
+            exit 1
+          fi
       # GITHUB_TOKEN publication does not emit another workflow's release event.
       - name: Update the Android repository after stable publication
         if: github.event_name == 'workflow_dispatch' && inputs.publish == true

@@ -223,3 +223,31 @@ def test_blockmapsize_on_another_entry_does_not_count_for_the_appimage(tmp_path:
             asset.update(size=len(body), digest=f"sha256:{hashlib.sha256(body).hexdigest()}")
     with pytest.raises(ReleaseContractError, match="blockMapSize"):
         verify_release(release, tmp_path, channel="stable", version="0.5.3")
+
+
+@pytest.mark.parametrize(
+    "channel,version,stray",
+    [
+        ("beta", "0.5.9-beta.1", "electron-stable-win32-x64.yml"),
+        ("beta", "0.5.9-beta.1", "latest-mac.yml"),
+        ("beta", "0.5.9-beta.1", "latest.json"),
+        ("beta", "0.5.9-beta.1", "latest-user.json"),
+        ("stable", "0.5.9", "electron-beta-darwin-arm64-mac.yml"),
+        ("stable", "0.5.9", "latest.yml"),
+    ],
+)
+def test_a_release_never_carries_another_channels_feed(tmp_path: Path, channel, version, stray):
+    """Beta must never reach stable users, and stable must not ship beta feeds."""
+    release = _release(tmp_path, channel=channel, version=version)
+    release["assets"].append({"name": stray, "size": 10, "digest": "sha256:x"})
+    with pytest.raises(ReleaseContractError, match="another channel's update feed"):
+        verify_release(release, tmp_path, channel=channel, version=version)
+
+
+def test_stable_keeps_the_tauri_sunset_feeds(tmp_path: Path):
+    release = _release(tmp_path, channel="stable", version="0.5.9")
+    release["assets"] += [
+        {"name": "latest.json", "size": 10, "digest": "sha256:x"},
+        {"name": "latest-user.json", "size": 10, "digest": "sha256:x"},
+    ]
+    assert len(verify_release(release, tmp_path, channel="stable", version="0.5.9")) == 4
