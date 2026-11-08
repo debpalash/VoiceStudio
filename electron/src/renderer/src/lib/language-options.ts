@@ -20,6 +20,32 @@ const codes: Record<string, string> = {
   ),
 };
 const codeValues = new Set(Object.values(codes));
+const codeValuesLower = new Set([...codeValues].map((code) => code.toLowerCase()));
+
+// Chinese written standards (#3685). A dub segment stores the script tag
+// (`cmn-Hans` / `cmn-Hant`) while an engine advertises the picker names
+// (`chinese (simplified)` / `chinese (traditional)`); without a fold the gate
+// compares "cmn-hans" against "chinese" and refuses a language the engine
+// renders fine. Both sides meet on the BCP-47 code. Scripts stay distinct, so
+// Traditional is never accepted by an engine that only lists Simplified.
+const SCRIPT_CODES: Record<string, string> = {
+  'cmn-hans': 'zh-cn',
+  'zh-hans': 'zh-cn',
+  'chinese (simplified)': 'zh-cn',
+  'cmn-hant': 'zh-hant',
+  'zh-hant': 'zh-hant',
+  'chinese (traditional)': 'zh-hant',
+};
+
+/** Compare key for a language name or stored tag; lowercased BCP-47 code. */
+function engineCode(value: string) {
+  const key = value.toLowerCase();
+  return (
+    SCRIPT_CODES[key] ??
+    (languageCode(value) || (codeValuesLower.has(key) ? key : '')).toLowerCase()
+  );
+}
+
 // These display names are accepted by the backend; keep persisted values unchanged.
 export function languageCode(name: string) {
   return codes[name.toLowerCase()] || '';
@@ -27,11 +53,11 @@ export function languageCode(name: string) {
 
 export function languageSupported(name: string, supported?: readonly string[] | null) {
   if (name.toLowerCase() === 'auto' || supported == null) return true;
-  const code = languageCode(name) || (codeValues.has(name.toLowerCase()) ? name.toLowerCase() : '');
+  const code = engineCode(name);
   return supported.some(
     (candidate) =>
       candidate.toLowerCase() === name.toLowerCase() ||
-      Boolean(code && (languageCode(candidate) || candidate.toLowerCase()) === code),
+      Boolean(code && engineCode(candidate) === code),
   );
 }
 

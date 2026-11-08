@@ -23,6 +23,21 @@ from typing import Optional
 VARIANT_NAMES: dict[str, tuple[str, str]] = {
     "portuguese (brazil)": ("Portuguese", "pt-BR"),
     "portuguese (portugal)": ("Portuguese", "pt-PT"),
+    # Chinese written standards (#3685). The pickers offer "Chinese (Simplified)"
+    # and "Chinese (Traditional)" as their own choices, while every engine
+    # vocabulary names a single Chinese ("chinese" -> zh). Without this fold the
+    # pre-flight gate compares the picker's "cmn-hans" against the engine's
+    # "chinese"/"zh" and reports the target as unsupported, so Generate Dub
+    # refuses a language the engine renders fine (and finite engines never
+    # advertise it at all, since ``with_variant_names`` only adds a variant
+    # whose base language is present).
+    #
+    # Deliberately absent from ``DIALECTS`` below: that table makes
+    # ``split_target`` rewrite a regional target into its base, which would
+    # collapse "zh-TW" to "zh" and translate Traditional Chinese into
+    # Simplified. The script reaches what needs it through ``dialect_for``.
+    "chinese (simplified)": ("Chinese", "zh-CN"),
+    "chinese (traditional)": ("Chinese", "zh-TW"),
 }
 
 #: Base ISO code -> dialect used when the caller named only the language.

@@ -30,7 +30,14 @@ it('does not infer support for regional variants, missing lists or a different m
   expect(languageSupported('German', ['german'])).toBe(true);
   expect(languageSupported('German', ['de'])).toBe(true);
   expect(languageSupported('German', ['english'])).toBe(false);
-  expect(languageSupported('Chinese (Traditional)', ['chinese'])).toBe(false);
+  // #3685: the picker stores the script tag on a dub segment, so the gate must
+  // accept it against the one Chinese an engine advertises.
+  expect(languageSupported('cmn-Hans', ['chinese'])).toBe(true);
+  expect(languageSupported('cmn-Hant', ['chinese'])).toBe(true);
+  expect(languageSupported('cmn-Hans', ['chinese (traditional)'])).toBe(true);
+  expect(languageSupported('cmn-Hant', ['chinese (simplified)'])).toBe(false);
+  expect(languageSupported('Chinese (Simplified)', ['chinese'])).toBe(true);
+  expect(languageSupported('Chinese (Traditional)', ['chinese'])).toBe(true);
   expect(languageSupported('German', null)).toBe(true);
   expect(languageSupported('German', [])).toBe(false);
   expect(languageSupported('de', ['german'])).toBe(true);

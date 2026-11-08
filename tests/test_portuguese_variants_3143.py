@@ -249,3 +249,56 @@ def test_fast_mt_translation_to_european_portuguese_says_brazilian_was_used():
     result = asyncio.run(run())
     assert result["dialect_applied"] is False
     assert result["dialect_used"] == "pt-BR"
+
+# ── Chinese written standards (#3685) ──────────────────────────────────────
+#
+# The pickers offer "Chinese (Simplified)" / "Chinese (Traditional)"; every
+# engine vocabulary names one Chinese ("chinese" -> zh). The fold must reach the
+# engine and the pre-flight gate without collapsing the script, or Traditional
+# Chinese gets translated into Simplified.
+
+
+@pytest.mark.parametrize(("language", "dialect"), [
+    ("Chinese (Simplified)", "zh-CN"),
+    ("Chinese (Traditional)", "zh-TW"),
+    ("chinese  (traditional)", "zh-TW"),
+])
+def test_chinese_scripts_resolve_like_portuguese_variants(language, dialect):
+    from core.language_variants import dialect_for
+    assert dialect_for(language) == dialect
+
+
+def test_chinese_variants_reach_the_engine_as_one_language():
+    from core.language_variants import base_language
+    assert base_language("Chinese (Simplified)") == "Chinese"
+    assert base_language("Chinese (Traditional)") == "Chinese"
+    # The bare language and the script tags stay untouched.
+    for unchanged in ("Chinese", "zh", "zh-TW", "cmn-Hant"):
+        assert base_language(unchanged) == unchanged
+
+
+def test_chinese_scripts_are_not_a_dialect_split_for_translation():
+    """``split_target`` rewrites a regional target into its base. Chinese must
+    stay out of ``DIALECTS`` or "zh-TW" would be translated as Simplified."""
+    from core.language_variants import DIALECTS, split_target
+    assert "zh" not in DIALECTS
+    assert split_target("zh-TW") == ("zh-TW", None)
+    assert split_target("cmn-Hant") == ("cmn-Hant", None)
+
+
+@pytest.mark.parametrize("engine", ["audiocpp", "indextts2", "confucius4-tts"])
+def test_finite_engines_advertise_both_chinese_scripts(engine):
+    """A finite engine lists Chinese, so ``with_variant_names`` must add both
+    picker choices — otherwise the gate blocks a language it can speak."""
+    from services import tts_backend
+    options = set(tts_backend.language_options(engine) or [])
+    assert {"chinese (simplified)", "chinese (traditional)"} <= options
+
+
+def test_finite_engine_accepts_the_picker_name():
+    from services.tts_backend import get_backend_class
+    backend = get_backend_class("audiocpp")()
+    assert backend._check_language("Chinese (Simplified)") == "zh"
+    assert backend._check_language("Chinese (Traditional)") == "zh"
+    with pytest.raises(ValueError):
+        backend._check_language("Klingon")
