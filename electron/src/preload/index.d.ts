@@ -54,6 +54,12 @@ export interface BackendStatus {
     | 'install_stuck';
   /** Free disk (GiB) the failed install needed; the CPU-only install needs less than the CUDA one. */
   setupRequiredGib?: number;
+  /** Detected hardware and the PyTorch build the runtime install will pick (setup screen). */
+  setupHardware?: {
+    gpu?: string;
+    build: 'metal' | 'cuda' | 'rocm' | 'cpu';
+    reason?: 'no_nvidia' | 'windows_arm' | 'explicit';
+  };
   /** A prior explicit install stopped after creating its resumable project/cache. */
   runtimeInterrupted?: boolean;
   /** Automatic repair of a lost Python environment already ran this launch and failed. */
