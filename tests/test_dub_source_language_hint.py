@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from services.asr_backend import transcribe_request_kwargs
+from services.dub_language import asr_source_language
 
 
 @pytest.fixture
@@ -34,9 +35,11 @@ def chunk_worker():
             "_asr_backend": backend,
             "_safe_soundfile_write": lambda *args: None,
             "transcribe_request_kwargs": transcribe_request_kwargs,
+            "asr_source_language": asr_source_language,
             "tempfile": tempfile,
             "os": os,
         }
+        # Execute only this repository's worker, never caller-provided source.
         exec(code, scope)
         result = scope["_transcribe_chunk"]()
         assert job["source_lang_override"] == language
@@ -74,10 +77,39 @@ def test_selected_language_reaches_only_a_language_aware_backend(chunk_worker, l
         """Stand in for an ASR backend without a language parameter."""
         return transcribe(path, word_timestamps=word_timestamps)
 
-    backend = SimpleNamespace(transcribe=transcribe if supports_language else without_language)
+    backend = SimpleNamespace(id="faster-whisper", transcribe=transcribe if supports_language else without_language)
     result = chunk_worker(backend, language)
 
     assert calls == [(True, expected if supports_language else None)]
+    assert result["chunks"] == [{"text": "Synthetic words.", "timestamp": (30.25, 30.75)}]
+
+
+@pytest.mark.parametrize(
+    "backend_id,accepts_language",
+    [
+        ("whisperx", False),
+        ("faster-whisper", False),
+        ("faster-whisper-isolated", False),
+        ("mlx-whisper", False),
+        ("pytorch-whisper", False),
+        ("openai-compat-asr", True),
+        ("custom-asr", True),
+    ],
+)
+@pytest.mark.parametrize("language", ["ku", "xh", "zu"])
+def test_non_whisper_language_choices_do_not_break_whisper_chunks(chunk_worker, backend_id, accepts_language, language):
+    """Use auto-detection for unsupported Whisper codes without restricting other engines."""
+    calls = []
+
+    def transcribe(path, *, word_timestamps=True, language=None):
+        """Record the hint and produce a chunk without loading an ASR model."""
+        calls.append((word_timestamps, language))
+        return {"chunks": [{"text": "Synthetic words.", "timestamp": (0.25, 0.75)}]}
+
+    backend = SimpleNamespace(id=backend_id, transcribe=transcribe)
+    result = chunk_worker(backend, language)
+
+    assert calls == [(True, language if accepts_language else None)]
     assert result["chunks"] == [{"text": "Synthetic words.", "timestamp": (30.25, 30.75)}]
 
 

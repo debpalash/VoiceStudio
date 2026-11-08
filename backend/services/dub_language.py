@@ -22,6 +22,29 @@ DUB_SOURCE_LANG_CODES = frozenset({
 
 _UNKNOWN_VALUES = frozenset({"", "auto", "unknown", "none", "und"})
 
+
+def asr_source_language(source_language: str | None, backend_id: str | None) -> str | None:
+    """Adapt a stored dub language to the selected ASR without mutating the job.
+
+    Chinese script choices share Whisper's spoken-language code. Other valid
+    dub choices outside Whisper's language table use automatic detection on
+    Whisper engines; custom and OpenAI-compatible engines keep their own codes.
+    """
+    language = "zh" if source_language in ("cmn-hans", "cmn-hant") else source_language or None
+    if language and backend_id in (
+        "whisperx",
+        "faster-whisper",
+        "faster-whisper-isolated",
+        "mlx-whisper",
+        "pytorch-whisper",
+    ):
+        from transformers.models.whisper.tokenization_whisper import LANGUAGES
+
+        if language not in LANGUAGES:
+            return None
+    return language
+
+
 # Codes that are valid languages but are not in DUB_SOURCE_LANG_CODES, and
 # the dub code they mean. YouTube caption tracks and older ISO 639
 # assignments use several of these: ``fil`` is Filipino (``tl`` here),
