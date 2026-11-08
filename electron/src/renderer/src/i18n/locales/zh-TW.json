@@ -3006,7 +3006,14 @@
     "channel": "更新頻道",
     "channel_stable": "穩定版",
     "channel_beta": "測試版",
-    "channel_beta_hint": "測試版會收到早期組建，可能有錯誤。下一個穩定版發布後會自動切換。"
+    "channel_beta_hint": "測試版會收到早期組建，可能有錯誤。下一個穩定版發布後會自動切換。",
+    "prompt_available": "版本 {{version}} 現已可用",
+    "prompt_ready": "可以安裝了",
+    "prompt_details": "詳細資料",
+    "prompt_hide": "隱藏",
+    "prompt_more": "更多",
+    "error_network": "GitHub 沒有回應。請檢查網路連線後重試。",
+    "error_generic": "更新未完成，請重試。"
   },
   "openapi": {
     "title": "VoiceStudio API",

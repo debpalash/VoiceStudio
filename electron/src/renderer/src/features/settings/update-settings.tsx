@@ -21,6 +21,7 @@ import { appVersion, getBridge } from '@/components/bridge';
 import { dubSession, flushDubDraft, useDubSession } from '@/features/dub/dub-session';
 import { hasActiveAppWork, useAppActivityCount } from '@/lib/app-activity';
 import { apiJson, describeError } from '@/lib/api/client';
+import { formatBytes, updateErrorKey } from '@/lib/update-format';
 import { SettingsSection } from './settings-layout';
 import type { UpdateChannel, UpdateReleaseInfo, UpdateState } from '../../../../preload/index.d';
 
@@ -67,13 +68,6 @@ const unsupportedMessageKey = (reason: UpdateState['unsupportedReason']) =>
       : reason === 'store'
         ? 'settings.updater_store'
         : 'settings.updater_desktop';
-
-function formatBytes(bytes: number): string {
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
-  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${Math.max(0, Math.round(bytes))} B`;
-}
 
 function formatEta(seconds: number): string {
   const { minutes, seconds: remainder } = splitRoundedMinutes(seconds);
@@ -237,7 +231,7 @@ export function UpdateSettings() {
                             pct: Math.round(state.progress),
                           })
                         : state.status === 'error'
-                          ? t('update.failed')
+                          ? t(updateErrorKey(state.error))
                           : t('updates.up_to_date', {
                               version: state.currentVersion,
                             })}

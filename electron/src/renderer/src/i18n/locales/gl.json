@@ -3087,7 +3087,14 @@
     "channel": "Actualizar a canle",
     "channel_stable": "Estable",
     "channel_beta": "Beta",
-    "channel_beta_hint": "A beta recibe compilacións temperás e pode ter erros. Pasas á seguinte versión estable automaticamente."
+    "channel_beta_hint": "A beta recibe compilacións temperás e pode ter erros. Pasas á seguinte versión estable automaticamente.",
+    "prompt_available": "A versión {{version}} está dispoñible",
+    "prompt_ready": "Listo para instalar",
+    "prompt_details": "Detalles",
+    "prompt_hide": "Ocultar",
+    "prompt_more": "Máis",
+    "error_network": "GitHub non respondeu. Comproba a túa conexión e téntao de novo.",
+    "error_generic": "A actualización non se completou. Téntao de novo."
   },
   "openapi": {
     "title": "Referencia da API OpenAPI de VoiceStudio",

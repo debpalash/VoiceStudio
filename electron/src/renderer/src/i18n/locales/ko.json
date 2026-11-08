@@ -3006,7 +3006,14 @@
     "channel": "업데이트 채널",
     "channel_stable": "안정",
     "channel_beta": "베타",
-    "channel_beta_hint": "베타는 초기 빌드를 받으며 버그가 있을 수 있습니다. 다음 안정 버전이 나오면 자동으로 전환됩니다."
+    "channel_beta_hint": "베타는 초기 빌드를 받으며 버그가 있을 수 있습니다. 다음 안정 버전이 나오면 자동으로 전환됩니다.",
+    "prompt_available": "버전 {{version}}을(를) 사용할 수 있습니다",
+    "prompt_ready": "설치 준비 완료",
+    "prompt_details": "자세히",
+    "prompt_hide": "숨기기",
+    "prompt_more": "더 보기",
+    "error_network": "GitHub가 응답하지 않습니다. 연결을 확인하고 다시 시도하세요.",
+    "error_generic": "업데이트가 완료되지 않았습니다. 다시 시도하세요."
   },
   "openapi": {
     "title": "VoiceStudio API",

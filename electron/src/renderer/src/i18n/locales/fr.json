@@ -3008,7 +3008,14 @@
     "channel": "Canal de mise à jour",
     "channel_stable": "Stable",
     "channel_beta": "Bêta",
-    "channel_beta_hint": "La bêta reçoit des versions anticipées et peut contenir des bogues. Vous passez automatiquement à la prochaine version stable."
+    "channel_beta_hint": "La bêta reçoit des versions anticipées et peut contenir des bogues. Vous passez automatiquement à la prochaine version stable.",
+    "prompt_available": "La version {{version}} est disponible",
+    "prompt_ready": "Prêt à installer",
+    "prompt_details": "Détails",
+    "prompt_hide": "Masquer",
+    "prompt_more": "Plus",
+    "error_network": "GitHub n'a pas répondu. Vérifiez votre connexion et réessayez.",
+    "error_generic": "La mise à jour n'a pas abouti. Réessayez."
   },
   "openapi": {
     "title": "API VoiceStudio",

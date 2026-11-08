@@ -9,7 +9,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { queryClient } from '@/lib/query';
 import { router } from './router';
 import { ErrorBoundary } from '@/components/error-boundary';
-import { toast } from 'sonner';
+import { UpdatePrompt } from '@/components/update-prompt';
 import { AnalyticsConsentBanner, AnalyticsRuntime } from '@/components/analytics-consent';
 import { GpuOfferBanner } from '@/components/gpu-offer';
 import { CloudSyncRuntime } from '@/features/account/cloud-sync-runtime';
@@ -23,35 +23,6 @@ import { GenerateBudgetSync } from '@/hooks/use-generate-budget-sync';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { WebAuthGate } from '@/components/web-auth-gate';
 import { ModelLicenceGate } from '@/features/settings/model-licence-acceptance';
-
-const notifiedUpdates = new Set<string>();
-
-function UpdateNotifier() {
-  const { t } = useTranslation();
-  useEffect(() => {
-    const updates = getBridge()?.updates;
-    if (!updates) return;
-    return updates.onState((state) => {
-      if (
-        (state.status !== 'available' && state.status !== 'downloaded') ||
-        !state.availableVersion ||
-        notifiedUpdates.has(state.availableVersion)
-      )
-        return;
-      notifiedUpdates.add(state.availableVersion);
-      toast.info(t('update.toast_available', { version: state.availableVersion }), {
-        action: {
-          label: t('common.open'),
-          onClick: () =>
-            runRendererTask('Navigate to updates', () =>
-              router.navigate({ to: '/settings/updates' }),
-            ),
-        },
-      });
-    });
-  }, [t]);
-  return null;
-}
 
 export function App() {
   const { t } = useTranslation();
@@ -121,7 +92,7 @@ export function App() {
           <ModelInstallSync />
           <RealtimeEventSync />
           <GenerateBudgetSync />
-          <UpdateNotifier />
+          <UpdatePrompt />
           <AnalyticsRuntime />
           <CloudSyncRuntime />
           <AnalyticsConsentBanner />
