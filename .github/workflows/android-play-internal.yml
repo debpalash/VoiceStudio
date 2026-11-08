@@ -51,7 +51,7 @@ jobs:
             test -n "${!name}" || { echo "Missing $name; see docs/mobile.md → Play internal testing"; exit 1; }
           done
 
-      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: "21"
