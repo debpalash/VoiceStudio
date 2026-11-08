@@ -2514,7 +2514,14 @@
     "continue_ok": "Her şey yolunda - devam et",
     "check_arch_label": "ARM üzerinde Windows",
     "check_arch_detail": "ARM64 Windows bilgisayar — yapay zekâ arka ucu Windows emülasyonu altında x64 olarak ve yalnızca CPU ile çalışır (GPU/NPU hızlandırması yok).",
-    "check_arch_fix": "Ses üretimi çalışır ancak daha yavaştır. Hafif bir ses motoru (KittenTTS, Supertonic-3, PocketTTS) ve küçük bir Whisper modeli tercih edin."
+    "check_arch_fix": "Ses üretimi çalışır ancak daha yavaştır. Hafif bir ses motoru (KittenTTS, Supertonic-3, PocketTTS) ve küçük bir Whisper modeli tercih edin.",
+    "update_first": "Önce güncelleyin; böylece indirdiğiniz çalışma ortamı en yeni uygulamayla eşleşir.",
+    "models_space": "Ses modelleri için de yer bırakın: her biri birkaç GB yer kaplar.",
+    "use_other_computer": "Bunun yerine VoiceStudio'yu başka bir bilgisayarda kullan",
+    "help_label": "Kurulum yardımı",
+    "help_install": "Kurulum kılavuzu",
+    "help_troubleshooting": "Sorun giderme",
+    "help_report": "Sorun bildir"
   },
   "consent": {
     "title": "VoiceStudio'un gelişmesine yardım eder misiniz?",

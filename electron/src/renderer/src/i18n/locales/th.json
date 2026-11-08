@@ -2514,7 +2514,14 @@
     "continue_ok": "ดีไปหมด — ดำเนินการต่อ",
     "check_arch_label": "Windows บน ARM",
     "check_arch_detail": "พีซี Windows ARM64 — แบ็กเอนด์ AI ทำงานเป็น x64 ภายใต้การจำลองของ Windows โดยใช้ CPU เท่านั้น (ไม่มีการเร่งความเร็วด้วย GPU/NPU)",
-    "check_arch_fix": "การสร้างเสียงใช้งานได้แต่ช้ากว่า แนะนำให้ใช้เอนจินเสียงแบบเบา (KittenTTS, Supertonic-3, PocketTTS) และโมเดล Whisper ขนาดเล็ก"
+    "check_arch_fix": "การสร้างเสียงใช้งานได้แต่ช้ากว่า แนะนำให้ใช้เอนจินเสียงแบบเบา (KittenTTS, Supertonic-3, PocketTTS) และโมเดล Whisper ขนาดเล็ก",
+    "update_first": "อัปเดตก่อน เพื่อให้รันไทม์ที่ดาวน์โหลดตรงกับแอปเวอร์ชันล่าสุด",
+    "models_space": "เผื่อพื้นที่สำหรับโมเดลเสียงด้วย: แต่ละโมเดลใช้หลาย GB",
+    "use_other_computer": "ใช้ VoiceStudio บนคอมพิวเตอร์เครื่องอื่นแทน",
+    "help_label": "ความช่วยเหลือในการตั้งค่า",
+    "help_install": "คู่มือการติดตั้ง",
+    "help_troubleshooting": "การแก้ไขปัญหา",
+    "help_report": "รายงานปัญหา"
   },
   "consent": {
     "title": "ช่วยปรับปรุง VoiceStudio ไหม?",
