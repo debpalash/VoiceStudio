@@ -23,11 +23,12 @@ def chunk_worker():
     code = compile(ast.Module(body=[worker], type_ignores=[]), str(path), "exec")
 
     def run(backend, language):
+        job = {"source_lang_override": language}
         scope = {
             "chunk_arr": [],
             "t0": 30.0,
             "sr": 16000,
-            "job": {"source_lang_override": language},
+            "job": job,
             "_asr_backend": backend,
             "_safe_soundfile_write": lambda *args: None,
             "transcribe_request_kwargs": transcribe_request_kwargs,
@@ -35,14 +36,27 @@ def chunk_worker():
             "os": os,
         }
         exec(code, scope)
-        return scope["_transcribe_chunk"]()
+        result = scope["_transcribe_chunk"]()
+        assert job["source_lang_override"] == language
+        return result
 
     return run
 
 
-@pytest.mark.parametrize("language", [None, "ja", "es"])
+@pytest.mark.parametrize(
+    "language,expected",
+    [
+        (None, None),
+        ("ja", "ja"),
+        ("es", "es"),
+        ("zh", "zh"),
+        ("cmn-hans", "zh"),
+        ("cmn-hant", "zh"),
+        ("yue", "yue"),
+    ],
+)
 @pytest.mark.parametrize("supports_language", [True, False])
-def test_selected_language_reaches_only_a_language_aware_backend(chunk_worker, language, supports_language):
+def test_selected_language_reaches_only_a_language_aware_backend(chunk_worker, language, expected, supports_language):
     calls = []
 
     def transcribe(path, *, word_timestamps=True, language=None):
@@ -58,7 +72,7 @@ def test_selected_language_reaches_only_a_language_aware_backend(chunk_worker, l
     backend = SimpleNamespace(transcribe=transcribe if supports_language else without_language)
     result = chunk_worker(backend, language)
 
-    assert calls == [(True, language if supports_language else None)]
+    assert calls == [(True, expected if supports_language else None)]
     assert result["chunks"] == [{"text": "Synthetic words.", "timestamp": (30.25, 30.75)}]
 
 

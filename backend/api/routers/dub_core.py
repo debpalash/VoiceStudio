@@ -1861,9 +1861,11 @@ async def dub_transcribe_stream(
                     tmp.close()
                     try:
                         _safe_soundfile_write(tmp.name, arr, local_sr)
-                        kwargs = transcribe_request_kwargs(
-                            _asr_backend, {"language": job.get("source_lang_override") or None}
-                        )
+                        source_language = job.get("source_lang_override")
+                        # The Chinese script choices share the spoken ASR
+                        # language. Preserve the original selection on the job.
+                        language = "zh" if source_language in ("cmn-hans", "cmn-hant") else source_language
+                        kwargs = transcribe_request_kwargs(_asr_backend, {"language": language or None})
                         r = _asr_backend.transcribe(tmp.name, word_timestamps=True, **kwargs)
                     finally:
                         try: os.remove(tmp.name)
