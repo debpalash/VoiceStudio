@@ -647,7 +647,7 @@ def generate_timeout_s(
         # An explicit (env-set, or runtime-changed the same way tests do)
         # CPU budget is more specific than the universal override and always
         # wins for CPU dispatches — see the #1787 comment above.
-        if family == "cpu" and (cpu_explicit or not universal_override):
+        if family in ("cpu", "unknown") and (cpu_explicit or not universal_override):
             base = CPU_JOB_TIMEOUT_S
             explicit_budget = cpu_explicit
             cpu_auto_scaled = not cpu_explicit
@@ -4690,10 +4690,9 @@ def unload_diarization_pipeline() -> bool:
 
 def _local_route_is_cpu(engine_id: "str | None" = None) -> bool:
     """Does a local /generate for this engine (default: the active one) end up
-    computing on the CPU? True for a CPU host AND for an accelerated host whose
-    engine is CPU-only or falls back to CPU — the same routing decision the
-    generate dispatch budgets from. A failed lookup falls back to the host
-    family, which is what an engine-less budget uses."""
+    computing on the CPU? True for CPU routes and unknown sidecar routes, so
+    an unverified runtime gets the conservative CPU timeout budget. A failed
+    lookup falls back to the host family, as for an engine-less budget."""
     from core.device_caps import detect_host_caps
 
     caps = detect_host_caps()
@@ -4702,7 +4701,7 @@ def _local_route_is_cpu(engine_id: "str | None" = None) -> bool:
         from services.tts_backend import active_backend_id, get_backend_class
 
         cls = get_backend_class(engine_id or active_backend_id())
-        return runtime_compute_profile(cls, caps)["effective_device"] == "cpu"
+        return runtime_compute_profile(cls, caps)["effective_device"] in ("cpu", "unknown")
     except Exception:  # noqa: BLE001 — routing lookup is advisory
         return caps.family == "cpu"
 

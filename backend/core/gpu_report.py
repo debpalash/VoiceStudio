@@ -190,6 +190,8 @@ def _engine_entry(row: dict, kind: str, host_code: str) -> dict[str, Any]:
         else:
             code = "gpu_caveat" if row.get("routing_reason") else "gpu"
             params = {"device": device}
+    elif status == "unknown":
+        code = "unknown"
     elif status == "unavailable":
         code, params = "needs_accelerator", {"needs": ", ".join(compat)}
     elif compat == ("cpu",):

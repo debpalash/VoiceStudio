@@ -13291,7 +13291,7 @@
   },
   "/engines/sidecar/{engine_id}/install/status": {
    "get": {
-    "description": "Step-by-step status of the sidecar install job (poll while running).\n\nShape: ``{engine_id, installed, managed, install_dir, job}`` where job is\nnull before the first run, else ``{state, steps[], log[], error,\nremediation, weights_progress, started_at, finished_at}``.",
+    "description": "Step-by-step status of the sidecar install job (poll while running).\n\nShape: ``{engine_id, installed, repair_available, managed, install_dir, job}`` where job is\nnull before the first run, else ``{state, steps[], log[], error,\nremediation, weights_progress, started_at, finished_at}``.",
     "operationId": "sidecar_install_status_engines_sidecar__engine_id__install_status_get",
     "parameters": [
      {
