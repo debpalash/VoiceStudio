@@ -205,7 +205,7 @@ def test_rocm_base_follows_the_checked_out_torch_pin(tmp_path, constraints, expe
     subprocess.run(["bash", "-e", "-c", step["run"]], cwd=tmp_path, check=True,
                    env={"GITHUB_OUTPUT": str(output), "PATH": "/usr/bin:/bin"})
     # The exact GITHUB_OUTPUT line: a bare tag would leave the build-arg empty.
-    assert output.read_text() == f"image=rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_{expected}\n"
+    assert output.read_text(encoding="utf-8") == f"image=rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_{expected}\n"
 
 
 def test_rocm_base_rejects_a_constraints_file_without_an_exact_torch_pin(tmp_path):
