@@ -124,6 +124,9 @@ def test_release_notes_helper_comes_from_the_workflow_commit(tmp_path):
     # The notarization upload itself can be cut off (v0.5.8-beta.1 draft).
     (1, "Error: abortedUpload(resumeRequest: SotoS3.S3.ResumeMultipartUploadRequest", 2, True),
     (1, 'Error Domain=NSURLErrorDomain Code=-1005 "The network connection was lost."', 2, True),
+    (1, "Error Domain=NSURLErrorDomain Code=-1001 timed out", 2, True),
+    # A server-trust failure is not a dropped connection.
+    (1, "Error Domain=NSURLErrorDomain Code=-1202 untrusted server certificate", 1, False),
     # A rejected notarization or a signing failure is not transient.
     (1, "Failed to notarize via notarytool. status: Invalid", 1, False),
     (1, "codesign failed", 1, False),
