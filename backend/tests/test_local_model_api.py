@@ -344,7 +344,20 @@ def test_discovery_is_read_only_and_capability_scoped(api, tmp_path, monkeypatch
     monkeypatch.setattr(tts.OmniVoiceBackend, "_ensure_loaded", forbidden)
     monkeypatch.setattr(tts.MLXAudioBackend, "_ensure_loaded", forbidden)
     monkeypatch.setattr(subprocess, "Popen", forbidden)
-    monkeypatch.setattr(socket.socket, "connect", forbidden)
+    # Any outbound connection is a download. Loopback stays open: on Windows
+    # asyncio builds each event loop's self-pipe with socket.socketpair(), a
+    # real 127.0.0.1 TCP connect (#3865 Windows CI).
+    real_connect = socket.socket.connect
+    outbound: list[object] = []
+
+    def no_outbound(sock, address, *args, **kwargs):
+        host = address[0] if isinstance(address, tuple) else address
+        if host in ("127.0.0.1", "::1", "localhost"):
+            return real_connect(sock, address, *args, **kwargs)
+        outbound.append(address)
+        raise AssertionError("discovery must not download")
+
+    monkeypatch.setattr(socket.socket, "connect", no_outbound)
     token = cap(parent, scope="local-model-discover:omnivoice")
     response = client.post(URL + "/discover", json=token)
     assert response.status_code == 200
@@ -354,8 +367,10 @@ def test_discovery_is_read_only_and_capability_scoped(api, tmp_path, monkeypatch
     response = client.post(URL + "/discover", json={"path": str(parent)})
     assert response.status_code == 422
     remote = TestClient(app, client=("203.0.113.9", 9999))
-    assert remote.post(URL + "/discover", json=cap(parent, scope="local-model-discover:omnivoice")).status_code == 403
+    response = remote.post(URL + "/discover", json=cap(parent, scope="local-model-discover:omnivoice"))
+    assert response.status_code == 403
     forbidden.assert_not_called()
+    assert outbound == []
     mm.unload_shared_model.assert_not_called()
     assert tts._ENGINE_INSTANCES == {}
     assert before == {str(p.relative_to(parent)): p.read_bytes() for p in parent.rglob("*") if p.is_file()}
