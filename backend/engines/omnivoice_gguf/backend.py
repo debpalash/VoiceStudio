@@ -761,6 +761,11 @@ def _make_backend_class():
         gpu_compat = ("cuda", "vulkan", "mps", "cpu")
 
         supports_voice_design = False
+        # The bundled omnivoice-tts CLI has no num_step/guidance_scale
+        # flags (verified against the C++ usage text) — explicit values are
+        # rejected at the API boundary with a 400 (#3654).
+        supports_num_step = False
+        supports_guidance_scale = False
         # The seed reaches the binary as --seed; the parent's torch RNG never
         # does, so /generate must forward it (#3413).
         supports_generation_seed = True
@@ -1288,7 +1293,22 @@ def _iso_to_omnivoice_lang(code: Optional[str]) -> Optional[str]:
     c = code.strip().lower()
     if c in ("auto", "multi", ""):
         return None
-    return _ISO_TO_OV.get(c, c.capitalize())
+    # App picker labels/tags ("Arabic", "ar", "Chinese (Simplified)") are not
+    # in the pinned resolver's table; send the canonical ID it does accept
+    # instead of an unknown label that silently drops to language-agnostic.
+    from omnivoice.utils.lang_map import APP_LANGUAGE_IDS, APP_LANGUAGE_NAMES
+
+    alias = APP_LANGUAGE_NAMES.get(c) or APP_LANGUAGE_IDS.get(c)
+    if alias:
+        return alias
+    if c in _ISO_TO_OV:
+        return _ISO_TO_OV[c]
+    # Already a valid OmniVoice id ("ht", "ug"): pass through, never title-case.
+    from omnivoice.utils.lang_map import LANG_IDS
+
+    if c in LANG_IDS:
+        return c
+    return c.capitalize()
 
 
 _ISO_TO_OV = {

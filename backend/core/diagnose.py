@@ -450,11 +450,16 @@ def run_diagnostics(include_network: bool = True, deep: bool = False) -> dict:
     }
 
 
+def format_console_text(report: dict) -> str:
+    """``format_text`` escaped to ASCII for legacy Windows console code pages."""
+    return format_text(report).encode("ascii", errors="backslashreplace").decode("ascii")
+
+
 def format_text(report: dict) -> str:
     """Human-readable rendering for `--diagnose` / pasting into an issue.
 
-    ASCII-only on purpose — Windows consoles with legacy code pages must
-    not choke on the output.
+    Returns real Unicode (bundle files stay UTF-8); the console print site in
+    ``main.py --diagnose`` escapes to ASCII for legacy Windows code pages.
     """
     tag = {OK: "[ OK ]", WARN: "[WARN]", FAIL: "[FAIL]"}
     lines = [

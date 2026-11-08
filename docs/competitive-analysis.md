@@ -572,7 +572,8 @@ real terminators, split. Terminator tables cover Latin + CJK + 8 non-Latin scrip
 (Devanagari, Arabic, Armenian, Ethiopic, Khmer, Burmese, Tibetan). Three emission
 paths: standard (≥ min length and > 1 sentence → emit all but the buffered tail);
 **short flush** for instant single-sentence replies (guards: one terminator, ≥ 1 word,
-no preceding digit, no ALL-CAPS acronym tail, no honorific tail); **aggressive
+no digit before a period, no trailing Arabic semicolon, no ALL-CAPS acronym tail,
+no honorific tail); **aggressive
 first-clause flush** (opt-in, first clause of each turn only) on soft punctuation
 `, — –` at ≥ 40 chars — claimed 200–500 ms TTFA savings — with seven guards
 (decimals, currency within 8 chars, unbalanced brackets/quotes, ellipsis, sub-token

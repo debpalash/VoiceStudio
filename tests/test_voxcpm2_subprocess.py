@@ -137,6 +137,74 @@ def test_loads_the_configured_checkpoint_without_the_denoiser(monkeypatch):
     assert calls[0] == {"from_pretrained": "local/ckpt", "load_denoiser": False, "optimize": False}
 
 
+# The engine venv's own torch (a cu128 wheel) has no Pascal kernels.
+_CU128_ENGINE_ARCHS = ["sm_75", "sm_80", "sm_86", "sm_90", "sm_100", "sm_120"]
+
+
+def _fake_torch(monkeypatch, *, available=True, capability=(6, 1), archs=None):
+    cuda = types.SimpleNamespace(
+        is_available=lambda: available,
+        get_device_capability=lambda _i=0: capability,
+        get_arch_list=lambda: list(_CU128_ENGINE_ARCHS if archs is None else archs),
+    )
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(cuda=cuda))
+
+
+def test_a_gpu_the_venv_torch_cannot_run_loads_on_cpu(monkeypatch):
+    """A GTX 10xx (sm_61) under a cu128 wheel: CPU, not "no kernel image"."""
+    calls = []
+    monkeypatch.delenv("OMNIVOICE_VOXCPM_DEVICE", raising=False)
+    _fake_torch(monkeypatch, capability=(6, 1))
+    sidecar = _load_sidecar(monkeypatch, calls)
+    sidecar._handle_synthesize({"text": "hi"}, io.BytesIO())
+    assert calls[0]["device"] == "cpu"
+
+
+@pytest.mark.parametrize("capability", [(8, 9), (8, 6), (12, 0)])
+def test_a_covered_gpu_keeps_voxcpms_own_device_choice(monkeypatch, capability):
+    """sm_89 has no tag of its own but sm_86 covers it (#1285): no override."""
+    calls = []
+    monkeypatch.delenv("OMNIVOICE_VOXCPM_DEVICE", raising=False)
+    _fake_torch(monkeypatch, capability=capability)
+    sidecar = _load_sidecar(monkeypatch, calls)
+    sidecar._handle_synthesize({"text": "hi"}, io.BytesIO())
+    assert "device" not in calls[0]
+
+
+def test_no_cuda_or_unknown_arch_list_keeps_voxcpms_choice(monkeypatch):
+    monkeypatch.delenv("OMNIVOICE_VOXCPM_DEVICE", raising=False)
+    sidecar = _load_sidecar(monkeypatch, [])
+    _fake_torch(monkeypatch, available=False)
+    assert sidecar._load_device() is None
+    _fake_torch(monkeypatch, archs=[])
+    assert sidecar._load_device() is None
+
+
+def test_the_device_env_overrides_the_probe(monkeypatch):
+    calls = []
+    monkeypatch.setenv("OMNIVOICE_VOXCPM_DEVICE", "cuda")
+    _fake_torch(monkeypatch, capability=(6, 1))
+    sidecar = _load_sidecar(monkeypatch, calls)
+    sidecar._handle_synthesize({"text": "hi"}, io.BytesIO())
+    assert calls[0]["device"] == "cuda"
+
+
+def test_the_sidecar_arch_rule_matches_device_caps(monkeypatch):
+    """The sidecar keeps its own copy of cuda_build_covers; keep them equal."""
+    from core.device_caps import cuda_build_covers
+
+    sidecar = _load_sidecar(monkeypatch, [])
+    lists = [
+        _CU128_ENGINE_ARCHS, ["sm_61", "sm_86"], ["sm_86"], ["sm_89"], ["sm_90a"],
+        ["compute_80"], ["compute_100f"], ["compute_90"], [], ["banana", "sm_"],
+    ]
+    caps = [(6, 1), (7, 5), (8, 6), (8, 9), (9, 0), (9, 1), (10, 0), (12, 0)]
+    for archs in lists:
+        for major, minor in caps:
+            assert sidecar._cuda_build_covers(archs, major, minor) == \
+                cuda_build_covers(archs, major, minor), (archs, major, minor)
+
+
 @pytest.mark.parametrize(
     "raw, expected",
     [

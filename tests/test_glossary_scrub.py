@@ -171,3 +171,23 @@ def test_auto_extract_dedupes_compatibility_forms(monkeypatch):
     out = glossary.auto_extract(pid, req)
     assert out["inserted"] == 0
     assert len(out["terms"]) == 2
+
+
+def test_auto_extract_blank_segments_keeps_response_shape(monkeypatch):
+    """Blank segments skip the LLM but must still return the usual object:
+    the UI publishes result.terms, so a bare list blanked the glossary."""
+    from api.routers import glossary
+    from services import llm_skills
+
+    class _Handle:
+        client = None
+        model = "m"
+        timeout = 1.0
+
+    existing = [{"id": 1, "source": "Marcus", "target": "Marcos"}]
+    monkeypatch.setattr(llm_skills, "resolve_skill_client", lambda sid: _Handle())
+    monkeypatch.setattr(glossary, "list_terms", lambda project_id: existing)
+
+    req = _req(target_lang="es", segments=[{"text": "   "}])
+    result = glossary.auto_extract("proj1", req)
+    assert result == {"project_id": "proj1", "proposed": 0, "inserted": 0, "terms": existing}
