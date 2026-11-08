@@ -12,11 +12,10 @@ from pathlib import Path
 
 import pytest
 import torch
-import torchaudio
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from services.audio_io import atomic_save_wav  # noqa: E402
+from services.audio_io import _safe_torchaudio_save, atomic_save_wav, load_audio  # noqa: E402
 
 
 class TestSuccessPath:
@@ -26,7 +25,7 @@ class TestSuccessPath:
         atomic_save_wav(str(target), audio, 24000)
 
         assert target.exists()
-        loaded, sr = torchaudio.load(str(target))
+        loaded, sr = load_audio(str(target))
         assert sr == 24000
         assert loaded.shape == audio.shape
 
@@ -40,13 +39,13 @@ class TestSuccessPath:
     def test_overwrites_existing_target(self, tmp_path: Path):
         target = tmp_path / "out.wav"
         # Pre-populate with a different-length WAV
-        torchaudio.save(str(target), torch.zeros(1, 1000), 24000)
-        old_samples = torchaudio.load(str(target))[0].shape[-1]
+        _safe_torchaudio_save(str(target), torch.zeros(1, 1000), 24000)
+        old_samples = load_audio(str(target))[0].shape[-1]
 
         new_audio = torch.randn(1, 5000)
         atomic_save_wav(str(target), new_audio, 24000)
 
-        loaded, _ = torchaudio.load(str(target))
+        loaded, _ = load_audio(str(target))
         assert loaded.shape[-1] == 5000
         assert loaded.shape[-1] != old_samples
 

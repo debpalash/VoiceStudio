@@ -217,6 +217,17 @@ def test_audio_io_reaches_ffmpeg_for_m4a_with_the_shim_installed(monkeypatch, tm
         return None
 
     monkeypatch.setattr("services.ffmpeg_utils.find_ffmpeg", no_ffmpeg)
+    import services.pyannote_audio_compat as compat
+
+    tried = []
+    real_soundfile_load = compat._soundfile_load
+
+    def spy(*args, **kwargs):
+        tried.append(args[0] if args else kwargs.get("uri"))
+        return real_soundfile_load(*args, **kwargs)
+
+    monkeypatch.setattr(compat, "_soundfile_load", spy)
     with pytest.raises(RuntimeError):
         audio_io.load_audio(str(path))
+    assert tried, "the shim never attempted its soundfile decode"
     assert reached, "audio_io stopped before its FFmpeg fallback"

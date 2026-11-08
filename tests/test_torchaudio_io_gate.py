@@ -49,12 +49,12 @@ def test_backend_never_calls_torchaudio_io_directly():
 
 
 REPO = BACKEND.parent
-# Outside the backend: the packaged OmniVoice CLI (omnivoice-infer and
-# omnivoice-infer-batch), its training scripts, repo scripts and the tests all
+# Outside backend code: the packaged OmniVoice CLI (omnivoice-infer and
+# omnivoice-infer-batch), its training scripts, repo scripts and both test trees all
 # run without TorchCodec too (#3884). omnivoice/utils/audio.py keeps one
 # guarded torchaudio.load with a pydub fallback; the perf test spies on the
 # real loader to count calls rather than reading audio itself.
-REPO_ROOTS = ("omnivoice", "scripts", "tests")
+REPO_ROOTS = ("omnivoice", "scripts", "tests", "backend/tests")
 REPO_ALLOWED = {"omnivoice/utils/audio.py", "tests/test_perf_operation_budgets.py"}
 
 
