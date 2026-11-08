@@ -135,8 +135,9 @@ make clean:all DRY_RUN=1 # Make preview; omit DRY_RUN=1 to delete
 ```
 
 Plain `make` still starts the release flow; cleanup must be selected explicitly.
-For Make, any non-empty `DRY_RUN` value except `0`, `false` or `no` enables
-preview mode, including `true`, `yes` and unfamiliar values.
+For Make, any non-empty `DRY_RUN` value enables preview mode unless it is
+exactly one of `0`, `false` or `no`; `true`, `yes`, unfamiliar values and
+several words (such as `false 0`) all preview.
 
 The script needs Git and Node, but no installed project dependencies. It removes
 project `node_modules`, Python virtual environments (including custom names

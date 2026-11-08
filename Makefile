@@ -6,9 +6,14 @@
 PYTHON ?= python3
 NODE ?= node
 
+# Deletes only when DRY_RUN is unset or exactly one of 0/false/no; any other
+# value, including several words such as 'false 0', previews (--dry-run).
+CLEAN_DRY_RUN := $(strip $(DRY_RUN))
+CLEAN_DRY_RUN_FLAG := $(if $(CLEAN_DRY_RUN),$(if $(and $(filter 1,$(words $(CLEAN_DRY_RUN))),$(filter 0 false no,$(CLEAN_DRY_RUN))),,--dry-run),)
+
 .PHONY: clean\:all
 clean\:all: ## Delete project dependencies, builds/caches and app data; DRY_RUN=1 previews
-	$(NODE) scripts/clean-all.mjs $(if $(filter-out 0 false no,$(strip $(DRY_RUN))),--dry-run)
+	$(NODE) scripts/clean-all.mjs $(CLEAN_DRY_RUN_FLAG)
 
 release: ## Cut a release: asks stable/beta, draft/publish, then confirms
 	uv run python scripts/release.py
