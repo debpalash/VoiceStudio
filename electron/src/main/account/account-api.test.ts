@@ -280,3 +280,20 @@ it.each([403, 500])('does not cache real entitlement failures (%s)', async (stat
   expect(await api.entitlements('Or5tG7hJ9kL1zX3c')).not.toBeNull();
   expect(fetchImpl).toHaveBeenCalledTimes(2);
 });
+
+it('posts the app check-in with the bearer token and returns the interval', async () => {
+  const { api, fetchImpl } = setup([json({ next_check_seconds: 900 })]);
+  expect(await api.appCheck({ app: 'oss', app_version: '1.2.3', platform: 'linux' })).toBe(900);
+  expect(fetchImpl.mock.calls[0][0]).toBe('https://appapi.voicestudio.sh/v1/account/app-check');
+  const init = fetchImpl.mock.calls[0][1] as RequestInit;
+  expect(init.method).toBe('POST');
+  expect(init.headers).toMatchObject({
+    authorization: 'Bearer tok',
+    'content-type': 'application/json',
+  });
+  expect(JSON.parse(init.body as string)).toEqual({
+    app: 'oss',
+    app_version: '1.2.3',
+    platform: 'linux',
+  });
+});

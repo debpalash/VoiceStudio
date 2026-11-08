@@ -591,6 +591,11 @@ test-only PR. Docker Hub overview edits still publish through the small
     switching account features off sends one best-effort token revocation and
     always forgets the session on this device, even offline (sign-out waits at
     most 5 seconds for the network).
+    While signed in with account features on, the app also sends a periodic
+    check-in (`POST appapi.voicestudio.sh/v1/account/app-check`: app name,
+    app version and operating system only) so the server knows which app and
+    version you use; it grants nothing, and it stops at once on sign-out or
+    when account features are switched off.
   - Bug reports as prefilled GitHub Issue URLs opened in the user's browser.
   - **Phone content reports, only when the user taps Send** in a generated
     result's Report sheet: `appapi.voicestudio.sh/v1/content-reports` with the

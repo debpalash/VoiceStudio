@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { app, safeStorage, shell, type BrowserWindow } from 'electron';
 import { AccountApi } from './account-api';
+import { AppCheck } from './app-check';
 import { AvatarCache } from './avatar-cache';
 import { AccountController, registerAccountIpc } from './account-ipc';
 import { AccountSession } from './account-session';
@@ -82,21 +83,45 @@ async function wireAccount(opts: StartOptions): Promise<() => void> {
     remembered: store.persistent,
     links: dashboardLinks(env),
   });
+  const appCheck = new AppCheck({
+    api,
+    version: __APP_VERSION__,
+    platform: process.platform,
+    isActive: () => allowed() && session.state().signedIn,
+  });
+  const unwatchCheckSwitch = switches.subscribe(() => appCheck.reconcile());
+  const unwatchCheckSession = session.onChange(() => appCheck.reconcile());
+  appCheck.reconcile();
   const closeIpc = registerAccountIpc(ctl, session, opts.getMainWindow);
   if (!available)
     return () => {
+      appCheck.stop();
+      unwatchCheckSwitch();
+      unwatchCheckSession();
       unwatchPhoto();
       unwatchPhotoSwitch();
       closeIpc();
       activity.stopAll();
     };
-  const bridge = await startAccountTokenBridge({
-    getToken: () => session.getAccessToken(),
-    isSyncAllowed: () => switches.get().syncEnabled,
-    isRemoteBackend: opts.isRemoteBackend,
-    context: async () => ({ organization_id: await ctl.organizationId(), sync_api: env.syncApi }),
-    invalidate: () => session.invalidateAccessToken(),
-  });
+  const stopAppCheck = () => {
+    appCheck.stop();
+    unwatchCheckSwitch();
+    unwatchCheckSession();
+  };
+  let bridge: Awaited<ReturnType<typeof startAccountTokenBridge>>;
+  try {
+    bridge = await startAccountTokenBridge({
+      getToken: () => session.getAccessToken(),
+      isSyncAllowed: () => switches.get().syncEnabled,
+      isRemoteBackend: opts.isRemoteBackend,
+      context: async () => ({ organization_id: await ctl.organizationId(), sync_api: env.syncApi }),
+      invalidate: () => session.invalidateAccessToken(),
+    });
+  } catch (error) {
+    // A failed start returns no cleanup, so the check-in must not keep running.
+    stopAppCheck();
+    throw error;
+  }
   // The backend runs the sync engine: tell it at once when sync turns on or off.
   const tell = (path: '/api/cloud-sync/start' | '/api/cloud-sync/stop') => {
     if (opts.isRemoteBackend() || !opts.notifyBackend) return;
@@ -124,6 +149,7 @@ async function wireAccount(opts: StartOptions): Promise<() => void> {
     VOICESTUDIO_ACCOUNT_BRIDGE_TOKEN: bridge.token,
   });
   return () => {
+    stopAppCheck();
     unwatchPhoto();
     unwatchPhotoSwitch();
     unwatchSwitches();
