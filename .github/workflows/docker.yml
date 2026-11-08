@@ -384,7 +384,7 @@ jobs:
           context: .
           file: deploy/Dockerfile
           build-args: |
-            BASE_IMAGE=rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.8.0
+            BASE_IMAGE=rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.10.0
             GPU_FLAVOR=rocm
             BUILD_COMMIT=${{ steps.source.outputs.commit }}
           push: true
@@ -429,7 +429,7 @@ jobs:
   # ── arm64 NVIDIA CUDA image variant (#2831) ─────────────────────────────
   # DGX Spark / GB10, GH200 and GB200 (linux/arm64 SBSA). pytorch/pytorch has no
   # arm64 image, so BASE_IMAGE names the Dockerfile's cuda-arm64-base stage
-  # (Ubuntu 24.04 + torch 2.8.0+cu129, whose aarch64 wheel bundles CUDA). Built
+  # (Ubuntu 24.04 + torch 2.10.0+cu129, whose aarch64 wheel bundles CUDA). Built
   # natively on GitHub's arm64 runner, never under QEMU. A SEPARATE job with
   # its own `-cuda-arm64` tags, so the amd64 CUDA tags stay single-arch and an
   # arm64 failure can never block or alter them.

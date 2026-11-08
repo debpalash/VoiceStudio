@@ -316,9 +316,9 @@ constraint-dependencies = [
     "pydantic-settings>=2.14.2",
     "pygments>=2.20.0",
     "starlette>=1.3.1",
-    "torch==2.8.0",
-    "torchaudio==2.8.0",
-    "torchvision==0.23.0",
+    "torch==2.10.0",
+    "torchaudio==2.10.0",
+    "torchvision==0.25.0",
 ]
 # gradio caps pillow below 13 (still in 6.30), but Pillow's security fixes for
 # the FlashPix/JPEG heap overflows and bundled libopenjp2 start at 13.0.0.

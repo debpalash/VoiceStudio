@@ -1,0 +1,1 @@
+Updated PyTorch to 2.10 to close a remote-code-execution flaw in checkpoint loading (CVE-2026-24747); AMD Linux GPU installs now use ROCm 7.1. (#0000)
