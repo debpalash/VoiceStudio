@@ -67,9 +67,12 @@ def test_api_requires_admin_and_native_capability(api, tmp_path):
     for method in ("get", "delete", "put"):
         kwargs = {"json": {"authorization": "forged"}} if method == "put" else {}
         assert getattr(remote, method)(URL, **kwargs).status_code == 403
-    assert client.put(URL, json={"path": str(tmp_path)}).status_code == 422
-    assert client.put(URL, json={"authorization": "forged"}).status_code == 403
-    assert client.put(URL, json=cap(tmp_path, "ffmpeg")).status_code == 403
+    response = client.put(URL, json={"path": str(tmp_path)})
+    assert response.status_code == 422
+    response = client.put(URL, json={"authorization": "forged"})
+    assert response.status_code == 403
+    response = client.put(URL, json=cap(tmp_path, "ffmpeg"))
+    assert response.status_code == 403
     assert mm.unload_shared_model.call_count == 0
 
 
@@ -107,18 +110,23 @@ def test_loaded_requires_actual_model_and_current_identity(api, monkeypatch, tmp
 def test_api_validation_one_shot_error_persistence_and_clear(api, tmp_path):
     client, cap, mm, tts, app = api
     bad = sel(tmp_path / "empty")
-    assert client.put(URL, json=bad).status_code == 400
-    assert client.put(URL, json=bad).status_code == 403
+    response = client.put(URL, json=bad)
+    assert response.status_code == 400
+    response = client.put(URL, json=bad)
+    assert response.status_code == 403
     assert paths.get("tts", "omnivoice") is None
     assert mm.unload_shared_model.call_count == 0
     model = checkpoint(tmp_path / "model")
     token = sel(model)
-    assert client.put(URL, json=token).status_code == 200
-    assert client.put(URL, json=token).status_code == 403
+    response = client.put(URL, json=token)
+    assert response.status_code == 200
+    response = client.put(URL, json=token)
+    assert response.status_code == 403
     assert client.get(URL).json()["path"] == str(model)
     assert json.loads((tmp_path / "prefs.json").read_text())[paths.PREF_KEY]["tts/omnivoice"] == str(model)
     assert mm.resolve_omnivoice_checkpoint() == str(model)
-    assert client.delete(URL).status_code == 200
+    response = client.delete(URL)
+    assert response.status_code == 200
     assert client.get(URL).json()["path"] is None
     assert model.is_dir()  # Reset does not delete the user's checkpoint.
 
@@ -132,13 +140,16 @@ def test_busy_lease_rejects_put_and_clear_without_writing_or_unloading(api, tmp_
     tts._ENGINE_INSTANCES[cls] = instance
     tts._ENGINE_IN_USE[cls] = 1
     url = f"/api/settings/engines/tts/{engine}/local-model"
-    assert client.put(url, json=sel(model, engine)).status_code == 409
-    assert client.delete(url).status_code == 409
+    response = client.put(url, json=sel(model, engine))
+    assert response.status_code == 409
+    response = client.delete(url)
+    assert response.status_code == 409
     assert paths.get("tts", engine) is None
     instance.unload.assert_not_called()
     mm.unload_shared_model.assert_not_called()
     tts._ENGINE_IN_USE.clear()
-    assert client.put(url, json=sel(model, engine)).status_code == 200
+    response = client.put(url, json=sel(model, engine))
+    assert response.status_code == 200
     instance.unload.assert_called_once()
     assert cls not in tts._ENGINE_INSTANCES
 
@@ -146,7 +157,8 @@ def test_busy_lease_rejects_put_and_clear_without_writing_or_unloading(api, tmp_
 def test_generation_and_cold_load_are_busy(api, tmp_path):
     client, cap, mm, tts, app = api
     asyncio.run(mm._model_lock.acquire())
-    assert client.delete(URL).status_code == 409
+    response = client.delete(URL)
+    assert response.status_code == 409
     mm._model_lock.release()
     started, release = threading.Event(), threading.Event()
     def loading():
@@ -157,7 +169,8 @@ def test_generation_and_cold_load_are_busy(api, tmp_path):
     thread.start()
     assert started.wait(2)
     try:
-        assert client.delete(URL).status_code == 409
+        response = client.delete(URL)
+        assert response.status_code == 409
     finally:
         release.set()
         thread.join()
@@ -169,18 +182,21 @@ def test_unrelated_active_engine_is_not_reset(api, tmp_path, monkeypatch):
     active = Mock()
     monkeypatch.setattr(tts, "_active_instance", active)
     monkeypatch.setattr(tts, "_active_instance_id", "piper")
-    assert client.put(URL, json=sel(checkpoint(tmp_path / "model"))).status_code == 200
+    response = client.put(URL, json=sel(checkpoint(tmp_path / "model")))
+    assert response.status_code == 200
     active.unload.assert_not_called()
 
 
 def test_environment_override_is_explicit_and_authoritative(api, tmp_path, monkeypatch):
     client, cap, mm, tts, app = api
     model = checkpoint(tmp_path / "model")
-    assert client.put(URL, json=sel(model)).status_code == 200
+    response = client.put(URL, json=sel(model))
+    assert response.status_code == 200
     monkeypatch.setenv("OMNIVOICE_MODEL", "operator/checkpoint")
     state = client.get(URL).json()
     assert state["path"] == str(model)
-    assert state["environment_override"] == "OMNIVOICE_MODEL"
+    override_name = state["environment_override"]
+    assert override_name == "OMNIVOICE_MODEL"
     assert state["effective_override"] == "operator/checkpoint"
     assert mm.resolve_omnivoice_checkpoint() == "operator/checkpoint"
     monkeypatch.setenv("OMNIVOICE_MLX_AUDIO_MODEL", "kokoro")
@@ -200,7 +216,8 @@ def test_real_mlx_loader_receives_local_identity_and_never_falls_back(api, tmp_p
     client, cap, mm, tts, app = api
     model = checkpoint(tmp_path / "model", "mlx-audio")
     url = URL.replace("omnivoice", "mlx-audio")
-    assert client.put(url, json=sel(model, "mlx-audio")).status_code == 200
+    response = client.put(url, json=sel(model, "mlx-audio"))
+    assert response.status_code == 200
     load = Mock(side_effect=RuntimeError("offline fixture loader"))
     # The native library boundary is mocked; execute the real backend method.
     monkeypatch.setitem(sys.modules, "mlx_audio.tts.utils", types.SimpleNamespace(load_model=load))
@@ -249,9 +266,11 @@ def test_discovered_candidate_grant_selects_exact_path_once(api, tmp_path):
     assert "authorization" not in invalid
     token = {"authorization": valid["authorization"]}
     # A renderer-provided path must never override the exact derived target.
-    assert client.put(URL, json={**token, "path": str(tmp_path / "unrelated")}).status_code == 200
+    response = client.put(URL, json={**token, "path": str(tmp_path / "unrelated")})
+    assert response.status_code == 200
     assert paths.get("tts", "omnivoice") == str(model)
-    assert client.put(URL, json=token).status_code == 403
+    response = client.put(URL, json=token)
+    assert response.status_code == 403
 
 
 def test_discovered_grant_is_engine_bound_and_cannot_change_general_models_dir(api, tmp_path):
@@ -261,9 +280,12 @@ def test_discovered_grant_is_engine_bound_and_cannot_change_general_models_dir(a
         result = client.post(URL + "/discover", json=cap(model, scope="local-model-discover:omnivoice")).json()
         return {"authorization": next(c for c in result["candidates"] if c["validation"]["status"] == "valid")["authorization"]}
     token = grant()
-    assert client.put(URL.replace("omnivoice", "mlx-audio"), json=token).status_code == 403
-    assert client.put(URL, json=token).status_code == 403  # mismatch also consumes
-    assert client.post(URL + "/discover", json=grant()).status_code == 403
+    response = client.put(URL.replace("omnivoice", "mlx-audio"), json=token)
+    assert response.status_code == 403
+    response = client.put(URL, json=token)  # mismatch also consumes
+    assert response.status_code == 403
+    response = client.post(URL + "/discover", json=grant())
+    assert response.status_code == 403
     from core import path_authorization as auth
     with pytest.raises(auth.PathAuthorizationError):
         auth.consume(grant()["authorization"], "models_dir")
@@ -276,8 +298,10 @@ def test_discovered_grant_revalidates_on_selection(api, tmp_path):
     candidate = next(c for c in client.post(URL + "/discover", json=cap(model, scope="local-model-discover:omnivoice")).json()["candidates"] if c["validation"]["status"] == "valid")
     (model / "model.safetensors").unlink()
     token = {"authorization": candidate["authorization"]}
-    assert client.put(URL, json=token).status_code == 400
-    assert client.put(URL, json=token).status_code == 403
+    response = client.put(URL, json=token)
+    assert response.status_code == 400
+    response = client.put(URL, json=token)
+    assert response.status_code == 403
     assert paths.get("tts", "omnivoice") is None
 
 
@@ -289,13 +313,18 @@ def test_read_only_picker_grant_cannot_change_global_dir_or_select_a_model(api, 
     scoped = "local-model-discover:omnivoice"
     with pytest.raises(auth.PathAuthorizationError):
         auth.consume(cap(tmp_path, scope=scoped)["authorization"], "models_dir")
-    assert client.put("/api/settings/storage/models-dir", json=cap(tmp_path, scope=scoped)).status_code == 403
-    assert client.put(URL, json=cap(model, scope=scoped)).status_code == 403
+    response = client.put("/api/settings/storage/models-dir", json=cap(tmp_path, scope=scoped))
+    assert response.status_code == 403
+    response = client.put(URL, json=cap(model, scope=scoped))
+    assert response.status_code == 403
     # An unscoped writable-picker grant cannot select a model or run discovery either.
-    assert client.put(URL, json=cap(model)).status_code == 403
-    assert client.post(URL + "/discover", json=cap(tmp_path)).status_code == 403
+    response = client.put(URL, json=cap(model))
+    assert response.status_code == 403
+    response = client.post(URL + "/discover", json=cap(tmp_path))
+    assert response.status_code == 403
     # Discovery is bound to its engine.
-    assert client.post(URL.replace("omnivoice", "mlx-audio") + "/discover", json=cap(tmp_path, scope=scoped)).status_code == 403
+    response = client.post(URL.replace("omnivoice", "mlx-audio") + "/discover", json=cap(tmp_path, scope=scoped))
+    assert response.status_code == 403
     assert paths.get("tts", "omnivoice") is None
 
 
@@ -320,8 +349,10 @@ def test_discovery_is_read_only_and_capability_scoped(api, tmp_path, monkeypatch
     response = client.post(URL + "/discover", json=token)
     assert response.status_code == 200
     assert response.json()["candidates"][0]["validation"]["status"] == "valid"
-    assert client.post(URL + "/discover", json=token).status_code == 403
-    assert client.post(URL + "/discover", json={"path": str(parent)}).status_code == 422
+    response = client.post(URL + "/discover", json=token)
+    assert response.status_code == 403
+    response = client.post(URL + "/discover", json={"path": str(parent)})
+    assert response.status_code == 422
     remote = TestClient(app, client=("203.0.113.9", 9999))
     assert remote.post(URL + "/discover", json=cap(parent, scope="local-model-discover:omnivoice")).status_code == 403
     forbidden.assert_not_called()
@@ -334,7 +365,8 @@ def test_discovery_is_read_only_and_capability_scoped(api, tmp_path, monkeypatch
 def test_missing_persisted_omnivoice_does_not_resolve_default(api, tmp_path):
     client, cap, mm, tts, app = api
     model = checkpoint(tmp_path / "model")
-    assert client.put(URL, json=sel(model)).status_code == 200
+    response = client.put(URL, json=sel(model))
+    assert response.status_code == 200
     (model / "config.json").unlink()
     assert mm.resolve_omnivoice_checkpoint() == str(model)
     assert client.get(URL).json()["validation"]["status"] != "valid"

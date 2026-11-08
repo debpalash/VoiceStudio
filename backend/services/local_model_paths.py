@@ -16,7 +16,13 @@ ENV_KEYS = {"omnivoice": "OMNIVOICE_MODEL", "mlx-audio": "OMNIVOICE_MLX_AUDIO_MO
 
 
 class LocalModelError(ValueError):
-    pass
+    """A local model folder problem; ``user_message`` is safe to show in the UI."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        # Written by this module for the user, never an exception repr or
+        # traceback; responses read this instead of str(exc).
+        self.user_message = message
 
 
 class EngineBusyError(LocalModelError):
@@ -171,7 +177,7 @@ def _validation(family: str, engine_id: str, path: str | None, *, budget: dict |
     try:
         validate(family, engine_id, path, _budget=budget)
     except LocalModelError as exc:
-        message = str(exc)
+        message = exc.user_message
         code = "invalid_files"
         if "VoiceDesign" in message or "not an OmniVoice" in message:
             code = "incompatible_architecture"
@@ -229,8 +235,9 @@ def _loading_state(engine_id: str) -> dict[str, str]:
                 if model is None:
                     return {"status": "not_loaded"}
                 actual = getattr(model, "_voicestudio_checkpoint", None)
-                expected = (os.environ.get("OMNIVOICE_MODEL", "").strip()
-                            or get("tts", "omnivoice") or getattr(mm, "_DEFAULT_OMNIVOICE_CHECKPOINT", None))
+                # The resolver applies OMNIVOICE_MODEL, then this folder, then the default (#693).
+                resolve = getattr(mm, "resolve_omnivoice_checkpoint", None)
+                expected = resolve() if callable(resolve) else None
             if not isinstance(actual, str) or not actual or not isinstance(expected, str) or not expected:
                 return {"status": "unknown"}
             if os.path.isabs(actual) and os.path.isabs(expected):
