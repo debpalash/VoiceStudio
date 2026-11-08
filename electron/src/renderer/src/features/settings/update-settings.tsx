@@ -22,10 +22,31 @@ import { InlineMarkdown, MarkdownLite } from '@/components/markdown-lite';
 import { appVersion, getBridge } from '@/components/bridge';
 import { dubSession, flushDubDraft, useDubSession } from '@/features/dub/dub-session';
 import { hasActiveAppWork, useAppActivityCount } from '@/lib/app-activity';
+import { useBackendStatus, isBackendReachable } from '@/hooks/use-backend-status';
 import { apiJson, describeError } from '@/lib/api/client';
 import { formatBytes, updateErrorKey } from '@/lib/update-format';
 import { SettingsSection } from './settings-layout';
 import type { UpdateChannel, UpdateReleaseInfo, UpdateState } from '../../../../preload/index.d';
+
+// Sections must settle (data, empty or error) rather than load forever when
+// the backend or GitHub is slow or down.
+const LOAD_TIMEOUT_MS = 12_000;
+
+function withTimeout<T>(promise: Promise<T>, ms = LOAD_TIMEOUT_MS): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 
 const UPDATE_CHANNELS = ['stable', 'beta'] as const;
 
@@ -110,15 +131,21 @@ export function UpdateSettings() {
       }),
     staleTime: 300_000,
   });
+  const backendUp = isBackendReachable(useBackendStatus().stage);
   const backup = useQuery({
     queryKey: ['db-backup'],
-    queryFn: ({ signal }) => apiJson<BackupState>('/api/settings/db-backup', { signal }),
+    queryFn: () => withTimeout(apiJson<BackupState>('/api/settings/db-backup')),
+    enabled: backendUp,
+    retry: 1,
+    retryDelay: 1_000,
     staleTime: 300_000,
   });
   const releaseHistory = useQuery({
     queryKey: ['desktop-release-history'],
-    queryFn: () => updates!.listReleases(),
+    queryFn: () => withTimeout(updates!.listReleases()),
     enabled: canListReleases,
+    retry: 1,
+    retryDelay: 1_000,
     staleTime: 15 * 60_000,
   });
   const releaseRows = (releaseHistory.data || [])
@@ -420,15 +447,27 @@ export function UpdateSettings() {
       )}
 
       <SettingsSection icon={ShieldCheckIcon} title={t('updates.backup_line')}>
-        <div className="px-4 py-3 text-sm text-muted-foreground">
-          {backup.isPending
-            ? t('common.loading')
-            : backup.data?.available && backup.data.latest
-              ? t('updates.backup_latest', {
-                  when: new Date(backup.data.latest.created_at * 1000).toLocaleString(),
-                })
-              : t('updates.backup_none')}
-        </div>
+        {backup.isError && backendUp ? (
+          <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm text-muted-foreground">
+            <span>{t('updates.backup_load_error')}</span>
+            <Button size="sm" variant="ghost" onClick={() => void backup.refetch()}>
+              <RefreshCwIcon />
+              {t('updates.retry_load')}
+            </Button>
+          </div>
+        ) : (
+          <div className="px-4 py-3 text-sm text-muted-foreground">
+            {!backendUp
+              ? t('updates.backup_needs_runtime')
+              : backup.isPending
+                ? t('common.loading')
+                : backup.data?.available && backup.data.latest
+                  ? t('updates.backup_latest', {
+                      when: new Date(backup.data.latest.created_at * 1000).toLocaleString(),
+                    })
+                  : t('updates.backup_none')}
+          </div>
+        )}
       </SettingsSection>
 
       {changelog.data?.available && changelog.data.releases.length > 0 && (

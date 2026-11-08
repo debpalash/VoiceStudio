@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
   activeWork: false,
   noBridge: false,
+  stage: 'ready',
 }));
 
 vi.mock('@/components/bridge', () => {
@@ -68,6 +69,10 @@ vi.mock('@/lib/app-activity', () => ({
 }));
 
 vi.mock('@/lib/api/client', () => ({ apiJson: mocks.api, describeError: String }));
+vi.mock('@/hooks/use-backend-status', async () => ({
+  ...(await vi.importActual<object>('@shared/utils/backendStage')),
+  useBackendStatus: () => ({ stage: mocks.stage }),
+}));
 vi.mock('sonner', () => ({ toast: { error: mocks.toastError, info: vi.fn() } }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 
@@ -96,6 +101,7 @@ describe('UpdateSettings', () => {
     mocks.listener = undefined;
     mocks.activeWork = false;
     mocks.noBridge = false;
+    mocks.stage = 'ready';
     mocks.getStateError = undefined;
     vi.clearAllMocks();
     mocks.getState.mockImplementation(async () => {
@@ -391,5 +397,54 @@ describe('UpdateSettings', () => {
     expect(screen.getByText('native updates', { selector: 'code' })).toBeInTheDocument();
     expect(screen.queryByRole('script')).not.toBeInTheDocument();
     expect(screen.getByText('<script>alert(1)</script>')).toBeInTheDocument();
+  });
+
+  test('says Database backup needs the runtime instead of loading forever', async () => {
+    mocks.stage = 'stopped';
+    renderSettings();
+    expect(await screen.findByText('updates.backup_needs_runtime')).toBeInTheDocument();
+    expect(screen.queryByText('common.loading')).not.toBeInTheDocument();
+    expect(mocks.api).not.toHaveBeenCalledWith(
+      expect.stringContaining('/db-backup'),
+      expect.anything(),
+    );
+  });
+
+  test('shows a retry when the backup status cannot load', async () => {
+    mocks.api.mockImplementation(async (path: string) => {
+      if (path.includes('/db-backup')) throw new Error('down');
+      return path.includes('/changelog') ? { available: false, releases: [] } : {};
+    });
+    renderSettings();
+    const retry = await screen.findByRole('button', { name: 'updates.retry_load' });
+    mocks.api.mockImplementation(async (path: string) =>
+      path.includes('/db-backup') ? { available: false, latest: null } : {},
+    );
+    fireEvent.click(retry);
+    expect(await screen.findByText('updates.backup_none')).toBeInTheDocument();
+  });
+
+  test('shows a retry when the release list fails', async () => {
+    mocks.listReleases.mockRejectedValue(new Error('504'));
+    renderSettings();
+    const retry = await screen.findByRole('button', { name: 'updates.retry_load' });
+    expect(screen.getByText('updates.load_error')).toBeInTheDocument();
+    mocks.listReleases.mockResolvedValue([]);
+    fireEvent.click(retry);
+    expect(await screen.findByText('updates.none')).toBeInTheDocument();
+  });
+
+  test('stops loading releases when GitHub never answers', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mocks.listReleases.mockReturnValue(new Promise(() => undefined));
+      renderSettings();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(40_000);
+      });
+      expect(await screen.findByText('updates.load_error')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
