@@ -1110,6 +1110,8 @@ export class BackendSupervisor extends EventEmitter<{
   private setupRequiredGib: number | undefined;
   private setupHardware: SetupHardware | undefined;
   private setupHardwareProbed = false;
+  /** Bumped when the torch choice changes, so an in-flight probe cannot write a stale build. */
+  private setupHardwareGeneration = 0;
   /** Free GiB on the drive that will hold the runtime; probed once per location during setup. */
   private runtimeFreeGib: number | undefined;
   private freeProbeRoot: string | undefined;
@@ -1277,7 +1279,9 @@ export class BackendSupervisor extends EventEmitter<{
     if (this.stage === 'setup_required' && app.isPackaged) {
       if (!this.setupHardwareProbed) {
         this.setupHardwareProbed = true;
+        const generation = this.setupHardwareGeneration;
         void detectSetupHardware().then((found) => {
+          if (generation !== this.setupHardwareGeneration) return;
           this.setupHardware = found;
           // The setup screen may be idle with no other status change coming;
           // publish once so the hardware line appears as soon as it is known.
@@ -1791,6 +1795,7 @@ export class BackendSupervisor extends EventEmitter<{
     // The setup screen names the build it will install; detect it again.
     this.setupHardware = undefined;
     this.setupHardwareProbed = false;
+    this.setupHardwareGeneration += 1;
     if (!saveTorchVariant('cpu'))
       this.setupLog.append('Could not save the CPU choice; the next launch may ask again');
     await this.start();

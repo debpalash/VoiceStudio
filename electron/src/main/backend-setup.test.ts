@@ -30,12 +30,25 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('electron', () => ({ app: { isPackaged: true, getPath: () => '/private/voicestudio' } }));
 // The setup screen's hardware line follows the torch choice in the environment.
+// Probes stay pending until a test settles them, so a race can be ordered.
+const hardwareProbes = vi.hoisted(
+  () => [] as { variant: string | undefined; resolve: (value: unknown) => void }[],
+);
 vi.mock('./setup-hardware', () => ({
-  detectSetupHardware: async () =>
-    process.env.OMNIVOICE_TORCH_VARIANT === 'cpu'
-      ? { build: 'cpu', reason: 'explicit' }
-      : { gpu: 'NVIDIA Test GPU', build: 'cuda' },
+  detectSetupHardware: () =>
+    new Promise((resolve) =>
+      hardwareProbes.push({ variant: process.env.OMNIVOICE_TORCH_VARIANT, resolve }),
+    ),
 }));
+/** Settles pending probes newest first, so an older (stale) result lands last. */
+function settleHardwareProbes() {
+  for (const probe of hardwareProbes.splice(0).reverse())
+    probe.resolve(
+      probe.variant === 'cpu'
+        ? { build: 'cpu', reason: 'explicit' }
+        : { gpu: 'NVIDIA Test GPU', build: 'cuda' },
+    );
+}
 vi.mock('node:child_process', () => ({ spawn: mocks.spawn, spawnSync: vi.fn() }));
 vi.mock('node:fs', async (importOriginal) => {
   const original = await importOriginal<typeof import('node:fs')>();
@@ -1124,8 +1137,10 @@ describe('falling back to the CPU build', () => {
 
     expect(variants.at(-1)).toBe('cpu');
     expect(mocks.saveTorchVariant).toHaveBeenCalledWith('cpu');
-    // The CPU attempt failed too; the next retry installs CPU, so say so.
+    // The CPU attempt failed too; the next retry installs CPU, so say so, even
+    // when the probe started for the CUDA attempt finishes after the switch.
     void supervisor.status;
+    settleHardwareProbes();
     await vi.waitFor(() => expect(supervisor.status.setupHardware?.build).toBe('cpu'));
   });
 
