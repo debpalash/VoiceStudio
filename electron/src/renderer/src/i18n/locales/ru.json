@@ -2538,7 +2538,14 @@
     "continue_ok": "Все хорошо — продолжайте",
     "check_arch_label": "Windows на ARM",
     "check_arch_detail": "ПК с Windows ARM64: ИИ-бэкенд работает как x64 в эмуляции Windows, только на CPU (без ускорения GPU/NPU).",
-    "check_arch_fix": "Генерация голоса работает, но медленнее. Выбирайте лёгкий голосовой движок (KittenTTS, Supertonic-3, PocketTTS) и небольшую модель Whisper."
+    "check_arch_fix": "Генерация голоса работает, но медленнее. Выбирайте лёгкий голосовой движок (KittenTTS, Supertonic-3, PocketTTS) и небольшую модель Whisper.",
+    "update_first": "Сначала обновитесь, чтобы загружаемая среда выполнения подходила к новейшей версии приложения.",
+    "models_space": "Оставьте место и для голосовых моделей: каждая занимает несколько ГБ.",
+    "use_other_computer": "Использовать VoiceStudio на другом компьютере",
+    "help_label": "Помощь с установкой",
+    "help_install": "Руководство по установке",
+    "help_troubleshooting": "Устранение неполадок",
+    "help_report": "Сообщить о проблеме"
   },
   "consent": {
     "title": "Помочь улучшить VoiceStudio?",

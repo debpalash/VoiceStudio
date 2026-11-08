@@ -2514,7 +2514,14 @@
     "continue_ok": "सब ठीक है - जारी रखें",
     "check_arch_label": "ARM पर Windows",
     "check_arch_detail": "ARM64 Windows PC — AI बैकएंड Windows इमुलेशन के तहत x64 के रूप में चलता है, केवल CPU पर (GPU/NPU त्वरण नहीं)।",
-    "check_arch_fix": "वॉइस जनरेशन काम करता है, लेकिन धीमा है। हल्का वॉइस इंजन (KittenTTS, Supertonic-3, PocketTTS) और छोटा Whisper मॉडल चुनें।"
+    "check_arch_fix": "वॉइस जनरेशन काम करता है, लेकिन धीमा है। हल्का वॉइस इंजन (KittenTTS, Supertonic-3, PocketTTS) और छोटा Whisper मॉडल चुनें।",
+    "update_first": "पहले अपडेट करें, ताकि डाउनलोड किया गया रनटाइम नवीनतम ऐप से मेल खाए।",
+    "models_space": "वॉइस मॉडल के लिए भी जगह छोड़ें: हर मॉडल कुछ GB लेता है।",
+    "use_other_computer": "इसके बजाय VoiceStudio को किसी दूसरे कंप्यूटर पर इस्तेमाल करें",
+    "help_label": "सेटअप सहायता",
+    "help_install": "इंस्टॉल गाइड",
+    "help_troubleshooting": "समस्या निवारण",
+    "help_report": "समस्या की रिपोर्ट करें"
   },
   "consent": {
     "title": "VoiceStudio को बेहतर बनाने में मदद करें?",

@@ -29,6 +29,8 @@ vi.mock('@/hooks/use-backend-status', () => ({
 vi.mock('./bridge', () => ({
   getBridge: () => bridgeStub.current,
   isMac: () => platform.current === 'darwin',
+  appVersion: () => '0.5.8-beta.1',
+  platformFamily: () => (platform.current === 'darwin' ? 'mac' : platform.current === 'win32' ? 'windows' : 'linux'),
 }));
 
 beforeEach(() => {
@@ -676,7 +678,7 @@ it('offers the existing server editor before installing a local runtime without 
     },
   };
   renderGate('setup_required');
-  fireEvent.click(screen.getByRole('button', { name: i18n.t('settings.remote_backend_title') }));
+  fireEvent.click(screen.getByRole('button', { name: i18n.t('setup.use_other_computer') }));
   const input = await screen.findByRole('textbox', { name: i18n.t('settings.remote_backend_url') });
   expect(testRemote).not.toHaveBeenCalled();
   expect(setupRuntime).not.toHaveBeenCalled();
@@ -713,5 +715,84 @@ it('labels the binary disk preflight units as GiB and a minimum rather than a do
   renderGate('setup_required');
   expect(screen.getByTestId('setup-free-space')).toHaveTextContent(
     '6 GiB free on this drive; at least 5 GiB needed for the runtime',
+  );
+});
+
+
+it('names the app version and Beta channel in the setup header (setup screen info)', () => {
+  render(
+    <BackendGate>
+      <div>workspace</div>
+    </BackendGate>,
+  );
+  const header = screen.getByRole('banner');
+  expect(header).toHaveTextContent(i18n.t('app.version', { version: '0.5.8-beta.1' }));
+  expect(header).toHaveTextContent(i18n.t('update.channel_beta'));
+  const notes = screen.getByRole('link', { name: i18n.t('update.whats_new') });
+  expect(notes).toHaveAttribute(
+    'href',
+    'https://github.com/debpalash/VoiceStudio/releases/tag/v0.5.8-beta.1',
+  );
+});
+
+it('offers help links before anything fails, and names the remote option plainly', () => {
+  backendStatus.runtimeInterrupted = false;
+  render(
+    <BackendGate>
+      <div>workspace</div>
+    </BackendGate>,
+  );
+  const help = screen.getByTestId('setup-help-links');
+  expect(help).toHaveTextContent(i18n.t('setup.help_install'));
+  expect(help).toHaveTextContent(i18n.t('setup.help_troubleshooting'));
+  expect(screen.getByRole('link', { name: new RegExp(i18n.t('setup.help_install')) })).toHaveAttribute(
+    'href',
+    expect.stringContaining('docs/install/linux.md'),
+  );
+  expect(screen.getByRole('button', { name: i18n.t('setup.use_other_computer') })).toBeInTheDocument();
+  backendStatus.runtimeInterrupted = true;
+});
+
+it.each([
+  [20, false],
+  [12, true],
+  [6, false],
+])('with %s GiB free (9 needed) warns about voice-model room: %s', (free, warns) => {
+  backendStatus.runtimeFreeGib = free;
+  render(
+    <BackendGate>
+      <div>workspace</div>
+    </BackendGate>,
+  );
+  expect(screen.queryByTestId('setup-model-space') !== null).toBe(warns);
+});
+
+it('offers a newer app before the runtime download', async () => {
+  const listeners: ((s: unknown) => void)[] = [];
+  bridgeStub.current = {
+    updates: {
+      getState: vi.fn(async () => ({
+        status: 'available',
+        currentVersion: '0.5.8-beta.1',
+        availableVersion: '0.5.8-beta.2',
+        progress: 0,
+      })),
+      onState: (cb: (s: unknown) => void) => (listeners.push(cb), () => {}),
+      download: vi.fn(async () => ({})),
+    },
+    backend: new Proxy({}, { get: () => vi.fn(async () => ({})) }),
+    app: { platform: 'linux' },
+  };
+  render(
+    <BackendGate>
+      <div>workspace</div>
+    </BackendGate>,
+  );
+  const notice = await screen.findByTestId('setup-update-notice');
+  expect(notice).toHaveTextContent(i18n.t('update.prompt_available', { version: '0.5.8-beta.2' }));
+  expect(notice).toHaveTextContent(i18n.t('setup.update_first'));
+  fireEvent.click(screen.getByRole('button', { name: i18n.t('update.download') }));
+  await waitFor(() =>
+    expect((bridgeStub.current as { updates: { download: () => void } }).updates.download).toHaveBeenCalled(),
   );
 });

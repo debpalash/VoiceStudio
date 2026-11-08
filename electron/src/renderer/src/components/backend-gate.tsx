@@ -50,6 +50,12 @@ import { cn } from '@/lib/utils';
 import type { RuntimeRegion } from '../../../preload/index.d';
 import { getBridge, isMac } from './bridge';
 import { ExternalLink } from './external-link';
+import {
+  MODEL_HEADROOM_GIB,
+  SetupHelpLinks,
+  SetupUpdateNotice,
+  SetupVersion,
+} from './setup-extras';
 
 interface BackendGateProps {
   children: ReactNode;
@@ -246,6 +252,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
         <span className="whitespace-nowrap text-sm font-medium tracking-tight">
           {t('app.name')}
         </span>
+        <SetupVersion />
       </header>
       <div
         data-testid="backend-gate-scroll"
@@ -341,6 +348,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
           {setup ? (
             <>
               <p className="max-w-sm text-sm text-muted-foreground">{t('backend.setup_hint')}</p>
+              <SetupUpdateNotice />
               {status.smartAppControlWarning && !status.failure ? (
                 <p
                   className="max-w-sm text-sm text-warning"
@@ -366,7 +374,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                 ) : (
                   <Collapsible open={connectionOpen} onOpenChange={setConnectionOpen}>
                     <CollapsibleTrigger render={<Button variant="outline" className="w-full" />}>
-                      {t('settings.remote_backend_title')}
+                      {t('setup.use_other_computer')}
                       <ChevronDownIcon className="size-4" />
                     </CollapsibleTrigger>
                     <CollapsibleContent>
@@ -463,6 +471,14 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                             free: status.runtimeFreeGib,
                             needed: status.setupRequiredGib,
                           })}
+                        </p>
+                      ) : null}
+                      {status.runtimeFreeGib !== undefined &&
+                      status.setupRequiredGib !== undefined &&
+                      status.runtimeFreeGib >= status.setupRequiredGib &&
+                      status.runtimeFreeGib < status.setupRequiredGib + MODEL_HEADROOM_GIB ? (
+                        <p data-testid="setup-model-space" className="mt-0.5 text-xs text-warning">
+                          {t('setup.models_space')}
                         </p>
                       ) : null}
                       {status.runtimeStorage && (
@@ -625,6 +641,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
           {(installing || setupFailed || (setup && status.runtimeInterrupted)) && (
             <SetupSupport key={`${status.stage}:${status.message ?? ''}`} status={status} />
           )}
+          {(setup && !setupFailed) || installing ? <SetupHelpLinks /> : null}
           {failed && <ReportBug error={status.message} />}
           {failed && <CrashDetails />}
           <ConfirmDialog
