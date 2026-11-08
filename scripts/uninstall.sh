@@ -190,9 +190,8 @@ send_uninstall_ping() {
   local py
   py=$(command -v python3 2>/dev/null || true)
   if [ -z "$py" ]; then
-    for candidate in "${ELECTRON_RUNTIME:-$electron_user_data/runtime}/project/.venv/bin/python"; do
-      [ -x "$candidate" ] && py=$candidate
-    done
+    local candidate="${ELECTRON_RUNTIME:-$electron_user_data/runtime}/project/.venv/bin/python"
+    [ -x "$candidate" ] && py=$candidate
   fi
   [ -n "$py" ] || return 0
   local prepared host agent origin body
