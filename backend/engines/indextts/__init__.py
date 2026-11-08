@@ -144,6 +144,7 @@ class IndexTTS2Backend(SubprocessBackend):
     # The sidecar reads text/ref_audio/language only — no quality knobs (#3654).
     supports_num_step = False
     supports_guidance_scale = False
+    supports_generation_seed = True  # inference runs in a separate process
     supports_emotion = True  # graded emo_vector / emo_text / emo_alpha (#1208)
     _DEFAULT_SAMPLE_RATE = 24000
     # Explicit so IndexTTS2 stops advertising the inherited CPU-only default:
@@ -300,6 +301,7 @@ class IndexTTS2Backend(SubprocessBackend):
     # ``description`` means.
 
     def generate(self, text: str, **kw) -> "torch.Tensor":
+        """Synthesize cloned speech with resolved emotion, duration and seed controls."""
         self._check_language(kw.get("language"))
         ref_audio = kw.get("ref_audio")
         if not ref_audio:
@@ -323,6 +325,8 @@ class IndexTTS2Backend(SubprocessBackend):
 
         language = _normalize_indextts25_language(kw.get("language"), text)
         forwarded: dict = {"ref_audio": ref_audio, "lang": language}
+        if kw.get("seed") is not None:
+            forwarded["seed"] = int(kw["seed"])
 
         # Duration control — codec frame rate ≈ 21 Hz.
         duration = kw.get("duration")
