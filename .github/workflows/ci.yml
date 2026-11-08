@@ -231,12 +231,14 @@ jobs:
       # networked empty-cache run before it was caught). All legitimate HF
       # interactions in tests are stubbed; anything that trips this is a
       # test-isolation bug.
-      # `-n auto` runs tests/ in parallel (one worker per CPU; 10 min serial ->
-      # ~3 min on a 4-core runner, with identical results). backend/tests/ below
+      # `-n 6` runs tests/ in parallel. Many tests wait on subprocesses and
+      # timers, so 6 workers beat one-per-CPU on the 4-vCPU runner (measured
+      # 2026-11-08: 4 workers 467-522 s, 6 workers 416 s, 8 workers 442 s).
+      # backend/tests/ below
       # stays serial: one test there depends on another's leftover state and
       # fails when run in isolation, which parallel scheduling exposes.
       - name: Run pytest
-        run: uv run --no-sync pytest tests/ -q --tb=short -n auto
+        run: uv run --no-sync pytest tests/ -q --tb=short -n 6
         env:
           HF_HUB_OFFLINE: "1"
 
