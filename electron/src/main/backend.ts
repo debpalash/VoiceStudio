@@ -1279,6 +1279,9 @@ export class BackendSupervisor extends EventEmitter<{
         this.setupHardwareProbed = true;
         void detectSetupHardware().then((found) => {
           this.setupHardware = found;
+          // The setup screen may be idle with no other status change coming;
+          // publish once so the hardware line appears as soon as it is known.
+          if (found && this.stage === 'setup_required') this.emitStatus();
         });
       }
       if (this.setupHardware && !this.setupIssue) status.setupHardware = this.setupHardware;
