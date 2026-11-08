@@ -40,14 +40,19 @@ const UNKNOWN = Symbol("unknown work status");
 /**
  * Reads one backend work-status endpoint. A stopped backend (unreachable) and
  * an older backend without the route (404/405) have no work to lose; any other
- * failure, a timeout included, means the work status is unknown.
+ * failure means the work status is unknown. Our own timeout also surfaces as
+ * an unreachable error from the API client, so it is checked first: a backend
+ * too busy to answer is the case most likely to be running a job.
  */
-async function workStatus<T>(path: string): Promise<T | undefined | typeof UNKNOWN> {
+async function workStatus<T>(
+  path: string,
+  timeoutMs: number,
+): Promise<T | undefined | typeof UNKNOWN> {
+  const signal = AbortSignal.timeout(timeoutMs);
   try {
-    return await apiJson<T>(path, {
-      signal: AbortSignal.timeout(WORK_STATUS_TIMEOUT_MS),
-    });
+    return await apiJson<T>(path, { signal });
   } catch (error) {
+    if (signal.aborted) return UNKNOWN;
     if (error instanceof ApiError && [0, 404, 405].includes(error.status))
       return undefined;
     return UNKNOWN;
@@ -60,11 +65,13 @@ async function workStatus<T>(path: string): Promise<T | undefined | typeof UNKNO
  * unknown server status defers the restart rather than risk a running job.
  * Every restart-to-update entry point must use this one check.
  */
-export async function updateRestartBlocked(): Promise<boolean> {
+export async function updateRestartBlocked(
+  timeoutMs = WORK_STATUS_TIMEOUT_MS,
+): Promise<boolean> {
   if (hasActiveAppWork() || dubBusy(dubSession.state)) return true;
   const [models, batches] = await Promise.all([
-    workStatus<ModelInstallJobs>(MODEL_INSTALL_STATUS_PATH),
-    workStatus<unknown[]>(ACTIVE_BATCH_JOBS_PATH),
+    workStatus<ModelInstallJobs>(MODEL_INSTALL_STATUS_PATH, timeoutMs),
+    workStatus<unknown[]>(ACTIVE_BATCH_JOBS_PATH, timeoutMs),
   ]);
   if (models === UNKNOWN || batches === UNKNOWN) return true;
   return (
