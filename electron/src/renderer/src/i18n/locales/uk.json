@@ -2538,7 +2538,14 @@
     "continue_ok": "Все добре — продовжуйте",
     "check_arch_label": "Windows на ARM",
     "check_arch_detail": "ПК із Windows ARM64: ШІ-бекенд працює як x64 в емуляції Windows, лише на CPU (без прискорення GPU/NPU).",
-    "check_arch_fix": "Генерація голосу працює, але повільніше. Обирайте легкий голосовий рушій (KittenTTS, Supertonic-3, PocketTTS) і невелику модель Whisper."
+    "check_arch_fix": "Генерація голосу працює, але повільніше. Обирайте легкий голосовий рушій (KittenTTS, Supertonic-3, PocketTTS) і невелику модель Whisper.",
+    "update_first": "Спершу оновіться, щоб завантажене середовище виконання відповідало найновішій версії застосунку.",
+    "models_space": "Залиште місце й для голосових моделей: кожна займає кілька ГБ.",
+    "use_other_computer": "Використовувати VoiceStudio на іншому комп’ютері",
+    "help_label": "Допомога з налаштуванням",
+    "help_install": "Посібник із встановлення",
+    "help_troubleshooting": "Усунення несправностей",
+    "help_report": "Повідомити про проблему"
   },
   "consent": {
     "title": "Допомогти покращити VoiceStudio?",

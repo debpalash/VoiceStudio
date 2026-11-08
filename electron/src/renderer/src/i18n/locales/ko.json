@@ -2514,7 +2514,14 @@
     "continue_ok": "모두 괜찮습니다 — 계속하세요",
     "check_arch_label": "ARM용 Windows",
     "check_arch_detail": "ARM64 Windows PC입니다. AI 백엔드는 Windows 에뮬레이션에서 x64로 실행되며 CPU만 사용합니다(GPU/NPU 가속 없음).",
-    "check_arch_fix": "음성 생성은 동작하지만 더 느립니다. 가벼운 음성 엔진(KittenTTS, Supertonic-3, PocketTTS)과 작은 Whisper 모델을 사용하세요."
+    "check_arch_fix": "음성 생성은 동작하지만 더 느립니다. 가벼운 음성 엔진(KittenTTS, Supertonic-3, PocketTTS)과 작은 Whisper 모델을 사용하세요.",
+    "update_first": "먼저 업데이트하면 다운로드하는 런타임이 최신 앱과 맞습니다.",
+    "models_space": "음성 모델을 위한 공간도 남겨 두세요. 모델마다 몇 GB가 필요합니다.",
+    "use_other_computer": "대신 다른 컴퓨터에서 VoiceStudio 사용",
+    "help_label": "설정 도움말",
+    "help_install": "설치 가이드",
+    "help_troubleshooting": "문제 해결",
+    "help_report": "문제 신고"
   },
   "consent": {
     "title": "VoiceStudio 개선에 참여하시겠어요?",

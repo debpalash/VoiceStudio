@@ -2562,7 +2562,14 @@
     "continue_ok": "كل شيء جيد - استمر",
     "check_arch_label": "Windows على ARM",
     "check_arch_detail": "جهاز Windows بمعالج ARM64 — يعمل خادم الذكاء الاصطناعي بصيغة x64 عبر محاكاة Windows، على المعالج المركزي فقط (دون تسريع GPU/NPU).",
-    "check_arch_fix": "يعمل توليد الصوت لكنه أبطأ. يُفضّل استخدام محرك صوت خفيف (KittenTTS أو Supertonic-3 أو PocketTTS) ونموذج Whisper صغير."
+    "check_arch_fix": "يعمل توليد الصوت لكنه أبطأ. يُفضّل استخدام محرك صوت خفيف (KittenTTS أو Supertonic-3 أو PocketTTS) ونموذج Whisper صغير.",
+    "update_first": "حدّث أولاً حتى تتوافق بيئة التشغيل التي تنزّلها مع أحدث إصدار من التطبيق.",
+    "models_space": "اترك مساحة لنماذج الأصوات أيضاً: يحتاج كل منها بضعة غيغابايت.",
+    "use_other_computer": "استخدم VoiceStudio على جهاز كمبيوتر آخر بدلاً من ذلك",
+    "help_label": "مساعدة الإعداد",
+    "help_install": "دليل التثبيت",
+    "help_troubleshooting": "استكشاف الأخطاء وإصلاحها",
+    "help_report": "الإبلاغ عن مشكلة"
   },
   "consent": {
     "title": "المساعدة في تحسين VoiceStudio؟",
