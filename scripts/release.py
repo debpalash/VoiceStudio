@@ -118,8 +118,21 @@ def prepare_changelog(text: str, version: str, today: datetime.date) -> str:
     if channel_for(version) == "stable":
         section = f"## [Unreleased]\n\n{heading}\n\n{body}\n\n"
     else:
-        section = f"## [Unreleased]\n\n{body}\n\n{heading}\n\n{body}\n\n"
+        section = f"## [Unreleased]\n\n{body}\n\n{heading}\n\n{beta_links(body, version)}\n\n"
     return text[: match.start()] + section + text[match.end():]
+
+
+def beta_links(body: str, version: str) -> str:
+    """Point a beta section's download links at the beta's own release.
+
+    `[Unreleased]` carries the stable download table (`/download/vX.Y.Z/
+    VoiceStudio-X.Y.Z-...`), which is what the final release needs; the beta's
+    copy must link to files that exist on the beta release instead.
+    """
+    base = version.split("-", 1)[0]
+    stable = re.escape(base)
+    body = re.sub(rf"(/releases/(?:download|tag)/)v{stable}(?=[/)\s\]]|$)", rf"\g<1>v{version}", body, flags=re.M)
+    return re.sub(rf"\bVoiceStudio-{stable}-", f"VoiceStudio-{version}-", body)
 
 
 def sh(*cmd: str, check: bool = True, capture: bool = False) -> str:
