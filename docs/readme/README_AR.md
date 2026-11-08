@@ -149,6 +149,8 @@
 
 اختر نظامك، ثم قم بتوسيع طريقة التثبيت.
 
+تدعم محركات GGUF الأصلية أيضًا تسريع Vulkan الخاص بكل محرك على وحدات معالجة الرسومات AMD وIntel وNVIDIA ([OmniVoice](../../docs/engines/omnivoice-gguf.md#vulkan-acceleration), [CosyVoice](../../docs/engines/cosyvoice-gguf.md)). يختار OmniVoice GGUF وحدة معالجة الرسومات وحجم النموذج تلقائيًا على Windows وLinux. عند تعطل الفحص المخفي، تعيد عملية اكتشاف Vulkan المحاولة باستخدام ملخص أصلي؛ وتفشل عمليات بناء سطح المكتب لـWindows وLinux بدلًا من إصدار نسخة تفتقر إلى وحدة Vulkan بصمت.
+
 <a id="install-macos"></a>
 
 <details>

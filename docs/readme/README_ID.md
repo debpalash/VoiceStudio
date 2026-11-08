@@ -149,6 +149,8 @@ Semua yang di atas gratis, berjalan di perangkat keras Anda sendiri, dan tidak m
 
 Pilih sistem Anda, lalu perluas metode instalasi.
 
+Mesin GGUF native juga mendukung akselerasi Vulkan khusus mesin pada GPU AMD, Intel, dan NVIDIA ([OmniVoice](../../docs/engines/omnivoice-gguf.md#vulkan-acceleration), [CosyVoice](../../docs/engines/cosyvoice-gguf.md)). OmniVoice GGUF memilih GPU dan ukuran model secara otomatis di Windows dan Linux. Jika pemeriksaan tersembunyi macet, deteksi Vulkan mencoba lagi dengan ringkasan native; build desktop Windows dan Linux gagal alih-alih diam-diam dikirim tanpa modul Vulkan.
+
 <a id="install-macos"></a>
 
 <details>
