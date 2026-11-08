@@ -30,6 +30,7 @@ AUDIO = base64.b64encode(b"RIFF\x00\x00\x00\x00WAVEfmt ").decode()
 
 @pytest.fixture
 def failing_backend(monkeypatch):
+    """An MCP server whose backend refuses every call, each in another error shape."""
     from fastapi import FastAPI
     from fastapi.responses import JSONResponse, PlainTextResponse
     import mcp_server
@@ -38,18 +39,22 @@ def failing_backend(monkeypatch):
 
     @backend.post("/transcribe")
     async def transcribe():
+        """Refuse like a TTS-only install: a typed licence error object."""
         return JSONResponse({"detail": LICENCE_DETAIL}, status_code=403)
 
     @backend.post("/generate")
     async def generate():
+        """Refuse with a plain-string detail."""
         return JSONResponse({"detail": "Voice profile 'gone' not found"}, status_code=404)
 
     @backend.post("/profiles")
     async def create_profile():
+        """Refuse cloning with the same typed licence error."""
         return JSONResponse({"detail": LICENCE_DETAIL}, status_code=403)
 
     @backend.get("/profiles")
     async def list_profiles():
+        """Refuse with a FastAPI validation-error list."""
         return JSONResponse(
             {"detail": [{"loc": ["query", "limit"], "msg": "Input should be a valid integer"}]},
             status_code=422,
@@ -57,6 +62,7 @@ def failing_backend(monkeypatch):
 
     @backend.get("/health")
     async def health():
+        """Fail like a broken proxy: no JSON body at all."""
         return PlainTextResponse("upstream proxy exploded", status_code=502)
 
     monkeypatch.delenv("OMNIVOICE_API_URL", raising=False)
@@ -64,6 +70,7 @@ def failing_backend(monkeypatch):
 
 
 def _tool_error(server, tool, **arguments) -> str:
+    """The ToolError message a failing tool call raises."""
     from mcp.server.fastmcp.exceptions import ToolError
 
     with pytest.raises(ToolError) as raised:
@@ -72,38 +79,45 @@ def _tool_error(server, tool, **arguments) -> str:
 
 
 def _result(server, tool, **arguments) -> dict:
+    """A tool call's JSON result."""
     reply = asyncio.run(server.call_tool(tool, arguments))
     blocks = reply[0] if isinstance(reply, tuple) else reply
     return json.loads(blocks[0].text)
 
 
 def test_transcribe_reports_the_licence_the_user_must_accept(failing_backend):
+    """The agent learns which licence to accept, not just "403"."""
     message = _tool_error(failing_backend, "transcribe", audio_base64=AUDIO)
     assert LICENCE_MESSAGE in message
     assert "HTTP 403" in message and "/transcribe" in message
 
 
 def test_generate_speech_reports_the_backend_reason(failing_backend):
+    """A plain-string detail reaches the agent verbatim."""
     message = _tool_error(failing_backend, "generate_speech", text="hi", profile_id="gone")
     assert "Voice profile 'gone' not found" in message
 
 
 def test_validation_error_lists_are_readable(failing_backend):
+    """A validation-error list becomes its readable messages."""
     message = _tool_error(failing_backend, "list_voices")
     assert "Input should be a valid integer" in message
 
 
 def test_body_without_detail_keeps_the_httpx_message(failing_backend):
+    """With no detail to add, httpx's own message is kept."""
     message = _tool_error(failing_backend, "check_health")
     assert "502 Bad Gateway" in message
 
 
 def test_clone_voice_error_is_the_message_not_a_dict_repr(failing_backend):
+    """clone_voice's error JSON carries the typed error's message."""
     result = _result(failing_backend, "clone_voice", name="me", ref_audio_base64=AUDIO)
     assert result == {"error": LICENCE_MESSAGE}
 
 
 def test_helper_raises_the_same_exception_type_with_the_response():
+    """Existing `except httpx.HTTPStatusError` handlers keep working."""
     import httpx
     import mcp_server
 
