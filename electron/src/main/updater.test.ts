@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const handlers = new Map<string, Set<(...args: any[]) => void>>();
@@ -20,17 +20,28 @@ const mocks = vi.hoisted(() => {
     allowDowngrade: true,
     allowPrerelease: false,
     channel: '',
+    disableDifferentialDownload: false,
     on: vi.fn((event: string, listener: (...args: any[]) => void) => {
       const listeners = handlers.get(event) || new Set();
       listeners.add(listener);
       handlers.set(event, listeners);
     }),
+    removeListener: vi.fn((event: string, listener: (...args: any[]) => void) => {
+      handlers.get(event)?.delete(listener);
+    }),
     setFeedURL: vi.fn(),
-    checkForUpdates: vi.fn(async () => undefined),
-    downloadUpdate: vi.fn(async () => undefined),
+    checkForUpdates: vi.fn(async (): Promise<unknown> => undefined),
+    downloadUpdate: vi.fn(async (_token?: unknown): Promise<unknown> => undefined),
     quitAndInstall: vi.fn(),
   };
+  class CancellationToken {
+    cancelled = false;
+    cancel() {
+      this.cancelled = true;
+    }
+  }
   return {
+    CancellationToken,
     app: {
       isPackaged: true,
       getVersion: vi.fn(() => '0.5.2'),
@@ -58,7 +69,7 @@ vi.mock('electron', () => ({
 }));
 
 vi.mock('electron-updater', () => ({
-  default: { autoUpdater: mocks.autoUpdater },
+  default: { autoUpdater: mocks.autoUpdater, CancellationToken: mocks.CancellationToken },
 }));
 
 vi.mock('node:fs', () => ({ ...mocks.fs, default: mocks.fs }));
@@ -76,7 +87,9 @@ import {
   resolveBetaFeed,
   resolveUpdateFeedUrl,
   UPDATE_CHANNELS,
+  updatePayloadExtension,
 } from './updater';
+import { GitHubAssetProvider } from './github-asset-provider';
 
 function emit(event: string, value?: unknown) {
   for (const listener of mocks.handlers.get(event) || []) listener(value);
@@ -93,6 +106,7 @@ describe('DesktopUpdater', () => {
     mocks.autoUpdater.allowDowngrade = true;
     mocks.autoUpdater.allowPrerelease = false;
     mocks.autoUpdater.channel = '';
+    mocks.autoUpdater.disableDifferentialDownload = false;
     vi.clearAllMocks();
     mocks.autoUpdater.checkForUpdates.mockResolvedValue(undefined);
     mocks.autoUpdater.downloadUpdate.mockResolvedValue(undefined);
@@ -298,9 +312,10 @@ describe('DesktopUpdater', () => {
           ),
       ),
     );
-    expect(feed).toEqual({
+    expect(feed).toMatchObject({
       url: 'https://github.com/debpalash/VoiceStudio/releases/download/v0.5.9',
       channel: `electron-stable-${process.platform}-${process.arch}`,
+      tag: 'v0.5.9',
     });
   });
 
@@ -412,14 +427,16 @@ describe('DesktopUpdater', () => {
     expect(observed).not.toContain('error');
   });
 
-  test('gives up after three attempts and reports the last error', async () => {
-    const updater = new DesktopUpdater('direct', fetch, [0, 0]);
+  test('gives up after three attempts and the API fallback, reporting the last error', async () => {
+    const feedFetcher = vi.fn(async () => new Response('', { status: 503 }));
+    const updater = new DesktopUpdater('direct', feedFetcher, [0, 0]);
     mocks.autoUpdater.checkForUpdates.mockRejectedValue(new Error('503 Service Unavailable'));
     expect(await updater.check()).toMatchObject({
       status: 'error',
-      error: '503 Service Unavailable',
+      error: 'Latest release lookup failed (503)',
     });
     expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(3);
+    expect(feedFetcher).toHaveBeenCalledOnce();
   });
 
   test('a failing autoUpdater error event does not end a retrying check', async () => {
@@ -458,7 +475,8 @@ describe('DesktopUpdater', () => {
   });
 
   test('retries a download once on a transient error', async () => {
-    const updater = new DesktopUpdater('direct', fetch, [0, 0]);
+    // Store builds have no asset-route fallback, so this isolates the retry.
+    const updater = new DesktopUpdater('microsoft-store', vi.fn(), [0, 0]);
     emit('update-available', { version: '0.5.3' });
     mocks.autoUpdater.downloadUpdate.mockRejectedValue(new Error('504 Gateway Timeout'));
     expect((await updater.download()).status).toBe('error');
@@ -611,6 +629,267 @@ describe('DesktopUpdater', () => {
         signal: expect.any(AbortSignal),
       }),
     );
+  });
+});
+
+describe('release-download outage fallback', () => {
+  const channel = `electron-stable-${process.platform}-${process.arch}`;
+  const manifest = feedManifestName(process.platform, process.arch, 'direct', 'stable');
+  const latestRelease = () =>
+    new Response(
+      JSON.stringify({
+        tag_name: 'v0.5.9',
+        assets: [
+          { name: manifest, id: 11 },
+          { name: 'VoiceStudio-0.5.9.zip', id: 12 },
+          { name: 'bogus', id: 'x' },
+        ],
+      }),
+      { status: 200 },
+    );
+  const gatewayTimeout = () => Object.assign(new Error('504 Gateway Timeout'), { statusCode: 504 });
+
+  beforeEach(() => {
+    mocks.handlers.clear();
+    mocks.disk.file = undefined;
+    mocks.app.isPackaged = true;
+    mocks.autoUpdater.disableDifferentialDownload = false;
+    vi.clearAllMocks();
+    mocks.autoUpdater.checkForUpdates.mockReset().mockResolvedValue(undefined);
+    mocks.autoUpdater.downloadUpdate.mockReset().mockResolvedValue(undefined);
+  });
+
+  test('a 504 manifest check retries once through the API asset route', async () => {
+    const feedFetcher = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+      latestRelease(),
+    );
+    const updater = new DesktopUpdater('direct', feedFetcher, [0, 0]);
+    mocks.autoUpdater.checkForUpdates
+      .mockRejectedValueOnce(gatewayTimeout())
+      .mockRejectedValueOnce(gatewayTimeout())
+      .mockRejectedValueOnce(gatewayTimeout());
+
+    expect(await updater.check()).toMatchObject({ status: 'idle' });
+
+    expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(4);
+    // One API request per fallback check.
+    expect(feedFetcher).toHaveBeenCalledOnce();
+    expect(feedFetcher.mock.calls[0][0]).toBe(
+      'https://api.github.com/repos/debpalash/VoiceStudio/releases/latest',
+    );
+    expect(mocks.autoUpdater.setFeedURL).toHaveBeenLastCalledWith({
+      provider: 'custom',
+      updateProvider: GitHubAssetProvider,
+      url: 'https://github.com/debpalash/VoiceStudio/releases/download/v0.5.9',
+      channel,
+      assets: { [manifest]: 11, 'VoiceStudio-0.5.9.zip': 12 },
+      payloadExtension: updatePayloadExtension(),
+    });
+    expect(mocks.autoUpdater.disableDifferentialDownload).toBe(true);
+
+    // GitHub recovers: the next check is the normal feed with patch downloads.
+    await updater.check();
+    expect(mocks.autoUpdater.setFeedURL).toHaveBeenLastCalledWith({
+      provider: 'generic',
+      url: 'https://github.com/debpalash/VoiceStudio/releases/latest/download',
+      channel,
+      useMultipleRangeRequest: false,
+    });
+    expect(mocks.autoUpdater.disableDifferentialDownload).toBe(false);
+    expect(feedFetcher).toHaveBeenCalledOnce();
+  });
+
+  test('a healthy feed never touches the API or disables patch downloads', async () => {
+    const feedFetcher = vi.fn();
+    const updater = new DesktopUpdater('direct', feedFetcher, [0, 0]);
+    await updater.check();
+    emit('update-available', { version: '0.5.9' });
+    await updater.download();
+    expect(feedFetcher).not.toHaveBeenCalled();
+    expect(mocks.autoUpdater.disableDifferentialDownload).toBe(false);
+    expect(mocks.autoUpdater.setFeedURL).toHaveBeenCalledTimes(2);
+    expect(mocks.autoUpdater.setFeedURL).toHaveBeenLastCalledWith(
+      expect.objectContaining({ provider: 'generic' }),
+    );
+  });
+
+  test('Beta reuses its release lookup for the fallback', async () => {
+    const beta = feedManifestName(process.platform, process.arch, 'direct', 'beta');
+    const feedFetcher = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify([{ tag_name: 'v0.5.9-beta.1', assets: [{ name: beta, id: 21 }] }]),
+          { status: 200 },
+        ),
+    );
+    mocks.disk.file = '{"channel":"beta"}';
+    const updater = new DesktopUpdater('direct', feedFetcher, []);
+    mocks.autoUpdater.checkForUpdates.mockRejectedValueOnce(gatewayTimeout());
+    expect((await updater.check()).status).toBe('idle');
+    expect(feedFetcher).toHaveBeenCalledOnce();
+    expect(mocks.autoUpdater.setFeedURL).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        provider: 'custom',
+        url: 'https://github.com/debpalash/VoiceStudio/releases/download/v0.5.9-beta.1',
+        assets: { [beta]: 21 },
+      }),
+    );
+  });
+
+  test('a 504 download re-reads the offer through the asset route without leaving downloading', async () => {
+    const feedFetcher = vi.fn(async () => latestRelease());
+    const updater = new DesktopUpdater('direct', feedFetcher, [0]);
+    const observed: string[] = [];
+    emit('update-available', { version: '0.5.9' });
+    updater.subscribe((state) => observed.push(state.status));
+    mocks.autoUpdater.downloadUpdate
+      .mockRejectedValueOnce(gatewayTimeout())
+      .mockRejectedValueOnce(gatewayTimeout());
+    mocks.autoUpdater.checkForUpdates.mockImplementationOnce(async () => {
+      emit('checking-for-update');
+      emit('update-available', { version: '0.5.9' });
+      return { isUpdateAvailable: true, updateInfo: { version: '0.5.9' } };
+    });
+
+    expect((await updater.download()).status).toBe('downloading');
+
+    expect(mocks.autoUpdater.downloadUpdate).toHaveBeenCalledTimes(3);
+    expect(feedFetcher).toHaveBeenCalledOnce();
+    expect(mocks.autoUpdater.setFeedURL).toHaveBeenLastCalledWith(
+      expect.objectContaining({ provider: 'custom', updateProvider: GitHubAssetProvider }),
+    );
+    expect(mocks.autoUpdater.disableDifferentialDownload).toBe(true);
+    expect(observed.every((status) => status === 'downloading')).toBe(true);
+  });
+
+  test('a download fallback refuses a release that no longer offers the same version', async () => {
+    const updater = new DesktopUpdater(
+      'direct',
+      vi.fn(async () => latestRelease()),
+      [],
+    );
+    emit('update-available', { version: '0.5.8' });
+    mocks.autoUpdater.downloadUpdate.mockRejectedValueOnce(gatewayTimeout());
+    mocks.autoUpdater.checkForUpdates.mockResolvedValueOnce({
+      isUpdateAvailable: true,
+      updateInfo: { version: '0.5.9' },
+    });
+    expect(await updater.download()).toMatchObject({
+      status: 'error',
+      error: expect.stringContaining('check for updates again'),
+    });
+    expect(mocks.autoUpdater.downloadUpdate).toHaveBeenCalledOnce();
+  });
+
+  test('404 and checksum failures never use the asset route', async () => {
+    const feedFetcher = vi.fn();
+    const updater = new DesktopUpdater('direct', feedFetcher, [0, 0]);
+    mocks.autoUpdater.checkForUpdates.mockRejectedValueOnce(
+      Object.assign(new Error('Cannot find channel: 404 Not Found'), { statusCode: 404 }),
+    );
+    expect((await updater.check()).status).toBe('error');
+
+    emit('update-available', { version: '0.5.9' });
+    mocks.autoUpdater.downloadUpdate.mockRejectedValueOnce(
+      new Error('sha512 checksum mismatch, expected abc, got def'),
+    );
+    expect((await updater.download()).status).toBe('error');
+
+    expect(feedFetcher).not.toHaveBeenCalled();
+    expect(mocks.autoUpdater.downloadUpdate).toHaveBeenCalledOnce();
+    expect(mocks.autoUpdater.setFeedURL).not.toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'custom' }),
+    );
+    expect(mocks.autoUpdater.disableDifferentialDownload).toBe(false);
+  });
+
+  test('background checks report failure to the check schedule', async () => {
+    const updater = new DesktopUpdater('direct', vi.fn(), []);
+    mocks.autoUpdater.checkForUpdates.mockRejectedValueOnce(new Error('offline'));
+    expect(await updater.checkInBackground()).toBe(false);
+    expect(updater.snapshot().status).toBe('idle');
+    expect(await updater.checkInBackground()).toBe(true);
+  });
+});
+
+describe('download stall watchdog', () => {
+  beforeEach(() => {
+    mocks.handlers.clear();
+    mocks.app.isPackaged = true;
+    vi.clearAllMocks();
+    mocks.autoUpdater.downloadUpdate.mockReset();
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // Store builds skip the asset-route fallback, isolating the watchdog.
+  function startDownload(retryDelays: number[] = []) {
+    const updater = new DesktopUpdater('microsoft-store', vi.fn(), retryDelays);
+    emit('update-available', { version: '0.5.9' });
+    return { updater, download: updater.download() };
+  }
+
+  test('cancels a download that receives no data for 45 seconds and reports a transient error', async () => {
+    const tokens: Array<{ cancelled: boolean }> = [];
+    mocks.autoUpdater.downloadUpdate.mockImplementation((token: any) => {
+      tokens.push(token);
+      return new Promise(() => undefined);
+    });
+    const { download } = startDownload([0]);
+    await vi.advanceTimersByTimeAsync(44_999);
+    expect(tokens[0].cancelled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(tokens[0].cancelled).toBe(true);
+    // The stall counts as transient, so the usual single retry runs.
+    await vi.runAllTimersAsync();
+    const state = await download;
+    expect(mocks.autoUpdater.downloadUpdate).toHaveBeenCalledTimes(2);
+    expect(tokens[1].cancelled).toBe(true);
+    expect(state).toMatchObject({ status: 'error', error: expect.stringContaining('45 seconds') });
+    expect(mocks.autoUpdater.removeListener).toHaveBeenCalled();
+  });
+
+  test('keeps a download that is still receiving data', async () => {
+    let finish!: () => void;
+    let token: { cancelled: boolean } | undefined;
+    mocks.autoUpdater.downloadUpdate.mockImplementation((value: any) => {
+      token = value;
+      return new Promise((resolve) => (finish = () => resolve(['file'])));
+    });
+    const { download } = startDownload();
+    for (let second = 1; second <= 6; second += 1) {
+      await vi.advanceTimersByTimeAsync(30_000);
+      emit('download-progress', {
+        percent: second * 10,
+        transferred: second * 1_000,
+        total: 10_000,
+      });
+    }
+    // A progress event without new bytes does not count as progress.
+    await vi.advanceTimersByTimeAsync(30_000);
+    emit('download-progress', { percent: 60, transferred: 6_000, total: 10_000 });
+    expect(token?.cancelled).toBe(false);
+    finish();
+    expect((await download).status).toBe('downloading');
+    expect(token?.cancelled).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  test('a repeated progress value does not keep a stalled download alive', async () => {
+    let token: { cancelled: boolean } | undefined;
+    mocks.autoUpdater.downloadUpdate.mockImplementation((value: any) => {
+      token = value;
+      return new Promise(() => undefined);
+    });
+    const { download } = startDownload();
+    emit('download-progress', { percent: 10, transferred: 1_000, total: 10_000 });
+    await vi.advanceTimersByTimeAsync(30_000);
+    emit('download-progress', { percent: 10, transferred: 1_000, total: 10_000 });
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(token?.cancelled).toBe(true);
+    expect((await download).status).toBe('error');
   });
 });
 

@@ -109,7 +109,7 @@ jobs:
         if: matrix.platform == 'windows-x86_64'
         # Transient download failures retry below; only the final attempt fails the build.
         continue-on-error: true
-        uses: jakoch/install-vulkan-sdk-action@d17de7e2f5e50efb5d2123efed18497d3c58c533 # v1.7.0
+        uses: jakoch/install-vulkan-sdk-action@7fe84289ddbf750f7eff9f8e4588e600e1dd06c8 # v1.8.1
         with:
           vulkan_version: 1.4.309.0
           cache: true
@@ -118,7 +118,7 @@ jobs:
         id: vulkan_sdk_2
         if: matrix.platform == 'windows-x86_64' && steps.vulkan_sdk_1.outcome == 'failure'
         continue-on-error: true
-        uses: jakoch/install-vulkan-sdk-action@d17de7e2f5e50efb5d2123efed18497d3c58c533 # v1.7.0
+        uses: jakoch/install-vulkan-sdk-action@7fe84289ddbf750f7eff9f8e4588e600e1dd06c8 # v1.8.1
         with:
           vulkan_version: 1.4.309.0
           cache: true
@@ -126,7 +126,7 @@ jobs:
       - name: Final Vulkan SDK download attempt
         id: vulkan_sdk_3
         if: matrix.platform == 'windows-x86_64' && steps.vulkan_sdk_2.outcome == 'failure'
-        uses: jakoch/install-vulkan-sdk-action@d17de7e2f5e50efb5d2123efed18497d3c58c533 # v1.7.0
+        uses: jakoch/install-vulkan-sdk-action@7fe84289ddbf750f7eff9f8e4588e600e1dd06c8 # v1.8.1
         with:
           vulkan_version: 1.4.309.0
           cache: true

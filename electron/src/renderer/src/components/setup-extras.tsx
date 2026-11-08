@@ -1,10 +1,11 @@
+import { CpuIcon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { primaryUpdateAction, runUpdateAction } from '@/lib/update-actions';
 import { updateErrorKey } from '@/lib/update-format';
 import { DISCORD_URL, ISSUES_URL } from '@shared/utils/contactLinks';
-import type { UpdateState } from '../../../preload/index.d';
+import type { BackendStatus, UpdateState } from '../../../preload/index.d';
 import { appVersion, getBridge, platformFamily } from './bridge';
 import { ExternalLink } from './external-link';
 
@@ -149,3 +150,35 @@ export function SetupHelpLinks() {
 
 /** Below the free-space line: voice models need room beyond the runtime. */
 export const MODEL_HEADROOM_GIB = 8;
+
+/** Which PyTorch build the install will download, shown before the multi-GB download starts. */
+export function SetupHardware({ hardware }: { hardware: BackendStatus['setupHardware'] }) {
+  const { t } = useTranslation();
+  if (!hardware) return null;
+  const { build, gpu, reason } = hardware;
+  const text =
+    build === 'metal'
+      ? gpu
+        ? t('setup.hardware_metal', { gpu })
+        : t('setup.hardware_metal_unnamed')
+      : build === 'cuda'
+        ? gpu
+          ? t('setup.hardware_cuda', { gpu })
+          : t('setup.hardware_cuda_unnamed')
+        : build === 'rocm'
+          ? t('setup.hardware_rocm')
+          : reason === 'windows_arm'
+            ? t('setup.hardware_cpu_windows_arm')
+            : reason === 'explicit'
+              ? t('setup.hardware_cpu_explicit')
+              : t('setup.hardware_cpu_no_nvidia');
+  return (
+    <p
+      data-testid="setup-hardware"
+      className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground"
+    >
+      <CpuIcon className="size-3.5 shrink-0" aria-hidden="true" />
+      <span className="min-w-0 truncate">{text}</span>
+    </p>
+  );
+}
