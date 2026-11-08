@@ -315,7 +315,7 @@ on CPU until you opt into the ROCm variant.
 > setup; see [windows-rocm.md](windows-rocm.md).
 
 **Radeon RX 9000 series (RDNA4: RX 9060 / 9070 / 9070 XT, `gfx1200`/`gfx1201`)**
-is supported natively by the ROCm build below (torch 2.8.0 from the `rocm6.4`
+is supported natively by the ROCm build below (torch 2.10.0 from the `rocm7.1`
 index includes both architectures), so it needs no `HSA_OVERRIDE_GFX_VERSION`.
 The host needs an `amdgpu` kernel driver new enough for RDNA4 (AMD's ROCm
 6.4.1+ driver, or a recent distribution kernel); `rocminfo` listing your card
@@ -332,8 +332,8 @@ Once setup finishes, the choice is saved in `~/.config/omnivoice/env`, so later
 launches and app updates keep ROCm without the variable. To leave ROCm, launch
 once with `OMNIVOICE_TORCH_VARIANT=cpu`.
 Runtime setup then reinstalls `torch`/`torchaudio`/`torchvision` from the ROCm
-wheel index (`https://download.pytorch.org/whl/rocm6.4` by default) right after
-the dependency sync, leaving every other package on the regular index, matched to the app's pinned `torch==2.8.0` (the rocm6.2 index
+wheel index (`https://download.pytorch.org/whl/rocm7.1` by default) right after
+the dependency sync, leaving every other package on the regular index, matched to the app's pinned `torch==2.10.0` (the rocm6.2 index
 only ever published up to torch 2.5.1). **Settings → Performance → GPU
 acceleration** reports which PyTorch build is installed. The option is ignored
 on macOS; on Windows it selects the opt-in stack in
@@ -350,7 +350,7 @@ publishes newer driver-matched 7.2.x wheels on `repo.radeon.com` as a
 `--find-links` page rather than a PyPI-compatible index, for example:
 ```bash
 uv pip install --reinstall-package torch --reinstall-package torchaudio \
-  --reinstall-package torchvision torch==2.8.0 torchaudio==2.8.0 torchvision==0.23.0 \
+  --reinstall-package torchvision torch==2.10.0 torchaudio==2.10.0 torchvision==0.25.0 \
   --find-links https://repo.radeon.com/rocm/manylinux/rocm-rel-7.2.4/
 ```
 run that manually if you want a specific ROCm point release; the
@@ -363,16 +363,16 @@ keeps the default torch build and warns instead of breaking the install.
 
 ```bash
 # From the project directory (source install), into VoiceStudio's uv venv.
-# Matches the app's torch==2.8.0 pin — a different ROCm point release
-# (e.g. rocm6.2, rocm7.x) may not carry that exact torch build.
+# Matches the app's torch==2.10.0 pin — a different ROCm point release
+# (e.g. rocm6.4, rocm7.2) may not carry that exact torch build.
 # Swap all three torch packages together: a CUDA torchvision left beside a
 # ROCm torch fails at generation time ("operator torchvision::nms does not
 # exist"). Keep PyPI as the main index: PyTorch's index has no Pillow 13, so
 # `--index-url` with `--reinstall` cannot resolve (#3158).
 uv pip install \
   --reinstall-package torch --reinstall-package torchaudio --reinstall-package torchvision \
-  torch==2.8.0+rocm6.4 torchaudio==2.8.0+rocm6.4 torchvision==0.23.0+rocm6.4 \
-  --extra-index-url https://download.pytorch.org/whl/rocm6.4 \
+  torch==2.10.0+rocm7.1 torchaudio==2.10.0+rocm7.1 torchvision==0.25.0+rocm7.1 \
+  --extra-index-url https://download.pytorch.org/whl/rocm7.1 \
   --index-strategy unsafe-best-match
 ```
 

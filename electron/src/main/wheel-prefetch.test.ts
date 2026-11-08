@@ -25,6 +25,11 @@ import {
 } from './wheel-prefetch';
 
 const LOCK = readFileSync(join(__dirname, '..', '..', '..', 'uv.lock'), 'utf8');
+// The torch pin the real lock carries, so a torch bump does not break these
+// lock-reading tests (the pin lives in pyproject's uv constraint-dependencies).
+const TORCH = /"torch==([^"]+)"/.exec(
+  readFileSync(join(__dirname, '..', '..', '..', 'pyproject.toml'), 'utf8'),
+)![1];
 const roots: string[] = [];
 async function scratch(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'vs-prefetch-'));
@@ -70,9 +75,9 @@ describe('locked wheel planning (#3411)', () => {
   it('reads every locked wheel with its hash, and a 0 size where the index gives none', () => {
     const wheels = lockedWheels(LOCK);
     const torch = wheels.find(
-      (wheel) => wheel.filename === 'torch-2.8.0+cu128-cp311-cp311-win_amd64.whl',
+      (wheel) => wheel.filename === `torch-${TORCH}+cu128-cp311-cp311-win_amd64.whl`,
     );
-    expect(torch).toMatchObject({ name: 'torch', version: '2.8.0+cu128', size: 0 });
+    expect(torch).toMatchObject({ name: 'torch', version: `${TORCH}+cu128`, size: 0 });
     expect(torch!.sha256).toMatch(/^[0-9a-f]{64}$/);
     const cudnn = wheels.find((wheel) =>
       wheel.filename.startsWith('nvidia_cudnn_cu12-9.10.2.21-py3-none-manylinux_2_27_x86_64'),
@@ -100,14 +105,14 @@ describe('locked wheel planning (#3411)', () => {
   it('plans only the large, uncached wheels uv named, one exact match each', () => {
     const output = [
       'Using CPython 3.11.16 interpreter at: C:\\runtime\\.python\\python.exe',
-      'DEBUG Identified uncached distribution: torch==2.8.0+cu128',
+      `DEBUG Identified uncached distribution: torch==${TORCH}+cu128`,
       'DEBUG Identified uncached distribution: nvidia-cudnn-cu12==9.10.2.21',
       'DEBUG Identified uncached distribution: six==1.17.0',
       'DEBUG Registry requirement already cached: nvidia-cublas-cu12==12.8.4.1',
     ].join('\n');
     const plan = planWheelPrefetch(LOCK, output, { platform: 'win32', arch: 'x64' });
     expect(plan.map((wheel) => wheel.filename)).toEqual([
-      'torch-2.8.0+cu128-cp311-cp311-win_amd64.whl',
+      `torch-${TORCH}+cu128-cp311-cp311-win_amd64.whl`,
       'nvidia_cudnn_cu12-9.10.2.21-py3-none-win_amd64.whl',
     ]);
     // Cached packages and anything uv did not name are never fetched.
@@ -128,7 +133,7 @@ describe('locked wheel planning (#3411)', () => {
   it('points only the fetched URLs at local files and keeps every hash', () => {
     const [wheel] = planWheelPrefetch(
       LOCK,
-      'Identified uncached distribution: torch==2.8.0+cu128',
+      `Identified uncached distribution: torch==${TORCH}+cu128`,
       { platform: 'win32', arch: 'x64', pythonMinor: 11 },
     );
     const local = localizeLockUrls(LOCK, new Map([[wheel!.url, 'file:///C:/rt/w/torch.whl']]));

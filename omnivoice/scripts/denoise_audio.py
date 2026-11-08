@@ -67,6 +67,7 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 import numpy as np
 import torch
 import torchaudio
+from omnivoice.utils.audio import save_audio
 import webdataset as wds
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
@@ -370,7 +371,7 @@ def serialise_flac(key: str, waveform: torch.Tensor, sample_rate: int) -> dict:
     audio = waveform.to(dtype=torch.float32).cpu()
     if audio.ndim == 1:
         audio = audio.unsqueeze(0)
-    torchaudio.save(buffer, audio, sample_rate, format="flac", bits_per_sample=16)
+    save_audio(buffer, audio, sample_rate, format="flac", bits_per_sample=16)
     return {"__key__": key, "flac": buffer.getvalue()}
 
 

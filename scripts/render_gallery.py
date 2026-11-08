@@ -94,9 +94,9 @@ async def _decode_wav(mp3_path: Path, wav_path: Path) -> None:
 
 
 def _load(path: Path):
-    import torchaudio
+    from services.audio_io import load_audio
 
-    wav, sr = torchaudio.load(str(path))
+    wav, sr = load_audio(str(path))
     return wav, int(sr)
 
 

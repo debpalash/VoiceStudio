@@ -36,7 +36,7 @@ class TestOptIn:
 
 
 def test_command_layout(setup_mod):
-    assert setup_mod.ROCM_TORCH_PINS == ("torch==2.8.0", "torchaudio==2.8.0", "torchvision==0.23.0")
+    assert setup_mod.ROCM_TORCH_PINS == ("torch==2.10.0", "torchaudio==2.10.0", "torchvision==0.25.0")
     cmd = setup_mod.rocm_torch_reinstall_cmd(setup_mod.ROCM_TORCH_INDEX, python="/opt/venv/bin/py")
     # #3158: only the torch stack is reinstalled and the ROCm index is an
     # extra one. `--index-url` + `--reinstall` forced Pillow onto PyTorch's
@@ -44,7 +44,7 @@ def test_command_layout(setup_mod):
     assert "--reinstall" not in cmd and "--index-url" not in cmd
     assert cmd[:5] == ["uv", "pip", "install", "--python", "/opt/venv/bin/py"]
     assert cmd[5:11] == [arg for n in ("torch", "torchaudio", "torchvision") for arg in ("--reinstall-package", n)]
-    assert cmd[11:14] == ["torch==2.8.0+rocm6.4", "torchaudio==2.8.0+rocm6.4", "torchvision==0.23.0+rocm6.4"]
+    assert cmd[11:14] == ["torch==2.10.0+rocm7.1", "torchaudio==2.10.0+rocm7.1", "torchvision==0.25.0+rocm7.1"]
     assert cmd[14:] == ["--extra-index-url", setup_mod.ROCM_TORCH_INDEX, "--index-strategy", "unsafe-best-match"]
     # A mirror without a rocm-style name keeps the bare pins.
     mirror = setup_mod.rocm_torch_reinstall_cmd("https://wheels.invalid/x")

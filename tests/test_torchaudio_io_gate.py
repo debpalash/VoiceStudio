@@ -48,6 +48,105 @@ def test_backend_never_calls_torchaudio_io_directly():
     )
 
 
+REPO = BACKEND.parent
+# Beyond backend code: the packaged OmniVoice CLI (omnivoice-infer and
+# omnivoice-infer-batch), its training scripts, repo scripts and both test
+# trees all run without TorchCodec too (#3884). omnivoice/utils/audio.py keeps
+# one guarded torchaudio.load with a pydub fallback.
+REPO_ROOTS = ("backend", "omnivoice", "scripts", "tests")
+REPO_ALLOWED = {"omnivoice/utils/audio.py"} | {f"backend/{rel}" for rel in ALLOWED}
+
+
+def torchaudio_io_calls(tree: ast.AST) -> list:
+    """Calls that reach torchaudio's load/save/info, however they are bound.
+
+    Covers ``torchaudio.load(...)``, an aliased module (``import torchaudio as
+    T``), a from-import (``from torchaudio import load as read``) and a
+    qualified receiver (``audio_io.torchaudio.save(...)``). Plain references,
+    such as a test spy keeping ``real_load = torchaudio.load``, are not calls
+    and stay allowed.
+    """
+    modules = {"torchaudio"}
+    functions = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "torchaudio":
+                    modules.add(alias.asname or alias.name)
+        elif isinstance(node, ast.ImportFrom) and node.module == "torchaudio":
+            for alias in node.names:
+                if alias.name in GATED:
+                    functions[alias.asname or alias.name] = alias.name
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Attribute) and func.attr in GATED:
+            receiver = func.value
+            if (isinstance(receiver, ast.Name) and receiver.id in modules) or (
+                isinstance(receiver, ast.Attribute) and receiver.attr == "torchaudio"
+            ):
+                found.append((node.lineno, func.attr))
+        elif isinstance(func, ast.Name) and func.id in functions:
+            found.append((node.lineno, functions[func.id]))
+    return found
+
+
+@pytest.mark.parametrize(
+    "source,expected",
+    [
+        ("import torchaudio\ntorchaudio.load('a.wav')", [(2, "load")]),
+        ("import torchaudio as T\nT.save('a.wav', x, 1)", [(2, "save")]),
+        ("from torchaudio import load as read\nread('a.wav')", [(2, "load")]),
+        ("from services import audio_io\naudio_io.torchaudio.info('a.wav')", [(2, "info")]),
+        ("import torchaudio\nreal_load = torchaudio.load", []),
+        ("import torchaudio\ntorchaudio.functional.resample(x, 1, 2)", []),
+    ],
+)
+def test_gate_resolves_torchaudio_bindings(source, expected):
+    assert torchaudio_io_calls(ast.parse(source)) == expected
+
+
+def test_cli_scripts_and_tests_never_call_torchaudio_io_directly():
+    offenders = []
+    for root in REPO_ROOTS:
+        for path in sorted((REPO / root).rglob("*.py")):
+            rel = path.relative_to(REPO).as_posix()
+            if rel in REPO_ALLOWED:
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            offenders += [f"{rel}:{line} torchaudio.{name}" for line, name in torchaudio_io_calls(tree)]
+    assert not offenders, (
+        "Use omnivoice.utils.audio.read_audio / save_audio (package and CLI) or "
+        "services.audio_io.load_audio / _safe_torchaudio_save (backend, scripts, "
+        f"tests), which work without TorchCodec, instead of: {offenders}"
+    )
+
+
+def test_omnivoice_save_and_read_round_trip_without_torchcodec(tmp_path, monkeypatch):
+    import torch
+    import torchaudio
+
+    def needs_torchcodec(*args, **kwargs):
+        raise ImportError("TorchCodec is required for load_with_torchcodec.")
+
+    # torchaudio >= 2.9 without TorchCodec: every load/save raises.
+    monkeypatch.setattr(torchaudio, "load", needs_torchcodec)
+    monkeypatch.setattr(torchaudio, "save", needs_torchcodec)
+    from omnivoice.utils.audio import read_audio, save_audio
+
+    wave_in = torch.linspace(-0.5, 0.5, 480).reshape(1, -1)
+    save_audio(tmp_path / "f.wav", wave_in, 24000)
+    back, rate = read_audio(str(tmp_path / "f.wav"))
+    assert rate == 24000 and back.shape == (1, 480)
+    assert torch.allclose(back, wave_in, atol=1e-6)  # 32-bit float WAV, like torchaudio
+
+    save_audio(tmp_path / "p.flac", wave_in, 24000, bits_per_sample=16)
+    back, rate = read_audio(str(tmp_path / "p.flac"))
+    assert rate == 24000 and torch.allclose(back, wave_in, atol=1e-4)
+
+
 def _write_wav(path, frames=2400, rate=24000, channels=1):
     with wave.open(str(path), "wb") as wf:
         wf.setnchannels(channels)

@@ -57,7 +57,8 @@ names only Ubuntu 22.04 and 24.04 as supported WSL distros.
 
 PyTorch comes from AMD's `repo.radeon.com` wheels rather than pytorch.org,
 for two reasons. AMD recommends them for Radeon cards, and they publish
-exactly the `torch==2.8.0` that VoiceStudio pins. The pytorch.org `rocm6.4`
+torch builds for the same line as VoiceStudio's pin (this guide was validated with
+`torch==2.8.0`, before the pin moved to 2.10.0). The pytorch.org `rocm7.1`
 index that VoiceStudio's own `OMNIVOICE_TORCH_VARIANT=rocm` switch uses
 predates ROCDXG.
 
