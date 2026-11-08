@@ -254,7 +254,12 @@ def read_bundle(source: Path, destination: Path) -> tuple[dict, dict[str, Path]]
                 if count != asset['size'] or checksum.hexdigest() != asset['sha256']:
                     raise ArchiveError(400, 'project asset checksum mismatch')
                 files[asset['path']] = target
-            (destination/'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, allow_nan=False))
+            # JSON and the zip manifest above are both UTF-8 by definition. A
+            # bare write_text() encodes in the locale code page, so importing a
+            # bundle whose title the local ANSI page cannot represent raised
+            # UnicodeEncodeError — a ValueError here — and surfaced as a bogus
+            # "invalid project archive" for an archive that validated fine.
+            (destination/'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, allow_nan=False), encoding='utf-8')
             completed = True; return manifest, files
     except (zipfile.BadZipFile, RuntimeError, EOFError, KeyError, ValueError) as exc:
         if isinstance(exc, ArchiveError): raise
