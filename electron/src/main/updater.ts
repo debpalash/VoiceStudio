@@ -69,7 +69,10 @@ export async function resolveBetaFeed(
   fetcher: typeof fetch = fetch,
 ): Promise<{ url: string; channel: string }> {
   const response = await fetcher(RELEASES_API, {
-    headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'VoiceStudio' },
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'VoiceStudio',
+    },
     signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) throw new Error(`Beta update feed lookup failed (${response.status})`);
@@ -87,7 +90,13 @@ export async function resolveBetaFeed(
       (asset) => asset && (asset as Record<string, unknown>).name === manifest,
     );
     return published
-      ? [{ tag, rank, channel: feedChannelName(platform, arch, 'direct', kind) }]
+      ? [
+          {
+            tag,
+            rank,
+            channel: feedChannelName(platform, arch, 'direct', kind),
+          },
+        ]
       : [];
   });
   candidates.sort((left, right) => {
@@ -100,7 +109,10 @@ export async function resolveBetaFeed(
   const newest = candidates[0];
   if (!newest)
     throw new Error('No beta or stable release publishes an update feed for this device');
-  return { url: `${RELEASE_DOWNLOAD}/${encodeURIComponent(newest.tag)}`, channel: newest.channel };
+  return {
+    url: `${RELEASE_DOWNLOAD}/${encodeURIComponent(newest.tag)}`,
+    channel: newest.channel,
+  };
 }
 
 const CHANNEL_FILE = 'updates.json';
@@ -161,7 +173,12 @@ export async function resolveUpdateFeedUrl(
             (asset as Record<string, unknown>).name === manifest,
         );
       return version && publishesManifest
-        ? [{ release: item, version: [Number(version[1]), Number(version[2]), Number(version[3])] }]
+        ? [
+            {
+              release: item,
+              version: [Number(version[1]), Number(version[2]), Number(version[3])],
+            },
+          ]
         : [];
     },
   );
@@ -257,16 +274,55 @@ export function releaseSize(
   return payload?.size && payload.size > 0 ? payload.size : undefined;
 }
 
+const TRANSIENT_NETWORK_CODES = [
+  'ETIMEDOUT',
+  'ECONNRESET',
+  'ENETUNREACH',
+  'EAI_AGAIN',
+  'ENOTFOUND',
+];
+/** Waits between attempts of a transient update failure (2 s, then 6 s). */
+export const UPDATE_RETRY_DELAYS_MS: readonly number[] = [2_000, 6_000];
+
+/**
+ * GitHub's release CDN answers 5xx/429 for hours at a time and home networks
+ * drop; those are worth another try. A 404, bad signature or checksum is not.
+ */
+export function isTransientUpdateError(error: unknown): boolean {
+  const seen: unknown[] = [];
+  for (let current = error; current && seen.length < 4;) {
+    seen.push(current);
+    const item = current as {
+      message?: unknown;
+      code?: unknown;
+      statusCode?: unknown;
+    };
+    const status = Number(item.statusCode);
+    if (status === 429 || (status >= 500 && status <= 599)) return true;
+    if (typeof item.code === 'string' && TRANSIENT_NETWORK_CODES.includes(item.code)) return true;
+    const message = typeof item.message === 'string' ? item.message : '';
+    if (
+      /(?:^|\s)(?:HttpError:\s*)?(?:429|5\d\d)\b|\((?:429|5\d\d)\)/.test(message) ||
+      TRANSIENT_NETWORK_CODES.some((code) => message.includes(code))
+    )
+      return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
 export class DesktopUpdater {
   private listeners = new Set<(state: UpdateState) => void>();
   private state: UpdateState;
   private checkInFlight: Promise<UpdateState> | null = null;
   private downloadInFlight: Promise<UpdateState> | null = null;
   private channel: UpdateChannel = 'stable';
+  private operating = false;
 
   constructor(
     private readonly distribution: DistributionTarget = CURRENT_DISTRIBUTION,
     private readonly feedFetcher: typeof fetch = fetch,
+    private readonly retryDelaysMs: readonly number[] = UPDATE_RETRY_DELAYS_MS,
   ) {
     const supported = this.updatesSupported();
     // Store builds are stable-only, so they expose no channel to switch. A dev
@@ -356,9 +412,11 @@ export class DesktopUpdater {
         error: undefined,
       });
     });
-    autoUpdater.on('error', (error) =>
-      this.patch({ status: 'error', error: error.message || String(error) }),
-    );
+    autoUpdater.on('error', (error) => {
+      // A running check/download reports (or retries) its own failure.
+      if (this.operating) return;
+      this.patch({ status: 'error', error: error.message || String(error) });
+    });
     if (this.distribution !== 'microsoft-store') this.configureFeed(STABLE_FEED, feedChannelName());
   }
 
@@ -380,6 +438,7 @@ export class DesktopUpdater {
       return this.snapshot();
     if (this.checkInFlight) return this.checkInFlight;
     const previousState = this.snapshot();
+    this.operating = true;
     this.patch({
       status: 'checking',
       progress: 0,
@@ -391,22 +450,24 @@ export class DesktopUpdater {
     });
     const operation = (async () => {
       try {
-        const feed =
-          this.distribution === 'microsoft-store'
-            ? {
-                url: await resolveUpdateFeedUrl(
-                  this.distribution,
-                  process.platform,
-                  process.arch,
-                  this.feedFetcher,
-                ),
-                channel: feedChannelName(process.platform, process.arch, this.distribution),
-              }
-            : this.channel === 'beta'
-              ? await resolveBetaFeed(process.platform, process.arch, this.feedFetcher)
-              : { url: STABLE_FEED, channel: feedChannelName() };
-        this.configureFeed(feed.url, feed.channel);
-        await autoUpdater.checkForUpdates();
+        await this.withRetry(this.retryDelaysMs, async () => {
+          const feed =
+            this.distribution === 'microsoft-store'
+              ? {
+                  url: await resolveUpdateFeedUrl(
+                    this.distribution,
+                    process.platform,
+                    process.arch,
+                    this.feedFetcher,
+                  ),
+                  channel: feedChannelName(process.platform, process.arch, this.distribution),
+                }
+              : this.channel === 'beta'
+                ? await resolveBetaFeed(process.platform, process.arch, this.feedFetcher)
+                : { url: STABLE_FEED, channel: feedChannelName() };
+          this.configureFeed(feed.url, feed.channel);
+          await autoUpdater.checkForUpdates();
+        });
         if (this.state.status === 'checking') {
           this.patch({ status: 'idle', lastCheckedAt: Date.now() });
         }
@@ -426,6 +487,7 @@ export class DesktopUpdater {
     try {
       return await operation;
     } finally {
+      this.operating = false;
       if (this.checkInFlight === operation) this.checkInFlight = null;
     }
   }
@@ -434,6 +496,7 @@ export class DesktopUpdater {
     if (!this.updatesSupported() || this.checkInFlight || this.state.status !== 'available')
       return this.snapshot();
     if (this.downloadInFlight) return this.downloadInFlight;
+    this.operating = true;
     const operation = (async () => {
       this.patch({
         status: 'downloading',
@@ -444,7 +507,7 @@ export class DesktopUpdater {
         error: undefined,
       });
       try {
-        await autoUpdater.downloadUpdate();
+        await this.withRetry(this.retryDelaysMs.slice(0, 1), () => autoUpdater.downloadUpdate());
       } catch (error) {
         this.patch({
           status: 'error',
@@ -457,7 +520,20 @@ export class DesktopUpdater {
     try {
       return await operation;
     } finally {
+      this.operating = false;
       if (this.downloadInFlight === operation) this.downloadInFlight = null;
+    }
+  }
+
+  /** Runs `operation`, retrying transient failures after each delay in turn. */
+  private async withRetry<T>(delays: readonly number[], operation: () => Promise<T>): Promise<T> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await operation();
+      } catch (error) {
+        if (attempt >= delays.length || !isTransientUpdateError(error)) throw error;
+        await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+      }
     }
   }
 

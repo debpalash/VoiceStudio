@@ -57,7 +57,9 @@ vi.mock('electron', () => ({
   ipcMain: mocks.ipcMain,
 }));
 
-vi.mock('electron-updater', () => ({ default: { autoUpdater: mocks.autoUpdater } }));
+vi.mock('electron-updater', () => ({
+  default: { autoUpdater: mocks.autoUpdater },
+}));
 
 vi.mock('node:fs', () => ({ ...mocks.fs, default: mocks.fs }));
 
@@ -65,6 +67,7 @@ vi.mock('./trusted-renderer', () => ({ isTrustedRenderer: mocks.trusted }));
 
 import {
   DesktopUpdater,
+  isTransientUpdateError,
   feedManifestName,
   listDesktopReleases,
   readSavedUpdateChannel,
@@ -184,7 +187,7 @@ describe('DesktopUpdater', () => {
 
   test('preserves an available update when quiet Store feed discovery fails', async () => {
     const feedFetcher = vi.fn(async () => new Response('unavailable', { status: 503 }));
-    const updater = new DesktopUpdater('microsoft-store', feedFetcher);
+    const updater = new DesktopUpdater('microsoft-store', feedFetcher, []);
     emit('update-available', { version: '0.5.7', releaseNotes: 'Ready' });
 
     await updater.check(true);
@@ -252,7 +255,11 @@ describe('DesktopUpdater', () => {
             { tag_name: 'v0.5.9-beta.2', assets: [{ name: beta }] },
             { tag_name: 'v0.5.9-beta.10', assets: [{ name: beta }] },
             { tag_name: 'v0.5.8', assets: [{ name: stable }] },
-            { tag_name: 'v0.5.10-beta.1', draft: true, assets: [{ name: beta }] },
+            {
+              tag_name: 'v0.5.10-beta.1',
+              draft: true,
+              assets: [{ name: beta }],
+            },
             { tag_name: 'v0.5.9-beta.11', assets: [{ name: 'unrelated.txt' }] },
             { tag_name: 'nightly', assets: [{ name: beta }] },
           ]),
@@ -318,7 +325,10 @@ describe('DesktopUpdater', () => {
     const updater = new DesktopUpdater();
     emit('update-available', { version: '0.5.3', releaseNotes: 'Old' });
 
-    expect(updater.setChannel('beta')).toMatchObject({ status: 'idle', channel: 'beta' });
+    expect(updater.setChannel('beta')).toMatchObject({
+      status: 'idle',
+      channel: 'beta',
+    });
     expect(updater.snapshot().availableVersion).toBeUndefined();
     expect(JSON.parse(mocks.disk.file!)).toEqual({ channel: 'beta' });
     expect(readSavedUpdateChannel()).toBe('beta');
@@ -363,6 +373,92 @@ describe('DesktopUpdater', () => {
     expect(updater.snapshot().error).toBeUndefined();
   });
 
+  test('classifies transient update failures', () => {
+    for (const message of [
+      '504 Gateway Timeout',
+      'HttpError: 503',
+      'Beta update feed lookup failed (502)',
+      'getaddrinfo EAI_AGAIN github.com',
+      'read ECONNRESET',
+    ])
+      expect(isTransientUpdateError(new Error(message)), message).toBe(true);
+    expect(
+      isTransientUpdateError(new TypeError('fetch failed', { cause: { code: 'ETIMEDOUT' } })),
+    ).toBe(true);
+    expect(isTransientUpdateError({ statusCode: 429 })).toBe(true);
+    for (const message of [
+      '404 Not Found',
+      'sha512 checksum mismatch',
+      'New version 0.5.9 is not signed',
+    ])
+      expect(isTransientUpdateError(new Error(message)), message).toBe(false);
+  });
+
+  test('retries a transient check failure while staying in checking', async () => {
+    const updater = new DesktopUpdater('direct', fetch, [0, 0]);
+    const observed: string[] = [];
+    updater.subscribe((state) => observed.push(state.status));
+    mocks.autoUpdater.checkForUpdates
+      .mockRejectedValueOnce(new Error('504 Gateway Timeout'))
+      .mockRejectedValueOnce(new Error('getaddrinfo ENOTFOUND github.com'));
+    expect(await updater.check()).toMatchObject({ status: 'idle' });
+    expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(3);
+    expect(observed).not.toContain('error');
+  });
+
+  test('gives up after three attempts and reports the last error', async () => {
+    const updater = new DesktopUpdater('direct', fetch, [0, 0]);
+    mocks.autoUpdater.checkForUpdates.mockRejectedValue(new Error('503 Service Unavailable'));
+    expect(await updater.check()).toMatchObject({
+      status: 'error',
+      error: '503 Service Unavailable',
+    });
+    expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(3);
+  });
+
+  test('a failing autoUpdater error event does not end a retrying check', async () => {
+    const updater = new DesktopUpdater('direct', fetch, [0]);
+    mocks.autoUpdater.checkForUpdates
+      .mockImplementationOnce(async () => {
+        emit('error', new Error('504 Gateway Timeout'));
+        throw new Error('504 Gateway Timeout');
+      })
+      .mockResolvedValueOnce(undefined);
+    expect((await updater.check()).status).toBe('idle');
+  });
+
+  test('does not retry permanent failures', async () => {
+    const updater = new DesktopUpdater('direct', fetch, [0, 0]);
+    mocks.autoUpdater.checkForUpdates.mockRejectedValue(new Error('404 Not Found'));
+    expect((await updater.check()).status).toBe('error');
+    expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledOnce();
+  });
+
+  test('retries the Beta releases lookup', async () => {
+    const beta = feedManifestName(process.platform, process.arch, 'direct', 'beta');
+    const feedFetcher = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('bad gateway', { status: 502 }))
+      .mockResolvedValue(
+        new Response(JSON.stringify([{ tag_name: 'v0.5.9-beta.1', assets: [{ name: beta }] }]), {
+          status: 200,
+        }),
+      );
+    mocks.disk.file = '{"channel":"beta"}';
+    const updater = new DesktopUpdater('direct', feedFetcher, [0]);
+    expect((await updater.check()).status).toBe('idle');
+    expect(feedFetcher).toHaveBeenCalledTimes(2);
+    expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledOnce();
+  });
+
+  test('retries a download once on a transient error', async () => {
+    const updater = new DesktopUpdater('direct', fetch, [0, 0]);
+    emit('update-available', { version: '0.5.3' });
+    mocks.autoUpdater.downloadUpdate.mockRejectedValue(new Error('504 Gateway Timeout'));
+    expect((await updater.download()).status).toBe('error');
+    expect(mocks.autoUpdater.downloadUpdate).toHaveBeenCalledTimes(2);
+  });
+
   test('downloads and installs only after the matching lifecycle gates', async () => {
     const updater = new DesktopUpdater();
     await updater.download();
@@ -396,7 +492,10 @@ describe('DesktopUpdater', () => {
     mocks.app.isPackaged = false;
     mocks.disk.file = '{"channel":"beta"}';
     const updater = new DesktopUpdater();
-    expect(updater.snapshot()).toMatchObject({ status: 'unsupported', channel: 'beta' });
+    expect(updater.snapshot()).toMatchObject({
+      status: 'unsupported',
+      channel: 'beta',
+    });
     expect(updater.setChannel('stable')).toMatchObject({
       status: 'unsupported',
       channel: 'stable',
@@ -522,7 +621,9 @@ describe('update feed selection', () => {
   test('rejects Store feed discovery when no release contains its manifest', async () => {
     const fetcher = vi.fn(
       async () =>
-        new Response(JSON.stringify([{ tag_name: 'v0.5.8', assets: [] }]), { status: 200 }),
+        new Response(JSON.stringify([{ tag_name: 'v0.5.8', assets: [] }]), {
+          status: 200,
+        }),
     );
     await expect(resolveUpdateFeedUrl('microsoft-store', 'win32', 'x64', fetcher)).rejects.toThrow(
       'No Microsoft Store update feed publishes',
@@ -565,10 +666,15 @@ describe('update IPC', () => {
     ).toThrow('Untrusted update request');
 
     const setChannel = mocks.ipcHandlers.get(UPDATE_CHANNELS.setChannel)!;
-    const trustedEvent = { sender: webContents, senderFrame: webContents.mainFrame };
+    const trustedEvent = {
+      sender: webContents,
+      senderFrame: webContents.mainFrame,
+    };
     expect(() => setChannel(trustedEvent, 'nightly')).toThrow('Unknown update channel');
     // A downloaded update pins the channel until it is installed.
-    expect(setChannel(trustedEvent, 'beta')).toMatchObject({ channel: 'stable' });
+    expect(setChannel(trustedEvent, 'beta')).toMatchObject({
+      channel: 'stable',
+    });
     expect(() =>
       setChannel({ sender: {}, senderFrame: { url: 'https://attacker.invalid' } }, 'beta'),
     ).toThrow('Untrusted update request');
@@ -590,15 +696,21 @@ describe('offered update size', () => {
 
   test('counts only the installer this platform downloads, not every file in the feed', () => {
     expect(releaseSize({ files, path: files[0].url }, 'darwin')).toBe(280);
-    expect(releaseSize({ files: linux, path: linux[0].url }, 'linux', '/opt/VoiceStudio.AppImage')).toBe(268);
+    expect(
+      releaseSize({ files: linux, path: linux[0].url }, 'linux', '/opt/VoiceStudio.AppImage'),
+    ).toBe(268);
     expect(releaseSize({ files: linux, path: linux[0].url }, 'linux', undefined)).toBe(213);
     const win = [{ url: 'VoiceStudio-0.5.8-win-x64.exe', sha512: 'a', size: 222 }];
     expect(releaseSize({ files: win, path: win[0].url }, 'win32')).toBe(222);
   });
 
   test('falls back to the feed path, then the first file, and never reports zero', () => {
-    expect(releaseSize({ files: [{ url: 'x.bin', sha512: 'a', size: 5 }], path: 'x.bin' }, 'win32')).toBe(5);
+    expect(
+      releaseSize({ files: [{ url: 'x.bin', sha512: 'a', size: 5 }], path: 'x.bin' }, 'win32'),
+    ).toBe(5);
     expect(releaseSize({ files: [], path: '' }, 'darwin')).toBeUndefined();
-    expect(releaseSize({ files: [{ url: 'a.zip', sha512: 'a', size: 0 }], path: 'a.zip' }, 'darwin')).toBeUndefined();
+    expect(
+      releaseSize({ files: [{ url: 'a.zip', sha512: 'a', size: 0 }], path: 'a.zip' }, 'darwin'),
+    ).toBeUndefined();
   });
 });
