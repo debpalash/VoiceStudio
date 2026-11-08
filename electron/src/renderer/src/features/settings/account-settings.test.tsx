@@ -238,3 +238,29 @@ it('shows no Refresh button when signed out', async () => {
   await screen.findByText('account.sign_in');
   expect(screen.queryByRole('button', { name: 'account.refresh' })).toBeNull();
 });
+
+it('with a profile, the account card is the one place for the identity and Sign out', async () => {
+  setup({
+    signedIn: true,
+    profile: { email: 'ana@example.com', displayName: null, avatarUrl: null, organizations: [] },
+  });
+  expect(await screen.findByText('ana@example.com')).toBeInTheDocument();
+  expect(screen.getAllByText('ana@example.com')).toHaveLength(1);
+  expect(screen.getAllByText('account.sign_out')).toHaveLength(1);
+  expect(screen.queryByText(/account\.signed_in_as/)).toBeNull();
+});
+
+it('signed in before the profile loads, Sign out stays reachable in the session row', async () => {
+  const { account } = setup({ signedIn: true, profile: null });
+  expect(await screen.findByText(/account\.signed_in_as/)).toBeInTheDocument();
+  fireEvent.click(screen.getByText('account.sign_out'));
+  expect(account.signOut).toHaveBeenCalled();
+});
+
+it('notices render as padded callouts outside the settings panel', async () => {
+  setup({ notice: 'session_expired', remembered: false });
+  const notice = await screen.findByRole('status');
+  expect(notice.closest('section')).toBeNull();
+  expect(notice.className).toMatch(/px-4/);
+  expect(screen.getByText('account.not_remembered').closest('section')).toBeNull();
+});
