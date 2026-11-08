@@ -3221,6 +3221,15 @@ class MLXAudioBackend(TTSBackend):
                         kwargs["lang_code"] = mapped_language
                 elif code is not None:
                     kwargs["lang_code"] = code
+        elif (
+            self._model_id == self.CURATED_MODELS.get("kokoro")
+            and voice in self.PRESET_VOICES
+        ):
+            # No language given (auto/blank): Kokoro would fall back to its
+            # own default lang_code "a" (American English), so a Portuguese
+            # preset such as pf_dora would still be read with the English
+            # pipeline (#3802). A voice id's first letter is its lang_code.
+            kwargs["lang_code"] = voice[0]
 
         # mlx samples from its own RNG, which torch.manual_seed never touches,
         # so a new seed would otherwise give the same take (#3413).

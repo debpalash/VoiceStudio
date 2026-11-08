@@ -74,3 +74,22 @@ def test_kokoro_explicit_preset_voice_wins_over_the_default(monkeypatch):
     backend, captured = _kokoro_backend(monkeypatch, "p")
     backend.generate("hello", language="Portuguese", voice="pm_alex")
     assert captured["voice"] == "pm_alex"
+
+
+def test_kokoro_preset_voice_sets_pipeline_when_language_is_auto(monkeypatch):
+    backend, captured = _kokoro_backend(monkeypatch, "p")
+    backend.generate("Olá, tudo bem?", language="auto", voice="pf_dora")
+    assert captured["lang_code"] == "p"
+    assert captured["voice"] == "pf_dora"
+
+
+def test_kokoro_preset_voice_sets_pipeline_when_language_missing(monkeypatch):
+    backend, captured = _kokoro_backend(monkeypatch, "p")
+    backend.generate("Olá, tudo bem?", voice="pf_dora")
+    assert captured["lang_code"] == "p"
+
+
+def test_kokoro_unknown_voice_does_not_set_pipeline(monkeypatch):
+    backend, captured = _kokoro_backend(monkeypatch, "p")
+    backend.generate("hello", language="auto", voice="xx_unknown")
+    assert "lang_code" not in captured
