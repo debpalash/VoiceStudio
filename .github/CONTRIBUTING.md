@@ -134,6 +134,8 @@ bun run clean:all        # equivalent command
 make clean:all DRY_RUN=1 # Make preview; omit DRY_RUN=1 to delete
 ```
 
+Plain `make` still starts the release flow; cleanup must be selected explicitly.
+
 The script needs Git and Node, but no installed project dependencies. It removes
 project `node_modules`, Python virtual environments (including custom names
 identified by `pyvenv.cfg`), tool caches, Electron/native/mobile build outputs,

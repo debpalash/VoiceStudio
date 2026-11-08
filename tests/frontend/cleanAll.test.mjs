@@ -1,10 +1,26 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { appDataPaths, cleanAll, planCleanup } from '../../scripts/clean-all.mjs';
+
+test('plain make preserves the release default and never selects cleanup', (t) => {
+  const ctx = fixture(t);
+  const makefile = fileURLToPath(new URL('../../Makefile', import.meta.url));
+  const result = spawnSync('make', ['--dry-run', '--file', makefile], {
+    cwd: ctx.root, encoding: 'utf8', env: { ...process.env, MAKEFLAGS: '' },
+  });
+  if (result.error?.code === 'ENOENT') {
+    t.skip('Make is optional; Windows users can run the Bun cleanup command directly.');
+    return;
+  }
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /uv run python scripts\/release\.py/);
+  assert.doesNotMatch(result.stdout, /clean-all\.mjs/);
+});
 
 function fixture(t) {
   const base = mkdtempSync(join(tmpdir(), 'voicestudio-clean-test-'));

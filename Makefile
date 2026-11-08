@@ -1,5 +1,6 @@
 # Maintainer shortcuts; product development uses bun/uv directly.
 
+.DEFAULT_GOAL := release
 .PHONY: release release-dry release-publish virustotal
 
 PYTHON ?= python3
