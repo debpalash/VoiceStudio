@@ -138,3 +138,14 @@ it('shows a quiet note when the report cannot be read', async () => {
     await screen.findByText('Could not read GPU details from the backend.'),
   ).toBeInTheDocument();
 });
+
+it('shows an unknown engine without claiming its GPU use', async () => {
+  mock.api.mockResolvedValue({ ...amdWindows, engines: [{
+    id: 'sidecar', name: 'Sidecar', kind: 'tts', available: true,
+    code: 'unknown', params: {}, reason: null,
+  }] });
+  renderIt();
+  expect(await screen.findByText('Sidecar')).toBeTruthy();
+  expect(screen.getByText('unknown')).toBeTruthy();
+  expect(screen.queryByText(/0 of 1 engines use the GPU/i)).toBeNull();
+});

@@ -170,6 +170,12 @@ class SidecarSpec:
     # fails loudly at install time. False keeps the engine's existing host
     # behaviour (see _rocm_pin_args, #2371).
     uses_rocm_index: bool = False
+    # The exact torch (and torchaudio) version an upstream pins itself, for an
+    # engine without ``torch_pins``. On a ROCm host it selects the matching
+    # build from PyTorch's ROCm index (core.torch_indexes
+    # ROCM_INDEX_TAIL_FOR_TORCH), so the sidecar can drive an AMD GPU while
+    # keeping the version upstream tested.
+    upstream_torch: str = ""
     # torch/torchaudio pins for an upstream that leaves torch unpinned. Left
     # to the resolver, PyPI's newest torch (CPU-only on Windows) pairs with a
     # CUDA torchaudio from the other index. The host picks the build of the
@@ -304,36 +310,57 @@ def _rocm_index_url() -> Optional[str]:
 
 
 def _rocm_pin_args() -> list[str]:
-    """ROCm torch for a sidecar venv on a ROCm host (#2371).
+    """ROCm Torch for the shared sidecar stack, honoring custom indexes."""
+    from core.torch_indexes import ROCM_TORCH_PINS
+    from services.rocm_sidecar_index import rocm_torch_args
 
-    ``--no-sources`` is required for an upstream that routes torch through its
-    own ``[tool.uv.sources]`` (IndexTTS pins it to the cu128 index): without it
-    every ``+rocm`` pin is looked up on the cu128 index and fails. The local
-    tag comes from the index name (``…/rocm6.4`` → ``+rocm6.4``) so a custom
-    ``OMNIVOICE_TORCH_INDEX`` keeps resolving; a mirror without a rocm-style
-    name falls back to the bare pin and lets the extra index win by PEP 440
-    ordering (a tagged build sorts above the bare version).
+    versions = [pin.split("==", 1)[1] for pin in ROCM_TORCH_PINS]
+    return rocm_torch_args(_rocm_index_url(), *versions,
+                           custom=bool(os.environ.get("OMNIVOICE_TORCH_INDEX")))
+
+
+def _spec_torch_versions(spec: "SidecarSpec") -> tuple[str, str] | None:
+    """The exact (torch, torchaudio) versions this engine installs, if known.
+
+    From the spec's own pins, its declared upstream pin, or (dots.tts) the
+    ``torch==`` line of the upstream constraints file in the checkout.
     """
-    from core.torch_indexes import (
-        PYTORCH_ROCM_INDEX_URL,
-        ROCM_TORCH_PINS,
-        UV_PIP_ROCM_ARGS,
+    pins = dict(
+        pin.split("==", 1) for pin in spec.torch_pins
+        if pin.startswith(("torch==", "torchaudio=="))
     )
+    if "torch" in pins:
+        return pins["torch"], pins.get("torchaudio", pins["torch"])
+    if spec.upstream_torch:
+        return spec.upstream_torch, spec.upstream_torch
+    if spec.engine_id == "dots-tts":
+        constraints = managed_checkout(spec) / "constraints" / "recommended.txt"
+        try:
+            text = constraints.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            return None
+        found = dict(re.findall(
+            r"(?m)^(torch|torchaudio)\s*==\s*([0-9][0-9.]*)\s*(?:#.*)?$", text,
+        ))
+        if "torch" in found:
+            return found["torch"], found.get("torchaudio", found["torch"])
+    return None
 
-    index = _rocm_index_url() or ""
-    tail = index.rstrip("/").rsplit("/", 1)[-1]
-    tag = f"+{tail}" if tail.startswith("rocm") else ""
-    # uv must resolve against the SAME index the pins were derived from:
-    # the tag above already comes from OMNIVOICE_TORCH_INDEX, so appending
-    # the hard-coded public index would look a mirror's pins up on someone
-    # else's server (and bypass the mirror entirely).
-    idx_args = [
-        (index or PYTORCH_ROCM_INDEX_URL)
-        if arg == PYTORCH_ROCM_INDEX_URL
-        else arg
-        for arg in UV_PIP_ROCM_ARGS
-    ]
-    return ["--no-sources", *(f"{pin}{tag}" for pin in ROCM_TORCH_PINS), *idx_args]
+
+def _spec_rocm_torch_args(spec: "SidecarSpec") -> Optional[list[str]]:
+    """Resolve ROCm pins without rewriting a user-selected mirror."""
+    index = _rocm_index_url()
+    if index is None:
+        return None
+    if spec.uses_rocm_index:
+        return _rocm_pin_args()
+    versions = _spec_torch_versions(spec)
+    if versions is None:
+        return None
+    from services.rocm_sidecar_index import rocm_torch_args
+
+    return rocm_torch_args(index, *versions,
+                           custom=bool(os.environ.get("OMNIVOICE_TORCH_INDEX")))
 
 
 def venv_torch_hip(venv_dir: Path) -> Optional[bool]:
@@ -513,8 +540,10 @@ SPECS: dict[str, SidecarSpec] = {
         venv_args=("--python", "3.10"),
         install_args=("-r", "{checkout}/requirements.txt"),
         # torch==2.7.0: CPU-only from PyPI on Windows; the CUDA index supplies
-        # 2.7.0+cu128, which satisfies the same pin.
+        # 2.7.0+cu128, which satisfies the same pin. A ROCm host takes
+        # 2.7.0+rocm6.3 instead (upstream_torch).
         uses_cuda_index=True,
+        upstream_torch="2.7.0",
         docs_path="docs/engines/confucius4-tts.md",
         # ~7 GB venv now, ~5 GB of weights on first synthesis.
         required_bytes=14 * _GIB,
@@ -647,6 +676,8 @@ SPECS: dict[str, SidecarSpec] = {
         install_args=("-e", "{checkout}", "soundfile"),
         install_revision="audio-backend-v1",
         uses_cuda_index=True,
+        # Upstream pins torch/torchaudio==2.7.0; a ROCm host takes +rocm6.3.
+        upstream_torch="2.7.0",
         # torch 2.7 (CUDA build on NVIDIA hosts) + transformers + onnxruntime.
         # The model and its audio tokenizer download on first synthesis.
         required_bytes=8 * _GIB,
@@ -705,7 +736,7 @@ SPECS: dict[str, SidecarSpec] = {
         ),
         venv_args=("--python", "3.10"),
         install_args=("-r", _COSYVOICE_REQUIREMENTS, "{checkout}/third_party/PyWorld"),
-        install_revision="security-floors-v4",
+        install_revision="rocm-routing-v5",
         torch_pins=("torch==2.7.0", "torchaudio==2.7.0"),
         weights_repo_id="FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
         weights_revision="29e01c4e8d000f4bcd70751be16fa94bf3d85a18",
@@ -782,7 +813,10 @@ def managed_root(spec: SidecarSpec) -> Path:
 
 
 def managed_checkout(spec: SidecarSpec) -> Path:
-    return managed_root(spec) / spec.checkout_dirname
+    from services.sidecar_generations import selected_generation
+
+    root = managed_root(spec)
+    return selected_generation(spec, root, os.environ.get(spec.env_var)) or root / spec.checkout_dirname
 
 
 def engine_venv_python(env_var: str) -> Optional[Path]:
@@ -995,6 +1029,14 @@ def disk_space_error(spec: SidecarSpec) -> Optional[str]:
     # marker makes _step_fetch_source delete the whole checkout.
     preserved, dependency_peak_credit = _preserved_install_bytes(spec, checkout)
     remaining = max(0, spec.required_bytes - preserved)
+    rocm_args = _spec_rocm_torch_args(spec)
+    if (rocm_args is not None or
+            (spec.engine_id == "dots-tts" and _rocm_index_url() is not None)):
+        from services.rocm_sidecar_index import rocm_minimum_install_bytes
+
+        torch_pin = next((arg for arg in rocm_args or () if arg.startswith("torch==")), None)
+        version = torch_pin.split("==", 1)[1].split("+", 1)[0] if torch_pin else None
+        remaining = max(remaining, rocm_minimum_install_bytes(spec.required_bytes, preserved, version))
     if spec.temporary_free_bytes is not None:
         # Resumable model weights are unrelated to uv's dependency-build peak.
         remaining = max(
@@ -1168,12 +1210,14 @@ def get_status(engine_id: str) -> dict:
         raise KeyError(engine_id)
     with _jobs_lock:
         job = _serialize_job(_jobs.get(engine_id))
-    installed = _healthy(spec)
+    installed = _healthy(spec, check_rocm=False)
+    repair_available = installed and not _healthy(spec)
     checkout = managed_checkout(spec)
     env_dir = os.environ.get(spec.env_var)
     return {
         "engine_id": engine_id,
         "installed": installed,
+        "repair_available": repair_available,
         # True when the on-disk install is the app-managed one (uninstallable
         # from the app). A user's own clone is never "managed".
         "managed": bool(
@@ -1202,7 +1246,7 @@ def _user_managed_dir(spec: SidecarSpec) -> Optional[Path]:
     return None
 
 
-def _healthy(spec: SidecarSpec) -> bool:
+def _healthy(spec: SidecarSpec, *, check_rocm: bool = True) -> bool:
     """A COMPLETE install: for a user-managed dir, trust the engine's own
     probe (their clone, their layout); for the app-managed install require
     the venv AND the fully-downloaded weights, so a partial install repairs
@@ -1238,9 +1282,13 @@ def _healthy(spec: SidecarSpec) -> bool:
         # where it applies (the deps step is idempotent: venv and weights
         # stay, torch is swapped). User-managed clones keep their own
         # layout; every other host keeps "installed means installed".
-        if spec.uses_rocm_index and _rocm_index_url() is not None:
+        if check_rocm and _spec_rocm_torch_args(spec) is not None:
             return _venv_torch_is_rocm(checkout / ".venv")
         return True
+    # Same repair for marker-based engines that now take a ROCm torch on this
+    # host: a venv provisioned before still carries the CUDA/CPU wheel.
+    if check_rocm and _spec_rocm_torch_args(spec) is not None and not _venv_torch_is_rocm(checkout / ".venv"):
+        return False
     return _install_marker_valid(spec, checkout)
 
 
@@ -1250,9 +1298,13 @@ def _install_marker_valid(spec: SidecarSpec, checkout: Path) -> bool:
     if not spec.install_revision:
         return marker.is_file()
     try:
-        return marker.read_text(encoding="utf-8").splitlines() == [
-            spec.probe_module, spec.install_revision,
-        ]
+        lines = marker.read_text(encoding="utf-8").splitlines()
+        accepted = {spec.install_revision}
+        # v5 changes only requirements comments and external Torch selection.
+        # Keep working v4 installs; _healthy separately enforces HIP on AMD.
+        if spec.engine_id == "cosyvoice" and spec.install_revision == "rocm-routing-v5":
+            accepted.add("security-floors-v4")
+        return len(lines) == 2 and lines[0] == spec.probe_module and lines[1] in accepted
     except (OSError, UnicodeError):
         return False
 
@@ -1262,13 +1314,15 @@ def _persist(spec: SidecarSpec) -> None:
     use, prefs.json ``env.*`` for the next launch, and invalidate the
     engine's memoised venv resolution so it re-probes without a restart."""
     checkout = managed_checkout(spec)
-    os.environ[spec.env_var] = str(checkout)
     from core import prefs
     prefs.set_(f"env.{spec.env_var}", str(checkout))
+    os.environ[spec.env_var] = str(checkout)
     try:
         spec.invalidate()
     except Exception:
         pass  # best-effort cache invalidation — the env var is already set
+    from services.sidecar_revisions import advance
+    advance(spec.engine_id)
 
 
 def start_install(engine_id: str) -> dict:
@@ -1300,6 +1354,8 @@ def start_install(engine_id: str) -> dict:
                 _persist(spec)
             return {"status": "already_installed", "engine": engine_id}
         job = _new_job(engine_id)
+        job["_expected_env"] = os.environ.get(spec.env_var)
+        job["_preserve_existing"] = _healthy(spec, check_rocm=False)
         _jobs[engine_id] = job
     th = threading.Thread(
         target=_run_install, args=(spec, job),
@@ -1356,6 +1412,10 @@ def uninstall(engine_id: str) -> dict:
 
 
 def _run_install(spec: SidecarSpec, job: dict) -> None:
+    stage = None
+    promotion_started = False
+    original_checkout = None
+    expected_env = job.get("_expected_env", os.environ.get(spec.env_var))
     step_fns: list[tuple[str, Callable[[SidecarSpec, dict], None]]] = [
         ("preflight", _step_preflight),
         ("fetch_source", _step_fetch_source),
@@ -1366,10 +1426,42 @@ def _run_install(spec: SidecarSpec, job: dict) -> None:
         ("persist", _step_persist),
     ]
     try:
+        try:
+            if _user_managed_dir(spec) is not None:
+                raise _StepError("The engine now points to a user-managed install.",
+                                 "Repair that installation manually or restore the managed path.")
+            if job.get("_preserve_existing") or (_healthy(spec, check_rocm=False) and _spec_rocm_torch_args(spec) is not None):
+                from core import prefs
+                from services.sidecar_generations import new_generation
+                if prefs.is_env_shadowed(spec.env_var):
+                    raise _StepError("The engine path is pinned by an external environment variable.",
+                                     "Remove that external setting and restart before repairing the managed engine.")
+                original_checkout = managed_checkout(spec)
+                stage = new_generation(spec, managed_root(spec))
+                spec = stage
+        except _StepError:
+            raise
+        except Exception as exc:
+            raise _StepError(f"Could not create a separate repair: {_redact(exc)}",
+                             "Free space or check the engine directory permissions, then retry.") from exc
         for step_id, fn in step_fns:
             step = _job_step(job, step_id)
             step["state"] = "running"
             try:
+                if step_id == "fetch_source" and stage is not None:
+                    from services.sidecar_generations import copy_preserved_checkout
+                    if os.environ.get(spec.env_var) != expected_env:
+                        raise _StepError("The selected engine path changed during repair.",
+                                         "The newer selection was kept; retry only if needed.")
+                    copy_preserved_checkout(original_checkout, managed_checkout(spec), managed_root(spec))
+                if step_id == "persist" and stage is not None and os.environ.get(spec.env_var) != expected_env:
+                    raise _StepError("The selected engine path changed during repair.",
+                                     "The newer selection was kept; retry only if needed.")
+                if step_id == "persist" and stage is not None and not _venv_torch_is_rocm(managed_checkout(spec) / ".venv"):
+                    raise _StepError("The replacement does not contain ROCm Torch.",
+                                     "Check the selected package index and retry; the existing engine remains available.")
+                if step_id == "persist" and stage is not None:
+                    promotion_started = True
                 fn(spec, job)
             except _StepError:
                 step["state"] = "error"
@@ -1393,6 +1485,13 @@ def _run_install(spec: SidecarSpec, job: dict) -> None:
         job["remediation"] = exc.remediation
         _log(job, f"FAILED: {exc}")
     finally:
+        if stage is not None and job["state"] == "failed" and not promotion_started:
+            from services.sidecar_generations import cleanup_failed_generation
+            if os.environ.get(stage.env_var) != str(managed_checkout(stage)):
+                try:
+                    cleanup_failed_generation(stage, managed_root(stage))
+                except OSError:
+                    _log(job, "Could not remove the failed repair generation.")
         job["finished_at"] = time.time()
 
 
@@ -1710,8 +1809,9 @@ def _step_install_deps(spec: SidecarSpec, job: dict) -> None:
         from engines.dots_tts.install import compatible_constraints
         constraint = compatible_constraints(checkout / "constraints" / "recommended.txt")
         target[target.index("-c") + 1] = constraint.resolve().as_uri()
-    if _rocm_index_url() and spec.uses_rocm_index:
-        target += _rocm_pin_args()
+    rocm_args = _spec_rocm_torch_args(spec)
+    if rocm_args is not None:
+        target += rocm_args
     elif spec.torch_pins:
         target += _torch_pin_args(spec)
     elif spec.cpu_torch_index:

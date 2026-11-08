@@ -54,6 +54,7 @@ export function RecommendedBadge() {
 }
 
 export function DeviceChip({ device, title }: { device?: string | null; title?: string | null }) {
+  const { t } = useTranslation();
   if (!device) return null;
   return (
     <span
@@ -61,7 +62,7 @@ export function DeviceChip({ device, title }: { device?: string | null; title?: 
       className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-md border border-border/60 bg-muted/35 px-2 text-[11px] font-medium tracking-wide text-muted-foreground"
     >
       <ComputeVendorIcon runtime={device} className="size-3.5 shrink-0" />
-      {formatComputeRuntime(device)}
+      {device === "unknown" ? t("common.unknown") : formatComputeRuntime(device)}
     </span>
   );
 }

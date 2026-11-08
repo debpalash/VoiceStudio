@@ -290,7 +290,7 @@ def test_managed_install_probes_late_imports_and_restores_dependencies():
     assert 'cosyvoice.dataset.processor' in spec.probe_code
     assert 'matcha.utils' in spec.probe_code
     assert '{checkout}/third_party/PyWorld' in spec.install_args
-    assert spec.install_revision == 'security-floors-v4'
+    assert spec.install_revision == 'rocm-routing-v5'
     sources = {source.path: source for source in spec.extra_sources}
     assert sources['third_party/PyWorld'].revision == 'f31ad88d543fdaebbda2d0c9a5e4d4f991ae0b6c'
     assert sources['third_party/PyWorld/lib/World'].revision == 'd625e7608ca23a870018f01e7c562ac683d9847f'
@@ -371,6 +371,7 @@ def test_load_preserves_legacy_non_qwen_checkout(monkeypatch, tmp_path):
 # completion marker and never receive the change.
 _REQUIREMENTS_BY_REVISION = {
     "security-floors-v3": "10d15c52b78ae41cfd040880f97a3b9b71c2fa2dab9893bceb982fc46b72d9dd",
+    "rocm-routing-v5": "eb92a6a6dc01fc02e46c72654f91c33169d77824c8e88d468a6003d09b6bfc80",
     "security-floors-v4": "607deac39c6ee97e595d05426af10e87070b4b52a3df2ad809d71e20d5058658",
 }
 

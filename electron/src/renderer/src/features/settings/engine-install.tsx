@@ -7,7 +7,7 @@ import { apiJson, describeError } from '@/lib/api/client';
 import { queryKeys } from '@/lib/query';
 import { SettingsActionError } from './settings-action-error';
 
-export function EngineInstall({ id }: { id: string }) {
+export function EngineInstall({ id, repairOnly = false }: { id: string; repairOnly?: boolean }) {
   const { t } = useTranslation();
   const client = useQueryClient();
   const [starting, setStarting] = useState(false);
@@ -18,6 +18,7 @@ export function EngineInstall({ id }: { id: string }) {
     queryFn: () =>
       apiJson<{
         installed: boolean;
+        repair_available?: boolean;
         install_allowed?: boolean;
         job: null | {
           state: string;
@@ -26,12 +27,21 @@ export function EngineInstall({ id }: { id: string }) {
           remediation?: string | null;
         };
       }>(`/engines/sidecar/${encodeURIComponent(id)}/install/status`),
-    refetchInterval: (query) => (query.state.data?.job?.state === 'running' ? 1500 : 10_000),
+    refetchInterval: (query) =>
+      query.state.data?.job?.state === 'running' ? 1500 : repairOnly ? false : 10_000,
   });
   useEffect(() => {
     if (status.data?.installed) void client.invalidateQueries({ queryKey: queryKeys.engines });
-  }, [status.data?.installed, client]);
+  }, [status.data?.installed, status.data?.job?.state, client]);
   const running = starting || status.data?.job?.state === 'running';
+  if (
+    repairOnly &&
+    !status.data?.repair_available &&
+    !running &&
+    !failed &&
+    status.data?.job?.state !== 'failed'
+  )
+    return null;
   return (
     <div className="flex flex-col items-end gap-1">
       <Button
@@ -41,7 +51,7 @@ export function EngineInstall({ id }: { id: string }) {
           running ||
           status.isPending ||
           status.isError ||
-          status.data?.installed ||
+          (status.data?.installed && !status.data?.repair_available) ||
           status.data?.install_allowed === false
         }
         onClick={async () => {
@@ -60,7 +70,13 @@ export function EngineInstall({ id }: { id: string }) {
         }}
       >
         <DownloadIcon />
-        {t(running ? 'modelMaintenance.installing' : 'modelMaintenance.install')}
+        {t(
+          running
+            ? 'modelMaintenance.installing'
+            : status.data?.repair_available
+              ? 'modelMaintenance.repair'
+              : 'modelMaintenance.install',
+        )}
       </Button>
       {status.data?.install_allowed === false && (
         <p className="max-w-sm text-xs text-muted-foreground">

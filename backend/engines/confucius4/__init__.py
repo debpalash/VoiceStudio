@@ -29,6 +29,8 @@ import math
 import os
 from typing import TYPE_CHECKING
 
+from pathlib import Path
+
 from services.subprocess_backend import SubprocessBackend
 
 if TYPE_CHECKING:
@@ -98,6 +100,14 @@ class Confucius4Backend(SubprocessBackend):
     def venv_python(cls):
         from engines.confucius4.bootstrap import resolve_confucius4_venv
         return resolve_confucius4_venv()
+
+    @classmethod
+    def sidecar_python_hint(cls) -> "Path | None":
+        """Expose only the bootstrap-selected interpreter for routing metadata."""
+        from services.subprocess_backend import bootstrap_python_hint
+
+        from engines.confucius4 import bootstrap
+        return bootstrap_python_hint(bootstrap)
 
     @classmethod
     def sidecar_script(cls):
