@@ -39,7 +39,14 @@ vi.mock("sonner", () => ({
     error: vi.fn(),
   }),
 }));
-vi.mock("@/lib/api/client", () => ({ apiJson: mocks.api }));
+vi.mock("@/lib/api/client", () => {
+  class ApiError extends Error {
+    constructor(readonly status: number) {
+      super(`HTTP ${status}`);
+    }
+  }
+  return { ApiError, apiJson: mocks.api };
+});
 vi.mock("@/router", () => ({ router: { navigate: mocks.navigate } }));
 vi.mock("@/components/bridge", () => ({
   getBridge: () => ({
@@ -223,6 +230,53 @@ describe("UpdatePrompt", () => {
     fireEvent.click(screen.getByText("update.restart"));
     await waitFor(() => expect(mocks.info).toHaveBeenCalledWith("update.busy"));
     expect(mocks.bridge.install).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [500, true],
+    [0, false],
+    [404, false],
+  ])(
+    "Restart with a work-status failure %s defers: %s",
+    async (status, defers) => {
+      const { ApiError } = (await import("@/lib/api/client")) as unknown as {
+        ApiError: new (s: number) => Error;
+      };
+      mocks.api.mockRejectedValue(new ApiError(status));
+      await mount();
+      push({ status: "downloaded", availableVersion: `0.7.${status}` });
+      show();
+      fireEvent.click(screen.getByText("update.restart"));
+      if (defers) {
+        await waitFor(() => expect(mocks.info).toHaveBeenCalledWith("update.busy"));
+        expect(mocks.bridge.install).not.toHaveBeenCalled();
+      } else {
+        await waitFor(() => expect(mocks.bridge.install).toHaveBeenCalledOnce());
+      }
+    },
+  );
+
+  test("Restart defers when the work status times out", async () => {
+    mocks.api.mockRejectedValue(new DOMException("timed out", "TimeoutError"));
+    await mount();
+    push({ status: "downloaded", availableVersion: "0.7.9" });
+    show();
+    fireEvent.click(screen.getByText("update.restart"));
+    await waitFor(() => expect(mocks.info).toHaveBeenCalledWith("update.busy"));
+    expect(mocks.bridge.install).not.toHaveBeenCalled();
+  });
+
+  test("a hidden error returns on the next failed check", async () => {
+    await mount();
+    push({ status: "error", availableVersion: undefined, error: "x" });
+    show();
+    fireEvent.click(screen.getByText("update.toast_later"));
+    mocks.custom.mockClear();
+    push({ status: "error", availableVersion: undefined, error: "x" });
+    expect(mocks.custom).not.toHaveBeenCalled();
+    push({ status: "checking", availableVersion: undefined });
+    push({ status: "error", availableVersion: undefined, error: "x" });
+    expect(mocks.custom).toHaveBeenCalledOnce();
   });
 
   test("Restart waits while a server batch job is active", async () => {

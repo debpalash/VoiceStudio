@@ -2,7 +2,7 @@ import { toast } from "sonner";
 import type { TFunction } from "i18next";
 import { getBridge } from "@/components/bridge";
 import { dubSession, flushDubDraft } from "@/features/dub/dub-session";
-import { apiJson } from "@/lib/api/client";
+import { ApiError, apiJson } from "@/lib/api/client";
 import { hasActiveAppWork } from "@/lib/app-activity";
 import type { UpdateState } from "../../../preload/index.d";
 
@@ -34,21 +34,44 @@ export const dubBusy = (value: typeof dubSession.state) =>
   Boolean(value.recovery || value.batchProgress) ||
   !["idle", "editing", "done"].includes(value.phase);
 
-const optional = <T>(path: string) =>
-  apiJson<T>(path).catch(() => undefined);
+const WORK_STATUS_TIMEOUT_MS = 5_000;
+const UNKNOWN = Symbol("unknown work status");
+
+/**
+ * Reads one backend work-status endpoint. A stopped backend (unreachable) and
+ * an older backend without the route (404/405) have no work to lose; any other
+ * failure, a timeout included, means the work status is unknown.
+ */
+async function workStatus<T>(path: string): Promise<T | undefined | typeof UNKNOWN> {
+  try {
+    return await apiJson<T>(path, {
+      signal: AbortSignal.timeout(WORK_STATUS_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (error instanceof ApiError && [0, 404, 405].includes(error.status))
+      return undefined;
+    return UNKNOWN;
+  }
+}
 
 /**
  * True when restarting now would interrupt work: renderer activity, a dub, or
- * server-side model installs and batch jobs (which outlive their uploads).
+ * server-side model installs and batch jobs (which outlive their uploads). An
+ * unknown server status defers the restart rather than risk a running job.
  * Every restart-to-update entry point must use this one check.
  */
 export async function updateRestartBlocked(): Promise<boolean> {
   if (hasActiveAppWork() || dubBusy(dubSession.state)) return true;
   const [models, batches] = await Promise.all([
-    optional<ModelInstallJobs>(MODEL_INSTALL_STATUS_PATH),
-    optional<unknown[]>(ACTIVE_BATCH_JOBS_PATH),
+    workStatus<ModelInstallJobs>(MODEL_INSTALL_STATUS_PATH),
+    workStatus<unknown[]>(ACTIVE_BATCH_JOBS_PATH),
   ]);
-  return hasActiveAppWork() || dubBusy(dubSession.state) || serverWorkActive(models, batches);
+  if (models === UNKNOWN || batches === UNKNOWN) return true;
+  return (
+    hasActiveAppWork() ||
+    dubBusy(dubSession.state) ||
+    serverWorkActive(models, batches)
+  );
 }
 
 /** The one action a state offers in place, or null when none applies. */

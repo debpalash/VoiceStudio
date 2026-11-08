@@ -140,6 +140,9 @@ export function UpdatePrompt() {
           state.status === "error") &&
         !(state.availableVersion && laterVersions.has(state.availableVersion));
       if (!visible) {
+        // A new check cycle (or a dismissed version) ends every hide, so the
+        // next failure or offer is shown again.
+        hiddenNotices.clear();
         if (shown) toast.dismiss(shown);
         shown = null;
         return;
