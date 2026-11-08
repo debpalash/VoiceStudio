@@ -143,7 +143,8 @@ describe('model licence acceptance', () => {
     await render(<LicenceAcceptanceFooter models={models} onAccepted={onAccepted} onClose={() => {}} />);
     for (const box of boxes()) await act(async () => box.click());
     await act(async () => button(en.modelLicense.acceptAll.replace('{{count}}', '2'))!.click());
-    expect(mock.api.mock.calls.map(([path, init]) => [path, JSON.parse(init.body)])).toEqual(
+    expect(mock.api.mock.calls.filter(([path]) => path === '/models/licenses/accept')
+      .map(([path, init]) => [path, JSON.parse(init.body)])).toEqual(
       models.map((m) => ['/models/licenses/accept', { repo_id: m.repo_id, fingerprint: m.fingerprint, accepted: true }]),
     );
     expect(onAccepted).toHaveBeenCalledOnce();

@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ApiError } from '@/lib/api/client';
 import {
   modelLicenceRequirements,
   type ModelLicenceDetails,
@@ -11,7 +10,9 @@ import { modelLicenceDetailsKey } from '@/features/settings/model-licence-view';
 export function useResolvedLicenceError(error: unknown, onResolved: () => void) {
   const client = useQueryClient();
   useEffect(() => {
-    const required = error instanceof ApiError ? modelLicenceRequirements(error.payload) : null;
+    const required = error && typeof error === 'object' && 'payload' in error
+      ? modelLicenceRequirements(error.payload)
+      : null;
     if (!required) return;
     const clearResolved = () => {
       if (required.every((model) => {

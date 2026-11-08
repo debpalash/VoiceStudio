@@ -70,9 +70,20 @@ export function toAcceptable(
 }
 
 async function refreshLicenceQueries(client: ReturnType<typeof useQueryClient>, repoIds: string[]) {
-  await Promise.all([
+  await Promise.allSettled([
     client.invalidateQueries({ queryKey: ['model-catalogue'] }),
-    ...repoIds.map((repoId) => client.invalidateQueries({ queryKey: modelLicenceDetailsKey(repoId) })),
+    // Escape/outside-click may unmount the dialog before acceptance completes.
+    // Fetch explicitly so even inactive or disabled detail queries are refreshed.
+    ...repoIds.map(async (repoId) => {
+      const queryKey = modelLicenceDetailsKey(repoId);
+      // Do not reuse a request that began before the acceptance was saved.
+      await client.cancelQueries({ queryKey });
+      return client.fetchQuery<ModelLicenceDetails>({
+        queryKey,
+        queryFn: () => apiJson<ModelLicenceDetails>(`/models/licenses/details/${encodeURI(repoId)}`),
+        staleTime: 0,
+      });
+    }),
   ]);
 }
 
