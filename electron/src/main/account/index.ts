@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { app, safeStorage, shell, type BrowserWindow } from 'electron';
 import { AccountApi } from './account-api';
+import { AppCheck } from './app-check';
 import { AvatarCache } from './avatar-cache';
 import { AccountController, registerAccountIpc } from './account-ipc';
 import { AccountSession } from './account-session';
@@ -82,9 +83,21 @@ async function wireAccount(opts: StartOptions): Promise<() => void> {
     remembered: store.persistent,
     links: dashboardLinks(env),
   });
+  const appCheck = new AppCheck({
+    api,
+    version: app.getVersion(),
+    platform: process.platform,
+    isActive: () => allowed() && session.state().signedIn,
+  });
+  const unwatchCheckSwitch = switches.subscribe(() => appCheck.reconcile());
+  const unwatchCheckSession = session.onChange(() => appCheck.reconcile());
+  appCheck.reconcile();
   const closeIpc = registerAccountIpc(ctl, session, opts.getMainWindow);
   if (!available)
     return () => {
+      appCheck.stop();
+      unwatchCheckSwitch();
+      unwatchCheckSession();
       unwatchPhoto();
       unwatchPhotoSwitch();
       closeIpc();
@@ -124,6 +137,9 @@ async function wireAccount(opts: StartOptions): Promise<() => void> {
     VOICESTUDIO_ACCOUNT_BRIDGE_TOKEN: bridge.token,
   });
   return () => {
+    appCheck.stop();
+    unwatchCheckSwitch();
+    unwatchCheckSession();
     unwatchPhoto();
     unwatchPhotoSwitch();
     unwatchSwitches();

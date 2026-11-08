@@ -16,6 +16,7 @@ vi.mock('electron', () => ({
     get isPackaged() {
       return h.packaged;
     },
+    getVersion: () => '1.2.3',
     getPath: () => h.dir,
   },
   safeStorage: {
