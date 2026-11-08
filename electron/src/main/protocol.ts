@@ -8,6 +8,7 @@ export const APP_SCHEME = 'app';
 export const APP_HOST = 'voicestudio';
 export const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}`;
 const API_PREFIX = '/api';
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -127,14 +128,28 @@ async function proxyToBackend(
   for (const [name, value] of Object.entries(injectedHeaders)) headers.set(name, value);
   const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
   try {
-    // The backend Response is returned untouched: status, headers and the
-    // streamed body all pass through (no re-encoding, so content-length stays valid).
-    return await net.fetch(target, {
+    const options = {
       method: request.method,
       headers,
       body: hasBody ? request.body : null,
-      duplex: 'half',
+      duplex: 'half' as const,
       signal: request.signal,
+    };
+    if (request.method === 'POST' && rest === '/dub/upload' && options.body) {
+      const destination = new URL(target);
+      if (destination.protocol === 'http:' && LOOPBACK_HOSTS.has(destination.hostname)) {
+        // Electron net.fetch buffers the whole request before sending it.
+        // Node fetch streams the multipart body with backpressure instead.
+        // Keep routing and credentials in main, and never replay an upload
+        // at a redirect destination.
+        headers.set('accept-encoding', 'identity');
+        return await fetch(destination, { ...options, redirect: 'error' });
+      }
+    }
+    // The backend Response is returned untouched: status, headers and the
+    // streamed body all pass through (no re-encoding, so content-length stays valid).
+    return await net.fetch(target, {
+      ...options,
       bypassCustomProtocolHandlers: true,
     });
   } catch (err) {
