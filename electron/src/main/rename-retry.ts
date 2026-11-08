@@ -27,9 +27,13 @@ export interface RenameSyncRetryOptions extends Omit<RenameRetryOptions, 'sleep'
 }
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+// One shared cell: allocating a SharedArrayBuffer per wait is needless churn.
+const syncCell = new Int32Array(new SharedArrayBuffer(4));
 const waitSync = (ms: number) => {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  Atomics.wait(syncCell, 0, 0, ms);
 };
+/** Total time a synchronous retry may block the main process. */
+export const SYNC_WAIT_BUDGET_MS = 250;
 
 /** The backoff before retrying `error`, or undefined when it must be rethrown. */
 function transientDelay(
@@ -64,18 +68,25 @@ export async function retryTransient<T>(
   }
 }
 
-/** {@link retryTransient} for code that must stay synchronous; blocks only while retrying. */
+/**
+ * {@link retryTransient} for code that must stay synchronous. It blocks the
+ * main process, so total waiting is capped at {@link SYNC_WAIT_BUDGET_MS}
+ * however long the lock lasts; the last error is then rethrown.
+ */
 export function retryTransientSync<T>(
   action: () => T,
   { sleep = waitSync, ...options }: Omit<RenameSyncRetryOptions, 'rename'> = {},
 ): T {
+  let remaining = SYNC_WAIT_BUDGET_MS;
   for (let attempt = 1; ; attempt++) {
     try {
       return action();
     } catch (error) {
       const delay = transientDelay(error, attempt, options);
-      if (delay === undefined) throw error;
-      sleep(delay);
+      if (delay === undefined || remaining <= 0) throw error;
+      const wait = Math.min(delay, remaining);
+      remaining -= wait;
+      sleep(wait);
     }
   }
 }
