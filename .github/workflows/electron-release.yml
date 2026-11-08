@@ -91,7 +91,7 @@ jobs:
   package:
     needs: [validate, omnivoice-tts]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    timeout-minutes: 75  # three macOS build attempts when Apple drops a connection
     continue-on-error: ${{ matrix.experimental == true }}
     strategy:
       fail-fast: false
@@ -235,14 +235,20 @@ jobs:
             # Discovery is limited to that imported keychain, not the runner's.
             export CSC_IDENTITY_AUTO_DISCOVERY=true
           fi
-          # Apple's ticket server can drop the staple lookup after notarization
-          # succeeded (error 68, v0.5.7-beta.2); only that failure builds again.
+          # Apple's notary and ticket services drop connections: the staple
+          # lookup after a successful notarization (error 68, v0.5.7-beta.2 and
+          # twice in a row on v0.5.8-beta.1) and the notarization upload itself
+          # (abortedUpload). Only those transient failures build again, up to
+          # three attempts with a growing pause; a rejected notarization or a
+          # signing error fails at once.
           set -o pipefail
           attempt=1
+          retry_delay="${APPLE_RETRY_DELAY_SECONDS:-60}"
           until bun x electron-builder --config electron-builder.config.mjs ${{ matrix.flags }} "${mac_notarization_args[@]}" --publish never 2>&1 | tee "$RUNNER_TEMP/electron-builder.log"; do
-            if [ "$attempt" -ge 2 ] || ! grep -q "Failed to staple" "$RUNNER_TEMP/electron-builder.log"; then exit 1; fi
+            if [ "$attempt" -ge 3 ] || ! grep -Eq "Failed to staple|abortedUpload|NSURLErrorDomain|The network connection was lost" "$RUNNER_TEMP/electron-builder.log"; then exit 1; fi
+            echo "::warning::Apple's notarization service dropped the connection (attempt $attempt); building again in $((retry_delay * attempt))s"
+            sleep $((retry_delay * attempt))
             attempt=$((attempt + 1))
-            echo "::warning::Stapling the notarization ticket failed; building again"
           done
           if [ "$RUNNER_OS" = Linux ]; then
             node scripts/embed-appimage-update.mjs
