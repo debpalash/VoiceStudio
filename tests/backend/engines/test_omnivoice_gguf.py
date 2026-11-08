@@ -1068,6 +1068,42 @@ def test_oversized_reference_is_refused_when_ffprobe_sizes_it(monkeypatch, tmp_p
     assert "too long" in str(exc_info.value).lower()
 
 
+def test_reference_size_uses_container_duration_without_stream_duration(monkeypatch, tmp_path):
+    """MediaRecorder WebM has no stream duration; the container's is used."""
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.webm"
+    reference.write_bytes(b"not a container libsndfile can read")
+    _fake_ffprobe(monkeypatch, {
+        "streams": [{"channels": 1, "sample_rate": 24000}],
+        "format": {"duration": "3.000000"},
+    })
+    assert gguf_backend._reference_decoded_bytes(reference) == pytest.approx(3 * 24_000 * 4, rel=0.01)
+
+
+def test_unsized_reference_is_converted_and_capped_on_output(monkeypatch, tmp_path):
+    """No duration anywhere: convert, then refuse an oversized result."""
+    import numpy as np
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.webm"
+    reference.write_bytes(b"not a container libsndfile can read")
+    _fake_ffprobe(monkeypatch, {"streams": [{"channels": 1, "sample_rate": 24000}], "format": {}})
+    assert gguf_backend._reference_decoded_bytes(reference) == 0
+
+    monkeypatch.setattr(gguf_backend, "_MAX_REFERENCE_DECODED_BYTES", 1000)
+    monkeypatch.setattr("services.audio_io.load_audio", lambda p: (np.zeros(2000, dtype=np.float32), 24000))
+    with pytest.raises(ValueError, match="too long"):
+        gguf_backend._convert_reference_to_wav(reference)
+
+    saved = {}
+    monkeypatch.setattr(gguf_backend, "_MAX_REFERENCE_DECODED_BYTES", 10_000)
+    monkeypatch.setattr("services.audio_io.atomic_save_wav", lambda path, w, r: saved.update(path=path))
+    out = gguf_backend._convert_reference_to_wav(reference)
+    assert saved["path"] == str(out)
+    out.unlink(missing_ok=True)
+
+
 def test_ffprobe_probe_carries_the_loader_env(monkeypatch, tmp_path):
     """The ffprobe probe is a spawn in this module, so it carries the loader
     env every other spawn here carries (#1348).

@@ -438,13 +438,20 @@ def _is_cli_readable_wav(path: Path) -> bool:
     return False
 
 
+# Readable audio whose duration no probe field reports (live-recorded WebM).
+_UNSIZED = 0
+
+
 def _ffprobe_decoded_bytes(prompt: Path) -> Optional[int]:
     """Decoded size of a reference clip, measured with ffprobe, or None.
 
     ffprobe reads the container's metadata and decodes nothing, so a
     container ``libsndfile`` cannot size can still be measured before it
-    is decoded. The *audio stream's* duration is used, not the
+    is decoded. The *audio stream's* duration is preferred over the
     container's: a video whose audio track is short is a short reference.
+    MediaRecorder WebM carries no stream duration, so the container's is
+    the fallback. A readable stream with no duration at all returns
+    ``_UNSIZED`` (0): the caller converts it and caps the *output* instead.
     """
     try:
         from services.ffmpeg_utils import find_ffprobe, local_inputs_only
@@ -455,7 +462,7 @@ def _ffprobe_decoded_bytes(prompt: Path) -> Optional[int]:
         proc = subprocess.run(
             local_inputs_only(
                 [ffprobe, "-v", "error", "-select_streams", "a:0",
-                 "-show_entries", "stream=duration,channels,sample_rate",
+                 "-show_entries", "stream=duration,channels,sample_rate:format=duration",
                  "-of", "json", str(prompt)],
                 tool="ffprobe",
             ),
@@ -468,13 +475,18 @@ def _ffprobe_decoded_bytes(prompt: Path) -> Optional[int]:
             return None
         payload = json.loads(proc.stdout.decode("utf-8", errors="replace"))
         stream = (payload.get("streams") or [{}])[0]
+        fmt = payload.get("format") or {}
         duration = float(stream.get("duration") or 0.0)
+        if duration <= 0:
+            duration = float(fmt.get("duration") or 0.0)
         channels = int(stream.get("channels") or 0)
         sample_rate = int(stream.get("sample_rate") or 0)
     except Exception:  # noqa: BLE001 — an unsized clip is a refusal
         return None
-    if duration <= 0 or channels <= 0 or sample_rate <= 0:
+    if channels <= 0 or sample_rate <= 0:
         return None
+    if duration <= 0:
+        return _UNSIZED
     return int(duration * sample_rate * channels * 4)  # float32 samples
 
 
@@ -551,6 +563,16 @@ def _convert_reference_to_wav(prompt: Path) -> Path:
             "The voice profile's reference clip could not be read as audio. "
             "Re-upload the clip as a WAV, MP3, FLAC or OGG file."
         ) from exc
+    if decoded == _UNSIZED:
+        # No size was knowable up front, so the cap applies to what came out.
+        size = getattr(wav, "nbytes", None)
+        if size is None:
+            size = int(wav.numel()) * int(wav.element_size())
+        if int(size) > _MAX_REFERENCE_DECODED_BYTES:
+            raise ValueError(
+                "The voice profile's reference clip is too long to convert. "
+                "Trim it to a shorter clip and upload it again."
+            )
     fd, name = tempfile.mkstemp(prefix="omnivoice-gguf-ref-", suffix=".wav")
     os.close(fd)
     target = Path(name)
