@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { primaryUpdateAction, runUpdateAction } from '@/lib/update-actions';
+import { updateErrorKey } from '@/lib/update-format';
 import { DISCORD_URL, ISSUES_URL } from '@shared/utils/contactLinks';
 import type { BackendStatus, UpdateState } from '../../../preload/index.d';
 import { appVersion, getBridge, platformFamily } from './bridge';
@@ -16,9 +17,12 @@ const INSTALL_GUIDES = {
 } as const;
 const TROUBLESHOOTING = `${REPO}/blob/main/docs/install/troubleshooting.md`;
 
-/** Release page for this exact build; development builds have no tag, so they get the list. */
-export function releaseNotesUrl(version: string): string {
-  return /^\d+\.\d+\.\d+(-beta\.\d+)?$/.test(version)
+/**
+ * Release page for this exact build. Development and preview builds carry the
+ * same version as the last release but different code, so they get the list.
+ */
+export function releaseNotesUrl(version: string, isDev: boolean): string {
+  return !isDev && /^\d+\.\d+\.\d+(-beta\.\d+)?$/.test(version)
     ? `${REPO}/releases/tag/v${version}`
     : `${REPO}/releases`;
 }
@@ -39,25 +43,20 @@ export function SetupVersion() {
           {t('update.channel_beta')}
         </span>
       )}
-      <a
-        href={releaseNotesUrl(version)}
-        target="_blank"
-        rel="noreferrer"
-        className="app-no-drag rounded-sm underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring"
-        onClick={(event) => {
-          const bridge = getBridge();
-          if (!bridge) return;
-          event.preventDefault();
-          void bridge.files.openExternal(releaseNotesUrl(version)).catch(() => {});
-        }}
+      <ExternalLink
+        href={releaseNotesUrl(version, getBridge()?.app?.isDev ?? false)}
+        variant="link"
+        showIcon={false}
+        className="app-no-drag h-auto px-0 text-xs text-muted-foreground hover:text-foreground"
       >
         {t('update.whats_new')}
-      </a>
+      </ExternalLink>
     </span>
   );
 }
 
-const OFFERED = new Set<UpdateState['status']>(['available', 'downloading', 'downloaded']);
+// A failed download keeps availableVersion, so it stays here with Retry.
+const OFFERED = new Set<UpdateState['status']>(['available', 'downloading', 'downloaded', 'error']);
 
 /**
  * Offers a newer app before the runtime download: the runtime is installed for
@@ -70,11 +69,16 @@ export function SetupUpdateNotice() {
     const updates = getBridge()?.updates;
     if (!updates) return;
     let active = true;
+    // An event can arrive before the initial snapshot resolves; the event is newer.
+    let heard = false;
+    const unsubscribe = updates.onState((next) => {
+      heard = true;
+      setState(next);
+    });
     void updates
       .getState()
-      .then((next) => active && setState(next))
+      .then((next) => active && !heard && setState(next))
       .catch(() => {});
-    const unsubscribe = updates.onState(setState);
     return () => {
       active = false;
       unsubscribe();
@@ -83,7 +87,9 @@ export function SetupUpdateNotice() {
   if (!state || !OFFERED.has(state.status) || !state.availableVersion) return null;
   const action = primaryUpdateAction(state);
   const title =
-    state.status === 'downloaded'
+    state.status === 'error'
+      ? t(updateErrorKey(state.error))
+      : state.status === 'downloaded'
       ? t('update.prompt_ready')
       : state.status === 'downloading'
         ? t('update.downloading', { pct: Math.round(state.progress) })
@@ -106,6 +112,11 @@ export function SetupUpdateNotice() {
       {action === 'install' && (
         <Button size="sm" onClick={() => void runUpdateAction('install', state, t)}>
           {t('update.restart')}
+        </Button>
+      )}
+      {action === 'retry' && (
+        <Button size="sm" onClick={() => void runUpdateAction('retry', state, t)}>
+          {t('update.retry')}
         </Button>
       )}
     </div>

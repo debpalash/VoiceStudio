@@ -1788,6 +1788,9 @@ export class BackendSupervisor extends EventEmitter<{
       return;
     }
     process.env.OMNIVOICE_TORCH_VARIANT = 'cpu';
+    // The setup screen names the build it will install; detect it again.
+    this.setupHardware = undefined;
+    this.setupHardwareProbed = false;
     if (!saveTorchVariant('cpu'))
       this.setupLog.append('Could not save the CPU choice; the next launch may ask again');
     await this.start();

@@ -29,6 +29,13 @@ const mocks = vi.hoisted(() => ({
   hosts: vi.fn(async () => new Map<string, string>()),
 }));
 vi.mock('electron', () => ({ app: { isPackaged: true, getPath: () => '/private/voicestudio' } }));
+// The setup screen's hardware line follows the torch choice in the environment.
+vi.mock('./setup-hardware', () => ({
+  detectSetupHardware: async () =>
+    process.env.OMNIVOICE_TORCH_VARIANT === 'cpu'
+      ? { build: 'cpu', reason: 'explicit' }
+      : { gpu: 'NVIDIA Test GPU', build: 'cuda' },
+}));
 vi.mock('node:child_process', () => ({ spawn: mocks.spawn, spawnSync: vi.fn() }));
 vi.mock('node:fs', async (importOriginal) => {
   const original = await importOriginal<typeof import('node:fs')>();
@@ -1117,6 +1124,9 @@ describe('falling back to the CPU build', () => {
 
     expect(variants.at(-1)).toBe('cpu');
     expect(mocks.saveTorchVariant).toHaveBeenCalledWith('cpu');
+    // The CPU attempt failed too; the next retry installs CPU, so say so.
+    void supervisor.status;
+    await vi.waitFor(() => expect(supervisor.status.setupHardware?.build).toBe('cpu'));
   });
 
   it('stops a stuck download first, so the CPU install can start', async () => {
