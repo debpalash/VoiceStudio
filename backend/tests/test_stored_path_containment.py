@@ -269,7 +269,7 @@ def profiles_client(tmp_path, monkeypatch):
     db.init_db()
     app = FastAPI()
     app.include_router(profiles.router)
-    with TestClient(app) as client:
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
         yield client, tmp_path
 
 

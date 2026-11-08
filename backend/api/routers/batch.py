@@ -18,8 +18,9 @@ import asyncio
 import logging
 from typing import Optional, List
 
-from fastapi import APIRouter, File, UploadFile, HTTPException, Form
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Form
 from fastapi.responses import JSONResponse
+from api.dependencies import consumer_generation, require_consumer_reads_admin_writes
 from pydantic import BaseModel
 
 from core.config import DATA_DIR
@@ -37,7 +38,7 @@ from services.tts_backend import (
     active_backend_id, ensure_active_engine_licence, resolve_generation_backend,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 logger = logging.getLogger("omnivoice.batch")
 
 # Compatibility values emitted by the established Tauri Batch picker. They
@@ -775,6 +776,7 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
 # ── Endpoints ───────────────────────────────────────────────────────────
 
 @router.post("/batch/enqueue")
+@consumer_generation
 async def enqueue_batch_job(
     video: UploadFile = File(...),
     langs: str = Form("es"),            # comma-separated lang codes
@@ -911,6 +913,7 @@ def get_batch_job(job_id: str):
 
 
 @router.post("/batch/jobs/{job_id}/cancel")
+@consumer_generation
 def cancel_batch_job(job_id: str):
     """Cancel a queued or running batch job."""
     job = _jobs.get(job_id)
@@ -926,6 +929,7 @@ def cancel_batch_job(job_id: str):
 
 
 @router.post("/batch/jobs/{job_id}/retry")
+@consumer_generation
 async def retry_batch_job(job_id: str):
     """Retry a terminal job using its original app-owned upload and settings."""
     job = _jobs.get(job_id)
