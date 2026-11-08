@@ -2141,7 +2141,9 @@
     "backup_none": "Створюється автоматично перед наступним оновленням бази даних.",
     "backup_latest": "Остання копія: {{when}}",
     "notes_for": "Примітки до випуску — v{{version}}",
-    "whats_new_in": "Що нового у v{{version}}"
+    "whats_new_in": "Що нового у v{{version}}",
+    "backup_needs_runtime": "Доступно, коли середовище виконання VoiceStudio запущено.",
+    "backup_load_error": "Не вдалося завантажити стан резервної копії."
   },
   "exportModal": {
     "export": "Експорт",
@@ -3039,7 +3041,8 @@
     "prompt_hide": "Сховати",
     "prompt_more": "Ще",
     "error_network": "GitHub не відповів. Перевірте підключення та спробуйте ще раз.",
-    "error_generic": "Оновлення не завершилося. Спробуйте ще раз."
+    "error_generic": "Оновлення не завершилося. Спробуйте ще раз.",
+    "channel_current": "Ви на каналі {{channel}}"
   },
   "openapi": {
     "title": "API VoiceStudio",

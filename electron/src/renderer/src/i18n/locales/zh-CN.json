@@ -2117,7 +2117,9 @@
     "backup_line": "数据库备份",
     "backup_latest": "最新备份：{{when}}",
     "backup_none": "在下次数据库更新前自动创建。",
-    "whats_new_in": "v{{version}} 的新变化"
+    "whats_new_in": "v{{version}} 的新变化",
+    "backup_needs_runtime": "VoiceStudio 运行环境启动后可用。",
+    "backup_load_error": "无法加载备份状态。"
   },
   "exportModal": {
     "export": "导出",
@@ -3009,7 +3011,8 @@
     "prompt_hide": "隐藏",
     "prompt_more": "更多",
     "error_network": "GitHub 没有响应。请检查网络连接后重试。",
-    "error_generic": "更新未完成，请重试。"
+    "error_generic": "更新未完成，请重试。",
+    "channel_current": "当前通道：{{channel}}"
   },
   "openapi": {
     "title": "VoiceStudio API",

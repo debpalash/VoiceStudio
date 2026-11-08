@@ -2117,7 +2117,9 @@
     "backup_none": "Dibuat otomatis sebelum pembaruan basis data berikutnya.",
     "backup_latest": "Cadangan terakhir: {{when}}",
     "notes_for": "Catatan rilis — v{{version}}",
-    "whats_new_in": "Apa yang baru di v{{version}}"
+    "whats_new_in": "Apa yang baru di v{{version}}",
+    "backup_needs_runtime": "Tersedia setelah runtime VoiceStudio berjalan.",
+    "backup_load_error": "Tidak dapat memuat status pencadangan."
   },
   "exportModal": {
     "export": "Ekspor",
@@ -3013,7 +3015,8 @@
     "prompt_hide": "Sembunyikan",
     "prompt_more": "Lainnya",
     "error_network": "GitHub tidak merespons. Periksa koneksi Anda dan coba lagi.",
-    "error_generic": "Pembaruan tidak selesai. Coba lagi."
+    "error_generic": "Pembaruan tidak selesai. Coba lagi.",
+    "channel_current": "Anda di {{channel}}"
   },
   "openapi": {
     "title": "API VoiceStudio",

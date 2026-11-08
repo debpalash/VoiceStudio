@@ -2117,7 +2117,9 @@
     "backup_none": "अगले डेटाबेस अपडेट से पहले अपने आप बनता है।",
     "backup_latest": "नवीनतम बैकअप: {{when}}",
     "notes_for": "रिलीज़ नोट्स — v{{version}}",
-    "whats_new_in": "v{{version}} में नया क्या है"
+    "whats_new_in": "v{{version}} में नया क्या है",
+    "backup_needs_runtime": "VoiceStudio का रनटाइम चलने पर उपलब्ध होगा।",
+    "backup_load_error": "बैकअप की स्थिति लोड नहीं हो सकी।"
   },
   "exportModal": {
     "export": "निर्यात करें",
@@ -3013,7 +3015,8 @@
     "prompt_hide": "छिपाएँ",
     "prompt_more": "और",
     "error_network": "GitHub ने जवाब नहीं दिया। अपना कनेक्शन जाँचें और फिर कोशिश करें।",
-    "error_generic": "अपडेट पूरा नहीं हुआ। फिर कोशिश करें।"
+    "error_generic": "अपडेट पूरा नहीं हुआ। फिर कोशिश करें।",
+    "channel_current": "आप {{channel}} पर हैं"
   },
   "openapi": {
     "title": "VoiceStudio API",

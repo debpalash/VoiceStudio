@@ -2288,7 +2288,9 @@
     "backup_line": "Database backup",
     "backup_latest": "Latest backup: {{when}}",
     "backup_none": "The first backup is created automatically before the next database upgrade.",
-    "whats_new_in": "What's new in v{{version}}"
+    "whats_new_in": "What's new in v{{version}}",
+    "backup_needs_runtime": "Available once VoiceStudio's runtime is running.",
+    "backup_load_error": "Couldn't load backup status."
   },
   "exportModal": {
     "export": "Export",
@@ -3094,7 +3096,8 @@
     "prompt_hide": "Hide",
     "prompt_more": "More",
     "error_network": "GitHub didn't respond. Check your connection and try again.",
-    "error_generic": "The update didn't finish. Try again."
+    "error_generic": "The update didn't finish. Try again.",
+    "channel_current": "You're on {{channel}}"
   },
   "openapi": {
     "title": "VoiceStudio API",

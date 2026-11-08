@@ -2117,7 +2117,9 @@
     "backup_none": "Skapas automatiskt före nästa databasuppdatering.",
     "backup_latest": "Senaste säkerhetskopian: {{when}}",
     "notes_for": "Versionsinformation — v{{version}}",
-    "whats_new_in": "Vad är nytt i v{{version}}"
+    "whats_new_in": "Vad är nytt i v{{version}}",
+    "backup_needs_runtime": "Tillgängligt när VoiceStudios körmiljö körs.",
+    "backup_load_error": "Det gick inte att läsa in säkerhetskopians status."
   },
   "exportModal": {
     "export": "Exportera",
@@ -3013,7 +3015,8 @@
     "prompt_hide": "Dölj",
     "prompt_more": "Mer",
     "error_network": "GitHub svarade inte. Kontrollera din anslutning och försök igen.",
-    "error_generic": "Uppdateringen slutfördes inte. Försök igen."
+    "error_generic": "Uppdateringen slutfördes inte. Försök igen.",
+    "channel_current": "Du använder {{channel}}"
   },
   "openapi": {
     "title": "VoiceStudio API",

@@ -190,9 +190,15 @@ describe('UpdateSettings', () => {
     });
     renderSettings();
 
-    const stable = await screen.findByRole('button', { name: 'update.channel_stable' });
-    expect(stable).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(screen.getByRole('button', { name: 'update.channel_beta' }));
+    const stable = await screen.findByRole('radio', { name: 'update.channel_stable' });
+    expect(stable).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: 'update.channel_beta' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    expect(screen.getByRole('radiogroup', { name: 'update.channel' })).toBeInTheDocument();
+    expect(screen.getByText('update.channel_current')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: 'update.channel_beta' }));
 
     await waitFor(() => expect(mocks.setChannel).toHaveBeenCalledWith('beta'));
     await waitFor(() => expect(mocks.check).toHaveBeenCalledOnce());
@@ -200,12 +206,32 @@ describe('UpdateSettings', () => {
     expect(mocks.getState).toHaveBeenCalledOnce();
   });
 
+  test('switches channel with the arrow keys', async () => {
+    mocks.state = { ...mocks.state, channel: 'stable' };
+    const beta = { ...mocks.state, channel: 'beta' as const };
+    mocks.setChannel.mockResolvedValue(beta);
+    mocks.check.mockResolvedValue(beta);
+    renderSettings();
+
+    const stable = await screen.findByRole('radio', { name: 'update.channel_stable' });
+    expect(stable).toHaveAttribute('tabindex', '0');
+    expect(screen.getByRole('radio', { name: 'update.channel_beta' })).toHaveAttribute(
+      'tabindex',
+      '-1',
+    );
+    fireEvent.keyDown(stable, { key: 'ArrowRight' });
+    await waitFor(() => expect(mocks.setChannel).toHaveBeenCalledWith('beta'));
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: 'update.channel_beta' })).toHaveFocus(),
+    );
+  });
+
   test('does not check when the channel switch is refused', async () => {
     mocks.state = { ...mocks.state, channel: 'stable' };
     mocks.setChannel.mockResolvedValue(mocks.state);
     renderSettings();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'update.channel_beta' }));
+    fireEvent.click(await screen.findByRole('radio', { name: 'update.channel_beta' }));
     await waitFor(() => expect(mocks.setChannel).toHaveBeenCalledWith('beta'));
     expect(mocks.check).not.toHaveBeenCalled();
   });
@@ -213,7 +239,7 @@ describe('UpdateSettings', () => {
   test('locks the channel while an update is downloading', async () => {
     mocks.state = { ...mocks.state, channel: 'stable', status: 'downloading', progress: 5 };
     renderSettings();
-    expect(await screen.findByRole('button', { name: 'update.channel_beta' })).toBeDisabled();
+    expect(await screen.findByRole('radio', { name: 'update.channel_beta' })).toBeDisabled();
   });
 
   test('lists betas only for Beta users', async () => {

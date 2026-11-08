@@ -1,9 +1,10 @@
 import { splitRoundedMinutes } from '@shared/utils/timeFormat';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AlertTriangleIcon,
   CheckCircle2Icon,
+  CheckIcon,
   DownloadIcon,
   RefreshCwIcon,
   RotateCwIcon,
@@ -16,6 +17,7 @@ import {
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { InlineMarkdown, MarkdownLite } from '@/components/markdown-lite';
 import { appVersion, getBridge } from '@/components/bridge';
 import { dubSession, flushDubDraft, useDubSession } from '@/features/dub/dub-session';
@@ -24,6 +26,8 @@ import { apiJson, describeError } from '@/lib/api/client';
 import { formatBytes, updateErrorKey } from '@/lib/update-format';
 import { SettingsSection } from './settings-layout';
 import type { UpdateChannel, UpdateReleaseInfo, UpdateState } from '../../../../preload/index.d';
+
+const UPDATE_CHANNELS = ['stable', 'beta'] as const;
 
 const initial: UpdateState = {
   status: 'unsupported',
@@ -82,6 +86,8 @@ export function UpdateSettings() {
   const activityCount = useAppActivityCount();
   const [state, setState] = useState(initial);
   const [action, setAction] = useState(false);
+  const channelGroup = useRef<HTMLDivElement>(null);
+  const refocusChannel = useRef(false);
   const [expandedRelease, setExpandedRelease] = useState<string | null | undefined>(undefined);
   const watchServerWork = state.status === 'available' || state.status === 'downloaded';
   const modelInstalls = useQuery({
@@ -145,6 +151,13 @@ export function UpdateSettings() {
       unsubscribe();
     };
   }, [updates]);
+
+  // Controls are disabled while a switch runs, which drops keyboard focus.
+  useEffect(() => {
+    if (action || !refocusChannel.current) return;
+    refocusChannel.current = false;
+    channelGroup.current?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+  }, [action, state.channel]);
 
   const run = async (operation: () => Promise<UpdateState>) => {
     setAction(true);
@@ -326,27 +339,63 @@ export function UpdateSettings() {
               <p id="update-channel-label" className="text-sm font-medium">
                 {t('update.channel')}
               </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {t('update.channel_current', { channel: t(`update.channel_${state.channel}`) })}
+              </p>
               {state.channel === 'beta' && (
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {t('update.channel_beta_hint')}
                 </p>
               )}
             </div>
-            <div role="group" aria-labelledby="update-channel-label" className="flex gap-1">
-              {(['stable', 'beta'] as const).map((channel) => (
-                <Button
-                  key={channel}
-                  size="sm"
-                  variant={state.channel === channel ? 'secondary' : 'outline'}
-                  aria-pressed={state.channel === channel}
-                  disabled={
-                    action || ['checking', 'downloading', 'downloaded'].includes(state.status)
-                  }
-                  onClick={() => switchChannel(channel)}
-                >
-                  {t(`update.channel_${channel}`)}
-                </Button>
-              ))}
+            <div
+              ref={channelGroup}
+              role="radiogroup"
+              aria-labelledby="update-channel-label"
+              className="inline-flex shrink-0 rounded-lg border border-border bg-muted/40 p-0.5"
+            >
+              {UPDATE_CHANNELS.map((channel, index) => {
+                const selected = state.channel === channel;
+                const locked =
+                  action || ['checking', 'downloading', 'downloaded'].includes(state.status);
+                return (
+                  <button
+                    key={channel}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    tabIndex={selected ? 0 : -1}
+                    disabled={locked}
+                    className={cn(
+                      'inline-flex min-w-20 items-center justify-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60',
+                      selected
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                    onClick={() => !selected && switchChannel(channel)}
+                    onKeyDown={(event) => {
+                      const step =
+                        event.key === 'ArrowRight' || event.key === 'ArrowDown'
+                          ? 1
+                          : event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+                            ? -1
+                            : 0;
+                      if (!step || locked) return;
+                      event.preventDefault();
+                      const next =
+                        UPDATE_CHANNELS[
+                          (index + step + UPDATE_CHANNELS.length) % UPDATE_CHANNELS.length
+                        ];
+                      refocusChannel.current = true;
+                      switchChannel(next);
+                    }}
+                    data-channel={channel}
+                  >
+                    {selected && <CheckIcon className="size-3.5" aria-hidden="true" />}
+                    {t(`update.channel_${channel}`)}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
