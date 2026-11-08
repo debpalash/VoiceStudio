@@ -17,7 +17,7 @@
   ],
   "transmittedData": [
     {
-      "destination": "PostHog US",
+      "destination": "Supermetry",
       "condition": "explicit analytics opt-in",
       "purpose": "product analytics and sanitized error diagnostics",
       "data": [
@@ -25,7 +25,7 @@
         "application version and platform",
         "closed-set workflow and engine labels",
         "counts, durations and text length without text",
-        "sanitized error class and stack frames without messages or local paths"
+        "coarse error class and stage without messages, stack frames or local paths"
       ],
       "excluded": [
         "audio",

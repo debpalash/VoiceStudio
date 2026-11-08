@@ -62,10 +62,9 @@ Electron publication uses these GitHub Actions secrets:
   Play internal testing is not a release channel either.
 - The repository `GITHUB_TOKEN` for draft creation and asset uploads.
 - `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` for the Docker Hub mirror.
-- `POSTHOG_PROJECT_TOKEN` (secret) and `POSTHOG_HOST` (repository variable),
-  baked into packaged builds as the analytics token and host. They override the
-  in-repo publishable token; analytics still sends nothing without a yes at the
-  first-run consent prompt.
+- No analytics secret is needed: the destination is the public Supermetry site
+  id in `config/analytics.json`. Analytics still sends nothing without a yes at
+  the first-run consent prompt.
 
 The archived `TAURI_SIGNING_PRIVATE_KEY*` secrets are retained only so the final
 Tauri release can be audited. The Tauri release workflow has been removed; every

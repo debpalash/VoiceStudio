@@ -555,15 +555,6 @@ wheels = [
 ]
 
 [[package]]
-name = "backoff"
-version = "2.2.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/47/d7/5bbeb12c44d7c4f2fb5b56abce497eb5ed9f34d85701de869acedd602619/backoff-2.2.1.tar.gz", hash = "sha256:03f829f5bb1923180821643f8753b0502c3b682293992485b0eef2807afa5cba", size = 17001, upload-time = "2022-10-05T19:19:32.061Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/df/73/b6e24bd22e6720ca8ee9a85a0c4a2971af8497d8f3193fa05390cbd46e09/backoff-2.2.1-py3-none-any.whl", hash = "sha256:63579f9a0628e06278f7e47b7d7d5b6ce20dc65c5e96a6f3ca99a6adca0396e8", size = 15148, upload-time = "2022-10-05T19:19:30.546Z" },
-]
-
-[[package]]
 name = "beartype"
 version = "0.22.9"
 source = { registry = "https://pypi.org/simple" }
@@ -4067,7 +4058,6 @@ dependencies = [
     { name = "pedalboard" },
     { name = "pillow" },
     { name = "pip" },
-    { name = "posthog" },
     { name = "psutil" },
     { name = "pyannote-audio" },
     { name = "pydub" },
@@ -4181,7 +4171,6 @@ requires-dist = [
     { name = "pillow", specifier = ">=12.1.0" },
     { name = "pip", specifier = ">=26.1.2" },
     { name = "pocket-tts", marker = "(platform_machine != 'x86_64' and extra == 'pockettts') or (sys_platform != 'darwin' and extra == 'pockettts')", specifier = "==2.1.0" },
-    { name = "posthog", specifier = ">=3.7" },
     { name = "psutil", specifier = ">=7.2.2" },
     { name = "pyannote-audio", specifier = ">=3.3.2,<4.0" },
     { name = "pydub" },
@@ -4688,21 +4677,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/83/43/85ef45e8b36c6a48546af7b266592dc32d7f67837a6514d111bced6d7d75/pooch-1.9.0.tar.gz", hash = "sha256:de46729579b9857ffd3e741987a2f6d5e0e03219892c167c6578c0091fb511ed", size = 61788, upload-time = "2026-01-30T19:15:09.649Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/2d/d4bf65e47cea8ff2c794a600c4fd1273a7902f268757c531e0ee9f18aa58/pooch-1.9.0-py3-none-any.whl", hash = "sha256:f265597baa9f760d25ceb29d0beb8186c243d6607b0f60b83ecf14078dbc703b", size = 67175, upload-time = "2026-01-30T19:15:08.36Z" },
-]
-
-[[package]]
-name = "posthog"
-version = "7.39.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "backoff" },
-    { name = "distro" },
-    { name = "requests" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/59/c0/5834e90300f65ccd5e873f2f63a879100c25bf1b63b17ee45e572f612aa5/posthog-7.39.2.tar.gz", hash = "sha256:bb74ac23f99054ea6ca25f76586cd6707b29afcffb5f0e78b0f16cc63019ed2b", size = 430654, upload-time = "2026-08-20T12:49:17.615Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e3/70/b4c01c2d066e81df0f09cce7bea0cde8ce115e8a1c69d907555af07b82b1/posthog-7.39.2-py3-none-any.whl", hash = "sha256:ca149ee4f6595a04150c2bea477995652384df45ca4db9ed372c0f81e0cd9646", size = 506980, upload-time = "2026-08-20T12:49:16.051Z" },
 ]
 
 [[package]]

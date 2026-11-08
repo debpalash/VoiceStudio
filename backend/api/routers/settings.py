@@ -1592,6 +1592,21 @@ def get_analytics():
     }
 
 
+class _UiEventBody(BaseModel):
+    event: str = Field(..., max_length=64)
+    props: dict = Field(default_factory=dict)
+    screen: str | None = Field(default=None, max_length=96)
+
+
+@router.post("/analytics/event")
+def post_analytics_event(body: _UiEventBody):
+    """An event the interface reports. A no-op unless the user opted in; only
+    allowlisted, content-free properties are forwarded."""
+    from core import analytics
+
+    return {"sent": analytics.capture_from_ui(body.event, body.props, body.screen)}
+
+
 @router.put("/analytics")
 def set_analytics(body: _AnalyticsBody):
     from core import analytics

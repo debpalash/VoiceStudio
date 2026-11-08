@@ -15,7 +15,7 @@ cloning, and cinematic video dubbing — fully local, with no cloud API keys or 
 ![VoiceStudio — the open-source ElevenLabs alternative](https://raw.githubusercontent.com/debpalash/VoiceStudio/main/.github/assets/social-preview.png)
 
 VoiceStudio processes media on your own hardware and automatically chooses CUDA,
-ROCm, or CPU. Data leaves the machine only after you explicitly agree. PostHog
+ROCm, or CPU. Data leaves the machine only after you explicitly agree. Supermetry
 analytics collect content-free metadata only when you accept the first-run
 consent question; declining or skipping keeps analytics disabled, and
 `-e OMNIVOICE_ANALYTICS_DISABLED=1` turns them off completely. This headless
