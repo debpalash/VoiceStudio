@@ -7,10 +7,12 @@ export function ExternalLink({
   href,
   children,
   showIcon = true,
+  variant = 'outline',
 }: {
   href: string;
   children: React.ReactNode;
   showIcon?: boolean;
+  variant?: 'outline' | 'ghost' | 'secondary';
 }) {
   const { t } = useTranslation();
   const [failed, setFailed] = useState(false);
@@ -20,7 +22,7 @@ export function ExternalLink({
         href={href}
         target="_blank"
         rel="noreferrer"
-        className={buttonVariants({ variant: 'outline', size: 'sm' })}
+        className={buttonVariants({ variant, size: 'sm' })}
         onClick={(event) => {
           const bridge = getBridge();
           if (!bridge) return;
