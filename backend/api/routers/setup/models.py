@@ -513,11 +513,19 @@ def _model_licence_dependencies(model: dict, own_key: str) -> tuple[list[dict], 
     Returns ``(dependencies, complete)``. ``complete`` is False when a lookup
     failed, so callers never present a partial list as the whole licence set.
     """
+    seen: dict[str, dict] = {}
+    complete = True
     try:
         from services import model_acceptance
         hf_repo = model["repo_id"]
-        seen: dict[str, dict] = {}
-        for engine in model.get("engines") or []:
+        engines = list(model.get("engines") or [])
+    except Exception:  # noqa: BLE001 — the row's own licence flow must survive a registry read failure
+        logger.warning("model licence dependency lookup failed", exc_info=True)
+        return [], False
+    for engine in engines:
+        # One engine's failed lookup must not discard the healthy ones: keep
+        # what was found and flag the list as incomplete.
+        try:
             if not _engine_gate_covers_all_rows(engine):
                 continue
             for repo_id in model_acceptance.repos_for_engine(engine):
@@ -526,10 +534,10 @@ def _model_licence_dependencies(model: dict, own_key: str) -> tuple[list[dict], 
                 state = model_acceptance.status(repo_id)
                 if state["required"]:
                     seen[repo_id] = state
-        return list(seen.values()), True
-    except Exception:  # noqa: BLE001 — the row's own licence flow must survive a registry read failure
-        logger.warning("model licence dependency lookup failed", exc_info=True)
-        return [], False
+        except Exception:  # noqa: BLE001
+            logger.warning("model licence dependency lookup failed", exc_info=True)
+            complete = False
+    return list(seen.values()), complete
 
 
 @router.get("/models")

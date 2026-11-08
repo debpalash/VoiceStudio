@@ -109,6 +109,22 @@ def test_engine_lookup_failure_is_not_reported_as_a_complete_list(models, monkey
     assert models._engine_gate_covers_all_rows("no-such-engine") is False
 
 
+def test_failed_engine_lookup_keeps_healthy_engines_dependencies(models, monkeypatch):
+    omni = dict(models.get_model_catalog().get(OMNI))
+    omni["engines"] = ["no-such-engine", "broken", *omni.get("engines", [])]
+    real = models._engine_gate_covers_all_rows
+
+    def covers(engine):
+        if engine == "broken":
+            raise models._EngineLookupFailed(engine)
+        return real(engine)
+
+    monkeypatch.setattr(models, "_engine_gate_covers_all_rows", covers)
+    deps, complete = models._model_licence_dependencies(omni, models.model_key(omni))
+    assert complete is False
+    assert TOKENIZER in [d["repo_id"] for d in deps]
+
+
 def test_selectable_checkpoint_rows_list_no_alternative_models(models):
     kokoro = models.get_model_catalog().get(KOKORO)
     deps, _ = models._model_licence_dependencies(kokoro, models.model_key(kokoro))
