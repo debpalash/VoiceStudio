@@ -129,7 +129,7 @@ def test_fresh_legacy_channel_analysis_cache_is_recomputed(job_env, version):
     assert result["onsets"][0] == pytest.approx(1.0, abs=0.06)
     assert max(result["peaks"]) > 0.4
     assert result["channel_analysis"] == "max_abs_v1"
-    assert json.loads(cache.read_text()) == result
+    assert json.loads(cache.read_text(encoding="utf-8")) == result
 
 
 def test_recomputes_when_audio_newer_than_cache(job_env):

@@ -197,7 +197,7 @@ def test_a_payload_without_its_blockmap_fails_closed(tmp_path: Path, target: str
 def test_an_appimage_manifest_without_blockmapsize_fails_closed(tmp_path: Path):
     release = _release(tmp_path)
     manifest = tmp_path / "electron-stable-linux-x64-linux.yml"
-    body = manifest.read_text().replace("    blockMapSize: 4321\n", "").encode()
+    body = manifest.read_text(encoding="utf-8").replace("    blockMapSize: 4321\n", "").encode()
     manifest.write_bytes(body)
     for asset in release["assets"]:
         if asset["name"] == manifest.name:
@@ -210,7 +210,7 @@ def test_blockmapsize_on_another_entry_does_not_count_for_the_appimage(tmp_path:
     """The deb entry carrying blockMapSize must not vouch for the AppImage."""
     release = _release(tmp_path)
     manifest = tmp_path / "electron-stable-linux-x64-linux.yml"
-    body = manifest.read_text().replace("    blockMapSize: 4321\n", "")
+    body = manifest.read_text(encoding="utf-8").replace("    blockMapSize: 4321\n", "")
     body = body.replace(
         "path: ",
         "  - url: VoiceStudio-0.5.3-linux-x64.deb\n"
