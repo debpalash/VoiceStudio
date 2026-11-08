@@ -39,6 +39,7 @@ import { isPresetOnly, useTtsReadiness } from './use-tts-readiness';
 import { useEngines } from './use-engines';
 import { expressionCaps } from '@/lib/expression';
 import { recordActionBreadcrumb } from '@/lib/report-breadcrumb';
+import { useResolvedLicenceError } from './use-resolved-licence-error';
 import { announceDroppedSpeech } from '@/lib/dropped-speech';
 
 const TIMER_TICK_MS = 100;
@@ -190,6 +191,13 @@ function useGenerateController(): UseGenerateClone {
   );
   const [error, setError] = useState<string | null>(null);
   const [errorTopic, setErrorTopic] = useState<string | null>(null);
+  const [errorCause, setErrorCause] = useState<unknown>(null);
+  const clearError = useCallback(() => {
+    setError(null);
+    setErrorTopic(null);
+    setErrorCause(null);
+  }, []);
+  useResolvedLicenceError(errorCause, clearError);
   const [isGenerating, setIsGenerating] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [progress, setProgress] = useState<number | null>(null);
@@ -288,6 +296,7 @@ function useGenerateController(): UseGenerateClone {
           design?.language ?? settings.language,
         ])
       ) {
+        setErrorCause(null);
         setError(tr('languagePicker.chooseSupported'));
         return;
       }
@@ -322,6 +331,7 @@ function useGenerateController(): UseGenerateClone {
       cancelledRef.current = false;
       setError(null);
       setErrorTopic(null);
+      setErrorCause(null);
       setIsGenerating(true);
       setElapsedSeconds(0);
       setProgress(null);
@@ -438,6 +448,7 @@ function useGenerateController(): UseGenerateClone {
       } catch (err) {
         if (!cancelledRef.current) {
           recordActionBreadcrumb(`generate:${reportMode}:error`);
+          setErrorCause(err);
           setErrorTopic(failureTopicOf(err) ?? null);
           setError(
             isAbortError(err)
@@ -498,10 +509,7 @@ function useGenerateController(): UseGenerateClone {
     modelProgress,
     error,
     errorTopic,
-    clearError: () => {
-      setError(null);
-      setErrorTopic(null);
-    },
+    clearError,
     canGenerate: blocker === null && !isGenerating,
     canGenerateDesign: designBlocker === null && !isGenerating,
     designBlocker,
