@@ -169,6 +169,7 @@ class SupermetryTransport:
                     try:
                         active_socket.shutdown(socket.SHUT_RDWR)
                     except OSError:
+                        # Already closed or reset by the peer: nothing left to shut down.
                         pass
                 self._connection.close()
             while True:

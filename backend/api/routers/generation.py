@@ -1782,7 +1782,7 @@ async def _finalize_generation(
 
         _ph("speech_generated", {
             "mode": history_mode,
-            "feature": "clone" if ref_audio_path else "design",
+            "feature": "convert" if history_mode == "convert" else ("clone" if ref_audio_path else "design"),
             "action": "generate",
             "outcome": "complete",
             **({"engine_id": engine_id} if engine_id else {}),

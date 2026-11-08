@@ -185,9 +185,18 @@ send_uninstall_ping() {
   [ -f "$info" ] && [ -f "$prefs" ] || return 0
   grep -q '"analytics_enabled"[[:space:]]*:[[:space:]]*true' "$prefs" 2>/dev/null || return 0
   command -v curl >/dev/null 2>&1 || return 0
-  command -v python3 >/dev/null 2>&1 || return 0
+  # Prefer a system Python; otherwise the app's own runtime interpreter, so an
+  # opted-in user without python3 on PATH is not silently skipped.
+  local py
+  py=$(command -v python3 2>/dev/null || true)
+  if [ -z "$py" ]; then
+    for candidate in "${ELECTRON_RUNTIME:-$electron_user_data/runtime}/project/.venv/bin/python"; do
+      [ -x "$candidate" ] && py=$candidate
+    done
+  fi
+  [ -n "$py" ] || return 0
   local prepared host agent origin body
-  prepared=$(python3 - "$info" 2>/dev/null <<'PYTHON'
+  prepared=$("$py" - "$info" 2>/dev/null <<'PYTHON'
 import json, os, re, sys, time, uuid
 from urllib.parse import urlsplit
 try:

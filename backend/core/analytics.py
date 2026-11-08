@@ -53,7 +53,6 @@ _OFF_VALUES = {"1", "true", "yes", "on"}
 
 _CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "analytics.json"
 _client_lock = threading.RLock()
-_INSTALL_PROFILE_RE = re.compile(r"install_[a-f0-9]{32}")
 
 
 def _destination() -> dict:
