@@ -36,9 +36,10 @@ from core import voice_leases
 from services.reference_transcript import stored_reference_transcript
 from core.render_trace import call as trace_call, stage as trace_stage
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
+from api.dependencies import consumer_generation, require_consumer_reads_admin_writes
 from pydantic import BaseModel, ConfigDict, Field
 
 from services.audiobook import (
@@ -61,7 +62,7 @@ from services.expression import apply_span_emotion
 from services.longform_progress import RenderProgress, chapter_weight
 
 logger = logging.getLogger("omnivoice.audiobook")
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 
 # A cover filename as produced by /audiobook/cover: 12 hex chars + image ext.
 # An exact-match allowlist is the strongest barrier (and the one CodeQL's
@@ -160,6 +161,7 @@ class AudiobookPlanRequest(BaseModel):
 
 
 @router.post("/audiobook/plan")
+@consumer_generation
 def audiobook_plan(req: AudiobookPlanRequest) -> dict:
     """Parse a script into a chapter/span plan (pure preview, no synthesis)."""
     plan = parse_audiobook_script(req.text, default_voice=req.default_voice)
@@ -178,6 +180,7 @@ _MAX_CHAPTERS = 10_000
 
 
 @router.post("/audiobook/import")
+@consumer_generation
 async def audiobook_import(file: UploadFile = File(...)) -> dict:
     """Import a ``.txt``/``.md``/``.epub``/``.pdf`` into a chapter-delimited script.
 
@@ -217,6 +220,7 @@ async def audiobook_import(file: UploadFile = File(...)) -> dict:
 
 
 @router.post("/audiobook/cover")
+@consumer_generation
 async def audiobook_cover(cover: UploadFile = File(...)) -> dict:
     """Upload a cover image; returns a server-side ``path`` to pass back as
     ``cover_path`` in the synth request. Validated here (jpg/png + size cap) and
@@ -1043,6 +1047,7 @@ class AudiobookPreviewRequest(ExpressiveMixin):
 
 
 @router.post("/audiobook/preview")
+@consumer_generation
 async def audiobook_preview(req: AudiobookPreviewRequest) -> dict:
     """Render a single chapter so the user can audition it before the full run.
 
@@ -1560,6 +1565,7 @@ def _longform_response(stream) -> StreamingResponse:
 
 
 @router.post("/audiobook")
+@consumer_generation
 async def audiobook_synthesize(req: AudiobookRequest, request: Request = None):
     """Synthesize a chapterized audiobook from a script, streaming SSE progress."""
     _ensure_active_engine_licence()
@@ -1612,6 +1618,7 @@ class LongformRenderRequest(ExpressiveMixin):
 
 
 @router.post("/longform/render")
+@consumer_generation
 async def longform_render(req: LongformRenderRequest, request: Request = None):
     """Render a pre-built chapter/span plan (the Stories Editor's compiled
     cast+lines) through the shared chapterized renderer — same resume, loudness,
@@ -1690,6 +1697,7 @@ def list_resumable_jobs() -> dict:
 
 
 @router.post("/audiobook/resume/{job_id}")
+@consumer_generation
 async def resume_longform(job_id: str, request: Request = None):
     """Resume an interrupted longform render from its persisted manifest. The
     already-rendered chapters are content-addressed in the shared cache, so they

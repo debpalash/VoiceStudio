@@ -23,7 +23,7 @@ def client(tmp_path, monkeypatch):
     app = FastAPI()
     app.include_router(profiles.router)
     app.include_router(profile_images.router)
-    with TestClient(app) as client:
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
         yield client
 
 

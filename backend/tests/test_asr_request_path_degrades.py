@@ -126,7 +126,9 @@ def _client(module_name: str, attr: str = "router") -> TestClient:
 
     app = FastAPI()
     app.include_router(getattr(import_module(module_name), attr))
-    return TestClient(app)
+    # Loopback peer so the routers' require_admin / require_consumer gates let
+    # these handler tests through; remote denial is covered by the policy tests.
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 def test_openai_transcriptions_degrades_past_broken_engine(broken_primary):

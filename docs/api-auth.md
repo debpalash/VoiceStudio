@@ -288,6 +288,18 @@ Admin routes — `/system/*` (including `set-env`, **RCE-class**),
 `/api/settings/*`, engine selection/install/uninstall, media tools, MCP
 bindings and pronunciation settings — sit on a
 stricter gate (`require_admin`, `backend/api/dependencies.py`) than consumption.
+Editing, deleting and importing stored content (voice/profile, project,
+glossary, persona, watermark settings, marketplace, batch-job delete) also uses
+this admin gate. Their read-only metadata and saved audio remain available to
+authenticated consumers, including PIN-paired phones, and so do the routes that
+only run a generation (translate, dub, batch submit/cancel/retry, voice convert,
+capture, describe voice, audiobook render, clone creation), marked with
+`@consumer_generation`. The OpenAI-compatible
+`/v1` API retains its consumption gate. A pending designed-voice preview can
+synthesize and save audio even though it is a GET, so it requires an admin
+credential too. Same-origin media requests can use an admin-session cookie
+without the JavaScript CSRF header; cross-site GETs remain rejected.
+
 On the desktop build they are **true-loopback-only**: no PIN, key, or trusted
 network reaches them from another machine.
 

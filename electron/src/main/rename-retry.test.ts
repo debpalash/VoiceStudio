@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DIRECTORY_RENAME,
   FILE_RENAME,
+  SYNC_WAIT_BUDGET_MS,
   renameSyncWithRetry,
   renameWithRetry,
   retryTransient,
@@ -115,7 +116,7 @@ describe('renameSyncWithRetry', () => {
     expect(waits).toEqual([25, 50]);
   });
 
-  it('gives up after the file budget with the last error', () => {
+  it('gives up once the synchronous wait budget is spent, with the last error', () => {
     const fs = failingSync(Array(20).fill('EACCES'));
     const waits: number[] = [];
     expect(() =>
@@ -125,8 +126,10 @@ describe('renameSyncWithRetry', () => {
         sleep: (ms) => void waits.push(ms),
       }),
     ).toThrow(expect.objectContaining({ code: 'EACCES' }));
-    expect(fs.calls).toHaveLength(FILE_RENAME.attempts!);
-    expect(Math.max(...waits)).toBe(FILE_RENAME.capMs);
+    expect(waits.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(SYNC_WAIT_BUDGET_MS);
+    expect(waits.reduce((a, b) => a + b, 0)).toBe(SYNC_WAIT_BUDGET_MS);
+    expect(fs.calls).toHaveLength(waits.length + 1);
+    expect(fs.calls.length).toBeLessThanOrEqual(FILE_RENAME.attempts!);
   });
 
   it('fails at once on other errors and other platforms', () => {

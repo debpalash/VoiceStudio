@@ -10,10 +10,12 @@ from __future__ import annotations
 import json
 import math
 
-from api.routers.openai_compat import _openai_segments
-
 
 def test_non_finite_segment_scores_serialize_as_defaults():
+    # Imported here: other tests reload router modules, so a module-level
+    # reference can point at a stale copy in sys.modules.
+    from api.routers.openai_compat import _openai_segments
+
     segments = _openai_segments(
         [{
             "start": 0.0,

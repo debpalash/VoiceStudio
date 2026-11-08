@@ -43,10 +43,11 @@ import os
 import tempfile
 import time
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from api.dependencies import consumer_generation, require_consumer_reads_admin_writes
 from core.path_security import upload_suffix
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 logger = logging.getLogger("omnivoice.convert")
 
 #: ffmpeg's atempo filter is well-behaved in [0.5, 2.0] per stage. Convert
@@ -346,6 +347,7 @@ async def _convert_keeping_delivery(row, profile_id: str, source_path: str) -> d
 
 
 @router.post("/convert")
+@consumer_generation
 async def convert_speech(
     audio: UploadFile = File(...),
     profile_id: str = Form(...),

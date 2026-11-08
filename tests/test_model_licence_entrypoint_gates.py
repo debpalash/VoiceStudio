@@ -137,7 +137,7 @@ def _probe_generation_route(cls, tb, ma, monkeypatch):
     async def _h(request, exc):
         return JSONResponse(status_code=403, content={"detail": exc.detail()})
 
-    resp = TestClient(app).post("/generate", data={"text": "hello", "engine": cls.id})
+    resp = TestClient(app, client=("127.0.0.1", 50000)).post("/generate", data={"text": "hello", "engine": cls.id})
     if resp.status_code == 403:
         assert resp.json()["detail"]["code"] == "model_licence_required"
         return False
@@ -400,7 +400,7 @@ def test_openai_speech_returns_403_with_the_typed_licence_code(store, engine, tb
     cls.is_available = classmethod(lambda c: (True, ""))
     app = FastAPI()
     app.include_router(oc.router)
-    client = TestClient(app, raise_server_exceptions=False)
+    client = TestClient(app, raise_server_exceptions=False, client=("127.0.0.1", 50000))
     body = {"model": GATED_ENGINE, "input": "hello", "voice": "alloy"}
 
     resp = client.post("/v1/audio/speech", json=body)

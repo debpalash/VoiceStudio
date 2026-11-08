@@ -696,12 +696,13 @@ _SPACE_GROUP_RE = re.compile(
 )
 
 
-# English reads "2 100 meters" as two numbers, so only a run whose groups are
-# all "000" ("10 000", "1 000 000", "12 000%") is kept whole there: a "000"
-# group never starts a number of its own, and the integer rule used to speak
-# the leading group and leave the zeros behind ("ten 000").
+# English reads "2 100 meters" as two numbers, so only a run whose last group
+# is "000" ("10 000", "12 345 000", "12 000%") is kept whole there, with every
+# earlier 3-digit group included: a "000" group never starts a number of its
+# own, and the integer rule used to speak the leading group and leave the zeros
+# behind ("ten 000", or "345 000" split off "12 345 000").
 _EN_SPACE_GROUP_RE = re.compile(
-    r"(?<![\w.,:/$%-])-?\d{1,3}(?: 000)+(?:\s?%)?(?![\w:/%-])(?![.,]\d)"
+    r"(?<![\w.,:/$%-])-?\d{1,3}(?: \d{3})*(?: 000)(?:\s?%)?(?![\w:/%-])(?![.,]\d)"
 )
 
 

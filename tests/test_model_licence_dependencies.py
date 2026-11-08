@@ -62,7 +62,8 @@ def store(monkeypatch):
 
 def test_omnivoice_row_lists_the_tokenizer_licence(models):
     omni = models.get_model_catalog().get(OMNI)
-    deps = models._model_licence_dependencies(omni, models.model_key(omni))
+    deps, complete = models._model_licence_dependencies(omni, models.model_key(omni))
+    assert complete
     ids = [d["repo_id"] for d in deps]
     assert TOKENIZER in ids
     # The row never lists itself, and only gated repos are offered.
@@ -73,7 +74,7 @@ def test_omnivoice_row_lists_the_tokenizer_licence(models):
 def test_rows_without_extra_gated_repos_list_no_dependencies(models):
     for model in models.KNOWN_MODELS:
         key = models.model_key(model)
-        deps = models._model_licence_dependencies(model, key)
+        deps, _ = models._model_licence_dependencies(model, key)
         assert key not in [d["repo_id"] for d in deps]
         assert model["repo_id"] not in [d["repo_id"] for d in deps]
 
@@ -94,9 +95,39 @@ def test_gate_coverage_mirrors_the_runtime_paths(models):
     assert covers("no-such-engine") is False
 
 
+def test_engine_lookup_failure_is_not_reported_as_a_complete_list(models, monkeypatch):
+    from services import tts_backend
+
+    def boom(_engine_id):
+        raise ImportError("sidecar import failed")
+
+    monkeypatch.setattr(tts_backend, "get_backend_class", boom)
+    omni = models.get_model_catalog().get(OMNI)
+    deps, complete = models._model_licence_dependencies(omni, models.model_key(omni))
+    assert deps == [] and complete is False
+    # An unknown id is a normal "no gate", not a failure.
+    assert models._engine_gate_covers_all_rows("no-such-engine") is False
+
+
+def test_failed_engine_lookup_keeps_healthy_engines_dependencies(models, monkeypatch):
+    omni = dict(models.get_model_catalog().get(OMNI))
+    omni["engines"] = ["no-such-engine", "broken", *omni.get("engines", [])]
+    real = models._engine_gate_covers_all_rows
+
+    def covers(engine):
+        if engine == "broken":
+            raise models._EngineLookupFailed(engine)
+        return real(engine)
+
+    monkeypatch.setattr(models, "_engine_gate_covers_all_rows", covers)
+    deps, complete = models._model_licence_dependencies(omni, models.model_key(omni))
+    assert complete is False
+    assert TOKENIZER in [d["repo_id"] for d in deps]
+
+
 def test_selectable_checkpoint_rows_list_no_alternative_models(models):
     kokoro = models.get_model_catalog().get(KOKORO)
-    deps = models._model_licence_dependencies(kokoro, models.model_key(kokoro))
+    deps, _ = models._model_licence_dependencies(kokoro, models.model_key(kokoro))
     ids = [d["repo_id"] for d in deps]
     # mlx-audio gates only the configured checkpoint: accepting Kokoro never
     # requires OuteTTS's non-commercial terms (or any other mlx-audio model).

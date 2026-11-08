@@ -149,6 +149,8 @@
 
 अपना सिस्टम चुनें, फिर इंस्टॉलेशन विधि का विस्तार करें।
 
+नेटिव GGUF इंजन AMD, Intel और NVIDIA GPU पर इंजन-विशिष्ट Vulkan त्वरण का भी समर्थन करते हैं ([OmniVoice](../../docs/engines/omnivoice-gguf.md#vulkan-acceleration), [CosyVoice](../../docs/engines/cosyvoice-gguf.md))। OmniVoice GGUF, Windows और Linux पर GPU और मॉडल का आकार अपने आप चुनता है। छिपी हुई जाँच अटकने पर Vulkan पहचान नेटिव सारांश के साथ दोबारा प्रयास करती है; Windows और Linux डेस्कटॉप बिल्ड Vulkan मॉड्यूल के बिना चुपचाप जारी होने के बजाय विफल हो जाते हैं।
+
 <a id="install-macos"></a>
 
 <details>
