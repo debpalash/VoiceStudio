@@ -116,3 +116,19 @@ def test_helper_raises_the_same_exception_type_with_the_response():
 
     ok = httpx.Response(200, json={"text": "hello"}, request=request)
     mcp_server._raise_for_backend_status(ok)  # success passes through untouched
+
+
+def test_redirect_is_a_failure_not_empty_audio():
+    """The clients don't follow redirects, so a proxy's 3xx (to HTTPS or a
+    login page) must fail the call the way raise_for_status() always did —
+    not hand an empty or HTML body to generate_speech as WAV audio."""
+    import httpx
+    import mcp_server
+
+    request = httpx.Request("POST", "http://proxy.example/generate")
+    redirect = httpx.Response(
+        302, headers={"Location": "https://proxy.example/login"}, request=request
+    )
+    with pytest.raises(httpx.HTTPStatusError) as raised:
+        mcp_server._raise_for_backend_status(redirect)
+    assert raised.value.response is redirect

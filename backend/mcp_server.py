@@ -116,10 +116,13 @@ def _raise_for_backend_status(response) -> None:
     """``response.raise_for_status()``, keeping the backend's explanation.
 
     Raises the same ``httpx.HTTPStatusError`` (with ``.response`` intact) so
-    callers that already catch it keep working; only the message changes."""
-    if not response.is_error:
+    callers that already catch it keep working; only the message changes.
+    Anything but a 2xx is still refused: the clients do not follow redirects,
+    so a 3xx (a proxy bouncing to HTTPS or a login page) is a failed request,
+    not an empty success."""
+    if response.is_success:
         return
-    detail = _backend_error_detail(response)
+    detail = _backend_error_detail(response) if response.is_error else None
     if not detail:
         response.raise_for_status()
     import httpx
