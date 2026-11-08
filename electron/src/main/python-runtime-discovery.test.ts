@@ -70,6 +70,20 @@ describe('discoverPythonRuntimes', () => {
     const result=await discoverPythonRuntimes({platform:'win32',homeDir:win32.join('C:\\','Users','tester'),roots:[root],env:{PATH:''},fs});
     expect(result.candidates).toEqual([{pythonPath:exe,source:'venv',version:'3.14.1'}]);
   });
+  test('keeps sibling Windows Conda environments with root-level python.exe separate',async()=>{
+    const conda=win32.join('C:\\','Users','tester','miniconda3'),envs=win32.join(conda,'envs');
+    const a=win32.join(envs,'a'),b=win32.join(envs,'b');
+    const dirs=new Set([conda,envs,a,b,...[conda,a,b].map(p=>win32.join(p,'conda-meta'))]);
+    const exes=new Set([conda,a,b].map(p=>win32.join(p,'python.exe')));
+    const missing=()=>{throw Object.assign(new Error('missing'),{code:'ENOENT'});};
+    const fs=fakeFs({
+      stat:async p=>exes.has(p)?{isFile:()=>true,isDirectory:()=>false}:dirs.has(p)?{isFile:()=>false,isDirectory:()=>true}:missing(),
+      lstat:async p=>dirs.has(p)?{isSymbolicLink:()=>false,isDirectory:()=>true}:missing(),
+      readdir:async p=>p===conda?['envs','conda-meta','python.exe']:p===envs?['a','b']:dirs.has(p)?['python.exe']:missing(),
+    });
+    const result=await discoverPythonRuntimes({platform:'win32',homeDir:win32.join('C:\\','Users','tester'),roots:[conda],env:{PATH:''},fs});
+    expect(result.candidates.map(c=>c.pythonPath)).toEqual([...exes]);
+  });
   test('returns partial on a slow operation even if it is the final configured directory',async()=>{
     const result=await discoverPythonRuntimes({roots:['/slow'],homeDir:'/fixture',env:{PATH:''},timeoutMs:15,fs:fakeFs({readdir:async()=>new Promise<string[]>(()=>{})})});
     expect(result.partial).toBe(true);expect(result.warnings.some(w=>w.reason==='scan_limit')).toBe(true);

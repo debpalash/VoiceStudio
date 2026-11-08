@@ -1580,7 +1580,7 @@
     "python_runtime_managed_saved": "Runtime gestito selezionato. Riavvio.",
     "python_runtime_quick_search": "Ricerca rapida",
     "python_runtime_searching": "Ricerca in corso…",
-    "python_runtime_search_scope": "Cerca solo nelle posizioni comuni; la selezione manual resta disponibile.",
+    "python_runtime_search_scope": "Cerca solo nelle posizioni comuni; la selezione manuale resta disponibile.",
     "python_runtime_empty": "Nessun interprete Python trovato nelle posizioni cercate.",
     "python_runtime_partial_warning": "I risultati potrebbero essere incompleti per percorsi illeggibili o limiti di ricerca. Puoi selezionare un interprete manualmente.",
     "python_runtime_permission_warning": "Alcuni percorsi sono stati ignorati per mancanza di autorizzazione. Consenti l’accesso nelle impostazioni di sistema o seleziona un interprete manualmente.",
@@ -1592,6 +1592,9 @@
     "python_runtime_review_install": "Verifica l’installazione delle dipendenze",
     "python_runtime_install_consent": "Autorizzo l’installazione dei pacchetti elencati nell’interprete mostrato sopra.",
     "python_runtime_install_confirm": "Conferma e installa i pacchetti",
+    "python_runtime_install_dialog_title": "Installa le dipendenze Python",
+    "python_runtime_install_dialog_message": "Installare questi pacchetti nell’ambiente Python selezionato?",
+    "python_runtime_install_dialog_install": "Installa",
     "python_runtime_installing": "Installazione delle dipendenze…",
     "python_runtime_repair_failed": "Installazione non completata. L’interprete salvato non è stato modificato.",
     "python_runtime_repair_blocked": "L’installazione automatica non è disponibile per questo interprete. Scegli un altro ambiente."

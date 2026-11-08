@@ -1776,6 +1776,9 @@
     "python_runtime_review_install": "Revisar a instalación de dependencias",
     "python_runtime_install_consent": "Autorizo a instalación dos paquetes indicados no intérprete mostrado arriba.",
     "python_runtime_install_confirm": "Confirmar e instalar paquetes",
+    "python_runtime_install_dialog_title": "Instalar dependencias de Python",
+    "python_runtime_install_dialog_message": "Instalar estes paquetes no contorno de Python seleccionado?",
+    "python_runtime_install_dialog_install": "Instalar",
     "python_runtime_installing": "Instalando dependencias…",
     "python_runtime_repair_failed": "A instalación non se completou. O intérprete gardado non cambiou.",
     "python_runtime_repair_blocked": "A instalación automática non está dispoñible para este intérprete. Escolle outro contorno."

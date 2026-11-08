@@ -1590,6 +1590,9 @@
     "python_runtime_review_install": "Bağımlılık kurulumunu incele",
     "python_runtime_install_consent": "Listelenen paketlerin yukarıda gösterilen yorumlayıcıya kurulmasını onaylıyorum.",
     "python_runtime_install_confirm": "Onayla ve paketleri kur",
+    "python_runtime_install_dialog_title": "Python bağımlılıklarını yükle",
+    "python_runtime_install_dialog_message": "Bu paketler seçili Python ortamına yüklensin mi?",
+    "python_runtime_install_dialog_install": "Yükle",
     "python_runtime_installing": "Bağımlılıklar kuruluyor…",
     "python_runtime_repair_failed": "Kurulum tamamlanmadı. Kayıtlı yorumlayıcınız değişmedi.",
     "python_runtime_repair_blocked": "Bu yorumlayıcı için otomatik kurulum kullanılamıyor. Başka bir ortam seçin."

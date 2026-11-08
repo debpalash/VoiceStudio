@@ -1604,6 +1604,9 @@
     "python_runtime_review_install": "Проверить план установки зависимостей",
     "python_runtime_install_consent": "Я разрешаю установку перечисленных пакетов в указанный выше интерпретатор.",
     "python_runtime_install_confirm": "Подтвердить и установить пакеты",
+    "python_runtime_install_dialog_title": "Установить зависимости Python",
+    "python_runtime_install_dialog_message": "Установить эти пакеты в выбранное окружение Python?",
+    "python_runtime_install_dialog_install": "Установить",
     "python_runtime_installing": "Установка зависимостей…",
     "python_runtime_repair_failed": "Установка не завершена. Сохранённый интерпретатор не изменён.",
     "python_runtime_repair_blocked": "Автоматическая установка для этого интерпретатора недоступна. Выберите другое окружение."

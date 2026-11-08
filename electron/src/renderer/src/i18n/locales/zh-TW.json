@@ -1590,6 +1590,9 @@
     "python_runtime_review_install": "檢視相依套件安裝計畫",
     "python_runtime_install_consent": "我同意將列出的套件安裝至上方顯示的直譯器環境。",
     "python_runtime_install_confirm": "確認並安裝套件",
+    "python_runtime_install_dialog_title": "安裝 Python 相依套件",
+    "python_runtime_install_dialog_message": "要將這些套件安裝到所選的 Python 環境中嗎？",
+    "python_runtime_install_dialog_install": "安裝",
     "python_runtime_installing": "正在安裝相依套件…",
     "python_runtime_repair_failed": "安裝未完成。已儲存的直譯器維持不變。",
     "python_runtime_repair_blocked": "此直譯器不支援自動安裝。請選擇其他環境。"

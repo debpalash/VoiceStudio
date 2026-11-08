@@ -1604,6 +1604,9 @@
     "python_runtime_review_install": "Sprawdź plan instalacji zależności",
     "python_runtime_install_consent": "Zgadzam się na instalację wymienionych pakietów w interpreterze pokazanym powyżej.",
     "python_runtime_install_confirm": "Potwierdź i zainstaluj pakiety",
+    "python_runtime_install_dialog_title": "Zainstaluj zależności Pythona",
+    "python_runtime_install_dialog_message": "Zainstalować te pakiety w wybranym środowisku Pythona?",
+    "python_runtime_install_dialog_install": "Zainstaluj",
     "python_runtime_installing": "Instalowanie zależności…",
     "python_runtime_repair_failed": "Instalacja nie została ukończona. Zapisany interpreter pozostaje bez zmian.",
     "python_runtime_repair_blocked": "Automatyczna instalacja jest niedostępna dla tego interpretera. Wybierz inne środowisko."

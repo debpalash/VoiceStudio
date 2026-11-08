@@ -6,7 +6,8 @@ VoiceStudio can use an existing local Python interpreter instead of installing i
 
 - Python 3.11 or newer.
 - The selected interpreter must be an executable file.
-- The validation probe performs real imports (including FastAPI, Uvicorn, OmniVoice, Torch, and the speech engine dependencies). `find_spec` is not sufficient.
+- The validation probe performs real imports (including FastAPI, Uvicorn, OmniVoice, Torch, the speech engine dependencies, and the backend's startup routers). `find_spec` is not sufficient.
+- Virtual environments, Conda, pyenv and system interpreters can all be selected when they pass validation.
 - Keep the environment in place. Searching and validation do not install packages. Dependency installation is a separate, explicitly confirmed action, limited to eligible virtual environments.
 
 ## Selecting an interpreter
@@ -18,9 +19,9 @@ On the first-run backend screen, choose **Choose interpreter**, or use **Setting
 3. It reports missing modules or the import that failed.
 4. It shows a successful validation without changing the saved selection. Choose **Confirm use and continue** to revalidate, save the absolute path and restart the backend.
 
-If modules are missing, choose another interpreter or review the dependency installation plan. Only reviewed package specifications are offered; unknown imports do not become arbitrary pip arguments. The plan shows the exact interpreter and packages. Installation requires both UI consent and a native confirmation dialog, uses no sudo or system-package override, and is not offered for system/protected environments. Cancellation leaves the environment and saved selection unchanged. After installation, validation runs again and still requires **Confirm use and continue** before saving. Installation errors retain diagnostic output. Existing environments are not backed up automatically; use a dedicated virtual environment if other applications share your current one.
+If modules are missing, choose another interpreter or review the dependency installation plan. Only reviewed package specifications are offered; unknown imports do not become arbitrary pip arguments. The plan shows the exact interpreter and packages. Installation downloads the listed packages from PyPI with `pip`, requires both UI consent and a native confirmation dialog, uses no sudo or system-package override, and is not offered for system/protected environments. Cancellation leaves the environment and saved selection unchanged. After installation, validation runs again and still requires **Confirm use and continue** before saving. Installation errors retain diagnostic output. Existing environments are not backed up automatically; use a dedicated virtual environment if other applications share your current one.
 
-Use **Use managed runtime** to remove the selection and restart with the bundled/managed environment.
+Use **Use managed runtime** to remove the selection and restart with the bundled/managed environment. If a saved interpreter later stops working, the backend error screen shows the same controls, so you can return to the managed runtime or choose another interpreter there.
 
 ## Quick search
 

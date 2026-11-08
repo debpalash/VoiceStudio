@@ -1618,6 +1618,9 @@
     "python_runtime_review_install": "مراجعة خطة تثبيت الاعتماديات",
     "python_runtime_install_consent": "أوافق على تثبيت الحزم المدرجة في المفسّر الموضّح أعلاه.",
     "python_runtime_install_confirm": "تأكيد وتثبيت الحزم",
+    "python_runtime_install_dialog_title": "تثبيت تبعيات Python",
+    "python_runtime_install_dialog_message": "هل تريد تثبيت هذه الحزم في بيئة Python المحددة؟",
+    "python_runtime_install_dialog_install": "تثبيت",
     "python_runtime_installing": "جارٍ تثبيت الاعتماديات…",
     "python_runtime_repair_failed": "لم يكتمل التثبيت. لم يتغير المفسّر المحفوظ.",
     "python_runtime_repair_blocked": "التثبيت التلقائي غير متاح لهذا المفسّر. اختر بيئة أخرى."

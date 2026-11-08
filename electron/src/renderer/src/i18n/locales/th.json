@@ -1590,6 +1590,9 @@
     "python_runtime_review_install": "ตรวจทานแผนการติดตั้งส่วนที่จำเป็น",
     "python_runtime_install_consent": "ฉันยินยอมให้ติดตั้งแพ็กเกจที่ระบุลงในตัวแปลภาษาที่แสดงด้านบน",
     "python_runtime_install_confirm": "ยืนยันและติดตั้งแพ็กเกจ",
+    "python_runtime_install_dialog_title": "ติดตั้งส่วนประกอบของ Python",
+    "python_runtime_install_dialog_message": "ติดตั้งแพ็กเกจเหล่านี้ลงในสภาพแวดล้อม Python ที่เลือกหรือไม่?",
+    "python_runtime_install_dialog_install": "ติดตั้ง",
     "python_runtime_installing": "กำลังติดตั้งส่วนที่จำเป็น…",
     "python_runtime_repair_failed": "การติดตั้งไม่เสร็จสมบูรณ์ ตัวแปลภาษาที่บันทึกไว้ไม่เปลี่ยนแปลง",
     "python_runtime_repair_blocked": "ตัวแปลภาษานี้ไม่รองรับการติดตั้งอัตโนมัติ โปรดเลือกสภาพแวดล้อมอื่น"

@@ -110,6 +110,28 @@ export function needsManagedRuntime(
 }
 
 export const BACKEND_IMPORT_MARKER = 'VOICESTUDIO_BACKEND_IMPORT=main';
+export const STARTUP_IMPORTS_MARKER = 'VOICESTUDIO_STARTUP_IMPORTS=';
+/**
+ * `import main` defers the router/model-manager fan-out to `_phase_a_build`, so a
+ * runtime can pass that import yet fail at startup (python-multipart, a router
+ * dependency). Import the unguarded `_phase_a_build_inner` imports read from
+ * main.py itself, without running the build (no prefs migration, no GPU test).
+ */
+export const STARTUP_IMPORT_PROBE = [
+  'import ast, importlib, os',
+  "_src = open(os.path.join(os.getcwd(), 'backend', 'main.py'), encoding='utf-8').read()",
+  "_fn = next((n for n in ast.walk(ast.parse(_src)) if isinstance(n, ast.FunctionDef) and n.name == '_phase_a_build_inner'), None)",
+  "_imports = [n for n in (_fn.body if _fn else []) if isinstance(n, ast.ImportFrom) and not n.level and n.module and (n.module.startswith('api.') or n.module.startswith('services.'))]",
+  `print('${STARTUP_IMPORTS_MARKER}' + str(len(_imports)), flush=True)`,
+  "if not _imports: raise SystemExit('startup_imports_not_found')",
+  'for _node in _imports:',
+  "    print('VOICESTUDIO_IMPORT=' + _node.module, flush=True)",
+  '    _mod = importlib.import_module(_node.module)',
+  '    for _alias in _node.names:',
+  '        if not hasattr(_mod, _alias.name):',
+  "            print('VOICESTUDIO_IMPORT=' + _node.module + '.' + _alias.name, flush=True)",
+  "            importlib.import_module(_node.module + '.' + _alias.name)",
+].join('\n');
 export const SELECTED_RUNTIME_IMPORT_PROBE = [
   'import json, os, sys',
   `sys.path.insert(0, os.path.join(os.getcwd(), 'backend'))`,
@@ -120,7 +142,15 @@ export const SELECTED_RUNTIME_IMPORT_PROBE = [
   RUNTIME_IMPORT_PROBE,
   `print('${BACKEND_IMPORT_MARKER}', flush=True)`,
   'import main',
+  STARTUP_IMPORT_PROBE,
 ].join('\n');
+
+/** The import a failed probe was loading; backend startup imports follow `main`. */
+function failedImport(output: string): string | null {
+  const at = output.lastIndexOf(BACKEND_IMPORT_MARKER);
+  if (at < 0) return lastImportAttempted(output);
+  return lastImportAttempted(output.slice(at)) ?? 'main';
+}
 
 export async function validatePythonRuntime(pythonPath: string, cwd: string): Promise<PythonRuntimeValidation> {
   const normalized = resolve(pythonPath);
@@ -152,18 +182,15 @@ export async function validatePythonRuntime(pythonPath: string, cwd: string): Pr
     const [major, minor] = version.split('.').map(Number);
     if (major < MIN_PYTHON[0] || (major === MIN_PYTHON[0] && minor < MIN_PYTHON[1]))
       return { ok: false, pythonPath: normalized, version, detail: 'python_version_unsupported' };
-    if (!isVenvInterpreter(normalized, cwd) || !output.includes('VOICESTUDIO_VENV=1'))
-      return { ok: false, pythonPath: normalized, version, detail: 'venv_required' };
-    if (output.includes('VOICESTUDIO_EXTERNALLY_MANAGED=1'))
-      return { ok: false, pythonPath: normalized, version, detail: 'externally_managed' };
+    // Selection only reads the environment: Conda, pyenv and system interpreters
+    // that import everything are compatible. Virtual-environment limits apply to
+    // the dependency repair below, which writes to it.
     return { ok: true, pythonPath: normalized, version };
   } catch (error) {
     const failure = error as { stdout?: unknown; stderr?: unknown; message?: unknown };
     const text = `${String(failure.stdout ?? '')}\n${String(failure.stderr ?? '')}`;
     const version = text.match(/VOICESTUDIO_PYTHON=([0-9]+\.[0-9]+(?:\.[0-9]+)?)/)?.[1];
-    const attempted = text.includes(BACKEND_IMPORT_MARKER)
-      ? 'main'
-      : lastImportAttempted(text);
+    const attempted = failedImport(text);
     const missing: string[] = [...text.matchAll(/No module named ['\"]([^'\"]+)['\"]/g)].map((m) => m[1]);
     const detail = version && (() => {
       const [major, minor] = version.split('.').map(Number);

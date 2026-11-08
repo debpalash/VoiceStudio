@@ -61,6 +61,25 @@ import { discoverPythonRuntimes, type PythonDiscoveryResult } from './python-run
 import { createOpaqueToken, type PythonRepairPlan } from './runtime-python-selection';
 import { runRuntimeProbe } from './runtime-probe';
 
+const PYTHON_REPAIR_DIALOG_FALLBACK = {
+  title: 'Install Python dependencies',
+  message: 'Install these packages into the selected Python environment?',
+  install: 'Install',
+  cancel: 'Cancel',
+} as const;
+
+/** Translated native-dialog labels from the renderer, English when absent or malformed. */
+export function pythonRepairDialogLabels(raw: unknown): Record<keyof typeof PYTHON_REPAIR_DIALOG_FALLBACK, string> {
+  const input = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const pick = (key: keyof typeof PYTHON_REPAIR_DIALOG_FALLBACK) => {
+    const value = input[key];
+    return typeof value === 'string' && value.trim() && value.length <= 300
+      ? value
+      : PYTHON_REPAIR_DIALOG_FALLBACK[key];
+  };
+  return { title: pick('title'), message: pick('message'), install: pick('install'), cancel: pick('cancel') };
+}
+
 export const CHANNELS = {
   permissionsGetState: 'permissions:getState',
   permissionsOpenSettings: 'permissions:openSettings',
@@ -476,11 +495,14 @@ export function registerIpc(
     if (resolve(input.pythonPath) !== staged.plan.interpreter || JSON.stringify(input.packages) !== JSON.stringify(staged.plan.packages)) throw new Error('python_repair_changed');
     const recheck = await validatePythonRuntime(staged.plan.interpreter, backendRoot());
     if (recheck.ok || !recheck.repairPlan || JSON.stringify(recheck.repairPlan) !== JSON.stringify(staged.plan)) throw new Error('python_repair_changed');
+    // The renderer supplies only translated labels; the interpreter and packages
+    // shown come from the trusted staged plan.
+    const labels = pythonRepairDialogLabels((raw as { dialog?: unknown }).dialog);
     const choice = await dialog.showMessageBox(owner, {
-      type: 'question', buttons: ['Install', 'Cancel'], defaultId: 0, cancelId: 1,
-      title: 'Install Python dependencies',
-      message: `Install dependencies into ${staged.plan.interpreter}?`,
-      detail: staged.plan.packages.join('\n'),
+      type: 'question', buttons: [labels.install, labels.cancel], defaultId: 0, cancelId: 1,
+      title: labels.title,
+      message: labels.message,
+      detail: `${staged.plan.interpreter}\n\n${staged.plan.packages.join('\n')}`,
     });
     if (choice.response !== 0) return { ...recheck, installed: false, canceled: true, token: stagePython(recheck.pythonPath, event, false) };
     if (maintenanceBusy) throw new Error('maintenance_busy');
@@ -505,7 +527,9 @@ export function registerIpc(
     if (!after.ok && after.repairPlan) {
       const repairToken = createOpaqueToken();
       stagedRepairs.set(repairToken, { plan: after.repairPlan, senderId: event.sender.id, frameId: event.frameId, createdAt: Date.now() });
-      return { ...after, installed: false, repairToken, outputTail: output.slice(-4000) };
+      // A fresh unvalidated selection token keeps "Review dependency installation"
+      // available for the next missing dependency without choosing the interpreter again.
+      return { ...after, installed: false, repairToken, token: stagePython(after.pythonPath, event, false), outputTail: output.slice(-4000) };
     }
     return { ...after, installed: after.ok && !installError, token: after.ok && !installError ? stagePython(after.pythonPath, event, true) : undefined, outputTail: output.slice(-4000) };
   });

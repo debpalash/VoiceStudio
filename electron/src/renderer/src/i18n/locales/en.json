@@ -1776,6 +1776,9 @@
     "python_runtime_review_install": "Review dependency installation",
     "python_runtime_install_consent": "I approve installing the listed packages into the interpreter shown above.",
     "python_runtime_install_confirm": "Confirm and install packages",
+    "python_runtime_install_dialog_title": "Install Python dependencies",
+    "python_runtime_install_dialog_message": "Install these packages into the selected Python environment?",
+    "python_runtime_install_dialog_install": "Install",
     "python_runtime_installing": "Installing dependencies…",
     "python_runtime_repair_failed": "Installation did not complete. Your saved interpreter is unchanged.",
     "python_runtime_repair_blocked": "Automatic installation is unavailable for this interpreter. Choose another environment."

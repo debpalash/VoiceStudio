@@ -10,7 +10,8 @@ type Candidate = DiscoveryResult['candidates'][number];
 type Validation = Awaited<ReturnType<NonNullable<ReturnType<typeof getBridge>>['backend']['choosePythonRuntime']>>;
 type RepairReview = Awaited<ReturnType<NonNullable<ReturnType<typeof getBridge>>['backend']['planPythonRepair']>>;
 
-export function ExistingPythonSettings() {
+/** `onlyWhenSelected`: render only while a saved interpreter is in use (failure recovery). */
+export function ExistingPythonSettings({ onlyWhenSelected = false }: { onlyWhenSelected?: boolean } = {}) {
   const { t } = useTranslation();
   const [selection, setSelection] = useState<{ pythonPath: string } | null>(null);
   const [overrideActive, setOverrideActive] = useState(false);
@@ -80,8 +81,16 @@ export function ExistingPythonSettings() {
     try {
       const result = await backend.installPythonRepair({
         token: repairToken, pythonPath: repairPlan.interpreter, packages: [...repairPlan.packages],
+        dialog: {
+          title: t('settings.python_runtime_install_dialog_title'),
+          message: t('settings.python_runtime_install_dialog_message'),
+          install: t('settings.python_runtime_install_dialog_install'),
+          cancel: t('common.cancel'),
+        },
       });
       stage(result);
+      // Another reviewed dependency is still missing: keep its plan under review.
+      if (!result.ok && result.repairToken && result.repairPlan?.packages.length) setRepair(result);
       if (!result.ok && !result.canceled) setMessage(`${t('settings.python_runtime_repair_failed')}${result.outputTail ? `\n${result.outputTail}` : ''}`);
     } catch (error) {
       setMessage(`${t('settings.python_runtime_repair_failed')}\n${error instanceof Error ? error.message : String(error)}`);
@@ -194,6 +203,8 @@ export function ExistingPythonSettings() {
   const warningText = discovery?.warnings.some((warning) => warning.reason === 'permission_denied')
     ? t('settings.python_runtime_permission_warning')
     : discovery?.partial ? t('settings.python_runtime_partial_warning') : null;
+
+  if (onlyWhenSelected && !selection && !staged) return null;
 
   return (
     <SettingsSection icon={TerminalIcon} title={t('settings.python_runtime_title')}>

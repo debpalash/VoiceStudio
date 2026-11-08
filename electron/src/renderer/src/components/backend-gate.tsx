@@ -646,6 +646,9 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
             <SetupSupport key={`${status.stage}:${status.message ?? ''}`} status={status} />
           )}
           {setup || installing ? <SetupHelpLinks /> : null}
+          {/* A saved interpreter that broke later fails the launch, not setup: keep
+              the way back to the managed runtime (or another interpreter) here. */}
+          {failed && !status.remote ? <ExistingPythonSettings onlyWhenSelected /> : null}
           {failed && <ReportBug error={status.message} />}
           {failed && <CrashDetails />}
           <ConfirmDialog

@@ -1590,6 +1590,9 @@
     "python_runtime_review_install": "Xem kế hoạch cài đặt phụ thuộc",
     "python_runtime_install_consent": "Tôi đồng ý cài các gói được liệt kê vào trình thông dịch hiển thị ở trên.",
     "python_runtime_install_confirm": "Xác nhận và cài các gói",
+    "python_runtime_install_dialog_title": "Cài đặt phụ thuộc Python",
+    "python_runtime_install_dialog_message": "Cài đặt các gói này vào môi trường Python đã chọn?",
+    "python_runtime_install_dialog_install": "Cài đặt",
     "python_runtime_installing": "Đang cài đặt phụ thuộc…",
     "python_runtime_repair_failed": "Cài đặt chưa hoàn tất. Trình thông dịch đã lưu không thay đổi.",
     "python_runtime_repair_blocked": "Không thể cài đặt tự động cho trình thông dịch này. Hãy chọn môi trường khác."

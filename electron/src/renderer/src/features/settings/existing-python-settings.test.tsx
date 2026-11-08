@@ -141,11 +141,36 @@ it('installs only the confirmed reviewed target and packages, then still waits f
   fireEvent.click(screen.getByRole('checkbox', { name: 'settings.python_runtime_install_consent' }));
   fireEvent.click(screen.getByRole('button', { name: 'settings.python_runtime_install_confirm' }));
   expect(await screen.findByText('settings.python_runtime_ready')).toBeVisible();
-  expect(backend.installPythonRepair).toHaveBeenCalledWith({ token: 'repair-token', pythonPath: candidate.pythonPath, packages: repairPlan.packages });
+  expect(backend.installPythonRepair).toHaveBeenCalledWith({
+    token: 'repair-token', pythonPath: candidate.pythonPath, packages: repairPlan.packages,
+    // The native confirmation is translated; the plan it names comes from main.
+    dialog: {
+      title: 'settings.python_runtime_install_dialog_title',
+      message: 'settings.python_runtime_install_dialog_message',
+      install: 'settings.python_runtime_install_dialog_install',
+      cancel: 'common.cancel',
+    },
+  });
   expect(backend.confirmPythonRuntime).not.toHaveBeenCalled();
   expect(backend.getPythonRuntime).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('button', { name: 'settings.python_runtime_confirm' }));
   await waitFor(() => expect(backend.confirmPythonRuntime).toHaveBeenCalledWith('revalidated-token'));
+});
+it('keeps the next reviewed dependency under review when one install leaves another missing', async () => {
+  const nextPlan = { interpreter: candidate.pythonPath, packages: ['torchaudio>=2.10.0'] };
+  backend.installPythonRepair.mockResolvedValue({
+    ...missing, missingModules: ['torchaudio'], repairPlan: nextPlan, repairToken: 'next-repair-token',
+    token: 'next-selection-token', installed: false,
+  });
+  await reviewRepair();
+  fireEvent.click(screen.getByRole('checkbox', { name: 'settings.python_runtime_install_consent' }));
+  fireEvent.click(screen.getByRole('button', { name: 'settings.python_runtime_install_confirm' }));
+  await waitFor(() => expect(screen.getByTestId('python-runtime-repair-plan')).toHaveTextContent('torchaudio>=2.10.0'));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'settings.python_runtime_install_consent' }));
+  fireEvent.click(screen.getByRole('button', { name: 'settings.python_runtime_install_confirm' }));
+  await waitFor(() => expect(backend.installPythonRepair).toHaveBeenLastCalledWith(
+    expect.objectContaining({ token: 'next-repair-token', packages: nextPlan.packages }),
+  ));
 });
 it.each([
   ['rejected', new Error('pip_failed')],

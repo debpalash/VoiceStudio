@@ -1590,6 +1590,9 @@
     "python_runtime_review_install": "Tinjau pemasangan dependensi",
     "python_runtime_install_consent": "Saya menyetujui pemasangan paket yang tercantum ke interpreter yang ditampilkan di atas.",
     "python_runtime_install_confirm": "Konfirmasi dan pasang paket",
+    "python_runtime_install_dialog_title": "Instal dependensi Python",
+    "python_runtime_install_dialog_message": "Instal paket ini ke lingkungan Python yang dipilih?",
+    "python_runtime_install_dialog_install": "Instal",
     "python_runtime_installing": "Memasang dependensi…",
     "python_runtime_repair_failed": "Pemasangan tidak selesai. Interpreter tersimpan tidak berubah.",
     "python_runtime_repair_blocked": "Pemasangan otomatis tidak tersedia untuk interpreter ini. Pilih lingkungan lain."

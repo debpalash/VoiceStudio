@@ -63,7 +63,10 @@ export async function discoverPythonRuntimes(options: PythonDiscoveryOptions = {
   async function candidate(p: string, from: string) {
     const info = await read(p, () => fs.stat(p));
     if (!info?.isFile()) return;
-    const root = path.dirname(path.dirname(p));
+    // `<env>/bin/python` and `<env>\\Scripts\\python.exe`, but Windows Conda keeps
+    // `python.exe` at the environment root: never let sibling envs share one identity.
+    const dir = path.dirname(p);
+    const root = /^(?:bin|scripts)$/i.test(path.basename(dir)) ? path.dirname(dir) : dir;
     const cfg = await read(path.join(root, 'pyvenv.cfg'), () => fs.readFile(path.join(root, 'pyvenv.cfg')));
     const conda = await read(path.join(root, 'conda-meta'), () => fs.stat(path.join(root, 'conda-meta')));
     const isEnvironment = cfg !== undefined || conda?.isDirectory() || ['venv', 'pyenv', 'conda', 'uv'].includes(from);

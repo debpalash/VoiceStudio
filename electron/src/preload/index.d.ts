@@ -522,6 +522,8 @@ export interface VoiceStudioBridge {
       token: string;
       pythonPath: string;
       packages: string[];
+      /** Translated native confirmation labels; the plan itself comes from main. */
+      dialog?: { title: string; message: string; install: string; cancel: string };
     }): Promise<{
       ok: boolean;
       pythonPath: string;
@@ -532,6 +534,7 @@ export interface VoiceStudioBridge {
       canceled?: boolean;
       token?: string;
       repairToken?: string;
+      repairPlan?: PythonRepairPlan;
       outputTail?: string;
     }>;
     onPythonRepairProgress(callback: (event: { text: string; stream: 'stdout' | 'stderr' }) => void): () => void;

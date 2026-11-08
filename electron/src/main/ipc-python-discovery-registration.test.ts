@@ -37,7 +37,11 @@ it('keeps confirmation and repair side effects behind trusted staged tokens', ()
 
   expect(repair).toContain('assertTrustedMainFrame(event, owner)');
   expect(repair).toContain('dialog.showMessageBox(owner');
-  expect(repair).toContain("buttons: ['Install', 'Cancel']");
+  expect(repair).toContain('buttons: [labels.install, labels.cancel]');
+  // Trusted plan details, never renderer text, name what gets installed.
+  expect(repair).toContain('detail: `${staged.plan.interpreter}');
   expect(repair).toContain("['-m', 'pip', 'install'");
   expect(repair).toContain('staged.plan.packages');
+  // A partial install returns a fresh selection token so the next plan stays reviewable.
+  expect(repair).toContain('repairToken, token: stagePython(after.pythonPath, event, false)');
 });
