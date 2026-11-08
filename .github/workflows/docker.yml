@@ -385,10 +385,17 @@ jobs:
         id: rocm_base
         shell: bash
         run: |
-          torch="$(sed -n 's/^torch==\([0-9][0-9.]*\)$/\1/p' deploy/torch-constraints.txt | head -n1)"
-          if [ -z "$torch" ]; then
-            echo "::error::deploy/torch-constraints.txt has no exact torch==X.Y.Z pin"
-            exit 1
+          if [ -f deploy/torch-constraints.txt ]; then
+            torch="$(sed -n 's/^torch==\([0-9][0-9.]*\)$/\1/p' deploy/torch-constraints.txt | head -n1)"
+            if [ -z "$torch" ]; then
+              echo "::error::deploy/torch-constraints.txt has no exact torch==X.Y.Z pin"
+              exit 1
+            fi
+          else
+            # Releases older than the constraints file always built on the
+            # torch 2.8.0 ROCm base this workflow used before it followed the pin.
+            torch=2.8.0
+            echo "::notice::No deploy/torch-constraints.txt in this checkout; using the torch ${torch} ROCm base"
           fi
           echo "image=rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_${torch}" >> "$GITHUB_OUTPUT"
 
