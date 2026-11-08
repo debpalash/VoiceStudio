@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   safeThrows: false,
   keyring: false,
   setBackendOnlyEnv: vi.fn(),
+  bridgeFails: false,
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
 }));
 vi.mock('electron', () => ({
@@ -38,6 +39,14 @@ vi.mock('electron', () => ({
 }));
 vi.mock('../backend', () => ({ setBackendOnlyEnv: h.setBackendOnlyEnv }));
 vi.mock('../ipc', () => ({ assertTrustedMainFrame: vi.fn() }));
+vi.mock('./account-token-bridge', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./account-token-bridge')>();
+  return {
+    ...real,
+    startAccountTokenBridge: (...args: Parameters<typeof real.startAccountTokenBridge>) =>
+      h.bridgeFails ? Promise.reject(new Error('port in use')) : real.startAccountTokenBridge(...args),
+  };
+});
 
 import { startAccount } from './index';
 
@@ -50,7 +59,9 @@ afterEach(() => {
   h.packaged = false;
   h.safeThrows = false;
   h.keyring = false;
+  h.bridgeFails = false;
   h.setBackendOnlyEnv.mockClear();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -187,4 +198,17 @@ it('a cached photo does not outlive account features being off', async () => {
   );
   (await startAccount(opts))();
   expect(existsSync(photo)).toBe(false);
+});
+
+it('a failed account start leaves no app check-in running', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  const { AccountApi } = await import('./account-api');
+  const appCheck = vi.spyOn(AccountApi.prototype, 'appCheck').mockResolvedValue(300);
+  h.dir = signedInDir();
+  h.bridgeFails = true;
+  const close = await startAccount(opts);
+  close();
+  await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+  expect(appCheck).not.toHaveBeenCalled();
+  appCheck.mockRestore();
 });

@@ -85,7 +85,7 @@ async function wireAccount(opts: StartOptions): Promise<() => void> {
   });
   const appCheck = new AppCheck({
     api,
-    version: app.getVersion(),
+    version: __APP_VERSION__,
     platform: process.platform,
     isActive: () => allowed() && session.state().signedIn,
   });
@@ -103,13 +103,25 @@ async function wireAccount(opts: StartOptions): Promise<() => void> {
       closeIpc();
       activity.stopAll();
     };
-  const bridge = await startAccountTokenBridge({
-    getToken: () => session.getAccessToken(),
-    isSyncAllowed: () => switches.get().syncEnabled,
-    isRemoteBackend: opts.isRemoteBackend,
-    context: async () => ({ organization_id: await ctl.organizationId(), sync_api: env.syncApi }),
-    invalidate: () => session.invalidateAccessToken(),
-  });
+  const stopAppCheck = () => {
+    appCheck.stop();
+    unwatchCheckSwitch();
+    unwatchCheckSession();
+  };
+  let bridge: Awaited<ReturnType<typeof startAccountTokenBridge>>;
+  try {
+    bridge = await startAccountTokenBridge({
+      getToken: () => session.getAccessToken(),
+      isSyncAllowed: () => switches.get().syncEnabled,
+      isRemoteBackend: opts.isRemoteBackend,
+      context: async () => ({ organization_id: await ctl.organizationId(), sync_api: env.syncApi }),
+      invalidate: () => session.invalidateAccessToken(),
+    });
+  } catch (error) {
+    // A failed start returns no cleanup, so the check-in must not keep running.
+    stopAppCheck();
+    throw error;
+  }
   // The backend runs the sync engine: tell it at once when sync turns on or off.
   const tell = (path: '/api/cloud-sync/start' | '/api/cloud-sync/stop') => {
     if (opts.isRemoteBackend() || !opts.notifyBackend) return;
@@ -137,9 +149,7 @@ async function wireAccount(opts: StartOptions): Promise<() => void> {
     VOICESTUDIO_ACCOUNT_BRIDGE_TOKEN: bridge.token,
   });
   return () => {
-    appCheck.stop();
-    unwatchCheckSwitch();
-    unwatchCheckSession();
+    stopAppCheck();
     unwatchPhoto();
     unwatchPhotoSwitch();
     unwatchSwitches();
