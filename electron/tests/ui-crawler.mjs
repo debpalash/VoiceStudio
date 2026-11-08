@@ -91,7 +91,13 @@ async function openSession(browser, mode) {
       localStorage.setItem('voicestudio.setup.complete.v1', '1');
     } catch {}
   });
-  const state = { faulting: false, failedWrites: 0, inflight: new Set(), activity: 0, events: [] };
+  const state = {
+    faulting: false,
+    failedWrites: 0,
+    inflight: new Set(),
+    activity: 0,
+    events: [],
+  };
   await context.route('**/*', (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -126,7 +132,8 @@ async function openSession(browser, mode) {
     return names.length ? `: ${names.slice(0, 6).join(', ')}` : '';
   };
   const finished = (request) => {
-    if (state.inflight.delete(request)) state.activity += 1;
+    if (!state.inflight.delete(request)) return;
+    state.activity += 1;
   };
   page.on('requestfinished', finished);
   page.on('requestfailed', finished);
@@ -168,14 +175,20 @@ async function openSession(browser, mode) {
     }, FEEDBACK);
   };
 
+  /** Visible loading indicators, counted with Playwright's own visibility rules. */
+  const busy = () => page.locator(BUSY).filter({ visible: true }).count();
+
   /** Click one button and return the kinds of failure it showed, with details. */
   const clickAndCheck = async (button, route) => {
-    const before = await page.locator(BUSY).filter({ visible: true }).count();
-    const text = await page.evaluate((clickable) => {
-      for (const element of document.querySelectorAll(`main ${clickable}`))
-        element.dataset.crawlEnabled = '1';
-      return document.querySelector('main')?.innerText ?? '';
-    }, CLICKABLE);
+    // Independent reads share one round trip.
+    const [before] = await Promise.all([
+      busy(),
+      page.evaluate((clickable) => {
+        for (const element of document.querySelectorAll(`main ${clickable}`))
+          element.dataset.crawlEnabled = '1';
+        window.__crawlText = document.querySelector('main')?.innerText ?? '';
+      }, CLICKABLE),
+    ]);
     state.faulting = true;
     const clicked = await button
       .click({ timeout: 2_000 })
@@ -187,16 +200,30 @@ async function openSession(browser, mode) {
     }
     let observation;
     try {
-      observation = await settle(SETTLE_MS, () => page.locator(BUSY).filter({ visible: true }).count());
+      observation = await settle(SETTLE_MS, busy);
     } finally {
       state.faulting = false;
     }
     const problems = [];
-    const responsive = !observation.unresponsive && await Promise.race([
-      page.evaluate(() => true),
+    const failedWrite = Boolean(state.failedWrites) && mode !== 'fixture' && observation.settled;
+    // One read gathers the evidence and proves the renderer still answers.
+    const evidence = !observation.unresponsive && await Promise.race([
+      page.evaluate(({ failedWrite, feedback }) => {
+        const result = { errors: window.__crawlErrors.splice(0), greyed: [], feedback: true };
+        if (!failedWrite) return result;
+        result.greyed = [...document.querySelectorAll('main [data-crawl-enabled]')]
+          .filter((element) => element.matches('[disabled], [aria-disabled="true"]'))
+          .map((element) =>
+            (element.textContent || element.getAttribute('aria-label') || '?').trim(),
+          );
+        result.feedback =
+          [...document.querySelectorAll(feedback)].some((node) => !node.dataset.crawlSeen) ||
+          (document.querySelector('main')?.innerText ?? '') !== window.__crawlText;
+        return result;
+      }, { failedWrite, feedback: FEEDBACK }),
       new Promise((resolve) => setTimeout(() => resolve(false), 5_000)),
     ]);
-    if (!responsive) {
+    if (!evidence) {
       await page.goto(`${BASE}/#${route}`);
       return [{ kind: 'frozen', detail: observation.unresponsive
         ? 'renderer did not answer before the request budget expired'
@@ -210,33 +237,17 @@ async function openSession(browser, mode) {
         kind: 'stuck',
         detail: `${after - before} loading indicator(s) left after all requests settled`,
       });
-    if (state.failedWrites && mode !== 'fixture' && observation.settled) {
-      const greyed = await page.evaluate(() =>
-        [...document.querySelectorAll('main [data-crawl-enabled]')]
-          .filter((element) => element.matches('[disabled], [aria-disabled="true"]'))
-          .map((element) =>
-            (element.textContent || element.getAttribute('aria-label') || '?').trim(),
-          ),
-      );
-      if (greyed.length)
-        problems.push({
-          kind: 'disabled',
-          detail: `still disabled after the failed write settled: ${greyed.join(', ').slice(0, 200)}`,
-        });
-      const feedback = await page.evaluate(
-        ({ selector, previous }) =>
-          [...document.querySelectorAll(selector)].some((node) => !node.dataset.crawlSeen) ||
-          (document.querySelector('main')?.innerText ?? '') !== previous,
-        { selector: FEEDBACK, previous: text },
-      );
-      if (!feedback)
-        problems.push({
-          kind: 'silent',
-          detail: `${state.failedWrites} failed write(s) and no visible feedback`,
-        });
-    }
-    for (const error of await page.evaluate(() => window.__crawlErrors.splice(0)))
-      problems.push({ kind: 'crash', detail: error });
+    if (evidence.greyed.length)
+      problems.push({
+        kind: 'disabled',
+        detail: `still disabled after the failed write settled: ${evidence.greyed.join(', ').slice(0, 200)}`,
+      });
+    if (!evidence.feedback)
+      problems.push({
+        kind: 'silent',
+        detail: `${state.failedWrites} failed write(s) and no visible feedback`,
+      });
+    for (const error of evidence.errors) problems.push({ kind: 'crash', detail: error });
     problems.push(...state.events.splice(0));
     return problems;
   };
@@ -479,7 +490,9 @@ async function crawlMode(browser, mode, routes) {
     return { opensDialog: (await dialogs().count()) > openDialogs };
   };
 
+  const seconds = {};
   for (const route of routes) {
+    const started = performance.now();
     // Pass 1: every enabled button on the fresh screen.
     await reset(route);
     const openers = [];
@@ -514,9 +527,10 @@ async function crawlMode(browser, mode, routes) {
           return dialogButtons().nth(index);
         });
     }
+    seconds[route] = (performance.now() - started) / 1000;
   }
   await context.close();
-  return { mode, clicks, unclickable, reloads, findings };
+  return { mode, clicks, unclickable, reloads, findings, seconds };
 }
 
 const backendPort = Number(process.env.OMNIVOICE_PORT) || 0;
@@ -572,6 +586,13 @@ try {
       console.log(`  ${key}\n    ${String(detail).split('\n').slice(0, 3).join('\n    ')}`);
     failed += findings.length;
   }
+  // Per-route cost (slowest mode), for re-balancing ROUTE_WEIGHTS in crawler-shards.mjs.
+  const cost = (route) => Math.max(...results.map((result) => result.seconds?.[route] ?? 0));
+  if (routes.some(cost))
+    console.log(
+      `Route seconds: ${[...routes].sort((a, b) => cost(b) - cost(a))
+        .map((route) => `${route} ${cost(route).toFixed(1)}`).join(', ')}`,
+    );
   process.exitCode = failed ? 1 : 0;
 } finally {
   await browser.close();
