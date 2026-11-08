@@ -410,6 +410,22 @@ async def transcribe_audio(
             "transcription_time_s": elapsed,
             "engine": engine_id,
         }
+        try:
+            # Which speech-to-text engine people use. Metadata only; the
+            # allowlist drops anything that is not an engine key.
+            from core.analytics import capture as _capture_analytics
+
+            _capture_analytics("transcription_completed", {
+                "feature": "transcription",
+                "action": "transcribe",
+                "outcome": "complete",
+                "engine_id": str(engine_id or ""),
+                "language": str(detected_lang or "auto")[:16],
+                "duration_seconds": round(duration, 2),
+                "gen_time_seconds": elapsed,
+            })
+        except Exception:  # noqa: BLE001 — analytics may never break a transcription
+            logger.warning("analytics: transcription_completed capture failed", exc_info=True)
         if speakers:
             response["speakers"] = speakers
         if diarization_error:

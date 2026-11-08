@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { BarChart3Icon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiJson } from '@/lib/api/client';
-import { useBackendStatus } from '@/hooks/use-backend-status';
+import { getBackendStatusSnapshot, useBackendStatus } from '@/hooks/use-backend-status';
 import { isBackendReachable } from '@shared/utils/backendStage';
 import { setupWasCompleted, setupWasStarted } from '@/lib/setup-progress';
 import {
@@ -14,6 +14,7 @@ import {
   capturePageview,
   disableAnalytics,
   enableAnalytics,
+  setAnalyticsSender,
 } from '@shared/utils/analytics';
 import { routeBreadcrumb } from '@/lib/report-breadcrumb';
 import {
@@ -22,6 +23,28 @@ import {
   setupAnalyticsAllowed,
   SetupFunnel,
 } from '@/lib/setup-analytics';
+
+// Events reach the destination through the local backend, which re-checks consent.
+type AnalyticsBody = Parameters<Parameters<typeof setAnalyticsSender>[0] & object>[0];
+const postAnalytics = (body: AnalyticsBody) =>
+  apiJson('/api/settings/analytics/event', { method: 'POST', body: JSON.stringify(body) });
+// First-run events (setup_started, setup_failed) happen while there is no
+// backend to receive them; hold a bounded few and send them once it answers.
+const PENDING_LIMIT = 20;
+const pendingAnalytics: AnalyticsBody[] = [];
+export function flushPendingAnalytics(): void {
+  if (!isBackendReachable(getBackendStatusSnapshot().stage)) return;
+  for (const body of pendingAnalytics.splice(0)) void postAnalytics(body).catch(() => {});
+}
+export async function sendAnalytics(body: AnalyticsBody): Promise<unknown> {
+  if (!isBackendReachable(getBackendStatusSnapshot().stage)) {
+    if (pendingAnalytics.length < PENDING_LIMIT) pendingAnalytics.push(body);
+    return;
+  }
+  flushPendingAnalytics();
+  return postAnalytics(body);
+}
+setAnalyticsSender(sendAnalytics);
 
 interface AnalyticsState {
   available: boolean;
@@ -33,6 +56,10 @@ const analyticsKey = ['privacy', 'analytics'] as const;
 /** Keep the hardened frontend analytics client aligned with backend consent. */
 export function AnalyticsRuntime() {
   const backend = useBackendStatus();
+  const reachable = isBackendReachable(backend.stage);
+  useEffect(() => {
+    if (reachable) flushPendingAnalytics();
+  }, [reachable]);
   const client = useQueryClient();
   const funnel = useRef(new SetupFunnel());
   const handedOver = useRef(false);

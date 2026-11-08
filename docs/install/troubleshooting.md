@@ -14,6 +14,9 @@ them. Include the selected engine and GPU/driver when reporting a native crash;
 the excerpt is bounded, so attach the full scrubbed log if more context is needed.
 Home-directory prefixes and credential patterns are scrubbed before the local
 crash journal is written, as well as before reports are displayed or exported.
+When the backend exits without a native fault, the report also carries its last 20
+stderr lines (bounded, scrubbed), and a hard exit logs an `[exit-forensics]` line
+naming the code and the calling file.
 
 <a id="self-diagnosis"></a>
 

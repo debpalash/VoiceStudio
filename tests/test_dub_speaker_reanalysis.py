@@ -235,7 +235,8 @@ def test_disconnect_prevents_late_reanalysis_publication(reanalysis,monkeypatch)
         response = await dc.dub_transcribe_stream('job',reanalyze_speakers=True)
         await anext(response.body_iterator)  # Immediate opening comment.
         await anext(response.body_iterator)  # Worker keepalive.
-        assert entered.is_set()
+        # The keepalive can arrive before the worker thread starts; wait for it.
+        assert await asyncio.to_thread(entered.wait, 5)
         await response.body_iterator.aclose()
         release.set()
         assert await asyncio.to_thread(finished.wait,5)

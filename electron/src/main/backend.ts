@@ -665,13 +665,6 @@ function childEnv(
       }
     }
   }
-  const packagedToken =
-    typeof __POSTHOG_PROJECT_TOKEN__ === 'string' ? __POSTHOG_PROJECT_TOKEN__ : '';
-  const packagedHost = typeof __POSTHOG_HOST__ === 'string' ? __POSTHOG_HOST__ : '';
-  if (packagedToken && !env.POSTHOG_PROJECT_TOKEN) {
-    env.POSTHOG_PROJECT_TOKEN = packagedToken;
-  }
-  if (packagedHost && !env.POSTHOG_HOST) env.POSTHOG_HOST = packagedHost;
   // The backend reports the same build commit as the app in bug reports.
   if (!env.OMNIVOICE_BUILD_COMMIT && __BUILD_COMMIT__ !== 'unknown') {
     env.OMNIVOICE_BUILD_COMMIT = __BUILD_COMMIT__;
@@ -871,6 +864,26 @@ export interface BackendLaunchLog {
   /** The child's working directory: a relative data dir is relative to it. */
   cwd: string;
   startedAt: number;
+}
+
+const EXIT_TAIL_LINES = 20;
+const EXIT_TAIL_LINE_CHARS = 300;
+const EXIT_TAIL_CHARS = 3000;
+
+/**
+ * The backend's last stderr lines for an unexpected-exit message (#3887): a
+ * silent exit left only one line to go on. The ring was scrubbed when each
+ * line arrived; the tail is bounded by line count, line width and total size
+ * so the report stays small. Empty when there is nothing to add.
+ */
+export function stderrTail(ring: readonly string[]): string {
+  const lines = ring
+    .slice(-EXIT_TAIL_LINES)
+    .map((line) => line.trimEnd().slice(0, EXIT_TAIL_LINE_CHARS))
+    .filter(Boolean);
+  if (lines.length < 2) return '';
+  const body = lines.join('\n');
+  return `\nLast stderr:\n${body.length > EXIT_TAIL_CHARS ? body.slice(-EXIT_TAIL_CHARS) : body}`;
 }
 
 /** The quoted log evidence, scrubbed and bounded. */
@@ -2419,7 +2432,7 @@ export class BackendSupervisor extends EventEmitter<{
       managed: true,
       message: startup
         ? `Backend failed to start during '${startup.step}' (${why}): ${startup.reason}`
-        : `Backend exited unexpectedly (${why}).${lastLine ? ` Last output: ${lastLine}` : ''}`,
+        : `Backend exited unexpectedly (${why}).${lastLine ? ` Last output: ${lastLine}` : ''}${stderrTail(this.childErrorLog)}`,
     });
   }
 

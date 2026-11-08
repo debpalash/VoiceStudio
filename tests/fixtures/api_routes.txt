@@ -204,6 +204,7 @@ POST /api/cloud-sync/start
 POST /api/cloud-sync/stop
 POST /api/cloud-sync/use-choices-of/{device_id}
 POST /api/integrations/twilio/test
+POST /api/settings/analytics/event
 POST /api/settings/asr-openai-compat/test
 POST /api/settings/engines/{family}/{engine_id}/local-model/discover
 POST /api/settings/hf-mirror/test
