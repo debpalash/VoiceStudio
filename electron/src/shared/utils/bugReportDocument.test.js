@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { composeBugReportUrl } from './bugReportDocument';
+import { MAX_MSG_CHARS, composeBugReportUrl } from './bugReportDocument';
 
 function issueParams(opts) {
   return new URL(composeBugReportUrl(opts)).searchParams;
@@ -76,4 +76,10 @@ describe('rest of the document', () => {
     expect(body).not.toContain('## Error');
     expect(body).toContain('## Environment');
   });
+});
+
+test('opens a report when a truncated message ends in half an emoji', () => {
+  const message = `${'x'.repeat(MAX_MSG_CHARS - 1)}\u{1F600} tail`;
+  expect(() => composeBugReportUrl({ error: new Error(message) })).not.toThrow();
+  expect(() => composeBugReportUrl({ title: 'lone \uD83D' })).not.toThrow();
 });

@@ -48,7 +48,7 @@ export function AccountSettings() {
               </Button>
             )}
           </SettingsRow>
-          <AccountDetails state={state} onRetry={() => void refresh()} />
+          <AccountDetails state={state} onRetry={refresh} />
           <SettingsRow
             id="account-sync"
             title={t('account.sync')}

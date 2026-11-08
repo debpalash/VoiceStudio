@@ -58,8 +58,10 @@ def test_play_installs_the_native_build_toolchain():
     """The store workflow must provide the same pinned toolchain as releases."""
     steps = load(WORKFLOW)["jobs"]["play-internal"]["steps"]
     setup = next(step for step in steps if step.get("name") == "NDK and CMake")
-    assert '"ndk;27.1.12297006"' in setup["run"]
-    assert '"cmake;3.22.1"' in setup["run"]
+    assert "mobile/android/install-sdk-packages.sh" in setup["run"]
+    installer = (WORKFLOW.parents[2] / "mobile/android/install-sdk-packages.sh").read_text(encoding="utf-8")
+    assert '"ndk;27.1.12297006"' in installer
+    assert '"cmake;3.22.1"' in installer
     assert steps.index(setup) < next(i for i, step in enumerate(steps) if step.get("name") == "Build signed bundle")
 
 

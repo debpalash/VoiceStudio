@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnivoice"
-version = "0.5.7"
+version = "0.5.8"
 description = "VoiceStudio — a private, local-first studio for voice cloning, speech generation, dubbing, transcription, and audiobooks"
 readme = "README.md"
 # Free and open-source under the GNU Affero General Public License v3 (see
@@ -147,7 +147,7 @@ dependencies = [
     # deps → identical behaviour on macOS/Windows/Linux (default-parity rule).
     # EPUB + plaintext stay stdlib-only; only PDF needs a real parser, and
     # pypdf is the lightest one that ships no C extensions.
-    "pypdf>=6.19.0",
+    "pypdf>=6.21.4",
     # LLM client for Cinematic dub refinement, glossary auto-extract, and
     # LLM-based translation (services.llm_backend / translator / dub_translate
     # all `from openai import OpenAI`). Talks to any OpenAI-compatible endpoint —
@@ -160,7 +160,7 @@ dependencies = [
     # openai` hint landed in the wrong interpreter on a managed venv.
     "openai>=1.40",
     # Native paid-provider protocols behind the same LLM feature interface.
-    "litellm>=1.103.0,<2",
+    "litellm>=1.103.1,<2",
     "httpx>=0.28.1",
     "boto3>=1.40",
     "google-auth>=2.29,<3",
@@ -305,12 +305,14 @@ explicit = true
 default-groups = ["dev", "cuda"]
 conflicts = [[{ group = "cpu" }, { group = "cuda" }]]
 constraint-dependencies = [
-    "hydra-core>=1.3.7",
+    "hydra-core>=1.3.8",
     "mako>=1.4.2",
-    "msgpack>=1.2.1",
+    "msgpack>=1.2.3",
     "multidict>=6.9.1",
+    "nltk>=3.10.4",
     "pillow>=13.0.0",
     "protobuf>=5.29.6",
+    "pyasn1>=0.6.5",
     "pydantic-settings>=2.14.2",
     "pygments>=2.20.0",
     "starlette>=1.3.1",

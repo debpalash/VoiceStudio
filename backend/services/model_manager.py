@@ -1614,7 +1614,10 @@ def check_device_compatibility():
         return True, None
     mismatch = arch_unsupported(torch)
     if mismatch is None:
-        return True, None
+        from core.gpu_self_test import failure_warning
+
+        warning = failure_warning()
+        return warning is None, warning
     device_arch, arch_list = mismatch
     try:
         device_name = torch.cuda.get_device_name(0)

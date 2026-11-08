@@ -100,7 +100,7 @@ Prerequisites:
 - **Bun** — `curl -fsSL https://bun.sh/install | bash`
 - **uv** — `curl -LsSf https://astral.sh/uv/install.sh | sh` (it provides the
   managed Python 3.11 the backend uses)
-- **Node.js 22+**, **Rust / Cargo**
+- **Node.js 22.12.0 or newer**, **Rust / Cargo**
   (`curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`), and the
   native development libraries used by the Electron native helper. If you use
   rustup, reopen the shell or run `source "$HOME/.cargo/env"` first.
@@ -128,6 +128,14 @@ Then, from a clone of the repository:
 ```bash
 git clone https://github.com/debpalash/VoiceStudio.git
 cd VoiceStudio
+node electron/scripts/node-version.mjs
+```
+
+If the Node check fails, stop here, upgrade Node.js, and reopen your terminal
+before continuing. Then install dependencies and prepare the local backend
+(skip API setup when using an external backend or an Intel Mac):
+
+```bash
 bun install
 bun run setup:api   # create the Python environment with uv
 bun run dev         # Electron with hot reload; it starts and supervises the backend
@@ -320,6 +328,9 @@ Ways to opt in, in order of preference:
 (`/opt/rocm` or `rocminfo` on PATH), then launch VoiceStudio once with
 `OMNIVOICE_TORCH_VARIANT=rocm` set, for example
 `OMNIVOICE_TORCH_VARIANT=rocm ./VoiceStudio-*-linux-x64.AppImage`.
+Once setup finishes, the choice is saved in `~/.config/omnivoice/env`, so later
+launches and app updates keep ROCm without the variable. To leave ROCm, launch
+once with `OMNIVOICE_TORCH_VARIANT=cpu`.
 Runtime setup then reinstalls `torch`/`torchaudio`/`torchvision` from the ROCm
 wheel index (`https://download.pytorch.org/whl/rocm6.4` by default) right after
 the dependency sync, leaving every other package on the regular index, matched to the app's pinned `torch==2.8.0` (the rocm6.2 index

@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { assertSupportedNode } from "../electron/scripts/node-version.mjs";
 import { repairSourceNativeLibraries } from "../electron/scripts/native-compat.mjs";
 import {
   selectTorchVariant,
@@ -11,7 +12,9 @@ import {
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
+/** Validate Node, then provision the selected local Python runtime. */
 export async function setupApi({
+  nodeVersion = process.versions.node,
   env = process.env,
   platform = process.platform,
   arch = process.arch,
@@ -20,6 +23,7 @@ export async function setupApi({
   log = console.log,
   repairNativeLibraries = repairSourceNativeLibraries,
 } = {}) {
+  assertSupportedNode(nodeVersion);
   // PyTorch publishes no Intel-Mac wheels, so the locked sync can only fail
   // part-way and leave an environment the app reports as incomplete (#3584).
   if (platform === "darwin" && arch === "x64")

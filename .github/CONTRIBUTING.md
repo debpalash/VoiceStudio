@@ -37,7 +37,7 @@ Read it before opening a proposal; the licence check in particular ends most of 
 
 - [Git](https://git-scm.com/)
 - `curl` (used by the Bun / uv / rustup install one-liners on macOS and Linux)
-- [Node.js 22](https://nodejs.org/) (Electron development and validation scripts)
+- [Node.js 22.12.0 or newer](https://nodejs.org/) (Electron development and validation scripts)
 - [Bun](https://bun.sh/) (frontend package manager)
 - [uv](https://docs.astral.sh/uv/) (Python environment manager)
 - [ffmpeg](https://ffmpeg.org/) (audio/video processing)
@@ -513,6 +513,25 @@ test-only PR. Docker Hub overview edits still publish through the small
     and the optional local-model smoke test never acquire models or use the network.
     The VC++ Redistributable is a manual prerequisite; opted-in Windows ROCm
     source setup checks it locally and stops when it is missing.
+  - **Optional engine installs the user starts** (owner-approved 2026-11-07):
+    clicking Install or Repair on an optional engine fetches its upstream
+    source from GitHub (a shallow clone of the branch tip, then the reviewed
+    commit, or that commit's source archive when the clone or checkout fails),
+    plus any helper sources the engine needs as GitHub archives at pinned
+    commits (CosyVoice: Matcha-TTS, PyWorld and World); a uv-managed Python from
+    `astral-sh/python-build-standalone` GitHub Releases (or the regional mirror)
+    when the engine needs a version that is not installed; its Python packages
+    from PyPI or the user's chosen mirror; the host's PyTorch build from
+    `download.pytorch.org` (`cu128` or `cpu`; on Linux AMD hosts, engines with
+    ROCm support use the ROCm index that publishes their Torch version, which a
+    user-set `OMNIVOICE_TORCH_INDEX` replaces), where uv may also resolve other
+    packages that index carries; and, for engines that fetch them during
+    install, their Hugging Face weights at a reviewed revision
+    (`backend/services/sidecar_install.py`). Engines that skip that step
+    download weights on first use, under the Hugging Face model downloads above. Torch is pinned
+    to an exact version; other packages follow the engine's own requirements
+    (exact, ranged or unpinned). Nothing is hash-pinned. Checking whether an
+    engine is installed downloads nothing.
   - **Galleries the user opens or enables:** the community gallery manifest
     from jsDelivr plus its GitHub-hosted previews
     (`backend/api/routers/community.py`); the voice-preview gallery's signed
@@ -524,14 +543,19 @@ test-only PR. Docker Hub overview edits still publish through the small
     (`backend/services/media_tools.py`).
   - **VoiceStudio Cloud account features, only after the user turns them on**
     (first-run setup or Settings → Account; off by default, skipping = off):
-    browser sign-in against `voicestudio.sh/identity` and the account API at
-    `appapi.voicestudio.sh` from Electron main (`electron/src/main/account/`),
+    browser sign-in that starts on `app.voicestudio.sh/auth/app` (the dashboard
+    handles login and approval), the one-time code exchange at
+    `app.voicestudio.sh/auth/app/token`, token refresh and revocation at
+    `id.voicestudio.sh`, and the account API at `appapi.voicestudio.sh`, all
+    from Electron main (`electron/src/main/account/`, endpoints and client ID in
+    `config/account.json`),
     and, only after the user also turns cloud sync on, settings sync with
     `appapi.voicestudio.sh/v1/sync` from the backend
     (`backend/services/cloud_sync/`), which can call only with a token main
-    hands out. Turning either off stops every request at once; switching
-    account features off sends one best-effort token revocation. Hidden in
-    packaged builds until VoiceStudio Cloud launches.
+    hands out. Turning either off stops every request at once; signing out or
+    switching account features off sends one best-effort token revocation and
+    always forgets the session on this device, even offline (sign-out waits at
+    most 5 seconds for the network).
   - Bug reports as prefilled GitHub Issue URLs opened in the user's browser.
   - **Phone content reports, only when the user taps Send** in a generated
     result's Report sheet: `appapi.voicestudio.sh/v1/content-reports` with the

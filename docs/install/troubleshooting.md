@@ -4,6 +4,8 @@ The top 10 errors users have actually hit on `v0.2.x`, with their causes and
 fixes. Most have a deeplink anchor that the in-app error UI's "Open docs for
 this error" button targets directly.
 
+To see whether a problem is already known or fixed, check the [install issue tracker](issue-tracker.md).
+
 ## Start here: self-diagnosis
 
 Electron native-crash reports preserve the fatal-error header and the current
@@ -461,6 +463,20 @@ peak memory footprint that exceeds free VRAM. Windows-only quirk.
 
 **Linked issue:** [#65](https://github.com/debpalash/VoiceStudio/issues/65)
 
+## GPU self-test failed
+
+On startup, VoiceStudio runs a small task on your GPU in a separate process. If that
+task fails or crashes, models load on the CPU so the app keeps working, more slowly,
+and a notice shows the error.
+
+1. Update your GPU driver and restart the app. The test runs again on every start
+   until it passes.
+2. On Linux with an AMD card, see [AMD GPU (ROCm)](linux.md#amd-gpu-rocm).
+3. To try the GPU anyway, set `OMNIVOICE_FORCE_CUDA=1` or choose a device in
+   **Settings**. Either one skips the test.
+
+Sidecar engines, which run in their own environments, don't use this result.
+
 ## 5a. Backend exits on the first `/generate` on an older NVIDIA GPU
 
 **Symptom:** the backend starts, `/health` identifies the GPU, and model preload succeeds, but the first generation ends with `RemoteDisconnected` or “remote end closed.” Later requests get `ConnectionRefused`, often without a Python traceback. Tesla T4 machines, including common Colab hosts, are a typical example.
@@ -752,6 +768,12 @@ nor the **China** download region redirects it: PyTorch's index has no mirror.
 2. **Use a VPN** if your network throttles or blocks the PyTorch CDN.
 3. See [First-run setup is slow or stalls on a download](#first-run-setup-is-slow-or-stalls-on-a-download)
    for what the setup screen shows and what a retry keeps.
+
+If it keeps failing, or a download stays stuck for five minutes, click **Install the
+CPU version instead** on the setup screen. It's a much smaller download, and everything
+works, but voices generate more slowly. The choice is saved in
+`~/.config/omnivoice/env` (`%USERPROFILE%\.config\omnivoice\env` on Windows). To try
+the GPU build again, launch once with `OMNIVOICE_TORCH_VARIANT=cuda`.
 
 If you don't have an NVIDIA GPU, you don't need the CUDA build at all — a CPU /
 Apple-Silicon install skips this index entirely. Electron source and packaged

@@ -614,3 +614,22 @@ it('forgets that diagnostics were copied once the failure changes', async () => 
   );
   expect(screen.getByRole('button', { name: i18n.t('backend.copy_diagnostics') })).toBeEnabled();
 });
+
+it('explains a stuck install and holds back setup actions until it stops', () => {
+  backendStatus.message = 'Could not stop the running download.';
+  backendStatus.setupIssue = 'install_stuck';
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+  render(
+    <QueryClientProvider client={client}>
+      <BackendGate>
+        <div>workspace</div>
+      </BackendGate>
+    </QueryClientProvider>,
+  );
+
+  expect(screen.getByText(i18n.t('backend.setup_install_stuck'))).toBeVisible();
+  expect(screen.getByRole('button', { name: i18n.t('common.resume') })).toBeDisabled();
+  expect(screen.getByRole('button', { name: i18n.t('bootstrap.clean_retry') })).toBeDisabled();
+  expect(screen.getByRole('button', { name: /^Change/ })).toBeDisabled();
+});

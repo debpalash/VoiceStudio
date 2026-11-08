@@ -292,7 +292,7 @@ export interface TorchChoice {
 }
 
 /** Linux/Windows x64 (and Windows on ARM, via emulation) are where the lock selects CUDA wheels. */
-function cpuTorchApplies(platform: NodeJS.Platform, arch: string): boolean {
+export function cpuTorchApplies(platform: NodeJS.Platform, arch: string): boolean {
   return (
     (platform === 'linux' && arch === 'x64') ||
     (platform === 'win32' && (arch === 'x64' || arch === 'arm64'))

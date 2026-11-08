@@ -12,6 +12,8 @@ export interface SafeStorageLike {
 export class RefreshTokenStore {
   readonly persistent: boolean;
   private memory: string | null = null;
+  private identity: string | null = null;
+  private loaded = false;
 
   constructor(
     private readonly path: string,
@@ -24,29 +26,61 @@ export class RefreshTokenStore {
   }
 
   load(): string | null {
-    if (this.memory || !this.persistent) return this.memory;
+    if (this.loaded || !this.persistent) return this.memory;
+    this.loaded = true;
     try {
       const { v, token } = JSON.parse(readFileSync(this.path, 'utf8'));
-      if (v !== 1 || typeof token !== 'string') return null;
-      this.memory = this.safe.decryptString(Buffer.from(token, 'base64'));
+      if ((v !== 1 && v !== 2) || typeof token !== 'string') return null;
+      const decrypted = this.safe.decryptString(Buffer.from(token, 'base64'));
+      if (v === 1) {
+        this.memory = decrypted || null;
+      } else {
+        const record = JSON.parse(decrypted);
+        if (typeof record.refreshToken !== 'string' || !record.refreshToken) return null;
+        this.memory = record.refreshToken;
+        this.identity =
+          typeof record.accountId === 'string' && /^[A-Za-z0-9]{16}$/.test(record.accountId)
+            ? record.accountId
+            : null;
+      }
     } catch {
       this.memory = null;
+      this.identity = null;
     }
     return this.memory;
   }
 
-  save(token: string): void {
+  /** Cached authenticated identity: no token refresh or network request. */
+  accountId(): string | null {
+    return this.load() ? this.identity : null;
+  }
+
+  bindAccount(accountId: string): boolean {
+    if (!/^[A-Za-z0-9]{16}$/.test(accountId) || !this.load()) return false;
+    // A live session cannot be rebound to a different person by a later response.
+    if (this.identity && this.identity !== accountId) return false;
+    this.identity = accountId;
+    this.save(this.memory!);
+    return true;
+  }
+
+  save(token: string, options: { newSession?: boolean } = {}): void {
+    this.load();
+    if (options.newSession) this.identity = null;
     this.memory = token;
     if (!this.persistent) return;
     mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
     const temporary = `${this.path}.${process.pid}.tmp`;
-    const body = { v: 1, token: this.safe.encryptString(token).toString('base64') };
+    const record = JSON.stringify({ refreshToken: token, accountId: this.identity });
+    const body = { v: 2, token: this.safe.encryptString(record).toString('base64') };
     writeFileSync(temporary, JSON.stringify(body), { encoding: 'utf8', mode: 0o600 });
     renameSync(temporary, this.path);
   }
 
   clear(): void {
+    this.loaded = true;
     this.memory = null;
+    this.identity = null;
     rmSync(this.path, { force: true });
   }
 }

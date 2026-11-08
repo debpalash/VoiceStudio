@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { ACCOUNT_CONFIG } from '../../../../config/account-config.mjs';
 import type { CloudActivity } from './cloud-activity';
 import type { CloudEnvironment } from './cloud-config';
 
@@ -34,9 +35,17 @@ export const base64url = (buf: Buffer): string => buf.toString('base64url');
 export const challengeFor = (verifier: string): string =>
   base64url(createHash('sha256').update(verifier).digest());
 
-export function createPkce(): { state: string; verifier: string; challenge: string } {
+export function createPkce(): {
+  state: string;
+  verifier: string;
+  challenge: string;
+} {
   const verifier = base64url(randomBytes(64));
-  return { state: base64url(randomBytes(32)), verifier, challenge: challengeFor(verifier) };
+  return {
+    state: base64url(randomBytes(32)),
+    verifier,
+    challenge: challengeFor(verifier),
+  };
 }
 
 const DISCOVERY_TTL_MS = 24 * 3600_000;
@@ -54,7 +63,9 @@ export class OidcClient {
     if (this.cached && this.now() - this.cached.at < DISCOVERY_TTL_MS) return this.cached.endpoints;
     const res = await this.activity.fetch(`${this.env.issuer}/.well-known/openid-configuration`);
     if (!res.ok) throw new TransientAuthError(res.status);
-    const doc = (await res.json()) as Partial<OidcEndpoints> & { issuer?: string };
+    const doc = (await res.json()) as Partial<OidcEndpoints> & {
+      issuer?: string;
+    };
     if (doc.issuer !== this.env.issuer) throw new Error('Discovery issuer does not match');
     const endpoints = {
       authorization_endpoint: String(doc.authorization_endpoint),
@@ -66,16 +77,19 @@ export class OidcClient {
   }
 
   authorizeUrl(
-    e: OidcEndpoints,
+    _e: OidcEndpoints,
     redirectUri: string,
     p: { state: string; challenge: string },
+    intent: 'login' | 'signup' = 'login',
   ): string {
-    const url = new URL(e.authorization_endpoint);
+    const url = new URL(`${this.env.dashboard}/auth/app`);
     url.search = new URLSearchParams({
       client_id: this.env.clientId,
       response_type: 'code',
       redirect_uri: redirectUri,
       scope: 'openid offline_access',
+      max_age: String(ACCOUNT_CONFIG.browserSessionMaxAgeSeconds),
+      prompt: intent === 'signup' ? 'create consent' : 'consent',
       state: p.state,
       code_challenge: p.challenge,
       code_challenge_method: 'S256',
@@ -84,13 +98,16 @@ export class OidcClient {
   }
 
   exchangeCode(code: string, redirectUri: string, verifier: string): Promise<TokenResponse> {
-    return this.token({
-      grant_type: 'authorization_code',
-      client_id: this.env.clientId,
-      code,
-      redirect_uri: redirectUri,
-      code_verifier: verifier,
-    });
+    return this.token(
+      {
+        grant_type: 'authorization_code',
+        client_id: this.env.clientId,
+        code,
+        redirect_uri: redirectUri,
+        code_verifier: verifier,
+      },
+      `${this.env.dashboard}/auth/app/token`,
+    );
   }
 
   refresh(refreshToken: string): Promise<TokenResponse> {
@@ -101,10 +118,10 @@ export class OidcClient {
     });
   }
 
-  /** Best effort; the caller deletes the stored token whatever happens. */
+  /** Explicit sign-out requires acknowledgement before deleting the stored token. */
   async revoke(refreshToken: string): Promise<void> {
     const { revocation_endpoint } = await this.discover();
-    await this.activity.fetch(
+    const response = await this.activity.fetch(
       revocation_endpoint,
       this.form({
         client_id: this.env.clientId,
@@ -113,6 +130,7 @@ export class OidcClient {
       }),
       { final: true, timeoutMs: 5_000 },
     );
+    if (!response.ok) throw new TransientAuthError(response.status);
   }
 
   private form(fields: Record<string, string>): RequestInit {
@@ -123,11 +141,11 @@ export class OidcClient {
     };
   }
 
-  private async token(fields: Record<string, string>): Promise<TokenResponse> {
-    const { token_endpoint } = await this.discover();
+  private async token(fields: Record<string, string>, endpoint?: string): Promise<TokenResponse> {
+    const tokenEndpoint = endpoint ?? (await this.discover()).token_endpoint;
     let res: Response;
     try {
-      res = await this.activity.fetch(token_endpoint, this.form(fields));
+      res = await this.activity.fetch(tokenEndpoint, this.form(fields));
     } catch (error) {
       if ((error as Error).name === 'CloudDisabledError') throw error;
       throw new TransientAuthError();
