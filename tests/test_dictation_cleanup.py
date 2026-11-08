@@ -206,6 +206,15 @@ def test_spoken_separator_at_utterance_end_is_kept(raw, clean):
     assert _p(raw, "en", spoken=True) == clean
 
 
+@pytest.mark.parametrize("raw,clean", [
+    ("你好 comma", "你好,"),
+    ("他说「你好」 comma", "他说「你好」,"),
+])
+def test_spoken_separator_after_cjk_drops_the_fullwidth_stop(raw, clean):
+    # polish_text ends CJK with 。, which must not sit before the spoken comma.
+    assert _p(raw, None, spoken=True) == clean
+
+
 def test_trailing_asr_comma_still_becomes_a_stop():
     assert _p("see you tomorrow,", "en", spoken=True) == "See you tomorrow."
 

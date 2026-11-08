@@ -8,6 +8,7 @@ import { queryKeys } from '@/lib/query';
 import type { EngineSelectionResult } from '@/lib/engine-selection-feedback';
 import { useModelCatalogue } from '../model-catalogue-query';
 import { familyIcons } from '../model-family';
+import { ModelLicense } from '../model-license';
 import { SettingsActionError } from '../settings-action-error';
 import { familyModels, modelSearchText, modelsForEngine, unclaimedModels } from './linking';
 import { useModelOps } from './model-ops';
@@ -112,6 +113,14 @@ export function DiarisationSettings() {
         <>
           {active && <ActiveBadge />}
           {model?.curated && <RecommendedBadge />}
+          {model && (
+            <ModelLicense
+              repoId={model.repo_id}
+              label={model.label}
+              info={model.license_info}
+              acceptance={model.license_acceptance}
+            />
+          )}
           {!option.installed && (
             <StatusBadge tone="muted" title={option.reason || undefined}>
               {t('modelSettings.unavailable')}

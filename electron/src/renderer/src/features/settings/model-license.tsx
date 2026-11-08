@@ -40,16 +40,36 @@ const blockerKeys: Record<string, string> = {
   variant_provenance_unverified: 'modelLicense.blockerVariant',
 };
 
+/** Collapsible full terms for one dependency repo, mirroring the gate dialog. */
+function DependencyLicenceView({ repoId, open }: { repoId: string; open: boolean }) {
+  const { t } = useTranslation();
+  const details = useModelLicenceDetails(repoId, open);
+  return (
+    <LicenceSection title={repoId}>
+      {details.isError ? (
+        <p role="alert" className="text-sm text-destructive">
+          {t('modelLicense.detailsFailed')}
+        </p>
+      ) : (
+        <ModelLicenceView details={details.data} infoFallback={undefined} />
+      )}
+    </LicenceSection>
+  );
+}
+
 export function ModelLicense({
   repoId,
   label,
   info,
   acceptance,
+  dependencies,
 }: {
   repoId: string;
   label: string;
   info?: ModelLicenseInfo;
   acceptance?: ModelLicenceAcceptance;
+  /** Other gated repos the row's engines need, offered in the same dialog (#3855). */
+  dependencies?: ModelLicenceAcceptance[];
 }) {
   const { t } = useTranslation();
   const acknowledgementId = useId();
@@ -315,11 +335,14 @@ export function ModelLicense({
             <DialogDescription className="break-all">{repoId}</DialogDescription>
           </DialogHeader>
           <LicenceAcceptanceFooter
-            models={currentAcceptance ? [toAcceptable(label, currentAcceptance)] : []}
+            models={[
+              ...(currentAcceptance ? [toAcceptable(label, currentAcceptance)] : []),
+              ...(dependencies ?? []).map((dependency) => toAcceptable(dependency.repo_id, dependency)),
+            ]}
             onClose={close}
             closeDisabled={busy === 'commit'}
           >
-            <div className="p-4">
+            <div className="space-y-3 p-4">
               <ModelLicenceView
                 details={details.data}
                 infoFallback={info}
@@ -330,6 +353,10 @@ export function ModelLicense({
                   {t('modelLicense.detailsFailed')}
                 </p>
               )}
+              {/* Every licence the engine needs is inspectable, not just listed (#3855). */}
+              {(dependencies ?? []).map((dependency) => (
+                <DependencyLicenceView key={dependency.repo_id} repoId={dependency.repo_id} open={open} />
+              ))}
             </div>
           </LicenceAcceptanceFooter>
         </DialogContent>

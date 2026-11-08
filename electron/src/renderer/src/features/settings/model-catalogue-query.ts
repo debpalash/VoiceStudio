@@ -29,6 +29,8 @@ export interface CatalogueModel {
   /** Versioned disclosure; absence is unverified, never a permission grant. */
   license_info?: ModelLicenseInfo;
   license_acceptance?: ModelLicenceAcceptance;
+  /** Other gated repos this row's engines also need accepted (#3855). */
+  license_dependencies?: ModelLicenceAcceptance[];
 }
 
 export interface ModelCatalogueResponse {

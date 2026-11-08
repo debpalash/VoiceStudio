@@ -38,6 +38,7 @@ the engine logs an upgrade hint at load time. Then select the engine via
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `OMNIVOICE_VOXCPM_MODEL` | `openbmb/VoxCPM2` | HuggingFace checkpoint to load |
+| `OMNIVOICE_VOXCPM_DEVICE` | *(automatic)* | Device for the one-click install (`cpu`, `cuda`, `cuda:1`); overrides the GPU check below |
 
 The first use downloads a multi-GB checkpoint from HuggingFace. A download
 interrupted near the end used to abort the load outright
@@ -88,6 +89,12 @@ Nothing it installs touches VoiceStudio itself or any other engine, and
 `pip install voxcpm` setup keeps working as it is. The button is not offered
 on Intel Macs, where no PyTorch build it needs exists. The model weights
 download on first use.
+
+Current CUDA builds of PyTorch no longer include kernels for older NVIDIA
+GPUs such as the GTX 10 series (Pascal). When the installed build cannot run
+on your GPU, VoxCPM2 loads on the CPU instead and says so in the backend log.
+It works, but slowly: expect minutes per sentence, and it needs a lot of
+system RAM. Set `OMNIVOICE_VOXCPM_DEVICE` to choose the device yourself.
 
 ## Troubleshooting
 

@@ -324,6 +324,7 @@ export function ModelLibrary({ title, icon }: { title?: string; icon?: LucideIco
           label={model.label}
           info={model.license_info}
           acceptance={model.license_acceptance}
+          dependencies={model.license_dependencies}
         />
         <ModelGatedAccess model={model} ops={ops} info={info} />
         <ModelFailure model={model} ops={ops} info={info} />

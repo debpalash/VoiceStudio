@@ -1231,6 +1231,18 @@
       ],
       "title": "Emo Vector"
      },
+     "emotion": {
+      "anyOf": [
+       {
+        "maxLength": 200,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Emotion"
+     },
      "engine": {
       "anyOf": [
        {
@@ -3009,6 +3021,18 @@
    },
    "LongformSpan": {
     "properties": {
+     "emotion": {
+      "anyOf": [
+       {
+        "maxLength": 200,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Emotion"
+     },
      "join": {
       "anyOf": [
        {
@@ -5577,6 +5601,20 @@
     "title": "_LicenseAcceptBody",
     "type": "object"
    },
+   "_LocalModelBody": {
+    "properties": {
+     "authorization": {
+      "description": "One-shot native desktop authorization",
+      "title": "Authorization",
+      "type": "string"
+     }
+    },
+    "required": [
+     "authorization"
+    ],
+    "title": "_LocalModelBody",
+    "type": "object"
+   },
    "_ModelsDirBody": {
     "properties": {
      "authorization": {
@@ -7259,6 +7297,219 @@
     ]
    }
   },
+  "/api/settings/engines/{family}/{engine_id}/local-model": {
+   "delete": {
+    "operationId": "clear_local_model_api_settings_engines__family___engine_id__local_model_delete",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "family",
+      "required": true,
+      "schema": {
+       "title": "Family",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "engine_id",
+      "required": true,
+      "schema": {
+       "title": "Engine Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Clear Local Model",
+    "tags": [
+     "settings"
+    ]
+   },
+   "get": {
+    "operationId": "get_local_model_api_settings_engines__family___engine_id__local_model_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "family",
+      "required": true,
+      "schema": {
+       "title": "Family",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "engine_id",
+      "required": true,
+      "schema": {
+       "title": "Engine Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Local Model",
+    "tags": [
+     "settings"
+    ]
+   },
+   "put": {
+    "operationId": "set_local_model_api_settings_engines__family___engine_id__local_model_put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "family",
+      "required": true,
+      "schema": {
+       "title": "Family",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "engine_id",
+      "required": true,
+      "schema": {
+       "title": "Engine Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/_LocalModelBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Set Local Model",
+    "tags": [
+     "settings"
+    ]
+   }
+  },
+  "/api/settings/engines/{family}/{engine_id}/local-model/discover": {
+   "post": {
+    "description": "List direct child checkpoint candidates under one native-authorized folder.\n\nDiscovery is read-only: it never persists a candidate, loads an engine, or\ndownloads missing files. The capability is consumed even on failure.",
+    "operationId": "discover_local_models_api_settings_engines__family___engine_id__local_model_discover_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "family",
+      "required": true,
+      "schema": {
+       "title": "Family",
+       "type": "string"
+      }
+     },
+     {
+      "in": "path",
+      "name": "engine_id",
+      "required": true,
+      "schema": {
+       "title": "Engine Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/_LocalModelBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Discover Local Models",
+    "tags": [
+     "settings"
+    ]
+   }
+  },
   "/api/settings/gpu-report": {
    "get": {
     "description": "Which engines will use the GPU on this host, and why not otherwise.\n\nCodes + params only (the renderer owns the prose, via i18n): the physical\nGPUs, the installed PyTorch build, a host state such as ``amd_cuda_build``,\nthe honest options for that state, and a verdict per TTS/ASR engine.",
@@ -8801,6 +9052,47 @@
     "summary": "Use Archetype"
    }
   },
+  "/audio/{audio_id}.mp3": {
+   "get": {
+    "description": "Serve the same render as /audio/<id>.wav, encoded as MP3 for export.\n\nUnlike Ogg/Opus this is a one-shot download, so it is not cached.",
+    "operationId": "generated_mp3_audio__audio_id__mp3_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "audio_id",
+      "required": true,
+      "schema": {
+       "title": "Audio Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "audio/mpeg": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Generated Mp3"
+   }
+  },
   "/audio/{audio_id}.ogg": {
    "get": {
     "description": "Serve the same render as /audio/<id>.wav, encoded as Ogg/Opus.",
@@ -8819,8 +9111,11 @@
     "responses": {
      "200": {
       "content": {
-       "application/json": {
-        "schema": {}
+       "audio/ogg": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
        }
       },
       "description": "Successful Response"
@@ -8857,8 +9152,11 @@
     "responses": {
      "200": {
       "content": {
-       "application/json": {
-        "schema": {}
+       "audio/ogg": {
+        "schema": {
+         "format": "binary",
+         "type": "string"
+        }
        }
       },
       "description": "Successful Response"
@@ -14883,6 +15181,7 @@
   },
   "/health": {
    "get": {
+    "description": "Liveness: 503 with the startup step until ready, then the cached label.",
     "operationId": "health_health_get",
     "responses": {
      "200": {

@@ -105,6 +105,33 @@ _CHANGE_CASES = [
     ("German", "Am 3. Mai2 war es", "Am drei. Mai2 war es"),
     ("Spanish", "tengo 42 gatos", "tengo cuarenta y dos gatos"),
     ("Spanish", "el Sr. García", "el Señor García"),
+    # Portuguese currency and clock times (#3803)
+    ("Portuguese", "O orçamento ficou em R$ 1.250,00", "O orçamento ficou em mil, duzentos e cinquenta reais"),
+    ("Portuguese", "custa R$ 1 250", "custa mil, duzentos e cinquenta reais"),
+    ("Portuguese", "custa R$ 1\u00a0250,00", "custa mil, duzentos e cinquenta reais"),
+    ("Portuguese", "custa R$ 1", "custa um real"),
+    ("Portuguese", "custa R$ 1,00", "custa um real"),
+    ("Portuguese", "apenas R$ 0,50", "apenas cinquenta centavos"),
+    ("Portuguese", "apenas R$ 0,01", "apenas um centavo"),
+    ("Portuguese", "custa R$ 5,99", "custa cinco reais e noventa e nove centavos"),
+    ("Portuguese", "reunião às 14h30", "reunião às catorze e trinta"),
+    ("Portuguese", "sai às 14h", "sai às catorze horas"),
+    ("Portuguese", "sai às 14:30", "sai às catorze e trinta"),
+    ("Portuguese", "sai às 14:00", "sai às catorze horas"),
+    ("Portuguese", "sai à 1h", "sai à uma hora"),
+    ("Portuguese", "sai às 2h", "sai às duas horas"),
+    ("Portuguese", "sai à 1h30", "sai à uma e trinta"),
+    ("Portuguese", "sai às 14h05", "sai às catorze e cinco"),
+    ("Portuguese", "sai às 14h01", "sai às catorze e um"),
+    ("Portuguese", "sai às 0h", "sai às zero horas"),
+    ("Portuguese", "sai às 21h", "sai às vinte e uma horas"),
+    ("Portuguese", "sai às 21h30", "sai às vinte e uma e trinta"),
+    ("Portuguese", "sai às 22h", "sai às vinte e duas horas"),
+    ("Portuguese", "sai às 22h15", "sai às vinte e duas e quinze"),
+    ("Portuguese", "ganhou R$ 1.000.000,00", "ganhou um milhão de reais"),
+    ("Portuguese", "ganhou R$ 2.000.000,00", "ganhou dois milhões de reais"),
+    ("pt-BR", "reunião às 14h30", "reunião às catorze e trinta"),
+    ("pt-PT", "O orçamento ficou em R$ 1.250,00", "O orçamento ficou em mil duzentos e cinquenta reais"),
     ("French", "il a 42 chats", "il a quarante-deux chats"),
     ("French", "Mme Dupont arrive", "Madame Dupont arrive"),
     # Numbers around a space-grouped amount still speak; the group itself
@@ -230,6 +257,9 @@ _UNCHANGED_CASES = [
     # (language, input) — ambiguous constructs keep their digits/shape
     ("English", "version v2 shipped"),          # digit glued to a letter
     ("English", "order 1,000 units"),           # thousands separator: ambiguous
+    ("English", "The crowd was 10 000 strong."),  # space-grouped: zeros never start a number
+    ("English", "up 12 000% on the year"),
+    ("English", "worth 1 000 000 dollars"),
     ("English", "It costs $1,000."),            # a dollar amount with a separator
     ("English", "It costs $5.5."),              # one decimal digit: not cents
     ("English", "pages 3-5 tonight"),           # range
@@ -237,6 +267,9 @@ _UNCHANGED_CASES = [
     ("English", "see 3.5.1 in the docs"),       # version string
     ("English", "call 5551234567 now"),         # 7+ digits: an ID, not a number
     ("English", "12:34:56 elapsed"),            # H:MM:SS duration, not a time
+    ("Portuguese", "código R$ 007"),            # leading-zero code
+    ("Portuguese", "duração 14:30:00"),         # H:MM:SS duration, not a time
+    ("English", "O orçamento ficou em R$ 1.250,00"),  # Portuguese currency not spoken in English
     ("English", "the ratio is 1/2 there"),      # fraction: ambiguous
     ("English", "MP3 files and A4 paper"),      # alphanumeric tokens
     ("English", "I met her. I agree."),         # "I" is a pronoun, not a numeral

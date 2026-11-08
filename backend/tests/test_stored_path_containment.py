@@ -197,7 +197,9 @@ def gallery_client():
     gallery._init_gallery_db()
     app = FastAPI()
     app.include_router(gallery.router)
-    return TestClient(app)
+    # Loopback peer so the router's require_consumer / require_admin gates let
+    # these handler tests through; denial is covered in test_gallery_profiles.
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 def _gallery_row(audio_path: str) -> str:

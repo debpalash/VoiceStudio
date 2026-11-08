@@ -24,6 +24,7 @@ import {
   runtimeUvCache,
   stageRuntimeSources,
   type RuntimeRegion,
+  runtimeRequiredGib,
 } from './runtime-project';
 import { collectHostSnapshot, freeGb, type HostSnapshot } from './host-snapshot';
 import { collectTrustFacts, programBasename, runProbe, type TrustFacts } from './install-doctor';
@@ -1266,8 +1267,8 @@ export class BackendSupervisor extends EventEmitter<{
         : {}),
     };
     if (this.stage === 'setup_required' && this.setupIssue) status.setupIssue = this.setupIssue;
-    if (this.stage === 'setup_required' && this.setupIssue === 'space' && this.setupRequiredGib)
-      status.setupRequiredGib = this.setupRequiredGib;
+    if (this.stage === 'setup_required' && app.isPackaged)
+      status.setupRequiredGib = this.setupRequiredGib ?? runtimeRequiredGib();
     if (this.stage === 'setup_required' && app.isPackaged && this.runtimeFreeGib !== undefined)
       status.runtimeFreeGib = this.runtimeFreeGib;
     if (this.stage === 'setup_required' && this.runtimeInterrupted)
@@ -1588,13 +1589,26 @@ export class BackendSupervisor extends EventEmitter<{
               reject(controller.signal.reason);
               return;
             }
-            const child = spawn(command, args, {
-              cwd,
-              env: { ...childEnv(this.port, this.runtimeRegion), ...env },
-              windowsHide: true,
-              detached: process.platform !== 'win32',
-              stdio: ['pipe', 'pipe', 'pipe'],
-            });
+            const launchFailed = (err: unknown) =>
+              reject(
+                Object.assign(new Error(spawnFailureMessage(command, err)), {
+                  code: (err as NodeJS.ErrnoException | undefined)?.code,
+                }),
+              );
+            let child: ChildProcess;
+            try {
+              child = spawn(command, args, {
+                cwd,
+                env: { ...childEnv(this.port, this.runtimeRegion), ...env },
+                windowsHide: true,
+                detached: process.platform !== 'win32',
+                stdio: ['pipe', 'pipe', 'pipe'],
+              });
+            } catch (err) {
+              // Windows throws a refused launch here instead of emitting `error`.
+              launchFailed(err);
+              return;
+            }
             this.child = child;
             let capturedStdout = '';
             child.stdin?.on('error', () => {});
@@ -1603,13 +1617,7 @@ export class BackendSupervisor extends EventEmitter<{
             });
             this.attachLineReader(child.stdout, 'out');
             this.attachLineReader(child.stderr, 'err');
-            child.on('error', (err) =>
-              reject(
-                Object.assign(new Error(spawnFailureMessage(command, err)), {
-                  code: (err as NodeJS.ErrnoException | undefined)?.code,
-                }),
-              ),
-            );
+            child.on('error', launchFailed);
             child.on('close', (code) => {
               if (this.child === child) this.child = null;
               if (code === 0) resolve(capturedStdout);

@@ -631,8 +631,8 @@ def test_failed_publication_restores_working_directory(mt, monkeypatch, tmp_path
     monkeypatch.setattr(time, 'sleep', lambda _: None)
     with pytest.raises(PermissionError, match='publication locked'):
         mt._install_staged_directory(str(staged), str(target))
-    assert (target / 'version').read_text() == 'working'
-    assert (staged / 'version').read_text() == 'new'
+    assert (target / 'version').read_text(encoding="utf-8") == 'working'
+    assert (staged / 'version').read_text(encoding="utf-8") == 'new'
 
 
 def test_failed_rollback_keeps_recoverable_backup(mt, monkeypatch, tmp_path):
@@ -654,7 +654,7 @@ def test_failed_rollback_keeps_recoverable_backup(mt, monkeypatch, tmp_path):
         mt._install_staged_directory(str(staged), str(target))
     backups = list(tmp_path.glob('.media-backup-*/previous/version'))
     assert len(backups) == 1
-    assert backups[0].read_text() == 'working'
+    assert backups[0].read_text(encoding="utf-8") == 'working'
 
 
 def test_locked_backup_cleanup_does_not_fail_successful_update(mt, monkeypatch, tmp_path):
@@ -673,7 +673,7 @@ def test_locked_backup_cleanup_does_not_fail_successful_update(mt, monkeypatch, 
     monkeypatch.setattr(mt.shutil, 'rmtree', rmtree)
     monkeypatch.setattr(time, 'sleep', lambda _: None)
     mt._install_staged_directory(str(staged), str(target))
-    assert (target / 'version').read_text() == 'new'
+    assert (target / 'version').read_text(encoding="utf-8") == 'new'
 
 
 def test_restore_ytdlp_propagates_overlay_stat_denial(mt, monkeypatch):

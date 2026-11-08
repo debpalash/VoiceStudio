@@ -81,7 +81,7 @@ def test_pr_cannot_replace_the_checker_or_trusted_workflow(repository):
     assert gh.statuses[-1]['state'] == 'failure'
     assert gh.statuses[-1]['context'] == 'Commit identity policy'
     assert not (runner / 'PR-CODE-RAN').exists()
-    assert 'PR-CODE-RAN' not in (runner / 'scripts/check_commit_identities.py').read_text()
+    assert 'PR-CODE-RAN' not in (runner / 'scripts/check_commit_identities.py').read_text(encoding="utf-8")
     assert not (runner / '.github/workflows/commit-identity.yml').exists()
 
 

@@ -57,7 +57,7 @@ def test_no_old_discord_link_anywhere():
             parts = p.relative_to(_REPO).parts
             if any(skip in parts for skip in ("node_modules", ".git", "research", "dist", "target", "build")):
                 continue
-            if OLD_DISCORD in p.read_text(errors="ignore"):
+            if OLD_DISCORD in p.read_text(encoding="utf-8", errors="ignore"):
                 hits.append(str(p.relative_to(_REPO)))
     assert hits == [], f"Old Discord link still in: {hits}"
 
@@ -68,7 +68,7 @@ def test_no_old_discord_link_anywhere():
 def test_main_py_adds_backend_to_syspath():
     """backend/main.py must inject its own directory into sys.path."""
     main_py = _REPO / "backend" / "main.py"
-    src = main_py.read_text()
+    src = main_py.read_text(encoding="utf-8")
     assert "sys.path.insert" in src, "main.py should add backend/ to sys.path"
     assert "_backend_dir" in src or "os.path.dirname" in src
 
@@ -78,7 +78,7 @@ def test_dockerfile_has_pythonpath():
     dockerfile = _REPO / "deploy" / "Dockerfile"
     if not dockerfile.exists():
         pytest.skip("deploy/Dockerfile not found")
-    content = dockerfile.read_text()
+    content = dockerfile.read_text(encoding="utf-8")
     assert "PYTHONPATH" in content, "Dockerfile missing PYTHONPATH env"
     assert "/app/backend" in content, "Dockerfile PYTHONPATH should include /app/backend"
 
@@ -95,7 +95,7 @@ def test_main_py_bootstrap_adds_backend_dir():
     backend_dir = str(_REPO / "backend")
     # Read just the bootstrap preamble (first 15 lines) of main.py
     main_py = _REPO / "backend" / "main.py"
-    lines = main_py.read_text().splitlines()
+    lines = main_py.read_text(encoding="utf-8").splitlines()
     # Find the sys.path.insert block — it's in the first ~12 lines
     preamble = "\n".join(lines[:15])
     assert "sys.path.insert" in preamble, "Bootstrap preamble must contain sys.path.insert"

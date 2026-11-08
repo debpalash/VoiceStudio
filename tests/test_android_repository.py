@@ -100,7 +100,7 @@ class AndroidRepositoryTests(unittest.TestCase):
             publisher.validate_manifest(apk, 'sh.voicestudio.mobile', '0.5.7')
 
     def test_obtainium_link_round_trips_the_actual_import_configuration(self):
-        config = json.loads((ROOT / 'store/obtainium.json').read_text())
+        config = json.loads((ROOT / 'store/obtainium.json').read_text(encoding="utf-8"))
         link = publisher.obtainium_link(config)
         deep = parse_qs(urlparse(link).query)['r'][0]
         self.assertEqual(json.loads(unquote(deep.removeprefix('obtainium://app/'))), config)
@@ -109,7 +109,7 @@ class AndroidRepositoryTests(unittest.TestCase):
     @unittest.skipIf(os.name == 'nt' or shutil.which('bash') is None, 'requires the POSIX workflow shell')
     def test_release_workflow_dispatches_the_repository_only_for_stable(self):
         import yaml
-        workflow = yaml.safe_load((ROOT / '.github/workflows/electron-release.yml').read_text())
+        workflow = yaml.safe_load((ROOT / '.github/workflows/electron-release.yml').read_text(encoding="utf-8"))
         step = next(item for item in workflow['jobs']['release']['steps']
                     if 'gh workflow run android-repository.yml' in item.get('run', ''))
         self.assertIn('inputs.publish == true', step['if'])
@@ -124,13 +124,13 @@ class AndroidRepositoryTests(unittest.TestCase):
                     env={**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH'],
                          'CHANNEL': channel, 'DISPATCH_LOG': str(log)})
                 if channel == 'stable':
-                    self.assertEqual(log.read_text().strip(), 'workflow run android-repository.yml --ref main')
+                    self.assertEqual(log.read_text(encoding="utf-8").strip(), 'workflow run android-repository.yml --ref main')
                 else:
                     self.assertFalse(log.exists())
 
     def test_docker_dispatch_is_independent_of_android_failure_after_publication(self):
         import yaml
-        workflow = yaml.safe_load((ROOT / '.github/workflows/electron-release.yml').read_text())
+        workflow = yaml.safe_load((ROOT / '.github/workflows/electron-release.yml').read_text(encoding="utf-8"))
         steps = workflow['jobs']['release']['steps']
         publish = next(step for step in steps if step.get('id') == 'publish_release')
         docker = next(step for step in steps if step.get('name') == 'Publish release container images')
@@ -143,10 +143,10 @@ class AndroidRepositoryTests(unittest.TestCase):
 
     def test_store_metadata_is_complete_and_reuses_the_current_brand_art(self):
         locale = ROOT / 'fastlane/metadata/android/en-US'
-        self.assertLessEqual(len((locale / 'short_description.txt').read_text().strip()), 80)
+        self.assertLessEqual(len((locale / 'short_description.txt').read_text(encoding="utf-8").strip()), 80)
         self.assertEqual((locale / 'images/icon.png').read_bytes(), (ROOT / 'store/google-play/icon-512.png').read_bytes())
         self.assertGreaterEqual(len(list((locale / 'images/phoneScreenshots').glob('*.png'))), 2)
-        config = json.loads((ROOT / 'store/fdroid/repository.json').read_text())
+        config = json.loads((ROOT / 'store/fdroid/repository.json').read_text(encoding="utf-8"))
         self.assertRegex(config['apkSignerSha256'], r'^[0-9a-f]{64}$')
         self.assertRegex(config['repositorySignerSha256'], r'^[0-9a-f]{64}$')
         self.assertNotEqual(config['apkSignerSha256'], config['repositorySignerSha256'])

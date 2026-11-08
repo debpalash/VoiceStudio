@@ -64,6 +64,10 @@ DRIFT_TOLERANCE_S = 0.05
 
 #: Codec params for retimed video — MUST match the mux re-encode settings in
 #: api.routers.dub_export so slices and single-pass output are identical.
+# H.264 4:2:0 needs even dimensions. Keep every source pixel; pad at most
+# one column/row instead of cropping odd-sized screen recordings.
+H264_SIZE_FILTER = "pad=ceil(iw/2)*2:ceil(ih/2)*2"
+
 VIDEO_ENC_ARGS = ("-c:v", "libx264", "-preset", "medium", "-crf", "20",
                   "-pix_fmt", "yuv420p")
 
@@ -143,9 +147,8 @@ def build_chunk_filter_graph(
 ) -> tuple[str, str]:
     """Build the split/trim/setpts/concat filter graph for ``chunks``.
 
-    With all keyword options at their defaults the output is byte-identical
-    to the legacy ``_build_video_stretch_filter_graph`` emission (same
-    labels, same formatting) — the legacy builder now delegates here.
+    The legacy ``_build_video_stretch_filter_graph`` delegates here, so both
+    paths apply the same timing and H.264-compatible frame padding.
 
     ``fps_norm`` prepends an ``fps=`` normalisation stage (VFR guard).
     ``out_fps`` resamples the concat output back to a constant frame rate.
@@ -179,7 +182,7 @@ def build_chunk_filter_graph(
             f"setpts=PTS-STARTPTS,setpts={ratio:.6f}*PTS{out_label}"
         )
     terminal = "".join(labels) + f"concat=n={len(chunks)}:v=1:a=0"
-    post: list[str] = []
+    post: list[str] = [H264_SIZE_FILTER]
     if out_fps:
         post.append(f"fps={out_fps}")
     if tail_pad_s > 0:

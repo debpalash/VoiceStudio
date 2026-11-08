@@ -29,7 +29,7 @@ def test_preserves_other_keys(tmp_path):
     p = tmp_path / "env"
     p.write_text("HF_TOKEN=hf_abc123\nFOO=bar\n")
     user_env.set_user_env("OMNIVOICE_CACHE_DIR", "/m", path=str(p))
-    txt = p.read_text()
+    txt = p.read_text(encoding="utf-8")
     assert "HF_TOKEN=hf_abc123" in txt
     assert "FOO=bar" in txt
     assert "OMNIVOICE_CACHE_DIR=/m" in txt
@@ -39,7 +39,7 @@ def test_unset_removes_only_that_key(tmp_path):
     p = tmp_path / "env"
     p.write_text("HF_TOKEN=hf_x\nOMNIVOICE_CACHE_DIR=/m\n")
     user_env.unset_user_env("OMNIVOICE_CACHE_DIR", path=str(p))
-    txt = p.read_text()
+    txt = p.read_text(encoding="utf-8")
     assert "OMNIVOICE_CACHE_DIR" not in txt
     assert "HF_TOKEN=hf_x" in txt
 
@@ -93,7 +93,7 @@ def test_ordinary_values_stay_unquoted(tmp_path):
     p = tmp_path / "env"
     user_env.set_user_env("HF_ENDPOINT", "https://hf-mirror.com", path=str(p))
     user_env.set_user_env("OMNIVOICE_CACHE_DIR", "/data/models", path=str(p))
-    assert p.read_text() == "HF_ENDPOINT=https://hf-mirror.com\nOMNIVOICE_CACHE_DIR=/data/models\n"
+    assert p.read_text(encoding="utf-8") == "HF_ENDPOINT=https://hf-mirror.com\nOMNIVOICE_CACHE_DIR=/data/models\n"
 
 
 def test_line_breaks_are_rejected(tmp_path):

@@ -543,6 +543,12 @@ class OmniVoice(PreTrainedModel):
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, *args, **kwargs):
+        # Explicit local checkpoints never authorize a Hub tokenizer fallback.
+        local_checkpoint = os.path.isdir(pretrained_model_name_or_path)
+        if os.path.isabs(str(pretrained_model_name_or_path)) and not local_checkpoint:
+            raise FileNotFoundError("The local OmniVoice checkpoint no longer exists")
+        if local_checkpoint:
+            kwargs["local_files_only"] = True
         train_mode = kwargs.pop("train", False)
         load_asr = kwargs.pop("load_asr", False)
         asr_model_name = kwargs.pop("asr_model_name", _DEFAULT_ASR_MODEL)
@@ -584,12 +590,14 @@ class OmniVoice(PreTrainedModel):
                 resolved_path = _resolve_snapshot_dir(pretrained_model_name_or_path)
 
                 model.text_tokenizer = AutoTokenizer.from_pretrained(
-                    pretrained_model_name_or_path
+                    pretrained_model_name_or_path, local_files_only=local_checkpoint
                 )
 
                 audio_tokenizer_path = os.path.join(resolved_path, "audio_tokenizer")
 
                 if not os.path.isdir(audio_tokenizer_path):
+                    if local_checkpoint:
+                        raise FileNotFoundError("The local OmniVoice checkpoint is missing audio_tokenizer")
                     # Fallback to the HuggingFace Hub path of transformers'
                     # HiggsAudioV2Tokenizer if the local subdirectory doesn't exist.
                     audio_tokenizer_path = _AUDIO_TOKENIZER_FALLBACK_REPO
@@ -600,10 +608,11 @@ class OmniVoice(PreTrainedModel):
                 )
                 try:
                     model.audio_tokenizer = _audio_tokenizer_cls().from_pretrained(
-                        audio_tokenizer_path, device_map=tokenizer_device
+                        audio_tokenizer_path, device_map=tokenizer_device,
+                        local_files_only=local_checkpoint,
                     )
                     model.feature_extractor = AutoFeatureExtractor.from_pretrained(
-                        audio_tokenizer_path
+                        audio_tokenizer_path, local_files_only=local_checkpoint
                     )
                 except Exception as exc:
                     if audio_tokenizer_path != _AUDIO_TOKENIZER_FALLBACK_REPO:
@@ -1854,7 +1863,12 @@ def _mask_mod_packed(document_ids, b, h, q_idx, kv_idx):
 
 
 def _resolve_language(language: Optional[str]) -> Union[str, None]:
-    from omnivoice.utils.lang_map import LANG_IDS, LANG_NAME_TO_ID
+    from omnivoice.utils.lang_map import (
+        APP_LANGUAGE_IDS,
+        APP_LANGUAGE_NAMES,
+        LANG_IDS,
+        LANG_NAME_TO_ID,
+    )
 
     if language is None or language.lower() == "none":
         return None
@@ -1863,6 +1877,9 @@ def _resolve_language(language: Optional[str]) -> Union[str, None]:
     key = language.lower()
     if key in LANG_NAME_TO_ID:
         return LANG_NAME_TO_ID[key]
+    alias = APP_LANGUAGE_NAMES.get(key) or APP_LANGUAGE_IDS.get(key)
+    if alias:
+        return alias
     logger.warning(
         f"Language '{language}' is not recognized. "
         f"Please use a valid language ID (e.g., 'en', 'zh', 'ja', 'de') "

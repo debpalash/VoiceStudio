@@ -14,6 +14,23 @@ backend readiness rather than the browser's internet connectivity; they still
 pause during startup or a backend failure. Remote backend requests also wait
 for network connectivity before resuming queued operations.
 
+## Packaged app: first-run setup
+
+Installing the app installs the desktop interface, not its local AI runtime or
+voice models. On the first-run screen, choose the runtime folder and download
+region, then start setup to download Python and the AI libraries. Models are
+separate downloads when you choose them; allow additional disk space for them.
+
+The free-space line uses the same minimum as the installer preflight: 5 GiB for
+macOS or CPU-only wheels, 9 GiB for the other wheel variants. This is runtime
+free space, not the download size or a total including models.
+
+Already running a compatible VoiceStudio server? Expand **Remote backend** on
+the setup screen, enter its URL and optional API key, then **Test connection**
+and **Save & reload**. This reuses the connection editor in Settings and does not
+install a local runtime. Intel Macs show this editor directly. Selecting an
+existing Python environment is not part of this connection option.
+
 ## Stack
 
 | Layer     | Choice                                                                                       |

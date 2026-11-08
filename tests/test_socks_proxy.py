@@ -45,7 +45,7 @@ _SOCKS_MSG = (
 def test_socksio_declared_in_pyproject_dependencies():
     import tomllib
 
-    data = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())
+    data = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     deps = data["project"]["dependencies"]
     assert any(re.match(r"socksio\b", d) for d in deps), (
         "#959 regression: socksio must be a [project] dependency — without it "

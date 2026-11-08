@@ -35,6 +35,7 @@ import base64
 import io
 import json
 import logging
+import math
 import os
 import re
 import tempfile
@@ -672,6 +673,48 @@ async def create_speech(req: SpeechRequest):
         raise OpenAIError(400, _routing["routing_reason"], param="model", code="model_not_available")
     _routing_notice = routing_notice(_routing)  # (status, reason) or None
 
+    # Engines whose runtime has no quality-knob flags reject explicit
+    # values here, where "the caller asked" is still known — deeper layers
+    # can't tell an explicit request from an internal default fill (dubbing
+    # previews always pass num_step=8), and anything later would first evict
+    # the resident engine and warm this one for a request that is already
+    # doomed (#3654 review). Per-knob flags: supertonic3 honors num_step but
+    # not guidance_scale, audio.cpp honors guidance_scale but not num_step.
+    # Raised as the same OpenAIError the generate-step mapper builds for
+    # TTSInputError (400, param="input") — this site runs before that try
+    # block, and an unmapped TTSInputError would fall through to the generic
+    # 500.
+    asked = [
+        (key, supported)
+        for key, supported in (
+            ("num_step", getattr(backend, "supports_num_step", True)),
+            ("guidance_scale", getattr(backend, "supports_guidance_scale", True)),
+        )
+        if getattr(req, key) is not None and not supported
+    ]
+    if asked:
+        names = ", ".join(key for key, _ in asked)
+        raise OpenAIError(
+            400,
+            f"Engine '{backend.id}' does not support {names}: the bundled "
+            f"runtime has no such options, so returning audio would silently "
+            f"ignore them. Omit {names} or use the in-process omnivoice engine.",
+            param="input",
+        )
+    num_step_range = getattr(backend, "num_step_range", None)
+    if (
+        req.num_step is not None
+        and num_step_range is not None
+        and not (num_step_range[0] <= req.num_step <= num_step_range[1])
+    ):
+        raise OpenAIError(
+            400,
+            f"Engine '{backend.id}' supports num_step {num_step_range[0]}–{num_step_range[1]}; "
+            f"got {req.num_step}, which it would silently clamp. Omit num_step "
+            f"or pick a value in range.",
+            param="num_step",
+        )
+
     # Build kwargs for the backend's generate() method
     kw: dict = {
         "speed": req.speed,
@@ -907,9 +950,11 @@ def _reported_language(result: dict, requested: Optional[str], task: str) -> str
 
 def _num(value, default: float = 0.0) -> float:
     try:
-        return float(value) if value is not None else default
+        number = float(value) if value is not None else default
     except (TypeError, ValueError):
         return default
+    # MLX Whisper's temperature fallback can leave NaN/inf scores; strict JSON rejects them.
+    return number if math.isfinite(number) else default
 
 
 def _result_segments(result: dict) -> list[dict]:

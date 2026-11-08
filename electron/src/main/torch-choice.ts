@@ -5,9 +5,10 @@
  * already loads, so the shell and the backend's sidecar installs agree on it.
  */
 
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { renameSyncWithRetry } from './rename-retry';
 import { rocmTorchApplies } from './runtime-project';
 
 const KEY = 'OMNIVOICE_TORCH_VARIANT';
@@ -50,7 +51,7 @@ function writeLines(path: string, lines: string[]): void {
       encoding: 'utf8',
       mode: 0o600,
     });
-    renameSync(temporary, path);
+    renameSyncWithRetry(temporary, path);
   } finally {
     rmSync(temporary, { force: true });
   }

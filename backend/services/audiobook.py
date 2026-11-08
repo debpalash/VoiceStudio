@@ -210,12 +210,17 @@ class Span:
     # How this span meets the next one when markup split a single line:
     # "continue" (no gap) or "paragraph" (blank line on the boundary).
     join: Optional[str] = None
+    # Free-text delivery direction from ``[emotion:]`` (#3422); applied only by
+    # engines whose ``expression_caps`` take emotion, never spoken.
+    emotion: Optional[str] = None
 
     def to_dict(self) -> dict:
         out = {"voice_id": self.voice_id, "text": self.text,
                "pause_ms_after": self.pause_ms_after, "speed": self.speed}
         if self.join:
             out["join"] = self.join
+        if self.emotion:
+            out["emotion"] = self.emotion
         return out
 
 
@@ -397,10 +402,11 @@ def synthesize_chapter(
 ):
     """Render a chapter's spans to one waveform via an injected ``synth``.
 
-    ``synth(text, voice_id, speed)`` returns a float32 audio tensor — 1-D
+    ``synth(text, voice_id, speed[, emotion=])`` returns a float32 audio tensor — 1-D
     ``(samples,)`` or ``(channels, samples)``; real engines emit ``(1, samples)``
     per the ``TTSBackend`` contract (#897) — for a span of text in the given
-    voice (``speed`` may be ``None`` for the engine default). Long spans are split with the ``chunked_tts`` splitter and
+    voice (``speed`` may be ``None`` for the engine default; ``emotion`` is
+    passed only for a span with an ``[emotion:]`` direction). Long spans are split with the ``chunked_tts`` splitter and
     crossfaded; inter-span ``pause_ms_after`` becomes silence. ``lexicon`` (when
     given) respells each span's text before chunking so the engine pronounces
     tricky words correctly; a ``None``/empty lexicon is a no-op pass-through.
@@ -468,18 +474,24 @@ def synthesize_chapter(
     for span, paragraphs in zip(spans, paragraphs_by_span):
         span_end = progress_done + sum(len(p) for p in paragraphs)
         if span.text:
-            occ_key = (span.voice_id, span.text, getattr(span, "speed", None))
+            occ_key = (span.voice_id, span.text, getattr(span, "speed", None),
+                       getattr(span, "emotion", None))
             occ = occ_counts.get(occ_key, 0)
             occ_counts[occ_key] = occ + 1
             audio = trace_call("cache", segment_cache.load, span, nonce=occ) if segment_cache is not None else None
             if audio is None:
+                # Emotion is passed only when set, so a synth without emotion
+                # support (and every untagged book) is called exactly as before.
+                emotion = getattr(span, "emotion", None)
+                direction = {"emotion": emotion} if emotion else {}
                 paragraph_renders = []
                 for paragraph in paragraphs:
                     chunks = split_text_into_chunks(paragraph)
                     rendered = []
                     for c in chunks:
                         _stop_if_abandoned()
-                        out = trace_call("synthesis", synth, c, span.voice_id, span.speed)
+                        out = trace_call("synthesis", synth, c, span.voice_id, span.speed,
+                                         **direction)
                         rendered.append(out)
                         _note_chunk_done()
                         progress_done = min(span_end, progress_done + len(c))

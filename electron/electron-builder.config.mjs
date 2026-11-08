@@ -94,6 +94,9 @@ export function distributionPackaging(target = DISTRIBUTION_TARGET) {
       provider: 'generic',
       url: updateUrl,
       channel: updateChannel,
+      // GitHub release downloads reject multi-range requests (HTTP 501), which
+      // turns every patch download into a full one; see updater.ts.
+      useMultipleRangeRequest: false,
     },
   };
 }
