@@ -276,13 +276,17 @@ export function ModelLicenceGate() {
   // fallback until they load (or if they fail).
   const acceptable: AcceptableModel[] = (models ?? []).map((model, index) => {
     const acceptance = queries[index]?.data?.acceptance;
-    return toAcceptable(model.repo_id, {
-      repo_id: model.repo_id,
-      fingerprint: acceptance?.fingerprint ?? model.fingerprint,
-      required: acceptance?.required ?? true,
-      accepted: acceptance?.accepted ?? false,
-      category: acceptance?.category ?? model.category,
-    });
+    return {
+      ...toAcceptable(model.repo_id, {
+        repo_id: model.repo_id,
+        fingerprint: acceptance?.fingerprint ?? model.fingerprint,
+        required: acceptance?.required ?? true,
+        accepted: acceptance?.accepted ?? false,
+        category: acceptance?.category ?? model.category,
+      }),
+      // Accept only terms the user could actually read.
+      termsLoaded: queries[index]?.isSuccess === true,
+    };
   });
 
   return (
