@@ -48,6 +48,61 @@ def test_backend_never_calls_torchaudio_io_directly():
     )
 
 
+REPO = BACKEND.parent
+# Outside the backend: the packaged OmniVoice CLI (omnivoice-infer and
+# omnivoice-infer-batch), its training scripts, repo scripts and the tests all
+# run without TorchCodec too (#3884). omnivoice/utils/audio.py keeps one
+# guarded torchaudio.load with a pydub fallback; the perf test spies on the
+# real loader to count calls rather than reading audio itself.
+REPO_ROOTS = ("omnivoice", "scripts", "tests")
+REPO_ALLOWED = {"omnivoice/utils/audio.py", "tests/test_perf_operation_budgets.py"}
+
+
+def test_cli_scripts_and_tests_never_call_torchaudio_io_directly():
+    offenders = []
+    for root in REPO_ROOTS:
+        for path in sorted((REPO / root).rglob("*.py")):
+            rel = path.relative_to(REPO).as_posix()
+            if rel in REPO_ALLOWED:
+                continue
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if (
+                    isinstance(node, ast.Attribute)
+                    and node.attr in GATED
+                    and isinstance(node.value, ast.Name)
+                    and node.value.id in {"torchaudio", "ta"}
+                ):
+                    offenders.append(f"{rel}:{node.lineno} torchaudio.{node.attr}")
+    assert not offenders, (
+        "Use omnivoice.utils.audio.read_audio / save_audio (package and CLI) or "
+        "services.audio_io.load_audio / _safe_torchaudio_save (backend, scripts, "
+        f"tests), which work without TorchCodec, instead of: {offenders}"
+    )
+
+
+def test_omnivoice_save_and_read_round_trip_without_torchcodec(tmp_path, monkeypatch):
+    import torch
+    import torchaudio
+
+    def needs_torchcodec(*args, **kwargs):
+        raise ImportError("TorchCodec is required for load_with_torchcodec.")
+
+    # torchaudio >= 2.9 without TorchCodec: every load/save raises.
+    monkeypatch.setattr(torchaudio, "load", needs_torchcodec)
+    monkeypatch.setattr(torchaudio, "save", needs_torchcodec)
+    from omnivoice.utils.audio import read_audio, save_audio
+
+    wave_in = torch.linspace(-0.5, 0.5, 480).reshape(1, -1)
+    save_audio(tmp_path / "f.wav", wave_in, 24000)
+    back, rate = read_audio(str(tmp_path / "f.wav"))
+    assert rate == 24000 and back.shape == (1, 480)
+    assert torch.allclose(back, wave_in, atol=1e-6)  # 32-bit float WAV, like torchaudio
+
+    save_audio(tmp_path / "p.flac", wave_in, 24000, bits_per_sample=16)
+    back, rate = read_audio(str(tmp_path / "p.flac"))
+    assert rate == 24000 and torch.allclose(back, wave_in, atol=1e-4)
+
+
 def _write_wav(path, frames=2400, rate=24000, channels=1):
     with wave.open(str(path), "wb") as wf:
         wf.setnchannels(channels)

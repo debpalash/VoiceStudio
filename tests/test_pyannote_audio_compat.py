@@ -128,3 +128,64 @@ def test_offset_beyond_end_keeps_channel_axis(monkeypatch, tmp_path):
 
     waveform, _ = fake.load(path, frame_offset=99, channels_first=False, backend="soundfile")
     assert waveform.shape == (0, 1)
+
+
+def _torchcodec_missing(*args, **kwargs):
+    raise ImportError(
+        "TorchCodec is required for load_with_torchcodec. Please install torchcodec to use this function."
+    )
+
+
+def test_default_load_falls_back_to_soundfile_without_torchcodec(monkeypatch, tmp_path):
+    """torchaudio >= 2.9 decodes only through TorchCodec, which is not installed.
+
+    Every caller of ``torchaudio.load`` (tests, transformers, our own code)
+    must still get audio, not ``ImportError``.
+    """
+    samples = np.array([[0.25, -0.5], [0.5, 0.0], [-0.25, 0.75]], dtype=np.float32)
+    path = tmp_path / "default.wav"
+    soundfile.write(path, samples, 16000, subtype="FLOAT")
+    fake = SimpleNamespace(load=_torchcodec_missing)
+    assert _install_on(monkeypatch, fake)
+
+    waveform, rate = fake.load(path)
+    assert rate == 16000
+    assert torch.allclose(waveform, torch.from_numpy(samples).transpose(0, 1))
+
+
+def test_fallback_rewinds_a_file_like_source(monkeypatch):
+    import io
+
+    buffer = io.BytesIO()
+    soundfile.write(buffer, np.zeros((8, 1), dtype=np.float32), 8000, format="WAV")
+    buffer.seek(0)
+
+    def consumes_then_fails(source, *args, **kwargs):
+        source.read(12)
+        _torchcodec_missing()
+
+    fake = SimpleNamespace(load=consumes_then_fails)
+    assert _install_on(monkeypatch, fake)
+    waveform, rate = fake.load(buffer)
+    assert (rate, tuple(waveform.shape)) == (8000, (1, 8))
+
+
+@pytest.mark.parametrize(
+    "error",
+    [ImportError("No module named 'numpy.core'"), RuntimeError("corrupt header")],
+)
+def test_real_decode_errors_still_propagate(monkeypatch, error):
+    def fails(*args, **kwargs):
+        raise error
+
+    fake = SimpleNamespace(load=fails)
+    assert _install_on(monkeypatch, fake)
+    with pytest.raises(type(error), match=str(error.args[0])[:10]):
+        fake.load("x.wav")
+
+
+def test_explicit_non_soundfile_backend_is_not_rerouted(monkeypatch):
+    fake = SimpleNamespace(load=_torchcodec_missing)
+    assert _install_on(monkeypatch, fake)
+    with pytest.raises(ImportError, match="TorchCodec"):
+        fake.load("x.wav", backend="ffmpeg")

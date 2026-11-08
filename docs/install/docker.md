@@ -136,9 +136,8 @@ docker run -d --name omnivoice --gpus all \
 ```
 
 It needs the NVIDIA Container Toolkit and a driver that supports CUDA 12.9.
-The image is built from Ubuntu 24.04 with PyTorch 2.10.0 for CUDA 12.9 (PyTorch
-publishes no CUDA 12.8 build of 2.10.0 for aarch64), on GitHub's native arm64
-runners. Differences from the x86-64 CUDA image:
+The image is built from Ubuntu 24.04 with PyTorch 2.10.0 for CUDA 12.9 on
+GitHub's native arm64 runners. Differences from the x86-64 CUDA image:
 
 - CTranslate2-based ASR engines (faster-whisper, WhisperX) report unavailable:
   NVIDIA ships no aarch64 build of the cuDNN 8 libraries they need. Use

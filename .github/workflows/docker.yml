@@ -378,13 +378,27 @@ jobs:
       # cache-from only: reading the CUDA job's exported cache reuses the
       # identical frontend-builder stage. Deliberately NO cache-to — the ROCm
       # runtime layers would overwrite the CUDA job's cache image.
+      # The ROCm base ships its own HIP torch, which must equal the checked-out
+      # pin: a backfill of an older release builds that release's constraints,
+      # so the base follows deploy/torch-constraints.txt, not this workflow.
+      - name: Select the ROCm base for the checked-out torch pin
+        id: rocm_base
+        shell: bash
+        run: |
+          torch="$(sed -n 's/^torch==\([0-9][0-9.]*\)$/\1/p' deploy/torch-constraints.txt | head -n1)"
+          if [ -z "$torch" ]; then
+            echo "::error::deploy/torch-constraints.txt has no exact torch==X.Y.Z pin"
+            exit 1
+          fi
+          echo "image=rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_${torch}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push (ROCm)
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: deploy/Dockerfile
           build-args: |
-            BASE_IMAGE=rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.10.0
+            BASE_IMAGE=${{ steps.rocm_base.outputs.image }}
             GPU_FLAVOR=rocm
             BUILD_COMMIT=${{ steps.source.outputs.commit }}
           push: true
