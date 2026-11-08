@@ -1,3 +1,4 @@
+import { useQueries } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,7 @@ import {
   LICENCE_DIALOG_SURFACE,
   LicenceSection,
   ModelLicenceView,
+  modelLicenceDetailsKey,
   useModelLicenceDetails,
 } from './model-licence-view';
 import {
@@ -26,6 +28,7 @@ import {
   modelLicenseShortKey,
   modelLicenseUrl,
   type ModelLicenceAcceptance,
+  type ModelLicenceDetails,
   type ModelLicenseInfo,
   type ModelReviewPlan,
 } from './model-license-contract';
@@ -179,6 +182,15 @@ export function ModelLicense({
   };
 
   const details = useModelLicenceDetails(repoId, open);
+  const dependencyDetails = useQueries({
+    queries: (dependencies ?? []).map((dependency) => ({
+      queryKey: modelLicenceDetailsKey(dependency.repo_id),
+      queryFn: () =>
+        apiJson<ModelLicenceDetails>(`/models/licenses/details/${encodeURI(dependency.repo_id)}`),
+      enabled: open,
+      staleTime: 0,
+    })),
+  });
   const currentInfo = details.data?.info ?? info;
   const currentAcceptance = details.data?.acceptance ?? acceptance;
   const sourceLink = (url: string | null | undefined, text: string) => {
@@ -337,7 +349,11 @@ export function ModelLicense({
           <LicenceAcceptanceFooter
             models={[
               ...(currentAcceptance ? [toAcceptable(label, currentAcceptance)] : []),
-              ...(dependencies ?? []).map((dependency) => toAcceptable(dependency.repo_id, dependency)),
+              ...(dependencies ?? []).map((dependency, index) => ({
+                ...toAcceptable(dependency.repo_id, dependency),
+                // Accepting records a fingerprint the user must have been able to read.
+                termsLoaded: dependencyDetails[index]?.isSuccess === true,
+              })),
             ]}
             onClose={close}
             closeDisabled={busy === 'commit'}

@@ -103,11 +103,11 @@ const button = (name: string) =>
 async function click(element: HTMLElement) {
   await act(async () => element.click());
 }
-async function render(licenseInfo = info) {
+async function render(licenseInfo = info, dependencies?: any[]) {
   await act(async () =>
     root.render(
       <QueryClientProvider client={queryClient}>
-        <ModelLicense repoId="test/model" label="Test model" info={licenseInfo} />
+        <ModelLicense repoId="test/model" label="Test model" info={licenseInfo} dependencies={dependencies} />
       </QueryClientProvider>,
     ),
   );
@@ -243,6 +243,21 @@ describe('versioned model notices', () => {
       ...acceptance,
     },
     history,
+  });
+
+  it('keeps a dependency unacceptable until its terms have loaded', async () => {
+    const dep = { repo_id: 'dep/model', license: 'x', category: 'noncommercial', required: true, accepted: false, fingerprint };
+    mock.details.mockImplementation((path: string) =>
+      path.includes('dep/model')
+        ? Promise.reject(new Error('down'))
+        : Promise.resolve(details({ accepted: true, state: 'accepted' })),
+    );
+    await render(info, [dep]);
+    await open();
+    await vi.waitFor(() => expect(text()).toContain(en.modelLicense.detailsFailed));
+    const box = document.querySelector('[role="dialog"] input[type="checkbox"]') as HTMLInputElement;
+    expect(box.disabled).toBe(true);
+    expect(button(en.modelLicense.accept).disabled).toBe(true);
   });
 
   it('records acceptance through one checkbox and shows the stored time and hash', async () => {

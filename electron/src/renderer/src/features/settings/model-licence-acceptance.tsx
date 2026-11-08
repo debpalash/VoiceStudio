@@ -51,6 +51,8 @@ export interface AcceptableModel {
   required: boolean;
   accepted: boolean;
   category?: string;
+  /** False while the terms failed or have not loaded: acceptance stays disabled. */
+  termsLoaded?: boolean;
 }
 
 export function toAcceptable(
@@ -109,7 +111,7 @@ export function LicenceAcceptanceFooter({
     setError(null);
   }, [key]);
 
-  const allChecked = pending.length > 0 && pending.every((m) => checked[m.repo_id]);
+  const allChecked = pending.length > 0 && pending.every((m) => checked[m.repo_id] && m.termsLoaded !== false);
 
   const accept = async () => {
     if (!allChecked || busy) return;
@@ -175,7 +177,7 @@ export function LicenceAcceptanceFooter({
                       id={id}
                       type="checkbox"
                       checked={checkedModel}
-                      disabled={busy}
+                      disabled={busy || model.termsLoaded === false}
                       onChange={(event) => {
                         const value = event.currentTarget.checked;
                         setChecked((prev) => ({ ...prev, [model.repo_id]: value }));
