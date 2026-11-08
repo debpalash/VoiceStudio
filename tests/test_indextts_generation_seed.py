@@ -11,6 +11,7 @@ import torch
 
 @pytest.mark.parametrize("seed", [None, 0, 42])
 def test_generation_route_forwards_the_seed_to_the_indextts_worker(monkeypatch, seed):
+    """Keep explicit seeds, including zero, intact through the route and adapter."""
     from api.routers.generation import _run_backend_inference
     from engines.indextts import IndexTTS2Backend
     from services.subprocess_backend import SubprocessBackend
@@ -18,6 +19,7 @@ def test_generation_route_forwards_the_seed_to_the_indextts_worker(monkeypatch, 
     sent = []
 
     def capture(self, text, **kwargs):
+        """Record the worker payload without starting an IndexTTS process."""
         sent.append(kwargs)
         return torch.full((1, 2400), 0.1)
 
@@ -50,11 +52,13 @@ def test_generation_route_forwards_the_seed_to_the_indextts_worker(monkeypatch, 
 
 @pytest.mark.parametrize("seed", [0, 7, 2**32 + 7])
 def test_worker_seeds_python_numpy_and_torch_before_inference(monkeypatch, seed):
+    """Repeat all three RNG draws for the same seed and change them for another."""
     from engines.indextts import main
 
     draws = []
 
     def infer(**kwargs):
+        """Sample each worker RNG in place of running the synthesis model."""
         draws.append((random.random(), float(np.random.random()), torch.rand(1).item()))
 
     monkeypatch.setattr(main, "_load_model", lambda stdout: SimpleNamespace(infer=infer))

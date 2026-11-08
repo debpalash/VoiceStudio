@@ -298,6 +298,7 @@ class IndexTTS2Backend(SubprocessBackend):
     # ``description`` means.
 
     def generate(self, text: str, **kw) -> "torch.Tensor":
+        """Synthesize cloned speech with resolved emotion, duration and seed controls."""
         self._check_language(kw.get("language"))
         ref_audio = kw.get("ref_audio")
         if not ref_audio:
