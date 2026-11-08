@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from services.asr_backend import transcribe_request_kwargs
-from services.dub_language import asr_source_language
+from services.dub_language import WHISPER_ASR_BACKENDS, asr_source_language
 
 
 @pytest.fixture
@@ -131,3 +131,16 @@ def test_backend_with_unreadable_signature_keeps_automatic_detection(chunk_worke
     result = chunk_worker(SimpleNamespace(transcribe=transcribe), "ja")
     assert calls == [True]
     assert result["language"] == "en"
+
+
+
+@pytest.mark.parametrize("backend", sorted(WHISPER_ASR_BACKENDS))
+@pytest.mark.parametrize("language", ["ku", "xh", "zu"])
+def test_whisper_backends_auto_detect_languages_outside_whisper(backend, language):
+    """Valid dub choices Whisper cannot take fall back to auto-detect on every
+    Whisper-family backend, whisper-cpp included (greptile, #3905)."""
+    assert asr_source_language(language, backend) is None
+
+
+def test_non_whisper_backends_keep_their_own_codes():
+    assert asr_source_language("ku", "openai-compatible") == "ku"

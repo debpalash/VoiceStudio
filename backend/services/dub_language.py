@@ -23,6 +23,17 @@ DUB_SOURCE_LANG_CODES = frozenset({
 _UNKNOWN_VALUES = frozenset({"", "auto", "unknown", "none", "und"})
 
 
+# Every ASR backend that only accepts Whisper's language table.
+WHISPER_ASR_BACKENDS = frozenset({
+    "whisperx",
+    "faster-whisper",
+    "faster-whisper-isolated",
+    "mlx-whisper",
+    "pytorch-whisper",
+    "whisper-cpp",
+})
+
+
 def asr_source_language(source_language: str | None, backend_id: str | None) -> str | None:
     """Adapt a stored dub language to the selected ASR without mutating the job.
 
@@ -31,13 +42,7 @@ def asr_source_language(source_language: str | None, backend_id: str | None) -> 
     Whisper engines; custom and OpenAI-compatible engines keep their own codes.
     """
     language = "zh" if source_language in ("cmn-hans", "cmn-hant") else source_language or None
-    if language and backend_id in (
-        "whisperx",
-        "faster-whisper",
-        "faster-whisper-isolated",
-        "mlx-whisper",
-        "pytorch-whisper",
-    ):
+    if language and backend_id in WHISPER_ASR_BACKENDS:
         from transformers.models.whisper.tokenization_whisper import LANGUAGES
 
         if language not in LANGUAGES:
