@@ -141,6 +141,7 @@ class IndexTTS2Backend(SubprocessBackend):
     id = "indextts2"
     display_name = "IndexTTS 2.5 (multilingual emotion-controlled cloning)"
     supports_voice_design = False  # requires ref audio for timbre
+    supports_generation_seed = True  # inference runs in a separate process
     supports_emotion = True  # graded emo_vector / emo_text / emo_alpha (#1208)
     _DEFAULT_SAMPLE_RATE = 24000
     # Explicit so IndexTTS2 stops advertising the inherited CPU-only default:
@@ -320,6 +321,8 @@ class IndexTTS2Backend(SubprocessBackend):
 
         language = _normalize_indextts25_language(kw.get("language"), text)
         forwarded: dict = {"ref_audio": ref_audio, "lang": language}
+        if kw.get("seed") is not None:
+            forwarded["seed"] = int(kw["seed"])
 
         # Duration control — codec frame rate ≈ 21 Hz.
         duration = kw.get("duration")
