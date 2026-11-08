@@ -28,6 +28,7 @@ from schemas.requests import CleanupSegmentsRequest, DubIngestUrlRequest, ParseS
 from services.srt_parser import CUE_SOURCE_FIELDS, CUE_SOURCE_ID, vouch_cue_source
 from services.dub_language import (
     DUB_SOURCE_LANG_CODES as _DUB_SOURCE_LANG_CODES,
+    asr_source_language,
     detected_source_language as _detected_source_lang,
 )
 from services.model_manager import get_model, _gpu_pool, _cpu_pool, get_diarization_pipeline, offload_tts_for_asr, restore_tts_after_asr, should_preload_tts_asr, release_device_cache
@@ -36,6 +37,7 @@ from services.asr_backend import (
     ASRTimeoutError,
     reset_pool_after_wedge,
     run_transcribe_guarded,
+    transcribe_request_kwargs,
 )
 from services.audio_io import _safe_soundfile_write
 from services.diarization_runtime import ensure_selected_accepted as _ensure_diarisation_accepted
@@ -1572,6 +1574,7 @@ async def dub_transcribe_stream(
                 logger.warning("restore_tts_after_asr failed: %s", e)
 
     async def _gen_body():
+        """Yield preflight, chunk progress and final diarized results as SSE events."""
         # ── Preflight — run INSIDE the stream, never before it (#1196) ──
         # This whole block used to run in the endpoint body, before the
         # StreamingResponse existed — i.e. OUTSIDE the stream's terminal-event
@@ -1853,6 +1856,7 @@ async def dub_transcribe_stream(
                 continue
 
             def _transcribe_chunk(arr=chunk_arr, offset=t0, local_sr=sr):
+                """Transcribe with a supported language hint and shift times to the full audio."""
                 # Route through the active backend (WhisperX by default).
                 # Backends all take a file path, so write the chunk first.
                 try:
@@ -1860,7 +1864,12 @@ async def dub_transcribe_stream(
                     tmp.close()
                     try:
                         _safe_soundfile_write(tmp.name, arr, local_sr)
-                        r = _asr_backend.transcribe(tmp.name, word_timestamps=True)
+                        language = asr_source_language(
+                            job.get("source_lang_override"),
+                            getattr(_asr_backend, "id", None),
+                        )
+                        kwargs = transcribe_request_kwargs(_asr_backend, {"language": language or None})
+                        r = _asr_backend.transcribe(tmp.name, word_timestamps=True, **kwargs)
                     finally:
                         try: os.remove(tmp.name)
                         except OSError: pass
