@@ -189,3 +189,34 @@ def test_explicit_non_soundfile_backend_is_not_rerouted(monkeypatch):
     assert _install_on(monkeypatch, fake)
     with pytest.raises(ImportError, match="TorchCodec"):
         fake.load("x.wav", backend="ffmpeg")
+
+
+def test_undecodable_input_reraises_the_torchcodec_error(monkeypatch, tmp_path):
+    """M4A/AAC: soundfile cannot decode it either, so the caller's own
+    TorchCodec handling (services.audio_io falls back to FFmpeg) must still run."""
+    path = tmp_path / "clip.m4a"
+    path.write_bytes(b"\x00\x00\x00\x20ftypM4A \x00\x00\x00\x00" + b"\x00" * 64)
+    fake = SimpleNamespace(load=_torchcodec_missing)
+    assert _install_on(monkeypatch, fake)
+    with pytest.raises(ImportError, match="TorchCodec"):
+        fake.load(path)
+
+
+def test_audio_io_reaches_ffmpeg_for_m4a_with_the_shim_installed(monkeypatch, tmp_path):
+    import services.audio_io as audio_io
+
+    fake = SimpleNamespace(load=_torchcodec_missing)
+    assert _install_on(monkeypatch, fake)
+    monkeypatch.setattr(audio_io, "torchaudio", fake)
+    path = tmp_path / "clip.m4a"
+    path.write_bytes(b"\x00\x00\x00\x20ftypM4A \x00\x00\x00\x00" + b"\x00" * 64)
+    reached = []
+
+    def no_ffmpeg():
+        reached.append(True)
+        return None
+
+    monkeypatch.setattr("services.ffmpeg_utils.find_ffmpeg", no_ffmpeg)
+    with pytest.raises(RuntimeError):
+        audio_io.load_audio(str(path))
+    assert reached, "audio_io stopped before its FFmpeg fallback"

@@ -158,7 +158,9 @@ def _rewind(source) -> None:
         try:
             seek(0)
         except (OSError, ValueError):
-            pass
+            # A non-seekable stream: the next reader gets what is left, which
+            # is the best any decoder can do with it.
+            return
 
 
 def _backends():
@@ -204,8 +206,16 @@ def ensure_pyannote_audio_compat() -> bool:
                     # a real decode error and propagates.
                     if not _torchcodec_unavailable(exc) or requested_backend is not None:
                         raise
-                    _rewind(args[0] if args else kwargs.get("uri"))
-                    return _soundfile_load(*args, **kwargs)
+                    source = args[0] if args else kwargs.get("uri")
+                    _rewind(source)
+                    try:
+                        return _soundfile_load(*args, **kwargs)
+                    except (RuntimeError, OSError, ValueError):
+                        # libsndfile cannot decode every container (M4A, AAC).
+                        # Re-raise the TorchCodec error so callers that handle
+                        # it (services.audio_io falls back to FFmpeg) still do.
+                        _rewind(source)
+                        raise exc from None
 
             setattr(compatible_load, _WRAPPER_MARKER, True)
             torchaudio.load = compatible_load
