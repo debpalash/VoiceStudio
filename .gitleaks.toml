@@ -1,16 +1,12 @@
 # Gitleaks config — extends the default ruleset.
 #
-# Every entry below is an exact, anchored non-secret value. PostHog's
-# publishable project token is public by design (owner decision 2026-07-20,
-# #1193). Per PostHog's docs the `phc_` project
-# token is a write-only client key with "no access to your private data" —
-# it ships in every release binary and every official PostHog SDK snippet.
-# It is NOT a credential. Personal keys (`phx_`) remain fully banned.
-# `tests/test_no_committed_analytics_token.py` separately pins the literal to
-# exactly two canonical files and requires both to carry the same value.
+# Every entry below is an exact, anchored non-secret value. The analytics
+# destination is a public Supermetry site id (config/analytics.json), not a
+# credential. Dashboard/API keys (`pnl_`) and PostHog keys stay banned
+# (tests/test_no_committed_analytics_token.py).
 #
-# Rotating the token? The old value stays in git history, so the weekly
-# full-history scan flags it. Add those findings' fingerprints to
+# Retired PostHog project tokens stay in git history, so the weekly
+# full-history scan flags them. Add those findings' fingerprints to
 # .gitleaksignore rather than keeping the retired value here.
 
 [extend]
@@ -19,8 +15,6 @@ useDefault = true
 [allowlist]
 description = "Exact public/test literals misclassified as generic API keys"
 regexes = [
-  # Public PostHog project token; personal `phx_` keys remain banned.
-  '''^phc_kJK9nFqtwFmB4CYWS4bMDTY7z9P4KCRyiRT7CzJTXm9f$''',
   # Reviewed immutable Hugging Face commit for the Higgs tokenizer.
   '''^528e871c2a26c4f0f7773b9754e2e1acae20899d$''',
   # Deliberately synthetic fixtures that exercise HF-token redaction/storage.
