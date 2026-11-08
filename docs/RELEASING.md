@@ -278,7 +278,10 @@ strings), add a
 the version (`prepare_electron_release.py --print-channel`), stamps it into every
 platform feed, publishes with `--prerelease --latest=false`, and dispatches
 Docker with `promote_stable=false`. Any other prerelease shape (`-rc`, `-alpha`)
-is rejected.
+is rejected. The release is refused if it carries another channel's update
+feed (a stable `electron-stable-*` or `latest*` feed on a beta, a beta feed on
+stable), and after publishing the workflow checks that `releases/latest` still
+points at the newest stable.
 
 Promoting to Stable is a normal `vX.Y.Z` release from `main`. Beta users roll
 onto it automatically because the updater compares semver (`X.Y.Z-beta.N` sorts

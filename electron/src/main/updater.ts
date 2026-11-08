@@ -7,10 +7,11 @@ import type { UpdateReleaseInfo, UpdateState } from '../preload/index.d';
 import { sendToLiveWindow } from './window-safety';
 import { applicationUpdatesUnsupportedReason, CURRENT_DISTRIBUTION } from './distribution';
 import type { DistributionTarget } from '../../../config/distributions.mjs';
+import { GitHubAssetProvider, releaseAssets, type ReleaseAssets } from './github-asset-provider';
 
 // electron-updater is CommonJS. Electron executes our main bundle as ESM, so
 // named runtime imports fail before the app can create a window.
-const { autoUpdater } = updaterPackage;
+const { autoUpdater, CancellationToken } = updaterPackage;
 
 // Two update channels, both fed by tagged GitHub releases cut from main:
 // Stable follows `vX.Y.Z` (the `latest` release); Beta follows `vX.Y.Z-beta.N`
@@ -20,6 +21,23 @@ const { autoUpdater } = updaterPackage;
 export type UpdateChannel = 'stable' | 'beta';
 const STABLE_FEED = 'https://github.com/debpalash/VoiceStudio/releases/latest/download';
 const RELEASES_API = 'https://api.github.com/repos/debpalash/VoiceStudio/releases?per_page=30';
+const LATEST_RELEASE_API = 'https://api.github.com/repos/debpalash/VoiceStudio/releases/latest';
+const GITHUB_API_HEADERS = {
+  Accept: 'application/vnd.github+json',
+  'User-Agent': 'VoiceStudio',
+} as const;
+
+/**
+ * A feed electron-updater reads its channel manifest from. `tag` and `assets`
+ * are known when the release was resolved through the API, so a fallback to
+ * the asset route needs no further lookup.
+ */
+export interface UpdateFeed {
+  url: string;
+  channel: string;
+  tag?: string;
+  assets?: ReleaseAssets;
+}
 
 function feedChannelName(
   platform: NodeJS.Platform = process.platform,
@@ -67,12 +85,9 @@ export async function resolveBetaFeed(
   platform: NodeJS.Platform = process.platform,
   arch: string = process.arch,
   fetcher: typeof fetch = fetch,
-): Promise<{ url: string; channel: string }> {
+): Promise<Required<UpdateFeed>> {
   const response = await fetcher(RELEASES_API, {
-    headers: {
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'VoiceStudio',
-    },
+    headers: GITHUB_API_HEADERS,
     signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) throw new Error(`Beta update feed lookup failed (${response.status})`);
@@ -95,6 +110,7 @@ export async function resolveBetaFeed(
             tag,
             rank,
             channel: feedChannelName(platform, arch, 'direct', kind),
+            assets: releaseAssets(item.assets),
           },
         ]
       : [];
@@ -112,7 +128,26 @@ export async function resolveBetaFeed(
   return {
     url: `${RELEASE_DOWNLOAD}/${encodeURIComponent(newest.tag)}`,
     channel: newest.channel,
+    tag: newest.tag,
+    assets: newest.assets,
   };
+}
+
+/** The latest stable release and its assets, in one API request. */
+export async function resolveLatestRelease(
+  fetcher: typeof fetch = fetch,
+): Promise<{ tag: string; assets: ReleaseAssets }> {
+  const response = await fetcher(LATEST_RELEASE_API, {
+    headers: GITHUB_API_HEADERS,
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) throw new Error(`Latest release lookup failed (${response.status})`);
+  const release: unknown = await response.json();
+  const tag =
+    release && typeof release === 'object' ? (release as Record<string, unknown>).tag_name : null;
+  if (typeof tag !== 'string' || !RELEASE_TAG.test(tag))
+    throw new Error('Latest release lookup returned invalid data');
+  return { tag, assets: releaseAssets((release as Record<string, unknown>).assets) };
 }
 
 const CHANNEL_FILE = 'updates.json';
@@ -259,14 +294,25 @@ const UPDATE_PAYLOAD_EXTENSION: Partial<Record<NodeJS.Platform, string>> = {
   win32: '.exe',
 };
 
+/** The installer extension electron-updater downloads on this install. */
+export function updatePayloadExtension(
+  platform: NodeJS.Platform = process.platform,
+  appImage: string | undefined = process.env.APPIMAGE,
+): string | undefined {
+  return platform === 'linux'
+    ? appImage
+      ? '.AppImage'
+      : '.deb'
+    : UPDATE_PAYLOAD_EXTENSION[platform];
+}
+
 export function releaseSize(
   info: Pick<UpdateInfo, 'files' | 'path'>,
   platform: NodeJS.Platform = process.platform,
   appImage: string | undefined = process.env.APPIMAGE,
 ): number | undefined {
   const files = info.files ?? [];
-  const extension =
-    platform === 'linux' ? (appImage ? '.AppImage' : '.deb') : UPDATE_PAYLOAD_EXTENSION[platform];
+  const extension = updatePayloadExtension(platform, appImage);
   const payload =
     (extension && files.find((file) => file.url.endsWith(extension))) ||
     files.find((file) => file.url === info.path) ||
@@ -315,6 +361,18 @@ export function isTransientUpdateError(error: unknown): boolean {
   return false;
 }
 
+/** A download that receives no bytes for this long is cancelled and retried. */
+export const UPDATE_STALL_TIMEOUT_MS = 45_000;
+
+/** Classified as transient (TimeoutError), so the usual retry and Retry UI apply. */
+function downloadStalledError(timeoutMs: number): Error {
+  const error = new Error(
+    `The update download stopped receiving data for ${Math.round(timeoutMs / 1_000)} seconds`,
+  );
+  error.name = 'TimeoutError';
+  return error;
+}
+
 export class DesktopUpdater {
   private listeners = new Set<(state: UpdateState) => void>();
   private state: UpdateState;
@@ -322,11 +380,19 @@ export class DesktopUpdater {
   private downloadInFlight: Promise<UpdateState> | null = null;
   private channel: UpdateChannel = 'stable';
   private operating = false;
+  // The feed electron-updater reads now; `viaApi` once it uses the asset route.
+  private feed: (UpdateFeed & { viaApi: boolean }) | null = null;
+  // Set while a download re-reads the manifest through the asset route, so
+  // that hidden check does not flip the visible state back to "available".
+  private silentCheck = false;
+  private lastCheckFailed = false;
+  private differentialDisabledByDefault = false;
 
   constructor(
     private readonly distribution: DistributionTarget = CURRENT_DISTRIBUTION,
     private readonly feedFetcher: typeof fetch = fetch,
     private readonly retryDelaysMs: readonly number[] = UPDATE_RETRY_DELAYS_MS,
+    private readonly stallTimeoutMs: number = UPDATE_STALL_TIMEOUT_MS,
   ) {
     const supported = this.updatesSupported();
     // Store builds are stable-only, so they expose no channel to switch. A dev
@@ -348,7 +414,9 @@ export class DesktopUpdater {
     // The NSIS installer is not a web installer; this also silences the
     // per-download warning electron-updater logs otherwise.
     autoUpdater.disableWebInstaller = true;
-    autoUpdater.on('checking-for-update', () =>
+    this.differentialDisabledByDefault = autoUpdater.disableDifferentialDownload === true;
+    autoUpdater.on('checking-for-update', () => {
+      if (this.silentCheck) return;
       this.patch({
         status: 'checking',
         progress: 0,
@@ -357,9 +425,10 @@ export class DesktopUpdater {
         bytesPerSecond: undefined,
         etaSeconds: undefined,
         error: undefined,
-      }),
-    );
-    autoUpdater.on('update-available', (info) =>
+      });
+    });
+    autoUpdater.on('update-available', (info) => {
+      if (this.silentCheck) return;
       this.patch({
         status: 'available',
         availableVersion: info.version,
@@ -370,9 +439,10 @@ export class DesktopUpdater {
         etaSeconds: undefined,
         lastCheckedAt: Date.now(),
         error: undefined,
-      }),
-    );
-    autoUpdater.on('update-not-available', () =>
+      });
+    });
+    autoUpdater.on('update-not-available', () => {
+      if (this.silentCheck) return;
       this.patch({
         status: 'idle',
         availableVersion: undefined,
@@ -384,8 +454,8 @@ export class DesktopUpdater {
         etaSeconds: undefined,
         lastCheckedAt: Date.now(),
         error: undefined,
-      }),
-    );
+      });
+    });
     autoUpdater.on('download-progress', (progress: ProgressInfo) => {
       const totalBytes = Math.max(0, progress.total || 0);
       const transferredBytes = Math.max(0, progress.transferred || 0);
@@ -421,7 +491,8 @@ export class DesktopUpdater {
       if (this.operating) return;
       this.patch({ status: 'error', error: error.message || String(error) });
     });
-    if (this.distribution !== 'microsoft-store') this.configureFeed(STABLE_FEED, feedChannelName());
+    if (this.distribution !== 'microsoft-store')
+      this.configureFeed({ url: STABLE_FEED, channel: feedChannelName() });
   }
 
   snapshot(): UpdateState {
@@ -454,28 +525,43 @@ export class DesktopUpdater {
     });
     const operation = (async () => {
       try {
-        await this.withRetry(this.retryDelaysMs, async () => {
-          const feed =
-            this.distribution === 'microsoft-store'
-              ? {
-                  url: await resolveUpdateFeedUrl(
-                    this.distribution,
-                    process.platform,
-                    process.arch,
-                    this.feedFetcher,
-                  ),
-                  channel: feedChannelName(process.platform, process.arch, this.distribution),
-                }
-              : this.channel === 'beta'
-                ? await resolveBetaFeed(process.platform, process.arch, this.feedFetcher)
-                : { url: STABLE_FEED, channel: feedChannelName() };
-          this.configureFeed(feed.url, feed.channel);
-          await autoUpdater.checkForUpdates();
-        });
+        // Set once the feed is resolved, so only a failure of the release
+        // download host itself (not of the API lookup) uses the asset route.
+        const attempt: { feed?: UpdateFeed } = {};
+        try {
+          await this.withRetry(this.retryDelaysMs, async () => {
+            attempt.feed = undefined;
+            const feed: UpdateFeed =
+              this.distribution === 'microsoft-store'
+                ? {
+                    url: await resolveUpdateFeedUrl(
+                      this.distribution,
+                      process.platform,
+                      process.arch,
+                      this.feedFetcher,
+                    ),
+                    channel: feedChannelName(process.platform, process.arch, this.distribution),
+                  }
+                : this.channel === 'beta'
+                  ? await resolveBetaFeed(process.platform, process.arch, this.feedFetcher)
+                  : { url: STABLE_FEED, channel: feedChannelName() };
+            this.configureFeed(feed);
+            attempt.feed = feed;
+            await autoUpdater.checkForUpdates();
+          });
+        } catch (error) {
+          if (!attempt.feed || !this.canUseAssetRoute(error)) throw error;
+          const release = await this.apiRelease(attempt.feed);
+          await this.withRetry(this.retryDelaysMs.slice(0, 1), async () => {
+            this.configureFeed(release, true);
+            await autoUpdater.checkForUpdates();
+          });
+        }
         if (this.state.status === 'checking') {
           this.patch({ status: 'idle', lastCheckedAt: Date.now() });
         }
       } catch (error) {
+        this.lastCheckFailed = true;
         if (quiet) {
           this.state = previousState;
           this.emit();
@@ -511,7 +597,12 @@ export class DesktopUpdater {
         error: undefined,
       });
       try {
-        await this.withRetry(this.retryDelaysMs.slice(0, 1), () => autoUpdater.downloadUpdate());
+        try {
+          await this.withRetry(this.retryDelaysMs.slice(0, 1), () => this.watchedDownload());
+        } catch (error) {
+          if (!this.feed || !this.canUseAssetRoute(error)) throw error;
+          await this.downloadThroughAssetRoute(this.feed);
+        }
       } catch (error) {
         this.patch({
           status: 'error',
@@ -526,6 +617,89 @@ export class DesktopUpdater {
     } finally {
       this.operating = false;
       if (this.downloadInFlight === operation) this.downloadInFlight = null;
+    }
+  }
+
+  /** A background check; resolves false when it failed, for the check schedule. */
+  async checkInBackground(): Promise<boolean> {
+    this.lastCheckFailed = false;
+    await this.check(true);
+    return !this.lastCheckFailed;
+  }
+
+  /**
+   * GitHub's release-download host has failed for hours while its API kept
+   * serving the same assets. Transient failures there retry through the API;
+   * the asset route is never used when the normal feed works.
+   */
+  private canUseAssetRoute(error: unknown): boolean {
+    return (
+      this.distribution !== 'microsoft-store' &&
+      this.feed?.viaApi !== true &&
+      isTransientUpdateError(error)
+    );
+  }
+
+  /** The feed's release with asset ids; Stable spends its one API request here. */
+  private async apiRelease(feed: UpdateFeed): Promise<Required<UpdateFeed>> {
+    if (feed.tag && feed.assets) return { ...feed, tag: feed.tag, assets: feed.assets };
+    const latest = await resolveLatestRelease(this.feedFetcher);
+    return {
+      url: `${RELEASE_DOWNLOAD}/${encodeURIComponent(latest.tag)}`,
+      channel: feed.channel,
+      ...latest,
+    };
+  }
+
+  /** Re-reads the offered release through the asset route, then downloads it. */
+  private async downloadThroughAssetRoute(feed: UpdateFeed): Promise<void> {
+    const offered = this.state.availableVersion;
+    const release = await this.apiRelease(feed);
+    this.configureFeed(release, true);
+    // electron-updater downloads from the provider of its last check.
+    this.silentCheck = true;
+    let result: Awaited<ReturnType<typeof autoUpdater.checkForUpdates>>;
+    try {
+      result = await autoUpdater.checkForUpdates();
+    } finally {
+      this.silentCheck = false;
+    }
+    if (!result?.isUpdateAvailable || result.updateInfo.version !== offered)
+      throw new Error('The offered update changed; check for updates again');
+    await this.withRetry(this.retryDelaysMs.slice(0, 1), () => this.watchedDownload());
+  }
+
+  /** Downloads, cancelling when no bytes arrive for `stallTimeoutMs`. */
+  private async watchedDownload(): Promise<void> {
+    const token = new CancellationToken();
+    let transferred = -1;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let stalled!: (error: Error) => void;
+    const stall = new Promise<never>((_resolve, reject) => (stalled = reject));
+    const arm = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        token.cancel();
+        stalled(downloadStalledError(this.stallTimeoutMs));
+      }, this.stallTimeoutMs);
+    };
+    const onProgress = (progress: ProgressInfo) => {
+      const bytes = Number(progress?.transferred) || 0;
+      if (bytes > transferred) {
+        transferred = bytes;
+        arm();
+      }
+    };
+    autoUpdater.on('download-progress', onProgress);
+    arm();
+    try {
+      const download = autoUpdater.downloadUpdate(token);
+      // Settles the cancelled download quietly once the stall error has won.
+      download.catch(() => undefined);
+      await Promise.race([download, stall]);
+    } finally {
+      clearTimeout(timer);
+      autoUpdater.removeListener('download-progress', onProgress);
     }
   }
 
@@ -584,8 +758,9 @@ export class DesktopUpdater {
     autoUpdater.quitAndInstall(false, true);
   }
 
-  private configureFeed(url: string, feedChannel: string): void {
+  private configureFeed(feed: UpdateFeed, viaApi = false): void {
     if (!this.updatesSupported()) return;
+    const { url, channel: feedChannel } = feed;
     // Feeds are resolved per release and read through the generic provider, so
     // electron-updater's own prerelease filtering never applies.
     autoUpdater.allowPrerelease = false;
@@ -593,17 +768,31 @@ export class DesktopUpdater {
     // electron-updater's channel setter silently enables downgrades; keep the
     // app monotonic.
     autoUpdater.allowDowngrade = false;
+    // A patch download makes many ranged requests, each an API call against
+    // GitHub's 60-an-hour limit: the asset route downloads in full.
+    autoUpdater.disableDifferentialDownload = viaApi || this.differentialDisabledByDefault;
     // Explicit, so a build packaged with another feed URL follows the chosen channel.
-    autoUpdater.setFeedURL({
-      provider: 'generic',
-      url,
-      channel: feedChannel,
-      // GitHub release downloads answer multi-range requests with HTTP 501, so
-      // every differential (patch) download failed and fell back to the full
-      // installer. Single ranges are served (206); electron-updater's own
-      // GitHub provider disables multi-range for the same reason.
-      useMultipleRangeRequest: false,
-    });
+    if (viaApi)
+      autoUpdater.setFeedURL({
+        provider: 'custom',
+        updateProvider: GitHubAssetProvider,
+        url,
+        channel: feedChannel,
+        assets: feed.assets ?? {},
+        payloadExtension: updatePayloadExtension(),
+      });
+    else
+      autoUpdater.setFeedURL({
+        provider: 'generic',
+        url,
+        channel: feedChannel,
+        // GitHub release downloads answer multi-range requests with HTTP 501, so
+        // every differential (patch) download failed and fell back to the full
+        // installer. Single ranges are served (206); electron-updater's own
+        // GitHub provider disables multi-range for the same reason.
+        useMultipleRangeRequest: false,
+      });
+    this.feed = { ...feed, viaApi };
   }
 
   private updatesSupported(): boolean {

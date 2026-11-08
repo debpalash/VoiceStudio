@@ -26,6 +26,7 @@ import {
   type RuntimeRegion,
   runtimeRequiredGib,
 } from './runtime-project';
+import { detectSetupHardware, type SetupHardware } from './setup-hardware';
 import { collectHostSnapshot, freeGb, type HostSnapshot } from './host-snapshot';
 import { collectTrustFacts, programBasename, runProbe, type TrustFacts } from './install-doctor';
 import {
@@ -1100,6 +1101,10 @@ export class BackendSupervisor extends EventEmitter<{
   private diagnosis: BackendStatus['diagnosis'];
   private setupIssue: BackendStatus['setupIssue'];
   private setupRequiredGib: number | undefined;
+  private setupHardware: SetupHardware | undefined;
+  private setupHardwareProbed = false;
+  /** Bumped when the torch choice changes, so an in-flight probe cannot write a stale build. */
+  private setupHardwareGeneration = 0;
   /** Free GiB on the drive that will hold the runtime; probed once per location during setup. */
   private runtimeFreeGib: number | undefined;
   private freeProbeRoot: string | undefined;
@@ -1264,6 +1269,20 @@ export class BackendSupervisor extends EventEmitter<{
       status.setupRequiredGib = this.setupRequiredGib ?? runtimeRequiredGib();
     if (this.stage === 'setup_required' && app.isPackaged && this.runtimeFreeGib !== undefined)
       status.runtimeFreeGib = this.runtimeFreeGib;
+    if (this.stage === 'setup_required' && app.isPackaged) {
+      if (!this.setupHardwareProbed) {
+        this.setupHardwareProbed = true;
+        const generation = this.setupHardwareGeneration;
+        void detectSetupHardware().then((found) => {
+          if (generation !== this.setupHardwareGeneration) return;
+          this.setupHardware = found;
+          // The setup screen may be idle with no other status change coming;
+          // publish once so the hardware line appears as soon as it is known.
+          if (found && this.stage === 'setup_required') this.emitStatus();
+        });
+      }
+      if (this.setupHardware && !this.setupIssue) status.setupHardware = this.setupHardware;
+    }
     if (this.stage === 'setup_required' && this.runtimeInterrupted)
       status.runtimeInterrupted = true;
     if (this.stage === 'setup_required' && this.runtimeRepairFailed)
@@ -1766,6 +1785,10 @@ export class BackendSupervisor extends EventEmitter<{
       return;
     }
     process.env.OMNIVOICE_TORCH_VARIANT = 'cpu';
+    // The setup screen names the build it will install; detect it again.
+    this.setupHardware = undefined;
+    this.setupHardwareProbed = false;
+    this.setupHardwareGeneration += 1;
     if (!saveTorchVariant('cpu'))
       this.setupLog.append('Could not save the CPU choice; the next launch may ask again');
     await this.start();
