@@ -30,7 +30,7 @@ init_db()
 def client():
     app = FastAPI()
     app.include_router(ab.router)
-    return TestClient(app)
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 def _seed(job_id, job_type, status, *, manifest=True, chapters_done=0, total=3):

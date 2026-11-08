@@ -211,6 +211,18 @@ describe('model licence acceptance', () => {
     expect(boxes()).toHaveLength(2);
   });
 
+  it('keeps acceptance disabled while a licence detail failed to load', async () => {
+    mock.api.mockImplementation(async () => {
+      throw new Error('offline');
+    });
+    await render(<ModelLicenceGate />);
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(MODEL_LICENCE_REQUIRED_EVENT, { detail: [gated] }));
+    });
+    await vi.waitFor(() => expect(boxes()).toHaveLength(1));
+    expect((boxes()[0] as HTMLInputElement).disabled || boxes()[0].getAttribute('aria-disabled') === 'true' || boxes()[0].hasAttribute('data-disabled')).toBe(true);
+  });
+
   it('says the licences are accepted once they are, without assuming an action ran', async () => {
     mock.api.mockImplementation(async (path: string) =>
       path === '/models/licenses/accept'

@@ -45,7 +45,7 @@ def client():
     def echo(body: _Body):  # pragma: no cover - never reached by these tests
         return {"ok": body.path}
 
-    return TestClient(app, raise_server_exceptions=False)
+    return TestClient(app, client=("127.0.0.1", 50000), raise_server_exceptions=False)
 
 
 # ── The regression ─────────────────────────────────────────────────────────
@@ -107,7 +107,7 @@ def test_nonfinite_smart_fit_input_is_422_before_engine_resolution(monkeypatch, 
         '{"segments":[{"start":0,"end":1,"text":"synthetic fixture"}],'
         '"timing_strategy":"smart_fit","fit_options":{"' + field + '":' + token + '}}'
     )
-    with TestClient(app, raise_server_exceptions=False) as client:
+    with TestClient(app, client=("127.0.0.1", 50000), raise_server_exceptions=False) as client:
         response = client.post(
             "/dub/generate/test-job", content=body,
             headers={"Content-Type": "application/json"},

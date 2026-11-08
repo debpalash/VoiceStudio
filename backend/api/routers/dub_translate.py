@@ -5,7 +5,8 @@ import time
 import asyncio
 import logging
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from api.dependencies import consumer_generation, require_consumer_reads_admin_writes
 from fastapi.responses import JSONResponse
 
 from schemas.requests import AgentFitRequest, TranslateRequest
@@ -21,7 +22,7 @@ from services.translator import (
 )
 from api.routers.dub_core import _get_job, _save_job
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 logger = logging.getLogger("omnivoice.api")
 
 _NLLB_REPO_ID = "facebook/nllb-200-distilled-600M"
@@ -458,6 +459,7 @@ def _should_unload_nllb() -> bool:
 
 
 @router.post("/dub/translate")
+@consumer_generation
 async def dub_translate(req: TranslateRequest):
     try:
         provider = (req.provider if req.provider else os.environ.get("TRANSLATE_PROVIDER", "google")).lower()
@@ -1405,6 +1407,7 @@ def translation_style_brief(req) -> str:
 
 
 @router.post("/dub/agent-fit")
+@consumer_generation
 async def dub_agent_fit(req: AgentFitRequest):
     """Rewrite rendered lines from real duration evidence.
 

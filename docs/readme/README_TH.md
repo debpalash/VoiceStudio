@@ -149,6 +149,8 @@
 
 เลือกระบบของคุณ จากนั้นขยายวิธีการติดตั้ง
 
+เอนจิน GGUF แบบเนทีฟยังรองรับการเร่งความเร็ว Vulkan เฉพาะเอนจินบน GPU ของ AMD, Intel และ NVIDIA ([OmniVoice](../../docs/engines/omnivoice-gguf.md#vulkan-acceleration), [CosyVoice](../../docs/engines/cosyvoice-gguf.md)) OmniVoice GGUF เลือก GPU และขนาดโมเดลโดยอัตโนมัติบน Windows และ Linux หากการตรวจสอบที่ซ่อนอยู่ค้าง การตรวจหา Vulkan จะลองใหม่ด้วยข้อมูลสรุปแบบเนทีฟ ส่วนบิลด์เดสก์ท็อป Windows และ Linux จะล้มเหลวแทนการเผยแพร่โดยไม่มีโมดูล Vulkan อย่างเงียบ ๆ
+
 <a id="install-macos"></a>
 
 <details>

@@ -150,6 +150,8 @@
 
 OS を選び、使いたいインストール方法を展開してください。
 
+ネイティブ GGUF エンジンは、AMD、Intel、NVIDIA の GPU でエンジン固有の Vulkan アクセラレーションも利用できます（[OmniVoice](../../docs/engines/omnivoice-gguf.md#vulkan-acceleration), [CosyVoice](../../docs/engines/cosyvoice-gguf.md)）。OmniVoice GGUF は Windows と Linux で GPU とモデルサイズを自動選択します。非表示の検査が停止した場合、Vulkan 検出はネイティブの概要を使って再試行します。Windows と Linux のデスクトップビルドは、Vulkan モジュールを欠いたまま公開されることを防ぐため、モジュールがないと失敗します。
+
 <a id="install-macos"></a>
 
 <details>

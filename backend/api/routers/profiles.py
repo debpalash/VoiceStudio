@@ -11,7 +11,8 @@ import shutil
 import threading
 from datetime import datetime, timezone
 from typing import Literal, Optional
-from fastapi import APIRouter, File, Form, UploadFile, HTTPException
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, HTTPException
+from api.dependencies import consumer_generation, require_consumer_reads_admin_writes, require_admin_media_action
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
@@ -28,7 +29,7 @@ from core.profile_images import MAX_IMAGE_BYTES, normalize_portrait
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from core.path_security import upload_suffix
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 logger = logging.getLogger("omnivoice.profiles")
 
 
@@ -121,6 +122,7 @@ _DESIGN_SEED = 42  # deterministic sample render, same as archetype previews
 
 
 @router.post("/profiles")
+@consumer_generation
 async def create_profile(
     name: str = Form(...),
     ref_audio: Optional[UploadFile] = File(None),
@@ -231,8 +233,15 @@ async def create_profile(
         audio_path = os.path.join(VOICES_DIR, audio_filename)
         # Storage can be removed after startup; recover before persisting uploads.
         os.makedirs(VOICES_DIR, exist_ok=True)
-        with open(audio_path, "wb") as f:
-            f.write(await ref_audio.read())
+        # Stream with the same cap the replace-audio route enforces: this
+        # route is open to PIN-paired consumers, so an unbounded read would
+        # let one request exhaust memory/disk.
+        try:
+            await _save_upload(ref_audio, audio_path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.remove(audio_path)
+            raise
         # A clone needs speech to copy: refuse a reference with no audio
         # stream (a silent screen recording, a video-only WebM) at save time
         # instead of failing every later generation with it.
@@ -836,7 +845,7 @@ _PROFILE_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 @router.get("/profiles/{profile_id}/audio")
-async def get_profile_audio(profile_id: str):
+async def get_profile_audio(profile_id: str, request: Request):
     """Serve a saved voice sample or lazily render a pending designed voice.
 
     Profile IDs and stored filenames are confined to VOICES_DIR; concurrent
@@ -855,9 +864,11 @@ async def get_profile_audio(profile_id: str):
         return Response("Profile not found", status_code=404)
     audio_file = row["locked_audio_path"] or row["ref_audio_path"]
     if not audio_file:
-        # A design profile saved before the engine was ready (issue #476) has no
-        # identity sample yet. Render it lazily now — the sample is deterministic
-        # for the stored seed, so a deferred render matches a save-time one.
+        # Rendering a pending design sample synthesizes and persists audio, so
+        # it is an admin action even though the GET route itself is read-only
+        # for consumers. Media elements cannot carry the CSRF marker header,
+        # hence the media-action variant instead of require_admin_action.
+        require_admin_media_action(request)
         rendered = await _materialize_design_sample(profile_id, row)
         if rendered is None:
             return Response("No audio available", status_code=404)

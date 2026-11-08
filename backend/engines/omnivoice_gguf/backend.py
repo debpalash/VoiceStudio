@@ -438,13 +438,20 @@ def _is_cli_readable_wav(path: Path) -> bool:
     return False
 
 
+# Readable audio whose duration no probe field reports (live-recorded WebM).
+_UNSIZED = 0
+
+
 def _ffprobe_decoded_bytes(prompt: Path) -> Optional[int]:
     """Decoded size of a reference clip, measured with ffprobe, or None.
 
     ffprobe reads the container's metadata and decodes nothing, so a
     container ``libsndfile`` cannot size can still be measured before it
-    is decoded. The *audio stream's* duration is used, not the
+    is decoded. The *audio stream's* duration is preferred over the
     container's: a video whose audio track is short is a short reference.
+    MediaRecorder WebM carries no stream duration, so the container's is
+    the fallback. A readable stream with no duration at all returns
+    ``_UNSIZED`` (0): the caller converts it and caps the *output* instead.
     """
     try:
         from services.ffmpeg_utils import find_ffprobe, local_inputs_only
@@ -455,7 +462,7 @@ def _ffprobe_decoded_bytes(prompt: Path) -> Optional[int]:
         proc = subprocess.run(
             local_inputs_only(
                 [ffprobe, "-v", "error", "-select_streams", "a:0",
-                 "-show_entries", "stream=duration,channels,sample_rate",
+                 "-show_entries", "stream=duration,channels,sample_rate:format=duration",
                  "-of", "json", str(prompt)],
                 tool="ffprobe",
             ),
@@ -468,13 +475,18 @@ def _ffprobe_decoded_bytes(prompt: Path) -> Optional[int]:
             return None
         payload = json.loads(proc.stdout.decode("utf-8", errors="replace"))
         stream = (payload.get("streams") or [{}])[0]
+        fmt = payload.get("format") or {}
         duration = float(stream.get("duration") or 0.0)
+        if duration <= 0:
+            duration = float(fmt.get("duration") or 0.0)
         channels = int(stream.get("channels") or 0)
         sample_rate = int(stream.get("sample_rate") or 0)
     except Exception:  # noqa: BLE001 — an unsized clip is a refusal
         return None
-    if duration <= 0 or channels <= 0 or sample_rate <= 0:
+    if channels <= 0 or sample_rate <= 0:
         return None
+    if duration <= 0:
+        return _UNSIZED
     return int(duration * sample_rate * channels * 4)  # float32 samples
 
 
@@ -517,6 +529,55 @@ def _remove_quietly(path: Path) -> None:
         logger.debug("Could not remove the temporary file %s", path, exc_info=True)
 
 
+_TOO_LONG = (
+    "The voice profile's reference clip is too long to convert. "
+    "Trim it to a shorter clip and upload it again."
+)
+
+
+def _decode_unsized_capped(prompt: Path) -> Path:
+    """Decode a durationless clip to a temp WAV, stopping at the size cap.
+
+    ffmpeg's ``-fs`` ends the output at the cap, so a huge stream is never
+    decoded in full. Output that reaches the cap is refused rather than
+    returned truncated. The caller deletes the returned file.
+    """
+    from services.ffmpeg_utils import find_ffmpeg, local_inputs_only
+
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        raise ValueError(
+            "The voice profile's reference clip could not be read as audio. "
+            "Install ffmpeg or re-upload the clip as a WAV, MP3, FLAC or OGG file."
+        )
+    limit = _MAX_REFERENCE_DECODED_BYTES
+    fd, name = tempfile.mkstemp(prefix="omnivoice-gguf-dec-", suffix=".wav")
+    os.close(fd)
+    out = Path(name)
+    try:
+        proc = subprocess.run(
+            local_inputs_only(
+                [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+                 "-i", str(prompt), "-map", "0:a:0", "-f", "wav",
+                 "-c:a", "pcm_f32le", "-fs", str(limit), str(out)],
+                tool="ffmpeg",
+            ),
+            capture_output=True, timeout=120, check=False, env=_spawn_env(),
+        )
+        if proc.returncode != 0:
+            raise ValueError(
+                "The voice profile's reference clip could not be read as audio. "
+                "Re-upload the clip as a WAV, MP3, FLAC or OGG file."
+            )
+        # ffmpeg exits successfully at -fs; never accept truncated audio.
+        if out.stat().st_size >= limit:
+            raise ValueError(_TOO_LONG)
+    except BaseException:
+        _remove_quietly(out)
+        raise
+    return out
+
+
 def _convert_reference_to_wav(prompt: Path) -> Path:
     """Decode ``prompt`` into a temporary WAV the GGUF CLI can read.
 
@@ -540,8 +601,14 @@ def _convert_reference_to_wav(prompt: Path) -> Path:
             "The voice profile's reference clip is too long to convert. "
             "Trim it to a shorter clip and upload it again."
         )
+    source = prompt
+    capped: Optional[Path] = None
+    if decoded == _UNSIZED:
+        # No size is knowable up front: bound the decode itself, so a big
+        # durationless clip cannot exhaust memory before it is checked.
+        capped = source = _decode_unsized_capped(prompt)
     try:
-        wav, rate = load_audio(prompt)
+        wav, rate = load_audio(source)
     except ValueError:
         # The loader's own size-limit errors ("use a shorter clip") are
         # actionable as they are — do not turn them into a re-upload hint.
@@ -551,6 +618,19 @@ def _convert_reference_to_wav(prompt: Path) -> Path:
             "The voice profile's reference clip could not be read as audio. "
             "Re-upload the clip as a WAV, MP3, FLAC or OGG file."
         ) from exc
+    finally:
+        if capped is not None:
+            _remove_quietly(capped)
+    if decoded == _UNSIZED:
+        # No size was knowable up front, so the cap applies to what came out.
+        size = getattr(wav, "nbytes", None)
+        if size is None:
+            size = int(wav.numel()) * int(wav.element_size())
+        if int(size) > _MAX_REFERENCE_DECODED_BYTES:
+            raise ValueError(
+                "The voice profile's reference clip is too long to convert. "
+                "Trim it to a shorter clip and upload it again."
+            )
     fd, name = tempfile.mkstemp(prefix="omnivoice-gguf-ref-", suffix=".wav")
     os.close(fd)
     target = Path(name)

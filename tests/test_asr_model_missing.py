@@ -35,7 +35,7 @@ def _clear_installed_repo_memo():
 @pytest.fixture(scope="module")
 def client():
     from main import app
-    return TestClient(app)
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 @contextlib.contextmanager
