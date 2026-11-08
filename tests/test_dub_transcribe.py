@@ -41,7 +41,7 @@ def _make_wav(path: Path, seconds: float = 1.0, sr: int = 16000) -> None:
 
 
 def _load_fixture(name: str) -> dict:
-    return json.loads((FIXTURES / name).read_text())
+    return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
 
 # ---------------------------------------------------------------------------

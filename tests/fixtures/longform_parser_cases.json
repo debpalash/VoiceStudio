@@ -1601,5 +1601,330 @@
         ]
       }
     ]
+  },
+  {
+    "name": "emotion_basic_until_reset",
+    "input": "[emotion:quietly terrified] Did you hear that? [emotion:] It was the wind.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "Did you hear that?",
+            "pause_ms_after": 0,
+            "speed": null,
+            "join": "continue",
+            "emotion": "quietly terrified"
+          },
+          {
+            "voice_id": "v1",
+            "text": "It was the wind.",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_blank_line_join",
+    "input": "Calm. [emotion:sad] Sad.\n\n[emotion:happy] Happy.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "Calm.",
+            "pause_ms_after": 0,
+            "speed": null,
+            "join": "continue"
+          },
+          {
+            "voice_id": "v1",
+            "text": "Sad.",
+            "pause_ms_after": 0,
+            "speed": null,
+            "join": "paragraph",
+            "emotion": "sad"
+          },
+          {
+            "voice_id": "v1",
+            "text": "Happy.",
+            "pause_ms_after": 0,
+            "speed": null,
+            "emotion": "happy"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_survives_pause",
+    "input": "[emotion:angry] Get out! [pause 500ms] Now!",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "Get out!",
+            "pause_ms_after": 500,
+            "speed": null,
+            "emotion": "angry"
+          },
+          {
+            "voice_id": "v1",
+            "text": "Now!",
+            "pause_ms_after": 0,
+            "speed": null,
+            "emotion": "angry"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_resets_at_voice",
+    "input": "[emotion:angry] Get out! [voice:Sam] O-okay.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "Get out!",
+            "pause_ms_after": 0,
+            "speed": null,
+            "emotion": "angry"
+          },
+          {
+            "voice_id": "Sam",
+            "text": "O-okay.",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_after_voice_tag",
+    "input": "[voice:Mara] [emotion:nervous] Hello? [voice:Mara] Again.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "Mara",
+            "text": "Hello?",
+            "pause_ms_after": 0,
+            "speed": null,
+            "emotion": "nervous"
+          },
+          {
+            "voice_id": "Mara",
+            "text": "Again.",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_resets_at_chapter",
+    "input": "# One\n[emotion:sad] Gone.\n# Two\nBack.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "One",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "Gone.",
+            "pause_ms_after": 0,
+            "speed": null,
+            "emotion": "sad"
+          }
+        ]
+      },
+      {
+        "title": "Two",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "Back.",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_inside_ssml",
+    "input": "[slow]a [emotion:x] b[/slow] c",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "a",
+            "pause_ms_after": 0,
+            "speed": 0.85,
+            "join": "continue"
+          },
+          {
+            "voice_id": "v1",
+            "text": "b",
+            "pause_ms_after": 0,
+            "speed": 0.85,
+            "join": "continue",
+            "emotion": "x"
+          },
+          {
+            "voice_id": "v1",
+            "text": "c",
+            "pause_ms_after": 0,
+            "speed": null,
+            "emotion": "x"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_whitespace_collapsed",
+    "input": "[emotion:  very\n  tired  ] Yawn.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "Yawn.",
+            "pause_ms_after": 0,
+            "speed": null,
+            "emotion": "very tired"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_only_with_pause",
+    "input": "[emotion:sad] [pause 1s] Later.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "",
+            "pause_ms_after": 1000,
+            "speed": null
+          },
+          {
+            "voice_id": "v1",
+            "text": "Later.",
+            "pause_ms_after": 0,
+            "speed": null,
+            "emotion": "sad"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_empty_is_neutral",
+    "input": "[emotion:] [emotion:   ] Plain.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "Plain.",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_capped_at_200",
+    "input": "[emotion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa] Long.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "Long.",
+            "pause_ms_after": 0,
+            "speed": null,
+            "emotion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_bracket_in_value_is_literal",
+    "input": "[emotion:a[b] text",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "[emotion:a[b] text",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_case_insensitive",
+    "input": "[Emotion:sad] Not read aloud. [EMOTION:] Plain.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "Not read aloud.",
+            "pause_ms_after": 0,
+            "speed": null,
+            "join": "continue",
+            "emotion": "sad"
+          },
+          {
+            "voice_id": "v1",
+            "text": "Plain.",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
   }
 ]

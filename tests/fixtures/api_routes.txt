@@ -2,6 +2,7 @@
 # Guards against accidental endpoint removal/rename (tests/test_api_route_inventory.py).
 DELETE /api/auth/session
 DELETE /api/mcp/bindings/{client_id}
+DELETE /api/settings/engines/{family}/{engine_id}/local-model
 DELETE /api/settings/hf-token
 DELETE /batch/jobs/{job_id}
 DELETE /calls/{call_id}
@@ -38,6 +39,7 @@ GET /api/settings/compute-device
 GET /api/settings/cuda-device
 GET /api/settings/db-backup
 GET /api/settings/dictation-refinement
+GET /api/settings/engines/{family}/{engine_id}/local-model
 GET /api/settings/gpu-report
 GET /api/settings/hf-mirror
 GET /api/settings/hf-token/state
@@ -59,6 +61,7 @@ GET /archetypes/previews/status
 GET /archetypes/{archetype_id}
 GET /archetypes/{archetype_id}/preview
 GET /archetypes/{archetype_id}/preview/state
+GET /audio/{audio_id}.mp3
 GET /audio/{audio_id}.ogg
 GET /audio/{audio_id}.opus
 GET /audio/{audio_id}/quality
@@ -202,6 +205,7 @@ POST /api/cloud-sync/stop
 POST /api/cloud-sync/use-choices-of/{device_id}
 POST /api/integrations/twilio/test
 POST /api/settings/asr-openai-compat/test
+POST /api/settings/engines/{family}/{engine_id}/local-model/discover
 POST /api/settings/hf-mirror/test
 POST /api/settings/hf-token
 POST /api/settings/license
@@ -342,6 +346,7 @@ PUT /api/settings/asr-openai-compat
 PUT /api/settings/compute-device
 PUT /api/settings/cuda-device
 PUT /api/settings/dictation-refinement
+PUT /api/settings/engines/{family}/{engine_id}/local-model
 PUT /api/settings/hf-mirror
 PUT /api/settings/history-retention
 PUT /api/settings/llm-endpoint

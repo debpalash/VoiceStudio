@@ -46,6 +46,7 @@ export const BACKEND_CAUSE_ACTION: Record<BackendCause, BackendCauseAction> = {
   download: 'retry',
   illegal_instruction: 'copy_diagnostics',
   native_crash: 'copy_diagnostics',
+  external_kill: 'retry',
   missing_env: 'choose_folder',
   permission: 'choose_folder',
   synced_folder: 'choose_folder',

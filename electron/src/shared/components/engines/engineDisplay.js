@@ -80,7 +80,7 @@ export function fmtDuration(ms) {
 }
 
 export const deviceLabel = (t, g) =>
-  g === 'vulkan' ? t('engines.gpuVulkan') : GPU_LABEL[g] || g.toUpperCase();
+  g === 'unknown' ? t('common.unknown') : g === 'vulkan' ? t('engines.gpuVulkan') : GPU_LABEL[g] || g.toUpperCase();
 
 /** The one device this engine would run on here, for the Runs-on column. */
 export function runsOn(t, b) {

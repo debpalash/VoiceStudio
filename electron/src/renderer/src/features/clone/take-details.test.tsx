@@ -16,7 +16,11 @@ vi.mock('@/components/bridge', () => ({
 vi.mock('@/components/waveform-player', () => ({ WaveformPlayer: () => <div>player</div> }));
 vi.mock('@/hooks/use-profiles', () => ({ useProfiles: () => ({ data: [] }) }));
 vi.mock('@/hooks/use-generate', () => ({ useGenerateClone: () => ({ isGenerating: false }) }));
-vi.mock('@/lib/api/client', () => ({ audioUrl: (path: string) => `/audio/${path}` }));
+vi.mock('@/lib/api/client', () => ({
+  audioUrl: (path: string) => `/audio/${path}`,
+  audioMp3Url: (path: string) =>
+    path.endsWith('.wav') ? `/audio/${path.slice(0, -4)}.mp3` : undefined,
+}));
 vi.mock('@/lib/store/takes', () => ({
   reuseTake: vi.fn(),
   takeSettings: () => ({}),
@@ -49,6 +53,30 @@ it('exports a historical take through the native save dialog', async () => {
     expect(mock.saveAudio).toHaveBeenCalledWith({
       url: '/audio/history/take-42.wav',
       suggestedName: 'voicestudio-take-42.wav',
+    }),
+  );
+});
+
+it('exports a historical take as MP3 from the format menu', async () => {
+  render(
+    <TakeDetails
+      item={
+        {
+          id: 'take-42',
+          text: 'Historical line',
+          audio_path: 'ab12cd34.wav',
+          language: 'English',
+        } as never
+      }
+    />,
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: 'clone.download_format' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'clone.download_mp3' }));
+  await waitFor(() =>
+    expect(mock.saveAudio).toHaveBeenCalledWith({
+      url: '/audio/ab12cd34.mp3',
+      suggestedName: 'voicestudio-take-42.mp3',
     }),
   );
 });

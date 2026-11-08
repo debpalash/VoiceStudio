@@ -172,7 +172,7 @@ def test_next_snapshot_reaps_only_partials_without_a_live_owner(tmp_path, monkey
 
     snapshot = db_backup.snapshot_before_migration(str(database), "1.2.1")
 
-    assert paths_by_pid[64012].read_text() == "pending"
+    assert paths_by_pid[64012].read_text(encoding="utf-8") == "pending"
     assert not paths_by_pid[64011].exists()
     assert db_backup.list_backups(str(database)) == [snapshot]
 

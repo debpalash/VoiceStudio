@@ -3,9 +3,12 @@
 export function fmtBytes(n) {
   if (n == null || n < 0) return '—';
   if (n === 0) return '0 B';
-  if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(2)} GB`;
-  if (n >= 1024 ** 2) return `${(n / 1024 ** 2).toFixed(1)} MB`;
-  return `${Math.round(n / 1024)} KB`;
+  const mb = (n / 1024 ** 2).toFixed(1);
+  // Move up a unit when rounding reaches 1024 ("1024 KB" -> "1.0 MB").
+  if (n >= 1024 ** 3 || Number(mb) >= 1024) return `${(n / 1024 ** 3).toFixed(2)} GB`;
+  const kb = Math.round(n / 1024);
+  if (n >= 1024 ** 2 || kb >= 1024) return `${mb} MB`;
+  return `${kb} KB`;
 }
 
 /**

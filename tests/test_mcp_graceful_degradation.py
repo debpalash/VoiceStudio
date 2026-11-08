@@ -82,3 +82,23 @@ def test_cli_entry_still_exits_nonzero_when_sdk_missing(monkeypatch):
         with pytest.raises(SystemExit) as ei:
             mcp_server.main()
     assert ei.value.code == 1
+
+
+def test_cli_sse_listens_on_the_requested_port(monkeypatch):
+    """`python -m backend.mcp_server --sse --port N` must start the SSE
+    server on N. FastMCP.run() takes no `port`, so passing one crashed the
+    CLI with a TypeError before anything listened."""
+    pytest.importorskip("mcp.server.fastmcp")
+    import mcp_server
+
+    server = mcp_server.create_mcp_server()
+    served = {}
+
+    async def _fake_sse(mount_path=None):
+        served["port"] = server.settings.port
+
+    monkeypatch.setattr(server, "run_sse_async", _fake_sse)
+    monkeypatch.setattr(mcp_server, "create_mcp_server", lambda: server)
+    monkeypatch.setattr(sys, "argv", ["mcp_server", "--sse", "--port", "8799"])
+    mcp_server.main()
+    assert served == {"port": 8799}

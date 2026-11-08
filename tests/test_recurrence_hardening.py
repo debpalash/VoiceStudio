@@ -97,7 +97,7 @@ def test_safe_replace_same_device(tmp_path):
     src.write_text("payload")
     dst.write_text("old")
     safe_replace(str(src), str(dst))
-    assert dst.read_text() == "payload" and not src.exists()
+    assert dst.read_text(encoding="utf-8") == "payload" and not src.exists()
 
 
 def test_safe_replace_falls_back_on_exdev(tmp_path, monkeypatch):

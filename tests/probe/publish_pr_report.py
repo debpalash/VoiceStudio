@@ -153,11 +153,11 @@ def main() -> int:
     if not args.report:
         ap.error("report path required (or --prune N)")
     src = Path(args.report)
-    text = src.read_text()
+    text = src.read_text(encoding="utf-8")
     redacted, counts = redact(text)
     out = src.with_suffix("").with_suffix("")  # strip .html
     out = src.parent / (src.stem + ".redacted.html")
-    out.write_text(redacted)
+    out.write_text(redacted, encoding="utf-8")
     print(f"redacted → {out}")
     for pat, n in counts.items():
         print(f"  {n:>3}× {pat}")

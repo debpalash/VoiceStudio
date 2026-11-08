@@ -57,6 +57,7 @@ from services.longform_render import (
     write_lf_text,
 )
 from services import longform_resume  # pure (no torch) — durable resume manifest
+from services.expression import apply_span_emotion
 from services.longform_progress import RenderProgress, chapter_weight
 
 logger = logging.getLogger("omnivoice.audiobook")
@@ -575,6 +576,19 @@ def _generic_extra_kwargs(opts: ExpressiveOptions) -> dict:
     return kw
 
 
+def _emotion_key(span) -> tuple:
+    """``({"emotion": ...},)`` for a span with an ``[emotion:]``, else ``()`` —
+    a cache-key element present only when set, so untagged books keep their keys."""
+    emotion = getattr(span, "emotion", None)
+    return ({"emotion": emotion},) if emotion else ()
+
+
+def _span_key_extras(span) -> tuple:
+    """Chapter-key elements after speed: ``join`` then emotion, each only when set."""
+    join = getattr(span, "join", None)
+    return ((join,) if join else ()) + _emotion_key(span)
+
+
 def _ensure_active_engine_licence() -> None:
     """403 before the stream opens, rather than one failed row per chapter."""
     from services.tts_backend import ensure_active_engine_licence
@@ -649,15 +663,16 @@ def _build_synth(
              else _generic_extra_kwargs(opts))
     next_nonce = _make_occ_counter(opts)
 
-    def synth(text, voice_id, speed=None):
+    def synth(text, voice_id, speed=None, emotion=None):
         v = resolve(voice_id)
         seed = _seed_segment_rng(_base_seed(opts, v), text, next_nonce())
         call_extra = dict(extra)
         if native_proxy and seed is not None:
             call_extra["seed"] = seed
+        instruct = apply_span_emotion(cls, call_extra, v["instruct"], emotion, opts.emo_alpha)
         return backend.generate(
             text, language=language, ref_audio=v["ref_audio"],
-            ref_text=v["ref_text"], instruct=v["instruct"], duration=None,
+            ref_text=v["ref_text"], instruct=instruct, duration=None,
             speed=float(speed) if speed else 1.0, **call_extra,
         )
     return {"mode": "generic", "resolve": resolve, "engine_id": engine_id,
@@ -690,7 +705,9 @@ async def _prepare_synth(
         sampling = _omnivoice_sampling_kwargs(opts)
         next_nonce = _make_occ_counter(opts)
 
-        def synth(text, voice_id, speed=None):
+        def synth(text, voice_id, speed=None, emotion=None):
+            # OmniVoice takes no emotion (expression_caps "none"): a span's
+            # [emotion:] is already stripped from the text and is ignored here.
             v = resolve(voice_id)
             _seed_segment_rng(_base_seed(opts, v), text, next_nonce())
             # A book is the worst case for the re-encode this avoids: hundreds of
@@ -727,11 +744,12 @@ def _chapter_cache_inputs(chapter, sr, engine_id, resolve, cache_dir, lexicon=No
 
     spans = [Span(voice_id=s.voice_id, text=normalize_for_tts(s.text, language),
                   pause_ms_after=s.pause_ms_after, speed=getattr(s, "speed", None),
-                  join=getattr(s, "join", None))
+                  join=getattr(s, "join", None), emotion=getattr(s, "emotion", None))
              for s in chapter.spans]
-    # `join` joins the key tuple only when set, so plain scripts keep old keys.
+    # `join` and `emotion` join the key tuple only when set, so plain scripts
+    # keep old keys.
     spans_tuples = [(s.voice_id, s.text, s.pause_ms_after, getattr(s, "speed", None))
-                    + ((s.join,) if s.join else ())
+                    + _span_key_extras(s)
                     for s in spans]
     # A voice's signature names its reference audio by its path INSIDE the
     # data dir, not the absolute path (#2279): the same profile must key the
@@ -838,7 +856,8 @@ def _chapter_cache_inputs(chapter, sr, engine_id, resolve, cache_dir, lexicon=No
     # false". Keyed by the chapter's raw script, which no render input moves.
     content_id = chapter_content_id(
         [(s.voice_id, s.text, s.pause_ms_after, getattr(s, "speed", None),
-          getattr(s, "join", None)) for s in chapter.spans])
+          getattr(s, "join", None)) + _emotion_key(s)
+         for s in chapter.spans])
     inputs: dict = {
         "sample rate": sr, "engine": engine_id, "normalized text": spans_tuples,
         "pronunciation lexicon": lex_sig, "expressive settings": expr_sig,
@@ -1569,6 +1588,8 @@ class LongformSpan(BaseModel):
     pause_ms_after: int = 0
     speed: float | None = None
     join: Literal["continue", "paragraph"] | None = None
+    # Per-span ``[emotion:]`` direction (#3422); the parser caps it at 200.
+    emotion: str | None = Field(default=None, max_length=200)
 
 
 class LongformChapter(BaseModel):
@@ -1607,7 +1628,7 @@ async def longform_render(req: LongformRenderRequest, request: Request = None):
         # spans carry inter-line silence with empty text).
         spans = [Span(voice_id=s.voice_id, text=(s.text or "").strip(),
                       pause_ms_after=max(0, int(s.pause_ms_after)), speed=s.speed,
-                      join=s.join)
+                      join=s.join, emotion=(s.emotion or "").strip() or None)
                  for s in c.spans if ((s.text and s.text.strip()) or s.pause_ms_after > 0)]
         if spans:
             chapters.append(Chapter(title=c.title or f"Chapter {i + 1}", spans=spans))

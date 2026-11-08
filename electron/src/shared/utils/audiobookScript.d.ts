@@ -13,6 +13,11 @@ export function chapterHeadingSnippet(text: string, caret: number, end?: number)
 export function formatRuntimeClock(seconds: number): string;
 export function validateScript(
   text: string,
-  options?: { mappedNames?: string[]; profileIds?: string[] },
+  options?: {
+    mappedNames?: string[];
+    profileIds?: string[];
+    /** Active engine's name when it takes no emotion; adds one `emotion_ignored` warning. */
+    emotionIgnoredBy?: string | null;
+  },
 ): { type: string; name?: string; title?: string; tag?: string }[];
 export const AUDIOBOOK_WPM: number;

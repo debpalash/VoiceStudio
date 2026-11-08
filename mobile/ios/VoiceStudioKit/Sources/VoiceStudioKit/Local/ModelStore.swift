@@ -205,6 +205,9 @@ public actor ModelStore {
                     try? FileManager.default.removeItem(at: part.appendingPathExtension("ranges"))
                     assemblyReservations[model.id] = max(assemblyReservations[model.id,default: 0],size(part))
                     try checkDownloadSpace()
+                    // Retire the parallel range counts before the whole-file request, or the
+                    // replacement is counted twice and progress can reach 100% early.
+                    await meter.replaceFile(f.path,rangePrefix: f.sha256+":",bytes: size(part))
                     let whole = try await downloadRange(model,file: f,offset: 0,end: f.size-1,transport: transport,meter: meter,base: 0,wholeFile: true)
                     try await stageWhole(whole,model: model,file: f,part: part,identity: identity,meter: meter)
                     await meter.replaceFile(f.path,rangePrefix: f.sha256+":",bytes: f.size)

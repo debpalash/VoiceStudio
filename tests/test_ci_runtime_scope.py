@@ -85,7 +85,7 @@ def test_detection_failure_emits_runtime_true(tmp_path, monkeypatch):
         raise subprocess.CalledProcessError(1, "gh")
     monkeypatch.setattr(scope.subprocess, "run", fail)
     scope.main()
-    assert output.read_text() == "runtime=true\n"
+    assert output.read_text(encoding="utf-8") == "runtime=true\n"
 
 
 @pytest.mark.parametrize("event", ["workflow_dispatch", "schedule", "release"])
@@ -94,7 +94,7 @@ def test_manual_and_scheduled_runs_remain_full(event):
 
 
 def test_only_an_explicit_successful_skip_can_satisfy_the_required_check():
-    workflow = yaml.load((ROOT / ".github/workflows/ci.yml").read_text(), Loader=yaml.BaseLoader)
+    workflow = yaml.load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
     gate = workflow["jobs"]["test"]
     assert gate["name"] == "Tests (backend + frontend)"
     script = gate["steps"][0]["run"]
@@ -107,7 +107,7 @@ def test_only_an_explicit_successful_skip_can_satisfy_the_required_check():
 
 @pytest.mark.parametrize("filename", ["ci.yml", "mobile.yml", "security.yml", "install-smoke.yml", "cosyvoice-dependencies.yml"])
 def test_all_workflows_share_the_conservative_runtime_classifier(filename):
-    workflow = yaml.load((ROOT / ".github/workflows" / filename).read_text(), Loader=yaml.BaseLoader)
+    workflow = yaml.load((ROOT / ".github/workflows" / filename).read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
     jobs = workflow["jobs"]
     assert jobs["changes"]["outputs"]["runtime"] == "${{ steps.scope.outputs.runtime }}"
     assert any(step.get("run") == "python3 .github/scripts/ci_scope.py" for step in jobs["changes"]["steps"])
@@ -120,7 +120,7 @@ def test_all_workflows_share_the_conservative_runtime_classifier(filename):
 
 
 def test_backend_smokes_run_after_success_despite_a_skipped_internal_approval():
-    workflow = yaml.load((ROOT / ".github/workflows/ci.yml").read_text(), Loader=yaml.BaseLoader)
+    workflow = yaml.load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
     smoke = workflow["jobs"]["smoke-matrix"]
     assert smoke["needs"] == "test-python"
     # An explicit status function avoids Actions' implicit success() propagating

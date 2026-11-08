@@ -56,13 +56,15 @@ vi.mock('node:net', () => ({
   },
 }));
 
-vi.mock('./runtime-project', () => {
+vi.mock('./runtime-project', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./runtime-project')>();
   // Both pre-spawn steps are genuinely slow on a cold, scanner-contended
   // install, and both complete before the backend process exists.
   const burn = async (): Promise<void> => {
     if (mocks.prespawnMs > 0) await vi.advanceTimersByTimeAsync(mocks.prespawnMs);
   };
   return {
+    ...actual,
     resolveTorchVariant: () => ({ variant: 'cpu', explicit: false }),
     cpuTorchApplies: () => false,
     runtimeReady: async () => mocks.runtimeReadyNow,

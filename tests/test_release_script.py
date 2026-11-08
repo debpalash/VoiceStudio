@@ -64,10 +64,10 @@ def test_bump_files_moves_all_three_and_only_the_version(release, tmp_path):
     (tmp_path / "backend/core/version.py").write_text('_FALLBACK_VERSION = "0.5.7"\n')
     release.bump_files(tmp_path, "0.5.8-beta.1")
 
-    assert json.loads((tmp_path / "package.json").read_text())["version"] == "0.5.8-beta.1"
-    assert 'version = "0.5.8-beta.1"' in (tmp_path / "pyproject.toml").read_text()
-    assert 'version = "9"' in (tmp_path / "pyproject.toml").read_text()
-    assert '_FALLBACK_VERSION = "0.5.8-beta.1"' in (tmp_path / "backend/core/version.py").read_text()
+    assert json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))["version"] == "0.5.8-beta.1"
+    assert 'version = "0.5.8-beta.1"' in (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'version = "9"' in (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
+    assert '_FALLBACK_VERSION = "0.5.8-beta.1"' in (tmp_path / "backend/core/version.py").read_text(encoding="utf-8")
 
 
 def test_bump_files_fails_loudly_when_a_mirror_is_missing(release, tmp_path):

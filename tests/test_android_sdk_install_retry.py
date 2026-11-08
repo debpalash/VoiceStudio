@@ -57,7 +57,7 @@ def run_with_failures(tmp_path: Path, failures: int) -> tuple[subprocess.Complet
     tool.chmod(0o755)
     env = {**os.environ, "ANDROID_HOME": str(tmp_path), "ANDROID_SDK_RETRY_DELAY": "0"}
     result = subprocess.run(["bash", str(SCRIPT)], env=env, capture_output=True, text=True, timeout=30)
-    return result, len(calls.read_text().splitlines())
+    return result, len(calls.read_text(encoding="utf-8").splitlines())
 
 
 @needs_bash

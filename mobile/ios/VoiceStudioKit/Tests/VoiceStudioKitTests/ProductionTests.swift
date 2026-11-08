@@ -14,6 +14,23 @@ import Testing
     #expect(unicode.segments.map(\.text).joined() == String(repeating: "😀",count: 401))
 }
 
+@Test func desktopEmotionTagsAreNeverReadAloud() throws {
+    let plan = try ProductionPlan(script: "[voice:Alice] [emotion:quietly terrified] [speed:1.5] Did you hear that?\n[EMOTION:sad] [voice:Bob] Only the wind.")
+    #expect(plan.segments.map(\.text) == ["Did you hear that?", "Only the wind."])
+    #expect(plan.segments.map(\.role) == ["Alice", "Bob"])
+    #expect(plan.segments[0].speed == 1.5)
+    // A desktop tag may span lines; neither half is spoken.
+    #expect(try ProductionPlan(script: "[emotion:  very\n  tired  ] Yawn.").segments.map(\.text) == ["Yawn."])
+    // Its line break is kept, so a voice tag after it still switches the voice.
+    let switched = try ProductionPlan(script: "[voice:Alice] Hello [emotion:sad\nquiet] [voice:Bob] Bye")
+    #expect(switched.segments.map(\.text) == ["Hello", "Bye"])
+    #expect(switched.segments.map(\.role) == ["Alice", "Bob"])
+    // An unclosed tag never swallows the next chapter.
+    let unclosed = try ProductionPlan(script: "[emotion:quiet\n# Two\nA bracket ] closes here.")
+    #expect(unclosed.chapters.last == "Two")
+    #expect(unclosed.segments.last?.text == "A bracket ] closes here.")
+}
+
 @Test func designedVoiceRetainsSeedRecipeAndMarkedReferenceWithoutASR() async throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }

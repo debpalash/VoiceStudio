@@ -23,7 +23,7 @@ Design rules (load-bearing):
     resolve via :func:`_num2words_lang`). A language num2words does not
     know may be listed in ``_NATIVE_VERBALIZERS`` and spoken by its own small
     module (Malayalam today); any other language keeps its digits.
-    Clock times / ordinals / currency are English-only (their spoken form is
+    Clock times / ordinals / currency are English and Portuguese (their spoken form is
     language-specific); decimals only for locales whose num2words rendering
     was vetted. CJK scripts pass through the safety filters untouched — no
     CJK punctuation is stripped and no words are injected into unsegmented
@@ -498,9 +498,11 @@ def _safety_filters(text: str) -> str:
 #
 # Language passes must never rewrite `[…]` spans: `[pause 300ms]` /
 # `[rate 0.9]` / `[voice:NAME]` are grammar, and `[[term|replacement]]`
-# belongs to the pronunciation layer. Bounded repetition keeps it linear.
+# belongs to the pronunciation layer. Its accepted 256-character grammar
+# includes newlines. Single-bracket content excludes both delimiters, so an
+# unbounded run cannot rescan nested opens and remains linear.
 
-_BRACKET_SPAN_RE = re.compile(r"\[[^\][\n]{0,128}\]")
+_BRACKET_SPAN_RE = re.compile(r"\[\[[^\]]{0,256}\]\]|\[[^\][\n]*\]")
 
 
 def _outside_brackets(text: str, fn: Callable[[str], str]) -> str:
@@ -644,6 +646,16 @@ _ORDINAL_RE = re.compile(r"(?<![\w.,:/$%+-])(\d{1,4})(st|nd|rd|th)(?![\w:/%+-])(
 # same guard the integer and decimal rules use ("It costs $5." is spoken).
 _CURRENCY_RE = re.compile(r"(?<![\w.,:/$%+-])\$(\d{1,6})(?:\.(\d{2}))?(?![\w:/%+-])(?![.,]\d)")
 
+# Portuguese clock times: 14h30, 14h, 14:30. Rejects durations (14:30:00).
+_PT_TIME_RE = re.compile(
+    r"(?<![\w:.,/$%+-])([01]?\d|2[0-3])(?:[hH]([0-5]\d)?|:([0-5]\d))(?![\w:/%+-])(?![.,]\d)"
+)
+
+# Brazilian Real: R$ 1.250,00, R$ 50,00, R$ 5. '.' (or space/NBSP) thousands grouping and ',' cents.
+_BRL_CURRENCY_RE = re.compile(
+    r"(?<![\w.,:/$%+-])R\$\s*(\d{1,3}(?:[.\u00a0\u202f ]\d{3})+|\d{1,6})(?:,(\d{2}))?(?![\w:/%+-])(?![.,]\d)"
+)
+
 _PERCENT_RE = re.compile(r"(?<![\w.,:/$%+-])(\d{1,6}(?:\.\d{1,4})?)\s?%(?![\w:/%+-])(?![.,]\d)")
 
 _DECIMAL_RE = re.compile(
@@ -684,7 +696,18 @@ _SPACE_GROUP_RE = re.compile(
 )
 
 
+# English reads "2 100 meters" as two numbers, so only a run whose groups are
+# all "000" ("10 000", "1 000 000", "12 000%") is kept whole there: a "000"
+# group never starts a number of its own, and the integer rule used to speak
+# the leading group and leave the zeros behind ("ten 000").
+_EN_SPACE_GROUP_RE = re.compile(
+    r"(?<![\w.,:/$%-])-?\d{1,3}(?: 000)+(?:\s?%)?(?![\w:/%-])(?![.,]\d)"
+)
+
+
 def _grouped_spans(text: str, lang: str) -> list[tuple[int, int]]:
+    if lang == "en":
+        return [g.span() for g in _EN_SPACE_GROUP_RE.finditer(text)]
     if lang not in _COMMA_DECIMAL_LANGS:
         return []
     return [g.span() for g in _SPACE_GROUP_RE.finditer(text)]
@@ -787,6 +810,50 @@ def _numbers_to_words(text: str, lang: str, locale: Optional[str] = None) -> str
             return num2words(amount, lang="en", to="currency", currency="USD")
 
         text = _CURRENCY_RE.sub(lambda m: _safe(m, _currency), text)
+
+    elif lang == "pt":
+        def _pt_time(m: re.Match) -> str:
+            h = int(m.group(1))
+            mm_str = m.group(2) or m.group(3)
+            hw = {
+                1: "uma",
+                2: "duas",
+                21: "vinte e uma",
+                22: "vinte e duas",
+            }.get(h) or num2words(h, lang="pt")
+            if mm_str is None or int(mm_str) == 0:
+                unit = "hora" if h == 1 else "horas"
+                return f"{hw} {unit}"
+            mm = int(mm_str)
+            mw = "um" if mm == 1 else ("dois" if mm == 2 else num2words(mm, lang="pt"))
+            return f"{hw} e {mw}"
+
+        text = _PT_TIME_RE.sub(lambda m: _safe(m, _pt_time, clock=True), text)
+
+        def _brl_currency(m: re.Match) -> str:
+            raw_whole = re.sub(r"[.\s\u00a0\u202f]", "", m.group(1))
+            if _leading_zero(raw_whole):
+                return m.group(0)
+            reais = int(raw_whole)
+            if reais == 1:
+                unit = "real"
+            elif reais >= 1_000_000 and reais % 1_000_000 == 0:
+                unit = "de reais"
+            else:
+                unit = "reais"
+            spoken = f"{num2words(reais, lang='pt')} {unit}"
+            if m.group(2) is None:
+                return spoken
+            cents = int(m.group(2))
+            if cents == 0:
+                return spoken
+            if reais == 0:
+                cents_unit = "centavo" if cents == 1 else "centavos"
+                return f"{num2words(cents, lang='pt')} {cents_unit}"
+            cents_unit = "centavo" if cents == 1 else "centavos"
+            return f"{spoken} e {num2words(cents, lang='pt')} {cents_unit}"
+
+        text = _BRL_CURRENCY_RE.sub(lambda m: _safe(m, _brl_currency), text)
 
     def _spoken_decimal(whole: str, fraction: str) -> str:
         spoken = num2words(float(f"{whole}.{fraction}"), lang=lang)
