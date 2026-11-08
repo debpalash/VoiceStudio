@@ -246,6 +246,25 @@ export class AccountApi {
     return raw ? toProfile(raw as RawAccount) : null;
   }
 
+  /**
+   * Tells the server which app and version this signed-in person uses. Grants
+   * nothing. Returns the seconds until the next check, or null when signed out.
+   */
+  async appCheck(body: {
+    app: 'oss';
+    app_version: string;
+    platform: 'macos' | 'windows' | 'linux';
+  }): Promise<number | null> {
+    const raw = (await this.call(`${this.env.accountApi}/app-check`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      headers: { 'content-type': 'application/json' },
+    })) as { next_check_seconds?: unknown } | null;
+    if (!raw) return null;
+    const n = Number(raw.next_check_seconds);
+    return Number.isFinite(n) ? n : null;
+  }
+
   private async call(
     url: string,
     init: { method: string; body?: string; headers?: Record<string, string> },
