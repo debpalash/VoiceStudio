@@ -227,7 +227,7 @@ export function ReportBug({ error, setup = false }: { error?: Error | string; se
             'Stage: ' + backend.stage,
             'Managed: ' + backend.managed,
             ...(backend.exitCode != null
-              ? ['Exit code: ' + describeExitCode(backend.exitCode)]
+              ? ['Exit code: ' + describeExitCode(backend.exitCode, undefined, backend.logTail)]
               : []),
             ...(backend.exitSignal ? ['Signal: ' + backend.exitSignal] : []),
             ...(isNativeFaultExit({
@@ -251,7 +251,7 @@ export function ReportBug({ error, setup = false }: { error?: Error | string; se
           '',
           'Detected: ' + new Date(crash.timestamp).toISOString(),
           'Version: ' + crash.version,
-          'Exit code: ' + describeExitCode(crash.exitCode, t('common.unknown')),
+          'Exit code: ' + describeExitCode(crash.exitCode, t('common.unknown'), crash.logTail),
           'Signal: ' + (crash.signal ?? '—'),
           ...(isNativeFaultExit({ exitCode: crash.exitCode, signal: crash.signal })
             ? [t('reportBug.native_fault_cause')]

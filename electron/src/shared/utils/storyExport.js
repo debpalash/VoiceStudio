@@ -153,7 +153,8 @@ export function cueSheetFilename(output) {
  * record a cue at the current timeline position.
  * @param tracks          [{ text, character, profileId, speed }]
  * @param resolveOpts     (track) => { profileId, speed }   // applies cast fallback
- * @param fetchChunkBlob  (text, profileId, speed) => Promise<Blob>   // /generate WAV
+ * @param fetchChunkBlob  (text, profileId, speed, emotion?) => Promise<Blob>   // /generate WAV;
+ *                        emotion is passed only for a line's [emotion:] span
  * @param onProgress      (done, total) => void
  * @returns { blob: Blob, chapters: [{time,title}], durationSec: number }
  */
@@ -179,6 +180,7 @@ export async function exportStoryAudio(tracks, resolveOpts, fetchChunkBlob, onPr
             text: span.text,
             profileId: span.voice_id,
             speed: span.speed,
+            emotion: span.emotion,
           });
         if (span.pause_ms_after > 0)
           plan.push({ type: 'pause', seconds: span.pause_ms_after / 1000 });
@@ -200,7 +202,12 @@ export async function exportStoryAudio(tracks, resolveOpts, fetchChunkBlob, onPr
         sampleCursor += b.length;
         continue;
       }
-      const blob = await fetchChunkBlob(item.text, item.profileId, item.speed);
+      const blob = await fetchChunkBlob(
+        item.text,
+        item.profileId,
+        item.speed,
+        ...(item.emotion ? [item.emotion] : []),
+      );
       const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
       buffers.push(decoded);
       sampleCursor += decoded.length; // resamples to ctx.sampleRate → safe to concat

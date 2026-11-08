@@ -116,6 +116,23 @@ describe('failureGuidance', () => {
     ]);
     expect(sac.hints).not.toContain('backend.hint_spawn_blocked');
   });
+
+  it('names an external kill (exit -1 / 4294967295) for the failure screen', () => {
+    for (const exitCode of [-1, 4294967295]) {
+      const g = failureGuidance('UNCLASSIFIED', { message: 'Backend stopped', exitCode });
+      expect(g.cause).toBe('external_kill');
+      expect(g.hints).toEqual(['backend.hint_external_kill']);
+    }
+  });
+
+  it('does not claim an external kill over a traceback or another exit code', () => {
+    const tb = 'Traceback (most recent call last):\n  File "x.py"\nImportError: boom';
+    expect(failureGuidance('UNCLASSIFIED', { message: tb, exitCode: -1 }).cause).toBeNull();
+    expect(
+      failureGuidance('UNCLASSIFIED', { message: 'x', exitCode: -1, logLines: [tb] }).cause,
+    ).toBeNull();
+    expect(failureGuidance('UNCLASSIFIED', { message: 'x', exitCode: 1 }).cause).toBeNull();
+  });
 });
 
 describe('reports', () => {

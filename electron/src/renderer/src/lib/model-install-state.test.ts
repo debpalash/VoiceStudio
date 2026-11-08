@@ -107,4 +107,13 @@ describe('terminal views and ETA', () => {
     expect(formatInstallEta(150, 'en')).toMatch(/3\s*min/);
     expect(formatInstallEta(5400, 'en')).toMatch(/1\.5\s*hr/);
   });
+
+  it('moves to the next unit when rounding up reaches it', () => {
+    // A rate-derived ETA is fractional, so it can sit just under a unit boundary.
+    expect(formatInstallEta(59.4, 'en')).toMatch(/^1\s*min$/);
+    expect(formatInstallEta(3540.5, 'en')).toMatch(/^1\s*hr$/);
+    expect(formatInstallEta(3599, 'en')).toMatch(/^1\s*hr$/);
+    expect(formatInstallEta(59, 'en')).toMatch(/^59\s*sec$/);
+    expect(formatInstallEta(3540, 'en')).toMatch(/^59\s*min$/);
+  });
 });

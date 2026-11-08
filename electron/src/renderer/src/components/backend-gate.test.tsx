@@ -40,6 +40,7 @@ beforeEach(() => {
   delete backendStatus.message;
   delete backendStatus.diagnosis;
   delete backendStatus.setupIssue;
+  backendStatus.setupRequiredGib = 9;
   delete backendStatus.runtimeFreeGib;
   delete backendStatus.setupPhase;
   delete backendStatus.setupProgress;
@@ -446,6 +447,29 @@ it('names a native crash and makes Copy diagnostics the primary action', () => {
   expect(screen.getByRole('button', { name: i18n.t('backend.retry') })).toBeEnabled();
 });
 
+it('explains an externally killed backend (exit code 4294967295) on the live screen', () => {
+  backendStatus.message = 'Backend exited unexpectedly (exit code 4294967295).';
+
+  renderGate('crashed');
+
+  expect(screen.getByTestId('backend-cause')).toHaveTextContent(
+    i18n.t('backend.cause_external_kill'),
+  );
+  expect(screen.getByTestId('backend-hint')).toHaveTextContent(
+    i18n.t('backend.hint_external_kill'),
+  );
+  expect(screen.getByRole('button', { name: i18n.t('backend.retry') })).toBeEnabled();
+});
+
+it('does not call a traceback exit an external kill', () => {
+  backendStatus.message =
+    'Backend exited unexpectedly (exit code -1).\nTraceback (most recent call last):\n  File "a.py"\nValueError: x';
+
+  renderGate('crashed');
+
+  expect(screen.queryByTestId('backend-cause')).not.toBeInTheDocument();
+});
+
 it('offers Choose another folder for a missing Python environment', async () => {
   const chooseRuntimeLocation = vi.fn().mockResolvedValue({ path: 'D:\\vs' });
   const restart = vi.fn().mockResolvedValue(undefined);
@@ -632,4 +656,62 @@ it('explains a stuck install and holds back setup actions until it stops', () =>
   expect(screen.getByRole('button', { name: i18n.t('common.resume') })).toBeDisabled();
   expect(screen.getByRole('button', { name: i18n.t('bootstrap.clean_retry') })).toBeDisabled();
   expect(screen.getByRole('button', { name: /^Change/ })).toBeDisabled();
+});
+
+it('explains that the app is installed but runtime and chosen models are separate', () => {
+  renderGate('setup_required');
+  expect(screen.getByText(/The app is installed/)).toHaveTextContent(
+    'The app is installed. Set up the local runtime next: download Python and AI libraries (several GB). Voice models are downloaded separately when you choose them.',
+  );
+});
+
+it('offers the existing server editor before installing a local runtime without starting setup', async () => {
+  const setupRuntime = vi.fn();
+  const testRemote = vi.fn().mockResolvedValue({ ok: true, detail: 'VoiceStudio' });
+  bridgeStub.current = {
+    backend: {
+      getConnection: vi.fn().mockResolvedValue({ remote: false }),
+      testRemote,
+      setupRuntime,
+    },
+  };
+  renderGate('setup_required');
+  fireEvent.click(screen.getByRole('button', { name: i18n.t('settings.remote_backend_title') }));
+  const input = await screen.findByRole('textbox', { name: i18n.t('settings.remote_backend_url') });
+  expect(testRemote).not.toHaveBeenCalled();
+  expect(setupRuntime).not.toHaveBeenCalled();
+  fireEvent.change(input, { target: { value: 'http://localhost:4900' } });
+  fireEvent.click(screen.getByRole('button', { name: i18n.t('settings.remote_backend_test') }));
+  await waitFor(() =>
+    expect(testRemote).toHaveBeenCalledWith({ url: 'http://localhost:4900', apiKey: '' }),
+  );
+  expect(setupRuntime).not.toHaveBeenCalled();
+});
+
+it.each([5, 9])('uses the main-process %s GiB preflight requirement before setup', (needed) => {
+  backendStatus.setupRequiredGib = needed;
+  backendStatus.runtimeFreeGib = 6;
+  renderGate('setup_required');
+  expect(screen.getByTestId('setup-free-space')).toHaveTextContent(
+    i18n.t('firstrun.free_space', { free: 6, needed }),
+  );
+  expect(screen.getByTestId('setup-free-space').classList.contains('text-warning')).toBe(
+    needed > 6,
+  );
+});
+
+it('does not invent a disk requirement while main-process preflight is unavailable', () => {
+  backendStatus.runtimeFreeGib = 6;
+  delete backendStatus.setupRequiredGib;
+  renderGate('setup_required');
+  expect(screen.queryByTestId('setup-free-space')).not.toBeInTheDocument();
+});
+
+it('labels the binary disk preflight units as GiB and a minimum rather than a download estimate', () => {
+  backendStatus.setupRequiredGib = 5;
+  backendStatus.runtimeFreeGib = 6;
+  renderGate('setup_required');
+  expect(screen.getByTestId('setup-free-space')).toHaveTextContent(
+    '6 GiB free on this drive; at least 5 GiB needed for the runtime',
+  );
 });

@@ -37,6 +37,8 @@ import {
 import { BookSettings } from './book-settings';
 import { duplicateWords } from './book-options';
 import { useMemo, useRef, useState } from 'react';
+import { useEngines } from '@/hooks/use-engines';
+import { engineShortName, expressionCaps } from '@/lib/expression';
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { DownloadIcon, ListIcon, SparklesIcon } from 'lucide-react';
@@ -110,6 +112,12 @@ export function LongformPage({ mode }: { mode: Mode }) {
     (mode === 'stories'
       ? storyVoicesReady(draft, profiles)
       : profiles.some((profile) => profile.id === draft.voice));
+  const { activeTts } = useEngines();
+  // Name the engine only when it skips [emotion:] (#3422), so the warning can say so.
+  const emotionIgnoredBy =
+    activeTts && expressionCaps(activeTts).emotion === 'none'
+      ? engineShortName(activeTts) || t('engineSidebar.tts')
+      : null;
   const warnings = useMemo(
     () =>
       mode === 'audiobook'
@@ -118,9 +126,10 @@ export function LongformPage({ mode }: { mode: Mode }) {
               Boolean(draft.voiceCast[name]),
             ),
             profileIds: profiles.map((profile) => profile.id),
+            emotionIgnoredBy,
           }) as ScriptWarning[])
         : [],
-    [draft.script, draft.voiceCast, mode, profiles],
+    [draft.script, draft.voiceCast, mode, profiles, emotionIgnoredBy],
   );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const otherModeRendering = session.active !== null && session.active !== mode;

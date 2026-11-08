@@ -10,6 +10,7 @@ export function storyChunkBody(
   profileId: string | null,
   speed: number | null,
   profiles: { id: string }[],
+  emotion?: string,
 ) {
   const body = new FormData();
   body.set('text', text);
@@ -19,6 +20,8 @@ export function storyChunkBody(
   if (id) body.set('profile_id', id);
   for (const [key, value] of Object.entries(overridesToRequest(draft.overrides, draft.language)))
     body.set(key, String(value));
+  // A line's [emotion:] direction (#3422); the backend applies it as the full render does.
+  if (emotion) body.set('emotion', emotion);
   return body;
 }
 export async function previewStoryLine(
@@ -46,11 +49,16 @@ function storyAudioHelpers(draft: Draft, signal: AbortSignal, profiles: { id: st
         draft.voice,
       speed: track.speed || (draft.globalSpeed !== 1 ? draft.globalSpeed : null),
     }),
-    fetchChunk: async (text: string, profileId: string | null, speed: number | null) => {
+    fetchChunk: async (
+      text: string,
+      profileId: string | null,
+      speed: number | null,
+      emotion?: string,
+    ) => {
       signal.throwIfAborted();
       const response = await apiFetch('/generate', {
         method: 'POST',
-        body: storyChunkBody(draft, text, profileId, speed, profiles),
+        body: storyChunkBody(draft, text, profileId, speed, profiles, emotion),
         signal,
       });
       return response.blob();
