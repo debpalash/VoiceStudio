@@ -13,6 +13,7 @@ vi.mock('@shared/utils/analytics', () => ({
   capturePageview: vi.fn(),
   disableAnalytics: vi.fn(),
   enableAnalytics: vi.fn(async () => {}),
+  setAnalyticsSender: vi.fn(),
 }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 import { AnalyticsConsent, AnalyticsRuntime, SetupAnalyticsConsent } from './analytics-consent';

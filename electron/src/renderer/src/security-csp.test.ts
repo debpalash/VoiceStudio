@@ -2,11 +2,7 @@ import { describe, expect, it } from 'vitest';
 import html from '../index.html?raw';
 
 describe('renderer content security policy', () => {
-  it('allows PostHog ingestion and its regional configuration endpoints', () => {
-    expect(html).toContain('https://us.i.posthog.com');
-    expect(html).toContain('https://us-assets.i.posthog.com');
-    expect(html).toContain('https://eu.i.posthog.com');
-    expect(html).toContain('https://eu-assets.i.posthog.com');
-    expect(html).not.toContain('*.posthog.com');
+  it('lets the interface reach no analytics host; the backend sends opted-in events', () => {
+    expect(html).not.toMatch(/posthog|supermetry/i);
   });
 });

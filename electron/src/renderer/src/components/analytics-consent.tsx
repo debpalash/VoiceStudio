@@ -14,6 +14,7 @@ import {
   capturePageview,
   disableAnalytics,
   enableAnalytics,
+  setAnalyticsSender,
 } from '@shared/utils/analytics';
 import { routeBreadcrumb } from '@/lib/report-breadcrumb';
 import {
@@ -22,6 +23,11 @@ import {
   setupAnalyticsAllowed,
   SetupFunnel,
 } from '@/lib/setup-analytics';
+
+// Events reach the destination through the local backend, which re-checks consent.
+setAnalyticsSender((body) =>
+  apiJson('/api/settings/analytics/event', { method: 'POST', body: JSON.stringify(body) }),
+);
 
 interface AnalyticsState {
   available: boolean;

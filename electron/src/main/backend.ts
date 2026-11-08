@@ -664,13 +664,6 @@ function childEnv(
       }
     }
   }
-  const packagedToken =
-    typeof __POSTHOG_PROJECT_TOKEN__ === 'string' ? __POSTHOG_PROJECT_TOKEN__ : '';
-  const packagedHost = typeof __POSTHOG_HOST__ === 'string' ? __POSTHOG_HOST__ : '';
-  if (packagedToken && !env.POSTHOG_PROJECT_TOKEN) {
-    env.POSTHOG_PROJECT_TOKEN = packagedToken;
-  }
-  if (packagedHost && !env.POSTHOG_HOST) env.POSTHOG_HOST = packagedHost;
   // The backend reports the same build commit as the app in bug reports.
   if (!env.OMNIVOICE_BUILD_COMMIT && __BUILD_COMMIT__ !== 'unknown') {
     env.OMNIVOICE_BUILD_COMMIT = __BUILD_COMMIT__;
